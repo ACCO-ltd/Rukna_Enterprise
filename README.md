@@ -188,14 +188,4 @@ Rukna_Enterprise/
 ```
 
 ---
-
-## Team
-
-| Role | Person | Contact |
-|------|--------|---------|
-| Platform Architect / Backend | Abdulsalam | abdulsalam.shiikhow@gmail.com |
-| CEO / Domain Expert | Eng Ahmed Shirie | ACCO Ltd |
-
-Backend changes require sign-off from Abdulsalam.
-Business rule questions go to Eng Ahmed Shirie.
 See `apps/api/CLAUDE.md` and `apps/web/CLAUDE.md` for AI agent rules.
