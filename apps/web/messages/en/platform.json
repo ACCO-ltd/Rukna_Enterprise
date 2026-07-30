@@ -1,0 +1,37 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "users": "Users",
+    "roles": "Roles",
+    "permissions": "Permissions",
+    "organizations": "Organizations",
+    "settings": "Settings",
+    "auditLog": "Audit Log"
+  },
+  "users": {
+    "title": "Users",
+    "addUser": "Add User",
+    "editUser": "Edit User",
+    "fields": {
+      "firstName": "First Name",
+      "lastName": "Last Name",
+      "email": "Email",
+      "role": "Role",
+      "status": "Status",
+      "language": "Preferred Language"
+    }
+  },
+  "roles": {
+    "title": "Roles & Permissions",
+    "addRole": "Add Role",
+    "editRole": "Edit Role"
+  },
+  "workflows": {
+    "title": "Approval Workflows",
+    "pending": "Pending Approvals",
+    "approve": "Approve",
+    "reject": "Reject",
+    "steps": "Approval Steps",
+    "currentStep": "Current Step"
+  }
+}

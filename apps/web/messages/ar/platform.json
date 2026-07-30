@@ -1,0 +1,37 @@
+{
+  "nav": {
+    "dashboard": "لوحة التحكم",
+    "users": "المستخدمون",
+    "roles": "الأدوار",
+    "permissions": "الصلاحيات",
+    "organizations": "المؤسسات",
+    "settings": "الإعدادات",
+    "auditLog": "سجل المراجعة"
+  },
+  "users": {
+    "title": "المستخدمون",
+    "addUser": "إضافة مستخدم",
+    "editUser": "تعديل المستخدم",
+    "fields": {
+      "firstName": "الاسم الأول",
+      "lastName": "اسم العائلة",
+      "email": "البريد الإلكتروني",
+      "role": "الدور",
+      "status": "الحالة",
+      "language": "اللغة المفضلة"
+    }
+  },
+  "roles": {
+    "title": "الأدوار والصلاحيات",
+    "addRole": "إضافة دور",
+    "editRole": "تعديل الدور"
+  },
+  "workflows": {
+    "title": "سير عمل الاعتماد",
+    "pending": "الموافقات المعلقة",
+    "approve": "اعتماد",
+    "reject": "رفض",
+    "steps": "خطوات الاعتماد",
+    "currentStep": "الخطوة الحالية"
+  }
+}

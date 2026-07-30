@@ -1,0 +1,42 @@
+{
+  "loading": "جار التحميل...",
+  "save": "حفظ",
+  "cancel": "إلغاء",
+  "confirm": "تأكيد",
+  "delete": "حذف",
+  "edit": "تعديل",
+  "back": "رجوع",
+  "next": "التالي",
+  "submit": "إرسال",
+  "search": "بحث",
+  "filter": "تصفية",
+  "export": "تصدير",
+  "import": "استيراد",
+  "required": "مطلوب",
+  "optional": "اختياري",
+  "error": {
+    "generic": "حدث خطأ ما. يرجى المحاولة مرة أخرى.",
+    "network": "خطأ في الشبكة. تحقق من اتصالك.",
+    "unauthorized": "غير مصرح لك بتنفيذ هذا الإجراء.",
+    "notFound": "المورد المطلوب غير موجود."
+  },
+  "status": {
+    "active": "نشط",
+    "inactive": "غير نشط",
+    "suspended": "موقوف",
+    "pending": "معلق",
+    "approved": "معتمد",
+    "rejected": "مرفوض",
+    "cancelled": "ملغي"
+  },
+  "date": {
+    "today": "اليوم",
+    "yesterday": "أمس",
+    "format": "DD/MM/YYYY"
+  },
+  "currency": {
+    "usd": "دولار",
+    "sos": "شلن صومالي",
+    "aed": "درهم إماراتي"
+  }
+}

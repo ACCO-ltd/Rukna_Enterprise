@@ -1,0 +1,282 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Platform Models ─────────────────────────────────────────────────────────
+
+model Organization {
+  id        String             @id @default(cuid())
+  name      String
+  slug      String             @unique
+  status    OrganizationStatus @default(ACTIVE)
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
+
+  users               User[]
+  roles               Role[]
+  exchangeRates       ExchangeRate[]
+  workflowDefinitions WorkflowDefinition[]
+
+  @@map("organizations")
+}
+
+model User {
+  id                String     @id @default(cuid())
+  email             String     @unique
+  passwordHash      String     @map("password_hash")
+  firstName         String     @map("first_name")
+  lastName          String     @map("last_name")
+  status            UserStatus @default(ACTIVE)
+  organizationId    String     @map("organization_id")
+  preferredLanguage Language   @default(EN) @map("preferred_language")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+
+  organization  Organization   @relation(fields: [organizationId], references: [id])
+  userRoles     UserRole[]
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+model Role {
+  id             String   @id @default(cuid())
+  name           String
+  description    String?
+  organizationId String   @map("organization_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization    Organization     @relation(fields: [organizationId], references: [id])
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  @@unique([name, organizationId])
+  @@index([organizationId])
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  action      String
+  resource    String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  rolePermissions RolePermission[]
+
+  @@unique([action, resource])
+  @@map("permissions")
+}
+
+model UserRole {
+  userId     String   @map("user_id")
+  roleId     String   @map("role_id")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       String   @map("role_id")
+  permissionId String   @map("permission_id")
+  assignedAt   DateTime @default(now()) @map("assigned_at")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  userId    String    @map("user_id")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  orgId      String   @map("org_id")
+  action     String
+  resource   String
+  resourceId String   @map("resource_id")
+  before     Json?
+  after      Json?
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([orgId])
+  @@index([resource, resourceId])
+  @@map("audit_logs")
+}
+
+// ─── Multi-Currency ───────────────────────────────────────────────────────────
+
+model ExchangeRate {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  fromCurrency   String   @map("from_currency") @db.VarChar(3)
+  toCurrency     String   @map("to_currency") @db.VarChar(3)
+  rate           Decimal  @db.Decimal(18, 6)
+  validFrom      DateTime @map("valid_from") @db.Date
+  createdBy      String   @map("created_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, fromCurrency, toCurrency, validFrom])
+  @@map("exchange_rates")
+}
+
+// ─── DOA / Workflow Engine ────────────────────────────────────────────────────
+
+model WorkflowDefinition {
+  id                      String                  @id @default(cuid())
+  organizationId          String                  @map("organization_id")
+  transactionType         WorkflowTransactionType @map("transaction_type")
+  name                    String
+  nameAr                  String                  @map("name_ar")
+  isActive                Boolean                 @default(false) @map("is_active")
+  requiresCeoConfirmation Boolean                 @default(false) @map("requires_ceo_confirmation")
+  createdAt               DateTime                @default(now()) @map("created_at")
+  updatedAt               DateTime                @updatedAt @map("updated_at")
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  conditions   WorkflowCondition[]
+  steps        WorkflowStep[]
+  instances    ApprovalInstance[]
+
+  @@index([organizationId, transactionType])
+  @@map("workflow_definitions")
+}
+
+model WorkflowCondition {
+  id           String  @id @default(cuid())
+  definitionId String  @map("definition_id")
+  field        String
+  operator     String
+  value        String
+  currencyCode String? @map("currency_code") @db.VarChar(3)
+
+  definition WorkflowDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+
+  @@index([definitionId])
+  @@map("workflow_conditions")
+}
+
+model WorkflowStep {
+  id                 String   @id @default(cuid())
+  definitionId       String   @map("definition_id")
+  stepOrder          Int      @map("step_order")
+  groupOrder         Int?     @map("group_order")
+  roleRequired       String   @map("role_required")
+  isOptional         Boolean  @default(false) @map("is_optional")
+  escalateAfterHours Int?     @map("escalate_after_hours")
+  notifyRoles        String[] @map("notify_roles")
+
+  definition WorkflowDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+
+  @@index([definitionId, stepOrder])
+  @@map("workflow_steps")
+}
+
+model ApprovalInstance {
+  id                   String                  @id @default(cuid())
+  workflowDefinitionId String                  @map("workflow_definition_id")
+  transactionType      WorkflowTransactionType @map("transaction_type")
+  transactionId        String                  @map("transaction_id")
+  status               ApprovalStatus          @default(PENDING)
+  currentStepOrder     Int                     @default(1) @map("current_step_order")
+  initiatedBy          String                  @map("initiated_by")
+  initiatedAt          DateTime                @default(now()) @map("initiated_at")
+  updatedAt            DateTime                @updatedAt @map("updated_at")
+
+  definition WorkflowDefinition @relation(fields: [workflowDefinitionId], references: [id])
+  actions    ApprovalAction[]
+
+  @@index([transactionId, transactionType])
+  @@index([status])
+  @@map("approval_instances")
+}
+
+model ApprovalAction {
+  id         String             @id @default(cuid())
+  instanceId String             @map("instance_id")
+  stepOrder  Int                @map("step_order")
+  action     ApprovalActionType
+  actorId    String             @map("actor_id")
+  actedAt    DateTime           @default(now()) @map("acted_at")
+  notes      String?
+
+  instance ApprovalInstance @relation(fields: [instanceId], references: [id])
+
+  @@index([instanceId])
+  @@map("approval_actions")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum Language {
+  EN
+  AR
+}
+
+enum WorkflowTransactionType {
+  MATERIAL_REQUEST
+  PURCHASE_ORDER
+  SUPPLIER_PAYMENT
+  STOCK_TRANSFER
+  MATERIAL_ISSUE
+  SUBCONTRACT_CERTIFICATE
+  IPC
+  VARIATION
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ApprovalActionType {
+  APPROVE
+  REJECT
+  DELEGATE
+  ESCALATE
+}
