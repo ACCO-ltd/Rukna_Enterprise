@@ -23,7 +23,8 @@
     "db:migrate:platform": "prisma migrate dev --schema=prisma-platform/schema.prisma",
     "db:migrate:tenant:prod": "prisma migrate deploy --schema=prisma/schema.prisma",
     "db:migrate:platform:prod": "prisma migrate deploy --schema=prisma-platform/schema.prisma",
-    "tenant:provision": "tsx scripts/tenant-provision.ts"
+    "tenant:provision": "tsx scripts/tenant-provision.ts",
+    "postinstall": "prisma generate --schema=prisma/schema.prisma && prisma generate --schema=prisma-platform/schema.prisma"
   },
   "dependencies": {
     "@erp/config": "workspace:*",

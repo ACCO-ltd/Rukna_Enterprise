@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
 
 import { TenancyService } from '../../tenancy/tenancy.service.js';
 import type {
@@ -21,8 +20,8 @@ export class AuditLogsPrismaRepository implements IAuditLogsRepository {
         action: data.action,
         resource: data.resource,
         resourceId: data.resourceId,
-        before: (data.before ?? undefined) as Prisma.InputJsonValue | undefined,
-        after: (data.after ?? undefined) as Prisma.InputJsonValue | undefined,
+        before: (data.before ?? undefined) as unknown,
+        after: (data.after ?? undefined) as unknown,
         ipAddress: data.ipAddress,
       },
     });

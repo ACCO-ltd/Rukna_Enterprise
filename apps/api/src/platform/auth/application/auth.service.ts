@@ -40,14 +40,14 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    const roles = user.userRoles.map((ur) => ur.role.name);
+    const roles = user.userRoles.map((ur) => ur.role.name) as string[];
     const permissions = [
       ...new Set(
         user.userRoles.flatMap((ur) =>
           ur.role.rolePermissions.map((rp) => `${rp.permission.action}:${rp.permission.resource}`),
         ),
       ),
-    ];
+    ] as string[];
 
     const lang: 'en' | 'ar' = user.preferredLanguage === 'AR' ? 'ar' : 'en';
 
@@ -127,14 +127,14 @@ export class AuthService {
       throw new UnauthorizedException('User not found or inactive');
     }
 
-    const roles = user.userRoles.map((ur) => ur.role.name);
+    const roles = user.userRoles.map((ur) => ur.role.name) as string[];
     const permissions = [
       ...new Set(
         user.userRoles.flatMap((ur) =>
           ur.role.rolePermissions.map((rp) => `${rp.permission.action}:${rp.permission.resource}`),
         ),
       ),
-    ];
+    ] as string[];
 
     const lang: 'en' | 'ar' = user.preferredLanguage === 'AR' ? 'ar' : 'en';
 
