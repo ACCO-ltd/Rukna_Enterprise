@@ -214,6 +214,9 @@ importers:
       '@erp/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
+      rimraf:
+        specifier: ^6.0.0
+        version: 6.1.3
       typescript:
         specifier: ^5.5.0
         version: 5.9.3
@@ -247,6 +250,9 @@ importers:
       '@erp/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
+      rimraf:
+        specifier: ^6.0.0
+        version: 6.1.3
       typescript:
         specifier: ^5.5.0
         version: 5.9.3
