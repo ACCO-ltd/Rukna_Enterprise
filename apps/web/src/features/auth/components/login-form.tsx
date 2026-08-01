@@ -5,6 +5,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslations } from 'next-intl';
+import { Button, FormField, Input } from '@erp/ui';
+
 import { useLogin } from '../hooks/use-login';
 
 const loginSchema = z.object({
@@ -39,48 +41,34 @@ export function LoginForm() {
       </div>
 
       <form className="space-y-6" onSubmit={handleSubmit(onSubmit)} noValidate>
-        <div>
-          <label
-            htmlFor="email"
-            className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-          >
-            {t('emailLabel')}
-          </label>
-          <div className="mt-1">
-            <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              placeholder={t('emailPlaceholder')}
-              className="block w-full rounded-md border border-gray-300 px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:placeholder-gray-500"
-              {...register('email')}
-            />
-            {errors.email && (
-              <p className="mt-1 text-xs text-red-600">{errors.email.message}</p>
-            )}
-          </div>
-        </div>
+        <FormField htmlFor="email" label={t('emailLabel')} error={errors.email?.message}>
+          <Input
+            id="email"
+            type="email"
+            autoComplete="email"
+            placeholder={t('emailPlaceholder')}
+            {...register('email')}
+          />
+        </FormField>
 
-        <div>
-          <label
-            htmlFor="password"
-            className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-          >
-            {t('passwordLabel')}
-          </label>
-          <div className="relative mt-1">
-            <input
+        <FormField
+          htmlFor="password"
+          label={t('passwordLabel')}
+          error={errors.password?.message}
+        >
+          <div className="relative">
+            <Input
               id="password"
               type={showPassword ? 'text' : 'password'}
               autoComplete="current-password"
               placeholder={t('passwordPlaceholder')}
-              className="block w-full rounded-md border border-gray-300 px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:placeholder-gray-500"
+              className="pe-11"
               {...register('password')}
             />
             <button
               type="button"
               onClick={() => setShowPassword((prev) => !prev)}
-              className="absolute inset-y-0 end-0 flex items-center pe-3 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400"
+              className="absolute inset-y-0 end-0 flex h-11 w-11 items-center justify-center text-gray-500 hover:text-gray-700 dark:text-gray-400"
               aria-label={showPassword ? t('hidePassword') : t('showPassword')}
             >
               {showPassword ? (
@@ -90,24 +78,19 @@ export function LoginForm() {
               )}
             </button>
           </div>
-          {errors.password && (
-            <p className="mt-1 text-xs text-red-600">{errors.password.message}</p>
-          )}
-        </div>
+        </FormField>
 
         {isError && (
           <div className="rounded-md bg-red-50 p-3 dark:bg-red-900/20">
-            <p className="text-sm text-red-800 dark:text-red-400">{t('invalidCredentials')}</p>
+            <p className="text-sm text-red-800 dark:text-red-400" role="alert">
+              {t('invalidCredentials')}
+            </p>
           </div>
         )}
 
-        <button
-          type="submit"
-          disabled={isPending}
-          className="flex w-full justify-center rounded-md bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
-        >
+        <Button type="submit" disabled={isPending} className="w-full">
           {isPending ? t('submitting') : t('submitButton')}
-        </button>
+        </Button>
       </form>
     </div>
   );
@@ -115,7 +98,14 @@ export function LoginForm() {
 
 function EyeIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden="true"
+    >
       <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
       <path
         strokeLinecap="round"
@@ -128,7 +118,14 @@ function EyeIcon({ className }: { className?: string }) {
 
 function EyeOffIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden="true"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"

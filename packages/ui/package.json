@@ -6,8 +6,8 @@
   "types": "./src/index.ts",
   "license": "UNLICENSED",
   "peerDependencies": {
-    "react": "^18.0.0",
-    "react-dom": "^18.0.0"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.0.2",
@@ -17,9 +17,9 @@
   },
   "devDependencies": {
     "@erp/tsconfig": "workspace:*",
-    "@types/react": "^18.0.0",
-    "@types/react-dom": "^18.0.0",
-    "tailwindcss": "^3.4.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tailwindcss": "^4.0.0",
     "typescript": "^5.5.0"
   }
 }

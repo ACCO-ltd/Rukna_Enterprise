@@ -1,5 +1,5 @@
 import { getRequestConfig } from 'next-intl/server';
-import { cookies, headers } from 'next/headers';
+import { cookies } from 'next/headers';
 
 export default getRequestConfig(async () => {
   const locale = await resolveLocale();
@@ -20,10 +20,6 @@ async function resolveLocale(): Promise<'en' | 'ar'> {
   const cookieStore = await cookies();
   const langCookie = cookieStore.get('lang')?.value;
   if (langCookie === 'ar' || langCookie === 'en') return langCookie;
-
-  const headerStore = await headers();
-  const acceptLang = headerStore.get('accept-language') ?? '';
-  if (acceptLang.toLowerCase().includes('ar')) return 'ar';
 
   return 'en';
 }
