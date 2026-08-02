@@ -19,3 +19,13 @@ export interface LoginResponse {
 
 // Kept for backward compatibility during the Sprint 2 frontend migration.
 export type TokenPair = LoginResponse;
+
+// Attached to request.user by JwtAuthGuard after token + org-membership validation.
+export interface RequestIdentity {
+  userId: string;
+  activeOrganizationId: string;
+  tenantSlug: string;
+  roles: string[];
+  permissions: string[];
+  lang: 'en' | 'ar';
+}

@@ -51,6 +51,8 @@ async function bootstrap(): Promise<void> {
     .addTag('Permissions', 'Platform permission catalogue')
     .addTag('Audit Logs', 'Immutable audit trail')
     .addTag('Workflows', 'Approval workflow engine')
+    .addTag('Projects', 'Construction project lifecycle and membership')
+    .addTag('BOQ', 'Bill of Quantities versioning and tree management')
     .build();
 
   const document = SwaggerModule.createDocument(app, openApiConfig);

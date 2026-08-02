@@ -1,10 +1,11 @@
 # Construction Domain Model
 
-Version: 2.0.0
+Version: 3.0.0
 Status: Active
 Last Updated: 2026-08-02
-Changes: ADR-004 corrections applied — lifecycle, aggregate boundaries, BOQ versioning,
-         StockLedger nullability, CostLedger cost objects, OrganizationMembership.
+Changes: v3 — synced to actual Sprint 2 Prisma schema (Phases 1–4).
+         Corrected Project fields, ProjectMember/Role, BOQ three-pointer model,
+         BOQNode isLeaf/code/description fields, added WorkflowTriggerBinding.
 
 ---
 
@@ -37,13 +38,12 @@ No aggregate may directly modify the internal state of another.
 ```
 Organization
 │
-├── OrganizationMembership (users in this org)
+├── OrganizationMembership  (explicit user ↔ org join — Sprint 2)
 │   └── OrganizationMembershipRole
 │
 ├── Users, Roles, Permissions
-├── ProjectRole (org-configurable project role catalogue)
-├── WorkflowDefinition (DOA approval chains per transaction type)
-├── WorkflowTriggerBinding (trigger event → workflow mapping)
+├── WorkflowDefinition (DOA approval chains)
+├── WorkflowTriggerBinding (trigger event → workflow mapping — Sprint 2)
 ├── ExchangeRate (currency × date → rate)
 │
 └── Project  ◄── BUSINESS SCOPE ROOT (not a DDD God Aggregate)
@@ -52,201 +52,178 @@ Organization
     ├── ProjectMember
     │   └── ProjectMemberRole
     │
-    ├── Contract (optional — client projects only)
-    │   ├── Milestone
-    │   ├── RetentionTerms
-    │   ├── AdvanceTerm
-    │   ├── Guarantee
-    │   └── Variation / ChangeOrder
+    ├── BOQ [separate aggregate — Sprint 2 Phase 4]
+    │   └── BoqVersion (DRAFT | BASELINED | SUPERSEDED | CANCELLED)
+    │       └── BoqNode (versioned tree — section → item)
     │
-    ├── Subcontract (many per project) [separate aggregate]
-    │   ├── SubcontractScope (BOQ lines awarded to sub)
-    │   └── SubcontractCertificate (frozen on approval)
-    │
-    ├── BOQ [separate aggregate]
-    │   ├── BOQVersion (DRAFT | BASELINED | SUPERSEDED | CANCELLED)
-    │   │   └── BOQNode (versioned tree — Division → Section → Item)
-    │   │       └── BOQCostBudget (budget per Cost Category per Item)
-    │   └── BOQItemCertificationPolicy (evidence requirements per item)
-    │
-    ├── Site Documents [each a separate aggregate]
-    │   ├── DailyProgressReport (DPR)
-    │   │   └── ProgressEntry (BOQNode + qty/% /milestone)
-    │   ├── InspectionTestReport (ITR)
-    │   │   └── ITRLine (BOQNode + pass/fail)
-    │   ├── MeasurementSheet
-    │   │   └── MeasurementLine (BOQNode + certified qty)
-    │   └── WorkCompletionRecord
-    │       └── WCRLine (BOQNode + confirmed complete)
-    │
-    ├── IPC — Interim Payment Certificate [separate aggregate]
-    │   └── IPCLine (references BOQVersion + BOQNode)
-    │
-    ├── Procurement Chain [each a separate aggregate]
-    │   ├── MaterialRequest (MR)
-    │   ├── PurchaseRequisition (PR)
-    │   ├── RFQ + SupplierQuotation
-    │   ├── PurchaseOrder (PO)  → posts COMMITTED to CostLedger
-    │   │   └── POLine (material + qty + rate + BOQNode? + CostCategory)
-    │   └── GoodsReceiptNote (GRN) → closes COMMITTED, posts ACCRUED
-    │       └── GRNLine
-    │
-    ├── Inventory (Stock) [central warehouse is org-level, not project-level]
-    │   ├── StoreLocation (central warehouse or site store)
-    │   ├── MaterialCatalogue (item master)
-    │   ├── StockLedger (immutable journal — every movement)
-    │   └── StockTransfer [separate aggregate]
-    │
-    ├── Labour & Equipment
-    │   ├── LabourAttendance (employee + site + date + hours)
-    │   ├── Timesheet (approved allocation to BOQNode + CostCategory)
-    │   └── EquipmentLog (unit + project + hours + fuel + maintenance)
-    │
-    ├── Supplier Invoices
-    │   └── SupplierInvoice → closes ACCRUED, posts ACTUAL to CostLedger
-    │
-    ├── CostLedger (three-stage: COMMITTED / ACCRUED / ACTUAL)
-    │
-    ├── Client Receipts
-    │   └── PaymentReceipt (matched to IPC / retention / advance)
-    │
-    ├── ProjectDocument (drawings, specs, photos — file attachments)
-    │
-    └── AuditLog (every state change on every entity)
+    ├── Contract (future sprint)
+    ├── Subcontract (future sprint)
+    ├── IPC (future sprint)
+    ├── Procurement Chain (future sprint)
+    ├── CostLedger (future sprint)
+    └── StockLedger (future sprint)
 ```
 
 ---
 
-## Key Entity Descriptions
+## Entity Descriptions — Implemented (Sprint 2)
 
-### Project
+---
 
-Business scope root. Every project-specific construction transaction references a Project.
+### Organization
 
 | Field | Type | Notes |
 |---|---|---|
 | id | cuid | |
-| organizationId | cuid | tenant org |
-| name / nameAr | string | bilingual |
-| code | string | unique within org (immutable after APPROVED) |
-| type | enum | `CLIENT`, `INTERNAL`, `JOINT_VENTURE` (immutable after APPROVED) |
-| status | enum | see lifecycle below |
-| location | string | |
-| startDate / plannedEndDate / actualEndDate | date | |
-| projectManagerId | cuid | User |
+| name | string | |
+| slug | string | unique — used as subdomain |
+| status | enum | `ACTIVE`, `SUSPENDED` |
 | createdAt / updatedAt | timestamp | |
-
-**Lifecycle (CONST-LIFECYCLE-001):**
-
-```
-DRAFT → APPROVED → MOBILIZING → ACTIVE → PRACTICAL_COMPLETION → CLOSEOUT → CLOSED
-```
-
-Terminal states: `CLOSED`, `CANCELLED`
-
-```prisma
-enum ProjectStatus {
-  DRAFT
-  APPROVED
-  MOBILIZING
-  ACTIVE
-  PRACTICAL_COMPLETION
-  CLOSEOUT
-  CLOSED
-  CANCELLED
-}
-```
-
-`CANCELLED` is only permitted from `DRAFT`, `APPROVED`, `MOBILIZING`, `ACTIVE`.
-`CANCELLED` is **prohibited** from `PRACTICAL_COMPLETION` and `CLOSEOUT`.
-
-Suspension is **not** a lifecycle state. See `ProjectSuspension` below.
-
-Immutable fields after APPROVED: `type`, `code`, `organizationId`.
-
----
-
-### ProjectSuspension
-
-Separate operational condition. A suspended project retains its current lifecycle status.
-
-| Field | Type | Notes |
-|---|---|---|
-| id | cuid | |
-| projectId | cuid | |
-| suspendedAt | DateTime | |
-| suspendedBy | cuid (User) | |
-| reason | string | required |
-| resumedAt | DateTime? | null = currently suspended |
-| resumedBy | cuid? | |
-| resumeReason | string? | |
-| authorizedBy | cuid? | DoA approver |
-| createdAt | DateTime | |
-
-**Constraint:** Only one active suspension per project at a time.
-Enforced by service validation AND a partial unique index:
-
-```sql
-CREATE UNIQUE INDEX uq_project_active_suspension
-  ON project_suspensions (project_id)
-  WHERE resumed_at IS NULL;
-```
 
 ---
 
 ### OrganizationMembership
 
-Explicit record of which users belong to which organization.
+Explicit record linking a user to an organization. Every authenticated request
+validates an active membership record. JWT guard rejects tokens where membership
+is `SUSPENDED` or `REMOVED`.
 
 | Field | Type | Notes |
 |---|---|---|
 | id | cuid | |
-| organizationId | cuid | |
-| userId | cuid | |
+| organizationId | cuid | FK → Organization |
+| userId | cuid | FK → User (CASCADE on delete) |
 | status | enum | `ACTIVE`, `SUSPENDED`, `REMOVED` |
 | isDefault | boolean | user's default org on login |
 | joinedAt | DateTime | |
 | removedAt | DateTime? | |
 | removedBy | cuid? | |
 
+Unique constraint: `(organizationId, userId)`.
+
 ### OrganizationMembershipRole
 
 | Field | Type | Notes |
 |---|---|---|
 | id | cuid | |
-| membershipId | cuid | |
-| roleId | cuid | |
+| membershipId | cuid | FK → OrganizationMembership (CASCADE) |
+| roleId | cuid | FK → Role (CASCADE) |
 | assignedAt | DateTime | |
 | assignedBy | cuid (User) | |
 | removedAt | DateTime? | |
 
 ---
 
-### ProjectRole
+### WorkflowTriggerBinding
 
-Organization-configurable role catalogue for project membership.
+Maps a trigger event (document submission or state transition) to a workflow
+definition. Looked up in 4-step priority order by `WorkflowTriggerResolverService`.
 
 | Field | Type | Notes |
 |---|---|---|
 | id | cuid | |
-| organizationId | cuid | |
-| name | string | unique within org — controlled, not free text |
-| nameAr | string | |
-| permissions | string[] | |
-| isActive | boolean | |
+| organizationId | cuid? | null = tenant-wide default |
+| triggerKind | enum | `DOCUMENT`, `STATE_TRANSITION` |
+| entityType | string | e.g. `"Project"`, `"PurchaseOrder"` |
+| transactionType | enum? | `WorkflowTransactionType` — set for DOCUMENT kind |
+| fromState | string? | source state — null = any source state |
+| toState | string? | destination state |
+| workflowDefinitionId | cuid | FK → WorkflowDefinition |
+| priority | int | higher wins when multiple bindings match |
+| isActive | boolean | false = binding exists but is inactive (Sprint 2: all false) |
 | createdAt | DateTime | |
+
+**4-step resolution order** (highest priority first):
+1. org-specific + exact fromState + toState
+2. org-specific + toState only (fromState = null)
+3. tenant-default + exact fromState + toState
+4. tenant-default + toState only
+
+---
+
+### Project
+
+Business scope root. Every construction transaction references a Project.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | cuid | |
+| organizationId | cuid | FK → Organization |
+| code | string(30) | unique within org — **immutable after creation** |
+| name | string | |
+| nameAr | string? | |
+| description | string? | |
+| status | enum | see lifecycle below |
+| clientName | string? | client/employer name |
+| contractValue | decimal(18,2)? | paired with `currency` |
+| currency | string(3)? | ISO 4217 — paired with `contractValue` |
+| startDate | date? | |
+| expectedEndDate | date? | |
+| createdBy | cuid | User who created the project |
+| createdAt / updatedAt | timestamp | |
+
+**Lifecycle:**
+
+```
+DRAFT → APPROVED → MOBILIZING → ACTIVE → PRACTICAL_COMPLETION → CLOSEOUT → CLOSED
+```
+
+`CANCELLED` is reachable from `DRAFT`, `APPROVED`, `MOBILIZING`, `ACTIVE` only.
+`CANCELLED` is **prohibited** from `PRACTICAL_COMPLETION` and `CLOSEOUT`.
+
+Suspension is **not** a lifecycle status. See `ProjectSuspension` below.
+
+Fields editable only in `DRAFT` status: all fields except `code` (immutable).
+
+---
+
+### ProjectSuspension
+
+Separate operational condition. A suspended project retains its lifecycle status.
+Lifecycle transitions (`/approve`, `/activate` etc.) are blocked while suspended.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | cuid | |
+| projectId | cuid | FK → Project (RESTRICT) |
+| reason | string | required |
+| suspendedAt | DateTime | default now() |
+| suspendedBy | cuid (User) | |
+| resumedAt | DateTime? | null = currently active suspension |
+| resumedBy | cuid? | |
+
+**Constraint:** Only one active suspension per project at a time.
+Enforced by service AND partial unique index:
+
+```sql
+CREATE UNIQUE INDEX "project_suspensions_one_active_per_project"
+ON "project_suspensions"("project_id")
+WHERE "resumed_at" IS NULL;
+```
+
+---
 
 ### ProjectMember
 
 | Field | Type | Notes |
 |---|---|---|
 | id | cuid | |
-| projectId | cuid | |
-| userId | cuid | |
-| status | enum | `ACTIVE`, `REMOVED` |
-| addedAt | DateTime | |
-| addedBy | cuid (User) | |
-| removedAt | DateTime? | |
+| projectId | cuid | FK → Project (RESTRICT) |
+| userId | cuid | FK → User (RESTRICT) |
+| joinedAt | DateTime | default now() |
+| joinedBy | cuid | User who added this member |
+| removedAt | DateTime? | null = currently active member |
+| removedBy | cuid? | |
+
+Soft-delete: members are deactivated via `removedAt`, not hard-deleted.
+
+Partial unique index ensures one active membership per project+user:
+
+```sql
+CREATE UNIQUE INDEX "project_members_one_active_per_project_user"
+ON "project_members"("project_id", "user_id")
+WHERE "removed_at" IS NULL;
+```
 
 ### ProjectMemberRole
 
@@ -255,178 +232,124 @@ A member may hold multiple project roles simultaneously.
 | Field | Type | Notes |
 |---|---|---|
 | id | cuid | |
-| memberId | cuid | |
-| projectRoleId | cuid | references ProjectRole |
+| memberId | cuid | FK → ProjectMember (CASCADE) |
+| role | enum | `ProjectRole` — see values below |
 | assignedAt | DateTime | |
 | assignedBy | cuid (User) | |
 | removedAt | DateTime? | |
 
+**ProjectRole enum values:**
+```
+PROJECT_MANAGER
+QUANTITY_SURVEYOR
+SITE_ENGINEER
+COMMERCIAL_MANAGER
+FINANCE_REVIEWER
+VIEWER
+```
+
 ---
 
-### BOQ
+### Boq
 
-BOQ root aggregate. A project may have one BOQ (extended in future sprints for multi-contract).
-
-| Field | Type | Notes |
-|---|---|---|
-| id | cuid | |
-| organizationId | cuid | |
-| projectId | cuid | |
-| name | string | |
-| baselineVersionId | cuid? | null until first baseline |
-| currentDraftVersionId | cuid? | null when no draft in progress |
-
-### BOQVersion
+BOQ aggregate root. One BOQ per project. Carries three version pointers — each
+maintained by the application layer, not FK-constrained in Prisma.
 
 | Field | Type | Notes |
 |---|---|---|
 | id | cuid | |
-| boqId | cuid | |
-| versionNumber | int | sequential per BOQ |
+| projectId | cuid | unique FK → Project |
+| organizationId | cuid | denormalized for query performance |
+| originalBaselineVersionId | cuid? | **immutable once set** — the original contract baseline |
+| currentApprovedVersionId | cuid? | currently approved (BASELINED) version |
+| currentDraftVersionId | cuid? | currently open draft version (null if none) |
+| createdAt / updatedAt | timestamp | |
+
+**Three-pointer semantics:**
+- `originalBaselineVersionId`: set on first `baseline()` call; never overwritten. Preserves the original contract baseline even after subsequent revisions.
+- `currentApprovedVersionId`: updated on every `baseline()` call.
+- `currentDraftVersionId`: set when a draft is created; cleared on baseline or cancel.
+
+---
+
+### BoqVersion
+
+Snapshot of the BOQ tree at a point in time. Only `DRAFT` versions accept mutations.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | cuid | |
+| boqId | cuid | FK → Boq |
+| versionNumber | int | sequential per BOQ, auto-incremented |
 | status | enum | `DRAFT`, `BASELINED`, `SUPERSEDED`, `CANCELLED` |
-| derivedFromVersionId | cuid? | set on deep copy from prior version |
-| variationId | cuid? | set when created from a Variation Order |
-| approvedAt | DateTime? | set on BASELINED |
-| approvedBy | cuid? | set on BASELINED |
-| createdAt | DateTime | |
+| notes | string? | revision notes |
+| baselinedAt | DateTime? | set when status → BASELINED |
+| baselinedBy | cuid? | User who baselined |
+| createdBy | cuid | |
+| createdAt / updatedAt | timestamp | |
 
-Rules:
-- Only `DRAFT` versions permit mutations.
-- `BASELINED` versions are permanently immutable.
-- IPC records reference a specific `BOQVersion.id`.
+**Status transitions:**
+- `DRAFT` → `BASELINED` (via `/baseline`) — the previous approved version becomes `SUPERSEDED`
+- `DRAFT` → `CANCELLED` (via `/cancel`)
+- `BASELINED` and `CANCELLED` are **terminal** — no further status change
 
-### BOQNode
+Unique constraint: `(boqId, versionNumber)`.
 
-Self-referential tree within a single BOQVersion.
+---
+
+### BoqNode
+
+Self-referential tree node within a single `BoqVersion`. Nodes are version-scoped —
+the same physical line item gets a new node ID in each version copy.
 
 | Field | Type | Notes |
 |---|---|---|
-| id | cuid | stable — never changes across versions |
-| versionId | cuid | FK → BOQVersion |
+| id | cuid | version-scoped — new ID on each version copy |
+| boqId | cuid | denormalized FK → Boq |
+| versionId | cuid | FK → BoqVersion |
 | parentId | cuid? | null = root node (within same version) |
-| originNodeId | cuid? | FK → BOQNode in prior version (lineage on deep copy) |
-| type | enum | `GROUP`, `ITEM` |
-| stableCode | string | human-readable e.g. "01.02.003" |
-| name / nameAr | string | bilingual |
-| unit | string? | ITEM only |
-| quantity | decimal? | ITEM only |
-| unitRate / totalAmount | decimal? | ITEM only |
-| measurementMethod | enum | `QUANTITY`, `PERCENTAGE`, `MILESTONE` (ITEM only) |
-| path | string | ancestry using node IDs — never rewritten by sortOrder changes |
-| depth | int | computed |
-| sortOrder | int | display order — independent of path |
+| path | string | materialized path: `"rootId/childId/grandchildId"` |
+| depth | int | 0 = root; auto-maintained |
+| sortOrder | int | display order among siblings |
+| code | string(50) | human-readable section code e.g. `"1.2.3"` |
+| description | string | line item description (English) |
+| descriptionAr | string? | Arabic description |
+| isLeaf | boolean | true = can carry quantity/rate; false = summary section |
+| unit | string(20)? | measurement unit — leaf nodes only, e.g. `m³`, `ton` |
+| quantity | decimal(18,3)? | leaf nodes only |
+| unitRate | decimal(18,2)? | leaf nodes only |
+| currency | string(3)? | ISO 4217 — paired with unitRate |
+| totalAmount | decimal(18,2)? | `quantity × unitRate`, stored for performance |
+| originNodeId | cuid? | source node ID from the prior version (copy lineage) |
+| createdAt / updatedAt | timestamp | |
 
-**Path format:** concatenated node IDs (e.g., `"7f3a2b.9c1d4e.a2f8b1"`).
-Reordering siblings updates `sortOrder` only, never `path`.
+**Path format:** `"rootId/childId/grandchildId"` (no leading slash, `/`-delimited node IDs).
 
-### BOQCostBudget
+Move algorithm uses two raw SQL updates:
+1. Update moved node's `parentId`, `path`, `depth`, `sortOrder`
+2. Bulk-update all descendants: replace `oldPath` prefix with `newPath` via `REPLACE + LIKE`
 
-| Field | Type | Notes |
-|---|---|---|
-| boqNodeId | cuid | |
-| costCategory | enum | |
-| budgetedAmount | decimal | |
-| currencyCode | string | |
-
----
-
-### StockLedger
-
-Immutable. One row per movement. Never updated after insert.
-
-| Field | Type | Notes |
-|---|---|---|
-| id | cuid | |
-| postedAt | timestamp | |
-| locationId | cuid | warehouse or site store |
-| materialId | cuid | |
-| transactionType | enum | RECEIPT, ISSUE, TRANSFER_OUT, TRANSFER_IN, RETURN_TO_STORE, RETURN_TO_VENDOR, WASTAGE, THEFT_LOSS, SCRAP, ADJUSTMENT |
-| quantity | decimal | negative for outflows |
-| unitCost / totalValue | decimal | |
-| currencyCode | string | |
-| referenceDocType | string | PO, MIR, TRANSFER, etc. |
-| referenceDocId | cuid | |
-| projectId | cuid? | **nullable** — not all stock movements are project-specific |
-| boqNodeId | cuid? | **nullable** — see CONST-INV-005 for validation by type |
-| costCategory | enum? | **nullable** — see CONST-INV-005 |
-| postedBy / approvedBy | cuid | User |
-
-Note: `projectId`, `boqNodeId`, `costCategory` were mandatory in ADR-002.
-ADR-004 Decision 13 makes them conditional. Central warehouse operations do not
-require a project reference.
+**Leaf vs summary distinction:**
+- `isLeaf = false` (summary): has children; `quantity`, `unitRate`, `totalAmount` are null; `computedTotal` is aggregated from children at query time
+- `isLeaf = true` (item): has no children; carries `quantity × unitRate = totalAmount`
 
 ---
 
-### CostLedger
+## Entities Described in ADR-002 / ADR-004 — Not Yet Implemented
 
-Three-stage commitment accounting. One row per movement (immutable after insert).
-Releases are explicit credit entries, not UPDATEs.
+These entities are planned for future sprints. The schema descriptions in ADR-002 and
+ADR-004 are the authoritative design. Do not implement without an updated sprint plan.
 
-| Field | Type | Notes |
-|---|---|---|
-| id | cuid | |
-| projectId | cuid | always required |
-| boqNodeId | cuid? | required when cost is BOQ-item-specific |
-| costObjectType | enum | `BOQ_NODE`, `OVERHEAD`, `UNALLOCATED` |
-| costCategory | enum | always required |
-| stage | enum | `COMMITTED`, `ACCRUED`, `ACTUAL` |
-| amount / currencyCode | decimal + string | |
-| reportingRate / reportingAmount / reportingCurrency | decimal + string | locked at posting |
-| referenceDocType | string | PO, GRN, INVOICE, etc. |
-| referenceDocId | cuid | |
-| postedAt | timestamp | |
-| postedBy | cuid | |
-
-Note: `boqNodeId` is nullable. Every cost must have a controlled `costObjectType`.
-Unallocated costs require resolution within the organization's defined SLA.
-`CONST-COST-001` from ADR-002 is amended by ADR-004 Decisions 12 and 13.
-
----
-
-### IPC (Interim Payment Certificate)
-
-Auto-generated from approved site documents. Immutable once FROZEN.
-
-| Field | Type | Notes |
-|---|---|---|
-| id | cuid | |
-| projectId / contractId | cuid | |
-| boqVersionId | cuid | **references specific BOQVersion** |
-| ipcNumber | int | unique per contract, monotonically increasing, assigned at FROZEN |
-| periodFrom / periodTo | date | |
-| status | enum | `DRAFT`, `SUBMITTED`, `APPROVED`, `FROZEN` |
-| totalGross / retentionAmount / advanceRecovery / taxAmount / netPayable | decimal | |
-| currencyCode | string | |
-| frozenAt / frozenBy | timestamp + cuid | set when FROZEN |
-
-Note: `ipcNumber` is unique and monotonically increasing, but gaps are permitted
-due to database sequence behavior. Void records are retained where regulation requires.
-`CONST-IPC-002` from ADR-002 is replaced by ADR-004 Decision 15.
-
----
-
-### Contract
-
-Optional. Attached to a Project when there is a formal client agreement.
-
-| Field | Type | Notes |
-|---|---|---|
-| id | cuid | |
-| projectId | cuid | |
-| clientId | cuid | Client master |
-| contractNumber | string | |
-| type | enum | `FIXED_PRICE`, `UNIT_PRICE`, `COST_PLUS`, `MILESTONE`, `TIME_AND_MATERIAL` |
-| value / currencyCode | decimal + string | |
-| retentionPercentage | decimal | e.g. 5.00 |
-| retentionCapPercentage | decimal | |
-| advanceAmount | decimal | |
-| advanceRecoveryPercentage | decimal | recovered per IPC |
-| revenueRecognitionMethod | enum | `POC`, `BILLING_BASIS` |
-| status | enum | `DRAFT`, `ACTIVE`, `COMPLETED`, `DISPUTED`, `CLOSED` |
-
-**Revenue recognition:** The POC formula is for management reporting only.
-Production accounting entries require written finance-policy sign-off.
-See ADR-004 Decision 17.
+| Entity | Sprint |
+|---|---|
+| Contract, Milestone, RetentionTerms | Sprint 3+ |
+| Subcontract, SubcontractCertificate | Sprint 3+ |
+| IPC (Interim Payment Certificate) | Sprint 3+ |
+| MaterialRequest, PurchaseOrder, GoodsReceiptNote | Sprint 3+ |
+| StockLedger, StockTransfer | Sprint 3+ |
+| CostLedger | Sprint 3+ |
+| DailyProgressReport, MeasurementSheet, ITC | Sprint 3+ |
+| LabourAttendance, EquipmentLog | Sprint 3+ |
 
 ---
 
@@ -435,17 +358,12 @@ See ADR-004 Decision 17.
 | Term | Definition |
 |---|---|
 | BOQ | Bill of Quantities — the priced schedule of work items forming the basis of a construction contract |
-| BOQVersion | An immutable snapshot of the BOQ at a point in time. BASELINED versions are permanent. |
+| BoqVersion | An immutable snapshot of the BOQ at a point in time. BASELINED versions are permanent. |
+| Baseline | The act of locking a DRAFT version as the approved BOQ — analogous to signing the contract schedule |
 | IPC | Interim Payment Certificate — a periodic billing document certifying completed work for client payment |
-| DPR | Daily Progress Report — site record of work completed, labour, materials, and equipment for one day |
-| ITR | Inspection and Test Report — QA/QC document confirming work meets specification before billing |
-| DOA | Delegation of Authority — the framework defining who can approve what, up to what amount |
-| POC | Percentage of Completion — the IFRS 15 revenue recognition method for long-term construction contracts |
-| WIP | Work in Progress — the balance sheet asset representing revenue earned but not yet billed |
-| GRN | Goods Receipt Note — the document confirming materials have been received and inspected |
-| MIR | Material Issue Request — the authorised request for materials to be issued from a store to a work area |
-| PO | Purchase Order — a committed obligation to purchase from a supplier at agreed terms |
-| Variation | A formal change to the contracted scope, price, or schedule — also called a Change Order |
-| Retention | A percentage of certified work withheld from each IPC as security until project completion |
-| Advance | A mobilization payment made to the contractor/subcontractor before work begins, recovered from subsequent IPCs |
-| originNodeId | Lineage field on BOQNode — points to the source node in the prior version when deep-copied |
+| DOA | Delegation of Authority — the framework defining who can approve what, up to what value |
+| WTB | WorkflowTriggerBinding — the mapping from a business event to a DOA approval chain |
+| originNodeId | Lineage field on BoqNode — points to the source node in the prior version on deep copy |
+| Materialized Path | Tree traversal technique storing the full ancestor chain as a path string for O(1) subtree queries |
+| TenantContext | AsyncLocalStorage context carrying tenantId, tenantSlug, PrismaClient — set by TenancyMiddleware |
+| RequestIdentity | request.user object set by JwtAuthGuard — carries userId, activeOrganizationId, roles, permissions |

@@ -7,7 +7,7 @@ import * as bcrypt from 'bcrypt';
 import type { JwtPayload } from '@erp/types';
 
 import { TenancyService } from '../../tenancy/tenancy.service.js';
-import { tenancyStorage } from '../../tenancy/tenancy.context.js';
+import { tenancyStorage } from '../../tenancy/tenancy.context.js'; // TenantContext (slug/id only)
 import type { LoginDto } from '../presentation/dto/login.dto.js';
 
 // Internal pair returned from service to controller; controller sets the cookie.
@@ -48,7 +48,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    const payload = this.buildPayload(user, ctx.slug);
+    const payload = this.buildPayload(user, ctx.tenantSlug);
     const accessToken = this.jwtService.sign(payload);
 
     const jti = randomUUID();
@@ -117,7 +117,7 @@ export class AuthService {
       throw new UnauthorizedException('User not found or inactive');
     }
 
-    const newPayload = this.buildPayload(user, ctx.slug);
+    const newPayload = this.buildPayload(user, ctx.tenantSlug);
     const accessToken = this.jwtService.sign(newPayload);
 
     // Rotate: new jti, same family

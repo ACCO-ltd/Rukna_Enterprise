@@ -1,9 +1,9 @@
 # Enterprise ERP Platform
 ## Software Architecture Document (SAD)
 
-Version: 1.0.0
+Version: 2.0.0
 
-Status: Draft
+Status: Active — Sprint 2 complete
 
 ---
 
@@ -305,15 +305,24 @@ Every business module depends on these.
 
 Platform modules never depend on business modules.
 
+### Sprint 2 Platform Modules — Implemented
+
+| Module | Status | Key deliverables |
+|---|---|---|
+| Auth (Phase 1) | ✅ Complete | HttpOnly refresh cookie, jti rotation, token-family reuse detection |
+| Tenancy (Phase 2) | ✅ Complete | TenantContext / RequestIdentity split, LRU client cache (max 50), onApplicationShutdown |
+| OrganizationMembership (Phase 2) | ✅ Complete | JWT guard validates active membership on every request |
+| WorkflowTriggerResolver (Phase 2) | ✅ Complete | 4-step DOCUMENT + STATE_TRANSITION resolution; bindings seeded (inactive) |
+
 9. Business Modules
 
 Current modules
 
 Construction
 
-Retail
+Retail (stub)
 
-Manufacturing
+Manufacturing (stub)
 
 Future
 
@@ -338,6 +347,33 @@ Permissions
 API
 
 Database Tables
+
+### Sprint 2 Business Modules — Implemented
+
+| Module | Status | Key deliverables |
+|---|---|---|
+| Projects (Phase 3) | ✅ Complete | Full lifecycle (8 states), suspend/resume, project membership |
+| BOQ (Phase 4) | ✅ Complete | Versioning (DRAFT→BASELINED→SUPERSEDED), materialized-path tree, move via raw SQL |
+
+### Module File Map (Sprint 2)
+
+```
+apps/api/src/
+├── platform/
+│   ├── auth/           — login, refresh (cookie), logout, JWT strategy
+│   ├── tenancy/        — TenancyMiddleware, TenancyService (LRU), TenantContext
+│   ├── users/          — GET /users/:id
+│   ├── organizations/  — GET /organizations/:id
+│   ├── roles/          — GET /roles (by org)
+│   ├── permissions/    — GET /permissions
+│   ├── audit-logs/     — GET /audit-logs
+│   └── workflows/      — WorkflowsService, ApprovalService, WorkflowTriggerResolverService
+│
+└── business/
+    └── construction/
+        ├── projects/   — 16 endpoints: CRUD + lifecycle + suspend/resume + members
+        └── boq/        — 11 endpoints: initialize, versioning, tree CRUD + move
+```
 
 10. Dependency Rules
 

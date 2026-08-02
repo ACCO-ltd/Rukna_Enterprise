@@ -21,6 +21,8 @@ model Organization {
   roles               Role[]
   exchangeRates       ExchangeRate[]
   workflowDefinitions WorkflowDefinition[]
+  memberships         OrganizationMembership[]
+  projects            Project[]
 
   @@map("organizations")
 }
@@ -37,10 +39,12 @@ model User {
   createdAt         DateTime   @default(now()) @map("created_at")
   updatedAt         DateTime   @updatedAt @map("updated_at")
 
-  organization  Organization   @relation(fields: [organizationId], references: [id])
-  userRoles     UserRole[]
-  refreshTokens RefreshToken[]
-  auditLogs     AuditLog[]
+  organization    Organization             @relation(fields: [organizationId], references: [id])
+  userRoles       UserRole[]
+  refreshTokens   RefreshToken[]
+  auditLogs       AuditLog[]
+  memberships     OrganizationMembership[]
+  projectMembers  ProjectMember[]
 
   @@index([organizationId])
   @@map("users")
@@ -54,9 +58,10 @@ model Role {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  organization    Organization     @relation(fields: [organizationId], references: [id])
+  organization    Organization               @relation(fields: [organizationId], references: [id])
   userRoles       UserRole[]
   rolePermissions RolePermission[]
+  membershipRoles OrganizationMembershipRole[]
 
   @@unique([name, organizationId])
   @@index([organizationId])
@@ -158,20 +163,21 @@ model ExchangeRate {
 // ─── DOA / Workflow Engine ────────────────────────────────────────────────────
 
 model WorkflowDefinition {
-  id                      String                  @id @default(cuid())
-  organizationId          String                  @map("organization_id")
-  transactionType         WorkflowTransactionType @map("transaction_type")
+  id                      String                   @id @default(cuid())
+  organizationId          String                   @map("organization_id")
+  transactionType         WorkflowTransactionType? @map("transaction_type")
   name                    String
-  nameAr                  String                  @map("name_ar")
-  isActive                Boolean                 @default(false) @map("is_active")
-  requiresCeoConfirmation Boolean                 @default(false) @map("requires_ceo_confirmation")
-  createdAt               DateTime                @default(now()) @map("created_at")
-  updatedAt               DateTime                @updatedAt @map("updated_at")
+  nameAr                  String                   @map("name_ar")
+  isActive                Boolean                  @default(false) @map("is_active")
+  requiresCeoConfirmation Boolean                  @default(false) @map("requires_ceo_confirmation")
+  createdAt               DateTime                 @default(now()) @map("created_at")
+  updatedAt               DateTime                 @updatedAt @map("updated_at")
 
-  organization Organization      @relation(fields: [organizationId], references: [id])
-  conditions   WorkflowCondition[]
-  steps        WorkflowStep[]
-  instances    ApprovalInstance[]
+  organization     Organization             @relation(fields: [organizationId], references: [id])
+  conditions       WorkflowCondition[]
+  steps            WorkflowStep[]
+  instances        ApprovalInstance[]
+  triggerBindings  WorkflowTriggerBinding[]
 
   @@index([organizationId, transactionType])
   @@map("workflow_definitions")
@@ -208,10 +214,10 @@ model WorkflowStep {
 }
 
 model ApprovalInstance {
-  id                   String                  @id @default(cuid())
-  workflowDefinitionId String                  @map("workflow_definition_id")
-  transactionType      WorkflowTransactionType @map("transaction_type")
-  transactionId        String                  @map("transaction_id")
+  id                   String                   @id @default(cuid())
+  workflowDefinitionId String                   @map("workflow_definition_id")
+  transactionType      WorkflowTransactionType? @map("transaction_type")
+  transactionId        String                   @map("transaction_id")
   status               ApprovalStatus          @default(PENDING)
   currentStepOrder     Int                     @default(1) @map("current_step_order")
   initiatedBy          String                  @map("initiated_by")
@@ -239,6 +245,63 @@ model ApprovalAction {
 
   @@index([instanceId])
   @@map("approval_actions")
+}
+
+// ─── Membership ───────────────────────────────────────────────────────────────
+
+model OrganizationMembership {
+  id             String           @id @default(cuid())
+  organizationId String           @map("organization_id")
+  userId         String           @map("user_id")
+  status         MembershipStatus @default(ACTIVE)
+  isDefault      Boolean          @default(false) @map("is_default")
+  joinedAt       DateTime         @default(now()) @map("joined_at")
+  removedAt      DateTime?        @map("removed_at")
+  removedBy      String?          @map("removed_by")
+
+  organization Organization               @relation(fields: [organizationId], references: [id])
+  user         User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roles        OrganizationMembershipRole[]
+
+  @@unique([organizationId, userId])
+  @@index([userId, status])
+  @@map("organization_memberships")
+}
+
+model OrganizationMembershipRole {
+  id           String    @id @default(cuid())
+  membershipId String    @map("membership_id")
+  roleId       String    @map("role_id")
+  assignedAt   DateTime  @default(now()) @map("assigned_at")
+  assignedBy   String    @map("assigned_by")
+  removedAt    DateTime? @map("removed_at")
+
+  membership OrganizationMembership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  role       Role                   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@index([membershipId])
+  @@map("organization_membership_roles")
+}
+
+// ─── Workflow Trigger Bindings ────────────────────────────────────────────────
+
+model WorkflowTriggerBinding {
+  id                   String                   @id @default(cuid())
+  organizationId       String?                  @map("organization_id")
+  triggerKind          WorkflowTriggerKind      @map("trigger_kind")
+  entityType           String                   @map("entity_type")
+  transactionType      WorkflowTransactionType? @map("transaction_type")
+  fromState            String?                  @map("from_state")
+  toState              String?                  @map("to_state")
+  workflowDefinitionId String                   @map("workflow_definition_id")
+  priority             Int                      @default(0)
+  isActive             Boolean                  @default(false) @map("is_active")
+  createdAt            DateTime                 @default(now()) @map("created_at")
+
+  definition WorkflowDefinition @relation(fields: [workflowDefinitionId], references: [id])
+
+  @@index([organizationId, triggerKind, entityType, toState])
+  @@map("workflow_trigger_bindings")
 }
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
@@ -282,4 +345,194 @@ enum ApprovalActionType {
   REJECT
   DELEGATE
   ESCALATE
+}
+
+enum MembershipStatus {
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
+enum WorkflowTriggerKind {
+  DOCUMENT
+  STATE_TRANSITION
+}
+
+// ─── Construction Domain ──────────────────────────────────────────────────────
+
+model Project {
+  id              String        @id @default(cuid())
+  organizationId  String        @map("organization_id")
+  code            String        @map("code") @db.VarChar(30)
+  name            String
+  nameAr          String?       @map("name_ar")
+  description     String?
+  status          ProjectStatus @default(DRAFT)
+  contractValue   Decimal?      @map("contract_value") @db.Decimal(18, 2)
+  currency        String?       @db.VarChar(3)
+  clientName      String?       @map("client_name")
+  startDate       DateTime?     @map("start_date") @db.Date
+  expectedEndDate DateTime?     @map("expected_end_date") @db.Date
+  createdBy       String        @map("created_by")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  organization Organization       @relation(fields: [organizationId], references: [id])
+  members      ProjectMember[]
+  suspensions  ProjectSuspension[]
+  boq          Boq?
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@map("projects")
+}
+
+model ProjectSuspension {
+  id          String    @id @default(cuid())
+  projectId   String    @map("project_id")
+  reason      String
+  suspendedAt DateTime  @default(now()) @map("suspended_at")
+  suspendedBy String    @map("suspended_by")
+  resumedAt   DateTime? @map("resumed_at")
+  resumedBy   String?   @map("resumed_by")
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  // NOTE: A partial unique index enforcing one active suspension per project is added
+  // via raw SQL in the migration (WHERE resumed_at IS NULL) — Prisma cannot express this.
+  @@index([projectId])
+  @@map("project_suspensions")
+}
+
+model ProjectMember {
+  id        String    @id @default(cuid())
+  projectId String    @map("project_id")
+  userId    String    @map("user_id")
+  joinedAt  DateTime  @default(now()) @map("joined_at")
+  joinedBy  String    @map("joined_by")
+  removedAt DateTime? @map("removed_at")
+  removedBy String?   @map("removed_by")
+
+  project Project             @relation(fields: [projectId], references: [id])
+  user    User                @relation(fields: [userId], references: [id])
+  roles   ProjectMemberRole[]
+
+  // NOTE: Partial unique index (one active member per project+user) added via raw SQL in migration.
+  @@index([projectId, userId])
+  @@index([userId])
+  @@map("project_members")
+}
+
+model ProjectMemberRole {
+  id         String      @id @default(cuid())
+  memberId   String      @map("member_id")
+  role       ProjectRole
+  assignedAt DateTime    @default(now()) @map("assigned_at")
+  assignedBy String      @map("assigned_by")
+  removedAt  DateTime?   @map("removed_at")
+
+  member ProjectMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([memberId])
+  @@map("project_member_roles")
+}
+
+// ─── BOQ ─────────────────────────────────────────────────────────────────────
+
+model Boq {
+  id                        String  @id @default(cuid())
+  projectId                 String  @unique @map("project_id")
+  organizationId            String  @map("organization_id")
+  // Three logical pointers — maintained by application layer, no Prisma relations
+  // to avoid circular dependency complexity. FK constraints added via raw SQL in migration.
+  originalBaselineVersionId String? @map("original_baseline_version_id")
+  currentApprovedVersionId  String? @map("current_approved_version_id")
+  currentDraftVersionId     String? @map("current_draft_version_id")
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+
+  project  Project      @relation(fields: [projectId], references: [id])
+  versions BoqVersion[]
+
+  @@index([organizationId])
+  @@map("boqs")
+}
+
+model BoqVersion {
+  id            String           @id @default(cuid())
+  boqId         String           @map("boq_id")
+  versionNumber Int              @map("version_number")
+  status        BoqVersionStatus @default(DRAFT)
+  notes         String?
+  baselinedAt   DateTime?        @map("baselined_at")
+  baselinedBy   String?          @map("baselined_by")
+  createdBy     String           @map("created_by")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  boq   Boq       @relation(fields: [boqId], references: [id])
+  nodes BoqNode[]
+
+  @@unique([boqId, versionNumber])
+  @@index([boqId, status])
+  @@map("boq_versions")
+}
+
+model BoqNode {
+  id            String   @id @default(cuid())
+  boqId         String   @map("boq_id")
+  versionId     String   @map("version_id")
+  parentId      String?  @map("parent_id")
+  // Materialized path: "rootId/childId/grandchildId" — enables efficient subtree queries.
+  path          String   @map("path")
+  depth         Int      @default(0)
+  sortOrder     Int      @default(0) @map("sort_order")
+  code          String   @db.VarChar(50)
+  description   String
+  descriptionAr String?  @map("description_ar")
+  unit          String?  @db.VarChar(20)
+  quantity      Decimal? @db.Decimal(18, 3)
+  unitRate      Decimal? @map("unit_rate") @db.Decimal(18, 2)
+  currency      String?  @db.VarChar(3)
+  totalAmount   Decimal? @map("total_amount") @db.Decimal(18, 2)
+  isLeaf        Boolean  @default(false) @map("is_leaf")
+  // Tracks which node in the previous version this was copied from.
+  originNodeId  String?  @map("origin_node_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  version  BoqVersion @relation(fields: [versionId], references: [id])
+  parent   BoqNode?   @relation("BoqNodeChildren", fields: [parentId], references: [id], onDelete: Restrict)
+  children BoqNode[]  @relation("BoqNodeChildren")
+
+  @@index([versionId, parentId])
+  @@index([versionId, path])
+  @@map("boq_nodes")
+}
+
+enum BoqVersionStatus {
+  DRAFT
+  BASELINED
+  SUPERSEDED
+  CANCELLED
+}
+
+enum ProjectStatus {
+  DRAFT
+  APPROVED
+  MOBILIZING
+  ACTIVE
+  PRACTICAL_COMPLETION
+  CLOSEOUT
+  CLOSED
+  CANCELLED
+}
+
+enum ProjectRole {
+  PROJECT_MANAGER
+  QUANTITY_SURVEYOR
+  SITE_ENGINEER
+  COMMERCIAL_MANAGER
+  FINANCE_REVIEWER
+  VIEWER
 }

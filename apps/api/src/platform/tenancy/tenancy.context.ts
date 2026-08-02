@@ -1,11 +1,12 @@
 import { AsyncLocalStorage } from 'async_hooks';
 import { PrismaClient } from '@prisma/client';
 
-export interface TenancyContext {
-  slug: string;
-  orgId: string;
+// Populated by TenancyMiddleware before the request reaches any guard or handler.
+// Carries only the tenant-level identity — no user data.
+export interface TenantContext {
+  tenantId: string;
+  tenantSlug: string;
   client: PrismaClient;
-  lang: 'en' | 'ar';
 }
 
-export const tenancyStorage = new AsyncLocalStorage<TenancyContext>();
+export const tenancyStorage = new AsyncLocalStorage<TenantContext>();
