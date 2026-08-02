@@ -15,28 +15,47 @@ vi.mock('@/features/auth/api/auth-api', () => ({
 }));
 
 const push = vi.fn();
+const refresh = vi.fn();
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push, replace: vi.fn(), prefetch: vi.fn() }),
+  useRouter: () => ({ push, refresh, replace: vi.fn(), prefetch: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }));
 
 const messages = {
   auth: {
     login: {
+      companyName: 'ACCO Ltd',
+      productName: 'Rukna ERP Platform',
+      eyebrow: 'Enterprise operations',
+      welcomeStatement: 'One secure workspace for every critical project decision.',
+      supportingStatement:
+        'Built for accountable construction operations, from field activity to financial control.',
       title: 'Sign in to your account',
-      subtitle: 'Rukna ERP Platform',
+      subtitle: 'Use your company account to continue.',
+      tenantLabel: 'Construction & Contracting',
+      securityTitle: 'Secure tenant access',
+      securityDescription: 'Your session is protected and scoped to your organization.',
+      languageLabel: 'Language',
+      englishLanguage: 'English',
+      arabicLanguage: 'العربية',
+      switchToEnglish: 'Switch language to English',
+      switchToArabic: 'Switch language to Arabic',
       emailLabel: 'Email address',
       emailPlaceholder: 'you@company.com',
       passwordLabel: 'Password',
       passwordPlaceholder: 'Enter your password',
       showPassword: 'Show password',
       hidePassword: 'Hide password',
+      emailInvalid: 'Enter a valid email address',
+      passwordMinLength: 'Password must contain at least 8 characters',
       submitButton: 'Sign in',
       submitting: 'Signing in...',
       invalidCredentials: 'Invalid email or password',
       serverError: 'Something went wrong. Please try again.',
       sessionExpired: 'Your session has expired. Please sign in again.',
       forgotPassword: 'Forgot password?',
+      accessNotice:
+        'Authorized ACCO personnel only. Activity may be monitored for security and audit purposes.',
     },
   },
 };
@@ -59,9 +78,36 @@ const validPayload = {
 describe('LoginForm', () => {
   beforeEach(() => {
     push.mockReset();
+    refresh.mockReset();
     vi.mocked(loginRequest).mockReset();
     sessionStore.clearSession();
     document.cookie = '__auth=; path=/; Max-Age=0';
+    document.cookie = 'lang=; path=/; Max-Age=0';
+  });
+
+  it('renders the enterprise tenant identity and language controls', () => {
+    renderWithProviders(<LoginForm />, { messages });
+
+    expect(screen.getByText('ACCO Ltd')).toBeInTheDocument();
+    expect(screen.getByText('Rukna ERP Platform')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Switch language to English' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: 'Switch language to Arabic' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
+  it('updates the preferred language and refreshes the route', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<LoginForm />, { messages });
+
+    await user.click(screen.getByRole('button', { name: 'Switch language to Arabic' }));
+
+    expect(document.cookie).toContain('lang=ar');
+    expect(refresh).toHaveBeenCalledOnce();
   });
 
   it('renders labelled email and password fields', () => {
@@ -146,7 +192,9 @@ describe('LoginForm', () => {
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong. Please try again.');
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Something went wrong. Please try again.',
+      );
     });
     expect(push).not.toHaveBeenCalled();
   });

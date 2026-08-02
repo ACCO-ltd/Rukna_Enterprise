@@ -18,7 +18,7 @@ export function FormField({ htmlFor, label, error, children, className }: FormFi
       <Label htmlFor={htmlFor}>{label}</Label>
       {children}
       {error ? (
-        <p id={errorId} className="text-xs text-red-600 dark:text-red-400" role="alert">
+        <p id={errorId} className="text-xs font-medium text-danger" role="alert">
           {error}
         </p>
       ) : null}
