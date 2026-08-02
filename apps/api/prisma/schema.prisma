@@ -101,16 +101,19 @@ model RolePermission {
 }
 
 model RefreshToken {
-  id        String    @id @default(cuid())
-  token     String    @unique
-  userId    String    @map("user_id")
-  expiresAt DateTime  @map("expires_at")
-  revokedAt DateTime? @map("revoked_at")
-  createdAt DateTime  @default(now()) @map("created_at")
+  id            String    @id @default(cuid())
+  jti           String    @unique @map("jti")
+  tokenFamilyId String    @map("token_family_id")
+  userId        String    @map("user_id")
+  expiresAt     DateTime  @map("expires_at")
+  revokedAt     DateTime? @map("revoked_at")
+  deviceHint    String?   @map("device_hint")
+  createdAt     DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([tokenFamilyId])
   @@map("refresh_tokens")
 }
 

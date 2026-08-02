@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
+import cookieParser from 'cookie-parser';
 
 import { AppModule } from './app.module.js';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter.js';
@@ -9,6 +10,9 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter.
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
+
+  app.enableShutdownHooks();
+  app.use(cookieParser());
 
   app.useGlobalPipes(
     new ValidationPipe({

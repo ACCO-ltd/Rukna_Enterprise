@@ -10,7 +10,10 @@ import type { JwtPayload } from '@erp/types';
 export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh') {
   constructor(config: ConfigService) {
     super({
-      jwtFromRequest: ExtractJwt.fromBodyField('refreshToken'),
+      // Extract refresh token from the HttpOnly cookie (not the request body)
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        (req: Request) => (req.cookies as Record<string, string> | undefined)?.['refreshToken'] ?? null,
+      ]),
       ignoreExpiration: false,
       passReqToCallback: true,
       secretOrKey: config.get<string>('JWT_REFRESH_SECRET') ?? '',
