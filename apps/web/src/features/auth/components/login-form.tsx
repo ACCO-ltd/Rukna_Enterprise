@@ -19,7 +19,7 @@ type LoginFormData = z.infer<typeof loginSchema>;
 export function LoginForm() {
   const t = useTranslations('auth.login');
   const [showPassword, setShowPassword] = useState(false);
-  const { mutate: login, isPending, isError } = useLogin();
+  const { mutate: login, isPending, errorType } = useLogin();
 
   const {
     register,
@@ -80,10 +80,18 @@ export function LoginForm() {
           </div>
         </FormField>
 
-        {isError && (
+        {errorType === 'credentials' && (
           <div className="rounded-md bg-red-50 p-3 dark:bg-red-900/20">
             <p className="text-sm text-red-800 dark:text-red-400" role="alert">
               {t('invalidCredentials')}
+            </p>
+          </div>
+        )}
+
+        {errorType === 'server' && (
+          <div className="rounded-md bg-yellow-50 p-3 dark:bg-yellow-900/20">
+            <p className="text-sm text-yellow-800 dark:text-yellow-400" role="alert">
+              {t('serverError')}
             </p>
           </div>
         )}

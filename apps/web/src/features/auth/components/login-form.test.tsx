@@ -1,11 +1,18 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
 import { sessionStore } from '@/features/auth/session/session-store';
+import { ApiError } from '@/lib/api-client';
+import { loginRequest } from '@/features/auth/api/auth-api';
 
 import { LoginForm } from './login-form';
+
+vi.mock('@/features/auth/api/auth-api', () => ({
+  loginRequest: vi.fn(),
+  logoutRequest: vi.fn(),
+}));
 
 const push = vi.fn();
 vi.mock('next/navigation', () => ({
@@ -27,14 +34,34 @@ const messages = {
       submitButton: 'Sign in',
       submitting: 'Signing in...',
       invalidCredentials: 'Invalid email or password',
+      serverError: 'Something went wrong. Please try again.',
+      sessionExpired: 'Your session has expired. Please sign in again.',
+      forgotPassword: 'Forgot password?',
     },
   },
+};
+
+function fakeJwt(payload: Record<string, unknown>): string {
+  const encoded = btoa(JSON.stringify(payload));
+  return `header.${encoded}.signature`;
+}
+
+const validPayload = {
+  sub: 'user-1',
+  email: 'admin@acco.rukna.app',
+  orgId: 'org-1',
+  tenantSlug: 'acco',
+  roles: ['admin'],
+  permissions: ['create:purchase-order'],
+  lang: 'en',
 };
 
 describe('LoginForm', () => {
   beforeEach(() => {
     push.mockReset();
+    vi.mocked(loginRequest).mockReset();
     sessionStore.clearSession();
+    document.cookie = '__auth=; path=/; Max-Age=0';
   });
 
   it('renders labelled email and password fields', () => {
@@ -59,18 +86,69 @@ describe('LoginForm', () => {
     expect(passwordInput.type).toBe('password');
   });
 
-  it('does not submit invalid credentials to the network', async () => {
+  it('does not call loginRequest when form data is invalid', async () => {
     const user = userEvent.setup();
-    const fetchSpy = vi.spyOn(globalThis, 'fetch');
-
     renderWithProviders(<LoginForm />, { messages });
 
     await user.type(screen.getByLabelText('Email address'), 'not-an-email');
     await user.type(screen.getByLabelText('Password'), 'short');
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
 
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(loginRequest).not.toHaveBeenCalled();
     expect(sessionStore.getState().isAuthenticated).toBe(false);
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('sets session and redirects to /dashboard on successful login', async () => {
+    const user = userEvent.setup();
+    vi.mocked(loginRequest).mockResolvedValue({
+      accessToken: fakeJwt(validPayload),
+      refreshToken: 'rt-token',
+    });
+
+    renderWithProviders(<LoginForm />, { messages });
+
+    await user.type(screen.getByLabelText('Email address'), 'admin@acco.rukna.app');
+    await user.type(screen.getByLabelText('Password'), 'password123');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() => {
+      expect(sessionStore.getState().isAuthenticated).toBe(true);
+      expect(sessionStore.getState().user?.email).toBe('admin@acco.rukna.app');
+      expect(push).toHaveBeenCalledWith('/dashboard');
+    });
+  });
+
+  it('shows invalid credentials message on 401', async () => {
+    const user = userEvent.setup();
+    vi.mocked(loginRequest).mockRejectedValue(new ApiError(401, 'Unauthorized'));
+
+    renderWithProviders(<LoginForm />, { messages });
+
+    await user.type(screen.getByLabelText('Email address'), 'admin@acco.rukna.app');
+    await user.type(screen.getByLabelText('Password'), 'wrongpassword');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Invalid email or password');
+    });
+    expect(push).not.toHaveBeenCalled();
+    expect(sessionStore.getState().isAuthenticated).toBe(false);
+  });
+
+  it('shows generic error message on server error', async () => {
+    const user = userEvent.setup();
+    vi.mocked(loginRequest).mockRejectedValue(new ApiError(500, 'Internal Server Error'));
+
+    renderWithProviders(<LoginForm />, { messages });
+
+    await user.type(screen.getByLabelText('Email address'), 'admin@acco.rukna.app');
+    await user.type(screen.getByLabelText('Password'), 'password123');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong. Please try again.');
+    });
     expect(push).not.toHaveBeenCalled();
   });
 });
