@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaClient, Prisma, Boq, BoqVersion, BoqNode } from '@prisma/client';
 
 export type BoqWithVersions = Prisma.BoqGetPayload<{
