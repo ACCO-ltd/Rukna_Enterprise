@@ -105,21 +105,33 @@ Future modules must align with business domains.
 
 ## 4.3 Clean Architecture
 
-Dependencies always point inward.
+Dependencies always point **inward toward the Domain**. The arrows below show
+the direction of dependency — outer layers depend on inner layers, never the reverse.
 
-Presentation
+```
+                   ┌─────────────────────────────────┐
+                   │             Domain               │
+                   │  (entities, value objects,       │
+                   │   domain events, port interfaces) │
+                   └──────────────┬──────────────────┘
+                                  ▲
+                   ┌──────────────┴──────────────────┐
+                   │          Application             │
+                   │  (use cases, application         │
+                   │   services, transactions)        │
+                   └──────────────┬──────────────────┘
+                                  ▲
+           ┌──────────────────────┴──────────────────────┐
+           │                                             │
+  ┌────────┴────────┐                       ┌────────────┴────────┐
+  │  Presentation   │                       │   Infrastructure    │
+  │  (controllers,  │                       │   (Prisma, HTTP     │
+  │   DTOs, guards) │                       │    clients, queues) │
+  └─────────────────┘                       └─────────────────────┘
+```
 
-↓
-
-Application
-
-↓
-
-Domain
-
-↓
-
-Infrastructure
+Domain must not import from NestJS, Prisma, PostgreSQL clients, HTTP types, queues,
+or storage SDKs. Infrastructure implements interfaces (ports) defined by the Domain.
 
 Business rules never depend on frameworks.
 
