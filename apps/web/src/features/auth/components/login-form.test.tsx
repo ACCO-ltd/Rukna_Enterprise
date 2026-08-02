@@ -103,7 +103,6 @@ describe('LoginForm', () => {
     const user = userEvent.setup();
     vi.mocked(loginRequest).mockResolvedValue({
       accessToken: fakeJwt(validPayload),
-      refreshToken: 'rt-token',
     });
 
     renderWithProviders(<LoginForm />, { messages });
