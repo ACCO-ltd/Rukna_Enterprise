@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 
 import { ApiError } from '@/lib/api-client';
 import { loginRequest, type LoginCredentials } from '../api/auth-api';
-import { decodeJwt } from '../session/decode-jwt';
+import { setAuthMarker, setLangCookie } from '../session/auth-cookies';
 import { sessionStore } from '../session/session-store';
 
 export function useLogin() {
@@ -14,32 +14,23 @@ export function useLogin() {
 
   const mutation = useMutation({
     mutationFn: (credentials: LoginCredentials) => loginRequest(credentials),
-    onSuccess: (tokens) => {
-      const payload = decodeJwt(tokens.accessToken);
-      if (!payload) {
+    onSuccess: ({ accessToken }) => {
+      const user = sessionStore.setFromAccessToken(accessToken);
+      if (!user) {
         sessionStore.clearSession();
         return;
       }
 
-      sessionStore.setSession({
-        accessToken: tokens.accessToken,
-        user: {
-          id: payload.sub,
-          email: payload.email,
-          orgId: payload.orgId,
-          tenantSlug: payload.tenantSlug,
-          roles: payload.roles,
-          permissions: payload.permissions,
-          lang: payload.lang,
-        },
-      });
+      // Routing hint for middleware — not a security boundary. See auth-cookies.ts.
+      setAuthMarker();
 
-      // Indicator cookie so middleware can protect routes.
-      // Sprint 2: replace with HttpOnly refresh token cookie set by the API.
-      document.cookie = '__auth=1; path=/; SameSite=Lax; Max-Age=604800';
+      // Language follows the user, not the browser: seed the locale from the account's
+      // stored preference so a new device opens in the right language.
+      setLangCookie(user.lang);
 
+      // Only same-origin relative paths — never redirect to an attacker-supplied URL.
       const next = searchParams.get('next');
-      router.push(next && next.startsWith('/') ? next : '/dashboard');
+      router.push(isSafeRedirect(next) ? next : '/dashboard');
     },
   });
 
@@ -51,4 +42,9 @@ export function useLogin() {
         : null;
 
   return { ...mutation, errorType };
+}
+
+/** Rejects protocol-relative (`//evil.com`) and absolute URLs. */
+function isSafeRedirect(next: string | null): next is string {
+  return Boolean(next) && next!.startsWith('/') && !next!.startsWith('//');
 }

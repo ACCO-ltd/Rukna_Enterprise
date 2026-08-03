@@ -12,8 +12,16 @@ export function middleware(request: NextRequest): NextResponse {
     return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
-  // Redirect unauthenticated users away from protected routes
-  // Sprint 2: replace __auth indicator cookie with HttpOnly refresh token cookie check
+  // Redirect unauthenticated users away from protected routes.
+  //
+  // `__auth` is a routing hint only — it avoids painting a protected route before the
+  // redirect. It cannot be replaced by a check on the real refresh cookie: that cookie is
+  // HttpOnly AND scoped to `Path=/api/v1/auth`, so the browser never sends it to a Next.js
+  // route and middleware cannot see it. Widening it to `Path=/` is filed as a backend
+  // request in docs/backend-requests/frontend-blockers.md.
+  //
+  // The authoritative check is AuthGate, which must complete a token refresh before any
+  // protected subtree renders. A forged marker buys a loading splash, then a redirect.
   if (!isPublic && !hasAuth) {
     const loginUrl = new URL('/login', request.url);
     const search = request.nextUrl.search;
