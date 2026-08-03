@@ -11,6 +11,7 @@ import { formatDate } from '@/lib/format';
 import { useBoq, useBoqTree, useInitializeBoq } from '../hooks/use-boq';
 import type { Boq } from '../types';
 import { BoqTree } from './boq-tree';
+import { BoqVersionActions } from './boq-version-actions';
 
 export function BoqPanel({ projectId }: { projectId: string }) {
   const t = useTranslations('platform.boq');
@@ -125,6 +126,13 @@ function BoqVersions({ projectId, boq }: { projectId: string; boq: Boq }) {
           </div>
         ) : null}
       </div>
+
+      <BoqVersionActions
+        projectId={projectId}
+        boq={boq}
+        selected={selected}
+        isEmpty={(nodes?.length ?? 0) === 0}
+      />
 
       {selected?.notes ? (
         <div className="rounded-md border border-border bg-surface-subtle px-4 py-3">

@@ -4,51 +4,59 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Alert, Button, FormField, Textarea } from '@erp/ui';
 
+export interface ConfirmReasonField {
+  /** When true the action is blocked until text is supplied. */
+  required: boolean;
+  /** Defaults to the generic "Reason" label. */
+  label?: string;
+  hint?: string;
+  /** Mirrors the server's @MaxLength. Defaults to 1000, which is what the DTOs use. */
+  maxLength?: number;
+}
+
 interface ConfirmActionDialogProps {
   title: string;
   description: string;
   confirmLabel: string;
-  /** When set, the user must supply a reason and it is passed to onConfirm. */
-  requireReason?: boolean;
-  reasonHint?: string;
+  /** Omit for a plain yes/no confirmation. */
+  reason?: ConfirmReasonField;
   isPending: boolean;
   errorMessage?: string | undefined;
-  onConfirm: (reason: string) => void;
+  onConfirm: (text: string) => void;
   onDismiss: () => void;
 }
 
-const MAX_REASON_LENGTH = 1000;
-
 /**
- * Confirmation step for lifecycle commands.
+ * Confirmation step for irreversible actions.
  *
- * Most of these transitions are irreversible — the API offers no way back from APPROVED to
- * DRAFT, and none at all from CANCELLED — so they should not fire on a single stray click.
+ * Most of the commands behind this dialog cannot be undone — a project cannot go back from
+ * APPROVED to DRAFT, a cancelled draft cannot be recovered — so they should not fire on a
+ * stray click.
  *
- * Focus moves into the dialog on open and returns to the trigger on close, Escape
- * dismisses, and the backdrop is inert to keyboard users. Written by hand rather than
- * pulled from a dependency, which keeps the promise made when we declined a toast library:
- * no new packages without justification.
+ * Focus moves in on open and returns to the trigger on close, Escape dismisses, and Tab is
+ * trapped inside. Written by hand rather than pulled from a dependency, which keeps the
+ * promise made when a toast library was declined: no new packages without justification.
  */
 export function ConfirmActionDialog({
   title,
   description,
   confirmLabel,
-  requireReason = false,
-  reasonHint,
+  reason,
   isPending,
   errorMessage,
   onConfirm,
   onDismiss,
 }: ConfirmActionDialogProps) {
-  const t = useTranslations('platform.projects.actions');
+  const t = useTranslations('common.confirmDialog');
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const initialFocusRef = useRef<HTMLTextAreaElement | HTMLButtonElement>(null);
 
-  const [reason, setReason] = useState('');
+  const [text, setText] = useState('');
   const [touched, setTouched] = useState(false);
+
+  const maxLength = reason?.maxLength ?? 1000;
 
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -58,7 +66,6 @@ export function ConfirmActionDialog({
       if (event.key === 'Escape' && !isPending) onDismiss();
       if (event.key !== 'Tab') return;
 
-      // Minimal focus trap — keeps Tab inside the dialog while it is open.
       const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
         'button, textarea, [href], input, select, [tabindex]:not([tabindex="-1"])',
       );
@@ -87,19 +94,19 @@ export function ConfirmActionDialog({
     };
   }, [isPending, onDismiss]);
 
-  const trimmedReason = reason.trim();
-  const reasonError =
-    touched && requireReason && !trimmedReason
+  const trimmed = text.trim();
+  const textError =
+    touched && reason?.required && !trimmed
       ? t('reasonRequired')
-      : reason.length > MAX_REASON_LENGTH
-        ? t('reasonTooLong')
+      : text.length > maxLength
+        ? t('reasonTooLong', { max: maxLength })
         : undefined;
 
   const submit = () => {
     setTouched(true);
-    if (requireReason && !trimmedReason) return;
-    if (reason.length > MAX_REASON_LENGTH) return;
-    onConfirm(trimmedReason);
+    if (reason?.required && !trimmed) return;
+    if (text.length > maxLength) return;
+    onConfirm(trimmed);
   };
 
   return (
@@ -127,31 +134,33 @@ export function ConfirmActionDialog({
           </div>
         ) : null}
 
-        {requireReason ? (
+        {reason ? (
           <div className="mt-4">
-            <FormField htmlFor="action-reason" label={t('reasonLabel')} error={reasonError}>
+            <FormField
+              htmlFor="confirm-reason"
+              label={reason.label ?? t('reasonLabel')}
+              error={textError}
+            >
               <Textarea
-                id="action-reason"
+                id="confirm-reason"
                 ref={initialFocusRef as React.RefObject<HTMLTextAreaElement>}
-                value={reason}
+                value={text}
                 onChange={(e) => {
-                  setReason(e.target.value);
+                  setText(e.target.value);
                 }}
                 onBlur={() => {
                   setTouched(true);
                 }}
-                aria-invalid={Boolean(reasonError)}
+                aria-invalid={Boolean(textError)}
               />
-              {reasonHint ? (
-                <p className="text-xs text-muted-foreground">{reasonHint}</p>
-              ) : null}
+              {reason.hint ? <p className="text-xs text-muted-foreground">{reason.hint}</p> : null}
             </FormField>
           </div>
         ) : null}
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row-reverse sm:justify-start">
           <Button
-            ref={requireReason ? undefined : (initialFocusRef as React.RefObject<HTMLButtonElement>)}
+            ref={reason ? undefined : (initialFocusRef as React.RefObject<HTMLButtonElement>)}
             onClick={submit}
             disabled={isPending}
           >

@@ -179,6 +179,25 @@
       "BASELINED": "Baselined",
       "SUPERSEDED": "Superseded",
       "CANCELLED": "Cancelled"
+    },
+    "versionActions": {
+      "baseline": "Baseline this draft",
+      "cancelDraft": "Discard draft",
+      "createDraft": "Start a revision",
+      "failed": "That action could not be completed.",
+      "confirmBaselineTitle": "Baseline this draft?",
+      "confirmBaseline": "The draft becomes the approved Bill of Quantities. The current approved version is superseded. Editing continues only in a new revision.",
+      "confirmFirstBaseline": "This is the first baseline, so it also becomes the original contract Bill of Quantities. That reference is permanent and every later revision is measured against it.",
+      "confirmBaselineEmpty": "This draft has no items. Baselining it will approve an empty Bill of Quantities.",
+      "confirmCancelTitle": "Discard this draft?",
+      "confirmCancelDraft": "Every change made in this draft is lost. The approved version is not affected. This cannot be undone.",
+      "confirmCreateTitle": "Start a revision?",
+      "confirmCreateDraft": "A new draft is created with a copy of every item in the approved version. The approved version stays in force until the new draft is baselined.",
+      "notesLabel": "Notes for this revision",
+      "notesHint": "Optional. Explains why the revision was raised — for example a variation order reference.",
+      "confirmBaselineAction": "Baseline",
+      "confirmCancelAction": "Discard",
+      "confirmCreateAction": "Create revision"
     }
   },
   "users": {

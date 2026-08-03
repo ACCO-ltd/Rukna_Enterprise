@@ -45,5 +45,12 @@
     "usd": "دولار",
     "sos": "شلن صومالي",
     "aed": "درهم إماراتي"
+  },
+  "confirmDialog": {
+    "reasonLabel": "السبب",
+    "reasonRequired": "أدخل السبب",
+    "reasonTooLong": "لا يمكن أن يتجاوز السبب {max} حرف",
+    "working": "جارٍ التنفيذ...",
+    "dismiss": "إلغاء"
   }
 }
