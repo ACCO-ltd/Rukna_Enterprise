@@ -16,24 +16,24 @@ Line references are against commit `e1f2139`.
 
 ## Summary
 
-| ID | Severity | Area | Summary |
-|---|---|---|---|
-| [B1](#b1) | **Blocking — bug** | Projects | No project can ever get its first member |
-| [B2](#b2) | **Blocking** | Users | No endpoint lists users in an organization |
-| [B3](#b3) | **Blocking** | Workflows | `GET` endpoint requires a request body — uncallable from a browser |
-| [B4](#b4) | **Security** | Workflows | Approver identity is taken from the request body |
-| [B5](#b5) | **Security** | Roles, Audit | `orgId` read from query string, unscoped by token |
-| [B14](#b14) | **Blocking — bug** | BOQ | `move` always 500s and half-applies, corrupting descendant paths |
-| [B11](#b11) | **Security** | BOQ | Version endpoints missing the organization check |
-| [B13](#b13) | Contract | BOQ | `move` never reindexes siblings, so positions can tie |
-| [B6](#b6) | Contract | Several | Undocumented empty response bodies |
-| [B7](#b7) | Correctness | BOQ | Money totals computed in floating point |
-| [B8](#b8) | Scale | Projects | No pagination, search, or sort |
-| [B9](#b9) | Gap | Users | No way to persist a language preference |
-| [B10](#b10) | Gap | Projects | No summary/aggregate endpoint |
-| [B12](#b12) | Gap | Types | `@erp/types` exports no Project DTO |
-| [D1](#d1) | **Domain** | BOQ | Mixed-currency nodes sum into one meaningless total |
-| [D2](#d2) | Docs | — | `api-reference.md` inaccuracies |
+| ID | Severity | Area | Summary | Issue |
+|---|---|---|---|---|
+| [B1](#b1) | **Blocking — bug** | Projects | No project can ever get its first member | [#5](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/5) |
+| [B2](#b2) | **Blocking** | Users | No endpoint lists users in an organization | [#6](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/6) |
+| [B3](#b3) | **Blocking** | Workflows | `GET` endpoint requires a request body — uncallable from a browser | [#7](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/7) |
+| [B4](#b4) | **Security** | Workflows | Approver identity is taken from the request body | [#8](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/8) |
+| [B5](#b5) | **Security** | Roles, Audit | `orgId` read from query string, unscoped by token | — |
+| [B14](#b14) | **Blocking — bug** | BOQ | `move` always 500s and half-applies, corrupting descendant paths | [#4](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/4) |
+| [B11](#b11) | **Security** | BOQ | Version endpoints missing the organization check | — |
+| [B13](#b13) | Contract | BOQ | `move` never reindexes siblings, so positions can tie | — |
+| [B6](#b6) | Contract | Several | Undocumented empty response bodies | — |
+| [B7](#b7) | Correctness | BOQ | Money totals computed in floating point | — |
+| [B8](#b8) | Scale | Projects | No pagination, search, or sort | — |
+| [B9](#b9) | Gap | Users | No way to persist a language preference | — |
+| [B10](#b10) | Gap | Projects | No summary/aggregate endpoint | — |
+| [B12](#b12) | Gap | Types | `@erp/types` exports no Project DTO | — |
+| [D1](#d1) | **Domain** | BOQ | Mixed-currency nodes sum into one meaningless total | — |
+| [D2](#d2) | Docs | — | `api-reference.md` inaccuracies | — |
 
 ---
 
