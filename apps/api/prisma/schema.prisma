@@ -25,6 +25,9 @@ model Organization {
   projects                 Project[]
   clients                  Client[]
   contracts                Contract[]
+  applications             InterimPaymentApplication[]
+  certificates             InterimPaymentCertificate[]
+  receipts                 PaymentReceipt[]
   workflowPolicies         WorkflowRequirementPolicy[]
 
   @@map("organizations")
@@ -302,6 +305,7 @@ model Client {
 
   organization Organization  @relation(fields: [organizationId], references: [id])
   contacts     ClientContact[]
+  receipts     PaymentReceipt[]
   contracts    Contract[]
 
   @@unique([organizationId, code])
@@ -653,6 +657,7 @@ model Contract {
   guarantees     ContractGuarantee[]
   milestones     ContractMilestone[]
   attachments    ContractAttachment[]
+  applications   InterimPaymentApplication[]
 
   @@unique([organizationId, contractNumber])
   @@index([projectId, status])
@@ -793,4 +798,231 @@ enum ProjectRole {
   COMMERCIAL_MANAGER
   FINANCE_REVIEWER
   VIEWER
+}
+
+// ─── IPA Domain ───────────────────────────────────────────────────────────────
+
+model InterimPaymentApplication {
+  id                   String    @id @default(cuid())
+  contractId           String    @map("contract_id")
+  organizationId       String    @map("organization_id")
+  applicationNumber    Int?      @map("application_number")
+  applicationRef       String?   @map("application_ref")
+  status               IpaStatus @default(DRAFT)
+  periodFrom           DateTime? @map("period_from") @db.Date
+  periodTo             DateTime? @map("period_to") @db.Date
+  submittedAt          DateTime? @map("submitted_at")
+  submittedBy          String?   @map("submitted_by")
+  // Exchange rate snapshot frozen at creation
+  exchangeRateCurrency String?   @map("exchange_rate_currency") @db.VarChar(3)
+  exchangeRateBase     String?   @map("exchange_rate_base") @db.VarChar(3)
+  exchangeRateValue    Decimal?  @map("exchange_rate_value") @db.Decimal(18, 6)
+  exchangeRateDate     DateTime? @map("exchange_rate_date") @db.Date
+  notes                String?
+  createdBy            String    @map("created_by")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  contract     Contract                            @relation(fields: [contractId], references: [id])
+  organization Organization                        @relation(fields: [organizationId], references: [id])
+  items        InterimPaymentApplicationItem[]
+  deductions   InterimPaymentApplicationDeduction[]
+  attachments  IpaAttachment[]
+  certificates InterimPaymentCertificate[]
+
+  @@unique([contractId, applicationNumber])
+  @@index([contractId, status])
+  @@index([organizationId])
+  @@map("interim_payment_applications")
+}
+
+model InterimPaymentApplicationItem {
+  id                         String            @id @default(cuid())
+  applicationId              String            @map("application_id")
+  boqNodeId                  String            @map("boq_node_id")
+  measurementMethodSnapshot  MeasurementMethod @map("measurement_method_snapshot")
+  unitRateSnapshot           Decimal           @map("unit_rate_snapshot") @db.Decimal(18, 2)
+  currencySnapshot           String            @map("currency_snapshot") @db.VarChar(3)
+  cumulativeClaimed          Decimal           @map("cumulative_claimed") @db.Decimal(18, 3)
+  previousEffectiveCertified Decimal           @default(0) @map("previous_effective_certified") @db.Decimal(18, 3)
+  // periodQuantity and periodAmount are derived but stored for query performance
+  periodQuantity             Decimal           @map("period_quantity") @db.Decimal(18, 3)
+  periodAmount               Decimal           @map("period_amount") @db.Decimal(18, 2)
+
+  application      InterimPaymentApplication      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  certificateItems InterimPaymentCertificateItem[]
+
+  @@unique([applicationId, boqNodeId])
+  @@index([applicationId])
+  @@map("interim_payment_application_items")
+}
+
+model InterimPaymentApplicationDeduction {
+  id            String   @id @default(cuid())
+  applicationId String   @map("application_id")
+  deductionType String   @map("deduction_type")
+  sourceTermId  String?  @map("source_term_id")
+  rate          Decimal? @map("rate") @db.Decimal(5, 4)
+  basis         Decimal  @map("basis") @db.Decimal(18, 2)
+  amount        Decimal  @map("amount") @db.Decimal(18, 2)
+
+  application InterimPaymentApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@map("interim_payment_application_deductions")
+}
+
+model IpaAttachment {
+  id             String   @id @default(cuid())
+  applicationId  String   @map("application_id")
+  platformFileId String   @map("platform_file_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  createdBy      String   @map("created_by")
+
+  application InterimPaymentApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@map("ipa_attachments")
+}
+
+// ─── IPC Domain ───────────────────────────────────────────────────────────────
+
+model InterimPaymentCertificate {
+  id                 String    @id @default(cuid())
+  applicationId      String    @map("application_id")
+  organizationId     String    @map("organization_id")
+  certificateNumber  Int       @map("certificate_number")
+  certificateRef     String?   @map("certificate_ref")
+  status             IpcStatus
+  isEffective        Boolean   @default(false) @map("is_effective")
+  effectiveAt        DateTime? @map("effective_at")
+  supersededAt       DateTime? @map("superseded_at")
+  supersededById     String?   @map("superseded_by_id")
+  supersessionReason String?   @map("supersession_reason")
+  certifiedTotal     Decimal   @map("certified_total") @db.Decimal(18, 2)
+  currency           String    @db.VarChar(3)
+  // Exchange rate snapshot frozen at issuance
+  exchangeRateCurrency String? @map("exchange_rate_currency") @db.VarChar(3)
+  exchangeRateBase     String? @map("exchange_rate_base") @db.VarChar(3)
+  exchangeRateValue    Decimal? @map("exchange_rate_value") @db.Decimal(18, 6)
+  exchangeRateDate     DateTime? @map("exchange_rate_date") @db.Date
+  issuedAt           DateTime? @map("issued_at")
+  issuedBy           String?   @map("issued_by")
+  notes              String?
+  createdBy          String    @map("created_by")
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  application  InterimPaymentApplication          @relation(fields: [applicationId], references: [id])
+  organization Organization                        @relation(fields: [organizationId], references: [id])
+  items        InterimPaymentCertificateItem[]
+  deductions   InterimPaymentCertificateDeduction[]
+  attachments  IpcAttachment[]
+  allocations  ReceiptAllocation[]
+  supersededBy InterimPaymentCertificate?          @relation("CertSupersession", fields: [supersededById], references: [id])
+  supersedes   InterimPaymentCertificate[]         @relation("CertSupersession")
+
+  @@unique([applicationId, certificateNumber])
+  @@index([organizationId, status])
+  @@index([applicationId, isEffective])
+  @@map("interim_payment_certificates")
+}
+
+model InterimPaymentCertificateItem {
+  id                String  @id @default(cuid())
+  certificateId     String  @map("certificate_id")
+  applicationItemId String  @map("application_item_id")
+  certifiedQuantity Decimal @map("certified_quantity") @db.Decimal(18, 3)
+  certifiedAmount   Decimal @map("certified_amount") @db.Decimal(18, 2)
+  varianceQuantity  Decimal @map("variance_quantity") @db.Decimal(18, 3)
+  varianceReason    String? @map("variance_reason")
+
+  certificate     InterimPaymentCertificate     @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+  applicationItem InterimPaymentApplicationItem @relation(fields: [applicationItemId], references: [id])
+
+  @@unique([certificateId, applicationItemId])
+  @@index([certificateId])
+  @@map("interim_payment_certificate_items")
+}
+
+model InterimPaymentCertificateDeduction {
+  id            String   @id @default(cuid())
+  certificateId String   @map("certificate_id")
+  deductionType String   @map("deduction_type")
+  sourceTermId  String?  @map("source_term_id")
+  rate          Decimal? @map("rate") @db.Decimal(5, 4)
+  basis         Decimal  @map("basis") @db.Decimal(18, 2)
+  amount        Decimal  @map("amount") @db.Decimal(18, 2)
+
+  certificate InterimPaymentCertificate @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+
+  @@index([certificateId])
+  @@map("interim_payment_certificate_deductions")
+}
+
+model IpcAttachment {
+  id             String   @id @default(cuid())
+  certificateId  String   @map("certificate_id")
+  platformFileId String   @map("platform_file_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  createdBy      String   @map("created_by")
+
+  certificate InterimPaymentCertificate @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+
+  @@index([certificateId])
+  @@map("ipc_attachments")
+}
+
+// ─── Finance Domain (Phase 4 — schema stubs referenced by IPC) ───────────────
+
+model PaymentReceipt {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  clientId       String   @map("client_id")
+  receiptDate    DateTime @map("receipt_date") @db.Date
+  amount         Decimal  @db.Decimal(18, 2)
+  currency       String   @db.VarChar(3)
+  exchangeRate   Decimal? @map("exchange_rate") @db.Decimal(18, 6)
+  reference      String?
+  notes          String?
+  createdBy      String   @map("created_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  client       Client            @relation(fields: [clientId], references: [id])
+  allocations  ReceiptAllocation[]
+
+  @@index([organizationId, clientId])
+  @@index([receiptDate])
+  @@map("payment_receipts")
+}
+
+model ReceiptAllocation {
+  id              String   @id @default(cuid())
+  receiptId       String   @map("receipt_id")
+  certificateId   String   @map("certificate_id")
+  allocatedAmount Decimal  @map("allocated_amount") @db.Decimal(18, 2)
+  allocatedAt     DateTime @default(now()) @map("allocated_at")
+  allocatedBy     String   @map("allocated_by")
+
+  receipt     PaymentReceipt            @relation(fields: [receiptId], references: [id])
+  certificate InterimPaymentCertificate @relation(fields: [certificateId], references: [id])
+
+  @@index([receiptId])
+  @@index([certificateId])
+  @@map("receipt_allocations")
+}
+
+enum IpaStatus {
+  DRAFT
+  PENDING_INTERNAL_APPROVAL
+  RETURNED_FOR_REVISION
+  APPROVED_FOR_SUBMISSION
+  SUBMITTED
+  CANCELLED
+}
+
+enum IpcStatus {
+  CERTIFIED
+  PARTIALLY_CERTIFIED
+  REJECTED
 }

@@ -55,6 +55,8 @@ async function bootstrap(): Promise<void> {
     .addTag('Projects', 'Construction project lifecycle and membership')
     .addTag('BOQ', 'Bill of Quantities versioning and tree management')
     .addTag('Contracts', 'Contract lifecycle, retention, advances, guarantees and milestones')
+    .addTag('IPA', 'Interim Payment Applications — ACCO internal commercial valuations')
+    .addTag('IPC', 'Interim Payment Certificates — client/consultant responses to IPAs')
     .build();
 
   const document = SwaggerModule.createDocument(app, openApiConfig);
