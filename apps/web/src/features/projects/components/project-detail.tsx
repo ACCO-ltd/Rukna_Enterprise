@@ -15,6 +15,7 @@ import { ProjectStatusBadge } from './project-status-badge';
 
 export function ProjectDetail({ id }: { id: string }) {
   const t = useTranslations('platform.projects.detail');
+  const tBoq = useTranslations('platform.boq');
   const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
   const { data: project, isPending, isError, error } = useProject(id);
@@ -87,6 +88,15 @@ export function ProjectDetail({ id }: { id: string }) {
         </h2>
         <ProjectActionsPanel project={project} />
       </section>
+
+      <div>
+        <Link
+          href={`/projects/${project.id}/boq`}
+          className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-primary hover:text-brand-primary-hover"
+        >
+          {tBoq('openBoq')}
+        </Link>
+      </div>
 
       <Overview project={project} locale={locale} />
 
