@@ -8,7 +8,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import type { RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
-import { IpcPrismaRepository, IpcFull } from '../infrastructure/ipc-prisma.repository.js';
+import { IpcPrismaRepository } from '../infrastructure/ipc-prisma.repository.js';
 import type { CreateIpcDto } from '../presentation/dto/create-ipc.dto.js';
 import type { SupersedeIpcDto } from '../presentation/dto/supersede-ipc.dto.js';
 
@@ -26,11 +26,26 @@ export class IpcService {
     return this.repo.findAll(prisma, identity.activeOrganizationId, applicationId);
   }
 
-  async findOne(identity: RequestIdentity, id: string): Promise<IpcFull> {
+  async findOne(identity: RequestIdentity, id: string) {
     const prisma = this.tenancyService.getClient();
     const ipc = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!ipc) throw new NotFoundException(`IPC ${id} not found`);
-    return ipc;
+
+    const totalCertifiedAmount = ipc.items.reduce(
+      (sum, i) => sum.plus(new Decimal(i.certifiedAmount.toString())),
+      new Decimal(0),
+    );
+    const totalDeductions = ipc.deductions.reduce(
+      (sum, d) => sum.plus(new Decimal(d.amount.toString())),
+      new Decimal(0),
+    );
+
+    return {
+      ...ipc,
+      totalCertifiedAmount: totalCertifiedAmount.toFixed(2),
+      totalDeductions: totalDeductions.toFixed(2),
+      netCertified: totalCertifiedAmount.minus(totalDeductions).toFixed(2),
+    };
   }
 
   async issue(identity: RequestIdentity, dto: CreateIpcDto) {

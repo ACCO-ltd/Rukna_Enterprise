@@ -1,5 +1,7 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
+import { RolesGuard } from './common/guards/roles.guard.js';
 
 import { DatabaseModule } from './platform/database/database.module.js';
 import { TenancyModule } from './platform/tenancy/tenancy.module.js';
@@ -34,6 +36,12 @@ import { ManufacturingModule } from './business/manufacturing/manufacturing.modu
     FinanceModule,
     RetailModule,
     ManufacturingModule,
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
+    },
   ],
 })
 export class AppModule implements NestModule {

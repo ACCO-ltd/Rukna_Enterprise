@@ -1,7 +1,9 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { Controller, Get, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import type { RequestIdentity } from '@erp/types';
 
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.js';
+import { CurrentUser } from '../../../common/decorators/current-user.decorator.js';
 import { AuditLogsService } from '../application/audit-logs.service.js';
 
 @ApiTags('Audit Logs')
@@ -12,10 +14,9 @@ export class AuditLogsController {
   constructor(private readonly auditLogsService: AuditLogsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all audit log entries for an organization' })
-  @ApiQuery({ name: 'orgId', description: 'Organization CUID', required: true })
+  @ApiOperation({ summary: 'List all audit log entries for the caller\'s organization' })
   @ApiResponse({ status: 200, description: 'Array of immutable audit log entries' })
-  findByOrg(@Query('orgId') orgId: string) {
-    return this.auditLogsService.findByOrg(orgId);
+  findByOrg(@CurrentUser() identity: RequestIdentity) {
+    return this.auditLogsService.findByOrg(identity.activeOrganizationId);
   }
 }

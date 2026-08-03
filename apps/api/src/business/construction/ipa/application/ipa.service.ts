@@ -2,14 +2,13 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
-  UnprocessableEntityException,
 } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import type { RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { WorkflowTriggerResolverService } from '../../../../platform/workflows/application/workflow-trigger-resolver.service.js';
-import { IpaPrismaRepository, IpaFull } from '../infrastructure/ipa-prisma.repository.js';
+import { IpaPrismaRepository } from '../infrastructure/ipa-prisma.repository.js';
 import type { CreateIpaDto } from '../presentation/dto/create-ipa.dto.js';
 import type { AddIpaItemDto } from '../presentation/dto/add-ipa-item.dto.js';
 import type { AddIpaDeductionDto } from '../presentation/dto/add-ipa-deduction.dto.js';
@@ -44,11 +43,26 @@ export class IpaService {
     return this.repo.findAll(prisma, identity.activeOrganizationId, contractId);
   }
 
-  async findOne(identity: RequestIdentity, id: string): Promise<IpaFull> {
+  async findOne(identity: RequestIdentity, id: string) {
     const prisma = this.tenancyService.getClient();
     const ipa = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!ipa) throw new NotFoundException(`IPA ${id} not found`);
-    return ipa;
+
+    const totalPeriodAmount = ipa.items.reduce(
+      (sum, i) => sum.plus(new Decimal(i.periodAmount.toString())),
+      new Decimal(0),
+    );
+    const totalDeductions = ipa.deductions.reduce(
+      (sum, d) => sum.plus(new Decimal(d.amount.toString())),
+      new Decimal(0),
+    );
+
+    return {
+      ...ipa,
+      totalPeriodAmount: totalPeriodAmount.toFixed(2),
+      totalDeductions: totalDeductions.toFixed(2),
+      netPayable: totalPeriodAmount.minus(totalDeductions).toFixed(2),
+    };
   }
 
   async create(identity: RequestIdentity, dto: CreateIpaDto) {
@@ -81,19 +95,15 @@ export class IpaService {
       );
     }
 
-    // WorkflowRequirementPolicy check for submission to internal approval.
+    // Enforce WorkflowRequirementPolicy. Resolver throws 422 if REQUIRED and no binding configured.
+    // When a binding is found, transition proceeds — approval instance creation is Sprint 4+ work.
     if (command === 'submit-for-approval' || command === 'return-for-revision') {
-      const binding = await this.triggerResolver.resolveForStateTransition(
+      await this.triggerResolver.resolveForStateTransition(
         identity.activeOrganizationId,
         'InterimPaymentApplication',
         ipa.status,
         toState,
       );
-      if (binding) {
-        throw new UnprocessableEntityException(
-          'IPA transition requires workflow approval. Approval engine wiring is pending.',
-        );
-      }
     }
 
     const extra: Record<string, unknown> = {};

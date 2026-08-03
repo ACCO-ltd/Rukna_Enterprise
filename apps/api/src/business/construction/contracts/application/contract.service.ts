@@ -47,6 +47,22 @@ export class ContractService {
   async create(identity: RequestIdentity, dto: CreateContractDto) {
     const prisma = this.tenancyService.getClient();
 
+    // Validate BOQ version exists for this project and is BASELINED.
+    const boqVersion = await prisma.boqVersion.findFirst({
+      where: { id: dto.boqVersionId, boq: { projectId: dto.projectId } },
+      select: { status: true },
+    });
+    if (!boqVersion) {
+      throw new NotFoundException(
+        `BOQ version ${dto.boqVersionId} not found for project ${dto.projectId}`,
+      );
+    }
+    if (boqVersion.status !== 'BASELINED') {
+      throw new BadRequestException(
+        `A contract can only reference a BASELINED BOQ version. Current status: ${boqVersion.status}`,
+      );
+    }
+
     const duplicate = await this.repo.findByNumber(
       prisma,
       identity.activeOrganizationId,
