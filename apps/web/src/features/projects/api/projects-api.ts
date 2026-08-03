@@ -5,14 +5,36 @@ import { apiClient } from '@/lib/api-client';
 import type { Project } from '../types';
 
 /**
- * Lists projects for the authenticated organization, newest first.
+ * Body accepted by `POST /projects`, mirroring CreateProjectDto.
  *
- * The endpoint returns a bare array with no pagination, search or sort (B8). At ACCO's
- * current scale that is fine and the dashboard aggregates client-side; past a few hundred
- * projects this needs a server-side summary endpoint (B10).
+ * The API's ValidationPipe runs with `forbidNonWhitelisted: true`, so an unrecognised
+ * property is a 400 rather than being ignored. Optional fields must therefore be OMITTED
+ * when empty, not sent as `""` or `null` — see `toCreateProjectPayload`.
+ *
+ * `contractValue` is a number here, not the string the API returns. That asymmetry is the
+ * API's: it accepts `@IsNumber` on the way in and serializes a Decimal on the way out.
  */
+export interface CreateProjectPayload {
+  code: string;
+  name: string;
+  nameAr?: string;
+  description?: string;
+  clientName?: string;
+  contractValue?: number;
+  currency?: string;
+  startDate?: string;
+  expectedEndDate?: string;
+}
+
 export function listProjects(status?: ProjectStatus): Promise<Project[]> {
   return apiClient<Project[]>('/projects', {
     ...(status ? { params: { status } } : {}),
+  });
+}
+
+export function createProject(payload: CreateProjectPayload): Promise<Project> {
+  return apiClient<Project>('/projects', {
+    method: 'POST',
+    body: JSON.stringify(payload),
   });
 }
