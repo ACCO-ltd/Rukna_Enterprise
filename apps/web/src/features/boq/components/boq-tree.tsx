@@ -8,7 +8,7 @@ import { formatMoney } from '@/lib/format';
 
 import { resolveSubtreeCurrency } from '../subtree-currency';
 import type { BoqTreeNode } from '../types';
-import { BoqTreeRow } from './boq-tree-row';
+import { BoqTreeRow, type NodeRowCommands } from './boq-tree-row';
 
 /** Sorts siblings by sortOrder at every level. */
 function sortTree(nodes: BoqTreeNode[]): BoqTreeNode[] {
@@ -33,7 +33,14 @@ function anySubtreeMixed(nodes: BoqTreeNode[]): boolean {
   );
 }
 
-export function BoqTree({ nodes }: { nodes: BoqTreeNode[] }) {
+export function BoqTree({
+  nodes,
+  commands,
+}: {
+  nodes: BoqTreeNode[];
+  /** Present only for the editable draft. */
+  commands?: NodeRowCommands | undefined;
+}) {
   const t = useTranslations('platform.boq');
   const locale = useLocale() as 'en' | 'ar';
 
@@ -55,7 +62,8 @@ export function BoqTree({ nodes }: { nodes: BoqTreeNode[] }) {
     });
   };
 
-  const visible = useMemo(() => flatten(tree, collapsed), [tree, collapsed]);
+  // Each row needs its sibling set to decide whether it can move up or down.
+  const visible = useMemo(() => flatten(tree, collapsed, tree), [tree, collapsed]);
   const allCollapsed = expandableIds.length > 0 && collapsed.size === expandableIds.length;
   const hasMixed = useMemo(() => anySubtreeMixed(tree), [tree]);
 
@@ -92,12 +100,14 @@ export function BoqTree({ nodes }: { nodes: BoqTreeNode[] }) {
         </div>
 
         <div className="divide-y divide-border">
-          {visible.map((node) => (
+          {visible.map(({ node, siblings }) => (
             <BoqTreeRow
               key={node.id}
               node={node}
               isExpanded={!collapsed.has(node.id)}
               onToggle={toggle}
+              siblings={siblings}
+              commands={commands}
             />
           ))}
         </div>
@@ -117,11 +127,22 @@ export function BoqTree({ nodes }: { nodes: BoqTreeNode[] }) {
   );
 }
 
+interface VisibleRow {
+  node: BoqTreeNode;
+  /** The list this node belongs to, carried so the row can decide about reordering. */
+  siblings: BoqTreeNode[];
+}
+
 /** Depth-first list of rows to render, skipping anything inside a collapsed section. */
-function flatten(nodes: BoqTreeNode[], collapsed: Set<string>, into: BoqTreeNode[] = []) {
+function flatten(
+  nodes: BoqTreeNode[],
+  collapsed: Set<string>,
+  siblings: BoqTreeNode[],
+  into: VisibleRow[] = [],
+): VisibleRow[] {
   for (const node of nodes) {
-    into.push(node);
-    if (!collapsed.has(node.id)) flatten(node.children, collapsed, into);
+    into.push({ node, siblings });
+    if (!collapsed.has(node.id)) flatten(node.children, collapsed, node.children, into);
   }
   return into;
 }

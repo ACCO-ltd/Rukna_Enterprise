@@ -21,6 +21,82 @@ export function getBoqTree(projectId: string, versionId: string): Promise<BoqTre
 }
 
 /**
+ * Body for `POST .../nodes`, mirroring CreateNodeDto.
+ *
+ * `sortOrder` is required and the server never allocates it — the client picks a position
+ * among the destination siblings. Optional fields are omitted rather than sent empty, for
+ * the same reason as the project payloads: the pipeline runs `forbidNonWhitelisted` and
+ * `currency` is `@Length(3, 3)`, so `""` is an invalid code rather than an absent one.
+ */
+export interface CreateNodePayload {
+  parentId?: string;
+  sortOrder: number;
+  code: string;
+  description: string;
+  descriptionAr?: string;
+  isLeaf?: boolean;
+  unit?: string;
+  quantity?: number;
+  unitRate?: number;
+  currency?: string;
+}
+
+/** Body for `PATCH .../nodes/:id`. `parentId` and `sortOrder` are not accepted — use move. */
+export type UpdateNodePayload = Omit<CreateNodePayload, 'parentId' | 'sortOrder'>;
+
+export function addBoqNode(
+  projectId: string,
+  versionId: string,
+  payload: CreateNodePayload,
+): Promise<BoqTreeNode> {
+  return apiClient<BoqTreeNode>(`/projects/${projectId}/boq/versions/${versionId}/nodes`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateBoqNode(
+  projectId: string,
+  versionId: string,
+  nodeId: string,
+  payload: UpdateNodePayload,
+): Promise<BoqTreeNode> {
+  return apiClient<BoqTreeNode>(
+    `/projects/${projectId}/boq/versions/${versionId}/nodes/${nodeId}`,
+    { method: 'PATCH', body: JSON.stringify(payload) },
+  );
+}
+
+/** Hard delete. The server refuses a node that still has children. Returns an empty body. */
+export function deleteBoqNode(
+  projectId: string,
+  versionId: string,
+  nodeId: string,
+): Promise<void> {
+  return apiClient<void>(`/projects/${projectId}/boq/versions/${versionId}/nodes/${nodeId}`, {
+    method: 'DELETE',
+  });
+}
+
+/**
+ * Repositions a node and its descendants. Returns an empty body (B6).
+ *
+ * The server writes the given `sortOrder` onto this node alone and does NOT reindex its
+ * siblings (B13), so callers are responsible for keeping sibling order values distinct.
+ */
+export function moveBoqNode(
+  projectId: string,
+  versionId: string,
+  nodeId: string,
+  payload: { newParentId?: string; newSortOrder: number },
+): Promise<void> {
+  return apiClient<void>(
+    `/projects/${projectId}/boq/versions/${versionId}/nodes/${nodeId}/move`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
+}
+
+/**
  * Locks the open draft in as the approved BOQ.
  *
  * The previously approved version becomes SUPERSEDED, and on the first baseline the BOQ's

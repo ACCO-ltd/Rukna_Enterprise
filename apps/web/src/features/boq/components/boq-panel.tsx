@@ -8,8 +8,11 @@ import { Alert, Button, Label, Select } from '@erp/ui';
 import { ApiError } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
 
+import { useProject } from '@/features/projects/hooks/use-project';
+
 import { useBoq, useBoqTree, useInitializeBoq } from '../hooks/use-boq';
 import type { Boq } from '../types';
+import { BoqEditor } from './boq-editor';
 import { BoqTree } from './boq-tree';
 import { BoqVersionActions } from './boq-version-actions';
 
@@ -68,6 +71,12 @@ function BoqVersions({ projectId, boq }: { projectId: string; boq: Boq }) {
   const t = useTranslations('platform.boq');
   const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
+
+  // Nodes are denominated in the project's contract currency rather than chosen per node.
+  // See node-form.ts and D1. Undefined while loading is treated the same as unset — the
+  // editor simply omits the currency, which the API permits.
+  const { data: project } = useProject(projectId);
+  const projectCurrency = project?.currency ?? null;
 
   // Default to the draft when there is one, otherwise the approved version, otherwise the
   // newest — the version the user most likely came here to look at.
@@ -153,13 +162,20 @@ function BoqVersions({ projectId, boq }: { projectId: string; boq: Boq }) {
           variant="error"
           messages={[error instanceof ApiError && error.messages.length > 0 ? error.messages[0]! : t('loadFailed')]}
         />
-      ) : nodes.length === 0 ? (
+      ) : nodes.length === 0 && !isDraft ? (
         <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
           <p className="text-sm font-medium text-foreground">{t('empty')}</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {isDraft ? t('emptyDraftHint') : t('emptyBaselinedHint')}
-          </p>
+          <p className="mt-1 text-sm text-muted-foreground">{t('emptyBaselinedHint')}</p>
         </div>
+      ) : isDraft && selectedId ? (
+        // Editing is offered only on the open draft — every node command is refused by the
+        // server on any other version.
+        <BoqEditor
+          projectId={projectId}
+          versionId={selectedId}
+          nodes={nodes}
+          projectCurrency={projectCurrency}
+        />
       ) : (
         <BoqTree nodes={nodes} />
       )}

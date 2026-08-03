@@ -23,7 +23,9 @@ Line references are against commit `e1f2139`.
 | [B3](#b3) | **Blocking** | Workflows | `GET` endpoint requires a request body — uncallable from a browser |
 | [B4](#b4) | **Security** | Workflows | Approver identity is taken from the request body |
 | [B5](#b5) | **Security** | Roles, Audit | `orgId` read from query string, unscoped by token |
+| [B14](#b14) | **Blocking — bug** | BOQ | `move` always 500s and half-applies, corrupting descendant paths |
 | [B11](#b11) | **Security** | BOQ | Version endpoints missing the organization check |
+| [B13](#b13) | Contract | BOQ | `move` never reindexes siblings, so positions can tie |
 | [B6](#b6) | Contract | Several | Undocumented empty response bodies |
 | [B7](#b7) | Correctness | BOQ | Money totals computed in floating point |
 | [B8](#b8) | Scale | Projects | No pagination, search, or sort |
@@ -107,6 +109,58 @@ and most HTTP clients drop it. This endpoint cannot be called from a browser at 
 **What the frontend needs:** derive `organizationId` from the token
 (`identity.activeOrganizationId`), consistent with every Projects endpoint.
 Failing that, a query parameter — but the token is the correct source.
+
+---
+
+### <a id="b14"></a>B14 — `POST .../nodes/:id/move` always fails, and leaves the tree corrupted
+
+**Severity:** Blocking. Reproduced against the running API; two defects in one function.
+
+`BoqPrismaRepository.moveNode` (`boq-prisma.repository.ts:115–150`) runs two raw statements.
+
+**Defect 1 — every call errors.** Step 2 interpolates a JS number as the substring offset:
+
+```ts
+// boq-prisma.repository.ts:144
+SET "path" = ${newNodePath} || '/' || substring("path", ${oldPath.length + 2}),
+```
+
+Prisma binds that number as `bigint`, and PostgreSQL has no `substring(text, bigint)`:
+
+```
+Raw query failed. Code: 42883.
+ERROR: function substring(text, bigint) does not exist
+```
+
+Every move answers `500`, whatever the node.
+
+**Defect 2 — the failure half-applies.** The two statements are not wrapped in a
+transaction, so step 1 has already committed when step 2 throws. Verified directly:
+
+```
+before:  A sort_order=1,  B sort_order=2
+POST .../nodes/B/move  {"newParentId": S, "newSortOrder": 1}   → 500
+after:   A sort_order=1,  B sort_order=1     ← written despite the error
+```
+
+For a node with descendants this is worse than a failed write: the moved node's `path` and
+`depth` are updated while its descendants keep the old prefix, so the materialized-path
+index no longer describes the tree. Every `path LIKE 'oldPath/%'` query — including the
+next move and the subtree copy performed when a draft is created — then reads a tree that
+does not match reality.
+
+**Suggested fix:**
+
+1. Cast the offset, e.g. `substring("path", ${oldPath.length + 2}::int)`, or pass it as
+   `Prisma.raw(String(n))`.
+2. Wrap both statements in `prisma.$transaction` so a failure cannot half-apply.
+3. Consider a regression test that moves a node **with children** and asserts every
+   descendant path was rewritten — defect 2 is invisible on a leaf.
+
+**Frontend impact:** the reorder controls are written and tested but not rendered
+(`REORDER_ENABLED = false` in `apps/web/src/features/boq/node-actions.ts`). Shipping a
+button that corrupts the BOQ is worse than shipping no button. Flipping that flag is the
+whole re-enable once this lands.
 
 ---
 
@@ -247,6 +301,23 @@ remove that, and becomes necessary once B8 does.
 
 Not urgent — raised so it is on the roadmap rather than discovered later.
 
+### <a id="b13"></a>B13 — `move` never reindexes siblings, so positions can tie
+
+`sortOrder` is required on create and the API never allocates one, while `moveNode` writes
+the given position onto the moved node alone and leaves its siblings untouched. Nothing
+prevents two siblings from holding the same `sortOrder`, and
+`findNodesByVersion` orders by `[depth, sortOrder]` — so tied siblings come back in an
+order PostgreSQL does not guarantee and which can change between reads.
+
+The frontend avoids creating ties: new nodes take `max(sibling.sortOrder) + 1`, and
+reordering is expressed as a two-node swap rather than a renumber. That keeps our own
+writes clean but cannot repair ties introduced elsewhere.
+
+**Suggested:** either reindex the destination siblings inside the move (and inside create),
+or add a partial unique index on `(version_id, parent_id, sort_order)` so a tie is rejected
+rather than silently stored. Lower priority than B14, but the two are worth fixing
+together since both live in `moveNode`.
+
 ### <a id="b12"></a>B12 — `@erp/types` exports no Project DTO
 
 `apps/web/CLAUDE.md:170` instructs the frontend to import shared types and never redefine
@@ -322,6 +393,8 @@ Delivered:
 - App shell: navigation, i18n/RTL, responsive layout
 - Dashboard: status counts and recent projects, aggregated client-side (see B8, B10)
 
+- BOQ: initialize, version selection, tree with currency-safe totals, baseline, discard
+  draft, start revision, and add/edit/delete of sections and items
 - Projects: list, search and filter, create, edit (DRAFT), detail, all six lifecycle
   transitions, cancel, suspend and resume
 
@@ -330,3 +403,4 @@ Deferred pending the items above:
 - Project members UI — **B1**, **B2**
 - Any approval/workflow UI — **B3**, **B4**
 - BOQ parent totals for mixed-currency subtrees — **D1**
+- BOQ row reordering — **B14**
