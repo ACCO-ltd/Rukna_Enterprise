@@ -14,7 +14,8 @@
     "permissions": "Permissions",
     "organizations": "Organizations",
     "settings": "Settings",
-    "auditLog": "Audit Log"
+    "auditLog": "Audit Log",
+    "clients": "Clients"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -284,6 +285,94 @@
       "not-found": "This record no longer exists.",
       "conflict": "That conflicts with an existing record.",
       "unknown": "The action could not be completed. Please try again."
+    }
+  },
+  "clients": {
+    "title": "Clients",
+    "newClient": "New client",
+    "searchLabel": "Search clients",
+    "searchPlaceholder": "Search by code, name or tax number",
+    "filterByStatus": "Filter by status",
+    "allStatuses": "All statuses",
+    "countLabel": "{count, plural, =0 {No clients} one {# client} other {# clients}}",
+    "empty": "No clients yet.",
+    "emptyHint": "Add the first client to get started.",
+    "noMatches": "No clients match these filters.",
+    "clearFilters": "Clear filters",
+    "loadFailed": "Could not load clients.",
+    "retry": "Try again",
+    "status": {
+      "ACTIVE": "Active",
+      "INACTIVE": "Inactive"
+    },
+    "columns": {
+      "code": "Code",
+      "name": "Name",
+      "taxNumber": "Tax number",
+      "currency": "Currency",
+      "status": "Status",
+      "contact": "Primary contact"
+    },
+    "notSet": "Not set",
+    "detail": {
+      "back": "Back to clients",
+      "edit": "Edit client",
+      "overview": "Overview",
+      "contacts": "Contacts",
+      "taxNumber": "Tax number",
+      "defaultCurrency": "Default currency",
+      "created": "Created",
+      "loadFailed": "Could not load this client.",
+      "notFound": "This client no longer exists.",
+      "deactivate": "Deactivate",
+      "reactivate": "Reactivate",
+      "deactivateTitle": "Deactivate this client?",
+      "deactivateBody": "An inactive client is hidden from the default list. Existing contracts and certificates are not affected.",
+      "reactivateTitle": "Reactivate this client?",
+      "reactivateBody": "The client will appear in the active list again.",
+      "statusChangeFailed": "Could not change the client status."
+    },
+    "contacts": {
+      "heading": "Contacts",
+      "add": "Add contact",
+      "none": "No contacts recorded yet.",
+      "noneHint": "Add the person you deal with on this client’s side.",
+      "primary": "Primary",
+      "remove": "Remove",
+      "removeTitle": "Remove this contact?",
+      "removeBody": "The contact will be deleted from this client. This cannot be undone.",
+      "removeFailed": "Could not remove the contact.",
+      "name": "Name",
+      "role": "Role",
+      "email": "Email",
+      "phone": "Phone",
+      "isPrimary": "Make this the primary contact",
+      "isPrimaryHint": "The current primary contact will be demoted.",
+      "nameRequired": "Enter a name",
+      "emailInvalid": "Enter a valid email address",
+      "addFailed": "Could not add the contact.",
+      "save": "Add contact"
+    },
+    "create": {
+      "title": "New client",
+      "editTitle": "Edit client",
+      "code": "Client code",
+      "codeHint": "Short unique reference, for example MOF-001. Cannot be changed later.",
+      "name": "Name",
+      "nameAr": "Name (Arabic)",
+      "taxNumber": "Tax number",
+      "defaultCurrency": "Default currency",
+      "currencyPlaceholder": "Not set",
+      "codeRequired": "Enter a client code",
+      "codeTooLong": "Code cannot exceed 30 characters",
+      "nameRequired": "Enter a name",
+      "nameTooLong": "Name cannot exceed 255 characters",
+      "taxNumberTooLong": "Tax number cannot exceed 50 characters",
+      "duplicateCode": "That client code is already in use. Choose another.",
+      "submit": "Create client",
+      "saveChanges": "Save changes",
+      "cancel": "Cancel",
+      "failed": "Could not save the client."
     }
   }
 }

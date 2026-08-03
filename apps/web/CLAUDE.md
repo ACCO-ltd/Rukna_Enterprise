@@ -55,132 +55,18 @@ packages/ui/src/**        ← Shared UI components (you own this)
 
 ---
 
-## Sprint 3 Backend Status — What Is Live Right Now
+## What Is Live Right Now
 
-The following endpoints are **fully implemented and working**. Build UI against these.
+`/docs/02-architecture/api-reference.md` is the endpoint reference — every path, request
+and response shape. Read it there rather than from a copy here.
 
-### Auth (public — no token needed)
-```
-POST /api/v1/auth/login          — body: { email, password } → { accessToken } + HttpOnly cookie
-POST /api/v1/auth/refresh        — no body (uses cookie) → { accessToken }
-POST /api/v1/auth/logout         — no body → clears cookie
-```
+This file used to carry its own endpoint listing. It drifted: it documented a
+`?status=ACTIVE` filter on `GET /clients` that the controller does not accept, and a
+frontend engineer built against it. Two sources of truth for the same contract means one
+of them is wrong and nobody knows which.
 
-### Platform
-```
-GET  /api/v1/users/:id
-GET  /api/v1/organizations/:id
-GET  /api/v1/roles
-GET  /api/v1/permissions
-GET  /api/v1/audit-logs
-GET  /api/v1/workflows/definition/:transactionType
-GET  /api/v1/workflows/instance/:id/step
-POST /api/v1/workflows/instance/:id/approve
-POST /api/v1/workflows/instance/:id/reject
-```
-
-### Clients
-```
-GET    /api/v1/clients                              — list (?status=ACTIVE)
-POST   /api/v1/clients                              — create
-GET    /api/v1/clients/:id                          — get with contacts
-PATCH  /api/v1/clients/:id                          — update
-POST   /api/v1/clients/:id/contacts                 — add contact
-DELETE /api/v1/clients/:id/contacts/:contactId      — remove contact
-```
-
-### Projects (full lifecycle)
-```
-GET    /api/v1/projects                                        — list (?status=ACTIVE)
-POST   /api/v1/projects                                        — create DRAFT
-GET    /api/v1/projects/:id                                    — get with members + suspension
-PATCH  /api/v1/projects/:id                                    — update (DRAFT only)
-POST   /api/v1/projects/:id/approve                            — DRAFT → APPROVED
-POST   /api/v1/projects/:id/mobilize                           — APPROVED → MOBILIZING
-POST   /api/v1/projects/:id/activate                           — MOBILIZING → ACTIVE
-POST   /api/v1/projects/:id/practical-completion               — ACTIVE → PRACTICAL_COMPLETION ⚠️
-POST   /api/v1/projects/:id/closeout                           — PRACTICAL_COMPLETION → CLOSEOUT
-POST   /api/v1/projects/:id/close                              — CLOSEOUT → CLOSED
-POST   /api/v1/projects/:id/reopen-to-active                   — PRACTICAL_COMPLETION → ACTIVE
-POST   /api/v1/projects/:id/reopen-to-practical-completion     — CLOSEOUT → PRACTICAL_COMPLETION
-POST   /api/v1/projects/:id/cancel                             — body: { reason }
-POST   /api/v1/projects/:id/suspend                            — body: { reason }
-POST   /api/v1/projects/:id/resume
-GET    /api/v1/projects/:id/members
-POST   /api/v1/projects/:id/members                            — body: { userId, roles[] }
-DELETE /api/v1/projects/:id/members/:userId
-```
-
-> ⚠️ `practical-completion` automatically moves all ACTIVE contracts on this project to `FINAL_ACCOUNT_PENDING`. Show a confirmation dialog listing affected contracts before calling.
-
-### BOQ (Bill of Quantities)
-```
-POST   /api/v1/projects/:id/boq                                 — initialize (idempotent)
-GET    /api/v1/projects/:id/boq                                 — get + version list
-POST   /api/v1/projects/:id/boq/draft                           — new draft from approved
-POST   /api/v1/projects/:id/boq/versions/:vId/baseline          — lock draft as approved
-POST   /api/v1/projects/:id/boq/versions/:vId/cancel            — cancel draft
-GET    /api/v1/projects/:id/boq/versions/:vId/tree              — full recursive tree
-POST   /api/v1/projects/:id/boq/versions/:vId/nodes             — add node
-PATCH  /api/v1/projects/:id/boq/versions/:vId/nodes/:nId        — update node
-POST   /api/v1/projects/:id/boq/versions/:vId/nodes/:nId/move   — move node + descendants
-DELETE /api/v1/projects/:id/boq/versions/:vId/nodes/:nId        — delete leaf node
-```
-
-### Contracts
-```
-GET    /api/v1/contracts                                  — list (?projectId=cld...)
-POST   /api/v1/contracts                                  — create DRAFT
-GET    /api/v1/contracts/:id                              — get with all sub-entities
-PATCH  /api/v1/contracts/:id                              — update (DRAFT only)
-POST   /api/v1/contracts/:id/submit                       — DRAFT → UNDER_REVIEW
-POST   /api/v1/contracts/:id/approve-review               — UNDER_REVIEW → PENDING_SIGNATURE
-POST   /api/v1/contracts/:id/execute                      — PENDING_SIGNATURE → ACTIVE (freezes client snapshots)
-POST   /api/v1/contracts/:id/close                        — FINAL_ACCOUNT_PENDING → CLOSED
-POST   /api/v1/contracts/:id/cancel                       — body: { reason }
-POST   /api/v1/contracts/:id/terminate                    — body: { reason } (ACTIVE only)
-POST   /api/v1/contracts/:id/retention-terms              — set/replace retention terms
-POST   /api/v1/contracts/:id/advance-terms                — add advance term
-DELETE /api/v1/contracts/:id/advance-terms/:termId
-POST   /api/v1/contracts/:id/guarantees                   — add guarantee
-PATCH  /api/v1/contracts/:id/guarantees/:guaranteeId      — update status/notes
-POST   /api/v1/contracts/:id/milestones                   — add milestone
-POST   /api/v1/contracts/:id/milestones/:milestoneId/complete
-```
-
-### IPA (Interim Payment Applications)
-```
-GET    /api/v1/ipa                              — list (?contractId=cld...)
-POST   /api/v1/ipa                              — create DRAFT
-GET    /api/v1/ipa/:id                          — get with items + deductions
-POST   /api/v1/ipa/:id/submit-for-approval      — DRAFT → PENDING_INTERNAL_APPROVAL
-POST   /api/v1/ipa/:id/return-for-revision      — PENDING_INTERNAL_APPROVAL → RETURNED_FOR_REVISION
-POST   /api/v1/ipa/:id/approve-for-submission   — PENDING_INTERNAL_APPROVAL → APPROVED_FOR_SUBMISSION
-POST   /api/v1/ipa/:id/submit                   — APPROVED_FOR_SUBMISSION → SUBMITTED (immutable)
-POST   /api/v1/ipa/:id/cancel
-POST   /api/v1/ipa/:id/items                    — add BOQ line item
-DELETE /api/v1/ipa/:id/items/:itemId
-POST   /api/v1/ipa/:id/deductions               — add deduction line
-DELETE /api/v1/ipa/:id/deductions/:deductionId
-```
-
-### IPC (Interim Payment Certificates)
-```
-GET    /api/v1/ipc                                   — list (?applicationId=cld...)
-POST   /api/v1/ipc                                   — issue certificate
-GET    /api/v1/ipc/:id                               — get with items + deductions
-POST   /api/v1/ipc/:applicationId/supersede          — atomic supersession (body: { newCertificateId, reason })
-```
-
-### Finance (Payment Receipts)
-```
-GET    /api/v1/receipts                                        — list (?clientId=cld...)
-POST   /api/v1/receipts                                        — record payment receipt
-GET    /api/v1/receipts/:id                                    — get with allocations
-POST   /api/v1/receipts/:id/allocations                        — allocate to IPC
-DELETE /api/v1/receipts/:id/allocations/:allocationId          — remove allocation
-GET    /api/v1/receipts/certificate/:certificateId/payment-status — UNPAID / PARTIALLY_PAID / PAID
-```
+For discrepancies between the reference and the running API, see
+`/docs/backend-requests/frontend-blockers.md`.
 
 ---
 
@@ -221,31 +107,14 @@ The API does not have these endpoints. Do not build UI for them yet.
 
 1. **Never store tokens in `localStorage`** — XSS risk. Keep `accessToken` in memory only (Zustand or React context).
 2. **Never touch the `refreshToken` cookie** — it is `HttpOnly`. The browser manages it automatically.
-3. **Always set `credentials: 'include'`** on fetch / `withCredentials: true` on axios.
+3. **Always set `credentials: 'include'`** on every request.
 4. **Refresh flow**: on `401`, call `POST /auth/refresh` once. If that also returns `401`, clear the token and redirect to `/login`.
-5. Access tokens expire in **15 minutes**. Build an interceptor that handles refresh automatically.
+5. Access tokens expire in **15 minutes**. Refresh is handled automatically.
 
-```typescript
-// Recommended axios interceptor pattern
-axios.interceptors.response.use(
-  (res) => res,
-  async (error) => {
-    if (error.response?.status === 401 && !error.config._retry) {
-      error.config._retry = true;
-      try {
-        const { data } = await axios.post('/api/v1/auth/refresh');
-        setAccessToken(data.accessToken); // save to memory store
-        error.config.headers.Authorization = `Bearer ${data.accessToken}`;
-        return axios(error.config);
-      } catch {
-        clearAccessToken();
-        window.location.href = '/login';
-      }
-    }
-    return Promise.reject(error);
-  }
-);
-```
+This is already implemented in `src/lib/api-client.ts` — use `apiClient`, do not write a
+second one. It refreshes behind a single-flight guard, because the API rotates the refresh
+token and treats a reused one as an attack: two concurrent refreshes would revoke the whole
+token family and sign the user out everywhere.
 
 ---
 

@@ -4,9 +4,14 @@ import { isActiveNavItem, NAV_ITEMS } from './nav-items';
 
 describe('NAV_ITEMS', () => {
   // Guards the decision in apps/web/CLAUDE.md: no navigation to endpoints that do not
-  // exist. If someone adds Contracts or IPC before the API does, this fails.
+  // exist. Procurement, Stock, Cost and DPRs have no API — if someone adds one of those
+  // before the backend does, this fails.
+  //
+  // Clients joined the list when its screens shipped; Contracts and Receipts follow as
+  // theirs do. IPA and IPC never appear here — they are reached through their contract,
+  // not from the top-level menu.
   it('only lists destinations backed by live endpoints', () => {
-    expect(NAV_ITEMS.map((item) => item.href)).toEqual(['/dashboard', '/projects']);
+    expect(NAV_ITEMS.map((item) => item.href)).toEqual(['/dashboard', '/projects', '/clients']);
   });
 });
 
