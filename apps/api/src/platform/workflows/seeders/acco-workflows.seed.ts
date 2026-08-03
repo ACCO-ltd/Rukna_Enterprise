@@ -6,8 +6,51 @@ import { PrismaClient, WorkflowTransactionType, WorkflowTriggerKind } from '@pri
  * Amount thresholds are PLACEHOLDER values — must be confirmed by Eng Ahmed Shirie before activation.
  */
 export async function seedAccoWorkflows(prisma: PrismaClient, organizationId: string): Promise<void> {
+  await seedWorkflowRequirementPolicies(prisma);
   await seedDocumentWorkflows(prisma, organizationId);
   await seedProjectLifecycleBindings(prisma, organizationId);
+}
+
+/**
+ * Seeds tenant-wide WorkflowRequirementPolicy records (organizationId = null).
+ * These are platform defaults — REQUIRED means no active binding = transition blocked.
+ * Idempotent: skips existing records for the same entityType + transition.
+ */
+async function seedWorkflowRequirementPolicies(prisma: PrismaClient): Promise<void> {
+  const required: Array<{ entityType: string; fromState: string | null; toState: string }> = [
+    // Project lifecycle — controlled transitions
+    { entityType: 'Project', fromState: 'DRAFT',                toState: 'APPROVED' },
+    { entityType: 'Project', fromState: null,                   toState: 'CANCELLED' },
+    { entityType: 'Project', fromState: 'CLOSEOUT',             toState: 'CLOSED' },
+    { entityType: 'Project', fromState: 'PRACTICAL_COMPLETION', toState: 'ACTIVE' },    // reopen
+    { entityType: 'Project', fromState: 'CLOSEOUT',             toState: 'PRACTICAL_COMPLETION' }, // reopen
+    // IPA — all paths into PENDING_INTERNAL_APPROVAL
+    { entityType: 'InterimPaymentApplication', fromState: 'DRAFT',                toState: 'PENDING_INTERNAL_APPROVAL' },
+    { entityType: 'InterimPaymentApplication', fromState: 'RETURNED_FOR_REVISION', toState: 'PENDING_INTERNAL_APPROVAL' },
+  ];
+
+  for (const policy of required) {
+    const existing = await prisma.workflowRequirementPolicy.findFirst({
+      where: {
+        organizationId: null,
+        entityType: policy.entityType,
+        fromState: policy.fromState,
+        toState: policy.toState,
+      },
+    });
+    if (existing) continue;
+
+    await prisma.workflowRequirementPolicy.create({
+      data: {
+        organizationId: null,
+        entityType: policy.entityType,
+        fromState: policy.fromState,
+        toState: policy.toState,
+        requirement: 'REQUIRED',
+      },
+    });
+    console.log(`  ✓ Seeded policy REQUIRED: ${policy.entityType} ${policy.fromState ?? '*'} → ${policy.toState}`);
+  }
 }
 
 async function seedDocumentWorkflows(prisma: PrismaClient, organizationId: string): Promise<void> {
@@ -74,13 +117,19 @@ async function seedProjectLifecycleBindings(
   }
 
   // Project lifecycle transitions — all is_active=false (PLACEHOLDER).
+  // Activate via admin configuration once DOA thresholds confirmed by Eng Ahmed Shirie.
   const transitions = [
-    { fromState: 'DRAFT', toState: 'APPROVED', priority: 10 },
-    { fromState: 'APPROVED', toState: 'MOBILIZING', priority: 10 },
-    { fromState: 'MOBILIZING', toState: 'ACTIVE', priority: 10 },
-    { fromState: 'ACTIVE', toState: 'PRACTICAL_COMPLETION', priority: 10 },
-    { fromState: 'PRACTICAL_COMPLETION', toState: 'CLOSEOUT', priority: 10 },
-    { fromState: 'CLOSEOUT', toState: 'CLOSED', priority: 10 },
+    { fromState: 'DRAFT',                toState: 'APPROVED',              priority: 10 },
+    { fromState: 'APPROVED',             toState: 'MOBILIZING',            priority: 10 },
+    { fromState: 'MOBILIZING',           toState: 'ACTIVE',                priority: 10 },
+    { fromState: 'ACTIVE',               toState: 'PRACTICAL_COMPLETION',  priority: 10 },
+    { fromState: 'PRACTICAL_COMPLETION', toState: 'CLOSEOUT',              priority: 10 },
+    { fromState: 'CLOSEOUT',             toState: 'CLOSED',                priority: 10 },
+    // Cancellation — controlled from multiple source states
+    { fromState: null,                   toState: 'CANCELLED',             priority: 10 },
+    // Reopen transitions
+    { fromState: 'PRACTICAL_COMPLETION', toState: 'ACTIVE',                priority: 10 },
+    { fromState: 'CLOSEOUT',             toState: 'PRACTICAL_COMPLETION',  priority: 10 },
   ];
 
   for (const t of transitions) {

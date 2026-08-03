@@ -17,12 +17,14 @@ model Organization {
   createdAt DateTime           @default(now()) @map("created_at")
   updatedAt DateTime           @updatedAt @map("updated_at")
 
-  users               User[]
-  roles               Role[]
-  exchangeRates       ExchangeRate[]
-  workflowDefinitions WorkflowDefinition[]
-  memberships         OrganizationMembership[]
-  projects            Project[]
+  users                    User[]
+  roles                    Role[]
+  exchangeRates            ExchangeRate[]
+  workflowDefinitions      WorkflowDefinition[]
+  memberships              OrganizationMembership[]
+  projects                 Project[]
+  clients                  Client[]
+  workflowPolicies         WorkflowRequirementPolicy[]
 
   @@map("organizations")
 }
@@ -283,6 +285,59 @@ model OrganizationMembershipRole {
   @@map("organization_membership_roles")
 }
 
+// ─── Client Aggregate ────────────────────────────────────────────────────────
+
+model Client {
+  id              String       @id @default(cuid())
+  organizationId  String       @map("organization_id")
+  code            String       @map("code") @db.VarChar(30)
+  name            String
+  nameAr          String?      @map("name_ar")
+  taxNumber       String?      @map("tax_number")
+  defaultCurrency String?      @map("default_currency") @db.VarChar(3)
+  status          ClientStatus @default(ACTIVE)
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id])
+  contacts     ClientContact[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@map("clients")
+}
+
+model ClientContact {
+  id        String  @id @default(cuid())
+  clientId  String  @map("client_id")
+  name      String
+  role      String?
+  email     String?
+  phone     String?
+  isPrimary Boolean @default(false) @map("is_primary")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@map("client_contacts")
+}
+
+// ─── Workflow Requirement Policy ──────────────────────────────────────────────
+
+model WorkflowRequirementPolicy {
+  id             String              @id @default(cuid())
+  organizationId String?             @map("organization_id")
+  entityType     String              @map("entity_type")
+  fromState      String?             @map("from_state")
+  toState        String              @map("to_state")
+  requirement    WorkflowRequirement @default(OPTIONAL)
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+
+  @@index([entityType, toState])
+  @@map("workflow_requirement_policies")
+}
+
 // ─── Workflow Trigger Bindings ────────────────────────────────────────────────
 
 model WorkflowTriggerBinding {
@@ -361,21 +416,23 @@ enum WorkflowTriggerKind {
 // ─── Construction Domain ──────────────────────────────────────────────────────
 
 model Project {
-  id              String        @id @default(cuid())
-  organizationId  String        @map("organization_id")
-  code            String        @map("code") @db.VarChar(30)
-  name            String
-  nameAr          String?       @map("name_ar")
-  description     String?
-  status          ProjectStatus @default(DRAFT)
-  contractValue   Decimal?      @map("contract_value") @db.Decimal(18, 2)
-  currency        String?       @db.VarChar(3)
-  clientName      String?       @map("client_name")
-  startDate       DateTime?     @map("start_date") @db.Date
-  expectedEndDate DateTime?     @map("expected_end_date") @db.Date
-  createdBy       String        @map("created_by")
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
+  id                 String             @id @default(cuid())
+  organizationId     String             @map("organization_id")
+  code               String             @map("code") @db.VarChar(30)
+  name               String
+  nameAr             String?            @map("name_ar")
+  description        String?
+  status             ProjectStatus      @default(DRAFT)
+  commercialModel    CommercialModel    @default(CLIENT_CONTRACT) @map("commercial_model")
+  participationModel ParticipationModel @default(SOLE) @map("participation_model")
+  contractValue      Decimal?           @map("contract_value") @db.Decimal(18, 2)
+  currency           String?            @db.VarChar(3)
+  clientName         String?            @map("client_name")
+  startDate          DateTime?          @map("start_date") @db.Date
+  expectedEndDate    DateTime?          @map("expected_end_date") @db.Date
+  createdBy          String             @map("created_by")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
 
   organization Organization       @relation(fields: [organizationId], references: [id])
   members      ProjectMember[]
@@ -479,27 +536,29 @@ model BoqVersion {
 }
 
 model BoqNode {
-  id            String   @id @default(cuid())
-  boqId         String   @map("boq_id")
-  versionId     String   @map("version_id")
-  parentId      String?  @map("parent_id")
+  id                String          @id @default(cuid())
+  boqId             String          @map("boq_id")
+  versionId         String          @map("version_id")
+  parentId          String?         @map("parent_id")
   // Materialized path: "rootId/childId/grandchildId" — enables efficient subtree queries.
-  path          String   @map("path")
-  depth         Int      @default(0)
-  sortOrder     Int      @default(0) @map("sort_order")
-  code          String   @db.VarChar(50)
-  description   String
-  descriptionAr String?  @map("description_ar")
-  unit          String?  @db.VarChar(20)
-  quantity      Decimal? @db.Decimal(18, 3)
-  unitRate      Decimal? @map("unit_rate") @db.Decimal(18, 2)
-  currency      String?  @db.VarChar(3)
-  totalAmount   Decimal? @map("total_amount") @db.Decimal(18, 2)
-  isLeaf        Boolean  @default(false) @map("is_leaf")
+  path              String          @map("path")
+  depth             Int             @default(0)
+  sortOrder         Int             @default(0) @map("sort_order")
+  code              String          @db.VarChar(50)
+  description       String
+  descriptionAr     String?         @map("description_ar")
+  measurementMethod MeasurementMethod @default(QUANTITY) @map("measurement_method")
+  pricingBasis      PricingBasis    @default(UNIT_RATE) @map("pricing_basis")
+  unit              String?         @db.VarChar(20)
+  quantity          Decimal?        @db.Decimal(18, 3)
+  unitRate          Decimal?        @map("unit_rate") @db.Decimal(18, 2)
+  currency          String?         @db.VarChar(3)
+  totalAmount       Decimal?        @map("total_amount") @db.Decimal(18, 2)
+  isLeaf            Boolean         @default(false) @map("is_leaf")
   // Tracks which node in the previous version this was copied from.
-  originNodeId  String?  @map("origin_node_id")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  originNodeId      String?         @map("origin_node_id")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
 
   version  BoqVersion @relation(fields: [versionId], references: [id])
   parent   BoqNode?   @relation("BoqNodeChildren", fields: [parentId], references: [id], onDelete: Restrict)
@@ -526,6 +585,38 @@ enum ProjectStatus {
   CLOSEOUT
   CLOSED
   CANCELLED
+}
+
+enum CommercialModel {
+  CLIENT_CONTRACT
+  INTERNAL_CAPITAL
+}
+
+enum ParticipationModel {
+  SOLE
+  JOINT_VENTURE
+}
+
+enum MeasurementMethod {
+  QUANTITY
+  PERCENTAGE
+  MILESTONE
+}
+
+enum PricingBasis {
+  UNIT_RATE
+  LUMP_SUM
+}
+
+enum WorkflowRequirement {
+  REQUIRED
+  OPTIONAL
+  NONE
+}
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
 }
 
 enum ProjectRole {

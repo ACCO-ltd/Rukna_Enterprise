@@ -72,3 +72,35 @@ export enum BoqVersionStatus {
   SUPERSEDED = 'SUPERSEDED',
   CANCELLED = 'CANCELLED',
 }
+
+export enum CommercialModel {
+  CLIENT_CONTRACT = 'CLIENT_CONTRACT',
+  INTERNAL_CAPITAL = 'INTERNAL_CAPITAL',
+}
+
+export enum ParticipationModel {
+  SOLE = 'SOLE',
+  JOINT_VENTURE = 'JOINT_VENTURE',
+}
+
+export enum MeasurementMethod {
+  QUANTITY = 'QUANTITY',
+  PERCENTAGE = 'PERCENTAGE',
+  MILESTONE = 'MILESTONE',
+}
+
+export enum PricingBasis {
+  UNIT_RATE = 'UNIT_RATE',
+  LUMP_SUM = 'LUMP_SUM',
+}
+
+export enum WorkflowRequirement {
+  REQUIRED = 'REQUIRED',
+  OPTIONAL = 'OPTIONAL',
+  NONE = 'NONE',
+}
+
+export enum ClientStatus {
+  ACTIVE = 'ACTIVE',
+  INACTIVE = 'INACTIVE',
+}

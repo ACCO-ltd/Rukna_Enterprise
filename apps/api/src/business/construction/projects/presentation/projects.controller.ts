@@ -129,6 +129,20 @@ export class ProjectsController {
     return this.projectService.cancel(identity, id, dto.reason);
   }
 
+  @Post(':id/reopen-to-active')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reopen project from PRACTICAL_COMPLETION → ACTIVE (requires workflow approval)' })
+  reopenToActive(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.projectService.transition(identity, id, 'reopen-to-active');
+  }
+
+  @Post(':id/reopen-to-practical-completion')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reopen project from CLOSEOUT → PRACTICAL_COMPLETION (requires workflow approval)' })
+  reopenToPracticalCompletion(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.projectService.transition(identity, id, 'reopen-to-pc');
+  }
+
   // ─── Suspension ──────────────────────────────────────────────────────────────
 
   @Post(':id/suspend')

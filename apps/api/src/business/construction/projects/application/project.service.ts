@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { Project } from '@prisma/client';
 import type { RequestIdentity } from '@erp/types';
@@ -19,21 +20,25 @@ import type { AddMemberDto } from '../presentation/dto/add-member.dto.js';
 const CANCEL_ALLOWED_FROM = new Set(['DRAFT', 'APPROVED', 'MOBILIZING', 'ACTIVE']);
 
 const LIFECYCLE_TRANSITIONS: Record<string, string> = {
-  approve: 'APPROVED',
-  mobilize: 'MOBILIZING',
-  activate: 'ACTIVE',
-  'practical-completion': 'PRACTICAL_COMPLETION',
-  closeout: 'CLOSEOUT',
-  close: 'CLOSED',
+  approve:               'APPROVED',
+  mobilize:              'MOBILIZING',
+  activate:              'ACTIVE',
+  'practical-completion':'PRACTICAL_COMPLETION',
+  closeout:              'CLOSEOUT',
+  close:                 'CLOSED',
+  'reopen-to-active':    'ACTIVE',
+  'reopen-to-pc':        'PRACTICAL_COMPLETION',
 };
 
 const LIFECYCLE_REQUIRED_FROM: Record<string, string> = {
-  approve: 'DRAFT',
-  mobilize: 'APPROVED',
-  activate: 'MOBILIZING',
-  'practical-completion': 'ACTIVE',
-  closeout: 'PRACTICAL_COMPLETION',
-  close: 'CLOSEOUT',
+  approve:               'DRAFT',
+  mobilize:              'APPROVED',
+  activate:              'MOBILIZING',
+  'practical-completion':'ACTIVE',
+  closeout:              'PRACTICAL_COMPLETION',
+  close:                 'CLOSEOUT',
+  'reopen-to-active':    'PRACTICAL_COMPLETION',
+  'reopen-to-pc':        'CLOSEOUT',
 };
 
 @Injectable()
@@ -128,7 +133,9 @@ export class ProjectService {
       throw new BadRequestException('Project is suspended. Resume it before changing status.');
     }
 
-    // DoA integration — resolver returns null when no active binding exists (Sprint 2: always null).
+    // WorkflowRequirementPolicy check: resolver throws UnprocessableEntityException if
+    // REQUIRED and no active binding. Returns null for OPTIONAL with no binding (pass-through).
+    // Returns a binding when one is active — approval initiation wired in Phase 3.
     const binding = await this.triggerResolver.resolveForStateTransition(
       identity.activeOrganizationId,
       'Project',
@@ -136,9 +143,10 @@ export class ProjectService {
       toState,
     );
     if (binding) {
-      // Future: initiate approval instance and return 202 Accepted.
-      // For now all bindings are is_active=false so this branch is unreachable.
-      throw new BadRequestException('This transition requires DoA approval (not yet implemented).');
+      throw new UnprocessableEntityException(
+        'This project transition requires workflow approval. ' +
+        'Approval workflow initiation will be available once the approval engine is fully wired.',
+      );
     }
 
     return this.repo.update(prisma, id, { status: toState as never });
@@ -154,12 +162,26 @@ export class ProjectService {
       );
     }
 
+    // WorkflowRequirementPolicy check for cancellation.
+    const binding = await this.triggerResolver.resolveForStateTransition(
+      identity.activeOrganizationId,
+      'Project',
+      project.status,
+      'CANCELLED',
+    );
+    if (binding) {
+      throw new UnprocessableEntityException(
+        'Project cancellation requires workflow approval. ' +
+        'Approval workflow initiation will be available once the approval engine is fully wired.',
+      );
+    }
+
     // Log cancellation reason as a suspension record for audit trail.
     await this.repo.createSuspension(prisma, {
       projectId: id,
       reason: `CANCELLED: ${reason}`,
       suspendedBy: identity.userId,
-      resumedAt: new Date(), // immediately resolved — project is terminated, not suspended
+      resumedAt: new Date(),
       resumedBy: identity.userId,
     });
 
