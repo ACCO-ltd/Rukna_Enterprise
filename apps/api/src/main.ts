@@ -54,6 +54,7 @@ async function bootstrap(): Promise<void> {
     .addTag('Clients', 'Client aggregate — organizations billed by ACCO')
     .addTag('Projects', 'Construction project lifecycle and membership')
     .addTag('BOQ', 'Bill of Quantities versioning and tree management')
+    .addTag('Contracts', 'Contract lifecycle, retention, advances, guarantees and milestones')
     .build();
 
   const document = SwaggerModule.createDocument(app, openApiConfig);

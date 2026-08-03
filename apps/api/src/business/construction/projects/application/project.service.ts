@@ -12,6 +12,7 @@ import type { RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { WorkflowTriggerResolverService } from '../../../../platform/workflows/application/workflow-trigger-resolver.service.js';
 import { ProjectPrismaRepository, ProjectFull } from '../infrastructure/project-prisma.repository.js';
+import { ContractPrismaRepository } from '../../contracts/infrastructure/contract-prisma.repository.js';
 import type { CreateProjectDto } from '../presentation/dto/create-project.dto.js';
 import type { UpdateProjectDto } from '../presentation/dto/update-project.dto.js';
 import type { AddMemberDto } from '../presentation/dto/add-member.dto.js';
@@ -47,6 +48,7 @@ export class ProjectService {
     private readonly tenancyService: TenancyService,
     private readonly triggerResolver: WorkflowTriggerResolverService,
     private readonly repo: ProjectPrismaRepository,
+    private readonly contractRepo: ContractPrismaRepository,
   ) {}
 
   // ─── Queries ─────────────────────────────────────────────────────────────────
@@ -149,7 +151,14 @@ export class ProjectService {
       );
     }
 
-    return this.repo.update(prisma, id, { status: toState as never });
+    const updated = await this.repo.update(prisma, id, { status: toState as never });
+
+    // Cross-aggregate: practical completion moves all ACTIVE contracts to FINAL_ACCOUNT_PENDING.
+    if (toState === 'PRACTICAL_COMPLETION') {
+      await this.contractRepo.moveActiveContractsToFinalAccount(prisma, id);
+    }
+
+    return updated;
   }
 
   async cancel(identity: RequestIdentity, id: string, reason: string): Promise<Project> {

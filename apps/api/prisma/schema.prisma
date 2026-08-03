@@ -24,6 +24,7 @@ model Organization {
   memberships              OrganizationMembership[]
   projects                 Project[]
   clients                  Client[]
+  contracts                Contract[]
   workflowPolicies         WorkflowRequirementPolicy[]
 
   @@map("organizations")
@@ -301,6 +302,7 @@ model Client {
 
   organization Organization  @relation(fields: [organizationId], references: [id])
   contacts     ClientContact[]
+  contracts    Contract[]
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
@@ -438,6 +440,7 @@ model Project {
   members      ProjectMember[]
   suspensions  ProjectSuspension[]
   boq          Boq?
+  contracts    Contract[]
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
@@ -617,6 +620,170 @@ enum WorkflowRequirement {
 enum ClientStatus {
   ACTIVE
   INACTIVE
+}
+
+// ─── Contract Domain ──────────────────────────────────────────────────────────
+
+model Contract {
+  id                 String         @id @default(cuid())
+  projectId          String         @map("project_id")
+  organizationId     String         @map("organization_id")
+  clientId           String         @map("client_id")
+  // boqVersionId: FK enforced in migration SQL; no Prisma relation to avoid circular complexity.
+  boqVersionId       String         @map("boq_version_id")
+  contractNumber     String         @map("contract_number") @db.VarChar(50)
+  contractValue      Decimal        @map("contract_value") @db.Decimal(18, 2)
+  currency           String         @db.VarChar(3)
+  billingModel       BillingModel   @default(MEASURED_IPC) @map("billing_model")
+  status             ContractStatus @default(DRAFT)
+  // Immutable snapshots taken at ACTIVE transition
+  clientNameSnapshot String?        @map("client_name_snapshot")
+  clientTaxSnapshot  String?        @map("client_tax_snapshot")
+  startDate          DateTime?      @map("start_date") @db.Date
+  expectedEndDate    DateTime?      @map("expected_end_date") @db.Date
+  createdBy          String         @map("created_by")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+
+  project        Project                 @relation(fields: [projectId], references: [id])
+  organization   Organization            @relation(fields: [organizationId], references: [id])
+  client         Client                  @relation(fields: [clientId], references: [id])
+  retentionTerms ContractRetentionTerms?
+  advanceTerms   ContractAdvanceTerm[]
+  guarantees     ContractGuarantee[]
+  milestones     ContractMilestone[]
+  attachments    ContractAttachment[]
+
+  @@unique([organizationId, contractNumber])
+  @@index([projectId, status])
+  @@index([clientId])
+  @@map("contracts")
+}
+
+model ContractRetentionTerms {
+  contractId         String    @id @map("contract_id")
+  retentionRate      Decimal   @map("retention_rate") @db.Decimal(5, 4)
+  retentionCap       Decimal   @map("retention_cap") @db.Decimal(5, 4)
+  retentionSplitOnPC Decimal   @map("retention_split_on_pc") @db.Decimal(5, 4)
+  retentionReleasedAt DateTime? @map("retention_released_at")
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@map("contract_retention_terms")
+}
+
+model ContractAdvanceTerm {
+  id           String      @id @default(cuid())
+  contractId   String      @map("contract_id")
+  advanceType  AdvanceType @map("advance_type")
+  description  String?
+  amount       Decimal?    @db.Decimal(18, 2)
+  percentage   Decimal?    @db.Decimal(5, 4)
+  recoveryRate Decimal     @map("recovery_rate") @db.Decimal(5, 4)
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@map("contract_advance_terms")
+}
+
+model ContractGuarantee {
+  id            String          @id @default(cuid())
+  contractId    String          @map("contract_id")
+  guaranteeType String          @map("guarantee_type")
+  amount        Decimal         @db.Decimal(18, 2)
+  currency      String          @db.VarChar(3)
+  issuer        String
+  beneficiary   String
+  issueDate     DateTime        @map("issue_date") @db.Date
+  expiryDate    DateTime        @map("expiry_date") @db.Date
+  status        GuaranteeStatus @default(ACTIVE)
+  notes         String?
+
+  contract    Contract              @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  attachments GuaranteeAttachment[]
+
+  @@index([contractId])
+  @@index([expiryDate, status])
+  @@map("contract_guarantees")
+}
+
+model ContractMilestone {
+  id          String    @id @default(cuid())
+  contractId  String    @map("contract_id")
+  name        String
+  description String?
+  dueDate     DateTime? @map("due_date") @db.Date
+  completedAt DateTime? @map("completed_at")
+  completedBy String?   @map("completed_by")
+  sortOrder   Int       @default(0) @map("sort_order")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@map("contract_milestones")
+}
+
+// Attachment join tables — Platform File aggregate is deferred to Sprint 4+.
+// Tables are created now so commercial entities never store raw file paths.
+
+model ContractAttachment {
+  id             String   @id @default(cuid())
+  contractId     String   @map("contract_id")
+  platformFileId String   @map("platform_file_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  createdBy      String   @map("created_by")
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@map("contract_attachments")
+}
+
+model GuaranteeAttachment {
+  id             String   @id @default(cuid())
+  guaranteeId    String   @map("guarantee_id")
+  platformFileId String   @map("platform_file_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  createdBy      String   @map("created_by")
+
+  guarantee ContractGuarantee @relation(fields: [guaranteeId], references: [id], onDelete: Cascade)
+
+  @@index([guaranteeId])
+  @@map("guarantee_attachments")
+}
+
+enum ContractStatus {
+  DRAFT
+  UNDER_REVIEW
+  PENDING_SIGNATURE
+  ACTIVE
+  FINAL_ACCOUNT_PENDING
+  CLOSED
+  CANCELLED
+  TERMINATED
+}
+
+enum BillingModel {
+  MEASURED_IPC
+  MILESTONE
+  TIME_AND_MATERIAL
+  HYBRID
+}
+
+enum AdvanceType {
+  MOBILIZATION
+  MATERIAL_ON_SITE
+  EQUIPMENT
+  OTHER
+}
+
+enum GuaranteeStatus {
+  ACTIVE
+  DISCHARGED
+  EXPIRED
+  CALLED
 }
 
 enum ProjectRole {
