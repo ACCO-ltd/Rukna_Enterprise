@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Button } from '@erp/ui';
 
+import { ProjectContractsSection } from '@/features/contracts/components/project-contracts-section';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 
@@ -99,6 +100,11 @@ export function ProjectDetail({ id }: { id: string }) {
       </div>
 
       <Overview project={project} locale={locale} />
+
+      {/* Contracts live at their own top-level route, but a project manager works
+          project-first — this shows what is contracted here and links out rather than
+          reimplementing the list. */}
+      <ProjectContractsSection projectId={project.id} />
 
       <section aria-labelledby="members-heading">
         <h2

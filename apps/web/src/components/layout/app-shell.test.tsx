@@ -81,7 +81,7 @@ describe('AppShell — navigation', () => {
     const nav = screen.getAllByRole('navigation', { name: 'Main navigation' })[0]!;
     const links = Array.from(nav.querySelectorAll('a')).map((a) => a.textContent);
 
-    expect(links).toEqual(['Dashboard', 'Projects', 'Clients']);
+    expect(links).toEqual(['Dashboard', 'Projects', 'Clients', 'Contracts']);
   });
 
   it('marks the current route with aria-current', () => {

@@ -11,7 +11,12 @@ describe('NAV_ITEMS', () => {
   // theirs do. IPA and IPC never appear here — they are reached through their contract,
   // not from the top-level menu.
   it('only lists destinations backed by live endpoints', () => {
-    expect(NAV_ITEMS.map((item) => item.href)).toEqual(['/dashboard', '/projects', '/clients']);
+    expect(NAV_ITEMS.map((item) => item.href)).toEqual([
+      '/dashboard',
+      '/projects',
+      '/clients',
+      '/contracts',
+    ]);
   });
 });
 
