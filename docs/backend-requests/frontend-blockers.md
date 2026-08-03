@@ -10,7 +10,12 @@ Items marked **Blocking** prevent a UI surface from functioning at all — they 
 feature requests.
 
 Findings were produced by reading `apps/api/src` directly, not by inference from docs.
-Line references are against commit `e1f2139`.
+
+- **B-series** (Sprint 1–2 platform, projects, BOQ) — line references against commit `e1f2139`.
+  Re-verified against `776b695` on 2026-08-03: **none are fixed**.
+- **C-series** (Sprint 3 commercial modules) — line references against commit `776b695`,
+  the most recent commit touching `apps/api`. Raised 2026-08-03 before frontend work on
+  Contracts, IPA, IPC and Receipts began.
 
 ---
 
@@ -34,6 +39,20 @@ Line references are against commit `e1f2139`.
 | [B12](#b12) | Gap | Types | `@erp/types` exports no Project DTO | — |
 | [D1](#d1) | **Domain** | BOQ | Mixed-currency nodes sum into one meaningless total | — |
 | [D2](#d2) | Docs | — | `api-reference.md` inaccuracies | — |
+
+### Sprint 3 — commercial modules
+
+| ID | Severity | Area | Summary | Issue |
+|---|---|---|---|---|
+| [C2](#c2) | **Security** | IPC | `POST /ipc` checks nothing about the application it certifies | [#9](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/9) |
+| [C3](#c3) | **Security** | IPA | Unit rate is taken from the request, not the contractual BOQ | [#10](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/10) |
+| [C1](#c1) | **Blocking — design** | IPC | Retention and advance-recovery arithmetic is delegated to the browser | [#12](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/12) |
+| [C7](#c7) | **Correctness — bug** | Finance | Payment status measures against gross, so a settled IPC never reads `PAID` | [#11](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/11) |
+| [C4](#c4) | Correctness | IPA | No guard against over-claiming or a negative period quantity | — |
+| [C5](#c5) | Contract | IPA | Workflow policy is resolved but no approval instance is created | — |
+| [C6](#c6) | Gap | Types | Five more aggregates with no DTO in `@erp/types` | — |
+| [C8](#c8) | Contract | Finance | `totalAllocated` returns a number, breaking the money-as-string rule | — |
+| [D3](#d3) | Docs | Clients, Contracts | Documented request shapes that return `400` | — |
 
 ---
 
@@ -342,6 +361,240 @@ Two details that matter for the DTO to be usable as-is:
 
 ---
 
+## Sprint 3 — commercial modules
+
+Raised before building the Contracts → IPA → IPC → Receipts UI. Credit where it is due
+first: these modules are noticeably more disciplined than the Sprint 1 platform code.
+Every controller derives identity from `@CurrentUser()`, `IpaService.addItem` computes
+`previousEffectiveCertified`, `periodQuantity` and `periodAmount` server-side in `Decimal`,
+`IpcService.findOne` returns `netCertified` as a decimal string, and receipt allocation is
+properly guarded against over-allocation. The findings below are concentrated in two
+places: what `POST /ipc` accepts, and what it does not check.
+
+### <a id="c2"></a>C2 — `POST /ipc` validates nothing about the application it certifies
+
+**Severity:** Security. Same class as B11, and the highest-priority item in this section.
+
+`IpcService.issue` (`ipc.service.ts:51`) takes `dto.applicationId` and uses it directly.
+It never loads the IPA. There is no organization check, no status check, and no check that
+the items being certified belong to that application:
+
+```ts
+// ipc.service.ts:57 — looked up by id alone
+const appItem = await prisma.interimPaymentApplicationItem.findUnique({
+  where: { id: item.applicationItemId },
+  select: { cumulativeClaimed: true, unitRateSnapshot: true },
+});
+```
+
+Three consequences, in order of severity:
+
+1. A user in org A can issue a certificate against org B's application. The certificate is
+   stamped with the *caller's* `organizationId` — the same shape of defect as B11's
+   `initialize`.
+2. A certificate can be issued against a `DRAFT` application that was never submitted,
+   bypassing the entire IPA approval sequence.
+3. `applicationItemId` is never checked against `dto.applicationId`, so a certificate can
+   certify line items belonging to a different application entirely — and it will price
+   them using *that* application's `unitRateSnapshot`.
+
+Every sibling service does this correctly: `ContractService`, `IpaService` and
+`FinanceService` all call a `requireX(prisma, identity.activeOrganizationId, id)` helper
+first. `IpcService` is the one that does not.
+
+**What the frontend needs:** the same `requireIpa(identity.activeOrganizationId, …)` guard
+its siblings use, a status check that the IPA is `SUBMITTED`, and an
+`applicationItem.applicationId === dto.applicationId` assertion.
+
+This one should be fixed regardless of any UI plans.
+
+---
+
+### <a id="c3"></a>C3 — Unit rate is taken from the request, not the contractual BOQ
+
+**Severity:** Security / correctness.
+
+`AddIpaItemDto` requires the client to send `unitRateSnapshot`, and `IpaService.addItem`
+stores it verbatim. Nothing compares it to the BOQ node's `unitRate`.
+
+The service is already reading that exact row one line earlier:
+
+```ts
+// ipa.service.ts:148 — the node is loaded, but only for measurementMethod
+const boqNode = await prisma.boqNode.findUnique({
+  where: { id: dto.boqNodeId },
+  select: { measurementMethod: true },
+});
+```
+
+So any authenticated user can claim any quantity at any price they choose, and the field
+named "snapshot" records the client's number rather than the contract's. `periodAmount` is
+then computed from it server-side, which lends a fabricated rate the appearance of a
+server-derived total.
+
+**What the frontend needs:** add `unitRate` and `currency` to that `select` and take both
+from the node. The frontend will stop sending `unitRateSnapshot` once it does.
+
+Note this also silently ignores the contract's `boqVersionId`: an item can reference a BOQ
+node from any version, including a draft one, rather than the baselined version the
+contract is bound to.
+
+---
+
+### <a id="c1"></a>C1 — Retention and advance-recovery arithmetic is delegated to the browser
+
+**Severity:** Blocking for the IPC issuance UI. This is a design question, not a bug.
+
+`CreateIpcDto` requires the client to compute and send:
+
+- `certifiedTotal` — the gross certified amount
+- for every deduction: `deductionType`, `rate`, `basis` and `amount`
+
+`IpcService.issue` recomputes each item's `certifiedAmount` from the application item's
+`unitRateSnapshot` — correctly, in `Decimal` — but stores `certifiedTotal` and every
+deduction amount exactly as received, with no cross-check against the item sum it just
+calculated. `IpcDetail` then returns both numbers, which can disagree.
+
+The backend holds everything needed to derive these itself: `ContractRetentionTerms`
+(`retentionRate`, `retentionCap`, `retentionSplitOnPC`) and `ContractAdvanceTerm`
+(`recoveryRate`) hang off the contract that owns the application.
+
+`apps/web/CLAUDE.md:347` says a wrong retention calculation costs real money for real
+people. This API asks the frontend to own that calculation, and `apps/api/CLAUDE.md` is
+explicit that financial derivation belongs server-side.
+
+**What the frontend needs — in preference order:**
+
+1. The API derives `certifiedTotal` from the certified items, and derives retention and
+   advance-recovery deductions from the contract terms. The client sends certified
+   quantities and variance reasons only — the two things a human actually decides.
+2. Failing that, the API validates what it is sent: reject a `certifiedTotal` that does not
+   equal the item sum, and a retention `amount` that does not match `basis × retentionRate`.
+   The arithmetic still happens in the browser, but a mistake cannot be persisted.
+
+**Frontend impact:** the IPC issuance UI is sequenced last and will not be built until this
+is settled. Certificate *viewing* and supersession do not depend on it and will ship first.
+Manual deductions the user genuinely authors — an ad-hoc contra charge, for instance —
+should stay client-supplied under either option.
+
+---
+
+### <a id="c7"></a>C7 — A fully-settled certificate can never report `PAID`
+
+**Severity:** Correctness. A bug in shipped code.
+
+`getCertificatePaymentSummary` (`finance-prisma.repository.ts:71–94`) compares total
+allocations against the certificate's **gross** `certifiedTotal`:
+
+```ts
+const certTotal = Number(cert?.certifiedTotal ?? 0);   // gross, before deductions
+const totalAllocated = Number(alloc._sum.allocatedAmount ?? 0);
+if (totalAllocated >= certTotal) status = 'PAID';
+else if (totalAllocated > 0) status = 'PARTIALLY_PAID';
+```
+
+But a client pays the **net** — `certifiedTotal` minus retention, advance recovery and tax.
+`IpcService.findOne` already computes and returns exactly that figure as `netCertified`.
+
+So for any certificate carrying a deduction — which is every certificate on a contract with
+retention terms — allocations can only ever sum to the net, the comparison never succeeds,
+and the status is pinned at `PARTIALLY_PAID` forever. A 5% retention makes `PAID`
+unreachable. The only certificates that can reach `PAID` are those with no deductions at
+all.
+
+**Suggested fix:** compare against net certified, computed the same way `findOne` does.
+Worth a regression test asserting that a receipt equal to `netCertified` yields `PAID` on a
+certificate that carries a retention deduction.
+
+**Frontend impact:** the Receipts UI will show allocation amounts and remaining balance,
+which are trustworthy, but will not present this endpoint's `status` as settlement truth
+until it is fixed. Showing "partially paid" on a fully-paid certificate is the kind of
+plausible wrong number that gets a finance officer to stop trusting the system.
+
+---
+
+### <a id="c4"></a>C4 — No guard against over-claiming or a negative period quantity
+
+**Severity:** Correctness — and partly a domain question (see D4).
+
+`IpaService.addItem` computes `periodQuantity = cumulativeClaimed − previousEffectiveCertified`
+and stores it without constraining either side. Nothing checks:
+
+- `cumulativeClaimed` against the BOQ node's `quantity` — a line can be claimed well beyond
+  the contracted quantity with no warning;
+- that `cumulativeClaimed ≥ previousEffectiveCertified` — a lower figure yields a negative
+  `periodQuantity` and a negative `periodAmount`, silently.
+
+The negative case may well be legitimate — a claw-back after an over-certification is
+normal on measured contracts — which is why this needs a domain answer before the UI
+decides whether to block it, warn on it, or accept it silently. Over-claiming past the BOQ
+quantity is harder to justify and is likely a data-entry error worth rejecting.
+
+**What the frontend needs:** a decision on each case (see D4), then whatever validation
+follows from it. The form will mirror the server's rule rather than invent its own.
+
+---
+
+### <a id="c5"></a>C5 — Workflow policy is resolved but no approval instance is created
+
+**Severity:** Contract clarity. Not a defect — the behaviour is deliberate and commented.
+
+`IpaService.transition` (`ipa.service.ts:99`) resolves the `WorkflowRequirementPolicy` for
+`submit-for-approval` and `return-for-revision`, then changes the status directly:
+
+```ts
+// Enforce WorkflowRequirementPolicy. Resolver throws 422 if REQUIRED and no binding configured.
+// When a binding is found, transition proceeds — approval instance creation is Sprint 4+ work.
+```
+
+This is genuinely good news for the frontend: it means IPA lifecycle UI can be built now
+without waiting on B3 and B4, which is what unblocked this phase.
+
+Recording it because it changes what the buttons *mean* later. Today `approve-for-submission`
+approves. Once approval instances exist, `submit-for-approval` will produce a pending
+instance and approval will move to a different actor and a different screen.
+
+**What the frontend is doing about it:** lifecycle controls are built on one shared module
+(`getAvailableActions` + `useLifecycleCommand`) so the change lands in one place rather than
+across three detail screens. No further backend action needed — please just flag it on the
+ADR when the approval instance work is scheduled.
+
+---
+
+### <a id="c6"></a>C6 — Five more aggregates with no DTO in `@erp/types`
+
+Extends B12. `Client`, `Contract` (and its five sub-entities), `Ipa`, `Ipc` and `Receipt`
+are all consumed by the frontend with no shared DTO.
+
+Rather than scatter them, all wire shapes now live in one frontend-owned file,
+`apps/web/src/lib/api-types.ts`, explicitly marked as a mirror to be deleted when shared
+DTOs exist. Drift now has one place to be found instead of a dozen.
+
+**A cheaper ask than hand-writing DTOs:** the API exposes its full OpenAPI document at
+`/docs-json`, but every `@ApiResponse` is `{ status, description }` with no `type:`, so the
+spec describes request bodies accurately and says nothing about responses. Adding `type:`
+to the response decorators would let the frontend generate response types from the live
+spec and delete the mirror file permanently — a smaller change than authoring DTOs by hand,
+and one that cannot drift.
+
+---
+
+### <a id="c8"></a>C8 — `totalAllocated` returns a number, breaking the money-as-string rule
+
+`getCertificatePaymentSummary` returns `totalAllocated` as a JS number via `Number()`
+(`finance-prisma.repository.ts:86–87`), and `getTotalAllocated` (`:44–48`) does the same
+before using it in the over-allocation guard.
+
+Every other money field on the API is a decimal string. This is the same class as B7 —
+`Decimal` columns summed in binary floating point — and it means the over-allocation check
+at `finance.service.ts:59` is itself performed in floating point, on the value that decides
+whether a payment is accepted.
+
+**Suggested:** keep the sum in `Prisma.Decimal` and serialize as a string, consistent with
+`netCertified` and every other money field.
+
+---
+
 ## Domain questions — for Eng Ahmed Shirie
 
 ### <a id="d1"></a>D1 — Mixed-currency BOQ nodes sum into one meaningless total
@@ -368,6 +621,28 @@ settled. Showing a plausible wrong number is worse than showing none.
 
 ---
 
+### <a id="d4"></a>D4 — Can a payment application claim less than was already certified?
+
+Context for C4. An IPA line carries `cumulativeClaimed` — the total claimed to date, not
+this period — and the server derives the period figure by subtracting what the last
+effective certificate certified. Neither side is currently constrained.
+
+**Questions:**
+
+1. Can `cumulativeClaimed` legitimately be *lower* than `previousEffectiveCertified`,
+   producing a negative period amount? My assumption is yes — a claw-back after an
+   over-certification is normal on measured contracts — but I would rather not assume it.
+2. Should a claim be allowed to exceed the BOQ line's contracted quantity? Variations are
+   the usual answer, and this platform has no variation module yet, so I expect the answer
+   is "reject it for now" — but that decision belongs to you, not to me.
+3. If over-claiming is allowed, should the UI warn, require a note, or stay silent?
+
+This decides whether the IPA item form blocks the entry, warns and continues, or accepts it
+without comment. The form will implement whatever the API enforces — the request here is
+for the rule, not for UI advice.
+
+---
+
 ## Documentation
 
 ### <a id="d2"></a>D2 — `api-reference.md` gaps
@@ -385,6 +660,29 @@ oriented. Three corrections:
 
 ---
 
+### <a id="d3"></a>D3 — Documented request shapes that return `400`
+
+These matter more than ordinary doc drift, because the global `ValidationPipe` runs with
+`forbidNonWhitelisted: true` (`main.ts:18–23`). An unrecognised field is not ignored — it
+is a `400`. So a documented example body containing a field the DTO does not declare fails
+outright when copied.
+
+1. **`api-reference.md:283–293`, create client.** The example body includes
+   `"status": "ACTIVE"`, which `CreateClientDto` does not declare. Posting that example
+   verbatim returns `400`. The field should be removed from the example, or accepted by the
+   DTO.
+2. **`api-reference.md:276` and `apps/web/CLAUDE.md:84`, list clients.** Both document
+   `GET /clients (?status=ACTIVE)`. `ClientsController.findAll` takes no query parameters
+   and `ClientPrismaRepository.findAll` applies no status filter — the parameter is simply
+   ignored. Either implement the filter or drop it from both documents; the frontend
+   filters client-side meanwhile, as it does for projects (B8).
+3. **Contract lifecycle.** `ContractStatus` includes `TERMINATED`, and `POST
+   /contracts/:id/terminate` is documented, but the lifecycle chain shown in
+   `roadmap.md:61` and `apps/web/CLAUDE.md:130` ends at `CLOSED` and never mentions the
+   terminated state. Worth showing it as a terminal state alongside `CANCELLED`.
+
+---
+
 ## What the frontend is building meanwhile
 
 Delivered:
@@ -398,9 +696,22 @@ Delivered:
 - Projects: list, search and filter, create, edit (DRAFT), detail, all six lifecycle
   transitions, cancel, suspend and resume
 
+In progress — the Sprint 3 billing chain, built in this order:
+
+1. Clients
+2. Contracts, then contract commercial terms (retention, advances, guarantees, milestones)
+3. IPA — creation, item and deduction lines, lifecycle
+4. Receipts — recording and allocation against certificates
+5. IPC — viewing and supersession first; **issuance is gated on C1**
+
 Deferred pending the items above:
 
 - Project members UI — **B1**, **B2**
 - Any approval/workflow UI — **B3**, **B4**
 - BOQ parent totals for mixed-currency subtrees — **D1**
 - BOQ row reordering — **B14**
+- IPC issuance — **C1** (and **C2** before any certificate is written in anger)
+- Certificate settlement status in the Receipts UI — **C7**
+
+The two security items, **C2** and **C3**, are independent of all of this. Both should be
+fixed regardless of what the frontend builds.
