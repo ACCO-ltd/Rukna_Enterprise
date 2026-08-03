@@ -7,8 +7,9 @@ import { z } from 'zod';
 import { useTranslations } from 'next-intl';
 import { Button, FormField, Input } from '@erp/ui';
 
+import { LanguageSwitcher } from '@/components/language-switcher';
+
 import { useLogin } from '../hooks/use-login';
-import { LanguageSwitcher } from './language-switcher';
 
 type LoginFormData = { email: string; password: string };
 

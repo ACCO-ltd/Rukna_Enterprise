@@ -22,6 +22,15 @@ vi.mock('next/navigation', () => ({
 }));
 
 const messages = {
+  common: {
+    language: {
+      label: 'Language',
+      english: 'English',
+      arabic: 'العربية',
+      switchToEnglish: 'Switch language to English',
+      switchToArabic: 'Switch language to Arabic',
+    },
+  },
   auth: {
     login: {
       companyName: 'ACCO Ltd',
@@ -35,11 +44,6 @@ const messages = {
       tenantLabel: 'Construction & Contracting',
       securityTitle: 'Secure tenant access',
       securityDescription: 'Your session is protected and scoped to your organization.',
-      languageLabel: 'Language',
-      englishLanguage: 'English',
-      arabicLanguage: 'العربية',
-      switchToEnglish: 'Switch language to English',
-      switchToArabic: 'Switch language to Arabic',
       emailLabel: 'Email address',
       emailPlaceholder: 'you@company.com',
       passwordLabel: 'Password',

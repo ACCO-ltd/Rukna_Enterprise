@@ -1,6 +1,14 @@
 {
+  "shell": {
+    "primaryNavLabel": "Main navigation",
+    "openMenu": "Open navigation menu",
+    "closeMenu": "Close navigation menu",
+    "accountMenuLabel": "Account menu",
+    "skipToContent": "Skip to main content"
+  },
   "nav": {
     "dashboard": "Dashboard",
+    "projects": "Projects",
     "users": "Users",
     "roles": "Roles",
     "permissions": "Permissions",

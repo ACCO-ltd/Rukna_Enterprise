@@ -14,6 +14,13 @@
   "import": "استيراد",
   "required": "مطلوب",
   "optional": "اختياري",
+  "language": {
+    "label": "اللغة",
+    "english": "English",
+    "arabic": "العربية",
+    "switchToEnglish": "تغيير اللغة إلى الإنجليزية",
+    "switchToArabic": "تغيير اللغة إلى العربية"
+  },
   "error": {
     "generic": "حدث خطأ ما. يرجى المحاولة مرة أخرى.",
     "network": "خطأ في الشبكة. تحقق من اتصالك.",

@@ -1,6 +1,14 @@
 {
+  "shell": {
+    "primaryNavLabel": "التنقل الرئيسي",
+    "openMenu": "فتح قائمة التنقل",
+    "closeMenu": "إغلاق قائمة التنقل",
+    "accountMenuLabel": "قائمة الحساب",
+    "skipToContent": "تخطي إلى المحتوى الرئيسي"
+  },
   "nav": {
     "dashboard": "لوحة التحكم",
+    "projects": "المشاريع",
     "users": "المستخدمون",
     "roles": "الأدوار",
     "permissions": "الصلاحيات",

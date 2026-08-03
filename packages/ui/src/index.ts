@@ -1,3 +1,5 @@
+export { Alert } from './components/alert';
+export type { AlertProps } from './components/alert';
 export { Button } from './components/button';
 export type { ButtonProps } from './components/button';
 export { Input } from './components/input';
