@@ -20,7 +20,12 @@ import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { formatMoney } from '@/lib/format';
 
 import { toDecimalString } from '../contract-form-payload';
-import { advanceBasisOf, fractionToPercent, isValidPercent, percentToFraction } from '../contract-terms';
+import {
+  advanceBasisOf,
+  fractionToPercent,
+  isValidPercent,
+  percentToFraction,
+} from '../contract-terms';
 import { useAddAdvanceTerm, useRemoveAdvanceTerm } from '../hooks/use-contract-terms';
 import type { ContractAdvanceTerm } from '../types';
 
@@ -88,17 +93,23 @@ export function AdvanceTermsPanel({
                   {term.description ? (
                     <p className="text-xs text-muted-foreground">{term.description}</p>
                   ) : null}
-                  <p className="mt-1 text-xs text-muted-foreground" dir="ltr">
+                  {/* Each figure is wrapped in <bdi>. Concatenating a number with Arabic
+                      text in one line lets the bidi algorithm treat the trailing `%` as a
+                      neutral character and move it to the wrong side — this line rendered
+                      "10%" on one side and "%10" on the other before isolation. */}
+                  <p className="mt-1 text-xs text-muted-foreground">
                     {/* A term with neither an amount nor a percentage is storable — the DTO
                         enforces no relationship between them — and nothing downstream can
                         price it. Say so rather than rendering a blank. */}
-                    {basis === 'amount'
-                      ? formatMoney(term.amount, currency, locale)
-                      : basis === 'percentage'
-                        ? `${fractionToPercent(term.percentage)}%`
-                        : t('noBasis')}
+                    <bdi>
+                      {basis === 'amount'
+                        ? formatMoney(term.amount, currency, locale)
+                        : basis === 'percentage'
+                          ? `${fractionToPercent(term.percentage)}%`
+                          : t('noBasis')}
+                    </bdi>
                     {' · '}
-                    {t('recoveryRate')}: {fractionToPercent(term.recoveryRate)}%
+                    {t('recoveryRate')}: <bdi>{fractionToPercent(term.recoveryRate)}%</bdi>
                   </p>
                 </div>
 

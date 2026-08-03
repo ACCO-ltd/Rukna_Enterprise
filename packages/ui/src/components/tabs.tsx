@@ -27,8 +27,13 @@ export const TabsList = React.forwardRef<
     ref={ref}
     // Scrolls rather than wraps: five tabs on a narrow screen stay on one line and are
     // swiped, which reads as a tab strip. Wrapping to a second row reads as a broken menu.
+    //
+    // `overflow-y-hidden` is not decorative. Setting one axis to `auto` forces the other
+    // from `visible` to `auto`, and the triggers' `-mb-px` makes the content one pixel
+    // taller than the strip — so the browser rendered a vertical scrollbar next to the
+    // tabs. Caught in browser QA; it showed in both directions.
     className={cn(
-      'flex w-full items-center gap-1 overflow-x-auto border-b border-border',
+      'flex w-full items-center gap-1 overflow-x-auto overflow-y-hidden border-b border-border',
       className,
     )}
     {...props}

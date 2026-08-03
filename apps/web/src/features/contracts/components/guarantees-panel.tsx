@@ -142,7 +142,12 @@ function GuaranteeCard({
             </Badge>
             {lapsed ? <Badge tone="warning">{t('lapsed')}</Badge> : null}
           </div>
-          <p className="mt-1 text-sm font-semibold text-foreground" dir="ltr">
+          {/* No `dir` on money. `Intl.NumberFormat` already emits a right-to-left mark for
+              Arabic, so the string lays itself out correctly by inheriting the page
+              direction — forcing `ltr` here made the same amount render one way inside
+              this panel and another in the page heading. `dir="ltr"` is for genuinely
+              latin-script identifiers: tax numbers, emails, contract codes. */}
+          <p className="mt-1 text-sm font-semibold text-foreground">
             {formatMoney(guarantee.amount, guarantee.currency, locale)}
           </p>
         </div>
