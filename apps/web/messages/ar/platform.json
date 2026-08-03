@@ -16,6 +16,30 @@
     "settings": "الإعدادات",
     "auditLog": "سجل المراجعة"
   },
+  "dashboard": {
+    "title": "لوحة التحكم",
+    "portfolioHeading": "المحفظة",
+    "totalProjects": "جميع المشاريع",
+    "recentHeading": "أُنشئت مؤخراً",
+    "empty": "لا توجد مشاريع بعد.",
+    "emptyHint": "ستظهر هنا المشاريع التي تنشئها.",
+    "loadFailed": "تعذّر تحميل المشاريع.",
+    "retry": "إعادة المحاولة",
+    "noContractValue": "غير محدّد",
+    "viewAll": "عرض جميع المشاريع"
+  },
+  "projects": {
+    "status": {
+      "DRAFT": "مسودة",
+      "APPROVED": "معتمد",
+      "MOBILIZING": "قيد التجهيز",
+      "ACTIVE": "نشط",
+      "PRACTICAL_COMPLETION": "الإنجاز الفعلي",
+      "CLOSEOUT": "الإقفال",
+      "CLOSED": "مغلق",
+      "CANCELLED": "ملغي"
+    }
+  },
   "users": {
     "title": "المستخدمون",
     "addUser": "إضافة مستخدم",

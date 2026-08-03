@@ -1,13 +1,17 @@
 import { getTranslations } from 'next-intl/server';
 
-export default async function DashboardPage() {
-  const t = await getTranslations('platform.nav');
+import { DashboardContent } from '@/features/dashboard/components/dashboard-content';
 
-  // Content lands in PR 3 — status counts and recent projects from GET /projects.
-  // The shell (header, navigation, main landmark) comes from src/app/(app)/layout.tsx.
+export default async function DashboardPage() {
+  const t = await getTranslations('platform.dashboard');
+
   return (
     <div className="mx-auto w-full max-w-7xl">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('dashboard')}</h1>
+      <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
+
+      <div className="mt-6">
+        <DashboardContent />
+      </div>
     </div>
   );
 }

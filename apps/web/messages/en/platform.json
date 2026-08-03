@@ -16,6 +16,30 @@
     "settings": "Settings",
     "auditLog": "Audit Log"
   },
+  "dashboard": {
+    "title": "Dashboard",
+    "portfolioHeading": "Portfolio",
+    "totalProjects": "All projects",
+    "recentHeading": "Recently created",
+    "empty": "No projects yet.",
+    "emptyHint": "Projects you create will appear here.",
+    "loadFailed": "Could not load projects.",
+    "retry": "Try again",
+    "noContractValue": "Not set",
+    "viewAll": "View all projects"
+  },
+  "projects": {
+    "status": {
+      "DRAFT": "Draft",
+      "APPROVED": "Approved",
+      "MOBILIZING": "Mobilizing",
+      "ACTIVE": "Active",
+      "PRACTICAL_COMPLETION": "Practical completion",
+      "CLOSEOUT": "Closeout",
+      "CLOSED": "Closed",
+      "CANCELLED": "Cancelled"
+    }
+  },
   "users": {
     "title": "Users",
     "addUser": "Add User",
