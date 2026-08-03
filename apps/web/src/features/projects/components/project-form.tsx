@@ -10,19 +10,33 @@ import { Alert, Button, FormField, Input, Select, Textarea } from '@erp/ui';
 import { ApiError } from '@/lib/api-client';
 
 import { useCreateProject } from '../hooks/use-create-project';
+import { useUpdateProject } from '../hooks/use-update-project';
 import {
   EMPTY_PROJECT_FORM,
   toCreateProjectPayload,
+  toFormValues,
+  toUpdateProjectPayload,
   type ProjectFormValues,
 } from '../project-form-payload';
+import type { Project } from '../types';
 
 /** Currencies offered in the picker, matching the `common.currency` message keys. */
 const CURRENCIES = ['USD', 'SOS', 'AED'] as const;
 
-export function ProjectForm() {
+interface ProjectFormProps {
+  /** Present in edit mode. The API accepts edits only while the project is in DRAFT. */
+  project?: Project;
+}
+
+export function ProjectForm({ project }: ProjectFormProps = {}) {
   const t = useTranslations('platform.projects.create');
+  const tActions = useTranslations('common');
   const tCurrency = useTranslations('common.currency');
-  const { mutate, isPending, error } = useCreateProject();
+  const isEdit = project !== undefined;
+
+  const create = useCreateProject();
+  const update = useUpdateProject(project?.id ?? '');
+  const { isPending, error } = isEdit ? update : create;
 
   /**
    * Client validation deliberately mirrors CreateProjectDto's constraints (code 1–30,
@@ -64,11 +78,12 @@ export function ProjectForm() {
         { message: t('endBeforeStart'), path: ['expectedEndDate'] },
       ),
     ),
-    defaultValues: EMPTY_PROJECT_FORM,
+    defaultValues: project ? toFormValues(project) : EMPTY_PROJECT_FORM,
   });
 
   const onSubmit = (values: ProjectFormValues) => {
-    mutate(toCreateProjectPayload(values));
+    if (isEdit) update.mutate(toUpdateProjectPayload(values));
+    else create.mutate(toCreateProjectPayload(values));
   };
 
   // 409 is the one error with a specific, actionable cause: the code is taken.
@@ -93,6 +108,10 @@ export function ProjectForm() {
             placeholder={t('codePlaceholder')}
             aria-describedby="code-hint"
             aria-invalid={Boolean(errors.code)}
+            // Immutable after creation — shown read-only rather than hidden, because the
+            // code is how people identify the project.
+            readOnly={isEdit}
+            className={isEdit ? 'bg-muted text-muted-foreground' : undefined}
             {...register('code')}
           />
           <p id="code-hint" className="text-xs text-muted-foreground">
@@ -173,10 +192,10 @@ export function ProjectForm() {
 
       <div className="flex flex-col gap-3 border-t border-border pt-5 sm:flex-row-reverse sm:justify-start">
         <Button type="submit" disabled={isPending}>
-          {isPending ? t('submitting') : t('submit')}
+          {isPending ? t('submitting') : isEdit ? tActions('save') : t('submit')}
         </Button>
         <Button variant="outline" asChild>
-          <Link href="/projects">{t('cancel')}</Link>
+          <Link href={isEdit ? `/projects/${project.id}` : '/projects'}>{t('cancel')}</Link>
         </Button>
       </div>
     </form>

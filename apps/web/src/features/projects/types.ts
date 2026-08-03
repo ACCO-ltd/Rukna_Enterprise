@@ -1,4 +1,4 @@
-import { ProjectStatus } from '@erp/types';
+import { ProjectStatus, type ProjectRole } from '@erp/types';
 
 /**
  * Wire shape of a project as returned by `GET /projects`.
@@ -31,6 +31,48 @@ export interface Project {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ProjectSuspension {
+  id: string;
+  projectId: string;
+  reason: string;
+  suspendedAt: string;
+  suspendedBy: string;
+  resumedAt: string | null;
+  resumedBy: string | null;
+}
+
+export interface ProjectMemberRoleAssignment {
+  id: string;
+  role: ProjectRole;
+  assignedAt: string;
+}
+
+export interface ProjectMember {
+  id: string;
+  userId: string;
+  joinedAt: string;
+  joinedBy: string;
+  removedAt: string | null;
+  roles: ProjectMemberRoleAssignment[];
+  user: { id: string; firstName: string; lastName: string; email: string };
+}
+
+/**
+ * Shape of `GET /projects/:id`, which includes active members and any active suspension.
+ *
+ * Both collections are pre-filtered by the API: `members` excludes removed members and
+ * `suspensions` contains at most the one unresolved record. So a non-empty `suspensions`
+ * array means the project is suspended right now — it is not a history.
+ *
+ * `members` is always empty in practice today: no project can be given a first member
+ * (B1). The field is typed correctly so the members UI is a rendering change once the
+ * backend fix lands, not a modelling one.
+ */
+export interface ProjectDetail extends Project {
+  members: ProjectMember[];
+  suspensions: ProjectSuspension[];
 }
 
 /** Lifecycle order, used to present status groupings in a stable, meaningful sequence. */

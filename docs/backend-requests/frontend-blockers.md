@@ -322,9 +322,8 @@ Delivered:
 - App shell: navigation, i18n/RTL, responsive layout
 - Dashboard: status counts and recent projects, aggregated client-side (see B8, B10)
 
-In progress:
-
-- Projects: list, create, detail, lifecycle transitions, suspend/resume
+- Projects: list, search and filter, create, edit (DRAFT), detail, all six lifecycle
+  transitions, cancel, suspend and resume
 
 Deferred pending the items above:
 
