@@ -30,7 +30,7 @@ const CONFIRM_KEY: Record<ProjectCommand, string> = {
 };
 
 export function ProjectActionsPanel({ project }: { project: ProjectDetail }) {
-  const t = useTranslations('platform.actions');
+  const t = useTranslations('platform.projects.actions');
   const actions = getAvailableActions(project);
 
   const [pending, setPending] = useState<PendingAction | null>(null);

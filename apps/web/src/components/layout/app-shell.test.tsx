@@ -44,28 +44,6 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-const messages = {
-  common: {
-    language: {
-      label: 'Language',
-      english: 'English',
-      arabic: 'العربية',
-      switchToEnglish: 'Switch language to English',
-      switchToArabic: 'Switch language to Arabic',
-    },
-  },
-  auth: { logout: { button: 'Sign out' } },
-  platform: {
-    shell: {
-      primaryNavLabel: 'Main navigation',
-      openMenu: 'Open navigation menu',
-      closeMenu: 'Close navigation menu',
-      accountMenuLabel: 'Account menu',
-      skipToContent: 'Skip to main content',
-    },
-    nav: { dashboard: 'Dashboard', projects: 'Projects' },
-  },
-};
 
 function fakeJwt(): string {
   const payload = {
@@ -85,7 +63,7 @@ function renderShell() {
     <AppShell>
       <p>Page content</p>
     </AppShell>,
-    { messages },
+    {},
   );
 }
 

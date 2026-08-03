@@ -37,74 +37,6 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-const messages = {
-  common: { loading: 'Loading...' },
-  platform: {
-    projects: {
-      detail: {
-        notFound: 'This project does not exist, or you do not have access to it.',
-        editNotAllowed: 'This project can no longer be edited.',
-        editTitle: 'Edit project',
-        backToProject: 'Back to project',
-        backToList: 'Back to projects',
-        loadFailed: 'Could not load this project.',
-        overview: 'Overview',
-        client: 'Client',
-        contractValue: 'Contract value',
-        startDate: 'Start date',
-        expectedEnd: 'Expected completion',
-        created: 'Created',
-        description: 'Description',
-        notSet: 'Not set',
-        suspendedTitle: 'This project is suspended',
-        suspendedSince: 'Suspended on {date}',
-        suspendedBlocks: 'Lifecycle changes are blocked until the project is resumed.',
-        membersHeading: 'Team',
-        membersUnavailable: 'Team management is not available yet.',
-        membersUnavailableHint: 'The API cannot yet add the first member to a project.',
-        actionsHeading: 'Actions',
-      },
-      status: {
-        DRAFT: 'Draft',
-        APPROVED: 'Approved',
-        MOBILIZING: 'Mobilizing',
-        ACTIVE: 'Active',
-        PRACTICAL_COMPLETION: 'Practical completion',
-        CLOSEOUT: 'Closeout',
-        CLOSED: 'Closed',
-        CANCELLED: 'Cancelled',
-      },
-    },
-    actions: {
-      approve: 'Approve',
-      mobilize: 'Start mobilization',
-      activate: 'Activate',
-      'practical-completion': 'Record practical completion',
-      closeout: 'Begin closeout',
-      close: 'Close project',
-      edit: 'Edit',
-      cancel: 'Cancel project',
-      suspend: 'Suspend',
-      resume: 'Resume',
-      failed: 'That action could not be completed.',
-      confirmTitle: '{action}?',
-      confirmApprove: 'The project moves out of draft and can no longer be edited.',
-      confirmMobilize: 'Confirm the project is moving into mobilization.',
-      confirmActivate: 'Confirm the project is now active on site.',
-      confirmPracticalCompletion: 'Confirm the works have reached practical completion.',
-      confirmCloseout: 'Confirm the project is entering closeout.',
-      confirmClose: 'The project will be closed.',
-      confirmCancel: 'Cancelling a project cannot be undone.',
-      reasonLabel: 'Reason',
-      reasonRequired: 'Enter a reason',
-      reasonTooLong: 'Reason cannot exceed 1000 characters',
-      cancelReasonHint: 'Recorded in the audit trail.',
-      confirm: 'Confirm',
-      working: 'Working...',
-      dismiss: 'Cancel',
-    },
-  },
-};
 
 function suspension(overrides: Partial<ProjectSuspension> = {}): ProjectSuspension {
   return {
@@ -154,7 +86,7 @@ describe('ProjectDetail — loading and failure', () => {
   it('announces loading', () => {
     vi.mocked(getProject).mockReturnValue(new Promise(() => {/* never settles */}));
 
-    renderWithProviders(<ProjectDetail id="p1" />, { messages });
+    renderWithProviders(<ProjectDetail id="p1" />);
 
     expect(screen.getByRole('status')).toHaveTextContent('Loading...');
   });
@@ -163,7 +95,7 @@ describe('ProjectDetail — loading and failure', () => {
   it.each([403, 404])('reports %s as not found', async (status) => {
     vi.mocked(getProject).mockRejectedValue(new ApiError(status, 'nope'));
 
-    renderWithProviders(<ProjectDetail id="p1" />, { messages });
+    renderWithProviders(<ProjectDetail id="p1" />);
 
     expect(
       await screen.findByText('This project does not exist, or you do not have access to it.'),
@@ -173,7 +105,7 @@ describe('ProjectDetail — loading and failure', () => {
   it('reports other failures as a load error', async () => {
     vi.mocked(getProject).mockRejectedValue(new ApiError(500, 'boom'));
 
-    renderWithProviders(<ProjectDetail id="p1" />, { messages });
+    renderWithProviders(<ProjectDetail id="p1" />);
 
     expect(await screen.findByText('Could not load this project.')).toBeInTheDocument();
   });
@@ -183,7 +115,7 @@ describe('ProjectDetail — available actions', () => {
   it('offers approve, edit, suspend and cancel for a draft', async () => {
     vi.mocked(getProject).mockResolvedValue(project());
 
-    renderWithProviders(<ProjectDetail id="p1" />, { messages });
+    renderWithProviders(<ProjectDetail id="p1" />);
 
     expect(await screen.findByRole('button', { name: 'Approve' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Edit' })).toBeInTheDocument();
@@ -194,7 +126,7 @@ describe('ProjectDetail — available actions', () => {
   it('offers nothing but the record for a closed project', async () => {
     vi.mocked(getProject).mockResolvedValue(project({ status: ProjectStatus.CLOSED }));
 
-    renderWithProviders(<ProjectDetail id="p1" />, { messages });
+    renderWithProviders(<ProjectDetail id="p1" />);
 
     await screen.findByText('Al-Baraka Tower');
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
@@ -208,7 +140,7 @@ describe('ProjectDetail — available actions', () => {
       project({ status: ProjectStatus.MOBILIZING, suspensions: [suspension()] }),
     );
 
-    renderWithProviders(<ProjectDetail id="p1" />, { messages });
+    renderWithProviders(<ProjectDetail id="p1" />);
 
     expect(await screen.findByText('This project is suspended')).toBeInTheDocument();
     expect(screen.getByText('Awaiting site access clearance')).toBeInTheDocument();
@@ -224,7 +156,7 @@ describe('ProjectDetail — running commands', () => {
     vi.mocked(getProject).mockResolvedValue(project());
     vi.mocked(runProjectCommand).mockResolvedValue(project({ status: ProjectStatus.APPROVED }));
 
-    renderWithProviders(<ProjectDetail id="p1" />, { messages });
+    renderWithProviders(<ProjectDetail id="p1" />);
 
     await user.click(await screen.findByRole('button', { name: 'Approve' }));
 
@@ -245,7 +177,7 @@ describe('ProjectDetail — running commands', () => {
     const user = userEvent.setup();
     vi.mocked(getProject).mockResolvedValue(project());
 
-    renderWithProviders(<ProjectDetail id="p1" />, { messages });
+    renderWithProviders(<ProjectDetail id="p1" />);
 
     await user.click(await screen.findByRole('button', { name: 'Approve' }));
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
@@ -260,7 +192,7 @@ describe('ProjectDetail — running commands', () => {
     const user = userEvent.setup();
     vi.mocked(getProject).mockResolvedValue(project({ status: ProjectStatus.ACTIVE }));
 
-    renderWithProviders(<ProjectDetail id="p1" />, { messages });
+    renderWithProviders(<ProjectDetail id="p1" />);
 
     await user.click(await screen.findByRole('button', { name: 'Suspend' }));
     await user.click(screen.getByRole('button', { name: 'Confirm' }));
@@ -280,7 +212,7 @@ describe('ProjectDetail — running commands', () => {
     const user = userEvent.setup();
     vi.mocked(getProject).mockResolvedValue(project());
 
-    renderWithProviders(<ProjectDetail id="p1" />, { messages });
+    renderWithProviders(<ProjectDetail id="p1" />);
 
     await user.click(await screen.findByRole('button', { name: 'Cancel project' }));
     await user.type(screen.getByLabelText('Reason'), 'Client withdrew funding');
@@ -297,7 +229,7 @@ describe('ProjectDetail — running commands', () => {
       project({ status: ProjectStatus.ACTIVE, suspensions: [suspension()] }),
     );
 
-    renderWithProviders(<ProjectDetail id="p1" />, { messages });
+    renderWithProviders(<ProjectDetail id="p1" />);
 
     await user.click(await screen.findByRole('button', { name: 'Resume' }));
 
@@ -315,7 +247,7 @@ describe('ProjectDetail — running commands', () => {
       new ApiError(400, 'Project is suspended.', 'BAD_REQUEST', ['Project is suspended.']),
     );
 
-    renderWithProviders(<ProjectDetail id="p1" />, { messages });
+    renderWithProviders(<ProjectDetail id="p1" />);
 
     await user.click(await screen.findByRole('button', { name: 'Approve' }));
     await user.click(screen.getByRole('button', { name: 'Confirm' }));
@@ -332,7 +264,7 @@ describe('ProjectDetail — team', () => {
   it('explains that team management is unavailable rather than showing an empty roster', async () => {
     vi.mocked(getProject).mockResolvedValue(project());
 
-    renderWithProviders(<ProjectDetail id="p1" />, { messages });
+    renderWithProviders(<ProjectDetail id="p1" />);
 
     expect(await screen.findByText('Team management is not available yet.')).toBeInTheDocument();
   });

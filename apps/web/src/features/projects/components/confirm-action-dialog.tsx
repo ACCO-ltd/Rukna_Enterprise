@@ -41,7 +41,7 @@ export function ConfirmActionDialog({
   onConfirm,
   onDismiss,
 }: ConfirmActionDialogProps) {
-  const t = useTranslations('platform.actions');
+  const t = useTranslations('platform.projects.actions');
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);

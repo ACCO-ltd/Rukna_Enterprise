@@ -38,7 +38,7 @@ export function LanguageSwitcher() {
         onClick={() => {
           changeLocale('en');
         }}
-        className="min-h-9 rounded px-3 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground aria-pressed:bg-surface aria-pressed:text-foreground aria-pressed:shadow-sm"
+        className="min-h-11 rounded px-3 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground aria-pressed:bg-surface aria-pressed:text-foreground aria-pressed:shadow-sm"
         aria-label={t('switchToEnglish')}
         aria-pressed={locale === 'en'}
       >
@@ -49,7 +49,7 @@ export function LanguageSwitcher() {
         onClick={() => {
           changeLocale('ar');
         }}
-        className="min-h-9 rounded px-3 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground aria-pressed:bg-surface aria-pressed:text-foreground aria-pressed:shadow-sm"
+        className="min-h-11 rounded px-3 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground aria-pressed:bg-surface aria-pressed:text-foreground aria-pressed:shadow-sm"
         aria-label={t('switchToArabic')}
         aria-pressed={locale === 'ar'}
       >

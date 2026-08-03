@@ -52,9 +52,10 @@ export function AppHeader({ onOpenMenu }: AppHeaderProps) {
           </p>
         ) : null}
 
+        {/* Default size, not `sm`: `sm` is 36px and the 44px touch-target floor is
+            mandatory on every viewport, not only mobile. */}
         <Button
           variant="outline"
-          size="sm"
           onClick={() => {
             logout();
           }}

@@ -25,35 +25,6 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-const messages = {
-  common: { loading: 'Loading...' },
-  platform: {
-    dashboard: {
-      title: 'Dashboard',
-      portfolioHeading: 'Portfolio',
-      totalProjects: 'All projects',
-      recentHeading: 'Recently created',
-      empty: 'No projects yet.',
-      emptyHint: 'Projects you create will appear here.',
-      loadFailed: 'Could not load projects.',
-      retry: 'Try again',
-      noContractValue: 'Not set',
-      viewAll: 'View all projects',
-    },
-    projects: {
-      status: {
-        DRAFT: 'Draft',
-        APPROVED: 'Approved',
-        MOBILIZING: 'Mobilizing',
-        ACTIVE: 'Active',
-        PRACTICAL_COMPLETION: 'Practical completion',
-        CLOSEOUT: 'Closeout',
-        CLOSED: 'Closed',
-        CANCELLED: 'Cancelled',
-      },
-    },
-  },
-};
 
 function project(overrides: Partial<Project> & { id: string }): Project {
   return {
@@ -83,7 +54,7 @@ describe('DashboardContent', () => {
   it('announces the loading state', () => {
     vi.mocked(listProjects).mockReturnValue(new Promise(() => {/* never settles */}));
 
-    renderWithProviders(<DashboardContent />, { messages });
+    renderWithProviders(<DashboardContent />);
 
     expect(screen.getByRole('status')).toHaveTextContent('Loading...');
   });
@@ -91,7 +62,7 @@ describe('DashboardContent', () => {
   it('shows the empty state when the organization has no projects', async () => {
     vi.mocked(listProjects).mockResolvedValue([]);
 
-    renderWithProviders(<DashboardContent />, { messages });
+    renderWithProviders(<DashboardContent />);
 
     expect(await screen.findByText('No projects yet.')).toBeInTheDocument();
   });
@@ -103,7 +74,7 @@ describe('DashboardContent', () => {
       project({ id: '3', status: ProjectStatus.DRAFT }),
     ]);
 
-    renderWithProviders(<DashboardContent />, { messages });
+    renderWithProviders(<DashboardContent />);
 
     expect(await screen.findByText('Al-Baraka Tower')).toBeInTheDocument();
 
@@ -121,7 +92,7 @@ describe('DashboardContent', () => {
       project({ id: '2', contractValue: null }),
     ]);
 
-    renderWithProviders(<DashboardContent />, { messages });
+    renderWithProviders(<DashboardContent />);
 
     expect(await screen.findByText('$4,500,000.00')).toBeInTheDocument();
     expect(screen.getByText('Not set')).toBeInTheDocument();
@@ -131,7 +102,7 @@ describe('DashboardContent', () => {
     const user = userEvent.setup();
     vi.mocked(listProjects).mockRejectedValue(new Error('network'));
 
-    renderWithProviders(<DashboardContent />, { messages });
+    renderWithProviders(<DashboardContent />);
 
     expect(await screen.findByText('Could not load projects.')).toBeInTheDocument();
 
