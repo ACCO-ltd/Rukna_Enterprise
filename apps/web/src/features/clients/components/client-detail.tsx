@@ -71,16 +71,20 @@ export function ClientDetail({ clientId }: { clientId: string }) {
             <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
               {displayName}
             </h1>
-            {/* When the UI language and the name language differ, show the other name
-                underneath rather than hiding it — invoices and contracts may use either. */}
-            {client.nameAr && client.name !== displayName ? (
-              <p className="text-sm text-muted-foreground" dir="rtl" lang="ar">
-                {client.nameAr}
-              </p>
-            ) : null}
-            {locale === 'ar' && client.nameAr ? (
-              <p className="text-sm text-muted-foreground" dir="ltr" lang="en">
-                {client.name}
+            {/* The heading shows the name in the UI language; this line shows the OTHER
+                one, because a contract or invoice may carry either and staff need to
+                recognise both. Keyed off the locale rather than a name comparison: an
+                earlier version compared `name !== displayName`, which rendered the Arabic
+                name twice in Arabic and omitted it entirely in English. */}
+            {client.nameAr ? (
+              <p className="text-sm text-muted-foreground">
+                {/* <bdi> isolates the opposite-direction text so it renders correctly
+                    without dragging the line to the other edge — putting `dir` on the <p>
+                    changes its block alignment too, which left the secondary name
+                    floating far from the heading it belongs to. */}
+                <bdi dir={locale === 'ar' ? 'ltr' : 'rtl'} lang={locale === 'ar' ? 'en' : 'ar'}>
+                  {locale === 'ar' ? client.name : client.nameAr}
+                </bdi>
               </p>
             ) : null}
           </div>
