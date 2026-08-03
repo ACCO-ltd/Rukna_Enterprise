@@ -8,7 +8,7 @@ import {
   toUpdateNodePayload,
   type NodeFormValues,
 } from './node-form';
-import type { BoqTreeNode } from './types';
+import { testNode } from './test-node';
 
 function form(overrides: Partial<NodeFormValues> = {}): NodeFormValues {
   return { ...EMPTY_NODE_FORM, code: '01.01', description: 'Excavation', ...overrides };
@@ -147,14 +147,8 @@ describe('toUpdateNodePayload', () => {
 });
 
 describe('toNodeFormValues', () => {
-  const node: BoqTreeNode = {
+  const node = testNode({
     id: 'n1',
-    boqId: 'b1',
-    versionId: 'v1',
-    parentId: null,
-    path: 'n1',
-    depth: 0,
-    sortOrder: 1,
     code: '01.01',
     description: 'Excavation',
     descriptionAr: 'حفر',
@@ -164,12 +158,8 @@ describe('toNodeFormValues', () => {
     currency: 'USD',
     totalAmount: '54000.00',
     isLeaf: true,
-    originNodeId: null,
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:00.000Z',
-    children: [],
     computedTotal: 54000,
-  };
+  });
 
   it('fills the form from an existing node', () => {
     expect(toNodeFormValues(node)).toEqual({
