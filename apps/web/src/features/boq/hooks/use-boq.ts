@@ -4,7 +4,14 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 
 import { ApiError } from '@/lib/api-client';
 
-import { getBoq, getBoqTree, initializeBoq } from '../api/boq-api';
+import {
+  baselineVersion,
+  cancelDraftVersion,
+  createDraftVersion,
+  getBoq,
+  getBoqTree,
+  initializeBoq,
+} from '../api/boq-api';
 import type { Boq, BoqTreeNode } from '../types';
 
 export const boqKeys = {
@@ -43,12 +50,35 @@ export function useBoqTree(
 }
 
 export function useInitializeBoq(projectId: string) {
+  // `void` so callers can write `mutate()` — this command takes no variables.
+  return useBoqMutation<void>(projectId, () => initializeBoq(projectId));
+}
+
+/**
+ * Every versioning command reshuffles which version is the draft and which is approved, and
+ * can change node membership (creating a draft copies the approved nodes). Invalidating the
+ * whole BOQ key rather than patching the cache keeps the summary, the version list and
+ * every cached tree consistent with each other.
+ */
+function useBoqMutation<TArgs>(projectId: string, run: (args: TArgs) => Promise<unknown>) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => initializeBoq(projectId),
+    mutationFn: run,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: boqKeys.all(projectId) });
     },
   });
+}
+
+export function useBaselineVersion(projectId: string) {
+  return useBoqMutation(projectId, (versionId: string) => baselineVersion(projectId, versionId));
+}
+
+export function useCancelDraftVersion(projectId: string) {
+  return useBoqMutation(projectId, (versionId: string) => cancelDraftVersion(projectId, versionId));
+}
+
+export function useCreateDraftVersion(projectId: string) {
+  return useBoqMutation(projectId, (notes: string) => createDraftVersion(projectId, notes));
 }

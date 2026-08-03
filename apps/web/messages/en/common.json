@@ -45,5 +45,12 @@
     "usd": "USD",
     "sos": "SOS",
     "aed": "AED"
+  },
+  "confirmDialog": {
+    "reasonLabel": "Reason",
+    "reasonRequired": "Enter a reason",
+    "reasonTooLong": "Reason cannot exceed {max} characters",
+    "working": "Working...",
+    "dismiss": "Cancel"
   }
 }

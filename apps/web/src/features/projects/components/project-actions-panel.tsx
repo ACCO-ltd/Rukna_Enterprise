@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Button } from '@erp/ui';
 
+import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { ApiError } from '@/lib/api-client';
 
 import {
@@ -15,7 +16,6 @@ import {
 } from '../hooks/use-project';
 import { getAvailableActions, type ProjectCommand } from '../project-actions';
 import type { ProjectDetail } from '../types';
-import { ConfirmActionDialog } from './confirm-action-dialog';
 
 type PendingAction = { kind: 'advance'; command: ProjectCommand } | { kind: 'cancel' } | { kind: 'suspend' };
 
@@ -139,8 +139,14 @@ export function ProjectActionsPanel({ project }: { project: ProjectDetail }) {
           confirmLabel={t('confirm')}
           // Cancel and suspend both record a reason; the API requires the field and it is
           // the only explanation that reaches the audit trail.
-          requireReason={pending.kind !== 'advance'}
-          reasonHint={pending.kind === 'cancel' ? t('cancelReasonHint') : undefined}
+          reason={
+            pending.kind === 'advance'
+              ? undefined
+              : {
+                  required: true,
+                  ...(pending.kind === 'cancel' ? { hint: t('cancelReasonHint') } : {}),
+                }
+          }
           isPending={activeMutation.isPending}
           errorMessage={
             activeMutation.isError ? errorText(activeMutation.error, t('failed')) : undefined
