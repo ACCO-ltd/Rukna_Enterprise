@@ -29,6 +29,7 @@ Line references are against commit `e1f2139`.
 | [B8](#b8) | Scale | Projects | No pagination, search, or sort |
 | [B9](#b9) | Gap | Users | No way to persist a language preference |
 | [B10](#b10) | Gap | Projects | No summary/aggregate endpoint |
+| [B12](#b12) | Gap | Types | `@erp/types` exports no Project DTO |
 | [D1](#d1) | **Domain** | BOQ | Mixed-currency nodes sum into one meaningless total |
 | [D2](#d2) | Docs | — | `api-reference.md` inaccuracies |
 
@@ -246,6 +247,28 @@ remove that, and becomes necessary once B8 does.
 
 Not urgent — raised so it is on the roadmap rather than discovered later.
 
+### <a id="b12"></a>B12 — `@erp/types` exports no Project DTO
+
+`apps/web/CLAUDE.md:170` instructs the frontend to import shared types and never redefine
+them locally — the right rule, and one we want to follow. But `packages/types` exports the
+`ProjectStatus`, `ProjectRole` and `BoqVersionStatus` enums with no accompanying record
+shapes, and `packages/types` is backend-owned.
+
+So `apps/web/src/features/projects/types.ts` declares the `Project` wire shape locally,
+with a comment pointing here. That file is now a second definition of a backend contract
+and will drift the first time a column is added.
+
+**What the frontend needs:** DTOs in `@erp/types` for the shapes the API actually returns,
+starting with `Project`, then `ProjectMember`, `Boq`, `BoqVersion` and `BoqTreeNode`.
+
+Two details that matter for the DTO to be usable as-is:
+
+- `Decimal` columns serialize as **strings** (`contractValue: "4500000.00"`), not numbers.
+  The DTO should say `string`, matching the wire format rather than the Prisma type.
+- `DateTime` columns serialize as ISO strings, not `Date` objects. Note that the existing
+  `UserDto` and `OrganizationDto` declare `createdAt: Date`, which is wrong for anything
+  that has been through `JSON.parse` — worth correcting at the same time.
+
 ---
 
 ## Domain questions — for Eng Ahmed Shirie
@@ -293,11 +316,14 @@ oriented. Three corrections:
 
 ## What the frontend is building meanwhile
 
-Unblocked and in progress:
+Delivered:
 
 - Auth hardening: silent refresh, session bootstrap, correct logout, host-derived tenant
 - App shell: navigation, i18n/RTL, responsive layout
-- Dashboard: status counts and recent projects
+- Dashboard: status counts and recent projects, aggregated client-side (see B8, B10)
+
+In progress:
+
 - Projects: list, create, detail, lifecycle transitions, suspend/resume
 
 Deferred pending the items above:
