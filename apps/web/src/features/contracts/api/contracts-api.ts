@@ -1,4 +1,4 @@
-import type { BillingModel } from '@erp/types';
+import type { AdvanceType, BillingModel, GuaranteeStatus } from '@erp/types';
 
 import { apiClient } from '@/lib/api-client';
 
@@ -103,5 +103,135 @@ export function terminateContract(id: string, reason: string): Promise<Contract>
   return apiClient<Contract>(`/contracts/${id}/terminate`, {
     method: 'POST',
     body: JSON.stringify({ reason }),
+  });
+}
+
+// ─── Commercial terms ────────────────────────────────────────────────────────────
+//
+// None of the endpoints below is gated on contract status: the service calls
+// `requireContract` and nothing else, so the API would attach a new advance term to a
+// contract cancelled last year. `canEditTerms` in `contract-terms.ts` is the UI's own
+// guard, and it is stated as such there.
+
+/**
+ * Sets or replaces the retention terms. Upsert — there is at most one per contract, keyed
+ * on `contractId`, so sending this twice corrects rather than duplicates.
+ *
+ * ⚠ `retentionSplitOnPc` — lowercase `c`. The RESPONSE spells the same field
+ * `retentionSplitOnPC`. Echoing the response shape back is a 400
+ * (`property retentionSplitOnPC should not exist`), verified against the running API.
+ * Raised as C10.
+ *
+ * All three rates are Decimal(5,4) FRACTIONS: 5% is `"0.0500"`. See `contract-terms.ts`.
+ */
+export interface SetRetentionTermsPayload {
+  retentionRate: string;
+  retentionCap: string;
+  retentionSplitOnPc: string;
+  retentionReleasedAt?: string;
+}
+
+export function setRetentionTerms(
+  contractId: string,
+  payload: SetRetentionTermsPayload,
+): Promise<unknown> {
+  return apiClient(`/contracts/${contractId}/retention-terms`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * `amount` and `percentage` are alternatives. The DTO marks both optional and enforces no
+ * relationship, so the API accepts a term with both or with neither — the form requires
+ * exactly one, because a term with neither cannot be priced.
+ *
+ * `recoveryRate` is a Decimal(5,4) fraction: 10% recovered per certificate is `"0.1000"`.
+ */
+export interface AddAdvanceTermPayload {
+  advanceType: AdvanceType;
+  description?: string;
+  amount?: string;
+  percentage?: string;
+  recoveryRate: string;
+}
+
+export function addAdvanceTerm(
+  contractId: string,
+  payload: AddAdvanceTermPayload,
+): Promise<unknown> {
+  return apiClient(`/contracts/${contractId}/advance-terms`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * Removes an advance term.
+ *
+ * The API deletes by `termId` alone without checking it belongs to `contractId`
+ * (`contract-prisma.repository.ts`), the same scoping gap as C11. Our calls always pass a
+ * term read from this contract, so they are correct — recorded because the guard is
+ * missing, not because we rely on it.
+ */
+export function removeAdvanceTerm(contractId: string, termId: string): Promise<void> {
+  return apiClient<void>(`/contracts/${contractId}/advance-terms/${termId}`, { method: 'DELETE' });
+}
+
+/** `guaranteeType` is free text, not an enum — the backend does not constrain it. */
+export interface AddGuaranteePayload {
+  guaranteeType: string;
+  amount: string;
+  currency: string;
+  issuer: string;
+  beneficiary: string;
+  issueDate: string;
+  expiryDate: string;
+  notes?: string;
+}
+
+export function addGuarantee(
+  contractId: string,
+  payload: AddGuaranteePayload,
+): Promise<unknown> {
+  return apiClient(`/contracts/${contractId}/guarantees`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Only status and notes are updatable — the commercial facts of a guarantee are fixed. */
+export function updateGuarantee(
+  contractId: string,
+  guaranteeId: string,
+  payload: { status?: GuaranteeStatus; notes?: string },
+): Promise<unknown> {
+  return apiClient(`/contracts/${contractId}/guarantees/${guaranteeId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface AddMilestonePayload {
+  name: string;
+  description?: string;
+  dueDate?: string;
+  sortOrder?: number;
+}
+
+export function addMilestone(
+  contractId: string,
+  payload: AddMilestonePayload,
+): Promise<unknown> {
+  return apiClient(`/contracts/${contractId}/milestones`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Stamps `completedAt` and `completedBy` from the token. There is no un-complete. */
+export function completeMilestone(contractId: string, milestoneId: string): Promise<unknown> {
+  return apiClient(`/contracts/${contractId}/milestones/${milestoneId}/complete`, {
+    method: 'POST',
   });
 }
