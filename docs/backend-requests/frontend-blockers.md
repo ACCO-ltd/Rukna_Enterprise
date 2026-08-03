@@ -52,6 +52,8 @@ Findings were produced by reading `apps/api/src` directly, not by inference from
 | [C5](#c5) | Contract | IPA | Workflow policy is resolved but no approval instance is created | — |
 | [C6](#c6) | Gap | Types | Five more aggregates with no DTO in `@erp/types` | — |
 | [C8](#c8) | Contract | Finance | `totalAllocated` returns a number, breaking the money-as-string rule | — |
+| [C9](#c9) | Gap | BOQ | `measurementMethod` and `pricingBasis` can never be set | — |
+| [C10](#c10) | Contract | Contracts | Retention split is spelled `…OnPc` in, `…OnPC` out | — |
 | [D3](#d3) | Docs | Clients, Contracts | Documented request shapes that return `400` | — |
 
 ---
@@ -592,6 +594,50 @@ whether a payment is accepted.
 
 **Suggested:** keep the sum in `Prisma.Decimal` and serialize as a string, consistent with
 `netCertified` and every other money field.
+
+---
+
+### <a id="c9"></a>C9 — `measurementMethod` and `pricingBasis` can never be set
+
+The roadmap lists "BOQ node extensions (measurementMethod, pricingBasis)" as delivered in
+Sprint 3 Phase 1, and the columns do exist on `BoqNode` with defaults `QUANTITY` and
+`UNIT_RATE`. Both are returned by the tree endpoint.
+
+But **no DTO accepts either field**. `CreateNodeDto` and `UpdateNodeDto` declare neither,
+and `BoqTreeService` never writes them. With `forbidNonWhitelisted: true`, sending one is a
+`400`. So every BOQ node in the system is permanently `QUANTITY` / `UNIT_RATE`, and a
+lump-sum or milestone-billed line cannot be expressed at all.
+
+This matters downstream: `IpaService.addItem` snapshots `measurementMethod` onto every
+claimed line (`ipa.service.ts:148`), so the snapshot is currently always the default. The
+IPA item picker will label every line "quantity" regardless of what it really is.
+
+**What the frontend needs:** both fields accepted on create and on update, so a lump-sum
+line can be entered. Until then the BOQ editor will not offer the choice — an input that
+silently has no effect is worse than no input.
+
+---
+
+### <a id="c10"></a>C10 — Retention split is spelled `…OnPc` going in and `…OnPC` coming out
+
+`AddRetentionTermsDto` declares `retentionSplitOnPc`. The Prisma column is
+`retentionSplitOnPC`, and `upsertRetentionTerms`
+(`contract-prisma.repository.ts:105–130`) translates between the two.
+
+Nothing is broken server-side, but the request and response shapes for this one field
+differ by a single letter's case. Combined with `forbidNonWhitelisted: true`, reading a
+contract and posting its retention terms back — the obvious way to write an edit form —
+returns:
+
+```
+property retentionSplitOnPC should not exist; retentionSplitOnPc is not a valid decimal number.
+```
+
+Found by running the seed script against the live API, not by reading the code, which is
+roughly how a frontend engineer would find it at 6pm on a Friday.
+
+**Suggested:** rename the DTO field to `retentionSplitOnPC` so request and response agree.
+It is a one-word change in a Sprint 3 DTO that no client depends on yet.
 
 ---
 
