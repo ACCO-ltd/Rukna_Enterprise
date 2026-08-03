@@ -1,6 +1,8 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+
+import { useLifecycleCommand } from '@/features/lifecycle/use-lifecycle-command';
 
 import {
   cancelProject,
@@ -21,37 +23,29 @@ export function useProject(id: string): UseQueryResult<ProjectDetail, Error> {
 }
 
 /**
- * Every project mutation invalidates the whole `projects` key rather than patching the
- * cache by hand.
+ * Project commands run through the shared lifecycle hook, which contracts and payment
+ * applications use too. It invalidates the whole `projects` key rather than patching the
+ * cache — suspend and resume return an empty body (B6) so there is nothing to write back,
+ * and a status change moves the dashboard's counts as well as this project's row.
  *
- * Two reasons this is the right default here. Suspend and resume return an empty body
- * (B6), so there is no updated resource to write back. And a status change alters the
- * dashboard's counts as well as this project's row — one invalidation keeps every view
- * consistent, where a targeted cache write would leave the counts stale.
+ * It also classifies failures, so `failure.kind` distinguishes a stale status from a
+ * missing approval-workflow configuration.
  */
-function useProjectMutation<TArgs>(run: (args: TArgs) => Promise<unknown>) {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: run,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: projectKeys.all });
-    },
-  });
-}
-
 export function useAdvanceProject(id: string) {
-  return useProjectMutation((command: ProjectCommand) => runProjectCommand(id, command));
+  return useLifecycleCommand(
+    (command: ProjectCommand) => runProjectCommand(id, command),
+    projectKeys.all,
+  );
 }
 
 export function useCancelProject(id: string) {
-  return useProjectMutation((reason: string) => cancelProject(id, reason));
+  return useLifecycleCommand((reason: string) => cancelProject(id, reason), projectKeys.all);
 }
 
 export function useSuspendProject(id: string) {
-  return useProjectMutation((reason: string) => suspendProject(id, reason));
+  return useLifecycleCommand((reason: string) => suspendProject(id, reason), projectKeys.all);
 }
 
 export function useResumeProject(id: string) {
-  return useProjectMutation(() => resumeProject(id));
+  return useLifecycleCommand(() => resumeProject(id), projectKeys.all);
 }

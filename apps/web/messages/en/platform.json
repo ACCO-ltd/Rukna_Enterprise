@@ -275,5 +275,15 @@
     "reject": "Reject",
     "steps": "Approval Steps",
     "currentStep": "Current Step"
+  },
+  "lifecycle": {
+    "error": {
+      "workflow-not-configured": "Approval workflow not configured — contact your system administrator.",
+      "invalid-transition": "This record has moved on since the page was loaded. Refresh to see its current state.",
+      "forbidden": "You do not have permission to perform this action.",
+      "not-found": "This record no longer exists.",
+      "conflict": "That conflicts with an existing record.",
+      "unknown": "The action could not be completed. Please try again."
+    }
   }
 }
