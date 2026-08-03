@@ -1,11 +1,13 @@
 # Construction Domain Model
 
-Version: 3.0.0
+Version: 4.0.0
 Status: Active
-Last Updated: 2026-08-02
-Changes: v3 — synced to actual Sprint 2 Prisma schema (Phases 1–4).
-         Corrected Project fields, ProjectMember/Role, BOQ three-pointer model,
-         BOQNode isLeaf/code/description fields, added WorkflowTriggerBinding.
+Last Updated: 2026-08-03
+Changes: v4 — Sprint 3 planning (ADR-005). Added Client, Contract module (RetentionTerms,
+         AdvanceTerm, Guarantee, ContractMilestone), IPC module (InterimPaymentApplication,
+         InterimPaymentCertificate + items + deductions), Finance module (PaymentReceipt,
+         ReceiptAllocation), WorkflowRequirementPolicy, BOQ node extensions
+         (measurementMethod, pricingBasis), Project commercial/participation model.
 
 ---
 
@@ -15,17 +17,19 @@ Changes: v3 — synced to actual Sprint 2 Prisma schema (Phases 1–4).
 God Aggregate. The following are each independent aggregate roots:
 
 ```
-Project                    Aggregate root — lifecycle, membership, metadata
-Contract                   Aggregate root — references projectId
-BOQ + BOQVersion           Aggregate root — references projectId
-PurchaseOrder              Aggregate root — references projectId
-GoodsReceiptNote           Aggregate root — references projectId
-MaterialRequest            Aggregate root — references projectId
-StockTransfer              Aggregate root
-IPC                        Aggregate root — references projectId, contractId
-Subcontract                Aggregate root — references projectId
-DailyProgressReport        Aggregate root — references projectId
-ProjectSuspension          Event record   — references projectId
+Project                         Aggregate root — lifecycle, membership, metadata
+Contract                        Aggregate root — references projectId, clientId
+BOQ + BOQVersion                Aggregate root — references projectId
+InterimPaymentApplication       Aggregate root — references contractId, projectId
+InterimPaymentCertificate       Aggregate root — references applicationId
+PaymentReceipt                  Aggregate root — finance; references clientId
+PurchaseOrder                   Aggregate root — references projectId (Sprint 4+)
+GoodsReceiptNote                Aggregate root — references projectId (Sprint 4+)
+MaterialRequest                 Aggregate root — references projectId (Sprint 4+)
+StockTransfer                   Aggregate root (Sprint 4+)
+Subcontract                     Aggregate root — references projectId (Sprint 4+)
+DailyProgressReport             Aggregate root — references projectId (Sprint 4+)
+ProjectSuspension               Event record   — references projectId
 ```
 
 Cross-aggregate communication occurs through public interfaces and domain events.
@@ -44,9 +48,14 @@ Organization
 ├── Users, Roles, Permissions
 ├── WorkflowDefinition (DOA approval chains)
 ├── WorkflowTriggerBinding (trigger event → workflow mapping — Sprint 2)
+├── WorkflowRequirementPolicy (per-transition requirement: REQUIRED|OPTIONAL|NONE — Sprint 3)
 ├── ExchangeRate (currency × date → rate)
+├── Client (minimal aggregate — Sprint 3)
+│   └── ClientContact
 │
 └── Project  ◄── BUSINESS SCOPE ROOT (not a DDD God Aggregate)
+    │         commercialModel: CLIENT_CONTRACT | INTERNAL_CAPITAL  (Sprint 3)
+    │         participationModel: SOLE | JOINT_VENTURE              (Sprint 3)
     │
     ├── ProjectSuspension (active suspension record — separate from lifecycle)
     ├── ProjectMember
@@ -55,13 +64,34 @@ Organization
     ├── BOQ [separate aggregate — Sprint 2 Phase 4]
     │   └── BoqVersion (DRAFT | BASELINED | SUPERSEDED | CANCELLED)
     │       └── BoqNode (versioned tree — section → item)
+    │           measurementMethod: QUANTITY | PERCENTAGE | MILESTONE  (Sprint 3)
+    │           pricingBasis: UNIT_RATE | LUMP_SUM                    (Sprint 3)
     │
-    ├── Contract (future sprint)
-    ├── Subcontract (future sprint)
-    ├── IPC (future sprint)
-    ├── Procurement Chain (future sprint)
-    ├── CostLedger (future sprint)
-    └── StockLedger (future sprint)
+    ├── Contract [separate aggregate — Sprint 3]
+    │   ├── ContractRetentionTerms (1:1)
+    │   ├── ContractAdvanceTerm (1:many)
+    │   ├── ContractGuarantee (1:many)
+    │   │   └── GuaranteeAttachment → Platform File
+    │   ├── ContractMilestone (schema only — Sprint 3)
+    │   └── ContractAttachment → Platform File
+    │
+    ├── InterimPaymentApplication [separate aggregate — Sprint 3]
+    │   ├── InterimPaymentApplicationItem (leaf BOQ nodes — cumulative)
+    │   ├── InterimPaymentApplicationDeduction (retention, advance recovery, etc.)
+    │   └── IpaAttachment → Platform File
+    │
+    ├── InterimPaymentCertificate [separate aggregate — Sprint 3]
+    │   ├── InterimPaymentCertificateItem (line-level, immutable)
+    │   ├── InterimPaymentCertificateDeduction
+    │   └── IpcAttachment → Platform File
+    │
+    ├── PaymentReceipt [separate aggregate — Sprint 3]
+    │   └── ReceiptAllocation (→ InterimPaymentCertificate, many-to-many)
+    │
+    ├── Subcontract (Sprint 4+)
+    ├── Procurement Chain (Sprint 4+)
+    ├── CostLedger (Sprint 4+)
+    └── StockLedger (Sprint 4+)
 ```
 
 ---
@@ -335,21 +365,307 @@ Move algorithm uses two raw SQL updates:
 
 ---
 
-## Entities Described in ADR-002 / ADR-004 — Not Yet Implemented
+## Entity Descriptions — Planned (Sprint 3, ADR-005)
 
-These entities are planned for future sprints. The schema descriptions in ADR-002 and
-ADR-004 are the authoritative design. Do not implement without an updated sprint plan.
+---
+
+### Client
+
+Minimal aggregate representing a client/employer organisation. Referenced by `Contract`.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | cuid | |
+| organizationId | cuid | FK → Organization (tenant-scoped) |
+| code | string(30) | unique within org — immutable after creation |
+| name | string | |
+| nameAr | string? | |
+| taxNumber | string? | |
+| defaultCurrency | string(3)? | ISO 4217 |
+| status | enum | `ACTIVE`, `INACTIVE` |
+| createdAt / updatedAt | DateTime | |
+
+### ClientContact
+
+| Field | Type | Notes |
+|---|---|---|
+| id | cuid | |
+| clientId | cuid | FK → Client (CASCADE) |
+| name | string | |
+| role | string? | |
+| email | string? | |
+| phone | string? | |
+| isPrimary | boolean | default false |
+
+---
+
+### WorkflowRequirementPolicy
+
+Per-entity, per-transition table. Checked by `WorkflowTriggerResolverService` before binding
+lookup. A `REQUIRED` transition with no active binding is **rejected** — never silently bypassed.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | cuid | |
+| entityType | string | e.g. `"Project"`, `"InterimPaymentApplication"` |
+| fromState | string? | null = any source state |
+| toState | string | |
+| requirement | enum | `REQUIRED`, `OPTIONAL`, `NONE` |
+| organizationId | cuid? | null = tenant-wide default |
+
+---
+
+### Contract
+
+Aggregate root. One contract per project for `CLIENT_CONTRACT` projects.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | cuid | |
+| projectId | cuid | FK → Project (RESTRICT) |
+| organizationId | cuid | denormalized |
+| clientId | cuid | FK → Client (RESTRICT) |
+| boqVersionId | cuid | FK → BoqVersion — contractual scope baseline |
+| contractNumber | string(50) | unique within org |
+| contractValue | Decimal(18,2) | independent from BOQ total |
+| currency | string(3) | ISO 4217 |
+| billingModel | enum | `MEASURED_IPC`, `MILESTONE`, `TIME_AND_MATERIAL`, `HYBRID` |
+| status | enum | see lifecycle below |
+| clientNameSnapshot | string | immutable at ACTIVE |
+| clientTaxSnapshot | string? | immutable at ACTIVE |
+| startDate | date? | |
+| expectedEndDate | date? | |
+| createdBy | cuid | |
+| createdAt / updatedAt | DateTime | |
+
+**Lifecycle:**
+```
+DRAFT → UNDER_REVIEW → PENDING_SIGNATURE → ACTIVE → FINAL_ACCOUNT_PENDING → CLOSED
+CANCELLED: from DRAFT, UNDER_REVIEW, PENDING_SIGNATURE only
+TERMINATED: from ACTIVE only
+```
+`FINAL_ACCOUNT_PENDING` triggered when the Project reaches `PRACTICAL_COMPLETION`.
+
+### ContractRetentionTerms (1:1 with Contract)
+
+| Field | Type | Notes |
+|---|---|---|
+| contractId | cuid | FK → Contract (CASCADE, UNIQUE) |
+| retentionRate | Decimal(5,4) | e.g. 0.0500 = 5% |
+| retentionCap | Decimal(5,4) | e.g. 0.1000 = 10% of contract value |
+| retentionSplitOnPC | Decimal(5,4) | fraction released at practical completion |
+| retentionReleasedAt | DateTime? | |
+
+### ContractAdvanceTerm (1:many with Contract)
+
+| Field | Type | Notes |
+|---|---|---|
+| id | cuid | |
+| contractId | cuid | FK → Contract (CASCADE) |
+| advanceType | enum | `MOBILIZATION`, `MATERIAL_ON_SITE`, `EQUIPMENT`, `OTHER` |
+| description | string? | |
+| amount | Decimal(18,2)? | fixed amount (mutually exclusive with percentage) |
+| percentage | Decimal(5,4)? | % of contract value |
+| recoveryRate | Decimal(5,4) | % deducted from each IPA until fully recovered |
+
+Actual disbursements and recoveries are separate financial transactions.
+
+### ContractGuarantee (1:many with Contract)
+
+| Field | Type | Notes |
+|---|---|---|
+| id | cuid | |
+| contractId | cuid | FK → Contract (CASCADE) |
+| guaranteeType | string | configurable — `PERFORMANCE`, `ADVANCE_PAYMENT` confirmed |
+| amount | Decimal(18,2) | |
+| currency | string(3) | |
+| issuer | string | e.g. bank name |
+| beneficiary | string | |
+| issueDate | date | |
+| expiryDate | date | expiry alerts required |
+| status | enum | `ACTIVE`, `DISCHARGED`, `EXPIRED`, `CALLED` |
+| notes | string? | |
+
+### ContractMilestone (schema foundation only — Sprint 3)
+
+| Field | Type | Notes |
+|---|---|---|
+| id | cuid | |
+| contractId | cuid | FK → Contract (CASCADE) |
+| name | string | |
+| description | string? | |
+| dueDate | date? | |
+| completedAt | DateTime? | |
+| completedBy | cuid? | |
+| sortOrder | int | |
+
+Full milestone certification and invoice-generation deferred.
+
+---
+
+### InterimPaymentApplication
+
+ACCO's internal commercial valuation document. Aggregate root.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | cuid | |
+| contractId | cuid | FK → Contract (RESTRICT) |
+| projectId | cuid | denormalized |
+| organizationId | cuid | denormalized |
+| applicationNumber | int | unique per contract — assigned at APPROVED_FOR_SUBMISSION |
+| displayNumber | string | immutable snapshot; format is org-configurable |
+| status | enum | see lifecycle below |
+| periodStart / periodEnd | date | billing period |
+| grossAmount | Decimal(18,2) | sum of item periodAmounts |
+| totalDeductions | Decimal(18,2) | sum of deduction amounts |
+| netAmount | Decimal(18,2) | grossAmount − totalDeductions |
+| currency | string(3) | |
+| exchangeRateSnapshot | Json | rate, baseCurrency, date — frozen at creation |
+| submittedAt | DateTime? | |
+| createdBy | cuid | |
+| createdAt / updatedAt | DateTime | |
+
+**Lifecycle:**
+```
+DRAFT → PENDING_INTERNAL_APPROVAL → APPROVED_FOR_SUBMISSION → SUBMITTED
+RETURNED_FOR_REVISION: from PENDING_INTERNAL_APPROVAL → back to DRAFT
+CANCELLED: from DRAFT or RETURNED_FOR_REVISION only
+```
+DOA workflow fires at `PENDING_INTERNAL_APPROVAL`. Completed workflow → `APPROVED_FOR_SUBMISSION`.
+`SUBMITTED` is a separate explicit command. Immutable once `SUBMITTED`.
+
+**Numbering:** `UNIQUE(contractId, applicationNumber)`, gaps permitted, never reused.
+
+### InterimPaymentApplicationItem
+
+One row per leaf BOQ node being claimed.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | cuid | |
+| applicationId | cuid | FK → InterimPaymentApplication |
+| boqNodeId | cuid | FK → BoqNode (leaf nodes only) |
+| measurementMethodSnapshot | enum | immutable copy of `BoqNode.measurementMethod` at submission |
+| unitRateSnapshot | Decimal(18,2) | immutable copy from BOQ version |
+| currencySnapshot | string(3) | |
+| cumulativeClaimed | Decimal(18,3) | total claimed to date including this application |
+| previousEffectiveCertified | Decimal(18,3) | certified on last effective certificate |
+| periodQuantity | Decimal(18,3) | derived: cumulativeClaimed − previousEffectiveCertified |
+| periodAmount | Decimal(18,2) | derived: periodQuantity × unitRateSnapshot |
+
+### InterimPaymentApplicationDeduction
+
+Immutable deduction-line records applied at IPA header level.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | cuid | |
+| applicationId | cuid | FK → InterimPaymentApplication |
+| deductionType | string | e.g. `RETENTION`, `ADVANCE_RECOVERY`, `TAX` |
+| sourceTermId | cuid? | FK → ContractRetentionTerms or ContractAdvanceTerm |
+| rate | Decimal(5,4)? | |
+| basis | Decimal(18,2) | amount the rate is applied to |
+| amount | Decimal(18,2) | computed deduction amount |
+
+---
+
+### InterimPaymentCertificate
+
+Client/consultant's response to a submitted IPA. Independent aggregate root.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | cuid | |
+| applicationId | cuid | FK → InterimPaymentApplication (RESTRICT) |
+| status | enum | `CERTIFIED`, `PARTIALLY_CERTIFIED`, `REJECTED` — terminal |
+| certifiedGrossAmount | Decimal(18,2) | |
+| totalDeductions | Decimal(18,2) | |
+| certifiedNetAmount | Decimal(18,2) | |
+| currency | string(3) | |
+| exchangeRateSnapshot | Json | frozen at issuance |
+| isEffective | boolean | domain-controlled — not directly editable |
+| effectiveAt | DateTime? | set when this certificate becomes effective |
+| supersededAt | DateTime? | set when this certificate is superseded |
+| supersededById | cuid? | FK → InterimPaymentCertificate |
+| supersessionReason | string? | required on supersession |
+| issuedAt | DateTime | |
+| issuedBy | cuid | |
+
+**Effective certificate rule:** At most one effective certificate per application.
+Partial unique index: `WHERE is_effective = true` on `application_id`.
+First valid certificate → automatically effective. Later revision → explicit atomic supersession.
+
+**Immutable on issue.**
+
+### InterimPaymentCertificateItem
+
+Line-level certification — immutable once certificate is issued.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | cuid | |
+| certificateId | cuid | FK → InterimPaymentCertificate |
+| applicationItemId | cuid | FK → InterimPaymentApplicationItem |
+| certifiedQuantity | Decimal(18,3) | |
+| certifiedAmount | Decimal(18,2) | |
+| varianceQuantity | Decimal(18,3) | derived: certified − claimed |
+| varianceReason | string? | **required** when certifiedQuantity ≠ claimedQuantity |
+
+### InterimPaymentCertificateDeduction
+
+Same structure as `InterimPaymentApplicationDeduction`. Client-side deductions are separate
+from application deductions.
+
+---
+
+### PaymentReceipt
+
+Finance aggregate. Records a payment received from a client.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | cuid | |
+| organizationId | cuid | |
+| clientId | cuid | FK → Client |
+| receiptDate | date | |
+| amount | Decimal(18,2) | |
+| currency | string(3) | |
+| exchangeRate | Decimal(18,6)? | |
+| reference | string? | bank reference / payment advice |
+| notes | string? | |
+| createdBy | cuid | |
+| createdAt | DateTime | |
+
+### ReceiptAllocation
+
+Many-to-many bridge between `PaymentReceipt` and `InterimPaymentCertificate`.
+`PAID`/`PARTIALLY_PAID`/`UNPAID` is **derived** from allocation records — not a status field.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | cuid | |
+| receiptId | cuid | FK → PaymentReceipt |
+| certificateId | cuid | FK → InterimPaymentCertificate |
+| allocatedAmount | Decimal(18,2) | |
+| allocatedAt | DateTime | |
+| allocatedBy | cuid | |
+
+---
+
+## Entities Not Yet Implemented
 
 | Entity | Sprint |
 |---|---|
-| Contract, Milestone, RetentionTerms | Sprint 3+ |
-| Subcontract, SubcontractCertificate | Sprint 3+ |
-| IPC (Interim Payment Certificate) | Sprint 3+ |
-| MaterialRequest, PurchaseOrder, GoodsReceiptNote | Sprint 3+ |
-| StockLedger, StockTransfer | Sprint 3+ |
-| CostLedger | Sprint 3+ |
-| DailyProgressReport, MeasurementSheet, ITC | Sprint 3+ |
-| LabourAttendance, EquipmentLog | Sprint 3+ |
+| BudgetAuthorization (INTERNAL_CAPITAL projects) | Sprint 4 |
+| ContractMilestone certification + invoice-generation | Sprint 4+ |
+| Subcontract, SubcontractCertificate | Sprint 4+ |
+| MaterialRequest, PurchaseOrder, GoodsReceiptNote | Sprint 4+ |
+| StockLedger, StockTransfer | Sprint 4+ |
+| CostLedger | Sprint 4+ (after Procurement + Inventory stable) |
+| DailyProgressReport, MeasurementSheet, ITC | Sprint 4+ |
+| LabourAttendance, EquipmentLog | Sprint 4+ |
+| Platform File aggregate (storage) | Sprint 4+ |
 
 ---
 
@@ -360,10 +676,18 @@ ADR-004 are the authoritative design. Do not implement without an updated sprint
 | BOQ | Bill of Quantities — the priced schedule of work items forming the basis of a construction contract |
 | BoqVersion | An immutable snapshot of the BOQ at a point in time. BASELINED versions are permanent. |
 | Baseline | The act of locking a DRAFT version as the approved BOQ — analogous to signing the contract schedule |
-| IPC | Interim Payment Certificate — a periodic billing document certifying completed work for client payment |
+| IPA | InterimPaymentApplication — ACCO's internal commercial valuation document submitted for client billing |
+| IPC | InterimPaymentCertificate — the client/consultant's certificate in response to an IPA |
 | DOA | Delegation of Authority — the framework defining who can approve what, up to what value |
 | WTB | WorkflowTriggerBinding — the mapping from a business event to a DOA approval chain |
+| WRP | WorkflowRequirementPolicy — per-transition table controlling whether a workflow is REQUIRED, OPTIONAL, or NONE |
+| ReceiptAllocation | Bridge record linking a PaymentReceipt to an InterimPaymentCertificate for partial/multi-payment settlement |
+| Effective Certificate | The one active InterimPaymentCertificate per IPA that drives cumulative certified quantity calculations |
+| Supersession | The atomic command that replaces the current effective certificate with a revised one, preserving audit history |
+| CONTRACT_BASELINE | The specific BoqVersion explicitly referenced by a Contract — distinct from any prior working baseline |
 | originNodeId | Lineage field on BoqNode — points to the source node in the prior version on deep copy |
 | Materialized Path | Tree traversal technique storing the full ancestor chain as a path string for O(1) subtree queries |
 | TenantContext | AsyncLocalStorage context carrying tenantId, tenantSlug, PrismaClient — set by TenancyMiddleware |
 | RequestIdentity | request.user object set by JwtAuthGuard — carries userId, activeOrganizationId, roles, permissions |
+| commercialModel | PROJECT field: CLIENT_CONTRACT (requires signed Contract for IPC) or INTERNAL_CAPITAL (requires budget authorization) |
+| participationModel | PROJECT field: SOLE or JOINT_VENTURE — orthogonal to commercialModel |
