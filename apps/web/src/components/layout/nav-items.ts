@@ -21,6 +21,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard', labelKey: 'dashboard' },
   { href: '/projects', labelKey: 'projects' },
+  { href: '/clients', labelKey: 'clients' },
 ];
 
 /** True when `pathname` is the nav destination itself or a page nested beneath it. */
