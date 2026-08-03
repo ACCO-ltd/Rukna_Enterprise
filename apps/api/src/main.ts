@@ -57,6 +57,7 @@ async function bootstrap(): Promise<void> {
     .addTag('Contracts', 'Contract lifecycle, retention, advances, guarantees and milestones')
     .addTag('IPA', 'Interim Payment Applications — ACCO internal commercial valuations')
     .addTag('IPC', 'Interim Payment Certificates — client/consultant responses to IPAs')
+    .addTag('Finance', 'Payment receipts and allocation against certified IPCs')
     .build();
 
   const document = SwaggerModule.createDocument(app, openApiConfig);

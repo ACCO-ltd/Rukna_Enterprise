@@ -13,6 +13,7 @@ import { AuditLogsModule } from './platform/audit-logs/audit-logs.module.js';
 import { WorkflowsModule } from './platform/workflows/workflows.module.js';
 import { ClientsModule } from './platform/clients/clients.module.js';
 import { ConstructionModule } from './business/construction/construction.module.js';
+import { FinanceModule } from './business/finance/finance.module.js';
 import { RetailModule } from './business/retail/retail.module.js';
 import { ManufacturingModule } from './business/manufacturing/manufacturing.module.js';
 
@@ -30,6 +31,7 @@ import { ManufacturingModule } from './business/manufacturing/manufacturing.modu
     WorkflowsModule,
     ClientsModule,
     ConstructionModule,
+    FinanceModule,
     RetailModule,
     ManufacturingModule,
   ],
