@@ -1,9 +1,9 @@
 # Enterprise ERP Platform
 ## Software Architecture Document (SAD)
 
-Version: 2.0.0
+Version: 3.0.0
 
-Status: Active — Sprint 2 complete
+Status: Active — Sprint 3 complete
 
 ---
 
@@ -355,6 +355,34 @@ Database Tables
 | Projects (Phase 3) | ✅ Complete | Full lifecycle (8 states), suspend/resume, project membership |
 | BOQ (Phase 4) | ✅ Complete | Versioning (DRAFT→BASELINED→SUPERSEDED), materialized-path tree, move via raw SQL |
 
+### Sprint 3 Platform Additions — Implemented
+
+| Module | Status | Key deliverables |
+|---|---|---|
+| Clients | ✅ Complete | Client aggregate, contacts, WorkflowRequirementPolicy |
+| BOQ node extensions | ✅ Complete | measurementMethod, pricingBasis, isLeaf flag |
+| Project commercial model | ✅ Complete | commercialModel, participationModel |
+
+### Sprint 3 Business Modules — Implemented
+
+| Module | Status | Key deliverables |
+|---|---|---|
+| Contracts | ✅ Complete | Full lifecycle (8 states), client snapshots on execute, retention terms, advance terms, guarantees, milestones, cross-aggregate trigger (PRACTICAL_COMPLETION → FINAL_ACCOUNT_PENDING) |
+| IPA | ✅ Complete | Interim Payment Applications — 6 states, auto applicationNumber, previousEffectiveCertified resolution, BOQ item + deduction management |
+| IPC | ✅ Complete | Interim Payment Certificates — isEffective partial unique index, varianceReason enforcement, atomic supersession |
+| Finance | ✅ Complete | PaymentReceipt + ReceiptAllocation — payment status derived (UNPAID/PARTIALLY_PAID/PAID), allocation guard |
+
+> **Sprint 3 Finance is construction billing tracking only — NOT full accounting.**
+> Full accounting (GL, AP, AR, journal entries, trial balance, financial statements) begins in Sprint 4.
+> See `docs/02-architecture/roadmap.md` for the 9-sprint plan.
+
+### Sprint 3 Architecture Decisions
+
+- ADR-003: Client aggregate
+- ADR-004: Sprint 2 corrections (already recorded)
+- ADR-005: Sprint 3 — Contracts, IPA, IPC, PaymentReceipt
+- ADR-006: Sprint 4 — Native Accounting Foundation (DRAFT — pending financial officer review)
+
 ### Module File Map (Sprint 2)
 
 ```
@@ -373,6 +401,22 @@ apps/api/src/
     └── construction/
         ├── projects/   — 16 endpoints: CRUD + lifecycle + suspend/resume + members
         └── boq/        — 11 endpoints: initialize, versioning, tree CRUD + move
+```
+
+### Module File Map (Sprint 3)
+
+```
+apps/api/src/
+├── platform/
+│   └── clients/        — 6 endpoints: CRUD + contacts
+│
+└── business/
+    ├── construction/
+    │   ├── contracts/  — 13 endpoints: lifecycle + retention + advance terms + guarantees + milestones
+    │   ├── ipa/        — 12 endpoints: lifecycle + items + deductions
+    │   └── ipc/        — 4 endpoints: issue + get + supersede
+    └── finance/
+        └── (receipts)  — 6 endpoints: receipts + allocations + payment status
 ```
 
 10. Dependency Rules
