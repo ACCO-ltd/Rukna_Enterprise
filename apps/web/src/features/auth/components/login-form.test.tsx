@@ -21,48 +21,7 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-const messages = {
-  common: {
-    language: {
-      label: 'Language',
-      english: 'English',
-      arabic: 'العربية',
-      switchToEnglish: 'Switch language to English',
-      switchToArabic: 'Switch language to Arabic',
-    },
-  },
-  auth: {
-    login: {
-      companyName: 'ACCO Ltd',
-      productName: 'Rukna ERP Platform',
-      eyebrow: 'Enterprise operations',
-      welcomeStatement: 'One secure workspace for every critical project decision.',
-      supportingStatement:
-        'Built for accountable construction operations, from field activity to financial control.',
-      title: 'Sign in to your account',
-      subtitle: 'Use your company account to continue.',
-      tenantLabel: 'Construction & Contracting',
-      securityTitle: 'Secure tenant access',
-      securityDescription: 'Your session is protected and scoped to your organization.',
-      emailLabel: 'Email address',
-      emailPlaceholder: 'you@company.com',
-      passwordLabel: 'Password',
-      passwordPlaceholder: 'Enter your password',
-      showPassword: 'Show password',
-      hidePassword: 'Hide password',
-      emailInvalid: 'Enter a valid email address',
-      passwordMinLength: 'Password must contain at least 8 characters',
-      submitButton: 'Sign in',
-      submitting: 'Signing in...',
-      invalidCredentials: 'Invalid email or password',
-      serverError: 'Something went wrong. Please try again.',
-      sessionExpired: 'Your session has expired. Please sign in again.',
-      forgotPassword: 'Forgot password?',
-      accessNotice:
-        'Authorized ACCO personnel only. Activity may be monitored for security and audit purposes.',
-    },
-  },
-};
+
 
 function fakeJwt(payload: Record<string, unknown>): string {
   const encoded = btoa(JSON.stringify(payload));
@@ -90,7 +49,7 @@ describe('LoginForm', () => {
   });
 
   it('renders the enterprise tenant identity and language controls', () => {
-    renderWithProviders(<LoginForm />, { messages });
+    renderWithProviders(<LoginForm />);
 
     expect(screen.getByText('ACCO Ltd')).toBeInTheDocument();
     expect(screen.getByText('Rukna ERP Platform')).toBeInTheDocument();
@@ -106,7 +65,7 @@ describe('LoginForm', () => {
 
   it('updates the preferred language and refreshes the route', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<LoginForm />, { messages });
+    renderWithProviders(<LoginForm />);
 
     await user.click(screen.getByRole('button', { name: 'Switch language to Arabic' }));
 
@@ -115,7 +74,7 @@ describe('LoginForm', () => {
   });
 
   it('renders labelled email and password fields', () => {
-    renderWithProviders(<LoginForm />, { messages });
+    renderWithProviders(<LoginForm />);
 
     expect(screen.getByLabelText('Email address')).toBeInTheDocument();
     expect(screen.getByLabelText('Password')).toBeInTheDocument();
@@ -124,7 +83,7 @@ describe('LoginForm', () => {
 
   it('toggles password visibility', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<LoginForm />, { messages });
+    renderWithProviders(<LoginForm />);
 
     const passwordInput = screen.getByLabelText('Password') as HTMLInputElement;
     expect(passwordInput.type).toBe('password');
@@ -138,7 +97,7 @@ describe('LoginForm', () => {
 
   it('does not call loginRequest when form data is invalid', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<LoginForm />, { messages });
+    renderWithProviders(<LoginForm />);
 
     await user.type(screen.getByLabelText('Email address'), 'not-an-email');
     await user.type(screen.getByLabelText('Password'), 'short');
@@ -155,7 +114,7 @@ describe('LoginForm', () => {
       accessToken: fakeJwt(validPayload),
     });
 
-    renderWithProviders(<LoginForm />, { messages });
+    renderWithProviders(<LoginForm />);
 
     await user.type(screen.getByLabelText('Email address'), 'admin@acco.rukna.app');
     await user.type(screen.getByLabelText('Password'), 'password123');
@@ -172,7 +131,7 @@ describe('LoginForm', () => {
     const user = userEvent.setup();
     vi.mocked(loginRequest).mockRejectedValue(new ApiError(401, 'Unauthorized'));
 
-    renderWithProviders(<LoginForm />, { messages });
+    renderWithProviders(<LoginForm />);
 
     await user.type(screen.getByLabelText('Email address'), 'admin@acco.rukna.app');
     await user.type(screen.getByLabelText('Password'), 'wrongpassword');
@@ -189,7 +148,7 @@ describe('LoginForm', () => {
     const user = userEvent.setup();
     vi.mocked(loginRequest).mockRejectedValue(new ApiError(500, 'Internal Server Error'));
 
-    renderWithProviders(<LoginForm />, { messages });
+    renderWithProviders(<LoginForm />);
 
     await user.type(screen.getByLabelText('Email address'), 'admin@acco.rukna.app');
     await user.type(screen.getByLabelText('Password'), 'password123');

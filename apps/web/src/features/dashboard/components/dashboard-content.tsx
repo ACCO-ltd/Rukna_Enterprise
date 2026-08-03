@@ -68,9 +68,10 @@ export function DashboardContent() {
       <RecentProjects projects={summary.recent} />
 
       <div>
+        {/* inline-flex + min-h-11 keeps a plain text link at the 44px touch-target floor. */}
         <Link
           href="/projects"
-          className="text-sm font-semibold text-brand-primary hover:text-brand-primary-hover"
+          className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-primary hover:text-brand-primary-hover"
         >
           {t('viewAll')}
         </Link>

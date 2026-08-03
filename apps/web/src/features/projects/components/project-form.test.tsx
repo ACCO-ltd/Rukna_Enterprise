@@ -32,46 +32,9 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-const messages = {
-  common: { currency: { usd: 'US Dollar', sos: 'Somali Shilling', aed: 'UAE Dirham' } },
-  platform: {
-    projects: {
-      create: {
-        title: 'New project',
-        subtitle: 'A project starts as a draft.',
-        codeLabel: 'Project code',
-        codeHint: 'Cannot be changed after the project is created.',
-        codePlaceholder: 'ACCO-2026-001',
-        nameLabel: 'Project name',
-        namePlaceholder: 'Al-Baraka Tower Construction',
-        nameArLabel: 'Project name (Arabic)',
-        descriptionLabel: 'Description',
-        clientNameLabel: 'Client',
-        contractValueLabel: 'Contract value',
-        currencyLabel: 'Currency',
-        currencyNone: 'Not set',
-        startDateLabel: 'Start date',
-        expectedEndDateLabel: 'Expected completion',
-        submit: 'Create project',
-        submitting: 'Creating...',
-        cancel: 'Cancel',
-        codeRequired: 'Enter a project code',
-        codeTooLong: 'Project code cannot exceed 30 characters',
-        nameRequired: 'Enter a project name',
-        nameTooLong: 'Project name cannot exceed 255 characters',
-        contractValueInvalid: 'Enter a valid amount',
-        contractValueNegative: 'Contract value cannot be negative',
-        contractValueDecimals: 'Contract value can have at most 2 decimal places',
-        endBeforeStart: 'Expected completion cannot be before the start date',
-        duplicateCode: 'A project with this code already exists.',
-        failed: 'Could not create the project.',
-      },
-    },
-  },
-};
 
 function renderForm() {
-  return renderWithProviders(<ProjectForm />, { messages });
+  return renderWithProviders(<ProjectForm />);
 }
 
 beforeEach(() => {

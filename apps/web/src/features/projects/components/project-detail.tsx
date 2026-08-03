@@ -53,7 +53,7 @@ export function ProjectDetail({ id }: { id: string }) {
       <div>
         <Link
           href="/projects"
-          className="text-sm font-medium text-brand-primary hover:text-brand-primary-hover"
+          className="inline-flex min-h-11 items-center text-sm font-medium text-brand-primary hover:text-brand-primary-hover"
         >
           {t('backToList')}
         </Link>
@@ -155,6 +155,15 @@ function Overview({
               {project.description}
             </dd>
           </div>
+        ) : null}
+
+        {/*
+          The hairlines are the container's background showing through a 1px grid gap. With
+          an odd number of cells the trailing empty track shows that colour as a solid grey
+          block, so a filler cell is rendered to complete the row. Decorative only.
+        */}
+        {rows.length % 2 === 1 && !project.description ? (
+          <div className="hidden bg-surface sm:block" aria-hidden="true" />
         ) : null}
       </dl>
     </section>
