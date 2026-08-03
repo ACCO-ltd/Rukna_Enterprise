@@ -252,6 +252,12 @@ export interface Contract {
 /**
  * Percentages are Decimal(5,4) — a 10% retention rate arrives as `"0.1000"`, not `"10"`.
  * Formatting must multiply by 100; the raw value is never a percentage figure.
+ *
+ * ⚠ `retentionSplitOnPC` is spelled differently on the way in. `AddRetentionTermsDto`
+ * declares `retentionSplitOnPc` (lowercase `c`) and the repository translates it to the
+ * `retentionSplitOnPC` column. Because the ValidationPipe runs with
+ * `forbidNonWhitelisted`, echoing this response shape back in a POST is a 400 — verified
+ * against the running API. The request payload type must use `Pc`.
  */
 export interface ContractRetentionTerms {
   contractId: string;
