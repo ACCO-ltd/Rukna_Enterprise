@@ -5,12 +5,18 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 import { ApiError } from '@/lib/api-client';
 
 import {
+  addBoqNode,
   baselineVersion,
   cancelDraftVersion,
   createDraftVersion,
+  deleteBoqNode,
   getBoq,
   getBoqTree,
   initializeBoq,
+  moveBoqNode,
+  updateBoqNode,
+  type CreateNodePayload,
+  type UpdateNodePayload,
 } from '../api/boq-api';
 import type { Boq, BoqTreeNode } from '../types';
 
@@ -81,4 +87,53 @@ export function useCancelDraftVersion(projectId: string) {
 
 export function useCreateDraftVersion(projectId: string) {
   return useBoqMutation(projectId, (notes: string) => createDraftVersion(projectId, notes));
+}
+
+// ─── Node editing ──────────────────────────────────────────────────────────────
+
+export function useAddNode(projectId: string, versionId: string) {
+  return useBoqMutation(projectId, (payload: CreateNodePayload) =>
+    addBoqNode(projectId, versionId, payload),
+  );
+}
+
+export function useUpdateNode(projectId: string, versionId: string) {
+  return useBoqMutation(projectId, (args: { nodeId: string; payload: UpdateNodePayload }) =>
+    updateBoqNode(projectId, versionId, args.nodeId, args.payload),
+  );
+}
+
+export function useDeleteNode(projectId: string, versionId: string) {
+  return useBoqMutation(projectId, (nodeId: string) =>
+    deleteBoqNode(projectId, versionId, nodeId),
+  );
+}
+
+/**
+ * Reorders a node among its siblings.
+ *
+ * Two writes, because `moveNode` never reindexes siblings (B13) — see planReorder. They run
+ * in sequence rather than in parallel: both touch the same sibling set, and a failure
+ * halfway is easier to reason about than two racing writes.
+ */
+export function useReorderNode(projectId: string, versionId: string) {
+  return useBoqMutation(
+    projectId,
+    async (plan: {
+      moved: { id: string; sortOrder: number };
+      displaced: { id: string; sortOrder: number };
+      parentId: string | null;
+    }) => {
+      const parent = plan.parentId ? { newParentId: plan.parentId } : {};
+
+      await moveBoqNode(projectId, versionId, plan.moved.id, {
+        ...parent,
+        newSortOrder: plan.moved.sortOrder,
+      });
+      await moveBoqNode(projectId, versionId, plan.displaced.id, {
+        ...parent,
+        newSortOrder: plan.displaced.sortOrder,
+      });
+    },
+  );
 }

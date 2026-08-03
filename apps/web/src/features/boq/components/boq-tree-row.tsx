@@ -5,19 +5,37 @@ import { cn } from '@erp/ui';
 
 import { formatMoney, formatNumber } from '@/lib/format';
 
+import { getNodeActions, REORDER_ENABLED } from '../node-actions';
 import { resolveSubtreeCurrency } from '../subtree-currency';
 import type { BoqTreeNode } from '../types';
+
+export interface NodeRowCommands {
+  onAddChild: (parent: BoqTreeNode, kind: 'section' | 'item') => void;
+  onEdit: (node: BoqTreeNode) => void;
+  onDelete: (node: BoqTreeNode) => void;
+  onReorder: (node: BoqTreeNode, direction: 'up' | 'down') => void;
+}
 
 interface BoqTreeRowProps {
   node: BoqTreeNode;
   isExpanded: boolean;
   onToggle: (nodeId: string) => void;
+  /** Siblings of this node, used to decide whether it can move up or down. */
+  siblings: BoqTreeNode[];
+  /** Present only for the editable draft; absent renders the row read-only. */
+  commands?: NodeRowCommands | undefined;
 }
 
 /** Indent per level. Padding-inline-start, so it mirrors correctly under RTL. */
 const INDENT_REM = 1.25;
 
-export function BoqTreeRow({ node, isExpanded, onToggle }: BoqTreeRowProps) {
+export function BoqTreeRow({
+  node,
+  isExpanded,
+  onToggle,
+  siblings,
+  commands,
+}: BoqTreeRowProps) {
   const t = useTranslations('platform.boq');
   const locale = useLocale() as 'en' | 'ar';
 
@@ -104,7 +122,172 @@ export function BoqTreeRow({ node, isExpanded, onToggle }: BoqTreeRowProps) {
           </span>
         )}
       </div>
+
+      {commands ? <RowCommands node={node} siblings={siblings} commands={commands} /> : null}
     </div>
+  );
+}
+
+function RowCommands({
+  node,
+  siblings,
+  commands,
+}: {
+  node: BoqTreeNode;
+  siblings: BoqTreeNode[];
+  commands: NodeRowCommands;
+}) {
+  const t = useTranslations('platform.boq.nodes');
+  const actions = getNodeActions(node, siblings);
+
+  return (
+    <div className="flex shrink-0 flex-wrap gap-1" role="group" aria-label={t('rowActions', { code: node.code })}>
+      {/* Only sections take children — the server refuses a child of a leaf. */}
+      {actions.canAddChild ? (
+        <>
+          <RowButton
+            label={t('addChildSection')}
+            onClick={() => {
+              commands.onAddChild(node, 'section');
+            }}
+          >
+            <PlusIcon />
+          </RowButton>
+          <RowButton
+            label={t('addItem')}
+            onClick={() => {
+              commands.onAddChild(node, 'item');
+            }}
+          >
+            <ItemIcon />
+          </RowButton>
+        </>
+      ) : null}
+
+      {/* Withheld until the move endpoint stops half-applying and corrupting descendant
+          paths — see REORDER_ENABLED and B14. */}
+      {REORDER_ENABLED ? (
+        <>
+          <RowButton
+            label={t('moveUp')}
+            disabled={!actions.canMoveUp}
+            onClick={() => {
+              commands.onReorder(node, 'up');
+            }}
+          >
+            <ArrowIcon direction="up" />
+          </RowButton>
+
+          <RowButton
+            label={t('moveDown')}
+            disabled={!actions.canMoveDown}
+            onClick={() => {
+              commands.onReorder(node, 'down');
+            }}
+          >
+            <ArrowIcon direction="down" />
+          </RowButton>
+        </>
+      ) : null}
+
+      <RowButton
+        label={t('edit')}
+        onClick={() => {
+          commands.onEdit(node);
+        }}
+      >
+        <PencilIcon />
+      </RowButton>
+
+      {/* Deleting a node with children is refused server-side; the button is withheld
+          rather than offered and rejected. */}
+      <RowButton
+        label={t('delete')}
+        disabled={!actions.canDelete}
+        onClick={() => {
+          commands.onDelete(node);
+        }}
+      >
+        <TrashIcon />
+      </RowButton>
+    </div>
+  );
+}
+
+function RowButton({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      className="flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary disabled:pointer-events-none disabled:opacity-30"
+    >
+      {children}
+    </button>
+  );
+}
+
+const iconProps = {
+  width: 14,
+  height: 14,
+  viewBox: '0 0 14 14',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.7,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+  'aria-hidden': true,
+};
+
+function PlusIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M7 2v10M2 7h10" />
+    </svg>
+  );
+}
+
+function ItemIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M2 4h10M2 7h10M2 10h6" />
+    </svg>
+  );
+}
+
+function ArrowIcon({ direction }: { direction: 'up' | 'down' }) {
+  return (
+    <svg {...iconProps}>
+      {direction === 'up' ? <path d="M7 11V3M3 7l4-4 4 4" /> : <path d="M7 3v8M3 7l4 4 4-4" />}
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M9.5 2.5l2 2L5 11l-2.5.5L3 9z" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M2.5 3.5h9M5.5 3.5V2h3v1.5M4 3.5l.5 8h5l.5-8" />
+    </svg>
   );
 }
 
