@@ -91,9 +91,7 @@ function Figure({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 text-sm font-medium text-foreground" dir="ltr">
-        {value}
-      </dd>
+      <dd className="mt-0.5 text-sm font-medium text-foreground">{value}</dd>
     </div>
   );
 }

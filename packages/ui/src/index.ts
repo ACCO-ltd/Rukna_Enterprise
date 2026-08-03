@@ -13,6 +13,7 @@ export {
   DialogTitle,
   DialogTrigger,
 } from './components/dialog';
+export { DirectionProvider } from './components/direction-provider';
 export { Input } from './components/input';
 export type { InputProps } from './components/input';
 export { Label } from './components/label';
