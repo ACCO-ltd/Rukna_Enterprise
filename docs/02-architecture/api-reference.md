@@ -1,8 +1,9 @@
 # Rukna ERP — Frontend API Reference
 
-Version: 1.0.0
-Last Updated: 2026-08-02
-Audience: **Frontend engineer** — everything you need to call the API without reading the backend code.
+Version: 3.0.0
+Last Updated: 2026-08-03
+Sprint Coverage: Sprint 3 (all phases complete)
+Audience: **Frontend engineer** — everything you need to call the API without reading backend code.
 
 Interactive docs (Scalar UI): `http://localhost:3001/docs`
 Raw OpenAPI JSON: `http://localhost:3001/docs-json`
@@ -22,8 +23,7 @@ Local development (ACCO tenant):
 http://acco.localhost:3001/api/v1
 ```
 
-> **Important:** The subdomain is how the API knows which tenant database to use.
-> Sending requests to the wrong subdomain will return `404 Tenant not found`.
+> Sending requests to the wrong subdomain returns `404 Tenant not found`.
 
 ---
 
@@ -37,61 +37,42 @@ POST /api/v1/auth/login
 
 **Request body:**
 ```json
-{
-  "email": "user@acco.com",
-  "password": "secret"
-}
+{ "email": "user@acco.com", "password": "secret" }
 ```
 
 **Response `200`:**
 ```json
-{
-  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-}
+{ "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." }
 ```
 
-**Side effect:** The API also sets an **HttpOnly cookie** named `refreshToken`.
-
-```
-Set-Cookie: refreshToken=<token>; Path=/api/v1/auth; HttpOnly; SameSite=Lax; Max-Age=604800
-```
-
-Do **not** try to read or set this cookie from JavaScript — it is `HttpOnly` by design.
-The browser sends it automatically on every request to `/api/v1/auth/*`.
+**Side effect:** Sets an `HttpOnly` cookie named `refreshToken`. Never read or set this from JS — the browser manages it automatically.
 
 ---
 
 ### 2.2 Attach the Access Token
 
-Every protected endpoint requires the access token as a Bearer header:
-
+Every protected endpoint requires:
 ```
 Authorization: Bearer <accessToken>
 ```
 
-Access tokens expire in **15 minutes**. When a request returns `401`, call `/auth/refresh` to get a new one before retrying.
+Access tokens expire in **15 minutes**. On `401`, call `/auth/refresh` once then retry.
 
 ---
 
-### 2.3 Refresh the Access Token
+### 2.3 Refresh
 
 ```
 POST /api/v1/auth/refresh
 ```
 
-No request body needed. The browser sends the `refreshToken` cookie automatically.
+No body. Browser sends the refresh cookie automatically.
 
-**Response `200`:**
-```json
-{
-  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-}
-```
+**Response `200`:** `{ "accessToken": "..." }`
 
-**Side effect:** The old refresh cookie is rotated — a new `refreshToken` cookie is set.
+The old cookie is rotated — a new `refreshToken` is set.
 
-**Error `401`:** Refresh token expired (>7 days), already used (reuse detection), or missing.
-On `401` from refresh → redirect user to login.
+**`401` from refresh** = token expired or reused → redirect to `/login`.
 
 ---
 
@@ -101,32 +82,41 @@ On `401` from refresh → redirect user to login.
 POST /api/v1/auth/logout
 ```
 
-No body needed. Revokes the refresh token and clears the cookie.
-
-**Response `200`:** Empty body.
+No body. Revokes the refresh token and clears the cookie.
 
 ---
 
-### 2.5 Recommended Frontend Auth Pattern
+### 2.5 Recommended Auth Pattern
 
 ```typescript
-// On app start / route change:
-// 1. Check if accessToken is in memory (not localStorage — XSS risk)
-// 2. If missing or expired, call POST /auth/refresh
-// 3. If refresh 401, redirect to /login
+// In-memory only — never localStorage
+let accessToken: string | null = null;
 
-// On every API call:
-// - Attach Authorization: Bearer <accessToken>
-// - On 401, call refresh once, retry, then redirect to /login if still 401
+axios.interceptors.response.use(
+  (res) => res,
+  async (error) => {
+    if (error.response?.status === 401 && !error.config._retry) {
+      error.config._retry = true;
+      try {
+        const { data } = await axios.post('/api/v1/auth/refresh');
+        accessToken = data.accessToken;
+        error.config.headers.Authorization = `Bearer ${accessToken}`;
+        return axios(error.config);
+      } catch {
+        accessToken = null;
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 ```
-
-Use TanStack Query with an axios/fetch interceptor that handles the refresh cycle automatically.
 
 ---
 
 ## 3. Error Format
 
-Every error (4xx, 5xx) returns the same envelope:
+Every error returns:
 
 ```json
 {
@@ -142,62 +132,88 @@ Every error (4xx, 5xx) returns the same envelope:
 | HTTP Status | When |
 |---|---|
 | `400 Bad Request` | Validation failed, invalid state transition, business rule violation |
-| `401 Unauthorized` | Missing/expired/invalid token, no active org membership |
-| `403 Forbidden` | Authenticated but not permitted (wrong org, not a project member) |
-| `404 Not Found` | Resource does not exist, tenant not found |
-| `409 Conflict` | Duplicate (project code, active suspension, etc.) |
+| `401 Unauthorized` | Missing/expired token |
+| `403 Forbidden` | Not a project member, wrong org |
+| `404 Not Found` | Resource not found, tenant not found |
+| `409 Conflict` | Duplicate (contract number, guarantee already effective, etc.) |
+| `422 Unprocessable Entity` | Workflow approval required but not configured |
 | `500 Internal Server Error` | Unexpected server error |
 
-**Validation errors** (from `class-validator`) return `400` with a `message` array:
+**Validation errors** return `400` with a `message` array:
 ```json
-{
-  "success": false,
-  "error": {
-    "code": "INTERNAL_ERROR",
-    "message": ["code must be shorter than or equal to 30 characters", "name should not be empty"],
-    "details": {}
-  }
-}
+{ "error": { "message": ["code must not be empty", "currency must be exactly 3 characters"] } }
 ```
 
 ---
 
-## 4. Shared Types (from `@erp/types`)
+## 4. Shared Types (`@erp/types`)
 
-The `packages/types` package is importable in the frontend:
+Import in the frontend — **do not redefine locally**:
 
 ```typescript
-import type { JwtPayload, RequestIdentity, ProjectStatus, ProjectRole, BoqVersionStatus } from '@erp/types';
+import type { RequestIdentity } from '@erp/types';
+import {
+  ProjectStatus, ProjectRole,
+  CommercialModel, ParticipationModel,
+  BoqVersionStatus, MeasurementMethod, PricingBasis,
+  ClientStatus,
+  ContractStatus, BillingModel, AdvanceType, GuaranteeStatus,
+  IpaStatus, IpcStatus,
+} from '@erp/types';
 ```
 
 Key enums:
 
 ```typescript
-enum ProjectStatus {
-  DRAFT = 'DRAFT', APPROVED = 'APPROVED', MOBILIZING = 'MOBILIZING',
-  ACTIVE = 'ACTIVE', PRACTICAL_COMPLETION = 'PRACTICAL_COMPLETION',
-  CLOSEOUT = 'CLOSEOUT', CLOSED = 'CLOSED', CANCELLED = 'CANCELLED'
-}
+// Projects
+enum ProjectStatus   { DRAFT, APPROVED, MOBILIZING, ACTIVE, PRACTICAL_COMPLETION, CLOSEOUT, CLOSED, CANCELLED }
+enum CommercialModel { CLIENT_CONTRACT, INTERNAL_CAPITAL }
+enum ParticipationModel { SOLE, JOINT_VENTURE }
+enum ProjectRole     { PROJECT_MANAGER, QUANTITY_SURVEYOR, SITE_ENGINEER, COMMERCIAL_MANAGER, FINANCE_REVIEWER, VIEWER }
 
-enum ProjectRole {
-  PROJECT_MANAGER = 'PROJECT_MANAGER', QUANTITY_SURVEYOR = 'QUANTITY_SURVEYOR',
-  SITE_ENGINEER = 'SITE_ENGINEER', COMMERCIAL_MANAGER = 'COMMERCIAL_MANAGER',
-  FINANCE_REVIEWER = 'FINANCE_REVIEWER', VIEWER = 'VIEWER'
-}
+// BOQ
+enum BoqVersionStatus  { DRAFT, BASELINED, SUPERSEDED, CANCELLED }
+enum MeasurementMethod { QUANTITY, PERCENTAGE, MILESTONE }
+enum PricingBasis      { UNIT_RATE, LUMP_SUM }
 
-enum BoqVersionStatus {
-  DRAFT = 'DRAFT', BASELINED = 'BASELINED',
-  SUPERSEDED = 'SUPERSEDED', CANCELLED = 'CANCELLED'
-}
+// Clients
+enum ClientStatus { ACTIVE, INACTIVE }
+
+// Contracts
+enum ContractStatus { DRAFT, UNDER_REVIEW, PENDING_SIGNATURE, ACTIVE, FINAL_ACCOUNT_PENDING, CLOSED, CANCELLED, TERMINATED }
+enum BillingModel   { MEASURED_IPC, MILESTONE, TIME_AND_MATERIAL, HYBRID }
+enum AdvanceType    { MOBILIZATION, MATERIAL_ON_SITE, EQUIPMENT, OTHER }
+enum GuaranteeStatus { ACTIVE, DISCHARGED, EXPIRED, CALLED }
+
+// IPA
+enum IpaStatus { DRAFT, PENDING_INTERNAL_APPROVAL, RETURNED_FOR_REVISION, APPROVED_FOR_SUBMISSION, SUBMITTED, CANCELLED }
+
+// IPC
+enum IpcStatus { CERTIFIED, PARTIALLY_CERTIFIED, REJECTED }
 ```
 
 ---
 
-## 5. Endpoint Catalog
+## 5. CORS & Cookies
 
-### 5.1 Auth
+```typescript
+// Always include credentials
+fetch(url, { credentials: 'include', headers: { Authorization: `Bearer ${token}` } });
 
-All auth endpoints are **public** (no Authorization header needed).
+// Axios
+axios.defaults.withCredentials = true;
+```
+
+---
+
+## 6. Endpoint Catalog
+
+All endpoints require `Authorization: Bearer <token>` unless marked public.
+All endpoints are scoped to the authenticated user's organization.
+
+---
+
+### 6.1 Auth (public)
 
 | Method | Path | Description |
 |---|---|---|
@@ -207,9 +223,7 @@ All auth endpoints are **public** (no Authorization header needed).
 
 ---
 
-### 5.2 Users
-
-All require `Authorization: Bearer <token>`.
+### 6.2 Users
 
 | Method | Path | Description |
 |---|---|---|
@@ -218,122 +232,118 @@ All require `Authorization: Bearer <token>`.
 **Response:**
 ```json
 {
-  "id": "cld...",
-  "email": "user@acco.com",
-  "firstName": "Ahmed",
-  "lastName": "Al-Rashidi",
-  "status": "ACTIVE",
-  "organizationId": "cld...",
-  "preferredLanguage": "EN"
+  "id": "cld...", "email": "user@acco.com",
+  "firstName": "Ahmed", "lastName": "Ali",
+  "status": "ACTIVE", "preferredLanguage": "EN"
 }
 ```
 
 ---
 
-### 5.3 Organizations
+### 6.3 Organizations
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/organizations/:id` | Get organization by ID |
-
-**Response:**
-```json
-{
-  "id": "cld...",
-  "name": "ACCO Ltd",
-  "slug": "acco",
-  "status": "ACTIVE"
-}
-```
+| `GET` | `/organizations/:id` | Get organization |
 
 ---
 
-### 5.4 Roles
+### 6.4 Roles / Permissions / Audit Logs
 
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/roles` | List roles for the authenticated org |
-
----
-
-### 5.5 Permissions
-
-| Method | Path | Description |
-|---|---|---|
 | `GET` | `/permissions` | List all platform permissions |
-
----
-
-### 5.6 Audit Logs
-
-| Method | Path | Description |
-|---|---|---|
 | `GET` | `/audit-logs` | List audit log entries |
 
 ---
 
-### 5.7 Workflows
+### 6.5 Workflows
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/workflows/definition/:transactionType` | Get active workflow definition for a transaction type |
-| `GET` | `/workflows/instance/:instanceId/step` | Get current pending approval step |
-| `POST` | `/workflows/instance/:instanceId/approve` | Approve the current step |
-| `POST` | `/workflows/instance/:instanceId/reject` | Reject the current step |
-
-`transactionType` values: `MATERIAL_REQUEST`, `PURCHASE_ORDER`, `SUPPLIER_PAYMENT`,
-`STOCK_TRANSFER`, `MATERIAL_ISSUE`, `SUBCONTRACT_CERTIFICATE`, `IPC`, `VARIATION`
+| `GET` | `/workflows/definition/:transactionType` | Active workflow definition |
+| `GET` | `/workflows/instance/:instanceId/step` | Current pending approval step |
+| `POST` | `/workflows/instance/:instanceId/approve` | Approve current step |
+| `POST` | `/workflows/instance/:instanceId/reject` | Reject current step |
 
 ---
 
-### 5.8 Projects
+### 6.6 Clients
 
-All require `Authorization: Bearer <token>`. All scoped to the authenticated user's organization.
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/clients` | List clients (`?status=ACTIVE`) |
+| `POST` | `/clients` | Create client |
+| `GET` | `/clients/:id` | Get client with contacts |
+| `PATCH` | `/clients/:id` | Update client |
+| `POST` | `/clients/:id/contacts` | Add contact |
+| `DELETE` | `/clients/:id/contacts/:contactId` | Remove contact |
 
-#### List Projects
-```
-GET /projects?status=ACTIVE
-```
-Query param `status` is optional. Returns array of project objects.
-
-**Response:**
+**Create client — request body:**
 ```json
-[
-  {
-    "id": "cld...",
-    "organizationId": "cld...",
-    "code": "ACCO-2026-001",
-    "name": "Al-Baraka Tower Construction",
-    "nameAr": "مشروع برج البركة",
-    "description": null,
-    "status": "ACTIVE",
-    "clientName": "Baraka Real Estate LLC",
-    "contractValue": "4500000.00",
-    "currency": "USD",
-    "startDate": "2026-09-01T00:00:00.000Z",
-    "expectedEndDate": "2028-03-31T00:00:00.000Z",
-    "createdBy": "cld...",
-    "createdAt": "2026-08-02T14:00:00.000Z",
-    "updatedAt": "2026-08-02T14:00:00.000Z"
-  }
-]
+{
+  "code": "CLIENT-001",
+  "name": "Baraka Real Estate LLC",
+  "nameAr": "شركة البركة للعقارات",
+  "taxNumber": "SO-123456",
+  "defaultCurrency": "USD",
+  "status": "ACTIVE"
+}
 ```
+
+> `code` is unique per org, max 30 chars, **immutable after creation**.
+
+**Get client response:**
+```json
+{
+  "id": "cld...", "code": "CLIENT-001",
+  "name": "Baraka Real Estate LLC", "nameAr": "شركة البركة للعقارات",
+  "taxNumber": "SO-123456", "defaultCurrency": "USD", "status": "ACTIVE",
+  "contacts": [
+    {
+      "id": "cld...", "name": "Mohammed Hassan",
+      "role": "Finance Director", "email": "m.hassan@baraka.so",
+      "phone": "+252612345678", "isPrimary": true
+    }
+  ]
+}
+```
+
+**Add contact — request body:**
+```json
+{
+  "name": "Mohammed Hassan",
+  "role": "Finance Director",
+  "email": "m.hassan@baraka.so",
+  "phone": "+252612345678",
+  "isPrimary": true
+}
+```
+
+> Setting `isPrimary: true` clears the flag on any existing primary contact for this client.
 
 ---
 
-#### Create Project
-```
-POST /projects
-```
+### 6.7 Projects
 
-**Request body:**
+#### List / Create / Get / Update
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/projects` | List (`?status=ACTIVE`) |
+| `POST` | `/projects` | Create DRAFT |
+| `GET` | `/projects/:id` | Get with members + suspension |
+| `PATCH` | `/projects/:id` | Update (DRAFT only) |
+
+**Create project — request body:**
 ```json
 {
   "code": "ACCO-2026-001",
   "name": "Al-Baraka Tower Construction",
   "nameAr": "مشروع برج البركة",
-  "description": "Mixed-use residential tower",
-  "clientName": "Baraka Real Estate LLC",
+  "commercialModel": "CLIENT_CONTRACT",
+  "participationModel": "SOLE",
   "contractValue": 4500000.00,
   "currency": "USD",
   "startDate": "2026-09-01",
@@ -341,277 +351,67 @@ POST /projects
 }
 ```
 
-> `code` is required, max 30 chars, **immutable after creation**.
-> All other fields are optional.
-
-**Response `201`:** Project object (same shape as list item).
-
-**Error `409`:** Project code already exists in this org.
-
----
-
-#### Get Project
-```
-GET /projects/:id
-```
-
-Returns the full project including active members and active suspension (if any).
-
-**Response includes:**
-```json
-{
-  "id": "cld...",
-  "...": "all project fields",
-  "members": [
-    {
-      "id": "cld...",
-      "userId": "cld...",
-      "joinedAt": "2026-08-02T14:00:00.000Z",
-      "joinedBy": "cld...",
-      "removedAt": null,
-      "roles": [
-        { "id": "cld...", "role": "PROJECT_MANAGER", "assignedAt": "..." }
-      ],
-      "user": { "id": "cld...", "firstName": "Ahmed", "lastName": "Ali", "email": "..." }
-    }
-  ],
-  "suspensions": []
-}
-```
-
----
-
-#### Update Project
-```
-PATCH /projects/:id
-```
-
-Only allowed when `status = DRAFT`. All fields optional. `code` cannot be changed.
-
-**Request body:** Same as Create, minus `code`.
-
----
+> `commercialModel` defaults to `CLIENT_CONTRACT`. Use `INTERNAL_CAPITAL` for capex projects (no client contract required).
 
 #### Lifecycle Commands
 
-All return the updated project object. All return `400` if the transition is not valid from the current status.
+All return the updated project. All return `400` if the transition is invalid from the current status.
 
 | Method | Path | From → To |
 |---|---|---|
 | `POST` | `/projects/:id/approve` | `DRAFT` → `APPROVED` |
 | `POST` | `/projects/:id/mobilize` | `APPROVED` → `MOBILIZING` |
 | `POST` | `/projects/:id/activate` | `MOBILIZING` → `ACTIVE` |
-| `POST` | `/projects/:id/practical-completion` | `ACTIVE` → `PRACTICAL_COMPLETION` |
+| `POST` | `/projects/:id/practical-completion` | `ACTIVE` → `PRACTICAL_COMPLETION` ⚠️ |
 | `POST` | `/projects/:id/closeout` | `PRACTICAL_COMPLETION` → `CLOSEOUT` |
 | `POST` | `/projects/:id/close` | `CLOSEOUT` → `CLOSED` |
+| `POST` | `/projects/:id/reopen-to-active` | `PRACTICAL_COMPLETION` → `ACTIVE` |
+| `POST` | `/projects/:id/reopen-to-practical-completion` | `CLOSEOUT` → `PRACTICAL_COMPLETION` |
 
-No request body for any of the above.
+> ⚠️ **`practical-completion`** automatically moves all `ACTIVE` contracts for this project to `FINAL_ACCOUNT_PENDING`. The UI should warn the user before calling this endpoint.
 
-#### Cancel Project
+**Cancel:**
 ```
 POST /projects/:id/cancel
-```
-
-Allowed from: `DRAFT`, `APPROVED`, `MOBILIZING`, `ACTIVE`.
-
-**Request body:**
-```json
 { "reason": "Client withdrew due to funding issues" }
 ```
+Allowed from: `DRAFT`, `APPROVED`, `MOBILIZING`, `ACTIVE`.
 
----
-
-#### Suspend / Resume
-
+**Suspend / Resume:**
 ```
-POST /projects/:id/suspend
-```
-**Request body:**
-```json
-{ "reason": "Awaiting site access clearance from municipality" }
-```
-**Error `409`:** Already has an active suspension.
-
-```
+POST /projects/:id/suspend  { "reason": "..." }
 POST /projects/:id/resume
 ```
-No body. **Error `400`:** No active suspension to resume.
 
----
-
-#### Project Members
-
+**Members:**
 ```
-GET  /projects/:id/members
-POST /projects/:id/members
+GET    /projects/:id/members
+POST   /projects/:id/members   { "userId": "cld...", "roles": ["SITE_ENGINEER"] }
 DELETE /projects/:id/members/:userId
 ```
 
-**Add member — request body:**
-```json
-{
-  "userId": "cld...",
-  "roles": ["SITE_ENGINEER", "QUANTITY_SURVEYOR"]
-}
-```
-
-**List members response:**
-```json
-[
-  {
-    "id": "cld...",
-    "userId": "cld...",
-    "joinedAt": "2026-08-02T14:00:00.000Z",
-    "roles": [{ "role": "PROJECT_MANAGER" }],
-    "user": { "id": "cld...", "firstName": "Ahmed", "email": "..." }
-  }
-]
-```
+> **`422`** on any controlled lifecycle command means a workflow approval configuration is required but missing. The API does not silently pass through — it rejects. Surface this to the user as a configuration issue.
 
 ---
 
-### 5.9 BOQ (Bill of Quantities)
+### 6.8 BOQ (Bill of Quantities)
 
-All routes are nested under `/projects/:projectId/boq`.
+All routes nested under `/projects/:projectId/boq`.
 
-#### Initialize BOQ
-```
-POST /projects/:projectId/boq
-```
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/projects/:id/boq` | Initialize BOQ (idempotent) |
+| `GET` | `/projects/:id/boq` | Get BOQ + version list |
+| `POST` | `/projects/:id/boq/draft` | New draft from approved (`{ "notes": "..." }`) |
+| `POST` | `/projects/:id/boq/versions/:vId/baseline` | Lock draft as approved |
+| `POST` | `/projects/:id/boq/versions/:vId/cancel` | Cancel draft |
+| `GET` | `/projects/:id/boq/versions/:vId/tree` | Full recursive tree |
+| `POST` | `/projects/:id/boq/versions/:vId/nodes` | Add node |
+| `PATCH` | `/projects/:id/boq/versions/:vId/nodes/:nId` | Update node |
+| `POST` | `/projects/:id/boq/versions/:vId/nodes/:nId/move` | Move node + all descendants |
+| `DELETE` | `/projects/:id/boq/versions/:vId/nodes/:nId` | Delete leaf node |
 
-Idempotent — returns the existing BOQ if already initialized.
-Creates the BOQ root and a first DRAFT version automatically.
-
-**Response:**
-```json
-{
-  "id": "cld...",
-  "projectId": "cld...",
-  "originalBaselineVersionId": null,
-  "currentApprovedVersionId": null,
-  "currentDraftVersionId": "cld...",
-  "versions": [
-    {
-      "id": "cld...",
-      "versionNumber": 1,
-      "status": "DRAFT",
-      "notes": null,
-      "baselinedAt": null,
-      "createdBy": "cld...",
-      "createdAt": "2026-08-02T14:00:00.000Z"
-    }
-  ]
-}
-```
-
----
-
-#### Get BOQ
-```
-GET /projects/:projectId/boq
-```
-Returns same shape as Initialize response.
-
----
-
-#### Create New Draft (from approved version)
-```
-POST /projects/:projectId/boq/draft
-```
-
-Only works when `currentApprovedVersionId` is set and `currentDraftVersionId` is null.
-Copies all nodes from the approved version into a new draft.
-
-**Request body:**
-```json
-{ "notes": "Variation Order #3 — additional excavation scope" }
-```
-
-**Error `400`:** No approved version exists.
-**Error `409`:** Draft already exists.
-
----
-
-#### Baseline (lock a draft as approved)
-```
-POST /projects/:projectId/boq/versions/:versionId/baseline
-```
-
-- The DRAFT → BASELINED
-- Previous approved version → SUPERSEDED
-- `originalBaselineVersionId` set on first baseline (immutable thereafter)
-
-**Error `400`:** Not the current draft, or not in DRAFT status.
-
----
-
-#### Cancel Draft
-```
-POST /projects/:projectId/boq/versions/:versionId/cancel
-```
-
-Cancels the draft without affecting the approved version.
-
----
-
-#### Get Tree
-```
-GET /projects/:projectId/boq/versions/:versionId/tree
-```
-
-Returns the full hierarchical tree with computed totals.
-
-**Response — array of root nodes (recursive):**
-```json
-[
-  {
-    "id": "cld...",
-    "parentId": null,
-    "path": "cld...",
-    "depth": 0,
-    "sortOrder": 1,
-    "code": "01",
-    "description": "Substructure Works",
-    "descriptionAr": "أعمال البنية التحتية",
-    "isLeaf": false,
-    "unit": null,
-    "quantity": null,
-    "unitRate": null,
-    "totalAmount": null,
-    "computedTotal": 540000.00,
-    "children": [
-      {
-        "id": "cld...",
-        "parentId": "cld...",
-        "path": "cld.../cld...",
-        "depth": 1,
-        "sortOrder": 1,
-        "code": "01.01",
-        "description": "Excavation",
-        "isLeaf": true,
-        "unit": "m³",
-        "quantity": "1200.000",
-        "unitRate": "45.00",
-        "totalAmount": "54000.00",
-        "computedTotal": 54000.00,
-        "children": []
-      }
-    ]
-  }
-]
-```
-
-> `computedTotal` is computed at query time — sum of all descendant `totalAmount` values.
-> For leaf nodes it equals `totalAmount`. For summary nodes it is the sum of children.
-
----
-
-#### Add Node
-```
-POST /projects/:projectId/boq/versions/:versionId/nodes
-```
-
-**Request body:**
+**Add node — request body:**
 ```json
 {
   "parentId": "cld...",
@@ -623,129 +423,494 @@ POST /projects/:projectId/boq/versions/:versionId/nodes
   "unit": "m³",
   "quantity": 1200,
   "unitRate": 45.00,
-  "currency": "USD"
+  "currency": "USD",
+  "measurementMethod": "QUANTITY",
+  "pricingBasis": "UNIT_RATE"
 }
 ```
 
-> Omit `parentId` to add at root level.
-> `isLeaf: true` nodes accept `quantity`, `unitRate`, `unit`, `currency`.
-> `isLeaf: false` (summary) nodes cannot have children added to a leaf node.
+> `measurementMethod` and `pricingBasis` are leaf-node properties. Default: `QUANTITY` / `UNIT_RATE`. These values are snapshotted onto IPA items — do not change after BOQ is baselined.
 
-**Error `403`:** Version is not in DRAFT status.
-
----
-
-#### Update Node
-```
-PATCH /projects/:projectId/boq/versions/:versionId/nodes/:nodeId
-```
-
-All fields optional. Cannot change `parentId` or `sortOrder` via this endpoint — use `/move`.
-
-**Request body (partial):**
+**Tree node response shape:**
 ```json
 {
-  "description": "Mass Excavation",
-  "quantity": 1350,
-  "unitRate": 42.50
+  "id": "cld...", "code": "01.01", "description": "Excavation",
+  "isLeaf": true, "unit": "m³", "quantity": "1200.000",
+  "unitRate": "45.00", "totalAmount": "54000.00",
+  "measurementMethod": "QUANTITY", "pricingBasis": "UNIT_RATE",
+  "computedTotal": 54000.00, "children": []
 }
 ```
 
 ---
 
-#### Move Node
-```
-POST /projects/:projectId/boq/versions/:versionId/nodes/:nodeId/move
-```
+### 6.9 Contracts
 
-Moves the node and **all its descendants** to a new parent position.
-Uses raw SQL for atomic path/depth update on all affected nodes.
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/contracts` | List (`?projectId=cld...`) |
+| `POST` | `/contracts` | Create DRAFT |
+| `GET` | `/contracts/:id` | Get with all sub-entities |
+| `PATCH` | `/contracts/:id` | Update (DRAFT only) |
 
-**Request body:**
+**Create contract — request body:**
 ```json
 {
-  "newParentId": "cld...",
-  "newSortOrder": 2
+  "projectId": "cld...",
+  "clientId": "cld...",
+  "boqVersionId": "cld...",
+  "contractNumber": "ACCO-2026-001",
+  "contractValue": "5000000.00",
+  "currency": "USD",
+  "billingModel": "MEASURED_IPC",
+  "startDate": "2026-09-01",
+  "expectedEndDate": "2028-03-31"
 }
 ```
 
-> Omit `newParentId` to move to root level.
+> `boqVersionId` must reference a **BASELINED** BOQ version — this is the contractual scope baseline. `contractValue` is stored independently from the BOQ total (they may differ after negotiation).
 
-**Error `400`:** Circular move (target is a descendant of the moved node), or target is a leaf.
+**Get contract response:**
+```json
+{
+  "id": "cld...", "contractNumber": "ACCO-2026-001",
+  "status": "ACTIVE", "billingModel": "MEASURED_IPC",
+  "contractValue": "5000000.00", "currency": "USD",
+  "clientNameSnapshot": "Baraka Real Estate LLC",
+  "clientTaxSnapshot": "SO-123456",
+  "retentionTerms": {
+    "retentionRate": "0.0500",
+    "retentionCap": "0.1000",
+    "retentionSplitOnPC": "0.5000"
+  },
+  "advanceTerms": [],
+  "guarantees": [],
+  "milestones": [],
+  "attachments": []
+}
+```
+
+> `clientNameSnapshot` and `clientTaxSnapshot` are frozen at the moment the contract is executed (PENDING_SIGNATURE → ACTIVE). They never change even if the Client record is later updated.
+
+#### Contract Lifecycle Commands
+
+| Method | Path | From → To | Notes |
+|---|---|---|---|
+| `POST` | `/contracts/:id/submit` | `DRAFT` → `UNDER_REVIEW` | |
+| `POST` | `/contracts/:id/approve-review` | `UNDER_REVIEW` → `PENDING_SIGNATURE` | |
+| `POST` | `/contracts/:id/execute` | `PENDING_SIGNATURE` → `ACTIVE` | Freezes client snapshots |
+| `POST` | `/contracts/:id/close` | `FINAL_ACCOUNT_PENDING` → `CLOSED` | |
+| `POST` | `/contracts/:id/cancel` | `DRAFT / UNDER_REVIEW / PENDING_SIGNATURE` → `CANCELLED` | Body: `{ "reason": "..." }` |
+| `POST` | `/contracts/:id/terminate` | `ACTIVE` → `TERMINATED` | Body: `{ "reason": "..." }` |
+
+> `FINAL_ACCOUNT_PENDING` is set automatically when the parent project reaches `PRACTICAL_COMPLETION`. The user cannot set it manually.
+
+#### Retention Terms (1:1)
+
+```
+POST /contracts/:id/retention-terms
+```
+```json
+{
+  "retentionRate": "0.05",
+  "retentionCap": "0.10",
+  "retentionSplitOnPc": "0.50"
+}
+```
+
+> This endpoint upserts — calling it again replaces the existing terms.
+
+#### Advance Terms (1:many)
+
+```
+POST   /contracts/:id/advance-terms
+DELETE /contracts/:id/advance-terms/:termId
+```
+
+**Add advance term — body:**
+```json
+{
+  "advanceType": "MOBILIZATION",
+  "description": "Initial mobilization advance",
+  "percentage": "0.10",
+  "recoveryRate": "0.15"
+}
+```
+
+> Provide either `amount` (fixed USD value) or `percentage` (fraction of contract value). `recoveryRate` is the fraction deducted from each IPC until fully recovered.
+
+#### Guarantees (1:many)
+
+```
+POST   /contracts/:id/guarantees
+PATCH  /contracts/:id/guarantees/:guaranteeId
+```
+
+**Add guarantee — body:**
+```json
+{
+  "guaranteeType": "PERFORMANCE",
+  "amount": "250000.00",
+  "currency": "USD",
+  "issuer": "Premier Bank Somalia",
+  "beneficiary": "ACCO Ltd",
+  "issueDate": "2026-09-01",
+  "expiryDate": "2028-03-31",
+  "notes": "Valid for the full contract period"
+}
+```
+
+**Update guarantee — body:**
+```json
+{ "status": "DISCHARGED", "notes": "Released on project close" }
+```
+
+> `guaranteeType` is a free string — `PERFORMANCE` and `ADVANCE_PAYMENT` are the confirmed ACCO types.
+
+#### Milestones (1:many)
+
+```
+POST /contracts/:id/milestones
+POST /contracts/:id/milestones/:milestoneId/complete
+```
+
+**Add milestone — body:**
+```json
+{
+  "name": "Structural Completion",
+  "description": "All structural elements above ground complete",
+  "dueDate": "2027-06-30",
+  "sortOrder": 1
+}
+```
 
 ---
 
-#### Delete Node
-```
-DELETE /projects/:projectId/boq/versions/:versionId/nodes/:nodeId
+### 6.10 IPA (Interim Payment Applications)
+
+ACCO's internal commercial valuation submitted to the client.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/ipa` | List (`?contractId=cld...`) |
+| `POST` | `/ipa` | Create DRAFT |
+| `GET` | `/ipa/:id` | Get with items and deductions |
+
+**Create IPA — body:**
+```json
+{
+  "contractId": "cld...",
+  "periodFrom": "2026-10-01",
+  "periodTo": "2026-10-31",
+  "exchangeRateCurrency": "USD",
+  "exchangeRateBase": "SOS",
+  "exchangeRateValue": "557300.000000",
+  "exchangeRateDate": "2026-10-31",
+  "notes": "Monthly valuation — October"
+}
 ```
 
-Hard-deletes the node. Must have no children.
+> The exchange rate snapshot is frozen at creation and never changes, even if rates are updated later.
 
-**Error `400`:** Node has children — delete or re-parent them first.
+#### IPA Lifecycle Commands
+
+| Method | Path | From → To | Notes |
+|---|---|---|---|
+| `POST` | `/ipa/:id/submit-for-approval` | `DRAFT` → `PENDING_INTERNAL_APPROVAL` | Requires workflow configured |
+| `POST` | `/ipa/:id/return-for-revision` | `PENDING_INTERNAL_APPROVAL` → `RETURNED_FOR_REVISION` | |
+| `POST` | `/ipa/:id/approve-for-submission` | `PENDING_INTERNAL_APPROVAL` → `APPROVED_FOR_SUBMISSION` | Assigns application number |
+| `POST` | `/ipa/:id/submit` | `APPROVED_FOR_SUBMISSION` → `SUBMITTED` | IPA becomes immutable |
+| `POST` | `/ipa/:id/cancel` | `DRAFT / RETURNED_FOR_REVISION` → `CANCELLED` | |
+
+> **Application number** is assigned at `APPROVED_FOR_SUBMISSION`. It is a sequential integer per contract (`applicationRef`: `IPA-001`, `IPA-002`, etc.). A DRAFT IPA has `applicationNumber: null`.
+
+> Once **`SUBMITTED`**, the IPA is immutable. No items or deductions can be added.
+
+#### IPA Items
+
+```
+POST   /ipa/:id/items
+DELETE /ipa/:id/items/:itemId
+```
+
+**Add item — body:**
+```json
+{
+  "boqNodeId": "cld...",
+  "unitRateSnapshot": "45.00",
+  "currencySnapshot": "USD",
+  "cumulativeClaimed": "960.000"
+}
+```
+
+> `cumulativeClaimed` is the **total quantity/percentage claimed to date** including this application (not just this period). The API automatically resolves `previousEffectiveCertified` from the last effective IPC for this contract + BOQ node. `periodQuantity = cumulativeClaimed − previousEffectiveCertified`.
+
+> Only DRAFT and RETURNED_FOR_REVISION IPAs accept items.
+
+> The `boqNodeId` must be a **leaf** BOQ node. The `measurementMethodSnapshot` is auto-copied from the BOQ node.
+
+**Get IPA response (item shape):**
+```json
+{
+  "id": "cld...",
+  "boqNodeId": "cld...",
+  "measurementMethodSnapshot": "QUANTITY",
+  "unitRateSnapshot": "45.00",
+  "currencySnapshot": "USD",
+  "cumulativeClaimed": "960.000",
+  "previousEffectiveCertified": "800.000",
+  "periodQuantity": "160.000",
+  "periodAmount": "7200.00"
+}
+```
+
+#### IPA Deductions
+
+```
+POST   /ipa/:id/deductions
+DELETE /ipa/:id/deductions/:deductionId
+```
+
+**Add deduction — body:**
+```json
+{
+  "deductionType": "RETENTION",
+  "sourceTermId": "cld...",
+  "rate": "0.0500",
+  "basis": "7200.00",
+  "amount": "360.00"
+}
+```
+
+> `deductionType`: `RETENTION`, `ADVANCE_RECOVERY`, `TAX`, or any custom string. `sourceTermId` links to the `ContractRetentionTerms` or `ContractAdvanceTerm` that governs this deduction.
 
 ---
 
-## 6. Lifecycle State Machine (UI Reference)
+### 6.11 IPC (Interim Payment Certificates)
 
-### Project Status
+The client/consultant's certified response to an IPA. Independent aggregate — one application can have multiple certificates.
 
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/ipc` | List (`?applicationId=cld...`) |
+| `POST` | `/ipc` | Issue a new certificate |
+| `GET` | `/ipc/:id` | Get with items and deductions |
+| `POST` | `/ipc/:applicationId/supersede` | Atomic supersession |
+
+**Issue IPC — body:**
+```json
+{
+  "applicationId": "cld...",
+  "status": "CERTIFIED",
+  "certifiedTotal": "6840.00",
+  "currency": "USD",
+  "exchangeRateCurrency": "USD",
+  "exchangeRateBase": "SOS",
+  "exchangeRateValue": "557300.000000",
+  "exchangeRateDate": "2026-11-15",
+  "notes": "Certified at 95% progress",
+  "items": [
+    {
+      "applicationItemId": "cld...",
+      "certifiedQuantity": "152.000",
+      "varianceReason": "5% withheld pending site inspection"
+    }
+  ],
+  "deductions": [
+    {
+      "deductionType": "RETENTION",
+      "sourceTermId": "cld...",
+      "rate": "0.0500",
+      "basis": "6840.00",
+      "amount": "342.00"
+    }
+  ]
+}
 ```
-         ┌─────────────────── CANCELLED ◄──────────────────────┐
-         │         (from any of the first 4 states)             │
-         ▼                                                       │
-       DRAFT ──approve──► APPROVED ──mobilize──► MOBILIZING ──activate──► ACTIVE
-                                                                            │
-                              CLOSED ◄──close── CLOSEOUT ◄──closeout── PRACTICAL_COMPLETION
+
+> **`varianceReason` is required** when `certifiedQuantity ≠ cumulativeClaimed` on the application item. The API returns `400` if missing.
+
+> **`isEffective` rule:** The first `CERTIFIED` or `PARTIALLY_CERTIFIED` certificate for an application automatically becomes effective on issue (`isEffective: true`). A `REJECTED` certificate never becomes effective.
+
+> **Supersession:** If an effective certificate already exists and you issue a new one, it is created with `isEffective: false`. You must explicitly supersede via `POST /ipc/:applicationId/supersede`.
+
+**Supersede — body:**
+```json
+{
+  "newCertificateId": "cld...",
+  "reason": "Revised following client objection to line 3 deduction"
+}
 ```
 
-**Suspend/Resume** is a separate overlay — does not change status.
-Lifecycle transitions are blocked while a suspension is active.
+> This is an atomic operation: the current effective certificate gets `isEffective = false` + `supersededAt` + `supersessionReason`. The new certificate gets `isEffective = true` + `effectiveAt`.
+
+**IPC response shape:**
+```json
+{
+  "id": "cld...",
+  "applicationId": "cld...",
+  "certificateNumber": 1,
+  "certificateRef": "IPC-001",
+  "status": "CERTIFIED",
+  "isEffective": true,
+  "effectiveAt": "2026-11-15T10:30:00.000Z",
+  "certifiedTotal": "6840.00",
+  "currency": "USD",
+  "supersededAt": null,
+  "supersededById": null,
+  "items": [...],
+  "deductions": [...]
+}
+```
 
 ---
 
-### BOQ Version Status
+### 6.12 Finance (Payment Receipts)
+
+Records cash received from clients and allocates it against certified IPCs.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/receipts` | List receipts (`?clientId=cld...`) |
+| `POST` | `/receipts` | Record a new receipt |
+| `GET` | `/receipts/:id` | Get receipt with allocations |
+| `POST` | `/receipts/:id/allocations` | Allocate receipt amount against an IPC |
+| `DELETE` | `/receipts/:id/allocations/:allocationId` | Remove an allocation |
+| `GET` | `/receipts/certificate/:certificateId/payment-status` | Derive payment status for an IPC |
+
+**Record receipt — body:**
+```json
+{
+  "clientId": "cld...",
+  "receiptDate": "2026-11-20",
+  "amount": "6498.00",
+  "currency": "USD",
+  "exchangeRate": "557300.00",
+  "reference": "BK-TXN-20261120-8821",
+  "notes": "Wire transfer via Premier Bank"
+}
+```
+
+**Allocate to IPC — body:**
+```json
+{
+  "certificateId": "cld...",
+  "allocatedAmount": "6498.00"
+}
+```
+
+> The API guards that cumulative allocations never exceed the receipt amount. On breach, `400` is returned with the available unallocated balance.
+
+> One receipt can be allocated across multiple IPCs (partial payment support). Multiple receipts can be allocated to one IPC.
+
+**Payment status response:**
+```json
+{
+  "totalAllocated": 6498.00,
+  "status": "PAID"
+}
+```
+
+> `status` is **derived** from allocations — there is no `status` field on the IPC itself. The three possible values are `UNPAID`, `PARTIALLY_PAID`, `PAID`.
+
+---
+
+## 7. Lifecycle State Machines
+
+### Project
 
 ```
-DRAFT ──baseline──► BASELINED (previous approved → SUPERSEDED)
-DRAFT ──cancel───► CANCELLED
+DRAFT ──approve──► APPROVED ──mobilize──► MOBILIZING ──activate──► ACTIVE
+                                                                      │
+                                               PRACTICAL_COMPLETION ◄─┘
+                                                │             │
+                                    reopen-to-active    closeout
+                                                │             │
+                                             ACTIVE        CLOSEOUT
+                                                         │        │
+                                             reopen-to-pc    close
+                                                         │        │
+                                             PRACTICAL_COMPLETION  CLOSED
 
-To revise: createDraft (copies BASELINED nodes) → edit → baseline again
+CANCELLED ◄── (DRAFT, APPROVED, MOBILIZING, ACTIVE)
+```
+
+Suspend/Resume is a separate overlay — does not change status.
+`PRACTICAL_COMPLETION` triggers all ACTIVE contracts → `FINAL_ACCOUNT_PENDING`.
+
+---
+
+### Contract
+
+```
+DRAFT ──submit──► UNDER_REVIEW ──approve-review──► PENDING_SIGNATURE ──execute──► ACTIVE ──► FINAL_ACCOUNT_PENDING ──close──► CLOSED
+                                                                                             (set by project lifecycle)
+CANCELLED ◄── (DRAFT, UNDER_REVIEW, PENDING_SIGNATURE)
+TERMINATED ◄── (ACTIVE)
+```
+
+`execute` freezes `clientNameSnapshot` and `clientTaxSnapshot`.
+
+---
+
+### IPA
+
+```
+DRAFT ──submit-for-approval──► PENDING_INTERNAL_APPROVAL ──approve-for-submission──► APPROVED_FOR_SUBMISSION ──submit──► SUBMITTED (immutable)
+                                        │
+                              return-for-revision
+                                        │
+                              RETURNED_FOR_REVISION ──submit-for-approval──► (back to top)
+
+CANCELLED ◄── (DRAFT, RETURNED_FOR_REVISION)
+```
+
+Application number assigned at `APPROVED_FOR_SUBMISSION`.
+
+---
+
+### IPC
+
+IPC has no lifecycle transitions — it is issued in a terminal status.
+
+```
+Issue → CERTIFIED         (first: isEffective=true automatically)
+     → PARTIALLY_CERTIFIED (first: isEffective=true automatically)
+     → REJECTED            (never effective)
+
+Supersede: explicit command swaps isEffective between old and new cert.
 ```
 
 ---
 
-## 7. CORS & Cookies
+## 8. Key Business Rules (UI must enforce or handle)
 
-- CORS `credentials: true` is enabled. Your fetch/axios must include `credentials: 'include'` (or `withCredentials: true`).
-- The refresh cookie is `SameSite=Lax` — it is sent on top-level navigations and same-origin requests, but **not** on cross-origin requests from third-party contexts.
-- In development, the cookie `Path` is `/api/v1/auth` — the browser only sends it to auth endpoints, not to every API call.
-
-```typescript
-// Correct fetch config
-fetch(url, {
-  credentials: 'include',
-  headers: { Authorization: `Bearer ${accessToken}` },
-});
-
-// Correct axios config
-axios.defaults.withCredentials = true;
-```
+| Rule | Implication for UI |
+|---|---|
+| BOQ nodes must be **leaf** for IPA items | Only show leaf nodes in the item picker |
+| `cumulativeClaimed` is total-to-date, not period-only | Show the calculation: `period = cumulative − prev certified` |
+| `varianceReason` required when certified ≠ claimed | Validate in form before submitting IPC |
+| One effective IPC per application | Disable "issue" button if effective cert exists; show "supersede" instead |
+| Contract `execute` freezes client snapshots | Warn user before executing: "Client details will be locked permanently" |
+| `PRACTICAL_COMPLETION` moves all ACTIVE contracts to `FINAL_ACCOUNT_PENDING` | Show confirmation dialog listing affected contracts before calling |
+| Receipt allocation cannot exceed receipt amount | Show remaining unallocated balance in allocation form |
+| IPA is immutable after `SUBMITTED` | Hide edit controls once SUBMITTED |
+| `422` on lifecycle = workflow not configured | Show "Approval workflow not configured — contact admin" message |
 
 ---
 
-## 8. What Is NOT Built Yet (Do Not Call)
+## 9. What Is NOT Built Yet (Do Not Call)
 
-These features are planned but the endpoints do not exist:
+These features are planned but endpoints do not exist:
 
-- Contract management
-- Subcontract / Subcontract Certificates
-- IPC (Interim Payment Certificates)
-- Material Requests / Purchase Orders / GRNs
+- Subcontracts / Subcontract Certificates
+- Material Requests / Purchase Orders / Goods Receipt Notes
 - Stock Ledger / Stock Transfers
-- Cost Ledger
+- Cost Ledger / Cost Reporting
 - Daily Progress Reports / Measurement Sheets
-- Labour & Equipment logging
-- File uploads
-- Notifications
-- Settings
+- Labour Attendance / Equipment Logs
+- File uploads / Attachment storage (join tables exist in DB, no file serving)
+- Notifications / Expiry alerts
+- Settings pages (org config, DOA thresholds, workflow builder)
+- Budget Authorization (for INTERNAL_CAPITAL projects)
+- Exchange rate management UI

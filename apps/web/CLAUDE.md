@@ -55,11 +55,11 @@ packages/ui/src/**        ← Shared UI components (you own this)
 
 ---
 
-## Sprint 2 Backend Status — What Is Live Right Now
+## Sprint 3 Backend Status — What Is Live Right Now
 
 The following endpoints are **fully implemented and working**. Build UI against these.
 
-### Auth
+### Auth (public — no token needed)
 ```
 POST /api/v1/auth/login          — body: { email, password } → { accessToken } + HttpOnly cookie
 POST /api/v1/auth/refresh        — no body (uses cookie) → { accessToken }
@@ -79,38 +79,107 @@ POST /api/v1/workflows/instance/:id/approve
 POST /api/v1/workflows/instance/:id/reject
 ```
 
+### Clients
+```
+GET    /api/v1/clients                              — list (?status=ACTIVE)
+POST   /api/v1/clients                              — create
+GET    /api/v1/clients/:id                          — get with contacts
+PATCH  /api/v1/clients/:id                          — update
+POST   /api/v1/clients/:id/contacts                 — add contact
+DELETE /api/v1/clients/:id/contacts/:contactId      — remove contact
+```
+
 ### Projects (full lifecycle)
 ```
-GET    /api/v1/projects                        — list (filter: ?status=ACTIVE)
-POST   /api/v1/projects                        — create DRAFT
-GET    /api/v1/projects/:id                    — get with members + suspension
-PATCH  /api/v1/projects/:id                    — update (DRAFT only)
-POST   /api/v1/projects/:id/approve            — DRAFT → APPROVED
-POST   /api/v1/projects/:id/mobilize           — APPROVED → MOBILIZING
-POST   /api/v1/projects/:id/activate           — MOBILIZING → ACTIVE
-POST   /api/v1/projects/:id/practical-completion — ACTIVE → PRACTICAL_COMPLETION
-POST   /api/v1/projects/:id/closeout           — PRACTICAL_COMPLETION → CLOSEOUT
-POST   /api/v1/projects/:id/close              — CLOSEOUT → CLOSED
-POST   /api/v1/projects/:id/cancel             — body: { reason }
-POST   /api/v1/projects/:id/suspend            — body: { reason }
+GET    /api/v1/projects                                        — list (?status=ACTIVE)
+POST   /api/v1/projects                                        — create DRAFT
+GET    /api/v1/projects/:id                                    — get with members + suspension
+PATCH  /api/v1/projects/:id                                    — update (DRAFT only)
+POST   /api/v1/projects/:id/approve                            — DRAFT → APPROVED
+POST   /api/v1/projects/:id/mobilize                           — APPROVED → MOBILIZING
+POST   /api/v1/projects/:id/activate                           — MOBILIZING → ACTIVE
+POST   /api/v1/projects/:id/practical-completion               — ACTIVE → PRACTICAL_COMPLETION ⚠️
+POST   /api/v1/projects/:id/closeout                           — PRACTICAL_COMPLETION → CLOSEOUT
+POST   /api/v1/projects/:id/close                              — CLOSEOUT → CLOSED
+POST   /api/v1/projects/:id/reopen-to-active                   — PRACTICAL_COMPLETION → ACTIVE
+POST   /api/v1/projects/:id/reopen-to-practical-completion     — CLOSEOUT → PRACTICAL_COMPLETION
+POST   /api/v1/projects/:id/cancel                             — body: { reason }
+POST   /api/v1/projects/:id/suspend                            — body: { reason }
 POST   /api/v1/projects/:id/resume
 GET    /api/v1/projects/:id/members
-POST   /api/v1/projects/:id/members            — body: { userId, roles[] }
+POST   /api/v1/projects/:id/members                            — body: { userId, roles[] }
 DELETE /api/v1/projects/:id/members/:userId
 ```
 
+> ⚠️ `practical-completion` automatically moves all ACTIVE contracts on this project to `FINAL_ACCOUNT_PENDING`. Show a confirmation dialog listing affected contracts before calling.
+
 ### BOQ (Bill of Quantities)
 ```
-POST   /api/v1/projects/:id/boq                            — initialize (idempotent)
-GET    /api/v1/projects/:id/boq                            — get + version list
-POST   /api/v1/projects/:id/boq/draft                      — new draft from approved
-POST   /api/v1/projects/:id/boq/versions/:vId/baseline     — lock draft as approved
-POST   /api/v1/projects/:id/boq/versions/:vId/cancel       — cancel draft
-GET    /api/v1/projects/:id/boq/versions/:vId/tree         — full recursive tree
-POST   /api/v1/projects/:id/boq/versions/:vId/nodes        — add node
-PATCH  /api/v1/projects/:id/boq/versions/:vId/nodes/:nId   — update node
-POST   /api/v1/projects/:id/boq/versions/:vId/nodes/:nId/move  — move node + descendants
-DELETE /api/v1/projects/:id/boq/versions/:vId/nodes/:nId   — delete leaf node
+POST   /api/v1/projects/:id/boq                                 — initialize (idempotent)
+GET    /api/v1/projects/:id/boq                                 — get + version list
+POST   /api/v1/projects/:id/boq/draft                           — new draft from approved
+POST   /api/v1/projects/:id/boq/versions/:vId/baseline          — lock draft as approved
+POST   /api/v1/projects/:id/boq/versions/:vId/cancel            — cancel draft
+GET    /api/v1/projects/:id/boq/versions/:vId/tree              — full recursive tree
+POST   /api/v1/projects/:id/boq/versions/:vId/nodes             — add node
+PATCH  /api/v1/projects/:id/boq/versions/:vId/nodes/:nId        — update node
+POST   /api/v1/projects/:id/boq/versions/:vId/nodes/:nId/move   — move node + descendants
+DELETE /api/v1/projects/:id/boq/versions/:vId/nodes/:nId        — delete leaf node
+```
+
+### Contracts
+```
+GET    /api/v1/contracts                                  — list (?projectId=cld...)
+POST   /api/v1/contracts                                  — create DRAFT
+GET    /api/v1/contracts/:id                              — get with all sub-entities
+PATCH  /api/v1/contracts/:id                              — update (DRAFT only)
+POST   /api/v1/contracts/:id/submit                       — DRAFT → UNDER_REVIEW
+POST   /api/v1/contracts/:id/approve-review               — UNDER_REVIEW → PENDING_SIGNATURE
+POST   /api/v1/contracts/:id/execute                      — PENDING_SIGNATURE → ACTIVE (freezes client snapshots)
+POST   /api/v1/contracts/:id/close                        — FINAL_ACCOUNT_PENDING → CLOSED
+POST   /api/v1/contracts/:id/cancel                       — body: { reason }
+POST   /api/v1/contracts/:id/terminate                    — body: { reason } (ACTIVE only)
+POST   /api/v1/contracts/:id/retention-terms              — set/replace retention terms
+POST   /api/v1/contracts/:id/advance-terms                — add advance term
+DELETE /api/v1/contracts/:id/advance-terms/:termId
+POST   /api/v1/contracts/:id/guarantees                   — add guarantee
+PATCH  /api/v1/contracts/:id/guarantees/:guaranteeId      — update status/notes
+POST   /api/v1/contracts/:id/milestones                   — add milestone
+POST   /api/v1/contracts/:id/milestones/:milestoneId/complete
+```
+
+### IPA (Interim Payment Applications)
+```
+GET    /api/v1/ipa                              — list (?contractId=cld...)
+POST   /api/v1/ipa                              — create DRAFT
+GET    /api/v1/ipa/:id                          — get with items + deductions
+POST   /api/v1/ipa/:id/submit-for-approval      — DRAFT → PENDING_INTERNAL_APPROVAL
+POST   /api/v1/ipa/:id/return-for-revision      — PENDING_INTERNAL_APPROVAL → RETURNED_FOR_REVISION
+POST   /api/v1/ipa/:id/approve-for-submission   — PENDING_INTERNAL_APPROVAL → APPROVED_FOR_SUBMISSION
+POST   /api/v1/ipa/:id/submit                   — APPROVED_FOR_SUBMISSION → SUBMITTED (immutable)
+POST   /api/v1/ipa/:id/cancel
+POST   /api/v1/ipa/:id/items                    — add BOQ line item
+DELETE /api/v1/ipa/:id/items/:itemId
+POST   /api/v1/ipa/:id/deductions               — add deduction line
+DELETE /api/v1/ipa/:id/deductions/:deductionId
+```
+
+### IPC (Interim Payment Certificates)
+```
+GET    /api/v1/ipc                                   — list (?applicationId=cld...)
+POST   /api/v1/ipc                                   — issue certificate
+GET    /api/v1/ipc/:id                               — get with items + deductions
+POST   /api/v1/ipc/:applicationId/supersede          — atomic supersession (body: { newCertificateId, reason })
+```
+
+### Finance (Payment Receipts)
+```
+GET    /api/v1/receipts                                        — list (?clientId=cld...)
+POST   /api/v1/receipts                                        — record payment receipt
+GET    /api/v1/receipts/:id                                    — get with allocations
+POST   /api/v1/receipts/:id/allocations                        — allocate to IPC
+DELETE /api/v1/receipts/:id/allocations/:allocationId          — remove allocation
+GET    /api/v1/receipts/certificate/:certificateId/payment-status — UNPAID / PARTIALLY_PAID / PAID
 ```
 
 ---
@@ -119,17 +188,32 @@ DELETE /api/v1/projects/:id/boq/versions/:vId/nodes/:nId   — delete leaf node
 
 The API does not have these endpoints. Do not build UI for them yet.
 
-- Contracts, Milestones
-- Subcontracts, Subcontract Certificates
-- IPC (Interim Payment Certificates)
-- Material Requests, Purchase Orders, GRNs
-- Stock Ledger, Stock Transfers
-- Cost Ledger, Cost Reporting
-- Daily Progress Reports, Measurement Sheets
-- Labour & Equipment Logs
-- File Uploads / Attachments
-- Notifications / Alerts
-- Settings pages (org config, DOA thresholds)
+- Subcontracts / Subcontract Certificates
+- Material Requests / Purchase Orders / Goods Receipt Notes
+- Stock Ledger / Stock Transfers
+- Cost Ledger / Cost Reporting
+- Daily Progress Reports / Measurement Sheets
+- Labour Attendance / Equipment Logs
+- File uploads / Attachment storage (DB tables exist, no file serving endpoint)
+- Notifications / Expiry alerts
+- Settings pages (org config, DOA thresholds, workflow builder)
+- Budget Authorization (for INTERNAL_CAPITAL projects)
+
+---
+
+## Critical Business Rules the UI Must Enforce
+
+| Rule | What to do in UI |
+|---|---|
+| IPA items map to **leaf** BOQ nodes only | Only show leaf nodes in the item picker — filter by `isLeaf: true` |
+| `cumulativeClaimed` = total-to-date, not this period | Show the calculation: `period = cumulative − previousEffectiveCertified` |
+| `varianceReason` required when certified ≠ claimed | Client-side validate before submitting IPC |
+| One effective IPC per application | If `isEffective` cert exists, hide "Issue" and show "Supersede" instead |
+| Contract `execute` freezes client details forever | Warn: "Client name and tax number will be permanently locked onto this contract" |
+| `practical-completion` moves ACTIVE contracts → `FINAL_ACCOUNT_PENDING` | Confirmation dialog listing affected contracts |
+| Receipt allocations cannot exceed receipt amount | Show remaining unallocated balance live in form |
+| IPA is immutable after `SUBMITTED` | Hide all edit controls when `status === 'SUBMITTED'` |
+| `422` response = workflow not configured | Show "Approval workflow not configured — contact your system administrator" |
 
 ---
 
@@ -170,8 +254,14 @@ axios.interceptors.response.use(
 Import from the monorepo package — **do not redefine locally**:
 
 ```typescript
-import type { RequestIdentity, LoginResponse } from '@erp/types';
-import { ProjectStatus, ProjectRole, BoqVersionStatus, WorkflowTransactionType } from '@erp/types';
+import type { RequestIdentity } from '@erp/types';
+import {
+  ProjectStatus, ProjectRole, CommercialModel, ParticipationModel,
+  BoqVersionStatus, MeasurementMethod, PricingBasis,
+  ClientStatus,
+  ContractStatus, BillingModel, AdvanceType, GuaranteeStatus,
+  IpaStatus, IpcStatus,
+} from '@erp/types';
 ```
 
 ---
@@ -241,11 +331,14 @@ All API errors return:
 { "success": false, "error": { "code": "...", "message": "...", "details": {} } }
 ```
 
-- `400` → show `error.message` as form or toast error
-- `401` → trigger refresh flow → redirect to login
-- `403` → show "Access denied" message
-- `404` → show not-found state
-- `409` → show conflict message (e.g., "Project code already exists")
+| Status | Handle as |
+|---|---|
+| `400` | Show `error.message` as form or toast error |
+| `401` | Trigger refresh flow → redirect to login |
+| `403` | Show "Access denied" |
+| `404` | Show not-found state |
+| `409` | Show conflict message (e.g., "Contract number already exists") |
+| `422` | Show "Approval workflow not configured — contact your system administrator" |
 
 ---
 
