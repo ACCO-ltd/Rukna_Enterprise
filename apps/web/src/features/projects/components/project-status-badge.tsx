@@ -1,33 +1,27 @@
 import { ProjectStatus } from '@erp/types';
 import { useTranslations } from 'next-intl';
-import { cn } from '@erp/ui';
+import { Badge, type BadgeTone } from '@erp/ui';
 
 /**
+ * Where each project status sits in its lifecycle. The tone vocabulary and the styling
+ * live in `Badge`, so every status machine in the platform reads the same way.
+ *
  * Colour carries emphasis, never meaning on its own — the label is always present, so the
  * badge stays readable for colour-blind users and in monochrome print.
  */
-const STATUS_STYLES: Record<ProjectStatus, string> = {
-  [ProjectStatus.DRAFT]: 'bg-muted text-muted-foreground',
-  [ProjectStatus.APPROVED]: 'bg-brand-primary/10 text-brand-primary',
-  [ProjectStatus.MOBILIZING]: 'bg-brand-accent/10 text-brand-accent',
-  [ProjectStatus.ACTIVE]: 'bg-brand-primary/15 text-brand-primary',
-  [ProjectStatus.PRACTICAL_COMPLETION]: 'bg-warning-subtle text-warning',
-  [ProjectStatus.CLOSEOUT]: 'bg-warning-subtle text-warning',
-  [ProjectStatus.CLOSED]: 'bg-muted text-muted-foreground',
-  [ProjectStatus.CANCELLED]: 'bg-danger-subtle text-danger',
+const STATUS_TONES: Record<ProjectStatus, BadgeTone> = {
+  [ProjectStatus.DRAFT]: 'neutral',
+  [ProjectStatus.APPROVED]: 'info',
+  [ProjectStatus.MOBILIZING]: 'accent',
+  [ProjectStatus.ACTIVE]: 'live',
+  [ProjectStatus.PRACTICAL_COMPLETION]: 'warning',
+  [ProjectStatus.CLOSEOUT]: 'warning',
+  [ProjectStatus.CLOSED]: 'neutral',
+  [ProjectStatus.CANCELLED]: 'danger',
 };
 
 export function ProjectStatusBadge({ status }: { status: ProjectStatus }) {
   const t = useTranslations('platform.projects.status');
 
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap',
-        STATUS_STYLES[status] ?? 'bg-muted text-muted-foreground',
-      )}
-    >
-      {t(status)}
-    </span>
-  );
+  return <Badge tone={STATUS_TONES[status] ?? 'neutral'}>{t(status)}</Badge>;
 }

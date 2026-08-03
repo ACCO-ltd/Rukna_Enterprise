@@ -1,8 +1,18 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Textarea } from '@erp/ui';
+import {
+  Alert,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+  FormField,
+  Textarea,
+} from '@erp/ui';
 
 export interface ConfirmReasonField {
   /** When true the action is blocked until text is supplied. */
@@ -33,9 +43,16 @@ interface ConfirmActionDialogProps {
  * APPROVED to DRAFT, a cancelled draft cannot be recovered — so they should not fire on a
  * stray click.
  *
- * Focus moves in on open and returns to the trigger on close, Escape dismisses, and Tab is
- * trapped inside. Written by hand rather than pulled from a dependency, which keeps the
- * promise made when a toast library was declined: no new packages without justification.
+ * Focus management, scroll locking and dismissal come from `Dialog` in `@erp/ui`, which
+ * replaced the focus trap this component used to carry. Two behaviours are specified here
+ * because they are this dialog's own:
+ *
+ *  - **Nothing dismisses it while a request is in flight.** Escape, the overlay and the
+ *    close gesture are all blocked by `isPending`. The previous implementation guarded
+ *    Escape but not the overlay click, so a stray backdrop click could close a dialog
+ *    mid-mutation and leave the user unsure whether the command had run.
+ *  - **Focus opens on the reason field** when there is one, so a keyboard user can type
+ *    immediately rather than tabbing past the heading.
  */
 export function ConfirmActionDialog({
   title,
@@ -48,51 +65,17 @@ export function ConfirmActionDialog({
   onDismiss,
 }: ConfirmActionDialogProps) {
   const t = useTranslations('common.confirmDialog');
-  const titleId = useId();
-  const descriptionId = useId();
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const initialFocusRef = useRef<HTMLTextAreaElement | HTMLButtonElement>(null);
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
 
   const [text, setText] = useState('');
   const [touched, setTouched] = useState(false);
 
   const maxLength = reason?.maxLength ?? 1000;
 
-  useEffect(() => {
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-    initialFocusRef.current?.focus();
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !isPending) onDismiss();
-      if (event.key !== 'Tab') return;
-
-      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
-        'button, textarea, [href], input, select, [tabindex]:not([tabindex="-1"])',
-      );
-      if (!focusable || focusable.length === 0) return;
-
-      const first = focusable[0]!;
-      const last = focusable[focusable.length - 1]!;
-
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', onKeyDown);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = previousOverflow;
-      previouslyFocused?.focus();
-    };
-  }, [isPending, onDismiss]);
+  /** Blocks every dismissal path — Escape, overlay, and an outside click — while pending. */
+  const preventWhilePending = (event: Event) => {
+    if (isPending) event.preventDefault();
+  };
 
   const trimmed = text.trim();
   const textError =
@@ -110,23 +93,26 @@ export function ConfirmActionDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center">
-      <div className="fixed inset-0 bg-brand-ink/40" aria-hidden="true" onClick={onDismiss} />
-
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={descriptionId}
-        className="relative w-full max-w-md rounded-lg border border-border bg-surface p-5 shadow-xl sm:p-6"
+    <Dialog
+      open
+      onOpenChange={(next) => {
+        if (!next && !isPending) onDismiss();
+      }}
+    >
+      <DialogContent
+        onEscapeKeyDown={preventWhilePending}
+        onPointerDownOutside={preventWhilePending}
+        onInteractOutside={preventWhilePending}
+        onOpenAutoFocus={(event) => {
+          if (!reason) return;
+          // Radix focuses the first focusable node by default; for a dialog that asks for
+          // a reason, that should be the field rather than the heading or a button.
+          event.preventDefault();
+          reasonRef.current?.focus();
+        }}
       >
-        <h2 id={titleId} className="text-lg font-semibold text-foreground">
-          {title}
-        </h2>
-        <p id={descriptionId} className="mt-2 text-sm text-muted-foreground">
-          {description}
-        </p>
+        <DialogTitle>{title}</DialogTitle>
+        <DialogDescription>{description}</DialogDescription>
 
         {errorMessage ? (
           <div className="mt-4">
@@ -143,7 +129,7 @@ export function ConfirmActionDialog({
             >
               <Textarea
                 id="confirm-reason"
-                ref={initialFocusRef as React.RefObject<HTMLTextAreaElement>}
+                ref={reasonRef}
                 value={text}
                 onChange={(e) => {
                   setText(e.target.value);
@@ -158,19 +144,15 @@ export function ConfirmActionDialog({
           </div>
         ) : null}
 
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row-reverse sm:justify-start">
-          <Button
-            ref={reason ? undefined : (initialFocusRef as React.RefObject<HTMLButtonElement>)}
-            onClick={submit}
-            disabled={isPending}
-          >
+        <DialogFooter>
+          <Button onClick={submit} disabled={isPending}>
             {isPending ? t('working') : confirmLabel}
           </Button>
           <Button variant="outline" onClick={onDismiss} disabled={isPending}>
             {t('dismiss')}
           </Button>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

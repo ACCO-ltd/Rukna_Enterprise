@@ -1,7 +1,18 @@
 export { Alert } from './components/alert';
 export type { AlertProps } from './components/alert';
+export { Badge } from './components/badge';
+export type { BadgeProps, BadgeTone } from './components/badge';
 export { Button } from './components/button';
 export type { ButtonProps } from './components/button';
+export {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+  DialogTrigger,
+} from './components/dialog';
 export { Input } from './components/input';
 export type { InputProps } from './components/input';
 export { Label } from './components/label';
@@ -12,4 +23,15 @@ export { Textarea } from './components/textarea';
 export type { TextareaProps } from './components/textarea';
 export { FormField } from './components/form-field';
 export type { FormFieldProps } from './components/form-field';
+export {
+  Table,
+  TableBody,
+  TableCell,
+  TableEmpty,
+  TableHead,
+  TableHeader,
+  TableRow,
+  TableScroll,
+} from './components/table';
+export { Tabs, TabsContent, TabsList, TabsTrigger } from './components/tabs';
 export { cn } from './lib/utils';
