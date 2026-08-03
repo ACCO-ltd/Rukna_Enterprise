@@ -1,4 +1,5 @@
-import type { CreateProjectPayload } from './api/projects-api';
+import type { CreateProjectPayload, UpdateProjectPayload } from './api/projects-api';
+import type { Project } from './types';
 
 /** What the form holds — every field a string, as HTML inputs produce. */
 export interface ProjectFormValues {
@@ -70,4 +71,54 @@ export function toCreateProjectPayload(values: ProjectFormValues): CreateProject
   }
 
   return payload;
+}
+
+/**
+ * Converts form values into a PATCH body.
+ *
+ * Differs from create in one important way: an emptied optional field is sent as `null`,
+ * not omitted. On a PATCH, omitting means "leave unchanged", so omission would make it
+ * impossible to ever clear a client name or a contract value once set — the field would
+ * be write-once, which is not what "edit" means to the user.
+ *
+ * `null` is safe to send: every optional column is nullable, `@IsOptional()` skips
+ * validation for null, and Prisma writes NULL for it (whereas `undefined` skips the
+ * column). `code` is absent entirely because it is immutable after creation.
+ */
+export function toUpdateProjectPayload(values: ProjectFormValues): UpdateProjectPayload {
+  const text = (value: string): string | null => value.trim() || null;
+
+  const contractValue = values.contractValue.trim();
+  const parsedValue = contractValue === '' ? null : Number(contractValue);
+
+  return {
+    name: values.name.trim(),
+    nameAr: text(values.nameAr),
+    description: text(values.description),
+    clientName: text(values.clientName),
+    contractValue: parsedValue !== null && Number.isFinite(parsedValue) ? parsedValue : null,
+    currency: text(values.currency),
+    startDate: text(values.startDate),
+    expectedEndDate: text(values.expectedEndDate),
+  };
+}
+
+/** Fills the form from an existing project, converting nulls to the empty strings inputs need. */
+export function toFormValues(project: Project): ProjectFormValues {
+  return {
+    code: project.code,
+    name: project.name,
+    nameAr: project.nameAr ?? '',
+    description: project.description ?? '',
+    clientName: project.clientName ?? '',
+    contractValue: project.contractValue ?? '',
+    currency: project.currency ?? '',
+    // Date inputs need `YYYY-MM-DD`; the API sends a full ISO timestamp.
+    startDate: toDateInputValue(project.startDate),
+    expectedEndDate: toDateInputValue(project.expectedEndDate),
+  };
+}
+
+function toDateInputValue(value: string | null): string {
+  return value ? (value.split('T')[0] ?? '') : '';
 }
