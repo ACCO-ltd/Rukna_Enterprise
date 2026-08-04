@@ -54,6 +54,8 @@ Findings were produced by reading `apps/api/src` directly, not by inference from
 | [C8](#c8) | Contract | Finance | `totalAllocated` returns a number, breaking the money-as-string rule | — |
 | [C9](#c9) | Gap | BOQ | `measurementMethod` and `pricingBasis` can never be set | — |
 | [C10](#c10) | Contract | Contracts | Retention split is spelled `…OnPc` in, `…OnPC` out | — |
+| [C13](#c13) | Gap | Contracts | Cancel and terminate require a reason and discard it | — |
+| [C14](#c14) | **Blocking — bug** | IPA | `RETURNED_FOR_REVISION` is a dead end — editable, unsubmittable | [#13](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/13) |
 | [D3](#d3) | Docs | Clients, Contracts | Documented request shapes that return `400` | — |
 
 ---
@@ -641,6 +643,74 @@ It is a one-word change in a Sprint 3 DTO that no client depends on yet.
 
 ---
 
+### <a id="c13"></a>C13 — Cancel and terminate require a reason and discard it
+
+`CancelContractDto` and `TerminateContractDto` both mark `reason` `@IsNotEmpty()` with a
+500-character limit, so the client must supply one. `ContractService` then throws it away:
+
+```ts
+// contract.service.ts:143 and :158
+void reason; // audit trail deferred to Phase 4 AuditLog
+```
+
+No column on `Contract` holds it, so the explanation for ending a contract early exists
+nowhere after the request completes. The deferral is deliberate and commented — this is
+raised because of what it means for the UI, not because it looks accidental.
+
+Terminating a live construction contract is a legally significant act, and "why" is the
+part that matters six months later. Projects already do this properly: a suspension reason
+is persisted on `ProjectSuspension`.
+
+**What the frontend does meanwhile:** the confirmation dialogs collect the reason, because
+the API rejects the request without it, and say plainly that it is not stored yet rather
+than implying an audit trail that does not exist.
+
+---
+
+### <a id="c14"></a>C14 — `RETURNED_FOR_REVISION` is a dead end
+
+**Severity:** Blocking for the IPA revision loop. Reproduced against the running API.
+
+`TRANSITIONS['submit-for-approval']` accepts `DRAFT` and nothing else
+(`ipa.service.ts:18`), so an application that has been returned for revision can never be
+resubmitted:
+
+```
+POST /ipa/:id/submit-for-approval
+→ 400 "Cannot 'submit-for-approval' an IPA with status 'RETURNED_FOR_REVISION'.
+       Expected 'DRAFT'."
+```
+
+The state is not merely a gap, it is a trap, because the two halves disagree:
+
+- `MUTABLE_STATUSES` **includes** `RETURNED_FOR_REVISION` (`ipa.service.ts:30`), so items
+  and deductions can be added and removed. The reviewer's feedback can be acted on.
+- No transition leaves the state except `cancel`.
+
+So a quantity surveyor can be told what to fix, fix it, and then discover the corrected
+application cannot go anywhere. The only exit is to cancel and re-enter the whole claim on
+a new application — losing the line history that was just corrected.
+
+The name of the transition says what was intended: an application is *returned for
+revision* so that it can be revised and come back.
+
+**Suggested fix:** accept `RETURNED_FOR_REVISION` as a second source state for
+`submit-for-approval`:
+
+```ts
+'submit-for-approval': ['DRAFT', 'RETURNED_FOR_REVISION'],
+```
+
+Worth a regression test that walks the full loop — submit, return, edit, resubmit, approve
+— since the forward path passes today while the loop does not.
+
+**Frontend impact:** the detail screen shows the full set of line controls in this state,
+because the API genuinely allows editing, and an explanation that the result cannot be
+submitted. That is the honest presentation of the current behaviour, and it is a bad
+screen — it should stop being needed rather than be designed around.
+
+---
+
 ## Domain questions — for Eng Ahmed Shirie
 
 ### <a id="d1"></a>D1 — Mixed-currency BOQ nodes sum into one meaningless total
@@ -756,6 +826,7 @@ Deferred pending the items above:
 - Any approval/workflow UI — **B3**, **B4**
 - BOQ parent totals for mixed-currency subtrees — **D1**
 - BOQ row reordering — **B14**
+- IPA revision loop — **C14**. A returned application is a dead end today.
 - IPC issuance — **C1** (and **C2** before any certificate is written in anger)
 - Certificate settlement status in the Receipts UI — **C7**
 

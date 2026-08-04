@@ -17,10 +17,13 @@ import { GuaranteesPanel } from './guarantees-panel';
 import { MilestonesPanel } from './milestones-panel';
 import { RetentionTermsPanel } from './retention-terms-panel';
 
+import { IpaList } from '@/features/ipa/components/ipa-list';
+
 export function ContractDetail({ contractId }: { contractId: string }) {
   const t = useTranslations('platform.contracts.detail');
   const tContracts = useTranslations('platform.contracts');
   const tTerms = useTranslations('platform.contracts.terms');
+  const tIpa = useTranslations('platform.ipa');
   const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
 
@@ -102,6 +105,7 @@ export function ContractDetail({ contractId }: { contractId: string }) {
           <TabsTrigger value="advances">{tTerms('tabs.advances')}</TabsTrigger>
           <TabsTrigger value="guarantees">{tTerms('tabs.guarantees')}</TabsTrigger>
           <TabsTrigger value="milestones">{tTerms('tabs.milestones')}</TabsTrigger>
+          <TabsTrigger value="applications">{tIpa('short')}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -223,6 +227,10 @@ export function ContractDetail({ contractId }: { contractId: string }) {
             today={today}
             canEdit={termsEditable}
           />
+        </TabsContent>
+
+        <TabsContent value="applications">
+          <IpaList contractId={contract.id} />
         </TabsContent>
       </Tabs>
     </div>
