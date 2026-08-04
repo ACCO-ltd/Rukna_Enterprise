@@ -192,7 +192,7 @@ function ContractRow({ contract, locale }: { contract: Contract; locale: 'en' | 
             keyboard and breaks the table semantics screen readers rely on. */}
         <Link
           href={`/contracts/${contract.id}`}
-          className="font-mono text-xs font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+          className="-my-3 flex min-h-11 items-center font-mono text-xs font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
         >
           {contract.contractNumber}
         </Link>
