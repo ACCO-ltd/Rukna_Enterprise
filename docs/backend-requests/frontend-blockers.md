@@ -18,8 +18,13 @@ Findings were produced by reading `apps/api/src` directly, not by inference from
 ### How to read the verification stamps
 
 An earlier revision of this document carried a single blanket line — *"re-verified against
-`776b695`: none are fixed"* — which was **wrong**: `776b695` had in fact fixed half of B5 and
-all of C6. One inaccurate summary line made every finding below it untrustworthy at once.
+`776b695`: none are fixed"* — which was **wrong**: `776b695` had in fact fixed half of B5.
+One inaccurate summary line made every finding below it untrustworthy at once.
+
+The correction to that correction is instructive. C6 was also recorded as fixed on
+2026-08-04, on the strength of the DTOs existing and their date and money fields being
+typed correctly. A field-by-field comparison against `schema.prisma` the same day found
+**13 of the 16 wrong**. Checking that a thing exists is not checking that it is right.
 
 So verification is now recorded **per finding** rather than per document. Each entry carries
 its own stamp, and each stamp means someone opened the file and looked:
@@ -68,7 +73,7 @@ the only record and no ticket exists; **fixed** names the commit that resolved i
 | [C7](#c7) | **Correctness — bug** | Finance | Payment status measures against gross, so a settled IPC never reads `PAID` | [#11](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/11) |
 | [C4](#c4) | Correctness | IPA | A line can be claimed beyond its contracted BOQ quantity | [#19](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/19) |
 | [C5](#c5) | Contract | IPA | Workflow policy is resolved but no approval instance is created | no action needed |
-| ~~[C6](#c6)~~ | ~~Gap~~ | ~~Types~~ | ~~Five more aggregates with no DTO in `@erp/types`~~ | **fixed** `776b695` |
+| [C6](#c6) | **Contract — bug** | Types | Shared DTOs shipped, but 13 of 16 do not match the API | [#21](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/21) |
 | [C8](#c8) | Contract | Finance | `totalAllocated` returns a number, breaking the money-as-string rule | comment on [#14](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/14) |
 | [C9](#c9) | Gap | BOQ | `measurementMethod` and `pricingBasis` can never be set | in doc |
 | [C10](#c10) | Contract | Contracts | Retention split is spelled `…OnPc` in, `…OnPC` out | in doc |
@@ -644,28 +649,40 @@ ADR when the approval instance work is scheduled.
 
 ---
 
-### <a id="c6"></a>~~C6 — Five more aggregates with no DTO in `@erp/types`~~
+### <a id="c6"></a>C6 — Shared DTOs shipped, but 13 of 16 do not match the API
 
-> ***Fixed** in `776b695`. Confirmed 2026-08-04.*
+> *Re-verified 2026-08-04 against `c8afdd6`. Tracked as
+> [#21](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/21).*
 
-`packages/types/src/construction.ts` now exports response DTOs for all five aggregates —
-`ClientResponse`, `ContractResponse` and its sub-entities, `IpaResponse`, `IpcResponse`,
-`PaymentReceiptResponse` — 18 interfaces in total, already on `main`. The commit message
-does not mention C6, which is why this went unnoticed for a day.
+`packages/types/src/construction.ts`, added in `776b695`, exports response DTOs for all five
+Sprint 3 aggregates. That is the shape of what C6 asked for, and for half a day this entry
+recorded C6 as resolved on that basis.
 
-They are usable as-is: dates are declared `string`, not `Date`, so they avoid the trap
-`UserDto` and `OrganizationDto` fell into (see B12), and money fields are `string`.
+It is not resolved. Compared field by field against `apps/api/prisma/schema.prisma` and the
+service return shapes, **13 of the 16 interfaces are wrong** — inventing fields that do not
+exist, omitting fields the API returns, or renaming them. The full table is in
+[#21](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/21).
 
-**Two things follow, both frontend-side and neither blocking:**
+Only `IpaResponse`, `IpcItemResponse` and `IpcDeductionResponse` are safe to adopt.
 
-1. `apps/web/src/lib/api-types.ts` can shed the five Sprint 3 aggregates and repoint those
-   imports at `@erp/types`. It cannot be deleted outright — Project and BOQ shapes still
-   have no shared DTO, which is **B12**, still open.
-2. The migration is not a mechanical swap. At least one declaration differs in a way that
-   matters: `applicationNumber?: number` in `@erp/types` versus `applicationNumber: number | null`
-   in the mirror. For `JSON.parse`d wire data the mirror is almost certainly right — a
-   nullable Prisma column serialises as `null`, the key does not disappear — so each
-   optional-vs-nullable difference needs checking against a real response before adopting it.
+The worst is `IpcPaymentStatusResponse`, wrong in all five of its fields: the endpoint
+returns `{ totalAllocated: number, status }` and the DTO declares `certificateId`,
+`certifiedTotal`, `outstanding`, `paymentStatus` and a `string` `totalAllocated`.
+
+**What this means for the frontend:**
+
+1. `apps/web/src/lib/api-types.ts` stays. It was read off the schema and the repository
+   `include` clauses and is correct everywhere the two disagree. It cannot be deleted in any
+   case while **B12** is open, since Project and BOQ have no shared DTO at all.
+2. Migrating to `@erp/types` is not merely unhelpful right now, it is a hazard. The receipts
+   UI reads `allocatedAt` and `allocatedBy`; neither exists on `ReceiptAllocationResponse`.
+   A good-faith "align to shared types" change would type-check and break the allocations
+   panel.
+
+**The durable fix is still the one this entry originally asked for:** every `@ApiResponse` is
+`{ status, description }` with no `type:`, so `/docs-json` says nothing about responses.
+Adding `type:` would let response types be generated from the live spec instead of
+hand-authored, which is what produced these 13 discrepancies and will produce more.
 
 **Still worth doing, and unchanged by the above:** every `@ApiResponse` is
 `{ status, description }` with no `type:`, so `/docs-json` describes request bodies
