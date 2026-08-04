@@ -31,7 +31,7 @@ export class IpcItemDto {
 }
 
 export class IpcDeductionDto {
-  @ApiProperty({ description: 'RETENTION, ADVANCE_RECOVERY, TAX, or custom' })
+  @ApiProperty({ description: 'Ad-hoc deduction type (e.g. TAX, CONTRA). RETENTION and ADVANCE_RECOVERY are derived automatically from contract terms.' })
   @IsString()
   @MaxLength(100)
   deductionType!: string;
@@ -64,10 +64,6 @@ export class CreateIpcDto {
   @ApiProperty({ enum: IpcStatus })
   @IsEnum(IpcStatus)
   status!: IpcStatus;
-
-  @ApiProperty({ description: 'Total certified gross amount (before deductions)' })
-  @IsDecimal()
-  certifiedTotal!: string;
 
   @ApiProperty({ example: 'USD' })
   @IsString()
