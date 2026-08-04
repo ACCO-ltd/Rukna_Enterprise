@@ -204,7 +204,7 @@ function ReceiptRow({
             reference together are how finance staff identify one. */}
         <Link
           href={`/receipts/${receipt.id}`}
-          className="font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+          className="-my-3 flex min-h-11 items-center font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
         >
           {formatDate(receipt.receiptDate, locale)}
         </Link>

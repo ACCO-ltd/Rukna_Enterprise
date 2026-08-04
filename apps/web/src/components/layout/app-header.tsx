@@ -42,9 +42,12 @@ export function AppHeader({ onOpenMenu }: AppHeaderProps) {
       </div>
 
       <div className="ms-auto flex items-center gap-2 sm:gap-3">
-        <div className="hidden sm:block">
-          <LanguageSwitcher />
-        </div>
+        {/* Shown at every width. This used to be `hidden sm:block`, which left a mandated
+            bilingual product with no way to change language on a phone — the switcher in
+            the app header is the only one past the login screen, so an Arabic user on a
+            375px viewport was stuck in whichever locale their JWT seeded. The title to the
+            start of it truncates, so the row still fits. */}
+        <LanguageSwitcher />
 
         {user ? (
           <p className="hidden max-w-[16rem] truncate text-sm text-muted-foreground md:block">

@@ -192,7 +192,7 @@ function ClientRow({ client, locale }: { client: Client; locale: 'en' | 'ar' }) 
             anchor breaks the table semantics screen readers rely on. */}
         <Link
           href={`/clients/${client.id}`}
-          className="font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+          className="-my-3 flex min-h-11 items-center font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
         >
           {displayName}
         </Link>
