@@ -74,7 +74,22 @@ export function LoginForm() {
             <p className="mt-2 text-sm leading-6 text-muted-foreground">{t('subtitle')}</p>
           </div>
 
-          <form className="space-y-5" onSubmit={handleSubmit(onSubmit)} noValidate>
+          {/*
+            `method="post"` matters even though this form is submitted by JavaScript.
+
+            A form with no method defaults to GET, so if the page ever fails to hydrate —
+            a chunk 404s, a script is blocked, an extension interferes — clicking Sign in
+            performs a NATIVE submit and the browser puts every field in the query string.
+            That was observed for real: a broken module graph left the page unhydrated and
+            the address bar read
+
+                /login?email=admin%40acco.com&password=ChangeMe123%21
+
+            which writes the password into browser history, the referrer, and any proxy or
+            server log in front of the app. With POST the same fallback sends the fields in
+            a body that nothing here reads, and the URL stays clean.
+          */}
+          <form className="space-y-5" method="post" onSubmit={handleSubmit(onSubmit)} noValidate>
             <FormField htmlFor="email" label={t('emailLabel')} error={errors.email?.message}>
               <Input
                 id="email"
