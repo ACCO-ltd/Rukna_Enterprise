@@ -33,7 +33,7 @@ Both are required. The roadmap below builds them in the correct sequence.
 | **Sprint 2** | Projects and BOQ | ✅ Complete |
 | **Sprint 3** | Contracts and Client Billing | ✅ Complete |
 | **Sprint 4** | Accounting Foundation | ⏳ Next |
-| **Sprint 5** | Procurement and Accounts Payable | Planned |
+| **Sprint 5** | Procurement, Accounts Payable and Variations | Planned |
 | **Sprint 6** | Inventory and Project Costing | Planned |
 | **Sprint 7** | Accounts Receivable, Cash and Banking | Planned |
 | **Sprint 8** | Site Operations, Labour and Equipment | Planned |
@@ -128,11 +128,11 @@ Building procurement first and retrofitting accounting later is technically high
 
 ---
 
-### Sprint 5 — Procurement and Accounts Payable
+### Sprint 5 — Procurement, Accounts Payable and Variations
 
-The full supplier purchasing chain, with GL posting at every step.
+The full supplier purchasing chain plus contract variation management, with GL posting at every step.
 
-**Entities:**
+**Procurement entities:**
 
 ```
 Supplier
@@ -156,6 +156,44 @@ Supplier
 Every posting scenario must be validated by the financial officer before acceptance.
 
 Also includes Subcontract management and SubcontractCertificate.
+
+---
+
+**Variations / Change Orders**
+
+Change orders are inserted into Sprint 5 because they touch Contract, BOQ, IPA and IPC — all of which are already built in Sprint 3 — and active projects generate variation claims before Sprint 9 is reached. Adding them here ensures variation work is traceable in the system as soon as procurement begins, rather than continuing on WhatsApp and Excel.
+
+**Entities:**
+
+```
+ChangeOrderRequest     — logged scope change (description, cause, initiator)
+→ ChangeOrderPricing   — QS estimate of cost and time impact
+→ ChangeOrder          — approved variation (linked to Contract)
+→ BOQ node additions   — new or modified BOQ nodes under the variation
+→ IPA items            — claimed against variation BOQ nodes (same IPA flow)
+→ IPC items            — certified against variation BOQ nodes (same IPC flow)
+```
+
+**Variation lifecycle:**
+
+```
+DRAFT → SUBMITTED_FOR_INTERNAL_APPROVAL → APPROVED_INTERNALLY
+      → SUBMITTED_TO_CLIENT → CLIENT_APPROVED → EXECUTED
+      → CANCELLED / CLIENT_REJECTED
+```
+
+Client approval is required before variation work begins (except documented emergency instructions).
+
+**Rules:**
+- A variation must link to a Contract in ACTIVE or FINAL_ACCOUNT_PENDING status
+- Variation BOQ nodes extend the contract's BOQ version — they do not create a new version
+- Variation items on an IPA are claimed and certified using the same IPA/IPC flow as original scope
+- The contract value increases automatically when a ChangeOrder reaches EXECUTED status
+- Rejected or cancelled variations do not affect the contract value
+- Every variation carries a cause code: CLIENT_INSTRUCTION, DESIGN_CHANGE, UNFORESEEN_CONDITION, SCOPE_OMISSION, OTHER
+
+**File attachments foundation (also Sprint 5):**
+Sprint 5 builds the shared file-serving layer (S3-compatible storage + `Attachment` entity). Each subsequent sprint adds attachment support to its own entities. This avoids retrofitting file handling across all modules after Sprint 9.
 
 ---
 
