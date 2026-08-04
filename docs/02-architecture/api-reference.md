@@ -1,8 +1,8 @@
 # Rukna ERP — Frontend API Reference
 
-Version: 3.0.0
-Last Updated: 2026-08-03
-Sprint Coverage: Sprint 3 (all phases complete)
+Version: 3.1.0
+Last Updated: 2026-08-04
+Sprint Coverage: Sprint 3 complete + Sprint 3 security/correctness patch (PR #23)
 Audience: **Frontend engineer** — everything you need to call the API without reading backend code.
 
 Interactive docs (Scalar UI): `http://localhost:3001/docs`
@@ -227,14 +227,17 @@ All endpoints are scoped to the authenticated user's organization.
 
 | Method | Path | Description |
 |---|---|---|
+| `GET` | `/users` | List all users in the caller's organization |
 | `GET` | `/users/:id` | Get user by ID |
 
-**Response:**
+> `GET /users` is scoped to the caller's organization from the JWT. No query parameters required.
+
+**User response shape:**
 ```json
 {
   "id": "cld...", "email": "user@acco.com",
   "firstName": "Ahmed", "lastName": "Ali",
-  "status": "ACTIVE", "preferredLanguage": "EN"
+  "status": "ACTIVE", "organizationId": "cld..."
 }
 ```
 
@@ -262,10 +265,17 @@ All endpoints are scoped to the authenticated user's organization.
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/workflows/definition/:transactionType` | Active workflow definition |
+| `GET` | `/workflows/definition/:transactionType` | Active workflow definition (org from JWT — no body) |
 | `GET` | `/workflows/instance/:instanceId/step` | Current pending approval step |
 | `POST` | `/workflows/instance/:instanceId/approve` | Approve current step |
 | `POST` | `/workflows/instance/:instanceId/reject` | Reject current step |
+
+> `GET /workflows/definition/:transactionType` requires **no request body** and no query params — the organization is read from the JWT automatically.
+
+> `approve` and `reject` bodies accept only optional `notes`. Do **not** send `actorId` — the acting user is always taken from the JWT:
+> ```json
+> { "notes": "Approved — quantities verified on site" }
+> ```
 
 ---
 
@@ -616,7 +626,7 @@ ACCO's internal commercial valuation submitted to the client.
 
 | Method | Path | From → To | Notes |
 |---|---|---|---|
-| `POST` | `/ipa/:id/submit-for-approval` | `DRAFT` → `PENDING_INTERNAL_APPROVAL` | Requires workflow configured |
+| `POST` | `/ipa/:id/submit-for-approval` | `DRAFT` or `RETURNED_FOR_REVISION` → `PENDING_INTERNAL_APPROVAL` | Requires workflow configured |
 | `POST` | `/ipa/:id/return-for-revision` | `PENDING_INTERNAL_APPROVAL` → `RETURNED_FOR_REVISION` | |
 | `POST` | `/ipa/:id/approve-for-submission` | `PENDING_INTERNAL_APPROVAL` → `APPROVED_FOR_SUBMISSION` | Assigns application number |
 | `POST` | `/ipa/:id/submit` | `APPROVED_FOR_SUBMISSION` → `SUBMITTED` | IPA becomes immutable |
@@ -637,17 +647,19 @@ DELETE /ipa/:id/items/:itemId
 ```json
 {
   "boqNodeId": "cld...",
-  "unitRateSnapshot": "45.00",
-  "currencySnapshot": "USD",
   "cumulativeClaimed": "960.000"
 }
 ```
 
 > `cumulativeClaimed` is the **total quantity/percentage claimed to date** including this application (not just this period). The API automatically resolves `previousEffectiveCertified` from the last effective IPC for this contract + BOQ node. `periodQuantity = cumulativeClaimed − previousEffectiveCertified`.
 
+> **Unit rate and currency are never supplied by the client.** The server reads `unitRate` and `currency` directly from the BOQ node on every add-item call. This prevents tampering with the contracted rate.
+
+> **Quantity cap:** `cumulativeClaimed` must not exceed the BOQ node's `quantity`. The API returns `400` if the cap is breached.
+
 > Only DRAFT and RETURNED_FOR_REVISION IPAs accept items.
 
-> The `boqNodeId` must be a **leaf** BOQ node. The `measurementMethodSnapshot` is auto-copied from the BOQ node.
+> The `boqNodeId` must be a **leaf** BOQ node and must belong to the BOQ version referenced by the contract. The `measurementMethodSnapshot` is auto-copied from the BOQ node.
 
 **Get IPA response (item shape):**
 ```json
@@ -702,7 +714,6 @@ The client/consultant's certified response to an IPA. Independent aggregate — 
 {
   "applicationId": "cld...",
   "status": "CERTIFIED",
-  "certifiedTotal": "6840.00",
   "currency": "USD",
   "exchangeRateCurrency": "USD",
   "exchangeRateBase": "SOS",
@@ -718,15 +729,19 @@ The client/consultant's certified response to an IPA. Independent aggregate — 
   ],
   "deductions": [
     {
-      "deductionType": "RETENTION",
-      "sourceTermId": "cld...",
-      "rate": "0.0500",
+      "deductionType": "TAX",
       "basis": "6840.00",
       "amount": "342.00"
     }
   ]
 }
 ```
+
+> **`certifiedTotal` is NOT sent by the client.** The server computes it as the sum of `certifiedQuantity × unitRateSnapshot` across all items. Sending it in the body has no effect.
+
+> **RETENTION and ADVANCE_RECOVERY deductions are NOT sent by the client.** The server auto-derives them from the contract's `retentionTerms` and `advanceTerms`. If included in `deductions`, they are silently ignored. Only ad-hoc deduction types (e.g., `TAX`, `CONTRA`) should be supplied.
+
+> **IPA must be `SUBMITTED`** before a certificate can be issued. The API returns `400` if the application is in any other status.
 
 > **`varianceReason` is required** when `certifiedQuantity ≠ cumulativeClaimed` on the application item. The API returns `400` if missing.
 
@@ -806,12 +821,21 @@ Records cash received from clients and allocates it against certified IPCs.
 **Payment status response:**
 ```json
 {
-  "totalAllocated": 6498.00,
+  "totalAllocated": "6498.00",
+  "netCertified": "6498.00",
   "status": "PAID"
 }
 ```
 
 > `status` is **derived** from allocations — there is no `status` field on the IPC itself. The three possible values are `UNPAID`, `PARTIALLY_PAID`, `PAID`.
+
+> `netCertified` is `sum(items.certifiedAmount) − sum(deductions.amount)` computed server-side. `PAID` means `totalAllocated ≥ netCertified`. Both values are **decimal strings**, never raw numbers.
+
+> **Allocation guards (all return `400`):**
+> - Receipt client ≠ IPC contract client (cross-client allocation blocked)
+> - Receipt currency ≠ IPC currency (cross-currency allocation blocked)
+> - `allocatedAmount ≤ 0` (negative or zero allocation blocked)
+> - Cumulative allocations would exceed receipt amount (over-allocation blocked)
 
 ---
 
@@ -889,10 +913,17 @@ Supersede: explicit command swaps isEffective between old and new cert.
 |---|---|
 | BOQ nodes must be **leaf** for IPA items | Only show leaf nodes in the item picker |
 | `cumulativeClaimed` is total-to-date, not period-only | Show the calculation: `period = cumulative − prev certified` |
+| `cumulativeClaimed` must not exceed BOQ node `quantity` | Show the BOQ node's remaining quantity; disable submit if exceeded |
+| Unit rate and currency come from the BOQ node — never supply them | Remove `unitRateSnapshot` / `currencySnapshot` from the add-item form |
 | `varianceReason` required when certified ≠ claimed | Validate in form before submitting IPC |
+| `certifiedTotal` is server-computed — do not send it | Remove `certifiedTotal` from the issue-IPC form |
+| RETENTION and ADVANCE_RECOVERY deductions are auto-generated | Do not show RETENTION/ADVANCE_RECOVERY deduction inputs to the user |
+| IPA must be `SUBMITTED` before a certificate can be issued | Disable "Issue Certificate" unless IPA status is SUBMITTED |
 | One effective IPC per application | Disable "issue" button if effective cert exists; show "supersede" instead |
 | Contract `execute` freezes client snapshots | Warn user before executing: "Client details will be locked permanently" |
 | `PRACTICAL_COMPLETION` moves all ACTIVE contracts to `FINAL_ACCOUNT_PENDING` | Show confirmation dialog listing affected contracts before calling |
+| Receipt allocation: client must match IPC contract client | Only show IPCs for the same client as the receipt in the allocation picker |
+| Receipt allocation: currency must match IPC currency | Filter or warn when receipt and IPC currencies differ |
 | Receipt allocation cannot exceed receipt amount | Show remaining unallocated balance in allocation form |
 | IPA is immutable after `SUBMITTED` | Hide edit controls once SUBMITTED |
 | `422` on lifecycle = workflow not configured | Show "Approval workflow not configured — contact admin" message |

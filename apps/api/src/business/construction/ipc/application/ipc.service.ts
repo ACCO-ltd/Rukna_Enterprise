@@ -51,25 +51,72 @@ export class IpcService {
   async issue(identity: RequestIdentity, dto: CreateIpcDto) {
     const prisma = this.tenancyService.getClient();
 
-    // Validate variance reasons on items where certified ≠ claimed.
-    if (dto.items) {
-      for (const item of dto.items) {
-        const appItem = await prisma.interimPaymentApplicationItem.findUnique({
-          where: { id: item.applicationItemId },
-          select: { cumulativeClaimed: true, unitRateSnapshot: true },
-        });
-        if (!appItem) {
-          throw new NotFoundException(`Application item ${item.applicationItemId} not found`);
-        }
-        const certified = new Decimal(item.certifiedQuantity);
-        const claimed = new Decimal(appItem.cumulativeClaimed.toString());
-        if (!certified.equals(claimed) && !item.varianceReason) {
-          throw new BadRequestException(
-            `varianceReason is required for item ${item.applicationItemId} because certifiedQuantity (${certified}) ≠ cumulativeClaimed (${claimed})`,
-          );
-        }
-      }
+    // Guard: IPA must exist, belong to this org, and be SUBMITTED.
+    const ipa = await prisma.interimPaymentApplication.findFirst({
+      where: { id: dto.applicationId, organizationId: identity.activeOrganizationId },
+      select: { id: true, status: true, contractId: true },
+    });
+    if (!ipa) throw new NotFoundException(`Application ${dto.applicationId} not found`);
+    if (ipa.status !== 'SUBMITTED') {
+      throw new BadRequestException(
+        `A certificate can only be issued against a SUBMITTED application. Current status: ${ipa.status}`,
+      );
     }
+
+    // Load contract for deduction derivation.
+    const contract = await prisma.contract.findUnique({
+      where: { id: ipa.contractId },
+      select: {
+        retentionTerms: { select: { retentionRate: true } },
+        advanceTerms: { select: { id: true, recoveryRate: true } },
+      },
+    });
+
+    // Single pass: validate + compute certifiedAmount per item.
+    type ComputedItem = {
+      applicationItemId: string;
+      certifiedQuantity: string;
+      certifiedAmount: Decimal;
+      varianceQuantity: string;
+      varianceReason?: string;
+    };
+    const computedItems: ComputedItem[] = [];
+
+    for (const item of dto.items ?? []) {
+      const appItem = await prisma.interimPaymentApplicationItem.findUnique({
+        where: { id: item.applicationItemId },
+        select: { cumulativeClaimed: true, unitRateSnapshot: true, applicationId: true },
+      });
+      if (!appItem) {
+        throw new NotFoundException(`Application item ${item.applicationItemId} not found`);
+      }
+      if (appItem.applicationId !== dto.applicationId) {
+        throw new BadRequestException(
+          `Application item ${item.applicationItemId} does not belong to application ${dto.applicationId}`,
+        );
+      }
+      const certifiedQty = new Decimal(item.certifiedQuantity);
+      const claimedQty = new Decimal(appItem.cumulativeClaimed.toString());
+      if (!certifiedQty.equals(claimedQty) && !item.varianceReason) {
+        throw new BadRequestException(
+          `varianceReason is required for item ${item.applicationItemId} because certifiedQuantity (${certifiedQty}) ≠ cumulativeClaimed (${claimedQty})`,
+        );
+      }
+      const certifiedAmount = certifiedQty.mul(new Decimal(appItem.unitRateSnapshot.toString()));
+      computedItems.push({
+        applicationItemId: item.applicationItemId,
+        certifiedQuantity: item.certifiedQuantity,
+        certifiedAmount,
+        varianceQuantity: certifiedQty.sub(claimedQty).toFixed(3),
+        varianceReason: item.varianceReason,
+      });
+    }
+
+    // Server-computed gross total from items.
+    const certifiedTotal = computedItems.reduce(
+      (sum, i) => sum.plus(i.certifiedAmount),
+      new Decimal(0),
+    );
 
     const certNum = await this.repo.getNextCertificateNumber(prisma, dto.applicationId);
 
@@ -86,7 +133,7 @@ export class IpcService {
       status: dto.status,
       isEffective: shouldBeEffective,
       effectiveAt: shouldBeEffective ? now : undefined,
-      certifiedTotal: dto.certifiedTotal,
+      certifiedTotal: certifiedTotal.toFixed(2),
       currency: dto.currency,
       exchangeRateCurrency: dto.exchangeRateCurrency,
       exchangeRateBase: dto.exchangeRateBase,
@@ -98,41 +145,51 @@ export class IpcService {
       createdBy: identity.userId,
     });
 
-    // Persist line items.
-    if (dto.items) {
-      for (const item of dto.items) {
-        const appItem = await prisma.interimPaymentApplicationItem.findUnique({
-          where: { id: item.applicationItemId },
-          select: { cumulativeClaimed: true, unitRateSnapshot: true },
-        });
-        if (appItem) {
-          const certifiedQty = new Decimal(item.certifiedQuantity);
-          const claimedQty = new Decimal(appItem.cumulativeClaimed.toString());
-          const varianceQty = certifiedQty.sub(claimedQty);
-          const certifiedAmount = certifiedQty.mul(new Decimal(appItem.unitRateSnapshot.toString()));
+    // Persist line items using pre-computed values (no second DB fetch).
+    for (const item of computedItems) {
+      await this.repo.addItem(prisma, cert.id, {
+        applicationItemId: item.applicationItemId,
+        certifiedQuantity: item.certifiedQuantity,
+        certifiedAmount: item.certifiedAmount.toFixed(2),
+        varianceQuantity: item.varianceQuantity,
+        varianceReason: item.varianceReason,
+      });
+    }
 
-          await this.repo.addItem(prisma, cert.id, {
-            applicationItemId: item.applicationItemId,
-            certifiedQuantity: item.certifiedQuantity,
-            certifiedAmount: certifiedAmount.toFixed(2),
-            varianceQuantity: varianceQty.toFixed(3),
-            varianceReason: item.varianceReason,
-          });
-        }
+    // Auto-generate standard deductions from contract terms.
+    if (contract?.retentionTerms && certifiedTotal.greaterThan(0)) {
+      const rate = new Decimal(contract.retentionTerms.retentionRate.toString());
+      await this.repo.addDeduction(prisma, cert.id, {
+        deductionType: 'RETENTION',
+        rate: rate.toString(),
+        basis: certifiedTotal.toFixed(2),
+        amount: certifiedTotal.mul(rate).toFixed(2),
+      });
+    }
+    for (const term of contract?.advanceTerms ?? []) {
+      if (certifiedTotal.greaterThan(0)) {
+        const rate = new Decimal(term.recoveryRate.toString());
+        await this.repo.addDeduction(prisma, cert.id, {
+          deductionType: 'ADVANCE_RECOVERY',
+          sourceTermId: term.id,
+          rate: rate.toString(),
+          basis: certifiedTotal.toFixed(2),
+          amount: certifiedTotal.mul(rate).toFixed(2),
+        });
       }
     }
 
-    // Persist deductions.
-    if (dto.deductions) {
-      for (const ded of dto.deductions) {
-        await this.repo.addDeduction(prisma, cert.id, {
-          deductionType: ded.deductionType,
-          sourceTermId: ded.sourceTermId,
-          rate: ded.rate,
-          basis: ded.basis,
-          amount: ded.amount,
-        });
-      }
+    // Persist ad-hoc deductions (client-supplied). Skip contract types — already computed above.
+    const CONTRACT_TYPES = new Set(['RETENTION', 'ADVANCE_RECOVERY']);
+    for (const ded of dto.deductions ?? []) {
+      if (CONTRACT_TYPES.has(ded.deductionType)) continue;
+      await this.repo.addDeduction(prisma, cert.id, {
+        deductionType: ded.deductionType,
+        sourceTermId: ded.sourceTermId,
+        rate: ded.rate,
+        basis: ded.basis,
+        amount: ded.amount,
+      });
     }
 
     return this.repo.findById(prisma, identity.activeOrganizationId, cert.id);

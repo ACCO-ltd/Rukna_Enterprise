@@ -68,6 +68,20 @@ of them is wrong and nobody knows which.
 For discrepancies between the reference and the running API, see
 `/docs/backend-requests/frontend-blockers.md`.
 
+**Sprint 3 patch notes** (PR #23 — merged): IPA add-item body is `{ boqNodeId, cumulativeClaimed }` only; IPC issue body has no `certifiedTotal`; RETENTION/ADVANCE_RECOVERY deductions are auto-generated; payment-status response is `{ totalAllocated: string; netCertified: string; status }`. Full details in `api-reference.md`.
+
+> **Payment status response shape:**
+> ```json
+> { "totalAllocated": "6498.00", "netCertified": "6498.00", "status": "PAID" }
+> ```
+> Both monetary values are **decimal strings**, not numbers. `netCertified` = gross certified minus deductions.
+
+> **Allocation guards (all return `400`):**
+> - IPC belongs to a different client than the receipt → show "Cannot allocate: certificate belongs to a different client"
+> - IPC currency ≠ receipt currency → show "Currency mismatch" error
+> - `allocatedAmount ≤ 0` → form validation
+> - Cumulative allocations exceed receipt amount → show remaining balance
+
 ---
 
 ## What Is NOT Built Yet — Do Not Mock or Stub
@@ -93,8 +107,15 @@ The API does not have these endpoints. Do not build UI for them yet.
 |---|---|
 | IPA items map to **leaf** BOQ nodes only | Only show leaf nodes in the item picker — filter by `isLeaf: true` |
 | `cumulativeClaimed` = total-to-date, not this period | Show the calculation: `period = cumulative − previousEffectiveCertified` |
+| `cumulativeClaimed` ≤ BOQ node `quantity` | Show remaining quantity; disable submit if exceeded |
+| Unit rate and currency come from the BOQ node — never send them | Do not render `unitRateSnapshot` / `currencySnapshot` inputs in the add-item form |
 | `varianceReason` required when certified ≠ claimed | Client-side validate before submitting IPC |
+| `certifiedTotal` is server-computed — do not send it | Remove `certifiedTotal` from the issue-IPC form entirely |
+| RETENTION and ADVANCE_RECOVERY are auto-generated — do not send them | Hide these deduction types from the IPC deduction picker |
+| IPA must be `SUBMITTED` to issue a certificate | Disable "Issue Certificate" unless IPA `status === 'SUBMITTED'` |
 | One effective IPC per application | If `isEffective` cert exists, hide "Issue" and show "Supersede" instead |
+| Allocation: client must match | Only show IPCs in the picker that belong to the same client as the receipt |
+| Allocation: currency must match | Filter or warn when IPC currency differs from receipt currency |
 | Contract `execute` freezes client details forever | Warn: "Client name and tax number will be permanently locked onto this contract" |
 | `practical-completion` moves ACTIVE contracts → `FINAL_ACCOUNT_PENDING` | Confirmation dialog listing affected contracts |
 | Receipt allocations cannot exceed receipt amount | Show remaining unallocated balance live in form |

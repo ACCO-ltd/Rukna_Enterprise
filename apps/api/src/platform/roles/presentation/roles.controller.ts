@@ -1,7 +1,9 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { Controller, Get, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import type { RequestIdentity } from '@erp/types';
 
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.js';
+import { CurrentUser } from '../../../common/decorators/current-user.decorator.js';
 import { RolesService } from '../application/roles.service.js';
 
 @ApiTags('Roles')
@@ -12,10 +14,9 @@ export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all roles for an organization' })
-  @ApiQuery({ name: 'orgId', description: 'Organization CUID', required: true })
+  @ApiOperation({ summary: 'List all roles for the caller\'s organization' })
   @ApiResponse({ status: 200, description: 'Array of roles' })
-  findAll(@Query('orgId') orgId: string) {
-    return this.rolesService.findAll(orgId);
+  findAll(@CurrentUser() identity: RequestIdentity) {
+    return this.rolesService.findAll(identity.activeOrganizationId);
   }
 }

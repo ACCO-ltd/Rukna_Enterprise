@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Decimal } from '@prisma/client/runtime/library';
 import type { PrismaClient, PaymentReceipt } from '@prisma/client';
 
 export type ReceiptFull = PaymentReceipt & {
@@ -40,11 +41,11 @@ export class FinancePrismaRepository {
     return prisma.paymentReceipt.create({ data: data as never });
   }
 
-  // Returns the sum of all allocated amounts for a receipt.
-  getTotalAllocated(prisma: TenantPrisma, receiptId: string): Promise<number> {
+  // Returns the sum of all allocated amounts for a receipt as a Decimal string.
+  getTotalAllocated(prisma: TenantPrisma, receiptId: string): Promise<string> {
     return prisma.receiptAllocation
       .aggregate({ where: { receiptId }, _sum: { allocatedAmount: true } })
-      .then((r) => Number(r._sum.allocatedAmount ?? 0));
+      .then((r) => new Decimal(r._sum.allocatedAmount?.toString() ?? '0').toFixed(2));
   }
 
   addAllocation(
@@ -68,14 +69,18 @@ export class FinancePrismaRepository {
   }
 
   // Derives payment state for a certificate from its allocations.
+  // Compares allocations against net certified (gross minus deductions) not gross total.
   async getCertificatePaymentSummary(
     prisma: TenantPrisma,
     certificateId: string,
-  ): Promise<{ totalAllocated: number; status: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID' }> {
+  ): Promise<{ totalAllocated: string; netCertified: string; status: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID' }> {
     const [cert, alloc] = await Promise.all([
       prisma.interimPaymentCertificate.findUnique({
         where: { id: certificateId },
-        select: { certifiedTotal: true },
+        select: {
+          items: { select: { certifiedAmount: true } },
+          deductions: { select: { amount: true } },
+        },
       }),
       prisma.receiptAllocation.aggregate({
         where: { certificateId },
@@ -83,13 +88,28 @@ export class FinancePrismaRepository {
       }),
     ]);
 
-    const certTotal = Number(cert?.certifiedTotal ?? 0);
-    const totalAllocated = Number(alloc._sum.allocatedAmount ?? 0);
+    const netCertified = (cert?.items ?? [])
+      .reduce((s, i) => s.plus(new Decimal(i.certifiedAmount.toString())), new Decimal(0))
+      .minus(
+        (cert?.deductions ?? []).reduce(
+          (s, d) => s.plus(new Decimal(d.amount.toString())),
+          new Decimal(0),
+        ),
+      );
+
+    const totalAllocated = new Decimal(alloc._sum.allocatedAmount?.toString() ?? '0');
 
     let status: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID' = 'UNPAID';
-    if (totalAllocated >= certTotal) status = 'PAID';
-    else if (totalAllocated > 0) status = 'PARTIALLY_PAID';
+    if (totalAllocated.greaterThanOrEqualTo(netCertified) && netCertified.greaterThan(0)) {
+      status = 'PAID';
+    } else if (totalAllocated.greaterThan(0)) {
+      status = 'PARTIALLY_PAID';
+    }
 
-    return { totalAllocated, status };
+    return {
+      totalAllocated: totalAllocated.toFixed(2),
+      netCertified: netCertified.toFixed(2),
+      status,
+    };
   }
 }

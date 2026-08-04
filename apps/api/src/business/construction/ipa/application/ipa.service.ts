@@ -13,9 +13,9 @@ import type { CreateIpaDto } from '../presentation/dto/create-ipa.dto.js';
 import type { AddIpaItemDto } from '../presentation/dto/add-ipa-item.dto.js';
 import type { AddIpaDeductionDto } from '../presentation/dto/add-ipa-deduction.dto.js';
 
-// Allowed source status for each command
-const TRANSITIONS: Record<string, string> = {
-  'submit-for-approval':    'DRAFT',
+// Allowed source status(es) for each command
+const TRANSITIONS: Record<string, string | string[]> = {
+  'submit-for-approval':    ['DRAFT', 'RETURNED_FOR_REVISION'],
   'return-for-revision':    'PENDING_INTERNAL_APPROVAL',
   'approve-for-submission': 'PENDING_INTERNAL_APPROVAL',
   submit:                   'APPROVED_FOR_SUBMISSION',
@@ -89,9 +89,10 @@ export class IpaService {
     const toState = TRANSITION_TARGETS[command];
     if (!requiredFrom) throw new BadRequestException(`Unknown IPA command '${command}'`);
 
-    if (ipa.status !== requiredFrom) {
+    const allowed = Array.isArray(requiredFrom) ? requiredFrom : [requiredFrom];
+    if (!allowed.includes(ipa.status)) {
       throw new BadRequestException(
-        `Cannot '${command}' an IPA with status '${ipa.status}'. Expected '${requiredFrom}'.`,
+        `Cannot '${command}' an IPA with status '${ipa.status}'. Expected: ${allowed.join(' or ')}.`,
       );
     }
 
@@ -146,12 +147,36 @@ export class IpaService {
       throw new BadRequestException(`Cannot add items to an IPA with status '${ipa.status}'`);
     }
 
-    // Look up the measurement method snapshot from the BOQ node.
+    // Load the BOQ node — read unit rate, currency, and quantity from contract, not from client.
     const boqNode = await prisma.boqNode.findUnique({
       where: { id: dto.boqNodeId },
-      select: { measurementMethod: true },
+      select: { measurementMethod: true, unitRate: true, currency: true, quantity: true, versionId: true },
     });
     if (!boqNode) throw new NotFoundException(`BOQ node ${dto.boqNodeId} not found`);
+    if (!boqNode.unitRate) {
+      throw new BadRequestException(`BOQ node ${dto.boqNodeId} has no unit rate — cannot create an IPA item`);
+    }
+
+    // Verify the node belongs to the contract's baselined BOQ version.
+    const contract = await prisma.contract.findUnique({
+      where: { id: ipa.contractId },
+      select: { boqVersionId: true },
+    });
+    if (!contract || boqNode.versionId !== contract.boqVersionId) {
+      throw new BadRequestException(
+        `BOQ node ${dto.boqNodeId} does not belong to the contract's BOQ version`,
+      );
+    }
+
+    // Guard: cumulative claimed must not exceed the contracted quantity.
+    if (boqNode.quantity !== null) {
+      const cumQty = new Decimal(dto.cumulativeClaimed);
+      if (cumQty.greaterThan(new Decimal(boqNode.quantity.toString()))) {
+        throw new BadRequestException(
+          `cumulativeClaimed (${dto.cumulativeClaimed}) exceeds the contracted BOQ quantity (${boqNode.quantity.toString()})`,
+        );
+      }
+    }
 
     // Denormalize previousEffectiveCertified from the last effective IPC.
     const prevCertified = await this.repo.getLastEffectiveCertifiedQty(
@@ -163,13 +188,13 @@ export class IpaService {
     const cumulative = new Decimal(dto.cumulativeClaimed);
     const prev = new Decimal(prevCertified);
     const periodQty = cumulative.sub(prev);
-    const periodAmount = periodQty.mul(new Decimal(dto.unitRateSnapshot));
+    const periodAmount = periodQty.mul(new Decimal(boqNode.unitRate.toString()));
 
     return this.repo.addItem(prisma, id, {
       boqNodeId: dto.boqNodeId,
       measurementMethodSnapshot: boqNode.measurementMethod,
-      unitRateSnapshot: dto.unitRateSnapshot,
-      currencySnapshot: dto.currencySnapshot,
+      unitRateSnapshot: boqNode.unitRate.toString(),
+      currencySnapshot: boqNode.currency ?? 'USD',
       cumulativeClaimed: dto.cumulativeClaimed,
       previousEffectiveCertified: prevCertified.toString(),
       periodQuantity: periodQty.toFixed(3),

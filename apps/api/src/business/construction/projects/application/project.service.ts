@@ -73,7 +73,7 @@ export class ProjectService {
     const duplicate = await this.repo.findByCode(prisma, identity.activeOrganizationId, dto.code);
     if (duplicate) throw new ConflictException(`Project code '${dto.code}' already exists`);
 
-    return this.repo.create(prisma, {
+    const project = await this.repo.create(prisma, {
       organizationId: identity.activeOrganizationId,
       code: dto.code,
       name: dto.name,
@@ -86,6 +86,16 @@ export class ProjectService {
       expectedEndDate: dto.expectedEndDate ? new Date(dto.expectedEndDate) : undefined,
       createdBy: identity.userId,
     });
+
+    // Auto-enrol the creator so they can immediately manage members.
+    const member = await this.repo.createMember(prisma, {
+      projectId: project.id,
+      userId: identity.userId,
+      joinedBy: identity.userId,
+    });
+    await this.repo.addMemberRoles(prisma, member.id, ['PROJECT_MANAGER'], identity.userId);
+
+    return project;
   }
 
   // ─── Update ──────────────────────────────────────────────────────────────────
