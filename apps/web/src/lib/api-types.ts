@@ -11,29 +11,33 @@
  * every wire shape lives here. That gives drift ONE place to be found and ONE place to be
  * deleted. Feature `types.ts` files re-export from here so nothing else has to change.
  *
- * ─── PARTLY SUPERSEDED as of 2026-08-04 ──────────────────────────────────────────
+ * ─── DO NOT MIGRATE THIS FILE TO `@erp/types` (checked 2026-08-04) ───────────────
  *
- * `@erp/types` now DOES export DTOs. `packages/types/src/construction.ts`, added in
- * `776b695`, ships `ClientResponse`, `ContractResponse` (and its sub-entities),
- * `IpaResponse`, `IpcResponse` and `PaymentReceiptResponse` — the five Sprint 3 aggregates
- * this file mirrors. That resolved C6. So the sentence above is no longer true for those
- * five, and their shapes here are now a SECOND definition of a contract that exists.
+ * `@erp/types` now DOES export DTOs — `packages/types/src/construction.ts`, added in
+ * `776b695`, covers the five Sprint 3 aggregates this file mirrors. Adopting them looks
+ * like the obvious cleanup. It is a trap.
  *
- * This file cannot simply be deleted, because B12 is still open: there is no `ProjectResponse`
- * and no BOQ DTO in `@erp/types`. Only the Sprint 3 half can migrate.
+ * Compared field by field against `apps/api/prisma/schema.prisma`, 13 of those 16
+ * interfaces do not match the API — invented fields, omitted fields, renamed fields. See
+ * issue #21 for the full table. The shapes in THIS file were read off the schema and the
+ * repository `include` clauses, and are correct everywhere the two disagree.
  *
- * That migration is not a mechanical swap, which is why it has not been done here. The two
- * definitions disagree in at least one place that changes behaviour:
+ * The failure mode is quiet, which is why this warning is long:
  *
- *     @erp/types   applicationNumber?: number        // key may be absent
- *     this file    applicationNumber: number | null  // key present, value null
+ *     ReceiptAllocationResponse  declares  notes, createdAt      ← neither exists
+ *                               omits     allocatedAt, allocatedBy
  *
- * For `JSON.parse`d wire data this file is almost certainly the correct one — a nullable
- * Prisma column serialises as `null`, the key does not disappear. Every such difference
- * needs checking against a real API response before adopting the shared DTO, or a correct
- * type gets swapped for a plausible wrong one.
+ * Both omitted fields are rendered by the receipts allocations panel today. Swapping to
+ * the shared type would type-check and break that panel at runtime. `IpcPaymentStatusResponse`
+ * is worse — wrong in all five of its fields.
  *
- * Tracked in `docs/backend-requests/frontend-blockers.md` under C6 (fixed) and B12 (open).
+ * Only `IpaResponse`, `IpcItemResponse` and `IpcDeductionResponse` are safe to adopt, and
+ * the file cannot be deleted regardless while B12 is open: `@erp/types` still has no
+ * Project or BOQ DTO at all.
+ *
+ * Revisit when #21 is fixed — ideally by generating the DTOs rather than hand-writing them.
+ *
+ * Tracked in `docs/backend-requests/frontend-blockers.md` under C6 and B12.
  *
  * ─── Serialization rules (these are not the Prisma types) ────────────────────────
  *
