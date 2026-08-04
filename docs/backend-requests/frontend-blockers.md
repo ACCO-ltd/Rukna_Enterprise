@@ -56,6 +56,7 @@ Findings were produced by reading `apps/api/src` directly, not by inference from
 | [C10](#c10) | Contract | Contracts | Retention split is spelled `…OnPc` in, `…OnPC` out | — |
 | [C13](#c13) | Gap | Contracts | Cancel and terminate require a reason and discard it | — |
 | [C14](#c14) | **Blocking — bug** | IPA | `RETURNED_FOR_REVISION` is a dead end — editable, unsubmittable | [#13](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/13) |
+| [C15](#c15) | Gap | IPA | Claimed items carry a bare `boqNodeId` — no code or description | — |
 | [D3](#d3) | Docs | Clients, Contracts | Documented request shapes that return `400` | — |
 
 ---
@@ -708,6 +709,25 @@ Worth a regression test that walks the full loop — submit, return, edit, resub
 because the API genuinely allows editing, and an explanation that the result cannot be
 submitted. That is the honest presentation of the current behaviour, and it is a bad
 screen — it should stop being needed rather than be designed around.
+
+---
+
+### <a id="c15"></a>C15 — Claimed items carry a bare `boqNodeId`
+
+`GET /ipa/:id` returns each `InterimPaymentApplicationItem` with a `boqNodeId` and nothing
+that describes it — no `code`, no `description`. `IpaPrismaRepository.findById` includes
+`items: true` with no relation expansion, and `BoqNode` is never joined.
+
+So a claimed-lines table built from that response alone can only show an opaque cuid. The
+frontend fetches the BOQ tree for the contract's version and joins client-side, which is
+affordable here because the line picker needs the tree anyway — but every other consumer
+will have to repeat it, and a printed or exported application would too.
+
+**Suggested:** expand the node on the item, or denormalise `code` and `description` onto
+the item at creation, the way `measurementMethodSnapshot` and `unitRateSnapshot` already
+are. The snapshot argument is stronger here than for most fields: a BOQ line's description
+can be reworded in a later version, and a submitted application should keep the wording it
+was actually claimed under.
 
 ---
 
