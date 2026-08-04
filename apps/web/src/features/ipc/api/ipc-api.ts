@@ -23,16 +23,24 @@ export function getIpc(id: string): Promise<IpcDetail> {
 }
 
 /**
- * Settlement status for one certificate.
+ * Allocation total for one certificate.
  *
- * ⚠ Do not present this as truth. `status` compares allocations against the certificate's
- * GROSS `certifiedTotal` rather than `netCertified`, so any certificate carrying a
- * deduction is pinned at PARTIALLY_PAID and can never report PAID — confirmed against the
- * running API in issue #11 (C7). `totalAllocated` is also a JS number rather than a decimal
- * string, unlike every other money field (C8).
+ * ⚠ **Use `totalAllocated`. Do not use `status`.**
  *
- * The UI derives its own settled/outstanding figures from the allocations and the
- * certificate's `netCertified`, and does not call this until C7 is fixed.
+ * `totalAllocated` is the sum of every allocation against this certificate, computed in the
+ * database, and it is correct. It arrives as a JS number rather than a decimal string,
+ * unlike every other money field on the API (C8, recorded on issue #14) — `settlementFor`
+ * converts it to integer minor units once and explains why that is safe.
+ *
+ * `status` compares that sum against the certificate's GROSS `certifiedTotal` rather than
+ * its `netCertified`. A client pays the net, so any certificate carrying a deduction is
+ * pinned at PARTIALLY_PAID and can never report PAID — confirmed against the running API in
+ * issue #11 (C7). `settlementFor` derives the state from `netCertified` instead, which is
+ * right today and stays right when #11 lands.
+ *
+ * This is a narrower rule than the one that used to be here, which said not to call this
+ * endpoint at all. That was written when the intent was to display `status` directly; there
+ * is no reason to discard a correct sum over a wrong comparison beside it.
  */
 export function getCertificatePaymentStatus(
   certificateId: string,

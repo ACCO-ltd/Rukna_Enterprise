@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useForm, useWatch } from 'react-hook-form';
 import { useLocale, useTranslations } from 'next-intl';
 import {
@@ -43,24 +44,42 @@ export function ReceiptAllocationsPanel({ receipt }: { receipt: ReceiptDetail })
   const nothingToAllocate = unallocatedMinor(receipt.amount, receipt.allocations) <= 0;
 
   /**
-   * Certificate references for the rows below.
+   * Certificate references for the rows below, and where each one can be opened.
    *
    * `ReceiptAllocation` carries only `certificateId`, so an allocation list built from the
    * receipt alone can only show a cuid — the same shape of gap as C15 on payment
    * applications. The certificates are already fetched for the picker, and TanStack Query
    * shares the cache entry, so labelling the rows costs nothing extra.
+   *
+   * The link needs more than the certificate: a certificate lives at
+   * `/contracts/:id/applications/:ipaId/certificates/:ipcId`, and the certificate itself
+   * knows only its `applicationId`. The applications supply the contract each one belongs
+   * to. That is the same client-side walk C16 (#18) exists to remove — a `contractId` on the
+   * certificate row would make both this and the picker a single call.
    */
   const certificates = useIpcs();
-  const refById = useMemo(
-    () =>
-      new Map(
-        (certificates.data ?? []).map((c) => [
+  const applications = useIpas();
+  const certificateById = useMemo(() => {
+    const contractIdByApplication = new Map(
+      (applications.data ?? []).map((a) => [a.id, a.contractId]),
+    );
+
+    return new Map(
+      (certificates.data ?? []).map((c) => {
+        const contractId = contractIdByApplication.get(c.applicationId);
+
+        return [
           c.id,
-          c.certificateRef ?? `#${c.certificateNumber}`,
-        ]),
-      ),
-    [certificates.data],
-  );
+          {
+            label: c.certificateRef ?? `#${c.certificateNumber}`,
+            href: contractId
+              ? `/contracts/${contractId}/applications/${c.applicationId}/certificates/${c.id}`
+              : null,
+          },
+        ];
+      }),
+    );
+  }, [certificates.data, applications.data]);
 
   return (
     <section className="space-y-4">
@@ -98,13 +117,28 @@ export function ReceiptAllocationsPanel({ receipt }: { receipt: ReceiptDetail })
             >
               <div className="min-w-0 flex-1">
                 {/* Falls back to the id only while the certificates load — an allocation
-                    with no identifiable certificate is unreconcilable. */}
+                    with no identifiable certificate is unreconcilable. The reference links
+                    to the certificate itself where we can work out which one it is; an
+                    unlinked label is still correct, just not navigable. */}
                 <p className="text-sm font-medium text-foreground">
-                  {refById.get(allocation.certificateId) ?? (
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {allocation.certificateId.slice(-8)}
-                    </span>
-                  )}
+                  {(() => {
+                    const certificate = certificateById.get(allocation.certificateId);
+                    if (!certificate) {
+                      return (
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {allocation.certificateId.slice(-8)}
+                        </span>
+                      );
+                    }
+
+                    return certificate.href ? (
+                      <Link href={certificate.href} className="underline-offset-4 hover:underline">
+                        {certificate.label}
+                      </Link>
+                    ) : (
+                      certificate.label
+                    );
+                  })()}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {formatDate(allocation.allocatedAt, locale)}

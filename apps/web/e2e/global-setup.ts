@@ -17,6 +17,7 @@ export interface Scenario {
   ipaRef: string | null;
   receiptId: string;
   receiptReference: string | null;
+  ipcId: string;
   /** Net certified on the seeded certificate, as the API reports it. */
   netCertified: string;
 }
@@ -46,6 +47,7 @@ async function globalSetup(): Promise<void> {
     ipaRef: seeded.ipa.applicationRef ?? null,
     receiptId: seeded.receipt.id,
     receiptReference: seeded.receipt.reference ?? null,
+    ipcId: seeded.certificate.id,
     netCertified: seeded.certificate.netCertified,
   };
 

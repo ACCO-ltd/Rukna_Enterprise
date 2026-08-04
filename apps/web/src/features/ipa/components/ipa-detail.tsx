@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Button } from '@erp/ui';
 
 import { useContract } from '@/features/contracts/hooks/use-contracts';
+import { IpcCertificatesPanel } from '@/features/ipc/components/ipc-certificates-panel';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 
@@ -58,9 +59,12 @@ export function IpaDetail({ contractId, ipaId }: { contractId: string; ipaId: st
   return (
     <div className="space-y-8">
       <div>
+        {/* `inline-flex min-h-11` rather than bare text: a standalone navigation link is a
+            touch target, and at 18px it failed the 44px rule the same way table rows did
+            before c8afdd6. The height is invisible on a pointer device. */}
         <Link
           href={`/contracts/${contractId}`}
-          className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+          className="inline-flex min-h-11 items-center text-sm text-muted-foreground underline-offset-4 hover:underline"
         >
           {t('back')}
         </Link>
@@ -112,7 +116,7 @@ export function IpaDetail({ contractId, ipaId }: { contractId: string; ipaId: st
             <dd className="mt-0.5 text-sm text-foreground">
               <Link
                 href={`/contracts/${contractId}`}
-                className="underline-offset-4 hover:underline"
+                className="inline-flex min-h-11 items-center underline-offset-4 hover:underline"
               >
                 {contract.data.contractNumber}
               </Link>
@@ -137,6 +141,11 @@ export function IpaDetail({ contractId, ipaId }: { contractId: string; ipaId: st
         contract={contract.data}
         canEdit={actions.canEditLines}
       />
+
+      {/* What this application was actually certified at. Last because it is the outcome of
+          everything above it, and because an application is read top-down: what was claimed,
+          what was deducted, then what came back. */}
+      <IpcCertificatesPanel contractId={contractId} ipaId={ipa.data.id} currency={currency} />
     </div>
   );
 }
