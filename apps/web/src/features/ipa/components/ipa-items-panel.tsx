@@ -52,6 +52,21 @@ export function IpaItemsPanel({
 
   const remove = useRemoveIpaItem(ipaId);
 
+  /**
+   * The BOQ tree, read here rather than only inside the picker.
+   *
+   * `GET /ipa/:id` returns each item with a bare `boqNodeId` and nothing else — no code, no
+   * description — so a claimed-lines table built from the response alone can only show an
+   * opaque id. Resolving the labels means joining against the tree client-side; the query
+   * is shared with the picker, so this costs one fetch for both. Raised as C15.
+   */
+  const tree = useBoqTree(projectId, boqVersionId);
+  const linesById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const line of claimableLines(tree.data ?? [])) map.set(line.id, lineLabel(line));
+    return map;
+  }, [tree.data]);
+
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -90,7 +105,16 @@ export function IpaItemsPanel({
             <TableBody>
               {items.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell className="font-mono text-xs">{item.boqNodeId.slice(-8)}</TableCell>
+                  {/* Falls back to the id only while the tree is loading or if the node
+                      has since been removed from the version — never leaves the cell
+                      blank, since a claimed line with no identity is unauditable. */}
+                  <TableCell className="min-w-56">
+                    {linesById.get(item.boqNodeId) ?? (
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {item.boqNodeId.slice(-8)}
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell numeric>
                     <bdi>{formatMoney(item.unitRateSnapshot, item.currencySnapshot, locale)}</bdi>
                   </TableCell>
