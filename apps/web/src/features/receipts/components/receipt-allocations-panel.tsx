@@ -25,7 +25,6 @@ import {
   allocationProblem,
   certificatesForClient,
   fromMinorUnits,
-  isFullyAllocated,
   toMinorUnits,
   unallocatedMinor,
 } from '../allocation';
@@ -39,13 +38,35 @@ export function ReceiptAllocationsPanel({ receipt }: { receipt: ReceiptDetail })
   const [pendingRemoval, setPendingRemoval] = useState<ReceiptAllocation | null>(null);
 
   const remove = useRemoveAllocation(receipt.id);
-  const fullyAllocated = isFullyAllocated(receipt.amount, receipt.allocations);
+  // Nothing left to give: exactly settled, or already over-allocated. An over-allocated
+  // receipt must not offer to allocate more — the way out is removing a line, not adding.
+  const nothingToAllocate = unallocatedMinor(receipt.amount, receipt.allocations) <= 0;
+
+  /**
+   * Certificate references for the rows below.
+   *
+   * `ReceiptAllocation` carries only `certificateId`, so an allocation list built from the
+   * receipt alone can only show a cuid — the same shape of gap as C15 on payment
+   * applications. The certificates are already fetched for the picker, and TanStack Query
+   * shares the cache entry, so labelling the rows costs nothing extra.
+   */
+  const certificates = useIpcs();
+  const refById = useMemo(
+    () =>
+      new Map(
+        (certificates.data ?? []).map((c) => [
+          c.id,
+          c.certificateRef ?? `#${c.certificateNumber}`,
+        ]),
+      ),
+    [certificates.data],
+  );
 
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-foreground">{t('heading')}</h2>
-        {!fullyAllocated ? (
+        {!nothingToAllocate ? (
           <Button
             size="sm"
             onClick={() => {
@@ -76,8 +97,14 @@ export function ReceiptAllocationsPanel({ receipt }: { receipt: ReceiptDetail })
               className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-4"
             >
               <div className="min-w-0 flex-1">
-                <p className="font-mono text-xs text-muted-foreground">
-                  {allocation.certificateId.slice(-8)}
+                {/* Falls back to the id only while the certificates load — an allocation
+                    with no identifiable certificate is unreconcilable. */}
+                <p className="text-sm font-medium text-foreground">
+                  {refById.get(allocation.certificateId) ?? (
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {allocation.certificateId.slice(-8)}
+                    </span>
+                  )}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {formatDate(allocation.allocatedAt, locale)}

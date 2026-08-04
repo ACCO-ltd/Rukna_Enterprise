@@ -792,7 +792,9 @@
       "allocated": "Allocated",
       "unallocated": "Unallocated",
       "fullyAllocated": "Fully allocated",
-      "notes": "Notes"
+      "notes": "Notes",
+      "overAllocated": "Over-allocated",
+      "overAllocatedHint": "More has been allocated than was received on this receipt. Remove an allocation to bring it back into balance. This state is reachable because the API accepts a negative allocation (C17, issue #14)."
     },
     "allocations": {
       "heading": "Allocations",
