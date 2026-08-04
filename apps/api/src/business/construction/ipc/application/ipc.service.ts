@@ -51,15 +51,33 @@ export class IpcService {
   async issue(identity: RequestIdentity, dto: CreateIpcDto) {
     const prisma = this.tenancyService.getClient();
 
+    // Guard: IPA must exist, belong to this org, and be SUBMITTED.
+    const ipa = await prisma.interimPaymentApplication.findFirst({
+      where: { id: dto.applicationId, organizationId: identity.activeOrganizationId },
+      select: { id: true, status: true },
+    });
+    if (!ipa) throw new NotFoundException(`Application ${dto.applicationId} not found`);
+    if (ipa.status !== 'SUBMITTED') {
+      throw new BadRequestException(
+        `A certificate can only be issued against a SUBMITTED application. Current status: ${ipa.status}`,
+      );
+    }
+
     // Validate variance reasons on items where certified ≠ claimed.
+    // Also verify every applicationItemId belongs to dto.applicationId.
     if (dto.items) {
       for (const item of dto.items) {
         const appItem = await prisma.interimPaymentApplicationItem.findUnique({
           where: { id: item.applicationItemId },
-          select: { cumulativeClaimed: true, unitRateSnapshot: true },
+          select: { cumulativeClaimed: true, unitRateSnapshot: true, applicationId: true },
         });
         if (!appItem) {
           throw new NotFoundException(`Application item ${item.applicationItemId} not found`);
+        }
+        if (appItem.applicationId !== dto.applicationId) {
+          throw new BadRequestException(
+            `Application item ${item.applicationItemId} does not belong to application ${dto.applicationId}`,
+          );
         }
         const certified = new Decimal(item.certifiedQuantity);
         const claimed = new Decimal(appItem.cumulativeClaimed.toString());

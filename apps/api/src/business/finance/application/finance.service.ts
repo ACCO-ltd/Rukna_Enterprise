@@ -49,23 +49,43 @@ export class FinanceService {
     const prisma = this.tenancyService.getClient();
     const receipt = await this.requireReceipt(prisma, identity.activeOrganizationId, receiptId);
 
-    // Verify the certificate belongs to the same organization.
+    // Verify the certificate belongs to this org, the same client, and the same currency.
     const cert = await prisma.interimPaymentCertificate.findFirst({
       where: { id: dto.certificateId, organizationId: identity.activeOrganizationId },
-      select: { id: true },
+      select: {
+        id: true,
+        currency: true,
+        application: { select: { contract: { select: { clientId: true } } } },
+      },
     });
     if (!cert) throw new NotFoundException(`Certificate ${dto.certificateId} not found`);
+    if (cert.application.contract.clientId !== receipt.clientId) {
+      throw new BadRequestException(
+        `Certificate ${dto.certificateId} belongs to a different client than this receipt`,
+      );
+    }
+    if (cert.currency !== receipt.currency) {
+      throw new BadRequestException(
+        `Currency mismatch: receipt is ${receipt.currency} but certificate is ${cert.currency}`,
+      );
+    }
+
+    // Guard: allocated amount must be positive.
+    if (new Decimal(dto.allocatedAmount).lessThanOrEqualTo(0)) {
+      throw new BadRequestException('allocatedAmount must be greater than zero');
+    }
 
     // Guard: total allocated must not exceed receipt amount.
     const alreadyAllocated = await this.repo.getTotalAllocated(prisma, receiptId);
     const receiptAmount = new Decimal(receipt.amount.toString());
+    const alreadyAllocatedDec = new Decimal(alreadyAllocated);
     const newAllocation = new Decimal(dto.allocatedAmount);
-    const afterAllocation = new Decimal(alreadyAllocated).add(newAllocation);
+    const afterAllocation = alreadyAllocatedDec.add(newAllocation);
 
     if (afterAllocation.greaterThan(receiptAmount)) {
       throw new BadRequestException(
         `Allocation of ${newAllocation.toFixed(2)} would exceed receipt amount ${receiptAmount.toFixed(2)}. ` +
-        `Available unallocated balance: ${receiptAmount.sub(new Decimal(alreadyAllocated)).toFixed(2)}.`,
+        `Available unallocated balance: ${receiptAmount.sub(alreadyAllocatedDec).toFixed(2)}.`,
       );
     }
 

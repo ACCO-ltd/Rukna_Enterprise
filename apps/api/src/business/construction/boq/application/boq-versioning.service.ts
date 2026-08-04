@@ -4,6 +4,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { BoqNode, Prisma } from '@prisma/client';
 import type { RequestIdentity } from '@erp/types';
@@ -20,9 +21,7 @@ export class BoqVersioningService {
 
   async getBoq(identity: RequestIdentity, projectId: string): Promise<BoqWithVersions> {
     const prisma = this.tenancyService.getClient();
-    const boq = await this.repo.findByProject(prisma, projectId);
-    if (!boq) throw new NotFoundException(`No BOQ found for project ${projectId}`);
-    return boq;
+    return this.requireBoq(prisma, projectId, identity.activeOrganizationId);
   }
 
   /**
@@ -33,7 +32,10 @@ export class BoqVersioningService {
     const prisma = this.tenancyService.getClient();
 
     const existing = await this.repo.findByProject(prisma, projectId);
-    if (existing) return existing;
+    if (existing) {
+      if (existing.organizationId !== identity.activeOrganizationId) throw new ForbiddenException();
+      return existing;
+    }
 
     const boq = await this.repo.createBoq(prisma, {
       projectId,
@@ -62,7 +64,7 @@ export class BoqVersioningService {
     notes?: string,
   ): Promise<BoqWithVersions> {
     const prisma = this.tenancyService.getClient();
-    const boq = await this.requireBoq(prisma, projectId);
+    const boq = await this.requireBoq(prisma, projectId, identity.activeOrganizationId);
 
     if (!boq.currentApprovedVersionId) {
       throw new BadRequestException('No approved version exists to create a draft from.');
@@ -108,7 +110,7 @@ export class BoqVersioningService {
     versionId: string,
   ): Promise<BoqWithVersions> {
     const prisma = this.tenancyService.getClient();
-    const boq = await this.requireBoq(prisma, projectId);
+    const boq = await this.requireBoq(prisma, projectId, identity.activeOrganizationId);
 
     if (boq.currentDraftVersionId !== versionId) {
       throw new BadRequestException('Only the current draft version can be baselined.');
@@ -151,7 +153,7 @@ export class BoqVersioningService {
     versionId: string,
   ): Promise<BoqWithVersions> {
     const prisma = this.tenancyService.getClient();
-    const boq = await this.requireBoq(prisma, projectId);
+    const boq = await this.requireBoq(prisma, projectId, identity.activeOrganizationId);
 
     if (boq.currentDraftVersionId !== versionId) {
       throw new BadRequestException('Only the current draft version can be cancelled.');
@@ -170,9 +172,14 @@ export class BoqVersioningService {
 
   // ─── Private helpers ──────────────────────────────────────────────────────────
 
-  private async requireBoq(prisma: ReturnType<TenancyService['getClient']>, projectId: string) {
+  private async requireBoq(
+    prisma: ReturnType<TenancyService['getClient']>,
+    projectId: string,
+    organizationId: string,
+  ) {
     const boq = await this.repo.findByProject(prisma, projectId);
     if (!boq) throw new NotFoundException(`No BOQ found for project ${projectId}`);
+    if (boq.organizationId !== organizationId) throw new ForbiddenException();
     return boq;
   }
 

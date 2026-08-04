@@ -1,10 +1,12 @@
 import { Controller, Get, Post, Param, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiBody } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
+import type { RequestIdentity } from '@erp/types';
 
 import { WorkflowsService } from '../application/workflows.service.js';
 import { ApprovalService } from '../application/approval.service.js';
 import { WorkflowTransactionType } from '@erp/types';
+import { CurrentUser } from '../../../common/decorators/current-user.decorator.js';
 
 @ApiTags('Workflows')
 @ApiBearerAuth('access-token')
@@ -23,19 +25,12 @@ export class WorkflowsController {
     enum: WorkflowTransactionType,
     description: 'The transaction type to retrieve the workflow definition for',
   })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      required: ['organizationId'],
-      properties: { organizationId: { type: 'string', description: 'Organization CUID' } },
-    },
-  })
   @ApiResponse({ status: 200, description: 'Workflow definition with approval steps' })
   getDefinition(
+    @CurrentUser() identity: RequestIdentity,
     @Param('transactionType') transactionType: WorkflowTransactionType,
-    @Body('organizationId') organizationId: string,
   ) {
-    return this.workflowsService.getDefinitionForTransaction(organizationId, transactionType);
+    return this.workflowsService.getDefinitionForTransaction(identity.activeOrganizationId, transactionType);
   }
 
   @Get('instance/:instanceId/step')
@@ -53,20 +48,17 @@ export class WorkflowsController {
   @ApiBody({
     schema: {
       type: 'object',
-      required: ['actorId'],
-      properties: {
-        actorId: { type: 'string', description: 'User CUID of the approver' },
-        notes: { type: 'string', description: 'Optional approval notes' },
-      },
+      properties: { notes: { type: 'string', description: 'Optional approval notes' } },
     },
   })
   @ApiResponse({ status: 201, description: 'Step approved' })
   @ApiResponse({ status: 403, description: 'Actor is not authorized to approve this step' })
   approve(
+    @CurrentUser() identity: RequestIdentity,
     @Param('instanceId') instanceId: string,
-    @Body() body: { actorId: string; notes?: string },
+    @Body() body: { notes?: string },
   ) {
-    return this.approvalService.approve(instanceId, body.actorId, body.notes);
+    return this.approvalService.approve(instanceId, identity.userId, body.notes);
   }
 
   @Post('instance/:instanceId/reject')
@@ -75,19 +67,16 @@ export class WorkflowsController {
   @ApiBody({
     schema: {
       type: 'object',
-      required: ['actorId'],
-      properties: {
-        actorId: { type: 'string', description: 'User CUID of the rejector' },
-        notes: { type: 'string', description: 'Optional rejection reason' },
-      },
+      properties: { notes: { type: 'string', description: 'Optional rejection reason' } },
     },
   })
   @ApiResponse({ status: 201, description: 'Step rejected' })
   @ApiResponse({ status: 403, description: 'Actor is not authorized to reject this step' })
   reject(
+    @CurrentUser() identity: RequestIdentity,
     @Param('instanceId') instanceId: string,
-    @Body() body: { actorId: string; notes?: string },
+    @Body() body: { notes?: string },
   ) {
-    return this.approvalService.reject(instanceId, body.actorId, body.notes);
+    return this.approvalService.reject(instanceId, identity.userId, body.notes);
   }
 }

@@ -12,8 +12,9 @@ import type {
 
 export interface ClientContactResponse {
   id: string;
+  clientId: string;
   name: string;
-  title?: string;
+  role?: string;
   email?: string;
   phone?: string;
   isPrimary: boolean;
@@ -22,9 +23,11 @@ export interface ClientContactResponse {
 export interface ClientResponse {
   id: string;
   organizationId: string;
-  legalName: string;
-  tradingName?: string;
+  code: string;
+  name: string;
+  nameAr?: string;
   taxNumber?: string;
+  defaultCurrency?: string;
   status: ClientStatus;
   contacts: ClientContactResponse[];
   createdAt: string;
@@ -34,22 +37,21 @@ export interface ClientResponse {
 // ─── Contract sub-entities ────────────────────────────────────────────────────
 
 export interface ContractRetentionTermsResponse {
-  id: string;
   contractId: string;
   retentionRate: string;
-  releaseOnPracticalCompletion: string;
-  releaseOnDefectsExpiry: string;
-  defectLiabilityPeriodDays: number;
+  retentionCap: string;
+  retentionSplitOnPC: string;
+  retentionReleasedAt?: string;
 }
 
 export interface ContractAdvanceTermResponse {
   id: string;
   contractId: string;
   advanceType: AdvanceType;
-  amount: string;
-  currency: string;
+  description?: string;
+  amount?: string;
+  percentage?: string;
   recoveryRate: string;
-  notes?: string;
 }
 
 export interface ContractGuaranteeResponse {
@@ -57,6 +59,7 @@ export interface ContractGuaranteeResponse {
   contractId: string;
   guaranteeType: string;
   issuer: string;
+  beneficiary: string;
   amount: string;
   currency: string;
   issueDate: string;
@@ -68,10 +71,13 @@ export interface ContractGuaranteeResponse {
 export interface ContractMilestoneResponse {
   id: string;
   contractId: string;
-  description: string;
+  name: string;
+  description?: string;
   dueDate?: string;
   completedAt?: string;
   completedBy?: string;
+  sortOrder: number;
+  createdAt: string;
 }
 
 export interface ContractResponse {
@@ -87,15 +93,8 @@ export interface ContractResponse {
   status: ContractStatus;
   startDate?: string;
   expectedEndDate?: string;
-  // Frozen at execute() — null until then
   clientNameSnapshot?: string;
   clientTaxSnapshot?: string;
-  cancelledAt?: string;
-  cancelledBy?: string;
-  cancellationReason?: string;
-  terminatedAt?: string;
-  terminatedBy?: string;
-  terminationReason?: string;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -118,7 +117,6 @@ export interface IpaItemResponse {
   previousEffectiveCertified: string;
   periodQuantity: string;
   periodAmount: string;
-  createdAt: string;
 }
 
 export interface IpaDeductionResponse {
@@ -129,7 +127,6 @@ export interface IpaDeductionResponse {
   rate?: string;
   basis: string;
   amount: string;
-  createdAt: string;
 }
 
 export interface IpaResponse {
@@ -204,7 +201,6 @@ export interface IpcResponse {
   notes?: string;
   createdBy: string;
   createdAt: string;
-  updatedAt: string;
   items: IpcItemResponse[];
   deductions: IpcDeductionResponse[];
   // Server-computed — always present on GET /ipc/:id
@@ -218,11 +214,9 @@ export interface IpcResponse {
 export type IpcPaymentStatus = 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
 
 export interface IpcPaymentStatusResponse {
-  certificateId: string;
-  certifiedTotal: string;
   totalAllocated: string;
-  outstanding: string;
-  paymentStatus: IpcPaymentStatus;
+  netCertified: string;
+  status: IpcPaymentStatus;
 }
 
 // ─── Finance ──────────────────────────────────────────────────────────────────
@@ -232,27 +226,21 @@ export interface ReceiptAllocationResponse {
   receiptId: string;
   certificateId: string;
   allocatedAmount: string;
-  notes?: string;
-  createdAt: string;
+  allocatedAt: string;
+  allocatedBy: string;
 }
 
 export interface PaymentReceiptResponse {
   id: string;
   organizationId: string;
   clientId: string;
-  receiptNumber: string;
-  receivedDate: string;
+  receiptDate: string;
   amount: string;
   currency: string;
-  exchangeRateCurrency?: string;
-  exchangeRateBase?: string;
-  exchangeRateValue?: string;
-  exchangeRateDate?: string;
-  paymentMethod?: string;
-  referenceNumber?: string;
+  exchangeRate?: string;
+  reference?: string;
   notes?: string;
   createdBy: string;
   createdAt: string;
-  updatedAt: string;
   allocations: ReceiptAllocationResponse[];
 }

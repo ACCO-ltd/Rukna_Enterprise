@@ -125,28 +125,30 @@ export class BoqPrismaRepository {
     const newNodePath = newParentPath ? `${newParentPath}/${node.id}` : node.id;
     const depthDelta = newDepth - node.depth;
     const oldPath = node.path;
+    // Cast to int literal so PostgreSQL picks substring(text, int) not substring(text, bigint).
+    const substringOffset = Prisma.raw(String(oldPath.length + 2));
 
-    // Step 1 — update the moved node itself
-    await prisma.$executeRaw(Prisma.sql`
-      UPDATE "boq_nodes"
-      SET "parent_id"   = ${newParentId},
-          "path"        = ${newNodePath},
-          "depth"       = ${newDepth},
-          "sort_order"  = ${newSortOrder},
-          "updated_at"  = now()
-      WHERE "id" = ${node.id}
-        AND "version_id" = ${versionId}
-    `);
-
-    // Step 2 — update all descendants: replace old path prefix with new path
-    // Only runs when the node actually changed position (has children to update).
-    await prisma.$executeRaw(Prisma.sql`
-      UPDATE "boq_nodes"
-      SET "path"       = ${newNodePath} || '/' || substring("path", ${oldPath.length + 2}),
-          "depth"      = "depth" + ${depthDelta},
-          "updated_at" = now()
-      WHERE "version_id" = ${versionId}
-        AND "path" LIKE ${oldPath + '/%'}
-    `);
+    await prisma.$transaction([
+      // Step 1 — update the moved node itself
+      prisma.$executeRaw(Prisma.sql`
+        UPDATE "boq_nodes"
+        SET "parent_id"   = ${newParentId},
+            "path"        = ${newNodePath},
+            "depth"       = ${newDepth},
+            "sort_order"  = ${newSortOrder},
+            "updated_at"  = now()
+        WHERE "id" = ${node.id}
+          AND "version_id" = ${versionId}
+      `),
+      // Step 2 — update all descendants: replace old path prefix with new path
+      prisma.$executeRaw(Prisma.sql`
+        UPDATE "boq_nodes"
+        SET "path"       = ${newNodePath} || '/' || substring("path", ${substringOffset}),
+            "depth"      = "depth" + ${depthDelta},
+            "updated_at" = now()
+        WHERE "version_id" = ${versionId}
+          AND "path" LIKE ${oldPath + '/%'}
+      `),
+    ]);
   }
 }
