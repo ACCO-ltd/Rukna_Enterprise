@@ -70,6 +70,16 @@ test.describe('layout', () => {
     await expectNoHorizontalScroll(app);
   });
 
+  // Money in four places — header, summary, settlement, then a line per certified item —
+  // and a variance reason that is free text of any length.
+  test('the certificate detail does not scroll sideways', async ({ app }) => {
+    await app.goto(
+      `/contracts/${scenario.contractId}/applications/${scenario.ipaId}/certificates/${scenario.ipcId}`,
+    );
+    await app.getByRole('heading', { level: 1 }).waitFor();
+    await expectNoHorizontalScroll(app);
+  });
+
   // The claimed-lines table is genuinely wider than 375px. It must scroll INSIDE its
   // container — that is what TableScroll is for — while the page stays put.
   test('a wide table scrolls inside its own container', async ({ app }) => {
@@ -116,4 +126,21 @@ test.describe('touch targets', () => {
       await expectTouchTargets(app);
     });
   }
+
+  // The certificate row on the application detail is a link wrapping a whole row, which is
+  // the shape that was wrong across every list until c8afdd6 — a link only as tall as its
+  // text, inside a taller row. Worth holding to the rule where it was most recently broken.
+  test('the certificate row on an application is a full-height target', async ({ app }) => {
+    await app.goto(`/contracts/${scenario.contractId}/applications/${scenario.ipaId}`);
+    await app.getByRole('heading', { level: 1 }).waitFor();
+    await expectTouchTargets(app);
+  });
+
+  test('controls on the certificate detail are at least 44px tall', async ({ app }) => {
+    await app.goto(
+      `/contracts/${scenario.contractId}/applications/${scenario.ipaId}/certificates/${scenario.ipcId}`,
+    );
+    await app.getByRole('heading', { level: 1 }).waitFor();
+    await expectTouchTargets(app);
+  });
 });

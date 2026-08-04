@@ -1037,7 +1037,7 @@
     "detail": {
       "back": "Back to application",
       "loadFailed": "Could not load this certificate.",
-      "notFound": "Certificate not found.",
+      "notFound": "This certificate no longer exists.",
       "grossLabel": "Gross Certified",
       "deductionsLabel": "Deductions",
       "netLabel": "Net Certified",
@@ -1063,7 +1063,21 @@
       "exchangeRateLabel": "Exchange rate",
       "notEffectiveBanner": "This certificate has been issued but is not yet effective. Make it effective to replace the current one.",
       "makeEffectiveCta": "Make This Certificate Effective",
-      "noEffectiveCertNote": "There is no effective certificate to supersede. This certificate will become effective when the supersession command is run."
+      "noEffectiveCertNote": "There is no effective certificate to supersede. This certificate will become effective when the supersession command is run.",
+      "netHeading": "Net certified",
+      "grossHeading": "Gross certified",
+      "issued": "Issued",
+      "notIssued": "Not yet issued",
+      "application": "Application",
+      "openApplication": "Open application",
+      "noItems": "This certificate has no lines.",
+      "certifiedQuantity": "certified",
+      "variance": "Variance {quantity}",
+      "noDeductions": "No deductions",
+      "noDeductionsHint": "The net certified amount is the same as the gross.",
+      "superseded": "This certificate was superseded on {date}. It is a historical record and must not be paid against.",
+      "supersededWithReason": "This certificate was superseded on {date} — {reason}. It is a historical record and must not be paid against.",
+      "grossMismatch": "This certificate records a gross total of {stated}, but its own lines add up to {summed}. Nothing on the server reconciles the two, so both are shown as recorded — raised as issue #12."
     },
     "supersession": {
       "commandName": "Make Certificate Effective",
@@ -1072,6 +1086,18 @@
       "reasonHint": "This will be permanently recorded on the superseded certificate.",
       "confirmLabel": "Make Effective",
       "failed": "Could not complete the supersession. Please try again."
+    },
+    "settlement": {
+      "heading": "Payment",
+      "UNPAID": "Unpaid",
+      "PARTIALLY_PAID": "Partly paid",
+      "PAID": "Paid",
+      "OVER_ALLOCATED": "Over-allocated",
+      "allocated": "Allocated to date",
+      "outstanding": "Outstanding",
+      "overAllocatedHint": "More has been allocated to this certificate than it is worth.",
+      "derivedNote": "Measured against the net certified amount. The API's own payment status compares against the gross total and cannot report a certificate with deductions as paid — raised as issue #11.",
+      "unavailable": "The amount paid against this certificate could not be loaded. The certificate itself is unaffected."
     }
   }
 }

@@ -3,17 +3,30 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Badge, Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll } from '@erp/ui';
+import {
+  Alert,
+  Button,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  TableScroll,
+} from '@erp/ui';
 
-import { StatusBadge } from '@/components/status-badge';
+import { useBoqTree } from '@/features/boq/hooks/use-boq';
+import { fractionToPercent } from '@/features/contracts/contract-terms';
 import { useContract } from '@/features/contracts/hooks/use-contracts';
 import { useIpa } from '@/features/ipa/hooks/use-ipa';
-import { useBoqTree } from '@/features/boq/hooks/use-boq';
+import { fromMinorUnits } from '@/features/receipts/allocation';
 import { ApiError } from '@/lib/api-client';
-import { formatDate, formatMoney } from '@/lib/format';
+import { formatDate, formatMoney, formatNumber } from '@/lib/format';
 import type { BoqTreeNode, IpcItem } from '@/lib/api-types';
 
-import { useIpc, useIpcs } from '../hooks/use-ipc';
+import { useCertificatePaymentStatus, useIpc, useIpcs } from '../hooks/use-ipc';
+import { grossDisagreementMinor, settlementFor } from '../settlement';
+import { IpcEffectiveBadge, IpcStatusBadge, SettlementBadge } from './ipc-status-badge';
 import { IpcSupersessionDrawer } from './ipc-supersession-drawer';
 
 interface IpcDetailProps {
@@ -37,16 +50,24 @@ function flattenTree(nodes: BoqTreeNode[]): Record<string, BoqTreeNode> {
 
 export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
   const t = useTranslations('platform.ipc.detail');
-  const tIpc = useTranslations('platform.ipc');
   const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
 
-  const ipc = useIpc(ipcId);
-  const ipa = useIpa(ipaId);
+  const certificate = useIpc(ipcId);
+  // The contract is the authority on the currency this money is denominated in, and it is
+  // already cached from the application page the user arrived from.
   const contract = useContract(contractId);
+  // Deliberately not blocking the page: a certificate is readable whether or not we can say
+  // what has been paid against it. See `useCertificatePaymentStatus`.
+  const payment = useCertificatePaymentStatus(ipcId);
 
-  // Only fetched for non-effective certs — needed to find the effective cert for supersession.
-  const allCerts = useIpcs(ipc.data?.applicationId ?? '');
+  // The application and the BOQ exist only to put a description on each certified line. The
+  // certificate carries a bare `applicationItemId` and nothing else identifying the work
+  // (C15), so the label has to be walked back through the application to the BOQ node.
+  const ipa = useIpa(ipaId);
+
+  // Only meaningful for a non-effective cert — used to find what it would supersede.
+  const allCerts = useIpcs(certificate.data?.applicationId ?? '');
 
   const [supersessionOpen, setSupersessionOpen] = useState(false);
 
@@ -54,62 +75,96 @@ export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
   const boqVersionId = contract.data?.boqVersionId ?? null;
   const boqTree = useBoqTree(projectId, boqVersionId);
 
-  // id → IpaItem (for boqNodeId lookup)
   const ipaItemMap = useMemo(
     () => Object.fromEntries((ipa.data?.items ?? []).map((i) => [i.id, i])),
     [ipa.data],
   );
 
-  // boqNodeId → BoqTreeNode
-  const nodeMap = useMemo(
-    () => (boqTree.data ? flattenTree(boqTree.data) : {}),
-    [boqTree.data],
-  );
+  const nodeMap = useMemo(() => (boqTree.data ? flattenTree(boqTree.data) : {}), [boqTree.data]);
 
-  if (ipc.isPending || contract.isPending) {
+  const backHref = `/contracts/${contractId}/applications/${ipaId}`;
+
+  if (certificate.isPending || contract.isPending) {
     return (
       <div role="status" aria-live="polite">
         <span className="sr-only">{tCommon('loading')}</span>
-        <div className="h-64 animate-pulse rounded-lg border border-border bg-muted" aria-hidden="true" />
+        <div
+          className="h-64 animate-pulse rounded-lg border border-border bg-muted"
+          aria-hidden="true"
+        />
       </div>
     );
   }
 
-  if (ipc.isError || contract.isError) {
-    const notFound = ipc.error instanceof ApiError && ipc.error.status === 404;
+  if (certificate.isError || contract.isError) {
+    const notFound = certificate.error instanceof ApiError && certificate.error.status === 404;
     return (
       <div className="space-y-4">
         <Alert variant="error" messages={[notFound ? t('notFound') : t('loadFailed')]} />
-        <Link
-          href={`/contracts/${contractId}/applications/${ipaId}`}
-          className="text-sm text-brand-primary underline-offset-4 hover:underline"
-        >
-          {t('back')}
-        </Link>
+        <Button variant="outline" asChild>
+          <Link href={backHref}>{t('back')}</Link>
+        </Button>
       </div>
     );
   }
 
-  const cert = ipc.data;
-  const currency = cert.currency;
+  const ipc = certificate.data;
+  const currency = contract.data.currency;
+  const reference = ipc.certificateRef ?? `#${ipc.certificateNumber}`;
 
+  const settlement = settlementFor(ipc.netCertified, payment.data?.totalAllocated ?? null);
+  const disagreement = grossDisagreementMinor(ipc.certifiedTotal, ipc.totalCertifiedAmount);
+
+  // Two distinct non-effective states, and they must not both render. A superseded cert is
+  // closed history; one that was issued but never made effective is still actionable.
+  const isSuperseded = !ipc.isEffective && ipc.supersededAt !== null;
   const isSupersessionCandidate =
-    !cert.isEffective && !cert.supersededAt && cert.status !== 'REJECTED';
+    !ipc.isEffective && !ipc.supersededAt && ipc.status !== 'REJECTED';
   const effectiveCert = isSupersessionCandidate
     ? ((allCerts.data ?? []).find((c) => c.isEffective) ?? null)
     : null;
 
   return (
     <div className="space-y-8">
-      {/* Back link */}
-      <Link
-        href={`/contracts/${contractId}/applications/${ipaId}`}
-        className="text-sm text-muted-foreground underline-offset-4 hover:underline"
-      >
-        {t('back')}
-      </Link>
+      <div>
+        {/* A standalone navigation link is a touch target and must clear 44px. */}
+        <Link
+          href={backHref}
+          className="inline-flex min-h-11 items-center text-sm text-muted-foreground underline-offset-4 hover:underline"
+        >
+          {t('back')}
+        </Link>
 
-      {/* Not-yet-effective banner */}
+        <div className="mt-3 min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-xs text-muted-foreground">{reference}</span>
+            <IpcStatusBadge status={ipc.status} />
+            <IpcEffectiveBadge isEffective={ipc.isEffective} />
+          </div>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
+            <bdi>{formatMoney(ipc.netCertified, currency, locale)}</bdi>
+          </h1>
+          <p className="text-sm text-muted-foreground">{t('netHeading')}</p>
+        </div>
+      </div>
+
+      {/* A superseded certificate is history. Money must not be applied to it, and the
+          allocation picker already excludes it — this says why, on the document itself. */}
+      {isSuperseded ? (
+        <Alert
+          variant="warning"
+          messages={[
+            ipc.supersessionReason
+              ? t('supersededWithReason', {
+                  date: formatDate(ipc.supersededAt, locale) ?? '',
+                  reason: ipc.supersessionReason,
+                })
+              : t('superseded', { date: formatDate(ipc.supersededAt, locale) ?? '' }),
+          ]}
+        />
+      ) : null}
+
+      {/* Issued but never made effective — the one non-effective state that can still act. */}
       {isSupersessionCandidate ? (
         <Alert variant="warning" messages={[t('notEffectiveBanner')]}>
           <div className="mt-3">
@@ -120,97 +175,90 @@ export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
         </Alert>
       ) : null}
 
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-xs text-muted-foreground">
-              {cert.certificateRef ?? `#${cert.certificateNumber}`}
-            </span>
-            <StatusBadge status={cert.status} label={tIpc(`status.${cert.status}`)} />
-            {cert.isEffective ? (
-              <Badge tone="live">{tIpc('effective')}</Badge>
-            ) : null}
-            {cert.supersededAt ? (
-              <Badge tone="neutral" className="opacity-60">
-                {tIpc('superseded')}
-              </Badge>
-            ) : null}
-          </div>
+      {/* The header total and the certificate's own lines disagree. Nothing on the server
+          reconciles them (C1, #12), so the disagreement is shown rather than resolved. */}
+      {disagreement !== null ? (
+        <Alert
+          variant="warning"
+          messages={[
+            t('grossMismatch', {
+              stated: formatMoney(ipc.certifiedTotal, currency, locale) ?? ipc.certifiedTotal,
+              summed:
+                formatMoney(ipc.totalCertifiedAmount, currency, locale) ?? ipc.totalCertifiedAmount,
+            }),
+          ]}
+        />
+      ) : null}
 
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
-            <bdi>{formatMoney(cert.netCertified, currency, locale)}</bdi>
-          </h1>
-          <p className="text-sm text-muted-foreground">{t('netLabel')}</p>
-        </div>
-      </div>
-
-      {/* Summary card */}
       <section className="rounded-lg border border-border bg-surface p-4 sm:p-6">
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <dt className="text-xs text-muted-foreground">{t('grossLabel')}</dt>
+            <dt className="text-xs text-muted-foreground">{t('grossHeading')}</dt>
             <dd className="mt-0.5 text-sm font-medium text-foreground">
-              <bdi>{formatMoney(cert.certifiedTotal, currency, locale)}</bdi>
+              <bdi>{formatMoney(ipc.totalCertifiedAmount, currency, locale)}</bdi>
             </dd>
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">{t('deductionsLabel')}</dt>
             <dd className="mt-0.5 text-sm font-medium text-foreground">
-              <bdi>{formatMoney(cert.totalDeductions, currency, locale)}</bdi>
+              <bdi>{formatMoney(ipc.totalDeductions, currency, locale)}</bdi>
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-muted-foreground">{t('currencyLabel')}</dt>
-            <dd className="mt-0.5 text-sm text-foreground">{currency}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">{t('issuedLabel')}</dt>
+            <dt className="text-xs text-muted-foreground">{t('issued')}</dt>
             <dd className="mt-0.5 text-sm text-foreground">
-              {cert.issuedAt ? formatDate(cert.issuedAt, locale) : '—'}
+              {formatDate(ipc.issuedAt, locale) ?? t('notIssued')}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">{t('application')}</dt>
+            <dd className="mt-0.5 text-sm text-foreground">
+              <Link
+                href={backHref}
+                className="inline-flex min-h-11 items-center underline-offset-4 hover:underline"
+              >
+                {t('openApplication')}
+              </Link>
             </dd>
           </div>
 
-          {cert.supersessionReason ? (
-            <div className="sm:col-span-2">
-              <dt className="text-xs text-muted-foreground">{t('supersessionReasonLabel')}</dt>
-              <dd className="mt-0.5 text-sm text-foreground">{cert.supersessionReason}</dd>
-            </div>
-          ) : null}
+          {/* The supersession reason is deliberately not repeated here — the warning banner
+              above already carries it, and it belongs with the warning rather than filed as
+              one attribute among several. */}
 
-          {cert.notes ? (
+          {ipc.notes ? (
             <div className="sm:col-span-2">
               <dt className="text-xs text-muted-foreground">{t('notesLabel')}</dt>
-              <dd className="mt-0.5 text-sm text-foreground">{cert.notes}</dd>
+              <dd className="mt-0.5 text-sm text-foreground">{ipc.notes}</dd>
             </div>
           ) : null}
 
-          {cert.exchangeRateValue ? (
-            <div>
+          {ipc.exchangeRateValue ? (
+            <div className="sm:col-span-2">
               <dt className="text-xs text-muted-foreground">{t('exchangeRateLabel')}</dt>
               <dd className="mt-0.5 text-sm text-foreground">
-                {cert.exchangeRateCurrency} → {cert.exchangeRateBase} @ {cert.exchangeRateValue}
-                {cert.exchangeRateDate
-                  ? ` (${formatDate(cert.exchangeRateDate, locale)})`
-                  : null}
+                {ipc.exchangeRateCurrency} → {ipc.exchangeRateBase} @ {ipc.exchangeRateValue}
+                {ipc.exchangeRateDate ? ` (${formatDate(ipc.exchangeRateDate, locale)})` : null}
               </dd>
             </div>
           ) : null}
         </dl>
       </section>
 
-      {/* Payment status note */}
-      <section className="space-y-2">
-        <h2 className="text-base font-semibold text-foreground">{t('paymentHeading')}</h2>
-        <Alert variant="info" messages={[t('paymentNote')]} />
-      </section>
+      <SettlementSection
+        settlement={settlement}
+        currency={currency}
+        isPending={payment.isPending}
+        isError={payment.isError}
+      />
 
-      {/* Items table */}
       <section className="space-y-4">
-        <h2 className="text-base font-semibold text-foreground">{t('itemsHeading')}</h2>
+        <h2 className="text-lg font-semibold text-foreground">{t('itemsHeading')}</h2>
 
-        {cert.items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('itemsNone')}</p>
+        {ipc.items.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-8 text-center">
+            <p className="text-sm font-medium text-foreground">{t('noItems')}</p>
+          </div>
         ) : (
           <TableScroll aria-label={t('itemsHeading')}>
             <Table>
@@ -224,7 +272,7 @@ export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {cert.items.map((item) => (
+                {ipc.items.map((item) => (
                   <IpcItemRow
                     key={item.id}
                     item={item}
@@ -232,7 +280,6 @@ export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
                     nodeMap={nodeMap}
                     locale={locale}
                     currency={currency}
-                    t={t}
                   />
                 ))}
               </TableBody>
@@ -241,12 +288,14 @@ export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
         )}
       </section>
 
-      {/* Deductions table */}
       <section className="space-y-4">
-        <h2 className="text-base font-semibold text-foreground">{t('deductionsHeading')}</h2>
+        <h2 className="text-lg font-semibold text-foreground">{t('deductionsHeading')}</h2>
 
-        {cert.deductions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('deductionsNone')}</p>
+        {ipc.deductions.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-8 text-center">
+            <p className="text-sm font-medium text-foreground">{t('noDeductions')}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{t('noDeductionsHint')}</p>
+          </div>
         ) : (
           <TableScroll aria-label={t('deductionsHeading')}>
             <Table>
@@ -258,13 +307,24 @@ export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {cert.deductions.map((deduction) => (
+                {ipc.deductions.map((deduction) => (
                   <TableRow key={deduction.id}>
                     <TableCell>
                       <span className="text-sm">{deduction.deductionType}</span>
                     </TableCell>
+                    {/* Basis × rate, not just the basis. A retention line reading "500,000"
+                        beside an amount of "25,000" is unreadable without the 5% between
+                        them, and the rate is the only thing that explains the deduction. */}
                     <TableCell>
-                      <span className="text-sm text-muted-foreground">{deduction.basis}</span>
+                      <span className="text-sm text-muted-foreground">
+                        <bdi>{formatMoney(deduction.basis, currency, locale)}</bdi>
+                        {deduction.rate ? (
+                          <>
+                            {' × '}
+                            <bdi>{fractionToPercent(deduction.rate)}%</bdi>
+                          </>
+                        ) : null}
+                      </span>
                     </TableCell>
                     <TableCell numeric>
                       <bdi className="tabular-nums">
@@ -279,12 +339,11 @@ export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
         )}
       </section>
 
-      {/* Supersession drawer — only mounted when candidate */}
       {isSupersessionCandidate ? (
         <IpcSupersessionDrawer
           open={supersessionOpen}
-          applicationId={cert.applicationId}
-          newCert={cert}
+          applicationId={ipc.applicationId}
+          newCert={ipc}
           effectiveCert={effectiveCert}
           onClose={() => setSupersessionOpen(false)}
         />
@@ -293,18 +352,85 @@ export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
   );
 }
 
+// ─── Settlement ────────────────────────────────────────────────────────────────
+
+function SettlementSection({
+  settlement,
+  currency,
+  isPending,
+  isError,
+}: {
+  settlement: ReturnType<typeof settlementFor>;
+  currency: string;
+  isPending: boolean;
+  isError: boolean;
+}) {
+  const t = useTranslations('platform.ipc.settlement');
+  const tCommon = useTranslations('common');
+  const locale = useLocale() as 'en' | 'ar';
+
+  return (
+    <section className="space-y-4">
+      <h2 className="text-lg font-semibold text-foreground">{t('heading')}</h2>
+
+      {isPending ? (
+        <div role="status" aria-live="polite">
+          <span className="sr-only">{tCommon('loading')}</span>
+          <div
+            className="h-20 animate-pulse rounded-lg border border-border bg-muted"
+            aria-hidden="true"
+          />
+        </div>
+      ) : isError ? (
+        // The certificate is still fully readable — only what has been paid is unknown.
+        <Alert variant="info" messages={[t('unavailable')]} />
+      ) : (
+        <div className="rounded-lg border border-border bg-surface p-4 sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <SettlementBadge state={settlement.state} />
+            {settlement.state === 'OVER_ALLOCATED' ? (
+              <p className="text-xs text-danger">{t('overAllocatedHint')}</p>
+            ) : null}
+          </div>
+
+          <dl className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('allocated')}</dt>
+              <dd className="mt-0.5 text-sm font-medium text-foreground">
+                <bdi>{formatMoney(fromMinorUnits(settlement.allocatedMinor), currency, locale)}</bdi>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('outstanding')}</dt>
+              <dd className="mt-0.5 text-sm font-medium text-foreground">
+                <bdi>
+                  {formatMoney(fromMinorUnits(settlement.outstandingMinor), currency, locale)}
+                </bdi>
+              </dd>
+            </div>
+          </dl>
+
+          {/* Why this figure is derived here rather than taken from the endpoint that exists
+              to report it. Stated on the screen because a finance officer comparing this to
+              the API would otherwise find an unexplained difference. */}
+          <p className="mt-4 text-xs text-muted-foreground">{t('derivedNote')}</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ─── Item row ──────────────────────────────────────────────────────────────────
 
 interface IpcItemRowProps {
   item: IpcItem;
-  ipaItemMap: Record<string, { boqNodeId: string; currencySnapshot: string }>;
+  ipaItemMap: Record<string, { boqNodeId: string }>;
   nodeMap: Record<string, BoqTreeNode>;
   locale: 'en' | 'ar';
   currency: string;
-  t: ReturnType<typeof useTranslations>;
 }
 
-function IpcItemRow({ item, ipaItemMap, nodeMap, locale, currency, t }: IpcItemRowProps) {
+function IpcItemRow({ item, ipaItemMap, nodeMap, locale, currency }: IpcItemRowProps) {
   const ipaItem = ipaItemMap[item.applicationItemId];
   const node = ipaItem ? nodeMap[ipaItem.boqNodeId] : undefined;
 
@@ -313,40 +439,40 @@ function IpcItemRow({ item, ipaItemMap, nodeMap, locale, currency, t }: IpcItemR
       ? (node?.descriptionAr ?? node?.description ?? node?.code)
       : (node?.description ?? node?.code);
 
-  // Fall back to a shortened applicationItemId when BOQ tree hasn't loaded yet
+  // The application or the BOQ may still be loading, or the walk may simply not resolve.
+  // The last segment of the id at least tells two rows apart, which is what the branch
+  // that had no BOQ lookup showed for every row.
   const label = description ?? item.applicationItemId.slice(-8);
 
-  const varianceNegative = parseFloat(item.varianceQuantity) < 0;
+  const varianceNegative = Number(item.varianceQuantity) < 0;
 
   return (
-    <>
-      <TableRow>
-        <TableCell className="min-w-[160px] max-w-[240px]">
-          <span className="line-clamp-2 text-sm">{label}</span>
-        </TableCell>
-        <TableCell numeric>
-          <bdi className="tabular-nums">{item.certifiedQuantity}</bdi>
-        </TableCell>
-        <TableCell numeric>
-          <bdi className="tabular-nums">
-            {formatMoney(item.certifiedAmount, currency, locale)}
-          </bdi>
-        </TableCell>
-        <TableCell numeric>
-          <bdi
-            className={varianceNegative ? 'tabular-nums text-danger' : 'tabular-nums text-muted-foreground'}
-          >
-            {item.varianceQuantity}
-          </bdi>
-        </TableCell>
-        <TableCell>
-          {item.varianceReason ? (
-            <span className="text-sm text-muted-foreground">{item.varianceReason}</span>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          )}
-        </TableCell>
-      </TableRow>
-    </>
+    <TableRow>
+      <TableCell className="min-w-[160px] max-w-[240px]">
+        <span className="line-clamp-2 text-sm">{label}</span>
+      </TableCell>
+      <TableCell numeric>
+        <bdi className="tabular-nums">{formatNumber(item.certifiedQuantity, locale)}</bdi>
+      </TableCell>
+      <TableCell numeric>
+        <bdi className="tabular-nums">{formatMoney(item.certifiedAmount, currency, locale)}</bdi>
+      </TableCell>
+      <TableCell numeric>
+        <bdi
+          className={
+            varianceNegative ? 'tabular-nums text-danger' : 'tabular-nums text-muted-foreground'
+          }
+        >
+          {formatNumber(item.varianceQuantity, locale)}
+        </bdi>
+      </TableCell>
+      <TableCell>
+        {item.varianceReason ? (
+          <span className="text-sm text-muted-foreground">{item.varianceReason}</span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </TableCell>
+    </TableRow>
   );
 }

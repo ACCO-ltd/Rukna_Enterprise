@@ -1,10 +1,15 @@
 import { IpcDetail } from '@/features/ipc/components/ipc-detail';
 
-interface Props {
+export default async function IpcDetailPage({
+  params,
+}: {
   params: Promise<{ id: string; ipaId: string; ipcId: string }>;
-}
-
-export default async function CertificateDetailPage({ params }: Props) {
+}) {
   const { id, ipaId, ipcId } = await params;
-  return <IpcDetail contractId={id} ipaId={ipaId} ipcId={ipcId} />;
+
+  return (
+    <div className="mx-auto w-full max-w-5xl">
+      <IpcDetail contractId={id} ipaId={ipaId} ipcId={ipcId} />
+    </div>
+  );
 }
