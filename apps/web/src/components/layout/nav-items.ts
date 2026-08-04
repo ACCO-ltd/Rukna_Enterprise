@@ -23,6 +23,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/projects', labelKey: 'projects' },
   { href: '/clients', labelKey: 'clients' },
   { href: '/contracts', labelKey: 'contracts' },
+  { href: '/receipts', labelKey: 'receipts' },
 ];
 
 /** True when `pathname` is the nav destination itself or a page nested beneath it. */

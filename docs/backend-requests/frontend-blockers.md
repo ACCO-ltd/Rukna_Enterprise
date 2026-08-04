@@ -57,6 +57,8 @@ Findings were produced by reading `apps/api/src` directly, not by inference from
 | [C13](#c13) | Gap | Contracts | Cancel and terminate require a reason and discard it | — |
 | [C14](#c14) | **Blocking — bug** | IPA | `RETURNED_FOR_REVISION` is a dead end — editable, unsubmittable | [#13](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/13) |
 | [C15](#c15) | Gap | IPA | Claimed items carry a bare `boqNodeId` — no code or description | — |
+| [C17](#c17) | **Correctness — bug** | Finance | A negative allocation is accepted and defeats the over-allocation guard | [#14](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/14) |
+| [C16](#c16) | Gap | Finance | No way to list or attribute certificates by client | — |
 | [D3](#d3) | Docs | Clients, Contracts | Documented request shapes that return `400` | — |
 
 ---
@@ -728,6 +730,88 @@ the item at creation, the way `measurementMethodSnapshot` and `unitRateSnapshot`
 are. The snapshot argument is stronger here than for most fields: a BOQ line's description
 can be reworded in a later version, and a submitted application should keep the wording it
 was actually claimed under.
+
+---
+
+### <a id="c17"></a>C17 — A negative allocation is accepted and defeats the over-allocation guard
+
+**Severity:** Correctness. A bug in shipped code, reproduced against the running API.
+
+`AllocateReceiptDto.allocatedAmount` is `@IsDecimal()`, which accepts `"-100.00"`, and
+`FinanceService.allocate` guards only the UPPER bound:
+
+```ts
+// finance.service.ts:65
+if (afterAllocation.greaterThan(receiptAmount)) { throw ... }
+```
+
+So a negative allocation passes, and because it is summed into `getTotalAllocated`, it
+INCREASES the headroom available to later allocations.
+
+**Reproduced on a 1,000.00 receipt:**
+
+```
+allocate  1500.00  → rejected, correctly
+allocate  -100.00  → ACCEPTED
+allocate   600.00  → accepted
+allocate   500.00  → accepted   (600 + 500 = 1100, under the cap only because of the -100)
+```
+
+The receipt then reports a total of exactly 1,000.00 and looks fully settled, while holding
+a line that means nothing.
+
+**It also persists.** Deleting the negative allocation afterwards leaves the receipt with
+**1,100.00 allocated against 1,000.00**, because the guard runs only on insert and nothing
+re-checks the invariant on removal. Verified — that is the state the dev database is in
+now.
+
+**Suggested fix:**
+
+1. Reject a non-positive `allocatedAmount` — `@IsPositive()` alongside `@IsDecimal()`, or an
+   explicit check in the service.
+2. Re-assert the invariant on `removeAllocation`, or make the guard a database constraint,
+   so an over-allocated receipt cannot survive a delete.
+
+Worth a regression test for the sequence above rather than for a single over-allocation:
+the simple case already passes today.
+
+**What the frontend does meanwhile:** `allocationProblem` rejects empty, non-numeric, zero
+and negative amounts as well as anything over the remaining balance, so the UI cannot
+create this state. It cannot repair a receipt that already holds it.
+
+---
+
+### <a id="c16"></a>C16 — No way to list or attribute certificates by client
+
+`GET /ipc` filters on `applicationId` alone, and a certificate row carries nothing else
+identifying — no client, no contract, no project. So answering "which certificates can this
+client's payment be allocated against?" means walking
+
+```
+certificate → application → contract → client
+```
+
+with three unfiltered list calls (`GET /ipc`, `GET /ipa`, `GET /contracts`) and a
+client-side join. That is what the allocation picker does today; it is affordable at ACCO's
+size and will not stay that way.
+
+The same gap makes the allocation itself unguarded: `FinanceService.allocate` checks that
+the certificate belongs to the caller's ORGANIZATION but not that it belongs to the
+RECEIPT'S CLIENT, so client A's payment can be allocated against client B's certificate.
+Nor is currency checked — a USD receipt allocates against a SOS certificate without
+complaint.
+
+**What the frontend needs, in preference order:**
+
+1. `GET /ipc?clientId=` — or a `contractId`/`projectId` filter, from which a client filter
+   follows.
+2. Expansion of the owning contract and client on the certificate row, so a certificate can
+   be labelled without two more round-trips.
+3. A server-side check that the certificate and the receipt share a client, and a warning
+   or rejection when their currencies differ.
+
+The picker restricts choices to the receipt's own client and flags a currency mismatch, so
+our calls are correct — but nothing stops another client from getting it wrong.
 
 ---
 

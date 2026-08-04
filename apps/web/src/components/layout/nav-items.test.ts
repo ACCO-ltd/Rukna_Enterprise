@@ -7,15 +7,16 @@ describe('NAV_ITEMS', () => {
   // exist. Procurement, Stock, Cost and DPRs have no API — if someone adds one of those
   // before the backend does, this fails.
   //
-  // Clients joined the list when its screens shipped; Contracts and Receipts follow as
-  // theirs do. IPA and IPC never appear here — they are reached through their contract,
-  // not from the top-level menu.
+  // Clients, Contracts and Receipts each joined the list as their screens shipped. IPA and
+  // IPC never appear here — they are reached through their contract, not the top-level
+  // menu, because neither means anything apart from the contract it bills.
   it('only lists destinations backed by live endpoints', () => {
     expect(NAV_ITEMS.map((item) => item.href)).toEqual([
       '/dashboard',
       '/projects',
       '/clients',
       '/contracts',
+      '/receipts',
     ]);
   });
 });
