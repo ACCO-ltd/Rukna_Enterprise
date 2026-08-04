@@ -8,8 +8,9 @@
 Read these documents **in order** before making any change or answering any question:
 
 1. `/docs/02-architecture/api-reference.md` — **Every live endpoint, request/response shapes, auth flow, error format. Read this first.**
-2. `/docs/02-architecture/domain-model.md` — Entity definitions, enums, business rules
-3. `/docs/02-architecture/architecture.md` — Stack, module map, Clean Architecture rules
+2. `/docs/02-architecture/frontend-design.md` — **Canonical frontend design plan: navigation, components, build sequence, interaction patterns.**
+3. `/docs/02-architecture/domain-model.md` — Entity definitions, enums, business rules
+4. `/docs/02-architecture/architecture.md` — Stack, module map, Clean Architecture rules
 4. `/docs/02-architecture/tenancy.md` — Multi-tenancy (subdomain), TenantContext
 5. `/AGENTS.md` — Engineering operating manual
 6. `/docs/02-architecture/constraints.md` — Engineering constraints
