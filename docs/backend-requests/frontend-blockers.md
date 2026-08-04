@@ -2,7 +2,7 @@
 
 Raised by: Frontend Engineer (`apps/web`, `packages/ui`)
 For: **Abdulsalam** (backend, `apps/api`) — and where marked, **Eng Ahmed Shirie** (domain)
-Date: 2026-08-03
+Raised: 2026-08-03 · Last re-verified: 2026-08-04 against `c8afdd6`
 Status: Open
 
 This document is the source of truth for backend work the frontend is waiting on.
@@ -11,55 +11,73 @@ feature requests.
 
 Findings were produced by reading `apps/api/src` directly, not by inference from docs.
 
-- **B-series** (Sprint 1–2 platform, projects, BOQ) — line references against commit `e1f2139`.
-  Re-verified against `776b695` on 2026-08-03: **none are fixed**.
-- **C-series** (Sprint 3 commercial modules) — line references against commit `776b695`,
-  the most recent commit touching `apps/api`. Raised 2026-08-03 before frontend work on
-  Contracts, IPA, IPC and Receipts began.
+- **B-series** (Sprint 1–2 platform, projects, BOQ) — first raised against commit `e1f2139`.
+- **C-series** (Sprint 3 commercial modules) — first raised against commit `776b695`,
+  before frontend work on Contracts, IPA, IPC and Receipts began.
+
+### How to read the verification stamps
+
+An earlier revision of this document carried a single blanket line — *"re-verified against
+`776b695`: none are fixed"* — which was **wrong**: `776b695` had in fact fixed half of B5 and
+all of C6. One inaccurate summary line made every finding below it untrustworthy at once.
+
+So verification is now recorded **per finding** rather than per document. Each entry carries
+its own stamp, and each stamp means someone opened the file and looked:
+
+> *Verified live at `c8afdd6` (2026-08-04).*
+
+A finding with no stamp has not been re-checked since it was raised, and should be treated as
+unconfirmed. A fixed finding keeps its entry, struck through, naming the commit that fixed it —
+findings are not deleted, so that a reader can tell the difference between "resolved" and
+"never existed".
 
 ---
 
 ## Summary
 
-| ID | Severity | Area | Summary | Issue |
+Status values: an issue link means it is tracked in GitHub; **in doc** means this document is
+the only record and no ticket exists; **fixed** names the commit that resolved it.
+
+| ID | Severity | Area | Summary | Status |
 |---|---|---|---|---|
 | [B1](#b1) | **Blocking — bug** | Projects | No project can ever get its first member | [#5](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/5) |
 | [B2](#b2) | **Blocking** | Users | No endpoint lists users in an organization | [#6](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/6) |
 | [B3](#b3) | **Blocking** | Workflows | `GET` endpoint requires a request body — uncallable from a browser | [#7](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/7) |
 | [B4](#b4) | **Security** | Workflows | Approver identity is taken from the request body | [#8](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/8) |
-| [B5](#b5) | **Security** | Roles, Audit | `orgId` read from query string, unscoped by token | — |
+| [B5](#b5) | **Security** | Roles | `orgId` read from query string, unscoped by token | [#16](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/16) · audit half **fixed** `776b695` |
 | [B14](#b14) | **Blocking — bug** | BOQ | `move` always 500s and half-applies, corrupting descendant paths | [#4](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/4) |
-| [B11](#b11) | **Security** | BOQ | Version endpoints missing the organization check | — |
-| [B13](#b13) | Contract | BOQ | `move` never reindexes siblings, so positions can tie | — |
-| [B6](#b6) | Contract | Several | Undocumented empty response bodies | — |
-| [B7](#b7) | Correctness | BOQ | Money totals computed in floating point | — |
-| [B8](#b8) | Scale | Projects | No pagination, search, or sort | — |
-| [B9](#b9) | Gap | Users | No way to persist a language preference | — |
-| [B10](#b10) | Gap | Projects | No summary/aggregate endpoint | — |
-| [B12](#b12) | Gap | Types | `@erp/types` exports no Project DTO | — |
-| [D1](#d1) | **Domain** | BOQ | Mixed-currency nodes sum into one meaningless total | — |
-| [D2](#d2) | Docs | — | `api-reference.md` inaccuracies | — |
+| [B11](#b11) | **Security** | BOQ | Version endpoints missing the organization check | [#17](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/17) |
+| [B13](#b13) | Contract | BOQ | `move` never reindexes siblings, so positions can tie | comment on [#4](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/4) |
+| [B6](#b6) | Contract | Several | Undocumented empty response bodies | in doc |
+| [B7](#b7) | Correctness | BOQ | Money totals computed in floating point | in doc |
+| [B8](#b8) | Scale | Projects | No pagination, search, or sort | in doc |
+| [B9](#b9) | Gap | Users | No way to persist a language preference | in doc |
+| [B10](#b10) | Gap | Projects | No summary/aggregate endpoint | in doc |
+| [B12](#b12) | Gap | Types | `@erp/types` exports no Project or BOQ DTO | in doc |
+| [D1](#d1) | **Domain** | BOQ | Mixed-currency nodes sum into one meaningless total | [domain-questions.md](./domain-questions.md) |
+| [D2](#d2) | Docs | — | `api-reference.md` inaccuracies | in doc |
 
 ### Sprint 3 — commercial modules
 
-| ID | Severity | Area | Summary | Issue |
+| ID | Severity | Area | Summary | Status |
 |---|---|---|---|---|
 | [C2](#c2) | **Security** | IPC | `POST /ipc` checks nothing about the application it certifies | [#9](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/9) |
 | [C3](#c3) | **Security** | IPA | Unit rate is taken from the request, not the contractual BOQ | [#10](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/10) |
+| [C16](#c16) | **Security** | Finance | A receipt can be allocated to another client's certificate, in another currency | [#18](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/18) |
 | [C1](#c1) | **Blocking — design** | IPC | Retention and advance-recovery arithmetic is delegated to the browser | [#12](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/12) |
 | [C7](#c7) | **Correctness — bug** | Finance | Payment status measures against gross, so a settled IPC never reads `PAID` | [#11](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/11) |
-| [C4](#c4) | Correctness | IPA | No guard against over-claiming or a negative period quantity | — |
-| [C5](#c5) | Contract | IPA | Workflow policy is resolved but no approval instance is created | — |
-| [C6](#c6) | Gap | Types | Five more aggregates with no DTO in `@erp/types` | — |
-| [C8](#c8) | Contract | Finance | `totalAllocated` returns a number, breaking the money-as-string rule | — |
-| [C9](#c9) | Gap | BOQ | `measurementMethod` and `pricingBasis` can never be set | — |
-| [C10](#c10) | Contract | Contracts | Retention split is spelled `…OnPc` in, `…OnPC` out | — |
-| [C13](#c13) | Gap | Contracts | Cancel and terminate require a reason and discard it | — |
+| [C4](#c4) | Correctness | IPA | A line can be claimed beyond its contracted BOQ quantity | [#19](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/19) |
+| [C5](#c5) | Contract | IPA | Workflow policy is resolved but no approval instance is created | no action needed |
+| ~~[C6](#c6)~~ | ~~Gap~~ | ~~Types~~ | ~~Five more aggregates with no DTO in `@erp/types`~~ | **fixed** `776b695` |
+| [C8](#c8) | Contract | Finance | `totalAllocated` returns a number, breaking the money-as-string rule | comment on [#14](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/14) |
+| [C9](#c9) | Gap | BOQ | `measurementMethod` and `pricingBasis` can never be set | in doc |
+| [C10](#c10) | Contract | Contracts | Retention split is spelled `…OnPc` in, `…OnPC` out | in doc |
+| [C13](#c13) | Gap | Contracts | Cancel and terminate require a reason and discard it | in doc |
 | [C14](#c14) | **Blocking — bug** | IPA | `RETURNED_FOR_REVISION` is a dead end — editable, unsubmittable | [#13](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/13) |
-| [C15](#c15) | Gap | IPA | Claimed items carry a bare `boqNodeId` — no code or description | — |
+| [C15](#c15) | Gap | IPA | Claimed items carry a bare `boqNodeId` — no code or description | in doc |
 | [C17](#c17) | **Correctness — bug** | Finance | A negative allocation is accepted and defeats the over-allocation guard | [#14](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/14) |
-| [C16](#c16) | Gap | Finance | No way to list or attribute certificates by client | — |
-| [D3](#d3) | Docs | Clients, Contracts | Documented request shapes that return `400` | — |
+| [D3](#d3) | Docs | Clients, Contracts | Documented request shapes that return `400` | in doc |
+| [D4](#d4) | **Domain** | IPA | May a claim go below what was already certified? | [domain-questions.md](./domain-questions.md) |
 
 ---
 
@@ -67,15 +85,17 @@ Findings were produced by reading `apps/api/src` directly, not by inference from
 
 ### <a id="b1"></a>B1 — No project can ever get its first member
 
+> *Verified live at `c8afdd6` (2026-08-04).*
+
 **Severity:** Blocking. This is a bug in shipped code, not a missing feature.
 
 `ProjectService.addMember` requires the *caller* to already be an active member:
 
-- `apps/api/src/business/construction/projects/application/project.service.ts:210`
+- `apps/api/src/business/construction/projects/application/project.service.ts:241`
   → `await this.assertMember(prisma, projectId, identity.userId);`
-- `assertMember` throws `403 You are not a member of this project.` (line 244–249)
+- `assertMember` throws `403 You are not a member of this project.` (line 275–280)
 
-But `ProjectService.create` (line 63–82) never enrols the creator as a member, and
+But `ProjectService.create` (line 70–82) never enrols the creator as a member, and
 `ProjectPrismaRepository.create` only inserts the `Project` row.
 
 **Result:** every `POST /projects/:id/members` returns `403`, for every user, forever.
@@ -97,6 +117,8 @@ which roles may enrol members.
 
 ### <a id="b2"></a>B2 — No endpoint lists users in an organization
 
+> *Verified live at `c8afdd6` (2026-08-04).*
+
 **Severity:** Blocking (depends on B1 being fixed to matter).
 
 `apps/api/src/platform/users/presentation/users.controller.ts` exposes only
@@ -116,6 +138,8 @@ Questions that shape the UI, worth deciding when the endpoint is designed:
 ---
 
 ### <a id="b3"></a>B3 — `GET /workflows/definition/:transactionType` requires a request body
+
+> *Verified live at `c8afdd6` (2026-08-04).*
 
 **Severity:** Blocking for any workflow UI.
 
@@ -140,14 +164,16 @@ Failing that, a query parameter — but the token is the correct source.
 
 ### <a id="b14"></a>B14 — `POST .../nodes/:id/move` always fails, and leaves the tree corrupted
 
+> *Verified live at `c8afdd6` (2026-08-04).*
+
 **Severity:** Blocking. Reproduced against the running API; two defects in one function.
 
-`BoqPrismaRepository.moveNode` (`boq-prisma.repository.ts:115–150`) runs two raw statements.
+`BoqPrismaRepository.moveNode` (`boq-prisma.repository.ts:127–151`) runs two raw statements.
 
 **Defect 1 — every call errors.** Step 2 interpolates a JS number as the substring offset:
 
 ```ts
-// boq-prisma.repository.ts:144
+// boq-prisma.repository.ts:145
 SET "path" = ${newNodePath} || '/' || substring("path", ${oldPath.length + 2}),
 ```
 
@@ -194,6 +220,8 @@ whole re-enable once this lands.
 
 ### <a id="b4"></a>B4 — Approver identity is supplied by the client
 
+> *Verified live at `c8afdd6` (2026-08-04).*
+
 `workflows.controller.ts` — `approve` and `reject` both read the actor from the body:
 
 ```ts
@@ -211,19 +239,34 @@ The frontend will not send an `actorId`. Until this changes, no approval UI will
 
 ### <a id="b5"></a>B5 — `orgId` taken from the query string
 
-- `apps/api/src/platform/roles/presentation/roles.controller.ts:23` — `findAll(@Query('orgId') orgId: string)`
-- `apps/api/src/platform/audit-logs/presentation/audit-logs.controller.ts:19` — `findByOrg(@Query('orgId') orgId: string)`
+> *Roles half verified live at `c8afdd6` (2026-08-04) — tracked as
+> [#16](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/16).
+> Audit-log half **fixed** in `776b695`.*
 
-Neither checks the value against `identity.activeOrganizationId`. A tenant database can
-hold multiple organizations, so a user can read another organization's roles and its
-**audit log** by changing a query parameter. The audit log is the more serious of the two.
+This finding originally covered two endpoints. Only one of them still stands.
 
-**What the frontend needs:** both should scope to the token's organization and drop the
-parameter. The frontend will not pass `orgId`.
+**Still live — roles:**
+
+- `apps/api/src/platform/roles/presentation/roles.controller.ts:18` — `findAll(@Query('orgId') orgId: string)`,
+  passed straight through by `roles.service.ts:13` with no comparison to
+  `identity.activeOrganizationId`.
+
+**Fixed — audit logs.** `AuditLogsController.findByOrg` now takes `@CurrentUser() identity`
+and passes `identity.activeOrganizationId`; the query parameter is gone. This was the more
+serious of the two, and it was resolved in `776b695` — the commit whose message lists
+"B5" among the findings it addresses. The roles half was not included in that fix.
+
+A tenant database can hold multiple organizations, so while `/roles` remains unscoped, a
+user can still read another organization's role definitions by changing a query parameter.
+
+**What the frontend needs:** `/roles` should scope to the token's organization and drop the
+parameter, as `/audit-logs` now does. The frontend will not pass `orgId`.
 
 ---
 
 ### <a id="b11"></a>B11 — BOQ version endpoints skip the organization check
+
+> *Verified live at `c8afdd6` (2026-08-04).*
 
 `BoqTreeService.requireBoqForProject` does verify ownership:
 
@@ -249,6 +292,8 @@ This one is independent of the frontend — it should be fixed regardless of UI 
 ## Contract & correctness
 
 ### <a id="b6"></a>B6 — Undocumented empty response bodies
+
+> *Verified live at `c8afdd6` (2026-08-04).*
 
 These return `200` with **no body**, because the service method returns `void`:
 
@@ -279,13 +324,15 @@ The frontend now handles empty bodies defensively either way, so this is not blo
 
 ### <a id="b7"></a>B7 — Money totals computed in floating point
 
+> *Verified live at `c8afdd6` (2026-08-04).*
+
 `boq-tree.service.ts:254`
 
 ```ts
 return Math.round(quantity * unitRate * 100) / 100;
 ```
 
-and `:265` / `:284–296`, where `totalAmount` (a Prisma `Decimal`) is converted with
+and `:265` / `:284–292`, where `totalAmount` (a Prisma `Decimal`) is converted with
 `Number()` and accumulated into `computedTotal` as a JS `double`.
 
 Decimal columns are being summed as binary floating point. At ACCO's contract values
@@ -304,6 +351,8 @@ every other money field. The frontend does no money arithmetic (all totals come 
 
 ### <a id="b8"></a>B8 — `GET /projects` has no pagination, search, or sort
 
+> *Verified live at `c8afdd6` (2026-08-04).*
+
 `project-prisma.repository.ts:22` — `findMany` with an optional status filter and
 `orderBy: { createdAt: 'desc' }`. No `skip`/`take`, no text search.
 
@@ -313,6 +362,8 @@ before the list reaches a few hundred projects.
 
 ### <a id="b9"></a>B9 — No way to persist a language preference
 
+> *Verified live at `c8afdd6` (2026-08-04).*
+
 `User.preferredLanguage` populates the JWT `lang` claim, and the frontend now seeds the UI
 language from it. But there is no `PATCH /users/:id` (or `/users/me`), so when a user
 switches language the change is device-local and lost on the next device.
@@ -321,6 +372,8 @@ switches language the change is device-local and lost on the next device.
 
 ### <a id="b10"></a>B10 — No summary/aggregate endpoint
 
+> *Verified live at `c8afdd6` (2026-08-04).*
+
 The dashboard shows project counts by status, computed client-side from the full
 `GET /projects` response. A `GET /projects/summary` returning counts per status would
 remove that, and becomes necessary once B8 does.
@@ -328,6 +381,8 @@ remove that, and becomes necessary once B8 does.
 Not urgent — raised so it is on the roadmap rather than discovered later.
 
 ### <a id="b13"></a>B13 — `move` never reindexes siblings, so positions can tie
+
+> *Verified live at `c8afdd6` (2026-08-04).*
 
 `sortOrder` is required on create and the API never allocates one, while `moveNode` writes
 the given position onto the moved node alone and leaves its siblings untouched. Nothing
@@ -345,6 +400,8 @@ rather than silently stored. Lower priority than B14, but the two are worth fixi
 together since both live in `moveNode`.
 
 ### <a id="b12"></a>B12 — `@erp/types` exports no Project DTO
+
+> *Verified live at `c8afdd6` (2026-08-04).*
 
 `apps/web/CLAUDE.md:170` instructs the frontend to import shared types and never redefine
 them locally — the right rule, and one we want to follow. But `packages/types` exports the
@@ -379,6 +436,8 @@ properly guarded against over-allocation. The findings below are concentrated in
 places: what `POST /ipc` accepts, and what it does not check.
 
 ### <a id="c2"></a>C2 — `POST /ipc` validates nothing about the application it certifies
+
+> *Verified live at `c8afdd6` (2026-08-04).*
 
 **Severity:** Security. Same class as B11, and the highest-priority item in this section.
 
@@ -419,6 +478,8 @@ This one should be fixed regardless of any UI plans.
 
 ### <a id="c3"></a>C3 — Unit rate is taken from the request, not the contractual BOQ
 
+> *Verified live at `c8afdd6` (2026-08-04).*
+
 **Severity:** Security / correctness.
 
 `AddIpaItemDto` requires the client to send `unitRateSnapshot`, and `IpaService.addItem`
@@ -427,7 +488,7 @@ stores it verbatim. Nothing compares it to the BOQ node's `unitRate`.
 The service is already reading that exact row one line earlier:
 
 ```ts
-// ipa.service.ts:148 — the node is loaded, but only for measurementMethod
+// ipa.service.ts:150 — the node is loaded, but only for measurementMethod
 const boqNode = await prisma.boqNode.findUnique({
   where: { id: dto.boqNodeId },
   select: { measurementMethod: true },
@@ -449,6 +510,8 @@ contract is bound to.
 ---
 
 ### <a id="c1"></a>C1 — Retention and advance-recovery arithmetic is delegated to the browser
+
+> *Verified live at `c8afdd6` (2026-08-04).*
 
 **Severity:** Blocking for the IPC issuance UI. This is a design question, not a bug.
 
@@ -488,6 +551,8 @@ should stay client-supplied under either option.
 
 ### <a id="c7"></a>C7 — A fully-settled certificate can never report `PAID`
 
+> *Verified live at `c8afdd6` (2026-08-04).*
+
 **Severity:** Correctness. A bug in shipped code.
 
 `getCertificatePaymentSummary` (`finance-prisma.repository.ts:71–94`) compares total
@@ -522,7 +587,16 @@ plausible wrong number that gets a finance officer to stop trusting the system.
 
 ### <a id="c4"></a>C4 — No guard against over-claiming or a negative period quantity
 
+> *Verified live at `c8afdd6` (2026-08-04). Over-claiming half tracked as
+> [#19](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/19); the negative-quantity half
+> is **not** ticketed — it is a domain question, see [D4](#d4).*
+
 **Severity:** Correctness — and partly a domain question (see D4).
+
+This finding has two halves and only one of them was filed. Over-claiming past the
+contracted BOQ quantity is a defect under any domain answer, so it went to #19 on its own.
+Whether a claim may go *below* what was already certified is a question for Eng Ahmed
+rather than a bug, so it stays here and in `domain-questions.md` until answered.
 
 `IpaService.addItem` computes `periodQuantity = cumulativeClaimed − previousEffectiveCertified`
 and stores it without constraining either side. Nothing checks:
@@ -543,6 +617,8 @@ follows from it. The form will mirror the server's rule rather than invent its o
 ---
 
 ### <a id="c5"></a>C5 — Workflow policy is resolved but no approval instance is created
+
+> *Verified live at `c8afdd6` (2026-08-04).*
 
 **Severity:** Contract clarity. Not a defect — the behaviour is deliberate and commented.
 
@@ -568,25 +644,40 @@ ADR when the approval instance work is scheduled.
 
 ---
 
-### <a id="c6"></a>C6 — Five more aggregates with no DTO in `@erp/types`
+### <a id="c6"></a>~~C6 — Five more aggregates with no DTO in `@erp/types`~~
 
-Extends B12. `Client`, `Contract` (and its five sub-entities), `Ipa`, `Ipc` and `Receipt`
-are all consumed by the frontend with no shared DTO.
+> ***Fixed** in `776b695`. Confirmed 2026-08-04.*
 
-Rather than scatter them, all wire shapes now live in one frontend-owned file,
-`apps/web/src/lib/api-types.ts`, explicitly marked as a mirror to be deleted when shared
-DTOs exist. Drift now has one place to be found instead of a dozen.
+`packages/types/src/construction.ts` now exports response DTOs for all five aggregates —
+`ClientResponse`, `ContractResponse` and its sub-entities, `IpaResponse`, `IpcResponse`,
+`PaymentReceiptResponse` — 18 interfaces in total, already on `main`. The commit message
+does not mention C6, which is why this went unnoticed for a day.
 
-**A cheaper ask than hand-writing DTOs:** the API exposes its full OpenAPI document at
-`/docs-json`, but every `@ApiResponse` is `{ status, description }` with no `type:`, so the
-spec describes request bodies accurately and says nothing about responses. Adding `type:`
-to the response decorators would let the frontend generate response types from the live
-spec and delete the mirror file permanently — a smaller change than authoring DTOs by hand,
-and one that cannot drift.
+They are usable as-is: dates are declared `string`, not `Date`, so they avoid the trap
+`UserDto` and `OrganizationDto` fell into (see B12), and money fields are `string`.
+
+**Two things follow, both frontend-side and neither blocking:**
+
+1. `apps/web/src/lib/api-types.ts` can shed the five Sprint 3 aggregates and repoint those
+   imports at `@erp/types`. It cannot be deleted outright — Project and BOQ shapes still
+   have no shared DTO, which is **B12**, still open.
+2. The migration is not a mechanical swap. At least one declaration differs in a way that
+   matters: `applicationNumber?: number` in `@erp/types` versus `applicationNumber: number | null`
+   in the mirror. For `JSON.parse`d wire data the mirror is almost certainly right — a
+   nullable Prisma column serialises as `null`, the key does not disappear — so each
+   optional-vs-nullable difference needs checking against a real response before adopting it.
+
+**Still worth doing, and unchanged by the above:** every `@ApiResponse` is
+`{ status, description }` with no `type:`, so `/docs-json` describes request bodies
+accurately and says nothing about responses. Adding `type:` to the response decorators
+would let the frontend generate response types from the live spec rather than hand-mirroring
+them, and would keep B12 from recurring for the next aggregate.
 
 ---
 
 ### <a id="c8"></a>C8 — `totalAllocated` returns a number, breaking the money-as-string rule
+
+> *Verified live at `c8afdd6` (2026-08-04).*
 
 `getCertificatePaymentSummary` returns `totalAllocated` as a JS number via `Number()`
 (`finance-prisma.repository.ts:86–87`), and `getTotalAllocated` (`:44–48`) does the same
@@ -594,7 +685,7 @@ before using it in the over-allocation guard.
 
 Every other money field on the API is a decimal string. This is the same class as B7 —
 `Decimal` columns summed in binary floating point — and it means the over-allocation check
-at `finance.service.ts:59` is itself performed in floating point, on the value that decides
+at `finance.service.ts:65` is itself performed in floating point, on the value that decides
 whether a payment is accepted.
 
 **Suggested:** keep the sum in `Prisma.Decimal` and serialize as a string, consistent with
@@ -603,6 +694,8 @@ whether a payment is accepted.
 ---
 
 ### <a id="c9"></a>C9 — `measurementMethod` and `pricingBasis` can never be set
+
+> *Verified live at `c8afdd6` (2026-08-04).*
 
 The roadmap lists "BOQ node extensions (measurementMethod, pricingBasis)" as delivered in
 Sprint 3 Phase 1, and the columns do exist on `BoqNode` with defaults `QUANTITY` and
@@ -614,7 +707,7 @@ and `BoqTreeService` never writes them. With `forbidNonWhitelisted: true`, sendi
 lump-sum or milestone-billed line cannot be expressed at all.
 
 This matters downstream: `IpaService.addItem` snapshots `measurementMethod` onto every
-claimed line (`ipa.service.ts:148`), so the snapshot is currently always the default. The
+claimed line (`ipa.service.ts:150`), so the snapshot is currently always the default. The
 IPA item picker will label every line "quantity" regardless of what it really is.
 
 **What the frontend needs:** both fields accepted on create and on update, so a lump-sum
@@ -624,6 +717,8 @@ silently has no effect is worse than no input.
 ---
 
 ### <a id="c10"></a>C10 — Retention split is spelled `…OnPc` going in and `…OnPC` coming out
+
+> *Verified live at `c8afdd6` (2026-08-04).*
 
 `AddRetentionTermsDto` declares `retentionSplitOnPc`. The Prisma column is
 `retentionSplitOnPC`, and `upsertRetentionTerms`
@@ -648,11 +743,13 @@ It is a one-word change in a Sprint 3 DTO that no client depends on yet.
 
 ### <a id="c13"></a>C13 — Cancel and terminate require a reason and discard it
 
+> *Verified live at `c8afdd6` (2026-08-04).*
+
 `CancelContractDto` and `TerminateContractDto` both mark `reason` `@IsNotEmpty()` with a
 500-character limit, so the client must supply one. `ContractService` then throws it away:
 
 ```ts
-// contract.service.ts:143 and :158
+// contract.service.ts:144 and :158
 void reason; // audit trail deferred to Phase 4 AuditLog
 ```
 
@@ -671,6 +768,8 @@ than implying an audit trail that does not exist.
 ---
 
 ### <a id="c14"></a>C14 — `RETURNED_FOR_REVISION` is a dead end
+
+> *Verified live at `c8afdd6` (2026-08-04).*
 
 **Severity:** Blocking for the IPA revision loop. Reproduced against the running API.
 
@@ -716,6 +815,8 @@ screen — it should stop being needed rather than be designed around.
 
 ### <a id="c15"></a>C15 — Claimed items carry a bare `boqNodeId`
 
+> *Verified live at `c8afdd6` (2026-08-04).*
+
 `GET /ipa/:id` returns each `InterimPaymentApplicationItem` with a `boqNodeId` and nothing
 that describes it — no `code`, no `description`. `IpaPrismaRepository.findById` includes
 `items: true` with no relation expansion, and `BoqNode` is never joined.
@@ -734,6 +835,8 @@ was actually claimed under.
 ---
 
 ### <a id="c17"></a>C17 — A negative allocation is accepted and defeats the over-allocation guard
+
+> *Verified live at `c8afdd6` (2026-08-04).*
 
 **Severity:** Correctness. A bug in shipped code, reproduced against the running API.
 
@@ -783,6 +886,8 @@ create this state. It cannot repair a receipt that already holds it.
 
 ### <a id="c16"></a>C16 — No way to list or attribute certificates by client
 
+> *Verified live at `c8afdd6` (2026-08-04).*
+
 `GET /ipc` filters on `applicationId` alone, and a certificate row carries nothing else
 identifying — no client, no contract, no project. So answering "which certificates can this
 client's payment be allocated against?" means walking
@@ -819,6 +924,8 @@ our calls are correct — but nothing stops another client from getting it wrong
 
 ### <a id="d1"></a>D1 — Mixed-currency BOQ nodes sum into one meaningless total
 
+> *Verified live at `c8afdd6` (2026-08-04).*
+
 `currency` is an optional field on each individual BOQ node
 (`create-node.dto.ts`, `@IsOptional() @Length(3,3)`). Nothing constrains sibling nodes to
 share a currency, and `BoqTreeService.sumTotals` (`boq-tree.service.ts:284`) adds
@@ -842,6 +949,8 @@ settled. Showing a plausible wrong number is worse than showing none.
 ---
 
 ### <a id="d4"></a>D4 — Can a payment application claim less than was already certified?
+
+> *Verified live at `c8afdd6` (2026-08-04).*
 
 Context for C4. An IPA line carries `cumulativeClaimed` — the total claimed to date, not
 this period — and the server derives the period figure by subtracting what the last
@@ -867,20 +976,27 @@ for the rule, not for UI advice.
 
 ### <a id="d2"></a>D2 — `api-reference.md` gaps
 
+> *Verified live at `c8afdd6` (2026-08-04).*
+
 `docs/02-architecture/api-reference.md` is genuinely good and was the fastest way to get
 oriented. Three corrections:
 
 1. **§5.8 Suspend/Resume, §5.9 move/delete** — response bodies are not documented and are
    empty. See B6.
-2. **§5.4 Roles, §5.6 Audit Logs** — the required `?orgId=` query parameter is not shown
-   in the endpoint table. Requests without it currently return an empty result rather than
-   an error, which is a confusing failure mode.
+2. **§5.4 Roles** — the required `?orgId=` query parameter is not shown in the endpoint
+   table. A request without it currently returns an empty result rather than an error,
+   which is a confusing failure mode. Note this documentation gap disappears if B5 is
+   fixed as asked, since the parameter goes away with it.
+   **§5.6 Audit Logs** no longer applies — `/audit-logs` was fixed in `776b695` and takes
+   no parameter. The endpoint table is now correct for it; only the roles row is wrong.
 3. **§5.7 Workflows** — the `GET definition` entry does not mention the required
    `organizationId`, which is in the request body. See B3.
 
 ---
 
 ### <a id="d3"></a>D3 — Documented request shapes that return `400`
+
+> *Verified live at `c8afdd6` (2026-08-04).*
 
 These matter more than ordinary doc drift, because the global `ValidationPipe` runs with
 `forbidNonWhitelisted: true` (`main.ts:18–23`). An unrecognised field is not ignored — it

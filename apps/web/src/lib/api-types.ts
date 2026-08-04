@@ -3,14 +3,37 @@
  *
  * ─── Why this file exists ────────────────────────────────────────────────────────
  *
- * `apps/web/CLAUDE.md:254` says to import shared types rather than redefine them, and that
- * is the right rule. But `@erp/types` exports only enums — no DTOs — and `packages/types`
- * is backend-owned, so the frontend cannot add them (B12).
+ * `apps/web/CLAUDE.md` says to import shared types rather than redefine them, and that is
+ * the right rule. When this file was written, `@erp/types` exported only enums — no DTOs —
+ * and `packages/types` is backend-owned, so the frontend could not add them (B12).
  *
  * Rather than scatter a dozen copies of the backend's contract across feature folders,
  * every wire shape lives here. That gives drift ONE place to be found and ONE place to be
- * deleted: when `@erp/types` ships DTOs, this file is removed and the imports repoint.
- * Feature `types.ts` files re-export from here so nothing else has to change.
+ * deleted. Feature `types.ts` files re-export from here so nothing else has to change.
+ *
+ * ─── PARTLY SUPERSEDED as of 2026-08-04 ──────────────────────────────────────────
+ *
+ * `@erp/types` now DOES export DTOs. `packages/types/src/construction.ts`, added in
+ * `776b695`, ships `ClientResponse`, `ContractResponse` (and its sub-entities),
+ * `IpaResponse`, `IpcResponse` and `PaymentReceiptResponse` — the five Sprint 3 aggregates
+ * this file mirrors. That resolved C6. So the sentence above is no longer true for those
+ * five, and their shapes here are now a SECOND definition of a contract that exists.
+ *
+ * This file cannot simply be deleted, because B12 is still open: there is no `ProjectResponse`
+ * and no BOQ DTO in `@erp/types`. Only the Sprint 3 half can migrate.
+ *
+ * That migration is not a mechanical swap, which is why it has not been done here. The two
+ * definitions disagree in at least one place that changes behaviour:
+ *
+ *     @erp/types   applicationNumber?: number        // key may be absent
+ *     this file    applicationNumber: number | null  // key present, value null
+ *
+ * For `JSON.parse`d wire data this file is almost certainly the correct one — a nullable
+ * Prisma column serialises as `null`, the key does not disappear. Every such difference
+ * needs checking against a real API response before adopting the shared DTO, or a correct
+ * type gets swapped for a plausible wrong one.
+ *
+ * Tracked in `docs/backend-requests/frontend-blockers.md` under C6 (fixed) and B12 (open).
  *
  * ─── Serialization rules (these are not the Prisma types) ────────────────────────
  *
