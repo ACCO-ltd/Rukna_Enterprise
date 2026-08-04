@@ -37,6 +37,8 @@ import http from 'node:http';
 import https from 'node:https';
 
 const DEFAULTS = {
+  /** Silences the step log. The end-to-end suite sets this so its reporter owns stdout. */
+  quiet: false,
   api: 'http://acco.localhost:3001/api/v1',
   email: 'admin@acco.com',
   password: 'ChangeMe123!',
@@ -134,19 +136,23 @@ const post = (path, body) => request('POST', path, body);
 let stepNumber = 0;
 
 function step(label) {
+  if (config.quiet) return;
   stepNumber += 1;
   process.stdout.write(`  ${String(stepNumber).padStart(2)}. ${label.padEnd(46)}`);
 }
 
 function ok(detail = '') {
+  if (config.quiet) return;
   process.stdout.write(`✓ ${detail}\n`);
 }
 
 // ─── The scenario ────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log(`\nSeeding ACCO billing scenario  (run ${RUN})`);
-  console.log(`API: ${config.api}\n`);
+  if (!config.quiet) {
+    console.log(`\nSeeding ACCO billing scenario  (run ${RUN})`);
+    console.log(`API: ${config.api}\n`);
+  }
 
   // ── Auth ──────────────────────────────────────────────────────────────────────
   step('login');
@@ -395,7 +401,7 @@ async function main() {
   const payment = await get(`/receipts/certificate/${certificate.id}/payment-status`);
   ok(payment.status);
 
-  summarize({
+  const scenario = {
     project,
     client,
     contract,
@@ -404,7 +410,24 @@ async function main() {
     receipt,
     payment,
     netCertified,
-  });
+  };
+
+  summarize(scenario);
+  return scenario;
+}
+
+/**
+ * Seeds a scenario and returns its records, for callers that need the ids.
+ *
+ * The end-to-end suite uses this so it never depends on whatever happens to be in the
+ * database. Kept as one exported function with the CLI wrapper below, rather than
+ * duplicated, so the thing the tests run is the thing a developer runs.
+ */
+export async function seedScenario(options = {}) {
+  Object.assign(config, options);
+  accessToken = null;
+  stepNumber = 0;
+  return main();
 }
 
 /**
@@ -471,6 +494,7 @@ async function buildBoqTree(projectId, versionId) {
 }
 
 function summarize(s) {
+  if (config.quiet) return;
   const line = '─'.repeat(74);
   console.log(`\n${line}`);
   console.log('Scenario ready\n');
@@ -523,11 +547,19 @@ function parseArgs(argv) {
   return parsed;
 }
 
-main().catch((error) => {
-  console.error(`\n✗ ${error.message}\n`);
-  if (error.code === 'ECONNREFUSED' || error.message.includes('ECONNREFUSED')) {
-    console.error('  Is the API running?  pnpm --filter @erp/api dev');
-    console.error('  Is Postgres up?      docker compose up -d\n');
-  }
-  process.exitCode = 1;
-});
+/**
+ * CLI entry. Only runs when this file is executed directly — importing it (as the
+ * end-to-end suite does) must not seed a scenario as a side effect.
+ */
+const isCli = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'));
+
+if (isCli) {
+  main().catch((error) => {
+    console.error(`\n✗ ${error.message}\n`);
+    if (error.code === 'ECONNREFUSED' || error.message.includes('ECONNREFUSED')) {
+      console.error('  Is the API running?  pnpm --filter @erp/api dev');
+      console.error('  Is Postgres up?      docker compose up -d\n');
+    }
+    process.exitCode = 1;
+  });
+}
