@@ -8,7 +8,7 @@ import { useClient } from '@/features/clients/hooks/use-client';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 
-import { fromMinorUnits, isFullyAllocated } from '../allocation';
+import { fromMinorUnits, isFullyAllocated, isOverAllocated } from '../allocation';
 import { useReceipt } from '../hooks/use-receipts';
 import { ReceiptAllocationsPanel, receiptTotals } from './receipt-allocations-panel';
 
@@ -75,6 +75,7 @@ function ReceiptHeader({
 
   const { allocated, remaining } = receiptTotals(receipt);
   const fully = isFullyAllocated(receipt.amount, receipt.allocations);
+  const over = isOverAllocated(receipt.amount, receipt.allocations);
 
   return (
     <div>
@@ -91,6 +92,10 @@ function ReceiptHeader({
             <span className="font-mono text-xs text-muted-foreground">
               {receipt.reference ?? tReceipts('noReference')}
             </span>
+            {/* Over-allocation must never wear the settled badge. The two states are
+                distinguished at the source (`isFullyAllocated` vs `isOverAllocated`) so
+                one cannot quietly become the other. */}
+            {over ? <Badge tone="danger">{t('overAllocated')}</Badge> : null}
             {fully ? <Badge tone="live">{t('fullyAllocated')}</Badge> : null}
           </div>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
@@ -113,16 +118,28 @@ function ReceiptHeader({
           value={<bdi>{formatMoney(fromMinorUnits(allocated), receipt.currency, locale)}</bdi>}
         />
         {/* The figure the whole screen exists to keep honest: what is left of this payment
-            to apply. Computed in integer cents from the allocations, never in floats. */}
+            to apply. Computed in integer cents from the allocations, never in floats.
+            A negative reads as danger, not as a mild warning — it means the books
+            disagree with themselves. */}
         <Figure
           label={t('unallocated')}
           value={
-            <bdi className={remaining > 0 ? 'text-warning' : undefined}>
+            <bdi
+              className={
+                remaining < 0 ? 'text-danger' : remaining > 0 ? 'text-warning' : undefined
+              }
+            >
               {formatMoney(fromMinorUnits(remaining), receipt.currency, locale)}
             </bdi>
           }
         />
       </dl>
+
+      {over ? (
+        <div className="mt-4">
+          <Alert variant="error" messages={[t('overAllocatedHint')]} />
+        </div>
+      ) : null}
     </div>
   );
 }

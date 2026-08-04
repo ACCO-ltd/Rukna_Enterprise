@@ -62,12 +62,31 @@ export function unallocatedMinor(
   return toMinorUnits(receiptAmount) - allocatedMinor(allocations);
 }
 
-/** True when the receipt has been fully applied and nothing remains to allocate. */
+/** True when the receipt has been applied exactly, with nothing left over. */
 export function isFullyAllocated(
   receiptAmount: string,
   allocations: readonly ReceiptAllocation[],
 ): boolean {
-  return unallocatedMinor(receiptAmount, allocations) <= 0;
+  return unallocatedMinor(receiptAmount, allocations) === 0;
+}
+
+/**
+ * True when MORE has been allocated than was received.
+ *
+ * This is not a hypothetical. C17 (issue #14) lets a negative allocation through, which
+ * frees headroom for later ones; deleting the negative afterwards leaves the receipt
+ * genuinely over-allocated, and nothing on the server re-checks it. Real receipts are in
+ * that state now.
+ *
+ * Kept distinct from `isFullyAllocated` because the two must not read the same. An earlier
+ * version tested `<= 0` for "fully allocated", which badged an over-allocated receipt as
+ * tidily settled — the one presentation guaranteed to stop anyone noticing.
+ */
+export function isOverAllocated(
+  receiptAmount: string,
+  allocations: readonly ReceiptAllocation[],
+): boolean {
+  return unallocatedMinor(receiptAmount, allocations) < 0;
 }
 
 export type AllocationProblem = 'empty' | 'not-a-number' | 'not-positive' | 'exceeds-balance';

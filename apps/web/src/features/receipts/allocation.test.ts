@@ -11,6 +11,7 @@ import {
   certificatesForClient,
   fromMinorUnits,
   isFullyAllocated,
+  isOverAllocated,
   toMinorUnits,
   unallocatedMinor,
 } from './allocation';
@@ -94,10 +95,28 @@ describe('unallocated balance', () => {
     const allocations = [allocation('600.00'), allocation('400.00')];
     expect(unallocatedMinor('1000.00', allocations)).toBe(0);
     expect(isFullyAllocated('1000.00', allocations)).toBe(true);
+    expect(isOverAllocated('1000.00', allocations)).toBe(false);
   });
 
   it('does not report a partly-applied receipt as fully allocated', () => {
     expect(isFullyAllocated('1000.00', [allocation('999.99')])).toBe(false);
+  });
+
+  // Not hypothetical: C17 lets a negative allocation through, which frees headroom for
+  // later ones, and deleting the negative afterwards leaves the receipt genuinely
+  // over-allocated. Real receipts are in this state.
+  it('reports an over-allocated receipt as over, never as fully allocated', () => {
+    const allocations = [allocation('600.00'), allocation('500.00')];
+    expect(unallocatedMinor('1000.00', allocations)).toBe(-10000);
+    expect(isOverAllocated('1000.00', allocations)).toBe(true);
+    // The distinction that matters: an earlier version tested `<= 0` here and badged an
+    // over-allocated receipt as tidily settled.
+    expect(isFullyAllocated('1000.00', allocations)).toBe(false);
+  });
+
+  it('reports a partly-applied receipt as neither full nor over', () => {
+    expect(isOverAllocated('1000.00', [allocation('400.00')])).toBe(false);
+    expect(isFullyAllocated('1000.00', [allocation('400.00')])).toBe(false);
   });
 });
 
