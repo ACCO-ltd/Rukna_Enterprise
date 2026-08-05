@@ -908,7 +908,7 @@
       "effectiveCertWarning": "توجد شهادة سارية لهذا الطلب. إصدار شهادة جديدة سيحل محلها.",
       "draftRestoredHint": "تم استعادة مسودتك.",
       "issueCta": "إصدار الشهادة",
-      "supersedeCta": "استبدال الشهادة"
+      "supersedeCta": "إصدار شهادة بديلة"
     },
     "status": {
       "CERTIFIED": "معتمدة",
@@ -925,7 +925,10 @@
       "colStatus": "الحالة",
       "colNet": "صافي المعتمد",
       "colIssued": "تاريخ الإصدار",
-      "viewCertificate": "عرض الشهادة"
+      "viewCertificate": "عرض الشهادة",
+      "makeEffective": "تفعيل",
+      "makeEffectiveAriaLabel": "تفعيل الشهادة {ref}",
+      "notEffectiveHint": "هذه الشهادة غير سارية بعد."
     },
     "detail": {
       "back": "العودة إلى الطلب",
@@ -953,7 +956,18 @@
       "paymentHeading": "حالة الدفع",
       "paymentNote": "تفاصيل التخصيص مسجّلة على إيصالات الدفع. استخدم سجل الإيصالات لعرض المدفوعات المطبّقة على هذه الشهادة.",
       "notesLabel": "ملاحظات",
-      "exchangeRateLabel": "سعر الصرف"
+      "exchangeRateLabel": "سعر الصرف",
+      "notEffectiveBanner": "صدرت هذه الشهادة لكنها لم تُفعَّل بعد. فعّلها لاستبدال الشهادة الحالية.",
+      "makeEffectiveCta": "تفعيل هذه الشهادة",
+      "noEffectiveCertNote": "لا توجد شهادة سارية لاستبدالها. ستصبح هذه الشهادة سارية عند تنفيذ أمر الاستبدال."
+    },
+    "supersession": {
+      "commandName": "تفعيل الشهادة",
+      "businessImpact": "ستُستبدل الشهادة السارية الحالية ({currentRef}). ستصبح الشهادة {newRef} هي الشهادة السارية لهذا الطلب.",
+      "reasonLabel": "سبب الاستبدال",
+      "reasonHint": "سيُسجَّل هذا بشكل دائم على الشهادة المستبدَلة.",
+      "confirmLabel": "تفعيل",
+      "failed": "تعذّر إتمام الاستبدال. يرجى المحاولة مرة أخرى."
     }
   }
 }

@@ -1,14 +1,15 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Badge,
+  Button,
   Table,
   TableBody,
   TableCell,
-  TableEmpty,
   TableHead,
   TableHeader,
   TableRow,
@@ -17,13 +18,20 @@ import {
 
 import { StatusBadge } from '@/components/status-badge';
 import { formatDate, formatMoney } from '@/lib/format';
+import type { Ipc } from '@/features/ipc/types';
 
 import { useIpcs } from '../hooks/use-ipc';
+import { IpcSupersessionDrawer } from './ipc-supersession-drawer';
 
 interface IpcListPanelProps {
   applicationId: string;
   contractId: string;
   currency: string;
+}
+
+/** A cert is a candidate for supersession when it is non-effective, non-superseded, and not rejected. */
+function isSupersessionCandidate(cert: Ipc): boolean {
+  return !cert.isEffective && !cert.supersededAt && cert.status !== 'REJECTED';
 }
 
 export function IpcListPanel({ applicationId, contractId, currency }: IpcListPanelProps) {
@@ -32,6 +40,11 @@ export function IpcListPanel({ applicationId, contractId, currency }: IpcListPan
   const locale = useLocale() as 'en' | 'ar';
 
   const { data: certs, isPending, isError } = useIpcs(applicationId);
+
+  const [pendingSupersession, setPendingSupersession] = useState<Ipc | null>(null);
+
+  const effectiveCert = (certs ?? []).find((c) => c.isEffective) ?? null;
+  const hasEffectiveCert = effectiveCert !== null;
 
   return (
     <section className="space-y-4">
@@ -54,13 +67,15 @@ export function IpcListPanel({ applicationId, contractId, currency }: IpcListPan
                 <TableHead>{tList('colStatus')}</TableHead>
                 <TableHead numeric>{tList('colNet')}</TableHead>
                 <TableHead>{tList('colIssued')}</TableHead>
+                {/* Actions column — only rendered when at least one cert can be superseded */}
+                {hasEffectiveCert ? <TableHead><span className="sr-only">Actions</span></TableHead> : null}
               </TableRow>
             </TableHeader>
 
             <TableBody>
               {(certs ?? []).map((cert) => (
                 <TableRow key={cert.id}>
-                  {/* Ref + isEffective badge */}
+                  {/* Ref + status badges */}
                   <TableCell>
                     <Link
                       href={`/contracts/${contractId}/applications/${applicationId}/certificates/${cert.id}`}
@@ -80,15 +95,12 @@ export function IpcListPanel({ applicationId, contractId, currency }: IpcListPan
                     ) : null}
                   </TableCell>
 
-                  {/* Status */}
+                  {/* Lifecycle status */}
                   <TableCell>
-                    <StatusBadge
-                      status={cert.status}
-                      label={t(`status.${cert.status}`)}
-                    />
+                    <StatusBadge status={cert.status} label={t(`status.${cert.status}`)} />
                   </TableCell>
 
-                  {/* Net certified — comes from the detail endpoint only, so show gross from list */}
+                  {/* Gross certified (netCertified only on the detail response) */}
                   <TableCell numeric>
                     <bdi className="tabular-nums">
                       {formatMoney(cert.certifiedTotal, currency, locale)}
@@ -101,12 +113,40 @@ export function IpcListPanel({ applicationId, contractId, currency }: IpcListPan
                       {cert.issuedAt ? formatDate(cert.issuedAt, locale) : '—'}
                     </span>
                   </TableCell>
+
+                  {/* Supersession action — only shown for candidate certs */}
+                  {hasEffectiveCert ? (
+                    <TableCell className="w-36 text-end">
+                      {isSupersessionCandidate(cert) ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          aria-label={tList('makeEffectiveAriaLabel', {
+                            ref: cert.certificateRef ?? `#${cert.certificateNumber}`,
+                          })}
+                          onClick={() => setPendingSupersession(cert)}
+                        >
+                          {tList('makeEffective')}
+                        </Button>
+                      ) : null}
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </TableScroll>
       )}
+
+      {pendingSupersession ? (
+        <IpcSupersessionDrawer
+          open
+          applicationId={applicationId}
+          newCert={pendingSupersession}
+          effectiveCert={effectiveCert}
+          onClose={() => setPendingSupersession(null)}
+        />
+      ) : null}
     </section>
   );
 }

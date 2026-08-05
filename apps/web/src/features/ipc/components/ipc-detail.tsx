@@ -1,9 +1,9 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Badge, Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow, TableScroll } from '@erp/ui';
+import { Alert, Badge, Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll } from '@erp/ui';
 
 import { StatusBadge } from '@/components/status-badge';
 import { useContract } from '@/features/contracts/hooks/use-contracts';
@@ -13,7 +13,8 @@ import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 import type { BoqTreeNode, IpcItem } from '@/lib/api-types';
 
-import { useIpc } from '../hooks/use-ipc';
+import { useIpc, useIpcs } from '../hooks/use-ipc';
+import { IpcSupersessionDrawer } from './ipc-supersession-drawer';
 
 interface IpcDetailProps {
   contractId: string;
@@ -43,6 +44,11 @@ export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
   const ipc = useIpc(ipcId);
   const ipa = useIpa(ipaId);
   const contract = useContract(contractId);
+
+  // Only fetched for non-effective certs — needed to find the effective cert for supersession.
+  const allCerts = useIpcs(ipc.data?.applicationId ?? '');
+
+  const [supersessionOpen, setSupersessionOpen] = useState(false);
 
   const projectId = contract.data?.projectId ?? '';
   const boqVersionId = contract.data?.boqVersionId ?? null;
@@ -87,6 +93,12 @@ export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
   const cert = ipc.data;
   const currency = cert.currency;
 
+  const isSupersessionCandidate =
+    !cert.isEffective && !cert.supersededAt && cert.status !== 'REJECTED';
+  const effectiveCert = isSupersessionCandidate
+    ? ((allCerts.data ?? []).find((c) => c.isEffective) ?? null)
+    : null;
+
   return (
     <div className="space-y-8">
       {/* Back link */}
@@ -96,6 +108,17 @@ export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
       >
         {t('back')}
       </Link>
+
+      {/* Not-yet-effective banner */}
+      {isSupersessionCandidate ? (
+        <Alert variant="warning" messages={[t('notEffectiveBanner')]}>
+          <div className="mt-3">
+            <Button size="sm" onClick={() => setSupersessionOpen(true)}>
+              {t('makeEffectiveCta')}
+            </Button>
+          </div>
+        </Alert>
+      ) : null}
 
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -255,6 +278,17 @@ export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
           </TableScroll>
         )}
       </section>
+
+      {/* Supersession drawer — only mounted when candidate */}
+      {isSupersessionCandidate ? (
+        <IpcSupersessionDrawer
+          open={supersessionOpen}
+          applicationId={cert.applicationId}
+          newCert={cert}
+          effectiveCert={effectiveCert}
+          onClose={() => setSupersessionOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

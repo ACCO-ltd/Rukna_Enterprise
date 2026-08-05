@@ -908,7 +908,7 @@
       "effectiveCertWarning": "An effective certificate already exists for this application. Issuing a new one will replace it.",
       "draftRestoredHint": "Your draft has been restored.",
       "issueCta": "Issue Certificate",
-      "supersedeCta": "Supersede Certificate"
+      "supersedeCta": "Issue Replacement Certificate"
     },
     "status": {
       "CERTIFIED": "Certified",
@@ -925,7 +925,10 @@
       "colStatus": "Status",
       "colNet": "Net Certified",
       "colIssued": "Issued",
-      "viewCertificate": "View certificate"
+      "viewCertificate": "View certificate",
+      "makeEffective": "Make Effective",
+      "makeEffectiveAriaLabel": "Make {ref} the effective certificate",
+      "notEffectiveHint": "This certificate is not yet effective."
     },
     "detail": {
       "back": "Back to application",
@@ -953,7 +956,18 @@
       "paymentHeading": "Payment Status",
       "paymentNote": "Allocation details are recorded on payment receipts. Use the receipts ledger to view payments applied to this certificate.",
       "notesLabel": "Notes",
-      "exchangeRateLabel": "Exchange rate"
+      "exchangeRateLabel": "Exchange rate",
+      "notEffectiveBanner": "This certificate has been issued but is not yet effective. Make it effective to replace the current one.",
+      "makeEffectiveCta": "Make This Certificate Effective",
+      "noEffectiveCertNote": "There is no effective certificate to supersede. This certificate will become effective when the supersession command is run."
+    },
+    "supersession": {
+      "commandName": "Make Certificate Effective",
+      "businessImpact": "The current effective certificate ({currentRef}) will be superseded. Certificate {newRef} will become the effective certificate for this application.",
+      "reasonLabel": "Reason for supersession",
+      "reasonHint": "This will be permanently recorded on the superseded certificate.",
+      "confirmLabel": "Make Effective",
+      "failed": "Could not complete the supersession. Please try again."
     }
   }
 }

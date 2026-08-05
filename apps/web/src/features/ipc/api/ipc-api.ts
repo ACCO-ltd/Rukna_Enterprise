@@ -40,6 +40,28 @@ export function issueIpc(payload: IssueIpcPayload): Promise<Ipc> {
   });
 }
 
+export interface SupersedeIpcPayload {
+  newCertificateId: string;
+  reason: string;
+}
+
+/**
+ * Atomically supersedes the current effective certificate for an application.
+ *
+ * The effective cert gets `isEffective = false` + `supersededAt` + `supersessionReason`.
+ * The new certificate (`newCertificateId`) gets `isEffective = true` + `effectiveAt`.
+ */
+export function supersedeIpc(
+  applicationId: string,
+  payload: SupersedeIpcPayload,
+): Promise<void> {
+  return apiClient<void>(`/ipc/${applicationId}/supersede`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
 /**
  * Settlement status for one certificate.
  *

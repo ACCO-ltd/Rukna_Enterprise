@@ -64,12 +64,12 @@ export function IpaActionsPanel({ ipa, contractId }: { ipa: IpaDetail; contractI
       ) : null}
       {actions.isFinal ? <Alert variant="info" messages={[tDetail('finalHint')]} /> : null}
 
-      {/* Issue Certificate — only for SUBMITTED applications with no effective cert yet */}
-      {ipa.status === IpaStatus.SUBMITTED && !hasEffectiveCert ? (
+      {/* Certificate CTA — adapts based on whether an effective cert already exists */}
+      {ipa.status === IpaStatus.SUBMITTED ? (
         <div>
           <Button asChild>
             <Link href={`/contracts/${contractId}/applications/${ipa.id}/certificates/new`}>
-              {tIpc('issueCta')}
+              {hasEffectiveCert ? tIpc('wizard.supersedeCta') : tIpc('wizard.issueCta')}
             </Link>
           </Button>
         </div>

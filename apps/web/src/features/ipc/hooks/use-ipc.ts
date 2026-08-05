@@ -2,8 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 
-import { getIpc, issueIpc, listIpcs } from '../api/ipc-api';
+import { getIpc, issueIpc, listIpcs, supersedeIpc } from '../api/ipc-api';
 import type { Ipc, IpcDetail, IssueIpcPayload } from '../types';
+import type { SupersedeIpcPayload } from '../api/ipc-api';
 
 export const ipcKeys = {
   all: ['ipc'] as const,
@@ -31,6 +32,17 @@ export function useIssueIpc(applicationId: string) {
     mutationFn: (payload: IssueIpcPayload) => issueIpc(payload),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ipcKeys.list(applicationId) });
+    },
+  });
+}
+
+export function useSupersede(applicationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: SupersedeIpcPayload) => supersedeIpc(applicationId, payload),
+    onSuccess: () => {
+      // Invalidate the whole IPC namespace so both list and detail queries refresh.
+      void qc.invalidateQueries({ queryKey: ipcKeys.all });
     },
   });
 }
