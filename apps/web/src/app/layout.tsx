@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Geist } from 'next/font/google';
+import { Inter, IBM_Plex_Sans_Arabic } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages } from 'next-intl/server';
 import { DirectionProvider } from '@erp/ui';
@@ -7,7 +7,12 @@ import './globals.css';
 
 import { QueryProvider } from '@/providers/query-provider';
 
-const geist = Geist({ subsets: ['latin'] });
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
+const plexArabic = IBM_Plex_Sans_Arabic({
+  subsets: ['arabic'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-plex-arabic',
+});
 
 export const metadata: Metadata = {
   title: 'Rukna ERP',
@@ -20,7 +25,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const dir = locale === 'ar' ? 'rtl' : 'ltr';
 
   return (
-    <html lang={locale} dir={dir} className={`${geist.className} h-full antialiased`}>
+    <html
+      lang={locale}
+      dir={dir}
+      className={`${inter.variable} ${plexArabic.variable} h-full antialiased`}
+    >
       <body className="min-h-full">
         <NextIntlClientProvider messages={messages}>
           {/* Radix primitives do not inherit direction from the DOM — without this they
