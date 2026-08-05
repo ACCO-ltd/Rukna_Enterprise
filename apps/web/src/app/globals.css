@@ -2,13 +2,13 @@
 @source "../../../../packages/ui/src";
 
 :root {
-  --background: #f1f5f9;
+  --background: #f8fafc;
   --foreground: #0f172a;
   --surface: #ffffff;
-  --surface-subtle: #f8fafc;
+  --surface-subtle: #f1f5f9;
   --border: #e2e8f0;
   --muted: #f1f5f9;
-  --muted-foreground: #64748b;
+  --muted-foreground: #475569;
   --brand-ink: #0f172a;
   --brand-primary: #2563eb;
   --brand-primary-hover: #1d4ed8;

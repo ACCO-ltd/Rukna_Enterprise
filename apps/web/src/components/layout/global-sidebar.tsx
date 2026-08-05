@@ -101,13 +101,13 @@ function NavLink({ item, pathname, t, onNavigate }: NavLinkProps) {
         <span
           className={cn(
             'flex min-h-9 cursor-not-allowed items-center gap-2 rounded-md px-2 text-[13px] font-medium',
-            'text-slate-600',
+            'text-slate-500',
           )}
           aria-disabled="true"
           title={t('nav.comingSoon')}
         >
           {label}
-          <span className="ms-auto shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-600 ring-1 ring-inset ring-slate-700">
+          <span className="ms-auto shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500 ring-1 ring-inset ring-slate-600">
             {t('nav.soon')}
           </span>
         </span>
