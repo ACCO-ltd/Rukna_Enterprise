@@ -16,24 +16,9 @@ import {
 } from './nav-groups';
 
 interface GlobalSidebarProps {
-  /** Called after any nav link is clicked — used by the mobile drawer to close itself. */
   onNavigate?: () => void;
 }
 
-/**
- * Grouped primary navigation sidebar.
- *
- * Renders the platform brand, organisation name, standalone top-level items
- * (Dashboard), then domain-grouped sections (Portfolio, Finance, etc.).
- *
- * Disabled items are rendered non-interactively so users see the roadmap without
- * being able to navigate to unbuilt screens. They are visually distinct from
- * permission-hidden items: disabled = planned but not yet live; hidden = the user
- * lacks permission.
- *
- * Groups where every item is disabled are still rendered — the group heading tells
- * stakeholders the section exists.
- */
 export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
   const t = useTranslations('platform');
   const pathname = usePathname();
@@ -43,10 +28,10 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
   return (
     <div className="flex h-full flex-col overflow-y-auto">
       {/* Brand + org */}
-      <div className="flex h-16 shrink-0 flex-col justify-center border-b border-border px-5">
-        <span className="text-[13px] font-bold tracking-tight text-foreground">Rukna ERP</span>
+      <div className="flex h-16 shrink-0 flex-col justify-center border-b border-slate-800 px-5">
+        <span className="text-[13px] font-bold tracking-tight text-white">Rukna ERP</span>
         {user ? (
-          <span className="mt-0.5 truncate text-[11px] uppercase tracking-widest text-muted-foreground">
+          <span className="mt-0.5 truncate text-[11px] uppercase tracking-widest text-slate-500">
             {user.tenantSlug}
           </span>
         ) : null}
@@ -75,7 +60,7 @@ export function GlobalSidebar({ onNavigate }: GlobalSidebarProps) {
 
           return (
             <div key={group.labelKey}>
-              <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+              <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
                 {t(`nav.${group.labelKey}`)}
               </p>
               <ul className="space-y-0.5">
@@ -116,13 +101,13 @@ function NavLink({ item, pathname, t, onNavigate }: NavLinkProps) {
         <span
           className={cn(
             'flex min-h-9 cursor-not-allowed items-center gap-2 rounded-md px-2 text-[13px] font-medium',
-            'text-muted-foreground/40',
+            'text-slate-600',
           )}
           aria-disabled="true"
           title={t('nav.comingSoon')}
         >
           {label}
-          <span className="ms-auto shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/40 ring-1 ring-inset ring-border">
+          <span className="ms-auto shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-600 ring-1 ring-inset ring-slate-700">
             {t('nav.soon')}
           </span>
         </span>
@@ -139,8 +124,8 @@ function NavLink({ item, pathname, t, onNavigate }: NavLinkProps) {
         className={cn(
           'flex min-h-9 items-center rounded-md px-2 text-[13px] font-medium transition-colors',
           isActive
-            ? 'bg-brand-primary/10 text-brand-primary'
-            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+            ? 'bg-brand-primary-hover text-white'
+            : 'text-slate-300 hover:bg-slate-800 hover:text-white',
         )}
       >
         {label}

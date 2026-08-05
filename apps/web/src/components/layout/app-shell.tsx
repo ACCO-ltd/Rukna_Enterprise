@@ -6,21 +6,6 @@ import { useTranslations } from 'next-intl';
 import { GlobalSidebar } from './global-sidebar';
 import { TopBar } from './top-bar';
 
-/**
- * Application chrome for all authenticated routes.
- *
- * Layout model:
- *   - Desktop (lg+): fixed 240px sidebar on the inline-start edge, sticky 56px top bar,
- *     scrollable main content with appropriate gutters.
- *   - Mobile (<lg): no visible sidebar. The top bar has a hamburger that slides in an
- *     off-canvas drawer. The drawer mounts/unmounts rather than transforms so RTL layout
- *     is correct in both directions without fighting CSS `translate`.
- *
- * This shell handles the GLOBAL layout only. The project workspace layout (with its own
- * secondary sidebar for project-scoped navigation) is a nested layout applied by
- * `/projects/[id]/layout.tsx` — it replaces the content area without touching the
- * global sidebar or top bar.
- */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const t = useTranslations('platform.shell');
   const [isMenuOpen, setMenuOpen] = useState(false);
@@ -45,7 +30,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Skip link — first focusable element so keyboard users can bypass chrome. */}
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-3 focus:rounded-md focus:bg-surface focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-foreground focus:shadow"
@@ -55,7 +39,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* ── Desktop sidebar — persistent, fixed ──────────────────────────── */}
       <aside
-        className="fixed inset-y-0 start-0 hidden w-60 border-e border-border bg-surface lg:flex lg:flex-col"
+        className="fixed inset-y-0 start-0 hidden w-60 border-e border-slate-800 bg-slate-900 lg:flex lg:flex-col"
         aria-label={t('primaryNavLabel')}
       >
         <GlobalSidebar />
@@ -64,24 +48,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* ── Mobile drawer ─────────────────────────────────────────────────── */}
       {isMenuOpen ? (
         <div className="lg:hidden">
-          {/* Scrim */}
           <div
             className="fixed inset-0 z-40 bg-brand-ink/30"
             aria-hidden="true"
             onClick={close}
           />
-          {/* Panel */}
           <div
-            className="fixed inset-y-0 start-0 z-50 flex w-72 max-w-[85vw] flex-col bg-surface shadow-xl"
+            className="fixed inset-y-0 start-0 z-50 flex w-72 max-w-[85vw] flex-col bg-slate-900 shadow-xl"
             role="dialog"
             aria-modal="true"
             aria-label={t('primaryNavLabel')}
           >
-            <div className="flex h-14 shrink-0 items-center justify-end border-b border-border px-3">
+            <div className="flex h-14 shrink-0 items-center justify-end border-b border-slate-800 px-3">
               <button
                 type="button"
                 onClick={close}
-                className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
+                className="flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
                 aria-label={t('closeMenu')}
               >
                 <CloseIcon />
