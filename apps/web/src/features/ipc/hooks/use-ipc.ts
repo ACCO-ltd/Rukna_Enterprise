@@ -1,9 +1,9 @@
 'use client';
 
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 
-import { getIpc, listIpcs } from '../api/ipc-api';
-import type { Ipc, IpcDetail } from '../types';
+import { getIpc, issueIpc, listIpcs } from '../api/ipc-api';
+import type { Ipc, IpcDetail, IssueIpcPayload } from '../types';
 
 export const ipcKeys = {
   all: ['ipc'] as const,
@@ -22,5 +22,15 @@ export function useIpc(id: string): UseQueryResult<IpcDetail, Error> {
   return useQuery({
     queryKey: ipcKeys.detail(id),
     queryFn: () => getIpc(id),
+  });
+}
+
+export function useIssueIpc(applicationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: IssueIpcPayload) => issueIpc(payload),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ipcKeys.list(applicationId) });
+    },
   });
 }

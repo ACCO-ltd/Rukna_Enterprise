@@ -822,5 +822,93 @@
       "statusCaveat": "لا تُعرض حالة سداد الشهادة: يقارن النظام المدفوعات بإجمالي الاعتماد قبل الاستقطاعات لا بالصافي، فلا تظهر الشهادة المسدَّدة بالكامل كمسدَّدة (C7، المسألة #11).",
       "currencyMismatch": "هذه الشهادة بعملة {certificateCurrency} بينما الدفعة بعملة {receiptCurrency}. لا يتحقق النظام من ذلك — وزّع فقط إن كان مقصوداً."
     }
+  },
+  "ipc": {
+    "title": "شهادات الدفع",
+    "short": "الشهادات",
+    "wizard": {
+      "title": "إصدار شهادة دفع",
+      "step1": {
+        "title": "تفاصيل الشهادة",
+        "description": "حدد نتيجة الشهادة وأضف السياق الداعم.",
+        "statusLabel": "نتيجة الشهادة",
+        "statusPlaceholder": "— اختر النتيجة —",
+        "status": {
+          "CERTIFIED": "معتمدة",
+          "PARTIALLY_CERTIFIED": "معتمدة جزئياً",
+          "REJECTED": "مرفوضة"
+        },
+        "currencyLabel": "العملة",
+        "currencyNote": "موروثة من العقد.",
+        "showExchangeRate": "إضافة سعر الصرف",
+        "hideExchangeRate": "إزالة سعر الصرف",
+        "exchangeRateCurrencyLabel": "العملة الأجنبية",
+        "exchangeRateBaseLabel": "العملة الأساسية",
+        "exchangeRateValueLabel": "سعر الصرف",
+        "exchangeRateDateLabel": "تاريخ السعر",
+        "notesLabel": "ملاحظات",
+        "rejectionReasonLabel": "سبب الرفض",
+        "rejectionReasonPlaceholder": "اذكر سبب رفض هذا الطلب",
+        "statusRequired": "اختر نتيجة الشهادة للمتابعة"
+      },
+      "step2": {
+        "title": "اعتماد البنود",
+        "description": "عدّل الكمية المعتمدة لكل بند مطالب به. السبب إلزامي عند الاختلاف بين المعتمد والمطالب.",
+        "colItem": "البند",
+        "colMethod": "الطريقة",
+        "colCumClaimed": "إجمالي المطالبة",
+        "colPrevCertified": "سبق اعتماده",
+        "colPeriodClaimed": "مطالبة الفترة",
+        "colCertified": "الكمية المعتمدة",
+        "colUnitRate": "سعر الوحدة",
+        "colEstAmount": "المبلغ التقديري",
+        "varianceReasonLabel": "سبب الفارق",
+        "varianceReasonPlaceholder": "لماذا تختلف الكمية المعتمدة عن الكمية المطالب بها؟",
+        "varianceReasonRequired": "سبب الفارق إلزامي عند الاختلاف بين المعتمد والمطالب",
+        "certifiedRequired": "أدخل كمية معتمدة لكل بند"
+      },
+      "step3": {
+        "title": "الاستقطاعات والمراجعة",
+        "description": "راجع الاستقطاعات التقديرية، أضف رسوماً إضافية إن وجدت، ثم أصدر الشهادة.",
+        "grossLabel": "الإجمالي المعتمد",
+        "autoDeductionsHeading": "الاستقطاعات التلقائية",
+        "autoDeductionsNote": "تحسب مبالغ الضمان واسترداد السلفة تلقائياً بواسطة الخادم.",
+        "retentionLabel": "الضمان",
+        "advanceRecoveryLabel": "استرداد السلفة",
+        "estimatedLabel": "تقديري",
+        "adHocHeading": "استقطاعات إضافية",
+        "adHocTypeLabel": "النوع",
+        "adHocBasisLabel": "الأساس",
+        "adHocAmountLabel": "المبلغ",
+        "addDeduction": "إضافة استقطاع",
+        "removeDeduction": "إزالة",
+        "deductionType": {
+          "TAX": "ضريبة",
+          "CONTRA": "رسم مقابل",
+          "OTHER": "أخرى"
+        },
+        "netEstimateLabel": "صافي المستحق التقديري",
+        "serverComputeNote": "تحسب المبالغ النهائية بواسطة الخادم عند الإصدار.",
+        "issueButton": "إصدار الشهادة",
+        "rejectButton": "رفض الطلب",
+        "working": "جارٍ الإصدار...",
+        "issueFailed": "تعذر إصدار الشهادة. يرجى التحقق من جميع الحقول والمحاولة مرة أخرى."
+      },
+      "progress": {
+        "step1": "التفاصيل",
+        "step2": "البنود",
+        "step3": "المراجعة والإصدار"
+      },
+      "nav": {
+        "back": "رجوع",
+        "next": "متابعة",
+        "nextItems": "متابعة إلى البنود",
+        "nextReview": "متابعة إلى المراجعة"
+      },
+      "effectiveCertWarning": "توجد شهادة سارية لهذا الطلب. إصدار شهادة جديدة سيحل محلها.",
+      "draftRestoredHint": "تم استعادة مسودتك.",
+      "issueCta": "إصدار الشهادة",
+      "supersedeCta": "استبدال الشهادة"
+    }
   }
 }

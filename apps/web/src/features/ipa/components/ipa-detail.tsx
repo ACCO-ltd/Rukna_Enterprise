@@ -85,7 +85,7 @@ export function IpaDetail({ contractId, ipaId }: { contractId: string; ipaId: st
         </div>
       </div>
 
-      <IpaActionsPanel ipa={ipa.data} />
+      <IpaActionsPanel ipa={ipa.data} contractId={contractId} />
 
       <section className="rounded-lg border border-border bg-surface p-4 sm:p-6">
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
