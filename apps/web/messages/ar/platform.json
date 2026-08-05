@@ -3,21 +3,42 @@
     "primaryNavLabel": "التنقل الرئيسي",
     "openMenu": "فتح قائمة التنقل",
     "closeMenu": "إغلاق قائمة التنقل",
-    "accountMenuLabel": "قائمة الحساب",
-    "skipToContent": "تخطي إلى المحتوى الرئيسي"
+    "skipToContent": "تخطي إلى المحتوى الرئيسي",
+    "searchLabel": "البحث الشامل",
+    "searchPlaceholder": "بحث… (قريباً)",
+    "attentionLabel": "يحتاج إلى انتباهك",
+    "attentionNone": "لا توجد بنود تحتاج إلى انتباهك"
   },
   "nav": {
     "dashboard": "لوحة التحكم",
+    "portfolio": "المحفظة",
     "projects": "المشاريع",
+    "clients": "العملاء",
+    "finance": "المالية",
+    "receivables": "المستحقات",
+    "receipts": "الدفعات",
+    "cashPosition": "الوضع النقدي",
+    "generalLedger": "دفتر الأستاذ",
+    "operations": "العمليات",
+    "procurement": "المشتريات",
+    "inventory": "المخزون",
+    "reports": "التقارير",
+    "administration": "الإدارة",
     "users": "المستخدمون",
     "roles": "الأدوار",
-    "permissions": "الصلاحيات",
-    "organizations": "المؤسسات",
+    "exchangeRates": "أسعار الصرف",
+    "auditLogs": "سجل المراجعة",
     "settings": "الإعدادات",
-    "auditLog": "سجل المراجعة",
-    "clients": "العملاء",
-    "contracts": "العقود",
-    "receipts": "الدفعات"
+    "workflows": "سير العمل",
+    "comingSoon": "قريباً",
+    "soon": "قريباً",
+    "contracts": "العقود"
+  },
+  "user": {
+    "menuLabel": "قائمة الحساب",
+    "signOut": "تسجيل الخروج",
+    "signOutPending": "جارٍ الخروج…",
+    "switchLanguage": "اللغة"
   },
   "dashboard": {
     "title": "لوحة التحكم",
@@ -29,7 +50,17 @@
     "loadFailed": "تعذّر تحميل المشاريع.",
     "retry": "إعادة المحاولة",
     "noContractValue": "غير محدّد",
-    "viewAll": "عرض جميع المشاريع"
+    "viewAll": "عرض جميع المشاريع",
+    "kpiActive": "في الموقع",
+    "kpiActiveHint": "في التعبئة والنشاط والإغلاق",
+    "kpiPending": "قيد الانتظار",
+    "kpiPendingHint": "مسودة وينتظر الاعتماد",
+    "kpiFinished": "منتهٍ",
+    "kpiFinishedHint": "مغلق وملغى",
+    "colProject": "المشروع",
+    "colClient": "العميل",
+    "colStatus": "الحالة",
+    "colValue": "قيمة العقد"
   },
   "projects": {
     "title": "المشاريع",
@@ -46,8 +77,17 @@
     "loadFailed": "تعذّر تحميل المشاريع.",
     "retry": "إعادة المحاولة",
     "noContractValue": "غير محدّد",
+    "workspace": {
+      "navLabel": "تنقل المشروع",
+      "overview": "نظرة عامة",
+      "boq": "جدول الكميات",
+      "contracts": "العقود",
+      "finance": "المالية",
+      "members": "الفريق"
+    },
     "create": {
       "title": "مشروع جديد",
+      "breadcrumb": "المشاريع",
       "subtitle": "يبدأ المشروع كمسودة. يمكنك تعديله حتى يتم اعتماده.",
       "codeLabel": "رمز المشروع",
       "codeHint": "لا يمكن تغييره بعد إنشاء المشروع.",
@@ -257,6 +297,18 @@
     "title": "المستخدمون",
     "addUser": "إضافة مستخدم",
     "editUser": "تعديل المستخدم",
+    "empty": "لا يوجد مستخدمون.",
+    "emptyHint": "يظهر المستخدمون هنا بعد إضافتهم إلى المنظمة.",
+    "loadFailed": "تعذّر تحميل المستخدمين.",
+    "retry": "إعادة المحاولة",
+    "colName": "الاسم",
+    "colEmail": "البريد الإلكتروني",
+    "colStatus": "الحالة",
+    "status": {
+      "ACTIVE": "نشط",
+      "INACTIVE": "غير نشط",
+      "SUSPENDED": "موقوف"
+    },
     "fields": {
       "firstName": "الاسم الأول",
       "lastName": "اسم العائلة",
@@ -269,7 +321,24 @@
   "roles": {
     "title": "الأدوار والصلاحيات",
     "addRole": "إضافة دور",
-    "editRole": "تعديل الدور"
+    "editRole": "تعديل الدور",
+    "empty": "لم تُحدَّد أي أدوار.",
+    "emptyHint": "تُنشأ الأدوار وتُوكَّل من قبل مسؤول النظام.",
+    "loadFailed": "تعذّر تحميل الأدوار.",
+    "retry": "إعادة المحاولة",
+    "colName": "اسم الدور",
+    "colDescription": "الوصف",
+    "noDescription": "لا يوجد وصف"
+  },
+  "auditLogs": {
+    "title": "سجلات المراجعة",
+    "empty": "لا توجد إدخالات في سجل المراجعة.",
+    "loadFailed": "تعذّر تحميل سجلات المراجعة.",
+    "retry": "إعادة المحاولة",
+    "colTime": "الوقت",
+    "colUser": "المستخدم",
+    "colAction": "الإجراء",
+    "colResource": "المورد"
   },
   "workflows": {
     "title": "سير عمل الاعتماد",
@@ -277,7 +346,42 @@
     "approve": "اعتماد",
     "reject": "رفض",
     "steps": "خطوات الاعتماد",
-    "currentStep": "الخطوة الحالية"
+    "currentStep": "الخطوة الحالية",
+    "viewer": {
+      "typeLabel": "نوع المعاملة",
+      "loadFailed": "تعذّر تحميل تعريف سير العمل.",
+      "retry": "إعادة المحاولة",
+      "notConfigured": "لم يتم تكوين سير العمل.",
+      "notConfiguredHint": "لا يوجد تعريف نشط لسير العمل لهذا النوع من المعاملات. تواصل مع مسؤول النظام.",
+      "definitionName": "اسم سير العمل",
+      "active": "نشط",
+      "inactive": "غير نشط",
+      "requiresCeo": "يتطلب تأكيد المدير التنفيذي",
+      "conditions": "الشروط",
+      "noConditions": "لا توجد شروط — يُطبَّق سير العمل على جميع معاملات هذا النوع.",
+      "colField": "الحقل",
+      "colOperator": "المشغّل",
+      "colValue": "القيمة",
+      "steps": "خطوات الاعتماد",
+      "noSteps": "لم تُحدَّد أي خطوات.",
+      "colStep": "الخطوة",
+      "colRole": "الدور المطلوب",
+      "colOptional": "اختياري",
+      "colEscalate": "التصعيد بعد",
+      "colNotify": "إشعار الأدوار",
+      "optional": "اختياري",
+      "hours": "{hours, plural, one {# ساعة} other {# ساعات}}",
+      "types": {
+        "IPC": "شهادة الدفع المؤقتة",
+        "VARIATION": "أمر تغيير",
+        "MATERIAL_REQUEST": "طلب مواد",
+        "PURCHASE_ORDER": "أمر شراء",
+        "SUPPLIER_PAYMENT": "دفع للمورّد",
+        "STOCK_TRANSFER": "تحويل مخزون",
+        "MATERIAL_ISSUE": "صرف مواد",
+        "SUBCONTRACT_CERTIFICATE": "شهادة مقاول من الباطن"
+      }
+    }
   },
   "lifecycle": {
     "error": {

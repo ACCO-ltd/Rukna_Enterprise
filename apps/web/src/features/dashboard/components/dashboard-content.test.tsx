@@ -25,7 +25,6 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-
 function project(overrides: Partial<Project> & { id: string }): Project {
   return {
     organizationId: 'org-1',
@@ -67,22 +66,38 @@ describe('DashboardContent', () => {
     expect(await screen.findByText('No projects yet.')).toBeInTheDocument();
   });
 
-  it('renders real counts and the recent list', async () => {
+  it('renders KPI cards with correct counts', async () => {
     vi.mocked(listProjects).mockResolvedValue([
-      project({ id: '1', status: ProjectStatus.ACTIVE, name: 'Al-Baraka Tower' }),
+      project({ id: '1', status: ProjectStatus.ACTIVE }),
       project({ id: '2', status: ProjectStatus.ACTIVE }),
       project({ id: '3', status: ProjectStatus.DRAFT }),
+      project({ id: '4', status: ProjectStatus.MOBILIZING }),
+      project({ id: '5', status: ProjectStatus.CLOSED }),
+    ]);
+
+    renderWithProviders(<DashboardContent />);
+
+    await screen.findByText('All projects');
+    expect(screen.getByText('All projects').closest('a, div')).toHaveTextContent('5');
+
+    // "On site" = MOBILIZING(1) + ACTIVE(2) = 3
+    expect(screen.getByText('On site').closest('a, div')).toHaveTextContent('3');
+
+    // "Pending" = DRAFT(1)
+    expect(screen.getByText('Pending').closest('a, div')).toHaveTextContent('1');
+
+    // "Finished" = CLOSED(1)
+    expect(screen.getByText('Finished').closest('a, div')).toHaveTextContent('1');
+  });
+
+  it('renders the recent projects table and heading', async () => {
+    vi.mocked(listProjects).mockResolvedValue([
+      project({ id: '1', status: ProjectStatus.ACTIVE, name: 'Al-Baraka Tower' }),
     ]);
 
     renderWithProviders(<DashboardContent />);
 
     expect(await screen.findByText('Al-Baraka Tower')).toBeInTheDocument();
-
-    const total = screen.getByText('All projects').closest('div');
-    expect(total).toHaveTextContent('3');
-
-    // Two ACTIVE projects — one badge in the tile, one on the recent row.
-    expect(screen.getAllByText('Active').length).toBeGreaterThan(0);
     expect(screen.getByText('Recently created')).toBeInTheDocument();
   });
 
@@ -95,7 +110,8 @@ describe('DashboardContent', () => {
     renderWithProviders(<DashboardContent />);
 
     expect(await screen.findByText('$4,500,000.00')).toBeInTheDocument();
-    expect(screen.getByText('Not set')).toBeInTheDocument();
+    // At least one "Not set" appears (null contractValue column)
+    expect(screen.getAllByText('Not set').length).toBeGreaterThanOrEqual(1);
   });
 
   it('offers a retry when the request fails', async () => {
@@ -106,7 +122,9 @@ describe('DashboardContent', () => {
 
     expect(await screen.findByText('Could not load projects.')).toBeInTheDocument();
 
-    vi.mocked(listProjects).mockResolvedValue([project({ id: '1', name: 'Recovered' })]);
+    vi.mocked(listProjects).mockResolvedValue([
+      project({ id: '1', name: 'Recovered', status: ProjectStatus.DRAFT }),
+    ]);
     await user.click(screen.getByRole('button', { name: 'Try again' }));
 
     await waitFor(() => {

@@ -6,10 +6,5 @@ export default async function ProjectDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-
-  return (
-    <div className="mx-auto w-full max-w-5xl">
-      <ProjectDetail id={id} />
-    </div>
-  );
+  return <ProjectDetail id={id} />;
 }

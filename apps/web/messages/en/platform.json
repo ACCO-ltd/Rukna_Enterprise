@@ -3,21 +3,42 @@
     "primaryNavLabel": "Main navigation",
     "openMenu": "Open navigation menu",
     "closeMenu": "Close navigation menu",
-    "accountMenuLabel": "Account menu",
-    "skipToContent": "Skip to main content"
+    "skipToContent": "Skip to main content",
+    "searchLabel": "Global search",
+    "searchPlaceholder": "Search… (coming soon)",
+    "attentionLabel": "Attention required",
+    "attentionNone": "No items require your attention"
   },
   "nav": {
     "dashboard": "Dashboard",
+    "portfolio": "Portfolio",
     "projects": "Projects",
+    "clients": "Clients",
+    "finance": "Finance",
+    "receivables": "Receivables",
+    "receipts": "Receipts",
+    "cashPosition": "Cash Position",
+    "generalLedger": "General Ledger",
+    "operations": "Operations",
+    "procurement": "Procurement",
+    "inventory": "Inventory",
+    "reports": "Reports",
+    "administration": "Administration",
     "users": "Users",
     "roles": "Roles",
-    "permissions": "Permissions",
-    "organizations": "Organizations",
+    "exchangeRates": "Exchange Rates",
+    "auditLogs": "Audit Logs",
     "settings": "Settings",
-    "auditLog": "Audit Log",
-    "clients": "Clients",
-    "contracts": "Contracts",
-    "receipts": "Receipts"
+    "workflows": "Workflows",
+    "comingSoon": "Coming soon",
+    "soon": "Soon",
+    "contracts": "Contracts"
+  },
+  "user": {
+    "menuLabel": "Account menu",
+    "signOut": "Sign out",
+    "signOutPending": "Signing out…",
+    "switchLanguage": "Language"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -29,7 +50,17 @@
     "loadFailed": "Could not load projects.",
     "retry": "Try again",
     "noContractValue": "Not set",
-    "viewAll": "View all projects"
+    "viewAll": "View all projects",
+    "kpiActive": "On site",
+    "kpiActiveHint": "Mobilizing, active and in closeout",
+    "kpiPending": "Pending",
+    "kpiPendingHint": "Draft and awaiting approval",
+    "kpiFinished": "Finished",
+    "kpiFinishedHint": "Closed and cancelled",
+    "colProject": "Project",
+    "colClient": "Client",
+    "colStatus": "Status",
+    "colValue": "Contract value"
   },
   "projects": {
     "title": "Projects",
@@ -46,8 +77,17 @@
     "loadFailed": "Could not load projects.",
     "retry": "Try again",
     "noContractValue": "Not set",
+    "workspace": {
+      "navLabel": "Project navigation",
+      "overview": "Overview",
+      "boq": "BOQ",
+      "contracts": "Contracts",
+      "finance": "Finance",
+      "members": "Members"
+    },
     "create": {
       "title": "New project",
+      "breadcrumb": "Projects",
       "subtitle": "A project starts as a draft. You can edit it until it is approved.",
       "codeLabel": "Project code",
       "codeHint": "Cannot be changed after the project is created.",
@@ -176,7 +216,7 @@
     "mixedCurrency": "Mixed currencies",
     "mixedCurrencyDetail": "This section contains amounts in {currencies}, so no total is shown.",
     "mixedCurrencyWarning": "Some sections mix currencies. Totals for those sections are hidden because adding different currencies together would give a meaningless figure.",
-    "noAmount": "â€”",
+    "noAmount": "—",
     "versionStatus": {
       "DRAFT": "Draft",
       "BASELINED": "Baselined",
@@ -257,6 +297,18 @@
     "title": "Users",
     "addUser": "Add User",
     "editUser": "Edit User",
+    "empty": "No users found.",
+    "emptyHint": "Users appear here once they have been added to the organisation.",
+    "loadFailed": "Could not load users.",
+    "retry": "Retry",
+    "colName": "Name",
+    "colEmail": "Email",
+    "colStatus": "Status",
+    "status": {
+      "ACTIVE": "Active",
+      "INACTIVE": "Inactive",
+      "SUSPENDED": "Suspended"
+    },
     "fields": {
       "firstName": "First Name",
       "lastName": "Last Name",
@@ -269,7 +321,24 @@
   "roles": {
     "title": "Roles & Permissions",
     "addRole": "Add Role",
-    "editRole": "Edit Role"
+    "editRole": "Edit Role",
+    "empty": "No roles defined.",
+    "emptyHint": "Roles are created and assigned by the system administrator.",
+    "loadFailed": "Could not load roles.",
+    "retry": "Retry",
+    "colName": "Role name",
+    "colDescription": "Description",
+    "noDescription": "No description"
+  },
+  "auditLogs": {
+    "title": "Audit Logs",
+    "empty": "No audit log entries.",
+    "loadFailed": "Could not load audit logs.",
+    "retry": "Retry",
+    "colTime": "Time",
+    "colUser": "User",
+    "colAction": "Action",
+    "colResource": "Resource"
   },
   "workflows": {
     "title": "Approval Workflows",
@@ -277,7 +346,42 @@
     "approve": "Approve",
     "reject": "Reject",
     "steps": "Approval Steps",
-    "currentStep": "Current Step"
+    "currentStep": "Current Step",
+    "viewer": {
+      "typeLabel": "Transaction type",
+      "loadFailed": "Could not load workflow definition.",
+      "retry": "Retry",
+      "notConfigured": "No workflow configured.",
+      "notConfiguredHint": "No active workflow definition exists for this transaction type. Contact your system administrator to set one up.",
+      "definitionName": "Workflow name",
+      "active": "Active",
+      "inactive": "Inactive",
+      "requiresCeo": "CEO confirmation required",
+      "conditions": "Conditions",
+      "noConditions": "No conditions — this workflow applies to all transactions of this type.",
+      "colField": "Field",
+      "colOperator": "Operator",
+      "colValue": "Value",
+      "steps": "Approval steps",
+      "noSteps": "No steps defined.",
+      "colStep": "Step",
+      "colRole": "Role required",
+      "colOptional": "Optional",
+      "colEscalate": "Escalate after",
+      "colNotify": "Notify roles",
+      "optional": "Optional",
+      "hours": "{hours, plural, one {# hour} other {# hours}}",
+      "types": {
+        "IPC": "IPC — Interim Payment Certificate",
+        "VARIATION": "Variation Order",
+        "MATERIAL_REQUEST": "Material Request",
+        "PURCHASE_ORDER": "Purchase Order",
+        "SUPPLIER_PAYMENT": "Supplier Payment",
+        "STOCK_TRANSFER": "Stock Transfer",
+        "MATERIAL_ISSUE": "Material Issue",
+        "SUBCONTRACT_CERTIFICATE": "Subcontract Certificate"
+      }
+    }
   },
   "lifecycle": {
     "error": {
