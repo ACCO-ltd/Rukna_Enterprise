@@ -8,6 +8,8 @@ import { useContract } from '@/features/contracts/hooks/use-contracts';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 
+import { IpcListPanel } from '@/features/ipc/components/ipc-list-panel';
+
 import { useIpa } from '../hooks/use-ipa';
 import { getIpaActions } from '../ipa-actions';
 import { IpaActionsPanel } from './ipa-actions-panel';
@@ -136,6 +138,12 @@ export function IpaDetail({ contractId, ipaId }: { contractId: string; ipaId: st
         currency={currency}
         contract={contract.data}
         canEdit={actions.canEditLines}
+      />
+
+      <IpcListPanel
+        applicationId={ipa.data.id}
+        contractId={contractId}
+        currency={currency}
       />
     </div>
   );

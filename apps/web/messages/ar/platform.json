@@ -909,6 +909,51 @@
       "draftRestoredHint": "تم استعادة مسودتك.",
       "issueCta": "إصدار الشهادة",
       "supersedeCta": "استبدال الشهادة"
+    },
+    "status": {
+      "CERTIFIED": "معتمدة",
+      "PARTIALLY_CERTIFIED": "معتمدة جزئياً",
+      "REJECTED": "مرفوضة"
+    },
+    "effective": "سارية",
+    "superseded": "مستبدلة",
+    "list": {
+      "heading": "شهادات الدفع",
+      "none": "لم تُصدر أي شهادة لهذا الطلب بعد.",
+      "loadFailed": "تعذّر تحميل الشهادات.",
+      "colRef": "الشهادة",
+      "colStatus": "الحالة",
+      "colNet": "صافي المعتمد",
+      "colIssued": "تاريخ الإصدار",
+      "viewCertificate": "عرض الشهادة"
+    },
+    "detail": {
+      "back": "العودة إلى الطلب",
+      "loadFailed": "تعذّر تحميل هذه الشهادة.",
+      "notFound": "الشهادة غير موجودة.",
+      "grossLabel": "الإجمالي المعتمد",
+      "deductionsLabel": "الاستقطاعات",
+      "netLabel": "صافي المعتمد",
+      "issuedLabel": "تاريخ الإصدار",
+      "currencyLabel": "العملة",
+      "supersededLabel": "تاريخ الاستبدال",
+      "supersessionReasonLabel": "سبب الاستبدال",
+      "itemsHeading": "البنود المعتمدة",
+      "itemsNone": "لا توجد بنود معتمدة.",
+      "colItem": "البند",
+      "colCertifiedQty": "الكمية المعتمدة",
+      "colCertifiedAmount": "المبلغ المعتمد",
+      "colVarianceQty": "الفارق",
+      "colVarianceReason": "السبب",
+      "deductionsHeading": "الاستقطاعات",
+      "deductionsNone": "لا توجد استقطاعات مسجّلة.",
+      "colDeductionType": "النوع",
+      "colDeductionBasis": "الأساس",
+      "colDeductionAmount": "المبلغ",
+      "paymentHeading": "حالة الدفع",
+      "paymentNote": "تفاصيل التخصيص مسجّلة على إيصالات الدفع. استخدم سجل الإيصالات لعرض المدفوعات المطبّقة على هذه الشهادة.",
+      "notesLabel": "ملاحظات",
+      "exchangeRateLabel": "سعر الصرف"
     }
   }
 }

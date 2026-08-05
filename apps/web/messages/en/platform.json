@@ -909,6 +909,51 @@
       "draftRestoredHint": "Your draft has been restored.",
       "issueCta": "Issue Certificate",
       "supersedeCta": "Supersede Certificate"
+    },
+    "status": {
+      "CERTIFIED": "Certified",
+      "PARTIALLY_CERTIFIED": "Partially Certified",
+      "REJECTED": "Rejected"
+    },
+    "effective": "Effective",
+    "superseded": "Superseded",
+    "list": {
+      "heading": "Payment Certificates",
+      "none": "No certificate has been issued for this application.",
+      "loadFailed": "Could not load certificates.",
+      "colRef": "Certificate",
+      "colStatus": "Status",
+      "colNet": "Net Certified",
+      "colIssued": "Issued",
+      "viewCertificate": "View certificate"
+    },
+    "detail": {
+      "back": "Back to application",
+      "loadFailed": "Could not load this certificate.",
+      "notFound": "Certificate not found.",
+      "grossLabel": "Gross Certified",
+      "deductionsLabel": "Deductions",
+      "netLabel": "Net Certified",
+      "issuedLabel": "Issued",
+      "currencyLabel": "Currency",
+      "supersededLabel": "Superseded",
+      "supersessionReasonLabel": "Supersession reason",
+      "itemsHeading": "Certified Lines",
+      "itemsNone": "No certified lines.",
+      "colItem": "Item",
+      "colCertifiedQty": "Certified Qty",
+      "colCertifiedAmount": "Certified Amount",
+      "colVarianceQty": "Variance",
+      "colVarianceReason": "Reason",
+      "deductionsHeading": "Deductions",
+      "deductionsNone": "No deductions recorded.",
+      "colDeductionType": "Type",
+      "colDeductionBasis": "Basis",
+      "colDeductionAmount": "Amount",
+      "paymentHeading": "Payment Status",
+      "paymentNote": "Allocation details are recorded on payment receipts. Use the receipts ledger to view payments applied to this certificate.",
+      "notesLabel": "Notes",
+      "exchangeRateLabel": "Exchange rate"
     }
   }
 }
