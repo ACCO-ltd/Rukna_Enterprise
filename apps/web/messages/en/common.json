@@ -52,5 +52,17 @@
     "reasonTooLong": "Reason cannot exceed {max} characters",
     "working": "Working...",
     "dismiss": "Cancel"
+  },
+  "grid": {
+    "searchPlaceholder": "Search...",
+    "searchLabel": "Search",
+    "results": "{count, plural, =0 {No results} one {1 result} other {# results}}",
+    "noMatches": "No results match your search.",
+    "clearSearch": "Clear search",
+    "loadFailed": "Failed to load data.",
+    "retry": "Try again",
+    "sortAscLabel": "Sort {column} ascending",
+    "sortDescLabel": "Sort {column} descending",
+    "sortLabel": "Sort {column}"
   }
 }
