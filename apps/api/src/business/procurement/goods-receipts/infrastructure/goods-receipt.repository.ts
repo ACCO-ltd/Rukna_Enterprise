@@ -36,6 +36,7 @@ export interface CreateGrnData {
   purchaseOrderId: string;
   purchaseOrderRevisionId: string;
   supplierId: string;
+  status: GrnStatus;
   deliveryDate: Date;
   deliveryNoteRef?: string;
   createdBy: string;
@@ -117,5 +118,36 @@ export class GoodsReceiptRepository {
     return prisma.purchaseOrderLineRequestAllocation.findMany({
       where: { purchaseOrderLineId },
     });
+  }
+
+  // Hierarchical policy resolution: PO → SpendCategory → Organization (ADR-007, Decision 11)
+  async resolveOverReceiptPercent(
+    prisma: TenantPrisma,
+    organizationId: string,
+    purchaseOrderId: string,
+    spendCategoryId?: string,
+  ): Promise<import('@prisma/client/runtime/library').Decimal | null> {
+    // 1. PO-level override
+    const poPolicy = await prisma.overReceiptPolicy.findFirst({
+      where: { organizationId, scopeType: 'PURCHASE_ORDER', purchaseOrderId, status: 'ACTIVE' },
+      orderBy: { effectiveFrom: 'desc' },
+    });
+    if (poPolicy) return poPolicy.overReceiptPercent as import('@prisma/client/runtime/library').Decimal;
+
+    // 2. SpendCategory-level
+    if (spendCategoryId) {
+      const catPolicy = await prisma.overReceiptPolicy.findFirst({
+        where: { organizationId, scopeType: 'SPEND_CATEGORY', spendCategoryId, status: 'ACTIVE' },
+        orderBy: { effectiveFrom: 'desc' },
+      });
+      if (catPolicy) return catPolicy.overReceiptPercent as import('@prisma/client/runtime/library').Decimal;
+    }
+
+    // 3. Organization default
+    const orgPolicy = await prisma.overReceiptPolicy.findFirst({
+      where: { organizationId, scopeType: 'ORGANIZATION', status: 'ACTIVE' },
+      orderBy: { effectiveFrom: 'desc' },
+    });
+    return orgPolicy ? (orgPolicy.overReceiptPercent as import('@prisma/client/runtime/library').Decimal) : null;
   }
 }

@@ -12,8 +12,9 @@ import { GoodsReceiptRepository } from '../infrastructure/goods-receipt.reposito
 import { PurchaseOrderRepository } from '../../purchase-orders/infrastructure/purchase-order.repository.js';
 import { CommitmentLedgerRepository } from '../../commitment-ledger/infrastructure/commitment-ledger.repository.js';
 
-// Org-level default — configurable per ADR-007, Decision 11
-const DEFAULT_OVER_RECEIPT_PERCENT = new Decimal('5');
+// Platform fallback when no OverReceiptPolicy is seeded for the org yet.
+// Seed an OverReceiptPolicy record to override this per ADR-007, Decision 11.
+const PLATFORM_FALLBACK_OVER_RECEIPT_PERCENT = new Decimal('5');
 
 export interface CreateGrnLineDto {
   purchaseOrderLineId: string;
@@ -76,13 +77,21 @@ export class GoodsReceiptService {
         const totalAfter = previouslyReceivedQty.add(new Decimal(line.receivedQuantity));
         const orderedQty = poLine.orderedQuantity as Decimal;
 
-        // Over-receipt check (ADR-007, Rule OVREC-001)
+        // Over-receipt check — reads OverReceiptPolicy (ADR-007, Decision 11; Rule OVREC-001)
+        const resolvedPercent = await this.repo.resolveOverReceiptPercent(
+          prisma,
+          orgId,
+          dto.purchaseOrderId,
+          (poLine as any).spendCategoryId ?? undefined,
+        );
+        const tolerancePercent = resolvedPercent ?? PLATFORM_FALLBACK_OVER_RECEIPT_PERCENT;
+
         const overagePercent = orderedQty.greaterThan(0)
           ? totalAfter.sub(orderedQty).div(orderedQty).mul(100)
           : new Decimal(0);
 
         let status: 'DRAFT' | 'EXCEPTION_PENDING' = 'DRAFT';
-        if (overagePercent.greaterThan(DEFAULT_OVER_RECEIPT_PERCENT)) {
+        if (overagePercent.greaterThan(tolerancePercent)) {
           status = 'EXCEPTION_PENDING';
         }
 
@@ -116,6 +125,7 @@ export class GoodsReceiptService {
       purchaseOrderId: po.id,
       purchaseOrderRevisionId: activeRevision.id,
       supplierId: po.supplierId,
+      status: grnStatus,
       deliveryDate: new Date(dto.deliveryDate),
       deliveryNoteRef: dto.deliveryNoteRef,
       createdBy: identity.userId,

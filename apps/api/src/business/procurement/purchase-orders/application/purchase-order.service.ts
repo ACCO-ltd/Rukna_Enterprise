@@ -280,7 +280,35 @@ export class PurchaseOrderService {
       const poLine = revLines[i];
       const dtoLine = dtoLines[i];
       if (!dtoLine.mrLineAllocations?.length) continue;
+
       for (const alloc of dtoLine.mrLineAllocations) {
+        // Rule ALLOC-001: total PO allocations for an MR line must not exceed MR requestedQuantity
+        const mrLine = await prisma.materialRequestLine.findUnique({
+          where: { id: alloc.materialRequestLineId },
+          include: {
+            poAllocations: {
+              select: { allocatedQuantity: true },
+            },
+          },
+        });
+        if (!mrLine) {
+          throw new BadRequestException(`MR line ${alloc.materialRequestLineId} not found`);
+        }
+
+        const existingTotal = (mrLine.poAllocations as any[]).reduce(
+          (sum: Decimal, a: any) => sum.add(a.allocatedQuantity as Decimal),
+          new Decimal(0),
+        );
+        const newTotal = existingTotal.add(new Decimal(alloc.allocatedQuantity));
+        const cap = (mrLine.approvedQuantity ?? mrLine.requestedQuantity) as Decimal;
+
+        if (newTotal.greaterThan(cap)) {
+          throw new BadRequestException(
+            `MR line ${alloc.materialRequestLineId}: total PO allocation (${newTotal}) would exceed ` +
+            `approved quantity (${cap}). Reduce the allocated quantity.`,
+          );
+        }
+
         await this.repo.createLineAllocation(prisma, {
           organizationId: orgId,
           purchaseOrderLineId: poLine.id,

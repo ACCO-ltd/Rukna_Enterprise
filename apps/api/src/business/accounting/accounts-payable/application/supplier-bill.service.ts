@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ConflictException,
   Inject,
+  Optional,
 } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import type { RequestIdentity } from '@erp/types';
@@ -15,6 +16,7 @@ import {
 import { AccountRepository } from '../../accounting-core/infrastructure/account.repository.js';
 import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
 import { SupplierBillRepository } from '../infrastructure/supplier-bill.repository.js';
+import { CommitmentLedgerRepository } from '../../../../business/procurement/commitment-ledger/infrastructure/commitment-ledger.repository.js';
 
 export interface CreateSupplierBillLineDto {
   description: string;
@@ -56,6 +58,8 @@ export class SupplierBillService {
     private readonly sequenceRepo: DocumentSequenceRepository,
     @Inject(ACCOUNTING_POSTING_PORT)
     private readonly postingPort: IAccountingPostingPort,
+    @Optional()
+    private readonly commitmentLedgerRepo?: CommitmentLedgerRepository,
   ) {}
 
   async create(identity: RequestIdentity, dto: CreateSupplierBillDto) {
@@ -139,6 +143,14 @@ export class SupplierBillService {
     }
     if (bill.postingStatus === 'POSTED') {
       throw new ConflictException(`Bill ${dto.billId} is already posted`);
+    }
+
+    // ADR-007: posting blocked for procurement bills unless matching is complete/approved
+    const POSTABLE_MATCH_STATUSES = ['MATCHED', 'MATCHED_WITH_TOLERANCE', 'APPROVED_EXCEPTION', 'NOT_RUN'];
+    if (bill.purchaseOrderRevisionId && !POSTABLE_MATCH_STATUSES.includes(bill.matchStatus)) {
+      throw new BadRequestException(
+        `Bill posting blocked — match status is ${bill.matchStatus}. Approve the exception before posting.`,
+      );
     }
 
     const apGl = await this.accountRepo.findByCode(prisma, orgId, dto.apAccountCode);
@@ -227,6 +239,49 @@ export class SupplierBillService {
 
         const billNum = await this.sequenceRepo.claimNext(tx as never, orgId, 'SUPPLIER_BILL');
         await this.repo.markPosted(prisma, bill.id, postResult.journalEntryId, billNum.formattedNumber, userId);
+
+        // ACCRUED → ACTUAL commitment movement (ADR-007, Rule CL-003)
+        // Only for procurement-linked bills (purchaseOrderRevisionId present).
+        if (this.commitmentLedgerRepo && bill.purchaseOrderRevisionId) {
+          const billedTotal = new Decimal(bill.totalAmount.toString());
+          const rate = new Decimal(bill.exchangeRateSnapshot.toString());
+          const idempKey = `bill-actual-${bill.id}`;
+          const existing = await this.commitmentLedgerRepo.findByIdempotencyKey(tx as any, idempKey);
+          if (!existing) {
+            // Reverse ACCRUED
+            await this.commitmentLedgerRepo.create(tx as any, {
+              organizationId: orgId,
+              supplierId: bill.supplierId,
+              stage: 'ACCRUED',
+              amount: billedTotal.negated(),
+              currencyCode: bill.currencyCode,
+              reportingAmount: billedTotal.negated().mul(rate),
+              exchangeRateSnapshot: rate,
+              sourceDocumentType: 'SUPPLIER_BILL',
+              sourceDocumentId: bill.id,
+              eventType: 'BILL_POSTED_ACCRUED_REVERSAL',
+              idempotencyKey: idempKey + '-accrued',
+              occurredAt: new Date(),
+              accountingDate: bill.billDate,
+            });
+            // Record ACTUAL
+            await this.commitmentLedgerRepo.create(tx as any, {
+              organizationId: orgId,
+              supplierId: bill.supplierId,
+              stage: 'ACTUAL',
+              amount: billedTotal,
+              currencyCode: bill.currencyCode,
+              reportingAmount: billedTotal.mul(rate),
+              exchangeRateSnapshot: rate,
+              sourceDocumentType: 'SUPPLIER_BILL',
+              sourceDocumentId: bill.id,
+              eventType: 'BILL_POSTED_ACTUAL',
+              idempotencyKey: idempKey,
+              occurredAt: new Date(),
+              accountingDate: bill.billDate,
+            });
+          }
+        }
 
         return { ...postResult, billNumber: billNum.formattedNumber };
       });
