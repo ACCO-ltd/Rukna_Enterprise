@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsDateString, IsOptional } from 'class-validator';
+import { IsString, IsDateString, IsOptional } from 'class-validator';
 
 export class LedgerQueryDto {
   @ApiProperty({ example: '2025-01-01' })

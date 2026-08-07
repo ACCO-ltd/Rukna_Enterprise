@@ -1,5 +1,4 @@
 import { BadRequestException } from '@nestjs/common';
-import type { AccountVersion } from '@prisma/client';
 import type { PostingLineCommand } from '../ports/accounting-posting.port.js';
 import type { TxClient } from '../ports/accounting-posting.port.js';
 

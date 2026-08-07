@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { PrismaClient, SupplierBill } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client';
 import type { Decimal } from '@prisma/client/runtime/library';
 
 type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;

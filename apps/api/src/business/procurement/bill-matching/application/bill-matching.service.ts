@@ -139,9 +139,8 @@ export class BillMatchingService {
     );
 
     const allWithinTolerance = matchLines.every(l => l.withinTolerance);
-    const match = await this.repo.createOrReplace(prisma, billId, matchType, matchLines);
+    await this.repo.createOrReplace(prisma, billId, matchType, matchLines);
 
-    const newStatus = allWithinTolerance ? 'MATCHED' : 'EXCEPTION';
     const finalStatus = allWithinTolerance ? 'MATCHED' : 'MATCHED_WITH_TOLERANCE';
 
     await this.repo.updateStatus(prisma, billId, finalStatus, {

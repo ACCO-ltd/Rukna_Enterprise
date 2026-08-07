@@ -68,11 +68,6 @@ export class CustomerReceiptService {
       throw new ConflictException(`Receipt ${dto.receiptId} is already posted`);
     }
 
-    const bankAccount = await prisma.bankAccount.findFirst({
-      where: { organizationId: orgId },
-      include: { glAccount: { select: { id: true, code: true } } },
-    });
-
     const bankGl = await this.accountRepo.findByCode(prisma, orgId, dto.bankAccountCode);
     if (!bankGl) throw new NotFoundException(`Bank GL account ${dto.bankAccountCode} not found`);
 

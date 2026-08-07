@@ -306,7 +306,7 @@ it('PM-06: reopenPeriod invalidates downstream period snapshots', async () => {
     });
 
     // Post in period 1 (Jan) then period 2 (Feb)
-    for (const [dateStr, periodId] of [
+    for (const [dateStr] of [
       ['2025-01-10', freshEnv.periods.openId],
       ['2025-02-10', freshEnv.periods.lockedId],
     ] as const) {

@@ -173,11 +173,6 @@ export class ManualJournalService {
           });
           if (!version) throw new BadRequestException(`No effective version for account ${line.accountId}`);
 
-          const account = await tx.account.findUniqueOrThrow({
-            where: { id: line.accountId },
-            select: { code: true },
-          });
-
           return {
             accountId: line.accountId,
             debitAmount: line.debitAmount as unknown as Decimal,

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import type { RequestIdentity } from '@erp/types';
 import type { CommitmentStage } from '@prisma/client';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';

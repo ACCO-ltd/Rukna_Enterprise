@@ -161,7 +161,7 @@ test('T02 — Revising a PO creates compensating reversal for old revision and n
   const po = await createAndApprovePo(mrLineId, 100, 500);
 
   // Revise: change unit price from 500 → 600
-  const revised = await svc.poService.revise(identity(env), po.id, {
+  await svc.poService.revise(identity(env), po.id, {
     reason: 'Price adjustment',
     currencyCode: 'USD',
     effectiveFrom: '2026-08-16',
@@ -208,7 +208,7 @@ test('T03 — MR→PO allocation preserves boqNodeId on the MR line', async () =
   // Verify BOQ attribution was set on MR line
   expect(mrLine.boqNodeId).toBe(env.boqNodeId);
 
-  const po = await createAndApprovePo(mrLine.id, 50, 500);
+  await createAndApprovePo(mrLine.id, 50, 500);
   const alloc = await prisma.purchaseOrderLineRequestAllocation.findFirst({
     where: { materialRequestLineId: mrLine.id },
   });
@@ -223,7 +223,7 @@ test('T04 — Second PO allocation that would exceed MR approved quantity is rej
   const mrLineId = mr.lines[0].id;
 
   // First PO: allocate 60 of 80
-  const po1 = await createAndApprovePo(mrLineId, 60, 500);
+  await createAndApprovePo(mrLineId, 60, 500);
 
   // Second PO: try to allocate 30 → total 90, exceeds 80
   await expect(

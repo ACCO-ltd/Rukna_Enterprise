@@ -25,7 +25,6 @@ let svc: AccountingServices;
 // Known amounts posted in beforeAll — used in assertions
 const SEED_REVENUE  = 2000; // Cr rev
 const SEED_EXPENSE  = 800;  // Dr exp
-const SEED_NET      = SEED_REVENUE - SEED_EXPENSE; // 1200
 const SEED_PROJ_REV = 600;  // tagged to projectA
 const SEED_DEPT_REV = 400;  // tagged to deptA
 
