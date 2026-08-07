@@ -1594,17 +1594,551 @@ OPEN ──lock──► LOCKED ──close──► CLOSED ──reopen──�
 
 ---
 
+---
+
+### 6.24 Units of Measure
+
+All MATERIAL procurement lines use a UoM from this table. `MATERIAL` lines are locked to the material's `baseUomCode` — users cannot override it.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/procurement/uom` | List active UoMs |
+| `POST` | `/procurement/uom` | Create a UoM |
+| `GET` | `/procurement/uom/:id` | Get single UoM |
+| `POST` | `/procurement/uom/:id/deactivate` | Deactivate |
+
+**Create body:**
+```json
+{
+  "code": "TON",
+  "name": "Metric Ton",
+  "nameAr": "طن",
+  "symbol": "t"
+}
+```
+
+**Response:**
+```json
+{
+  "id": "clx...",
+  "code": "TON",
+  "name": "Metric Ton",
+  "nameAr": "طن",
+  "symbol": "t",
+  "status": "ACTIVE"
+}
+```
+
+---
+
+### 6.25 Material Categories
+
+Operational hierarchy for the material catalogue (e.g. Steel → Rebar). Separate from spend categories.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/procurement/material-categories` | List root categories + children |
+| `POST` | `/procurement/material-categories` | Create a category |
+| `GET` | `/procurement/material-categories/:id` | Get with children |
+| `POST` | `/procurement/material-categories/:id/deactivate` | Deactivate |
+
+**Create body:**
+```json
+{
+  "code": "STEEL",
+  "name": "Steel & Metal Products",
+  "nameAr": "منتجات الصلب والمعادن",
+  "parentCode": "CONSTRUCTION_MATERIALS"
+}
+```
+
+**Response** (root level includes `children[]`):
+```json
+{
+  "id": "clx...",
+  "code": "STEEL",
+  "name": "Steel & Metal Products",
+  "status": "ACTIVE",
+  "children": [
+    { "id": "clx...", "code": "REBAR", "name": "Reinforcing Bar", "status": "ACTIVE" }
+  ]
+}
+```
+
+---
+
+### 6.26 Spend Categories
+
+Financial governance hierarchy — drives approval routing, tolerance policies, and commitment ledger attribution. **Do not confuse with Material Categories.**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/procurement/spend-categories` | List root categories + children |
+| `POST` | `/procurement/spend-categories` | Create a spend category |
+| `GET` | `/procurement/spend-categories/:id` | Get with children |
+| `POST` | `/procurement/spend-categories/:id/deactivate` | Deactivate |
+
+**Create body:**
+```json
+{
+  "code": "DIRECT_MATERIAL",
+  "name": "Direct Material",
+  "nameAr": "مواد مباشرة",
+  "parentCode": "PROJECT_COSTS"
+}
+```
+
+---
+
+### 6.27 Materials
+
+The material catalogue. Each material belongs to a `MaterialCategory` and optionally has a default `SpendCategory`. `baseUomCode` is enforced on all MATERIAL procurement lines — the UoM cannot be overridden per line.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/procurement/materials` | List active materials |
+| `POST` | `/procurement/materials` | Create a material |
+| `GET` | `/procurement/materials/:id` | Get material with refs |
+| `POST` | `/procurement/materials/:id/discontinue` | Mark discontinued |
+
+**Query params for list:**
+- `materialCategoryId` — filter by category
+- `spendCategoryId` — filter by default spend category
+
+**Create body:**
+```json
+{
+  "code": "REBAR-12MM",
+  "name": "12mm Deformed Steel Rebar",
+  "nameAr": "حديد تسليح 12مم",
+  "materialCategoryCode": "REBAR",
+  "defaultSpendCategoryCode": "DIRECT_MATERIAL",
+  "baseUomCode": "TON"
+}
+```
+
+**Response:**
+```json
+{
+  "id": "clx...",
+  "code": "REBAR-12MM",
+  "name": "12mm Deformed Steel Rebar",
+  "status": "ACTIVE",
+  "materialCategory": { "id": "...", "code": "REBAR", "name": "Reinforcing Bar" },
+  "defaultSpendCategory": { "id": "...", "code": "DIRECT_MATERIAL", "name": "Direct Material" },
+  "baseUom": { "id": "...", "code": "TON", "name": "Metric Ton", "symbol": "t" }
+}
+```
+
+**`status` values:** `ACTIVE` | `INACTIVE` | `DISCONTINUED`
+
+---
+
+### 6.28 Material Requests
+
+A formal internal request for materials or services. Can be PROJECT-scoped (linked to a project) or ORGANIZATION-scoped (admin/overhead).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/procurement/material-requests` | List MRs |
+| `POST` | `/procurement/material-requests` | Create a DRAFT MR |
+| `GET` | `/procurement/material-requests/:id` | Get MR with lines |
+| `POST` | `/procurement/material-requests/:id/submit` | Submit for approval |
+| `POST` | `/procurement/material-requests/:id/approve` | Approve |
+| `POST` | `/procurement/material-requests/:id/cancel` | Cancel |
+
+**Query params for list:**
+- `status` — `DRAFT` | `SUBMITTED` | `APPROVED` | `PARTIALLY_ORDERED` | `FULLY_ORDERED` | `CANCELLED` | `CLOSED`
+- `projectId` — filter by project
+- `scope` — `PROJECT` | `ORGANIZATION`
+
+**Create body:**
+```json
+{
+  "requestScope": "PROJECT",
+  "projectId": "clx...",
+  "requestedDate": "2026-08-10",
+  "requiredByDate": "2026-08-25",
+  "description": "Foundation phase rebar order",
+  "lines": [
+    {
+      "lineType": "MATERIAL",
+      "materialCode": "REBAR-12MM",
+      "description": "12mm deformed rebar for pile caps",
+      "uomCode": "TON",
+      "requestedQuantity": 25,
+      "boqNodeId": "clx...",
+      "spendCategoryId": "clx..."
+    },
+    {
+      "lineType": "SERVICE",
+      "description": "Rebar cutting and bending service",
+      "uomCode": "LOT",
+      "requestedQuantity": 1
+    }
+  ]
+}
+```
+
+> **Rules:**
+> - `requestScope: PROJECT` requires `projectId`. `ORGANIZATION` scope must not have `projectId`.
+> - `lineType: MATERIAL` requires `materialCode`. The UoM is automatically set from the material's `baseUomCode` — do not let users change it.
+> - `lineType: SERVICE` or `OTHER` allows free-text description and any active UoM.
+
+**Response:**
+```json
+{
+  "id": "clx...",
+  "mrNumber": "MR-00001",
+  "requestScope": "PROJECT",
+  "projectId": "clx...",
+  "status": "DRAFT",
+  "requestedDate": "2026-08-10T00:00:00.000Z",
+  "lines": [
+    {
+      "id": "clx...",
+      "lineNumber": 1,
+      "lineType": "MATERIAL",
+      "materialId": "clx...",
+      "description": "12mm deformed rebar for pile caps",
+      "requestedQuantity": "25",
+      "approvedQuantity": null,
+      "material": { "code": "REBAR-12MM", "name": "12mm Deformed Steel Rebar" },
+      "uom": { "code": "TON", "symbol": "t" }
+    }
+  ]
+}
+```
+
+**MR status machine:**
+```
+DRAFT → SUBMITTED → APPROVED → PARTIALLY_ORDERED → FULLY_ORDERED → CLOSED
+  └──────────────────────────────────────────────────────► CANCELLED
+```
+
+---
+
+### 6.29 Purchase Orders
+
+Immutable revision model. Each PO has a stable identity (`PurchaseOrder`) and one or more `PurchaseOrderRevision` records. Lines are immutable once the revision is ACTIVE. GRNs and bills reference specific revision lines.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/procurement/purchase-orders` | List POs |
+| `POST` | `/procurement/purchase-orders` | Create PO (DRAFT revision) |
+| `GET` | `/procurement/purchase-orders/:id` | Get PO with all revisions |
+| `POST` | `/procurement/purchase-orders/:id/submit` | Submit DRAFT → SUBMITTED |
+| `POST` | `/procurement/purchase-orders/:id/approve` | Approve → ACTIVE + CommitmentLedger |
+| `POST` | `/procurement/purchase-orders/:id/revise` | Create new DRAFT revision |
+| `POST` | `/procurement/purchase-orders/:id/cancel` | Cancel PO |
+
+**Query params for list:**
+- `status` — `OPEN` | `CLOSED` | `CANCELLED`
+- `supplierId`
+
+**Create body:**
+```json
+{
+  "supplierId": "clx...",
+  "currencyCode": "SAR",
+  "effectiveFrom": "2026-08-10",
+  "deliveryAddress": "ACCO Site — Block 7, Riyadh",
+  "expectedDeliveryDate": "2026-09-01",
+  "lines": [
+    {
+      "lineType": "MATERIAL",
+      "materialCode": "REBAR-12MM",
+      "description": "12mm deformed rebar",
+      "uomCode": "TON",
+      "orderedQuantity": 25,
+      "unitPrice": 850,
+      "spendCategoryId": "clx...",
+      "mrLineAllocations": [
+        {
+          "materialRequestLineId": "clx...",
+          "allocatedQuantity": 25
+        }
+      ]
+    }
+  ]
+}
+```
+
+> `mrLineAllocations` is optional but strongly recommended — it links PO lines back to MR lines for commitment attribution and project/BOQ cost tracking.
+
+**Approve body:**
+```json
+{
+  "reportingCurrencyCode": "SAR",
+  "exchangeRate": 1.0
+}
+```
+
+> Approval atomically: marks revision ACTIVE, supersedes previous ACTIVE revision (if any), and writes `CommitmentLedgerEntry` records for each line.
+
+**Revise body** (same as create, plus required `reason`):
+```json
+{
+  "reason": "Price increase — supplier revised quote",
+  "supplierId": "clx...",
+  "currencyCode": "SAR",
+  "effectiveFrom": "2026-08-15",
+  "lines": [...]
+}
+```
+
+**Response:**
+```json
+{
+  "id": "clx...",
+  "poNumber": "PO-00001",
+  "status": "OPEN",
+  "currentRevisionId": "clx...",
+  "supplier": { "id": "...", "name": "Al-Farouk Steel Co." },
+  "revisions": [
+    {
+      "id": "clx...",
+      "revisionNumber": 1,
+      "status": "ACTIVE",
+      "currencyCode": "SAR",
+      "effectiveFrom": "2026-08-10T00:00:00.000Z",
+      "approvedAt": "2026-08-10T09:15:00.000Z",
+      "lines": [
+        {
+          "id": "clx...",
+          "lineNumber": 1,
+          "lineType": "MATERIAL",
+          "description": "12mm deformed rebar",
+          "orderedQuantity": "25",
+          "unitPrice": "850",
+          "extendedAmount": "21250.00",
+          "material": { "code": "REBAR-12MM", "name": "12mm Deformed Steel Rebar" },
+          "uom": { "code": "TON", "symbol": "t" }
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Revision status machine:**
+```
+DRAFT → SUBMITTED → APPROVED → ACTIVE ──superseded──► SUPERSEDED
+                                     └──cancelled──► CANCELLED
+```
+
+**PO status:** `OPEN` | `CLOSED` | `CANCELLED`
+
+> When displaying a PO, show only the **ACTIVE** revision lines to users. Show SUPERSEDED revisions in a collapsible history panel.
+
+---
+
+### 6.30 Goods Receipts
+
+Records physical delivery against an ACTIVE PO revision. Each line records the full physical quantity received, then splits into `acceptedQuantity` and `rejectedQuantity`. Only accepted quantity generates ACCRUED commitment movement.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/procurement/goods-receipts` | List GRNs |
+| `POST` | `/procurement/goods-receipts` | Create GRN (DRAFT) |
+| `GET` | `/procurement/goods-receipts/:id` | Get GRN with lines + allocations |
+| `POST` | `/procurement/goods-receipts/:id/post` | Post GRN → COMMITTED→ACCRUED |
+| `POST` | `/procurement/goods-receipts/:id/cancel` | Cancel (not allowed after POSTED) |
+
+**Query params for list:**
+- `purchaseOrderId` — filter by PO
+
+**Create body:**
+```json
+{
+  "purchaseOrderId": "clx...",
+  "deliveryDate": "2026-08-18",
+  "deliveryNoteRef": "DN-2026-0042",
+  "lines": [
+    {
+      "purchaseOrderLineId": "clx...",
+      "receivedQuantity": 24,
+      "acceptedQuantity": 23,
+      "rejectedQuantity": 1,
+      "rejectionReason": "Surface rust on 1 bundle",
+      "qualityStatus": "PARTIALLY_ACCEPTED"
+    }
+  ]
+}
+```
+
+> **Rules:**
+> - `acceptedQuantity + rejectedQuantity` must equal `receivedQuantity` (400 if not).
+> - If total received exceeds the PO ordered quantity by more than 5%, the GRN is created with status `EXCEPTION_PENDING` and cannot be posted until the exception is resolved or a PO revision is approved.
+> - `qualityStatus`: `PENDING_INSPECTION` | `ACCEPTED` | `PARTIALLY_ACCEPTED` | `REJECTED`
+
+**Post body:**
+```json
+{
+  "exchangeRate": 1.0,
+  "reportingCurrencyCode": "SAR"
+}
+```
+
+> Posting atomically writes two `CommitmentLedgerEntry` rows per line: `COMMITTED -amount` and `ACCRUED +amount`. The GRN becomes immutable after posting.
+
+**Response:**
+```json
+{
+  "id": "clx...",
+  "grnNumber": "GRN-00001",
+  "status": "POSTED",
+  "purchaseOrderId": "clx...",
+  "supplierId": "clx...",
+  "deliveryDate": "2026-08-18T00:00:00.000Z",
+  "postedAt": "2026-08-18T11:30:00.000Z",
+  "lines": [
+    {
+      "id": "clx...",
+      "lineNumber": 1,
+      "purchaseOrderLineId": "clx...",
+      "orderedQuantity": "25",
+      "previouslyReceivedQty": "0",
+      "receivedQuantity": "24",
+      "acceptedQuantity": "23",
+      "rejectedQuantity": "1",
+      "rejectionReason": "Surface rust on 1 bundle",
+      "qualityStatus": "PARTIALLY_ACCEPTED",
+      "allocations": [...]
+    }
+  ]
+}
+```
+
+**GRN status machine:**
+```
+DRAFT ──post──► POSTED  (immutable)
+  │
+  └──cancel──► CANCELLED
+  └──(over-receipt)──► EXCEPTION_PENDING
+```
+
+---
+
+### 6.31 Bill Matching
+
+Explicit matching of a supplier bill against PO lines (and GRN lines for MATERIAL). The bill's `matchStatus` must be `MATCHED`, `MATCHED_WITH_TOLERANCE`, or `APPROVED_EXCEPTION` before posting is allowed.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/procurement/bill-matching/:billId` | Get current match result |
+| `POST` | `/procurement/bill-matching/:billId/run` | Run matching (TWO_WAY or THREE_WAY) |
+| `POST` | `/procurement/bill-matching/:billId/approve-exception` | Approve exception |
+
+> The match type is determined automatically: if any bill line has `lineType: MATERIAL`, the match is `THREE_WAY` (PO ↔ GRN ↔ Bill). Otherwise `TWO_WAY` (PO ↔ Bill only).
+
+**Run matching** — no body required.
+
+**Approve exception body:**
+```json
+{ "approvalReason": "Price variance within CFO approved limit — see email 2026-08-20" }
+```
+
+**Match result response:**
+```json
+{
+  "id": "clx...",
+  "supplierBillId": "clx...",
+  "matchType": "THREE_WAY",
+  "status": "MATCHED_WITH_TOLERANCE",
+  "matchedAt": "2026-08-19T10:00:00.000Z",
+  "matchedBy": "clx...",
+  "lines": [
+    {
+      "purchaseOrderLineId": "clx...",
+      "goodsReceiptLineId": "clx...",
+      "poQuantity": "25",
+      "receivedQuantity": "23",
+      "billedQuantity": "23",
+      "poUnitPrice": "850.00",
+      "billedUnitPrice": "855.00",
+      "quantityVariance": "-2",
+      "priceVariance": "5.00",
+      "amountVariance": "115.00",
+      "withinTolerance": true
+    }
+  ]
+}
+```
+
+**`matchStatus` values on `SupplierBill`:**
+| Value | Meaning |
+|-------|---------|
+| `NOT_RUN` | Matching not yet executed |
+| `MATCHED` | All lines within tolerance — posting allowed |
+| `MATCHED_WITH_TOLERANCE` | Variance exists but within tolerance — posting allowed |
+| `EXCEPTION` | Variance exceeds tolerance — posting blocked |
+| `APPROVED_EXCEPTION` | Exception approved by authorised user — posting allowed |
+
+> **UI rule:** The "Post Bill" button must be disabled whenever `matchStatus` is `NOT_RUN` or `EXCEPTION`. Show a clear explanation of why.
+
+---
+
+### 6.32 Commitment Ledger
+
+Read-only query endpoints. The ledger is written automatically by PO approval and GRN posting — there is no create/update endpoint.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/procurement/commitment-ledger/projects/:projectId` | Query entries for a project |
+| `GET` | `/procurement/commitment-ledger/projects/:projectId/summary` | Summarized totals |
+| `GET` | `/procurement/commitment-ledger/purchase-orders/:poId` | Entries for a single PO |
+
+**Query params for project entries:**
+- `stage` — `COMMITTED` | `ACCRUED` | `ACTUAL`
+- `boqNodeId` — filter by BOQ node
+
+**Project summary response:**
+```json
+{
+  "committed": "21250.00",
+  "accrued": "19550.00",
+  "actual": "0.00"
+}
+```
+
+> `committed` = total PO value not yet received (purchase orders approved but goods not yet confirmed)
+> `accrued` = goods received and accepted but supplier bill not yet posted
+> `actual` = supplier bill posted to GL
+
+**Ledger entry response:**
+```json
+{
+  "id": "clx...",
+  "stage": "COMMITTED",
+  "amount": "21250.00",
+  "reportingAmount": "21250.00",
+  "currencyCode": "SAR",
+  "sourceDocumentType": "PURCHASE_ORDER_REVISION",
+  "sourceDocumentId": "clx...",
+  "eventType": "PO_APPROVED",
+  "accountingDate": "2026-08-10",
+  "purchaseOrderId": "clx...",
+  "spendCategoryId": "clx...",
+  "projectId": "clx...",
+  "boqNodeId": "clx..."
+}
+```
+
+---
+
 ## 9. What Is NOT Built Yet (Do Not Call)
 
 These features are planned but endpoints do not exist:
 
-- Procurement: Subcontracts / Purchase Orders / Goods Receipt Notes (Sprint 5)
-- Inventory: Stock Ledger / Stock Transfers / Material Catalogue (Sprint 6)
-- Cost Ledger / Project Costing (Sprint 6)
-- Daily Progress Reports / Measurement Sheets (Sprint 8)
-- Labour Attendance / Equipment Logs (Sprint 8)
-- File uploads / Attachment storage (tables exist in DB, no file serving yet — Sprint 5)
-- Notifications / Expiry alerts (Sprint 5 attention engine)
+- Procurement: Subcontracts / Supplier Returns (Sprint 6+)
+- Variations / Change Orders (Sprint 6)
+- Inventory: Stock Ledger / Stock Transfers (Sprint 7)
+- Cost Ledger / Project Costing (Sprint 7)
+- Daily Progress Reports / Measurement Sheets (Sprint 9)
+- Labour Attendance / Equipment Logs (Sprint 9)
+- File uploads / Attachment storage (tables exist in DB, no file serving yet)
+- Notifications / Expiry alerts
 - Cash Flow Statement (deferred — requires indirect-method computation)
 - Advanced bank reconciliation — statement import and auto-matching
 - Tax reporting — VAT return computation and filing

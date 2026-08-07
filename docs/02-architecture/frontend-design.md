@@ -1079,3 +1079,473 @@ Finance
 
 The Setup group can be collapsed by default once the one-time wizard is complete. Keep
 "Chart of Accounts" and "Fiscal Years" always accessible after setup.
+
+---
+
+## 12. Procurement Workspace — Sprint 5 Frontend
+
+This section is the build spec for everything under the **Procurement** sidebar group. Read `api-reference.md` sections 6.24–6.32 alongside this spec — every field name, status value, and rule referenced here maps 1:1 to those endpoint docs.
+
+---
+
+### 12.1 Where Procurement Lives in the Navigation
+
+Procurement is a top-level sidebar group, same level as Finance. It is **not** inside a project workspace — it is organisation-wide.
+
+```
+Sidebar
+├── Dashboard
+├── Projects            ← existing
+├── Finance             ← existing (Accounting)
+├── Procurement         ← NEW (this sprint)
+│   ├── Setup
+│   │   ├── Units of Measure
+│   │   ├── Material Categories
+│   │   ├── Spend Categories
+│   │   └── Materials
+│   ├── Requests        ← Material Requests
+│   ├── Orders          ← Purchase Orders
+│   ├── Receipts        ← Goods Receipt Notes
+│   ├── Bill Matching
+│   └── Commitments     ← Commitment Ledger
+├── Receipts            ← Sprint 3 client receipts (unchanged)
+└── Settings
+```
+
+The Setup sub-group can be collapsed by default for non-admin users. Always show it for users with `manage:procurement-config`.
+
+---
+
+### 12.2 Permission Gating
+
+| Permission | Controls |
+|------------|---------|
+| `view:procurement` | See any procurement page (minimum required) |
+| `manage:procurement-config` | Create/deactivate UoM, Material Categories, Spend Categories, Materials |
+| `create:material-request` | Create MR |
+| `approve:material-request` | Approve MR (submit is available to the requester) |
+| `create:purchase-order` | Create PO |
+| `approve:purchase-order` | Approve PO (triggers commitment creation — gate this carefully) |
+| `create:goods-receipt` | Create and post GRN |
+| `approve:matching-exception` | Approve a bill matching exception |
+| `view:commitment-ledger` | See the commitment ledger and summary |
+
+Hide the sidebar group entirely if the user has no `view:procurement`. Show each sub-page only if the relevant permission is present. Never rely on frontend permission checks alone — the backend enforces them too; missing permissions return `403`.
+
+---
+
+### 12.3 Build Order
+
+Build in this sequence. Each tier depends on the tier above being stable.
+
+| Tier | What | Why first |
+|------|------|-----------|
+| **A — Master Data** | UoM, Material Categories, Spend Categories, Materials | All other screens need these lookups |
+| **B — Material Requests** | MR list, create, detail, lifecycle | Prerequisite for PO allocation linking |
+| **C — Purchase Orders** | PO list, create, detail, revision history | Drives commitments |
+| **D — Goods Receipts** | GRN list, create, detail, post | COMMITTED→ACCRUED movement |
+| **E — Bill Matching** | Match result view, exception approval | Posting gate on supplier bills |
+| **F — Commitments** | Commitment ledger per project, summary widget | Read-only; can be built last |
+
+---
+
+### 12.4 Tier A — Master Data Setup Screens
+
+All four screens follow the same pattern: a list table, a create drawer/dialog, and a deactivate action. No edit — deactivate and recreate.
+
+#### Units of Measure
+
+**List screen** (`/procurement/setup/uom`):
+- Table: Code | Name | Symbol | Status
+- Filter: status (ACTIVE / INACTIVE)
+- Action: "New Unit of Measure" → create drawer
+- Row action: Deactivate (confirm dialog) — only if no materials use this UoM
+
+**Create drawer fields:**
+| Field | Type | Notes |
+|-------|------|-------|
+| Code | Text | max 20 chars, uppercase recommended |
+| Name | Text | English |
+| Name (Arabic) | Text | optional RTL input |
+| Symbol | Text | max 10 chars (e.g. `m³`, `t`) |
+
+#### Material Categories
+
+**List screen** (`/procurement/setup/material-categories`):
+- Render as a **tree table** — root rows expand to show children (the API returns root categories with `children[]` nested)
+- Columns: Code | Name | Status | Actions
+- "New Category" button → create drawer (shows parent code picker for sub-categories)
+- Deactivate cascades visually — warn user that deactivating a parent hides its children too
+
+#### Spend Categories
+
+**List screen** (`/procurement/setup/spend-categories`):
+- Same tree table pattern as Material Categories
+- Important UI note: always label this "Spend Category" — never "Cost Category" or "Material Category". They are different entities serving different purposes.
+
+#### Materials
+
+**List screen** (`/procurement/setup/materials`):
+- Table: Code | Name | Base UoM | Material Category | Default Spend Category | Status
+- Filters: `materialCategoryId`, `spendCategoryId`, status
+- "New Material" button → create drawer
+- Row action: Discontinue (status → `DISCONTINUED`)
+
+**Create drawer fields:**
+| Field | Type | Notes |
+|-------|------|-------|
+| Code | Text | max 50 chars |
+| Name | Text | English |
+| Name (Arabic) | Text | optional |
+| Description | Textarea | optional |
+| Material Category | Select (searchable) | fetched from `/procurement/material-categories` |
+| Default Spend Category | Select (searchable) | fetched from `/procurement/spend-categories`, optional |
+| Base Unit of Measure | Select | fetched from `/procurement/uom` — this cannot be changed after creation |
+
+> **Warn the user on the Base UoM field:** "Once the material is created, the unit of measure cannot be changed. All purchase orders and goods receipts for this material will use this unit."
+
+---
+
+### 12.5 Tier B — Material Requests
+
+#### MR List Screen (`/procurement/requests`)
+
+- Table: MR Number | Scope | Project | Requested Date | Required By | Lines | Status
+- Status badge: `DRAFT` (grey) | `SUBMITTED` (blue) | `APPROVED` (green) | `PARTIALLY_ORDERED` (amber) | `FULLY_ORDERED` (teal) | `CANCELLED` (red) | `CLOSED` (slate)
+- Filters: status, scope (PROJECT / ORGANIZATION), projectId (searchable project picker)
+- "New Material Request" → create page
+
+#### MR Create Page
+
+Two-step flow works best here given the line complexity.
+
+**Step 1 — Header:**
+| Field | Type | Notes |
+|-------|------|-------|
+| Scope | Radio: PROJECT / ORGANIZATION | |
+| Project | Searchable select | required if scope = PROJECT, hidden if ORGANIZATION |
+| Request Date | Date picker | defaults to today |
+| Required By | Date picker | optional |
+| Description | Text | |
+
+**Step 2 — Lines (table editor):**
+- Each row: Line Type | Material (if MATERIAL) | Description | UoM | Requested Qty | BOQ Node | Spend Category
+- Line Type is `MATERIAL` / `SERVICE` / `OTHER`
+- When `MATERIAL` is selected: show a **Material picker** (search by code or name). On selection, auto-fill Description from material name and lock UoM to the material's base UoM — the UoM field becomes read-only and shows "Locked to material base UoM".
+- When `SERVICE` or `OTHER`: Description is free text, UoM is a normal select from active UoMs.
+- BOQ Node and Spend Category are optional (contextual — most relevant for PROJECT scope lines).
+
+**Line table column order:**
+```
+# | Type | Material | Description | UoM | Qty | BOQ Node | Spend Category | [delete]
+```
+
+#### MR Detail Page
+
+- Header card: MR number, scope, project, status badge, requested/required dates, description
+- Lines table: all line fields read-only
+- Status timeline: show current status with history if available
+- Action bar (based on status):
+
+| Current Status | Actions available |
+|----------------|------------------|
+| `DRAFT` | Submit, Cancel |
+| `SUBMITTED` | Approve (permission: `approve:material-request`), Cancel |
+| `APPROVED` | Cancel, Close |
+| `PARTIALLY_ORDERED` | Close |
+| Any terminal | — |
+
+- When `CANCELLED` or `CLOSED` — show read-only banner, no actions.
+
+---
+
+### 12.6 Tier C — Purchase Orders
+
+#### PO List Screen (`/procurement/orders`)
+
+- Table: PO Number | Supplier | Currency | Revision | Status | Effective From | Lines | Total Amount
+- "Total Amount" = sum of `extendedAmount` on the ACTIVE revision's lines
+- Status badge: `OPEN` (green) | `CLOSED` (slate) | `CANCELLED` (red)
+- Filters: status, supplierId (supplier picker)
+- "New Purchase Order" → create page
+
+#### PO Create Page
+
+Two-step flow:
+
+**Step 1 — Header:**
+| Field | Type | Notes |
+|-------|------|-------|
+| Supplier | Searchable select | from `/suppliers` |
+| Currency | Select | active currencies |
+| Effective From | Date picker | date this revision takes effect |
+| Delivery Address | Text | |
+| Expected Delivery | Date picker | optional |
+
+**Step 2 — Lines (table editor):**
+Same line editor pattern as MR, but adds:
+- `Unit Price` column
+- `Extended Amount` (auto-calculated = qty × price, display-only)
+- `MR Line Allocations` — optional expandable per-line section where the user links this PO line to one or more approved MR lines with an allocated quantity
+
+**MR Line allocation UI:**
+- Small "Link to MR" button per PO line
+- Opens a mini-picker: shows approved MRs (filtered to same project if project-scoped), select MR → select specific line → enter quantity
+- Multiple allocations per PO line are supported
+- Show the linked MR number + line number as a chip on the PO line row
+
+#### PO Detail Page
+
+- Header card: PO number, supplier, current status, current revision number
+- **Revision tabs** at the top: show all revisions as numbered tabs (Rev 1, Rev 2 …). Active revision is pre-selected, SUPERSEDED shown in muted style.
+- On each revision tab: show revision status, effective date, approval info, lines table
+- Lines table (read-only for ACTIVE/SUPERSEDED): Code | Description | UoM | Qty | Unit Price | Extended | Spend Category
+- **MR Allocations** panel below lines: shows which MR lines this PO line was allocated against (for traceability)
+
+**Action bar (based on PO + revision status):**
+
+| PO Status | Current revision status | Actions |
+|-----------|------------------------|---------|
+| OPEN | DRAFT | Submit revision, Cancel PO |
+| OPEN | SUBMITTED | Approve (opens approval drawer), Cancel PO |
+| OPEN | ACTIVE | Revise (create new DRAFT revision), Cancel PO |
+| OPEN | EXCEPTION_PENDING | — (wait for GRN exception resolution) |
+| CANCELLED / CLOSED | any | — |
+
+**Approve drawer** (when approving a revision):
+- Fields: Reporting Currency (pre-filled from org default), Exchange Rate (1.0 if same currency)
+- Warning banner: "Approving this revision will create Commitment Ledger entries totalling [amount]. If a previous revision exists, its uncommitted balance will be reversed."
+- Confirm button
+
+**Revise drawer** (when creating a new revision):
+- Same as create page Step 2 (lines editor) + required Reason field
+- Pre-populate lines from current ACTIVE revision
+
+---
+
+### 12.7 Tier D — Goods Receipts
+
+#### GRN List Screen (`/procurement/receipts`)
+
+> Note: "Receipts" in this context means Goods Receipt Notes (procurement). The existing client payment receipts are in `/receipts` — use a distinct route like `/procurement/receipts` or `/procurement/grn` to avoid confusion.
+
+- Table: GRN Number | PO Number | Supplier | Delivery Date | Delivery Note Ref | Status
+- Status badge: `DRAFT` (grey) | `POSTED` (green) | `EXCEPTION_PENDING` (amber) | `CANCELLED` (red)
+- Filter: `purchaseOrderId`
+- "New Goods Receipt" → create page
+
+#### GRN Create Page
+
+**Step 1 — Header:**
+| Field | Type | Notes |
+|-------|------|-------|
+| Purchase Order | Searchable select | shows only OPEN POs with ACTIVE revision |
+| Delivery Date | Date picker | required |
+| Delivery Note Ref | Text | optional (supplier's delivery note number) |
+
+**Step 2 — Lines (auto-populated from PO):**
+- On PO selection, pre-populate one GRN line per ACTIVE revision PO line
+- Each row shows: Material/Description | Ordered Qty | Previously Received | Received Qty* | Accepted Qty* | Rejected Qty* | Rejection Reason | Quality Status
+- Fields marked `*` are editable
+- `Accepted + Rejected` must equal `Received` — show inline validation if not
+- `Quality Status` select: `PENDING_INSPECTION` | `ACCEPTED` | `PARTIALLY_ACCEPTED` | `REJECTED`
+- If total received per line would exceed PO ordered qty by >5%, show a warning banner: "This delivery exceeds the ordered quantity by more than 5%. The GRN will be saved with status EXCEPTION_PENDING and cannot be posted until the exception is resolved."
+
+#### GRN Detail Page
+
+- Header card: GRN number, PO number, supplier, delivery date, delivery note ref, status
+- Lines table: all columns (ordered / previously received / received / accepted / rejected / quality)
+- Exception banner if `status = EXCEPTION_PENDING`: amber callout explaining over-receipt, action is to either revise the PO or contact the supplier
+- Action bar:
+
+| Status | Actions |
+|--------|---------|
+| `DRAFT` | Post (opens post drawer), Cancel |
+| `EXCEPTION_PENDING` | — (resolve via PO revision first) |
+| `POSTED` | — (immutable) |
+| `CANCELLED` | — |
+
+**Post drawer:**
+- Fields: Reporting Currency (pre-filled), Exchange Rate
+- Summary of COMMITTED→ACCRUED movements that will be created
+- Confirm button
+
+---
+
+### 12.8 Tier E — Bill Matching
+
+Bill matching is accessed **from the Supplier Bill detail page**, not as a standalone list. Add a "Matching" tab to the existing Supplier Bill detail page (built in Sprint 4 AP module).
+
+#### Matching Tab on Supplier Bill Detail
+
+**Before matching is run** (`matchStatus: NOT_RUN`):
+- Show an empty state panel: "Matching not yet run"
+- "Run Matching" button (available if bill has a linked PO revision and is not yet POSTED)
+- Explain the match type that will be used: "This bill contains material lines — Three-Way Matching will be applied (PO ↔ GRN ↔ Bill)."
+
+**After matching is run:**
+Show a match result table:
+
+| PO Line | PO Qty | Received Qty | Billed Qty | PO Price | Billed Price | Qty Variance | Price Variance | Within Tolerance |
+|---------|--------|-------------|------------|----------|--------------|--------------|----------------|-----------------|
+| 12mm Rebar | 25 | 23 | 23 | 850.00 | 855.00 | 0 | +5.00 | ✓ |
+
+- `Within Tolerance` column: green checkmark if true, red X if false
+- Overall match status badge at the top of the tab
+
+**Status-based UI on the Matching tab:**
+
+| `matchStatus` | UI |
+|---------------|----|
+| `NOT_RUN` | Empty state + Run Matching button |
+| `MATCHED` | Green banner "All lines matched within tolerance" |
+| `MATCHED_WITH_TOLERANCE` | Amber banner "Matched with variance within tolerance" — Post button enabled on main tab |
+| `EXCEPTION` | Red banner "Variance exceeds tolerance — posting blocked". Show Approve Exception button (requires `approve:matching-exception`) |
+| `APPROVED_EXCEPTION` | Amber banner "Exception approved by [name] on [date]" — Post button enabled on main tab |
+
+**Approve Exception drawer:**
+- Text area: Approval Reason (required)
+- Confirm button
+
+#### Post Bill button (on the bill's main Actions tab)
+
+The existing "Post" button from Sprint 4 must now check `matchStatus`:
+- If `NOT_RUN` or `EXCEPTION`: disable the button and show tooltip: "Matching must pass before posting. Open the Matching tab."
+- If `MATCHED`, `MATCHED_WITH_TOLERANCE`, or `APPROVED_EXCEPTION`: enable as normal.
+
+---
+
+### 12.9 Tier F — Commitment Ledger
+
+#### Project Commitment Summary Widget
+
+Add a **Commitments card** to the Project Command Center (alongside the existing KPI cards):
+
+```
+┌─────────────────────────────────────────────┐
+│  Cost Commitments                           │
+│                                             │
+│  Committed   SAR 21,250                     │  ← PO approved, not yet received
+│  Accrued     SAR 19,550                     │  ← Received, bill not yet posted
+│  Actual      SAR 0                          │  ← Bill posted to GL
+│                                             │
+│  [View Commitment Ledger →]                 │
+└─────────────────────────────────────────────┘
+```
+
+Data from `GET /procurement/commitment-ledger/projects/:projectId/summary`.
+
+Fetch this on the Project Command Center page when `view:commitment-ledger` is present. If permission is absent, hide the card entirely.
+
+#### Commitment Ledger Screen (`/procurement/commitments`)
+
+- Header: project picker (required — there is no org-wide ledger view)
+- Stage filter tabs: All | Committed | Accrued | Actual
+- BOQ Node filter (optional — searchable BOQ node picker)
+- Table: Date | Event Type | Stage | Amount | Currency | Spend Category | PO Number | BOQ Node | Source Doc
+
+**Stage badge colours:**
+- `COMMITTED` — blue (purchase order approved, goods not yet received)
+- `ACCRUED` — amber (goods received and accepted, bill not yet posted)
+- `ACTUAL` — green (bill posted to GL)
+
+**Source doc link:** if `sourceDocumentType = PURCHASE_ORDER_REVISION`, show a link chip "PO-XXXXX" that navigates to the PO detail page. Similarly for `GOODS_RECEIPT`.
+
+**Amount display:**
+- Show `reportingAmount` in the org reporting currency
+- Show `amount + currencyCode` in a secondary line if the PO currency differs from reporting currency
+
+---
+
+### 12.10 Common Procurement Component Patterns
+
+**`<ProcurementStatusBadge status={...} />`**
+
+Render a coloured badge for all procurement status values. Suggested colour map:
+
+| Status | Colour |
+|--------|--------|
+| `DRAFT` | slate |
+| `SUBMITTED` | blue |
+| `APPROVED` | green |
+| `ACTIVE` | green |
+| `PARTIALLY_ORDERED` | amber |
+| `FULLY_ORDERED` | teal |
+| `POSTED` | green |
+| `EXCEPTION_PENDING` | amber |
+| `SUPERSEDED` | slate (muted) |
+| `CANCELLED` | red |
+| `CLOSED` | slate |
+| `DISCONTINUED` | red |
+
+**`<MaterialPicker onSelect={fn} />`**
+
+- Search by code or name (debounced, calls `GET /procurement/materials?search=...`)
+- Show code + name + base UoM symbol in the dropdown
+- On selection, returns the full material object so the caller can lock the UoM
+
+**`<UomDisplay uom={...} locked={boolean} />`**
+
+- If `locked=true`, show the UoM symbol with a lock icon and tooltip "Locked to material base unit"
+- If `locked=false`, render a normal select from active UoMs
+
+**`<CommitmentStageTag stage={...} />`**
+
+- Three distinct pill styles for `COMMITTED` (blue) / `ACCRUED` (amber) / `ACTUAL` (green)
+- Include a small tooltip explaining what each stage means (for users unfamiliar with procurement accounting)
+
+**`<QuantitySplit received accepted rejected />`**
+
+Used on GRN lines to show the three-way quantity split visually:
+
+```
+Received: 24  [Accepted: 23 ░░░░░░░░░░░] [Rejected: 1 ▓]
+```
+
+---
+
+### 12.11 Procurement Error States
+
+| HTTP | Code | Screen | User-facing message |
+|------|------|--------|---------------------|
+| 400 | — | MR Create | "PROJECT-scoped requests require a project to be selected." |
+| 400 | — | MR Create | "Material lines must have a material selected. The unit of measure is set automatically." |
+| 400 | — | GRN Create | "Accepted + rejected quantity must equal received quantity on line [n]." |
+| 409 | — | PO Approve | "Another ACTIVE revision exists — submit or cancel it before creating a new one." |
+| 409 | — | GRN Post | "This goods receipt is [status] and cannot be posted." |
+| 409 | — | GRN Create | "The purchase order has no ACTIVE revision to receive against." |
+| 409 | — | Bill Post | "This bill cannot be posted — matching result is [matchStatus]. Open the Matching tab." |
+| 404 | — | Any | "The requested record was not found. It may have been cancelled or deleted." |
+| 403 | — | Any | "You do not have permission to perform this action." |
+
+---
+
+### 12.12 Procurement Navigation Update (Summary)
+
+Add to the global sidebar `<PlatformSidebar>` component, after Finance and before Settings:
+
+```tsx
+{hasPermission('view:procurement') && (
+  <SidebarGroup label="Procurement" icon={<ShoppingCartIcon />}>
+    {hasPermission('manage:procurement-config') && (
+      <SidebarGroup label="Setup" collapsible defaultCollapsed>
+        <SidebarItem href="/procurement/setup/uom" label="Units of Measure" />
+        <SidebarItem href="/procurement/setup/material-categories" label="Material Categories" />
+        <SidebarItem href="/procurement/setup/spend-categories" label="Spend Categories" />
+        <SidebarItem href="/procurement/setup/materials" label="Materials" />
+      </SidebarGroup>
+    )}
+    <SidebarItem href="/procurement/requests" label="Requests" />
+    <SidebarItem href="/procurement/orders" label="Orders" />
+    <SidebarItem href="/procurement/grn" label="Receipts" />
+    <SidebarItem href="/procurement/bill-matching" label="Bill Matching" />
+    {hasPermission('view:commitment-ledger') && (
+      <SidebarItem href="/procurement/commitments" label="Commitments" />
+    )}
+  </SidebarGroup>
+)}
+```
+
+Also update the **Supplier Bill detail page** (existing Sprint 4 component) to:
+1. Add a "Matching" tab to the tab bar
+2. Gate the "Post" button on `matchStatus` — see section 12.8
