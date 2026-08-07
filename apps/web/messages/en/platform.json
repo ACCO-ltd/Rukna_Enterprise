@@ -3,21 +3,42 @@
     "primaryNavLabel": "Main navigation",
     "openMenu": "Open navigation menu",
     "closeMenu": "Close navigation menu",
-    "accountMenuLabel": "Account menu",
-    "skipToContent": "Skip to main content"
+    "skipToContent": "Skip to main content",
+    "searchLabel": "Global search",
+    "searchPlaceholder": "Search… (coming soon)",
+    "attentionLabel": "Attention required",
+    "attentionNone": "No items require your attention"
   },
   "nav": {
     "dashboard": "Dashboard",
+    "portfolio": "Portfolio",
     "projects": "Projects",
+    "clients": "Clients",
+    "finance": "Finance",
+    "receivables": "Receivables",
+    "receipts": "Receipts",
+    "cashPosition": "Cash Position",
+    "generalLedger": "General Ledger",
+    "operations": "Operations",
+    "procurement": "Procurement",
+    "inventory": "Inventory",
+    "reports": "Reports",
+    "administration": "Administration",
     "users": "Users",
     "roles": "Roles",
-    "permissions": "Permissions",
-    "organizations": "Organizations",
+    "exchangeRates": "Exchange Rates",
+    "auditLogs": "Audit Logs",
     "settings": "Settings",
-    "auditLog": "Audit Log",
-    "clients": "Clients",
-    "contracts": "Contracts",
-    "receipts": "Receipts"
+    "workflows": "Workflows",
+    "comingSoon": "Coming soon",
+    "soon": "Soon",
+    "contracts": "Contracts"
+  },
+  "user": {
+    "menuLabel": "Account menu",
+    "signOut": "Sign out",
+    "signOutPending": "Signing out…",
+    "switchLanguage": "Language"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -29,7 +50,17 @@
     "loadFailed": "Could not load projects.",
     "retry": "Try again",
     "noContractValue": "Not set",
-    "viewAll": "View all projects"
+    "viewAll": "View all projects",
+    "kpiActive": "On site",
+    "kpiActiveHint": "Mobilizing, active and in closeout",
+    "kpiPending": "Pending",
+    "kpiPendingHint": "Draft and awaiting approval",
+    "kpiFinished": "Finished",
+    "kpiFinishedHint": "Closed and cancelled",
+    "colProject": "Project",
+    "colClient": "Client",
+    "colStatus": "Status",
+    "colValue": "Contract value"
   },
   "projects": {
     "title": "Projects",
@@ -46,8 +77,17 @@
     "loadFailed": "Could not load projects.",
     "retry": "Try again",
     "noContractValue": "Not set",
+    "workspace": {
+      "navLabel": "Project navigation",
+      "overview": "Overview",
+      "boq": "BOQ",
+      "contracts": "Contracts",
+      "finance": "Finance",
+      "members": "Members"
+    },
     "create": {
       "title": "New project",
+      "breadcrumb": "Projects",
       "subtitle": "A project starts as a draft. You can edit it until it is approved.",
       "codeLabel": "Project code",
       "codeHint": "Cannot be changed after the project is created.",
@@ -197,7 +237,7 @@
       "confirmCreateTitle": "Start a revision?",
       "confirmCreateDraft": "A new draft is created with a copy of every item in the approved version. The approved version stays in force until the new draft is baselined.",
       "notesLabel": "Notes for this revision",
-      "notesHint": "Optional. Explains why the revision was raised — for example a variation order reference.",
+      "notesHint": "Optional. Explains why the revision was raised â€” for example a variation order reference.",
       "confirmBaselineAction": "Baseline",
       "confirmCancelAction": "Discard",
       "confirmCreateAction": "Create revision"
@@ -257,6 +297,18 @@
     "title": "Users",
     "addUser": "Add User",
     "editUser": "Edit User",
+    "empty": "No users found.",
+    "emptyHint": "Users appear here once they have been added to the organisation.",
+    "loadFailed": "Could not load users.",
+    "retry": "Retry",
+    "colName": "Name",
+    "colEmail": "Email",
+    "colStatus": "Status",
+    "status": {
+      "ACTIVE": "Active",
+      "INACTIVE": "Inactive",
+      "SUSPENDED": "Suspended"
+    },
     "fields": {
       "firstName": "First Name",
       "lastName": "Last Name",
@@ -269,7 +321,24 @@
   "roles": {
     "title": "Roles & Permissions",
     "addRole": "Add Role",
-    "editRole": "Edit Role"
+    "editRole": "Edit Role",
+    "empty": "No roles defined.",
+    "emptyHint": "Roles are created and assigned by the system administrator.",
+    "loadFailed": "Could not load roles.",
+    "retry": "Retry",
+    "colName": "Role name",
+    "colDescription": "Description",
+    "noDescription": "No description"
+  },
+  "auditLogs": {
+    "title": "Audit Logs",
+    "empty": "No audit log entries.",
+    "loadFailed": "Could not load audit logs.",
+    "retry": "Retry",
+    "colTime": "Time",
+    "colUser": "User",
+    "colAction": "Action",
+    "colResource": "Resource"
   },
   "workflows": {
     "title": "Approval Workflows",
@@ -277,11 +346,46 @@
     "approve": "Approve",
     "reject": "Reject",
     "steps": "Approval Steps",
-    "currentStep": "Current Step"
+    "currentStep": "Current Step",
+    "viewer": {
+      "typeLabel": "Transaction type",
+      "loadFailed": "Could not load workflow definition.",
+      "retry": "Retry",
+      "notConfigured": "No workflow configured.",
+      "notConfiguredHint": "No active workflow definition exists for this transaction type. Contact your system administrator to set one up.",
+      "definitionName": "Workflow name",
+      "active": "Active",
+      "inactive": "Inactive",
+      "requiresCeo": "CEO confirmation required",
+      "conditions": "Conditions",
+      "noConditions": "No conditions — this workflow applies to all transactions of this type.",
+      "colField": "Field",
+      "colOperator": "Operator",
+      "colValue": "Value",
+      "steps": "Approval steps",
+      "noSteps": "No steps defined.",
+      "colStep": "Step",
+      "colRole": "Role required",
+      "colOptional": "Optional",
+      "colEscalate": "Escalate after",
+      "colNotify": "Notify roles",
+      "optional": "Optional",
+      "hours": "{hours, plural, one {# hour} other {# hours}}",
+      "types": {
+        "IPC": "IPC — Interim Payment Certificate",
+        "VARIATION": "Variation Order",
+        "MATERIAL_REQUEST": "Material Request",
+        "PURCHASE_ORDER": "Purchase Order",
+        "SUPPLIER_PAYMENT": "Supplier Payment",
+        "STOCK_TRANSFER": "Stock Transfer",
+        "MATERIAL_ISSUE": "Material Issue",
+        "SUBCONTRACT_CERTIFICATE": "Subcontract Certificate"
+      }
+    }
   },
   "lifecycle": {
     "error": {
-      "workflow-not-configured": "Approval workflow not configured — contact your system administrator.",
+      "workflow-not-configured": "Approval workflow not configured â€” contact your system administrator.",
       "invalid-transition": "This record has moved on since the page was loaded. Refresh to see its current state.",
       "forbidden": "You do not have permission to perform this action.",
       "not-found": "This record no longer exists.",
@@ -338,7 +442,7 @@
       "heading": "Contacts",
       "add": "Add contact",
       "none": "No contacts recorded yet.",
-      "noneHint": "Add the person you deal with on this client’s side.",
+      "noneHint": "Add the person you deal with on this clientâ€™s side.",
       "primary": "Primary",
       "remove": "Remove",
       "removeTitle": "Remove this contact?",
@@ -461,7 +565,7 @@
       "terminateTitle": "Terminate this contract?",
       "terminateBody": "Termination ends an active contract early and cannot be undone.",
       "terminateReason": "Reason for termination",
-      "reasonNotStored": "The API requires a reason but does not yet store it — keep a copy in your own records.",
+      "reasonNotStored": "The API requires a reason but does not yet store it â€” keep a copy in your own records.",
       "failed": "The command could not be completed."
     },
     "create": {
@@ -664,7 +768,7 @@
       "numberedOnApproval": "An application number is assigned when it is approved for submission.",
       "frozenHint": "Lines are frozen while this application awaits internal approval. Returning it for revision reopens them.",
       "finalHint": "This application is final. Nothing about it can change.",
-      "stuckHint": "This application was returned for revision. Its lines can still be corrected, but the API does not accept a resubmission from this state — the only way forward is to cancel it and create a replacement. Raised with the backend as C14."
+      "stuckHint": "This application was returned for revision. Its lines can still be corrected, but the API does not accept a resubmission from this state â€” the only way forward is to cancel it and create a replacement. Raised with the backend as C14."
     },
     "actions": {
       "submit-for-approval": "Submit for approval",
@@ -684,15 +788,15 @@
     "items": {
       "heading": "Claimed lines",
       "none": "No lines claimed yet.",
-      "noneHint": "Claim BOQ lines to build up this period’s valuation.",
+      "noneHint": "Claim BOQ lines to build up this periodâ€™s valuation.",
       "add": "Claim a line",
       "line": "BOQ line",
       "linePlaceholder": "Choose a line",
-      "noLines": "This contract’s BOQ has no priced leaf lines to claim.",
+      "noLines": "This contractâ€™s BOQ has no priced leaf lines to claim.",
       "allClaimed": "Every line on this BOQ is already claimed on this application.",
-      "unpriced": "no rate — cannot be claimed",
+      "unpriced": "no rate â€” cannot be claimed",
       "cumulativeClaimed": "Cumulative claimed",
-      "cumulativeHint": "The total claimed to date on this line, including this period — not this period alone.",
+      "cumulativeHint": "The total claimed to date on this line, including this period â€” not this period alone.",
       "unitRate": "Unit rate",
       "contractQuantity": "BOQ quantity",
       "previousCertified": "Previously certified",
@@ -720,8 +824,8 @@
       "rate": "Rate",
       "rateHint": "Optional. Entering one shows the resulting amount below.",
       "amount": "Amount",
-      "computedHint": "{basis} × {rate}% = {amount}",
-      "authoredHere": "The API stores this amount exactly as entered — it derives nothing from the contract terms. Check it against the contract before submitting.",
+      "computedHint": "{basis} Ã— {rate}% = {amount}",
+      "authoredHere": "The API stores this amount exactly as entered â€” it derives nothing from the contract terms. Check it against the contract before submitting.",
       "contractRates": "Contract terms: {rates}",
       "retentionRate": "retention {rate}%",
       "recoveryRate": "advance recovery {rate}%",
@@ -815,12 +919,159 @@
       "exceeds-balance": "That is more than the unallocated balance on this receipt",
       "remove": "Remove",
       "removeTitle": "Remove this allocation?",
-      "removeBody": "The amount returns to the receipt’s unallocated balance.",
+      "removeBody": "The amount returns to the receiptâ€™s unallocated balance.",
       "removeFailed": "Could not remove the allocation.",
       "save": "Allocate",
       "failed": "Could not allocate the receipt.",
-      "statusCaveat": "A certificate’s paid/unpaid status is not shown: the API compares payments against the gross certified total rather than the net, so a fully settled certificate never reads as paid (C7, issue #11).",
-      "currencyMismatch": "This certificate is in {certificateCurrency} but the receipt is in {receiptCurrency}. The API does not check this — allocate only if that is deliberate."
+      "statusCaveat": "A certificateâ€™s paid/unpaid status is not shown: the API compares payments against the gross certified total rather than the net, so a fully settled certificate never reads as paid (C7, issue #11).",
+      "currencyMismatch": "This certificate is in {certificateCurrency} but the receipt is in {receiptCurrency}. The API does not check this â€” allocate only if that is deliberate."
+    }
+  },
+  "ipc": {
+    "title": "Payment Certificates",
+    "short": "Certificates",
+    "wizard": {
+      "title": "Issue Payment Certificate",
+      "step1": {
+        "title": "Certificate Details",
+        "description": "Select the certificate outcome and provide supporting context.",
+        "statusLabel": "Certificate Outcome",
+        "statusPlaceholder": "— Select outcome —",
+        "status": {
+          "CERTIFIED": "Certified",
+          "PARTIALLY_CERTIFIED": "Partially Certified",
+          "REJECTED": "Rejected"
+        },
+        "currencyLabel": "Currency",
+        "currencyNote": "Inherited from the contract.",
+        "showExchangeRate": "Add exchange rate",
+        "hideExchangeRate": "Remove exchange rate",
+        "exchangeRateCurrencyLabel": "Foreign currency",
+        "exchangeRateBaseLabel": "Base currency",
+        "exchangeRateValueLabel": "Exchange rate",
+        "exchangeRateDateLabel": "Rate date",
+        "notesLabel": "Notes",
+        "rejectionReasonLabel": "Rejection reason",
+        "rejectionReasonPlaceholder": "State why this application is being rejected",
+        "statusRequired": "Select a certificate outcome to continue"
+      },
+      "step2": {
+        "title": "Line-Item Certification",
+        "description": "Adjust the certified quantity for each claimed line. A reason is required when the certified amount differs from the claimed amount.",
+        "colItem": "Item",
+        "colMethod": "Method",
+        "colCumClaimed": "Cum. Claimed",
+        "colPrevCertified": "Prev. Certified",
+        "colPeriodClaimed": "Period Claimed",
+        "colCertified": "Certified Qty",
+        "colUnitRate": "Unit Rate",
+        "colEstAmount": "~Amount",
+        "varianceReasonLabel": "Variance reason",
+        "varianceReasonPlaceholder": "Why does the certified quantity differ from the claimed quantity?",
+        "varianceReasonRequired": "A variance reason is required when certified quantity differs from claimed",
+        "certifiedRequired": "Enter a certified quantity for every line"
+      },
+      "step3": {
+        "title": "Deductions & Review",
+        "description": "Review estimated deductions, add any additional charges, then issue the certificate.",
+        "grossLabel": "Gross certified",
+        "autoDeductionsHeading": "Automatic Deductions",
+        "autoDeductionsNote": "Retention and advance recovery amounts are applied automatically by the server.",
+        "retentionLabel": "Retention",
+        "advanceRecoveryLabel": "Advance recovery",
+        "estimatedLabel": "est.",
+        "adHocHeading": "Additional Deductions",
+        "adHocTypeLabel": "Type",
+        "adHocBasisLabel": "Basis",
+        "adHocAmountLabel": "Amount",
+        "addDeduction": "Add deduction",
+        "removeDeduction": "Remove",
+        "deductionType": {
+          "TAX": "Tax",
+          "CONTRA": "Contra charge",
+          "OTHER": "Other"
+        },
+        "netEstimateLabel": "Est. net payable",
+        "serverComputeNote": "Final amounts are computed by the server on issue.",
+        "issueButton": "Issue Certificate",
+        "rejectButton": "Reject Application",
+        "working": "Issuing…",
+        "issueFailed": "Could not issue the certificate. Please check all fields and try again."
+      },
+      "progress": {
+        "step1": "Details",
+        "step2": "Items",
+        "step3": "Review & Issue"
+      },
+      "nav": {
+        "back": "Back",
+        "next": "Continue",
+        "nextItems": "Continue to Items",
+        "nextReview": "Continue to Review"
+      },
+      "effectiveCertWarning": "An effective certificate already exists for this application. Issuing a new one will replace it.",
+      "draftRestoredHint": "Your draft has been restored.",
+      "issueCta": "Issue Certificate",
+      "supersedeCta": "Issue Replacement Certificate"
+    },
+    "status": {
+      "CERTIFIED": "Certified",
+      "PARTIALLY_CERTIFIED": "Partially Certified",
+      "REJECTED": "Rejected"
+    },
+    "effective": "Effective",
+    "superseded": "Superseded",
+    "list": {
+      "heading": "Payment Certificates",
+      "none": "No certificate has been issued for this application.",
+      "loadFailed": "Could not load certificates.",
+      "colRef": "Certificate",
+      "colStatus": "Status",
+      "colNet": "Net Certified",
+      "colIssued": "Issued",
+      "viewCertificate": "View certificate",
+      "makeEffective": "Make Effective",
+      "makeEffectiveAriaLabel": "Make {ref} the effective certificate",
+      "notEffectiveHint": "This certificate is not yet effective."
+    },
+    "detail": {
+      "back": "Back to application",
+      "loadFailed": "Could not load this certificate.",
+      "notFound": "Certificate not found.",
+      "grossLabel": "Gross Certified",
+      "deductionsLabel": "Deductions",
+      "netLabel": "Net Certified",
+      "issuedLabel": "Issued",
+      "currencyLabel": "Currency",
+      "supersededLabel": "Superseded",
+      "supersessionReasonLabel": "Supersession reason",
+      "itemsHeading": "Certified Lines",
+      "itemsNone": "No certified lines.",
+      "colItem": "Item",
+      "colCertifiedQty": "Certified Qty",
+      "colCertifiedAmount": "Certified Amount",
+      "colVarianceQty": "Variance",
+      "colVarianceReason": "Reason",
+      "deductionsHeading": "Deductions",
+      "deductionsNone": "No deductions recorded.",
+      "colDeductionType": "Type",
+      "colDeductionBasis": "Basis",
+      "colDeductionAmount": "Amount",
+      "paymentHeading": "Payment Status",
+      "paymentNote": "Allocation details are recorded on payment receipts. Use the receipts ledger to view payments applied to this certificate.",
+      "notesLabel": "Notes",
+      "exchangeRateLabel": "Exchange rate",
+      "notEffectiveBanner": "This certificate has been issued but is not yet effective. Make it effective to replace the current one.",
+      "makeEffectiveCta": "Make This Certificate Effective",
+      "noEffectiveCertNote": "There is no effective certificate to supersede. This certificate will become effective when the supersession command is run."
+    },
+    "supersession": {
+      "commandName": "Make Certificate Effective",
+      "businessImpact": "The current effective certificate ({currentRef}) will be superseded. Certificate {newRef} will become the effective certificate for this application.",
+      "reasonLabel": "Reason for supersession",
+      "reasonHint": "This will be permanently recorded on the superseded certificate.",
+      "confirmLabel": "Make Effective",
+      "failed": "Could not complete the supersession. Please try again."
     }
   }
 }

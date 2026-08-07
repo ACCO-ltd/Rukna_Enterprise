@@ -1,11 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Alert, Button } from '@erp/ui';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { lifecycleErrorKey } from '@/features/lifecycle/lifecycle-error';
+import { IpaStatus } from '@erp/types';
+import { useIpcs } from '@/features/ipc/hooks/use-ipc';
 
 import { useCancelIpa, useIpaCommand } from '../hooks/use-ipa';
 import {
@@ -19,10 +22,14 @@ import type { IpaDetail } from '../types';
 
 type Pending = { kind: 'command'; command: IpaCommand } | { kind: 'cancel' } | null;
 
-export function IpaActionsPanel({ ipa }: { ipa: IpaDetail }) {
+export function IpaActionsPanel({ ipa, contractId }: { ipa: IpaDetail; contractId: string }) {
   const t = useTranslations('platform.ipa.actions');
   const tDetail = useTranslations('platform.ipa.detail');
   const tPlatform = useTranslations('platform');
+  const tIpc = useTranslations('platform.ipc.wizard');
+
+  const ipcs = useIpcs(ipa.id);
+  const hasEffectiveCert = ipcs.data?.some((c) => c.isEffective) ?? false;
 
   const run = useIpaCommand(ipa.id);
   const cancel = useCancelIpa(ipa.id);
@@ -56,6 +63,17 @@ export function IpaActionsPanel({ ipa }: { ipa: IpaDetail }) {
         <Alert variant="info" messages={[tDetail('frozenHint')]} />
       ) : null}
       {actions.isFinal ? <Alert variant="info" messages={[tDetail('finalHint')]} /> : null}
+
+      {/* Certificate CTA — adapts based on whether an effective cert already exists */}
+      {ipa.status === IpaStatus.SUBMITTED ? (
+        <div>
+          <Button asChild>
+            <Link href={`/contracts/${contractId}/applications/${ipa.id}/certificates/new`}>
+              {hasEffectiveCert ? tIpc('wizard.supersedeCta') : tIpc('wizard.issueCta')}
+            </Link>
+          </Button>
+        </div>
+      ) : null}
       {/* Editable with nowhere to go. Without this the screen offers a full set of line
           controls and no way to submit what they produce, which reads as a broken page
           rather than a missing endpoint. */}

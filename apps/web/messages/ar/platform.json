@@ -3,21 +3,42 @@
     "primaryNavLabel": "التنقل الرئيسي",
     "openMenu": "فتح قائمة التنقل",
     "closeMenu": "إغلاق قائمة التنقل",
-    "accountMenuLabel": "قائمة الحساب",
-    "skipToContent": "تخطي إلى المحتوى الرئيسي"
+    "skipToContent": "تخطي إلى المحتوى الرئيسي",
+    "searchLabel": "البحث الشامل",
+    "searchPlaceholder": "بحث… (قريباً)",
+    "attentionLabel": "يحتاج إلى انتباهك",
+    "attentionNone": "لا توجد بنود تحتاج إلى انتباهك"
   },
   "nav": {
     "dashboard": "لوحة التحكم",
+    "portfolio": "المحفظة",
     "projects": "المشاريع",
+    "clients": "العملاء",
+    "finance": "المالية",
+    "receivables": "المستحقات",
+    "receipts": "الدفعات",
+    "cashPosition": "الوضع النقدي",
+    "generalLedger": "دفتر الأستاذ",
+    "operations": "العمليات",
+    "procurement": "المشتريات",
+    "inventory": "المخزون",
+    "reports": "التقارير",
+    "administration": "الإدارة",
     "users": "المستخدمون",
     "roles": "الأدوار",
-    "permissions": "الصلاحيات",
-    "organizations": "المؤسسات",
+    "exchangeRates": "أسعار الصرف",
+    "auditLogs": "سجل المراجعة",
     "settings": "الإعدادات",
-    "auditLog": "سجل المراجعة",
-    "clients": "العملاء",
-    "contracts": "العقود",
-    "receipts": "الدفعات"
+    "workflows": "سير العمل",
+    "comingSoon": "قريباً",
+    "soon": "قريباً",
+    "contracts": "العقود"
+  },
+  "user": {
+    "menuLabel": "قائمة الحساب",
+    "signOut": "تسجيل الخروج",
+    "signOutPending": "جارٍ الخروج…",
+    "switchLanguage": "اللغة"
   },
   "dashboard": {
     "title": "لوحة التحكم",
@@ -29,7 +50,17 @@
     "loadFailed": "تعذّر تحميل المشاريع.",
     "retry": "إعادة المحاولة",
     "noContractValue": "غير محدّد",
-    "viewAll": "عرض جميع المشاريع"
+    "viewAll": "عرض جميع المشاريع",
+    "kpiActive": "في الموقع",
+    "kpiActiveHint": "في التعبئة والنشاط والإغلاق",
+    "kpiPending": "قيد الانتظار",
+    "kpiPendingHint": "مسودة وينتظر الاعتماد",
+    "kpiFinished": "منتهٍ",
+    "kpiFinishedHint": "مغلق وملغى",
+    "colProject": "المشروع",
+    "colClient": "العميل",
+    "colStatus": "الحالة",
+    "colValue": "قيمة العقد"
   },
   "projects": {
     "title": "المشاريع",
@@ -46,8 +77,17 @@
     "loadFailed": "تعذّر تحميل المشاريع.",
     "retry": "إعادة المحاولة",
     "noContractValue": "غير محدّد",
+    "workspace": {
+      "navLabel": "تنقل المشروع",
+      "overview": "نظرة عامة",
+      "boq": "جدول الكميات",
+      "contracts": "العقود",
+      "finance": "المالية",
+      "members": "الفريق"
+    },
     "create": {
       "title": "مشروع جديد",
+      "breadcrumb": "المشاريع",
       "subtitle": "يبدأ المشروع كمسودة. يمكنك تعديله حتى يتم اعتماده.",
       "codeLabel": "رمز المشروع",
       "codeHint": "لا يمكن تغييره بعد إنشاء المشروع.",
@@ -257,6 +297,18 @@
     "title": "المستخدمون",
     "addUser": "إضافة مستخدم",
     "editUser": "تعديل المستخدم",
+    "empty": "لا يوجد مستخدمون.",
+    "emptyHint": "يظهر المستخدمون هنا بعد إضافتهم إلى المنظمة.",
+    "loadFailed": "تعذّر تحميل المستخدمين.",
+    "retry": "إعادة المحاولة",
+    "colName": "الاسم",
+    "colEmail": "البريد الإلكتروني",
+    "colStatus": "الحالة",
+    "status": {
+      "ACTIVE": "نشط",
+      "INACTIVE": "غير نشط",
+      "SUSPENDED": "موقوف"
+    },
     "fields": {
       "firstName": "الاسم الأول",
       "lastName": "اسم العائلة",
@@ -269,7 +321,24 @@
   "roles": {
     "title": "الأدوار والصلاحيات",
     "addRole": "إضافة دور",
-    "editRole": "تعديل الدور"
+    "editRole": "تعديل الدور",
+    "empty": "لم تُحدَّد أي أدوار.",
+    "emptyHint": "تُنشأ الأدوار وتُوكَّل من قبل مسؤول النظام.",
+    "loadFailed": "تعذّر تحميل الأدوار.",
+    "retry": "إعادة المحاولة",
+    "colName": "اسم الدور",
+    "colDescription": "الوصف",
+    "noDescription": "لا يوجد وصف"
+  },
+  "auditLogs": {
+    "title": "سجلات المراجعة",
+    "empty": "لا توجد إدخالات في سجل المراجعة.",
+    "loadFailed": "تعذّر تحميل سجلات المراجعة.",
+    "retry": "إعادة المحاولة",
+    "colTime": "الوقت",
+    "colUser": "المستخدم",
+    "colAction": "الإجراء",
+    "colResource": "المورد"
   },
   "workflows": {
     "title": "سير عمل الاعتماد",
@@ -277,7 +346,42 @@
     "approve": "اعتماد",
     "reject": "رفض",
     "steps": "خطوات الاعتماد",
-    "currentStep": "الخطوة الحالية"
+    "currentStep": "الخطوة الحالية",
+    "viewer": {
+      "typeLabel": "نوع المعاملة",
+      "loadFailed": "تعذّر تحميل تعريف سير العمل.",
+      "retry": "إعادة المحاولة",
+      "notConfigured": "لم يتم تكوين سير العمل.",
+      "notConfiguredHint": "لا يوجد تعريف نشط لسير العمل لهذا النوع من المعاملات. تواصل مع مسؤول النظام.",
+      "definitionName": "اسم سير العمل",
+      "active": "نشط",
+      "inactive": "غير نشط",
+      "requiresCeo": "يتطلب تأكيد المدير التنفيذي",
+      "conditions": "الشروط",
+      "noConditions": "لا توجد شروط — يُطبَّق سير العمل على جميع معاملات هذا النوع.",
+      "colField": "الحقل",
+      "colOperator": "المشغّل",
+      "colValue": "القيمة",
+      "steps": "خطوات الاعتماد",
+      "noSteps": "لم تُحدَّد أي خطوات.",
+      "colStep": "الخطوة",
+      "colRole": "الدور المطلوب",
+      "colOptional": "اختياري",
+      "colEscalate": "التصعيد بعد",
+      "colNotify": "إشعار الأدوار",
+      "optional": "اختياري",
+      "hours": "{hours, plural, one {# ساعة} other {# ساعات}}",
+      "types": {
+        "IPC": "شهادة الدفع المؤقتة",
+        "VARIATION": "أمر تغيير",
+        "MATERIAL_REQUEST": "طلب مواد",
+        "PURCHASE_ORDER": "أمر شراء",
+        "SUPPLIER_PAYMENT": "دفع للمورّد",
+        "STOCK_TRANSFER": "تحويل مخزون",
+        "MATERIAL_ISSUE": "صرف مواد",
+        "SUBCONTRACT_CERTIFICATE": "شهادة مقاول من الباطن"
+      }
+    }
   },
   "lifecycle": {
     "error": {
@@ -821,6 +925,153 @@
       "failed": "تعذّر توزيع الدفعة.",
       "statusCaveat": "لا تُعرض حالة سداد الشهادة: يقارن النظام المدفوعات بإجمالي الاعتماد قبل الاستقطاعات لا بالصافي، فلا تظهر الشهادة المسدَّدة بالكامل كمسدَّدة (C7، المسألة #11).",
       "currencyMismatch": "هذه الشهادة بعملة {certificateCurrency} بينما الدفعة بعملة {receiptCurrency}. لا يتحقق النظام من ذلك — وزّع فقط إن كان مقصوداً."
+    }
+  },
+  "ipc": {
+    "title": "شهادات الدفع",
+    "short": "الشهادات",
+    "wizard": {
+      "title": "إصدار شهادة دفع",
+      "step1": {
+        "title": "تفاصيل الشهادة",
+        "description": "حدد نتيجة الشهادة وأضف السياق الداعم.",
+        "statusLabel": "نتيجة الشهادة",
+        "statusPlaceholder": "— اختر النتيجة —",
+        "status": {
+          "CERTIFIED": "معتمدة",
+          "PARTIALLY_CERTIFIED": "معتمدة جزئياً",
+          "REJECTED": "مرفوضة"
+        },
+        "currencyLabel": "العملة",
+        "currencyNote": "موروثة من العقد.",
+        "showExchangeRate": "إضافة سعر الصرف",
+        "hideExchangeRate": "إزالة سعر الصرف",
+        "exchangeRateCurrencyLabel": "العملة الأجنبية",
+        "exchangeRateBaseLabel": "العملة الأساسية",
+        "exchangeRateValueLabel": "سعر الصرف",
+        "exchangeRateDateLabel": "تاريخ السعر",
+        "notesLabel": "ملاحظات",
+        "rejectionReasonLabel": "سبب الرفض",
+        "rejectionReasonPlaceholder": "اذكر سبب رفض هذا الطلب",
+        "statusRequired": "اختر نتيجة الشهادة للمتابعة"
+      },
+      "step2": {
+        "title": "اعتماد البنود",
+        "description": "عدّل الكمية المعتمدة لكل بند مطالب به. السبب إلزامي عند الاختلاف بين المعتمد والمطالب.",
+        "colItem": "البند",
+        "colMethod": "الطريقة",
+        "colCumClaimed": "إجمالي المطالبة",
+        "colPrevCertified": "سبق اعتماده",
+        "colPeriodClaimed": "مطالبة الفترة",
+        "colCertified": "الكمية المعتمدة",
+        "colUnitRate": "سعر الوحدة",
+        "colEstAmount": "المبلغ التقديري",
+        "varianceReasonLabel": "سبب الفارق",
+        "varianceReasonPlaceholder": "لماذا تختلف الكمية المعتمدة عن الكمية المطالب بها؟",
+        "varianceReasonRequired": "سبب الفارق إلزامي عند الاختلاف بين المعتمد والمطالب",
+        "certifiedRequired": "أدخل كمية معتمدة لكل بند"
+      },
+      "step3": {
+        "title": "الاستقطاعات والمراجعة",
+        "description": "راجع الاستقطاعات التقديرية، أضف رسوماً إضافية إن وجدت، ثم أصدر الشهادة.",
+        "grossLabel": "الإجمالي المعتمد",
+        "autoDeductionsHeading": "الاستقطاعات التلقائية",
+        "autoDeductionsNote": "تحسب مبالغ الضمان واسترداد السلفة تلقائياً بواسطة الخادم.",
+        "retentionLabel": "الضمان",
+        "advanceRecoveryLabel": "استرداد السلفة",
+        "estimatedLabel": "تقديري",
+        "adHocHeading": "استقطاعات إضافية",
+        "adHocTypeLabel": "النوع",
+        "adHocBasisLabel": "الأساس",
+        "adHocAmountLabel": "المبلغ",
+        "addDeduction": "إضافة استقطاع",
+        "removeDeduction": "إزالة",
+        "deductionType": {
+          "TAX": "ضريبة",
+          "CONTRA": "رسم مقابل",
+          "OTHER": "أخرى"
+        },
+        "netEstimateLabel": "صافي المستحق التقديري",
+        "serverComputeNote": "تحسب المبالغ النهائية بواسطة الخادم عند الإصدار.",
+        "issueButton": "إصدار الشهادة",
+        "rejectButton": "رفض الطلب",
+        "working": "جارٍ الإصدار...",
+        "issueFailed": "تعذر إصدار الشهادة. يرجى التحقق من جميع الحقول والمحاولة مرة أخرى."
+      },
+      "progress": {
+        "step1": "التفاصيل",
+        "step2": "البنود",
+        "step3": "المراجعة والإصدار"
+      },
+      "nav": {
+        "back": "رجوع",
+        "next": "متابعة",
+        "nextItems": "متابعة إلى البنود",
+        "nextReview": "متابعة إلى المراجعة"
+      },
+      "effectiveCertWarning": "توجد شهادة سارية لهذا الطلب. إصدار شهادة جديدة سيحل محلها.",
+      "draftRestoredHint": "تم استعادة مسودتك.",
+      "issueCta": "إصدار الشهادة",
+      "supersedeCta": "إصدار شهادة بديلة"
+    },
+    "status": {
+      "CERTIFIED": "معتمدة",
+      "PARTIALLY_CERTIFIED": "معتمدة جزئياً",
+      "REJECTED": "مرفوضة"
+    },
+    "effective": "سارية",
+    "superseded": "مستبدلة",
+    "list": {
+      "heading": "شهادات الدفع",
+      "none": "لم تُصدر أي شهادة لهذا الطلب بعد.",
+      "loadFailed": "تعذّر تحميل الشهادات.",
+      "colRef": "الشهادة",
+      "colStatus": "الحالة",
+      "colNet": "صافي المعتمد",
+      "colIssued": "تاريخ الإصدار",
+      "viewCertificate": "عرض الشهادة",
+      "makeEffective": "تفعيل",
+      "makeEffectiveAriaLabel": "تفعيل الشهادة {ref}",
+      "notEffectiveHint": "هذه الشهادة غير سارية بعد."
+    },
+    "detail": {
+      "back": "العودة إلى الطلب",
+      "loadFailed": "تعذّر تحميل هذه الشهادة.",
+      "notFound": "الشهادة غير موجودة.",
+      "grossLabel": "الإجمالي المعتمد",
+      "deductionsLabel": "الاستقطاعات",
+      "netLabel": "صافي المعتمد",
+      "issuedLabel": "تاريخ الإصدار",
+      "currencyLabel": "العملة",
+      "supersededLabel": "تاريخ الاستبدال",
+      "supersessionReasonLabel": "سبب الاستبدال",
+      "itemsHeading": "البنود المعتمدة",
+      "itemsNone": "لا توجد بنود معتمدة.",
+      "colItem": "البند",
+      "colCertifiedQty": "الكمية المعتمدة",
+      "colCertifiedAmount": "المبلغ المعتمد",
+      "colVarianceQty": "الفارق",
+      "colVarianceReason": "السبب",
+      "deductionsHeading": "الاستقطاعات",
+      "deductionsNone": "لا توجد استقطاعات مسجّلة.",
+      "colDeductionType": "النوع",
+      "colDeductionBasis": "الأساس",
+      "colDeductionAmount": "المبلغ",
+      "paymentHeading": "حالة الدفع",
+      "paymentNote": "تفاصيل التخصيص مسجّلة على إيصالات الدفع. استخدم سجل الإيصالات لعرض المدفوعات المطبّقة على هذه الشهادة.",
+      "notesLabel": "ملاحظات",
+      "exchangeRateLabel": "سعر الصرف",
+      "notEffectiveBanner": "صدرت هذه الشهادة لكنها لم تُفعَّل بعد. فعّلها لاستبدال الشهادة الحالية.",
+      "makeEffectiveCta": "تفعيل هذه الشهادة",
+      "noEffectiveCertNote": "لا توجد شهادة سارية لاستبدالها. ستصبح هذه الشهادة سارية عند تنفيذ أمر الاستبدال."
+    },
+    "supersession": {
+      "commandName": "تفعيل الشهادة",
+      "businessImpact": "ستُستبدل الشهادة السارية الحالية ({currentRef}). ستصبح الشهادة {newRef} هي الشهادة السارية لهذا الطلب.",
+      "reasonLabel": "سبب الاستبدال",
+      "reasonHint": "سيُسجَّل هذا بشكل دائم على الشهادة المستبدَلة.",
+      "confirmLabel": "تفعيل",
+      "failed": "تعذّر إتمام الاستبدال. يرجى المحاولة مرة أخرى."
     }
   }
 }

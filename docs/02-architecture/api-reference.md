@@ -1,8 +1,8 @@
 # Rukna ERP — Frontend API Reference
 
-Version: 3.1.0
-Last Updated: 2026-08-04
-Sprint Coverage: Sprint 3 complete + Sprint 3 security/correctness patch (PR #23)
+Version: 4.0.0
+Last Updated: 2026-08-06
+Sprint Coverage: Sprints 1–4 complete. Sprint 4 adds the full accounting foundation.
 Audience: **Frontend engineer** — everything you need to call the API without reading backend code.
 
 Interactive docs (Scalar UI): `http://localhost:3001/docs`
@@ -930,18 +930,1217 @@ Supersede: explicit command swaps isEffective between old and new cert.
 
 ---
 
+---
+
+### 6.13 Chart of Accounts
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/accounts` | List all accounts in the org |
+| `POST` | `/accounts` | Create a new account |
+| `GET` | `/accounts/:id` | Get account with version history |
+| `GET` | `/accounts/by-code/:code` | Look up account by GL code |
+| `POST` | `/accounts/import` | Bulk import COA from array |
+
+**Create account — body:**
+```json
+{
+  "code": "1010",
+  "name": "Cash at Bank",
+  "nameAr": "النقد في البنك",
+  "accountClass": "ASSET",
+  "accountSubtype": "CASH_AND_BANK",
+  "normalBalance": "DEBIT",
+  "isPostingAllowed": true,
+  "isControlAccount": false,
+  "effectiveFrom": "2025-01-01"
+}
+```
+
+**`accountClass` values:** `ASSET` `LIABILITY` `EQUITY` `INCOME` `COST_OF_SALES` `EXPENSE`
+
+**`normalBalance` values:** `DEBIT` `CREDIT`
+
+> Control accounts (`isControlAccount: true`) block manual journal postings. Only the posting engine can write to them. Set `controlledSubledgerType` to `ACCOUNTS_RECEIVABLE` or `ACCOUNTS_PAYABLE` on the control account that your AR/AP postings target.
+
+**Bulk import — body:**
+```json
+{
+  "accounts": [
+    { "code": "1010", "name": "Cash", "accountClass": "ASSET", "accountSubtype": "CASH_AND_BANK", "normalBalance": "DEBIT" },
+    { "code": "4000", "name": "Revenue", "accountClass": "INCOME", "accountSubtype": "PROJECT_REVENUE", "normalBalance": "CREDIT" }
+  ]
+}
+```
+
+---
+
+### 6.14 Fiscal Years and Periods
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/fiscal-years` | List fiscal years for the org |
+| `POST` | `/fiscal-years` | Create a new fiscal year |
+| `GET` | `/fiscal-years/:id` | Get fiscal year with all periods |
+| `GET` | `/fiscal-years/period/covering` | Find the period covering a date (`?date=2025-01-15`) |
+
+**Create fiscal year — body:**
+```json
+{
+  "year": 2025,
+  "retainedEarningsAccountCode": "3100"
+}
+```
+
+> Creating a fiscal year automatically generates 12 accounting periods (Jan–Dec). All start as `OPEN`. Manage their state via `/periods/:id/lock`, `/periods/:id/close`, etc. (Section 6.20).
+
+**Fiscal year response:**
+```json
+{
+  "id": "cld...", "name": "FY2025",
+  "startDate": "2025-01-01", "endDate": "2025-12-31",
+  "status": "OPEN",
+  "retainedEarningsAccountId": "cld...",
+  "periods": [
+    { "id": "cld...", "periodNumber": 1, "name": "January 2025",
+      "startDate": "2025-01-01", "endDate": "2025-01-31", "status": "OPEN" }
+  ]
+}
+```
+
+**`status` values for FiscalYear:** `OPEN` `CLOSED`
+
+**`status` values for AccountingPeriod:** `OPEN` `LOCKED` `CLOSED` `REOPENED`
+
+---
+
+### 6.15 Bank Accounts
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/bank-accounts` | List bank accounts for the org |
+| `POST` | `/bank-accounts` | Configure a bank account |
+| `GET` | `/bank-accounts/:id` | Get bank account detail |
+
+**Configure bank account — body:**
+```json
+{
+  "accountName": "Main Operating Account",
+  "bankName": "Premier Bank Somalia",
+  "accountNumber": "1234567890",
+  "currencyCode": "USD",
+  "glAccountCode": "1010",
+  "allowsReceipts": true,
+  "allowsPayments": true
+}
+```
+
+> `glAccountCode` must reference an account with `accountSubtype: CASH_AND_BANK`. This GL account is debited on receipts and credited on payments.
+
+---
+
+### 6.16 Opening Balance (Migration)
+
+```
+POST /accounting/opening-balance
+```
+
+One-time wizard to migrate from the previous system. Call once per organization per fiscal year. Do not call again after live transactions have been posted — the endpoint creates immutable OPENING_BALANCE journal entries.
+
+**Body:**
+```json
+{
+  "cutoverDate": "2025-01-01",
+  "batchReference": "OB-MIGRATION-2025",
+  "arAccountCode": "1200",
+  "apAccountCode": "2000",
+  "trialBalance": [
+    { "accountCode": "1010", "debitBalance": 50000 },
+    { "accountCode": "3100", "creditBalance": 50000 }
+  ],
+  "openArInvoices": [
+    { "clientId": "cld...", "invoiceRef": "INV-001", "amount": 12000, "dueDate": "2025-02-28" }
+  ],
+  "openApBills": [
+    { "supplierId": "cld...", "supplierInvoiceRef": "BILL-001", "amount": 5000, "dueDate": "2025-02-15" }
+  ]
+}
+```
+
+> The wizard validates that the trial balance debits equal credits before posting. On `400`, no entries are created.
+
+---
+
+### 6.17 Manual Journals
+
+The standard general-ledger journal entry — reviewed and approved by CFO before posting.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/journals` | List journals (`?status=DRAFT&periodId=...`) |
+| `POST` | `/journals` | Create a DRAFT journal |
+| `GET` | `/journals/:id` | Get journal with all lines |
+| `POST` | `/journals/:id/submit` | Submit for CFO approval |
+| `POST` | `/journals/:id/approve` | CFO approve or reject |
+| `POST` | `/journals/:id/post` | Post an approved journal to the GL |
+| `POST` | `/journals/:id/reverse` | Reverse a posted journal |
+
+**Create journal — body:**
+```json
+{
+  "accountingDate": "2025-01-15",
+  "description": "Accrual — January office rent",
+  "currencyCode": "USD",
+  "lines": [
+    {
+      "accountId": "cld...",
+      "debitAmount": 2500,
+      "transactionCurrencyCode": "USD",
+      "memo": "Rent expense Jan"
+    },
+    {
+      "accountId": "cld...",
+      "creditAmount": 2500,
+      "transactionCurrencyCode": "USD",
+      "memo": "Accrued liability"
+    }
+  ]
+}
+```
+
+> Exactly one of `debitAmount` or `creditAmount` must be provided per line. The other defaults to zero. The server validates ∑ debits = ∑ credits before allowing the journal to be posted.
+
+> `accountingDate` must fall within an `OPEN` or `REOPENED` period. `LOCKED` periods only accept `journalCategory: CLOSING_ADJUSTMENT`. `CLOSED` periods reject all postings.
+
+**Approve — body:**
+```json
+{ "approved": true }
+```
+```json
+{ "approved": false, "rejectionReason": "Account codes incorrect — use 4100 not 4000" }
+```
+
+**Reverse — body:**
+```json
+{ "reversalDate": "2025-02-01", "reason": "Accrual reversed on actual invoice receipt" }
+```
+
+**Journal status lifecycle:**
+```
+DRAFT → SUBMITTED → APPROVED → POSTED
+                  → REJECTED (back to DRAFT for correction)
+POSTED → REVERSED (via /reverse)
+```
+
+---
+
+### 6.18 Client Invoices (AR)
+
+Formal accounting invoice raised against a certified IPC. This is the AR-layer counterpart to the Sprint 3 IPC — it creates the double-entry GL posting.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/invoices` | List client invoices (`?clientId=...&status=...`) |
+| `POST` | `/invoices/from-ipc` | Generate invoice from a certified IPC |
+| `GET` | `/invoices/:id` | Get invoice with GL status |
+| `POST` | `/invoices/:id/approve` | Approve the invoice |
+| `POST` | `/invoices/:id/post` | Post to AR control account |
+| `POST` | `/invoices/:id/reverse` | Reverse a posted invoice |
+
+**Generate from IPC — body:**
+```json
+{
+  "ipcId": "cld...",
+  "invoiceDate": "2025-01-20",
+  "dueDate": "2025-02-20",
+  "paymentTerms": "NET_30"
+}
+```
+
+> The server reads `certifiedTotal`, `currency`, and `clientId` from the IPC. You do not supply amounts — they come from the IPC.
+
+**Post to GL — body:**
+```json
+{
+  "arAccountCode": "1200",
+  "revenueAccountCode": "4000",
+  "vatAccountCode": "2100"
+}
+```
+
+> Posting creates: Dr AR control / Cr Revenue (+ VAT liability if applicable). After posting, the invoice `outstandingAmount` tracks how much remains uncollected.
+
+**Reverse — body:**
+```json
+{ "reversalDate": "2025-01-25", "reason": "Issued in error — incorrect IPC reference" }
+```
+
+**Invoice `documentStatus` values:** `DRAFT` `APPROVED` `CANCELLED`
+
+**Invoice `postingStatus` values:** `NOT_POSTED` `POSTED` `REVERSED` `OPENING_BALANCE`
+
+---
+
+### 6.19 Customer Receipts and Allocations (AR)
+
+Records cash collected and allocates it to reduce outstanding invoice balances.
+
+> **Note:** Sprint 3 also has `GET/POST /receipts` for operational payment tracking. The endpoints in this section are the **accounting layer** — they create GL postings. They are distinct services but may share the same underlying PaymentReceipt entity. If you are building the Finance accounting workspace (not the project-level receipt view), use these endpoints.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/receipts` | List receipts with posting status |
+| `GET` | `/receipts/:id` | Get receipt with allocations and GL status |
+| `POST` | `/receipts/:id/post` | Post receipt to GL (Dr Bank / Cr AR or Unapplied) |
+| `POST` | `/receipts/:id/allocations` | Allocate posted receipt to a client invoice |
+| `POST` | `/receipts/:id/allocations/:allocationId/reverse` | Reverse a specific allocation |
+| `POST` | `/receipts/:id/reverse` | Reverse the entire receipt posting |
+
+**Post receipt — body:**
+```json
+{
+  "bankAccountCode": "1010",
+  "arAccountCode": "1200",
+  "unappliedAccountCode": "2050"
+}
+```
+
+> If the receipt is not immediately allocated, it lands in the `unappliedAccountCode` (a liability). Allocation moves it from unapplied to AR.
+
+**Allocate to invoice — body:**
+```json
+{
+  "clientInvoiceId": "cld...",
+  "amount": 6498.00,
+  "arAccountCode": "1200",
+  "unappliedAccountCode": "2050"
+}
+```
+
+> `amount` must not exceed `receipt.unallocatedAmount`. Returns `400` if over-allocation is attempted.
+
+**Reverse allocation — body:**
+```json
+{
+  "arAccountCode": "1200",
+  "unappliedAccountCode": "2050"
+}
+```
+
+---
+
+### 6.20 Supplier Bills (AP)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/bills` | List supplier bills (`?supplierId=...&status=...`) |
+| `POST` | `/bills` | Create a new supplier bill |
+| `GET` | `/bills/:id` | Get bill with lines and GL status |
+| `POST` | `/bills/:id/submit` | Submit for approval |
+| `POST` | `/bills/:id/approve` | Approve or reject |
+| `POST` | `/bills/:id/post` | Post to AP control account |
+| `POST` | `/bills/:id/reverse` | Reverse a posted bill |
+
+**Create bill — body:**
+```json
+{
+  "supplierId": "cld...",
+  "supplierInvoiceNumber": "SUP-INV-2025-001",
+  "billDate": "2025-01-10",
+  "dueDate": "2025-02-10",
+  "currencyCode": "USD",
+  "lines": [
+    {
+      "description": "Concrete delivery — Jan batch",
+      "quantity": 50,
+      "unitPrice": 120.00,
+      "amount": 6000.00,
+      "postingProfileCode": "GENERAL-EXPENSE"
+    }
+  ]
+}
+```
+
+> `postingProfileCode` maps to a `PostingProfile` configured in the accounting setup. It determines which expense GL account is debited when the bill is posted.
+
+**Post to GL — body:**
+```json
+{ "apAccountCode": "2000" }
+```
+
+> Posting creates: Dr Expense (per posting profile) / Cr AP control account.
+
+**Bill `postingStatus` values:** `NOT_POSTED` `POSTED` `REVERSED` `OPENING_BALANCE`
+
+---
+
+### 6.21 Supplier Payments (AP)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/payments` | List supplier payments |
+| `POST` | `/payments` | Create a payment record |
+| `GET` | `/payments/:id` | Get payment with allocations |
+| `POST` | `/payments/:id/approve` | Approve or reject |
+| `POST` | `/payments/:id/post` | Post to GL (Dr AP / Cr Bank or Advance) |
+| `POST` | `/payments/:id/allocations` | Allocate advance payment against a supplier bill |
+| `POST` | `/payments/:id/allocations/:allocationId/reverse` | Reverse an advance allocation |
+| `POST` | `/payments/:id/reverse` | Reverse the entire payment |
+
+**Create payment — body:**
+```json
+{
+  "supplierId": "cld...",
+  "bankAccountId": "cld...",
+  "paymentDate": "2025-01-20",
+  "accountingDate": "2025-01-20",
+  "currencyCode": "USD",
+  "totalAmount": 6000.00,
+  "paymentMethod": "BANK_TRANSFER"
+}
+```
+
+**Post to GL — body:**
+```json
+{
+  "apAccountCode": "2000",
+  "bankGlCode": "1010",
+  "supplierAdvanceCode": "1300"
+}
+```
+
+> If the payment has no bill allocated yet (advance payment), it goes to `supplierAdvanceCode` (an asset). Once allocated to a bill, the advance is reversed and the AP is cleared.
+
+**Allocate advance to bill — body:**
+```json
+{
+  "supplierBillId": "cld...",
+  "amount": 6000.00,
+  "apAccountCode": "2000",
+  "supplierAdvanceCode": "1300"
+}
+```
+
+---
+
+### 6.22 Financial Reports
+
+All report endpoints require `Authorization: Bearer <token>`. All results are scoped to the authenticated user's organization.
+
+**Important:** Monetary amounts in all report responses are decimal strings (e.g. `"1200.00"`), not raw JavaScript numbers. Never render them without `formatCurrency()`.
+
+#### Account Ledger
+
+```
+GET /reports/ledger/:accountId?fromDate=2025-01-01&toDate=2025-01-31
+```
+
+Optional filters: `&projectId=cld...` `&departmentId=cld...` `&costCenterId=cld...`
+
+**Response:**
+```json
+{
+  "accountId": "cld...",
+  "accountCode": "1010",
+  "accountName": "Cash at Bank",
+  "openingBalance": "48500.00",
+  "periodDebit": "6000.00",
+  "periodCredit": "2500.00",
+  "closingBalance": "52000.00",
+  "lines": [
+    {
+      "journalEntryId": "cld...",
+      "journalNumber": "JE-000001",
+      "accountingDate": "2025-01-10",
+      "documentDate": "2025-01-10",
+      "description": "Receipt from Baraka Real Estate",
+      "debitAmount": "6000.00",
+      "creditAmount": "0.00",
+      "runningBalance": "54500.00",
+      "sourceDocumentType": "PAYMENT_RECEIPT",
+      "sourceDocumentId": "cld..."
+    }
+  ]
+}
+```
+
+> `openingBalance` = sum of all POSTED lines before `fromDate`. `runningBalance` updates after each line. This is the traditional paper ledger format.
+
+#### GL Balance
+
+```
+GET /reports/gl-balance/:accountId?asOfDate=2025-01-31
+```
+
+**Response:**
+```json
+{
+  "accountId": "cld...",
+  "accountCode": "1010",
+  "asOfDate": "2025-01-31",
+  "debitTotal": "54500.00",
+  "creditTotal": "2500.00",
+  "netBalance": "52000.00"
+}
+```
+
+#### Drill-down
+
+```
+GET /reports/drill-down?sourceDocumentType=CLIENT_INVOICE&sourceDocumentId=cld...
+```
+
+Returns all journal entries linked to a specific source document. Use this to trace any invoice, receipt, bill, or payment back to its GL impact.
+
+**`sourceDocumentType` values:** `CLIENT_INVOICE` `PAYMENT_RECEIPT` `SUPPLIER_BILL` `SUPPLIER_PAYMENT` `MANUAL_JOURNAL` `OPENING_BALANCE` `YEAR_END_CLOSE`
+
+#### Trial Balance
+
+```
+GET /reports/trial-balance?asOfDate=2025-01-31&includeZeroBalance=false
+```
+
+**Response:**
+```json
+{
+  "asOfDate": "2025-01-31",
+  "organizationId": "cld...",
+  "totalOpeningDebit": "100000.00",
+  "totalOpeningCredit": "100000.00",
+  "totalPeriodDebit": "15000.00",
+  "totalPeriodCredit": "15000.00",
+  "totalClosingDebit": "115000.00",
+  "totalClosingCredit": "115000.00",
+  "balanced": true,
+  "lines": [
+    {
+      "accountId": "cld...",
+      "accountCode": "1010",
+      "accountName": "Cash at Bank",
+      "accountClass": "ASSET",
+      "accountSubtype": "CASH_AND_BANK",
+      "openingDebit": "48500.00",
+      "openingCredit": "0.00",
+      "periodDebit": "6000.00",
+      "periodCredit": "2500.00",
+      "closingDebit": "52000.00",
+      "closingCredit": "0.00"
+    }
+  ]
+}
+```
+
+> `balanced: true` means `totalClosingDebit − totalClosingCredit ≤ $0.01`. If `false`, there is a data integrity issue — surface it immediately as an error state, not a normal view.
+
+> For `CLOSED` periods (when `asOfDate ≥ period.endDate`), the server uses frozen `PeriodAccountBalance` snapshots instead of scanning journal lines. The response is identical — the client does not need to handle this differently.
+
+#### Profit & Loss
+
+```
+GET /reports/pl?fromDate=2025-01-01&toDate=2025-01-31
+```
+
+Optional: `&projectId=cld...` `&departmentId=cld...`
+
+**Response:**
+```json
+{
+  "fromDate": "2025-01-01",
+  "toDate": "2025-01-31",
+  "organizationId": "cld...",
+  "revenue": {
+    "label": "Revenue",
+    "total": "85000.00",
+    "lines": [
+      { "accountCode": "4000", "accountName": "Project Revenue", "amount": "85000.00" }
+    ]
+  },
+  "costOfSales": { "label": "Cost of Sales", "total": "0.00", "lines": [] },
+  "grossProfit": "85000.00",
+  "expenses": {
+    "label": "Operating Expenses",
+    "total": "12000.00",
+    "lines": [
+      { "accountCode": "5000", "accountName": "Office Rent", "amount": "2500.00" },
+      { "accountCode": "5100", "accountName": "Site Costs", "amount": "9500.00" }
+    ]
+  },
+  "netIncome": "73000.00"
+}
+```
+
+> When `projectId` or `departmentId` is supplied, only journal lines tagged with that dimension are included. This gives project-level P&L without a separate endpoint.
+
+#### Monthly P&L Comparison
+
+```
+GET /reports/pl/monthly/:fiscalYearId?projectId=cld...
+```
+
+Returns one column per accounting period in the fiscal year.
+
+**Response:**
+```json
+{
+  "fiscalYearId": "cld...",
+  "fiscalYearName": "FY2025",
+  "columns": [
+    {
+      "periodNumber": 1,
+      "periodName": "January 2025",
+      "revenue": "85000.00",
+      "costOfSales": "0.00",
+      "grossProfit": "85000.00",
+      "expenses": "12000.00",
+      "netIncome": "73000.00"
+    }
+  ]
+}
+```
+
+#### Balance Sheet
+
+```
+GET /reports/balance-sheet?asOfDate=2025-01-31&comparativeDate=2024-12-31
+```
+
+`comparativeDate` is optional. When supplied, a prior-period column appears alongside the current column.
+
+**Response:**
+```json
+{
+  "asOfDate": "2025-01-31",
+  "comparativeDate": "2024-12-31",
+  "organizationId": "cld...",
+  "assets": {
+    "label": "Assets",
+    "total": "155000.00",
+    "comparativeTotal": "100000.00",
+    "lines": [
+      { "accountCode": "1010", "accountName": "Cash at Bank", "balance": "52000.00", "comparativeBalance": "48500.00" }
+    ]
+  },
+  "liabilities": {
+    "label": "Liabilities",
+    "total": "10000.00",
+    "lines": [
+      { "accountCode": "2000", "accountName": "Accounts Payable", "balance": "10000.00" }
+    ]
+  },
+  "equity": {
+    "label": "Equity",
+    "total": "145000.00",
+    "lines": [
+      { "accountCode": "3100", "accountName": "Retained Earnings", "balance": "72000.00" },
+      { "accountId": "CURRENT_YEAR_EARNINGS", "accountCode": "CYE", "accountName": "Current Year Earnings", "balance": "73000.00" }
+    ]
+  },
+  "totalLiabilitiesAndEquity": "155000.00",
+  "balanced": true
+}
+```
+
+> `balanced: true` means `assets.total − totalLiabilitiesAndEquity ≤ $0.01`. Show a clear error state if `false` — it means there is a GL integrity issue.
+
+> The `CURRENT_YEAR_EARNINGS` line (`accountId: "CURRENT_YEAR_EARNINGS"`) is computed dynamically from the live P&L for the current fiscal year. It disappears after year-end close, when the net income is rolled into Retained Earnings via the closing journal. Handle `accountId === "CURRENT_YEAR_EARNINGS"` as a special display row — it has no real account ID.
+
+---
+
+### 6.23 Period Management
+
+These are CFO-level operations. Gate them with a `can('manage:periods')` permission check before showing the controls.
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/periods/:id/lock` | `OPEN` or `REOPENED` → `LOCKED` |
+| `POST` | `/periods/:id/close` | `LOCKED` → `CLOSED` (generates snapshot) |
+| `POST` | `/periods/:id/reopen` | `CLOSED` → `REOPENED` (CFO only, invalidates snapshots) |
+| `GET` | `/periods/:id/close-gate` | Pre-flight check — are there any blockers? |
+| `POST` | `/periods/:id/snapshot/rebuild` | Rebuild snapshots from this period forward |
+| `POST` | `/periods/fiscal-year/:fiscalYearId/close` | Year-end close — Period 12 only |
+
+**Reopen — body:**
+```json
+{ "reason": "AR allocation error discovered — approved by CFO on 2025-02-01" }
+```
+
+> Reopening invalidates the balance snapshots for this period and all later CLOSED periods in the fiscal year. Reports on those periods will show live data (slower) until the periods are re-closed and snapshots are rebuilt.
+
+**Close-gate response:**
+```json
+{
+  "passed": true,
+  "blockers": []
+}
+```
+```json
+{
+  "passed": false,
+  "blockers": [
+    "3 journal(s) are not yet posted (DRAFT/SUBMITTED/APPROVED)",
+    "AR control reconciliation failed: GL 85000.00 vs subledger 82000.00 (variance 3000.00)"
+  ]
+}
+```
+
+> Show the close-gate result **before** letting the CFO click "Close Period". Do not call `POST /periods/:id/close` if `passed: false` — it will return `400` with the same blockers.
+
+**Period state machine:**
+```
+OPEN ──lock──► LOCKED ──close──► CLOSED ──reopen──► REOPENED
+ ▲                                                      │
+ └──────────────────────lock──────────────────────────────┘
+```
+
+---
+
+---
+
+### 6.24 Units of Measure
+
+All MATERIAL procurement lines use a UoM from this table. `MATERIAL` lines are locked to the material's `baseUomCode` — users cannot override it.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/procurement/uom` | List active UoMs |
+| `POST` | `/procurement/uom` | Create a UoM |
+| `GET` | `/procurement/uom/:id` | Get single UoM |
+| `POST` | `/procurement/uom/:id/deactivate` | Deactivate |
+
+**Create body:**
+```json
+{
+  "code": "TON",
+  "name": "Metric Ton",
+  "nameAr": "طن",
+  "symbol": "t"
+}
+```
+
+**Response:**
+```json
+{
+  "id": "clx...",
+  "code": "TON",
+  "name": "Metric Ton",
+  "nameAr": "طن",
+  "symbol": "t",
+  "status": "ACTIVE"
+}
+```
+
+---
+
+### 6.25 Material Categories
+
+Operational hierarchy for the material catalogue (e.g. Steel → Rebar). Separate from spend categories.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/procurement/material-categories` | List root categories + children |
+| `POST` | `/procurement/material-categories` | Create a category |
+| `GET` | `/procurement/material-categories/:id` | Get with children |
+| `POST` | `/procurement/material-categories/:id/deactivate` | Deactivate |
+
+**Create body:**
+```json
+{
+  "code": "STEEL",
+  "name": "Steel & Metal Products",
+  "nameAr": "منتجات الصلب والمعادن",
+  "parentCode": "CONSTRUCTION_MATERIALS"
+}
+```
+
+**Response** (root level includes `children[]`):
+```json
+{
+  "id": "clx...",
+  "code": "STEEL",
+  "name": "Steel & Metal Products",
+  "status": "ACTIVE",
+  "children": [
+    { "id": "clx...", "code": "REBAR", "name": "Reinforcing Bar", "status": "ACTIVE" }
+  ]
+}
+```
+
+---
+
+### 6.26 Spend Categories
+
+Financial governance hierarchy — drives approval routing, tolerance policies, and commitment ledger attribution. **Do not confuse with Material Categories.**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/procurement/spend-categories` | List root categories + children |
+| `POST` | `/procurement/spend-categories` | Create a spend category |
+| `GET` | `/procurement/spend-categories/:id` | Get with children |
+| `POST` | `/procurement/spend-categories/:id/deactivate` | Deactivate |
+
+**Create body:**
+```json
+{
+  "code": "DIRECT_MATERIAL",
+  "name": "Direct Material",
+  "nameAr": "مواد مباشرة",
+  "parentCode": "PROJECT_COSTS"
+}
+```
+
+---
+
+### 6.27 Materials
+
+The material catalogue. Each material belongs to a `MaterialCategory` and optionally has a default `SpendCategory`. `baseUomCode` is enforced on all MATERIAL procurement lines — the UoM cannot be overridden per line.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/procurement/materials` | List active materials |
+| `POST` | `/procurement/materials` | Create a material |
+| `GET` | `/procurement/materials/:id` | Get material with refs |
+| `POST` | `/procurement/materials/:id/discontinue` | Mark discontinued |
+
+**Query params for list:**
+- `materialCategoryId` — filter by category
+- `spendCategoryId` — filter by default spend category
+
+**Create body:**
+```json
+{
+  "code": "REBAR-12MM",
+  "name": "12mm Deformed Steel Rebar",
+  "nameAr": "حديد تسليح 12مم",
+  "materialCategoryCode": "REBAR",
+  "defaultSpendCategoryCode": "DIRECT_MATERIAL",
+  "baseUomCode": "TON"
+}
+```
+
+**Response:**
+```json
+{
+  "id": "clx...",
+  "code": "REBAR-12MM",
+  "name": "12mm Deformed Steel Rebar",
+  "status": "ACTIVE",
+  "materialCategory": { "id": "...", "code": "REBAR", "name": "Reinforcing Bar" },
+  "defaultSpendCategory": { "id": "...", "code": "DIRECT_MATERIAL", "name": "Direct Material" },
+  "baseUom": { "id": "...", "code": "TON", "name": "Metric Ton", "symbol": "t" }
+}
+```
+
+**`status` values:** `ACTIVE` | `INACTIVE` | `DISCONTINUED`
+
+---
+
+### 6.28 Material Requests
+
+A formal internal request for materials or services. Can be PROJECT-scoped (linked to a project) or ORGANIZATION-scoped (admin/overhead).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/procurement/material-requests` | List MRs |
+| `POST` | `/procurement/material-requests` | Create a DRAFT MR |
+| `GET` | `/procurement/material-requests/:id` | Get MR with lines |
+| `POST` | `/procurement/material-requests/:id/submit` | Submit for approval |
+| `POST` | `/procurement/material-requests/:id/approve` | Approve |
+| `POST` | `/procurement/material-requests/:id/cancel` | Cancel |
+
+**Query params for list:**
+- `status` — `DRAFT` | `SUBMITTED` | `APPROVED` | `PARTIALLY_ORDERED` | `FULLY_ORDERED` | `CANCELLED` | `CLOSED`
+- `projectId` — filter by project
+- `scope` — `PROJECT` | `ORGANIZATION`
+
+**Create body:**
+```json
+{
+  "requestScope": "PROJECT",
+  "projectId": "clx...",
+  "requestedDate": "2026-08-10",
+  "requiredByDate": "2026-08-25",
+  "description": "Foundation phase rebar order",
+  "lines": [
+    {
+      "lineType": "MATERIAL",
+      "materialCode": "REBAR-12MM",
+      "description": "12mm deformed rebar for pile caps",
+      "uomCode": "TON",
+      "requestedQuantity": 25,
+      "boqNodeId": "clx...",
+      "spendCategoryId": "clx..."
+    },
+    {
+      "lineType": "SERVICE",
+      "description": "Rebar cutting and bending service",
+      "uomCode": "LOT",
+      "requestedQuantity": 1
+    }
+  ]
+}
+```
+
+> **Rules:**
+> - `requestScope: PROJECT` requires `projectId`. `ORGANIZATION` scope must not have `projectId`.
+> - `lineType: MATERIAL` requires `materialCode`. The UoM is automatically set from the material's `baseUomCode` — do not let users change it.
+> - `lineType: SERVICE` or `OTHER` allows free-text description and any active UoM.
+
+**Response:**
+```json
+{
+  "id": "clx...",
+  "mrNumber": "MR-00001",
+  "requestScope": "PROJECT",
+  "projectId": "clx...",
+  "status": "DRAFT",
+  "requestedDate": "2026-08-10T00:00:00.000Z",
+  "lines": [
+    {
+      "id": "clx...",
+      "lineNumber": 1,
+      "lineType": "MATERIAL",
+      "materialId": "clx...",
+      "description": "12mm deformed rebar for pile caps",
+      "requestedQuantity": "25",
+      "approvedQuantity": null,
+      "material": { "code": "REBAR-12MM", "name": "12mm Deformed Steel Rebar" },
+      "uom": { "code": "TON", "symbol": "t" }
+    }
+  ]
+}
+```
+
+**MR status machine:**
+```
+DRAFT → SUBMITTED → APPROVED → PARTIALLY_ORDERED → FULLY_ORDERED → CLOSED
+  └──────────────────────────────────────────────────────► CANCELLED
+```
+
+---
+
+### 6.29 Purchase Orders
+
+Immutable revision model. Each PO has a stable identity (`PurchaseOrder`) and one or more `PurchaseOrderRevision` records. Lines are immutable once the revision is ACTIVE. GRNs and bills reference specific revision lines.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/procurement/purchase-orders` | List POs |
+| `POST` | `/procurement/purchase-orders` | Create PO (DRAFT revision) |
+| `GET` | `/procurement/purchase-orders/:id` | Get PO with all revisions |
+| `POST` | `/procurement/purchase-orders/:id/submit` | Submit DRAFT → SUBMITTED |
+| `POST` | `/procurement/purchase-orders/:id/approve` | Approve → ACTIVE + CommitmentLedger |
+| `POST` | `/procurement/purchase-orders/:id/revise` | Create new DRAFT revision |
+| `POST` | `/procurement/purchase-orders/:id/cancel` | Cancel PO |
+
+**Query params for list:**
+- `status` — `OPEN` | `CLOSED` | `CANCELLED`
+- `supplierId`
+
+**Create body:**
+```json
+{
+  "supplierId": "clx...",
+  "currencyCode": "SAR",
+  "effectiveFrom": "2026-08-10",
+  "deliveryAddress": "ACCO Site — Block 7, Riyadh",
+  "expectedDeliveryDate": "2026-09-01",
+  "lines": [
+    {
+      "lineType": "MATERIAL",
+      "materialCode": "REBAR-12MM",
+      "description": "12mm deformed rebar",
+      "uomCode": "TON",
+      "orderedQuantity": 25,
+      "unitPrice": 850,
+      "spendCategoryId": "clx...",
+      "mrLineAllocations": [
+        {
+          "materialRequestLineId": "clx...",
+          "allocatedQuantity": 25
+        }
+      ]
+    }
+  ]
+}
+```
+
+> `mrLineAllocations` is optional but strongly recommended — it links PO lines back to MR lines for commitment attribution and project/BOQ cost tracking.
+
+**Approve body:**
+```json
+{
+  "reportingCurrencyCode": "SAR",
+  "exchangeRate": 1.0
+}
+```
+
+> Approval atomically: marks revision ACTIVE, supersedes previous ACTIVE revision (if any), and writes `CommitmentLedgerEntry` records for each line.
+
+**Revise body** (same as create, plus required `reason`):
+```json
+{
+  "reason": "Price increase — supplier revised quote",
+  "supplierId": "clx...",
+  "currencyCode": "SAR",
+  "effectiveFrom": "2026-08-15",
+  "lines": [...]
+}
+```
+
+**Response:**
+```json
+{
+  "id": "clx...",
+  "poNumber": "PO-00001",
+  "status": "OPEN",
+  "currentRevisionId": "clx...",
+  "supplier": { "id": "...", "name": "Al-Farouk Steel Co." },
+  "revisions": [
+    {
+      "id": "clx...",
+      "revisionNumber": 1,
+      "status": "ACTIVE",
+      "currencyCode": "SAR",
+      "effectiveFrom": "2026-08-10T00:00:00.000Z",
+      "approvedAt": "2026-08-10T09:15:00.000Z",
+      "lines": [
+        {
+          "id": "clx...",
+          "lineNumber": 1,
+          "lineType": "MATERIAL",
+          "description": "12mm deformed rebar",
+          "orderedQuantity": "25",
+          "unitPrice": "850",
+          "extendedAmount": "21250.00",
+          "material": { "code": "REBAR-12MM", "name": "12mm Deformed Steel Rebar" },
+          "uom": { "code": "TON", "symbol": "t" }
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Revision status machine:**
+```
+DRAFT → SUBMITTED → APPROVED → ACTIVE ──superseded──► SUPERSEDED
+                                     └──cancelled──► CANCELLED
+```
+
+**PO status:** `OPEN` | `CLOSED` | `CANCELLED`
+
+> When displaying a PO, show only the **ACTIVE** revision lines to users. Show SUPERSEDED revisions in a collapsible history panel.
+
+---
+
+### 6.30 Goods Receipts
+
+Records physical delivery against an ACTIVE PO revision. Each line records the full physical quantity received, then splits into `acceptedQuantity` and `rejectedQuantity`. Only accepted quantity generates ACCRUED commitment movement.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/procurement/goods-receipts` | List GRNs |
+| `POST` | `/procurement/goods-receipts` | Create GRN (DRAFT) |
+| `GET` | `/procurement/goods-receipts/:id` | Get GRN with lines + allocations |
+| `POST` | `/procurement/goods-receipts/:id/post` | Post GRN → COMMITTED→ACCRUED |
+| `POST` | `/procurement/goods-receipts/:id/cancel` | Cancel (not allowed after POSTED) |
+
+**Query params for list:**
+- `purchaseOrderId` — filter by PO
+
+**Create body:**
+```json
+{
+  "purchaseOrderId": "clx...",
+  "deliveryDate": "2026-08-18",
+  "deliveryNoteRef": "DN-2026-0042",
+  "lines": [
+    {
+      "purchaseOrderLineId": "clx...",
+      "receivedQuantity": 24,
+      "acceptedQuantity": 23,
+      "rejectedQuantity": 1,
+      "rejectionReason": "Surface rust on 1 bundle",
+      "qualityStatus": "PARTIALLY_ACCEPTED"
+    }
+  ]
+}
+```
+
+> **Rules:**
+> - `acceptedQuantity + rejectedQuantity` must equal `receivedQuantity` (400 if not).
+> - If total received exceeds the PO ordered quantity by more than 5%, the GRN is created with status `EXCEPTION_PENDING` and cannot be posted until the exception is resolved or a PO revision is approved.
+> - `qualityStatus`: `PENDING_INSPECTION` | `ACCEPTED` | `PARTIALLY_ACCEPTED` | `REJECTED`
+
+**Post body:**
+```json
+{
+  "exchangeRate": 1.0,
+  "reportingCurrencyCode": "SAR"
+}
+```
+
+> Posting atomically writes two `CommitmentLedgerEntry` rows per line: `COMMITTED -amount` and `ACCRUED +amount`. The GRN becomes immutable after posting.
+
+**Response:**
+```json
+{
+  "id": "clx...",
+  "grnNumber": "GRN-00001",
+  "status": "POSTED",
+  "purchaseOrderId": "clx...",
+  "supplierId": "clx...",
+  "deliveryDate": "2026-08-18T00:00:00.000Z",
+  "postedAt": "2026-08-18T11:30:00.000Z",
+  "lines": [
+    {
+      "id": "clx...",
+      "lineNumber": 1,
+      "purchaseOrderLineId": "clx...",
+      "orderedQuantity": "25",
+      "previouslyReceivedQty": "0",
+      "receivedQuantity": "24",
+      "acceptedQuantity": "23",
+      "rejectedQuantity": "1",
+      "rejectionReason": "Surface rust on 1 bundle",
+      "qualityStatus": "PARTIALLY_ACCEPTED",
+      "allocations": [...]
+    }
+  ]
+}
+```
+
+**GRN status machine:**
+```
+DRAFT ──post──► POSTED  (immutable)
+  │
+  └──cancel──► CANCELLED
+  └──(over-receipt)──► EXCEPTION_PENDING
+```
+
+---
+
+### 6.31 Bill Matching
+
+Explicit matching of a supplier bill against PO lines (and GRN lines for MATERIAL). The bill's `matchStatus` must be `MATCHED`, `MATCHED_WITH_TOLERANCE`, or `APPROVED_EXCEPTION` before posting is allowed.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/procurement/bill-matching/:billId` | Get current match result |
+| `POST` | `/procurement/bill-matching/:billId/run` | Run matching (TWO_WAY or THREE_WAY) |
+| `POST` | `/procurement/bill-matching/:billId/approve-exception` | Approve exception |
+
+> The match type is determined automatically: if any bill line has `lineType: MATERIAL`, the match is `THREE_WAY` (PO ↔ GRN ↔ Bill). Otherwise `TWO_WAY` (PO ↔ Bill only).
+
+**Run matching** — no body required.
+
+**Approve exception body:**
+```json
+{ "approvalReason": "Price variance within CFO approved limit — see email 2026-08-20" }
+```
+
+**Match result response:**
+```json
+{
+  "id": "clx...",
+  "supplierBillId": "clx...",
+  "matchType": "THREE_WAY",
+  "status": "MATCHED_WITH_TOLERANCE",
+  "matchedAt": "2026-08-19T10:00:00.000Z",
+  "matchedBy": "clx...",
+  "lines": [
+    {
+      "purchaseOrderLineId": "clx...",
+      "goodsReceiptLineId": "clx...",
+      "poQuantity": "25",
+      "receivedQuantity": "23",
+      "billedQuantity": "23",
+      "poUnitPrice": "850.00",
+      "billedUnitPrice": "855.00",
+      "quantityVariance": "-2",
+      "priceVariance": "5.00",
+      "amountVariance": "115.00",
+      "withinTolerance": true
+    }
+  ]
+}
+```
+
+**`matchStatus` values on `SupplierBill`:**
+| Value | Meaning |
+|-------|---------|
+| `NOT_RUN` | Matching not yet executed |
+| `MATCHED` | All lines within tolerance — posting allowed |
+| `MATCHED_WITH_TOLERANCE` | Variance exists but within tolerance — posting allowed |
+| `EXCEPTION` | Variance exceeds tolerance — posting blocked |
+| `APPROVED_EXCEPTION` | Exception approved by authorised user — posting allowed |
+
+> **UI rule:** The "Post Bill" button must be disabled whenever `matchStatus` is `NOT_RUN` or `EXCEPTION`. Show a clear explanation of why.
+
+---
+
+### 6.32 Commitment Ledger
+
+Read-only query endpoints. The ledger is written automatically by PO approval and GRN posting — there is no create/update endpoint.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/procurement/commitment-ledger/projects/:projectId` | Query entries for a project |
+| `GET` | `/procurement/commitment-ledger/projects/:projectId/summary` | Summarized totals |
+| `GET` | `/procurement/commitment-ledger/purchase-orders/:poId` | Entries for a single PO |
+
+**Query params for project entries:**
+- `stage` — `COMMITTED` | `ACCRUED` | `ACTUAL`
+- `boqNodeId` — filter by BOQ node
+
+**Project summary response:**
+```json
+{
+  "committed": "21250.00",
+  "accrued": "19550.00",
+  "actual": "0.00"
+}
+```
+
+> `committed` = total PO value not yet received (purchase orders approved but goods not yet confirmed)
+> `accrued` = goods received and accepted but supplier bill not yet posted
+> `actual` = supplier bill posted to GL
+
+**Ledger entry response:**
+```json
+{
+  "id": "clx...",
+  "stage": "COMMITTED",
+  "amount": "21250.00",
+  "reportingAmount": "21250.00",
+  "currencyCode": "SAR",
+  "sourceDocumentType": "PURCHASE_ORDER_REVISION",
+  "sourceDocumentId": "clx...",
+  "eventType": "PO_APPROVED",
+  "accountingDate": "2026-08-10",
+  "purchaseOrderId": "clx...",
+  "spendCategoryId": "clx...",
+  "projectId": "clx...",
+  "boqNodeId": "clx..."
+}
+```
+
+---
+
 ## 9. What Is NOT Built Yet (Do Not Call)
 
 These features are planned but endpoints do not exist:
 
-- Subcontracts / Subcontract Certificates
-- Material Requests / Purchase Orders / Goods Receipt Notes
-- Stock Ledger / Stock Transfers
-- Cost Ledger / Cost Reporting
-- Daily Progress Reports / Measurement Sheets
-- Labour Attendance / Equipment Logs
-- File uploads / Attachment storage (join tables exist in DB, no file serving)
+- Procurement: Subcontracts / Supplier Returns (Sprint 6+)
+- Variations / Change Orders (Sprint 6)
+- Inventory: Stock Ledger / Stock Transfers (Sprint 7)
+- Cost Ledger / Project Costing (Sprint 7)
+- Daily Progress Reports / Measurement Sheets (Sprint 9)
+- Labour Attendance / Equipment Logs (Sprint 9)
+- File uploads / Attachment storage (tables exist in DB, no file serving yet)
 - Notifications / Expiry alerts
-- Settings pages (org config, DOA thresholds, workflow builder)
+- Cash Flow Statement (deferred — requires indirect-method computation)
+- Advanced bank reconciliation — statement import and auto-matching
+- Tax reporting — VAT return computation and filing
 - Budget Authorization (for INTERNAL_CAPITAL projects)
-- Exchange rate management UI
+- Exchange rate management UI (rates can be managed via admin, no dedicated UI endpoint yet)

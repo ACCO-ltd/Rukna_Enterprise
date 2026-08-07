@@ -94,7 +94,7 @@ If documentation is unclear, stop and request clarification.
 |---|---|---|---|
 | Backend Engineer | Abdulsalam | apps/api/, prisma/schema.prisma, packages/types/ | API contracts, schema changes, backend architecture |
 | CEO / Domain Expert | Eng Ahmed Shirie | ACCO Ltd business processes | Construction domain rules, approval workflows, business logic |
-| Frontend Engineer | (assigned) | apps/web/, packages/ui/ | UI/UX, component design, frontend state |
+| Frontend Engineer | Abdimalik | apps/web/, packages/ui/ | UI/UX, component design, frontend state |
 
 ---
 
@@ -183,6 +183,34 @@ Architecture decisions are defined only by:
 - Architecture Decision Records (ADR)
 
 No contributor may introduce architectural changes without approval.
+
+---
+
+# Module Dependency Rule — ARCH-BOUNDARY-001
+
+**This rule is mandatory and enforced at code review.**
+
+Enterprise modules (`accounting`, `procurement`, `inventory`) must **never** import from
+the `construction` module. The allowed direction is one-way:
+
+```
+construction  ──────►  accounting
+construction  ──────►  procurement
+construction  ──────►  inventory
+
+accounting    ──X──►  construction   ← PROHIBITED
+procurement   ──X──►  construction   ← PROHIBITED
+inventory     ──X──►  construction   ← PROHIBITED
+```
+
+Construction-specific context (`projectId`, `boqNodeId`) is passed as optional nullable
+dimensions to shared modules. Shared modules must not import `BoqService`, `ProjectService`,
+or any other construction-domain service. If a shared module needs construction data, it
+receives it as a plain ID through its own API — it does not call into construction code.
+
+**Known technical debt:** `src/business/finance/` (Sprint 3 PaymentReceipt module) is
+construction-coupled by domain. It will be absorbed into the AR module in Sprint 8
+when the AR/Cash-Banking boundary is formalized.
 
 ---
 

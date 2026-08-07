@@ -1,9 +1,10 @@
 'use client';
 
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 
-import { getIpc, listIpcs } from '../api/ipc-api';
-import type { Ipc, IpcDetail } from '../types';
+import { getIpc, issueIpc, listIpcs, supersedeIpc } from '../api/ipc-api';
+import type { Ipc, IpcDetail, IssueIpcPayload } from '../types';
+import type { SupersedeIpcPayload } from '../api/ipc-api';
 
 export const ipcKeys = {
   all: ['ipc'] as const,
@@ -22,5 +23,26 @@ export function useIpc(id: string): UseQueryResult<IpcDetail, Error> {
   return useQuery({
     queryKey: ipcKeys.detail(id),
     queryFn: () => getIpc(id),
+  });
+}
+
+export function useIssueIpc(applicationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: IssueIpcPayload) => issueIpc(payload),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ipcKeys.list(applicationId) });
+    },
+  });
+}
+
+export function useSupersede(applicationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: SupersedeIpcPayload) => supersedeIpc(applicationId, payload),
+    onSuccess: () => {
+      // Invalidate the whole IPC namespace so both list and detail queries refresh.
+      void qc.invalidateQueries({ queryKey: ipcKeys.all });
+    },
   });
 }

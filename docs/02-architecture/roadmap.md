@@ -32,12 +32,15 @@ Both are required. The roadmap below builds them in the correct sequence.
 | **Sprint 1** | Platform Foundation | ✅ Complete |
 | **Sprint 2** | Projects and BOQ | ✅ Complete |
 | **Sprint 3** | Contracts and Client Billing | ✅ Complete |
-| **Sprint 4** | Accounting Foundation | ⏳ Next |
-| **Sprint 5** | Procurement, Accounts Payable and Variations | Planned |
-| **Sprint 6** | Inventory and Project Costing | Planned |
-| **Sprint 7** | Accounts Receivable, Cash and Banking | Planned |
-| **Sprint 8** | Site Operations, Labour and Equipment | Planned |
-| **Sprint 9** | Financial Close and Reporting | Planned |
+| **Sprint 4** | Accounting Foundation | ✅ Complete |
+| **Sprint 4 Frontend** | Accounting Workspace UI | ⏳ Next — Frontend Engineer |
+| **Sprint 5** | Procurement, AP Integration, and Commitment Control | ✅ Complete |
+| **Sprint 5 Frontend** | Procurement Workspace UI | ⏳ Next — Frontend Engineer |
+| **Sprint 6** | Variations / Change Management | Planned |
+| **Sprint 7** | Inventory and Project Costing | Planned |
+| **Sprint 8** | Accounts Receivable, Cash and Banking | Planned |
+| **Sprint 9** | Site Operations, Labour and Equipment | Planned |
+| **Sprint 10** | Financial Close and Reporting | Planned |
 
 ---
 
@@ -71,107 +74,136 @@ PaymentReceipt, ReceiptAllocation (payment status derived from allocations).
 
 ---
 
-### Sprint 4 — Accounting Foundation ⏳
+### Sprint 4 — Accounting Foundation ✅ Complete
 
-Build the double-entry posting backbone **before** procurement. Every future transaction
-(supplier invoice, client receipt, stock issue) must post into the General Ledger correctly.
-Building procurement first and retrofitting accounting later is technically high-risk.
+Built the complete double-entry accounting platform. The backend is production-ready and
+verified with 87 integration tests across all accounting invariants.
 
-**Core entities:**
+**What was built:**
 
-| Entity | Purpose |
+| Layer | Delivered |
 |---|---|
-| `ChartOfAccounts` | Configurable account tree per organization |
-| `Account` | Individual GL account (asset, liability, equity, income, expense) |
-| `FiscalYear` | Org-level fiscal year definition |
-| `AccountingPeriod` | Monthly period within a fiscal year; OPEN / LOCKED / CLOSED |
-| `Journal` | Logical grouping of entries (General, AP, AR, Payroll, etc.) |
-| `JournalEntry` | A balanced posting event (header) |
-| `JournalLine` | One debit or credit line on an entry |
-| `FinancialDimension` | Cross-cutting analysis tags (Project, Department, CostCentre) |
-| `PostingRule` | Maps accounting events → account assignments |
-| `AccountingEvent` | Normalized event emitted by business modules (IPC issued, PO received, etc.) |
+| **Chart of Accounts** | Account hierarchy, account versions (immutable history), normal balance, account classes (ASSET, LIABILITY, EQUITY, INCOME, COST_OF_SALES, EXPENSE), control account policy |
+| **Fiscal Years + Periods** | FiscalYear entity, AccountingPeriod (OPEN / LOCKED / CLOSED / REOPENED), period state machine |
+| **Double-entry posting engine** | ∑ debits = ∑ credits enforced at commit, period validator, account version resolver, document sequence numbering |
+| **Manual Journals** | DRAFT → SUBMITTED → APPROVED → POSTED lifecycle, CFO approval workflow, reversal with swapped Dr/Cr |
+| **Accounts Receivable** | ClientInvoice (from IPC), post to AR control account, CustomerReceipt post, receipt-to-invoice allocation, reversal |
+| **Accounts Payable** | SupplierBill create/post, SupplierPayment post, advance allocation to bill, reversal chain |
+| **Opening Balances** | Migration wizard (trial balance + open AR invoices + open AP bills) |
+| **General Ledger** | Account ledger with running balance, GL balance as-of-date, source document drill-down |
+| **Trial Balance** | Opening / period movement / closing columns, debit=credit validation, CLOSED period uses frozen snapshot |
+| **Profit & Loss** | Revenue / CoS / Gross Profit / Expenses / Net Income, excludes CLOSING entries, project/department filters, monthly comparison |
+| **Balance Sheet** | Assets / Liabilities / Equity, Current Year Earnings (live P&L for open FY), equation validation, snapshot path for CLOSED periods |
+| **PeriodAccountBalance snapshots** | Generated on period close, chained (period N opening = period N-1 closing), invalidated on reopen, sequential rebuild |
+| **Period management** | lockPeriod (OPEN→LOCKED), closePeriod (LOCKED→CLOSED + snapshot), reopenPeriod (CLOSED→REOPENED + downstream invalidation), close-gate pre-flight |
+| **Year-end close** | Closing journal (zero P&L → Retained Earnings), Period 12 snapshot, FiscalYear CLOSED |
+| **REST API** | All 10 accounting modules have controllers, DTOs, JwtAuthGuard, Swagger docs |
+| **Integration tests** | 87/87 passing — all accounting invariants verified |
 
-**Fundamental rules (non-negotiable):**
+**Verified accounting invariants:**
 
 ```
-∑ Debits = ∑ Credits  on every posted JournalEntry
+∑ Debits = ∑ Credits on every posted JournalEntry
+Trial Balance total closing debit = total closing credit
+Balance Sheet: Assets = Liabilities + Equity (within $0.01)
+P&L net income = Current Year Earnings in Balance Sheet
+P&L by project + P&L by department reconcile to company P&L
+CLOSING entries excluded from P&L
+Closed periods use PeriodAccountBalance snapshots
+Reopened periods invalidate downstream snapshots
+Period close gate blocks unresolved conditions
+All queries org-scoped (cross-tenant access blocked)
 ```
 
-- Posted entries are **immutable**. Corrections happen through reversal entries only.
-- Draft → Approved → Posted → (Reversed if needed)
-- No period may be posted into after it is CLOSED.
-- Financial dimensions make every posting traceable to a project, department, or cost centre.
-
-**Sprint 4 delivers:**
-
-- Configurable chart of accounts
-- Fiscal years and accounting periods (open / lock / close)
-- Manual journal entry (draft → approved → posted)
-- Balanced journal validation (debit = credit enforced at post time)
-- Reversal and replacement journal workflow
-- Multi-currency journal lines
-- Posting-rule configuration foundation
-- AccountingEvent emission from Sprint 3 modules (IPC, PaymentReceipt)
-- Trial balance
-- General ledger report (by account, by period, by dimension)
-- Audit history on every posting action
+**API reference:** See `api-reference.md` Section 6.13 onwards.
 
 **Sprint 4 does not include:**
 
-- Full tax filing
+- Full tax filing or VAT return computation
 - Payroll journal automation
 - Fixed assets and depreciation
 - Consolidation across legal entities
-- Advanced bank reconciliation
-- Statutory financial statement templates
+- Advanced bank reconciliation (statement import)
+- Statutory financial statement PDF templates
+- Cash Flow statement (deferred — requires direct method or indirect computation)
 
 ---
 
-### Sprint 5 — Procurement, Accounts Payable and Variations
+### Sprint 4 Frontend — Accounting Workspace UI ⏳
 
-The full supplier purchasing chain plus contract variation management, with GL posting at every step.
+The backend is complete and API-ready. The frontend engineer (Abdimalik) now builds the
+accounting workspace so Finance can operate it without using the API directly.
 
-**Procurement entities:**
+**What to build:** See `frontend-design.md` Section 11 — Accounting Workspace.
 
-```
-Supplier
-→ PurchaseRequisition
-→ RequestForQuotation
-→ SupplierQuotation
-→ PurchaseOrder
-→ GoodsReceiptNote
-→ SupplierInvoice
-→ SupplierPayment
-```
-
-**Example GL postings:**
-
-| Event | Debit | Credit |
-|---|---|---|
-| Goods received | Inventory / Project Receipt | Goods Received Not Invoiced (GRNI) |
-| Supplier invoice matched | GRNI + Recoverable Tax | Accounts Payable |
-| Supplier payment | Accounts Payable | Bank |
-
-Every posting scenario must be validated by the financial officer before acceptance.
-
-Also includes Subcontract management and SubcontractCertificate.
+**Dependency:** All endpoints listed in `api-reference.md` Section 6.13 are live and tested.
 
 ---
 
-**Variations / Change Orders**
+### Sprint 5 — Procurement, AP Integration, and Commitment Control ⏳ Next
 
-Change orders are inserted into Sprint 5 because they touch Contract, BOQ, IPA and IPC — all of which are already built in Sprint 3 — and active projects generate variation claims before Sprint 9 is reached. Adding them here ensures variation work is traceable in the system as soon as procurement begins, rather than continuing on WhatsApp and Excel.
+Builds the complete purchasing chain from site need to supplier payment, with full cost
+commitment tracking and three-way bill matching. AP (SupplierBill, SupplierPayment) was
+built in Sprint 4 — Sprint 5 integrates procurement into it rather than rebuilding it.
 
-**Entities:**
+**Architecture decisions:** See `adr/ADR-007-sprint5-procurement.md`.
+
+**What is built:**
+
+| Layer | Delivered |
+|---|---|
+| **Master data** | `UnitOfMeasure` (org-configurable), `MaterialCategory`, `SpendCategory`, `Material` catalogue |
+| **Material Request** | Dual-scope (PROJECT \| ORGANIZATION), multi-line, BOQ-linked, DOA approval |
+| **Purchase Order** | Immutable revisions (`PurchaseOrder` + `PurchaseOrderRevision` + `PurchaseOrderLine`); DOA value-threshold routing |
+| **MR↔PO allocation** | Many-to-many junction (`PurchaseOrderLineRequestAllocation`) for consolidation and split purchasing |
+| **Goods Receipt** | `GoodsReceiptNote` + `GoodsReceiptLine` (received vs accepted vs rejected); `GoodsReceiptLineAllocation` for per-project attribution |
+| **Bill matching** | `SupplierBillMatch` + `SupplierBillMatchLine` — explicit audit result; `MatchingTolerancePolicy` (hierarchical); THREE_WAY for materials, TWO_WAY for services |
+| **Commitment Ledger** | Immutable `CommitmentLedgerEntry`: COMMITTED (PO) → ACCRUED (GRN) → ACTUAL (Bill posted); allocation-level attribution preserves project/BOQ breakdown |
+| **DOA extension** | Condition expressions on `WorkflowRequirementPolicy`; immutable approval snapshot on `ApprovalInstance` |
+| **Over-receipt** | Configurable tolerance band; `EXCEPTION_PENDING` above tolerance; no negative committed balances |
+| **Variation readiness** | `BOQNode.sourceType: BASELINE \| VARIATION` and `BOQNode.sourceChangeOrderId?` prepared |
+
+**Complete procurement chain:**
+
+```
+Material Request (approved)
+  ↓ PurchaseOrderLineRequestAllocation (many-to-many MR↔PO)
+Purchase Order Revision (ACTIVE)
+  ↓ CommitmentLedger: COMMITTED +amount (per allocation, per project/BOQ)
+Goods Receipt Note (POSTED)
+  ↓ CommitmentLedger: COMMITTED −amount, ACCRUED +amount (accepted qty only)
+Supplier Bill (prefilled from GRN, matched)
+  ↓ CommitmentLedger: ACCRUED −amount, ACTUAL +amount
+  ↓ GL JournalEntry: Dr Expense / Cr Accounts Payable
+Supplier Payment (posted)
+  ↓ GL JournalEntry: Dr Accounts Payable / Cr Bank
+```
+
+**File attachments foundation (also Sprint 5):**
+Sprint 5 builds the shared file-serving layer (S3-compatible storage + `Attachment` entity).
+Each subsequent sprint adds attachment support to its own entities.
+
+**Not in Sprint 5:** Variations/ChangeOrders, SupplierReturn, UoM conversion, warehouse
+management, stock ledger, inventory valuation, Approved Supplier List.
+
+---
+
+### Sprint 6 — Variations / Change Management
+
+Builds the full contract variation workflow, now that Procurement is stable and
+BOQ nodes already carry `sourceType` provenance.
+
+**What is built:**
 
 ```
 ChangeOrderRequest     — logged scope change (description, cause, initiator)
 → ChangeOrderPricing   — QS estimate of cost and time impact
 → ChangeOrder          — approved variation (linked to Contract)
-→ BOQ node additions   — new or modified BOQ nodes under the variation
+→ BOQNode additions    — sourceType = VARIATION, sourceChangeOrderId populated
 → IPA items            — claimed against variation BOQ nodes (same IPA flow)
 → IPC items            — certified against variation BOQ nodes (same IPC flow)
+→ SupplierReturn       — for rejected GRN goods
+→ Approved Supplier List / Supplier Qualification
 ```
 
 **Variation lifecycle:**
@@ -182,30 +214,27 @@ DRAFT → SUBMITTED_FOR_INTERNAL_APPROVAL → APPROVED_INTERNALLY
       → CANCELLED / CLIENT_REJECTED
 ```
 
-Client approval is required before variation work begins (except documented emergency instructions).
+Because Procurement already understands `boqNodeId` and BOQNode will carry
+`sourceChangeOrderId`, Procurement automatically inherits variation cost traceability.
+No procurement redesign required.
 
 **Rules:**
 - A variation must link to a Contract in ACTIVE or FINAL_ACCOUNT_PENDING status
 - Variation BOQ nodes extend the contract's BOQ version — they do not create a new version
-- Variation items on an IPA are claimed and certified using the same IPA/IPC flow as original scope
 - The contract value increases automatically when a ChangeOrder reaches EXECUTED status
-- Rejected or cancelled variations do not affect the contract value
-- Every variation carries a cause code: CLIENT_INSTRUCTION, DESIGN_CHANGE, UNFORESEEN_CONDITION, SCOPE_OMISSION, OTHER
-
-**File attachments foundation (also Sprint 5):**
-Sprint 5 builds the shared file-serving layer (S3-compatible storage + `Attachment` entity). Each subsequent sprint adds attachment support to its own entities. This avoids retrofitting file handling across all modules after Sprint 9.
+- Every variation carries a cause code: CLIENT_INSTRUCTION, DESIGN_CHANGE,
+  UNFORESEEN_CONDITION, SCOPE_OMISSION, OTHER
 
 ---
 
-### Sprint 6 — Inventory and Project Costing
+### Sprint 7 — Inventory and Project Costing
 
-- Material catalogue
 - Warehouses and site stores
 - Immutable stock ledger (entries are never updated or deleted)
+- UoM conversion (`UoMConversion` entity)
 - Stock transfers, issues, returns, adjustments
 - Inventory valuation
 - Project material consumption
-- `ProjectCostLedger`: COMMITTED → ACCRUED → ACTUAL at BOQ node level
 - Budget vs commitments, received exposure, actual consumption reporting
 
 > **Important distinction:**
@@ -215,7 +244,7 @@ Sprint 5 builds the shared file-serving layer (S3-compatible storage + `Attachme
 
 ---
 
-### Sprint 7 — Accounts Receivable, Cash and Banking
+### Sprint 8 — Accounts Receivable, Cash and Banking
 
 Upgrades Sprint 3's operational client billing records into formal accounting integration.
 
@@ -239,7 +268,7 @@ proper double-entry accounting entries through posting rules.
 
 ---
 
-### Sprint 8 — Site Operations, Labour and Equipment
+### Sprint 9 — Site Operations, Labour and Equipment
 
 Feeds project costing and operational reporting from site sources.
 
@@ -255,7 +284,7 @@ the General Ledger.
 
 ---
 
-### Sprint 9 — Financial Close and Reporting
+### Sprint 10 — Financial Close and Reporting
 
 - Period closing checklist and workflow
 - Accrual journals and reversing journals

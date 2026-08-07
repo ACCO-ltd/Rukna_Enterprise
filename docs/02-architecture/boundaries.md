@@ -113,20 +113,31 @@ Changes to `packages/config/`, `packages/tsconfig/`, or `packages/eslint/` affec
 
 | Module | Path | Owner | Status |
 |---|---|---|---|
-| Auth | `apps/api/src/platform/auth/` | Abdulsalam | Built |
-| Users | `apps/api/src/platform/users/` | Abdulsalam | Built |
-| Organizations | `apps/api/src/platform/organizations/` | Abdulsalam | Built |
-| Roles | `apps/api/src/platform/roles/` | Abdulsalam | Built |
-| Permissions | `apps/api/src/platform/permissions/` | Abdulsalam | Built |
-| Audit Logs | `apps/api/src/platform/audit-logs/` | Abdulsalam | Built |
-| Multi-tenancy | `apps/api/src/platform/tenancy/` | Abdulsalam | To build |
-| DOA / Workflows | `apps/api/src/platform/workflows/` | Abdulsalam | To build |
-| Construction — Projects | `apps/api/src/business/construction/projects/` | Abdulsalam | To build |
-| Construction — Contracts | `apps/api/src/business/construction/contracts/` | Abdulsalam | To build |
-| Construction — BOQ | `apps/api/src/business/construction/boq/` | Abdulsalam | To build |
-| Construction — Procurement | `apps/api/src/business/construction/procurement/` | Abdulsalam | To build |
-| Construction — Inventory | `apps/api/src/business/construction/inventory/` | Abdulsalam | To build |
-| Construction — Site Execution | `apps/api/src/business/construction/site/` | Abdulsalam | To build |
-| Construction — Subcontracts | `apps/api/src/business/construction/subcontracts/` | Abdulsalam | To build |
-| Construction — Billing | `apps/api/src/business/construction/billing/` | Abdulsalam | To build |
-| Construction — Job Costing | `apps/api/src/business/construction/costing/` | Abdulsalam | To build |
+| Auth | `apps/api/src/platform/auth/` | Abdulsalam | ✅ Built |
+| Users | `apps/api/src/platform/users/` | Abdulsalam | ✅ Built |
+| Organizations | `apps/api/src/platform/organizations/` | Abdulsalam | ✅ Built |
+| Roles | `apps/api/src/platform/roles/` | Abdulsalam | ✅ Built |
+| Permissions | `apps/api/src/platform/permissions/` | Abdulsalam | ✅ Built |
+| Audit Logs | `apps/api/src/platform/audit-logs/` | Abdulsalam | ✅ Built |
+| Multi-tenancy | `apps/api/src/platform/tenancy/` | Abdulsalam | ✅ Built |
+| DOA / Workflows | `apps/api/src/platform/workflows/` | Abdulsalam | ✅ Built |
+| Construction — Projects | `apps/api/src/business/construction/projects/` | Abdulsalam | ✅ Built |
+| Construction — Contracts | `apps/api/src/business/construction/contracts/` | Abdulsalam | ✅ Built |
+| Construction — BOQ | `apps/api/src/business/construction/boq/` | Abdulsalam | ✅ Built |
+| Construction — Client Billing | `apps/api/src/business/construction/billing/` | Abdulsalam | ✅ Built |
+| Accounting — Core (COA, FY, Bank, OB) | `apps/api/src/business/accounting/accounting-core/` | Abdulsalam | ✅ Built |
+| Accounting — Manual Journals | `apps/api/src/business/accounting/manual-journals/` | Abdulsalam | ✅ Built |
+| Accounting — Accounts Receivable | `apps/api/src/business/accounting/accounts-receivable/` | Abdulsalam | ✅ Built |
+| Accounting — Accounts Payable | `apps/api/src/business/accounting/accounts-payable/` | Abdulsalam | ✅ Built |
+| Accounting — General Ledger & Reports | `apps/api/src/business/accounting/general-ledger/` | Abdulsalam | ✅ Built |
+| Procurement — Material Catalogue | `apps/api/src/business/procurement/catalogue/` | Abdulsalam | Planned Sprint 5 |
+| Procurement — Material Requests | `apps/api/src/business/procurement/material-requests/` | Abdulsalam | Planned Sprint 5 |
+| Procurement — Purchase Orders | `apps/api/src/business/procurement/purchase-orders/` | Abdulsalam | Planned Sprint 5 |
+| Procurement — Goods Receipts | `apps/api/src/business/procurement/goods-receipts/` | Abdulsalam | Planned Sprint 5 |
+| Procurement — Bill Matching | `apps/api/src/business/procurement/bill-matching/` | Abdulsalam | Planned Sprint 5 |
+| Procurement — Commitment Ledger | `apps/api/src/business/procurement/commitment-ledger/` | Abdulsalam | Planned Sprint 5 |
+| Construction — Variations | `apps/api/src/business/construction/variations/` | Abdulsalam | Planned Sprint 6 |
+| Construction — Subcontracts | `apps/api/src/business/construction/subcontracts/` | Abdulsalam | Planned Sprint 6 |
+| Construction — Inventory | `apps/api/src/business/construction/inventory/` | Abdulsalam | Planned Sprint 7 |
+| Construction — Job Costing | `apps/api/src/business/construction/costing/` | Abdulsalam | Planned Sprint 7 |
+| Construction — Site Execution | `apps/api/src/business/construction/site/` | Abdulsalam | Planned Sprint 9 |

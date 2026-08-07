@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Button } from '@erp/ui';
 
-import { ProjectContractsSection } from '@/features/contracts/components/project-contracts-section';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 
@@ -12,11 +11,9 @@ import { useProject } from '../hooks/use-project';
 import { getAvailableActions } from '../project-actions';
 import type { ProjectDetail as ProjectDetailModel } from '../types';
 import { ProjectActionsPanel } from './project-actions-panel';
-import { ProjectStatusBadge } from './project-status-badge';
 
 export function ProjectDetail({ id }: { id: string }) {
   const t = useTranslations('platform.projects.detail');
-  const tBoq = useTranslations('platform.boq');
   const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
   const { data: project, isPending, isError, error } = useProject(id);
@@ -46,33 +43,11 @@ export function ProjectDetail({ id }: { id: string }) {
     );
   }
 
-  const displayName = locale === 'ar' && project.nameAr ? project.nameAr : project.name;
   const suspension = project.suspensions.find((s) => s.resumedAt === null);
   const actions = getAvailableActions(project);
 
   return (
     <div className="space-y-6">
-      <div>
-        <Link
-          href="/projects"
-          className="inline-flex min-h-11 items-center text-sm font-medium text-brand-primary hover:text-brand-primary-hover"
-        >
-          {t('backToList')}
-        </Link>
-      </div>
-
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-xs text-muted-foreground">{project.code}</span>
-            <ProjectStatusBadge status={project.status} />
-          </div>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
-            {displayName}
-          </h1>
-        </div>
-      </div>
-
       {suspension ? (
         <Alert variant="warning" title={t('suspendedTitle')}>
           <p className="mt-1">{suspension.reason}</p>
@@ -90,40 +65,7 @@ export function ProjectDetail({ id }: { id: string }) {
         <ProjectActionsPanel project={project} />
       </section>
 
-      <div>
-        <Link
-          href={`/projects/${project.id}/boq`}
-          className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-primary hover:text-brand-primary-hover"
-        >
-          {tBoq('openBoq')}
-        </Link>
-      </div>
-
       <Overview project={project} locale={locale} />
-
-      {/* Contracts live at their own top-level route, but a project manager works
-          project-first — this shows what is contracted here and links out rather than
-          reimplementing the list. */}
-      <ProjectContractsSection projectId={project.id} />
-
-      <section aria-labelledby="members-heading">
-        <h2
-          id="members-heading"
-          className="text-sm font-semibold uppercase tracking-wide text-muted-foreground"
-        >
-          {t('membersHeading')}
-        </h2>
-        {/*
-          Deliberately not a member list. `addMember` requires the caller to already be a
-          member and `create` never enrols one, so no project can have members yet (B1).
-          Rendering an empty roster would imply the team is unassigned rather than that
-          the capability is missing.
-        */}
-        <div className="mt-3 rounded-lg border border-dashed border-border bg-surface px-6 py-8 text-center">
-          <p className="text-sm text-foreground">{t('membersUnavailable')}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{t('membersUnavailableHint')}</p>
-        </div>
-      </section>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 
+import { PageHeader } from '@/components/layout/page-header';
 import { ProjectEdit } from '@/features/projects/components/project-edit';
 
 export default async function EditProjectPage({
@@ -12,9 +13,11 @@ export default async function EditProjectPage({
 
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('editTitle')}</h1>
-
-      <div className="mt-6 rounded-lg border border-border bg-surface p-5 sm:p-6">
+      <PageHeader
+        breadcrumbs={[{ label: t('backToProject'), href: `/projects/${id}` }]}
+        title={t('editTitle')}
+      />
+      <div className="rounded-lg border border-border bg-surface p-5 sm:p-6">
         <ProjectEdit id={id} />
       </div>
     </div>

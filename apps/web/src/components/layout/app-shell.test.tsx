@@ -75,13 +75,19 @@ beforeEach(() => {
 });
 
 describe('AppShell — navigation', () => {
-  it('renders only the live destinations', () => {
+  it('renders the live destinations and marks disabled items as non-links', () => {
     renderShell();
 
     const nav = screen.getAllByRole('navigation', { name: 'Main navigation' })[0]!;
-    const links = Array.from(nav.querySelectorAll('a')).map((a) => a.textContent);
+    const links = Array.from(nav.querySelectorAll('a')).map((a) => a.textContent?.trim());
 
-    expect(links).toEqual(['Dashboard', 'Projects', 'Clients', 'Contracts', 'Receipts']);
+    // Only enabled items render as links. Disabled future modules render as <span>.
+    expect(links).toContain('Dashboard');
+    expect(links).toContain('Projects');
+    expect(links).toContain('Clients');
+    expect(links).toContain('Receipts');
+    // Contracts is no longer a standalone sidebar destination.
+    expect(links).not.toContain('Contracts');
   });
 
   it('marks the current route with aria-current', () => {
@@ -159,28 +165,37 @@ describe('AppShell — mobile drawer', () => {
 });
 
 describe('AppShell — header', () => {
-  it('shows the tenant and the signed-in user', () => {
+  it('shows the brand and tenant slug in the sidebar', () => {
     sessionStore.setFromAccessToken(fakeJwt());
     renderShell();
 
+    expect(screen.getByText('Rukna ERP')).toBeInTheDocument();
     expect(screen.getByText('acco')).toBeInTheDocument();
-    expect(screen.getByText('admin@acco.com')).toBeInTheDocument();
   });
 
   it('renders without a session rather than crashing', () => {
     renderShell();
 
+    // Brand always present; no crash when no user is signed in.
     expect(screen.getByText('Rukna ERP')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument();
+    // Avatar button still renders (shows "??" initials).
+    expect(screen.getByRole('button', { name: 'Account menu' })).toBeInTheDocument();
   });
 
-  it('offers the language toggle with the active locale pressed', () => {
+  it('shows email and sign-out inside the account menu', async () => {
+    const user = userEvent.setup();
+    sessionStore.setFromAccessToken(fakeJwt());
     renderShell();
 
-    expect(screen.getByRole('button', { name: 'Switch language to English' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    // Email and sign-out are inside the dropdown — not directly in the DOM.
+    expect(screen.queryByText('admin@acco.com')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Account menu' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('admin@acco.com')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Sign out')).toBeInTheDocument();
   });
 
   it('clears the session and leaves for /login on sign out', async () => {
@@ -188,7 +203,6 @@ describe('AppShell — header', () => {
     sessionStore.setFromAccessToken(fakeJwt());
     document.cookie = '__auth=1; path=/';
 
-    // jsdom throws on real navigation — capture the destination instead.
     let assignedHref: string | null = null;
     Object.defineProperty(window, 'location', {
       configurable: true,
@@ -206,7 +220,11 @@ describe('AppShell — header', () => {
     });
 
     renderShell();
-    await user.click(screen.getByRole('button', { name: 'Sign out' }));
+
+    // Open the user menu first, then click sign out.
+    await user.click(screen.getByRole('button', { name: 'Account menu' }));
+    await waitFor(() => expect(screen.getByText('Sign out')).toBeInTheDocument());
+    await user.click(screen.getByText('Sign out'));
 
     await waitFor(() => {
       expect(assignedHref).toBe('/login');

@@ -1,28 +1,52 @@
 import { describe, expect, it } from 'vitest';
 
-import { isActiveNavItem, NAV_ITEMS } from './nav-items';
+import { isActiveNavItem, NAV_GROUPS, STANDALONE_NAV } from './nav-groups';
 
-describe('NAV_ITEMS', () => {
-  // Guards the decision in apps/web/CLAUDE.md: no navigation to endpoints that do not
-  // exist. Procurement, Stock, Cost and DPRs have no API — if someone adds one of those
-  // before the backend does, this fails.
-  //
-  // Clients, Contracts and Receipts each joined the list as their screens shipped. IPA and
-  // IPC never appear here — they are reached through their contract, not the top-level
-  // menu, because neither means anything apart from the contract it bills.
-  it('only lists destinations backed by live endpoints', () => {
-    expect(NAV_ITEMS.map((item) => item.href)).toEqual([
-      '/dashboard',
-      '/projects',
-      '/clients',
-      '/contracts',
-      '/receipts',
+describe('STANDALONE_NAV', () => {
+  it('contains only Dashboard as a standalone item', () => {
+    expect(STANDALONE_NAV.map((i) => i.href)).toEqual(['/dashboard']);
+  });
+});
+
+describe('NAV_GROUPS', () => {
+  it('has the expected group keys in order', () => {
+    expect(NAV_GROUPS.map((g) => g.moduleKey)).toEqual([
+      'portfolio',
+      'finance',
+      'operations',
+      'reports',
+      'administration',
     ]);
+  });
+
+  it('marks future modules as disabled so they render without linking', () => {
+    const allItems = NAV_GROUPS.flatMap((g) => g.items);
+    const disabled = allItems.filter((i) => i.disabled).map((i) => i.href);
+    expect(disabled).toContain('/finance/cash-position');
+    expect(disabled).toContain('/operations/procurement');
+    expect(disabled).toContain('/admin/exchange-rates');
+  });
+
+  it('enabled finance item is receipts (live endpoint)', () => {
+    const finance = NAV_GROUPS.find((g) => g.moduleKey === 'finance')!;
+    const enabled = finance.items.filter((i) => !i.disabled);
+    expect(enabled.map((i) => i.href)).toEqual(['/receipts']);
+  });
+
+  it('portfolio items are all enabled (live endpoints exist)', () => {
+    const portfolio = NAV_GROUPS.find((g) => g.moduleKey === 'portfolio')!;
+    const disabled = portfolio.items.filter((i) => i.disabled);
+    expect(disabled).toHaveLength(0);
   });
 });
 
 describe('isActiveNavItem', () => {
-  it('matches the destination itself', () => {
+  it('matches dashboard only on exact path', () => {
+    expect(isActiveNavItem('/dashboard', '/dashboard')).toBe(true);
+    expect(isActiveNavItem('/dashboard/widgets', '/dashboard')).toBe(false);
+  });
+
+  it('matches a non-dashboard destination itself', () => {
     expect(isActiveNavItem('/projects', '/projects')).toBe(true);
   });
 
@@ -36,6 +60,6 @@ describe('isActiveNavItem', () => {
   });
 
   it('does not match an unrelated route', () => {
-    expect(isActiveNavItem('/dashboard', '/projects')).toBe(false);
+    expect(isActiveNavItem('/receipts', '/projects')).toBe(false);
   });
 });

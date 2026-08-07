@@ -1,6 +1,6 @@
 import { apiClient } from '@/lib/api-client';
 
-import type { CertificatePaymentStatus, Ipc, IpcDetail } from '../types';
+import type { CertificatePaymentStatus, Ipc, IpcDetail, IssueIpcPayload } from '../types';
 
 /**
  * `GET /ipc`, optionally scoped to one application.
@@ -20,6 +20,46 @@ export function listIpcs(applicationId?: string): Promise<Ipc[]> {
 /** Returns the certificate with items, deductions and the derived `netCertified`. */
 export function getIpc(id: string): Promise<IpcDetail> {
   return apiClient<IpcDetail>(`/ipc/${id}`);
+}
+
+/**
+ * Issues a new payment certificate.
+ *
+ * - `certifiedTotal` is server-computed — do not include it.
+ * - RETENTION and ADVANCE_RECOVERY deductions are auto-generated — do not include them
+ *   in the `deductions` array.
+ * - `varianceReason` is required by the server whenever `certifiedQuantity` ≠
+ *   `cumulativeClaimed` for that item.
+ * - For `REJECTED` certificates: pass `items: []` and `deductions: []`.
+ */
+export function issueIpc(payload: IssueIpcPayload): Promise<Ipc> {
+  return apiClient<Ipc>('/ipc', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface SupersedeIpcPayload {
+  newCertificateId: string;
+  reason: string;
+}
+
+/**
+ * Atomically supersedes the current effective certificate for an application.
+ *
+ * The effective cert gets `isEffective = false` + `supersededAt` + `supersessionReason`.
+ * The new certificate (`newCertificateId`) gets `isEffective = true` + `effectiveAt`.
+ */
+export function supersedeIpc(
+  applicationId: string,
+  payload: SupersedeIpcPayload,
+): Promise<void> {
+  return apiClient<void>(`/ipc/${applicationId}/supersede`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
 }
 
 /**

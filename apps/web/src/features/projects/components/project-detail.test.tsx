@@ -128,7 +128,8 @@ describe('ProjectDetail — available actions', () => {
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
-    await screen.findByText('Al-Baraka Tower');
+    // Overview section heading is a reliable signal that the project loaded.
+    await screen.findByText('Overview');
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Suspend' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cancel project' })).not.toBeInTheDocument();
@@ -258,14 +259,3 @@ describe('ProjectDetail — running commands', () => {
   });
 });
 
-describe('ProjectDetail — team', () => {
-  // B1: addMember requires the caller to already be a member and create never enrols one,
-  // so an empty roster would imply "unassigned" rather than "not possible yet".
-  it('explains that team management is unavailable rather than showing an empty roster', async () => {
-    vi.mocked(getProject).mockResolvedValue(project());
-
-    renderWithProviders(<ProjectDetail id="p1" />);
-
-    expect(await screen.findByText('Team management is not available yet.')).toBeInTheDocument();
-  });
-});

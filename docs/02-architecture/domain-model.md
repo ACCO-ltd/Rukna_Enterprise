@@ -1,13 +1,16 @@
 # Construction Domain Model
 
-Version: 4.0.0
+Version: 5.0.0
 Status: Active
-Last Updated: 2026-08-03
-Changes: v4 — Sprint 3 planning (ADR-005). Added Client, Contract module (RetentionTerms,
-         AdvanceTerm, Guarantee, ContractMilestone), IPC module (InterimPaymentApplication,
-         InterimPaymentCertificate + items + deductions), Finance module (PaymentReceipt,
-         ReceiptAllocation), WorkflowRequirementPolicy, BOQ node extensions
-         (measurementMethod, pricingBasis), Project commercial/participation model.
+Last Updated: 2026-08-07
+Changes: v5 — Sprint 5 planning (ADR-007). Added procurement domain: UnitOfMeasure,
+         MaterialCategory, SpendCategory, Material catalogue, MaterialRequest (dual-scope),
+         PurchaseOrder (immutable revisions), PurchaseOrderLineRequestAllocation (many-to-many
+         MR↔PO), GoodsReceiptNote + GoodsReceiptLineAllocation, SupplierBillMatch + MatchLine,
+         MatchingTolerancePolicy, OverReceiptPolicy, CommitmentLedgerEntry (COMMITTED→ACCRUED→
+         ACTUAL). DOA engine extended with condition expressions. BOQNode.sourceType added.
+         Variations deferred to Sprint 6. Sprint numbering updated (Variations = 6,
+         Inventory = 7, AR/Cash = 8, Site = 9, Financial Close = 10).
 
 ---
 
@@ -23,12 +26,14 @@ BOQ + BOQVersion                Aggregate root — references projectId
 InterimPaymentApplication       Aggregate root — references contractId, projectId
 InterimPaymentCertificate       Aggregate root — references applicationId
 PaymentReceipt                  Aggregate root — finance; references clientId
-PurchaseOrder                   Aggregate root — references projectId (Sprint 4+)
-GoodsReceiptNote                Aggregate root — references projectId (Sprint 4+)
-MaterialRequest                 Aggregate root — references projectId (Sprint 4+)
-StockTransfer                   Aggregate root (Sprint 4+)
-Subcontract                     Aggregate root — references projectId (Sprint 4+)
-DailyProgressReport             Aggregate root — references projectId (Sprint 4+)
+MaterialRequest                 Aggregate root — dual-scope PROJECT|ORGANIZATION (Sprint 5)
+PurchaseOrder                   Aggregate root — immutable revisions (Sprint 5)
+GoodsReceiptNote                Aggregate root — references purchaseOrderId (Sprint 5)
+CommitmentLedgerEntry           Ledger record  — immutable, signed (Sprint 5)
+ChangeOrder                     Aggregate root — references contractId (Sprint 6)
+StockTransfer                   Aggregate root (Sprint 7)
+Subcontract                     Aggregate root — references projectId (Sprint 6)
+DailyProgressReport             Aggregate root — references projectId (Sprint 9)
 ProjectSuspension               Event record   — references projectId
 ```
 
@@ -88,10 +93,43 @@ Organization
     ├── PaymentReceipt [separate aggregate — Sprint 3]
     │   └── ReceiptAllocation (→ InterimPaymentCertificate, many-to-many)
     │
-    ├── Subcontract (Sprint 4+)
-    ├── Procurement Chain (Sprint 4+)
-    ├── CostLedger (Sprint 4+)
-    └── StockLedger (Sprint 4+)
+    ├── Procurement Chain [Sprint 5 — separate aggregate roots]
+    │   ├── MaterialRequest [separate aggregate]
+    │   │   └── MaterialRequestLine
+    │   │       boqNodeId?            optional — indirect costs do not require BOQ node
+    │   │       spendCategoryId?      overrides Material.defaultSpendCategoryId
+    │   │       requestScope          PROJECT | ORGANIZATION
+    │   │
+    │   ├── PurchaseOrder [separate aggregate]
+    │   │   └── PurchaseOrderRevision  (DRAFT | APPROVED | ACTIVE | SUPERSEDED | CANCELLED)
+    │   │       └── PurchaseOrderLine  (immutable once revision ACTIVE)
+    │   │           └── PurchaseOrderLineRequestAllocation  (many-to-many MR↔PO junction)
+    │   │
+    │   ├── GoodsReceiptNote [separate aggregate]
+    │   │   └── GoodsReceiptLine
+    │   │       receivedQuantity / acceptedQuantity / rejectedQuantity
+    │   │       └── GoodsReceiptLineAllocation  (per-project attribution for CommitmentLedger)
+    │   │
+    │   ├── SupplierBillMatch  (explicit matching audit per SupplierBill)
+    │   │   └── SupplierBillMatchLine
+    │   │
+    │   ├── MatchingTolerancePolicy  (hierarchical: PO → Supplier → SpendCategory → Org)
+    │   └── OverReceiptPolicy        (hierarchical: PO → SpendCategory → Org)
+    │
+    ├── CommitmentLedgerEntry [immutable ledger — Sprint 5]
+    │   stage: COMMITTED | ACCRUED | ACTUAL
+    │   signed Decimal amount per allocation (project/BOQ/department attribution)
+    │   NOT merged with JournalLine (GL) — separate bounded model
+    │
+    ├── Master Data [Sprint 5]
+    │   ├── UnitOfMeasure  (org-configurable; code unique per org; INACTIVE not deleted)
+    │   ├── MaterialCategory  (hierarchy via parentCategoryId; operational classification)
+    │   ├── SpendCategory     (hierarchy via parentCategoryId; financial governance)
+    │   └── Material          (materialCategoryId + defaultSpendCategoryId + baseUomId)
+    │
+    ├── ChangeOrder (Sprint 6)
+    ├── CostLedger / StockLedger (Sprint 7)
+    └── Subcontract (Sprint 6)
 ```
 
 ---

@@ -1,13 +1,5 @@
 import { IpcStatus } from '@erp/types';
 
-/**
- * IPC wire shapes live in `src/lib/api-types.ts` with every other shape the API returns.
- *
- * This module is READ-ONLY. Issuing a certificate is E5 and is gated on C1 (issue #12) —
- * the API requires the client to compute `certifiedTotal` and every deduction amount, and
- * the frontend will not author contract valuation until that is settled. Reading
- * certificates is unaffected, and receipts need it to allocate against them.
- */
 export type {
   Ipc,
   IpcDetail,
@@ -17,3 +9,26 @@ export type {
 } from '@/lib/api-types';
 
 export { IpcStatus };
+
+/** Request body for `POST /ipc`. `certifiedTotal` is server-computed — do not send it. */
+export interface IssueIpcPayload {
+  applicationId: string;
+  status: 'CERTIFIED' | 'PARTIALLY_CERTIFIED' | 'REJECTED';
+  currency: string;
+  exchangeRateCurrency?: string;
+  exchangeRateBase?: string;
+  exchangeRateValue?: string;
+  exchangeRateDate?: string;
+  notes?: string;
+  items: Array<{
+    applicationItemId: string;
+    certifiedQuantity: string;
+    varianceReason?: string;
+  }>;
+  /** Ad-hoc deductions only. RETENTION and ADVANCE_RECOVERY are server auto-generated. */
+  deductions: Array<{
+    deductionType: string;
+    basis: string;
+    amount: string;
+  }>;
+}

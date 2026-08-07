@@ -35,4 +35,23 @@ export {
   TableScroll,
 } from './components/table';
 export { Tabs, TabsContent, TabsList, TabsTrigger } from './components/tabs';
+export {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetTitle,
+  SheetTrigger,
+} from './components/sheet';
+export {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuPortal,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from './components/dropdown-menu';
 export { cn } from './lib/utils';

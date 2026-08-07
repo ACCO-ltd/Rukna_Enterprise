@@ -17,18 +17,43 @@ model Organization {
   createdAt DateTime           @default(now()) @map("created_at")
   updatedAt DateTime           @updatedAt @map("updated_at")
 
-  users                    User[]
-  roles                    Role[]
-  exchangeRates            ExchangeRate[]
-  workflowDefinitions      WorkflowDefinition[]
-  memberships              OrganizationMembership[]
-  projects                 Project[]
-  clients                  Client[]
-  contracts                Contract[]
-  applications             InterimPaymentApplication[]
-  certificates             InterimPaymentCertificate[]
-  receipts                 PaymentReceipt[]
-  workflowPolicies         WorkflowRequirementPolicy[]
+  users               User[]
+  roles               Role[]
+  exchangeRates       ExchangeRate[]
+  workflowDefinitions WorkflowDefinition[]
+  memberships         OrganizationMembership[]
+  projects            Project[]
+  clients             Client[]
+  contracts           Contract[]
+  applications        InterimPaymentApplication[]
+  certificates        InterimPaymentCertificate[]
+  receipts            PaymentReceipt[]
+  workflowPolicies    WorkflowRequirementPolicy[]
+  // Sprint 4 — Accounting
+  suppliers           Supplier[]
+  departments         Department[]
+  accounts            Account[]
+  fiscalYears         FiscalYear[]
+  taxCodes            TaxCode[]
+  treasuryGroups      TreasuryGroup[]
+  postingProfiles     PostingProfile[]
+  clientInvoices      ClientInvoice[]
+  supplierBills       SupplierBill[]
+  supplierPayments    SupplierPayment[]
+  journalEntries      JournalEntry[]
+  // Sprint 5 — Procurement
+  unitsOfMeasure      UnitOfMeasure[]
+  materialCategories  MaterialCategory[]
+  spendCategories     SpendCategory[]
+  materials           Material[]
+  materialRequests    MaterialRequest[]
+  purchaseOrders      PurchaseOrder[]
+  poLineAllocations   PurchaseOrderLineRequestAllocation[]
+  grnNotes            GoodsReceiptNote[]
+  grnLineAllocations  GoodsReceiptLineAllocation[]
+  matchingPolicies    MatchingTolerancePolicy[]
+  overReceiptPolicies OverReceiptPolicy[]
+  commitmentEntries   CommitmentLedgerEntry[]
 
   @@map("organizations")
 }
@@ -45,12 +70,12 @@ model User {
   createdAt         DateTime   @default(now()) @map("created_at")
   updatedAt         DateTime   @updatedAt @map("updated_at")
 
-  organization    Organization             @relation(fields: [organizationId], references: [id])
-  userRoles       UserRole[]
-  refreshTokens   RefreshToken[]
-  auditLogs       AuditLog[]
-  memberships     OrganizationMembership[]
-  projectMembers  ProjectMember[]
+  organization   Organization             @relation(fields: [organizationId], references: [id])
+  userRoles      UserRole[]
+  refreshTokens  RefreshToken[]
+  auditLogs      AuditLog[]
+  memberships    OrganizationMembership[]
+  projectMembers ProjectMember[]
 
   @@index([organizationId])
   @@map("users")
@@ -64,7 +89,7 @@ model Role {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  organization    Organization               @relation(fields: [organizationId], references: [id])
+  organization    Organization                @relation(fields: [organizationId], references: [id])
   userRoles       UserRole[]
   rolePermissions RolePermission[]
   membershipRoles OrganizationMembershipRole[]
@@ -179,11 +204,11 @@ model WorkflowDefinition {
   createdAt               DateTime                 @default(now()) @map("created_at")
   updatedAt               DateTime                 @updatedAt @map("updated_at")
 
-  organization     Organization             @relation(fields: [organizationId], references: [id])
-  conditions       WorkflowCondition[]
-  steps            WorkflowStep[]
-  instances        ApprovalInstance[]
-  triggerBindings  WorkflowTriggerBinding[]
+  organization    Organization             @relation(fields: [organizationId], references: [id])
+  conditions      WorkflowCondition[]
+  steps           WorkflowStep[]
+  instances       ApprovalInstance[]
+  triggerBindings WorkflowTriggerBinding[]
 
   @@index([organizationId, transactionType])
   @@map("workflow_definitions")
@@ -224,11 +249,17 @@ model ApprovalInstance {
   workflowDefinitionId String                   @map("workflow_definition_id")
   transactionType      WorkflowTransactionType? @map("transaction_type")
   transactionId        String                   @map("transaction_id")
-  status               ApprovalStatus          @default(PENDING)
-  currentStepOrder     Int                     @default(1) @map("current_step_order")
-  initiatedBy          String                  @map("initiated_by")
-  initiatedAt          DateTime                @default(now()) @map("initiated_at")
-  updatedAt            DateTime                @updatedAt @map("updated_at")
+  status               ApprovalStatus           @default(PENDING)
+  currentStepOrder     Int                      @default(1) @map("current_step_order")
+  initiatedBy          String                   @map("initiated_by")
+  initiatedAt          DateTime                 @default(now()) @map("initiated_at")
+  updatedAt            DateTime                 @updatedAt @map("updated_at")
+  // Sprint 5: immutable condition snapshot — why this policy was selected (ADR-007, Rule DOA-001)
+  evaluatedAmount      Decimal?                 @map("evaluated_amount") @db.Decimal(18, 2)
+  reportingCurrencyCode String?                 @map("reporting_currency_code") @db.VarChar(3)
+  matchedPolicyId      String?                  @map("matched_policy_id")
+  matchedPolicyVersion Int?                     @map("matched_policy_version")
+  conditionSnapshot    Json?                    @map("condition_snapshot")
 
   definition WorkflowDefinition @relation(fields: [workflowDefinitionId], references: [id])
   actions    ApprovalAction[]
@@ -265,8 +296,8 @@ model OrganizationMembership {
   removedAt      DateTime?        @map("removed_at")
   removedBy      String?          @map("removed_by")
 
-  organization Organization               @relation(fields: [organizationId], references: [id])
-  user         User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization                @relation(fields: [organizationId], references: [id])
+  user         User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
   roles        OrganizationMembershipRole[]
 
   @@unique([organizationId, userId])
@@ -303,10 +334,11 @@ model Client {
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 
-  organization Organization  @relation(fields: [organizationId], references: [id])
-  contacts     ClientContact[]
-  receipts     PaymentReceipt[]
-  contracts    Contract[]
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  contacts       ClientContact[]
+  receipts       PaymentReceipt[]
+  contracts      Contract[]
+  clientInvoices ClientInvoice[]
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
@@ -331,12 +363,19 @@ model ClientContact {
 // ─── Workflow Requirement Policy ──────────────────────────────────────────────
 
 model WorkflowRequirementPolicy {
-  id             String              @id @default(cuid())
-  organizationId String?             @map("organization_id")
-  entityType     String              @map("entity_type")
-  fromState      String?             @map("from_state")
-  toState        String              @map("to_state")
-  requirement    WorkflowRequirement @default(OPTIONAL)
+  id              String                   @id @default(cuid())
+  organizationId  String?                  @map("organization_id")
+  entityType      String                   @map("entity_type")
+  fromState       String?                  @map("from_state")
+  toState         String                   @map("to_state")
+  requirement     WorkflowRequirement      @default(OPTIONAL)
+  priority        Int                      @default(0)
+  // Sprint 5: conditional routing — threshold-based DOA (ADR-007, Rule DOA-001 to DOA-003)
+  // Multiple rows with the same entityType+toState but different conditionField are AND-combined.
+  conditionField  PolicyConditionField?    @map("condition_field")
+  conditionOp     PolicyConditionOperator? @map("condition_op")
+  conditionValue  String?                  @map("condition_value")
+  conditionValue2 String?                  @map("condition_value2")
 
   organization Organization? @relation(fields: [organizationId], references: [id])
 
@@ -365,60 +404,6 @@ model WorkflowTriggerBinding {
   @@map("workflow_trigger_bindings")
 }
 
-// ─── Enums ───────────────────────────────────────────────────────────────────
-
-enum UserStatus {
-  ACTIVE
-  INACTIVE
-  SUSPENDED
-}
-
-enum OrganizationStatus {
-  ACTIVE
-  SUSPENDED
-}
-
-enum Language {
-  EN
-  AR
-}
-
-enum WorkflowTransactionType {
-  MATERIAL_REQUEST
-  PURCHASE_ORDER
-  SUPPLIER_PAYMENT
-  STOCK_TRANSFER
-  MATERIAL_ISSUE
-  SUBCONTRACT_CERTIFICATE
-  IPC
-  VARIATION
-}
-
-enum ApprovalStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  CANCELLED
-}
-
-enum ApprovalActionType {
-  APPROVE
-  REJECT
-  DELEGATE
-  ESCALATE
-}
-
-enum MembershipStatus {
-  ACTIVE
-  SUSPENDED
-  REMOVED
-}
-
-enum WorkflowTriggerKind {
-  DOCUMENT
-  STATE_TRANSITION
-}
-
 // ─── Construction Domain ──────────────────────────────────────────────────────
 
 model Project {
@@ -440,7 +425,7 @@ model Project {
   createdAt          DateTime           @default(now()) @map("created_at")
   updatedAt          DateTime           @updatedAt @map("updated_at")
 
-  organization Organization       @relation(fields: [organizationId], references: [id])
+  organization Organization        @relation(fields: [organizationId], references: [id])
   members      ProjectMember[]
   suspensions  ProjectSuspension[]
   boq          Boq?
@@ -462,8 +447,8 @@ model ProjectSuspension {
 
   project Project @relation(fields: [projectId], references: [id])
 
-  // NOTE: A partial unique index enforcing one active suspension per project is added
-  // via raw SQL in the migration (WHERE resumed_at IS NULL) — Prisma cannot express this.
+  // NOTE: Partial unique index (one active suspension per project) enforced via raw SQL:
+  // CREATE UNIQUE INDEX uidx_project_suspensions_active ON project_suspensions (project_id) WHERE resumed_at IS NULL;
   @@index([projectId])
   @@map("project_suspensions")
 }
@@ -481,7 +466,8 @@ model ProjectMember {
   user    User                @relation(fields: [userId], references: [id])
   roles   ProjectMemberRole[]
 
-  // NOTE: Partial unique index (one active member per project+user) added via raw SQL in migration.
+  // NOTE: Partial unique index (one active member per project+user) enforced via raw SQL:
+  // CREATE UNIQUE INDEX uidx_project_members_active ON project_members (project_id, user_id) WHERE removed_at IS NULL;
   @@index([projectId, userId])
   @@index([userId])
   @@map("project_members")
@@ -504,14 +490,12 @@ model ProjectMemberRole {
 // ─── BOQ ─────────────────────────────────────────────────────────────────────
 
 model Boq {
-  id                        String  @id @default(cuid())
-  projectId                 String  @unique @map("project_id")
-  organizationId            String  @map("organization_id")
-  // Three logical pointers — maintained by application layer, no Prisma relations
-  // to avoid circular dependency complexity. FK constraints added via raw SQL in migration.
-  originalBaselineVersionId String? @map("original_baseline_version_id")
-  currentApprovedVersionId  String? @map("current_approved_version_id")
-  currentDraftVersionId     String? @map("current_draft_version_id")
+  id                        String   @id @default(cuid())
+  projectId                 String   @unique @map("project_id")
+  organizationId            String   @map("organization_id")
+  originalBaselineVersionId String?  @map("original_baseline_version_id")
+  currentApprovedVersionId  String?  @map("current_approved_version_id")
+  currentDraftVersionId     String?  @map("current_draft_version_id")
   createdAt                 DateTime @default(now()) @map("created_at")
   updatedAt                 DateTime @updatedAt @map("updated_at")
 
@@ -543,29 +527,31 @@ model BoqVersion {
 }
 
 model BoqNode {
-  id                String          @id @default(cuid())
-  boqId             String          @map("boq_id")
-  versionId         String          @map("version_id")
-  parentId          String?         @map("parent_id")
-  // Materialized path: "rootId/childId/grandchildId" — enables efficient subtree queries.
-  path              String          @map("path")
-  depth             Int             @default(0)
-  sortOrder         Int             @default(0) @map("sort_order")
-  code              String          @db.VarChar(50)
+  id                String            @id @default(cuid())
+  boqId             String            @map("boq_id")
+  versionId         String            @map("version_id")
+  parentId          String?           @map("parent_id")
+  path              String            @map("path")
+  depth             Int               @default(0)
+  sortOrder         Int               @default(0) @map("sort_order")
+  code              String            @db.VarChar(50)
   description       String
-  descriptionAr     String?         @map("description_ar")
+  descriptionAr     String?           @map("description_ar")
   measurementMethod MeasurementMethod @default(QUANTITY) @map("measurement_method")
-  pricingBasis      PricingBasis    @default(UNIT_RATE) @map("pricing_basis")
-  unit              String?         @db.VarChar(20)
-  quantity          Decimal?        @db.Decimal(18, 3)
-  unitRate          Decimal?        @map("unit_rate") @db.Decimal(18, 2)
-  currency          String?         @db.VarChar(3)
-  totalAmount       Decimal?        @map("total_amount") @db.Decimal(18, 2)
-  isLeaf            Boolean         @default(false) @map("is_leaf")
-  // Tracks which node in the previous version this was copied from.
-  originNodeId      String?         @map("origin_node_id")
-  createdAt         DateTime        @default(now()) @map("created_at")
-  updatedAt         DateTime        @updatedAt @map("updated_at")
+  pricingBasis      PricingBasis      @default(UNIT_RATE) @map("pricing_basis")
+  unit              String?           @db.VarChar(20)
+  quantity          Decimal?          @db.Decimal(18, 3)
+  unitRate          Decimal?          @map("unit_rate") @db.Decimal(18, 2)
+  currency          String?           @db.VarChar(3)
+  totalAmount       Decimal?          @map("total_amount") @db.Decimal(18, 2)
+  isLeaf            Boolean           @default(false) @map("is_leaf")
+  originNodeId      String?           @map("origin_node_id")
+  // Sprint 5: variation-readiness — BASELINE nodes are original scope; VARIATION nodes
+  // come from a ChangeOrder (Sprint 6). sourceChangeOrderId is null until Sprint 6 adds ChangeOrder.
+  sourceType        BoqSourceType     @default(BASELINE) @map("source_type")
+  sourceChangeOrderId String?         @map("source_change_order_id")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
 
   version  BoqVersion @relation(fields: [versionId], references: [id])
   parent   BoqNode?   @relation("BoqNodeChildren", fields: [parentId], references: [id], onDelete: Restrict)
@@ -576,56 +562,6 @@ model BoqNode {
   @@map("boq_nodes")
 }
 
-enum BoqVersionStatus {
-  DRAFT
-  BASELINED
-  SUPERSEDED
-  CANCELLED
-}
-
-enum ProjectStatus {
-  DRAFT
-  APPROVED
-  MOBILIZING
-  ACTIVE
-  PRACTICAL_COMPLETION
-  CLOSEOUT
-  CLOSED
-  CANCELLED
-}
-
-enum CommercialModel {
-  CLIENT_CONTRACT
-  INTERNAL_CAPITAL
-}
-
-enum ParticipationModel {
-  SOLE
-  JOINT_VENTURE
-}
-
-enum MeasurementMethod {
-  QUANTITY
-  PERCENTAGE
-  MILESTONE
-}
-
-enum PricingBasis {
-  UNIT_RATE
-  LUMP_SUM
-}
-
-enum WorkflowRequirement {
-  REQUIRED
-  OPTIONAL
-  NONE
-}
-
-enum ClientStatus {
-  ACTIVE
-  INACTIVE
-}
-
 // ─── Contract Domain ──────────────────────────────────────────────────────────
 
 model Contract {
@@ -633,14 +569,12 @@ model Contract {
   projectId          String         @map("project_id")
   organizationId     String         @map("organization_id")
   clientId           String         @map("client_id")
-  // boqVersionId: FK enforced in migration SQL; no Prisma relation to avoid circular complexity.
   boqVersionId       String         @map("boq_version_id")
   contractNumber     String         @map("contract_number") @db.VarChar(50)
   contractValue      Decimal        @map("contract_value") @db.Decimal(18, 2)
   currency           String         @db.VarChar(3)
   billingModel       BillingModel   @default(MEASURED_IPC) @map("billing_model")
   status             ContractStatus @default(DRAFT)
-  // Immutable snapshots taken at ACTIVE transition
   clientNameSnapshot String?        @map("client_name_snapshot")
   clientTaxSnapshot  String?        @map("client_tax_snapshot")
   startDate          DateTime?      @map("start_date") @db.Date
@@ -649,9 +583,9 @@ model Contract {
   createdAt          DateTime       @default(now()) @map("created_at")
   updatedAt          DateTime       @updatedAt @map("updated_at")
 
-  project        Project                 @relation(fields: [projectId], references: [id])
-  organization   Organization            @relation(fields: [organizationId], references: [id])
-  client         Client                  @relation(fields: [clientId], references: [id])
+  project        Project                   @relation(fields: [projectId], references: [id])
+  organization   Organization              @relation(fields: [organizationId], references: [id])
+  client         Client                    @relation(fields: [clientId], references: [id])
   retentionTerms ContractRetentionTerms?
   advanceTerms   ContractAdvanceTerm[]
   guarantees     ContractGuarantee[]
@@ -666,10 +600,10 @@ model Contract {
 }
 
 model ContractRetentionTerms {
-  contractId         String    @id @map("contract_id")
-  retentionRate      Decimal   @map("retention_rate") @db.Decimal(5, 4)
-  retentionCap       Decimal   @map("retention_cap") @db.Decimal(5, 4)
-  retentionSplitOnPC Decimal   @map("retention_split_on_pc") @db.Decimal(5, 4)
+  contractId          String    @id @map("contract_id")
+  retentionRate       Decimal   @map("retention_rate") @db.Decimal(5, 4)
+  retentionCap        Decimal   @map("retention_cap") @db.Decimal(5, 4)
+  retentionSplitOnPC  Decimal   @map("retention_split_on_pc") @db.Decimal(5, 4)
   retentionReleasedAt DateTime? @map("retention_released_at")
 
   contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
@@ -730,9 +664,6 @@ model ContractMilestone {
   @@map("contract_milestones")
 }
 
-// Attachment join tables — Platform File aggregate is deferred to Sprint 4+.
-// Tables are created now so commercial entities never store raw file paths.
-
 model ContractAttachment {
   id             String   @id @default(cuid())
   contractId     String   @map("contract_id")
@@ -759,47 +690,6 @@ model GuaranteeAttachment {
   @@map("guarantee_attachments")
 }
 
-enum ContractStatus {
-  DRAFT
-  UNDER_REVIEW
-  PENDING_SIGNATURE
-  ACTIVE
-  FINAL_ACCOUNT_PENDING
-  CLOSED
-  CANCELLED
-  TERMINATED
-}
-
-enum BillingModel {
-  MEASURED_IPC
-  MILESTONE
-  TIME_AND_MATERIAL
-  HYBRID
-}
-
-enum AdvanceType {
-  MOBILIZATION
-  MATERIAL_ON_SITE
-  EQUIPMENT
-  OTHER
-}
-
-enum GuaranteeStatus {
-  ACTIVE
-  DISCHARGED
-  EXPIRED
-  CALLED
-}
-
-enum ProjectRole {
-  PROJECT_MANAGER
-  QUANTITY_SURVEYOR
-  SITE_ENGINEER
-  COMMERCIAL_MANAGER
-  FINANCE_REVIEWER
-  VIEWER
-}
-
 // ─── IPA Domain ───────────────────────────────────────────────────────────────
 
 model InterimPaymentApplication {
@@ -813,7 +703,6 @@ model InterimPaymentApplication {
   periodTo             DateTime? @map("period_to") @db.Date
   submittedAt          DateTime? @map("submitted_at")
   submittedBy          String?   @map("submitted_by")
-  // Exchange rate snapshot frozen at creation
   exchangeRateCurrency String?   @map("exchange_rate_currency") @db.VarChar(3)
   exchangeRateBase     String?   @map("exchange_rate_base") @db.VarChar(3)
   exchangeRateValue    Decimal?  @map("exchange_rate_value") @db.Decimal(18, 6)
@@ -823,8 +712,8 @@ model InterimPaymentApplication {
   createdAt            DateTime  @default(now()) @map("created_at")
   updatedAt            DateTime  @updatedAt @map("updated_at")
 
-  contract     Contract                            @relation(fields: [contractId], references: [id])
-  organization Organization                        @relation(fields: [organizationId], references: [id])
+  contract     Contract                             @relation(fields: [contractId], references: [id])
+  organization Organization                         @relation(fields: [organizationId], references: [id])
   items        InterimPaymentApplicationItem[]
   deductions   InterimPaymentApplicationDeduction[]
   attachments  IpaAttachment[]
@@ -845,11 +734,10 @@ model InterimPaymentApplicationItem {
   currencySnapshot           String            @map("currency_snapshot") @db.VarChar(3)
   cumulativeClaimed          Decimal           @map("cumulative_claimed") @db.Decimal(18, 3)
   previousEffectiveCertified Decimal           @default(0) @map("previous_effective_certified") @db.Decimal(18, 3)
-  // periodQuantity and periodAmount are derived but stored for query performance
   periodQuantity             Decimal           @map("period_quantity") @db.Decimal(18, 3)
   periodAmount               Decimal           @map("period_amount") @db.Decimal(18, 2)
 
-  application      InterimPaymentApplication      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  application      InterimPaymentApplication       @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   certificateItems InterimPaymentCertificateItem[]
 
   @@unique([applicationId, boqNodeId])
@@ -901,7 +789,6 @@ model InterimPaymentCertificate {
   supersessionReason String?   @map("supersession_reason")
   certifiedTotal     Decimal   @map("certified_total") @db.Decimal(18, 2)
   currency           String    @db.VarChar(3)
-  // Exchange rate snapshot frozen at issuance
   exchangeRateCurrency String? @map("exchange_rate_currency") @db.VarChar(3)
   exchangeRateBase     String? @map("exchange_rate_base") @db.VarChar(3)
   exchangeRateValue    Decimal? @map("exchange_rate_value") @db.Decimal(18, 6)
@@ -912,14 +799,17 @@ model InterimPaymentCertificate {
   createdBy          String    @map("created_by")
   createdAt          DateTime  @default(now()) @map("created_at")
 
-  application  InterimPaymentApplication          @relation(fields: [applicationId], references: [id])
-  organization Organization                        @relation(fields: [organizationId], references: [id])
+  application  InterimPaymentApplication           @relation(fields: [applicationId], references: [id])
+  organization Organization                         @relation(fields: [organizationId], references: [id])
   items        InterimPaymentCertificateItem[]
   deductions   InterimPaymentCertificateDeduction[]
   attachments  IpcAttachment[]
+  // Sprint 3 commercial billing tracking (receipt ↔ IPC)
   allocations  ReceiptAllocation[]
-  supersededBy InterimPaymentCertificate?          @relation("CertSupersession", fields: [supersededById], references: [id])
-  supersedes   InterimPaymentCertificate[]         @relation("CertSupersession")
+  supersededBy InterimPaymentCertificate?           @relation("CertSupersession", fields: [supersededById], references: [id])
+  supersedes   InterimPaymentCertificate[]          @relation("CertSupersession")
+  // Sprint 4 — ClientInvoice generated when isEffective becomes true (Correction 10)
+  clientInvoice ClientInvoice?
 
   @@unique([applicationId, certificateNumber])
   @@index([organizationId, status])
@@ -972,30 +862,8 @@ model IpcAttachment {
   @@map("ipc_attachments")
 }
 
-// ─── Finance Domain (Phase 4 — schema stubs referenced by IPC) ───────────────
-
-model PaymentReceipt {
-  id             String   @id @default(cuid())
-  organizationId String   @map("organization_id")
-  clientId       String   @map("client_id")
-  receiptDate    DateTime @map("receipt_date") @db.Date
-  amount         Decimal  @db.Decimal(18, 2)
-  currency       String   @db.VarChar(3)
-  exchangeRate   Decimal? @map("exchange_rate") @db.Decimal(18, 6)
-  reference      String?
-  notes          String?
-  createdBy      String   @map("created_by")
-  createdAt      DateTime @default(now()) @map("created_at")
-
-  organization Organization      @relation(fields: [organizationId], references: [id])
-  client       Client            @relation(fields: [clientId], references: [id])
-  allocations  ReceiptAllocation[]
-
-  @@index([organizationId, clientId])
-  @@index([receiptDate])
-  @@map("payment_receipts")
-}
-
+// Sprint 3 commercial billing tracking — receipt allocated to IPC (NOT accounting subledger).
+// For accounting AR settlement see ClientReceiptAllocation (receipt ↔ ClientInvoice).
 model ReceiptAllocation {
   id              String   @id @default(cuid())
   receiptId       String   @map("receipt_id")
@@ -1012,6 +880,1281 @@ model ReceiptAllocation {
   @@map("receipt_allocations")
 }
 
+// ─── Sprint 4: Accounting Foundation ─────────────────────────────────────────
+
+// ─── Dimension Master Data ────────────────────────────────────────────────────
+
+// effectiveTo is EXCLUSIVE: range is [effectiveFrom, effectiveTo).
+// Non-overlap enforced via raw SQL exclusion constraint (see raw-sql-constraints.sql).
+model Department {
+  id             String          @id @default(cuid())
+  organizationId String          @map("organization_id")
+  code           String          @db.VarChar(30)
+  status         DimensionStatus @default(ACTIVE)
+  createdAt      DateTime        @default(now()) @map("created_at")
+  createdBy      String          @map("created_by")
+
+  organization  Organization        @relation(fields: [organizationId], references: [id])
+  versions      DepartmentVersion[] @relation("DeptVersionOwner")
+  childVersions DepartmentVersion[] @relation("DeptVersionParent")
+  costCenters   CostCenter[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@map("departments")
+}
+
+model DepartmentVersion {
+  id                 String    @id @default(cuid())
+  departmentId       String    @map("department_id")
+  versionNumber      Int       @map("version_number")
+  name               String
+  nameAr             String?   @map("name_ar")
+  parentDepartmentId String?   @map("parent_department_id")
+  // effectiveTo is EXCLUSIVE — [effectiveFrom, effectiveTo)
+  effectiveFrom      DateTime  @map("effective_from") @db.Date
+  effectiveTo        DateTime? @map("effective_to") @db.Date
+  changedBy          String    @map("changed_by")
+  changeReason       String?   @map("change_reason")
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  department       Department  @relation("DeptVersionOwner", fields: [departmentId], references: [id])
+  parentDepartment Department? @relation("DeptVersionParent", fields: [parentDepartmentId], references: [id])
+
+  @@unique([departmentId, versionNumber])
+  @@index([departmentId, effectiveFrom])
+  @@map("department_versions")
+}
+
+// CostCenter.departmentId is STABLE — part of cost center identity.
+// If a cost center changes departments, it is a new root record (old status = INACTIVE).
+// Validated at post time: COST_CENTER_DEPARTMENT_MISMATCH if JournalLine.costCenterId
+// and JournalLine.departmentId reference inconsistent departments.
+model CostCenter {
+  id             String          @id @default(cuid())
+  organizationId String          @map("organization_id")
+  code           String          @db.VarChar(30)
+  departmentId   String          @map("department_id")
+  status         DimensionStatus @default(ACTIVE)
+  createdAt      DateTime        @default(now()) @map("created_at")
+  createdBy      String          @map("created_by")
+
+  department Department       @relation(fields: [departmentId], references: [id])
+  versions   CostCenterVersion[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, departmentId, status])
+  @@map("cost_centers")
+}
+
+model CostCenterVersion {
+  id            String    @id @default(cuid())
+  costCenterId  String    @map("cost_center_id")
+  versionNumber Int       @map("version_number")
+  name          String
+  nameAr        String?   @map("name_ar")
+  // effectiveTo is EXCLUSIVE — [effectiveFrom, effectiveTo)
+  effectiveFrom DateTime  @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+  changedBy     String    @map("changed_by")
+  changeReason  String?   @map("change_reason")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  costCenter CostCenter @relation(fields: [costCenterId], references: [id])
+
+  @@unique([costCenterId, versionNumber])
+  @@index([costCenterId, effectiveFrom])
+  @@map("cost_center_versions")
+}
+
+// ─── Chart of Accounts ────────────────────────────────────────────────────────
+
+// Account.code and Account.normalBalance are PERMANENT — never change after creation.
+// All other attributes live in AccountVersion.
+// Rename/reclassify → new AccountVersion on same Account root.
+// New accounting identity → new Account root (old status = INACTIVE).
+model Account {
+  id             String        @id @default(cuid())
+  organizationId String        @map("organization_id")
+  code           String        @db.VarChar(20)
+  normalBalance  NormalBalance @map("normal_balance")
+  status         AccountStatus @default(ACTIVE)
+  createdAt      DateTime      @default(now()) @map("created_at")
+  createdBy      String        @map("created_by")
+
+  organization         Organization     @relation(fields: [organizationId], references: [id])
+  versions             AccountVersion[] @relation("AccountVersionOwner")
+  childVersions        AccountVersion[] @relation("AccountVersionParent")
+  bankAccount          BankAccount?
+  journalLines         JournalLine[]    @relation("JournalLineAccount")
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@map("accounts")
+}
+
+// effectiveTo is EXCLUSIVE — [effectiveFrom, effectiveTo).
+// Uniqueness: exactly one version with effectiveTo IS NULL per accountId (the current version).
+// Non-overlap enforced via raw SQL exclusion constraint (see raw-sql-constraints.sql).
+model AccountVersion {
+  id                      String               @id @default(cuid())
+  accountId               String               @map("account_id")
+  versionNumber           Int                  @map("version_number")
+  name                    String
+  nameAr                  String?              @map("name_ar")
+  parentAccountId         String?              @map("parent_account_id")
+  accountClass            AccountClass         @map("account_class")
+  accountSubtype          AccountSubtype       @map("account_subtype")
+  isPostingAllowed        Boolean              @default(true) @map("is_posting_allowed")
+  isControlAccount        Boolean              @default(false) @map("is_control_account")
+  controlledSubledgerType SubledgerType?       @map("controlled_subledger_type")
+  // UNRESTRICTED | SYSTEM_ONLY | SYSTEM_OR_APPROVED_ADJUSTMENT
+  controlPostingPolicy    ControlPostingPolicy @default(UNRESTRICTED) @map("control_posting_policy")
+  // effectiveTo is EXCLUSIVE — [effectiveFrom, effectiveTo)
+  effectiveFrom           DateTime             @map("effective_from") @db.Date
+  effectiveTo             DateTime?            @map("effective_to") @db.Date
+  changedBy               String               @map("changed_by")
+  changeReason            String?              @map("change_reason")
+  createdAt               DateTime             @default(now()) @map("created_at")
+
+  account       Account        @relation("AccountVersionOwner", fields: [accountId], references: [id])
+  parentAccount Account?       @relation("AccountVersionParent", fields: [parentAccountId], references: [id])
+  journalLines  JournalLine[]
+
+  @@unique([accountId, versionNumber])
+  @@index([accountId, effectiveFrom])
+  @@map("account_versions")
+}
+
+// ─── Fiscal Calendar ──────────────────────────────────────────────────────────
+
+model FiscalYear {
+  id                        String          @id @default(cuid())
+  organizationId            String          @map("organization_id")
+  name                      String          @db.VarChar(20)
+  startDate                 DateTime        @map("start_date") @db.Date
+  endDate                   DateTime        @map("end_date") @db.Date
+  // FK to Account; retainedEarningsAccountId must reference an EQUITY account.
+  retainedEarningsAccountId String          @map("retained_earnings_account_id")
+  status                    FiscalYearStatus @default(DRAFT)
+  closedAt                  DateTime?       @map("closed_at")
+  closedBy                  String?         @map("closed_by")
+  createdAt                 DateTime        @default(now()) @map("created_at")
+  createdBy                 String          @map("created_by")
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  periods      AccountingPeriod[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+  @@map("fiscal_years")
+}
+
+// Period-close sequence (Correction 3):
+//   OPEN → normal postings allowed
+//   LOCKED → only CLOSING_ADJUSTMENT category journals allowed; period-close in progress
+//   CLOSED → permanent; no further postings
+//   REOPENED → exceptional CFO-only action; treated as OPEN but flagged
+//
+// Year-end for ACCO (no Period 13):
+//   Period 12 OPEN → normal December transactions
+//   Period 12 LOCKED → closing adjustments + year-end closing journal posted
+//   Generate final Period 12 PeriodAccountBalance snapshot
+//   Period 12 CLOSED → FiscalYear CLOSED
+//   REOPENED is reserved for exceptional post-close corrections only.
+model AccountingPeriod {
+  id               String       @id @default(cuid())
+  fiscalYearId     String       @map("fiscal_year_id")
+  organizationId   String       @map("organization_id")
+  periodNumber     Int          @map("period_number")
+  name             String       @db.VarChar(30)
+  startDate        DateTime     @map("start_date") @db.Date
+  endDate          DateTime     @map("end_date") @db.Date
+  periodType       PeriodType   @default(OPERATING) @map("period_type")
+  status           PeriodStatus @default(OPEN)
+  // REOPENED tracking
+  reopenReason     String?      @map("reopen_reason")
+  reopenedBy       String?      @map("reopened_by")
+  reopenedAt       DateTime?    @map("reopened_at")
+  reopenApprovedBy String?      @map("reopen_approved_by")
+  createdAt        DateTime     @default(now()) @map("created_at")
+
+  fiscalYear     FiscalYear             @relation(fields: [fiscalYearId], references: [id])
+  journalEntries JournalEntry[]
+  balances       PeriodAccountBalance[]
+
+  @@unique([fiscalYearId, periodNumber])
+  @@index([organizationId, status])
+  @@map("accounting_periods")
+}
+
+// ─── Banking ──────────────────────────────────────────────────────────────────
+
+model TreasuryGroup {
+  id             String        @id @default(cuid())
+  organizationId String        @map("organization_id")
+  name           String
+  status         DimensionStatus @default(ACTIVE)
+  createdAt      DateTime      @default(now()) @map("created_at")
+  createdBy      String        @map("created_by")
+
+  organization Organization  @relation(fields: [organizationId], references: [id])
+  bankAccounts BankAccount[]
+
+  @@unique([organizationId, name])
+  @@map("treasury_groups")
+}
+
+// Each BankAccount is 1:1 with one GL Account (CASH_AND_BANK subtype).
+// controlPostingPolicy on the linked Account should be SYSTEM_OR_APPROVED_ADJUSTMENT.
+model BankAccount {
+  id              String            @id @default(cuid())
+  organizationId  String            @map("organization_id")
+  glAccountId     String            @unique @map("gl_account_id")
+  bankName        String            @map("bank_name")
+  accountName     String            @map("account_name")
+  accountNumber   String            @map("account_number") @db.VarChar(50)
+  iban            String?           @db.VarChar(34)
+  swiftCode       String?           @map("swift_code") @db.VarChar(11)
+  currencyCode    String            @map("currency_code") @db.VarChar(3)
+  branch          String?
+  treasuryGroupId String?           @map("treasury_group_id")
+  allowsReceipts  Boolean           @default(true) @map("allows_receipts")
+  allowsPayments  Boolean           @default(true) @map("allows_payments")
+  isReconcilable  Boolean           @default(true) @map("is_reconcilable")
+  status          BankAccountStatus @default(ACTIVE)
+  openedAt        DateTime?         @map("opened_at") @db.Date
+  closedAt        DateTime?         @map("closed_at") @db.Date
+  createdAt       DateTime          @default(now()) @map("created_at")
+  createdBy       String            @map("created_by")
+
+  glAccount      Account         @relation(fields: [glAccountId], references: [id])
+  treasuryGroup  TreasuryGroup?  @relation(fields: [treasuryGroupId], references: [id])
+  receipts       PaymentReceipt[]
+  supplierPayments SupplierPayment[]
+
+  @@unique([organizationId, accountNumber])
+  @@index([organizationId, status])
+  @@map("bank_accounts")
+}
+
+// ─── Tax ──────────────────────────────────────────────────────────────────────
+
+// For ACCO: recoveryMethod = NON_RECOVERABLE for input VAT.
+// NON_RECOVERABLE: vatAmount stored on SupplierBillLine for audit only.
+// Gross amount (net + VAT) posts to expense/inventory. No separate GL VAT line.
+model TaxCode {
+  id                 String         @id @default(cuid())
+  organizationId     String         @map("organization_id")
+  code               String         @db.VarChar(10)
+  name               String
+  nameAr             String?        @map("name_ar")
+  rate               Decimal        @db.Decimal(7, 4)
+  taxType            TaxType        @map("tax_type")
+  recoveryMethod     RecoveryMethod @map("recovery_method")
+  outputTaxAccountId String?        @map("output_tax_account_id")
+  inputTaxAccountId  String?        @map("input_tax_account_id")
+  effectiveFrom      DateTime       @map("effective_from") @db.Date
+  effectiveTo        DateTime?      @map("effective_to") @db.Date
+  status             TaxCodeStatus  @default(ACTIVE)
+  createdAt          DateTime       @default(now()) @map("created_at")
+  createdBy          String         @map("created_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@map("tax_codes")
+}
+
+// ─── Suppliers ────────────────────────────────────────────────────────────────
+
+model Supplier {
+  id              String         @id @default(cuid())
+  organizationId  String         @map("organization_id")
+  code            String         @db.VarChar(30)
+  name            String
+  nameAr          String?        @map("name_ar")
+  taxNumber       String?        @map("tax_number")
+  defaultCurrency String?        @map("default_currency") @db.VarChar(3)
+  paymentTermsDays Int?          @map("payment_terms_days")
+  status          SupplierStatus @default(ACTIVE)
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  organization     Organization      @relation(fields: [organizationId], references: [id])
+  contacts         SupplierContact[]
+  bills            SupplierBill[]
+  payments         SupplierPayment[]
+  // Sprint 5 — Procurement
+  purchaseOrders   PurchaseOrder[]
+  grnNotes         GoodsReceiptNote[]
+  matchingPolicies MatchingTolerancePolicy[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@map("suppliers")
+}
+
+model SupplierContact {
+  id          String  @id @default(cuid())
+  supplierId  String  @map("supplier_id")
+  name        String
+  role        String?
+  email       String?
+  phone       String?
+  isPrimary   Boolean @default(false) @map("is_primary")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([supplierId])
+  @@map("supplier_contacts")
+}
+
+// ─── Posting Profiles ─────────────────────────────────────────────────────────
+
+// PostingProfile.code is the permanent semantic key (e.g. PROJECT_REVENUE, MATERIAL_PURCHASE).
+// All versioned attributes (name, accountId) live in PostingProfileVersion.
+// PostingRuleLineTemplate.postingProfileId → PostingProfile.id (stable).
+// JournalLine.resolutionSource records "PROJECT_REVENUE@v3" as immutable audit snapshot.
+model PostingProfile {
+  id             String        @id @default(cuid())
+  organizationId String        @map("organization_id")
+  code           String        @db.VarChar(50)
+  status         ProfileStatus @default(ACTIVE)
+  createdAt      DateTime      @default(now()) @map("created_at")
+  createdBy      String        @map("created_by")
+
+  organization  Organization           @relation(fields: [organizationId], references: [id])
+  versions      PostingProfileVersion[]
+  ruleTemplates PostingRuleLineTemplate[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@map("posting_profiles")
+}
+
+// effectiveTo is EXCLUSIVE — [effectiveFrom, effectiveTo).
+// Version resolution: WHERE effectiveFrom <= accountingDate AND (effectiveTo IS NULL OR accountingDate < effectiveTo)
+model PostingProfileVersion {
+  id               String    @id @default(cuid())
+  postingProfileId String    @map("posting_profile_id")
+  versionNumber    Int       @map("version_number")
+  name             String
+  description      String?
+  accountId        String    @map("account_id")
+  // effectiveTo is EXCLUSIVE — [effectiveFrom, effectiveTo)
+  effectiveFrom    DateTime  @map("effective_from") @db.Date
+  effectiveTo      DateTime? @map("effective_to") @db.Date
+  changedBy        String    @map("changed_by")
+  approvedBy       String?   @map("approved_by")
+  approvedAt       DateTime? @map("approved_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  profile      PostingProfile @relation(fields: [postingProfileId], references: [id])
+  journalLines JournalLine[]
+
+  @@unique([postingProfileId, versionNumber])
+  @@index([postingProfileId, effectiveFrom])
+  @@map("posting_profile_versions")
+}
+
+// ─── Posting Rules ────────────────────────────────────────────────────────────
+
+model PostingRuleVersion {
+  id             String     @id @default(cuid())
+  organizationId String     @map("organization_id")
+  eventType      String     @map("event_type")
+  eventVersion   Int        @map("event_version")
+  version        Int
+  effectiveFrom  DateTime   @map("effective_from") @db.Date
+  effectiveTo    DateTime?  @map("effective_to") @db.Date
+  status         RuleStatus @default(DRAFT)
+  createdBy      String     @map("created_by")
+  approvedBy     String?    @map("approved_by")
+  approvedAt     DateTime?  @map("approved_at")
+  createdAt      DateTime   @default(now()) @map("created_at")
+
+  lines PostingRuleLineTemplate[]
+
+  @@unique([organizationId, eventType, version])
+  @@index([organizationId, eventType, status])
+  @@map("posting_rule_versions")
+}
+
+model PostingRuleLineTemplate {
+  id                    String          @id @default(cuid())
+  postingRuleVersionId  String          @map("posting_rule_version_id")
+  lineNumber            Int             @map("line_number")
+  lineRole              String          @map("line_role")
+  debitOrCredit         DebitCredit     @map("debit_or_credit")
+  amountSource          String          @map("amount_source")
+  accountResolutionType ResolutionType  @map("account_resolution_type")
+  // Used when accountResolutionType = FIXED_ACCOUNT
+  fixedAccountId        String?         @map("fixed_account_id")
+  // Used when accountResolutionType = ACCOUNT_SUBTYPE_LOOKUP
+  accountSubtype        AccountSubtype? @map("account_subtype")
+  // Used when accountResolutionType = POSTING_PROFILE (FK to stable PostingProfile)
+  postingProfileId      String?         @map("posting_profile_id")
+  condition             String?
+  requiredDimensions    String[]        @map("required_dimensions")
+  descriptionTemplate   String?         @map("description_template")
+
+  rule          PostingRuleVersion @relation(fields: [postingRuleVersionId], references: [id])
+  postingProfile PostingProfile?   @relation(fields: [postingProfileId], references: [id])
+
+  @@unique([postingRuleVersionId, lineNumber])
+  @@map("posting_rule_line_templates")
+}
+
+// ─── Document Numbering ───────────────────────────────────────────────────────
+
+// nextNumber is allocated with SELECT FOR UPDATE at POST time only.
+// No gaps permitted — failures roll back the main transaction before number allocation.
+model DocumentNumberSequence {
+  id              String           @id @default(cuid())
+  organizationId  String           @map("organization_id")
+  documentType    DocumentType     @map("document_type")
+  journalCategory JournalCategory? @map("journal_category")
+  prefix          String           @db.VarChar(10)
+  nextNumber      Int              @default(1) @map("next_number")
+  paddingLength   Int              @default(6) @map("padding_length")
+  // Optimistic concurrency — checked before update
+  version         Int              @default(1)
+  status          SequenceStatus   @default(ACTIVE)
+  createdAt       DateTime         @default(now()) @map("created_at")
+
+  @@unique([organizationId, documentType, journalCategory])
+  @@map("document_number_sequences")
+}
+
+// ─── AR Subledger ─────────────────────────────────────────────────────────────
+
+// ClientInvoice is generated automatically when an IPC transitions to isEffective = true
+// (Correction 10). NOT merely on approval — the trigger is IPC.isEffective.
+//
+// ACCO policy (Correction 9): one ClientInvoice per effective IPC.
+// Enforced by @@unique([organizationId, sourceIpcId]).
+//
+// IPC supersession protocol:
+//   Draft invoice → CANCELLED, new DRAFT generated from new effective IPC
+//   Approved+unposted → Finance manually cancels, new invoice generated
+//   Posted → credit note (reversal JournalEntry) + replacement ClientInvoice
+model ClientInvoice {
+  id                   String          @id @default(cuid())
+  organizationId       String          @map("organization_id")
+  invoiceNumber        String?         @map("invoice_number") @db.VarChar(30)
+  invoiceDate          DateTime        @map("invoice_date") @db.Date
+  dueDate              DateTime        @map("due_date") @db.Date
+  clientId             String          @map("client_id")
+  // sourceIpcId: the effective IPC that generated this invoice. NULL for migration-loaded records.
+  sourceIpcId          String?         @unique @map("source_ipc_id")
+  projectId            String?         @map("project_id")
+  contractId           String?         @map("contract_id")
+  currencyCode         String          @map("currency_code") @db.VarChar(3)
+  exchangeRateSnapshot Decimal         @map("exchange_rate_snapshot") @db.Decimal(18, 6)
+  exchangeRateDate     DateTime        @map("exchange_rate_date") @db.Date
+  exchangeRateSource   String          @map("exchange_rate_source")
+  subtotal             Decimal         @db.Decimal(18, 2)
+  vatAmount            Decimal         @map("vat_amount") @db.Decimal(18, 2)
+  totalAmount          Decimal         @map("total_amount") @db.Decimal(18, 2)
+  outstandingAmount    Decimal         @map("outstanding_amount") @db.Decimal(18, 2)
+  paymentTerms         String?         @map("payment_terms")
+  billingAddressSnapshot Json          @map("billing_address_snapshot")
+  documentStatus       InvoiceDocStatus @default(DRAFT) @map("document_status")
+  postingStatus        PostingStatus   @default(NOT_POSTED) @map("posting_status")
+  postedJournalEntryId String?         @map("posted_journal_entry_id")
+  postedAt             DateTime?       @map("posted_at")
+  postedBy             String?         @map("posted_by")
+  reversedAt           DateTime?       @map("reversed_at")
+  reversedBy           String?         @map("reversed_by")
+  reversalJournalEntryId String?       @map("reversal_journal_entry_id")
+  cancelledAt          DateTime?       @map("cancelled_at")
+  cancelledBy          String?         @map("cancelled_by")
+  cancellationReason   String?         @map("cancellation_reason")
+  lastPostingAttemptAt DateTime?       @map("last_posting_attempt_at")
+  lastPostingErrorCode String?         @map("last_posting_error_code")
+  migrationBatchId     String?         @map("migration_batch_id")
+  revision             Int             @default(1)
+  createdBy            String          @map("created_by")
+  approvedBy           String?         @map("approved_by")
+  approvedAt           DateTime?       @map("approved_at")
+  createdAt            DateTime        @default(now()) @map("created_at")
+  updatedAt            DateTime        @updatedAt @map("updated_at")
+
+  organization Organization            @relation(fields: [organizationId], references: [id])
+  client       Client                  @relation(fields: [clientId], references: [id])
+  sourceIpc    InterimPaymentCertificate? @relation(fields: [sourceIpcId], references: [id])
+  allocations  ClientReceiptAllocation[]
+
+  @@unique([organizationId, invoiceNumber])
+  @@index([organizationId, clientId, postingStatus])
+  @@index([organizationId, documentStatus])
+  @@map("client_invoices")
+}
+
+// Accounting subledger: PaymentReceipt ↔ ClientInvoice for GL posting.
+// Distinct from ReceiptAllocation (receipt ↔ IPC) which is commercial billing tracking.
+//
+// Allocation lifecycle:
+//   INITIAL (at payment post time): postingStatus = POSTED; journalEntryId = paymentJournalEntryId
+//   SUBSEQUENT (post-payment allocation of unallocated amount): postingStatus starts NOT_POSTED;
+//     CLIENT_RECEIPT_ALLOCATED journal (EVT-AR-005) is posted → postingStatus = POSTED
+//   REVERSAL of subsequent: CLIENT_RECEIPT_ALLOCATED.REVERSED (EVT-AR-006) → postingStatus = REVERSED
+//   Initial allocations cannot be individually reversed — reverse the payment (EVT-AR-004) instead.
+//
+// Invariants enforced by use case before commit:
+//   PaymentReceipt.totalAmount = allocatedAmount + unallocatedAmount  (always)
+//   ∑ ClientReceiptAllocation.allocatedAmount WHERE postingStatus IN (POSTED) = PaymentReceipt.allocatedAmount
+model ClientReceiptAllocation {
+  id               String        @id @default(cuid())
+  organizationId   String        @map("organization_id")
+  paymentReceiptId String        @map("payment_receipt_id")
+  clientInvoiceId  String        @map("client_invoice_id")
+  allocatedAmount  Decimal       @map("allocated_amount") @db.Decimal(18, 2)
+  allocationDate   DateTime      @map("allocation_date") @db.Date
+  // journalEntryId: for initial allocations = payment journal; for subsequent = allocation journal
+  journalEntryId   String?       @map("journal_entry_id")
+  postingStatus    PostingStatus @default(NOT_POSTED) @map("posting_status")
+  reversalJournalEntryId String? @map("reversal_journal_entry_id")
+  createdBy        String        @map("created_by")
+  createdAt        DateTime      @default(now()) @map("created_at")
+
+  receipt  PaymentReceipt @relation(fields: [paymentReceiptId], references: [id])
+  invoice  ClientInvoice  @relation(fields: [clientInvoiceId], references: [id])
+
+  @@index([paymentReceiptId])
+  @@index([clientInvoiceId])
+  @@map("client_receipt_allocations")
+}
+
+// ─── Payment Receipts (expanded from Sprint 3 stub) ───────────────────────────
+
+// Sprint 3 columns preserved; Sprint 4 adds accounting fields.
+// Migration note: rename column `amount` → `total_amount`, `exchange_rate` → `exchange_rate_snapshot`.
+// Correction 1: totalAmount = allocatedAmount + unallocatedAmount.
+// Unallocated portion posts Dr Bank / Cr Unapplied Client Receipts (CLIENT_ADVANCE_LIABILITY).
+model PaymentReceipt {
+  id                   String          @id @default(cuid())
+  organizationId       String          @map("organization_id")
+  clientId             String          @map("client_id")
+  bankAccountId        String?         @map("bank_account_id")
+  receiptDate          DateTime        @map("receipt_date") @db.Date
+  accountingDate       DateTime        @map("accounting_date") @db.Date
+  totalAmount          Decimal         @map("total_amount") @db.Decimal(18, 2)
+  allocatedAmount      Decimal         @default(0) @map("allocated_amount") @db.Decimal(18, 2)
+  unallocatedAmount    Decimal         @map("unallocated_amount") @db.Decimal(18, 2)
+  currencyCode         String          @map("currency_code") @db.VarChar(3)
+  exchangeRateSnapshot Decimal?        @map("exchange_rate_snapshot") @db.Decimal(18, 6)
+  exchangeRateDate     DateTime?       @map("exchange_rate_date") @db.Date
+  exchangeRateSource   String?         @map("exchange_rate_source")
+  paymentMethod        String?         @map("payment_method")
+  bankReference        String?         @map("bank_reference")
+  reference            String?
+  notes                String?
+  documentStatus       PaymentDocStatus @default(DRAFT) @map("document_status")
+  postingStatus        PostingStatus   @default(NOT_POSTED) @map("posting_status")
+  postedJournalEntryId String?         @map("posted_journal_entry_id")
+  postedAt             DateTime?       @map("posted_at")
+  postedBy             String?         @map("posted_by")
+  lastPostingAttemptAt DateTime?       @map("last_posting_attempt_at")
+  lastPostingErrorCode String?         @map("last_posting_error_code")
+  migrationBatchId     String?         @map("migration_batch_id")
+  revision             Int             @default(1)
+  createdBy            String          @map("created_by")
+  approvedBy           String?         @map("approved_by")
+  approvedAt           DateTime?       @map("approved_at")
+  createdAt            DateTime        @default(now()) @map("created_at")
+  updatedAt            DateTime        @updatedAt @map("updated_at")
+
+  organization      Organization              @relation(fields: [organizationId], references: [id])
+  client            Client                    @relation(fields: [clientId], references: [id])
+  bankAccount       BankAccount?              @relation(fields: [bankAccountId], references: [id])
+  // Sprint 3 commercial billing tracking (receipt ↔ IPC)
+  allocations       ReceiptAllocation[]
+  // Sprint 4 accounting subledger (receipt ↔ ClientInvoice)
+  clientAllocations ClientReceiptAllocation[]
+
+  @@index([organizationId, clientId])
+  @@index([organizationId, postingStatus])
+  @@index([receiptDate])
+  @@map("payment_receipts")
+}
+
+// ─── AP Subledger ─────────────────────────────────────────────────────────────
+
+model SupplierBill {
+  id                        String        @id @default(cuid())
+  organizationId            String        @map("organization_id")
+  supplierId                String        @map("supplier_id")
+  billNumber                String?       @map("bill_number") @db.VarChar(30)
+  supplierInvoiceNumber     String        @map("supplier_invoice_number")
+  supplierInvoiceNumberNorm String        @map("supplier_invoice_number_norm")
+  billDate                  DateTime      @map("bill_date") @db.Date
+  dueDate                   DateTime      @map("due_date") @db.Date
+  currencyCode              String        @map("currency_code") @db.VarChar(3)
+  exchangeRateSnapshot      Decimal       @map("exchange_rate_snapshot") @db.Decimal(18, 6)
+  exchangeRateDate          DateTime      @map("exchange_rate_date") @db.Date
+  exchangeRateSource        String        @map("exchange_rate_source")
+  purchaseOrderId           String?       @map("purchase_order_id")
+  purchaseOrderRevisionId   String?       @map("purchase_order_revision_id")
+  // Sprint 5: bill matching gate — posting blocked unless MATCHED/MATCHED_WITH_TOLERANCE/APPROVED_EXCEPTION
+  matchStatus               BillMatchStatus @default(NOT_RUN) @map("match_status")
+  projectId                 String?       @map("project_id")
+  departmentId              String?       @map("department_id")
+  subtotal                  Decimal       @db.Decimal(18, 2)
+  vatAmount                 Decimal       @map("vat_amount") @db.Decimal(18, 2)
+  totalAmount               Decimal       @map("total_amount") @db.Decimal(18, 2)
+  outstandingAmount         Decimal       @map("outstanding_amount") @db.Decimal(18, 2)
+  documentStatus            BillDocStatus @default(DRAFT) @map("document_status")
+  postingStatus             PostingStatus @default(NOT_POSTED) @map("posting_status")
+  postedJournalEntryId      String?       @map("posted_journal_entry_id")
+  postedAt                  DateTime?     @map("posted_at")
+  postedBy                  String?       @map("posted_by")
+  reversedAt                DateTime?     @map("reversed_at")
+  reversedBy                String?       @map("reversed_by")
+  reversalJournalEntryId    String?       @map("reversal_journal_entry_id")
+  lastPostingAttemptAt      DateTime?     @map("last_posting_attempt_at")
+  lastPostingErrorCode      String?       @map("last_posting_error_code")
+  migrationBatchId          String?       @map("migration_batch_id")
+  revision                  Int           @default(1)
+  createdBy                 String        @map("created_by")
+  approvedBy                String?       @map("approved_by")
+  approvedAt                DateTime?     @map("approved_at")
+  createdAt                 DateTime      @default(now()) @map("created_at")
+  updatedAt                 DateTime      @updatedAt @map("updated_at")
+
+  organization Organization             @relation(fields: [organizationId], references: [id])
+  supplier     Supplier                 @relation(fields: [supplierId], references: [id])
+  lines        SupplierBillLine[]
+  allocations  SupplierPaymentAllocation[]
+
+  @@unique([organizationId, supplierId, supplierInvoiceNumberNorm])
+  @@unique([organizationId, billNumber])
+  @@index([organizationId, postingStatus])
+  @@index([supplierId])
+  @@map("supplier_bills")
+}
+
+// VAT on supplier bills (NON_RECOVERABLE per ACC-TAX-001):
+//   vatAmount stored for audit trail only.
+//   grossAmount (= netAmount + vatAmount) posts to expense/inventory.
+//   No separate GL VAT debit line.
+model SupplierBillLine {
+  id                   String   @id @default(cuid())
+  supplierBillId       String   @map("supplier_bill_id")
+  lineNumber           Int      @map("line_number")
+  description          String
+  quantity             Decimal? @db.Decimal(18, 4)
+  unitPrice            Decimal? @map("unit_price") @db.Decimal(18, 4)
+  netAmount            Decimal  @map("net_amount") @db.Decimal(18, 2)
+  vatCodeId            String?  @map("vat_code_id")
+  vatAmount            Decimal  @map("vat_amount") @db.Decimal(18, 2)
+  // grossAmount = netAmount + vatAmount; this is the amount posted to expense/inventory GL
+  grossAmount          Decimal  @map("gross_amount") @db.Decimal(18, 2)
+  // Resolved at post time: PostingProfile.code identifying expense/inventory account
+  expenseProfileCode   String   @map("expense_profile_code") @db.VarChar(50)
+  projectId            String?  @map("project_id")
+  departmentId         String?  @map("department_id")
+  costCenterId         String?  @map("cost_center_id")
+  boqNodeId            String?             @map("boq_node_id")
+  purchaseOrderLineId  String?             @map("purchase_order_line_id")
+  // Sprint 5: material catalogue linkage
+  materialId           String?             @map("material_id")
+  spendCategoryId      String?             @map("spend_category_id")
+  unitOfMeasureId      String?             @map("unit_of_measure_id")
+  lineType             ProcurementLineType @default(SERVICE) @map("line_type")
+
+  bill         SupplierBill   @relation(fields: [supplierBillId], references: [id], onDelete: Cascade)
+  material     Material?      @relation(fields: [materialId], references: [id])
+
+  @@unique([supplierBillId, lineNumber])
+  @@map("supplier_bill_lines")
+}
+
+// Supplier payment posting (Correction 2):
+//   totalAmount = allocatedAmount + unallocatedAmount
+//   Dr Accounts Payable          allocatedAmount    (sum of all bill allocations)
+//   Dr Supplier Advance          unallocatedAmount  (SUPPLIER_ADVANCE subtype — asset)
+//   Cr Bank                      totalAmount
+//
+//   When advance is later applied against a bill:
+//   Dr Accounts Payable          amount
+//   Cr Supplier Advance          amount
+model SupplierPayment {
+  id                   String           @id @default(cuid())
+  organizationId       String           @map("organization_id")
+  supplierId           String           @map("supplier_id")
+  bankAccountId        String           @map("bank_account_id")
+  paymentNumber        String?          @map("payment_number") @db.VarChar(30)
+  paymentDate          DateTime         @map("payment_date") @db.Date
+  accountingDate       DateTime         @map("accounting_date") @db.Date
+  currencyCode         String           @map("currency_code") @db.VarChar(3)
+  exchangeRateSnapshot Decimal          @map("exchange_rate_snapshot") @db.Decimal(18, 6)
+  exchangeRateDate     DateTime         @map("exchange_rate_date") @db.Date
+  exchangeRateSource   String           @map("exchange_rate_source")
+  totalAmount          Decimal          @map("total_amount") @db.Decimal(18, 2)
+  allocatedAmount      Decimal          @default(0) @map("allocated_amount") @db.Decimal(18, 2)
+  unallocatedAmount    Decimal          @map("unallocated_amount") @db.Decimal(18, 2)
+  paymentMethod        String           @map("payment_method")
+  bankReference        String?          @map("bank_reference")
+  notes                String?
+  documentStatus       PaymentDocStatus @default(DRAFT) @map("document_status")
+  postingStatus        PostingStatus    @default(NOT_POSTED) @map("posting_status")
+  postedJournalEntryId String?          @map("posted_journal_entry_id")
+  postedAt             DateTime?        @map("posted_at")
+  postedBy             String?          @map("posted_by")
+  lastPostingAttemptAt DateTime?        @map("last_posting_attempt_at")
+  lastPostingErrorCode String?          @map("last_posting_error_code")
+  migrationBatchId     String?          @map("migration_batch_id")
+  revision             Int              @default(1)
+  createdBy            String           @map("created_by")
+  approvedBy           String?          @map("approved_by")
+  approvedAt           DateTime?        @map("approved_at")
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
+
+  organization Organization               @relation(fields: [organizationId], references: [id])
+  supplier     Supplier                   @relation(fields: [supplierId], references: [id])
+  bankAccount  BankAccount                @relation(fields: [bankAccountId], references: [id])
+  allocations  SupplierPaymentAllocation[]
+
+  @@index([organizationId, postingStatus])
+  @@index([supplierId])
+  @@map("supplier_payments")
+}
+
+// Allocation lifecycle:
+//   INITIAL (at payment post time): postingStatus = POSTED; journalEntryId = paymentJournalEntryId
+//   SUBSEQUENT (applying supplier advance to a bill): starts NOT_POSTED;
+//     SUPPLIER_ADVANCE_ALLOCATED journal (EVT-AP-005) → postingStatus = POSTED
+//   REVERSAL of subsequent: EVT-AP-006 → postingStatus = REVERSED
+//   Initial allocations cannot be individually reversed — reverse the payment (EVT-AP-004) instead.
+//
+// Invariants enforced by use case before commit:
+//   SupplierPayment.totalAmount = allocatedAmount + unallocatedAmount  (always)
+//   ∑ SupplierPaymentAllocation.allocatedAmount WHERE postingStatus IN (POSTED) = SupplierPayment.allocatedAmount
+model SupplierPaymentAllocation {
+  id                     String        @id @default(cuid())
+  organizationId         String        @map("organization_id")
+  supplierPaymentId      String        @map("supplier_payment_id")
+  supplierBillId         String        @map("supplier_bill_id")
+  allocatedAmount        Decimal       @map("allocated_amount") @db.Decimal(18, 2)
+  allocationDate         DateTime      @map("allocation_date") @db.Date
+  journalEntryId         String?       @map("journal_entry_id")
+  postingStatus          PostingStatus @default(NOT_POSTED) @map("posting_status")
+  reversalJournalEntryId String?       @map("reversal_journal_entry_id")
+  createdBy              String        @map("created_by")
+  createdAt              DateTime      @default(now()) @map("created_at")
+
+  payment SupplierPayment @relation(fields: [supplierPaymentId], references: [id])
+  bill    SupplierBill    @relation(fields: [supplierBillId], references: [id])
+
+  @@index([supplierPaymentId])
+  @@index([supplierBillId])
+  @@map("supplier_payment_allocations")
+}
+
+// ─── General Ledger ───────────────────────────────────────────────────────────
+
+// Manual journal workflow (Correction 6):
+//   Accountant creates DRAFT → submits → CFO approves/rejects → Accountant posts → POSTED
+//   Correction via reversal + replacement only (ACC-006, ACC-007).
+//   Four-eyes: creator ≠ approver (enforced by application + PostingPolicy.requireFourEyesOnJournals).
+//
+// POSTED entries are IMMUTABLE — status, lines, amounts cannot change.
+// PostingAttempt is written in a SEPARATE small transaction if main tx rolls back.
+model JournalEntry {
+  id                       String          @id @default(cuid())
+  organizationId           String          @map("organization_id")
+  journalNumber            String?         @map("journal_number") @db.VarChar(30)
+  accountingPeriodId       String?         @map("accounting_period_id")
+  journalCategory          JournalCategory @map("journal_category")
+  entryPurpose             EntryPurpose    @map("entry_purpose")
+  status                   JournalStatus   @default(DRAFT)
+  documentDate             DateTime        @map("document_date") @db.Date
+  // accountingDate determines the period. Must fall within an OPEN or LOCKED period.
+  // LOCKED periods only accept CLOSING_ADJUSTMENT category journals.
+  accountingDate           DateTime        @map("accounting_date") @db.Date
+  postedAt                 DateTime?       @map("posted_at")
+  description              String
+  currencyCode             String          @map("currency_code") @db.VarChar(3)
+  exchangeRateSnapshot     Decimal?        @map("exchange_rate_snapshot") @db.Decimal(18, 6)
+  sourceDocumentType       SourceDocType?  @map("source_document_type")
+  sourceDocumentId         String?         @map("source_document_id")
+  accountingEventId        String?         @map("accounting_event_id")
+  eventVersion             Int?            @map("event_version")
+  postingRuleVersionId     String?         @map("posting_rule_version_id")
+  // Self-references for reversal and replacement chains
+  reversalOfJournalEntryId String?         @map("reversal_of_journal_entry_id")
+  replacedByJournalEntryId String?         @map("replaced_by_journal_entry_id")
+  createdBy                String          @map("created_by")
+  submittedBy              String?         @map("submitted_by")
+  submittedAt              DateTime?       @map("submitted_at")
+  approvedBy               String?         @map("approved_by")
+  approvedAt               DateTime?       @map("approved_at")
+  rejectedBy               String?         @map("rejected_by")
+  rejectedAt               DateTime?       @map("rejected_at")
+  rejectionReason          String?         @map("rejection_reason")
+  postedBy                 String?         @map("posted_by")
+  reversedBy               String?         @map("reversed_by")
+  reversalReason           String?         @map("reversal_reason")
+  revision                 Int             @default(1)
+  createdAt                DateTime        @default(now()) @map("created_at")
+  updatedAt                DateTime        @updatedAt @map("updated_at")
+
+  organization   Organization      @relation(fields: [organizationId], references: [id])
+  accountingPeriod AccountingPeriod? @relation(fields: [accountingPeriodId], references: [id])
+  lines          JournalLine[]
+  attachments    JournalEntryAttachment[]
+  reversalOf     JournalEntry?     @relation("JournalReversal", fields: [reversalOfJournalEntryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reversals      JournalEntry[]    @relation("JournalReversal")
+  replacedBy     JournalEntry?     @relation("JournalReplacement", fields: [replacedByJournalEntryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  replacements   JournalEntry[]    @relation("JournalReplacement")
+
+  // Prevents duplicate system-generated journals for the same source event
+  @@unique([organizationId, sourceDocumentType, sourceDocumentId, accountingEventId])
+  @@unique([organizationId, journalNumber])
+  @@index([organizationId, accountingDate])
+  @@index([organizationId, status])
+  @@index([accountingPeriodId])
+  @@map("journal_entries")
+}
+
+// JournalLine amounts: exactly one of (debitAmount > 0, creditAmount > 0) per line.
+// Invariant enforced at post: ∑ debitAmount = ∑ creditAmount across all lines (ACC-003).
+// Defense-in-depth DB trigger: see raw-sql-constraints.sql.
+//
+// Snapshot fields (accountCodeSnapshot, accountNameSnapshot, accountVersionNumber)
+// are immutable records of what was active at accountingDate — never updated.
+//
+// Version resolution (Correction 4): uses accountingDate, not period.endDate or generatedAt.
+// SQL: WHERE effectiveFrom <= accountingDate AND (effectiveTo IS NULL OR accountingDate < effectiveTo)
+model JournalLine {
+  id                      String                 @id @default(cuid())
+  journalEntryId          String                 @map("journal_entry_id")
+  lineNumber              Int                    @map("line_number")
+  // Stable account FK + immutable snapshots taken at post time
+  accountId               String                 @map("account_id")
+  accountVersionId        String?                @map("account_version_id")
+  accountCodeSnapshot     String                 @map("account_code_snapshot") @db.VarChar(20)
+  accountNameSnapshot     String                 @map("account_name_snapshot")
+  accountVersionNumber    Int                    @map("account_version_number")
+  debitAmount             Decimal                @default(0) @map("debit_amount") @db.Decimal(18, 2)
+  creditAmount            Decimal                @default(0) @map("credit_amount") @db.Decimal(18, 2)
+  transactionCurrencyCode String                 @map("transaction_currency_code") @db.VarChar(3)
+  transactionAmount       Decimal?               @map("transaction_amount") @db.Decimal(18, 2)
+  baseCurrencyAmount      Decimal                @map("base_currency_amount") @db.Decimal(18, 2)
+  exchangeRateSnapshot    Decimal?               @map("exchange_rate_snapshot") @db.Decimal(18, 6)
+  description             String?
+  postingOrigin           PostingOrigin          @map("posting_origin")
+  sourceSubledgerType     SubledgerType?         @map("source_subledger_type")
+  // PostingProfile resolution audit: "PROJECT_REVENUE@v3" — immutable snapshot
+  resolutionSource        String?                @map("resolution_source")
+  // FK to exact PostingProfileVersion used (Correction 8)
+  postingProfileVersionId String?                @map("posting_profile_version_id")
+  postingRuleVersionId    String?                @map("posting_rule_version_id")
+  // Dimensions
+  projectId               String?                @map("project_id")
+  departmentId            String?                @map("department_id")
+  costCenterId            String?                @map("cost_center_id")
+  clientId                String?                @map("client_id")
+  supplierId              String?                @map("supplier_id")
+  contractId              String?                @map("contract_id")
+  boqNodeId               String?                @map("boq_node_id")
+  taxCodeId               String?                @map("tax_code_id")
+  createdAt               DateTime               @default(now()) @map("created_at")
+
+  entry                 JournalEntry           @relation(fields: [journalEntryId], references: [id])
+  account               Account                @relation("JournalLineAccount", fields: [accountId], references: [id])
+  accountVersion        AccountVersion?        @relation(fields: [accountVersionId], references: [id])
+  postingProfileVersion PostingProfileVersion? @relation(fields: [postingProfileVersionId], references: [id])
+
+  @@unique([journalEntryId, lineNumber])
+  @@index([accountId, createdAt])
+  @@index([journalEntryId])
+  @@map("journal_lines")
+}
+
+// Attachments on POSTED journals are immutable — they cannot be deleted (audit evidence).
+// isPostSubmission = true: supplementary evidence added after posting (permitted).
+// isPostSubmission = false: evidence uploaded before or during posting workflow.
+// Application enforces: DELETE is prohibited on any attachment where journal.status = POSTED.
+// New attachments to POSTED journals require CFO permission or designated Finance role.
+model JournalEntryAttachment {
+  id               String   @id @default(cuid())
+  journalEntryId   String   @map("journal_entry_id")
+  platformFileId   String   @map("platform_file_id")
+  attachmentType   String?  @map("attachment_type")
+  // true when added after journal was POSTED (supplementary evidence); false = pre-post upload
+  isPostSubmission Boolean  @default(false) @map("is_post_submission")
+  createdAt        DateTime @default(now()) @map("created_at")
+  createdBy        String   @map("created_by")
+
+  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id])
+
+  @@index([journalEntryId])
+  @@map("journal_entry_attachments")
+}
+
+// ─── Reporting Snapshots ──────────────────────────────────────────────────────
+
+// Snapshots are generated ONLY after all postings for a period are complete.
+// For normal periods: after period transitions to LOCKED (pre-close snapshot).
+// For year-end: after all December closing journals post AND before period CLOSED.
+// Never generated from generatedAt (Correction 4) — always from accountingDate period boundaries.
+//
+// Open-period balance query:
+//   closing balance = latest valid snapshot closing balance
+//                   + JournalLine movements WHERE accountingDate > snapshotPeriod.endDate
+//                                           AND accountingDate <= requestedAsOfDate
+// (Correction 4: use accountingDate, not snapshot.generatedAt, as the cutoff.)
+model PeriodAccountBalance {
+  id                 String         @id @default(cuid())
+  organizationId     String         @map("organization_id")
+  fiscalYearId       String         @map("fiscal_year_id")
+  accountingPeriodId String         @map("accounting_period_id")
+  accountId          String         @map("account_id")
+  projectId          String?        @map("project_id")
+  departmentId       String?        @map("department_id")
+  costCenterId       String?        @map("cost_center_id")
+  openingDebit       Decimal        @default(0) @map("opening_debit") @db.Decimal(18, 2)
+  openingCredit      Decimal        @default(0) @map("opening_credit") @db.Decimal(18, 2)
+  periodDebit        Decimal        @default(0) @map("period_debit") @db.Decimal(18, 2)
+  periodCredit       Decimal        @default(0) @map("period_credit") @db.Decimal(18, 2)
+  closingDebit       Decimal        @default(0) @map("closing_debit") @db.Decimal(18, 2)
+  closingCredit      Decimal        @default(0) @map("closing_credit") @db.Decimal(18, 2)
+  baseCurrency       String         @map("base_currency") @db.VarChar(3)
+  snapshotVersion    Int            @default(1) @map("snapshot_version")
+  generatedAt        DateTime       @map("generated_at")
+  generatedBy        String         @map("generated_by")
+  status             SnapshotStatus @default(VALID)
+
+  accountingPeriod AccountingPeriod @relation(fields: [accountingPeriodId], references: [id])
+
+  @@index([organizationId, accountingPeriodId, accountId])
+  @@index([accountingPeriodId, status])
+  @@map("period_account_balances")
+}
+
+// Control-account reconciliation compares CLOSING GL balance as of period end
+// against subledger closing balance (Correction 5):
+//   AR GL closing balance = opening AR + all AR debits - all AR credits through period end
+//   Compare to: ∑ outstanding ClientInvoice amounts as of period end
+//   Variance must be $0.00 to pass period-close gate.
+model SubledgerControlReconciliation {
+  id                 String               @id @default(cuid())
+  organizationId     String               @map("organization_id")
+  accountId          String               @map("account_id")
+  accountingPeriodId String               @map("accounting_period_id")
+  // GL closing balance as of period end (NOT period movement)
+  glClosingBalance   Decimal              @map("gl_closing_balance") @db.Decimal(18, 2)
+  // Sum of open subledger items as of period end
+  subledgerBalance   Decimal              @map("subledger_balance") @db.Decimal(18, 2)
+  variance           Decimal              @db.Decimal(18, 2)
+  status             ReconciliationStatus @default(UNREVIEWED)
+  reviewedBy         String?              @map("reviewed_by")
+  reviewedAt         DateTime?            @map("reviewed_at")
+  notes              String?
+  computedAt         DateTime             @default(now()) @map("computed_at")
+
+  @@index([organizationId, accountingPeriodId])
+  @@map("subledger_control_reconciliations")
+}
+
+// ─── Operational Tracking ─────────────────────────────────────────────────────
+
+// PostingAttempt is written in a SEPARATE small transaction AFTER the main transaction
+// rolls back. This ensures failure evidence is persisted even when the main tx fails.
+// Never write PostingAttempt inside the main posting transaction.
+model PostingAttempt {
+  id                   String         @id @default(cuid())
+  organizationId       String         @map("organization_id")
+  sourceDocumentType   SourceDocType  @map("source_document_type")
+  sourceDocumentId     String         @map("source_document_id")
+  sourceRevision       Int            @map("source_revision")
+  attemptedBy          String         @map("attempted_by")
+  attemptedAt          DateTime       @map("attempted_at")
+  outcome              AttemptOutcome
+  errorCode            String?        @map("error_code")
+  errorMessage         String?        @map("error_message")
+  postingRuleVersionId String?        @map("posting_rule_version_id")
+  journalEntryId       String?        @map("journal_entry_id")
+  correlationId        String         @map("correlation_id")
+
+  @@index([organizationId, sourceDocumentType, sourceDocumentId])
+  @@index([correlationId])
+  @@map("posting_attempts")
+}
+
+// ─── Migration ────────────────────────────────────────────────────────────────
+
+model AccountingMigrationBatch {
+  id             String          @id @default(cuid())
+  organizationId String          @map("organization_id")
+  startedAt      DateTime        @map("started_at")
+  completedAt    DateTime?       @map("completed_at")
+  performedBy    String          @map("performed_by")
+  approvedBy     String?         @map("approved_by")
+  status         MigrationStatus @default(PENDING)
+  checksum       String
+  notes          String?
+  createdAt      DateTime        @default(now()) @map("created_at")
+
+  @@index([organizationId, status])
+  @@map("accounting_migration_batches")
+}
+
+// R-06: PaymentReceipts from Sprint 3 that cannot be auto-assigned to a bank account
+// are placed in this exception queue for Finance to resolve manually.
+model PaymentReceiptMigrationException {
+  id                    String          @id @default(cuid())
+  organizationId        String          @map("organization_id")
+  paymentReceiptId      String          @map("payment_receipt_id")
+  reason                String
+  status                ExceptionStatus @default(OPEN)
+  resolvedBankAccountId String?         @map("resolved_bank_account_id")
+  resolvedBy            String?         @map("resolved_by")
+  resolvedAt            DateTime?       @map("resolved_at")
+  notes                 String?
+  createdAt             DateTime        @default(now()) @map("created_at")
+
+  @@index([organizationId, status])
+  @@map("payment_receipt_migration_exceptions")
+}
+
+// ─── Accounting Configuration — 7 Separate Policy Aggregates ─────────────────
+// Each policy is independently updatable by Finance.
+// All reads go through AccountingConfigurationService facade.
+// organizationId @id means 1:1 with Organization — no separate id column.
+
+// baseCurrencyCode is IMMUTABLE after the first JournalEntry is posted.
+model MonetaryPolicy {
+  organizationId        String   @id @map("organization_id")
+  baseCurrencyCode      String   @map("base_currency_code") @db.VarChar(3)
+  reportingCurrencyCode String   @map("reporting_currency_code") @db.VarChar(3)
+  updatedBy             String   @map("updated_by")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("monetary_policy")
+}
+
+model FiscalCalendarPolicy {
+  organizationId       String   @id @map("organization_id")
+  fiscalYearStartMonth Int      @map("fiscal_year_start_month")
+  fiscalYearStartDay   Int      @map("fiscal_year_start_day")
+  // ACCO: useAdjustmentPeriods = false (ACC-PER-001)
+  useAdjustmentPeriods Boolean  @default(false) @map("use_adjustment_periods")
+  updatedBy            String   @map("updated_by")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@map("fiscal_calendar_policy")
+}
+
+model TaxPolicy {
+  organizationId         String   @id @map("organization_id")
+  defaultOutputTaxCodeId String?  @map("default_output_tax_code_id")
+  defaultInputTaxCodeId  String?  @map("default_input_tax_code_id")
+  updatedBy              String   @map("updated_by")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  @@map("tax_policy")
+}
+
+model NumberingPolicy {
+  organizationId String         @id @map("organization_id")
+  numberingScope NumberingScope @default(CONTINUOUS) @map("numbering_scope")
+  updatedBy      String         @map("updated_by")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  @@map("numbering_policy")
+}
+
+model PostingPolicy {
+  organizationId                String   @id @map("organization_id")
+  requireFourEyesOnJournals     Boolean  @default(true) @map("require_four_eyes_on_journals")
+  draftJournalsBlockPeriodClose Boolean  @default(true) @map("draft_journals_block_period_close")
+  enforceControlAccountAtDb     Boolean  @default(true) @map("enforce_control_account_at_db")
+  updatedBy                     String   @map("updated_by")
+  updatedAt                     DateTime @updatedAt @map("updated_at")
+
+  @@map("posting_policy")
+}
+
+model DimensionPolicy {
+  organizationId             String               @id @map("organization_id")
+  projectDimensionDefault    DimensionRequirement @default(OPTIONAL) @map("project_dimension_default")
+  departmentDimensionDefault DimensionRequirement @default(OPTIONAL) @map("department_dimension_default")
+  costCenterDimensionDefault DimensionRequirement @default(OPTIONAL) @map("cost_center_dimension_default")
+  updatedBy                  String               @map("updated_by")
+  updatedAt                  DateTime             @updatedAt @map("updated_at")
+
+  @@map("dimension_policy")
+}
+
+model BankingPolicy {
+  organizationId                String   @id @map("organization_id")
+  requireBankAccountForReceipts Boolean  @default(true) @map("require_bank_account_for_receipts")
+  requireBankAccountForPayments Boolean  @default(true) @map("require_bank_account_for_payments")
+  requireBankReviewBeforeClose  Boolean  @default(false) @map("require_bank_review_before_close")
+  updatedBy                     String   @map("updated_by")
+  updatedAt                     DateTime @updatedAt @map("updated_at")
+
+  @@map("banking_policy")
+}
+
+// ─── Enums — Platform ─────────────────────────────────────────────────────────
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum Language {
+  EN
+  AR
+}
+
+enum WorkflowTransactionType {
+  MATERIAL_REQUEST
+  PURCHASE_ORDER
+  SUPPLIER_PAYMENT
+  STOCK_TRANSFER
+  MATERIAL_ISSUE
+  SUBCONTRACT_CERTIFICATE
+  IPC
+  VARIATION
+  // Sprint 4 — Accounting
+  CLIENT_INVOICE
+  SUPPLIER_BILL
+  PAYMENT_RECEIPT
+  MANUAL_JOURNAL
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ApprovalActionType {
+  APPROVE
+  REJECT
+  DELEGATE
+  ESCALATE
+}
+
+enum MembershipStatus {
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
+enum WorkflowTriggerKind {
+  DOCUMENT
+  STATE_TRANSITION
+}
+
+enum WorkflowRequirement {
+  REQUIRED
+  OPTIONAL
+  NONE
+}
+
+// ─── Enums — Construction ─────────────────────────────────────────────────────
+
+enum BoqVersionStatus {
+  DRAFT
+  BASELINED
+  SUPERSEDED
+  CANCELLED
+}
+
+enum ProjectStatus {
+  DRAFT
+  APPROVED
+  MOBILIZING
+  ACTIVE
+  PRACTICAL_COMPLETION
+  CLOSEOUT
+  CLOSED
+  CANCELLED
+}
+
+enum CommercialModel {
+  CLIENT_CONTRACT
+  INTERNAL_CAPITAL
+}
+
+enum ParticipationModel {
+  SOLE
+  JOINT_VENTURE
+}
+
+enum MeasurementMethod {
+  QUANTITY
+  PERCENTAGE
+  MILESTONE
+}
+
+enum PricingBasis {
+  UNIT_RATE
+  LUMP_SUM
+}
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ContractStatus {
+  DRAFT
+  UNDER_REVIEW
+  PENDING_SIGNATURE
+  ACTIVE
+  FINAL_ACCOUNT_PENDING
+  CLOSED
+  CANCELLED
+  TERMINATED
+}
+
+enum BillingModel {
+  MEASURED_IPC
+  MILESTONE
+  TIME_AND_MATERIAL
+  HYBRID
+}
+
+enum AdvanceType {
+  MOBILIZATION
+  MATERIAL_ON_SITE
+  EQUIPMENT
+  OTHER
+}
+
+enum GuaranteeStatus {
+  ACTIVE
+  DISCHARGED
+  EXPIRED
+  CALLED
+}
+
+enum ProjectRole {
+  PROJECT_MANAGER
+  QUANTITY_SURVEYOR
+  SITE_ENGINEER
+  COMMERCIAL_MANAGER
+  FINANCE_REVIEWER
+  VIEWER
+}
+
 enum IpaStatus {
   DRAFT
   PENDING_INTERNAL_APPROVAL
@@ -1025,4 +2168,923 @@ enum IpcStatus {
   CERTIFIED
   PARTIALLY_CERTIFIED
   REJECTED
+}
+
+// ─── Enums — Accounting ───────────────────────────────────────────────────────
+
+enum SupplierStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum DimensionStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum AccountStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum NormalBalance {
+  DEBIT
+  CREDIT
+}
+
+enum AccountClass {
+  ASSET
+  LIABILITY
+  EQUITY
+  INCOME
+  COST_OF_SALES
+  EXPENSE
+}
+
+enum AccountSubtype {
+  // Assets
+  CASH_AND_BANK
+  ACCOUNTS_RECEIVABLE
+  // Unallocated client receipts — liability to client pending invoice allocation (Correction 1)
+  UNAPPLIED_CLIENT_RECEIPTS
+  // Advance paid to supplier before bill allocation (Correction 2)
+  SUPPLIER_ADVANCE
+  INVENTORY
+  FIXED_ASSETS
+  ACCUMULATED_DEPRECIATION
+  PREPAYMENTS
+  OTHER_CURRENT_ASSET
+  OTHER_NON_CURRENT_ASSET
+  // Liabilities
+  ACCOUNTS_PAYABLE
+  CLIENT_ADVANCE_LIABILITY
+  VAT_OUTPUT_PAYABLE
+  VAT_INPUT_RECOVERABLE
+  OTHER_CURRENT_LIABILITY
+  OTHER_NON_CURRENT_LIABILITY
+  // Equity
+  SHARE_CAPITAL
+  RETAINED_EARNINGS
+  CURRENT_YEAR_EARNINGS
+  OTHER_EQUITY
+  // Income
+  PROJECT_REVENUE
+  OTHER_INCOME
+  // Cost of Sales
+  MATERIAL_COST
+  SUBCONTRACT_COST
+  DIRECT_LABOUR
+  OTHER_DIRECT_COST
+  // Expense
+  ADMINISTRATIVE_EXPENSE
+  DEPRECIATION_EXPENSE
+  FINANCE_COST
+  OTHER_EXPENSE
+}
+
+enum ControlPostingPolicy {
+  UNRESTRICTED
+  // AR, AP, Inventory — only posting engine may post
+  SYSTEM_ONLY
+  // VAT, Bank — posting engine OR CFO-approved manual adjustment
+  SYSTEM_OR_APPROVED_ADJUSTMENT
+}
+
+enum SubledgerType {
+  ACCOUNTS_RECEIVABLE
+  ACCOUNTS_PAYABLE
+  INVENTORY
+  BANK
+}
+
+enum FiscalYearStatus {
+  DRAFT
+  OPEN
+  LOCKED
+  CLOSED
+}
+
+enum PeriodStatus {
+  OPEN
+  // Closing in progress — CLOSING_ADJUSTMENT journals only
+  LOCKED
+  // Permanent — no further postings
+  CLOSED
+  // Exceptional CFO-only reopening — treated as OPEN but flagged
+  REOPENED
+}
+
+enum PeriodType {
+  OPERATING
+  // Optional period 13 — not used by ACCO (ACC-PER-001)
+  ADJUSTMENT
+}
+
+enum BankAccountStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum TaxType {
+  VAT
+  WITHHOLDING
+  OTHER
+}
+
+enum RecoveryMethod {
+  FULLY_RECOVERABLE
+  // ACCO default: gross amount posts to expense (ACC-TAX-001)
+  NON_RECOVERABLE
+  PARTIALLY_RECOVERABLE
+}
+
+enum TaxCodeStatus {
+  ACTIVE
+  INACTIVE
+  SUPERSEDED
+}
+
+enum ProfileStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum RuleStatus {
+  DRAFT
+  APPROVED
+  ACTIVE
+  SUPERSEDED
+}
+
+enum DebitCredit {
+  DEBIT
+  CREDIT
+}
+
+enum ResolutionType {
+  FIXED_ACCOUNT
+  ACCOUNT_SUBTYPE_LOOKUP
+  POSTING_PROFILE
+  SUBLEDGER_LOOKUP
+}
+
+enum DocumentType {
+  CLIENT_INVOICE
+  PAYMENT_RECEIPT
+  SUPPLIER_BILL
+  SUPPLIER_PAYMENT
+  JOURNAL_ENTRY
+}
+
+enum SequenceStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum JournalCategory {
+  GENERAL
+  ACCOUNTS_RECEIVABLE
+  ACCOUNTS_PAYABLE
+  CASH_AND_BANK
+  OPENING_BALANCE
+  // December locked-period adjustments (depreciation, accruals, reclassifications)
+  CLOSING_ADJUSTMENT
+  // Year-end P&L zeroing entry into Retained Earnings
+  YEAR_END_CLOSE
+  REVERSAL
+  REPLACEMENT
+}
+
+enum JournalStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  POSTED
+  REVERSED
+}
+
+enum EntryPurpose {
+  NORMAL
+  REVERSAL
+  REPLACEMENT
+  CLOSING
+  OPENING_BALANCE
+}
+
+enum InvoiceDocStatus {
+  DRAFT
+  APPROVED
+  CANCELLED
+}
+
+enum PostingStatus {
+  NOT_POSTED
+  PENDING
+  POSTED
+  FAILED
+  REVERSED
+  // Subledger item loaded during migration — aggregate GL balance covered by the opening
+  // balance journal (EVT-OPB-001). No individual journal entry is created for this document.
+  // posting gate: a document with this status is excluded from "unposted approved" close check.
+  OPENING_BALANCE
+}
+
+enum BillDocStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum PaymentDocStatus {
+  DRAFT
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum PostingOrigin {
+  SYSTEM_AR
+  SYSTEM_AP
+  SYSTEM_CASH
+  SYSTEM_OPENING
+  SYSTEM_YEAR_END
+  MANUAL
+}
+
+enum SourceDocType {
+  CLIENT_INVOICE
+  PAYMENT_RECEIPT
+  SUPPLIER_BILL
+  SUPPLIER_PAYMENT
+  MANUAL_JOURNAL
+  OPENING_BALANCE
+  YEAR_END_CLOSE
+}
+
+enum AttemptOutcome {
+  SUCCESS
+  FAILURE_VALIDATION
+  FAILURE_BALANCE_CHECK
+  FAILURE_PERIOD_CLOSED
+  FAILURE_CONTROL_ACCOUNT
+  FAILURE_SYSTEM_ERROR
+}
+
+enum MigrationStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  ROLLED_BACK
+}
+
+enum ExceptionStatus {
+  OPEN
+  RESOLVED
+  WAIVED
+}
+
+enum SnapshotStatus {
+  VALID
+  INVALID
+  REBUILDING
+}
+
+enum ReconciliationStatus {
+  UNREVIEWED
+  IN_BALANCE
+  VARIANCE_ACKNOWLEDGED
+  EXCEPTION_RAISED
+}
+
+enum NumberingScope {
+  CONTINUOUS
+  RESET_ANNUALLY
+}
+
+enum DimensionRequirement {
+  REQUIRED
+  OPTIONAL
+  PROHIBITED
+}
+
+// ─── Sprint 5: Procurement — Master Data ──────────────────────────────────────
+
+model UnitOfMeasure {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  code           String   @db.VarChar(20)
+  name           String
+  nameAr         String?  @map("name_ar")
+  symbol         String   @db.VarChar(10)
+  status         MasterDataStatus @default(ACTIVE)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization  Organization          @relation(fields: [organizationId], references: [id])
+  materials     Material[]
+  mrLines       MaterialRequestLine[]
+  poLines       PurchaseOrderLine[]
+  grnLines      GoodsReceiptLine[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@map("units_of_measure")
+}
+
+model MaterialCategory {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  code           String   @db.VarChar(30)
+  name           String
+  nameAr         String?  @map("name_ar")
+  parentId       String?  @map("parent_id")
+  status         MasterDataStatus @default(ACTIVE)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  parent       MaterialCategory? @relation("MaterialCategoryChildren", fields: [parentId], references: [id])
+  children     MaterialCategory[] @relation("MaterialCategoryChildren")
+  materials    Material[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@map("material_categories")
+}
+
+model SpendCategory {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  code           String   @db.VarChar(30)
+  name           String
+  nameAr         String?  @map("name_ar")
+  parentId       String?  @map("parent_id")
+  status         MasterDataStatus @default(ACTIVE)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization   @relation(fields: [organizationId], references: [id])
+  parent       SpendCategory? @relation("SpendCategoryChildren", fields: [parentId], references: [id])
+  children     SpendCategory[] @relation("SpendCategoryChildren")
+  materials    Material[]     @relation("MaterialDefaultSpendCategory")
+  mrLines      MaterialRequestLine[]
+  poLines      PurchaseOrderLine[]
+  grnLines     GoodsReceiptLine[]
+  commitments  CommitmentLedgerEntry[]
+  matchingPolicies MatchingTolerancePolicy[]
+  overReceiptPolicies OverReceiptPolicy[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@map("spend_categories")
+}
+
+model Material {
+  id                    String           @id @default(cuid())
+  organizationId        String           @map("organization_id")
+  code                  String           @db.VarChar(50)
+  name                  String
+  nameAr                String?          @map("name_ar")
+  description           String?
+  materialCategoryId    String           @map("material_category_id")
+  defaultSpendCategoryId String?         @map("default_spend_category_id")
+  baseUnitOfMeasureId   String           @map("base_unit_of_measure_id")
+  status                MaterialStatus   @default(ACTIVE)
+  createdAt             DateTime         @default(now()) @map("created_at")
+  updatedAt             DateTime         @updatedAt @map("updated_at")
+
+  organization         Organization     @relation(fields: [organizationId], references: [id])
+  materialCategory     MaterialCategory @relation(fields: [materialCategoryId], references: [id])
+  defaultSpendCategory SpendCategory?   @relation("MaterialDefaultSpendCategory", fields: [defaultSpendCategoryId], references: [id])
+  baseUom              UnitOfMeasure    @relation(fields: [baseUnitOfMeasureId], references: [id])
+  mrLines              MaterialRequestLine[]
+  poLines              PurchaseOrderLine[]
+  grnLines             GoodsReceiptLine[]
+  billLines            SupplierBillLine[]
+  commitments          CommitmentLedgerEntry[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@map("materials")
+}
+
+// ─── Sprint 5: Material Request ───────────────────────────────────────────────
+
+model MaterialRequest {
+  id              String               @id @default(cuid())
+  organizationId  String               @map("organization_id")
+  mrNumber        String               @map("mr_number") @db.VarChar(30)
+  requestScope    MaterialRequestScope @map("request_scope")
+  projectId       String?              @map("project_id")
+  requestedBy     String               @map("requested_by")
+  requestedDate   DateTime             @map("requested_date") @db.Date
+  requiredByDate  DateTime?            @map("required_by_date") @db.Date
+  description     String?
+  status          MaterialRequestStatus @default(DRAFT)
+  approvalInstanceId String?           @map("approval_instance_id")
+  notes           String?
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  organization Organization        @relation(fields: [organizationId], references: [id])
+  lines        MaterialRequestLine[]
+
+  @@unique([organizationId, mrNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, projectId])
+  @@map("material_requests")
+}
+
+model MaterialRequestLine {
+  id                    String              @id @default(cuid())
+  materialRequestId     String              @map("material_request_id")
+  lineNumber            Int                 @map("line_number")
+  lineType              ProcurementLineType @map("line_type")
+  materialId            String?             @map("material_id")
+  description           String
+  unitOfMeasureId       String              @map("unit_of_measure_id")
+  requestedQuantity     Decimal             @map("requested_quantity") @db.Decimal(18, 4)
+  approvedQuantity      Decimal?            @map("approved_quantity") @db.Decimal(18, 4)
+  boqNodeId             String?             @map("boq_node_id")
+  spendCategoryId       String?             @map("spend_category_id")
+  departmentId          String?             @map("department_id")
+  costCenterId          String?             @map("cost_center_id")
+  projectCostCategoryId String?             @map("project_cost_category_id")
+  notes                 String?
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  request      MaterialRequest @relation(fields: [materialRequestId], references: [id], onDelete: Cascade)
+  material     Material?       @relation(fields: [materialId], references: [id])
+  uom          UnitOfMeasure   @relation(fields: [unitOfMeasureId], references: [id])
+  spendCategory SpendCategory? @relation(fields: [spendCategoryId], references: [id])
+  poAllocations PurchaseOrderLineRequestAllocation[]
+
+  @@unique([materialRequestId, lineNumber])
+  @@index([materialRequestId])
+  @@map("material_request_lines")
+}
+
+// ─── Sprint 5: Purchase Order ─────────────────────────────────────────────────
+
+model PurchaseOrder {
+  id                String            @id @default(cuid())
+  organizationId    String            @map("organization_id")
+  supplierId        String            @map("supplier_id")
+  poNumber          String            @map("po_number") @db.VarChar(30)
+  currentRevisionId String?           @map("current_revision_id")
+  status            PurchaseOrderStatus @default(OPEN)
+  createdBy         String            @map("created_by")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  supplier     Supplier               @relation(fields: [supplierId], references: [id])
+  revisions    PurchaseOrderRevision[]
+  grnNotes     GoodsReceiptNote[]
+  matchingPolicies MatchingTolerancePolicy[]
+  overReceiptPolicies OverReceiptPolicy[]
+  commitments  CommitmentLedgerEntry[]
+
+  @@unique([organizationId, poNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, supplierId])
+  @@map("purchase_orders")
+}
+
+// Immutable once status = ACTIVE. Any change creates a new revision. (ADR-007, Rule PO-001)
+model PurchaseOrderRevision {
+  id                   String                    @id @default(cuid())
+  purchaseOrderId      String                    @map("purchase_order_id")
+  revisionNumber       Int                       @map("revision_number")
+  status               PurchaseOrderRevisionStatus @default(DRAFT)
+  currencyCode         String                    @map("currency_code") @db.VarChar(3)
+  effectiveFrom        DateTime                  @map("effective_from") @db.Date
+  reason               String?
+  deliveryAddress      String?                   @map("delivery_address")
+  expectedDeliveryDate DateTime?                 @map("expected_delivery_date") @db.Date
+  approvedBy           String?                   @map("approved_by")
+  approvedAt           DateTime?                 @map("approved_at")
+  approvalInstanceId   String?                   @map("approval_instance_id")
+  createdBy            String                    @map("created_by")
+  createdAt            DateTime                  @default(now()) @map("created_at")
+  updatedAt            DateTime                  @updatedAt @map("updated_at")
+
+  purchaseOrder PurchaseOrder        @relation(fields: [purchaseOrderId], references: [id])
+  lines         PurchaseOrderLine[]
+  grnNotes      GoodsReceiptNote[]
+
+  @@unique([purchaseOrderId, revisionNumber])
+  @@index([purchaseOrderId, status])
+  @@map("purchase_order_revisions")
+}
+
+// Immutable once parent revision is ACTIVE. (ADR-007, Rule PO-004)
+model PurchaseOrderLine {
+  id                      String              @id @default(cuid())
+  purchaseOrderRevisionId String              @map("purchase_order_revision_id")
+  lineNumber              Int                 @map("line_number")
+  lineType                ProcurementLineType @map("line_type")
+  materialId              String?             @map("material_id")
+  description             String
+  unitOfMeasureId         String              @map("unit_of_measure_id")
+  orderedQuantity         Decimal             @map("ordered_quantity") @db.Decimal(18, 4)
+  unitPrice               Decimal             @map("unit_price") @db.Decimal(18, 4)
+  extendedAmount          Decimal             @map("extended_amount") @db.Decimal(18, 2)
+  spendCategoryId         String?             @map("spend_category_id")
+  taxCodeId               String?             @map("tax_code_id")
+  notes                   String?
+  createdAt               DateTime            @default(now()) @map("created_at")
+
+  revision      PurchaseOrderRevision @relation(fields: [purchaseOrderRevisionId], references: [id], onDelete: Cascade)
+  material      Material?             @relation(fields: [materialId], references: [id])
+  uom           UnitOfMeasure         @relation(fields: [unitOfMeasureId], references: [id])
+  spendCategory SpendCategory?        @relation(fields: [spendCategoryId], references: [id])
+  mrAllocations PurchaseOrderLineRequestAllocation[]
+  grnLines      GoodsReceiptLine[]
+  matchLines    SupplierBillMatchLine[]
+
+  @@unique([purchaseOrderRevisionId, lineNumber])
+  @@index([purchaseOrderRevisionId])
+  @@map("purchase_order_lines")
+}
+
+// Many-to-many MR line ↔ PO line junction. (ADR-007, Decision 6)
+// Cost dimensions (projectId, boqNodeId) flow from the MR line through this allocation.
+model PurchaseOrderLineRequestAllocation {
+  id                    String  @id @default(cuid())
+  organizationId        String  @map("organization_id")
+  purchaseOrderLineId   String  @map("purchase_order_line_id")
+  materialRequestLineId String  @map("material_request_line_id")
+  allocatedQuantity     Decimal @map("allocated_quantity") @db.Decimal(18, 4)
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  organization      Organization        @relation(fields: [organizationId], references: [id])
+  purchaseOrderLine PurchaseOrderLine   @relation(fields: [purchaseOrderLineId], references: [id])
+  mrLine            MaterialRequestLine @relation(fields: [materialRequestLineId], references: [id])
+  grnAllocations    GoodsReceiptLineAllocation[]
+
+  @@index([purchaseOrderLineId])
+  @@index([materialRequestLineId])
+  @@map("purchase_order_line_request_allocations")
+}
+
+// ─── Sprint 5: Goods Receipt ──────────────────────────────────────────────────
+
+model GoodsReceiptNote {
+  id                      String    @id @default(cuid())
+  organizationId          String    @map("organization_id")
+  grnNumber               String    @map("grn_number") @db.VarChar(30)
+  purchaseOrderId         String    @map("purchase_order_id")
+  purchaseOrderRevisionId String    @map("purchase_order_revision_id")
+  supplierId              String    @map("supplier_id")
+  deliveryDate            DateTime  @map("delivery_date") @db.Date
+  deliveryNoteRef         String?   @map("delivery_note_ref")
+  status                  GrnStatus @default(DRAFT)
+  exceptionReason         String?   @map("exception_reason")
+  postedAt                DateTime? @map("posted_at")
+  postedBy                String?   @map("posted_by")
+  createdBy               String    @map("created_by")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  organization    Organization          @relation(fields: [organizationId], references: [id])
+  purchaseOrder   PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id])
+  revision        PurchaseOrderRevision @relation(fields: [purchaseOrderRevisionId], references: [id])
+  supplier        Supplier              @relation(fields: [supplierId], references: [id])
+  lines           GoodsReceiptLine[]
+
+  @@unique([organizationId, grnNumber])
+  @@index([organizationId, status])
+  @@index([purchaseOrderId])
+  @@map("goods_receipt_notes")
+}
+
+// Records full physical delivery (receivedQuantity) and acceptance split.
+// Only acceptedQuantity generates ACCRUED commitment movement. (ADR-007, Rule GRN-003)
+model GoodsReceiptLine {
+  id                    String        @id @default(cuid())
+  goodsReceiptNoteId    String        @map("goods_receipt_note_id")
+  purchaseOrderLineId   String        @map("purchase_order_line_id")
+  lineNumber            Int           @map("line_number")
+  lineType              ProcurementLineType @map("line_type")
+  materialId            String?       @map("material_id")
+  unitOfMeasureId       String        @map("unit_of_measure_id")
+  spendCategoryId       String?       @map("spend_category_id")
+  orderedQuantity       Decimal       @map("ordered_quantity") @db.Decimal(18, 4)
+  previouslyReceivedQty Decimal       @default(0) @map("previously_received_qty") @db.Decimal(18, 4)
+  receivedQuantity      Decimal       @map("received_quantity") @db.Decimal(18, 4)
+  acceptedQuantity      Decimal       @map("accepted_quantity") @db.Decimal(18, 4)
+  rejectedQuantity      Decimal       @default(0) @map("rejected_quantity") @db.Decimal(18, 4)
+  rejectionReason       String?       @map("rejection_reason")
+  qualityStatus         QualityStatus @default(PENDING_INSPECTION) @map("quality_status")
+  notes                 String?
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+
+  grn           GoodsReceiptNote  @relation(fields: [goodsReceiptNoteId], references: [id], onDelete: Cascade)
+  poLine        PurchaseOrderLine @relation(fields: [purchaseOrderLineId], references: [id])
+  material      Material?         @relation(fields: [materialId], references: [id])
+  uom           UnitOfMeasure     @relation(fields: [unitOfMeasureId], references: [id])
+  spendCategory SpendCategory?    @relation(fields: [spendCategoryId], references: [id])
+  allocations   GoodsReceiptLineAllocation[]
+
+  @@unique([goodsReceiptNoteId, lineNumber])
+  @@index([goodsReceiptNoteId])
+  @@index([purchaseOrderLineId])
+  @@map("goods_receipt_lines")
+}
+
+// Per-allocation attribution for CommitmentLedger ACCRUED movements. (ADR-007, Decision 13)
+model GoodsReceiptLineAllocation {
+  id                                   String  @id @default(cuid())
+  organizationId                       String  @map("organization_id")
+  goodsReceiptLineId                   String  @map("goods_receipt_line_id")
+  purchaseOrderLineRequestAllocationId String  @map("po_line_request_allocation_id")
+  receivedQuantity                     Decimal @map("received_quantity") @db.Decimal(18, 4)
+  acceptedQuantity                     Decimal @map("accepted_quantity") @db.Decimal(18, 4)
+  rejectedQuantity                     Decimal @default(0) @map("rejected_quantity") @db.Decimal(18, 4)
+  createdAt                            DateTime @default(now()) @map("created_at")
+
+  organization    Organization                       @relation(fields: [organizationId], references: [id])
+  grnLine         GoodsReceiptLine                   @relation(fields: [goodsReceiptLineId], references: [id], onDelete: Cascade)
+  poLineAllocation PurchaseOrderLineRequestAllocation @relation(fields: [purchaseOrderLineRequestAllocationId], references: [id])
+
+  @@index([goodsReceiptLineId])
+  @@index([purchaseOrderLineRequestAllocationId])
+  @@map("goods_receipt_line_allocations")
+}
+
+// ─── Sprint 5: Supplier Bill Matching ────────────────────────────────────────
+
+// Explicit matching result per bill — "linked by construction" is not the same as matched.
+// (ADR-007, Rule MATCH-001)
+model SupplierBillMatch {
+  id              String          @id @default(cuid())
+  supplierBillId  String          @unique @map("supplier_bill_id")
+  matchType       BillMatchType   @map("match_type")
+  status          BillMatchStatus @default(NOT_RUN)
+  matchedAt       DateTime?       @map("matched_at")
+  matchedBy       String?         @map("matched_by")
+  approvedBy      String?         @map("approved_by")
+  approvedAt      DateTime?       @map("approved_at")
+  approvalReason  String?         @map("approval_reason")
+  approvalInstanceId String?      @map("approval_instance_id")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  lines SupplierBillMatchLine[]
+
+  @@map("supplier_bill_matches")
+}
+
+model SupplierBillMatchLine {
+  id                   String  @id @default(cuid())
+  supplierBillMatchId  String  @map("supplier_bill_match_id")
+  supplierBillLineId   String  @map("supplier_bill_line_id")
+  purchaseOrderLineId  String  @map("purchase_order_line_id")
+  goodsReceiptLineId   String? @map("goods_receipt_line_id")
+  poQuantity           Decimal @map("po_quantity") @db.Decimal(18, 4)
+  receivedQuantity     Decimal? @map("received_quantity") @db.Decimal(18, 4)
+  billedQuantity       Decimal @map("billed_quantity") @db.Decimal(18, 4)
+  poUnitPrice          Decimal @map("po_unit_price") @db.Decimal(18, 4)
+  billedUnitPrice      Decimal @map("billed_unit_price") @db.Decimal(18, 4)
+  quantityVariance     Decimal @map("quantity_variance") @db.Decimal(18, 4)
+  priceVariance        Decimal @map("price_variance") @db.Decimal(18, 4)
+  amountVariance       Decimal @map("amount_variance") @db.Decimal(18, 2)
+  withinTolerance      Boolean @map("within_tolerance")
+  exceptionReason      String? @map("exception_reason")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  billMatch       SupplierBillMatch @relation(fields: [supplierBillMatchId], references: [id], onDelete: Cascade)
+  purchaseOrderLine PurchaseOrderLine @relation(fields: [purchaseOrderLineId], references: [id])
+
+  @@index([supplierBillMatchId])
+  @@map("supplier_bill_match_lines")
+}
+
+// Hierarchical tolerance policy: PO → Supplier → SpendCategory → Organization (ADR-007, Rule MATCH-002)
+model MatchingTolerancePolicy {
+  id                      String              @id @default(cuid())
+  organizationId          String              @map("organization_id")
+  scopeType               ToleranceScopeType  @map("scope_type")
+  purchaseOrderId         String?             @map("purchase_order_id")
+  supplierId              String?             @map("supplier_id")
+  spendCategoryId         String?             @map("spend_category_id")
+  priceVariancePercent    Decimal?            @map("price_variance_percent") @db.Decimal(6, 3)
+  priceVarianceAbsolute   Decimal?            @map("price_variance_absolute") @db.Decimal(18, 2)
+  quantityVariancePercent Decimal?            @map("quantity_variance_percent") @db.Decimal(6, 3)
+  quantityVarianceAbsolute Decimal?           @map("quantity_variance_absolute") @db.Decimal(18, 4)
+  amountVarianceAbsolute  Decimal?            @map("amount_variance_absolute") @db.Decimal(18, 2)
+  effectiveFrom           DateTime            @map("effective_from") @db.Date
+  effectiveTo             DateTime?           @map("effective_to") @db.Date
+  status                  MasterDataStatus    @default(ACTIVE)
+  approvedBy              String?             @map("approved_by")
+  createdAt               DateTime            @default(now()) @map("created_at")
+  updatedAt               DateTime            @updatedAt @map("updated_at")
+
+  organization  Organization   @relation(fields: [organizationId], references: [id])
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  supplier      Supplier?      @relation(fields: [supplierId], references: [id])
+  spendCategory SpendCategory? @relation(fields: [spendCategoryId], references: [id])
+
+  @@index([organizationId, scopeType, status])
+  @@map("matching_tolerance_policies")
+}
+
+// Hierarchical over-receipt policy: PO → SpendCategory → Organization (ADR-007, Rule OVREC-001)
+model OverReceiptPolicy {
+  id                   String             @id @default(cuid())
+  organizationId       String             @map("organization_id")
+  scopeType            ToleranceScopeType @map("scope_type")
+  purchaseOrderId      String?            @map("purchase_order_id")
+  spendCategoryId      String?            @map("spend_category_id")
+  overReceiptPercent   Decimal            @map("over_receipt_percent") @db.Decimal(6, 3)
+  status               MasterDataStatus   @default(ACTIVE)
+  effectiveFrom        DateTime           @map("effective_from") @db.Date
+  effectiveTo          DateTime?          @map("effective_to") @db.Date
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+
+  organization  Organization   @relation(fields: [organizationId], references: [id])
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  spendCategory SpendCategory? @relation(fields: [spendCategoryId], references: [id])
+
+  @@index([organizationId, scopeType, status])
+  @@map("over_receipt_policies")
+}
+
+// ─── Sprint 5: Commitment Ledger ──────────────────────────────────────────────
+
+// Immutable signed ledger of procurement cost movements. (ADR-007, Rule CL-001 to CL-005)
+// Separate from JournalLine (GL). PO approval → CommitmentLedger only. Bill posting →
+// CommitmentLedger ACTUAL + JournalLine.
+// Never UPDATE rows — corrections create compensating entries.
+model CommitmentLedgerEntry {
+  id                 String                  @id @default(cuid())
+  organizationId     String                  @map("organization_id")
+  projectId          String?                 @map("project_id")
+  boqNodeId          String?                 @map("boq_node_id")
+  departmentId       String?                 @map("department_id")
+  costCenterId       String?                 @map("cost_center_id")
+  materialId         String?                 @map("material_id")
+  supplierId         String?                 @map("supplier_id")
+  purchaseOrderId    String?                 @map("purchase_order_id")
+  spendCategoryId    String?                 @map("spend_category_id")
+  stage              CommitmentStage         @map("stage")
+  // Signed: positive = increase, negative = decrease/reversal
+  amount             Decimal                 @map("amount") @db.Decimal(18, 2)
+  currencyCode       String                  @map("currency_code") @db.VarChar(3)
+  reportingAmount    Decimal                 @map("reporting_amount") @db.Decimal(18, 2)
+  exchangeRateSnapshot Decimal              @map("exchange_rate_snapshot") @db.Decimal(18, 6)
+  sourceDocumentType CommitmentSourceDocType @map("source_document_type")
+  sourceDocumentId   String                  @map("source_document_id")
+  sourceLineId       String?                 @map("source_line_id")
+  sourceRevision     Int?                    @map("source_revision")
+  eventType          String                  @map("event_type")
+  // Idempotency: prevents duplicate commitment on retry (ADR-007, Rule CL-005)
+  idempotencyKey     String                  @unique @map("idempotency_key")
+  occurredAt         DateTime                @map("occurred_at")
+  accountingDate     DateTime                @map("accounting_date") @db.Date
+  createdAt          DateTime                @default(now()) @map("created_at")
+
+  organization  Organization   @relation(fields: [organizationId], references: [id])
+  material      Material?      @relation(fields: [materialId], references: [id])
+  spendCategory SpendCategory? @relation(fields: [spendCategoryId], references: [id])
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+
+  @@index([organizationId, projectId, stage])
+  @@index([organizationId, boqNodeId, stage])
+  @@index([sourceDocumentId, sourceDocumentType])
+  @@map("commitment_ledger_entries")
+}
+
+// ─── Sprint 5: Enums ──────────────────────────────────────────────────────────
+
+enum BoqSourceType {
+  BASELINE
+  VARIATION
+}
+
+enum ProcurementLineType {
+  MATERIAL
+  SERVICE
+  OTHER
+}
+
+enum MaterialRequestScope {
+  PROJECT
+  ORGANIZATION
+}
+
+enum MaterialRequestStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  PARTIALLY_ORDERED
+  FULLY_ORDERED
+  CANCELLED
+  CLOSED
+}
+
+enum PurchaseOrderStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+enum PurchaseOrderRevisionStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  ACTIVE
+  SUPERSEDED
+  CANCELLED
+}
+
+enum GrnStatus {
+  DRAFT
+  SUBMITTED
+  POSTED
+  EXCEPTION_PENDING
+  CANCELLED
+}
+
+enum QualityStatus {
+  PENDING_INSPECTION
+  ACCEPTED
+  PARTIALLY_ACCEPTED
+  REJECTED
+}
+
+enum BillMatchType {
+  TWO_WAY
+  THREE_WAY
+}
+
+enum BillMatchStatus {
+  NOT_RUN
+  MATCHED
+  MATCHED_WITH_TOLERANCE
+  EXCEPTION
+  APPROVED_EXCEPTION
+}
+
+enum CommitmentStage {
+  COMMITTED
+  ACCRUED
+  ACTUAL
+}
+
+enum CommitmentSourceDocType {
+  PURCHASE_ORDER_REVISION
+  GOODS_RECEIPT
+  SUPPLIER_BILL
+  PO_CANCELLATION
+  GRN_REVERSAL
+  BILL_REVERSAL
+  OVER_RECEIPT_ADJUSTMENT
+  EXCEPTION_APPROVAL
+}
+
+enum ToleranceScopeType {
+  ORGANIZATION
+  SPEND_CATEGORY
+  SUPPLIER
+  PURCHASE_ORDER
+}
+
+enum MaterialStatus {
+  ACTIVE
+  INACTIVE
+  DISCONTINUED
+}
+
+enum MasterDataStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PolicyConditionField {
+  DOCUMENT_AMOUNT
+  PROJECT_ID
+  DEPARTMENT_ID
+  SPEND_CATEGORY
+  CURRENCY
+}
+
+enum PolicyConditionOperator {
+  EQ
+  NE
+  GT
+  GTE
+  LT
+  LTE
+  BETWEEN
+  IN
 }

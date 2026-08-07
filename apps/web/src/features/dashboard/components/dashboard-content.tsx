@@ -3,16 +3,42 @@
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Button } from '@erp/ui';
+import { ProjectStatus } from '@erp/types';
 
-import { ProjectStatusBadge } from '@/features/projects/components/project-status-badge';
+import { KpiCard } from '@/components/widget/kpi-card';
+import { WidgetShell } from '@/components/widget/widget-shell';
 import { useProjects } from '@/features/projects/hooks/use-projects';
 import { formatNumber } from '@/lib/format';
 
-import { summarizeProjects, type StatusCount } from '../summarize-projects';
-import { RecentProjects } from './recent-projects';
+import { summarizeProjects } from '../summarize-projects';
+import { PortfolioTableWidget } from './portfolio-table-widget';
+
+const ACTIVE_STATUSES: ProjectStatus[] = [
+  ProjectStatus.MOBILIZING,
+  ProjectStatus.ACTIVE,
+  ProjectStatus.PRACTICAL_COMPLETION,
+  ProjectStatus.CLOSEOUT,
+];
+
+const PENDING_STATUSES: ProjectStatus[] = [ProjectStatus.DRAFT, ProjectStatus.APPROVED];
+
+const FINISHED_STATUSES: ProjectStatus[] = [
+  ProjectStatus.CLOSED,
+  ProjectStatus.CANCELLED,
+];
+
+function countStatuses(
+  statusCounts: { status: ProjectStatus; count: number }[],
+  statuses: ProjectStatus[],
+): number {
+  return statusCounts
+    .filter((s) => statuses.includes(s.status))
+    .reduce((acc, s) => acc + s.count, 0);
+}
 
 export function DashboardContent() {
   const t = useTranslations('platform.dashboard');
+  const locale = useLocale() as 'en' | 'ar';
   const { data, isPending, isError, refetch, isFetching } = useProjects();
 
   if (isPending) return <DashboardSkeleton />;
@@ -47,28 +73,44 @@ export function DashboardContent() {
     );
   }
 
+  const active = countStatuses(summary.statusCounts, ACTIVE_STATUSES);
+  const pending = countStatuses(summary.statusCounts, PENDING_STATUSES);
+  const finished = countStatuses(summary.statusCounts, FINISHED_STATUSES);
+
   return (
     <div className="space-y-8">
-      <section aria-labelledby="portfolio-heading">
-        <h2
-          id="portfolio-heading"
-          className="text-sm font-semibold uppercase tracking-wide text-muted-foreground"
-        >
-          {t('portfolioHeading')}
-        </h2>
+      <WidgetShell id="portfolio-heading" title={t('portfolioHeading')}>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <KpiCard
+            label={t('totalProjects')}
+            value={formatNumber(summary.total, locale) ?? summary.total}
+            href="/projects"
+          />
+          <KpiCard
+            label={t('kpiActive')}
+            value={formatNumber(active, locale) ?? active}
+            sublabel={t('kpiActiveHint')}
+            href="/projects"
+          />
+          <KpiCard
+            label={t('kpiPending')}
+            value={formatNumber(pending, locale) ?? pending}
+            sublabel={t('kpiPendingHint')}
+            href="/projects"
+          />
+          <KpiCard
+            label={t('kpiFinished')}
+            value={formatNumber(finished, locale) ?? finished}
+            sublabel={t('kpiFinishedHint')}
+          />
+        </div>
+      </WidgetShell>
 
-        <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          <TotalTile total={summary.total} />
-          {summary.statusCounts.map((entry) => (
-            <StatusTile key={entry.status} entry={entry} />
-          ))}
-        </dl>
-      </section>
-
-      <RecentProjects projects={summary.recent} />
+      <WidgetShell id="recent-heading" title={t('recentHeading')}>
+        <PortfolioTableWidget projects={summary.recent} />
+      </WidgetShell>
 
       <div>
-        {/* inline-flex + min-h-11 keeps a plain text link at the 44px touch-target floor. */}
         <Link
           href="/projects"
           className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-primary hover:text-brand-primary-hover"
@@ -80,45 +122,14 @@ export function DashboardContent() {
   );
 }
 
-function TotalTile({ total }: { total: number }) {
-  const t = useTranslations('platform.dashboard');
-  const locale = useLocale() as 'en' | 'ar';
-
-  return (
-    <div className="rounded-lg border border-border bg-surface p-4">
-      <dt className="text-xs font-medium text-muted-foreground">{t('totalProjects')}</dt>
-      <dd className="mt-2 text-2xl font-semibold tabular-nums text-foreground">
-        {formatNumber(total, locale)}
-      </dd>
-    </div>
-  );
-}
-
-function StatusTile({ entry }: { entry: StatusCount }) {
-  const locale = useLocale() as 'en' | 'ar';
-
-  return (
-    <div className="rounded-lg border border-border bg-surface p-4">
-      <dt>
-        <ProjectStatusBadge status={entry.status} />
-      </dt>
-      <dd className="mt-2 text-2xl font-semibold tabular-nums text-foreground">
-        {formatNumber(entry.count, locale)}
-      </dd>
-    </div>
-  );
-}
-
 function DashboardSkeleton() {
   const t = useTranslations('common');
 
-  // The placeholder blocks are decorative, but the loading state itself must still be
-  // announced — otherwise a screen reader reaches a silent, apparently empty page.
   return (
     <div role="status" aria-live="polite" className="space-y-8">
       <span className="sr-only">{t('loading')}</span>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" aria-hidden="true">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-hidden="true">
         {[0, 1, 2, 3].map((i) => (
           <div key={i} className="h-24 animate-pulse rounded-lg border border-border bg-muted" />
         ))}
