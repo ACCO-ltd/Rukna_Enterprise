@@ -1,0 +1,325 @@
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+  Inject,
+} from '@nestjs/common';
+import { Decimal } from '@prisma/client/runtime/library';
+import type { AccountWithCurrentVersion } from '../../accounting-core/infrastructure/account.repository.js';
+import type { RequestIdentity } from '@erp/types';
+import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
+import {
+  ACCOUNTING_POSTING_PORT,
+  type IAccountingPostingPort,
+} from '../../accounting-core/application/ports/accounting-posting.port.js';
+import { AccountRepository } from '../../accounting-core/infrastructure/account.repository.js';
+import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
+import { ClientInvoiceRepository } from '../infrastructure/client-invoice.repository.js';
+
+export interface GenerateInvoiceFromIpcDto {
+  ipcId: string;
+  invoiceDate: string;
+  dueDate: string;
+  paymentTerms?: string;
+}
+
+export interface ApproveInvoiceDto {
+  invoiceId: string;
+}
+
+export interface PostInvoiceDto {
+  invoiceId: string;
+  /** Code of the Accounts Receivable GL control account */
+  arAccountCode: string;
+  /** Code of the Revenue GL account */
+  revenueAccountCode: string;
+  /** Code of the Output VAT GL account (if vatAmount > 0) */
+  vatAccountCode?: string;
+}
+
+@Injectable()
+export class ClientInvoiceService {
+  constructor(
+    private readonly tenancyService: TenancyService,
+    private readonly repo: ClientInvoiceRepository,
+    private readonly accountRepo: AccountRepository,
+    private readonly sequenceRepo: DocumentSequenceRepository,
+    @Inject(ACCOUNTING_POSTING_PORT)
+    private readonly postingPort: IAccountingPostingPort,
+  ) {}
+
+  /**
+   * Generate a draft ClientInvoice from an effective IPC.
+   * Enforces one invoice per IPC.
+   */
+  async generateFromIpc(identity: RequestIdentity, dto: GenerateInvoiceFromIpcDto) {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId, userId } = identity;
+
+    const existing = await this.repo.findByIpc(prisma, orgId, dto.ipcId);
+    if (existing) {
+      throw new ConflictException(
+        `A ClientInvoice already exists for IPC ${dto.ipcId} (invoice ${existing.id})`,
+      );
+    }
+
+    const ipc = await prisma.interimPaymentCertificate.findFirst({
+      where: { id: dto.ipcId, organizationId: orgId },
+      include: {
+        application: { include: { contract: { include: { client: true } } } },
+      },
+    });
+    if (!ipc) throw new NotFoundException(`IPC ${dto.ipcId} not found`);
+    if (!ipc.isEffective) throw new BadRequestException(`IPC ${dto.ipcId} is not effective yet`);
+
+    const contract = ipc.application.contract;
+    const subtotal = new Decimal(ipc.certifiedTotal.toString());
+    const vatRate = new Decimal('0.05');
+    const vatAmount = subtotal.mul(vatRate).toDecimalPlaces(2);
+    const totalAmount = subtotal.plus(vatAmount);
+
+    return this.repo.create(prisma, {
+      organizationId: orgId,
+      clientId: contract.clientId,
+      sourceIpcId: dto.ipcId,
+      projectId: contract.projectId,
+      contractId: contract.id,
+      invoiceDate: new Date(dto.invoiceDate),
+      dueDate: new Date(dto.dueDate),
+      currencyCode: ipc.currency,
+      exchangeRateSnapshot: new Decimal(ipc.exchangeRateValue?.toString() ?? '1'),
+      exchangeRateDate: new Date(dto.invoiceDate),
+      exchangeRateSource: 'IPC',
+      subtotal,
+      vatAmount,
+      totalAmount,
+      paymentTerms: dto.paymentTerms,
+      billingAddressSnapshot: { clientName: contract.client.name },
+      createdBy: userId,
+    });
+  }
+
+  async approve(identity: RequestIdentity, invoiceId: string) {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId, userId } = identity;
+
+    const invoice = await this.repo.findById(prisma, orgId, invoiceId);
+    if (!invoice) throw new NotFoundException(`ClientInvoice ${invoiceId} not found`);
+    if (invoice.documentStatus !== 'DRAFT') {
+      throw new BadRequestException(`Invoice is already ${invoice.documentStatus}`);
+    }
+
+    return this.repo.approve(prisma, invoiceId, userId);
+  }
+
+  /**
+   * Post the ClientInvoice to the GL.
+   * EVT-AR-001: Dr AR / Cr Revenue / Cr VAT Output
+   */
+  async post(identity: RequestIdentity, dto: PostInvoiceDto) {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId, userId } = identity;
+
+    const invoice = await this.repo.findById(prisma, orgId, dto.invoiceId);
+    if (!invoice) throw new NotFoundException(`ClientInvoice ${dto.invoiceId} not found`);
+    if (invoice.documentStatus !== 'APPROVED') {
+      throw new BadRequestException(`Invoice must be APPROVED before posting`);
+    }
+    if (invoice.postingStatus === 'POSTED') {
+      throw new ConflictException(`Invoice ${dto.invoiceId} is already posted`);
+    }
+
+    const arAccount = await this.accountRepo.findByCode(prisma, orgId, dto.arAccountCode);
+    if (!arAccount) throw new NotFoundException(`AR account ${dto.arAccountCode} not found`);
+
+    const revAccount = await this.accountRepo.findByCode(prisma, orgId, dto.revenueAccountCode);
+    if (!revAccount) throw new NotFoundException(`Revenue account ${dto.revenueAccountCode} not found`);
+
+    let vatAccount: AccountWithCurrentVersion | null = null;
+    if (dto.vatAccountCode && new Decimal(invoice.vatAmount.toString()).gt(0)) {
+      vatAccount = await this.accountRepo.findByCode(prisma, orgId, dto.vatAccountCode);
+      if (!vatAccount) throw new NotFoundException(`VAT account ${dto.vatAccountCode} not found`);
+    }
+
+    await this.sequenceRepo.ensureSequence(
+      prisma as never, orgId, 'CLIENT_INVOICE', 'INV-',
+    );
+
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const subtotal = new Decimal(invoice.subtotal.toString());
+        const vatAmount = new Decimal(invoice.vatAmount.toString());
+        const totalAmount = new Decimal(invoice.totalAmount.toString());
+
+        const lines: Parameters<typeof this.postingPort.post>[0]['lines'] = [
+          {
+            accountId: arAccount.id,
+            debitAmount: totalAmount,
+            creditAmount: new Decimal(0),
+            transactionCurrencyCode: invoice.currencyCode,
+            baseCurrencyAmount: totalAmount,
+            sourceSubledgerType: 'ACCOUNTS_RECEIVABLE' as const,
+            clientId: invoice.clientId,
+            contractId: invoice.contractId ?? undefined,
+          },
+          {
+            accountId: revAccount.id,
+            debitAmount: new Decimal(0),
+            creditAmount: subtotal,
+            transactionCurrencyCode: invoice.currencyCode,
+            baseCurrencyAmount: subtotal,
+            projectId: invoice.projectId ?? undefined,
+            contractId: invoice.contractId ?? undefined,
+          },
+        ];
+
+        if (vatAccount && vatAmount.gt(0)) {
+          lines.push({
+            accountId: (vatAccount as AccountWithCurrentVersion).id,
+            debitAmount: new Decimal(0),
+            creditAmount: vatAmount,
+            transactionCurrencyCode: invoice.currencyCode,
+            baseCurrencyAmount: vatAmount,
+          });
+        }
+
+        const postResult = await this.postingPort.post(
+          {
+            organizationId: orgId,
+            accountingDate: invoice.invoiceDate,
+            documentDate: invoice.invoiceDate,
+            description: `Client Invoice — ${invoice.id}`,
+            currencyCode: invoice.currencyCode,
+            eventType: 'EVT-AR-001',
+            sourceDocumentType: 'CLIENT_INVOICE',
+            sourceDocumentId: invoice.id,
+            journalCategory: 'ACCOUNTS_RECEIVABLE',
+            entryPurpose: 'NORMAL',
+            postingOrigin: 'SYSTEM_AR',
+            createdBy: userId,
+            lines,
+          },
+          tx as never,
+        );
+
+        // Claim invoice number
+        const invNum = await this.sequenceRepo.claimNext(
+          tx as never, orgId, 'CLIENT_INVOICE',
+        );
+
+        await this.repo.markPosted(prisma, invoice.id, postResult.journalEntryId, invNum.formattedNumber, userId);
+
+        return { ...postResult, invoiceNumber: invNum.formattedNumber };
+      });
+
+      return result;
+    } catch (err: unknown) {
+      const code = err instanceof Error ? err.message.slice(0, 50) : 'POSTING_FAILED';
+      await this.repo.markPostingFailed(prisma, invoice.id, code);
+      throw err;
+    }
+  }
+
+  /**
+   * Reverse a posted ClientInvoice.
+   * EVT-AR-002: Dr Revenue + Dr VAT (if any) / Cr AR — the mirror of EVT-AR-001.
+   * Guard: invoice must have zero active (POSTED) receipt allocations.
+   */
+  async reverse(
+    identity: RequestIdentity,
+    invoiceId: string,
+    opts: { reversalDate: string; reason: string },
+  ) {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId, userId } = identity;
+
+    const invoice = await this.repo.findById(prisma, orgId, invoiceId);
+    if (!invoice) throw new NotFoundException(`ClientInvoice ${invoiceId} not found`);
+    if (invoice.postingStatus !== 'POSTED') {
+      throw new BadRequestException(`Only POSTED invoices can be reversed (status: ${invoice.postingStatus})`);
+    }
+    if (invoice.reversalJournalEntryId) {
+      throw new ConflictException(`Invoice ${invoiceId} is already reversed`);
+    }
+
+    // Guard: no active receipt allocations
+    const activeAllocs = await prisma.clientReceiptAllocation.count({
+      where: { clientInvoiceId: invoiceId, postingStatus: 'POSTED' },
+    });
+    if (activeAllocs > 0) {
+      throw new BadRequestException(
+        `Cannot reverse invoice ${invoiceId} — it has ${activeAllocs} active receipt allocation(s). ` +
+        `Reverse the receipt allocations first.`,
+      );
+    }
+
+    if (!invoice.postedJournalEntryId) {
+      throw new BadRequestException(`Invoice ${invoiceId} has no posted journal to reverse`);
+    }
+
+    // Load original journal lines
+    const originalJournal = await prisma.journalEntry.findUniqueOrThrow({
+      where: { id: invoice.postedJournalEntryId },
+      include: { lines: true },
+    });
+
+    const reversalDate = new Date(opts.reversalDate);
+
+    return prisma.$transaction(async (tx) => {
+      const reversalResult = await this.postingPort.post(
+        {
+          organizationId: orgId,
+          accountingDate: reversalDate,
+          documentDate: reversalDate,
+          description: `Reversal of Invoice ${invoice.invoiceNumber ?? invoiceId}: ${opts.reason}`,
+          currencyCode: invoice.currencyCode,
+          eventType: 'EVT-AR-002',
+          sourceDocumentType: 'CLIENT_INVOICE',
+          sourceDocumentId: `reversal-${invoiceId}`,
+          journalCategory: 'ACCOUNTS_RECEIVABLE',
+          entryPurpose: 'REVERSAL',
+          postingOrigin: 'SYSTEM_AR',
+          reversalOfJournalEntryId: invoice.postedJournalEntryId ?? undefined,
+          createdBy: userId,
+          lines: originalJournal.lines.map((l) => ({
+            accountId: l.accountId,
+            debitAmount: l.creditAmount as unknown as Decimal,
+            creditAmount: l.debitAmount as unknown as Decimal,
+            transactionCurrencyCode: l.transactionCurrencyCode,
+            baseCurrencyAmount: l.baseCurrencyAmount as unknown as Decimal,
+            sourceSubledgerType: l.sourceSubledgerType ?? undefined,
+            clientId: l.clientId ?? undefined,
+            contractId: l.contractId ?? undefined,
+            memo: `Reversal: ${l.description ?? ''}`,
+          })),
+        },
+        tx as never,
+      );
+
+      await tx.clientInvoice.update({
+        where: { id: invoiceId },
+        data: {
+          postingStatus: 'REVERSED',
+          reversalJournalEntryId: reversalResult.journalEntryId,
+          reversedBy: userId,
+          reversedAt: new Date(),
+        },
+      });
+
+      return reversalResult;
+    });
+  }
+
+  async findAll(identity: RequestIdentity, clientId?: string) {
+    const prisma = this.tenancyService.getClient();
+    return this.repo.findAll(prisma, identity.activeOrganizationId, clientId);
+  }
+
+  async findById(identity: RequestIdentity, id: string) {
+    const prisma = this.tenancyService.getClient();
+    const invoice = await this.repo.findById(prisma, identity.activeOrganizationId, id);
+    if (!invoice) throw new NotFoundException(`ClientInvoice ${id} not found`);
+    return invoice;
+  }
+}

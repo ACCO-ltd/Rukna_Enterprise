@@ -1,7 +1,7 @@
 # Rukna ERP — Frontend Design Plan
 
-Version: 1.0.0
-Last Updated: 2026-08-04
+Version: 2.0.0
+Last Updated: 2026-08-06
 Owner: Frontend Engineer (Abdimalik)
 Reviewed by: Abdulsalam (Backend Engineer)
 Status: **CANONICAL — implement against this document**
@@ -417,3 +417,665 @@ in the sprint plan and must be scheduled.
 | `AttentionQueryService` | `GET /projects/:id/attention-items` | Before Tier 4 |
 
 All other frontend screens consume endpoints already built in Sprints 1–3.
+
+---
+
+## 11. Accounting Workspace — Sprint 4 Frontend
+
+The backend for Sprint 4 is complete, tested, and API-ready. This section is the build plan
+for the accounting workspace. The intended reader is **Abdimalik (Frontend Engineer)**.
+
+**Backend contact:** All accounting API questions go to Abdulsalam. All business rule
+questions (e.g., "what does locked mean for a period?") go to Eng Ahmed Shirie.
+
+**API reference:** `api-reference.md` Section 6.13–6.23 documents every endpoint used here.
+
+---
+
+### 11.1 Where Accounting Lives in the Navigation
+
+Accounting is a **company-wide** function, not project-scoped. It lives in the global sidebar
+under **Finance**, not inside the project workspace.
+
+**Updated global sidebar:**
+```
+Dashboard
+───────────────────────
+Portfolio
+  Projects
+  Clients
+───────────────────────
+Finance
+  Overview              ← cash position, AR/AP summary (existing)
+  Accounting            ← NEW — Sprint 4 accounting workspace
+    Chart of Accounts
+    Fiscal Years
+    Manual Journals
+    Accounts Receivable
+    Accounts Payable
+    General Ledger
+    Reports
+    Period Management
+  Receipts              ← existing Sprint 3 receipt tracking
+───────────────────────
+Administration
+  ...
+```
+
+The **Accounting** node is a nested section inside Finance. It can be a collapsible group
+or a sub-sidebar, depending on screen width. At 375px, it collapses into the Finance drawer.
+
+---
+
+### 11.2 Permission Gating
+
+Before rendering any accounting page, check:
+
+| Permission | Guards |
+|---|---|
+| `view:accounting` | All accounting pages (read-only views) |
+| `manage:journals` | Create, submit, approve, post, reverse manual journals |
+| `manage:ar` | Post client invoices; post/allocate receipts |
+| `manage:ap` | Create/post supplier bills and payments |
+| `manage:periods` | Lock, close, reopen periods; rebuild snapshots |
+| `manage:year-end` | Year-end close (CFO only) |
+
+If the user lacks `view:accounting`, redirect to `/` with an access-denied notice.
+
+Use the existing `PermissionResolver` pattern from Section 4.5. All these checks are UX
+only — the backend enforces them independently.
+
+---
+
+### 11.3 Build Order
+
+Build screens in this sequence. Each tier unlocks the next.
+
+```
+Tier A — Setup (no transactions yet, but required before anything else)
+  A1. Chart of Accounts
+  A2. Fiscal Years and Periods
+
+Tier B — Transaction entry
+  B1. Manual Journals
+  B2. Client Invoices (AR)
+  B3. Customer Receipts and Allocations (AR)
+  B4. Supplier Bills (AP)
+  B5. Supplier Payments and Advance Allocations (AP)
+
+Tier C — Reporting (read-only, high CEO/CFO value)
+  C1. Account Ledger and GL Balance
+  C2. Trial Balance
+  C3. Profit & Loss
+  C4. Balance Sheet
+  C5. Monthly P&L Comparison
+
+Tier D — Period management (CFO-only operations)
+  D1. Period List with Status
+  D2. Period Close Workflow (lock → close-gate → close)
+  D3. Period Reopen
+  D4. Snapshot Rebuild
+  D5. Year-End Close Wizard
+```
+
+---
+
+### 11.4 Tier A — Setup Screens
+
+#### A1. Chart of Accounts
+
+**Route:** `/finance/accounting/chart-of-accounts`
+
+**Data:** `GET /accounts`
+
+**What to show:**
+- Filterable/sortable table: Code | Name | Arabic Name | Class | Subtype | Normal Balance | Control Account | Effective From | Status
+- Group rows by `accountClass` with collapsible sections (Assets, Liabilities, Equity, Income, Cost of Sales, Expenses)
+- "New Account" button → slide-over form with all required fields
+- Click a row → Account Detail slide-over showing version history (why it was changed + who changed it)
+- Badge on control accounts: `CONTROL` in amber — with tooltip "Only the system can post to this account"
+
+**Form fields for creating an account:**
+```
+Code *              text
+Name *              text
+Arabic Name         text (RTL)
+Account Class *     select: ASSET / LIABILITY / EQUITY / INCOME / COST_OF_SALES / EXPENSE
+Account Subtype *   select (filtered by class — see API docs for valid subtypes)
+Normal Balance *    select: DEBIT / CREDIT (auto-suggested based on class)
+Posting Allowed     toggle (default: true)
+Control Account     toggle (default: false; if true, show warning)
+Effective From *    date picker
+```
+
+**Bulk import:** Secondary button "Import COA" → CSV upload → preview table → confirm.
+Body format documented in `api-reference.md` Section 6.13.
+
+---
+
+#### A2. Fiscal Years and Periods
+
+**Route:** `/finance/accounting/fiscal-years`
+
+**Data:** `GET /fiscal-years` → list; `GET /fiscal-years/:id` → detail with periods
+
+**What to show:**
+- List of fiscal years with year name, status (OPEN / CLOSED), date range
+- Click a fiscal year → Period list showing all 12 periods with their status:
+
+```
+Period       Start         End          Status    Actions
+January      2025-01-01    2025-01-31   LOCKED    [Close] [Close Gate]
+February     2025-02-01    2025-02-28   OPEN      [Lock]
+...
+December     2025-12-01    2025-12-31   OPEN      [Lock]
+```
+
+- Status badge colors:
+  - `OPEN` → blue
+  - `LOCKED` → amber (ready to close, awaiting reconciliation)
+  - `CLOSED` → green
+  - `REOPENED` → orange (attention — journals may be pending)
+
+- "New Fiscal Year" button → modal asking for `year` (integer) and `retainedEarningsAccountCode`
+
+> The API generates all 12 periods automatically. You do not need to create them individually.
+
+**Period action buttons** (always check `can('manage:periods')` before rendering):
+- `[Lock]` visible on OPEN and REOPENED periods → calls `POST /periods/:id/lock`
+- `[Close Gate]` visible on LOCKED periods → calls `GET /periods/:id/close-gate` → shows blocker list in a modal
+- `[Close]` visible on LOCKED periods → only enable if close-gate passed → calls `POST /periods/:id/close`
+- `[Reopen]` visible on CLOSED periods → requires reason text → calls `POST /periods/:id/reopen`
+
+> Show the close-gate result to the CFO **before** they click Close. Never skip the pre-flight check.
+
+---
+
+### 11.5 Tier B — Transaction Entry Screens
+
+#### B1. Manual Journals
+
+**Route:** `/finance/accounting/journals`
+
+**List data:** `GET /journals?status=DRAFT` (add status filter tabs: All | Draft | Submitted | Approved | Posted | Reversed)
+
+**What to show:**
+- Table: Journal No. | Date | Description | Total Debit | Status | Created By | Actions
+- Click a row → Journal Detail page
+- "New Journal" button → Journal Create form
+
+**Journal create form:**
+```
+Accounting Date *   date picker (must fall in an OPEN/REOPENED period — validate client-side, enforce server-side)
+Description *       text
+Currency *          select (default: USD)
+Lines section:
+  [Account Code]  [Account Name (auto-fill)]  [Debit]  [Credit]  [Memo]  [Project]  [Dept]
+  + Add Line button
+  Running totals: Total Debit | Total Credit | Difference (must be 0 to submit)
+```
+
+Validate `∑ debit = ∑ credit` before enabling the Save button. Show the difference inline.
+
+**Journal detail page actions (role-gated):**
+- `Submit` (DRAFT → SUBMITTED): accountant action
+- `Approve` / `Reject` (SUBMITTED → APPROVED / REJECTED): CFO action; rejection requires reason text
+- `Post` (APPROVED → POSTED): accountant action
+- `Reverse` (POSTED → REVERSED): requires reversal date and reason; CFO approval required for reversals
+
+**Journal line display:** Show debit in green column, credit in orange column — never mixed.
+
+---
+
+#### B2. Client Invoices
+
+**Route:** `/finance/accounting/invoices`
+
+**List data:** `GET /invoices`
+
+**What to show:**
+- Table: Invoice No. | Client | IPC Ref | Invoice Date | Due Date | Amount | Outstanding | Status | Posting Status
+- Filter tabs: All | Draft | Approved | Posted | Reversed
+- "Generate from IPC" button → modal to pick an IPC and set invoice date / due date
+
+**Invoice detail actions:**
+- `Approve`: changes `documentStatus` from DRAFT → APPROVED
+- `Post to GL`: requires `arAccountCode`, `revenueAccountCode`, `vatAccountCode` — show account picker inputs in a modal
+- `Reverse`: requires reversal date and reason
+
+> When `postingStatus = POSTED`, show the journal entry number as a link. Clicking it navigates to the drill-down view (`GET /reports/drill-down?sourceDocumentType=CLIENT_INVOICE&sourceDocumentId=...`).
+
+---
+
+#### B3. Customer Receipts and Allocations
+
+**Route:** `/finance/accounting/receipts`
+
+> Note: This is the **accounting** receipt screen. The project-scoped Finance tab (Sprint 3) continues to exist for project managers tracking cash at the project level. These are distinct views of the same entity.
+
+**List data:** `GET /receipts`
+
+**What to show:**
+- Table: Receipt No. | Client | Bank Account | Date | Amount | Unallocated | Posting Status
+- Click a row → Receipt Detail with allocation table
+
+**Receipt detail:**
+- Posting section: if `postingStatus = NOT_POSTED`, show "Post to GL" button → modal asks for `bankAccountCode`, `arAccountCode`, `unappliedAccountCode`
+- Allocations table: invoice | amount allocated | allocation date | actions
+- "Allocate to Invoice" button → modal with invoice search + amount input (capped at `unallocatedAmount`)
+- Reverse an allocation: per-row button on the allocations table
+
+---
+
+#### B4. Supplier Bills
+
+**Route:** `/finance/accounting/bills`
+
+**List data:** `GET /bills`
+
+**What to show:**
+- Table: Bill Ref | Supplier | Supplier Invoice No. | Bill Date | Due Date | Amount | Status | Posting Status
+- Filter by status tabs: All | Draft | Submitted | Approved | Posted | Reversed
+- "New Bill" button → bill create form
+
+**Bill create form:**
+```
+Supplier *           entity picker (search suppliers)
+Supplier Invoice No. text
+Bill Date *          date
+Due Date *           date
+Currency *           select
+Lines:
+  [Description]  [Qty]  [Unit Price]  [Amount]  [Posting Profile]
+  + Add Line
+Total shown at bottom
+```
+
+**Bill detail actions:** Submit → Approve/Reject → Post (modal: `apAccountCode`) → Reverse
+
+---
+
+#### B5. Supplier Payments and Advance Allocations
+
+**Route:** `/finance/accounting/payments`
+
+**List data:** `GET /payments`
+
+**What to show:**
+- Table: Payment No. | Supplier | Bank | Date | Amount | Posting Status | Allocations
+- "New Payment" button → payment create form
+
+**Payment create form:**
+```
+Supplier *           entity picker
+Bank Account *       select from configured bank accounts
+Payment Date *       date
+Accounting Date *    date (same as payment date by default)
+Currency *           select
+Total Amount *       number
+Payment Method *     select: BANK_TRANSFER / CHEQUE / CASH
+```
+
+**Payment detail actions:**
+- Approve / Reject
+- Post to GL → modal: `apAccountCode`, `bankGlCode`, `supplierAdvanceCode`
+- Allocate to Bill (if posted) → modal: select bill + amount
+- Reverse Allocation → per-allocation row action
+- Reverse Payment
+
+---
+
+### 11.6 Tier C — Reporting Screens
+
+All report screens are in the Finance → Accounting → Reports section.
+
+**Route prefix:** `/finance/accounting/reports/`
+
+**Common requirements for all report screens:**
+- Date pickers for the report period
+- Export to PDF button (print-optimized layout)
+- Export to Excel / CSV button
+- All monetary amounts formatted as `formatCurrency(amount, currencyCode)` — never bare numbers
+- Report header: Organization name | Report title | Period | "As of" date | "Generated at" timestamp
+- Loading skeleton while data is fetching (TanStack Query)
+- Error state if `balanced: false` is returned — display as a red alert, not as a normal table row
+
+---
+
+#### C1. Account Ledger
+
+**Route:** `/finance/accounting/reports/ledger/:accountId`
+
+**Data:** `GET /reports/ledger/:accountId?fromDate=...&toDate=...`
+
+**Controls:** Account picker (search by code or name) | From date | To date | (Optional) Project filter | Department filter
+
+**Display:**
+```
+Account: 1010 — Cash at Bank
+Period: Jan 1, 2025 – Jan 31, 2025
+
+Opening Balance:  USD 48,500.00
+
+Date        Journal No.   Description                     Debit        Credit      Balance
+2025-01-10  JE-000001     Receipt from Baraka Real Est.   6,000.00                54,500.00
+2025-01-15  JE-000002     Office rent accrual                          2,500.00   52,000.00
+
+Closing Balance:  USD 52,000.00
+```
+
+Clicking a journal number navigates to the Journal Detail page for that entry.
+Clicking a source document (e.g., "PAYMENT_RECEIPT") shows the drill-down panel for that document.
+
+---
+
+#### C2. Trial Balance
+
+**Route:** `/finance/accounting/reports/trial-balance`
+
+**Data:** `GET /reports/trial-balance?asOfDate=...&includeZeroBalance=false`
+
+**Controls:** As of date | Toggle: Include zero-balance accounts
+
+**Display:**
+
+```
+Trial Balance — As of January 31, 2025
+
+Account Code  Account Name          Opening Dr    Opening Cr    Period Dr    Period Cr    Closing Dr    Closing Cr
+───────────────────────────────────────────────────────────────────────────────────────────────────
+ASSETS
+1010          Cash at Bank          48,500.00     —             6,000.00     2,500.00     52,000.00     —
+...
+───────────────────────────────────────────────────────────────────────────────────────────────────
+TOTALS                              100,000.00    100,000.00    15,000.00    15,000.00    115,000.00    115,000.00
+
+✓ Balanced
+```
+
+If `balanced: false`, show a red banner: "Warning: Trial balance is not balanced. Contact Abdulsalam immediately."
+
+Group rows by `accountClass` with subtotals per class.
+
+---
+
+#### C3. Profit & Loss
+
+**Route:** `/finance/accounting/reports/pl`
+
+**Data:** `GET /reports/pl?fromDate=...&toDate=...` (optional: `&projectId=...` `&departmentId=...`)
+
+**Controls:** From date | To date | (Optional) Project filter | Department filter
+
+**Display:**
+```
+Profit & Loss — January 1, 2025 to January 31, 2025
+
+REVENUE
+  Project Revenue         85,000.00
+─────────────────────────────────
+  Total Revenue           85,000.00
+
+COST OF SALES
+  (none)
+─────────────────────────────────
+  Total Cost of Sales          0.00
+
+GROSS PROFIT              85,000.00
+
+OPERATING EXPENSES
+  Office Rent              2,500.00
+  Site Costs               9,500.00
+─────────────────────────────────
+  Total Expenses          12,000.00
+
+═════════════════════════════════
+NET INCOME                73,000.00
+```
+
+When a project or department filter is active, show the filter as a chip above the report:
+`Filtered by: Project — Baraka Tower [×]`
+
+---
+
+#### C4. Balance Sheet
+
+**Route:** `/finance/accounting/reports/balance-sheet`
+
+**Data:** `GET /reports/balance-sheet?asOfDate=...` (optional: `&comparativeDate=...`)
+
+**Controls:** As of date | Comparative date (optional prior period)
+
+**Display:**
+```
+Balance Sheet — January 31, 2025
+                                         Jan 31, 2025    Dec 31, 2024
+
+ASSETS
+  Cash at Bank             1010            52,000.00       48,500.00
+  Accounts Receivable      1200           103,000.00       ...
+  ─────────────────────────────────
+  Total Assets                            155,000.00      100,000.00
+
+LIABILITIES
+  Accounts Payable         2000            10,000.00
+  ─────────────────────────────────
+  Total Liabilities                        10,000.00
+
+EQUITY
+  Retained Earnings        3100            72,000.00
+  Current Year Earnings    —               73,000.00
+  ─────────────────────────────────
+  Total Equity                            145,000.00
+
+═══════════════════════════════════
+Total Liabilities and Equity               155,000.00
+
+✓ Balanced
+```
+
+> The "Current Year Earnings" row has `accountId = "CURRENT_YEAR_EARNINGS"` — it is a computed
+> line, not a real account. Render it in italic with a note: "Live P&L — not yet closed". This row
+> disappears after year-end close.
+
+If `balanced: false`, show a red alert: "Balance Sheet does not balance. Contact Abdulsalam."
+
+---
+
+#### C5. Monthly P&L Comparison
+
+**Route:** `/finance/accounting/reports/pl-monthly/:fiscalYearId`
+
+**Data:** `GET /reports/pl/monthly/:fiscalYearId` (optional: `&projectId=...`)
+
+**Controls:** Fiscal year picker | (Optional) Project filter
+
+**Display:**
+
+```
+Monthly P&L — FY2025
+
+                     Jan 2025    Feb 2025    Mar 2025    ...    Total
+─────────────────────────────────────────────────────────────────
+Revenue              85,000      92,000      77,000             254,000
+Cost of Sales             0           0           0                   0
+Gross Profit         85,000      92,000      77,000             254,000
+Expenses             12,000      11,500      13,200              36,700
+Net Income           73,000      80,500      63,800             217,300
+```
+
+Highlight the current period column. Allow click-through: clicking a period column navigates
+to the P&L detail for that period (`/reports/pl` with `fromDate`/`toDate` pre-filled).
+
+---
+
+### 11.7 Tier D — Period Management (CFO Screen)
+
+**Route:** `/finance/accounting/periods`
+
+This is the master period management view. Gate with `can('manage:periods')` — accountants
+can view but not act.
+
+**What to show:**
+
+A page-level fiscal year selector at the top. Below it, a card grid of all 12 periods for the
+selected fiscal year.
+
+Each period card:
+```
+┌─────────────────────────────────┐
+│ January 2025         [LOCKED]   │
+│ Jan 1 – Jan 31                  │
+│                                 │
+│ Journals in period:  14         │
+│ AR reconciliation:   ✓ Cleared  │
+│ AP reconciliation:   ✓ Cleared  │
+│                                 │
+│ [Close Gate]  [Close Period]    │
+└─────────────────────────────────┘
+```
+
+Status badge colors match Section A2.
+
+**Close Gate modal (Tier D only):**
+
+When the CFO clicks "Close Gate", call `GET /periods/:id/close-gate` and show a modal:
+
+```
+Close Gate — January 2025
+
+✓ No unposted journals
+✓ AR reconciliation passed (GL: 103,000 = Subledger: 103,000)
+✗ AP reconciliation FAILED (GL: 10,000 ≠ Subledger: 12,500 — variance: 2,500)
+
+[ Run Again ]   [ Cancel ]
+```
+
+Only enable "Close Period" if `passed: true`. If blockers exist, disable it and show:
+"Resolve all blockers before closing."
+
+**Year-End Close Wizard:**
+
+Visible only in the December period card of a fiscal year. Button: "Run Year-End Close"
+guarded by `can('manage:year-end')`.
+
+Step 1 — Confirm: "This will post the year-end closing journal, zero all P&L accounts, and
+transfer net income to Retained Earnings. This cannot be undone without reopening Period 12."
+
+Step 2 — Account confirmation: show the Retained Earnings account that was configured for this
+fiscal year. Ask CFO to confirm.
+
+Step 3 — Post: call `POST /periods/fiscal-year/:fiscalYearId/close`. Show a progress spinner.
+
+Step 4 — Result: "Year-end close complete. FY2025 is now CLOSED. Net income of USD 217,300
+has been transferred to Retained Earnings account 3100."
+
+---
+
+### 11.8 Opening Balance Wizard (One-Time)
+
+**Route:** `/finance/accounting/setup/opening-balance`
+
+**Data:** `POST /accounting/opening-balance`
+
+This wizard runs once per organization when going live. Show it prominently in a "Setup
+Checklist" at the top of the Accounting home screen if opening balances have not been posted.
+
+**Steps:**
+
+1. Cutover date and batch reference
+2. Trial balance entry (table: account code | debit balance | credit balance)
+   - Live validation: ∑ debit = ∑ credit before allowing "Next"
+3. Open AR invoices (client | invoice ref | amount | due date)
+4. Open AP bills (supplier | bill ref | amount | due date)
+5. Review and confirm
+6. Submit — call `POST /accounting/opening-balance`
+
+After submission, mark the "Opening Balances" item in the setup checklist as complete.
+Opening balances cannot be re-run after live transactions have been posted (the backend enforces this).
+
+---
+
+### 11.9 Common Component Patterns
+
+These patterns apply across all accounting screens.
+
+**`<MoneyDisplay amount={...} currency="USD" />`**
+Always renders `USD 6,840.00`. Never render a raw number for a financial amount.
+
+**`<BalanceAlert balanced={boolean} />`**
+Red alert box: "GL is out of balance — contact Abdulsalam immediately." Renders only when `balanced: false`.
+
+**`<JournalStatusBadge status="POSTED" />`**
+Color map:
+- DRAFT → gray
+- SUBMITTED → blue
+- APPROVED → indigo
+- POSTED → green
+- REJECTED → red
+- REVERSED → orange
+
+**`<PeriodStatusBadge status="LOCKED" />`**
+- OPEN → blue
+- LOCKED → amber
+- CLOSED → green
+- REOPENED → orange
+
+**`<AccountPicker onSelect={...} />`**
+Searchable dropdown that calls `GET /accounts`, filterable by code or name. Used everywhere an account needs to be picked (journal lines, posting modal accounts, etc.).
+
+**`<DrilldownPanel sourceDocumentType="CLIENT_INVOICE" sourceDocumentId="..." />`**
+Slide-over panel that calls `GET /reports/drill-down?...` and lists all journal entries linked to the source document. Used in Invoice Detail, Receipt Detail, Bill Detail, and Payment Detail.
+
+**Decimal precision:**
+All financial inputs must accept exactly 2 decimal places. Do not allow 3+ decimal places — the backend stores `Decimal(20,6)` but the UI must enforce business rounding to 2dp. Use a currency input mask.
+
+---
+
+### 11.10 Error States
+
+| Server response | What to show |
+|---|---|
+| `400 Period is locked` | "This accounting date falls in a locked period. Use an open period." |
+| `400 Period is closed` | "This accounting date falls in a closed period. It cannot accept postings." |
+| `400 Debits do not equal credits` | "Journal is not balanced — total debits must equal total credits." |
+| `400 Account is a control account` | "Account [code] is a control account. Manual journals cannot be posted to it." |
+| `400 Close gate failed` | Show the `blockers` array from the response, one per line in a modal. |
+| `400 AR/AP reconciliation failed` | "Period cannot be closed — AR or AP reconciliation failed. See close gate for details." |
+| `409 Fiscal year already exists` | "A fiscal year for [year] already exists for this organization." |
+| `403` (any) | "You do not have permission to perform this action." |
+| `500` (any) | "Something went wrong. Please try again or contact support." |
+
+---
+
+### 11.11 Accounting Navigation Update (Summary)
+
+This is the final updated global sidebar section:
+
+```
+Finance
+  Overview              ← cash position, AR/AP aging (existing)
+  Accounting
+    Setup
+      Chart of Accounts
+      Fiscal Years
+      Opening Balances  ← show only until completed
+    Journals            ← Manual Journals
+    Receivables
+      Client Invoices
+      Customer Receipts
+    Payables
+      Supplier Bills
+      Supplier Payments
+    Reports
+      Account Ledger
+      Trial Balance
+      Profit & Loss
+      Balance Sheet
+      Monthly P&L
+    Periods             ← CFO only; gated by manage:periods
+  Receipts              ← Sprint 3 project-level receipts (unchanged)
+```
+
+The Setup group can be collapsed by default once the one-time wizard is complete. Keep
+"Chart of Accounts" and "Fiscal Years" always accessible after setup.

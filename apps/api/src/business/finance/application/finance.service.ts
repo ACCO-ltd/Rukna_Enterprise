@@ -64,9 +64,9 @@ export class FinanceService {
         `Certificate ${dto.certificateId} belongs to a different client than this receipt`,
       );
     }
-    if (cert.currency !== receipt.currency) {
+    if (cert.currency !== receipt.currencyCode) {
       throw new BadRequestException(
-        `Currency mismatch: receipt is ${receipt.currency} but certificate is ${cert.currency}`,
+        `Currency mismatch: receipt is ${receipt.currencyCode} but certificate is ${cert.currency}`,
       );
     }
 
@@ -77,7 +77,7 @@ export class FinanceService {
 
     // Guard: total allocated must not exceed receipt amount.
     const alreadyAllocated = await this.repo.getTotalAllocated(prisma, receiptId);
-    const receiptAmount = new Decimal(receipt.amount.toString());
+    const receiptAmount = new Decimal(receipt.totalAmount.toString());
     const alreadyAllocatedDec = new Decimal(alreadyAllocated);
     const newAllocation = new Decimal(dto.allocatedAmount);
     const afterAllocation = alreadyAllocatedDec.add(newAllocation);

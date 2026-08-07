@@ -1,8 +1,8 @@
 # Rukna ERP — Frontend API Reference
 
-Version: 3.1.0
-Last Updated: 2026-08-04
-Sprint Coverage: Sprint 3 complete + Sprint 3 security/correctness patch (PR #23)
+Version: 4.0.0
+Last Updated: 2026-08-06
+Sprint Coverage: Sprints 1–4 complete. Sprint 4 adds the full accounting foundation.
 Audience: **Frontend engineer** — everything you need to call the API without reading backend code.
 
 Interactive docs (Scalar UI): `http://localhost:3001/docs`
@@ -930,18 +930,683 @@ Supersede: explicit command swaps isEffective between old and new cert.
 
 ---
 
+---
+
+### 6.13 Chart of Accounts
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/accounts` | List all accounts in the org |
+| `POST` | `/accounts` | Create a new account |
+| `GET` | `/accounts/:id` | Get account with version history |
+| `GET` | `/accounts/by-code/:code` | Look up account by GL code |
+| `POST` | `/accounts/import` | Bulk import COA from array |
+
+**Create account — body:**
+```json
+{
+  "code": "1010",
+  "name": "Cash at Bank",
+  "nameAr": "النقد في البنك",
+  "accountClass": "ASSET",
+  "accountSubtype": "CASH_AND_BANK",
+  "normalBalance": "DEBIT",
+  "isPostingAllowed": true,
+  "isControlAccount": false,
+  "effectiveFrom": "2025-01-01"
+}
+```
+
+**`accountClass` values:** `ASSET` `LIABILITY` `EQUITY` `INCOME` `COST_OF_SALES` `EXPENSE`
+
+**`normalBalance` values:** `DEBIT` `CREDIT`
+
+> Control accounts (`isControlAccount: true`) block manual journal postings. Only the posting engine can write to them. Set `controlledSubledgerType` to `ACCOUNTS_RECEIVABLE` or `ACCOUNTS_PAYABLE` on the control account that your AR/AP postings target.
+
+**Bulk import — body:**
+```json
+{
+  "accounts": [
+    { "code": "1010", "name": "Cash", "accountClass": "ASSET", "accountSubtype": "CASH_AND_BANK", "normalBalance": "DEBIT" },
+    { "code": "4000", "name": "Revenue", "accountClass": "INCOME", "accountSubtype": "PROJECT_REVENUE", "normalBalance": "CREDIT" }
+  ]
+}
+```
+
+---
+
+### 6.14 Fiscal Years and Periods
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/fiscal-years` | List fiscal years for the org |
+| `POST` | `/fiscal-years` | Create a new fiscal year |
+| `GET` | `/fiscal-years/:id` | Get fiscal year with all periods |
+| `GET` | `/fiscal-years/period/covering` | Find the period covering a date (`?date=2025-01-15`) |
+
+**Create fiscal year — body:**
+```json
+{
+  "year": 2025,
+  "retainedEarningsAccountCode": "3100"
+}
+```
+
+> Creating a fiscal year automatically generates 12 accounting periods (Jan–Dec). All start as `OPEN`. Manage their state via `/periods/:id/lock`, `/periods/:id/close`, etc. (Section 6.20).
+
+**Fiscal year response:**
+```json
+{
+  "id": "cld...", "name": "FY2025",
+  "startDate": "2025-01-01", "endDate": "2025-12-31",
+  "status": "OPEN",
+  "retainedEarningsAccountId": "cld...",
+  "periods": [
+    { "id": "cld...", "periodNumber": 1, "name": "January 2025",
+      "startDate": "2025-01-01", "endDate": "2025-01-31", "status": "OPEN" }
+  ]
+}
+```
+
+**`status` values for FiscalYear:** `OPEN` `CLOSED`
+
+**`status` values for AccountingPeriod:** `OPEN` `LOCKED` `CLOSED` `REOPENED`
+
+---
+
+### 6.15 Bank Accounts
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/bank-accounts` | List bank accounts for the org |
+| `POST` | `/bank-accounts` | Configure a bank account |
+| `GET` | `/bank-accounts/:id` | Get bank account detail |
+
+**Configure bank account — body:**
+```json
+{
+  "accountName": "Main Operating Account",
+  "bankName": "Premier Bank Somalia",
+  "accountNumber": "1234567890",
+  "currencyCode": "USD",
+  "glAccountCode": "1010",
+  "allowsReceipts": true,
+  "allowsPayments": true
+}
+```
+
+> `glAccountCode` must reference an account with `accountSubtype: CASH_AND_BANK`. This GL account is debited on receipts and credited on payments.
+
+---
+
+### 6.16 Opening Balance (Migration)
+
+```
+POST /accounting/opening-balance
+```
+
+One-time wizard to migrate from the previous system. Call once per organization per fiscal year. Do not call again after live transactions have been posted — the endpoint creates immutable OPENING_BALANCE journal entries.
+
+**Body:**
+```json
+{
+  "cutoverDate": "2025-01-01",
+  "batchReference": "OB-MIGRATION-2025",
+  "arAccountCode": "1200",
+  "apAccountCode": "2000",
+  "trialBalance": [
+    { "accountCode": "1010", "debitBalance": 50000 },
+    { "accountCode": "3100", "creditBalance": 50000 }
+  ],
+  "openArInvoices": [
+    { "clientId": "cld...", "invoiceRef": "INV-001", "amount": 12000, "dueDate": "2025-02-28" }
+  ],
+  "openApBills": [
+    { "supplierId": "cld...", "supplierInvoiceRef": "BILL-001", "amount": 5000, "dueDate": "2025-02-15" }
+  ]
+}
+```
+
+> The wizard validates that the trial balance debits equal credits before posting. On `400`, no entries are created.
+
+---
+
+### 6.17 Manual Journals
+
+The standard general-ledger journal entry — reviewed and approved by CFO before posting.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/journals` | List journals (`?status=DRAFT&periodId=...`) |
+| `POST` | `/journals` | Create a DRAFT journal |
+| `GET` | `/journals/:id` | Get journal with all lines |
+| `POST` | `/journals/:id/submit` | Submit for CFO approval |
+| `POST` | `/journals/:id/approve` | CFO approve or reject |
+| `POST` | `/journals/:id/post` | Post an approved journal to the GL |
+| `POST` | `/journals/:id/reverse` | Reverse a posted journal |
+
+**Create journal — body:**
+```json
+{
+  "accountingDate": "2025-01-15",
+  "description": "Accrual — January office rent",
+  "currencyCode": "USD",
+  "lines": [
+    {
+      "accountId": "cld...",
+      "debitAmount": 2500,
+      "transactionCurrencyCode": "USD",
+      "memo": "Rent expense Jan"
+    },
+    {
+      "accountId": "cld...",
+      "creditAmount": 2500,
+      "transactionCurrencyCode": "USD",
+      "memo": "Accrued liability"
+    }
+  ]
+}
+```
+
+> Exactly one of `debitAmount` or `creditAmount` must be provided per line. The other defaults to zero. The server validates ∑ debits = ∑ credits before allowing the journal to be posted.
+
+> `accountingDate` must fall within an `OPEN` or `REOPENED` period. `LOCKED` periods only accept `journalCategory: CLOSING_ADJUSTMENT`. `CLOSED` periods reject all postings.
+
+**Approve — body:**
+```json
+{ "approved": true }
+```
+```json
+{ "approved": false, "rejectionReason": "Account codes incorrect — use 4100 not 4000" }
+```
+
+**Reverse — body:**
+```json
+{ "reversalDate": "2025-02-01", "reason": "Accrual reversed on actual invoice receipt" }
+```
+
+**Journal status lifecycle:**
+```
+DRAFT → SUBMITTED → APPROVED → POSTED
+                  → REJECTED (back to DRAFT for correction)
+POSTED → REVERSED (via /reverse)
+```
+
+---
+
+### 6.18 Client Invoices (AR)
+
+Formal accounting invoice raised against a certified IPC. This is the AR-layer counterpart to the Sprint 3 IPC — it creates the double-entry GL posting.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/invoices` | List client invoices (`?clientId=...&status=...`) |
+| `POST` | `/invoices/from-ipc` | Generate invoice from a certified IPC |
+| `GET` | `/invoices/:id` | Get invoice with GL status |
+| `POST` | `/invoices/:id/approve` | Approve the invoice |
+| `POST` | `/invoices/:id/post` | Post to AR control account |
+| `POST` | `/invoices/:id/reverse` | Reverse a posted invoice |
+
+**Generate from IPC — body:**
+```json
+{
+  "ipcId": "cld...",
+  "invoiceDate": "2025-01-20",
+  "dueDate": "2025-02-20",
+  "paymentTerms": "NET_30"
+}
+```
+
+> The server reads `certifiedTotal`, `currency`, and `clientId` from the IPC. You do not supply amounts — they come from the IPC.
+
+**Post to GL — body:**
+```json
+{
+  "arAccountCode": "1200",
+  "revenueAccountCode": "4000",
+  "vatAccountCode": "2100"
+}
+```
+
+> Posting creates: Dr AR control / Cr Revenue (+ VAT liability if applicable). After posting, the invoice `outstandingAmount` tracks how much remains uncollected.
+
+**Reverse — body:**
+```json
+{ "reversalDate": "2025-01-25", "reason": "Issued in error — incorrect IPC reference" }
+```
+
+**Invoice `documentStatus` values:** `DRAFT` `APPROVED` `CANCELLED`
+
+**Invoice `postingStatus` values:** `NOT_POSTED` `POSTED` `REVERSED` `OPENING_BALANCE`
+
+---
+
+### 6.19 Customer Receipts and Allocations (AR)
+
+Records cash collected and allocates it to reduce outstanding invoice balances.
+
+> **Note:** Sprint 3 also has `GET/POST /receipts` for operational payment tracking. The endpoints in this section are the **accounting layer** — they create GL postings. They are distinct services but may share the same underlying PaymentReceipt entity. If you are building the Finance accounting workspace (not the project-level receipt view), use these endpoints.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/receipts` | List receipts with posting status |
+| `GET` | `/receipts/:id` | Get receipt with allocations and GL status |
+| `POST` | `/receipts/:id/post` | Post receipt to GL (Dr Bank / Cr AR or Unapplied) |
+| `POST` | `/receipts/:id/allocations` | Allocate posted receipt to a client invoice |
+| `POST` | `/receipts/:id/allocations/:allocationId/reverse` | Reverse a specific allocation |
+| `POST` | `/receipts/:id/reverse` | Reverse the entire receipt posting |
+
+**Post receipt — body:**
+```json
+{
+  "bankAccountCode": "1010",
+  "arAccountCode": "1200",
+  "unappliedAccountCode": "2050"
+}
+```
+
+> If the receipt is not immediately allocated, it lands in the `unappliedAccountCode` (a liability). Allocation moves it from unapplied to AR.
+
+**Allocate to invoice — body:**
+```json
+{
+  "clientInvoiceId": "cld...",
+  "amount": 6498.00,
+  "arAccountCode": "1200",
+  "unappliedAccountCode": "2050"
+}
+```
+
+> `amount` must not exceed `receipt.unallocatedAmount`. Returns `400` if over-allocation is attempted.
+
+**Reverse allocation — body:**
+```json
+{
+  "arAccountCode": "1200",
+  "unappliedAccountCode": "2050"
+}
+```
+
+---
+
+### 6.20 Supplier Bills (AP)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/bills` | List supplier bills (`?supplierId=...&status=...`) |
+| `POST` | `/bills` | Create a new supplier bill |
+| `GET` | `/bills/:id` | Get bill with lines and GL status |
+| `POST` | `/bills/:id/submit` | Submit for approval |
+| `POST` | `/bills/:id/approve` | Approve or reject |
+| `POST` | `/bills/:id/post` | Post to AP control account |
+| `POST` | `/bills/:id/reverse` | Reverse a posted bill |
+
+**Create bill — body:**
+```json
+{
+  "supplierId": "cld...",
+  "supplierInvoiceNumber": "SUP-INV-2025-001",
+  "billDate": "2025-01-10",
+  "dueDate": "2025-02-10",
+  "currencyCode": "USD",
+  "lines": [
+    {
+      "description": "Concrete delivery — Jan batch",
+      "quantity": 50,
+      "unitPrice": 120.00,
+      "amount": 6000.00,
+      "postingProfileCode": "GENERAL-EXPENSE"
+    }
+  ]
+}
+```
+
+> `postingProfileCode` maps to a `PostingProfile` configured in the accounting setup. It determines which expense GL account is debited when the bill is posted.
+
+**Post to GL — body:**
+```json
+{ "apAccountCode": "2000" }
+```
+
+> Posting creates: Dr Expense (per posting profile) / Cr AP control account.
+
+**Bill `postingStatus` values:** `NOT_POSTED` `POSTED` `REVERSED` `OPENING_BALANCE`
+
+---
+
+### 6.21 Supplier Payments (AP)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/payments` | List supplier payments |
+| `POST` | `/payments` | Create a payment record |
+| `GET` | `/payments/:id` | Get payment with allocations |
+| `POST` | `/payments/:id/approve` | Approve or reject |
+| `POST` | `/payments/:id/post` | Post to GL (Dr AP / Cr Bank or Advance) |
+| `POST` | `/payments/:id/allocations` | Allocate advance payment against a supplier bill |
+| `POST` | `/payments/:id/allocations/:allocationId/reverse` | Reverse an advance allocation |
+| `POST` | `/payments/:id/reverse` | Reverse the entire payment |
+
+**Create payment — body:**
+```json
+{
+  "supplierId": "cld...",
+  "bankAccountId": "cld...",
+  "paymentDate": "2025-01-20",
+  "accountingDate": "2025-01-20",
+  "currencyCode": "USD",
+  "totalAmount": 6000.00,
+  "paymentMethod": "BANK_TRANSFER"
+}
+```
+
+**Post to GL — body:**
+```json
+{
+  "apAccountCode": "2000",
+  "bankGlCode": "1010",
+  "supplierAdvanceCode": "1300"
+}
+```
+
+> If the payment has no bill allocated yet (advance payment), it goes to `supplierAdvanceCode` (an asset). Once allocated to a bill, the advance is reversed and the AP is cleared.
+
+**Allocate advance to bill — body:**
+```json
+{
+  "supplierBillId": "cld...",
+  "amount": 6000.00,
+  "apAccountCode": "2000",
+  "supplierAdvanceCode": "1300"
+}
+```
+
+---
+
+### 6.22 Financial Reports
+
+All report endpoints require `Authorization: Bearer <token>`. All results are scoped to the authenticated user's organization.
+
+**Important:** Monetary amounts in all report responses are decimal strings (e.g. `"1200.00"`), not raw JavaScript numbers. Never render them without `formatCurrency()`.
+
+#### Account Ledger
+
+```
+GET /reports/ledger/:accountId?fromDate=2025-01-01&toDate=2025-01-31
+```
+
+Optional filters: `&projectId=cld...` `&departmentId=cld...` `&costCenterId=cld...`
+
+**Response:**
+```json
+{
+  "accountId": "cld...",
+  "accountCode": "1010",
+  "accountName": "Cash at Bank",
+  "openingBalance": "48500.00",
+  "periodDebit": "6000.00",
+  "periodCredit": "2500.00",
+  "closingBalance": "52000.00",
+  "lines": [
+    {
+      "journalEntryId": "cld...",
+      "journalNumber": "JE-000001",
+      "accountingDate": "2025-01-10",
+      "documentDate": "2025-01-10",
+      "description": "Receipt from Baraka Real Estate",
+      "debitAmount": "6000.00",
+      "creditAmount": "0.00",
+      "runningBalance": "54500.00",
+      "sourceDocumentType": "PAYMENT_RECEIPT",
+      "sourceDocumentId": "cld..."
+    }
+  ]
+}
+```
+
+> `openingBalance` = sum of all POSTED lines before `fromDate`. `runningBalance` updates after each line. This is the traditional paper ledger format.
+
+#### GL Balance
+
+```
+GET /reports/gl-balance/:accountId?asOfDate=2025-01-31
+```
+
+**Response:**
+```json
+{
+  "accountId": "cld...",
+  "accountCode": "1010",
+  "asOfDate": "2025-01-31",
+  "debitTotal": "54500.00",
+  "creditTotal": "2500.00",
+  "netBalance": "52000.00"
+}
+```
+
+#### Drill-down
+
+```
+GET /reports/drill-down?sourceDocumentType=CLIENT_INVOICE&sourceDocumentId=cld...
+```
+
+Returns all journal entries linked to a specific source document. Use this to trace any invoice, receipt, bill, or payment back to its GL impact.
+
+**`sourceDocumentType` values:** `CLIENT_INVOICE` `PAYMENT_RECEIPT` `SUPPLIER_BILL` `SUPPLIER_PAYMENT` `MANUAL_JOURNAL` `OPENING_BALANCE` `YEAR_END_CLOSE`
+
+#### Trial Balance
+
+```
+GET /reports/trial-balance?asOfDate=2025-01-31&includeZeroBalance=false
+```
+
+**Response:**
+```json
+{
+  "asOfDate": "2025-01-31",
+  "organizationId": "cld...",
+  "totalOpeningDebit": "100000.00",
+  "totalOpeningCredit": "100000.00",
+  "totalPeriodDebit": "15000.00",
+  "totalPeriodCredit": "15000.00",
+  "totalClosingDebit": "115000.00",
+  "totalClosingCredit": "115000.00",
+  "balanced": true,
+  "lines": [
+    {
+      "accountId": "cld...",
+      "accountCode": "1010",
+      "accountName": "Cash at Bank",
+      "accountClass": "ASSET",
+      "accountSubtype": "CASH_AND_BANK",
+      "openingDebit": "48500.00",
+      "openingCredit": "0.00",
+      "periodDebit": "6000.00",
+      "periodCredit": "2500.00",
+      "closingDebit": "52000.00",
+      "closingCredit": "0.00"
+    }
+  ]
+}
+```
+
+> `balanced: true` means `totalClosingDebit − totalClosingCredit ≤ $0.01`. If `false`, there is a data integrity issue — surface it immediately as an error state, not a normal view.
+
+> For `CLOSED` periods (when `asOfDate ≥ period.endDate`), the server uses frozen `PeriodAccountBalance` snapshots instead of scanning journal lines. The response is identical — the client does not need to handle this differently.
+
+#### Profit & Loss
+
+```
+GET /reports/pl?fromDate=2025-01-01&toDate=2025-01-31
+```
+
+Optional: `&projectId=cld...` `&departmentId=cld...`
+
+**Response:**
+```json
+{
+  "fromDate": "2025-01-01",
+  "toDate": "2025-01-31",
+  "organizationId": "cld...",
+  "revenue": {
+    "label": "Revenue",
+    "total": "85000.00",
+    "lines": [
+      { "accountCode": "4000", "accountName": "Project Revenue", "amount": "85000.00" }
+    ]
+  },
+  "costOfSales": { "label": "Cost of Sales", "total": "0.00", "lines": [] },
+  "grossProfit": "85000.00",
+  "expenses": {
+    "label": "Operating Expenses",
+    "total": "12000.00",
+    "lines": [
+      { "accountCode": "5000", "accountName": "Office Rent", "amount": "2500.00" },
+      { "accountCode": "5100", "accountName": "Site Costs", "amount": "9500.00" }
+    ]
+  },
+  "netIncome": "73000.00"
+}
+```
+
+> When `projectId` or `departmentId` is supplied, only journal lines tagged with that dimension are included. This gives project-level P&L without a separate endpoint.
+
+#### Monthly P&L Comparison
+
+```
+GET /reports/pl/monthly/:fiscalYearId?projectId=cld...
+```
+
+Returns one column per accounting period in the fiscal year.
+
+**Response:**
+```json
+{
+  "fiscalYearId": "cld...",
+  "fiscalYearName": "FY2025",
+  "columns": [
+    {
+      "periodNumber": 1,
+      "periodName": "January 2025",
+      "revenue": "85000.00",
+      "costOfSales": "0.00",
+      "grossProfit": "85000.00",
+      "expenses": "12000.00",
+      "netIncome": "73000.00"
+    }
+  ]
+}
+```
+
+#### Balance Sheet
+
+```
+GET /reports/balance-sheet?asOfDate=2025-01-31&comparativeDate=2024-12-31
+```
+
+`comparativeDate` is optional. When supplied, a prior-period column appears alongside the current column.
+
+**Response:**
+```json
+{
+  "asOfDate": "2025-01-31",
+  "comparativeDate": "2024-12-31",
+  "organizationId": "cld...",
+  "assets": {
+    "label": "Assets",
+    "total": "155000.00",
+    "comparativeTotal": "100000.00",
+    "lines": [
+      { "accountCode": "1010", "accountName": "Cash at Bank", "balance": "52000.00", "comparativeBalance": "48500.00" }
+    ]
+  },
+  "liabilities": {
+    "label": "Liabilities",
+    "total": "10000.00",
+    "lines": [
+      { "accountCode": "2000", "accountName": "Accounts Payable", "balance": "10000.00" }
+    ]
+  },
+  "equity": {
+    "label": "Equity",
+    "total": "145000.00",
+    "lines": [
+      { "accountCode": "3100", "accountName": "Retained Earnings", "balance": "72000.00" },
+      { "accountId": "CURRENT_YEAR_EARNINGS", "accountCode": "CYE", "accountName": "Current Year Earnings", "balance": "73000.00" }
+    ]
+  },
+  "totalLiabilitiesAndEquity": "155000.00",
+  "balanced": true
+}
+```
+
+> `balanced: true` means `assets.total − totalLiabilitiesAndEquity ≤ $0.01`. Show a clear error state if `false` — it means there is a GL integrity issue.
+
+> The `CURRENT_YEAR_EARNINGS` line (`accountId: "CURRENT_YEAR_EARNINGS"`) is computed dynamically from the live P&L for the current fiscal year. It disappears after year-end close, when the net income is rolled into Retained Earnings via the closing journal. Handle `accountId === "CURRENT_YEAR_EARNINGS"` as a special display row — it has no real account ID.
+
+---
+
+### 6.23 Period Management
+
+These are CFO-level operations. Gate them with a `can('manage:periods')` permission check before showing the controls.
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/periods/:id/lock` | `OPEN` or `REOPENED` → `LOCKED` |
+| `POST` | `/periods/:id/close` | `LOCKED` → `CLOSED` (generates snapshot) |
+| `POST` | `/periods/:id/reopen` | `CLOSED` → `REOPENED` (CFO only, invalidates snapshots) |
+| `GET` | `/periods/:id/close-gate` | Pre-flight check — are there any blockers? |
+| `POST` | `/periods/:id/snapshot/rebuild` | Rebuild snapshots from this period forward |
+| `POST` | `/periods/fiscal-year/:fiscalYearId/close` | Year-end close — Period 12 only |
+
+**Reopen — body:**
+```json
+{ "reason": "AR allocation error discovered — approved by CFO on 2025-02-01" }
+```
+
+> Reopening invalidates the balance snapshots for this period and all later CLOSED periods in the fiscal year. Reports on those periods will show live data (slower) until the periods are re-closed and snapshots are rebuilt.
+
+**Close-gate response:**
+```json
+{
+  "passed": true,
+  "blockers": []
+}
+```
+```json
+{
+  "passed": false,
+  "blockers": [
+    "3 journal(s) are not yet posted (DRAFT/SUBMITTED/APPROVED)",
+    "AR control reconciliation failed: GL 85000.00 vs subledger 82000.00 (variance 3000.00)"
+  ]
+}
+```
+
+> Show the close-gate result **before** letting the CFO click "Close Period". Do not call `POST /periods/:id/close` if `passed: false` — it will return `400` with the same blockers.
+
+**Period state machine:**
+```
+OPEN ──lock──► LOCKED ──close──► CLOSED ──reopen──► REOPENED
+ ▲                                                      │
+ └──────────────────────lock──────────────────────────────┘
+```
+
+---
+
 ## 9. What Is NOT Built Yet (Do Not Call)
 
 These features are planned but endpoints do not exist:
 
-- Subcontracts / Subcontract Certificates
-- Material Requests / Purchase Orders / Goods Receipt Notes
-- Stock Ledger / Stock Transfers
-- Cost Ledger / Cost Reporting
-- Daily Progress Reports / Measurement Sheets
-- Labour Attendance / Equipment Logs
-- File uploads / Attachment storage (join tables exist in DB, no file serving)
-- Notifications / Expiry alerts
-- Settings pages (org config, DOA thresholds, workflow builder)
+- Procurement: Subcontracts / Purchase Orders / Goods Receipt Notes (Sprint 5)
+- Inventory: Stock Ledger / Stock Transfers / Material Catalogue (Sprint 6)
+- Cost Ledger / Project Costing (Sprint 6)
+- Daily Progress Reports / Measurement Sheets (Sprint 8)
+- Labour Attendance / Equipment Logs (Sprint 8)
+- File uploads / Attachment storage (tables exist in DB, no file serving yet — Sprint 5)
+- Notifications / Expiry alerts (Sprint 5 attention engine)
+- Cash Flow Statement (deferred — requires indirect-method computation)
+- Advanced bank reconciliation — statement import and auto-matching
+- Tax reporting — VAT return computation and filing
 - Budget Authorization (for INTERNAL_CAPITAL projects)
-- Exchange rate management UI
+- Exchange rate management UI (rates can be managed via admin, no dedicated UI endpoint yet)
