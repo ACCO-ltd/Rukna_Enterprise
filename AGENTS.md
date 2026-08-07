@@ -94,7 +94,7 @@ If documentation is unclear, stop and request clarification.
 |---|---|---|---|
 | Backend Engineer | Abdulsalam | apps/api/, prisma/schema.prisma, packages/types/ | API contracts, schema changes, backend architecture |
 | CEO / Domain Expert | Eng Ahmed Shirie | ACCO Ltd business processes | Construction domain rules, approval workflows, business logic |
-| Frontend Engineer | (assigned) | apps/web/, packages/ui/ | UI/UX, component design, frontend state |
+| Frontend Engineer | Abdimalik | apps/web/, packages/ui/ | UI/UX, component design, frontend state |
 
 ---
 

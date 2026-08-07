@@ -34,7 +34,8 @@ Both are required. The roadmap below builds them in the correct sequence.
 | **Sprint 3** | Contracts and Client Billing | ✅ Complete |
 | **Sprint 4** | Accounting Foundation | ✅ Complete |
 | **Sprint 4 Frontend** | Accounting Workspace UI | ⏳ Next — Frontend Engineer |
-| **Sprint 5** | Procurement, AP Integration, and Commitment Control | ⏳ Next |
+| **Sprint 5** | Procurement, AP Integration, and Commitment Control | ✅ Complete |
+| **Sprint 5 Frontend** | Procurement Workspace UI | ⏳ Next — Frontend Engineer |
 | **Sprint 6** | Variations / Change Management | Planned |
 | **Sprint 7** | Inventory and Project Costing | Planned |
 | **Sprint 8** | Accounts Receivable, Cash and Banking | Planned |

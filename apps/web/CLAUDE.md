@@ -85,20 +85,50 @@ For discrepancies between the reference and the running API, see
 
 ---
 
+## Build Queue — What to Build Next
+
+Build in this order. Each sprint's backend is complete and tested before appearing here.
+
+### ⏳ Sprint 4 Frontend — Accounting Workspace (START HERE)
+
+Backend: ✅ complete — 87 integration tests passing.
+Design spec: `frontend-design.md` **Section 11 — Accounting Workspace**.
+API reference: `api-reference.md` **Sections 6.13–6.23**.
+
+Build in this tier order (from the spec):
+1. Chart of Accounts browser
+2. Fiscal Year + Period manager
+3. Manual Journal entry
+4. Supplier Bills list and post action
+5. Supplier Payments list
+6. Trial Balance, P&L, Balance Sheet reports
+7. Period lock / close controls
+
+### ⏳ Sprint 5 Frontend — Procurement Workspace (after Sprint 4 UI done)
+
+Backend: ✅ complete — 102 integration tests passing (87 accounting + 15 procurement).
+Design spec: `frontend-design.md` **Section 12 — Procurement Workspace**.
+API reference: `api-reference.md` **Sections 6.24–6.32**.
+
+Covers: Units of Measure, Materials catalogue, Material Requests, Purchase Orders,
+Goods Receipts, Bill Matching, Commitment Ledger dashboard.
+
+---
+
 ## What Is NOT Built Yet — Do Not Mock or Stub
 
 The API does not have these endpoints. Do not build UI for them yet.
 
 - Subcontracts / Subcontract Certificates
-- Material Requests / Purchase Orders / Goods Receipt Notes
-- Stock Ledger / Stock Transfers
-- Cost Ledger / Cost Reporting
-- Daily Progress Reports / Measurement Sheets
-- Labour Attendance / Equipment Logs
-- File uploads / Attachment storage (DB tables exist, no file serving endpoint)
+- Stock Ledger / Stock Transfers / Warehouse management (Sprint 7)
+- Cost Ledger / Cost Reporting (Sprint 7)
+- Daily Progress Reports / Measurement Sheets (Sprint 9)
+- Labour Attendance / Equipment Logs (Sprint 9)
+- File uploads / Attachment storage (DB tables exist, no file serving endpoint yet)
 - Notifications / Expiry alerts
 - Settings pages (org config, DOA thresholds, workflow builder)
 - Budget Authorization (for INTERNAL_CAPITAL projects)
+- Variations / Change Orders (Sprint 6 — backend not yet built)
 
 ---
 
