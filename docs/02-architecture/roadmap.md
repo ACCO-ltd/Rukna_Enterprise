@@ -34,11 +34,12 @@ Both are required. The roadmap below builds them in the correct sequence.
 | **Sprint 3** | Contracts and Client Billing | ✅ Complete |
 | **Sprint 4** | Accounting Foundation | ✅ Complete |
 | **Sprint 4 Frontend** | Accounting Workspace UI | ⏳ Next — Frontend Engineer |
-| **Sprint 5** | Procurement, Accounts Payable and Variations | Planned |
-| **Sprint 6** | Inventory and Project Costing | Planned |
-| **Sprint 7** | Accounts Receivable, Cash and Banking | Planned |
-| **Sprint 8** | Site Operations, Labour and Equipment | Planned |
-| **Sprint 9** | Financial Close and Reporting | Planned |
+| **Sprint 5** | Procurement, AP Integration, and Commitment Control | ⏳ Next |
+| **Sprint 6** | Variations / Change Management | Planned |
+| **Sprint 7** | Inventory and Project Costing | Planned |
+| **Sprint 8** | Accounts Receivable, Cash and Banking | Planned |
+| **Sprint 9** | Site Operations, Labour and Equipment | Planned |
+| **Sprint 10** | Financial Close and Reporting | Planned |
 
 ---
 
@@ -138,50 +139,70 @@ accounting workspace so Finance can operate it without using the API directly.
 
 ---
 
-### Sprint 5 — Procurement, Accounts Payable and Variations
+### Sprint 5 — Procurement, AP Integration, and Commitment Control ⏳ Next
 
-The full supplier purchasing chain plus contract variation management, with GL posting at every step.
+Builds the complete purchasing chain from site need to supplier payment, with full cost
+commitment tracking and three-way bill matching. AP (SupplierBill, SupplierPayment) was
+built in Sprint 4 — Sprint 5 integrates procurement into it rather than rebuilding it.
 
-**Procurement entities:**
+**Architecture decisions:** See `adr/ADR-007-sprint5-procurement.md`.
+
+**What is built:**
+
+| Layer | Delivered |
+|---|---|
+| **Master data** | `UnitOfMeasure` (org-configurable), `MaterialCategory`, `SpendCategory`, `Material` catalogue |
+| **Material Request** | Dual-scope (PROJECT \| ORGANIZATION), multi-line, BOQ-linked, DOA approval |
+| **Purchase Order** | Immutable revisions (`PurchaseOrder` + `PurchaseOrderRevision` + `PurchaseOrderLine`); DOA value-threshold routing |
+| **MR↔PO allocation** | Many-to-many junction (`PurchaseOrderLineRequestAllocation`) for consolidation and split purchasing |
+| **Goods Receipt** | `GoodsReceiptNote` + `GoodsReceiptLine` (received vs accepted vs rejected); `GoodsReceiptLineAllocation` for per-project attribution |
+| **Bill matching** | `SupplierBillMatch` + `SupplierBillMatchLine` — explicit audit result; `MatchingTolerancePolicy` (hierarchical); THREE_WAY for materials, TWO_WAY for services |
+| **Commitment Ledger** | Immutable `CommitmentLedgerEntry`: COMMITTED (PO) → ACCRUED (GRN) → ACTUAL (Bill posted); allocation-level attribution preserves project/BOQ breakdown |
+| **DOA extension** | Condition expressions on `WorkflowRequirementPolicy`; immutable approval snapshot on `ApprovalInstance` |
+| **Over-receipt** | Configurable tolerance band; `EXCEPTION_PENDING` above tolerance; no negative committed balances |
+| **Variation readiness** | `BOQNode.sourceType: BASELINE \| VARIATION` and `BOQNode.sourceChangeOrderId?` prepared |
+
+**Complete procurement chain:**
 
 ```
-Supplier
-→ PurchaseRequisition
-→ RequestForQuotation
-→ SupplierQuotation
-→ PurchaseOrder
-→ GoodsReceiptNote
-→ SupplierInvoice
-→ SupplierPayment
+Material Request (approved)
+  ↓ PurchaseOrderLineRequestAllocation (many-to-many MR↔PO)
+Purchase Order Revision (ACTIVE)
+  ↓ CommitmentLedger: COMMITTED +amount (per allocation, per project/BOQ)
+Goods Receipt Note (POSTED)
+  ↓ CommitmentLedger: COMMITTED −amount, ACCRUED +amount (accepted qty only)
+Supplier Bill (prefilled from GRN, matched)
+  ↓ CommitmentLedger: ACCRUED −amount, ACTUAL +amount
+  ↓ GL JournalEntry: Dr Expense / Cr Accounts Payable
+Supplier Payment (posted)
+  ↓ GL JournalEntry: Dr Accounts Payable / Cr Bank
 ```
 
-**Example GL postings:**
+**File attachments foundation (also Sprint 5):**
+Sprint 5 builds the shared file-serving layer (S3-compatible storage + `Attachment` entity).
+Each subsequent sprint adds attachment support to its own entities.
 
-| Event | Debit | Credit |
-|---|---|---|
-| Goods received | Inventory / Project Receipt | Goods Received Not Invoiced (GRNI) |
-| Supplier invoice matched | GRNI + Recoverable Tax | Accounts Payable |
-| Supplier payment | Accounts Payable | Bank |
-
-Every posting scenario must be validated by the financial officer before acceptance.
-
-Also includes Subcontract management and SubcontractCertificate.
+**Not in Sprint 5:** Variations/ChangeOrders, SupplierReturn, UoM conversion, warehouse
+management, stock ledger, inventory valuation, Approved Supplier List.
 
 ---
 
-**Variations / Change Orders**
+### Sprint 6 — Variations / Change Management
 
-Change orders are inserted into Sprint 5 because they touch Contract, BOQ, IPA and IPC — all of which are already built in Sprint 3 — and active projects generate variation claims before Sprint 9 is reached. Adding them here ensures variation work is traceable in the system as soon as procurement begins, rather than continuing on WhatsApp and Excel.
+Builds the full contract variation workflow, now that Procurement is stable and
+BOQ nodes already carry `sourceType` provenance.
 
-**Entities:**
+**What is built:**
 
 ```
 ChangeOrderRequest     — logged scope change (description, cause, initiator)
 → ChangeOrderPricing   — QS estimate of cost and time impact
 → ChangeOrder          — approved variation (linked to Contract)
-→ BOQ node additions   — new or modified BOQ nodes under the variation
+→ BOQNode additions    — sourceType = VARIATION, sourceChangeOrderId populated
 → IPA items            — claimed against variation BOQ nodes (same IPA flow)
 → IPC items            — certified against variation BOQ nodes (same IPC flow)
+→ SupplierReturn       — for rejected GRN goods
+→ Approved Supplier List / Supplier Qualification
 ```
 
 **Variation lifecycle:**
@@ -192,30 +213,27 @@ DRAFT → SUBMITTED_FOR_INTERNAL_APPROVAL → APPROVED_INTERNALLY
       → CANCELLED / CLIENT_REJECTED
 ```
 
-Client approval is required before variation work begins (except documented emergency instructions).
+Because Procurement already understands `boqNodeId` and BOQNode will carry
+`sourceChangeOrderId`, Procurement automatically inherits variation cost traceability.
+No procurement redesign required.
 
 **Rules:**
 - A variation must link to a Contract in ACTIVE or FINAL_ACCOUNT_PENDING status
 - Variation BOQ nodes extend the contract's BOQ version — they do not create a new version
-- Variation items on an IPA are claimed and certified using the same IPA/IPC flow as original scope
 - The contract value increases automatically when a ChangeOrder reaches EXECUTED status
-- Rejected or cancelled variations do not affect the contract value
-- Every variation carries a cause code: CLIENT_INSTRUCTION, DESIGN_CHANGE, UNFORESEEN_CONDITION, SCOPE_OMISSION, OTHER
-
-**File attachments foundation (also Sprint 5):**
-Sprint 5 builds the shared file-serving layer (S3-compatible storage + `Attachment` entity). Each subsequent sprint adds attachment support to its own entities. This avoids retrofitting file handling across all modules after Sprint 9.
+- Every variation carries a cause code: CLIENT_INSTRUCTION, DESIGN_CHANGE,
+  UNFORESEEN_CONDITION, SCOPE_OMISSION, OTHER
 
 ---
 
-### Sprint 6 — Inventory and Project Costing
+### Sprint 7 — Inventory and Project Costing
 
-- Material catalogue
 - Warehouses and site stores
 - Immutable stock ledger (entries are never updated or deleted)
+- UoM conversion (`UoMConversion` entity)
 - Stock transfers, issues, returns, adjustments
 - Inventory valuation
 - Project material consumption
-- `ProjectCostLedger`: COMMITTED → ACCRUED → ACTUAL at BOQ node level
 - Budget vs commitments, received exposure, actual consumption reporting
 
 > **Important distinction:**
@@ -225,7 +243,7 @@ Sprint 5 builds the shared file-serving layer (S3-compatible storage + `Attachme
 
 ---
 
-### Sprint 7 — Accounts Receivable, Cash and Banking
+### Sprint 8 — Accounts Receivable, Cash and Banking
 
 Upgrades Sprint 3's operational client billing records into formal accounting integration.
 
@@ -249,7 +267,7 @@ proper double-entry accounting entries through posting rules.
 
 ---
 
-### Sprint 8 — Site Operations, Labour and Equipment
+### Sprint 9 — Site Operations, Labour and Equipment
 
 Feeds project costing and operational reporting from site sources.
 
@@ -265,7 +283,7 @@ the General Ledger.
 
 ---
 
-### Sprint 9 — Financial Close and Reporting
+### Sprint 10 — Financial Close and Reporting
 
 - Period closing checklist and workflow
 - Accrual journals and reversing journals

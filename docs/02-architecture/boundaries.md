@@ -130,8 +130,14 @@ Changes to `packages/config/`, `packages/tsconfig/`, or `packages/eslint/` affec
 | Accounting — Accounts Receivable | `apps/api/src/business/accounting/accounts-receivable/` | Abdulsalam | ✅ Built |
 | Accounting — Accounts Payable | `apps/api/src/business/accounting/accounts-payable/` | Abdulsalam | ✅ Built |
 | Accounting — General Ledger & Reports | `apps/api/src/business/accounting/general-ledger/` | Abdulsalam | ✅ Built |
-| Construction — Procurement | `apps/api/src/business/construction/procurement/` | Abdulsalam | Planned Sprint 5 |
-| Construction — Inventory | `apps/api/src/business/construction/inventory/` | Abdulsalam | Planned Sprint 6 |
-| Construction — Site Execution | `apps/api/src/business/construction/site/` | Abdulsalam | Planned Sprint 8 |
-| Construction — Subcontracts | `apps/api/src/business/construction/subcontracts/` | Abdulsalam | Planned Sprint 5 |
-| Construction — Job Costing | `apps/api/src/business/construction/costing/` | Abdulsalam | Planned Sprint 6 |
+| Procurement — Material Catalogue | `apps/api/src/business/procurement/catalogue/` | Abdulsalam | Planned Sprint 5 |
+| Procurement — Material Requests | `apps/api/src/business/procurement/material-requests/` | Abdulsalam | Planned Sprint 5 |
+| Procurement — Purchase Orders | `apps/api/src/business/procurement/purchase-orders/` | Abdulsalam | Planned Sprint 5 |
+| Procurement — Goods Receipts | `apps/api/src/business/procurement/goods-receipts/` | Abdulsalam | Planned Sprint 5 |
+| Procurement — Bill Matching | `apps/api/src/business/procurement/bill-matching/` | Abdulsalam | Planned Sprint 5 |
+| Procurement — Commitment Ledger | `apps/api/src/business/procurement/commitment-ledger/` | Abdulsalam | Planned Sprint 5 |
+| Construction — Variations | `apps/api/src/business/construction/variations/` | Abdulsalam | Planned Sprint 6 |
+| Construction — Subcontracts | `apps/api/src/business/construction/subcontracts/` | Abdulsalam | Planned Sprint 6 |
+| Construction — Inventory | `apps/api/src/business/construction/inventory/` | Abdulsalam | Planned Sprint 7 |
+| Construction — Job Costing | `apps/api/src/business/construction/costing/` | Abdulsalam | Planned Sprint 7 |
+| Construction — Site Execution | `apps/api/src/business/construction/site/` | Abdulsalam | Planned Sprint 9 |

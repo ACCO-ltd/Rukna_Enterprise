@@ -41,6 +41,19 @@ model Organization {
   supplierBills       SupplierBill[]
   supplierPayments    SupplierPayment[]
   journalEntries      JournalEntry[]
+  // Sprint 5 — Procurement
+  unitsOfMeasure      UnitOfMeasure[]
+  materialCategories  MaterialCategory[]
+  spendCategories     SpendCategory[]
+  materials           Material[]
+  materialRequests    MaterialRequest[]
+  purchaseOrders      PurchaseOrder[]
+  poLineAllocations   PurchaseOrderLineRequestAllocation[]
+  grnNotes            GoodsReceiptNote[]
+  grnLineAllocations  GoodsReceiptLineAllocation[]
+  matchingPolicies    MatchingTolerancePolicy[]
+  overReceiptPolicies OverReceiptPolicy[]
+  commitmentEntries   CommitmentLedgerEntry[]
 
   @@map("organizations")
 }
@@ -232,15 +245,21 @@ model WorkflowStep {
 }
 
 model ApprovalInstance {
-  id                   String                  @id @default(cuid())
-  workflowDefinitionId String                  @map("workflow_definition_id")
+  id                   String                   @id @default(cuid())
+  workflowDefinitionId String                   @map("workflow_definition_id")
   transactionType      WorkflowTransactionType? @map("transaction_type")
-  transactionId        String                  @map("transaction_id")
-  status               ApprovalStatus          @default(PENDING)
-  currentStepOrder     Int                     @default(1) @map("current_step_order")
-  initiatedBy          String                  @map("initiated_by")
-  initiatedAt          DateTime                @default(now()) @map("initiated_at")
-  updatedAt            DateTime                @updatedAt @map("updated_at")
+  transactionId        String                   @map("transaction_id")
+  status               ApprovalStatus           @default(PENDING)
+  currentStepOrder     Int                      @default(1) @map("current_step_order")
+  initiatedBy          String                   @map("initiated_by")
+  initiatedAt          DateTime                 @default(now()) @map("initiated_at")
+  updatedAt            DateTime                 @updatedAt @map("updated_at")
+  // Sprint 5: immutable condition snapshot — why this policy was selected (ADR-007, Rule DOA-001)
+  evaluatedAmount      Decimal?                 @map("evaluated_amount") @db.Decimal(18, 2)
+  reportingCurrencyCode String?                 @map("reporting_currency_code") @db.VarChar(3)
+  matchedPolicyId      String?                  @map("matched_policy_id")
+  matchedPolicyVersion Int?                     @map("matched_policy_version")
+  conditionSnapshot    Json?                    @map("condition_snapshot")
 
   definition WorkflowDefinition @relation(fields: [workflowDefinitionId], references: [id])
   actions    ApprovalAction[]
@@ -344,12 +363,19 @@ model ClientContact {
 // ─── Workflow Requirement Policy ──────────────────────────────────────────────
 
 model WorkflowRequirementPolicy {
-  id             String              @id @default(cuid())
-  organizationId String?             @map("organization_id")
-  entityType     String              @map("entity_type")
-  fromState      String?             @map("from_state")
-  toState        String              @map("to_state")
-  requirement    WorkflowRequirement @default(OPTIONAL)
+  id              String                   @id @default(cuid())
+  organizationId  String?                  @map("organization_id")
+  entityType      String                   @map("entity_type")
+  fromState       String?                  @map("from_state")
+  toState         String                   @map("to_state")
+  requirement     WorkflowRequirement      @default(OPTIONAL)
+  priority        Int                      @default(0)
+  // Sprint 5: conditional routing — threshold-based DOA (ADR-007, Rule DOA-001 to DOA-003)
+  // Multiple rows with the same entityType+toState but different conditionField are AND-combined.
+  conditionField  PolicyConditionField?    @map("condition_field")
+  conditionOp     PolicyConditionOperator? @map("condition_op")
+  conditionValue  String?                  @map("condition_value")
+  conditionValue2 String?                  @map("condition_value2")
 
   organization Organization? @relation(fields: [organizationId], references: [id])
 
@@ -520,6 +546,10 @@ model BoqNode {
   totalAmount       Decimal?          @map("total_amount") @db.Decimal(18, 2)
   isLeaf            Boolean           @default(false) @map("is_leaf")
   originNodeId      String?           @map("origin_node_id")
+  // Sprint 5: variation-readiness — BASELINE nodes are original scope; VARIATION nodes
+  // come from a ChangeOrder (Sprint 6). sourceChangeOrderId is null until Sprint 6 adds ChangeOrder.
+  sourceType        BoqSourceType     @default(BASELINE) @map("source_type")
+  sourceChangeOrderId String?         @map("source_change_order_id")
   createdAt         DateTime          @default(now()) @map("created_at")
   updatedAt         DateTime          @updatedAt @map("updated_at")
 
@@ -1152,10 +1182,14 @@ model Supplier {
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
 
-  organization Organization      @relation(fields: [organizationId], references: [id])
-  contacts     SupplierContact[]
-  bills        SupplierBill[]
-  payments     SupplierPayment[]
+  organization     Organization      @relation(fields: [organizationId], references: [id])
+  contacts         SupplierContact[]
+  bills            SupplierBill[]
+  payments         SupplierPayment[]
+  // Sprint 5 — Procurement
+  purchaseOrders   PurchaseOrder[]
+  grnNotes         GoodsReceiptNote[]
+  matchingPolicies MatchingTolerancePolicy[]
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
@@ -1463,6 +1497,9 @@ model SupplierBill {
   exchangeRateDate          DateTime      @map("exchange_rate_date") @db.Date
   exchangeRateSource        String        @map("exchange_rate_source")
   purchaseOrderId           String?       @map("purchase_order_id")
+  purchaseOrderRevisionId   String?       @map("purchase_order_revision_id")
+  // Sprint 5: bill matching gate — posting blocked unless MATCHED/MATCHED_WITH_TOLERANCE/APPROVED_EXCEPTION
+  matchStatus               BillMatchStatus @default(NOT_RUN) @map("match_status")
   projectId                 String?       @map("project_id")
   departmentId              String?       @map("department_id")
   subtotal                  Decimal       @db.Decimal(18, 2)
@@ -1520,10 +1557,16 @@ model SupplierBillLine {
   projectId            String?  @map("project_id")
   departmentId         String?  @map("department_id")
   costCenterId         String?  @map("cost_center_id")
-  boqNodeId            String?  @map("boq_node_id")
-  purchaseOrderLineId  String?  @map("purchase_order_line_id")
+  boqNodeId            String?             @map("boq_node_id")
+  purchaseOrderLineId  String?             @map("purchase_order_line_id")
+  // Sprint 5: material catalogue linkage
+  materialId           String?             @map("material_id")
+  spendCategoryId      String?             @map("spend_category_id")
+  unitOfMeasureId      String?             @map("unit_of_measure_id")
+  lineType             ProcurementLineType @default(SERVICE) @map("line_type")
 
-  bill SupplierBill @relation(fields: [supplierBillId], references: [id], onDelete: Cascade)
+  bill         SupplierBill   @relation(fields: [supplierBillId], references: [id], onDelete: Cascade)
+  material     Material?      @relation(fields: [materialId], references: [id])
 
   @@unique([supplierBillId, lineNumber])
   @@map("supplier_bill_lines")
@@ -2427,4 +2470,621 @@ enum DimensionRequirement {
   REQUIRED
   OPTIONAL
   PROHIBITED
+}
+
+// ─── Sprint 5: Procurement — Master Data ──────────────────────────────────────
+
+model UnitOfMeasure {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  code           String   @db.VarChar(20)
+  name           String
+  nameAr         String?  @map("name_ar")
+  symbol         String   @db.VarChar(10)
+  status         MasterDataStatus @default(ACTIVE)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization  Organization          @relation(fields: [organizationId], references: [id])
+  materials     Material[]
+  mrLines       MaterialRequestLine[]
+  poLines       PurchaseOrderLine[]
+  grnLines      GoodsReceiptLine[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@map("units_of_measure")
+}
+
+model MaterialCategory {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  code           String   @db.VarChar(30)
+  name           String
+  nameAr         String?  @map("name_ar")
+  parentId       String?  @map("parent_id")
+  status         MasterDataStatus @default(ACTIVE)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  parent       MaterialCategory? @relation("MaterialCategoryChildren", fields: [parentId], references: [id])
+  children     MaterialCategory[] @relation("MaterialCategoryChildren")
+  materials    Material[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@map("material_categories")
+}
+
+model SpendCategory {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  code           String   @db.VarChar(30)
+  name           String
+  nameAr         String?  @map("name_ar")
+  parentId       String?  @map("parent_id")
+  status         MasterDataStatus @default(ACTIVE)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization   @relation(fields: [organizationId], references: [id])
+  parent       SpendCategory? @relation("SpendCategoryChildren", fields: [parentId], references: [id])
+  children     SpendCategory[] @relation("SpendCategoryChildren")
+  materials    Material[]     @relation("MaterialDefaultSpendCategory")
+  mrLines      MaterialRequestLine[]
+  poLines      PurchaseOrderLine[]
+  grnLines     GoodsReceiptLine[]
+  commitments  CommitmentLedgerEntry[]
+  matchingPolicies MatchingTolerancePolicy[]
+  overReceiptPolicies OverReceiptPolicy[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@map("spend_categories")
+}
+
+model Material {
+  id                    String           @id @default(cuid())
+  organizationId        String           @map("organization_id")
+  code                  String           @db.VarChar(50)
+  name                  String
+  nameAr                String?          @map("name_ar")
+  description           String?
+  materialCategoryId    String           @map("material_category_id")
+  defaultSpendCategoryId String?         @map("default_spend_category_id")
+  baseUnitOfMeasureId   String           @map("base_unit_of_measure_id")
+  status                MaterialStatus   @default(ACTIVE)
+  createdAt             DateTime         @default(now()) @map("created_at")
+  updatedAt             DateTime         @updatedAt @map("updated_at")
+
+  organization         Organization     @relation(fields: [organizationId], references: [id])
+  materialCategory     MaterialCategory @relation(fields: [materialCategoryId], references: [id])
+  defaultSpendCategory SpendCategory?   @relation("MaterialDefaultSpendCategory", fields: [defaultSpendCategoryId], references: [id])
+  baseUom              UnitOfMeasure    @relation(fields: [baseUnitOfMeasureId], references: [id])
+  mrLines              MaterialRequestLine[]
+  poLines              PurchaseOrderLine[]
+  grnLines             GoodsReceiptLine[]
+  billLines            SupplierBillLine[]
+  commitments          CommitmentLedgerEntry[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@map("materials")
+}
+
+// ─── Sprint 5: Material Request ───────────────────────────────────────────────
+
+model MaterialRequest {
+  id              String               @id @default(cuid())
+  organizationId  String               @map("organization_id")
+  mrNumber        String               @map("mr_number") @db.VarChar(30)
+  requestScope    MaterialRequestScope @map("request_scope")
+  projectId       String?              @map("project_id")
+  requestedBy     String               @map("requested_by")
+  requestedDate   DateTime             @map("requested_date") @db.Date
+  requiredByDate  DateTime?            @map("required_by_date") @db.Date
+  description     String?
+  status          MaterialRequestStatus @default(DRAFT)
+  approvalInstanceId String?           @map("approval_instance_id")
+  notes           String?
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  organization Organization        @relation(fields: [organizationId], references: [id])
+  lines        MaterialRequestLine[]
+
+  @@unique([organizationId, mrNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, projectId])
+  @@map("material_requests")
+}
+
+model MaterialRequestLine {
+  id                    String              @id @default(cuid())
+  materialRequestId     String              @map("material_request_id")
+  lineNumber            Int                 @map("line_number")
+  lineType              ProcurementLineType @map("line_type")
+  materialId            String?             @map("material_id")
+  description           String
+  unitOfMeasureId       String              @map("unit_of_measure_id")
+  requestedQuantity     Decimal             @map("requested_quantity") @db.Decimal(18, 4)
+  approvedQuantity      Decimal?            @map("approved_quantity") @db.Decimal(18, 4)
+  boqNodeId             String?             @map("boq_node_id")
+  spendCategoryId       String?             @map("spend_category_id")
+  departmentId          String?             @map("department_id")
+  costCenterId          String?             @map("cost_center_id")
+  projectCostCategoryId String?             @map("project_cost_category_id")
+  notes                 String?
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  request      MaterialRequest @relation(fields: [materialRequestId], references: [id], onDelete: Cascade)
+  material     Material?       @relation(fields: [materialId], references: [id])
+  uom          UnitOfMeasure   @relation(fields: [unitOfMeasureId], references: [id])
+  spendCategory SpendCategory? @relation(fields: [spendCategoryId], references: [id])
+  poAllocations PurchaseOrderLineRequestAllocation[]
+
+  @@unique([materialRequestId, lineNumber])
+  @@index([materialRequestId])
+  @@map("material_request_lines")
+}
+
+// ─── Sprint 5: Purchase Order ─────────────────────────────────────────────────
+
+model PurchaseOrder {
+  id                String            @id @default(cuid())
+  organizationId    String            @map("organization_id")
+  supplierId        String            @map("supplier_id")
+  poNumber          String            @map("po_number") @db.VarChar(30)
+  currentRevisionId String?           @map("current_revision_id")
+  status            PurchaseOrderStatus @default(OPEN)
+  createdBy         String            @map("created_by")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  supplier     Supplier               @relation(fields: [supplierId], references: [id])
+  revisions    PurchaseOrderRevision[]
+  grnNotes     GoodsReceiptNote[]
+  matchingPolicies MatchingTolerancePolicy[]
+  overReceiptPolicies OverReceiptPolicy[]
+  commitments  CommitmentLedgerEntry[]
+
+  @@unique([organizationId, poNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, supplierId])
+  @@map("purchase_orders")
+}
+
+// Immutable once status = ACTIVE. Any change creates a new revision. (ADR-007, Rule PO-001)
+model PurchaseOrderRevision {
+  id                   String                    @id @default(cuid())
+  purchaseOrderId      String                    @map("purchase_order_id")
+  revisionNumber       Int                       @map("revision_number")
+  status               PurchaseOrderRevisionStatus @default(DRAFT)
+  currencyCode         String                    @map("currency_code") @db.VarChar(3)
+  effectiveFrom        DateTime                  @map("effective_from") @db.Date
+  reason               String?
+  deliveryAddress      String?                   @map("delivery_address")
+  expectedDeliveryDate DateTime?                 @map("expected_delivery_date") @db.Date
+  approvedBy           String?                   @map("approved_by")
+  approvedAt           DateTime?                 @map("approved_at")
+  approvalInstanceId   String?                   @map("approval_instance_id")
+  createdBy            String                    @map("created_by")
+  createdAt            DateTime                  @default(now()) @map("created_at")
+  updatedAt            DateTime                  @updatedAt @map("updated_at")
+
+  purchaseOrder PurchaseOrder        @relation(fields: [purchaseOrderId], references: [id])
+  lines         PurchaseOrderLine[]
+  grnNotes      GoodsReceiptNote[]
+
+  @@unique([purchaseOrderId, revisionNumber])
+  @@index([purchaseOrderId, status])
+  @@map("purchase_order_revisions")
+}
+
+// Immutable once parent revision is ACTIVE. (ADR-007, Rule PO-004)
+model PurchaseOrderLine {
+  id                      String              @id @default(cuid())
+  purchaseOrderRevisionId String              @map("purchase_order_revision_id")
+  lineNumber              Int                 @map("line_number")
+  lineType                ProcurementLineType @map("line_type")
+  materialId              String?             @map("material_id")
+  description             String
+  unitOfMeasureId         String              @map("unit_of_measure_id")
+  orderedQuantity         Decimal             @map("ordered_quantity") @db.Decimal(18, 4)
+  unitPrice               Decimal             @map("unit_price") @db.Decimal(18, 4)
+  extendedAmount          Decimal             @map("extended_amount") @db.Decimal(18, 2)
+  spendCategoryId         String?             @map("spend_category_id")
+  taxCodeId               String?             @map("tax_code_id")
+  notes                   String?
+  createdAt               DateTime            @default(now()) @map("created_at")
+
+  revision      PurchaseOrderRevision @relation(fields: [purchaseOrderRevisionId], references: [id], onDelete: Cascade)
+  material      Material?             @relation(fields: [materialId], references: [id])
+  uom           UnitOfMeasure         @relation(fields: [unitOfMeasureId], references: [id])
+  spendCategory SpendCategory?        @relation(fields: [spendCategoryId], references: [id])
+  mrAllocations PurchaseOrderLineRequestAllocation[]
+  grnLines      GoodsReceiptLine[]
+  matchLines    SupplierBillMatchLine[]
+
+  @@unique([purchaseOrderRevisionId, lineNumber])
+  @@index([purchaseOrderRevisionId])
+  @@map("purchase_order_lines")
+}
+
+// Many-to-many MR line ↔ PO line junction. (ADR-007, Decision 6)
+// Cost dimensions (projectId, boqNodeId) flow from the MR line through this allocation.
+model PurchaseOrderLineRequestAllocation {
+  id                    String  @id @default(cuid())
+  organizationId        String  @map("organization_id")
+  purchaseOrderLineId   String  @map("purchase_order_line_id")
+  materialRequestLineId String  @map("material_request_line_id")
+  allocatedQuantity     Decimal @map("allocated_quantity") @db.Decimal(18, 4)
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  organization      Organization        @relation(fields: [organizationId], references: [id])
+  purchaseOrderLine PurchaseOrderLine   @relation(fields: [purchaseOrderLineId], references: [id])
+  mrLine            MaterialRequestLine @relation(fields: [materialRequestLineId], references: [id])
+  grnAllocations    GoodsReceiptLineAllocation[]
+
+  @@index([purchaseOrderLineId])
+  @@index([materialRequestLineId])
+  @@map("purchase_order_line_request_allocations")
+}
+
+// ─── Sprint 5: Goods Receipt ──────────────────────────────────────────────────
+
+model GoodsReceiptNote {
+  id                      String    @id @default(cuid())
+  organizationId          String    @map("organization_id")
+  grnNumber               String    @map("grn_number") @db.VarChar(30)
+  purchaseOrderId         String    @map("purchase_order_id")
+  purchaseOrderRevisionId String    @map("purchase_order_revision_id")
+  supplierId              String    @map("supplier_id")
+  deliveryDate            DateTime  @map("delivery_date") @db.Date
+  deliveryNoteRef         String?   @map("delivery_note_ref")
+  status                  GrnStatus @default(DRAFT)
+  exceptionReason         String?   @map("exception_reason")
+  postedAt                DateTime? @map("posted_at")
+  postedBy                String?   @map("posted_by")
+  createdBy               String    @map("created_by")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  organization    Organization          @relation(fields: [organizationId], references: [id])
+  purchaseOrder   PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id])
+  revision        PurchaseOrderRevision @relation(fields: [purchaseOrderRevisionId], references: [id])
+  supplier        Supplier              @relation(fields: [supplierId], references: [id])
+  lines           GoodsReceiptLine[]
+
+  @@unique([organizationId, grnNumber])
+  @@index([organizationId, status])
+  @@index([purchaseOrderId])
+  @@map("goods_receipt_notes")
+}
+
+// Records full physical delivery (receivedQuantity) and acceptance split.
+// Only acceptedQuantity generates ACCRUED commitment movement. (ADR-007, Rule GRN-003)
+model GoodsReceiptLine {
+  id                    String        @id @default(cuid())
+  goodsReceiptNoteId    String        @map("goods_receipt_note_id")
+  purchaseOrderLineId   String        @map("purchase_order_line_id")
+  lineNumber            Int           @map("line_number")
+  lineType              ProcurementLineType @map("line_type")
+  materialId            String?       @map("material_id")
+  unitOfMeasureId       String        @map("unit_of_measure_id")
+  spendCategoryId       String?       @map("spend_category_id")
+  orderedQuantity       Decimal       @map("ordered_quantity") @db.Decimal(18, 4)
+  previouslyReceivedQty Decimal       @default(0) @map("previously_received_qty") @db.Decimal(18, 4)
+  receivedQuantity      Decimal       @map("received_quantity") @db.Decimal(18, 4)
+  acceptedQuantity      Decimal       @map("accepted_quantity") @db.Decimal(18, 4)
+  rejectedQuantity      Decimal       @default(0) @map("rejected_quantity") @db.Decimal(18, 4)
+  rejectionReason       String?       @map("rejection_reason")
+  qualityStatus         QualityStatus @default(PENDING_INSPECTION) @map("quality_status")
+  notes                 String?
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+
+  grn           GoodsReceiptNote  @relation(fields: [goodsReceiptNoteId], references: [id], onDelete: Cascade)
+  poLine        PurchaseOrderLine @relation(fields: [purchaseOrderLineId], references: [id])
+  material      Material?         @relation(fields: [materialId], references: [id])
+  uom           UnitOfMeasure     @relation(fields: [unitOfMeasureId], references: [id])
+  spendCategory SpendCategory?    @relation(fields: [spendCategoryId], references: [id])
+  allocations   GoodsReceiptLineAllocation[]
+
+  @@unique([goodsReceiptNoteId, lineNumber])
+  @@index([goodsReceiptNoteId])
+  @@index([purchaseOrderLineId])
+  @@map("goods_receipt_lines")
+}
+
+// Per-allocation attribution for CommitmentLedger ACCRUED movements. (ADR-007, Decision 13)
+model GoodsReceiptLineAllocation {
+  id                                   String  @id @default(cuid())
+  organizationId                       String  @map("organization_id")
+  goodsReceiptLineId                   String  @map("goods_receipt_line_id")
+  purchaseOrderLineRequestAllocationId String  @map("po_line_request_allocation_id")
+  receivedQuantity                     Decimal @map("received_quantity") @db.Decimal(18, 4)
+  acceptedQuantity                     Decimal @map("accepted_quantity") @db.Decimal(18, 4)
+  rejectedQuantity                     Decimal @default(0) @map("rejected_quantity") @db.Decimal(18, 4)
+  createdAt                            DateTime @default(now()) @map("created_at")
+
+  organization    Organization                       @relation(fields: [organizationId], references: [id])
+  grnLine         GoodsReceiptLine                   @relation(fields: [goodsReceiptLineId], references: [id], onDelete: Cascade)
+  poLineAllocation PurchaseOrderLineRequestAllocation @relation(fields: [purchaseOrderLineRequestAllocationId], references: [id])
+
+  @@index([goodsReceiptLineId])
+  @@index([purchaseOrderLineRequestAllocationId])
+  @@map("goods_receipt_line_allocations")
+}
+
+// ─── Sprint 5: Supplier Bill Matching ────────────────────────────────────────
+
+// Explicit matching result per bill — "linked by construction" is not the same as matched.
+// (ADR-007, Rule MATCH-001)
+model SupplierBillMatch {
+  id              String          @id @default(cuid())
+  supplierBillId  String          @unique @map("supplier_bill_id")
+  matchType       BillMatchType   @map("match_type")
+  status          BillMatchStatus @default(NOT_RUN)
+  matchedAt       DateTime?       @map("matched_at")
+  matchedBy       String?         @map("matched_by")
+  approvedBy      String?         @map("approved_by")
+  approvedAt      DateTime?       @map("approved_at")
+  approvalReason  String?         @map("approval_reason")
+  approvalInstanceId String?      @map("approval_instance_id")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  lines SupplierBillMatchLine[]
+
+  @@map("supplier_bill_matches")
+}
+
+model SupplierBillMatchLine {
+  id                   String  @id @default(cuid())
+  supplierBillMatchId  String  @map("supplier_bill_match_id")
+  supplierBillLineId   String  @map("supplier_bill_line_id")
+  purchaseOrderLineId  String  @map("purchase_order_line_id")
+  goodsReceiptLineId   String? @map("goods_receipt_line_id")
+  poQuantity           Decimal @map("po_quantity") @db.Decimal(18, 4)
+  receivedQuantity     Decimal? @map("received_quantity") @db.Decimal(18, 4)
+  billedQuantity       Decimal @map("billed_quantity") @db.Decimal(18, 4)
+  poUnitPrice          Decimal @map("po_unit_price") @db.Decimal(18, 4)
+  billedUnitPrice      Decimal @map("billed_unit_price") @db.Decimal(18, 4)
+  quantityVariance     Decimal @map("quantity_variance") @db.Decimal(18, 4)
+  priceVariance        Decimal @map("price_variance") @db.Decimal(18, 4)
+  amountVariance       Decimal @map("amount_variance") @db.Decimal(18, 2)
+  withinTolerance      Boolean @map("within_tolerance")
+  exceptionReason      String? @map("exception_reason")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  billMatch       SupplierBillMatch @relation(fields: [supplierBillMatchId], references: [id], onDelete: Cascade)
+  purchaseOrderLine PurchaseOrderLine @relation(fields: [purchaseOrderLineId], references: [id])
+
+  @@index([supplierBillMatchId])
+  @@map("supplier_bill_match_lines")
+}
+
+// Hierarchical tolerance policy: PO → Supplier → SpendCategory → Organization (ADR-007, Rule MATCH-002)
+model MatchingTolerancePolicy {
+  id                      String              @id @default(cuid())
+  organizationId          String              @map("organization_id")
+  scopeType               ToleranceScopeType  @map("scope_type")
+  purchaseOrderId         String?             @map("purchase_order_id")
+  supplierId              String?             @map("supplier_id")
+  spendCategoryId         String?             @map("spend_category_id")
+  priceVariancePercent    Decimal?            @map("price_variance_percent") @db.Decimal(6, 3)
+  priceVarianceAbsolute   Decimal?            @map("price_variance_absolute") @db.Decimal(18, 2)
+  quantityVariancePercent Decimal?            @map("quantity_variance_percent") @db.Decimal(6, 3)
+  quantityVarianceAbsolute Decimal?           @map("quantity_variance_absolute") @db.Decimal(18, 4)
+  amountVarianceAbsolute  Decimal?            @map("amount_variance_absolute") @db.Decimal(18, 2)
+  effectiveFrom           DateTime            @map("effective_from") @db.Date
+  effectiveTo             DateTime?           @map("effective_to") @db.Date
+  status                  MasterDataStatus    @default(ACTIVE)
+  approvedBy              String?             @map("approved_by")
+  createdAt               DateTime            @default(now()) @map("created_at")
+  updatedAt               DateTime            @updatedAt @map("updated_at")
+
+  organization  Organization   @relation(fields: [organizationId], references: [id])
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  supplier      Supplier?      @relation(fields: [supplierId], references: [id])
+  spendCategory SpendCategory? @relation(fields: [spendCategoryId], references: [id])
+
+  @@index([organizationId, scopeType, status])
+  @@map("matching_tolerance_policies")
+}
+
+// Hierarchical over-receipt policy: PO → SpendCategory → Organization (ADR-007, Rule OVREC-001)
+model OverReceiptPolicy {
+  id                   String             @id @default(cuid())
+  organizationId       String             @map("organization_id")
+  scopeType            ToleranceScopeType @map("scope_type")
+  purchaseOrderId      String?            @map("purchase_order_id")
+  spendCategoryId      String?            @map("spend_category_id")
+  overReceiptPercent   Decimal            @map("over_receipt_percent") @db.Decimal(6, 3)
+  status               MasterDataStatus   @default(ACTIVE)
+  effectiveFrom        DateTime           @map("effective_from") @db.Date
+  effectiveTo          DateTime?          @map("effective_to") @db.Date
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+
+  organization  Organization   @relation(fields: [organizationId], references: [id])
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  spendCategory SpendCategory? @relation(fields: [spendCategoryId], references: [id])
+
+  @@index([organizationId, scopeType, status])
+  @@map("over_receipt_policies")
+}
+
+// ─── Sprint 5: Commitment Ledger ──────────────────────────────────────────────
+
+// Immutable signed ledger of procurement cost movements. (ADR-007, Rule CL-001 to CL-005)
+// Separate from JournalLine (GL). PO approval → CommitmentLedger only. Bill posting →
+// CommitmentLedger ACTUAL + JournalLine.
+// Never UPDATE rows — corrections create compensating entries.
+model CommitmentLedgerEntry {
+  id                 String                  @id @default(cuid())
+  organizationId     String                  @map("organization_id")
+  projectId          String?                 @map("project_id")
+  boqNodeId          String?                 @map("boq_node_id")
+  departmentId       String?                 @map("department_id")
+  costCenterId       String?                 @map("cost_center_id")
+  materialId         String?                 @map("material_id")
+  supplierId         String?                 @map("supplier_id")
+  purchaseOrderId    String?                 @map("purchase_order_id")
+  spendCategoryId    String?                 @map("spend_category_id")
+  stage              CommitmentStage         @map("stage")
+  // Signed: positive = increase, negative = decrease/reversal
+  amount             Decimal                 @map("amount") @db.Decimal(18, 2)
+  currencyCode       String                  @map("currency_code") @db.VarChar(3)
+  reportingAmount    Decimal                 @map("reporting_amount") @db.Decimal(18, 2)
+  exchangeRateSnapshot Decimal              @map("exchange_rate_snapshot") @db.Decimal(18, 6)
+  sourceDocumentType CommitmentSourceDocType @map("source_document_type")
+  sourceDocumentId   String                  @map("source_document_id")
+  sourceLineId       String?                 @map("source_line_id")
+  sourceRevision     Int?                    @map("source_revision")
+  eventType          String                  @map("event_type")
+  // Idempotency: prevents duplicate commitment on retry (ADR-007, Rule CL-005)
+  idempotencyKey     String                  @unique @map("idempotency_key")
+  occurredAt         DateTime                @map("occurred_at")
+  accountingDate     DateTime                @map("accounting_date") @db.Date
+  createdAt          DateTime                @default(now()) @map("created_at")
+
+  organization  Organization   @relation(fields: [organizationId], references: [id])
+  material      Material?      @relation(fields: [materialId], references: [id])
+  spendCategory SpendCategory? @relation(fields: [spendCategoryId], references: [id])
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+
+  @@index([organizationId, projectId, stage])
+  @@index([organizationId, boqNodeId, stage])
+  @@index([sourceDocumentId, sourceDocumentType])
+  @@map("commitment_ledger_entries")
+}
+
+// ─── Sprint 5: Enums ──────────────────────────────────────────────────────────
+
+enum BoqSourceType {
+  BASELINE
+  VARIATION
+}
+
+enum ProcurementLineType {
+  MATERIAL
+  SERVICE
+  OTHER
+}
+
+enum MaterialRequestScope {
+  PROJECT
+  ORGANIZATION
+}
+
+enum MaterialRequestStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  PARTIALLY_ORDERED
+  FULLY_ORDERED
+  CANCELLED
+  CLOSED
+}
+
+enum PurchaseOrderStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+enum PurchaseOrderRevisionStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  ACTIVE
+  SUPERSEDED
+  CANCELLED
+}
+
+enum GrnStatus {
+  DRAFT
+  SUBMITTED
+  POSTED
+  EXCEPTION_PENDING
+  CANCELLED
+}
+
+enum QualityStatus {
+  PENDING_INSPECTION
+  ACCEPTED
+  PARTIALLY_ACCEPTED
+  REJECTED
+}
+
+enum BillMatchType {
+  TWO_WAY
+  THREE_WAY
+}
+
+enum BillMatchStatus {
+  NOT_RUN
+  MATCHED
+  MATCHED_WITH_TOLERANCE
+  EXCEPTION
+  APPROVED_EXCEPTION
+}
+
+enum CommitmentStage {
+  COMMITTED
+  ACCRUED
+  ACTUAL
+}
+
+enum CommitmentSourceDocType {
+  PURCHASE_ORDER_REVISION
+  GOODS_RECEIPT
+  SUPPLIER_BILL
+  PO_CANCELLATION
+  GRN_REVERSAL
+  BILL_REVERSAL
+  OVER_RECEIPT_ADJUSTMENT
+  EXCEPTION_APPROVAL
+}
+
+enum ToleranceScopeType {
+  ORGANIZATION
+  SPEND_CATEGORY
+  SUPPLIER
+  PURCHASE_ORDER
+}
+
+enum MaterialStatus {
+  ACTIVE
+  INACTIVE
+  DISCONTINUED
+}
+
+enum MasterDataStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PolicyConditionField {
+  DOCUMENT_AMOUNT
+  PROJECT_ID
+  DEPARTMENT_ID
+  SPEND_CATEGORY
+  CURRENCY
+}
+
+enum PolicyConditionOperator {
+  EQ
+  NE
+  GT
+  GTE
+  LT
+  LTE
+  BETWEEN
+  IN
 }
