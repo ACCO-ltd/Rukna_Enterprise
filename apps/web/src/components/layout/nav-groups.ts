@@ -49,7 +49,26 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/receipts', labelKey: 'receipts' },
       { href: '/finance/cash-position', labelKey: 'cashPosition', disabled: true },
-      { href: '/finance/general-ledger', labelKey: 'generalLedger', disabled: true },
+    ],
+  },
+  {
+    // Sprint 4. Ordered setup → entry → reporting, which is also the order a new
+    // organisation has to do them in: there is nothing to post until the chart of accounts
+    // and a fiscal year exist, and nothing to report until something is posted.
+    labelKey: 'accounting',
+    moduleKey: 'accounting',
+    items: [
+      { href: '/finance/accounting/chart-of-accounts', labelKey: 'chartOfAccounts' },
+      { href: '/finance/accounting/periods', labelKey: 'fiscalPeriods' },
+      { href: '/finance/accounting/journals', labelKey: 'journals' },
+      { href: '/finance/accounting/trial-balance', labelKey: 'trialBalance' },
+      { href: '/finance/accounting/profit-loss', labelKey: 'profitLoss' },
+      // Sprint 4B.
+      { href: '/finance/accounting/balance-sheet', labelKey: 'balanceSheet', disabled: true },
+      { href: '/finance/accounting/ledger', labelKey: 'accountLedger', disabled: true },
+      // Blocked on #26 — no supplier endpoint, so a bill cannot be created.
+      { href: '/finance/accounting/bills', labelKey: 'supplierBills', disabled: true },
+      { href: '/finance/accounting/payments', labelKey: 'supplierPayments', disabled: true },
     ],
   },
   {

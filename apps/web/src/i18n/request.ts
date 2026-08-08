@@ -4,15 +4,19 @@ import { cookies } from 'next/headers';
 export default getRequestConfig(async () => {
   const locale = await resolveLocale();
 
-  const [common, auth, platform] = await Promise.all([
+  // `accounting` is a namespace of its own rather than another branch of `platform`.
+  // `platform.json` is already the file every feature edits, and it is where the last rebase
+  // silently produced a duplicate key that dropped 54 lines of translations.
+  const [common, auth, platform, accounting] = await Promise.all([
     import(`../../messages/${locale}/common.json`).then((m) => m.default),
     import(`../../messages/${locale}/auth.json`).then((m) => m.default),
     import(`../../messages/${locale}/platform.json`).then((m) => m.default),
+    import(`../../messages/${locale}/accounting.json`).then((m) => m.default),
   ]);
 
   return {
     locale,
-    messages: { common, auth, platform },
+    messages: { common, auth, platform, accounting },
   };
 });
 

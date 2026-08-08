@@ -48,10 +48,41 @@ const PERMISSIONS_ENFORCED: boolean = false;
 const MODULE_PERMISSIONS: Record<string, PermissionKey[]> = {
   portfolio:      ['view:project', 'create:project', 'view:client'],
   finance:        ['view:receipt', 'create:receipt'],
+  accounting:     ['view:accounting'],
   operations:     ['view:purchase-order'],
   reports:        ['view:report'],
   administration: ['manage:user', 'manage:role', 'view:audit-log', 'manage:exchange-rate'],
 };
+
+/**
+ * Accounting permissions, named to the platform's `action:resource` convention.
+ *
+ * `frontend-design.md` §11.2 specifies these as `view:accounting`, `manage:journals`,
+ * `manage:ar`, `manage:ap`, `manage:periods` and `manage:year-end`. The last three are not
+ * `action:resource` — the live convention is singular and names a resource (`view:project`,
+ * `manage:role`), so they are spelled that way here. Raised on issue #25; if the backend
+ * seeds the §11.2 spelling instead, this map is the one place to change.
+ *
+ * **None of these is enforced anywhere.** No `PermissionGuard` exists in `apps/api/src`, the
+ * `permissions` table is never seeded, and every JWT carries `permissions: []` — so with
+ * `PERMISSIONS_ENFORCED` false these all resolve true and nothing is hidden. Calling `can()`
+ * regardless is the point: when a guard lands, one boolean secures every accounting screen
+ * rather than a retrofit across fifteen of them.
+ */
+export const ACCOUNTING_PERMISSIONS = {
+  /** Every accounting page. Read-only views included. */
+  view: 'view:accounting',
+  /** Create, submit, approve, post and reverse manual journals. */
+  manageJournals: 'manage:journal',
+  /** Post client invoices; post and allocate customer receipts. */
+  manageReceivables: 'manage:receivable',
+  /** Create and post supplier bills and payments. */
+  managePayables: 'manage:payable',
+  /** Lock, close, reopen periods; rebuild snapshots. */
+  managePeriods: 'manage:period',
+  /** Year-end close. CFO only. */
+  manageYearEnd: 'manage:fiscal-year',
+} as const satisfies Record<string, PermissionKey>;
 
 // ─── Core logic (shared by plain functions and the hook) ──────────────────────
 

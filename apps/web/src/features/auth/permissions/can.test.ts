@@ -98,8 +98,18 @@ describe('usePermissions()', () => {
 
   it('returns true for all known modules while PERMISSIONS_ENFORCED is false', () => {
     const { result } = renderHook(() => usePermissions());
-    for (const module of ['portfolio', 'finance', 'operations', 'reports', 'administration']) {
-      expect(result.current.moduleVisible(module)).toBe(true);
+    // Named `moduleKey`, not `module`: assigning to a bare `module` shadows the CommonJS
+    // global and `@next/next/no-assign-module-variable` fails the build on it.
+    const moduleKeys = [
+      'portfolio',
+      'finance',
+      'accounting',
+      'operations',
+      'reports',
+      'administration',
+    ];
+    for (const moduleKey of moduleKeys) {
+      expect(result.current.moduleVisible(moduleKey)).toBe(true);
     }
   });
 

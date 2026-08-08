@@ -32,7 +32,17 @@
     "workflows": "Workflows",
     "comingSoon": "Coming soon",
     "soon": "Soon",
-    "contracts": "Contracts"
+    "contracts": "Contracts",
+    "accounting": "Accounting",
+    "chartOfAccounts": "Chart of Accounts",
+    "fiscalPeriods": "Fiscal Periods",
+    "journals": "Journals",
+    "trialBalance": "Trial Balance",
+    "profitLoss": "Profit & Loss",
+    "balanceSheet": "Balance Sheet",
+    "accountLedger": "Account Ledger",
+    "supplierBills": "Supplier Bills",
+    "supplierPayments": "Supplier Payments"
   },
   "user": {
     "menuLabel": "Account menu",

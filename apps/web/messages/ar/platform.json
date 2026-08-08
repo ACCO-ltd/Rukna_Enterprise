@@ -32,7 +32,17 @@
     "workflows": "سير العمل",
     "comingSoon": "قريباً",
     "soon": "قريباً",
-    "contracts": "العقود"
+    "contracts": "العقود",
+    "accounting": "المحاسبة",
+    "chartOfAccounts": "دليل الحسابات",
+    "fiscalPeriods": "الفترات المالية",
+    "journals": "القيود",
+    "trialBalance": "ميزان المراجعة",
+    "profitLoss": "الأرباح والخسائر",
+    "balanceSheet": "الميزانية العمومية",
+    "accountLedger": "دفتر الأستاذ",
+    "supplierBills": "فواتير الموردين",
+    "supplierPayments": "مدفوعات الموردين"
   },
   "user": {
     "menuLabel": "قائمة الحساب",

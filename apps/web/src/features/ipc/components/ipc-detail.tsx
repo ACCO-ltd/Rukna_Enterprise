@@ -19,7 +19,7 @@ import { useBoqTree } from '@/features/boq/hooks/use-boq';
 import { fractionToPercent } from '@/features/contracts/contract-terms';
 import { useContract } from '@/features/contracts/hooks/use-contracts';
 import { useIpa } from '@/features/ipa/hooks/use-ipa';
-import { fromMinorUnits } from '@/features/receipts/allocation';
+import { MONEY_SCALE, fromMinorUnits } from '@/lib/money';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney, formatNumber } from '@/lib/format';
 import type { BoqTreeNode, IpcItem } from '@/lib/api-types';
@@ -397,14 +397,14 @@ function SettlementSection({
             <div>
               <dt className="text-xs text-muted-foreground">{t('allocated')}</dt>
               <dd className="mt-0.5 text-sm font-medium text-foreground">
-                <bdi>{formatMoney(fromMinorUnits(settlement.allocatedMinor), currency, locale)}</bdi>
+                <bdi>{formatMoney(fromMinorUnits(settlement.allocatedMinor, MONEY_SCALE), currency, locale)}</bdi>
               </dd>
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">{t('outstanding')}</dt>
               <dd className="mt-0.5 text-sm font-medium text-foreground">
                 <bdi>
-                  {formatMoney(fromMinorUnits(settlement.outstandingMinor), currency, locale)}
+                  {formatMoney(fromMinorUnits(settlement.outstandingMinor, MONEY_SCALE), currency, locale)}
                 </bdi>
               </dd>
             </div>

@@ -6,9 +6,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import enCommon from '../../messages/en/common.json';
 import enAuth from '../../messages/en/auth.json';
 import enPlatform from '../../messages/en/platform.json';
+import enAccounting from '../../messages/en/accounting.json';
 import arCommon from '../../messages/ar/common.json';
 import arAuth from '../../messages/ar/auth.json';
 import arPlatform from '../../messages/ar/platform.json';
+import arAccounting from '../../messages/ar/accounting.json';
 
 /**
  * The REAL message catalogues, loaded the same way `src/i18n/request.ts` loads them.
@@ -20,8 +22,8 @@ import arPlatform from '../../messages/ar/platform.json';
  * files means a misplaced or missing key fails the test.
  */
 const MESSAGES = {
-  en: { common: enCommon, auth: enAuth, platform: enPlatform },
-  ar: { common: arCommon, auth: arAuth, platform: arPlatform },
+  en: { common: enCommon, auth: enAuth, platform: enPlatform, accounting: enAccounting },
+  ar: { common: arCommon, auth: arAuth, platform: arPlatform, accounting: arAccounting },
 } as const;
 
 interface WrapperProps {

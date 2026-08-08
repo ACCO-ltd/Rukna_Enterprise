@@ -1,4 +1,4 @@
-import { toMinorUnits } from '@/features/receipts/allocation';
+import { MONEY_SCALE, toMinorUnits } from '@/lib/money';
 
 /**
  * ─── How much of a certificate has been paid ────────────────────────────────────
@@ -49,8 +49,8 @@ export interface Settlement {
  * "no payment recorded" rather than inventing one.
  */
 export function settlementFor(netCertified: string, totalAllocated: string | null): Settlement {
-  const netMinor = toMinorUnits(netCertified);
-  const allocatedMinor = totalAllocated === null ? 0 : toMinorUnits(totalAllocated);
+  const netMinor = toMinorUnits(netCertified, MONEY_SCALE);
+  const allocatedMinor = totalAllocated === null ? 0 : toMinorUnits(totalAllocated, MONEY_SCALE);
 
   const outstandingMinor = netMinor - allocatedMinor;
 
@@ -78,8 +78,8 @@ export function grossDisagreementMinor(
   certifiedTotal: string,
   totalCertifiedAmount: string,
 ): number | null {
-  const stated = toMinorUnits(certifiedTotal);
-  const summed = toMinorUnits(totalCertifiedAmount);
+  const stated = toMinorUnits(certifiedTotal, MONEY_SCALE);
+  const summed = toMinorUnits(totalCertifiedAmount, MONEY_SCALE);
 
   return stated === summed ? null : stated - summed;
 }

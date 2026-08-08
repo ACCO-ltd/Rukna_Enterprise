@@ -13,6 +13,7 @@ describe('NAV_GROUPS', () => {
     expect(NAV_GROUPS.map((g) => g.moduleKey)).toEqual([
       'portfolio',
       'finance',
+      'accounting',
       'operations',
       'reports',
       'administration',
@@ -31,6 +32,52 @@ describe('NAV_GROUPS', () => {
     const finance = NAV_GROUPS.find((g) => g.moduleKey === 'finance')!;
     const enabled = finance.items.filter((i) => !i.disabled);
     expect(enabled.map((i) => i.href)).toEqual(['/receipts']);
+  });
+
+  describe('accounting', () => {
+    const accounting = () => NAV_GROUPS.find((g) => g.moduleKey === 'accounting')!;
+
+    it('enables exactly the Sprint 4A screens', () => {
+      const enabled = accounting()
+        .items.filter((i) => !i.disabled)
+        .map((i) => i.href);
+
+      expect(enabled).toEqual([
+        '/finance/accounting/chart-of-accounts',
+        '/finance/accounting/periods',
+        '/finance/accounting/journals',
+        '/finance/accounting/trial-balance',
+        '/finance/accounting/profit-loss',
+      ]);
+    });
+
+    /**
+     * Supplier bills and payments are declared but disabled: `POST /bills` requires a
+     * `supplierId` and nothing in the API lists, creates or seeds a supplier, so the create
+     * form cannot be built at all. Raised as issue #26. Rendering them greyed out is the
+     * honest presentation — an absent entry reads as a feature nobody thought of.
+     */
+    it('shows the AP screens as disabled while #26 is open', () => {
+      const disabled = accounting()
+        .items.filter((i) => i.disabled)
+        .map((i) => i.href);
+
+      expect(disabled).toContain('/finance/accounting/bills');
+      expect(disabled).toContain('/finance/accounting/payments');
+    });
+
+    it('lists setup before entry before reporting', () => {
+      // The order a new organisation has to work in: nothing posts without a chart of
+      // accounts and a period, and nothing reports until something is posted.
+      const hrefs = accounting().items.map((i) => i.href);
+
+      expect(hrefs.indexOf('/finance/accounting/chart-of-accounts')).toBeLessThan(
+        hrefs.indexOf('/finance/accounting/journals'),
+      );
+      expect(hrefs.indexOf('/finance/accounting/journals')).toBeLessThan(
+        hrefs.indexOf('/finance/accounting/trial-balance'),
+      );
+    });
   });
 
   it('portfolio items are all enabled (live endpoints exist)', () => {

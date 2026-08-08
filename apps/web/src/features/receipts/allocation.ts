@@ -1,6 +1,13 @@
 import type { Contract } from '@/features/contracts/types';
 import type { Ipc } from '@/features/ipc/types';
 import type { Ipa } from '@/features/ipa/types';
+import {
+  MONEY_SCALE,
+  fromMinorUnits as fromMinor,
+  parseMinorUnits,
+  sumMinorUnits,
+  toMinorUnits as toMinor,
+} from '@/lib/money';
 
 import type { ReceiptAllocation } from './types';
 
@@ -12,39 +19,27 @@ import type { ReceiptAllocation } from './types';
  * why not to do this with `Number`, and the figure being computed is "how much of this
  * payment is still unallocated", which decides whether a request is accepted.
  *
- * The alternative was a decimal library, which would be the first runtime dependency added
- * for arithmetic. At two decimal places and ACCO's contract values, integers are exact and
- * cost nothing.
+ * The parser lives in `@/lib/money` — it began here, and moved when the accounting workspace
+ * needed it too. The re-exports below keep this module's callers working; new code should
+ * import from `@/lib/money` directly and name its scale.
  */
 
-/** `"1234.50"` → `123450`. Returns 0 for anything unparseable. */
+/** @deprecated Import from `@/lib/money` and pass `MONEY_SCALE` explicitly. */
 export function toMinorUnits(value: string | null | undefined): number {
-  if (value === null || value === undefined) return 0;
-
-  const trimmed = value.trim();
-  if (!trimmed) return 0;
-
-  const negative = trimmed.startsWith('-');
-  const [whole = '0', fraction = ''] = trimmed.replace('-', '').split('.');
-
-  const major = Number.parseInt(whole || '0', 10);
-  const minor = Number.parseInt(fraction.padEnd(2, '0').slice(0, 2) || '0', 10);
-  if (!Number.isFinite(major) || !Number.isFinite(minor)) return 0;
-
-  const total = major * 100 + minor;
-  return negative ? -total : total;
+  return toMinor(value, MONEY_SCALE);
 }
 
-/** `123450` → `"1234.50"`. The inverse, for values sent back to the API. */
+/** @deprecated Import from `@/lib/money` and pass `MONEY_SCALE` explicitly. */
 export function fromMinorUnits(minor: number): string {
-  const negative = minor < 0;
-  const abs = Math.abs(Math.round(minor));
-  return `${negative ? '-' : ''}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
+  return fromMinor(minor, MONEY_SCALE);
 }
 
 /** Total already allocated on a receipt, in minor units. */
 export function allocatedMinor(allocations: readonly ReceiptAllocation[]): number {
-  return allocations.reduce((sum, a) => sum + toMinorUnits(a.allocatedAmount), 0);
+  return sumMinorUnits(
+    allocations.map((a) => a.allocatedAmount),
+    MONEY_SCALE,
+  );
 }
 
 /**
@@ -105,9 +100,11 @@ export function allocationProblem(
 ): AllocationProblem | null {
   const trimmed = typed.trim();
   if (!trimmed) return 'empty';
-  if (!Number.isFinite(Number(trimmed))) return 'not-a-number';
 
-  const minor = toMinorUnits(trimmed);
+  // The strict parser, not `Number.isFinite`: `Number("1,234")` is NaN but `Number("")` is 0,
+  // and a coalescing parse would turn a typo into a valid zero rather than a rejection.
+  const minor = parseMinorUnits(trimmed, MONEY_SCALE);
+  if (minor === null) return 'not-a-number';
   if (minor <= 0) return 'not-positive';
   if (minor > unallocatedMinor(receiptAmount, allocations)) return 'exceeds-balance';
 
