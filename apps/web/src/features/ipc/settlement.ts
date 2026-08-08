@@ -3,34 +3,31 @@ import { toMinorUnits } from '@/features/receipts/allocation';
 /**
  * ─── How much of a certificate has been paid ────────────────────────────────────
  *
- * The API has an endpoint for exactly this — `GET /receipts/certificate/:id/payment-status`
- * — and half of its answer is wrong. This module takes the half that is right and computes
- * the rest.
+ * Derived from `GET /receipts/certificate/:id/payment-status`, which returns
+ * `{ totalAllocated, netCertified, status }` — all three now as decimal strings.
  *
- * **What the endpoint gets right:** `totalAllocated`, the sum of every allocation against
- * the certificate. That sum is computed in the database and is correct.
+ * **Why this module still exists after C7 (#11) was fixed.** The endpoint's `status` used to
+ * compare `totalAllocated` against the certificate's GROSS `certifiedTotal` rather than its
+ * `netCertified`, which pinned any certificate carrying a deduction at `PARTIALLY_PAID`
+ * forever — a 5% retention made `PAID` unreachable. The server now compares against
+ * `netCertified` and agrees with us. Two things keep the local derivation:
  *
- * **What it gets wrong:** `status`. It compares `totalAllocated` against the certificate's
- * GROSS `certifiedTotal` rather than its `netCertified`. A client pays the net — gross minus
- * retention, advance recovery and tax — so on any certificate carrying a deduction the
- * comparison can never succeed and the status is pinned at `PARTIALLY_PAID` forever. A 5%
- * retention makes `PAID` unreachable. That is C7, issue #11.
+ *  1. `OVER_ALLOCATED` has no server equivalent. The endpoint's `status` tops out at `PAID`,
+ *     so more allocated than the certificate is worth reads as fully settled. C17 (#14) is
+ *     fixed, but receipts allocated while it was open can still be in that state.
+ *  2. It is measured against the `netCertified` on `GET /ipc/:id`, the figure shown beside it
+ *     on this screen. Taking the total from one response and the net from another is how the
+ *     two silently drift apart.
  *
- * So we take `totalAllocated` and compare it ourselves against `netCertified`, which
- * `GET /ipc/:id` already computes and returns. The result is correct today and does not
- * change when #11 is fixed — at which point `status` becomes a redundant second opinion
- * rather than something to migrate to.
+ * ─── Money stays a string ───────────────────────────────────────────────────────
  *
- * ─── The one place a float touches money on this screen ─────────────────────────
+ * `totalAllocated` was once a JS `number` — the one money field on the API that was not a
+ * decimal string (C8, recorded on issue #14). It is a string now, like every other. It is
+ * parsed to integer minor units once, here.
  *
- * `totalAllocated` arrives as a JS `number`, not a decimal string like every other money
- * field on the API (C8, recorded on issue #14). There is no string to preserve, so it is
- * converted to integer minor units once, here, and never used as a float again.
- *
- * This is safe rather than merely tolerable: the server sums in `Decimal` and converts once,
- * and a two-decimal value stays exact in a `double` until roughly 9e13 — five orders of
- * magnitude above ACCO's largest contract. Do not "fix" this into a string parse; the API
- * does not send a string.
+ * The previous version of this file guarded with `Number.isFinite(totalAllocated)`, which
+ * returns `false` for a string and silently reported every certificate as `UNPAID`. Do not
+ * reintroduce a numeric guard: parse the string.
  */
 
 export type SettlementState = 'UNPAID' | 'PARTIALLY_PAID' | 'PAID' | 'OVER_ALLOCATED';
@@ -46,17 +43,14 @@ export interface Settlement {
 }
 
 /**
- * `netCertified` is the decimal string from `GET /ipc/:id`; `totalAllocated` is the number
+ * Both arguments are decimal strings: `netCertified` from `GET /ipc/:id`, `totalAllocated`
  * from the payment-status endpoint. Pass `null` for `totalAllocated` while it is loading or
  * if the call failed — the result is then `UNPAID` with nothing allocated, which reads as
  * "no payment recorded" rather than inventing one.
  */
-export function settlementFor(netCertified: string, totalAllocated: number | null): Settlement {
+export function settlementFor(netCertified: string, totalAllocated: string | null): Settlement {
   const netMinor = toMinorUnits(netCertified);
-  const allocatedMinor =
-    totalAllocated === null || !Number.isFinite(totalAllocated)
-      ? 0
-      : Math.round(totalAllocated * 100);
+  const allocatedMinor = totalAllocated === null ? 0 : toMinorUnits(totalAllocated);
 
   const outstandingMinor = netMinor - allocatedMinor;
 

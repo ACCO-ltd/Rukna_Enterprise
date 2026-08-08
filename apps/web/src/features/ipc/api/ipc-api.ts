@@ -65,22 +65,20 @@ export function supersedeIpc(
 /**
  * Settlement status for one certificate.
  *
- * ⚠ **Use `totalAllocated`. Do not use `status`.**
+ * Returns `{ totalAllocated, netCertified, status }`, all decimal strings.
  *
- * `totalAllocated` is the sum of every allocation against this certificate, computed in the
- * database, and it is correct. It arrives as a JS number rather than a decimal string,
- * unlike every other money field on the API (C8, recorded on issue #14) — `settlementFor`
- * converts it to integer minor units once and explains why that is safe.
+ * Both defects this endpoint used to carry are fixed, verified against
+ * `finance.repository.ts` on 2026-08-09:
  *
- * `status` compares that sum against the certificate's GROSS `certifiedTotal` rather than
- * its `netCertified`. A client pays the net, so any certificate carrying a deduction is
- * pinned at PARTIALLY_PAID and can never report PAID — confirmed against the running API in
- * issue #11 (C7). `settlementFor` derives the state from `netCertified` instead, which is
- * right today and stays right when #11 lands.
+ *  - C7 (#11) — `status` compared allocations against the GROSS `certifiedTotal`, so any
+ *    certificate carrying a deduction was pinned at PARTIALLY_PAID. It compares against
+ *    `netCertified` now.
+ *  - C8 — `totalAllocated` was a JS number rather than a decimal string. It is `.toFixed(2)`
+ *    now, like every other money field.
  *
- * This is a narrower rule than the one that used to be here, which said not to call this
- * endpoint at all. That was written when the intent was to display `status` directly; there
- * is no reason to discard a correct sum over a wrong comparison beside it.
+ * `settlementFor` still derives the state locally rather than reading `status`: the server
+ * has no `OVER_ALLOCATED`, and the net it measures against must be the one this screen
+ * displays. See the note on that function.
  */
 export function getCertificatePaymentStatus(
   certificateId: string,

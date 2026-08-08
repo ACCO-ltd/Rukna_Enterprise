@@ -16,7 +16,10 @@ import { getIpa } from '@/features/ipa/api/ipa-api';
 import { getBoqTree } from '@/features/boq/api/boq-api';
 import type { ContractDetail } from '@/features/contracts/types';
 import type { BoqTreeNode, IpaDetail as IpaDetailType } from '@/lib/api-types';
-import type { IpcDetail as IpcDetailType } from '@/features/ipc/types';
+import type {
+  CertificatePaymentStatus,
+  IpcDetail as IpcDetailType,
+} from '@/features/ipc/types';
 import { ApiError } from '@/lib/api-client';
 
 import { IpcDetail } from './ipc-detail';
@@ -170,6 +173,21 @@ function certifiedLine() {
   };
 }
 
+/**
+ * A payment-status response. All three fields are decimal strings — `totalAllocated` was a
+ * JS number until C8 was fixed, and `settlementFor` guarded it with `Number.isFinite`,
+ * which is false for a string. Mocking a number here is what hid that.
+ *
+ * Every certificate in this file nets to 47,500 (gross 50,000 less 2,500 retention) — the
+ * shape C7 (#11) could not report as paid.
+ */
+function payment(
+  totalAllocated: string,
+  status: CertificatePaymentStatus['status'],
+): CertificatePaymentStatus {
+  return { totalAllocated, netCertified: '47500.00', status };
+}
+
 /** Gross 50,000 less 2,500 retention = 47,500 net — the shape C7 (#11) cannot report as paid. */
 function certificate(overrides: Partial<IpcDetailType> = {}): IpcDetailType {
   return {
@@ -221,10 +239,7 @@ beforeEach(() => {
   vi.mocked(getIpa).mockResolvedValue(application());
   // Every test renders the settlement section, so give it a default rather than leaving the
   // query resolving undefined in the tests that are not about payment.
-  vi.mocked(getCertificatePaymentStatus).mockResolvedValue({
-    totalAllocated: 0,
-    status: 'UNPAID',
-  });
+  vi.mocked(getCertificatePaymentStatus).mockResolvedValue(payment('0.00', 'UNPAID'));
 });
 
 function renderDetail() {
@@ -234,10 +249,7 @@ function renderDetail() {
 describe('IpcDetail', () => {
   it('leads with the net certified amount, which is what the client owes', async () => {
     vi.mocked(getIpc).mockResolvedValue(certificate());
-    vi.mocked(getCertificatePaymentStatus).mockResolvedValue({
-      totalAllocated: 0,
-      status: 'UNPAID',
-    });
+    vi.mocked(getCertificatePaymentStatus).mockResolvedValue(payment('0.00', 'UNPAID'));
 
     renderDetail();
 
@@ -254,10 +266,7 @@ describe('IpcDetail', () => {
      */
     it('reports a fully settled certificate as paid even when the API says otherwise', async () => {
       vi.mocked(getIpc).mockResolvedValue(certificate());
-      vi.mocked(getCertificatePaymentStatus).mockResolvedValue({
-        totalAllocated: 47500,
-        status: 'PARTIALLY_PAID',
-      });
+      vi.mocked(getCertificatePaymentStatus).mockResolvedValue(payment('47500.00', 'PARTIALLY_PAID'));
 
       renderDetail();
 
@@ -267,10 +276,7 @@ describe('IpcDetail', () => {
 
     it('shows what has been allocated and what is still outstanding', async () => {
       vi.mocked(getIpc).mockResolvedValue(certificate());
-      vi.mocked(getCertificatePaymentStatus).mockResolvedValue({
-        totalAllocated: 20000,
-        status: 'PARTIALLY_PAID',
-      });
+      vi.mocked(getCertificatePaymentStatus).mockResolvedValue(payment('20000.00', 'PARTIALLY_PAID'));
 
       renderDetail();
 
@@ -281,10 +287,7 @@ describe('IpcDetail', () => {
 
     it('flags a certificate with more allocated against it than it is worth', async () => {
       vi.mocked(getIpc).mockResolvedValue(certificate());
-      vi.mocked(getCertificatePaymentStatus).mockResolvedValue({
-        totalAllocated: 48000,
-        status: 'PAID',
-      });
+      vi.mocked(getCertificatePaymentStatus).mockResolvedValue(payment('48000.00', 'PAID'));
 
       renderDetail();
 
@@ -315,10 +318,7 @@ describe('IpcDetail', () => {
       vi.mocked(getIpc).mockResolvedValue(
         certificate({ certifiedTotal: '50500.00', totalCertifiedAmount: '50000.00' }),
       );
-      vi.mocked(getCertificatePaymentStatus).mockResolvedValue({
-        totalAllocated: 0,
-        status: 'UNPAID',
-      });
+      vi.mocked(getCertificatePaymentStatus).mockResolvedValue(payment('0.00', 'UNPAID'));
 
       renderDetail();
 
@@ -328,10 +328,7 @@ describe('IpcDetail', () => {
 
     it('says nothing when the two agree', async () => {
       vi.mocked(getIpc).mockResolvedValue(certificate());
-      vi.mocked(getCertificatePaymentStatus).mockResolvedValue({
-        totalAllocated: 0,
-        status: 'UNPAID',
-      });
+      vi.mocked(getCertificatePaymentStatus).mockResolvedValue(payment('0.00', 'UNPAID'));
 
       renderDetail();
 
@@ -348,10 +345,7 @@ describe('IpcDetail', () => {
         supersessionReason: 'Re-measured after site inspection',
       }),
     );
-    vi.mocked(getCertificatePaymentStatus).mockResolvedValue({
-      totalAllocated: 0,
-      status: 'UNPAID',
-    });
+    vi.mocked(getCertificatePaymentStatus).mockResolvedValue(payment('0.00', 'UNPAID'));
 
     renderDetail();
 
@@ -387,10 +381,7 @@ describe('IpcDetail', () => {
 
   it('shows a certified line with the reason the certifier cut it', async () => {
     vi.mocked(getIpc).mockResolvedValue(certificate({ items: [certifiedLine()] }));
-    vi.mocked(getCertificatePaymentStatus).mockResolvedValue({
-      totalAllocated: 0,
-      status: 'UNPAID',
-    });
+    vi.mocked(getCertificatePaymentStatus).mockResolvedValue(payment('0.00', 'UNPAID'));
 
     renderDetail();
 

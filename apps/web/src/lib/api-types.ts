@@ -597,7 +597,17 @@ export interface ReceiptDetail extends Receipt {
  *    can never reach PAID. That is C7 — the UI must not present this as settlement truth
  *    until it is resolved.
  */
+/**
+ * `GET /receipts/certificate/:id/payment-status`.
+ *
+ * All three fields are decimal strings. `totalAllocated` was a JS number until C8 was fixed
+ * (`finance.repository.ts` now returns `.toFixed(2)`); the type said `number` for longer than
+ * that was true, and `settlementFor` guarded it with `Number.isFinite`, which is `false` for
+ * a string — so every certificate read as UNPAID. Verified against the repository, 2026-08-09.
+ */
 export interface CertificatePaymentStatus {
-  totalAllocated: number;
+  totalAllocated: string;
+  /** Server-side net: ∑ item `certifiedAmount` − ∑ deduction `amount`. */
+  netCertified: string;
   status: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
 }

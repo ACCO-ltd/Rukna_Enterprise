@@ -23,7 +23,7 @@ describe('grossDisagreementMinor', () => {
 
 describe('settlementFor', () => {
   it('reads a certificate with no allocations as unpaid', () => {
-    const result = settlementFor('50000.00', 0);
+    const result = settlementFor('50000.00', '0.00');
 
     expect(result.state).toBe('UNPAID');
     expect(result.allocatedMinor).toBe(0);
@@ -31,14 +31,14 @@ describe('settlementFor', () => {
   });
 
   it('reads a part-paid certificate as partially paid', () => {
-    const result = settlementFor('50000.00', 20000);
+    const result = settlementFor('50000.00', '20000.00');
 
     expect(result.state).toBe('PARTIALLY_PAID');
     expect(result.outstandingMinor).toBe(3_000_000);
   });
 
   it('reads an exactly settled certificate as paid', () => {
-    expect(settlementFor('50000.00', 50000).state).toBe('PAID');
+    expect(settlementFor('50000.00', '50000.00').state).toBe('PAID');
   });
 
   /**
@@ -49,14 +49,14 @@ describe('settlementFor', () => {
    */
   it('reads a certificate carrying retention as paid when its NET is settled', () => {
     // Gross 50,000 less 5% retention = 47,500 net. The client pays the net.
-    const result = settlementFor('47500.00', 47500);
+    const result = settlementFor('47500.00', '47500.00');
 
     expect(result.state).toBe('PAID');
     expect(result.outstandingMinor).toBe(0);
   });
 
   it('distinguishes an over-allocated certificate from a settled one', () => {
-    const result = settlementFor('47500.00', 48000);
+    const result = settlementFor('47500.00', '48000.00');
 
     expect(result.state).toBe('OVER_ALLOCATED');
     expect(result.outstandingMinor).toBe(-50_000);
@@ -65,11 +65,11 @@ describe('settlementFor', () => {
   it('does not call a zero-value certificate paid', () => {
     // Nothing was ever owed, so nothing was ever paid. Reporting PAID here would put a
     // settled badge on a certificate that certifies nothing.
-    expect(settlementFor('0.00', 0).state).toBe('UNPAID');
+    expect(settlementFor('0.00', '0.00').state).toBe('UNPAID');
   });
 
   describe('while the allocation total is unavailable', () => {
-    it.each([[null], [Number.NaN], [Number.POSITIVE_INFINITY]])(
+    it.each([[null], [''], ['   '], ['not-a-number']])(
       'treats %s as nothing allocated rather than inventing a payment',
       (input) => {
         const result = settlementFor('50000.00', input);
@@ -80,22 +80,23 @@ describe('settlementFor', () => {
     );
   });
 
-  describe('float handling on totalAllocated', () => {
-    // The endpoint sends a JS number, not a decimal string (C8). These are the values that
-    // would drift if it were kept as a float and compared directly.
+  describe('parsing totalAllocated', () => {
+    // The endpoint sends a decimal string (C8 fixed). A previous version typed it `number`
+    // and guarded with `Number.isFinite`, which is false for a string — every certificate
+    // came back UNPAID. These are the values that catch a regression to that.
     it('settles exactly on a value with cents', () => {
-      expect(settlementFor('1234.56', 1234.56).state).toBe('PAID');
+      expect(settlementFor('1234.56', '1234.56').state).toBe('PAID');
     });
 
     it('does not round a near-miss up into a settlement', () => {
-      const result = settlementFor('1234.56', 1234.55);
+      const result = settlementFor('1234.56', '1234.55');
 
       expect(result.state).toBe('PARTIALLY_PAID');
       expect(result.outstandingMinor).toBe(1);
     });
 
     it('stays exact at contract scale', () => {
-      expect(settlementFor('98765432.10', 98765432.1).state).toBe('PAID');
+      expect(settlementFor('98765432.10', '98765432.10').state).toBe('PAID');
     });
   });
 });
