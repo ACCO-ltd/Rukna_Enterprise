@@ -89,22 +89,37 @@ For discrepancies between the reference and the running API, see
 
 Build in this order. Each sprint's backend is complete and tested before appearing here.
 
-### ⏳ Sprint 4 Frontend — Accounting Workspace (START HERE)
+### ✅ Sprint 4 Frontend — Accounting Workspace (done 2026-08-09)
 
-Backend: ✅ complete — 87 integration tests passing.
-Design spec: `frontend-design.md` **Section 11 — Accounting Workspace**.
-API reference: `api-reference.md` **Sections 6.13–6.23**.
+Ten screens under `/finance/accounting`, in `src/features/accounting/`. Chart of Accounts,
+Fiscal Periods, Manual Journals (list/editor/detail with the full lifecycle), Trial Balance,
+P&L, Balance Sheet, Account Ledger, Monthly Comparison, and period management.
 
-Build in this tier order (from the spec):
-1. Chart of Accounts browser
-2. Fiscal Year + Period manager
-3. Manual Journal entry
-4. Supplier Bills list and post action
-5. Supplier Payments list
-6. Trial Balance, P&L, Balance Sheet reports
-7. Period lock / close controls
+**Four things to know before you touch accounting or start Sprint 5:**
 
-### ⏳ Sprint 5 Frontend — Procurement Workspace (after Sprint 4 UI done)
+1. **`api-reference.md` §6.13–6.23 is wrong in ten places.** Read the controllers and DTOs in
+   `apps/api/src/business/accounting/` instead. The create-bill body has three wrong field
+   names, the create-account body omits a required field, and every GL account code in the
+   section is 4-digit while the seeded chart is 5-digit — so a body copied out of the
+   reference `400`s or `404`s. All ten are A4–A10 in `frontend-blockers.md`.
+2. **Money arithmetic lives in `src/lib/money.ts`,** in integer minor units with an explicit
+   `scale`. Sprint 5 quantities are 3dp (`QUANTITY_SCALE`), money is 2dp. Use
+   `parseMinorUnits` for user input — it returns `null` on a bad value rather than `0`,
+   because a typo reading as a valid zero is how an unbalanced journal passes validation.
+3. **Accounting strings live in `messages/{en,ar}/accounting.json`,** not `platform.json`.
+   Give procurement its own `procurement.json` and register it in `src/i18n/request.ts` and
+   `src/test/render.tsx`. `src/i18n/catalogues.test.ts` guards duplicate keys and en/ar parity.
+4. **`can()` is called on every accounting action** with `PERMISSIONS_ENFORCED` still false.
+   Do the same in procurement — one boolean then secures both workspaces.
+
+Blocked, declared in the nav and disabled: Supplier Bills, Supplier Payments
+([#26](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/26) — no supplier endpoint, so a
+bill cannot be created), Client Invoices and Customer Receipts
+([#24](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/24) — route collision on
+`/receipts`). Also open: [#25](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/25), the
+accounting module has no authorization at all.
+
+### ⏳ Sprint 5 Frontend — Procurement Workspace (START HERE)
 
 Backend: ✅ complete — 102 integration tests passing (87 accounting + 15 procurement).
 Design spec: `frontend-design.md` **Section 12 — Procurement Workspace**.
@@ -112,6 +127,14 @@ API reference: `api-reference.md` **Sections 6.24–6.32**.
 
 Covers: Units of Measure, Materials catalogue, Material Requests, Purchase Orders,
 Goods Receipts, Bill Matching, Commitment Ledger dashboard.
+
+> **Run a contract sweep of §6.24–6.32 against the controllers before writing a screen.**
+> The equivalent sweep for Sprint 4 found ten defects, three of them blocking, in the time
+> it took to read the route decorators — and it found them before they were built on.
+>
+> **Purchase Orders will hit [#26](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/26):**
+> `POST /purchase-orders` takes a `supplierId`, and there is still no endpoint that lists
+> suppliers. Check whether it has landed before planning the PO create form.
 
 ---
 

@@ -33,7 +33,7 @@ Both are required. The roadmap below builds them in the correct sequence.
 | **Sprint 2** | Projects and BOQ | ✅ Complete |
 | **Sprint 3** | Contracts and Client Billing | ✅ Complete |
 | **Sprint 4** | Accounting Foundation | ✅ Complete |
-| **Sprint 4 Frontend** | Accounting Workspace UI | ⏳ Next — Frontend Engineer |
+| **Sprint 4 Frontend** | Accounting Workspace UI | ✅ Complete (10 of 12 screens — see below) |
 | **Sprint 5** | Procurement, AP Integration, and Commitment Control | ✅ Complete |
 | **Sprint 5 Frontend** | Procurement Workspace UI | ⏳ Next — Frontend Engineer |
 | **Sprint 6** | Variations / Change Management | Planned |
@@ -129,14 +129,42 @@ All queries org-scoped (cross-tenant access blocked)
 
 ---
 
-### Sprint 4 Frontend — Accounting Workspace UI ⏳
+### Sprint 4 Frontend — Accounting Workspace UI ✅ Complete
 
-The backend is complete and API-ready. The frontend engineer (Abdimalik) now builds the
-accounting workspace so Finance can operate it without using the API directly.
+Delivered 2026-08-09. Ten screens under `/finance/accounting`, each in English and Arabic
+with RTL, working at 375px, and covered by tests. 730 frontend tests passing.
 
-**What to build:** See `frontend-design.md` Section 11 — Accounting Workspace.
+| Tier | Screens |
+|---|---|
+| **A — Setup** | Chart of Accounts · Fiscal Periods |
+| **B — Entry** | Manual Journals — list, editor, and detail carrying the full DRAFT → SUBMITTED → APPROVED → POSTED → REVERSED lifecycle |
+| **C — Reporting** | Trial Balance · Profit & Loss · Balance Sheet · Account Ledger · Monthly Comparison |
+| **D — Period management** | Lock · Close, with the close-gate pre-flight · Reopen · Snapshot rebuild · Year-end close |
 
-**Dependency:** All endpoints listed in `api-reference.md` Section 6.13 are live and tested.
+**Four screens were cut, and each for a backend blocker rather than a scope choice.**
+
+Tier B2 (Client Invoices) and B3 (Customer Receipts) sit on `/receipts`, where two
+controllers are mounted at the same path — Sprint 3's `FinanceModule` registers first and
+shadows Sprint 4's `CustomerReceipt` list, detail and allocate routes, returning the wrong
+entity with a `200` ([#24](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/24)).
+
+Supplier Bills and Supplier Payments are not buildable at all: `POST /bills` requires a
+`supplierId`, and nothing in the API lists, creates or seeds a supplier
+([#26](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/26)). Both are declared in the
+navigation and disabled, so the gap reads as pending rather than forgotten.
+
+**Open blockers**, all found by a contract sweep run *before* any screen was written:
+[#24](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/24) the route collision ·
+[#25](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/25) the accounting module has no
+authorization of any kind, so any signed-in user can close a fiscal year ·
+[#26](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/26) no supplier or posting-profile
+endpoints.
+
+Seven further contract and documentation defects are recorded as A4–A10 in
+`docs/backend-requests/frontend-blockers.md`. Three of them — the create-bill body, the
+create-account body, and every GL account code in the section — mean a request copied
+faithfully out of `api-reference.md` §6.13–6.23 fails with a `400` or a `404`. **Read the
+controllers, not the reference, until those are fixed.**
 
 ---
 
