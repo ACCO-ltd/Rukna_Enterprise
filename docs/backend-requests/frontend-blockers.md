@@ -2,8 +2,9 @@
 
 Raised by: Frontend Engineer (`apps/web`, `packages/ui`)
 For: **Abdulsalam** (backend, `apps/api`) — and where marked, **Eng Ahmed Shirie** (domain)
-Raised: 2026-08-03 · Last re-verified: 2026-08-04 against `c8afdd6`
-Status: Open
+Raised: 2026-08-03 · Last re-verified: 2026-08-09 against `e738bfe`
+Status: **A-series open** (Sprint 4 accounting). Every ticketed B- and C-series finding is
+fixed; the untracked `in doc` gaps in both series remain — see below.
 
 This document is the source of truth for backend work the frontend is waiting on.
 Items marked **Blocking** prevent a UI surface from functioning at all — they are not
@@ -14,6 +15,15 @@ Findings were produced by reading `apps/api/src` directly, not by inference from
 - **B-series** (Sprint 1–2 platform, projects, BOQ) — first raised against commit `e1f2139`.
 - **C-series** (Sprint 3 commercial modules) — first raised against commit `776b695`,
   before frontend work on Contracts, IPA, IPC and Receipts began.
+- **A-series** (Sprint 4 accounting) — raised against `e738bfe` 2026-08-09, during the
+  contract sweep run before any accounting UI was written.
+
+**What is resolved, precisely.** Every B- and C-series finding that was *ticketed* is fixed
+and its issue is closed, each verified individually on 2026-08-09 by opening the file named in
+its row. The findings recorded only here — the ones whose status reads `in doc` — were never
+ticketed and are **still open**: B6–B10, B12, B13, C5, C9, C10, C13, C15 and the D-series. They
+are gaps and contract untidiness rather than blockers, which is why they were never filed, but
+"the tracked issues are closed" is not "the list is clear".
 
 ### How to read the verification stamps
 
@@ -43,15 +53,47 @@ findings are not deleted, so that a reader can tell the difference between "reso
 Status values: an issue link means it is tracked in GitHub; **in doc** means this document is
 the only record and no ticket exists; **fixed** names the commit that resolved it.
 
+### Sprint 4 — accounting (A-series) · open
+
+Raised 2026-08-09 from the contract sweep against `e738bfe`. The first three are blocking;
+the rest are documentation and contract defects in `api-reference.md` §6.13–6.23 that would
+each have produced a `400` or a `404` in a screen built faithfully from the reference.
+
 | ID | Severity | Area | Summary | Status |
 |---|---|---|---|---|
-| [B1](#b1) | **Blocking — bug** | Projects | No project can ever get its first member | [#5](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/5) |
-| [B2](#b2) | **Blocking** | Users | No endpoint lists users in an organization | [#6](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/6) |
-| [B3](#b3) | **Blocking** | Workflows | `GET` endpoint requires a request body — uncallable from a browser | [#7](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/7) |
-| [B4](#b4) | **Security** | Workflows | Approver identity is taken from the request body | [#8](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/8) |
-| [B5](#b5) | **Security** | Roles | `orgId` read from query string, unscoped by token | [#16](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/16) · audit half **fixed** `776b695` |
-| [B14](#b14) | **Blocking — bug** | BOQ | `move` always 500s and half-applies, corrupting descendant paths | [#4](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/4) |
-| [B11](#b11) | **Security** | BOQ | Version endpoints missing the organization check | [#17](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/17) |
+| [A1](#a1) | **Blocking — bug** | AR | Two controllers mounted at `/receipts`; Sprint 4's `CustomerReceipt` list/detail/allocate are shadowed and return the wrong entity with a `200` | [#24](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/24) |
+| [A2](#a2) | **Security** | Accounting | No authorization anywhere in the module — any authenticated user can close a fiscal year or reopen a period | [#25](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/25) |
+| [A3](#a3) | **Blocking** | AP | `Supplier` and `PostingProfile` have no endpoints, so a supplier bill cannot be created at all | [#26](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/26) |
+| [A4](#a4) | **Contract — docs** | AP | §6.20 create-bill body is wrong in three places (`amount`, missing `vatAmount`, `postingProfileCode`) | in doc |
+| [A5](#a5) | **Contract — docs** | COA | §6.13 omits the required `controlPostingPolicy`; the bulk-import example omits four required fields | in doc |
+| [A6](#a6) | Contract | COA | `CreateAccountDto` accepts 2 of the schema's 3 `ControlPostingPolicy` values — the seeded bank accounts use the third | in doc |
+| [A7](#a7) | Docs | AP | `GET /bills?status=` documented, not implemented | in doc |
+| [A8](#a8) | **Docs** | Accounting | Every GL account code in §6.13–6.23 is 4-digit and none exists in the seeded 5-digit COA | in doc |
+| [A9](#a9) | Contract | AP | Money is a JSON number on the whole AP write path, against the platform money-as-string rule | in doc |
+| [A10](#a10) | Docs | GL | No `GET /periods`; periods are reachable only embedded in `/fiscal-years` | in doc |
+
+### Sprint 1–2 — platform, projects, BOQ
+
+Rows carrying a `fixed` stamp were re-verified individually against `e738bfe` on 2026-08-09.
+Rows still reading `in doc` have not been fixed and have no ticket. Entries are kept rather
+than deleted, so that "resolved" stays distinguishable from "never existed".
+
+One consequence is worth carrying forward: fixing C7 and C8 together changed the shape of
+`GET /receipts/certificate/:id/payment-status` from `{ totalAllocated: number, status }` to
+`{ totalAllocated: string, netCertified: string, status }`. `apps/web` was not told, kept the
+old type, and guarded a string with `Number.isFinite` — so every certificate rendered as
+UNPAID, with the unit tests passing throughout because they mocked the old shape. Fixed in
+`f15d7ab`. A correctness fix on the API is a breaking change for its consumers.
+
+| ID | Severity | Area | Summary | Status |
+|---|---|---|---|---|
+| [B1](#b1) | **Blocking — bug** | Projects | No project can ever get its first member | **fixed** `e85bab9` — `project.service.ts:90` auto-enrols the creator as PROJECT_MANAGER, so the deadlock is broken at creation. The `assertMember` guard on `addMember` correctly remains. |
+| [B2](#b2) | **Blocking** | Users | No endpoint lists users in an organization | **fixed** `e85bab9` — `GET /users` lists the caller's organization from the token. |
+| [B3](#b3) | **Blocking** | Workflows | `GET` endpoint requires a request body — uncallable from a browser | **fixed** `e85bab9` — now `@Param('transactionType')`; no body. |
+| [B4](#b4) | **Security** | Workflows | Approver identity is taken from the request body | **fixed** `e85bab9` — approve/reject use `identity.userId`; the body carries only `notes`. |
+| [B5](#b5) | **Security** | Roles | `orgId` read from query string, unscoped by token | **fixed** `776b695` + `e85bab9` — reads `identity.activeOrganizationId`. |
+| [B14](#b14) | **Blocking — bug** | BOQ | `move` always 500s and half-applies, corrupting descendant paths | **fixed** `e85bab9` — `moveNode` runs inside `prisma.$transaction([...])` and rewrites descendant paths; cycle, self-move and leaf-parent guards added. |
+| [B11](#b11) | **Security** | BOQ | Version endpoints missing the organization check | **fixed** `e85bab9` — `boq-versioning.service.ts:36,182` throw `ForbiddenException` on org mismatch. |
 | [B13](#b13) | Contract | BOQ | `move` never reindexes siblings, so positions can tie | comment on [#4](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/4) |
 | [B6](#b6) | Contract | Several | Undocumented empty response bodies | in doc |
 | [B7](#b7) | Correctness | BOQ | Money totals computed in floating point | in doc |
@@ -66,21 +108,21 @@ the only record and no ticket exists; **fixed** names the commit that resolved i
 
 | ID | Severity | Area | Summary | Status |
 |---|---|---|---|---|
-| [C2](#c2) | **Security** | IPC | `POST /ipc` checks nothing about the application it certifies | [#9](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/9) |
-| [C3](#c3) | **Security** | IPA | Unit rate is taken from the request, not the contractual BOQ | [#10](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/10) |
-| [C16](#c16) | **Security** | Finance | A receipt can be allocated to another client's certificate, in another currency | [#18](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/18) |
-| [C1](#c1) | **Blocking — design** | IPC | Retention and advance-recovery arithmetic is delegated to the browser | [#12](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/12) |
-| [C7](#c7) | **Correctness — bug** | Finance | Payment status measures against gross, so a settled IPC never reads `PAID` | [#11](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/11) |
-| [C4](#c4) | Correctness | IPA | A line can be claimed beyond its contracted BOQ quantity | [#19](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/19) |
+| [C2](#c2) | **Security** | IPC | `POST /ipc` checks nothing about the application it certifies | **fixed** `e85bab9` — `ipc.service.ts:54-62` requires the application to exist, be in the org, and be SUBMITTED. |
+| [C3](#c3) | **Security** | IPA | Unit rate is taken from the request, not the contractual BOQ | **fixed** `e85bab9` — `ipa.service.ts:191` prices from `boqNode.unitRate`; the request cannot supply it. |
+| [C16](#c16) | **Security** | Finance | A receipt can be allocated to another client's certificate, in another currency | **fixed** `e85bab9` — `finance.service.ts:62,67` reject a cross-client allocation and a currency mismatch. |
+| [C1](#c1) | **Blocking — design** | IPC | Retention and advance-recovery arithmetic is delegated to the browser | **fixed** `68b056d` — `certifiedTotal` is computed from the items server-side and is absent from every IPC DTO; RETENTION and ADVANCE_RECOVERY are generated by the server. |
+| [C7](#c7) | **Correctness — bug** | Finance | Payment status measures against gross, so a settled IPC never reads `PAID` | **fixed** `e85bab9` — `finance.repository.ts:103` compares against `netCertified`. |
+| [C4](#c4) | Correctness | IPA | A line can be claimed beyond its contracted BOQ quantity | **fixed** `e85bab9` — `ipa.service.ts:171` rejects a cumulative claim above the contracted BOQ quantity. |
 | [C5](#c5) | Contract | IPA | Workflow policy is resolved but no approval instance is created | no action needed |
-| [C6](#c6) | **Contract — bug** | Types | Shared DTOs shipped, but 13 of 16 do not match the API | [#21](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/21) |
-| [C8](#c8) | Contract | Finance | `totalAllocated` returns a number, breaking the money-as-string rule | comment on [#14](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/14) |
+| [C6](#c6) | **Contract — bug** | Types | Shared DTOs shipped, but 13 of 16 do not match the API | **mostly fixed** `e85bab9` — field names, money-as-string and dates now match. **Residual:** nullable columns are typed `field?: T` (optional) where the API sends `null`, and `null` is not assignable to an optional `T`. `apps/web` keeps its own `api-types.ts` with `T | null` for this reason. Re-raise before anyone adopts these DTOs. |
+| [C8](#c8) | Contract | Finance | `totalAllocated` returns a number, breaking the money-as-string rule | **fixed** `e85bab9` — `totalAllocated` is `.toFixed(2)`. Broke `apps/web`, which still typed it `number`; fixed frontend-side in `f15d7ab`. |
 | [C9](#c9) | Gap | BOQ | `measurementMethod` and `pricingBasis` can never be set | in doc |
 | [C10](#c10) | Contract | Contracts | Retention split is spelled `…OnPc` in, `…OnPC` out | in doc |
 | [C13](#c13) | Gap | Contracts | Cancel and terminate require a reason and discard it | in doc |
-| [C14](#c14) | **Blocking — bug** | IPA | `RETURNED_FOR_REVISION` is a dead end — editable, unsubmittable | [#13](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/13) |
+| [C14](#c14) | **Blocking — bug** | IPA | `RETURNED_FOR_REVISION` is a dead end — editable, unsubmittable | **fixed** `e85bab9` — `submit-for-approval` accepts `RETURNED_FOR_REVISION`, which is also in `MUTABLE_STATUSES`. |
 | [C15](#c15) | Gap | IPA | Claimed items carry a bare `boqNodeId` — no code or description | in doc |
-| [C17](#c17) | **Correctness — bug** | Finance | A negative allocation is accepted and defeats the over-allocation guard | [#14](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/14) |
+| [C17](#c17) | **Correctness — bug** | Finance | A negative allocation is accepted and defeats the over-allocation guard | **fixed** `e85bab9` — `finance.service.ts:74` rejects `allocatedAmount <= 0`. |
 | [D3](#d3) | Docs | Clients, Contracts | Documented request shapes that return `400` | in doc |
 | [D4](#d4) | **Domain** | IPA | May a claim go below what was already certified? | [domain-questions.md](./domain-questions.md) |
 
@@ -1033,6 +1075,143 @@ outright when copied.
    /contracts/:id/terminate` is documented, but the lifecycle chain shown in
    `roadmap.md:61` and `apps/web/CLAUDE.md:130` ends at `CLOSED` and never mentions the
    terminated state. Worth showing it as a terminal state alongside `CANCELLED`.
+
+---
+
+## Sprint 4 — accounting (A-series)
+
+Raised 2026-08-09 against `e738bfe`, from a sweep of `apps/api/src/business/accounting`
+against `api-reference.md` §6.13–6.23 run **before** any accounting screen was written. Every
+finding below was produced by opening the controller, DTO or seed named in it.
+
+A1–A3 are filed as GitHub issues. A4–A10 are documentation and contract defects recorded here.
+
+### <a id="a1"></a>A1 — Two controllers are mounted at `/receipts`
+
+**[#24](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/24) · Blocking · verified at `e738bfe` (2026-08-09)**
+
+`finance.controller.ts:33` and `customer-receipt.controller.ts:18` both declare
+`@Controller('receipts')`. `app.module.ts` registers `FinanceModule` (line 38) before
+`AccountingModule` (line 39), and Nest resolves the first matching route, so Sprint 3 wins
+`GET /receipts`, `GET /receipts/:id` and `POST /receipts/:id/allocations`. Sprint 4's
+`CustomerReceipt` list, detail and allocate are unreachable.
+
+It does not 404 — it returns a `PaymentReceipt` with a `200`. The 87 accounting integration
+tests do not catch it because they exercise services, not the HTTP router.
+
+**Frontend impact:** Sprint 4 Tier B2 (Client Invoices) and B3 (Customer Receipts) are cut
+from sprint scope. The remaining 15 accounting screens are unaffected.
+
+### <a id="a2"></a>A2 — The accounting module has no authorization
+
+**[#25](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/25) · Security · verified at `e738bfe` (2026-08-09)**
+
+`frontend-design.md` §11.2 lists six permissions and states that "the backend enforces them
+independently". It does not. None of the six strings appears anywhere in the repository, and
+no `PermissionGuard` or `@Permissions()` decorator exists in `apps/api/src` at all — every
+accounting controller carries `@UseGuards(JwtAuthGuard)` and nothing more. The `permissions`
+table is never seeded, so every JWT carries `permissions: []`.
+
+Any authenticated user in the tenant can therefore close a period, reopen a closed period,
+rebuild balance snapshots, or run the year-end close.
+
+Separately, §11.2's names (`manage:ar`, `manage:ap`, `manage:year-end`) do not follow the live
+`action:resource` convention (`view:project`, `manage:role`). Worth settling before seeding.
+
+**Frontend impact:** `can()` calls are wired into every accounting page and destructive action
+using `action:resource` names, with `PERMISSIONS_ENFORCED` left `false` in
+`apps/web/src/features/auth/permissions/can.ts` so nothing is hidden while the array is empty.
+One boolean secures all 15 screens once a guard exists.
+
+### <a id="a3"></a>A3 — `Supplier` and `PostingProfile` have no endpoints
+
+**[#26](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/26) · Blocking · verified at `e738bfe` (2026-08-09)**
+
+`CreateSupplierBillDto` requires `supplierId`; `CreateSupplierBillLineDto` requires
+`expenseProfileCode`. Both models exist (`schema.prisma:1172`, `:1220`) and neither has a
+controller. No supplier is seeded either, so there is no way to obtain a valid `supplierId`
+through the API at all — `POST /bills` and `POST /payments` cannot be exercised. Four posting
+profiles *are* seeded but nothing exposes them.
+
+`POST /purchase-orders` also takes a `supplierId`, so Sprint 5 hits the same wall.
+
+**Asked for:** `GET /suppliers` and `GET /posting-profiles`, read-only, to populate pickers.
+
+### <a id="a4"></a>A4 — §6.20's create-bill body is wrong in three places
+
+**Contract · verified against `create-supplier-bill.dto.ts` (2026-08-09)**
+
+| Documented | Actual | Effect |
+|---|---|---|
+| `amount` | `netAmount` | required field missing → `400` |
+| *(absent)* | `vatAmount` | required field missing → `400` |
+| `postingProfileCode` | `expenseProfileCode` | required field missing → `400` |
+
+The documented example's `"postingProfileCode": "GENERAL-EXPENSE"` is also not one of the four
+seeded codes (`PROJECT_REVENUE`, `MATERIAL_PURCHASE`, `SUBCONTRACT_COST`, `OFFICE_EXPENSE`).
+A bill built faithfully from the reference fails on every line.
+
+### <a id="a5"></a>A5 — §6.13 omits required fields on both account bodies
+
+**Contract · verified against `create-account.dto.ts` (2026-08-09)**
+
+`controlPostingPolicy` is required (`@IsEnum`, no `@IsOptional`) and is absent from the
+documented create-account body. The bulk-import example is worse: it omits `isPostingAllowed`,
+`isControlAccount`, `controlPostingPolicy` **and** `effectiveFrom`, all required, and
+`ImportCoaDto` validates each element with `@ValidateNested`. Every documented row `400`s.
+
+The DTO also accepts an optional `parentAccountCode`, which the reference does not mention —
+relevant because §11.4's Chart of Accounts screen is a hierarchy browser.
+
+### <a id="a6"></a>A6 — `CreateAccountDto` rejects a policy the seed itself uses
+
+**Contract · verified against `schema.prisma:2245` (2026-08-09)**
+
+`ControlPostingPolicy` has three values. `CreateAccountDto` declares
+`@IsEnum(['UNRESTRICTED','SYSTEM_ONLY'])` and so rejects `SYSTEM_OR_APPROVED_ADJUSTMENT` —
+which is the policy `accounting-phase1.seed.ts` gives both seeded bank accounts. An account of
+a kind the system already contains cannot be created through the API.
+
+### <a id="a7"></a>A7 — `GET /bills?status=` is documented but not implemented
+
+**Docs · verified against `supplier-bill.controller.ts:21` (2026-08-09)**
+
+Only `supplierId` is read. Status filtering has to be done client-side. Same for `/payments`.
+
+### <a id="a8"></a>A8 — Every GL account code in the reference is fictional
+
+**Docs · verified against `accounting-phase1.seed.ts` (2026-08-09)**
+
+§6.13–6.23 uses four-digit codes throughout — `1010`, `2000`, `1300`, `3100`. The seeded chart
+is five-digit: Accounts Payable is `20000`, Supplier Advance `20100`, Accounts Receivable
+`11000`, Retained Earnings `31000`, banks `10100`/`10200`.
+
+Every documented post body (`{"apAccountCode": "2000"}` and friends) therefore fails account
+lookup. This is the single most repeated defect in the section and the easiest to fix.
+
+### <a id="a9"></a>A9 — Money is a JSON number across the AP write path
+
+**Contract · verified against the AP DTOs (2026-08-09)**
+
+`netAmount`, `vatAmount`, `unitPrice`, `totalAmount` and both allocation `amount` fields are
+`@IsNumber()`. Every other money field on this API is a decimal string, and C8 was raised for
+exactly this on the read side.
+
+**No live precision bug:** `supplier-bill.service.ts:70` converts to `Decimal` on arrival and
+sums with `.plus()`, so nothing is added in floating point. The objection is to the contract —
+the rule is either the rule or it is not, and the frontend now has to special-case AP.
+
+### <a id="a10"></a>A10 — There is no `GET /periods`
+
+**Docs · verified against `period.controller.ts` (2026-08-09)**
+
+The controller exposes only `:id/lock`, `:id/close`, `:id/reopen`, `:id/close-gate`,
+`:id/snapshot/rebuild` and `fiscal-year/:fiscalYearId/close`. There is no list and no detail.
+
+Not a blocker: `fiscal-year.repository.ts:19,26` includes `periods` ordered by `periodNumber`
+on both `GET /fiscal-years` and `GET /fiscal-years/:id`, so §11.7's Period List is buildable
+from the fiscal year. Worth saying so in the reference, because the spec reads as though a
+period collection exists.
 
 ---
 
