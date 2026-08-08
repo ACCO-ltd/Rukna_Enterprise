@@ -42,7 +42,8 @@
     "balanceSheet": "Balance Sheet",
     "accountLedger": "Account Ledger",
     "supplierBills": "Supplier Bills",
-    "supplierPayments": "Supplier Payments"
+    "supplierPayments": "Supplier Payments",
+    "monthlyComparison": "Monthly Comparison"
   },
   "user": {
     "menuLabel": "Account menu",

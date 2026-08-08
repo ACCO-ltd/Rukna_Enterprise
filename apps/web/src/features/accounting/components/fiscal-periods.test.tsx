@@ -1,4 +1,5 @@
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
@@ -112,18 +113,94 @@ describe('FiscalPeriods', () => {
     ).toBeInTheDocument();
   });
 
-  /**
-   * The period lifecycle endpoints exist but carry no authorization — any signed-in user
-   * could close a fiscal year (#25). Saying so beats a screen that names period management
-   * and silently offers none of it.
-   */
-  it('explains why locking and closing are absent', async () => {
-    renderWithProviders(<FiscalPeriods />);
+  describe('period actions', () => {
+    /**
+     * The lifecycle endpoints carry `JwtAuthGuard` and nothing else. The buttons are gated on
+     * `can()` so one flag secures them when a guard lands, but with `PERMISSIONS_ENFORCED`
+     * false that gating hides nothing — so the screen says plainly that the server is not
+     * checking, rather than looking authorised.
+     */
+    it('warns that these actions have no server-side authorization', async () => {
+      renderWithProviders(<FiscalPeriods />);
 
-    expect(
-      await screen.findByText(/Locking, closing and reopening periods are not available/),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/issue #25/)).toBeInTheDocument();
+      expect(
+        await screen.findByText(/no server-side authorization/),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/issue #25/)).toBeInTheDocument();
+    });
+
+    it('offers only the transition each status allows', async () => {
+      renderWithProviders(<FiscalPeriods />);
+
+      await screen.findByText('January 2026');
+
+      // OPEN → lock, LOCKED → close, CLOSED → reopen and rebuild.
+      expect(screen.getByRole('button', { name: 'Lock' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Reopen' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Rebuild snapshot' })).toBeInTheDocument();
+    });
+
+    it('asks for a reason before reopening a closed period', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<FiscalPeriods />);
+
+      await screen.findByText('January 2026');
+      await user.click(screen.getByRole('button', { name: 'Reopen' }));
+
+      expect(screen.getByText('Reopen this closed period?')).toBeInTheDocument();
+      expect(screen.getByLabelText('Reason')).toBeInTheDocument();
+    });
+
+    it('warns that reopening invalidates every later snapshot', async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<FiscalPeriods />);
+
+      await screen.findByText('January 2026');
+      await user.click(screen.getByRole('button', { name: 'Reopen' }));
+
+      expect(screen.getByText(/invalidated and has to be rebuilt/)).toBeInTheDocument();
+    });
+
+    /**
+     * The closing journal is computed from the year's balances, so an open period means those
+     * balances can still move. Disabled rather than absent: the CFO needs to see it is the
+     * last step and what stands before it.
+     */
+    it('will not close a fiscal year while any period is open', async () => {
+      renderWithProviders(<FiscalPeriods />);
+
+      expect(
+        await screen.findByRole('button', { name: 'Close the fiscal year' }),
+      ).toBeDisabled();
+    });
+
+    it('allows the year-end close once every period is closed', async () => {
+      vi.mocked(listFiscalYears).mockResolvedValue([
+        fiscalYear({
+          periods: [period(1, 'CLOSED', 'January 2026'), period(2, 'CLOSED', 'February 2026')],
+        }),
+      ]);
+
+      renderWithProviders(<FiscalPeriods />);
+
+      expect(
+        await screen.findByRole('button', { name: 'Close the fiscal year' }),
+      ).toBeEnabled();
+    });
+
+    it('offers nothing on a year that is already closed', async () => {
+      vi.mocked(listFiscalYears).mockResolvedValue([
+        fiscalYear({ status: 'CLOSED', periods: [period(1, 'CLOSED', 'January 2026')] }),
+      ]);
+
+      renderWithProviders(<FiscalPeriods />);
+
+      await screen.findByText('January 2026');
+      expect(
+        screen.queryByRole('button', { name: 'Close the fiscal year' }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it('handles a fiscal year in DRAFT, which the reference does not document', async () => {

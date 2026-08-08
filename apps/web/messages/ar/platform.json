@@ -42,7 +42,8 @@
     "balanceSheet": "الميزانية العمومية",
     "accountLedger": "دفتر الأستاذ",
     "supplierBills": "فواتير الموردين",
-    "supplierPayments": "مدفوعات الموردين"
+    "supplierPayments": "مدفوعات الموردين",
+    "monthlyComparison": "المقارنة الشهرية"
   },
   "user": {
     "menuLabel": "قائمة الحساب",

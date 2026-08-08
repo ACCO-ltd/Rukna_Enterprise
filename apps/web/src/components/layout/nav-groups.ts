@@ -63,9 +63,9 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/finance/accounting/journals', labelKey: 'journals' },
       { href: '/finance/accounting/trial-balance', labelKey: 'trialBalance' },
       { href: '/finance/accounting/profit-loss', labelKey: 'profitLoss' },
-      // Sprint 4B.
-      { href: '/finance/accounting/balance-sheet', labelKey: 'balanceSheet', disabled: true },
-      { href: '/finance/accounting/ledger', labelKey: 'accountLedger', disabled: true },
+      { href: '/finance/accounting/balance-sheet', labelKey: 'balanceSheet' },
+      { href: '/finance/accounting/monthly-comparison', labelKey: 'monthlyComparison' },
+      { href: '/finance/accounting/ledger', labelKey: 'accountLedger' },
       // Blocked on #26 — no supplier endpoint, so a bill cannot be created.
       { href: '/finance/accounting/bills', labelKey: 'supplierBills', disabled: true },
       { href: '/finance/accounting/payments', labelKey: 'supplierPayments', disabled: true },

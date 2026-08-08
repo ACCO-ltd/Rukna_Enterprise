@@ -18,6 +18,7 @@ import { formatDate } from '@/lib/format';
 
 import { useFiscalYears } from '../hooks/use-accounting';
 import type { AccountingPeriod, FiscalYear, FiscalYearStatus, PeriodStatus } from '../types';
+import { FiscalYearCloseAction, PeriodActions } from './period-actions';
 
 /**
  * Period status is the single most consequential thing on this screen: it decides whether a
@@ -40,6 +41,7 @@ const YEAR_TONES: Record<FiscalYearStatus, BadgeTone> = {
 
 export function FiscalPeriods() {
   const t = useTranslations('accounting.periods');
+  const tActions = useTranslations('accounting.periodActions');
   const tCommon = useTranslations('common');
 
   const years = useFiscalYears();
@@ -67,12 +69,11 @@ export function FiscalPeriods() {
         <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
       </div>
 
-      {/* Locking, closing and reopening are Sprint 4B, and blocked behind #25 regardless: the
-          endpoints carry no authorization, so any signed-in user could close a fiscal year.
-          Saying so is better than a screen that silently offers only half of what it names. */}
-      <Alert variant="info" messages={[t('managementUnavailable')]}>
-        <p className="mt-2 text-xs text-muted-foreground">{t('managementUnavailableHint')}</p>
-      </Alert>
+      {/* The lifecycle endpoints carry `JwtAuthGuard` and nothing else — any signed-in user
+          can close a fiscal year (#25). The actions are gated on `can()` so one flag secures
+          them when a guard lands, but that is presentation only, and saying so is more honest
+          than a screen that looks authorised. */}
+      <Alert variant="warning" messages={[tActions('unauthorizedNote')]} />
 
       {years.data.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
@@ -94,6 +95,7 @@ export function FiscalPeriods() {
 
 function FiscalYearPanel({ year }: { year: FiscalYear }) {
   const t = useTranslations('accounting.periods');
+  const tActions = useTranslations('accounting.periodActions');
   const locale = useLocale() as 'en' | 'ar';
 
   const openCount = year.periods.filter(
@@ -107,14 +109,17 @@ function FiscalYearPanel({ year }: { year: FiscalYear }) {
           <h2 className="text-lg font-semibold text-foreground">{year.name}</h2>
           <Badge tone={YEAR_TONES[year.status] ?? 'neutral'}>{t(`yearStatus.${year.status}`)}</Badge>
         </div>
-        <p className="text-xs text-muted-foreground">
-          <bdi>
-            {t('yearRange', {
-              start: formatDate(year.startDate, locale) ?? year.startDate,
-              end: formatDate(year.endDate, locale) ?? year.endDate,
-            })}
-          </bdi>
-        </p>
+        <div className="flex flex-wrap items-center gap-4">
+          <p className="text-xs text-muted-foreground">
+            <bdi>
+              {t('yearRange', {
+                start: formatDate(year.startDate, locale) ?? year.startDate,
+                end: formatDate(year.endDate, locale) ?? year.endDate,
+              })}
+            </bdi>
+          </p>
+          <FiscalYearCloseAction year={year} />
+        </div>
       </div>
 
       <p className="text-sm text-muted-foreground" aria-live="polite">
@@ -131,6 +136,9 @@ function FiscalYearPanel({ year }: { year: FiscalYear }) {
                 <TableHead className="min-w-[140px]">{t('colPeriod')}</TableHead>
                 <TableHead>{t('colRange')}</TableHead>
                 <TableHead>{t('colStatus')}</TableHead>
+                <TableHead>
+                  <span className="sr-only">{tActions('heading')}</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -177,6 +185,10 @@ function PeriodRow({ period, locale }: { period: AccountingPeriod; locale: 'en' 
             <span className="text-xs text-muted-foreground">{period.reopenReason}</span>
           ) : null}
         </div>
+      </TableCell>
+
+      <TableCell>
+        <PeriodActions period={period} />
       </TableCell>
     </TableRow>
   );

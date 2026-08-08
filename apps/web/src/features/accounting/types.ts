@@ -305,3 +305,111 @@ export interface ProfitLoss {
   expenses: ProfitLossSection;
   netIncome: string;
 }
+
+// ─── Balance sheet ───────────────────────────────────────────────────────────────
+
+export interface BalanceSheetLine {
+  accountId: string;
+  accountCode: string;
+  accountName: string;
+  accountSubtype: string;
+  balance: string;
+  comparativeBalance?: string;
+}
+
+export interface BalanceSheetSection {
+  label: string;
+  total: string;
+  comparativeTotal?: string;
+  lines: BalanceSheetLine[];
+}
+
+/**
+ * `GET /reports/balance-sheet`.
+ *
+ * `equity` includes Current Year Earnings, computed as a live P&L for an open fiscal year —
+ * which is why the sheet balances before the year is closed. A CLOSED period is read from its
+ * frozen snapshot.
+ */
+export interface BalanceSheet {
+  asOfDate: string;
+  comparativeDate?: string;
+  organizationId: string;
+  generatedAt: string;
+  assets: BalanceSheetSection;
+  liabilities: BalanceSheetSection;
+  equity: BalanceSheetSection;
+  totalLiabilitiesAndEquity: string;
+  /** Assets = Liabilities + Equity, within $0.01. */
+  balanced: boolean;
+  comparativeTotalLiabilitiesAndEquity?: string;
+  comparativeBalanced?: boolean;
+}
+
+// ─── Account ledger ──────────────────────────────────────────────────────────────
+
+export interface LedgerLine {
+  journalEntryId: string;
+  journalNumber: string;
+  accountingDate: string;
+  documentDate: string;
+  description: string;
+  reference: string | null;
+  debitAmount: string;
+  creditAmount: string;
+  /** Server-computed, carried forward from `openingBalance` down the rows. */
+  runningBalance: string;
+  sourceDocumentType: string | null;
+  sourceDocumentId: string | null;
+  projectId: string | null;
+  departmentId: string | null;
+  costCenterId: string | null;
+}
+
+/** `GET /reports/ledger/:accountId`. POSTED entries only. */
+export interface AccountLedger {
+  accountId: string;
+  accountCode: string;
+  accountName: string;
+  openingBalance: string;
+  periodDebit: string;
+  periodCredit: string;
+  closingBalance: string;
+  lines: LedgerLine[];
+}
+
+// ─── Monthly P&L comparison ──────────────────────────────────────────────────────
+
+export interface MonthlyPLColumn {
+  periodNumber: number;
+  periodName: string;
+  revenue: string;
+  costOfSales: string;
+  grossProfit: string;
+  expenses: string;
+  netIncome: string;
+}
+
+/**
+ * `GET /reports/pl/monthly/:fiscalYearId` — one column per period.
+ *
+ * ⚠ Returns `null` with a **200**, not a 404, when the fiscal year does not exist
+ * (`pl-report.service.ts:180`). The hook has to treat a null body as "not found" itself.
+ */
+export interface MonthlyPL {
+  fiscalYearId: string;
+  fiscalYearName: string;
+  columns: MonthlyPLColumn[];
+}
+
+/**
+ * `GET /periods/:id/close-gate` — the pre-flight for closing a period.
+ *
+ * Returns the blockers rather than throwing, so they can be shown before anyone presses
+ * Close. `closePeriod` performs the same check and throws a 400 with the list joined into one
+ * sentence, which is a far worse way to find out.
+ */
+export interface CloseGate {
+  passed: boolean;
+  blockers: string[];
+}

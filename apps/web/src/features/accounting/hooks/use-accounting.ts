@@ -9,6 +9,15 @@ import {
 
 import {
   approveJournal,
+  checkCloseGate,
+  closeFiscalYear,
+  closePeriod,
+  getAccountLedger,
+  getBalanceSheet,
+  getMonthlyPL,
+  lockPeriod,
+  rebuildSnapshot,
+  reopenPeriod,
   createJournal,
   getFiscalYear,
   getJournal,
@@ -23,6 +32,10 @@ import {
 } from '../api/accounting-api';
 import type {
   Account,
+  AccountLedger,
+  BalanceSheet,
+  CloseGate,
+  MonthlyPL,
   ApproveJournalPayload,
   CreateJournalPayload,
   FiscalYear,
@@ -43,6 +56,13 @@ export const accountingKeys = {
     [...accountingKeys.all, 'trial-balance', asOfDate, includeZero] as const,
   profitLoss: (fromDate: string, toDate: string, projectId?: string) =>
     [...accountingKeys.all, 'profit-loss', fromDate, toDate, projectId ?? 'all'] as const,
+  balanceSheet: (asOfDate: string, comparativeDate?: string) =>
+    [...accountingKeys.all, 'balance-sheet', asOfDate, comparativeDate ?? 'none'] as const,
+  ledger: (accountId: string, fromDate: string, toDate: string) =>
+    [...accountingKeys.all, 'ledger', accountId, fromDate, toDate] as const,
+  monthlyPL: (fiscalYearId: string) =>
+    [...accountingKeys.all, 'monthly-pl', fiscalYearId] as const,
+  closeGate: (periodId: string) => [...accountingKeys.all, 'close-gate', periodId] as const,
 };
 
 /**
@@ -170,5 +190,87 @@ export function useProfitLoss(
     queryKey: accountingKeys.profitLoss(fromDate, toDate, projectId),
     queryFn: () => getProfitLoss({ fromDate, toDate, projectId }),
     enabled: Boolean(fromDate && toDate),
+  });
+}
+
+export function useBalanceSheet(
+  asOfDate: string,
+  comparativeDate?: string,
+): UseQueryResult<BalanceSheet, Error> {
+  return useQuery({
+    queryKey: accountingKeys.balanceSheet(asOfDate, comparativeDate),
+    queryFn: () => getBalanceSheet({ asOfDate, comparativeDate }),
+    enabled: Boolean(asOfDate),
+  });
+}
+
+export function useAccountLedger(
+  accountId: string,
+  fromDate: string,
+  toDate: string,
+): UseQueryResult<AccountLedger, Error> {
+  return useQuery({
+    queryKey: accountingKeys.ledger(accountId, fromDate, toDate),
+    queryFn: () => getAccountLedger({ accountId, fromDate, toDate }),
+    // No account chosen yet is the screen's opening state, not an error.
+    enabled: Boolean(accountId && fromDate && toDate),
+  });
+}
+
+/** `null` here means the fiscal year was not found — the API answers 200 with a null body. */
+export function useMonthlyPL(fiscalYearId: string): UseQueryResult<MonthlyPL | null, Error> {
+  return useQuery({
+    queryKey: accountingKeys.monthlyPL(fiscalYearId),
+    queryFn: () => getMonthlyPL(fiscalYearId),
+    enabled: Boolean(fiscalYearId),
+  });
+}
+
+/** The close-gate pre-flight, fetched only while a close is being considered. */
+export function useCloseGate(periodId: string | null): UseQueryResult<CloseGate, Error> {
+  return useQuery({
+    queryKey: accountingKeys.closeGate(periodId ?? ''),
+    queryFn: () => checkCloseGate(periodId!),
+    enabled: Boolean(periodId),
+  });
+}
+
+export type PeriodActionRequest =
+  | { type: 'lock'; periodId: string }
+  | { type: 'close'; periodId: string }
+  | { type: 'reopen'; periodId: string; reason: string }
+  | { type: 'rebuild'; periodId: string }
+  | { type: 'close-year'; fiscalYearId: string };
+
+/**
+ * Period lifecycle transitions.
+ *
+ * Every one of them changes what the reports say — closing writes a snapshot the trial
+ * balance and balance sheet then read from, reopening invalidates every snapshot downstream —
+ * so all of them invalidate the whole accounting namespace rather than a narrower key. A
+ * period action is rare and deliberate; refetching more than strictly necessary costs a
+ * round-trip, while showing a figure computed under the old period state costs trust.
+ */
+export function usePeriodAction() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (action: PeriodActionRequest) => {
+      switch (action.type) {
+        case 'lock':
+          return lockPeriod(action.periodId);
+        case 'close':
+          return closePeriod(action.periodId);
+        case 'reopen':
+          return reopenPeriod(action.periodId, action.reason);
+        case 'rebuild':
+          return rebuildSnapshot(action.periodId);
+        case 'close-year':
+          return closeFiscalYear(action.fiscalYearId);
+      }
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: accountingKeys.all });
+    },
   });
 }

@@ -37,7 +37,7 @@ describe('NAV_GROUPS', () => {
   describe('accounting', () => {
     const accounting = () => NAV_GROUPS.find((g) => g.moduleKey === 'accounting')!;
 
-    it('enables exactly the Sprint 4A screens', () => {
+    it('enables every Sprint 4 screen', () => {
       const enabled = accounting()
         .items.filter((i) => !i.disabled)
         .map((i) => i.href);
@@ -48,6 +48,9 @@ describe('NAV_GROUPS', () => {
         '/finance/accounting/journals',
         '/finance/accounting/trial-balance',
         '/finance/accounting/profit-loss',
+        '/finance/accounting/balance-sheet',
+        '/finance/accounting/monthly-comparison',
+        '/finance/accounting/ledger',
       ]);
     });
 

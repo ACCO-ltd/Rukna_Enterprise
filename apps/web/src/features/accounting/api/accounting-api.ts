@@ -2,10 +2,15 @@ import { apiClient } from '@/lib/api-client';
 
 import type {
   Account,
+  AccountLedger,
+  AccountingPeriod,
   ApproveJournalPayload,
+  BalanceSheet,
+  CloseGate,
   CreateJournalPayload,
   FiscalYear,
   JournalEntry,
+  MonthlyPL,
   ProfitLoss,
   ReverseJournalPayload,
   TrialBalance,
@@ -151,4 +156,100 @@ export function getProfitLoss(params: {
       ...(params.departmentId ? { departmentId: params.departmentId } : {}),
     },
   });
+}
+
+/**
+ * `GET /reports/balance-sheet`.
+ *
+ * `comparativeDate` adds a second column. Equity carries Current Year Earnings as a live P&L
+ * for an open fiscal year, which is why the sheet balances before the year is closed.
+ */
+export function getBalanceSheet(params: {
+  asOfDate: string;
+  comparativeDate?: string;
+}): Promise<BalanceSheet> {
+  return apiClient<BalanceSheet>('/reports/balance-sheet', {
+    params: {
+      asOfDate: params.asOfDate,
+      ...(params.comparativeDate ? { comparativeDate: params.comparativeDate } : {}),
+    },
+  });
+}
+
+/** `GET /reports/ledger/:accountId` — POSTED entries only, with a running balance. */
+export function getAccountLedger(params: {
+  accountId: string;
+  fromDate: string;
+  toDate: string;
+  projectId?: string;
+}): Promise<AccountLedger> {
+  return apiClient<AccountLedger>(`/reports/ledger/${params.accountId}`, {
+    params: {
+      fromDate: params.fromDate,
+      toDate: params.toDate,
+      ...(params.projectId ? { projectId: params.projectId } : {}),
+    },
+  });
+}
+
+/**
+ * `GET /reports/pl/monthly/:fiscalYearId` — one column per period.
+ *
+ * Returns `null` with a 200 rather than a 404 for an unknown fiscal year
+ * (`pl-report.service.ts:180`), so the null is passed through for the caller to interpret.
+ */
+export function getMonthlyPL(
+  fiscalYearId: string,
+  projectId?: string,
+): Promise<MonthlyPL | null> {
+  return apiClient<MonthlyPL | null>(`/reports/pl/monthly/${fiscalYearId}`, {
+    params: { ...(projectId ? { projectId } : {}) },
+  });
+}
+
+// ─── Period management ───────────────────────────────────────────────────────────
+
+/**
+ * The period lifecycle.
+ *
+ * ⚠ None of these endpoints has any authorization: they carry `JwtAuthGuard` and nothing
+ * else, and the `permissions` table is never seeded (#25). Any signed-in user in the tenant
+ * can close a fiscal year. The UI gates them on `can()` so that a single flag secures them
+ * once a guard exists, but that gating is presentation only — the server is the boundary and
+ * right now there is none.
+ */
+export function lockPeriod(periodId: string): Promise<AccountingPeriod> {
+  return apiClient<AccountingPeriod>(`/periods/${periodId}/lock`, { method: 'POST' });
+}
+
+/** LOCKED → CLOSED. Generates the period's balance snapshot before marking it closed. */
+export function closePeriod(periodId: string): Promise<AccountingPeriod> {
+  return apiClient<AccountingPeriod>(`/periods/${periodId}/close`, { method: 'POST' });
+}
+
+/** CLOSED → REOPENED. Invalidates every downstream snapshot. */
+export function reopenPeriod(periodId: string, reason: string): Promise<AccountingPeriod> {
+  return apiClient<AccountingPeriod>(`/periods/${periodId}/reopen`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  });
+}
+
+/**
+ * Pre-flight for closing. Returns the blockers rather than throwing, so the UI can show what
+ * stands in the way before anyone presses Close — `closePeriod` itself throws a 400 with the
+ * same list joined into one sentence.
+ */
+export function checkCloseGate(periodId: string): Promise<CloseGate> {
+  return apiClient<CloseGate>(`/periods/${periodId}/close-gate`);
+}
+
+export function rebuildSnapshot(periodId: string): Promise<unknown> {
+  return apiClient<unknown>(`/periods/${periodId}/snapshot/rebuild`, { method: 'POST' });
+}
+
+/** Year-end: posts the closing journal, zeroes the P&L into retained earnings, closes the FY. */
+export function closeFiscalYear(fiscalYearId: string): Promise<unknown> {
+  return apiClient<unknown>(`/periods/fiscal-year/${fiscalYearId}/close`, { method: 'POST' });
 }
