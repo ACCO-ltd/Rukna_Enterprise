@@ -72,7 +72,9 @@
       "REOPENED": "أُعيد فتحها"
     },
     "yearStatus": {
+      "DRAFT": "مسودة",
       "OPEN": "مفتوحة",
+      "LOCKED": "مقفلة",
       "CLOSED": "مغلقة"
     },
     "statusHint": {

@@ -31,7 +31,7 @@
     "searchPlaceholder": "Code or name",
     "filterByClass": "Account class",
     "allClasses": "All classes",
-    "countLabel": "{count, plural, =1 {# account} other {# accounts}}",
+    "countLabel": "{count, plural, =0 {No accounts} one {# account} other {# accounts}}",
     "empty": "No accounts yet.",
     "emptyHint": "The chart of accounts is seeded when the organisation is provisioned. If this is empty, accounting has not been set up.",
     "noMatches": "No account matches this search.",
@@ -63,7 +63,7 @@
     "colPeriod": "Period",
     "colRange": "Dates",
     "colStatus": "Status",
-    "periodCount": "{count, plural, =1 {# period} other {# periods}}",
+    "periodCount": "{count, plural, =0 {No periods} one {# period} other {# periods}}",
     "openCount": "{count} open",
     "status": {
       "OPEN": "Open",
@@ -72,7 +72,9 @@
       "REOPENED": "Reopened"
     },
     "yearStatus": {
+      "DRAFT": "Draft",
       "OPEN": "Open",
+      "LOCKED": "Locked",
       "CLOSED": "Closed"
     },
     "statusHint": {
@@ -95,7 +97,7 @@
     "filterByStatus": "Status",
     "allStatuses": "All statuses",
     "clientFilterNote": "Filtered in the browser — the API returns every journal.",
-    "countLabel": "{count, plural, =1 {# journal} other {# journals}}",
+    "countLabel": "{count, plural, =0 {No journals} one {# journal} other {# journals}}",
     "colNumber": "Number",
     "colDate": "Accounting date",
     "colDescription": "Description",
