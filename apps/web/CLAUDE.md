@@ -119,22 +119,51 @@ bill cannot be created), Client Invoices and Customer Receipts
 `/receipts`). Also open: [#25](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/25), the
 accounting module has no authorization at all.
 
-### ⏳ Sprint 5 Frontend — Procurement Workspace (START HERE)
+### ✅ Sprint 5 Frontend — Procurement Workspace (done 2026-08-09)
 
-Backend: ✅ complete — 102 integration tests passing (87 accounting + 15 procurement).
-Design spec: `frontend-design.md` **Section 12 — Procurement Workspace**.
-API reference: `api-reference.md` **Sections 6.24–6.32**.
+Fifteen routes under `/procurement/*` plus two under `/finance/accounting/bills`, in
+`src/features/procurement/`. Master data (UoM, material and spend categories, materials),
+Material Requests, Purchase Orders with revision tabs, Goods Receipts, Supplier Bills with
+the Matching tab, and the Commitment Ledger with its project card.
 
-Covers: Units of Measure, Materials catalogue, Material Requests, Purchase Orders,
-Goods Receipts, Bill Matching, Commitment Ledger dashboard.
+**Five things to know before you touch procurement or start Sprint 6:**
 
-> **Run a contract sweep of §6.24–6.32 against the controllers before writing a screen.**
-> The equivalent sweep for Sprint 4 found ten defects, three of them blocking, in the time
-> it took to read the route decorators — and it found them before they were built on.
->
-> **Purchase Orders will hit [#26](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/26):**
-> `POST /purchase-orders` takes a `supplierId`, and there is still no endpoint that lists
-> suppliers. Check whether it has landed before planning the PO create form.
+1. **The contract sweep found seventeen defects — the P-series in `frontend-blockers.md`.**
+   Seven are implementation bugs rather than doc drift, and **three corrupt the commitment
+   ledger** (#31): cancelling a PO writes no reversal, superseding over-reverses, and an
+   `EXCEPTION_PENDING` goods receipt can never be released. The Commitments card and ledger
+   both carry an accuracy note for this reason. Read the P-series before trusting any
+   committed figure on screen.
+2. **`quantities.ts` holds every rule that can be wrong at the cent or the unit** — the
+   quantity×price scale change, the GRN `accepted + rejected = received` split, over-receipt,
+   MR line rules, the bill post gate. Put new procurement arithmetic there, not in a
+   component. `toApiNumber` is the only place a float is produced; delete it when P17 is
+   fixed.
+3. **The GRN create screen omits untouched lines from the payload.** `@IsPositive()` on
+   `receivedQuantity` and `acceptedQuantity` means a zero row `400`s the whole request
+   (P6). If you make it send zeros again, every partial delivery breaks and nothing in the
+   markup will show it. `submittableGrnLines` is the guard.
+4. **The bill Post gate is stricter than the server.** `canPostBill` blocks `NOT_RUN`;
+   `POSTABLE_MATCH_STATUSES` on the server permits it (P15). Do not "fix" the frontend to
+   agree — fix the server. A test names this divergence deliberately.
+5. **Two lint errors exist on `main` and are not Sprint 5's** —
+   `src/features/ipc/wizard/ipc-wizard.tsx:148,158`, `react-hooks/set-state-in-effect`.
+   They predate this branch and were left alone rather than blind-fixed, because that code
+   restores an IPC draft and getting it wrong costs money.
+
+Still blocked: creating a purchase order, creating a supplier bill, and Supplier Payments —
+all [#26](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/26). The PO create form is
+built and tested behind a disabled entry point; when `GET /suppliers` lands it needs a
+supplier picker and one flag in `procurement-api.ts`.
+
+### ⏳ Sprint 6 Frontend — Variations / Change Orders (START HERE)
+
+Backend: not yet built. Nothing to build against yet — confirm with Abdulsalam before
+planning.
+
+> **Run a contract sweep against the controllers before writing a screen.** Sprint 4's
+> sweep found ten defects and Sprint 5's found seventeen, each in the time it took to read
+> the route decorators, and each before anything was built on them.
 
 ---
 

@@ -1086,6 +1086,30 @@ The Setup group can be collapsed by default once the one-time wizard is complete
 
 This section is the build spec for everything under the **Procurement** sidebar group. Read `api-reference.md` sections 6.24–6.32 alongside this spec — every field name, status value, and rule referenced here maps 1:1 to those endpoint docs.
 
+> ### ⚠️ Built 2026-08-09 — where this section is wrong
+>
+> The contract sweep run before the build found seventeen divergences between §6.24–6.32 and the controllers, recorded as the **P-series** in `docs/backend-requests/frontend-blockers.md`. Several of them make instructions in this section impossible to follow. What shipped, and why:
+>
+> | This section says | What was built | Why |
+> |---|---|---|
+> | §12.4 status filter on units and materials | No filter; an "active only" notice instead | The service hard-codes `ACTIVE` and no controller takes a `status` parameter (P2) |
+> | §12.5 Close action on `APPROVED` / `PARTIALLY_ORDERED` | No Close button | No endpoint reaches `CLOSED` (P4) |
+> | §12.6 PO list "Total Amount" | Column omitted | The list response embeds no lines (P14) |
+> | §12.6 PO list "Revision" | Labelled "latest revision" | The embedded revision is the highest-numbered, not the ACTIVE one (P14) |
+> | §12.6 approve drawer: "its uncommitted balance will be reversed" | Says the revision is superseded and new entries written; warns that the reversal is for the **full** original value | Supersede over-reverses; a revision received against goes negative (P11) |
+> | §12.7 "exceeds the ordered quantity by more than 5%" | Warning quotes no percentage | Tolerance comes from an `OverReceiptPolicy` no endpoint exposes (P9) |
+> | §12.7 "resolve via PO revision" for `EXCEPTION_PENDING` | Says only Cancel is available | PO revision never re-evaluates a held receipt (P10) |
+> | §12.7 pre-populate one line per PO line | Pre-populated, but untouched rows are **omitted from the payload** | `@IsPositive()` on received/accepted `400`s a zero row (P6) |
+> | §12.7 `qualityStatus: REJECTED` | Not offered | It requires `acceptedQuantity: 0`, which the API refuses (P6) |
+> | §12.10 `MaterialPicker` calls `?search=` | Filters the fetched catalogue in memory | No `search` parameter exists (P1) |
+> | §12.12 sidebar item `/procurement/bill-matching` | No such item | §12.8 says matching is a tab on the bill, "not a standalone list" — §12.8 wins, see below |
+>
+> **§12.8 vs §12.12 — a contradiction in this document.** §12.8 states that bill matching is reached from the supplier bill detail page and is explicitly *"not as a standalone list"*; §12.12's snippet lists a `/procurement/bill-matching` sidebar item. §12.8 describes the screen and §12.12 only summarises the navigation, so §12.8 was followed and the sidebar item was dropped.
+>
+> **§12.7 route.** `/procurement/grn` was used, not `/procurement/receipts` — §12.7 offers either and warns about the clash with Sprint 3's client receipts at `/receipts`.
+>
+> **§12.8's host page did not exist.** Sprint 4 shipped Supplier Bills nav-disabled on #26. Only `POST /bills` needs a supplier, so Sprint 5 built the list and detail read-only in order to have somewhere to put the Matching tab.
+
 ---
 
 ### 12.1 Where Procurement Lives in the Navigation
