@@ -43,7 +43,16 @@
     "accountLedger": "دفتر الأستاذ",
     "supplierBills": "فواتير الموردين",
     "supplierPayments": "مدفوعات الموردين",
-    "monthlyComparison": "المقارنة الشهرية"
+    "monthlyComparison": "المقارنة الشهرية",
+    "procurementSetup": "الإعداد",
+    "unitsOfMeasure": "وحدات القياس",
+    "materialCategories": "فئات المواد",
+    "spendCategories": "فئات الإنفاق",
+    "materials": "المواد",
+    "materialRequests": "الطلبات",
+    "purchaseOrders": "أوامر الشراء",
+    "goodsReceipts": "إشعارات الاستلام",
+    "commitments": "الارتباطات"
   },
   "user": {
     "menuLabel": "قائمة الحساب",

@@ -14,6 +14,7 @@ describe('NAV_GROUPS', () => {
       'portfolio',
       'finance',
       'accounting',
+      'procurement',
       'operations',
       'reports',
       'administration',
@@ -24,8 +25,17 @@ describe('NAV_GROUPS', () => {
     const allItems = NAV_GROUPS.flatMap((g) => g.items);
     const disabled = allItems.filter((i) => i.disabled).map((i) => i.href);
     expect(disabled).toContain('/finance/cash-position');
-    expect(disabled).toContain('/operations/procurement');
+    expect(disabled).toContain('/operations/inventory');
     expect(disabled).toContain('/admin/exchange-rates');
+  });
+
+  it('no longer carries the /operations/procurement placeholder it replaced', () => {
+    const allHrefs = NAV_GROUPS.flatMap((g) => [
+      ...g.items,
+      ...(g.subGroups?.flatMap((s) => s.items) ?? []),
+    ]).map((i) => i.href);
+
+    expect(allHrefs).not.toContain('/operations/procurement');
   });
 
   it('enabled finance item is receipts (live endpoint)', () => {
@@ -51,21 +61,23 @@ describe('NAV_GROUPS', () => {
         '/finance/accounting/balance-sheet',
         '/finance/accounting/monthly-comparison',
         '/finance/accounting/ledger',
+        '/finance/accounting/bills',
       ]);
     });
 
     /**
-     * Supplier bills and payments are declared but disabled: `POST /bills` requires a
-     * `supplierId` and nothing in the API lists, creates or seeds a supplier, so the create
-     * form cannot be built at all. Raised as issue #26. Rendering them greyed out is the
-     * honest presentation — an absent entry reads as a feature nobody thought of.
+     * Sprint 4 disabled both AP screens on #26, which was over-cautious for bills: only
+     * `POST /bills` needs a supplier, and `GET /bills` works. Sprint 5 enables the read
+     * path, because §12.8's Matching tab has to hang off the bill detail page.
+     *
+     * Payments stay disabled — posting a payment is the only thing that screen would do.
      */
-    it('shows the AP screens as disabled while #26 is open', () => {
+    it('enables supplier bills read-only and keeps payments disabled (#26)', () => {
       const disabled = accounting()
         .items.filter((i) => i.disabled)
         .map((i) => i.href);
 
-      expect(disabled).toContain('/finance/accounting/bills');
+      expect(disabled).not.toContain('/finance/accounting/bills');
       expect(disabled).toContain('/finance/accounting/payments');
     });
 
@@ -80,6 +92,55 @@ describe('NAV_GROUPS', () => {
       expect(hrefs.indexOf('/finance/accounting/journals')).toBeLessThan(
         hrefs.indexOf('/finance/accounting/trial-balance'),
       );
+    });
+  });
+
+  describe('procurement', () => {
+    const procurement = () => NAV_GROUPS.find((g) => g.moduleKey === 'procurement')!;
+
+    it('sits directly after accounting, at the same level as Finance (§12.1)', () => {
+      const keys = NAV_GROUPS.map((g) => g.moduleKey);
+      expect(keys.indexOf('procurement')).toBe(keys.indexOf('accounting') + 1);
+    });
+
+    it('exposes the four live workflow screens, none disabled', () => {
+      expect(procurement().items.map((i) => i.href)).toEqual([
+        '/procurement/requests',
+        '/procurement/orders',
+        '/procurement/grn',
+        '/procurement/commitments',
+      ]);
+      expect(procurement().items.filter((i) => i.disabled)).toHaveLength(0);
+    });
+
+    /**
+     * §12.12's sidebar snippet lists a `/procurement/bill-matching` item, and §12.8 says
+     * matching is reached from the supplier bill and explicitly "not as a standalone
+     * list". §12.8 describes the screen, so §12.8 wins.
+     */
+    it('has no standalone bill-matching entry', () => {
+      const hrefs = procurement().items.map((i) => i.href);
+      expect(hrefs).not.toContain('/procurement/bill-matching');
+    });
+
+    /** §12.7 offers two routes; /procurement/grn cannot be confused with Sprint 3's /receipts. */
+    it('routes goods receipts to /procurement/grn, away from client receipts', () => {
+      const hrefs = procurement().items.map((i) => i.href);
+      expect(hrefs).toContain('/procurement/grn');
+      expect(hrefs).not.toContain('/procurement/receipts');
+    });
+
+    it('nests the four setup screens in a collapsed, permission-gated sub-group', () => {
+      const setup = procurement().subGroups?.[0];
+
+      expect(setup?.defaultCollapsed).toBe(true);
+      expect(setup?.permissionKey).toBe('manage:procurement-config');
+      expect(setup?.items.map((i) => i.href)).toEqual([
+        '/procurement/setup/uom',
+        '/procurement/setup/material-categories',
+        '/procurement/setup/spend-categories',
+        '/procurement/setup/materials',
+      ]);
     });
   });
 

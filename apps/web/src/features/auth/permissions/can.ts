@@ -49,7 +49,10 @@ const MODULE_PERMISSIONS: Record<string, PermissionKey[]> = {
   portfolio:      ['view:project', 'create:project', 'view:client'],
   finance:        ['view:receipt', 'create:receipt'],
   accounting:     ['view:accounting'],
-  operations:     ['view:purchase-order'],
+  procurement:    ['view:procurement'],
+  // Procurement moved out to its own group in Sprint 5, leaving Inventory (Sprint 7).
+  // Keyed on the permission that module will need rather than the one it used to borrow.
+  operations:     ['view:inventory'],
   reports:        ['view:report'],
   administration: ['manage:user', 'manage:role', 'view:audit-log', 'manage:exchange-rate'],
 };
@@ -82,6 +85,48 @@ export const ACCOUNTING_PERMISSIONS = {
   managePeriods: 'manage:period',
   /** Year-end close. CFO only. */
   manageYearEnd: 'manage:fiscal-year',
+} as const satisfies Record<string, PermissionKey>;
+
+/**
+ * Procurement permissions, taken **verbatim** from `frontend-design.md` §12.2.
+ *
+ * Deliberately not renamed, unlike the accounting set above. Seven of these nine already
+ * match the live `action:resource` convention — `create:purchase-order` is the example
+ * `apps/api/CLAUDE.md` itself gives — and `view:procurement` has the same shape as
+ * `view:accounting`, which Sprint 4 already adopted.
+ *
+ * That leaves one genuine outlier: `manageConfig` names a configuration surface rather
+ * than a resource. It is spelled as the spec spells it and raised as a naming question on
+ * issue #28, rather than corrected here. Sprint 4 renamed §11.2's keys unilaterally and
+ * needed a paragraph to justify it; doing that a second time compounds the divergence
+ * instead of resolving it, and if the backend seeds the document's spelling, a key we
+ * invented would silently never match.
+ *
+ * **None of these is enforced.** No procurement controller has anything but
+ * `JwtAuthGuard`, the `permissions` table is never seeded, and every JWT carries
+ * `permissions: []` (P5, issue #28). With `PERMISSIONS_ENFORCED` false they all resolve
+ * true. Calling `can()` regardless is the point — when a guard lands, one boolean secures
+ * both workspaces rather than a retrofit across thirty screens.
+ */
+export const PROCUREMENT_PERMISSIONS = {
+  /** Any procurement page. Minimum required; gates the whole sidebar group. */
+  view: 'view:procurement',
+  /** Create and deactivate UoM, material categories, spend categories, materials. */
+  manageConfig: 'manage:procurement-config',
+  /** Create a material request. Submit is available to the requester. */
+  createRequest: 'create:material-request',
+  /** Approve a material request. */
+  approveRequest: 'approve:material-request',
+  /** Create a purchase order. */
+  createOrder: 'create:purchase-order',
+  /** Approve a PO revision — this writes commitment ledger entries. Gate carefully. */
+  approveOrder: 'approve:purchase-order',
+  /** Create and post a goods receipt. */
+  createReceipt: 'create:goods-receipt',
+  /** Approve a bill matching exception, releasing the posting block. */
+  approveMatchException: 'approve:matching-exception',
+  /** The commitment ledger and the project summary card. */
+  viewCommitments: 'view:commitment-ledger',
 } as const satisfies Record<string, PermissionKey>;
 
 // ─── Core logic (shared by plain functions and the hook) ──────────────────────
