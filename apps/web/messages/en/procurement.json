@@ -41,6 +41,7 @@
     "removeLine": "Remove line",
     "search": "Search",
     "all": "All",
+    "deactivate": "Deactivate",
     "blockedTitle": "Not available yet",
     "permissionDenied": "You do not have permission to perform this action."
   },
@@ -104,6 +105,9 @@
     "subtitle": "The financial hierarchy that drives approval routing, tolerance policy and commitment attribution. This is not the same thing as a material category.",
     "new": "New Spend Category",
     "createTitle": "New spend category",
+    "parent": "Parent Spend Category",
+    "parentHint": "Leave empty to create a top-level spend category.",
+    "noParent": "None — top level",
     "deactivateTitle": "Deactivate {code}?",
     "deactivateBody": "Deactivating a parent hides its child categories from this tree as well.",
     "empty": "No spend categories yet."
