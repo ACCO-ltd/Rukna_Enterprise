@@ -8,6 +8,8 @@ import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 
 import { useProject } from '../hooks/use-project';
+import { ProjectCommitmentsCard } from '@/features/procurement/components/commitments';
+
 import { getAvailableActions } from '../project-actions';
 import type { ProjectDetail as ProjectDetailModel } from '../types';
 import { ProjectActionsPanel } from './project-actions-panel';
@@ -66,6 +68,11 @@ export function ProjectDetail({ id }: { id: string }) {
       </section>
 
       <Overview project={project} locale={locale} />
+
+      {/* Sprint 5 (§12.9). Hidden entirely without `view:commitment-ledger` rather than
+          rendered empty — an empty commitments card reads as "this project has committed
+          nothing", which is a different and more dangerous claim. */}
+      <ProjectCommitmentsCard projectId={project.id} currencyCode={project.currency} />
     </div>
   );
 }
