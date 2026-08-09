@@ -42,6 +42,8 @@
     "search": "Search",
     "all": "All",
     "deactivate": "Deactivate",
+    "reportingCurrency": "Reporting Currency",
+    "exchangeRate": "Exchange Rate",
     "blockedTitle": "Not available yet",
     "permissionDenied": "You do not have permission to perform this action."
   },

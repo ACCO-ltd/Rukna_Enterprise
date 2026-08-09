@@ -14,9 +14,10 @@
  */
 
 import { useId, useMemo, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { Input, cn } from '@erp/ui';
 
+import { formatNumber } from '@/lib/format';
 import { QUANTITY_SCALE, fromMinorUnits } from '@/lib/money';
 
 import { useMaterials, useUoms } from '../hooks/use-procurement';
@@ -220,7 +221,16 @@ export function QuantitySplit({
   rejectedMinor,
 }: QuantitySplitProps) {
   const t = useTranslations('procurement.grn.split');
-  const show = (minor: number) => fromMinorUnits(minor, QUANTITY_SCALE);
+  const locale = useLocale() as 'en' | 'ar';
+
+  /**
+   * Through `formatNumber` rather than straight out of `fromMinorUnits`, which always
+   * pads to the scale — a whole delivery of 24 tonnes would read "24.000". The trailing
+   * zeros carry no information here and make the three figures harder to compare at a
+   * glance; `formatNumber` also gives Arabic its own digits.
+   */
+  const show = (minor: number) =>
+    formatNumber(fromMinorUnits(minor, QUANTITY_SCALE), locale) ?? '0';
 
   const acceptedPct =
     receivedMinor > 0 ? Math.round((acceptedMinor / receivedMinor) * 100) : 0;
