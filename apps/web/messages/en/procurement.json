@@ -221,7 +221,14 @@
     "cancelBody": "All open revisions will be cancelled.",
     "cancelCommitmentWarning": "Commitment ledger entries already written for this order will remain. Cancelling does not reverse them, and there is no endpoint that can (P12).",
     "exceptionPendingNotice": "A goods receipt against this order is awaiting exception resolution. No action is available on the order until it is dealt with.",
-    "noSupplierPicker": "Supplier selection is unavailable — issue #26."
+    "noSupplierPicker": "Supplier selection is unavailable — issue #26.",
+    "totalIsPreview": "The total is calculated here as a preview. The server recalculates each line amount when the order is saved.",
+    "lineError": {
+      "materialRequired": "Choose a material. Material lines cannot be free text.",
+      "descriptionRequired": "Enter a description.",
+      "quantityMustBePositive": "Enter a quantity greater than zero.",
+      "priceMustBePositive": "Enter a unit price greater than zero. The API does not accept a zero-priced line."
+    }
   },
   "grn": {
     "title": "Goods Receipts",
