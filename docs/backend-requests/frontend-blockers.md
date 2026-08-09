@@ -2,9 +2,10 @@
 
 Raised by: Frontend Engineer (`apps/web`, `packages/ui`)
 For: **Abdulsalam** (backend, `apps/api`) — and where marked, **Eng Ahmed Shirie** (domain)
-Raised: 2026-08-03 · Last re-verified: 2026-08-09 against `e738bfe`
-Status: **A-series open** (Sprint 4 accounting). Every ticketed B- and C-series finding is
-fixed; the untracked `in doc` gaps in both series remain — see below.
+Raised: 2026-08-03 · Last re-verified: 2026-08-09 against `97efe91`
+Status: **A-series and P-series open** (Sprint 4 accounting, Sprint 5 procurement). Every
+ticketed B- and C-series finding is fixed; the untracked `in doc` gaps in both series remain —
+see below.
 
 This document is the source of truth for backend work the frontend is waiting on.
 Items marked **Blocking** prevent a UI surface from functioning at all — they are not
@@ -17,6 +18,8 @@ Findings were produced by reading `apps/api/src` directly, not by inference from
   before frontend work on Contracts, IPA, IPC and Receipts began.
 - **A-series** (Sprint 4 accounting) — raised against `e738bfe` 2026-08-09, during the
   contract sweep run before any accounting UI was written.
+- **P-series** (Sprint 5 procurement) — raised against `97efe91` 2026-08-09, during the
+  contract sweep run before any procurement UI was written.
 
 **What is resolved, precisely.** Every B- and C-series finding that was *ticketed* is fixed
 and its issue is closed, each verified individually on 2026-08-09 by opening the file named in
@@ -71,6 +74,35 @@ each have produced a `400` or a `404` in a screen built faithfully from the refe
 | [A8](#a8) | **Docs** | Accounting | Every GL account code in §6.13–6.23 is 4-digit and none exists in the seeded 5-digit COA | in doc |
 | [A9](#a9) | Contract | AP | Money is a JSON number on the whole AP write path, against the platform money-as-string rule | in doc |
 | [A10](#a10) | Docs | GL | No `GET /periods`; periods are reachable only embedded in `/fiscal-years` | in doc |
+
+### Sprint 5 — procurement (P-series) · open
+
+Raised 2026-08-09 from the contract sweep of §6.24–6.32 against the nine controllers in
+`apps/api/src/business/procurement/`, run before any procurement UI was written. Seventeen
+findings; seven are defects in the implementation rather than documentation drift.
+
+**P11 and P12 are the two that matter most.** Both corrupt the commitment ledger in ordinary
+use, and the commitment ledger is what Sprint 5 exists to produce.
+
+| ID | Severity | Area | Summary | Status |
+|---|---|---|---|---|
+| [P6](#p6) | **Blocking — bug** | GRN | `@IsPositive()` on `acceptedQuantity` makes a fully rejected line impossible and `400`s the documented create pattern | [#27](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/27) |
+| [P5](#p5) | **Security** | All | No authorization on any of the nine controllers — any authenticated user can approve a PO and commit company money | [#28](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/28) |
+| [P15](#p15) | **Security — bug** | Bill matching | `POSTABLE_MATCH_STATUSES` includes `NOT_RUN`, so an unmatched bill posts to the GL; the three-way match gate is UI-only | [#29](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/29) |
+| [P8](#p8) | **Security** | MR | `projectId` and five other foreign keys are stored unvalidated — a cross-org `projectId` is accepted | [#30](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/30) |
+| [P11](#p11) | **Correctness — bug** | Commitment ledger | Superseding reverses the full original commitment, not the uncommitted balance — `COMMITTED` goes negative by the received amount | [#31](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/31) |
+| [P12](#p12) | **Correctness — bug** | Commitment ledger | Cancelling a PO writes no reversal — a cancelled order consumes commitment forever | [#31](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/31) |
+| [P10](#p10) | **Correctness — bug** | GRN | `EXCEPTION_PENDING` is a dead end; nothing returns it to `DRAFT` and PO revision does not re-evaluate it | [#31](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/31) |
+| [P4](#p4) | Contract | MR | No `close` endpoint — `CLOSED` is in the state machine and unreachable over HTTP | in doc |
+| [P14](#p14) | Contract | PO | List embeds the highest-numbered revision without lines — §12.6's Total Amount is uncomputable and Revision is misleading | in doc |
+| [P2](#p2) | Gap | Catalogue | `status` hard-coded `ACTIVE` in the service — deactivation is a one-way trapdoor and §12.4's status filter is unbuildable | in doc |
+| [P1](#p1) | Gap | Materials | No `search` param, so §12.10's `MaterialPicker` filters client-side | in doc |
+| [P9](#p9) | Contract | GRN | Over-receipt tolerance comes from an unexposed `OverReceiptPolicy`; §12.7's "5%" is wrong wherever one is seeded | in doc |
+| [P16](#p16) | Gap | AP | Bill repositories embed no `supplier` relation, so supplier name is unresolvable on every AP screen | in doc |
+| [P17](#p17) | Contract | All | Money and quantity are JSON numbers on the write path, decimal strings on the read path — A9 extended to procurement | in doc |
+| [P3](#p3) | Gap | UoM | Deactivation has no in-use guard, and P2 makes a client-side pre-check impossible too | in doc |
+| [P7](#p7) | Contract | MR/PO | `uomCode` is required on every line and ignored on MATERIAL lines | in doc |
+| [P13](#p13) | Contract | PO | `revise` requires a `supplierId` it discards | in doc |
 
 ### Sprint 1–2 — platform, projects, BOQ
 
@@ -1212,6 +1244,327 @@ Not a blocker: `fiscal-year.repository.ts:19,26` includes `periods` ordered by `
 on both `GET /fiscal-years` and `GET /fiscal-years/:id`, so §11.7's Period List is buildable
 from the fiscal year. Worth saying so in the reference, because the spec reads as though a
 period collection exists.
+
+---
+
+## Sprint 5 — procurement (P-series)
+
+Raised 2026-08-09 from the contract sweep of `api-reference.md` §6.24–6.32 against the nine
+controllers in `apps/api/src/business/procurement/`, run before any procurement UI was
+written. `apps/web/CLAUDE.md` mandates this sweep; the Sprint 4 equivalent found ten defects,
+three blocking, and this one found seventeen.
+
+The character of the two sweeps differs. The A-series was mostly documentation drift — the
+reference describing a body the DTO did not accept. Seven of the P-series are defects in the
+implementation itself, and three of those corrupt the commitment ledger, which is the
+financial record Sprint 5 exists to produce. **P11 and P12 mean the Commitments figures shown
+to a project manager will be wrong in ordinary use, not in an edge case.**
+
+Every entry below was produced by opening the named file. Nothing here is inferred from docs.
+
+### <a id="p1"></a>P1 — `GET /procurement/materials` has no `search` parameter
+
+**Gap · verified against `material.controller.ts:22-31` and `material.repository.ts:38` (2026-08-09)**
+
+§12.10 specifies `<MaterialPicker>` as "search by code or name (debounced, calls
+`GET /procurement/materials?search=...`)". The controller reads only `materialCategoryId` and
+`spendCategoryId`; the repository has no `search` branch and no `contains` filter. The
+parameter is silently ignored — no `400`, just an unfiltered list.
+
+**Frontend impact:** the picker fetches the full active catalogue once and filters in memory.
+Correct for a catalogue of hundreds; it will not survive tens of thousands. Debouncing is
+pointless and has been left out.
+
+### <a id="p2"></a>P2 — Deactivating a UoM or material makes it permanently invisible
+
+**Gap · verified against `uom.service.ts:24` and `material.service.ts:32` (2026-08-09)**
+
+`UomService.findAll` calls the repository with a hard-coded `'ACTIVE'`. `MaterialService.findAll`
+hard-codes `{ status: 'ACTIVE', ...filters }`. Both repositories accept a `status` argument, and
+neither controller exposes one — so the filter exists at every layer except the one reachable
+over HTTP.
+
+Two consequences. §12.4's "Filter: status (ACTIVE / INACTIVE)" cannot be built. And because
+`POST /:id/deactivate` and `POST /:id/discontinue` are the only writes, deactivation is a
+one-way trapdoor from the UI's point of view: the row vanishes from the only list that exists
+and nothing can bring it back or even show that it is there.
+
+**Frontend impact:** no status filter is rendered on either screen. The confirm dialog says the
+record will disappear from the list permanently, because that is what happens.
+
+### <a id="p3"></a>P3 — UoM deactivation has no in-use guard
+
+**Gap · verified against `uom.service.ts:40-45` (2026-08-09)**
+
+§12.4 says deactivate is available "only if no materials use this UoM". `deactivate` looks the
+UoM up and calls `setStatus` — there is no reference check. A UoM in use by live materials can
+be deactivated, after which `MaterialService.create` rejects new materials against it
+(`material.service.ts:52`) while existing ones keep pointing at an inactive unit.
+
+The frontend cannot substitute its own pre-check either: the materials list returns only
+`ACTIVE` rows (P2), so a count of dependants is not obtainable.
+
+### <a id="p4"></a>P4 — A material request can never reach `CLOSED`
+
+**Contract · verified against `material-request.controller.ts` and `material-request.service.ts:40-45` (2026-08-09)**
+
+`NEXT_STATUS` permits `APPROVED → CLOSED` and `PARTIALLY_ORDERED → CLOSED`, and §6.28's status
+machine documents `CLOSED` as terminal. No controller route calls `transition(..., 'CLOSED')` —
+only `submit`, `approve` and `cancel` exist. `CLOSED` is reachable in the state machine and
+unreachable over HTTP.
+
+The same applies to `SUBMITTED → DRAFT`, which `NEXT_STATUS` allows as a return-to-requester
+path and which no endpoint exposes.
+
+**Frontend impact:** §12.5's action table offers Close on `APPROVED` and `PARTIALLY_ORDERED`.
+Neither button is rendered. A `PARTIALLY_ORDERED` request has no available action at all.
+
+**Asked for:** `POST /procurement/material-requests/:id/close`, and a decision on whether
+return-to-draft is intended.
+
+### <a id="p5"></a>P5 — No authorization anywhere in the procurement module
+
+**Security · verified against all nine procurement controllers (2026-08-09)**
+
+Every controller carries `@UseGuards(JwtAuthGuard)` and nothing else. There is no
+`PermissionGuard` class anywhere in `apps/api/src`, the `permissions` table is never seeded,
+and every JWT therefore carries `permissions: []`.
+
+Any authenticated user in the organization can approve a purchase order — which writes
+`CommitmentLedgerEntry` rows — post a goods receipt, and approve a bill-matching exception.
+The nine permission keys in §12.2 (`approve:purchase-order`, `approve:matching-exception`,
+`manage:procurement-config` …) exist in the design document and nowhere in the codebase.
+
+This is A2 repeated in a second module. A2 concerned closing a fiscal year; this concerns
+committing the organization's money to a supplier.
+
+**Frontend impact:** `can()` is called on every procurement action with the §12.2 keys, and
+`PERMISSIONS_ENFORCED` remains `false` — enforcing it would hide every control from every
+user including the administrator. One boolean in `can.ts` turns on both workspaces once the
+backend seeds permissions and applies a guard.
+
+### <a id="p6"></a>P6 — A rejected delivery line cannot be recorded
+
+**Blocking — bug · verified against `create-goods-receipt.dto.ts:14-22` (2026-08-09)**
+
+```ts
+@IsPositive() receivedQuantity: number;
+@IsPositive() acceptedQuantity: number;
+```
+
+`@IsPositive()` rejects `0`. Two things follow.
+
+**A fully rejected line is impossible.** `qualityStatus: 'REJECTED'` is one of four documented
+values (§6.30) and can never be sent, because a wholly rejected line has
+`acceptedQuantity: 0`. The service itself handles zero correctly — `goods-receipt.service.ts:214`
+skips accrual with `if (acceptedQty.lessThanOrEqualTo(0)) continue` — so the rule is enforced
+only by the validator, and only by accident.
+
+**The documented create pattern `400`s.** §12.7 says to pre-populate one GRN line per ACTIVE
+revision PO line. A partial delivery leaves the untouched lines at `0`, and the whole request
+is rejected.
+
+**Frontend impact:** the GRN create screen omits zero-quantity lines from the payload rather
+than sending them, and blocks `accepted = 0` client-side with an explanation. `REJECTED` is
+absent from the quality-status select, because choosing it produces a body the API refuses.
+
+### <a id="p7"></a>P7 — `uomCode` is required on every line and ignored on MATERIAL lines
+
+**Contract · verified against `material-request.service.ts:96-106` (2026-08-09)**
+
+`CreateMrLineDto.uomCode` and `CreatePoLineDto.uomCode` are `@IsString()` with no
+`@IsOptional()`. For `lineType: MATERIAL` the service resolves the material and uses
+`material.baseUnitOfMeasureId`, never reading `uomCode`. §6.28 documents the behaviour but not
+that the field is still mandatory.
+
+**Frontend impact:** the line editor sends the material's own base UoM code — the honest value,
+and discarded either way.
+
+### <a id="p8"></a>P8 — MR create validates none of its foreign keys, including `projectId`
+
+**Security · verified against `material-request.service.ts:75-130` (2026-08-09)**
+
+`create` checks the scope rules and resolves `materialCode` and `uomCode` against the caller's
+organization. `projectId`, `boqNodeId`, `spendCategoryId`, `departmentId`, `costCenterId` and
+`projectCostCategoryId` are passed to `repo.create` unexamined. Any string is accepted.
+
+A `projectId` belonging to a different organization is stored without complaint, attributing a
+material request — and through PO allocation, eventually commitment ledger entries — to another
+tenant's project. This is the same class as B11 and C16, both of which were fixed.
+
+**Frontend impact:** none directly; the pickers only offer in-org records. Raised because the
+server is the boundary and this one is open.
+
+### <a id="p9"></a>P9 — The over-receipt tolerance is not 5% and is not discoverable
+
+**Contract · verified against `goods-receipt.service.ts:15,90-96` (2026-08-09)**
+
+The tolerance is resolved per organization and spend category from an `OverReceiptPolicy`
+record, falling back to `PLATFORM_FALLBACK_OVER_RECEIPT_PERCENT = 5` only when none is seeded.
+No endpoint exposes `OverReceiptPolicy`.
+
+§12.7 instructs the UI to warn "exceeds the ordered quantity by more than 5%". That sentence is
+wrong for any organization that has seeded a policy, and the frontend has no way to know which
+case it is in.
+
+**Frontend impact:** the warning is worded without asserting a number — it says the delivery
+exceeds the ordered quantity and that the receipt may be held as `EXCEPTION_PENDING` for review.
+The client-side threshold used to decide whether to show it at all is the 5% fallback, which is
+the best available guess.
+
+### <a id="p10"></a>P10 — An `EXCEPTION_PENDING` goods receipt is stuck forever
+
+**Correctness — bug · verified against `goods-receipt.service.ts:186,251` and `purchase-order.service.ts` (2026-08-09)**
+
+`post` begins `if (grn.status !== 'DRAFT') throw new ConflictException(...)`, so an
+`EXCEPTION_PENDING` receipt cannot be posted. Nothing anywhere transitions it back to `DRAFT`:
+`approve` and `revise` on the purchase order never read or write goods-receipt status, and no
+resolve endpoint exists.
+
+§12.7 tells the user to "resolve via PO revision first". Approving a revised PO does not
+re-evaluate the receipt. The only exit is `cancel`, and the goods are already on site.
+
+**Frontend impact:** the exception banner does not promise that revising the PO will clear it,
+because it will not. The only offered action is Cancel, with an explanation.
+
+**Asked for:** either a resolve endpoint, or re-evaluation of open `EXCEPTION_PENDING` receipts
+when a PO revision covering them is approved.
+
+### <a id="p11"></a>P11 — Superseding a revision reverses the whole commitment, not the balance
+
+**Correctness — bug · verified against `purchase-order.service.ts` `approve()` (2026-08-09)**
+
+When a new revision is approved and a previous `ACTIVE` revision exists, the service writes a
+compensating `COMMITTED` entry per old line for the **full** original value:
+
+```ts
+const amount = unitPrice.mul(qty).negated();   // qty = full orderedQuantity
+```
+
+But posting a goods receipt against that revision has already written
+`COMMITTED −(acceptedQty × unitPrice)` (`goods-receipt.service.ts:216`). The received portion is
+therefore reversed twice, and `COMMITTED` for the purchase order goes negative by the accepted
+amount.
+
+Worked example, matching the seeded figures in §12.9: order 25 t at 850 → `COMMITTED +21,250`.
+Receive and accept 23 t → `COMMITTED −19,550`, `ACCRUED +19,550`; committed balance `1,700`,
+correct. Now revise the PO and approve → `COMMITTED −21,250` for the superseded revision, plus
+the new revision's own positive entry. The old revision's net contribution is `−19,550`, not the
+`+1,700` that was actually outstanding.
+
+§12.6 instructs the approve drawer to state that "its uncommitted balance will be reversed."
+That is what should happen and is not what does.
+
+**Frontend impact:** the approve drawer states plainly that approving supersedes the current
+revision and writes new commitment entries. It makes no claim about the uncommitted balance,
+because the claim would be false.
+
+### <a id="p12"></a>P12 — Cancelling a purchase order leaves its commitments standing
+
+**Correctness — bug · verified against `purchase-order.service.ts` `cancel()` (2026-08-09)**
+
+`cancel` walks the revisions, sets each non-terminal one to `CANCELLED`, sets the PO to
+`CANCELLED`, and returns. No commitment ledger entry is written.
+
+Every `COMMITTED` row from the approval survives the cancellation, so a cancelled purchase order
+continues to consume commitment forever. The `sourceDocumentType` enum contains
+`PO_CANCELLATION`, and the only code that uses it is the supersede path in `approve` — which
+suggests the reversal was designed and never wired.
+
+**Frontend impact:** the Commitments card (§12.9) and the commitment ledger will overstate
+committed cost by the value of every cancelled PO. The cancel confirmation says so, and the
+ledger screen carries a note. Neither is a fix — the figures are wrong at the source.
+
+### <a id="p13"></a>P13 — `revise` requires a `supplierId` it discards
+
+**Contract · verified against `create-purchase-order.dto.ts:113` and `purchase-order.service.ts` `RevisePoDto` (2026-08-09)**
+
+`RevisePurchaseOrderDto extends CreatePurchaseOrderDto`, inheriting a required `supplierId`.
+The service's own `RevisePoDto` interface has no such field and `revise` never reads one — a
+supplier cannot be changed by revision, which is correct, but the body must carry the value
+anyway. §6.29's revise example does include it, without saying it is ignored.
+
+**Frontend impact:** the revise drawer resends the PO's existing `supplierId`.
+
+### <a id="p14"></a>P14 — The PO list cannot show a total, and its revision number is misleading
+
+**Contract · verified against `purchase-order.repository.ts:66-75` (2026-08-09)**
+
+```ts
+include: { supplier: true, revisions: { orderBy: { revisionNumber: 'desc' }, take: 1 } }
+```
+
+Two problems for §12.6's list spec. The embedded revision has **no `lines`**, so
+`extendedAmount` is absent and "Total Amount = sum of extendedAmount on the ACTIVE revision's
+lines" cannot be computed without one detail fetch per row. And `take: 1` by descending
+revision number returns the **highest-numbered** revision, which is the `DRAFT` one whenever a
+revision is in progress — not the `ACTIVE` revision the column is supposed to describe.
+
+`supplier: true` *is* included, so supplier name is available on both list and detail. This is
+the one place a supplier name can be resolved at all — see P16.
+
+**Frontend impact:** the Total Amount column is omitted from the PO list. The revision column is
+labelled "Latest revision" and shows that revision's status, which is what the payload actually
+contains.
+
+### <a id="p15"></a>P15 — The server posts unmatched bills; the matching gate is UI-only
+
+**Security — bug · verified against `supplier-bill.service.ts:149-154` (2026-08-09)**
+
+```ts
+const POSTABLE_MATCH_STATUSES = ['MATCHED', 'MATCHED_WITH_TOLERANCE', 'APPROVED_EXCEPTION', 'NOT_RUN'];
+```
+
+`NOT_RUN` is in the allow-list. §6.31 states the rule in the opposite direction — "the bill's
+`matchStatus` must be `MATCHED`, `MATCHED_WITH_TOLERANCE`, or `APPROVED_EXCEPTION` before
+posting is allowed" — and adds the explicit UI rule that Post must be disabled on `NOT_RUN` or
+`EXCEPTION`. A bill linked to a PO revision that has never been matched posts straight to the
+general ledger.
+
+`EXCEPTION` *is* blocked, so the exception-approval path works. It is the never-matched path
+that is open — the more likely one, since `NOT_RUN` is the default (`schema.prisma:1502`).
+
+Three-way matching is the control that stops an organization paying for goods it did not
+receive. Implemented on the client only, it stops nothing: any caller with a token can `POST
+/bills/:id/post` directly.
+
+**Frontend impact:** the UI implements the gate as specified — Post is disabled on `NOT_RUN` and
+`EXCEPTION` with an explanation. This is deliberately stricter than the server. It is a usability
+affordance, not a control, and must not be recorded as one.
+
+### <a id="p16"></a>P16 — Supplier name is unresolvable on every AP screen
+
+**Gap · verified against `supplier-bill.repository.ts:39-51` (2026-08-09)**
+
+`findById` includes `lines` only; `findAll` includes nothing. Neither embeds the `supplier`
+relation, so both return a bare `supplierId`. With no `GET /suppliers` (A3 / #26) there is no
+second call that could resolve it.
+
+**Frontend impact:** the Supplier Bills list and detail show the bill's own identifiers and
+amounts. Where §12.8 expects a supplier name, the screens show a muted "Supplier unavailable"
+with a footnote naming #26 — rather than a raw cuid, which is worse than nothing.
+
+The purchase order screens are unaffected: `purchase-order.repository.ts` includes
+`supplier: true` (P14).
+
+### <a id="p17"></a>P17 — Money and quantity are JSON numbers across the procurement write path
+
+**Contract · verified against all five procurement write DTOs (2026-08-09)**
+
+`unitPrice`, `orderedQuantity`, `requestedQuantity`, `receivedQuantity`, `acceptedQuantity`,
+`rejectedQuantity`, `allocatedQuantity` and `exchangeRate` are all `number`. Every read path
+returns Prisma `Decimal`, serialized as a decimal string — `"21250.00"`, `"25"` — so the same
+field is a string coming out and a number going in.
+
+This is A9 extended from AP to the whole of procurement. As with A9 there is no live precision
+bug on the server: every value is wrapped in `new Decimal(...)` on arrival. The objection is the
+same one — `constraints.md`'s money-as-string rule is either the rule or it is not, and
+`apps/web/src/lib/money.ts` is built entirely around integer minor units.
+
+**Frontend impact:** procurement keeps money and quantities in minor units throughout — parsing,
+validation, `extendedAmount`, and the `accepted + rejected = received` check — and converts at
+the API boundary only, in a single `toApiNumber()` in `src/features/procurement/api/`. That
+function is the one thing to delete when this is fixed.
 
 ---
 
