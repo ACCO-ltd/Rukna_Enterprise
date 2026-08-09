@@ -21,12 +21,35 @@ export interface NavItem {
   disabled?: boolean;
 }
 
+/**
+ * A collapsible sub-group inside a nav group — one level of nesting, no more.
+ *
+ * Added in Sprint 5 for Procurement's four Setup screens. Without it that group renders
+ * nine flat rows, four of which are administrator-only configuration that most users never
+ * open. Inventory (Sprint 7) and HR (Sprint 8) each have the same shape, so this is not a
+ * one-off.
+ *
+ * `permissionKey` is checked with `can()` rather than `moduleVisible()` — a sub-group hides
+ * on a single specific permission, where a group hides on any of several.
+ */
+export interface NavSubGroup {
+  /** Translation key in `platform.nav` for the sub-group heading. */
+  labelKey: string;
+  items: NavItem[];
+  /** Collapsed on first render. The user's choice is remembered thereafter. */
+  defaultCollapsed?: boolean;
+  /** When set, the sub-group renders only if the user holds this permission. */
+  permissionKey?: string;
+}
+
 export interface NavGroup {
   /** Translation key in `platform.nav` for the group heading. */
   labelKey: string;
   /** Matches a key in `MODULE_PERMISSIONS` for permission gating. */
   moduleKey: string;
   items: NavItem[];
+  /** Rendered above `items`, in declaration order. */
+  subGroups?: NavSubGroup[];
 }
 
 /** Items that appear above the grouped sections — no section header. */
@@ -66,16 +89,55 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/finance/accounting/balance-sheet', labelKey: 'balanceSheet' },
       { href: '/finance/accounting/monthly-comparison', labelKey: 'monthlyComparison' },
       { href: '/finance/accounting/ledger', labelKey: 'accountLedger' },
-      // Blocked on #26 — no supplier endpoint, so a bill cannot be created.
-      { href: '/finance/accounting/bills', labelKey: 'supplierBills', disabled: true },
+      // Read-only. Sprint 4 disabled this entirely on #26, which was over-cautious: only
+      // POST /bills needs a supplier. GET /bills and GET /bills/:id work, and Sprint 5's
+      // Matching tab (§12.8) has to hang off the detail page. Creating a bill is still
+      // blocked and the button on the page says so.
+      { href: '/finance/accounting/bills', labelKey: 'supplierBills' },
+      // Still fully blocked — POST /payments is the only thing this screen would do.
       { href: '/finance/accounting/payments', labelKey: 'supplierPayments', disabled: true },
+    ],
+  },
+  {
+    // Sprint 5. A top-level group at the same level as Finance, per §12.1 — procurement is
+    // organisation-wide, not something that lives inside a project workspace.
+    //
+    // Ordered as the work happens: configure the catalogue, request, order, receive,
+    // reconcile against the bill, then read what it committed. Setup comes first and is
+    // collapsed, because it is done once and the other five are done daily.
+    //
+    // There is no Bill Matching item. §12.12's snippet lists one; §12.8 says matching is
+    // reached from the supplier bill and explicitly "not as a standalone list", and §12.8
+    // is the section that describes the screen. Matching is a tab on the bill detail page.
+    labelKey: 'procurement',
+    moduleKey: 'procurement',
+    subGroups: [
+      {
+        labelKey: 'procurementSetup',
+        defaultCollapsed: true,
+        permissionKey: 'manage:procurement-config',
+        items: [
+          { href: '/procurement/setup/uom', labelKey: 'unitsOfMeasure' },
+          { href: '/procurement/setup/material-categories', labelKey: 'materialCategories' },
+          { href: '/procurement/setup/spend-categories', labelKey: 'spendCategories' },
+          { href: '/procurement/setup/materials', labelKey: 'materials' },
+        ],
+      },
+    ],
+    items: [
+      { href: '/procurement/requests', labelKey: 'materialRequests' },
+      { href: '/procurement/orders', labelKey: 'purchaseOrders' },
+      // /procurement/grn, not /procurement/receipts — §12.7 offers both and warns about
+      // the clash with Sprint 3's client payment receipts at /receipts. This one cannot
+      // be misread.
+      { href: '/procurement/grn', labelKey: 'goodsReceipts' },
+      { href: '/procurement/commitments', labelKey: 'commitments' },
     ],
   },
   {
     labelKey: 'operations',
     moduleKey: 'operations',
     items: [
-      { href: '/operations/procurement', labelKey: 'procurement', disabled: true },
       { href: '/operations/inventory', labelKey: 'inventory', disabled: true },
     ],
   },

@@ -43,7 +43,16 @@
     "accountLedger": "Account Ledger",
     "supplierBills": "Supplier Bills",
     "supplierPayments": "Supplier Payments",
-    "monthlyComparison": "Monthly Comparison"
+    "monthlyComparison": "Monthly Comparison",
+    "procurementSetup": "Setup",
+    "unitsOfMeasure": "Units of Measure",
+    "materialCategories": "Material Categories",
+    "spendCategories": "Spend Categories",
+    "materials": "Materials",
+    "materialRequests": "Requests",
+    "purchaseOrders": "Orders",
+    "goodsReceipts": "Goods Receipts",
+    "commitments": "Commitments"
   },
   "user": {
     "menuLabel": "Account menu",
