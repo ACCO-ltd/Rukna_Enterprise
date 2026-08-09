@@ -42,6 +42,8 @@
     "search": "بحث",
     "all": "الكل",
     "deactivate": "إيقاف",
+    "reportingCurrency": "عملة التقارير",
+    "exchangeRate": "سعر الصرف",
     "blockedTitle": "غير متاح بعد",
     "permissionDenied": "ليس لديك صلاحية لتنفيذ هذا الإجراء."
   },
