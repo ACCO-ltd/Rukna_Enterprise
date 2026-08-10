@@ -610,3 +610,79 @@ export interface PostGoodsReceiptPayload {
 export interface ApproveExceptionPayload {
   approvalReason: string;
 }
+
+// ─── Supplier payments (AP) ──────────────────────────────────────────────────────
+
+/** `PaymentDocStatus` in `schema.prisma`. Shorter than a bill's — there is no SUBMITTED step. */
+export type PaymentDocumentStatus = 'DRAFT' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+
+/**
+ * `GET /payments` and `GET /payments/:id`.
+ *
+ * Neither embeds anything. `supplier-payment.repository.ts:29,33` are bare `findFirst` and
+ * `findMany`, so there is no supplier, no bank account, and — despite the controller's summary
+ * reading "Get supplier payment with allocations" — **no allocations**. Names are resolved by
+ * joining against the supplier and bank-account lists the screens already hold.
+ */
+export interface SupplierPayment {
+  id: string;
+  paymentNumber: string | null;
+  supplierId: string;
+  bankAccountId: string;
+  paymentDate: ApiDate;
+  accountingDate: ApiDate;
+  currencyCode: string;
+  totalAmount: Money;
+  /**
+   * ⚠ Set at creation from `allocations[]` **without any allocation row being written**
+   * (A16 / #34). A payment created with allocations debits AP at post while the bill it names
+   * stays fully outstanding, and no row links the two.
+   *
+   * The create form never sends `allocations[]` for that reason, so on anything this UI raises
+   * these two are `0` and `totalAmount` until `POST /payments/:id/allocations` moves them.
+   */
+  allocatedAmount: Money;
+  unallocatedAmount: Money;
+  paymentMethod: string;
+  bankReference: string | null;
+  notes: string | null;
+  documentStatus: PaymentDocumentStatus;
+  postingStatus: BillPostingStatus;
+  postedJournalEntryId: string | null;
+}
+
+/**
+ * `POST /payments`.
+ *
+ * `allocations` is **deliberately absent**. The DTO accepts it and `supplier-payment.service.ts:62`
+ * counts it into `allocatedAmount`, but no `SupplierPaymentAllocation` row is ever written and
+ * the bill's `outstandingAmount` is never reduced (A16 / #34). Settlement goes through
+ * `POST /payments/:id/allocations`, which does all three things correctly.
+ *
+ * `accountingDate` defaults to `paymentDate` server-side; it is sent explicitly so the value
+ * that lands in the ledger is the one the user saw.
+ */
+export interface CreateSupplierPaymentPayload {
+  supplierId: string;
+  bankAccountId: string;
+  paymentDate: string;
+  accountingDate: string;
+  currencyCode: string;
+  totalAmount: number;
+  paymentMethod: string;
+  bankReference?: string;
+  notes?: string;
+}
+
+/** Body of `POST /payments/:id/post`. All three are required even when a branch is unused. */
+export interface PostSupplierPaymentPayload {
+  apAccountCode: string;
+  bankGlCode: string;
+  supplierAdvanceCode: string;
+}
+
+/** Body of `POST /payments/:id/reverse`. */
+export interface ReverseSupplierPaymentPayload {
+  reversalDate: string;
+  reason: string;
+}

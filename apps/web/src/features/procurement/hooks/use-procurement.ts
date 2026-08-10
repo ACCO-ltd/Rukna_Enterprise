@@ -21,6 +21,7 @@ import {
   approveMatchException,
   approveMaterialRequest,
   approveSupplierBill,
+  approveSupplierPayment,
   approvePurchaseOrder,
   cancelGoodsReceipt,
   cancelMaterialRequest,
@@ -33,6 +34,7 @@ import {
   createSpendCategory,
   createSupplier,
   createSupplierBill,
+  createSupplierPayment,
   createUom,
   deactivateMaterialCategory,
   deactivateSpendCategory,
@@ -44,6 +46,7 @@ import {
   getProjectCommitmentSummary,
   getPurchaseOrder,
   getSupplierBill,
+  getSupplierPayment,
   listGoodsReceipts,
   listMaterialCategories,
   listMaterialRequests,
@@ -53,11 +56,14 @@ import {
   listPurchaseOrders,
   listSpendCategories,
   listSupplierBills,
+  listSupplierPayments,
   listSuppliers,
   listUoms,
   postGoodsReceipt,
   postSupplierBill,
+  postSupplierPayment,
   reverseSupplierBill,
+  reverseSupplierPayment,
   revisePurchaseOrder,
   runBillMatch,
   submitMaterialRequest,
@@ -90,6 +96,10 @@ import type {
   SpendCategory,
   Supplier,
   SupplierBill,
+  SupplierPayment,
+  CreateSupplierPaymentPayload,
+  PostSupplierPaymentPayload,
+  ReverseSupplierPaymentPayload,
   CreateSupplierPayload,
   CreateSupplierBillPayload,
   PostSupplierBillPayload,
@@ -128,6 +138,9 @@ export const procurementKeys = {
   bills: (supplierId?: string) =>
     [...procurementKeys.all, 'bills', supplierId ?? 'all'] as const,
   bill: (id: string) => [...procurementKeys.all, 'bill', id] as const,
+  payments: (supplierId?: string) =>
+    [...procurementKeys.all, 'payments', supplierId ?? 'all'] as const,
+  payment: (id: string) => [...procurementKeys.all, 'payment', id] as const,
   billMatch: (billId: string) => [...procurementKeys.all, 'bill-match', billId] as const,
   commitments: () => [...procurementKeys.all, 'commitments'] as const,
   projectCommitments: (projectId: string, stage?: string, boqNodeId?: string) =>
@@ -532,6 +545,67 @@ export function usePostSupplierBill() {
 export function useReverseSupplierBill() {
   return useBillMutation((args: { id: string; payload: ReverseSupplierBillPayload }) =>
     reverseSupplierBill(args.id, args.payload),
+  );
+}
+
+// ─── Supplier payments ───────────────────────────────────────────────────────────
+
+export function useSupplierPayments(filters?: {
+  supplierId?: string;
+}): UseQueryResult<SupplierPayment[]> {
+  return useQuery({
+    queryKey: procurementKeys.payments(filters?.supplierId),
+    queryFn: () => listSupplierPayments(filters),
+  });
+}
+
+export function useSupplierPayment(id: string): UseQueryResult<SupplierPayment> {
+  return useQuery({
+    queryKey: procurementKeys.payment(id),
+    queryFn: () => getSupplierPayment(id),
+    enabled: Boolean(id),
+  });
+}
+
+/**
+ * Every payment mutation invalidates the payment, the payment list **and the bills**.
+ *
+ * Bills matter because posting a payment moves AP, and allocating an advance reduces a
+ * specific bill's `outstandingAmount` server-side. A bill list left stale after a payment
+ * posts shows a balance the ledger no longer agrees with, which is the one number on that
+ * screen a user would act on.
+ */
+function usePaymentMutation<TArgs>(mutationFn: (args: TArgs) => Promise<SupplierPayment>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: (payment) => {
+      void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'payments'] });
+      void qc.invalidateQueries({ queryKey: procurementKeys.payment(payment.id) });
+      void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'bills'] });
+    },
+  });
+}
+
+export function useCreateSupplierPayment() {
+  return usePaymentMutation((payload: CreateSupplierPaymentPayload) =>
+    createSupplierPayment(payload),
+  );
+}
+
+export function useApproveSupplierPayment() {
+  return usePaymentMutation((id: string) => approveSupplierPayment(id));
+}
+
+export function usePostSupplierPayment() {
+  return usePaymentMutation((args: { id: string; payload: PostSupplierPaymentPayload }) =>
+    postSupplierPayment(args.id, args.payload),
+  );
+}
+
+export function useReverseSupplierPayment() {
+  return usePaymentMutation((args: { id: string; payload: ReverseSupplierPaymentPayload }) =>
+    reverseSupplierPayment(args.id, args.payload),
   );
 }
 

@@ -39,6 +39,10 @@ import type {
   SpendCategory,
   Supplier,
   SupplierBill,
+  SupplierPayment,
+  CreateSupplierPaymentPayload,
+  PostSupplierPaymentPayload,
+  ReverseSupplierPaymentPayload,
   CreateSupplierPayload,
   CreateSupplierBillPayload,
   PostSupplierBillPayload,
@@ -574,6 +578,88 @@ export function listSuppliers(filters?: {
 export function createSupplier(payload: CreateSupplierPayload): Promise<Supplier> {
   return apiClient<Supplier>('/suppliers', {
     method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+// ─── Supplier payments (AP) ──────────────────────────────────────────────────────
+
+/**
+ * `GET /payments`
+ *
+ * Embeds nothing — no supplier, no bank account, no allocations. The screens join against
+ * `GET /suppliers` and `GET /bank-accounts`, both of which they already hold.
+ */
+export function listSupplierPayments(filters?: {
+  supplierId?: string;
+}): Promise<SupplierPayment[]> {
+  return apiClient<SupplierPayment[]>('/payments', {
+    params: queryParams({ supplierId: filters?.supplierId }),
+  });
+}
+
+/**
+ * `GET /payments/:id`
+ *
+ * The controller advertises "Get supplier payment with allocations". It does not return them:
+ * `supplier-payment.repository.ts:29` is a bare `findFirst` with no `include`. There is no
+ * endpoint that lists a payment's allocations at all, which is why Tier D shows what it just
+ * wrote rather than reading it back.
+ */
+export function getSupplierPayment(id: string): Promise<SupplierPayment> {
+  return apiClient<SupplierPayment>(`/payments/${id}`);
+}
+
+/**
+ * `POST /payments` — creates a DRAFT.
+ *
+ * `CreateSupplierPaymentPayload` has no `allocations` field, deliberately: the DTO accepts one
+ * and never writes the rows (A16 / #34). Nothing here can send it.
+ *
+ * Neither `supplierId` nor `bankAccountId` is validated server-side — no existence check and
+ * no organisation check, the same gap P8 was filed for. Both pickers are org-scoped, so this
+ * is not reachable from the UI.
+ */
+export function createSupplierPayment(
+  payload: CreateSupplierPaymentPayload,
+): Promise<SupplierPayment> {
+  return apiClient<SupplierPayment>('/payments', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+/** `POST /payments/:id/approve` — DRAFT → APPROVED. There is no reject path over HTTP. */
+export function approveSupplierPayment(id: string): Promise<SupplierPayment> {
+  return apiClient<SupplierPayment>(`/payments/${id}/approve`, { method: 'POST' });
+}
+
+/**
+ * `POST /payments/:id/post`
+ *
+ * Writes Dr AP (allocated) / Dr Supplier Advance (unallocated) / Cr Bank (total). All three
+ * account codes are required even when a branch contributes no line.
+ */
+export function postSupplierPayment(
+  id: string,
+  payload: PostSupplierPaymentPayload,
+): Promise<SupplierPayment> {
+  return apiClient<SupplierPayment>(`/payments/${id}/post`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+/** `POST /payments/:id/reverse` — refused while any advance allocation is still POSTED. */
+export function reverseSupplierPayment(
+  id: string,
+  payload: ReverseSupplierPaymentPayload,
+): Promise<SupplierPayment> {
+  return apiClient<SupplierPayment>(`/payments/${id}/reverse`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
 }

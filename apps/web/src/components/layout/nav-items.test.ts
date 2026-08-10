@@ -65,23 +65,20 @@ describe('NAV_GROUPS', () => {
         // receipts, and this controller has always been mounted at /invoices.
         '/finance/accounting/invoices',
         '/finance/accounting/bills',
+        '/finance/accounting/payments',
       ]);
     });
 
     /**
-     * Sprint 4 disabled both AP screens on #26, which was over-cautious for bills: only
-     * `POST /bills` needs a supplier, and `GET /bills` works. Sprint 5 enables the read
-     * path, because §12.8's Matching tab has to hang off the bill detail page.
+     * Sprint 4 disabled both AP screens on #26. That was over-cautious for bills — only
+     * `POST /bills` needed a supplier — and it is now wrong for payments too: #26 was fixed
+     * in `7cf2507`, and AP Tier C built the payment screens on top of it.
      *
-     * Payments stay disabled — posting a payment is the only thing that screen would do.
+     * Nothing in the accounting group is disabled any more. The assertion is kept, inverted,
+     * because the previous version passed for a day after the blocker it described was gone.
      */
-    it('enables supplier bills read-only and keeps payments disabled (#26)', () => {
-      const disabled = accounting()
-        .items.filter((i) => i.disabled)
-        .map((i) => i.href);
-
-      expect(disabled).not.toContain('/finance/accounting/bills');
-      expect(disabled).toContain('/finance/accounting/payments');
+    it('leaves no accounting screen disabled', () => {
+      expect(accounting().items.filter((i) => i.disabled)).toEqual([]);
     });
 
     it('lists setup before entry before reporting', () => {

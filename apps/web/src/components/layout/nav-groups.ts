@@ -99,8 +99,10 @@ export const NAV_GROUPS: NavGroup[] = [
       // Matching tab (§12.8) has to hang off the detail page. Creating a bill is still
       // blocked and the button on the page says so.
       { href: '/finance/accounting/bills', labelKey: 'supplierBills' },
-      // Still fully blocked — POST /payments is the only thing this screen would do.
-      { href: '/finance/accounting/payments', labelKey: 'supplierPayments', disabled: true },
+      // Live since AP Tier C. Payments are raised as unallocated advances and settled through
+      // POST /payments/:id/allocations — POST /payments accepts an allocations[] array that it
+      // never persists (A16 / #34), so the create form does not offer one.
+      { href: '/finance/accounting/payments', labelKey: 'supplierPayments' },
     ],
   },
   {
