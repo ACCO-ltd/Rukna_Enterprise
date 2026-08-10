@@ -20,7 +20,6 @@ import { formatDate } from '@/lib/format';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 
 import { usePurchaseOrders } from '../hooks/use-procurement';
-import { SUPPLIER_ENDPOINT_AVAILABLE } from '../api/procurement-api';
 import { latestRevision } from '../quantities';
 import type { PurchaseOrderStatus } from '../types';
 import { ProcurementStatusBadge } from './procurement-badges';
@@ -63,30 +62,12 @@ export function PoList() {
           <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
         </div>
 
-        {/* Built, tested, and not reachable: POST /purchase-orders requires a supplierId
-            and no endpoint lists suppliers (#26). Disabled with the reason attached beats
-            a button that 400s, and beats omitting the action as though it were never
-            designed. */}
         {can(PROCUREMENT_PERMISSIONS.createOrder) ? (
-          SUPPLIER_ENDPOINT_AVAILABLE ? (
-            <Button asChild>
-              <Link href="/procurement/orders/new">{t('new')}</Link>
-            </Button>
-          ) : (
-            <Button type="button" disabled title={t('createBlockedBody')}>
-              {t('new')}
-            </Button>
-          )
+          <Button asChild>
+            <Link href="/procurement/orders/new">{t('new')}</Link>
+          </Button>
         ) : null}
       </div>
-
-      {can(PROCUREMENT_PERMISSIONS.createOrder) && !SUPPLIER_ENDPOINT_AVAILABLE ? (
-        <Alert
-          variant="warning"
-          title={t('createBlockedTitle')}
-          messages={[t('createBlockedBody')]}
-        />
-      ) : null}
 
       <div className="flex flex-wrap gap-4">
         <div className="min-w-44 flex-1">
@@ -140,11 +121,12 @@ export function PoList() {
                         {po.poNumber}
                       </Link>
                     </TableCell>
+                    {/* `findAll` includes the whole supplier relation, so a name is expected
+                        here. The fallback is for absence, not for a missing endpoint — that
+                        was P14/P16 and it is fixed. */}
                     <TableCell className="text-sm">
                       {po.supplier?.name ?? (
-                        <span className="text-muted-foreground" title={tc('supplierUnavailableHint')}>
-                          {tc('supplierUnavailable')}
-                        </span>
+                        <span className="text-muted-foreground">{tc('notAvailable')}</span>
                       )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">

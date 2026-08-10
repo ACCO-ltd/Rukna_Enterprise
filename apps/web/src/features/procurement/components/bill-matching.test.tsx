@@ -32,6 +32,7 @@ function makeBill(overrides: Partial<SupplierBill> = {}): SupplierBill {
     id: 'bill-1',
     billNumber: 'BILL-000001',
     supplierId: 'sup-1',
+    supplier: { id: 'sup-1', code: 'SUP-001', name: 'Al-Rashid Trading' },
     supplierInvoiceNumber: 'INV-2026-0042',
     billDate: '2026-08-19T00:00:00.000Z',
     dueDate: '2026-09-19T00:00:00.000Z',

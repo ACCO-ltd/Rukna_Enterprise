@@ -53,7 +53,8 @@
     "materialRequests": "الطلبات",
     "purchaseOrders": "أوامر الشراء",
     "goodsReceipts": "إشعارات الاستلام",
-    "commitments": "الارتباطات"
+    "commitments": "الارتباطات",
+    "suppliers": "الموردون"
   },
   "user": {
     "menuLabel": "قائمة الحساب",

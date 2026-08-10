@@ -30,6 +30,7 @@ import {
   createMaterialRequest,
   createPurchaseOrder,
   createSpendCategory,
+  createSupplier,
   createUom,
   deactivateMaterialCategory,
   deactivateSpendCategory,
@@ -50,6 +51,7 @@ import {
   listPurchaseOrders,
   listSpendCategories,
   listSupplierBills,
+  listSuppliers,
   listUoms,
   postGoodsReceipt,
   revisePurchaseOrder,
@@ -81,7 +83,9 @@ import type {
   PurchaseOrderStatus,
   RevisePurchaseOrderPayload,
   SpendCategory,
+  Supplier,
   SupplierBill,
+  CreateSupplierPayload,
   UnitOfMeasure,
 } from '../types';
 
@@ -90,6 +94,8 @@ export const procurementKeys = {
   uoms: () => [...procurementKeys.all, 'uoms'] as const,
   materialCategories: () => [...procurementKeys.all, 'material-categories'] as const,
   spendCategories: () => [...procurementKeys.all, 'spend-categories'] as const,
+  suppliers: (status?: string) =>
+    [...procurementKeys.all, 'suppliers', status ?? 'all'] as const,
   materials: (categoryId?: string, spendId?: string) =>
     [...procurementKeys.all, 'materials', categoryId ?? 'all', spendId ?? 'all'] as const,
   materialRequests: (
@@ -164,6 +170,40 @@ export function useMaterials(filters?: {
     queryFn: () => listMaterials(filters),
   });
 }
+
+// ─── Suppliers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Every supplier in the organisation.
+ *
+ * One cache entry, shared by the Suppliers screen and by every `SupplierPicker` on the
+ * purchase-order, bill and payment forms. Like materials (P1) there is no `search`
+ * parameter, so the picker filters this in memory rather than per keystroke — the list is
+ * a supplier master, not a transaction log, and fetching it once is cheaper than debouncing.
+ */
+export function useSuppliers(filters?: {
+  status?: 'ACTIVE' | 'INACTIVE';
+}): UseQueryResult<Supplier[]> {
+  return useQuery({
+    queryKey: procurementKeys.suppliers(filters?.status),
+    queryFn: () => listSuppliers(filters),
+  });
+}
+
+/**
+ * Invalidates every supplier list regardless of its status filter, because a new supplier
+ * is ACTIVE and belongs in both the unfiltered and the ACTIVE view.
+ */
+export function useCreateSupplier() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateSupplierPayload) => createSupplier(payload),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'suppliers'] }),
+  });
+}
+
+// ─── Catalogue mutations ─────────────────────────────────────────────────────────
 
 export function useCreateUom() {
   const qc = useQueryClient();

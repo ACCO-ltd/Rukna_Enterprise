@@ -3,16 +3,15 @@
 /**
  * Purchase order creation (§12.6).
  *
- * **This form cannot be submitted today**, and that is a backend gap rather than a design
- * choice. `POST /procurement/purchase-orders` requires a `supplierId`; `Supplier` has no
- * controller and no supplier is seeded, so there is no way to obtain a valid one through
- * the API (A3 / #26). The route is reachable directly, so the block is stated here as
- * well as on the list's disabled button — someone will type the URL.
+ * Live since Tier A. This form was written during Sprint 5 and shipped behind a disabled
+ * entry point, because `POST /procurement/purchase-orders` requires a `supplierId` and no
+ * endpoint listed suppliers (A3 / #26). Turning it on cost a `SupplierPicker` and the
+ * deletion of a flag, exactly as the note here predicted — which is the argument for
+ * building the screen rather than deferring it, and against leaving the flag in place a
+ * day longer than the blocker it described.
  *
- * It is written and kept green anyway. The header, the line editor, the scale-changing
- * `extendedAmount`, the MR allocations and the payload shape are all exercised by
- * type-check and tests, so when `GET /suppliers` lands this becomes a supplier picker and
- * a flag flip rather than a screen written from cold under time pressure.
+ * The supplier list is empty on a fresh tenant — nothing in `prisma/seeds/` creates one —
+ * so `SupplierPicker` renders a link to the Suppliers screen rather than an empty select.
  */
 
 import { useId, useState } from 'react';
@@ -23,7 +22,6 @@ import { Alert, Button, FormField, Input } from '@erp/ui';
 import { ApiError } from '@/lib/api-client';
 import { MONEY_SCALE, QUANTITY_SCALE, parseMinorUnits } from '@/lib/money';
 
-import { SUPPLIER_ENDPOINT_AVAILABLE } from '../api/procurement-api';
 import {
   useCreatePurchaseOrder,
   useMaterialRequests,
@@ -32,6 +30,7 @@ import {
 import { moneyToApi, quantityToApi } from '../quantities';
 import type { CreatePoLinePayload } from '../types';
 import { PoLineEditor, emptyPoLine, poLineError, type PoLineDraft } from './po-line-editor';
+import { SupplierPicker } from './supplier-picker';
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -124,29 +123,15 @@ export function PoForm() {
         </ol>
       </div>
 
-      {SUPPLIER_ENDPOINT_AVAILABLE ? null : (
-        <Alert
-          variant="warning"
-          title={t('createBlockedTitle')}
-          messages={[t('createBlockedBody')]}
-        />
-      )}
-
       {step === 1 ? (
         <div className="max-w-xl space-y-4">
           <FormField htmlFor={ids.supplier} label={tc('supplier')}>
-            {/* When #26 lands this becomes a searchable supplier select. Until then the
-                control is disabled rather than a free-text cuid field: an id typed by hand
-                either 404s or, worse, silently attaches the order to the wrong supplier. */}
-            <select
+            <SupplierPicker
               id={ids.supplier}
               value={supplierId}
-              onChange={(e) => setSupplierId(e.target.value)}
-              disabled={!SUPPLIER_ENDPOINT_AVAILABLE}
-              className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm disabled:opacity-50"
-            >
-              <option value="">{t('noSupplierPicker')}</option>
-            </select>
+              onChange={setSupplierId}
+              required
+            />
           </FormField>
 
           <FormField htmlFor={ids.currency} label={tc('currency')}>
@@ -216,12 +201,7 @@ export function PoForm() {
             <Button type="button" variant="outline" onClick={() => setStep(1)}>
               {tc('back')}
             </Button>
-            <Button
-              type="button"
-              onClick={handleSubmit}
-              disabled={create.isPending || !SUPPLIER_ENDPOINT_AVAILABLE}
-              title={SUPPLIER_ENDPOINT_AVAILABLE ? undefined : t('createBlockedBody')}
-            >
+            <Button type="button" onClick={handleSubmit} disabled={create.isPending}>
               {tc('create')}
             </Button>
           </div>

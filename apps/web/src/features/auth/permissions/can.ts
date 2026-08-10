@@ -113,6 +113,23 @@ export const PROCUREMENT_PERMISSIONS = {
   view: 'view:procurement',
   /** Create and deactivate UoM, material categories, spend categories, materials. */
   manageConfig: 'manage:procurement-config',
+  /**
+   * Create a supplier.
+   *
+   * **Not in §12.2** — the section predates `GET/POST /suppliers`, which only landed with
+   * `7cf2507`. So this is a new key rather than a rename, which is the distinction the
+   * paragraph above is guarding: nothing in the document is being overruled.
+   *
+   * Deliberately not folded into `manageConfig`. A supplier is master data added whenever
+   * purchasing widens, not one-time configuration — and gating it on the setup permission
+   * would mean a buyer holding `create:purchase-order` could not add the supplier their own
+   * order needs, which is the one thing that must not happen on the screen this unblocks.
+   *
+   * Spelled `manage:supplier` to match the live singular convention (`manage:role`,
+   * `manage:user`, `manage:exchange-rate`). Raise it on #28 alongside the `manageConfig`
+   * naming question rather than settling it here.
+   */
+  manageSuppliers: 'manage:supplier',
   /** Create a material request. Submit is available to the requester. */
   createRequest: 'create:material-request',
   /** Approve a material request. */

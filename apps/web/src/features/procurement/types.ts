@@ -169,11 +169,63 @@ export interface MaterialRequest {
   lines: MaterialRequestLine[];
 }
 
+// ─── Suppliers ───────────────────────────────────────────────────────────────────
+
+/**
+ * `GET /suppliers` and `GET /suppliers/:id`.
+ *
+ * Live since `7cf2507` (A3 / #26). The list takes an optional `?status=ACTIVE|INACTIVE`,
+ * which — unlike the catalogue endpoints (P2) — is a real parameter the controller reads,
+ * so INACTIVE suppliers are reachable here in a way inactive units and materials are not.
+ *
+ * **There is no `PATCH /suppliers/:id` and nothing sets `status`** (A15). A supplier is
+ * write-once: a misspelt name is permanent and prints on every bill and payment that
+ * references it. That is why the create form warns before submitting and why no screen
+ * offers an edit control — an input that silently has no effect is worse than no input.
+ */
+export interface Supplier {
+  id: string;
+  code: string;
+  name: string;
+  nameAr: string | null;
+  taxNumber: string | null;
+  defaultCurrency: string | null;
+  paymentTermsDays: number | null;
+  status: MasterDataStatus;
+}
+
+/**
+ * `POST /suppliers`. `code` and `name` are the only required fields; the rest are
+ * `@IsOptional()` on `CreateSupplierDto`. A duplicate `code` returns `409`.
+ *
+ * `paymentTermsDays` is `@IsInt() @Min(0)` and carries `@Type(() => Number)`, so it is one
+ * of the few places in this API where a numeric string would also be accepted. It is sent
+ * as a number regardless, to match every other write path.
+ */
+export interface CreateSupplierPayload {
+  code: string;
+  name: string;
+  nameAr?: string;
+  taxNumber?: string;
+  defaultCurrency?: string;
+  paymentTermsDays?: number;
+}
+
 // ─── Purchase orders ─────────────────────────────────────────────────────────────
 
+/**
+ * The supplier as embedded on a purchase order. `purchase-order.repository.ts` includes
+ * the whole relation (`supplier: true`) on both list and detail, so more fields than these
+ * arrive; only the two every screen uses are declared.
+ *
+ * Note the asymmetry with `SupplierBillRef` below — the bill repository `select`s three
+ * columns and omits `nameAr`, so the same supplier renders in English on a bill and in
+ * Arabic on a purchase order (A13).
+ */
 export interface PurchaseOrderSupplier {
   id: string;
   name: string;
+  nameAr?: string | null;
 }
 
 export interface PurchaseOrderLine {
@@ -293,9 +345,19 @@ export interface BillMatchResult {
 // ─── Supplier bills (AP — read-only host for the Matching tab) ───────────────────
 
 /**
- * Neither `findAll` nor `findById` embeds the `supplier` relation, so only `supplierId`
- * is available and no endpoint resolves it to a name (P16 + #26).
+ * The supplier as embedded on a bill. `supplier-bill.repository.ts:47` selects exactly
+ * these three columns on both `findById` and `findAll` — P16's fix.
+ *
+ * `nameAr` is **not** among them, so on the Arabic UI a bill shows an English supplier
+ * name while a purchase order shows the Arabic one (A13). Screens fall back to `name`
+ * rather than papering over it with a second request.
  */
+export interface SupplierBillRef {
+  id: string;
+  code: string;
+  name: string;
+}
+
 export interface SupplierBillLine {
   id: string;
   lineNumber: number;
@@ -313,6 +375,8 @@ export interface SupplierBill {
   id: string;
   billNumber: string | null;
   supplierId: string;
+  /** Embedded on both list and detail since P16. Typed nullable for bills written before it. */
+  supplier: SupplierBillRef | null;
   supplierInvoiceNumber: string;
   billDate: ApiDate;
   dueDate: ApiDate;
