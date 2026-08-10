@@ -61,6 +61,9 @@ describe('NAV_GROUPS', () => {
         '/finance/accounting/balance-sheet',
         '/finance/accounting/monthly-comparison',
         '/finance/accounting/ledger',
+        // AR. Added once the /receipts collision was traced: it only ever affected customer
+        // receipts, and this controller has always been mounted at /invoices.
+        '/finance/accounting/invoices',
         '/finance/accounting/bills',
       ]);
     });

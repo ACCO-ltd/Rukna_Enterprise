@@ -26,6 +26,7 @@ import type { BoqTreeNode, IpcItem } from '@/lib/api-types';
 
 import { useCertificatePaymentStatus, useIpc, useIpcs } from '../hooks/use-ipc';
 import { grossDisagreementMinor, settlementFor } from '../settlement';
+import { IpcBillingCard } from './ipc-billing-card';
 import { IpcEffectiveBadge, IpcStatusBadge, SettlementBadge } from './ipc-status-badge';
 import { IpcSupersessionDrawer } from './ipc-supersession-drawer';
 
@@ -251,6 +252,10 @@ export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
         isPending={payment.isPending}
         isError={payment.isError}
       />
+
+      {/* Sprint 4 AR. Renders nothing unless the certificate is effective, which is the only
+          state `POST /invoices/from-ipc` accepts. */}
+      <IpcBillingCard ipcId={ipc.id} isEffective={ipc.isEffective} currency={currency} />
 
       <section className="space-y-4">
         <h2 className="text-lg font-semibold text-foreground">{t('itemsHeading')}</h2>
