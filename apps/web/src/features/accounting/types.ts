@@ -528,3 +528,49 @@ export interface ReverseInvoicePayload {
   reversalDate: string;
   reason: string;
 }
+
+// ─── Posting profiles ────────────────────────────────────────────────────────────
+
+/**
+ * A version of a posting profile — the GL account it resolves to, over a date range.
+ *
+ * `effectiveTo` is **exclusive**: a version covers `[effectiveFrom, effectiveTo)`. The
+ * controller returns only the newest version (`orderBy effectiveFrom desc, take: 1`), so a
+ * profile whose newest version has not started yet still arrives as that version, and there
+ * is no way to ask which one applies on a given date.
+ */
+export interface PostingProfileVersion {
+  id: string;
+  versionNumber: number;
+  name: string;
+  description: string | null;
+  accountId: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+/**
+ * `GET /posting-profiles` — live since `7cf2507` (A3 / #26).
+ *
+ * A profile maps a code onto the GL account a supplier bill line posts its expense to.
+ * `CreateSupplierBillLineDto.expenseProfileCode` takes the `code`, and the server resolves
+ * the account server-side at post time.
+ *
+ * **The response says nothing about what kind of account that is.** The controller embeds
+ * `versions` but not the account behind `accountId`, so a profile pointing at a revenue
+ * account is indistinguishable from one pointing at an expense account without joining
+ * against `GET /accounts`. That matters: the seed creates four profiles and one of them,
+ * `PROJECT_REVENUE`, points at income. See `expenseProfiles()` in
+ * `features/procurement/bill-actions.ts`.
+ *
+ * Note also that the seeded codes are `PROJECT_REVENUE`, `MATERIAL_PURCHASE`,
+ * `SUBCONTRACT_COST` and `OFFICE_EXPENSE` — **not** the `GENERAL-EXPENSE` that
+ * `api-reference.md` §6.20 and `CreateSupplierBillLineDto`'s own example both use. A body
+ * copied from either fails to resolve (A4, A8).
+ */
+export interface PostingProfile {
+  id: string;
+  code: string;
+  status: 'ACTIVE' | 'INACTIVE';
+  versions: PostingProfileVersion[];
+}

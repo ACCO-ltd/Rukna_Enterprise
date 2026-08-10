@@ -25,6 +25,7 @@ import {
   getTrialBalance,
   listAccounts,
   listFiscalYears,
+  listPostingProfiles,
   listJournals,
   postJournal,
   reverseJournal,
@@ -40,6 +41,7 @@ import type {
   CreateJournalPayload,
   FiscalYear,
   JournalEntry,
+  PostingProfile,
   ProfitLoss,
   ReverseJournalPayload,
   TrialBalance,
@@ -48,6 +50,7 @@ import type {
 export const accountingKeys = {
   all: ['accounting'] as const,
   accounts: () => [...accountingKeys.all, 'accounts'] as const,
+  postingProfiles: () => [...accountingKeys.all, 'posting-profiles'] as const,
   fiscalYears: () => [...accountingKeys.all, 'fiscal-years'] as const,
   fiscalYear: (id: string) => [...accountingKeys.all, 'fiscal-year', id] as const,
   journals: () => [...accountingKeys.all, 'journals'] as const,
@@ -77,6 +80,21 @@ export function useAccounts(): UseQueryResult<Account[], Error> {
   return useQuery({
     queryKey: accountingKeys.accounts(),
     queryFn: listAccounts,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * Posting profiles, held as long as the chart of accounts is.
+ *
+ * The two are always used together — a profile's `accountId` means nothing until it is
+ * resolved against `useAccounts()` — so they share a staleness window. A profile changing
+ * without its account changing is not a case worth refetching for.
+ */
+export function usePostingProfiles(): UseQueryResult<PostingProfile[], Error> {
+  return useQuery({
+    queryKey: accountingKeys.postingProfiles(),
+    queryFn: listPostingProfiles,
     staleTime: 5 * 60 * 1000,
   });
 }

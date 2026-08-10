@@ -40,6 +40,9 @@ import type {
   Supplier,
   SupplierBill,
   CreateSupplierPayload,
+  CreateSupplierBillPayload,
+  PostSupplierBillPayload,
+  ReverseSupplierBillPayload,
   UnitOfMeasure,
 } from '../types';
 
@@ -407,15 +410,13 @@ export function approveMatchException(
   });
 }
 
-// ─── Supplier bills (read-only host for the Matching tab) ───────────────────────
+// ─── Supplier bills (AP) ─────────────────────────────────────────────────────────
 
 /**
  * `GET /bills`
  *
- * Read-only here on purpose. `POST /bills` needs a `supplierId` and no endpoint lists
- * suppliers (#26), so bills cannot be created from the UI at all. Neither this response
- * nor the detail one embeds the `supplier` relation, so a supplier **name** is
- * unavailable anywhere on these screens (P16).
+ * Both this and the detail response embed `supplier { id, code, name }` since P16 was fixed
+ * — not `nameAr`, so an Arabic UI shows the English name here (A13).
  *
  * `status` is documented as a filter and not implemented (A7) — filtering is client-side.
  */
@@ -427,6 +428,66 @@ export function listSupplierBills(filters?: { supplierId?: string }): Promise<Su
 
 export function getSupplierBill(id: string): Promise<SupplierBill> {
   return apiClient<SupplierBill>(`/bills/${id}`);
+}
+
+/**
+ * `POST /bills` — creates a DRAFT.
+ *
+ * Nothing about the supplier is validated server-side: `supplier-bill.service.ts:96` passes
+ * `dto.supplierId` straight through with no existence or organisation check, the same gap P8
+ * was filed and fixed for on material requests. The picker only ever offers org-scoped
+ * suppliers, so this is not exploitable from the UI — recorded because it is not a UI control.
+ *
+ * `purchaseOrderId` is not sent. See `CreateSupplierBillPayload` and A14.
+ */
+export function createSupplierBill(
+  payload: CreateSupplierBillPayload,
+): Promise<SupplierBill> {
+  return apiClient<SupplierBill>('/bills', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+/** `POST /bills/:id/submit` — DRAFT → SUBMITTED. */
+export function submitSupplierBill(id: string): Promise<SupplierBill> {
+  return apiClient<SupplierBill>(`/bills/${id}/submit`, { method: 'POST' });
+}
+
+/**
+ * `POST /bills/:id/approve` — SUBMITTED → APPROVED.
+ *
+ * The controller's summary reads "Approve or reject", but the DTO has no `approved` flag and
+ * `supplier-bill.service.ts:124` only ever approves. There is no reject path over HTTP, so
+ * `REJECTED` is unreachable — the same shape of gap as P4's unreachable `CLOSED`.
+ */
+export function approveSupplierBill(id: string): Promise<SupplierBill> {
+  return apiClient<SupplierBill>(`/bills/${id}/approve`, { method: 'POST' });
+}
+
+/** `POST /bills/:id/post` — writes Dr Expense per line / Cr AP. Irreversible except by reversal. */
+export function postSupplierBill(
+  id: string,
+  payload: PostSupplierBillPayload,
+): Promise<SupplierBill> {
+  return apiClient<SupplierBill>(`/bills/${id}/post`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+/** `POST /bills/:id/reverse` — refused while any POSTED payment allocation exists. */
+export function reverseSupplierBill(
+  id: string,
+  payload: ReverseSupplierBillPayload,
+): Promise<SupplierBill> {
+  return apiClient<SupplierBill>(`/bills/${id}/reverse`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
 }
 
 // ─── Commitment ledger ───────────────────────────────────────────────────────────

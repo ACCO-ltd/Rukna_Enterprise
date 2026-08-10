@@ -69,7 +69,12 @@ export function IpaActionsPanel({ ipa, contractId }: { ipa: IpaDetail; contractI
         <div>
           <Button asChild>
             <Link href={`/contracts/${contractId}/applications/${ipa.id}/certificates/new`}>
-              {hasEffectiveCert ? tIpc('wizard.supersedeCta') : tIpc('wizard.issueCta')}
+              {/* `tIpc` is already bound to `platform.ipc.wizard`; the keys are `issueCta`
+                  and `supersedeCta` directly under it. This read `wizard.supersedeCta`,
+                  resolving to `platform.ipc.wizard.wizard.supersedeCta`, which does not
+                  exist — and next-intl throws on a missing key, so a SUBMITTED application
+                  crashed this panel. Found by `i18n/key-references.test.ts`. */}
+              {hasEffectiveCert ? tIpc('supersedeCta') : tIpc('issueCta')}
             </Link>
           </Button>
         </div>
