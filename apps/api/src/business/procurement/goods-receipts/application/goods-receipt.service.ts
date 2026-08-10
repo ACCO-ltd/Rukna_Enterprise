@@ -260,4 +260,15 @@ export class GoodsReceiptService {
     if (grn.status === 'POSTED') throw new ConflictException('Cannot cancel a POSTED goods receipt');
     return this.repo.updateStatus(prisma, id, 'CANCELLED');
   }
+
+  // P10: supervisor approves over-receipt exception — EXCEPTION_PENDING → DRAFT so GRN can be posted
+  async approveException(identity: RequestIdentity, id: string) {
+    const prisma = this.tenancy.getClient();
+    const grn = await this.repo.findById(prisma, identity.activeOrganizationId, id);
+    if (!grn) throw new NotFoundException(`Goods receipt ${id} not found`);
+    if (grn.status !== 'EXCEPTION_PENDING') {
+      throw new ConflictException(`GRN is ${grn.status} — only EXCEPTION_PENDING GRNs can have their exception approved`);
+    }
+    return this.repo.updateStatus(prisma, id, 'DRAFT', { exceptionReason: `Exception approved by ${identity.userId}` });
+  }
 }

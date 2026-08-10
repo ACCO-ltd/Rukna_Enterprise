@@ -1185,16 +1185,16 @@ Formal accounting invoice raised against a certified IPC. This is the AR-layer c
 
 Records cash collected and allocates it to reduce outstanding invoice balances.
 
-> **Note:** Sprint 3 also has `GET/POST /receipts` for operational payment tracking. The endpoints in this section are the **accounting layer** — they create GL postings. They are distinct services but may share the same underlying PaymentReceipt entity. If you are building the Finance accounting workspace (not the project-level receipt view), use these endpoints.
+> **Note (A1 fix):** Sprint 3 has `GET/POST /receipts` (finance/project tracking). The Sprint 4 accounting layer is at **`/customer-receipts`** — same entity, different service with GL posting. Always use `/customer-receipts` for the Finance workspace.
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/receipts` | List receipts with posting status |
-| `GET` | `/receipts/:id` | Get receipt with allocations and GL status |
-| `POST` | `/receipts/:id/post` | Post receipt to GL (Dr Bank / Cr AR or Unapplied) |
-| `POST` | `/receipts/:id/allocations` | Allocate posted receipt to a client invoice |
-| `POST` | `/receipts/:id/allocations/:allocationId/reverse` | Reverse a specific allocation |
-| `POST` | `/receipts/:id/reverse` | Reverse the entire receipt posting |
+| `GET` | `/customer-receipts` | List receipts with posting status |
+| `GET` | `/customer-receipts/:id` | Get receipt with allocations and GL status |
+| `POST` | `/customer-receipts/:id/post` | Post receipt to GL (Dr Bank / Cr AR or Unapplied) |
+| `POST` | `/customer-receipts/:id/allocations` | Allocate posted receipt to a client invoice |
+| `POST` | `/customer-receipts/:id/allocations/:allocationId/reverse` | Reverse a specific allocation |
+| `POST` | `/customer-receipts/:id/reverse` | Reverse the entire receipt posting |
 
 **Post receipt — body:**
 ```json
@@ -1323,7 +1323,41 @@ Records cash collected and allocates it to reduce outstanding invoice balances.
 
 ---
 
-### 6.22 Financial Reports
+### 6.22 Suppliers (AP)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/suppliers` | List suppliers (`?status=ACTIVE\|INACTIVE`) |
+| `GET` | `/suppliers/:id` | Get a supplier by ID |
+| `POST` | `/suppliers` | Create a new supplier |
+
+**Create supplier — body:**
+```json
+{
+  "code": "SUP-001",
+  "name": "Al-Rashid Trading",
+  "nameAr": "الراشد للتجارة",
+  "taxNumber": "310122445500003",
+  "defaultCurrency": "SAR",
+  "paymentTermsDays": 30
+}
+```
+
+> `code` must be unique within the organization. Returns `409 Conflict` if the code already exists. `nameAr`, `taxNumber`, `defaultCurrency`, and `paymentTermsDays` are optional.
+
+---
+
+### 6.23 Posting Profiles (AP)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/posting-profiles` | List posting profiles (`?status=ACTIVE\|INACTIVE`) |
+
+> Posting profiles determine which expense GL account is debited when a supplier bill is posted. Each profile has a `code` (e.g. `GENERAL-EXPENSE`, `MATERIALS-EXPENSE`) that is referenced in supplier bill lines. The response includes the most recent active version for each profile.
+
+---
+
+### 6.24 Financial Reports
 
 All report endpoints require `Authorization: Bearer <token>`. All results are scoped to the authenticated user's organization.
 
@@ -1546,7 +1580,7 @@ GET /reports/balance-sheet?asOfDate=2025-01-31&comparativeDate=2024-12-31
 
 ---
 
-### 6.23 Period Management
+### 6.25 Period Management
 
 These are CFO-level operations. Gate them with a `can('manage:periods')` permission check before showing the controls.
 
@@ -1596,7 +1630,7 @@ OPEN ──lock──► LOCKED ──close──► CLOSED ──reopen──�
 
 ---
 
-### 6.24 Units of Measure
+### 6.26 Units of Measure
 
 All MATERIAL procurement lines use a UoM from this table. `MATERIAL` lines are locked to the material's `baseUomCode` — users cannot override it.
 
@@ -1631,7 +1665,7 @@ All MATERIAL procurement lines use a UoM from this table. `MATERIAL` lines are l
 
 ---
 
-### 6.25 Material Categories
+### 6.27 Material Categories
 
 Operational hierarchy for the material catalogue (e.g. Steel → Rebar). Separate from spend categories.
 
@@ -1667,7 +1701,7 @@ Operational hierarchy for the material catalogue (e.g. Steel → Rebar). Separat
 
 ---
 
-### 6.26 Spend Categories
+### 6.28 Spend Categories
 
 Financial governance hierarchy — drives approval routing, tolerance policies, and commitment ledger attribution. **Do not confuse with Material Categories.**
 
@@ -1690,7 +1724,7 @@ Financial governance hierarchy — drives approval routing, tolerance policies, 
 
 ---
 
-### 6.27 Materials
+### 6.29 Materials
 
 The material catalogue. Each material belongs to a `MaterialCategory` and optionally has a default `SpendCategory`. `baseUomCode` is enforced on all MATERIAL procurement lines — the UoM cannot be overridden per line.
 
@@ -1734,7 +1768,7 @@ The material catalogue. Each material belongs to a `MaterialCategory` and option
 
 ---
 
-### 6.28 Material Requests
+### 6.30 Material Requests
 
 A formal internal request for materials or services. Can be PROJECT-scoped (linked to a project) or ORGANIZATION-scoped (admin/overhead).
 
@@ -1818,7 +1852,7 @@ DRAFT → SUBMITTED → APPROVED → PARTIALLY_ORDERED → FULLY_ORDERED → CLO
 
 ---
 
-### 6.29 Purchase Orders
+### 6.31 Purchase Orders
 
 Immutable revision model. Each PO has a stable identity (`PurchaseOrder`) and one or more `PurchaseOrderRevision` records. Lines are immutable once the revision is ACTIVE. GRNs and bills reference specific revision lines.
 
@@ -1933,7 +1967,7 @@ DRAFT → SUBMITTED → APPROVED → ACTIVE ──superseded──► SUPERSEDED
 
 ---
 
-### 6.30 Goods Receipts
+### 6.32 Goods Receipts
 
 Records physical delivery against an ACTIVE PO revision. Each line records the full physical quantity received, then splits into `acceptedQuantity` and `rejectedQuantity`. Only accepted quantity generates ACCRUED commitment movement.
 
@@ -1943,6 +1977,7 @@ Records physical delivery against an ACTIVE PO revision. Each line records the f
 | `POST` | `/procurement/goods-receipts` | Create GRN (DRAFT) |
 | `GET` | `/procurement/goods-receipts/:id` | Get GRN with lines + allocations |
 | `POST` | `/procurement/goods-receipts/:id/post` | Post GRN → COMMITTED→ACCRUED |
+| `POST` | `/procurement/goods-receipts/:id/approve-exception` | Supervisor approves over-receipt: EXCEPTION_PENDING → DRAFT |
 | `POST` | `/procurement/goods-receipts/:id/cancel` | Cancel (not allowed after POSTED) |
 
 **Query params for list:**
@@ -2020,7 +2055,7 @@ DRAFT ──post──► POSTED  (immutable)
 
 ---
 
-### 6.31 Bill Matching
+### 6.33 Bill Matching
 
 Explicit matching of a supplier bill against PO lines (and GRN lines for MATERIAL). The bill's `matchStatus` must be `MATCHED`, `MATCHED_WITH_TOLERANCE`, or `APPROVED_EXCEPTION` before posting is allowed.
 
@@ -2079,7 +2114,7 @@ Explicit matching of a supplier bill against PO lines (and GRN lines for MATERIA
 
 ---
 
-### 6.32 Commitment Ledger
+### 6.34 Commitment Ledger
 
 Read-only query endpoints. The ledger is written automatically by PO approval and GRN posting — there is no create/update endpoint.
 

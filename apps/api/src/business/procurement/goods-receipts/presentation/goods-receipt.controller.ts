@@ -54,4 +54,12 @@ export class GoodsReceiptController {
   cancel(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
     return this.service.cancel(identity, id);
   }
+
+  @Post(':id/approve-exception')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Supervisor approves over-receipt exception: EXCEPTION_PENDING → DRAFT' })
+  approveException(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.service.approveException(identity, id);
+  }
 }

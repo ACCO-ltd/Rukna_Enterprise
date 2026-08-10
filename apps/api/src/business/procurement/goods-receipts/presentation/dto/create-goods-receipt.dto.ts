@@ -15,7 +15,8 @@ export class CreateGrnLineDto {
   receivedQuantity: number;
 
   @ApiProperty({ example: 24 })
-  @IsPositive()
+  @IsNumber()
+  @Min(0)
   acceptedQuantity: number;
 
   @ApiPropertyOptional({ example: 1 })

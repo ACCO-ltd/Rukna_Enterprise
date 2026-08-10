@@ -146,7 +146,7 @@ export class SupplierBillService {
     }
 
     // ADR-007: posting blocked for procurement bills unless matching is complete/approved
-    const POSTABLE_MATCH_STATUSES = ['MATCHED', 'MATCHED_WITH_TOLERANCE', 'APPROVED_EXCEPTION', 'NOT_RUN'];
+    const POSTABLE_MATCH_STATUSES = ['MATCHED', 'MATCHED_WITH_TOLERANCE', 'APPROVED_EXCEPTION'];
     if (bill.purchaseOrderRevisionId && !POSTABLE_MATCH_STATUSES.includes(bill.matchStatus)) {
       throw new BadRequestException(
         `Bill posting blocked — match status is ${bill.matchStatus}. Approve the exception before posting.`,

@@ -63,6 +63,20 @@ export class CommitmentLedgerRepository {
     });
   }
 
+  queryByPoLineAndStage(
+    prisma: TenantPrisma,
+    organizationId: string,
+    purchaseOrderId: string,
+    sourceLineId: string,
+    stage: CommitmentStage,
+  ) {
+    return prisma.commitmentLedgerEntry.findMany({
+      where: { organizationId, purchaseOrderId, sourceLineId, stage },
+      select: { amount: true, exchangeRateSnapshot: true },
+      orderBy: { occurredAt: 'asc' },
+    });
+  }
+
   async summarizeByProject(
     prisma: TenantPrisma,
     organizationId: string,

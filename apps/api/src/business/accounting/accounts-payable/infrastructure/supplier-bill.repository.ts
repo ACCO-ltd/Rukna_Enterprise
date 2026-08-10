@@ -42,13 +42,17 @@ export class SupplierBillRepository {
   findById(prisma: TenantPrisma, organizationId: string, id: string) {
     return prisma.supplierBill.findFirst({
       where: { id, organizationId },
-      include: { lines: { orderBy: { lineNumber: 'asc' } } },
+      include: {
+        lines: { orderBy: { lineNumber: 'asc' } },
+        supplier: { select: { id: true, code: true, name: true } },
+      },
     });
   }
 
   findAll(prisma: TenantPrisma, organizationId: string, supplierId?: string) {
     return prisma.supplierBill.findMany({
       where: { organizationId, ...(supplierId ? { supplierId } : {}) },
+      include: { supplier: { select: { id: true, code: true, name: true } } },
       orderBy: { billDate: 'desc' },
     });
   }

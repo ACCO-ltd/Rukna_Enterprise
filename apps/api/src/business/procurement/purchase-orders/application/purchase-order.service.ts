@@ -127,20 +127,25 @@ export class PurchaseOrderService {
     await prisma.$transaction(async (tx) => {
       if (currentActive) {
         await this.repo.updateRevisionStatus(tx as any, currentActive.id, 'SUPERSEDED');
-        // Write compensating COMMITTED reversal for old revision lines
+        // P11: reverse only the net uncommitted balance (committed - already_accrued)
         for (const line of currentActive.lines) {
-          const unitPrice = 'unitPrice' in line ? (line.unitPrice as Decimal) : new Decimal(0);
-          const qty = 'orderedQuantity' in line ? (line.orderedQuantity as Decimal) : new Decimal(0);
-          const amount = unitPrice.mul(qty).negated();
+          const committedEntries = await this.commitmentRepo.queryByPoLineAndStage(
+            tx as any, po.organizationId, po.id, line.id, 'COMMITTED',
+          );
+          const netCommitted = committedEntries.reduce(
+            (sum, e) => sum.add(e.amount as Decimal),
+            new Decimal(0),
+          );
+          if (netCommitted.lessThanOrEqualTo(0)) continue;
           await this.commitmentRepo.create(tx as any, {
             organizationId: po.organizationId,
             supplierId: po.supplierId,
             purchaseOrderId: po.id,
             spendCategoryId: (line as any).spendCategoryId ?? undefined,
             stage: 'COMMITTED',
-            amount,
+            amount: netCommitted.negated(),
             currencyCode: submitted.currencyCode,
-            reportingAmount: amount.mul(new Decimal(dto.exchangeRate)),
+            reportingAmount: netCommitted.negated().mul(new Decimal(dto.exchangeRate)),
             exchangeRateSnapshot: new Decimal(dto.exchangeRate),
             sourceDocumentType: 'PO_CANCELLATION',
             sourceDocumentId: po.id,
@@ -224,13 +229,52 @@ export class PurchaseOrderService {
     if (!po) throw new NotFoundException(`Purchase order ${id} not found`);
     if (po.status === 'CANCELLED') throw new ConflictException('Purchase order is already cancelled');
 
-    // Cancel all non-terminal revisions
-    for (const rev of po.revisions) {
-      if (rev.status !== 'SUPERSEDED' && rev.status !== 'CANCELLED') {
-        await this.repo.updateRevisionStatus(prisma, rev.id, 'CANCELLED');
+    await prisma.$transaction(async (tx) => {
+      // P12: write COMMITTED reversal for remaining uncommitted balance before cancelling
+      const activeRevision = po.revisions.find(r => r.status === 'ACTIVE');
+      if (activeRevision) {
+        for (const line of activeRevision.lines) {
+          const committedEntries = await this.commitmentRepo.queryByPoLineAndStage(
+            tx as any, po.organizationId, po.id, line.id, 'COMMITTED',
+          );
+          const netCommitted = committedEntries.reduce(
+            (sum, e) => sum.add(e.amount as Decimal),
+            new Decimal(0),
+          );
+          if (netCommitted.lessThanOrEqualTo(0)) continue;
+          const lastRate = committedEntries.length
+            ? (committedEntries[committedEntries.length - 1].exchangeRateSnapshot as Decimal)
+            : new Decimal(1);
+          await this.commitmentRepo.create(tx as any, {
+            organizationId: po.organizationId,
+            supplierId: po.supplierId,
+            purchaseOrderId: po.id,
+            spendCategoryId: (line as any).spendCategoryId ?? undefined,
+            stage: 'COMMITTED',
+            amount: netCommitted.negated(),
+            currencyCode: activeRevision.currencyCode,
+            reportingAmount: netCommitted.negated().mul(lastRate),
+            exchangeRateSnapshot: lastRate,
+            sourceDocumentType: 'PO_CANCELLATION',
+            sourceDocumentId: po.id,
+            sourceLineId: line.id,
+            sourceRevision: activeRevision.revisionNumber,
+            eventType: 'PO_CANCELLED',
+            idempotencyKey: `po-cancel-${po.id}-${line.id}`,
+            occurredAt: new Date(),
+            accountingDate: new Date(),
+          });
+        }
       }
-    }
-    await this.repo.updatePoStatus(prisma, po.id, 'CANCELLED');
+
+      for (const rev of po.revisions) {
+        if (rev.status !== 'SUPERSEDED' && rev.status !== 'CANCELLED') {
+          await this.repo.updateRevisionStatus(tx as any, rev.id, 'CANCELLED');
+        }
+      }
+      await this.repo.updatePoStatus(tx as any, po.id, 'CANCELLED');
+    });
+
     return this.repo.findById(prisma, identity.activeOrganizationId, id);
   }
 

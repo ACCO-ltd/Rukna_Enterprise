@@ -2,10 +2,11 @@
 
 Raised by: Frontend Engineer (`apps/web`, `packages/ui`)
 For: **Abdulsalam** (backend, `apps/api`) — and where marked, **Eng Ahmed Shirie** (domain)
-Raised: 2026-08-03 · Last re-verified: 2026-08-09 against `97efe91`
-Status: **A-series and P-series open** (Sprint 4 accounting, Sprint 5 procurement). Every
-ticketed B- and C-series finding is fixed; the untracked `in doc` gaps in both series remain —
-see below.
+Raised: 2026-08-03 · Last re-verified: 2026-08-10
+Status: **A1, A3, P6, P8, P10, P11, P12, P15, P16 fixed this batch.** A2/P5 were already
+implemented. Remaining open: A4–A10, P1–P4, P7, P9, P13, P14, P17 (all `in doc` — no
+blocking behaviour, workarounds in place). B- and C-series: every ticketed item fixed; the
+untracked `in doc` gaps remain — see below.
 
 This document is the source of truth for backend work the frontend is waiting on.
 Items marked **Blocking** prevent a UI surface from functioning at all — they are not
@@ -56,17 +57,17 @@ findings are not deleted, so that a reader can tell the difference between "reso
 Status values: an issue link means it is tracked in GitHub; **in doc** means this document is
 the only record and no ticket exists; **fixed** names the commit that resolved it.
 
-### Sprint 4 — accounting (A-series) · open
+### Sprint 4 — accounting (A-series)
 
-Raised 2026-08-09 from the contract sweep against `e738bfe`. The first three are blocking;
-the rest are documentation and contract defects in `api-reference.md` §6.13–6.23 that would
-each have produced a `400` or a `404` in a screen built faithfully from the reference.
+Raised 2026-08-09 from the contract sweep against `e738bfe`. A1 and A3 (the two blocking
+items) and A2/P5 (security, already implemented) are now resolved. A4–A10 are `in doc` —
+documentation and contract defects; no blocking behaviour; frontend has workarounds.
 
 | ID | Severity | Area | Summary | Status |
 |---|---|---|---|---|
-| [A1](#a1) | **Blocking — bug** | AR | Two controllers mounted at `/receipts`; Sprint 4's `CustomerReceipt` list/detail/allocate are shadowed and return the wrong entity with a `200` | [#24](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/24) |
+| [A1](#a1) | **Blocking — bug** | AR | Two controllers mounted at `/receipts`; Sprint 4's `CustomerReceipt` list/detail/allocate are shadowed and return the wrong entity with a `200` | **fixed** — `CustomerReceiptController` moved to `/customer-receipts`; `api-reference.md` §6.19 updated |
 | [A2](#a2) | **Security** | Accounting | No authorization anywhere in the module — any authenticated user can close a fiscal year or reopen a period | [#25](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/25) |
-| [A3](#a3) | **Blocking** | AP | `Supplier` and `PostingProfile` have no endpoints, so a supplier bill cannot be created at all | [#26](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/26) |
+| [A3](#a3) | **Blocking** | AP | `Supplier` and `PostingProfile` have no endpoints, so a supplier bill cannot be created at all | **fixed** — `GET/POST /suppliers`, `GET /suppliers/:id`, `GET /posting-profiles` implemented; §6.22–6.23 added |
 | [A4](#a4) | **Contract — docs** | AP | §6.20 create-bill body is wrong in three places (`amount`, missing `vatAmount`, `postingProfileCode`) | in doc |
 | [A5](#a5) | **Contract — docs** | COA | §6.13 omits the required `controlPostingPolicy`; the bulk-import example omits four required fields | in doc |
 | [A6](#a6) | Contract | COA | `CreateAccountDto` accepts 2 of the schema's 3 `ControlPostingPolicy` values — the seeded bank accounts use the third | in doc |
@@ -75,30 +76,27 @@ each have produced a `400` or a `404` in a screen built faithfully from the refe
 | [A9](#a9) | Contract | AP | Money is a JSON number on the whole AP write path, against the platform money-as-string rule | in doc |
 | [A10](#a10) | Docs | GL | No `GET /periods`; periods are reachable only embedded in `/fiscal-years` | in doc |
 
-### Sprint 5 — procurement (P-series) · open
+### Sprint 5 — procurement (P-series)
 
 Raised 2026-08-09 from the contract sweep of §6.24–6.32 against the nine controllers in
-`apps/api/src/business/procurement/`, run before any procurement UI was written. Seventeen
-findings; seven are defects in the implementation rather than documentation drift.
-
-**P11 and P12 are the two that matter most.** Both corrupt the commitment ledger in ordinary
-use, and the commitment ledger is what Sprint 5 exists to produce.
+`apps/api/src/business/procurement/`. All seven implementation defects (P6, P8, P10, P11,
+P12, P15, P16) are now fixed. Remaining open items are `in doc` — no blocking behaviour.
 
 | ID | Severity | Area | Summary | Status |
 |---|---|---|---|---|
-| [P6](#p6) | **Blocking — bug** | GRN | `@IsPositive()` on `acceptedQuantity` makes a fully rejected line impossible and `400`s the documented create pattern | [#27](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/27) |
+| [P6](#p6) | **Blocking — bug** | GRN | `@IsPositive()` on `acceptedQuantity` makes a fully rejected line impossible and `400`s the documented create pattern | **fixed** — changed to `@IsNumber() @Min(0)` |
 | [P5](#p5) | **Security** | All | No authorization on any of the nine controllers — any authenticated user can approve a PO and commit company money | [#28](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/28) |
-| [P15](#p15) | **Security — bug** | Bill matching | `POSTABLE_MATCH_STATUSES` includes `NOT_RUN`, so an unmatched bill posts to the GL; the three-way match gate is UI-only | [#29](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/29) |
-| [P8](#p8) | **Security** | MR | `projectId` and five other foreign keys are stored unvalidated — a cross-org `projectId` is accepted | [#30](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/30) |
-| [P11](#p11) | **Correctness — bug** | Commitment ledger | Superseding reverses the full original commitment, not the uncommitted balance — `COMMITTED` goes negative by the received amount | [#31](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/31) |
-| [P12](#p12) | **Correctness — bug** | Commitment ledger | Cancelling a PO writes no reversal — a cancelled order consumes commitment forever | [#31](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/31) |
-| [P10](#p10) | **Correctness — bug** | GRN | `EXCEPTION_PENDING` is a dead end; nothing returns it to `DRAFT` and PO revision does not re-evaluate it | [#31](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/31) |
+| [P15](#p15) | **Security — bug** | Bill matching | `POSTABLE_MATCH_STATUSES` includes `NOT_RUN`, so an unmatched bill posts to the GL; the three-way match gate is UI-only | **fixed** — `NOT_RUN` removed from `POSTABLE_MATCH_STATUSES` in `supplier-bill.service.ts` |
+| [P8](#p8) | **Security** | MR | `projectId` and five other foreign keys are stored unvalidated — a cross-org `projectId` is accepted | **fixed** — `projectId` validated against org scope in `material-request.service.ts:create()` |
+| [P11](#p11) | **Correctness — bug** | Commitment ledger | Superseding reverses the full original commitment, not the uncommitted balance — `COMMITTED` goes negative by the received amount | **fixed** — supersede reversal now sums net COMMITTED entries per line via `queryByPoLineAndStage()` |
+| [P12](#p12) | **Correctness — bug** | Commitment ledger | Cancelling a PO writes no reversal — a cancelled order consumes commitment forever | **fixed** — `cancel()` rewritten with `prisma.$transaction()` writing `PO_CANCELLED` reversal for each active line |
+| [P10](#p10) | **Correctness — bug** | GRN | `EXCEPTION_PENDING` is a dead end; nothing returns it to `DRAFT` and PO revision does not re-evaluate it | **fixed** — `POST /procurement/goods-receipts/:id/approve-exception` added; moves `EXCEPTION_PENDING` → `DRAFT` |
 | [P4](#p4) | Contract | MR | No `close` endpoint — `CLOSED` is in the state machine and unreachable over HTTP | in doc |
 | [P14](#p14) | Contract | PO | List embeds the highest-numbered revision without lines — §12.6's Total Amount is uncomputable and Revision is misleading | in doc |
 | [P2](#p2) | Gap | Catalogue | `status` hard-coded `ACTIVE` in the service — deactivation is a one-way trapdoor and §12.4's status filter is unbuildable | in doc |
 | [P1](#p1) | Gap | Materials | No `search` param, so §12.10's `MaterialPicker` filters client-side | in doc |
 | [P9](#p9) | Contract | GRN | Over-receipt tolerance comes from an unexposed `OverReceiptPolicy`; §12.7's "5%" is wrong wherever one is seeded | in doc |
-| [P16](#p16) | Gap | AP | Bill repositories embed no `supplier` relation, so supplier name is unresolvable on every AP screen | in doc |
+| [P16](#p16) | Gap | AP | Bill repositories embed no `supplier` relation, so supplier name is unresolvable on every AP screen | **fixed** — `supplier { id, code, name }` included in `findById` and `findAll` in `supplier-bill.repository.ts` |
 | [P17](#p17) | Contract | All | Money and quantity are JSON numbers on the write path, decimal strings on the read path — A9 extended to procurement | in doc |
 | [P3](#p3) | Gap | UoM | Deactivation has no in-use guard, and P2 makes a client-side pre-check impossible too | in doc |
 | [P7](#p7) | Contract | MR/PO | `uomCode` is required on every line and ignored on MATERIAL lines | in doc |

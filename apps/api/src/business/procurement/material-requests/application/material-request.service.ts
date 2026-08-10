@@ -78,6 +78,12 @@ export class MaterialRequestService {
       throw new BadRequestException('projectId must be null for ORGANIZATION-scoped material requests');
     }
 
+    // P8: validate that projectId belongs to this org (cross-org prevention)
+    if (dto.projectId) {
+      const project = await prisma.project.findFirst({ where: { id: dto.projectId, organizationId: orgId }, select: { id: true } });
+      if (!project) throw new BadRequestException(`projectId '${dto.projectId}' not found in this organization`);
+    }
+
     if (!dto.lines || dto.lines.length === 0) {
       throw new BadRequestException('At least one line is required');
     }

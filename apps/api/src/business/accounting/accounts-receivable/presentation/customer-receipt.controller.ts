@@ -15,7 +15,7 @@ import { ReverseAllocationDto } from './dto/reverse-allocation.dto.js';
 @ApiTags('Customer Receipts')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
-@Controller('receipts')
+@Controller('customer-receipts')
 export class CustomerReceiptController {
   constructor(private readonly customerReceiptService: CustomerReceiptService) {}
 

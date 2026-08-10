@@ -4,20 +4,26 @@ import { AccountingCoreModule } from '../accounting-core/accounting-core.module.
 import { CommitmentLedgerModule } from '../../procurement/commitment-ledger/commitment-ledger.module.js';
 import { SupplierBillRepository } from './infrastructure/supplier-bill.repository.js';
 import { SupplierPaymentRepository } from './infrastructure/supplier-payment.repository.js';
+import { SupplierRepository } from './infrastructure/supplier.repository.js';
 import { SupplierBillService } from './application/supplier-bill.service.js';
 import { SupplierPaymentService } from './application/supplier-payment.service.js';
+import { SupplierService } from './application/supplier.service.js';
 import { SupplierBillController } from './presentation/supplier-bill.controller.js';
 import { SupplierPaymentController } from './presentation/supplier-payment.controller.js';
+import { SupplierController } from './presentation/supplier.controller.js';
+import { PostingProfileController } from './presentation/posting-profile.controller.js';
 
 @Module({
   imports: [TenancyModule, AccountingCoreModule, CommitmentLedgerModule],
-  controllers: [SupplierBillController, SupplierPaymentController],
+  controllers: [SupplierBillController, SupplierPaymentController, SupplierController, PostingProfileController],
   providers: [
     SupplierBillRepository,
     SupplierPaymentRepository,
+    SupplierRepository,
     SupplierBillService,
     SupplierPaymentService,
+    SupplierService,
   ],
-  exports: [SupplierBillService, SupplierPaymentService],
+  exports: [SupplierBillService, SupplierPaymentService, SupplierService],
 })
 export class AccountsPayableModule {}
