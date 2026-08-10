@@ -156,6 +156,38 @@ all [#26](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/26). The PO create
 built and tested behind a disabled entry point; when `GET /suppliers` lands it needs a
 supplier picker and one flag in `procurement-api.ts`.
 
+### ✅ Sprint 4 Tier G — Client Invoices (done 2026-08-10)
+
+Two routes under `/finance/accounting/invoices` plus a Billing card on the IPC detail page, in
+`src/features/accounting/`. List, detail with the approve → post → reverse lifecycle, and
+invoice generation from an effective certificate.
+
+**Five things to know before you touch AR:**
+
+1. **Sprint 4 recorded Client Invoices as blocked by #24. That was wrong.**
+   `ClientInvoiceController` is mounted at `@Controller('invoices')` and never collided with
+   anything — only customer receipts were shadowed. Six routes sat idle for a day on a
+   misattributed blocker. Check where a controller is actually mounted before believing a
+   blocker note.
+2. **`posting-accounts.ts` resolves GL account codes by `accountSubtype`,** because every AR/AP
+   post endpoint takes raw codes in its body. It returns `NOT_CONFIGURED` / `AMBIGUOUS` rather
+   than taking the first match — two accounts marked `ACCOUNTS_RECEIVABLE` is a chart the user
+   must fix, not one the UI should guess past. Delete this module when a posting profile can
+   resolve control accounts server-side.
+3. **`planInvoicePost` returns the preview and the payload from one resolution.** The Post dialog
+   shows the exact Dr/Cr the server will write. If you ever compute the preview separately, the
+   dialog can show one thing and send another.
+4. **`canPost` is deliberately stricter than the server (A11).** The API will re-post a REVERSED
+   invoice, overwriting `invoiceNumber` and orphaning the original journal. Three tests name the
+   divergence. Do not relax it to match the server — fix the server.
+5. **`invoiceNumber` is null until the invoice posts.** The `INV-` sequence is drawn inside the
+   posting transaction, so every draft is unnumbered. Nothing may key a row on it.
+
+**Not built, and deliberately: Customer Receipts.** `/customer-receipts` is live and unshadowed
+since A1 was fixed, but a receipt carries two unlinked allocation ledgers — to IPCs and to
+invoices — with no guard between them (A12). Whether that is one settlement mirrored or two is a
+domain question now with Eng Ahmed. Do not build the allocation screen until it is answered.
+
 ### ⏳ Sprint 6 Frontend — Variations / Change Orders (START HERE)
 
 Backend: not yet built. Nothing to build against yet — confirm with Abdulsalam before

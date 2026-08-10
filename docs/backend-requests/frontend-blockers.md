@@ -60,8 +60,20 @@ the only record and no ticket exists; **fixed** names the commit that resolved i
 ### Sprint 4 — accounting (A-series)
 
 Raised 2026-08-09 from the contract sweep against `e738bfe`. A1 and A3 (the two blocking
-items) and A2/P5 (security, already implemented) are now resolved. A4–A10 are `in doc` —
-documentation and contract defects; no blocking behaviour; frontend has workarounds.
+items) are now resolved. A4–A10 are `in doc` — documentation and contract defects; no blocking
+behaviour; frontend has workarounds.
+
+> **Correction, 2026-08-10.** An earlier revision of this paragraph read *"A2/P5 (security,
+> already implemented) are now resolved."* That was **wrong**, and the table below it was right
+> the whole time — both rows still carry their open issue links. Verified at `a715984`:
+> `src/common/decorators/` contains only `current-user.decorator.ts`, there is no
+> `@Permissions` decorator and no permissions guard, and the `RolesGuard` registered as
+> `APP_GUARD` in `app.module.ts:46` reads a `'roles'` metadata key that **no controller sets** —
+> so it returns `true` on every request. There is still no authorization anywhere in the API.
+>
+> This is the same failure the document warns about at the top: checking that a thing exists is
+> not checking that it is right. A summary line that contradicts its own table makes both
+> untrustworthy.
 
 | ID | Severity | Area | Summary | Status |
 |---|---|---|---|---|
@@ -75,6 +87,70 @@ documentation and contract defects; no blocking behaviour; frontend has workarou
 | [A8](#a8) | **Docs** | Accounting | Every GL account code in §6.13–6.23 is 4-digit and none exists in the seeded 5-digit COA | in doc |
 | [A9](#a9) | Contract | AP | Money is a JSON number on the whole AP write path, against the platform money-as-string rule | in doc |
 | [A10](#a10) | Docs | GL | No `GET /periods`; periods are reachable only embedded in `/fiscal-years` | in doc |
+| [A11](#a11) | **Correctness — bug** | AR | A REVERSED invoice passes the post guard and can be posted again, drawing a new `invoiceNumber` and orphaning the original journal | in doc |
+| [A12](#a12) | **Domain** | AR / Finance | One receipt carries two unlinked allocation ledgers — to IPCs and to invoices — with no guard between them | [domain-questions.md](./domain-questions.md) |
+| [A13](#a13) | Gap | AR | `ClientInvoiceRepository` embeds no `client` relation — P16's fix was applied to bills but not to invoices | in doc |
+
+<a id="a11"></a>
+### A11 — a reversed invoice can be posted a second time
+
+`client-invoice.service.ts:126,129` gates posting on `documentStatus === 'APPROVED'` and rejects
+only `postingStatus === 'POSTED'`. Reversing leaves the invoice `APPROVED` / `REVERSED`, which
+passes both checks.
+
+`client-invoice.repository.ts:84-93` then sets `postingStatus: 'POSTED'`, writes a **new**
+`invoiceNumber` drawn from the `INV-` sequence, and replaces `postedJournalEntryId` — while
+`reversalJournalEntryId` still points at the reversal of a journal the invoice no longer
+references. The audit trail from invoice to journal is broken, and a number already issued to a
+client silently changes.
+
+Suggested fix: gate on an allowlist (`NOT_POSTED`, `FAILED`) rather than excluding `POSTED`.
+`OPENING_BALANCE` must also be excluded — the aggregate opening journal already carries its GL
+effect, so posting it would double-count.
+
+**The frontend is deliberately stricter than the server here**, in the same way `canPostBill` is
+for P15. `canPost` in `features/accounting/invoice-actions.ts` implements the allowlist, and
+three tests name the divergence. Do not reconcile the frontend to the server.
+
+<a id="a12"></a>
+### A12 — two allocation ledgers over one receipt, with no guard between them
+
+There is no `CustomerReceipt` entity. `/customer-receipts` and Sprint 3's `/receipts` operate on
+the same `payment_receipts` rows, and each has its own allocation table:
+
+- `ReceiptAllocation` → receipt ↔ **IPC** (Sprint 3). Guards by summing its own rows against
+  `receipt.totalAmount` (`finance.service.ts:80-90`).
+- `ClientReceiptAllocation` → receipt ↔ **ClientInvoice** (Sprint 4). Guards against the
+  `receipt.unallocatedAmount` **column** (`customer-receipt.service.ts:196`).
+
+Sprint 3 never writes `allocatedAmount` or `unallocatedAmount` — verified across every write in
+`src/business/finance/`. So a receipt fully allocated to certificates still reports its full
+unallocated balance, and Sprint 4 will allocate the whole amount again to invoices.
+
+**This may be correct by design.** `ClientInvoice.sourceIpcId` is one-to-one with an IPC, so
+allocating to IPC X and to Invoice(X) is arguably the same settlement mirrored in a commercial
+and an accounting ledger. But nothing enforces that pairing: allocating to IPC X and Invoice Y is
+accepted just as readily, and then the two ledgers disagree about which certificate was paid.
+
+**For Eng Ahmed:** are these two records of one settlement, or two settlements? If one, the
+pairing needs enforcing. If two, the combined total needs a guard against the receipt amount.
+
+No customer-receipt UI has been built pending the answer. Building an allocation screen on an
+unresolved rule is how double-counted cash reaches a client statement.
+
+<a id="a13"></a>
+### A13 — AR did not get P16's fix
+
+`SupplierBillRepository` now includes `supplier { id, code, name }` on `findById` and `findAll`
+(P16, fixed). `ClientInvoiceRepository.findAll` and `findById` include nothing
+(`client-invoice.repository.ts:29,37`), so the client name is unresolvable from an invoice payload.
+
+The frontend joins against `GET /clients`, which it already fetches, so this is a gap rather than
+a blocker. Worth closing for symmetry — the same screen shape now needs two different data
+strategies depending on which side of the ledger it is on.
+
+Note also that neither repository returns `nameAr`. On the Arabic UI a supplier name renders in
+English; the invoice screens avoid this only because the client join supplies both.
 
 ### Sprint 5 — procurement (P-series)
 

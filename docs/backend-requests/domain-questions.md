@@ -92,9 +92,43 @@ accepted.
 
 ---
 
+## 3. When a client pays, are we recording that payment once or twice?
+
+*Raised 2026-08-10, while building client invoices.*
+
+A client payment can now be recorded against two different things, and the system keeps both
+records separately:
+
+- against the **payment certificate** — "this money settles certificate 14"
+- against the **invoice** — "this money clears invoice INV-2026-031"
+
+Every invoice is raised from one certificate, so most of the time these are the same event
+written down twice: once for commercial tracking, once for the accounts.
+
+**The problem is that nothing connects them.** A payment of $10,000 can be recorded in full
+against the certificates *and* in full against the invoices, and the system accepts both. It
+can also be recorded against certificate 14 but invoice 31 — which came from a different
+certificate — and nothing objects.
+
+**What we need to know:**
+
+1. When ACCO receives a payment, is that **one event recorded in two places**, or can a single
+   receipt genuinely be split differently between certificates and invoices?
+2. If it is one event: should choosing the certificate automatically decide the invoice, so the
+   two can never disagree?
+
+**What changes when you answer.** If it is one event, the screen will let you allocate once and
+apply it to both records together. If they are genuinely separate, we will add a check so the
+two together can never exceed the money actually received. Right now neither is true: the
+screen for recording payments against invoices has deliberately **not been built** while this is
+open, because a screen that lets the same cash be counted twice will eventually put a wrong
+balance on a client statement.
+
+---
+
 ## What happens after you answer
 
-Both answers become rules in the system itself, not guidance in a document — enforced where
+The answers become rules in the system itself, not guidance in a document — enforced where
 the data is saved, so they hold no matter which screen or which person enters it.
 
 Reply however is easiest: a note, a call, or a line each. If a question is wrong-headed or
@@ -103,6 +137,6 @@ answer.
 
 ---
 
-*Derived from `docs/backend-requests/frontend-blockers.md`, items D1 and D4, which carry the
-technical detail behind these two questions. That document is written for the backend
+*Derived from `docs/backend-requests/frontend-blockers.md`, items D1, D4 and A12, which carry
+the technical detail behind these questions. That document is written for the backend
 engineer and is not worth your time; this page is the whole of what we need from you.*
