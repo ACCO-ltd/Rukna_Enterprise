@@ -101,9 +101,7 @@ export function PoDetail({ id }: { id: string }) {
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <ProcurementStatusBadge status={order.status} />
             <span className="text-sm text-muted-foreground">
-              {order.supplier?.name ?? (
-                <span title={tc('supplierUnavailableHint')}>{tc('supplierUnavailable')}</span>
-              )}
+              {order.supplier?.name ?? tc('notAvailable')}
             </span>
           </div>
         </div>

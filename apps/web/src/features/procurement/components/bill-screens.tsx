@@ -9,14 +9,16 @@
  *
  * What is genuinely missing:
  *
- *  - **Creating a bill.** Needs a `supplierId` and an `expenseProfileCode`, neither of
- *    which has an endpoint (#26). No create button is offered; the banner says why.
- *  - **The supplier's name.** Neither repository method embeds the `supplier` relation
- *    (P16) and no endpoint resolves an id, so these screens show "Supplier unavailable"
- *    rather than a raw cuid, which would be worse than nothing.
- *  - **Posting.** `POST /bills/:id/post` exists, but posting requires a posting-profile
- *    picker that #26 also blocks, so this page does not offer it. The Post gate lives in
- *    `canPostBill` ready for when it does.
+ *  - **Creating a bill.** Tier B. `POST /bills` is reachable now that suppliers and posting
+ *    profiles have endpoints, but only for bills with no purchase order attached: a bill
+ *    never records a `purchaseOrderRevisionId` (A14 / #33), so a PO-linked one can never be
+ *    matched, skips the match gate entirely, and leaves its commitment stranded at ACCRUED.
+ *  - **Posting.** `POST /bills/:id/post` exists and needs an `apAccountCode`. The gate lives
+ *    in `canPostBill` and is deliberately stricter than the server (P15).
+ *
+ * The supplier's name is no longer missing. `supplier-bill.repository.ts:47` selects
+ * `{ id, code, name }` on both list and detail (P16, fixed) — note it omits `nameAr`, so an
+ * Arabic UI shows the English name here while a purchase order shows the Arabic one (A13).
  */
 
 import Link from 'next/link';
@@ -97,12 +99,18 @@ export function SupplierBillsList() {
                     </Link>
                   </TableCell>
                   <TableCell>
-                    <span
-                      className="text-sm text-muted-foreground"
-                      title={tc('supplierUnavailableHint')}
-                    >
-                      {tc('supplierUnavailable')}
-                    </span>
+                    {bill.supplier ? (
+                      <span className="text-sm text-foreground">
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {bill.supplier.code}
+                        </span>{' '}
+                        {bill.supplier.name}
+                      </span>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">
+                        {tc('notAvailable')}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     <bdi>{formatDate(bill.billDate, locale) ?? tc('notAvailable')}</bdi>
@@ -164,8 +172,10 @@ export function SupplierBillDetail({ id }: { id: string }) {
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <ProcurementStatusBadge status={bill.status} />
           <BillMatchStatusBadge status={bill.matchStatus} />
-          <span className="text-sm text-muted-foreground" title={tc('supplierUnavailableHint')}>
-            {tc('supplierUnavailable')}
+          <span className="text-sm text-muted-foreground">
+            {bill.supplier
+              ? `${bill.supplier.code} · ${bill.supplier.name}`
+              : tc('notAvailable')}
           </span>
         </div>
       </div>

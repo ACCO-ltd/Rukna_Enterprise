@@ -37,7 +37,9 @@ import type {
   PurchaseOrderStatus,
   RevisePurchaseOrderPayload,
   SpendCategory,
+  Supplier,
   SupplierBill,
+  CreateSupplierPayload,
   UnitOfMeasure,
 } from '../types';
 
@@ -466,26 +468,51 @@ export function listPurchaseOrderCommitments(
   );
 }
 
-// ─── Suppliers — blocked ─────────────────────────────────────────────────────────
+// ─── Suppliers ───────────────────────────────────────────────────────────────────
 
 /**
- * There is no supplier endpoint.
+ * `GET /suppliers`
  *
- * `Supplier` exists in `schema.prisma` and has no controller (A3 / #26). No supplier is
- * seeded either, so there is no way to obtain a valid `supplierId` through the API at all
- * — which is why the "New Purchase Order" entry point is disabled rather than the create
- * page being omitted. The page is built and tested; only its supplier field has no source.
+ * Live since `7cf2507`. This function used to reject every call with "GET /suppliers does
+ * not exist — blocked on issue #26", and went on doing so for a day after the endpoint
+ * shipped, disabling purchase-order creation the whole time. The lesson is recorded at
+ * the top of `frontend-blockers.md`: a blocker note is a claim about the past.
  *
- * When `GET /suppliers` lands, this function's body is the whole change.
+ * `status` is a real filter here — `supplier.controller.ts` reads the query parameter and
+ * passes it through, unlike the catalogue endpoints which hard-code `'ACTIVE'` (P2). It is
+ * left absent by default so the list shows everything, because nothing in the API sets a
+ * supplier to INACTIVE anyway (A15) and a filter that can only ever return one value would
+ * be furniture.
  */
-export function listSuppliers(): Promise<never> {
-  return Promise.reject(
-    new Error(
-      'GET /suppliers does not exist — blocked on issue #26. ' +
-        'A purchase order cannot be created until it does.',
-    ),
-  );
+export function listSuppliers(filters?: {
+  status?: 'ACTIVE' | 'INACTIVE';
+}): Promise<Supplier[]> {
+  return apiClient<Supplier[]>('/suppliers', {
+    params: queryParams({ status: filters?.status }),
+  });
 }
 
-/** Whether supplier-dependent create paths can be offered at all. */
-export const SUPPLIER_ENDPOINT_AVAILABLE = false;
+/*
+ * `GET /suppliers/:id` is live and deliberately not wrapped.
+ *
+ * Nothing needs it: there is no supplier detail page, because there is nothing to do on one
+ * — no edit, no deactivate, no transactions listed by supplier (A15). The list carries every
+ * field the endpoint returns. Add it when a screen actually needs it rather than keeping an
+ * unused wrapper that implies one exists.
+ */
+
+/**
+ * `POST /suppliers`
+ *
+ * A duplicate `code` returns `409` with a message naming it, which `CreateForm` surfaces
+ * verbatim — the same treatment every other create path in this module gets.
+ *
+ * There is no update endpoint (A15), so this is the only write there will ever be for a
+ * given supplier until the backend adds one.
+ */
+export function createSupplier(payload: CreateSupplierPayload): Promise<Supplier> {
+  return apiClient<Supplier>('/suppliers', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}

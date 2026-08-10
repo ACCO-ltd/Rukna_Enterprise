@@ -130,6 +130,12 @@ export const NAV_GROUPS: NavGroup[] = [
       },
     ],
     items: [
+      // Not in the Setup sub-group, deliberately. Setup is collapsed by default and gated
+      // on a single `manage:procurement-config` permission, justified there as "done once,
+      // while the other five are done daily". A supplier is neither: it is added whenever
+      // purchasing widens, and burying it behind the config gate would stop a buyer adding
+      // the supplier their own purchase order needs.
+      { href: '/procurement/suppliers', labelKey: 'suppliers' },
       { href: '/procurement/requests', labelKey: 'materialRequests' },
       { href: '/procurement/orders', labelKey: 'purchaseOrders' },
       // /procurement/grn, not /procurement/receipts — §12.7 offers both and warns about

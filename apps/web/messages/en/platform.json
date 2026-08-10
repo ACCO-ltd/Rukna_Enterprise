@@ -53,7 +53,8 @@
     "materialRequests": "Requests",
     "purchaseOrders": "Orders",
     "goodsReceipts": "Goods Receipts",
-    "commitments": "Commitments"
+    "commitments": "Commitments",
+    "suppliers": "Suppliers"
   },
   "user": {
     "menuLabel": "Account menu",

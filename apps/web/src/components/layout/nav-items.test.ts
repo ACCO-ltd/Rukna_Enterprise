@@ -106,14 +106,28 @@ describe('NAV_GROUPS', () => {
       expect(keys.indexOf('procurement')).toBe(keys.indexOf('accounting') + 1);
     });
 
-    it('exposes the four live workflow screens, none disabled', () => {
+    it('exposes the five live workflow screens, none disabled', () => {
       expect(procurement().items.map((i) => i.href)).toEqual([
+        '/procurement/suppliers',
         '/procurement/requests',
         '/procurement/orders',
         '/procurement/grn',
         '/procurement/commitments',
       ]);
       expect(procurement().items.filter((i) => i.disabled)).toHaveLength(0);
+    });
+
+    /**
+     * Suppliers is master data, but it is not in the Setup sub-group. Setup is collapsed by
+     * default and gated on a single `manage:procurement-config` permission, justified there
+     * as configuration "done once, while the other five are done daily". A supplier is added
+     * whenever purchasing widens, and putting it behind that gate would stop a buyer holding
+     * `create:purchase-order` from adding the supplier their own order needs.
+     */
+    it('keeps suppliers out of the collapsed Setup sub-group', () => {
+      const setup = procurement().subGroups?.find((g) => g.labelKey === 'procurementSetup');
+      expect(setup?.items.map((i) => i.href)).not.toContain('/procurement/suppliers');
+      expect(procurement().items.map((i) => i.href)).toContain('/procurement/suppliers');
     });
 
     /**

@@ -227,7 +227,7 @@ export function GrnForm() {
             <option value="">{t('selectPo')}</option>
             {receivable.map((po) => (
               <option key={po.id} value={po.id}>
-                {po.poNumber} · {po.supplier?.name ?? tc('supplierUnavailable')}
+                {po.poNumber} · {po.supplier?.name ?? tc('notAvailable')}
               </option>
             ))}
           </select>
