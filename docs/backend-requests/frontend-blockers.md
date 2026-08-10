@@ -2,11 +2,25 @@
 
 Raised by: Frontend Engineer (`apps/web`, `packages/ui`)
 For: **Abdulsalam** (backend, `apps/api`) — and where marked, **Eng Ahmed Shirie** (domain)
-Raised: 2026-08-03 · Last re-verified: 2026-08-10
-Status: **A1, A3, P6, P8, P10, P11, P12, P15, P16 fixed this batch.** A2/P5 were already
-implemented. Remaining open: A4–A10, P1–P4, P7, P9, P13, P14, P17 (all `in doc` — no
-blocking behaviour, workarounds in place). B- and C-series: every ticketed item fixed; the
-untracked `in doc` gaps remain — see below.
+Raised: 2026-08-03 · Last re-verified: 2026-08-11, every open finding individually, at `4a895e7`
+
+Status: **all 37 open findings re-verified at `4a895e7`; all 37 are still open.** Three are
+new, found during the same sweep: [A14](#a14) (blocking, [#33](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/33)),
+[A15](#a15) and [B15](#b15). Three existing findings were **corrected** rather than merely
+re-stamped — [P9](#p9), [P14](#p14) and [B13](#b13) each overstated or understated what the
+code does; their stamps say how.
+
+The sweep was run before starting the AP frontend build, and it found what the last two
+sweeps found: that the register drifts in *both* directions. A1 and A3 were recorded as
+blocking Client Invoices and every supplier-dependent screen; A1 never blocked invoices at all,
+and A3 has been fixed since `7cf2507` while `procurement-api.ts` still rejects every call to
+`GET /suppliers` with "does not exist". Nothing was wrong with the code — the register was
+telling the frontend that a wall it had already walked through was still standing.
+
+Fixed and confirmed still fixed in passing: A1 (`CustomerReceiptController` is at
+`/customer-receipts`), A3 (`supplier.controller.ts` and `posting-profile.controller.ts` both
+exist), C14 (`ipa.service.ts:18` accepts `RETURNED_FOR_REVISION`), P16
+(`supplier-bill.repository.ts:47`).
 
 This document is the source of truth for backend work the frontend is waiting on.
 Items marked **Blocking** prevent a UI surface from functioning at all — they are not
@@ -25,9 +39,13 @@ Findings were produced by reading `apps/api/src` directly, not by inference from
 **What is resolved, precisely.** Every B- and C-series finding that was *ticketed* is fixed
 and its issue is closed, each verified individually on 2026-08-09 by opening the file named in
 its row. The findings recorded only here — the ones whose status reads `in doc` — were never
-ticketed and are **still open**: B6–B10, B12, B13, C5, C9, C10, C13, C15 and the D-series. They
+ticketed and are **still open**: B6–B10, B12, B13, B15, C9, C10, C13, C15 and the D-series. They
 are gaps and contract untidiness rather than blockers, which is why they were never filed, but
 "the tracked issues are closed" is not "the list is clear".
+
+One exception to that reasoning is now visible. B15 is a security finding and is untracked,
+which puts it in the same position B5 and B11 were in before they were ticketed and fixed.
+Untracked is not a severity judgement; it only records that nobody filed it.
 
 ### How to read the verification stamps
 
@@ -60,8 +78,10 @@ the only record and no ticket exists; **fixed** names the commit that resolved i
 ### Sprint 4 — accounting (A-series)
 
 Raised 2026-08-09 from the contract sweep against `e738bfe`. A1 and A3 (the two blocking
-items) are now resolved. A4–A10 are `in doc` — documentation and contract defects; no blocking
-behaviour; frontend has workarounds.
+items of that batch) are resolved. A4–A10 are `in doc` — documentation and contract defects;
+no blocking behaviour; frontend has workarounds. A11–A13 were added during the Tier G build,
+and A14–A15 during the 2026-08-11 sweep — **[A14](#a14) is blocking and is now
+[#33](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/33).**
 
 > **Correction, 2026-08-10.** An earlier revision of this paragraph read *"A2/P5 (security,
 > already implemented) are now resolved."* That was **wrong**, and the table below it was right
@@ -90,9 +110,13 @@ behaviour; frontend has workarounds.
 | [A11](#a11) | **Correctness — bug** | AR | A REVERSED invoice passes the post guard and can be posted again, drawing a new `invoiceNumber` and orphaning the original journal | in doc |
 | [A12](#a12) | **Domain** | AR / Finance | One receipt carries two unlinked allocation ledgers — to IPCs and to invoices — with no guard between them | [domain-questions.md](./domain-questions.md) |
 | [A13](#a13) | Gap | AR | `ClientInvoiceRepository` embeds no `client` relation — P16's fix was applied to bills but not to invoices | in doc |
+| [A14](#a14) | **Blocking — bug** | AP | `SupplierBill.purchaseOrderRevisionId` is never written by any code path, so no bill can be matched, the match gate is bypassed, and the commitment ledger never reaches ACTUAL | [#33](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/33) |
+| [A15](#a15) | Gap | AP | No `PATCH /suppliers/:id` — supplier master data is write-once and a typo is permanent | in doc |
 
 <a id="a11"></a>
 ### A11 — a reversed invoice can be posted a second time
+
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
 
 `client-invoice.service.ts:126,129` gates posting on `documentStatus === 'APPROVED'` and rejects
 only `postingStatus === 'POSTED'`. Reversing leaves the invoice `APPROVED` / `REVERSED`, which
@@ -114,6 +138,8 @@ three tests name the divergence. Do not reconcile the frontend to the server.
 
 <a id="a12"></a>
 ### A12 — two allocation ledgers over one receipt, with no guard between them
+
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
 
 There is no `CustomerReceipt` entity. `/customer-receipts` and Sprint 3's `/receipts` operate on
 the same `payment_receipts` rows, and each has its own allocation table:
@@ -141,6 +167,8 @@ unresolved rule is how double-counted cash reaches a client statement.
 <a id="a13"></a>
 ### A13 — AR did not get P16's fix
 
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
+
 `SupplierBillRepository` now includes `supplier { id, code, name }` on `findById` and `findAll`
 (P16, fixed). `ClientInvoiceRepository.findAll` and `findById` include nothing
 (`client-invoice.repository.ts:29,37`), so the client name is unresolvable from an invoice payload.
@@ -151,6 +179,58 @@ strategies depending on which side of the ledger it is on.
 
 Note also that neither repository returns `nameAr`. On the Arabic UI a supplier name renders in
 English; the invoice screens avoid this only because the client join supplies both.
+
+<a id="a14"></a>
+### A14 — a supplier bill never links a PO revision, so nothing downstream of it works
+
+**[#33](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/33) · Blocking — bug · verified at `4a895e7` (2026-08-11)**
+
+`SupplierBill.purchaseOrderRevisionId` (`schema.prisma:1500`) is nullable and is **never written
+by any code path**. `CreateSupplierBillDto` accepts `purchaseOrderId`, not the revision;
+`supplier-bill.repository.ts:74` writes `purchaseOrderId` and nothing else. The only writer of a
+`purchaseOrderRevisionId` anywhere in `apps/api/src` is `goods-receipt.service.ts:126`, writing
+the GRN's own.
+
+Three behaviours are gated on that field, and each fails silently rather than erroring:
+
+| Gate | Source | Consequence |
+|---|---|---|
+| Matching | `bill-matching.service.ts:53` returns early when null | No bill created through the API can ever be matched |
+| Post gate | `supplier-bill.service.ts:150` — `if (bill.purchaseOrderRevisionId && !POSTABLE…)` | The condition short-circuits, so every API-created bill posts unmatched |
+| Commitment conversion | `supplier-bill.service.ts:245` — `if (… && bill.purchaseOrderRevisionId)` | ACCRUED never becomes ACTUAL; commitments stop at the GRN forever |
+
+The post gate matters most. P15 was filed and fixed because `NOT_RUN` sat in
+`POSTABLE_MATCH_STATUSES` and let an unmatched bill post. That fix closed one route to an
+unmatched posting; this leaves a second one open, and it opens *before* the status is ever
+consulted. **The three-way match gate is bypassed by construction, not by configuration.**
+
+ADR-007's chain — `Supplier Bill (prefilled from GRN, matched) → ACCRUED −amount, ACTUAL +amount`
+— is unreachable as built. Note also that nothing in the create contract can express *which*
+GRN a bill settles, at header or line level; matching rediscovers the GRN line by querying
+`goodsReceiptLine` on `purchaseOrderLineId` plus POSTED status.
+
+**Frontend impact:** supplier bill create is built for **non-PO bills only** — utilities, rent,
+services, whose revision ID is legitimately null and for which the match gate correctly does not
+apply. PO-linked create stays disabled behind #33, and the Matching tab on a non-PO bill reads
+"not applicable" rather than "not run". This is the fourth place the frontend is deliberately
+stricter than the server, after A11, P15 and `canPostBill`.
+
+<a id="a15"></a>
+### A15 — supplier master data is write-once
+
+**Gap · verified at `4a895e7` (2026-08-11)**
+
+`supplier.controller.ts` exposes `GET /suppliers`, `GET /suppliers/:id` and `POST /suppliers`.
+There is no `PATCH`. A supplier's `name`, `nameAr`, `taxNumber`, `defaultCurrency` and
+`paymentTermsDays` cannot be corrected after creation, and there is no deactivation path either
+— `status` is filterable on the list but nothing sets it.
+
+A misspelt supplier name is therefore permanent and will print on every bill and payment
+referencing it. Compare the catalogue modules, which at least have a `deactivate` command
+(P2, P3), and `PATCH /clients/:id`, which exists on the AR side.
+
+**Frontend impact:** the Suppliers screen ships list and create only, with no edit affordance.
+An input that silently has no effect is worse than no input.
 
 ### Sprint 5 — procurement (P-series)
 
@@ -168,10 +248,10 @@ P12, P15, P16) are now fixed. Remaining open items are `in doc` — no blocking 
 | [P12](#p12) | **Correctness — bug** | Commitment ledger | Cancelling a PO writes no reversal — a cancelled order consumes commitment forever | **fixed** — `cancel()` rewritten with `prisma.$transaction()` writing `PO_CANCELLED` reversal for each active line |
 | [P10](#p10) | **Correctness — bug** | GRN | `EXCEPTION_PENDING` is a dead end; nothing returns it to `DRAFT` and PO revision does not re-evaluate it | **fixed** — `POST /procurement/goods-receipts/:id/approve-exception` added; moves `EXCEPTION_PENDING` → `DRAFT` |
 | [P4](#p4) | Contract | MR | No `close` endpoint — `CLOSED` is in the state machine and unreachable over HTTP | in doc |
-| [P14](#p14) | Contract | PO | List embeds the highest-numbered revision without lines — §12.6's Total Amount is uncomputable and Revision is misleading | in doc |
+| [P14](#p14) | Contract | PO | List embeds the highest-numbered revision without lines — §12.6's Total Amount is uncomputable and Revision is misleading. The supplier half is fixed: `findAll` now includes `supplier` | in doc |
 | [P2](#p2) | Gap | Catalogue | `status` hard-coded `ACTIVE` in the service — deactivation is a one-way trapdoor and §12.4's status filter is unbuildable | in doc |
 | [P1](#p1) | Gap | Materials | No `search` param, so §12.10's `MaterialPicker` filters client-side | in doc |
-| [P9](#p9) | Contract | GRN | Over-receipt tolerance comes from an unexposed `OverReceiptPolicy`; §12.7's "5%" is wrong wherever one is seeded | in doc |
+| [P9](#p9) | Contract | GRN | Over-receipt tolerance comes from an unexposed `OverReceiptPolicy`; §12.7's "5%" is the fallback and is correct until one is seeded — see the re-verification note | in doc |
 | [P16](#p16) | Gap | AP | Bill repositories embed no `supplier` relation, so supplier name is unresolvable on every AP screen | **fixed** — `supplier { id, code, name }` included in `findById` and `findAll` in `supplier-bill.repository.ts` |
 | [P17](#p17) | Contract | All | Money and quantity are JSON numbers on the write path, decimal strings on the read path — A9 extended to procurement | in doc |
 | [P3](#p3) | Gap | UoM | Deactivation has no in-use guard, and P2 makes a client-side pre-check impossible too | in doc |
@@ -207,6 +287,7 @@ UNPAID, with the unit tests passing throughout because they mocked the old shape
 | [B9](#b9) | Gap | Users | No way to persist a language preference | in doc |
 | [B10](#b10) | Gap | Projects | No summary/aggregate endpoint | in doc |
 | [B12](#b12) | Gap | Types | `@erp/types` exports no Project or BOQ DTO | in doc |
+| [B15](#b15) | **Security** | Workflows | `GET /workflows/instance/:id/step` takes no identity and is not org-scoped — any instance ID reveals any tenant's approval step | in doc |
 | [D1](#d1) | **Domain** | BOQ | Mixed-currency nodes sum into one meaningless total | [domain-questions.md](./domain-questions.md) |
 | [D2](#d2) | Docs | — | `api-reference.md` inaccuracies | in doc |
 
@@ -442,11 +523,44 @@ This one is independent of the frontend — it should be fixed regardless of UI 
 
 ---
 
+### <a id="b15"></a>B15 — `GET /workflows/instance/:id/step` is not organization-scoped
+
+**Security · verified at `4a895e7` (2026-08-11)**
+
+Every other handler on `WorkflowsController` takes `@CurrentUser() identity` and uses it —
+`getDefinition` scopes by `identity.activeOrganizationId`, `approve` and `reject` pass
+`identity.userId` (that was B4's fix). `getCurrentStep` takes neither:
+
+```ts
+// workflows.controller.ts:41
+getCurrentStep(@Param('instanceId') instanceId: string) {
+  return this.approvalService.getCurrentStep(instanceId);
+}
+```
+
+The instance ID goes straight through with no ownership check, so a caller holding any valid
+JWT can read the pending approval step — approver identity, step order, document reference —
+of any `ApprovalInstance` in any tenant. This is the same defect as B5 and B11, both of which
+were found in the Sprint 1–2 sweep and fixed.
+
+The exposure is currently limited by discoverability rather than by any guard: instance IDs are
+cuids, and the only place one surfaces is the `approvalInstanceId` scalar on a `MaterialRequest`
+or `PurchaseOrder` payload, which is itself org-scoped. That is not a control, and it stops
+being even a mitigation the moment an instance ID appears in a URL or a log.
+
+**Frontend impact:** none today — nothing calls this endpoint. It is raised now because the
+per-document approval panel would be its first consumer, and the guard should land before that
+rather than after.
+
+---
+
 ## Contract & correctness
 
 ### <a id="b6"></a>B6 — Undocumented empty response bodies
 
 > *Verified live at `c8afdd6` (2026-08-04).*
+
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
 
 These return `200` with **no body**, because the service method returns `void`:
 
@@ -479,6 +593,8 @@ The frontend now handles empty bodies defensively either way, so this is not blo
 
 > *Verified live at `c8afdd6` (2026-08-04).*
 
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
+
 `boq-tree.service.ts:254`
 
 ```ts
@@ -506,6 +622,8 @@ every other money field. The frontend does no money arithmetic (all totals come 
 
 > *Verified live at `c8afdd6` (2026-08-04).*
 
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
+
 `project-prisma.repository.ts:22` — `findMany` with an optional status filter and
 `orderBy: { createdAt: 'desc' }`. No `skip`/`take`, no text search.
 
@@ -517,6 +635,8 @@ before the list reaches a few hundred projects.
 
 > *Verified live at `c8afdd6` (2026-08-04).*
 
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
+
 `User.preferredLanguage` populates the JWT `lang` claim, and the frontend now seeds the UI
 language from it. But there is no `PATCH /users/:id` (or `/users/me`), so when a user
 switches language the change is device-local and lost on the next device.
@@ -527,6 +647,8 @@ switches language the change is device-local and lost on the next device.
 
 > *Verified live at `c8afdd6` (2026-08-04).*
 
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
+
 The dashboard shows project counts by status, computed client-side from the full
 `GET /projects` response. A `GET /projects/summary` returning counts per status would
 remove that, and becomes necessary once B8 does.
@@ -536,6 +658,8 @@ Not urgent — raised so it is on the roadmap rather than discovered later.
 ### <a id="b13"></a>B13 — `move` never reindexes siblings, so positions can tie
 
 > *Verified live at `c8afdd6` (2026-08-04).*
+
+> *Re-verified at `4a895e7` (2026-08-11) — still open, with one correction to the finding: `sortOrder` is **not** required on create. `schema.prisma:536` declares `Int @default(0)`, so an omitted value ties at 0 rather than being rejected — ties are easier to produce than recorded, not harder. `moveNode` still writes the moved node alone (`boq-prisma.repository.ts:109`) and there is still no unique constraint on `(version_id, parent_id, sort_order)`.*
 
 `sortOrder` is required on create and the API never allocates one, while `moveNode` writes
 the given position onto the moved node alone and leaves its siblings untouched. Nothing
@@ -555,6 +679,8 @@ together since both live in `moveNode`.
 ### <a id="b12"></a>B12 — `@erp/types` exports no Project DTO
 
 > *Verified live at `c8afdd6` (2026-08-04).*
+
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
 
 `apps/web/CLAUDE.md:170` instructs the frontend to import shared types and never redefine
 them locally — the right rule, and one we want to follow. But `packages/types` exports the
@@ -773,6 +899,8 @@ follows from it. The form will mirror the server's rule rather than invent its o
 
 > *Verified live at `c8afdd6` (2026-08-04).*
 
+> *Re-verified at `4a895e7` (2026-08-11) — unchanged, and still no action needed. `ipa.service.ts:100` carries the comment that approval-instance creation is Sprint 4+ work.*
+
 **Severity:** Contract clarity. Not a defect — the behaviour is deliberate and commented.
 
 `IpaService.transition` (`ipa.service.ts:99`) resolves the `WorkflowRequirementPolicy` for
@@ -862,6 +990,8 @@ whether a payment is accepted.
 
 > *Verified live at `c8afdd6` (2026-08-04).*
 
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
+
 The roadmap lists "BOQ node extensions (measurementMethod, pricingBasis)" as delivered in
 Sprint 3 Phase 1, and the columns do exist on `BoqNode` with defaults `QUANTITY` and
 `UNIT_RATE`. Both are returned by the tree endpoint.
@@ -884,6 +1014,8 @@ silently has no effect is worse than no input.
 ### <a id="c10"></a>C10 — Retention split is spelled `…OnPc` going in and `…OnPC` coming out
 
 > *Verified live at `c8afdd6` (2026-08-04).*
+
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
 
 `AddRetentionTermsDto` declares `retentionSplitOnPc`. The Prisma column is
 `retentionSplitOnPC`, and `upsertRetentionTerms`
@@ -909,6 +1041,8 @@ It is a one-word change in a Sprint 3 DTO that no client depends on yet.
 ### <a id="c13"></a>C13 — Cancel and terminate require a reason and discard it
 
 > *Verified live at `c8afdd6` (2026-08-04).*
+
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
 
 `CancelContractDto` and `TerminateContractDto` both mark `reason` `@IsNotEmpty()` with a
 500-character limit, so the client must supply one. `ContractService` then throws it away:
@@ -981,6 +1115,8 @@ screen — it should stop being needed rather than be designed around.
 ### <a id="c15"></a>C15 — Claimed items carry a bare `boqNodeId`
 
 > *Verified live at `c8afdd6` (2026-08-04).*
+
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
 
 `GET /ipa/:id` returns each `InterimPaymentApplicationItem` with a `boqNodeId` and nothing
 that describes it — no `code`, no `description`. `IpaPrismaRepository.findById` includes
@@ -1091,6 +1227,8 @@ our calls are correct — but nothing stops another client from getting it wrong
 
 > *Verified live at `c8afdd6` (2026-08-04).*
 
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
+
 `currency` is an optional field on each individual BOQ node
 (`create-node.dto.ts`, `@IsOptional() @Length(3,3)`). Nothing constrains sibling nodes to
 share a currency, and `BoqTreeService.sumTotals` (`boq-tree.service.ts:284`) adds
@@ -1116,6 +1254,8 @@ settled. Showing a plausible wrong number is worse than showing none.
 ### <a id="d4"></a>D4 — Can a payment application claim less than was already certified?
 
 > *Verified live at `c8afdd6` (2026-08-04).*
+
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
 
 Context for C4. An IPA line carries `cumulativeClaimed` — the total claimed to date, not
 this period — and the server derives the period figure by subtracting what the last
@@ -1143,6 +1283,8 @@ for the rule, not for UI advice.
 
 > *Verified live at `c8afdd6` (2026-08-04).*
 
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
+
 `docs/02-architecture/api-reference.md` is genuinely good and was the fastest way to get
 oriented. Three corrections:
 
@@ -1162,6 +1304,8 @@ oriented. Three corrections:
 ### <a id="d3"></a>D3 — Documented request shapes that return `400`
 
 > *Verified live at `c8afdd6` (2026-08-04).*
+
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
 
 These matter more than ordinary doc drift, because the global `ValidationPipe` runs with
 `forbidNonWhitelisted: true` (`main.ts:18–23`). An unrecognised field is not ignored — it
@@ -1190,7 +1334,16 @@ Raised 2026-08-09 against `e738bfe`, from a sweep of `apps/api/src/business/acco
 against `api-reference.md` §6.13–6.23 run **before** any accounting screen was written. Every
 finding below was produced by opening the controller, DTO or seed named in it.
 
-A1–A3 are filed as GitHub issues. A4–A10 are documentation and contract defects recorded here.
+A1–A3 are filed as GitHub issues, as is A14. A4–A10 are documentation and contract defects
+recorded here; A11–A13 and A15 are contract and correctness gaps found while building against
+the module rather than while sweeping it.
+
+**One section of `api-reference.md` in this range is trustworthy.** §6.22 (Suppliers) and §6.23
+(Posting Profiles), added by `7cf2507`, match `supplier.controller.ts` and
+`posting-profile.controller.ts` field for field — verified 2026-08-11. §6.21 (Supplier Payments)
+matches its DTOs too, with two caveats: its GL account codes are 4-digit (A8), and the
+`allocations[]` array `CreateSupplierPaymentDto` accepts is undocumented. Everything else in
+§6.13–6.23 still fails A4, A5, A7, A8 or A10.
 
 ### <a id="a1"></a>A1 — Two controllers are mounted at `/receipts`
 
@@ -1211,6 +1364,8 @@ from sprint scope. The remaining 15 accounting screens are unaffected.
 ### <a id="a2"></a>A2 — The accounting module has no authorization
 
 **[#25](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/25) · Security · verified at `e738bfe` (2026-08-09)**
+
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
 
 `frontend-design.md` §11.2 lists six permissions and states that "the backend enforces them
 independently". It does not. None of the six strings appears anywhere in the repository, and
@@ -1247,6 +1402,8 @@ profiles *are* seeded but nothing exposes them.
 
 **Contract · verified against `create-supplier-bill.dto.ts` (2026-08-09)**
 
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
+
 | Documented | Actual | Effect |
 |---|---|---|
 | `amount` | `netAmount` | required field missing → `400` |
@@ -1261,6 +1418,8 @@ A bill built faithfully from the reference fails on every line.
 
 **Contract · verified against `create-account.dto.ts` (2026-08-09)**
 
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
+
 `controlPostingPolicy` is required (`@IsEnum`, no `@IsOptional`) and is absent from the
 documented create-account body. The bulk-import example is worse: it omits `isPostingAllowed`,
 `isControlAccount`, `controlPostingPolicy` **and** `effectiveFrom`, all required, and
@@ -1273,6 +1432,8 @@ relevant because §11.4's Chart of Accounts screen is a hierarchy browser.
 
 **Contract · verified against `schema.prisma:2245` (2026-08-09)**
 
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
+
 `ControlPostingPolicy` has three values. `CreateAccountDto` declares
 `@IsEnum(['UNRESTRICTED','SYSTEM_ONLY'])` and so rejects `SYSTEM_OR_APPROVED_ADJUSTMENT` —
 which is the policy `accounting-phase1.seed.ts` gives both seeded bank accounts. An account of
@@ -1282,11 +1443,15 @@ a kind the system already contains cannot be created through the API.
 
 **Docs · verified against `supplier-bill.controller.ts:21` (2026-08-09)**
 
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
+
 Only `supplierId` is read. Status filtering has to be done client-side. Same for `/payments`.
 
 ### <a id="a8"></a>A8 — Every GL account code in the reference is fictional
 
 **Docs · verified against `accounting-phase1.seed.ts` (2026-08-09)**
+
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
 
 §6.13–6.23 uses four-digit codes throughout — `1010`, `2000`, `1300`, `3100`. The seeded chart
 is five-digit: Accounts Payable is `20000`, Supplier Advance `20100`, Accounts Receivable
@@ -1299,6 +1464,8 @@ lookup. This is the single most repeated defect in the section and the easiest t
 
 **Contract · verified against the AP DTOs (2026-08-09)**
 
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
+
 `netAmount`, `vatAmount`, `unitPrice`, `totalAmount` and both allocation `amount` fields are
 `@IsNumber()`. Every other money field on this API is a decimal string, and C8 was raised for
 exactly this on the read side.
@@ -1310,6 +1477,8 @@ the rule is either the rule or it is not, and the frontend now has to special-ca
 ### <a id="a10"></a>A10 — There is no `GET /periods`
 
 **Docs · verified against `period.controller.ts` (2026-08-09)**
+
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
 
 The controller exposes only `:id/lock`, `:id/close`, `:id/reopen`, `:id/close-gate`,
 `:id/snapshot/rebuild` and `fiscal-year/:fiscalYearId/close`. There is no list and no detail.
@@ -1340,6 +1509,8 @@ Every entry below was produced by opening the named file. Nothing here is inferr
 
 **Gap · verified against `material.controller.ts:22-31` and `material.repository.ts:38` (2026-08-09)**
 
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
+
 §12.10 specifies `<MaterialPicker>` as "search by code or name (debounced, calls
 `GET /procurement/materials?search=...`)". The controller reads only `materialCategoryId` and
 `spendCategoryId`; the repository has no `search` branch and no `contains` filter. The
@@ -1352,6 +1523,8 @@ pointless and has been left out.
 ### <a id="p2"></a>P2 — Deactivating a UoM or material makes it permanently invisible
 
 **Gap · verified against `uom.service.ts:24` and `material.service.ts:32` (2026-08-09)**
+
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
 
 `UomService.findAll` calls the repository with a hard-coded `'ACTIVE'`. `MaterialService.findAll`
 hard-codes `{ status: 'ACTIVE', ...filters }`. Both repositories accept a `status` argument, and
@@ -1370,6 +1543,8 @@ record will disappear from the list permanently, because that is what happens.
 
 **Gap · verified against `uom.service.ts:40-45` (2026-08-09)**
 
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
+
 §12.4 says deactivate is available "only if no materials use this UoM". `deactivate` looks the
 UoM up and calls `setStatus` — there is no reference check. A UoM in use by live materials can
 be deactivated, after which `MaterialService.create` rejects new materials against it
@@ -1381,6 +1556,8 @@ The frontend cannot substitute its own pre-check either: the materials list retu
 ### <a id="p4"></a>P4 — A material request can never reach `CLOSED`
 
 **Contract · verified against `material-request.controller.ts` and `material-request.service.ts:40-45` (2026-08-09)**
+
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
 
 `NEXT_STATUS` permits `APPROVED → CLOSED` and `PARTIALLY_ORDERED → CLOSED`, and §6.28's status
 machine documents `CLOSED` as terminal. No controller route calls `transition(..., 'CLOSED')` —
@@ -1446,6 +1623,8 @@ absent from the quality-status select, because choosing it produces a body the A
 
 **Contract · verified against `material-request.service.ts:96-106` (2026-08-09)**
 
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
+
 `CreateMrLineDto.uomCode` and `CreatePoLineDto.uomCode` are `@IsString()` with no
 `@IsOptional()`. For `lineType: MATERIAL` the service resolves the material and uses
 `material.baseUnitOfMeasureId`, never reading `uomCode`. §6.28 documents the behaviour but not
@@ -1469,9 +1648,11 @@ tenant's project. This is the same class as B11 and C16, both of which were fixe
 **Frontend impact:** none directly; the pickers only offer in-org records. Raised because the
 server is the boundary and this one is open.
 
-### <a id="p9"></a>P9 — The over-receipt tolerance is not 5% and is not discoverable
+### <a id="p9"></a>P9 — The over-receipt tolerance is not discoverable, and 5% is only the fallback
 
 **Contract · verified against `goods-receipt.service.ts:15,90-96` (2026-08-09)**
+
+> *Re-verified at `4a895e7` (2026-08-11) — **open, and this finding needs correcting.** `PLATFORM_FALLBACK_OVER_RECEIPT_PERCENT` (`goods-receipt.service.ts:18`) is `new Decimal('5')`, and no `OverReceiptPolicy` row is seeded anywhere in `prisma/seeds/` — so §12.7's 5% is in fact correct in every environment today. The defect is narrower than recorded: the tolerance resolves through a PO → category → org hierarchy (`goods-receipt.repository.ts:131–147`) that no endpoint exposes, so the figure on screen becomes silently wrong the day a policy row is inserted, and nothing in the UI can tell that it has.*
 
 The tolerance is resolved per organization and spend category from an `OverReceiptPolicy`
 record, falling back to `PLATFORM_FALLBACK_OVER_RECEIPT_PERCENT = 5` only when none is seeded.
@@ -1553,6 +1734,8 @@ ledger screen carries a note. Neither is a fix — the figures are wrong at the 
 
 **Contract · verified against `create-purchase-order.dto.ts:113` and `purchase-order.service.ts` `RevisePoDto` (2026-08-09)**
 
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
+
 `RevisePurchaseOrderDto extends CreatePurchaseOrderDto`, inheriting a required `supplierId`.
 The service's own `RevisePoDto` interface has no such field and `revise` never reads one — a
 supplier cannot be changed by revision, which is correct, but the body must carry the value
@@ -1563,6 +1746,8 @@ anyway. §6.29's revise example does include it, without saying it is ignored.
 ### <a id="p14"></a>P14 — The PO list cannot show a total, and its revision number is misleading
 
 **Contract · verified against `purchase-order.repository.ts:66-75` (2026-08-09)**
+
+> *Re-verified at `4a895e7` (2026-08-11) — **open for the total; half of it is already fixed.** `findAll` (`purchase-order.repository.ts:73`) now includes `supplier: true`, so the supplier name IS resolvable on the PO list. P16's fix reached purchase orders as well as bills, which was never recorded. The revision embed is still `take: 1` with no `lines`, so §12.6's Total Amount remains uncomputable from the list response and Revision still shows the highest-numbered revision rather than the active one.*
 
 ```ts
 include: { supplier: true, revisions: { orderBy: { revisionNumber: 'desc' }, take: 1 } }
@@ -1610,6 +1795,8 @@ affordance, not a control, and must not be recorded as one.
 
 **Gap · verified against `supplier-bill.repository.ts:39-51` (2026-08-09)**
 
+> *Re-verified at `4a895e7` (2026-08-11) — fix holds. `supplier-bill.repository.ts:47` selects `{ id, code, name }`. Note it does **not** select `nameAr`, while the purchase-order repository includes the whole supplier relation and therefore does — so the same supplier renders in English on a bill and in Arabic on a PO. See A13.*
+
 `findById` includes `lines` only; `findAll` includes nothing. Neither embeds the `supplier`
 relation, so both return a bare `supplierId`. With no `GET /suppliers` (A3 / #26) there is no
 second call that could resolve it.
@@ -1624,6 +1811,8 @@ The purchase order screens are unaffected: `purchase-order.repository.ts` includ
 ### <a id="p17"></a>P17 — Money and quantity are JSON numbers across the procurement write path
 
 **Contract · verified against all five procurement write DTOs (2026-08-09)**
+
+> *Re-verified at `4a895e7` (2026-08-11) — still open.*
 
 `unitPrice`, `orderedQuantity`, `requestedQuantity`, `receivedQuantity`, `acceptedQuantity`,
 `rejectedQuantity`, `allocatedQuantity` and `exchangeRate` are all `number`. Every read path
@@ -1655,23 +1844,48 @@ Delivered:
 - Projects: list, search and filter, create, edit (DRAFT), detail, all six lifecycle
   transitions, cancel, suspend and resume
 
-In progress — the Sprint 3 billing chain, built in this order:
+- Sprint 3 billing chain: Clients, Contracts and their commercial terms, IPA with its full
+  lifecycle, IPC viewing, issuance and supersession, Receipts with allocation
+- Sprint 4 accounting workspace: ten screens, plus Tier G (Client Invoices)
+- Sprint 5 procurement workspace: fifteen routes, plus read-only Supplier Bills and Matching
 
-1. Clients
-2. Contracts, then contract commercial terms (retention, advances, guarantees, milestones)
-3. IPA — creation, item and deduction lines, lifecycle
-4. Receipts — recording and allocation against certificates
-5. IPC — viewing and supersession first; **issuance is gated on C1**
+Building next — Accounts Payable, in four tiers:
 
-Deferred pending the items above:
+1. **Suppliers** — list and create (no edit; **A15**), a shared `SupplierPicker`, and flipping
+   `SUPPLIER_ENDPOINT_AVAILABLE`, which enables the purchase-order create form that has been
+   written, tested and switched off since Sprint 5 Tier C
+2. **Supplier bill create — non-PO bills only**, gated by **A14**
+3. **Supplier payments** — list, detail, create, approve, post, reverse
+4. **Advance allocation** against a bill, and its reversal
 
-- Project members UI — **B1**, **B2**
-- Any approval/workflow UI — **B3**, **B4**
-- BOQ parent totals for mixed-currency subtrees — **D1**
-- BOQ row reordering — **B14**
-- IPA revision loop — **C14**. A returned application is a dead end today.
-- IPC issuance — **C1** (and **C2** before any certificate is written in anger)
-- Certificate settlement status in the Receipts UI — **C7**
+Deferred, and why:
 
-The two security items, **C2** and **C3**, are independent of all of this. Both should be
-fixed regardless of what the frontend builds.
+- **Customer Receipts** — **A12**. A receipt carries two unlinked allocation ledgers and the
+  domain question of whether that is one settlement or two is with Eng Ahmed. Building the
+  allocation screen before it is answered is how double-counted cash reaches a client statement.
+- **PO-linked supplier bills** — **A14** / [#33](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/33)
+- **Tenant bootstrap** — chart-of-accounts creation, bulk import, fiscal years, bank accounts
+  and the opening-balance wizard. Not blocked by anything; `POST /accounts`,
+  `POST /accounts/import`, `POST /fiscal-years`, `POST /bank-accounts` and
+  `POST /accounting/opening-balance` are all live and unconsumed. Chart of Accounts and Fiscal
+  Periods are read-only screens today, so a new organisation cannot be set up from the UI at all.
+  Note **A5** and **A6** before building it: the documented create-account body omits a required
+  field, and `CreateAccountDto` rejects the `ControlPostingPolicy` value three seeded accounts use.
+- **Per-document approval panel** on Material Requests and Purchase Orders — buildable now,
+  since `approvalInstanceId` is a scalar on both payloads, but **B15** should land first.
+- **Approval inbox** — not buildable at all. No endpoint lists approval instances, by approver
+  or otherwise, so there is no way to discover an `instanceId` you were not already handed.
+- **Report drill-down** — `GET /reports/drill-down` and `GET /reports/gl-balance/:accountId`
+  are live and unconsumed.
+- **BOQ parent totals for mixed-currency subtrees** — **D1**, with Eng Ahmed.
+
+Corrected on 2026-08-11: **Project members UI** was listed here as deferred on **B1** and
+**B2**. Both were fixed in `e85bab9`, and `GET/POST /projects/:id/members`,
+`DELETE /projects/:id/members/:userId` and `GET /users` have all been live since. The page at
+`projects/[id]/members/page.tsx` is still a dashed "unavailable" placeholder. Nothing blocks it.
+
+The security items — **A2** and **P5** (no authorization anywhere in the API) and **B15** — are
+independent of everything above. `RolesGuard` is registered as `APP_GUARD` in `app.module.ts:46`
+and reads a `'roles'` metadata key that no controller anywhere sets, so it returns `true` on
+every request. Nothing the frontend builds changes that, and `PERMISSIONS_ENFORCED = false` in
+`can.ts` is the honest mirror of it rather than a workaround.

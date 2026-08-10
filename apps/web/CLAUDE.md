@@ -112,12 +112,20 @@ P&L, Balance Sheet, Account Ledger, Monthly Comparison, and period management.
 4. **`can()` is called on every accounting action** with `PERMISSIONS_ENFORCED` still false.
    Do the same in procurement — one boolean then secures both workspaces.
 
-Blocked, declared in the nav and disabled: Supplier Bills, Supplier Payments
-([#26](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/26) — no supplier endpoint, so a
-bill cannot be created), Client Invoices and Customer Receipts
-([#24](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/24) — route collision on
-`/receipts`). Also open: [#25](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/25), the
-accounting module has no authorization at all.
+> **Superseded 2026-08-11 — this paragraph used to say four screens were blocked, and by the
+> time anyone read it, three of the four claims were wrong.** Kept, corrected, rather than
+> deleted, because the pattern matters more than the paragraph:
+>
+> - **Client Invoices** was never blocked by #24. `ClientInvoiceController` is mounted at
+>   `@Controller('invoices')`; only customer receipts were shadowed. Built as Tier G.
+> - **Supplier Bills** was over-blocked. Only `POST /bills` needed a supplier; the read path
+>   always worked. Shipped read-only in Sprint 5 Tier E.
+> - **#26 is fixed** as of `7cf2507`. `GET/POST /suppliers` and `GET /posting-profiles` are
+>   live. Supplier Payments is no longer blocked by anything.
+> - **Customer Receipts** is still not built — but on **A12**, a domain question, not #24.
+>
+> Still true: [#25](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/25) — the accounting
+> module has no authorization at all. So does the rest of the API.
 
 ### ✅ Sprint 5 Frontend — Procurement Workspace (done 2026-08-09)
 
@@ -151,10 +159,20 @@ the Matching tab, and the Commitment Ledger with its project card.
    They predate this branch and were left alone rather than blind-fixed, because that code
    restores an IPC draft and getting it wrong costs money.
 
-Still blocked: creating a purchase order, creating a supplier bill, and Supplier Payments —
-all [#26](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/26). The PO create form is
-built and tested behind a disabled entry point; when `GET /suppliers` lands it needs a
-supplier picker and one flag in `procurement-api.ts`.
+> **Corrected 2026-08-11.** This paragraph read *"Still blocked: creating a purchase order,
+> creating a supplier bill, and Supplier Payments — all #26."* **#26 was fixed in `7cf2507`.**
+> `GET /suppliers`, `GET /suppliers/:id`, `POST /suppliers` and `GET /posting-profiles` are all
+> live, and `api-reference.md` §6.22–6.23 documents them accurately.
+>
+> `listSuppliers()` in `procurement-api.ts` still rejects every call with *"GET /suppliers does
+> not exist"*, and `SUPPLIER_ENDPOINT_AVAILABLE` is still `false`. The sentence below was
+> correct when written and is the fix: the PO create form is built and tested behind a disabled
+> entry point, and turning it on is a supplier picker plus one flag.
+>
+> Creating a **PO-linked** supplier bill is still blocked, but by
+> [#33](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/33) (**A14**), not #26 — the bill
+> never records a `purchaseOrderRevisionId`, so matching cannot run, the post gate is skipped,
+> and the commitment ledger never reaches ACTUAL. Non-PO bills are unaffected.
 
 ### ✅ Sprint 4 Tier G — Client Invoices (done 2026-08-10)
 
@@ -188,14 +206,48 @@ since A1 was fixed, but a receipt carries two unlinked allocation ledgers — to
 invoices — with no guard between them (A12). Whether that is one settlement mirrored or two is a
 domain question now with Eng Ahmed. Do not build the allocation screen until it is answered.
 
-### ⏳ Sprint 6 Frontend — Variations / Change Orders (START HERE)
+### ⏳ Accounts Payable — Suppliers, Bills, Payments (START HERE)
 
-Backend: not yet built. Nothing to build against yet — confirm with Abdulsalam before
-planning.
+Four tiers, one commit each. Sequenced by dependency: `POST /bills` and `POST /payments` both
+require a `supplierId`, and no supplier is seeded in any environment.
+
+| Tier | Contents |
+|---|---|
+| **A** | Suppliers list + create under Procurement's main nav items. Shared `SupplierPicker`. Flip `SUPPLIER_ENDPOINT_AVAILABLE` in `procurement-api.ts` and replace the `listSuppliers()` stub — that turns on the PO create form written in Sprint 5 Tier C. |
+| **B** | Supplier bill create, **non-PO bills only** (A14 / [#33](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/33)). Matching tab reads "not applicable", not "not run". |
+| **C** | Payments: list, detail, create with allocation lines, approve, post, reverse. |
+| **D** | Advance allocation against a bill, and its reversal. |
+
+**Five things to know before you start:**
+
+1. **Suppliers go in Procurement's main items, not Setup.** A supplier is master data added
+   whenever purchasing widens, not one-time configuration, so it fails the Setup sub-group's own
+   stated test — and Setup's single `manage:procurement-config` gate would stop a buyer adding
+   the supplier their own PO needs.
+2. **There is no `PATCH /suppliers/:id`** (A15). List and create only, no edit affordance. A
+   misspelt supplier name is permanent.
+3. **`api-reference.md` §6.21–6.23 is trustworthy** — the payment, supplier and posting-profile
+   bodies match their DTOs field for field. This is the exception in §6.13–6.23, not the rule.
+   Two caveats: every GL account code in the section is 4-digit against a 5-digit seeded chart
+   (A8), and the `allocations[]` array on `CreateSupplierPaymentDto` is undocumented.
+4. **`POST /payments/:id/post` needs three GL codes** — `apAccountCode`, `bankGlCode`,
+   `supplierAdvanceCode`. Extend `posting-accounts.ts`, which already resolves codes by
+   `accountSubtype` and returns `NOT_CONFIGURED` / `AMBIGUOUS` rather than guessing. Follow
+   `planInvoicePost`: resolve once, and show the dialog the exact Dr/Cr the server will write.
+5. **Bank accounts are seeded; suppliers are not.** `GET /bank-accounts` returns rows on every
+   environment, so the payment form's bank picker has a source on day one. `GET /suppliers`
+   returns an empty list until Tier A's create form is used.
 
 > **Run a contract sweep against the controllers before writing a screen.** Sprint 4's
 > sweep found ten defects and Sprint 5's found seventeen, each in the time it took to read
-> the route decorators, and each before anything was built on them.
+> the route decorators, and each before anything was built on them. The 2026-08-11 sweep found
+> three more — and found that three *existing* entries in the register were wrong in the other
+> direction, describing walls that had already been demolished. Re-verify before you defer.
+
+### ⏳ Sprint 6 Frontend — Variations / Change Orders
+
+Backend: not yet built. Nothing to build against yet — confirm with Abdulsalam before
+planning.
 
 ---
 
