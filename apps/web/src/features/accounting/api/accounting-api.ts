@@ -3,6 +3,7 @@ import { apiClient } from '@/lib/api-client';
 import type {
   Account,
   AccountLedger,
+  BankAccount,
   AccountingPeriod,
   ApproveJournalPayload,
   BalanceSheet,
@@ -32,6 +33,17 @@ export function listAccounts(): Promise<Account[]> {
 
 export function getAccount(id: string): Promise<Account> {
   return apiClient<Account>(`/accounts/${id}`);
+}
+
+/**
+ * `GET /bank-accounts`.
+ *
+ * Returns every account regardless of status. Filtering to the ones a payment may use is the
+ * caller's job, because a SUSPENDED or receipts-only account still has to render its name on a
+ * payment raised before it was suspended.
+ */
+export function listBankAccounts(): Promise<BankAccount[]> {
+  return apiClient<BankAccount[]>('/bank-accounts');
 }
 
 /**

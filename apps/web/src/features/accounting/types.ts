@@ -574,3 +574,34 @@ export interface PostingProfile {
   status: 'ACTIVE' | 'INACTIVE';
   versions: PostingProfileVersion[];
 }
+
+// ─── Bank accounts ───────────────────────────────────────────────────────────────
+
+/**
+ * `GET /bank-accounts` — live, and seeded (two accounts, on GL 10100 and 10200).
+ *
+ * Distinct from the GL account it points at, and both are needed on a payment:
+ * `POST /payments` takes the `bankAccountId` (this entity), while `POST /payments/:id/post`
+ * takes a `bankGlCode` (the account's code). `glAccountId` is the bridge, and it is `@unique`
+ * — one bank account per GL account, so the mapping is never ambiguous.
+ *
+ * Prefer this over `bankAccounts()` in `posting-accounts.ts` wherever a payment or receipt is
+ * involved. That helper scans the chart for the `CASH_AND_BANK` subtype, which finds GL rows
+ * that may have no bank account behind them and cannot see `allowsPayments` or `status`.
+ */
+export interface BankAccount {
+  id: string;
+  glAccountId: string;
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  iban: string | null;
+  swiftCode: string | null;
+  currencyCode: string;
+  branch: string | null;
+  /** A receipts-only account must not appear in a payment picker. */
+  allowsReceipts: boolean;
+  allowsPayments: boolean;
+  isReconcilable: boolean;
+  status: 'ACTIVE' | 'SUSPENDED' | 'CLOSED';
+}

@@ -24,6 +24,7 @@ import {
   getProfitLoss,
   getTrialBalance,
   listAccounts,
+  listBankAccounts,
   listFiscalYears,
   listPostingProfiles,
   listJournals,
@@ -34,6 +35,7 @@ import {
 import type {
   Account,
   AccountLedger,
+  BankAccount,
   BalanceSheet,
   CloseGate,
   MonthlyPL,
@@ -51,6 +53,7 @@ export const accountingKeys = {
   all: ['accounting'] as const,
   accounts: () => [...accountingKeys.all, 'accounts'] as const,
   postingProfiles: () => [...accountingKeys.all, 'posting-profiles'] as const,
+  bankAccounts: () => [...accountingKeys.all, 'bank-accounts'] as const,
   fiscalYears: () => [...accountingKeys.all, 'fiscal-years'] as const,
   fiscalYear: (id: string) => [...accountingKeys.all, 'fiscal-year', id] as const,
   journals: () => [...accountingKeys.all, 'journals'] as const,
@@ -95,6 +98,15 @@ export function usePostingProfiles(): UseQueryResult<PostingProfile[], Error> {
   return useQuery({
     queryKey: accountingKeys.postingProfiles(),
     queryFn: listPostingProfiles,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/** Configured bank accounts. Master data, so it shares the chart's staleness window. */
+export function useBankAccounts(): UseQueryResult<BankAccount[], Error> {
+  return useQuery({
+    queryKey: accountingKeys.bankAccounts(),
+    queryFn: listBankAccounts,
     staleTime: 5 * 60 * 1000,
   });
 }
