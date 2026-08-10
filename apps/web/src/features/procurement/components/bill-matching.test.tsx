@@ -37,7 +37,11 @@ function makeBill(overrides: Partial<SupplierBill> = {}): SupplierBill {
     billDate: '2026-08-19T00:00:00.000Z',
     dueDate: '2026-09-19T00:00:00.000Z',
     currencyCode: 'SAR',
-    status: 'DRAFT',
+    // The two real status axes. This fixture carried a single `status: 'DRAFT'` until Tier B,
+    // and `SupplierBill` has no such column — so the type and the fixture agreed with each
+    // other while both disagreed with the API, and the badge rendered blank in production.
+    documentStatus: 'DRAFT',
+    postingStatus: 'NOT_POSTED',
     matchStatus: 'NOT_RUN',
     purchaseOrderId: 'po-1',
     purchaseOrderRevisionId: 'rev-1',
@@ -45,6 +49,7 @@ function makeBill(overrides: Partial<SupplierBill> = {}): SupplierBill {
     subtotal: '19550.00',
     vatAmount: '2932.50',
     totalAmount: '22482.50',
+    outstandingAmount: '22482.50',
     lines: [
       {
         id: 'bl-1',
@@ -55,6 +60,7 @@ function makeBill(overrides: Partial<SupplierBill> = {}): SupplierBill {
         netAmount: '19665.00',
         vatAmount: '2949.75',
         grossAmount: '22614.75',
+        expenseProfileCode: 'MATERIAL_PURCHASE',
         projectId: null,
         boqNodeId: null,
       },

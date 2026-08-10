@@ -20,6 +20,7 @@ import {
 import {
   approveMatchException,
   approveMaterialRequest,
+  approveSupplierBill,
   approvePurchaseOrder,
   cancelGoodsReceipt,
   cancelMaterialRequest,
@@ -31,6 +32,7 @@ import {
   createPurchaseOrder,
   createSpendCategory,
   createSupplier,
+  createSupplierBill,
   createUom,
   deactivateMaterialCategory,
   deactivateSpendCategory,
@@ -54,10 +56,13 @@ import {
   listSuppliers,
   listUoms,
   postGoodsReceipt,
+  postSupplierBill,
+  reverseSupplierBill,
   revisePurchaseOrder,
   runBillMatch,
   submitMaterialRequest,
   submitPurchaseOrder,
+  submitSupplierBill,
 } from '../api/procurement-api';
 import type {
   ApproveExceptionPayload,
@@ -86,6 +91,9 @@ import type {
   Supplier,
   SupplierBill,
   CreateSupplierPayload,
+  CreateSupplierBillPayload,
+  PostSupplierBillPayload,
+  ReverseSupplierBillPayload,
   UnitOfMeasure,
 } from '../types';
 
@@ -479,6 +487,52 @@ export function useSupplierBill(id: string): UseQueryResult<SupplierBill> {
     queryFn: () => getSupplierBill(id),
     enabled: Boolean(id),
   });
+}
+
+/**
+ * Every bill mutation invalidates the list, the individual bill, and the commitment ledger.
+ *
+ * The commitment invalidation is not defensive padding. Posting a bill is the step that turns
+ * ACCRUED into ACTUAL (`supplier-bill.service.ts:245`), and the Commitments card on the Project
+ * Command Center renders from a different query than the screen the user is standing on — a
+ * stale figure there reads as a real one. That it does not fire today, because no bill carries
+ * a `purchaseOrderRevisionId` (A14), is exactly why the invalidation should already be here
+ * when #33 lands rather than be remembered afterwards.
+ */
+function useBillMutation<TArgs>(mutationFn: (args: TArgs) => Promise<SupplierBill>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: (bill) => {
+      void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'bills'] });
+      void qc.invalidateQueries({ queryKey: procurementKeys.bill(bill.id) });
+      void qc.invalidateQueries({ queryKey: procurementKeys.commitments() });
+    },
+  });
+}
+
+export function useCreateSupplierBill() {
+  return useBillMutation((payload: CreateSupplierBillPayload) => createSupplierBill(payload));
+}
+
+export function useSubmitSupplierBill() {
+  return useBillMutation((id: string) => submitSupplierBill(id));
+}
+
+export function useApproveSupplierBill() {
+  return useBillMutation((id: string) => approveSupplierBill(id));
+}
+
+export function usePostSupplierBill() {
+  return useBillMutation((args: { id: string; payload: PostSupplierBillPayload }) =>
+    postSupplierBill(args.id, args.payload),
+  );
+}
+
+export function useReverseSupplierBill() {
+  return useBillMutation((args: { id: string; payload: ReverseSupplierBillPayload }) =>
+    reverseSupplierBill(args.id, args.payload),
+  );
 }
 
 export function useBillMatch(billId: string): UseQueryResult<BillMatchResult | null> {

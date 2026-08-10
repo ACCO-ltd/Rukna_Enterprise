@@ -41,6 +41,29 @@ const STATUS_TONES: Record<string, BadgeTone> = {
   INACTIVE: 'neutral',
 };
 
+/**
+ * `postingStatus`, which advances independently of `documentStatus`.
+ *
+ * Kept as a separate badge rather than folded into the map above, because the two axes can
+ * disagree in ways that matter: a bill reading APPROVED / FAILED is not the same document as
+ * one reading APPROVED / NOT_POSTED, and showing only the first would hide a posting that
+ * broke. `FAILED` is warning rather than danger — the engine records the error and leaves the
+ * document postable, so it is a retry rather than a dead end.
+ */
+const POSTING_TONES: Record<string, BadgeTone> = {
+  NOT_POSTED: 'neutral',
+  PENDING: 'info',
+  POSTED: 'live',
+  FAILED: 'warning',
+  REVERSED: 'danger',
+  OPENING_BALANCE: 'neutral',
+};
+
+export function PostingStatusBadge({ status }: { status: string }) {
+  const t = useTranslations('procurement.postingStatus');
+  return <Badge tone={POSTING_TONES[status] ?? 'neutral'}>{t(status)}</Badge>;
+}
+
 export function ProcurementStatusBadge({ status }: { status: string }) {
   const t = useTranslations('procurement.status');
   return <Badge tone={STATUS_TONES[status] ?? 'neutral'}>{t(status)}</Badge>;

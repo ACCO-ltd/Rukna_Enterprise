@@ -11,6 +11,7 @@ import type {
   FiscalYear,
   JournalEntry,
   MonthlyPL,
+  PostingProfile,
   ProfitLoss,
   ReverseJournalPayload,
   TrialBalance,
@@ -31,6 +32,17 @@ export function listAccounts(): Promise<Account[]> {
 
 export function getAccount(id: string): Promise<Account> {
   return apiClient<Account>(`/accounts/${id}`);
+}
+
+/**
+ * `GET /posting-profiles` — the expense profiles a supplier bill line can name.
+ *
+ * `status` is a real query parameter the controller reads. It is left absent so INACTIVE
+ * profiles arrive too: a bill posted last year against a since-retired profile still has to
+ * render its name, and filtering them out server-side would leave it blank.
+ */
+export function listPostingProfiles(): Promise<PostingProfile[]> {
+  return apiClient<PostingProfile[]>('/posting-profiles');
 }
 
 // ─── Fiscal years and periods ────────────────────────────────────────────────────

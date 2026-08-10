@@ -25,6 +25,7 @@ import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
+  Button,
   Table,
   TableBody,
   TableCell,
@@ -39,13 +40,15 @@ import {
   TabsTrigger,
 } from '@erp/ui';
 
+import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { formatDate, formatMoney } from '@/lib/format';
 
 import { useSupplierBill, useSupplierBills } from '../hooks/use-procurement';
 import { canPostBill } from '../quantities';
 import type { SupplierBill } from '../types';
+import { BillActionBar } from './bill-actions-bar';
 import { BillMatchingTab } from './bill-matching';
-import { BillMatchStatusBadge, ProcurementStatusBadge } from './procurement-badges';
+import { BillMatchStatusBadge, PostingStatusBadge, ProcurementStatusBadge } from './procurement-badges';
 
 // ─── List ────────────────────────────────────────────────────────────────────────
 
@@ -53,21 +56,29 @@ export function SupplierBillsList() {
   const t = useTranslations('procurement.bills');
   const tc = useTranslations('procurement.common');
   const locale = useLocale() as 'en' | 'ar';
+  const { can } = usePermissions();
 
   const bills = useSupplierBills();
 
   return (
     <div className="space-y-6">
-      <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
-        <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
+          <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
+        </div>
+
+        {can(ACCOUNTING_PERMISSIONS.managePayables) ? (
+          <Button asChild>
+            <Link href="/finance/accounting/bills/new">{t('new')}</Link>
+          </Button>
+        ) : null}
       </div>
 
-      <Alert
-        variant="warning"
-        title={t('createBlockedTitle')}
-        messages={[t('createBlockedBody'), t('readOnlyNotice')]}
-      />
+      {/* Informational, not a block: creating a bill works, and only the PO-linked variant
+          is unavailable. A warning banner over a screen whose primary action succeeds is how
+          a working feature gets read as broken. */}
+      <Alert variant="info" title={t('createBlockedTitle')} messages={[t('createBlockedBody')]} />
 
       {bills.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
 
@@ -122,7 +133,7 @@ export function SupplierBillsList() {
                     {formatMoney(bill.totalAmount, bill.currencyCode, locale)}
                   </TableCell>
                   <TableCell>
-                    <ProcurementStatusBadge status={bill.status} />
+                    <ProcurementStatusBadge status={bill.documentStatus} />
                   </TableCell>
                   <TableCell>
                     <BillMatchStatusBadge status={bill.matchStatus} />
@@ -170,7 +181,8 @@ export function SupplierBillDetail({ id }: { id: string }) {
           {t('detailTitle', { number: bill.supplierInvoiceNumber })}
         </h1>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <ProcurementStatusBadge status={bill.status} />
+          <ProcurementStatusBadge status={bill.documentStatus} />
+          <PostingStatusBadge status={bill.postingStatus} />
           <BillMatchStatusBadge status={bill.matchStatus} />
           <span className="text-sm text-muted-foreground">
             {bill.supplier
@@ -180,15 +192,14 @@ export function SupplierBillDetail({ id }: { id: string }) {
         </div>
       </div>
 
-      {/* The Post button is not rendered — posting needs a posting-profile picker that
-          #26 also blocks. The gate is stated anyway, because it is the reason posting
-          will stay unavailable on an unmatched bill once that lands. */}
       {!postable ? (
         <Alert
           variant="warning"
           messages={[tMatch('postBlockedTooltip'), tMatch('postAdvisoryNotice')]}
         />
       ) : null}
+
+      <BillActionBar bill={bill} />
 
       <Tabs defaultValue="details">
         <TabsList>

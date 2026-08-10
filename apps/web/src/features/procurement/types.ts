@@ -366,10 +366,30 @@ export interface SupplierBillLine {
   unitPrice: Money | null;
   netAmount: Money;
   vatAmount: Money;
+  /** `net + vat`, computed server-side. Posts to expense whole — ACCO's VAT is non-recoverable. */
   grossAmount: Money;
+  /** The `PostingProfile.code` whose account the server debits at post time. */
+  expenseProfileCode: string;
   projectId: string | null;
   boqNodeId: string | null;
 }
+
+/** `BillDocStatus` in `schema.prisma`. */
+export type BillDocumentStatus =
+  | 'DRAFT'
+  | 'SUBMITTED'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'CANCELLED';
+
+/** `PostingStatus` in `schema.prisma` — shared with invoices and payments. */
+export type BillPostingStatus =
+  | 'NOT_POSTED'
+  | 'PENDING'
+  | 'POSTED'
+  | 'FAILED'
+  | 'REVERSED'
+  | 'OPENING_BALANCE';
 
 export interface SupplierBill {
   id: string;
@@ -381,16 +401,74 @@ export interface SupplierBill {
   billDate: ApiDate;
   dueDate: ApiDate;
   currencyCode: string;
-  status: string;
+  /**
+   * ⚠ These were declared as a single `status: string` until Tier B, and **there is no
+   * `status` column on `SupplierBill`** — the schema has `documentStatus` and `postingStatus`
+   * and nothing else. So `bill.status` was `undefined` against the live API on both bill
+   * screens, and the badge rendered from it was blank.
+   *
+   * The tests did not catch it because the fixture invented the field, which is the same way
+   * C8 shipped: a type that disagrees with the API, asserted against a mock that agrees with
+   * the type. Fixtures are now built from the two real fields.
+   */
+  documentStatus: BillDocumentStatus;
+  postingStatus: BillPostingStatus;
   matchStatus: BillMatchStatus;
   purchaseOrderId: string | null;
+  /**
+   * Never written by any code path (A14 / #33). Always `null` in practice, which is why the
+   * match gate never engages for a bill created through the API — and why Tier B creates
+   * non-PO bills only, where that is correct rather than merely unenforced.
+   */
   purchaseOrderRevisionId: string | null;
   projectId: string | null;
   subtotal: Money;
   vatAmount: Money;
   totalAmount: Money;
+  outstandingAmount: Money;
   /** Present on detail only — `findAll` includes no lines. */
   lines?: SupplierBillLine[];
+}
+
+/**
+ * `POST /bills`.
+ *
+ * Money is a JSON number on the way in and a decimal string on the way out (A9/P17) — build
+ * these with `moneyToApi` from `quantities.ts` rather than by hand.
+ *
+ * `purchaseOrderId` is accepted by the DTO and deliberately **not** exposed here: a bill never
+ * records the PO revision behind it (A14), so a PO-linked bill can never be matched and its
+ * commitment never converts to actual. Tier B creates non-PO bills only.
+ */
+export interface CreateSupplierBillLinePayload {
+  description: string;
+  quantity?: number;
+  unitPrice?: number;
+  netAmount: number;
+  vatAmount: number;
+  expenseProfileCode: string;
+  projectId?: string;
+}
+
+export interface CreateSupplierBillPayload {
+  supplierId: string;
+  supplierInvoiceNumber: string;
+  billDate: string;
+  dueDate: string;
+  currencyCode: string;
+  projectId?: string;
+  lines: CreateSupplierBillLinePayload[];
+}
+
+/** Body of `POST /bills/:id/post`. The expense accounts come from each line's profile. */
+export interface PostSupplierBillPayload {
+  apAccountCode: string;
+}
+
+/** Body of `POST /bills/:id/reverse`. */
+export interface ReverseSupplierBillPayload {
+  reversalDate: string;
+  reason: string;
 }
 
 // ─── Commitment ledger ───────────────────────────────────────────────────────────
