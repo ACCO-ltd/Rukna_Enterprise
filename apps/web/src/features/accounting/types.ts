@@ -413,3 +413,118 @@ export interface CloseGate {
   passed: boolean;
   blockers: string[];
 }
+
+// ─── Client invoices (AR) ────────────────────────────────────────────────────────
+
+/**
+ * `schema.prisma` `PostingStatus` — the ledger axis, shared by every document that posts:
+ * client invoices, supplier bills, payments and receipts.
+ *
+ * `OPENING_BALANCE` marks a subledger row loaded by the migration wizard, whose GL effect is
+ * covered by the aggregate opening journal rather than by an entry of its own. It is deliberately
+ * excluded from the period-close "unposted approved documents" gate, so it must not be rendered
+ * as an error state — it is a settled, historical row.
+ *
+ * `PENDING` and `FAILED` exist for the posting engine's retry path. A FAILED document carries
+ * `lastPostingErrorCode` and can be posted again.
+ */
+export type PostingStatus =
+  | 'NOT_POSTED'
+  | 'PENDING'
+  | 'POSTED'
+  | 'FAILED'
+  | 'REVERSED'
+  | 'OPENING_BALANCE';
+
+/**
+ * `schema.prisma` `InvoiceDocStatus` — three values, defaulting to DRAFT.
+ *
+ * Note what is absent: there is no SUBMITTED step and no REJECTED. A supplier bill has five
+ * document states and a four-step approval; a client invoice has one approval and no way back
+ * except CANCELLED. Do not reuse the bill's lifecycle component here.
+ */
+export type InvoiceDocStatus = 'DRAFT' | 'APPROVED' | 'CANCELLED';
+
+/**
+ * `GET /invoices`, `GET /invoices/:id`, and the body every lifecycle action returns.
+ *
+ * ─── Two independent status axes ────────────────────────────────────────────────
+ *
+ * `documentStatus` is the approval axis and `postingStatus` is the ledger axis. They advance
+ * separately: an invoice is APPROVED before it can post, and posting moves only
+ * `postingStatus`. A single badge cannot express the pair, which is why there are two.
+ *
+ * ─── `invoiceNumber` is null until it posts ─────────────────────────────────────
+ *
+ * The `INV-` sequence is drawn inside the posting transaction (`client-invoice.service.ts:146`),
+ * not at creation. Every DRAFT and every APPROVED-but-unposted invoice therefore has a null
+ * number, and no list may key a row or a heading on it.
+ *
+ * ─── No `client` relation ───────────────────────────────────────────────────────
+ *
+ * `ClientInvoiceRepository.findAll` embeds nothing (`client-invoice.repository.ts:37`), so the
+ * client name is unresolvable from this payload alone. P16 fixed exactly this on the AP side
+ * by including `supplier`; AR did not get the same treatment. Screens join against
+ * `GET /clients`, which the app already fetches.
+ *
+ * Money is a decimal string on the way out and a JSON number on the way in (A9) — parse with
+ * `src/lib/money.ts` rather than `Number`.
+ */
+export interface ClientInvoice {
+  id: string;
+  organizationId: string;
+  invoiceNumber: string | null;
+  invoiceDate: string;
+  dueDate: string;
+  clientId: string;
+  /** The effective IPC this invoice was generated from. Null only for migrated records. */
+  sourceIpcId: string | null;
+  projectId: string | null;
+  contractId: string | null;
+  currencyCode: string;
+  subtotal: string;
+  vatAmount: string;
+  totalAmount: string;
+  /** Falls as receipts are allocated. Equals `totalAmount` until the first allocation. */
+  outstandingAmount: string;
+  paymentTerms: string | null;
+  documentStatus: InvoiceDocStatus;
+  postingStatus: PostingStatus;
+  postedJournalEntryId: string | null;
+  postedAt: string | null;
+  postedBy: string | null;
+  reversedAt: string | null;
+  reversalJournalEntryId: string | null;
+  cancelledAt: string | null;
+  cancellationReason: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  createdAt: string;
+  createdBy: string;
+}
+
+/** Body of `POST /invoices/from-ipc`. Dates are `YYYY-MM-DD`. */
+export interface GenerateInvoicePayload {
+  ipcId: string;
+  invoiceDate: string;
+  dueDate: string;
+  paymentTerms?: string;
+}
+
+/**
+ * Body of `POST /invoices/:id/post`.
+ *
+ * Codes, not ids — resolved by `posting-accounts.ts`. `vatAccountCode` is omitted when the
+ * invoice carries no VAT; the server only looks at it when `vatAmount > 0`.
+ */
+export interface PostInvoicePayload {
+  arAccountCode: string;
+  revenueAccountCode: string;
+  vatAccountCode?: string;
+}
+
+/** Body of `POST /invoices/:id/reverse`. `reason` is capped at 500 characters server-side. */
+export interface ReverseInvoicePayload {
+  reversalDate: string;
+  reason: string;
+}

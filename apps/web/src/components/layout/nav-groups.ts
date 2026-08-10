@@ -89,6 +89,11 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/finance/accounting/balance-sheet', labelKey: 'balanceSheet' },
       { href: '/finance/accounting/monthly-comparison', labelKey: 'monthlyComparison' },
       { href: '/finance/accounting/ledger', labelKey: 'accountLedger' },
+      // AR. Read-only: an invoice is raised from a certificate, so the create action lives on
+      // the IPC page (`POST /invoices/from-ipc` is the only way one exists). Sprint 4 recorded
+      // this as blocked by #24, which was wrong — that collision was on /receipts and this
+      // controller has always been mounted at /invoices.
+      { href: '/finance/accounting/invoices', labelKey: 'clientInvoices' },
       // Read-only. Sprint 4 disabled this entirely on #26, which was over-cautious: only
       // POST /bills needs a supplier. GET /bills and GET /bills/:id work, and Sprint 5's
       // Matching tab (§12.8) has to hang off the detail page. Creating a bill is still

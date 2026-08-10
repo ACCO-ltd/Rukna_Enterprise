@@ -41,6 +41,7 @@
     "profitLoss": "Profit & Loss",
     "balanceSheet": "Balance Sheet",
     "accountLedger": "Account Ledger",
+    "clientInvoices": "Client Invoices",
     "supplierBills": "Supplier Bills",
     "supplierPayments": "Supplier Payments",
     "monthlyComparison": "Monthly Comparison",

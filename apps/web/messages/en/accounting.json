@@ -322,5 +322,98 @@
       "closeYearTitle": "Close this fiscal year?",
       "closeYearBody": "The closing journal is posted, every profit and loss account is zeroed into retained earnings, and the year is marked closed. This is the last accounting action of the year."
     }
+  },
+  "invoices": {
+    "title": "Client Invoices",
+    "subtitle": "Invoices raised against certified payment certificates, and their position in the ledger.",
+    "empty": "No client invoices yet",
+    "emptyHint": "An invoice is raised from an effective payment certificate. Open a certificate to raise the first one.",
+    "noMatches": "No invoices match this filter.",
+    "loadFailed": "Could not load invoices.",
+    "actionFailed": "The action could not be completed.",
+    "filterByStatus": "Filter by status",
+    "allStatuses": "All statuses",
+    "filterNote": "Filters the invoices already loaded — the API returns them all at once.",
+    "countLabel": "{count, plural, =0 {No invoices} one {# invoice} other {# invoices}}",
+    "colNumber": "Number",
+    "colDate": "Date",
+    "colClient": "Client",
+    "colStatus": "Status",
+    "colTotal": "Total",
+    "colOutstanding": "Outstanding",
+    "unnumbered": "Not yet numbered",
+    "detailEyebrow": "Client invoice",
+    "generatedFromCertificate": "Raised from a payment certificate.",
+    "approve": "Approve",
+    "approveTitle": "Approve this invoice?",
+    "approveDescription": "Approval cannot be undone. Once approved the invoice can be posted to the general ledger.",
+    "postAction": "Post to GL",
+    "reverse": "Reverse",
+    "reverseTitle": "Reverse this invoice?",
+    "reverseDescription": "This raises a mirrored journal entry. Neither entry is removed, and both stay on the record.",
+    "reverseReasonLabel": "Reason for reversal",
+    "fieldClient": "Client",
+    "fieldInvoiceDate": "Invoice date",
+    "fieldDueDate": "Due date",
+    "fieldSubtotal": "Subtotal",
+    "fieldVat": "VAT",
+    "fieldTotal": "Total",
+    "fieldOutstanding": "Outstanding",
+    "fieldTerms": "Payment terms",
+    "fieldPostedAt": "Posted",
+    "docStatus": {
+      "DRAFT": "Draft",
+      "APPROVED": "Approved",
+      "CANCELLED": "Cancelled"
+    },
+    "postingStatus": {
+      "NOT_POSTED": "Not posted",
+      "PENDING": "Posting",
+      "POSTED": "Posted",
+      "FAILED": "Posting failed",
+      "REVERSED": "Reversed",
+      "OPENING_BALANCE": "Opening balance"
+    },
+    "blocked": {
+      "not-draft": "Already approved.",
+      "not-approved": "Approve this invoice before posting it.",
+      "already-posted": "Already posted.",
+      "not-posted": "Not posted yet.",
+      "already-reversed": "Already reversed.",
+      "cancelled": "This invoice was cancelled."
+    },
+    "post": {
+      "title": "Post this invoice to the general ledger?",
+      "description": "This writes the entry below. It can only be undone by a reversal.",
+      "colAccount": "Account",
+      "colDebit": "Debit",
+      "colCredit": "Credit",
+      "totals": "Totals",
+      "confirm": "Post to GL",
+      "unbalanced": "This invoice does not balance — its total differs from its subtotal plus VAT. Posting is blocked. Contact your administrator.",
+      "notConfigured": "Cannot post — no account is configured as {role}. Ask your administrator to set one up.",
+      "ambiguous": "Cannot post — {codes} are both configured as {role}. Exactly one is required. Ask your administrator to correct the chart of accounts.",
+      "role": {
+        "AR_CONTROL": "Accounts Receivable",
+        "REVENUE": "Revenue",
+        "VAT_OUTPUT": "Output VAT",
+        "UNAPPLIED_RECEIPTS": "Unapplied Receipts",
+        "AP_CONTROL": "Accounts Payable",
+        "SUPPLIER_ADVANCE": "Supplier Advance"
+      }
+    },
+    "billingCard": {
+      "heading": "Billing",
+      "none": "No invoice has been raised against this certificate.",
+      "noPermission": "You do not have permission to raise invoices.",
+      "generate": "Generate invoice",
+      "viewInvoice": "View invoice",
+      "unnumbered": "Not yet numbered",
+      "invoiceDate": "Invoice date",
+      "dueDate": "Due date",
+      "dueDateHint": "Defaults to 30 days after the invoice date.",
+      "amountNote": "The amount is taken from this certificate and cannot be edited here.",
+      "dueOn": "Due {date}"
+    }
   }
 }
