@@ -190,6 +190,64 @@
       }
     }
   },
+  "bankAccounts": {
+    "title": "Bank Accounts",
+    "subtitle": "The accounts money is received into and paid out of, each mapped to one GL account.",
+    "loadFailed": "Could not load bank accounts.",
+    "empty": "No bank account is configured.",
+    "emptyHint": "A payment cannot name a bank until one exists here.",
+    "colBank": "Bank",
+    "colAccount": "Account",
+    "colNumber": "Number",
+    "colCurrency": "Currency",
+    "colUse": "Used for",
+    "receipts": "Receipts",
+    "payments": "Payments",
+    "neither": "Neither",
+    "status": {
+      "ACTIVE": "Active",
+      "SUSPENDED": "Suspended",
+      "CLOSED": "Closed"
+    },
+    "readOnlyNote": "A bank account cannot be edited, suspended or closed from here — the API offers no endpoint for it.",
+    "create": {
+      "new": "New Bank Account",
+      "title": "Configure a bank account",
+      "submit": "Configure account",
+      "bankName": "Bank name",
+      "accountName": "Account name",
+      "accountNameHint": "How this account is referred to internally, e.g. Main Operating.",
+      "accountNumber": "Account number",
+      "glAccount": "GL account",
+      "glAccountHint": "Cash and bank accounts not already mapped to another bank account.",
+      "noArabicName": "An Arabic account name cannot be recorded yet. The API accepts the field but has nowhere to store it, and sending it fails the request (issue #42).",
+      "useLegend": "Used for",
+      "allowsReceipts": "Receiving money",
+      "allowsPayments": "Paying money",
+      "useHint": "An account marked for neither will not appear in any receipt or payment picker.",
+      "missingTitle": "This bank account cannot be configured yet",
+      "missing": {
+        "accountName": "Enter an account name.",
+        "bankName": "Enter the bank name.",
+        "accountNumber": "Enter the account number.",
+        "currencyCode": "Enter a three-letter currency code.",
+        "glAccountCode": "Choose the GL account this maps to.",
+        "no-direction": "Choose at least one of receiving or paying, or this account will not appear anywhere."
+      },
+      "unavailable": {
+        "none-in-chart": {
+          "title": "No cash or bank GL account exists",
+          "body": "A bank account has to map to a GL account with the cash and bank subtype. Add one to the chart of accounts first."
+        },
+        "all-mapped": {
+          "title": "Every cash account is already mapped",
+          "body": "Each GL account maps to exactly one bank account, and all of them are taken. Add another cash and bank account to the chart first."
+        }
+      },
+      "currency": "Currency"
+    },
+    "colStatus": "Status"
+  },
   "journals": {
     "title": "Journals",
     "subtitle": "Manual general-ledger entries.",

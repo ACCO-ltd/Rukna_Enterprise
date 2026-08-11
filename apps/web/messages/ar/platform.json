@@ -54,7 +54,8 @@
     "purchaseOrders": "أوامر الشراء",
     "goodsReceipts": "إشعارات الاستلام",
     "commitments": "الارتباطات",
-    "suppliers": "الموردون"
+    "suppliers": "الموردون",
+    "bankAccounts": "الحسابات البنكية"
   },
   "user": {
     "menuLabel": "قائمة الحساب",
