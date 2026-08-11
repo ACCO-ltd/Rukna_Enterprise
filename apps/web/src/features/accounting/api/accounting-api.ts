@@ -9,6 +9,7 @@ import type {
   ApproveJournalPayload,
   BalanceSheet,
   CloseGate,
+  CreateFiscalYearPayload,
   CreateJournalPayload,
   FiscalYear,
   JournalEntry,
@@ -83,6 +84,25 @@ export function listPostingProfiles(): Promise<PostingProfile[]> {
  */
 export function listFiscalYears(): Promise<FiscalYear[]> {
   return apiClient<FiscalYear[]>('/fiscal-years');
+}
+
+/**
+ * `POST /fiscal-years` — creates the year and twelve monthly periods in one call.
+ *
+ * 409 when a year of the same name exists, 404 when the retained-earnings code names no
+ * account. It also 404s with "Fiscal calendar policy not configured" if the organisation has
+ * no `FiscalCalendarPolicy` row — that is an internal record with no endpoint behind it, so
+ * the message names something the user cannot act on. The seed creates one.
+ *
+ * The months the periods cover come from that policy, not from January. §6.14 says Jan–Dec,
+ * which is true only while `fiscalYearStartMonth` is 1 — as the seed sets it.
+ */
+export function createFiscalYear(payload: CreateFiscalYearPayload): Promise<FiscalYear> {
+  return apiClient<FiscalYear>('/fiscal-years', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
 }
 
 export function getFiscalYear(id: string): Promise<FiscalYear> {
