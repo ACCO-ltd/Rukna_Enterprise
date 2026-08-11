@@ -157,9 +157,39 @@
       "suspendedSince": "Suspended on {date}",
       "suspendedBlocks": "Lifecycle changes are blocked until the project is resumed.",
       "membersHeading": "Team",
-      "membersUnavailable": "Team management is not available yet.",
-      "membersUnavailableHint": "The API cannot yet add the first member to a project. Tracked as B1.",
       "actionsHeading": "Actions"
+    },
+    "members": {
+      "title": "Project team",
+      "subtitle": "Who is on this project, and what each of them may do on it.",
+      "membershipNotice": "Only someone already on the project can add or remove members. The person who created the project is enrolled as its project manager automatically.",
+      "colName": "Name",
+      "colEmail": "Email",
+      "colRoles": "Roles",
+      "colActions": "Actions",
+      "noRoles": "No roles",
+      "empty": "No members on this project.",
+      "loadFailed": "Could not load the project team.",
+      "usersLoadFailed": "Could not load the list of users.",
+      "everyoneAdded": "Everyone in the organisation is already on this project.",
+      "add": "Add to project",
+      "addTitle": "Add a member",
+      "addHint": "Choose at least one role. Roles cannot be changed afterwards — correcting one means removing the member and adding them again.",
+      "remove": "Remove",
+      "removeTitle": "Remove {name} from this project?",
+      "removeBody": "They keep their account and stay in the organisation. Their history on this project is retained. They can be added back by anyone still on the project.",
+      "removeBlocked": {
+        "last-project-manager": "This is the only project manager. Removing them would leave nobody able to manage the team, and only a member can add one back.",
+        "self": "You cannot remove yourself. Only a member can add someone to a project, so you could not undo it."
+      },
+      "role": {
+        "PROJECT_MANAGER": "Project manager",
+        "COMMERCIAL_MANAGER": "Commercial manager",
+        "QUANTITY_SURVEYOR": "Quantity surveyor",
+        "SITE_ENGINEER": "Site engineer",
+        "FINANCE_REVIEWER": "Finance reviewer",
+        "VIEWER": "Viewer"
+      }
     },
     "actions": {
       "approve": "Approve",

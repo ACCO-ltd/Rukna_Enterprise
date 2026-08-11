@@ -1,9 +1,9 @@
-import type { ProjectStatus } from '@erp/types';
+import type { ProjectRole, ProjectStatus } from '@erp/types';
 
 import { apiClient } from '@/lib/api-client';
 
 import type { ProjectCommand } from '../project-actions';
-import type { Project, ProjectDetail } from '../types';
+import type { Project, ProjectDetail, ProjectMember } from '../types';
 
 /**
  * Body accepted by `POST /projects`, mirroring CreateProjectDto.
@@ -25,6 +25,19 @@ export interface CreateProjectPayload {
   currency?: string;
   startDate?: string;
   expectedEndDate?: string;
+}
+
+/**
+ * Body of `POST /projects/:id/members`.
+ *
+ * `roles` is `@ArrayMinSize(1)` and `@IsEnum(ProjectRole, { each: true })`, so a member must
+ * be given at least one role at the moment they are added — there is no bare "add to project"
+ * and no endpoint that changes a member's roles afterwards. Correcting a role means removing
+ * the member and adding them again.
+ */
+export interface AddProjectMemberPayload {
+  userId: string;
+  roles: ProjectRole[];
 }
 
 export function listProjects(status?: ProjectStatus): Promise<Project[]> {
@@ -96,4 +109,56 @@ export function suspendProject(id: string, reason: string): Promise<void> {
 
 export function resumeProject(id: string): Promise<void> {
   return apiClient<void>(`/projects/${id}/resume`, { method: 'POST' });
+}
+
+// ─── Members ─────────────────────────────────────────────────────────────────────
+
+/**
+ * `GET /projects/:id/members` — active members only, with their roles and user embedded.
+ *
+ * `findAllMembers` selects `user { id, firstName, lastName, email }` and the member's live
+ * roles, so this response renders on its own. That is unusual in this API and worth noting:
+ * the equivalent AP and AR list endpoints embed nothing.
+ *
+ * Live since `e85bab9`. It was recorded as deferred on B1 and B2 for a week after both were
+ * fixed — the page behind it stayed a placeholder the whole time.
+ */
+export function listProjectMembers(projectId: string): Promise<ProjectMember[]> {
+  return apiClient<ProjectMember[]>(`/projects/${projectId}/members`);
+}
+
+/**
+ * `POST /projects/:id/members`
+ *
+ * **Only an existing member of the project may call this.** `project.service.ts:250` runs
+ * `assertMember(projectId, identity.userId)` before anything else and answers `403` otherwise
+ * — an organisation administrator who is not on the project cannot add anyone to it. B1's fix
+ * auto-enrols the creator as PROJECT_MANAGER, which is what stops that being a deadlock.
+ *
+ * `409` when the user is already an active member.
+ *
+ * The response is `findActiveMember`, which includes `roles` but **not** `user` — unlike the
+ * list. Callers should refetch rather than write this into a list cache.
+ */
+export function addProjectMember(
+  projectId: string,
+  payload: AddProjectMemberPayload,
+): Promise<ProjectMember> {
+  return apiClient<ProjectMember>(`/projects/${projectId}/members`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * `DELETE /projects/:id/members/:userId` — a soft delete; the row is kept with `removedAt` set.
+ *
+ * Keyed on the **user** id, not the member id. Answers `200` with an EMPTY body (B6), so
+ * callers must refetch.
+ *
+ * Carries the same membership guard as `addProjectMember`, and no guard at all against
+ * removing the last PROJECT_MANAGER — a project can be left with no one able to administer it.
+ */
+export function removeProjectMember(projectId: string, userId: string): Promise<void> {
+  return apiClient<void>(`/projects/${projectId}/members/${userId}`, { method: 'DELETE' });
 }
