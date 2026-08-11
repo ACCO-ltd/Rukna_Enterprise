@@ -74,6 +74,7 @@ const APPROVED_MR: MaterialRequest = {
   mrNumber: 'MR-00001',
   requestScope: 'PROJECT',
   projectId: 'proj-1',
+  approvalInstanceId: null,
   status: 'APPROVED',
   requestedDate: '2026-08-10T00:00:00.000Z',
   requiredByDate: null,

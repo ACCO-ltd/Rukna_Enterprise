@@ -162,6 +162,15 @@ export interface MaterialRequest {
   requestScope: MaterialRequestScope;
   projectId: string | null;
   status: MaterialRequestStatus;
+  /**
+   * Written on submit and read by the approval panel. Both repositories use `include` with no
+   * `select`, so this scalar arrives on the list and the detail alike.
+   *
+   * It is the **only** way to reach an approval instance — nothing lists them, by approver or
+   * otherwise — which is why an approval inbox is not buildable and the panel hangs off the
+   * document instead.
+   */
+  approvalInstanceId: string | null;
   requestedDate: ApiDate;
   requiredByDate: ApiDate | null;
   description: string | null;
@@ -268,6 +277,8 @@ export interface PurchaseOrder {
   supplierId: string;
   currentRevisionId: string | null;
   supplier: PurchaseOrderSupplier | null;
+  /** Written on submit. See the note on `MaterialRequest.approvalInstanceId`. */
+  approvalInstanceId: string | null;
   /**
    * On the detail response: every revision, ascending. On the list response: exactly one
    * — the **highest-numbered**, which is the DRAFT whenever a revision is in progress,

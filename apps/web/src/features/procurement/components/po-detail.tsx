@@ -56,6 +56,8 @@ import {
 } from '../hooks/use-procurement';
 import { activeRevision, revisionTotalMinor } from '../quantities';
 import type { PurchaseOrder, PurchaseOrderRevision } from '../types';
+import { WorkflowTransactionType } from '@erp/types';
+import { ApprovalPanel } from '@/features/workflows/components/approval-panel';
 import { ProcurementStatusBadge } from './procurement-badges';
 
 export function PoDetail({ id }: { id: string }) {
@@ -130,6 +132,11 @@ export function PoDetail({ id }: { id: string }) {
           ) : null}
         </div>
       </div>
+
+      <ApprovalPanel
+        instanceId={order.approvalInstanceId}
+        transactionType={WorkflowTransactionType.PURCHASE_ORDER}
+      />
 
       {order.revisions.length === 0 ? (
         <Alert variant="info" messages={[tc('noResults')]} />

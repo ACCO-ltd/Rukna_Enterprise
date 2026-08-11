@@ -37,6 +37,8 @@ import {
   useSubmitMaterialRequest,
 } from '../hooks/use-procurement';
 import type { MaterialRequest } from '../types';
+import { WorkflowTransactionType } from '@erp/types';
+import { ApprovalPanel } from '@/features/workflows/components/approval-panel';
 import { ProcurementStatusBadge } from './procurement-badges';
 
 type PendingAction = 'submit' | 'approve' | 'cancel';
@@ -120,6 +122,11 @@ export function MrDetail({ id }: { id: string }) {
           ) : null}
         </div>
       </div>
+
+      <ApprovalPanel
+        instanceId={request.approvalInstanceId}
+        transactionType={WorkflowTransactionType.MATERIAL_REQUEST}
+      />
 
       {isTerminal ? (
         <Alert
