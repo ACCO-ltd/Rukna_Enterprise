@@ -686,3 +686,28 @@ export interface ReverseSupplierPaymentPayload {
   reversalDate: string;
   reason: string;
 }
+
+/**
+ * Body of `POST /payments/:id/allocations` — applying a posted advance to a posted bill.
+ *
+ * The GL codes are resolved from the chart, not chosen by the user, exactly as they are for
+ * posting. `paymentId` travels in the path rather than the body.
+ */
+export interface AllocateAdvancePayload {
+  supplierBillId: string;
+  amount: number;
+  apAccountCode: string;
+  supplierAdvanceCode: string;
+}
+
+/**
+ * What `POST /payments/:id/allocations` returns.
+ *
+ * Only the journal. The `SupplierPaymentAllocation` row is created server-side and its id is
+ * discarded (A17 / #35), which is why nothing can call the reversal endpoint and why Tier D
+ * builds allocation without it.
+ */
+export interface AllocationResult {
+  journalEntryId: string;
+  journalNumber: string;
+}

@@ -40,6 +40,8 @@ import type {
   Supplier,
   SupplierBill,
   SupplierPayment,
+  AllocateAdvancePayload,
+  AllocationResult,
   CreateSupplierPaymentPayload,
   PostSupplierPaymentPayload,
   ReverseSupplierPaymentPayload,
@@ -658,6 +660,30 @@ export function reverseSupplierPayment(
   payload: ReverseSupplierPaymentPayload,
 ): Promise<SupplierPayment> {
   return apiClient<SupplierPayment>(`/payments/${id}/reverse`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * `POST /payments/:id/allocations`
+ *
+ * Applies a posted advance against a posted bill: `Dr AP / Cr Supplier Advance`, the
+ * allocation row, the payment's allocated/unallocated pair, and the bill's outstanding
+ * balance — all four, unlike the `allocations[]` array on create (A16 / #34).
+ *
+ * The server checks only that the bill exists and is POSTED. It does **not** check that the
+ * bill belongs to the payment's supplier, or that the two are in the same currency (A18 /
+ * #36) — the caller must not rely on it to refuse a cross-supplier allocation.
+ *
+ * Returns the journal only; the allocation id is discarded (A17 / #35).
+ */
+export function allocateAdvance(
+  paymentId: string,
+  payload: AllocateAdvancePayload,
+): Promise<AllocationResult> {
+  return apiClient<AllocationResult>(`/payments/${paymentId}/allocations`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

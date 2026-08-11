@@ -401,8 +401,6 @@
     "advanceOnlyNotice": "A payment is raised here as an unallocated advance and settled against bills afterwards. Allocating at creation is accepted by the API but never recorded, which would debit Accounts Payable while the bill stayed outstanding (issue #34).",
     "noBanksTitle": "No bank account is available for payments",
     "noBanksBody": "A payment has to name an active bank account that allows payments. None is configured. An administrator has to add one before a payment can be raised.",
-    "allocationsTitle": "Allocations",
-    "allocationsUnavailable": "The API does not return a payment’s allocations, so they cannot be listed here. The allocated and unallocated totals above are the only record available.",
     "methods": {
       "BANK_TRANSFER": "Bank transfer",
       "CHEQUE": "Cheque",
@@ -433,6 +431,30 @@
       "not-posted": "Only a posted payment can be reversed.",
       "already-reversed": "This payment has already been reversed.",
       "has-allocations": "Reverse the advance allocations against this payment first."
+    }
+  },
+  "allocation": {
+    "title": "Apply this advance",
+    "subtitle": "Settles a posted bill from the unallocated balance of this payment, writing Dr Accounts Payable / Cr Supplier Advance.",
+    "historyUnavailable": "Allocations already applied cannot be listed, and cannot be reversed from here — the API returns no allocation identifier (issue #35). Reversing the whole payment is the only correction available.",
+    "bill": "Bill to settle",
+    "billHint": "Only posted bills for this supplier, in this currency, with an outstanding balance are listed.",
+    "amount": "Amount to apply",
+    "amountHint": "Up to {unallocated} is unallocated on this payment.",
+    "apply": "Apply to bill",
+    "journalPreview": "Journal to be written",
+    "debitOf": "Dr {amount}",
+    "creditOf": "Cr {amount}",
+    "blocked": {
+      "payment-not-posted": "This payment has to be posted before its advance can be applied.",
+      "nothing-unallocated": "This payment is fully allocated — there is nothing left to apply.",
+      "no-eligible-bills": "No posted bill for this supplier in this currency has an outstanding balance."
+    },
+    "amountProblem": {
+      "empty": "Choose a bill and enter an amount.",
+      "not-positive": "Enter an amount greater than zero.",
+      "exceeds-unallocated": "That is more than this payment has left unallocated.",
+      "exceeds-bill": "That is more than the bill still owes. Choose a smaller amount."
     }
   },
   "matching": {

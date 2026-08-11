@@ -18,6 +18,7 @@ import {
 } from '@tanstack/react-query';
 
 import {
+  allocateAdvance,
   approveMatchException,
   approveMaterialRequest,
   approveSupplierBill,
@@ -97,6 +98,7 @@ import type {
   Supplier,
   SupplierBill,
   SupplierPayment,
+  AllocateAdvancePayload,
   CreateSupplierPaymentPayload,
   PostSupplierPaymentPayload,
   ReverseSupplierPaymentPayload,
@@ -607,6 +609,27 @@ export function useReverseSupplierPayment() {
   return usePaymentMutation((args: { id: string; payload: ReverseSupplierPaymentPayload }) =>
     reverseSupplierPayment(args.id, args.payload),
   );
+}
+
+/**
+ * Applying an advance to a bill touches four records, so all four are invalidated: the payment
+ * (its allocated/unallocated pair moves), the payment list, the bills (one of them has its
+ * `outstandingAmount` reduced server-side) and the commitment ledger.
+ *
+ * The mutation result is the journal alone. The allocation id is discarded server-side
+ * (A17 / #35), so there is nothing to cache and nothing that could later be reversed.
+ */
+export function useAllocateAdvance(paymentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: AllocateAdvancePayload) => allocateAdvance(paymentId, payload),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: procurementKeys.payment(paymentId) });
+      void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'payments'] });
+      void qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'bills'] });
+      void qc.invalidateQueries({ queryKey: procurementKeys.commitments() });
+    },
+  });
 }
 
 export function useBillMatch(billId: string): UseQueryResult<BillMatchResult | null> {
