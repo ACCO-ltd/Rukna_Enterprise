@@ -75,6 +75,19 @@ const MODULE_PERMISSIONS: Record<string, PermissionKey[]> = {
 export const ACCOUNTING_PERMISSIONS = {
   /** Every accounting page. Read-only views included. */
   view: 'view:accounting',
+  /**
+   * Create a GL account, and the rest of tenant bootstrap as it lands.
+   *
+   * **Not in §11.2** — that section lists six permissions for posting and period control and
+   * says nothing about setting the chart up, because Sprint 4 shipped the chart read-only.
+   * A new key rather than a rename, on the same reasoning as `manageSuppliers`.
+   *
+   * Deliberately separate from `manageJournals`: the person who posts journals is not
+   * necessarily the person who decides what accounts exist, and adding an account with an
+   * existing `accountSubtype` turns a resolved control account into an AMBIGUOUS one — it can
+   * block posting across every AR and AP screen. That is administrator work.
+   */
+  manageChart: 'manage:account',
   /** Create, submit, approve, post and reverse manual journals. */
   manageJournals: 'manage:journal',
   /** Post client invoices; post and allocate customer receipts. */

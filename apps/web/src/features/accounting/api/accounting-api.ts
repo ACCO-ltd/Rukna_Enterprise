@@ -1,5 +1,6 @@
 import { apiClient } from '@/lib/api-client';
 
+import type { CreateAccountBody } from '../coa-setup';
 import type {
   Account,
   AccountLedger,
@@ -29,6 +30,21 @@ import type {
  */
 export function listAccounts(): Promise<Account[]> {
   return apiClient<Account[]>('/accounts');
+}
+
+/**
+ * `POST /accounts` — creates the account and its first version in one call.
+ *
+ * 409 when the code already exists, 404 when `parentAccountCode` names an account that does
+ * not. Nothing validates that the subtype belongs to the class or that the normal balance
+ * matches it — see `coa-setup.ts`.
+ */
+export function createAccount(payload: CreateAccountBody): Promise<Account> {
+  return apiClient<Account>('/accounts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
 }
 
 export function getAccount(id: string): Promise<Account> {

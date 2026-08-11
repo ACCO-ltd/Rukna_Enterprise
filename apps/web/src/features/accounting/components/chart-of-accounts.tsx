@@ -8,6 +8,9 @@ import {
   FormField,
   Input,
   Select,
+  Sheet,
+  SheetContent,
+  SheetTitle,
   Table,
   TableBody,
   TableCell,
@@ -17,10 +20,13 @@ import {
   TableScroll,
 } from '@erp/ui';
 
+import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+
 import { accountMatches, accountName, currentVersion } from '../account-display';
 import { useAccounts } from '../hooks/use-accounting';
 import type { Account, AccountClass } from '../types';
 import { AccountClassBadge, NormalBalanceLabel, PostingPolicyBadge } from './account-badges';
+import { CreateAccountForm } from './create-account-form';
 
 const ACCOUNT_CLASSES: AccountClass[] = [
   'ASSET',
@@ -40,6 +46,8 @@ export function ChartOfAccounts() {
 
   const [search, setSearch] = useState('');
   const [accountClass, setAccountClass] = useState<AccountClass | ''>('');
+  const [creating, setCreating] = useState(false);
+  const { can } = usePermissions();
 
   // Filtered in the browser: `GET /accounts` takes no query parameters and a chart of accounts
   // is a few hundred rows, so the whole thing is already here.
@@ -72,10 +80,29 @@ export function ChartOfAccounts() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
+        </div>
+
+        {can(ACCOUNTING_PERMISSIONS.manageChart) ? (
+          <Button type="button" onClick={() => setCreating(true)}>
+            {t('create.new')}
+          </Button>
+        ) : null}
       </div>
+
+      <Sheet open={creating} onOpenChange={setCreating}>
+        <SheetContent className="p-6">
+          <SheetTitle className="text-lg font-semibold text-foreground">
+            {t('create.title')}
+          </SheetTitle>
+          <div className="mt-5">
+            <CreateAccountForm onDone={() => setCreating(false)} />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {accounts.data.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
