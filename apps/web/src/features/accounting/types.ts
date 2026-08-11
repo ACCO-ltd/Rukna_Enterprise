@@ -605,3 +605,18 @@ export interface BankAccount {
   isReconcilable: boolean;
   status: 'ACTIVE' | 'SUSPENDED' | 'CLOSED';
 }
+
+/**
+ * Body of `POST /fiscal-years`.
+ *
+ * `year` is `@IsInt() @Min(2000) @Max(2100)` — a calendar year, not a date range. The range is
+ * derived server-side from the organisation's fiscal calendar policy.
+ *
+ * `retainedEarningsAccountCode` is the GL **code**, not an id, and the account must already
+ * exist (404 otherwise). The seeded chart uses `31000`; §6.14's example says `3100`, which is
+ * four digits against a five-digit chart and resolves to nothing (A8).
+ */
+export interface CreateFiscalYearPayload {
+  year: number;
+  retainedEarningsAccountCode: string;
+}
