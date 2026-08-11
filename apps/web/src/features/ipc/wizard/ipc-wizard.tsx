@@ -133,28 +133,68 @@ export function IpcWizard({ contractId, ipaId }: IpcWizardProps) {
   const boqTree = useBoqTree(projectId, boqVersionId);
 
   // ── Wizard state ────────────────────────────────────────────────────────────
+  //
+  // The draft is read **synchronously at first render**, not in an effect. `loadDraft` reads
+  // sessionStorage, which needs no effect to be available — and doing it in one is what caused
+  // the bug this shape replaces.
+  //
+  // Previously two effects ran on mount: the first restored the draft and set a
+  // `draftRestored` flag, the second seeded rows from the IPA unless that flag was set. Both
+  // run in the same commit, so the second read the flag from its own closure — still `false` —
+  // and overwrote the restored rows with the IPA's claimed quantities.
+  //
+  // A quantity surveyor who reduced a certified quantity, refreshed, and carried on would have
+  // silently certified the full claimed amount. It surfaced only when the IPA was already in
+  // the query cache, which is the ordinary case: the application page is visited first.
+  //
+  // Both `react-hooks/set-state-in-effect` errors on this file were pointing at exactly this.
+  const [restoredDraft] = useState<WizardDraft | null>(() => loadDraft(ipaId));
+
+  // State rather than a derived constant, because it also drives the "draft restored" hint and
+  // has to follow a change of application along with everything else below.
+  const [draftRestored, setDraftRestored] = useState(restoredDraft !== null);
+
   const [step, setStep] = useState<Step>(1);
-  const [context, setContext] = useState<WizardContext>(emptyContext());
-  const [rows, setRows] = useState<CertRow[]>([]);
-  const [adHocDeductions, setAdHocDeductions] = useState<AdHocDeduction[]>([]);
-  const [draftRestored, setDraftRestored] = useState(false);
+  const [context, setContext] = useState<WizardContext>(
+    () => restoredDraft?.context ?? emptyContext(),
+  );
+  const [rows, setRows] = useState<CertRow[]>(() => restoredDraft?.rows ?? []);
+  const [adHocDeductions, setAdHocDeductions] = useState<AdHocDeduction[]>(
+    () => restoredDraft?.adHocDeductions ?? [],
+  );
   const [step1Errors, setStep1Errors] = useState<Partial<Record<keyof WizardContext, string>>>({});
   const [step2Errors, setStep2Errors] = useState<Record<string, string>>({});
 
-  // ── Restore draft on mount ──────────────────────────────────────────────────
-  useEffect(() => {
-    const saved = loadDraft(ipaId);
-    if (saved) {
-      setContext(saved.context);
-      setRows(saved.rows);
-      setAdHocDeductions(saved.adHocDeductions);
-      setDraftRestored(true);
-    }
-  }, [ipaId]);
+  // ── Seed rows from the IPA, once, and only without a draft ──────────────────
+  //
+  // Adjusted during render rather than in an effect. React re-renders immediately without
+  // painting the intermediate state, and — the point here — `seeded` cannot be stale the way
+  // an effect's captured guard was: the very next line reads what this line just set.
+  //
+  // The IPA is fetched, so `ipa.data` is usually absent on the first render and this seeds on
+  // a later one. A draft makes it seeded already, so it never runs at all.
+  const [seeded, setSeeded] = useState(draftRestored);
 
-  // ── Initialize rows from IPA items (only when no draft) ─────────────────────
-  useEffect(() => {
-    if (!ipa.data || draftRestored) return;
+  // ── Start over when the wizard is pointed at a different application ────────
+  //
+  // The old restore effect listed `ipaId` as a dependency, so it re-ran on a change. Lazy
+  // initialisers run once, so that has to be reinstated explicitly: the route segment is
+  // `.../applications/[ipaId]/certificates/new`, and moving between two applications re-renders
+  // this component rather than remounting it. Without this the second application would inherit
+  // the first one's certified quantities.
+  const [loadedFor, setLoadedFor] = useState(ipaId);
+
+  if (loadedFor !== ipaId) {
+    const next = loadDraft(ipaId);
+    setLoadedFor(ipaId);
+    setContext(next?.context ?? emptyContext());
+    setRows(next?.rows ?? []);
+    setAdHocDeductions(next?.adHocDeductions ?? []);
+    setDraftRestored(next !== null);
+    setSeeded(next !== null);
+    setStep(1);
+  } else if (!seeded && ipa.data) {
+    setSeeded(true);
     setRows(
       ipa.data.items.map((item) => ({
         applicationItemId: item.id,
@@ -162,7 +202,7 @@ export function IpcWizard({ contractId, ipaId }: IpcWizardProps) {
         varianceReason: '',
       })),
     );
-  }, [ipa.data, draftRestored]);
+  }
 
   // ── Persist draft on every change ──────────────────────────────────────────
   useEffect(() => {
