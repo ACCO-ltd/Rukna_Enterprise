@@ -34,6 +34,7 @@ import { formatDate, formatMoney } from '@/lib/format';
 import { useSupplierPayment, useSupplierPayments, useSuppliers } from '../hooks/use-procurement';
 import { bankAccountLabel } from '../payment-actions';
 import type { SupplierPayment } from '../types';
+import { AllocationPanel } from './allocation-panel';
 import { PaymentActionBar } from './payment-actions-bar';
 import { PostingStatusBadge, ProcurementStatusBadge } from './procurement-badges';
 
@@ -214,10 +215,7 @@ export function SupplierPaymentDetail({ id }: { id: string }) {
         <Field label={tc('notes')} value={payment.notes ?? tc('notAvailable')} />
       </dl>
 
-      {/* There is no allocations list, and this says so rather than rendering an empty table
-          that would read as "this payment settled nothing". `GET /payments/:id` advertises
-          allocations and returns none, and no endpoint lists them. */}
-      <Alert variant="info" title={t('allocationsTitle')} messages={[t('allocationsUnavailable')]} />
+      <AllocationPanel payment={payment} />
     </div>
   );
 }
