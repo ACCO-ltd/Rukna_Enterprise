@@ -1153,5 +1153,23 @@
       "derivedNote": "Measured against the net certified amount. The API's own payment status compares against the gross total and cannot report a certificate with deductions as paid — raised as issue #11.",
       "unavailable": "The amount paid against this certificate could not be loaded. The certificate itself is unaffected."
     }
+  },
+  "approval": {
+    "title": "Approval",
+    "loadFailed": "Could not load the approval step.",
+    "pending": "Waiting on {role}.",
+    "pendingWithPosition": "Waiting on {role} — step {position} of {total}.",
+    "noPendingStep": "No step is waiting on a decision.",
+    "advisoryNotice": "Whether you may act on this step is checked here, in the browser, only. The approval endpoints record who acted but do not verify they hold the required role, and are callable directly. Raised as issue #45.",
+    "wrongRole": "This step is reserved for {role}.",
+    "approve": "Approve",
+    "reject": "Reject",
+    "notes": "Notes",
+    "approveTitle": "Approve this step?",
+    "approveBody": "The chain advances to the next step, or the document is fully approved if this is the last one.",
+    "approveNotesHint": "Optional. Recorded against your approval.",
+    "rejectTitle": "Reject this step?",
+    "rejectBody": "This is final — nothing returns an approval to pending, and the document cannot proceed.",
+    "rejectNotesHint": "Required. Nothing else will explain why the document stopped here."
   }
 }
