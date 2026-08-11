@@ -12,6 +12,7 @@ import {
   checkCloseGate,
   closeFiscalYear,
   closePeriod,
+  createAccount,
   getAccountLedger,
   getBalanceSheet,
   getMonthlyPL,
@@ -32,6 +33,7 @@ import {
   reverseJournal,
   submitJournal,
 } from '../api/accounting-api';
+import type { CreateAccountBody } from '../coa-setup';
 import type {
   Account,
   AccountLedger,
@@ -99,6 +101,25 @@ export function usePostingProfiles(): UseQueryResult<PostingProfile[], Error> {
     queryKey: accountingKeys.postingProfiles(),
     queryFn: listPostingProfiles,
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * Creating an account invalidates the chart and every report drawn from it.
+ *
+ * The reports matter: `posting-accounts.ts` resolves control accounts by scanning the chart
+ * for a subtype, and adding a second account with an existing subtype turns a resolved role
+ * into an AMBIGUOUS one. A stale chart would keep offering Post on a screen the new account
+ * has just blocked.
+ */
+export function useCreateAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateAccountBody) => createAccount(payload),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: accountingKeys.accounts() });
+      void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'trial-balance'] });
+    },
   });
 }
 
