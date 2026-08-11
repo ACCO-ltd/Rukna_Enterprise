@@ -86,6 +86,10 @@ export const NAV_GROUPS: NavGroup[] = [
       // Tier 3. Grouped with the other setup screens, before entry and reporting: a payment
       // cannot name a bank until one is configured here.
       { href: '/finance/accounting/bank-accounts', labelKey: 'bankAccounts' },
+      // Tier 4, and last of the setup screens deliberately: the migration is the cutover, so
+      // it comes after the chart, the periods and the banks it depends on. An organisation
+      // uses it exactly once.
+      { href: '/finance/accounting/opening-balance', labelKey: 'openingBalance' },
       { href: '/finance/accounting/journals', labelKey: 'journals' },
       { href: '/finance/accounting/trial-balance', labelKey: 'trialBalance' },
       { href: '/finance/accounting/profit-loss', labelKey: 'profitLoss' },

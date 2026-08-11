@@ -620,3 +620,73 @@ export interface CreateFiscalYearPayload {
   year: number;
   retainedEarningsAccountCode: string;
 }
+
+// ─── Opening balance migration and reconciliation ────────────────────────────────
+
+/** One control account compared against its subledger. Money is decimal strings. */
+export interface ReconciliationLine {
+  label: string;
+  glBalance: string;
+  subledgerBalance: string;
+  variance: string;
+  reconciled: boolean;
+}
+
+/**
+ * What `POST /accounting/opening-balance` returns.
+ *
+ * `readyForCfoApproval` is the server's own judgement, not a status on any record — there is no
+ * approval endpoint behind it. It reads as an instruction to a human.
+ */
+export interface MigrationReport {
+  batchReference: string;
+  cutoverDate: string;
+  openingBalanceJournalId: string;
+  openingBalanceJournalNumber: string;
+  arInvoicesImported: number;
+  apBillsImported: number;
+  reconciliation: ReconciliationLine[];
+  zeroVariance: boolean;
+  readyForCfoApproval: boolean;
+}
+
+/**
+ * Body of `POST /accounting/reconcile`.
+ *
+ * `bankAccountCodes` is `@IsArray() @IsOptional()` with no `@IsString({ each: true })`, so the
+ * server would accept an array of anything. Sent as GL codes, which is what it reads.
+ */
+export interface RunReconciliationPayload {
+  arAccountCode: string;
+  apAccountCode: string;
+  bankAccountCodes?: string[];
+  periodId?: string;
+}
+
+/**
+ * One control account as `POST /accounting/reconcile` reports it.
+ *
+ * Note this is **not** the same shape the migration report uses for the same idea: that one
+ * carries a `label`, this one carries `accountCode`, `accountName` and `subledgerType`. Two
+ * shapes for one concept, from two endpoints in the same module — worth knowing before writing
+ * a component that tries to render both.
+ */
+export interface ControlAccountCheck {
+  accountCode: string;
+  accountName: string;
+  subledgerType: 'AR' | 'AP' | 'BANK';
+  glBalance: string;
+  subledgerBalance: string;
+  variance: string;
+  reconciled: boolean;
+  periodId?: string;
+}
+
+export interface ReconciliationReport {
+  organizationId: string;
+  generatedAt: string;
+  checks: ControlAccountCheck[];
+  allReconciled: boolean;
+  /** A variance over 0.01 blocks period close. The close-gate reads the same rule. */
+  blocksClose: boolean;
+}

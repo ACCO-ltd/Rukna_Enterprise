@@ -21,6 +21,8 @@ import {
   lockPeriod,
   rebuildSnapshot,
   reopenPeriod,
+  runOpeningBalance,
+  runReconciliation,
   createJournal,
   getFiscalYear,
   getJournal,
@@ -37,6 +39,7 @@ import {
 } from '../api/accounting-api';
 import type { ConfigureBankAccountBody } from '../bank-account-setup';
 import type { CreateAccountBody } from '../coa-setup';
+import type { OpeningBalanceBody } from '../opening-balance';
 import type {
   Account,
   AccountLedger,
@@ -44,6 +47,7 @@ import type {
   BalanceSheet,
   CloseGate,
   MonthlyPL,
+  RunReconciliationPayload,
   ApproveJournalPayload,
   CreateFiscalYearPayload,
   CreateJournalPayload,
@@ -170,6 +174,34 @@ export function useConfigureBankAccount() {
       void qc.invalidateQueries({ queryKey: accountingKeys.bankAccounts() });
       void qc.invalidateQueries({ queryKey: accountingKeys.accounts() });
     },
+  });
+}
+
+/**
+ * Running the opening balance invalidates everything a balance can appear in.
+ *
+ * It posts a journal covering the whole chart, so the trial balance, the P&L and the balance
+ * sheet are all answered differently a moment later. It also imports AR and AP documents,
+ * which is why the invoice and bill lists go too.
+ */
+export function useRunOpeningBalance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: OpeningBalanceBody) => runOpeningBalance(payload),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: accountingKeys.all });
+      void qc.invalidateQueries({ queryKey: ['procurement'] });
+    },
+  });
+}
+
+/**
+ * Reconciliation reads and returns a report without changing anything, so nothing is
+ * invalidated — it is a mutation only because the endpoint is a POST.
+ */
+export function useRunReconciliation() {
+  return useMutation({
+    mutationFn: (payload: RunReconciliationPayload) => runReconciliation(payload),
   });
 }
 

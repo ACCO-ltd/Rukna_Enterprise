@@ -2,6 +2,7 @@ import { apiClient } from '@/lib/api-client';
 
 import type { ConfigureBankAccountBody } from '../bank-account-setup';
 import type { CreateAccountBody } from '../coa-setup';
+import type { OpeningBalanceBody } from '../opening-balance';
 import type {
   Account,
   AccountLedger,
@@ -14,10 +15,13 @@ import type {
   CreateJournalPayload,
   FiscalYear,
   JournalEntry,
+  MigrationReport,
   MonthlyPL,
   PostingProfile,
   ProfitLoss,
+  ReconciliationReport,
   ReverseJournalPayload,
+  RunReconciliationPayload,
   TrialBalance,
 } from '../types';
 
@@ -51,6 +55,50 @@ export function createAccount(payload: CreateAccountBody): Promise<Account> {
 
 export function getAccount(id: string): Promise<Account> {
   return apiClient<Account>(`/accounts/${id}`);
+}
+
+// ─── Opening balance migration ───────────────────────────────────────────────────
+
+/**
+ * `POST /accounting/opening-balance`
+ *
+ * **Runs once per organisation.** The service looks for an existing `EVT-OPB-001` journal and
+ * answers 409 with "Reverse it first to re-import", so this is a cutover rather than a form
+ * somebody refines.
+ *
+ * Three failures are pre-empted in `opening-balance.ts` rather than met one at a time:
+ * an out-of-balance trial balance (400 naming both totals), an account code absent from the
+ * chart (404 naming one code, then rollback), and a line whose amount is zero (skipped in
+ * silence).
+ *
+ * `openArInvoices` and `openApBills` are accepted by the DTO and not sent here — see the note
+ * on the wizard.
+ */
+export function runOpeningBalance(payload: OpeningBalanceBody): Promise<MigrationReport> {
+  return apiClient<MigrationReport>('/accounting/opening-balance', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * `POST /accounting/reconcile`
+ *
+ * Compares the AR and AP control accounts against their subledgers, plus any bank accounts
+ * named. A variance over 0.01 marks a check unreconciled and blocks period close.
+ *
+ * A POST that reads and returns a report rather than changing anything — so it is exposed as
+ * an explicit action the user runs, not a query that refetches on its own.
+ */
+export function runReconciliation(
+  payload: RunReconciliationPayload,
+): Promise<ReconciliationReport> {
+  return apiClient<ReconciliationReport>('/accounting/reconcile', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
 }
 
 /**
