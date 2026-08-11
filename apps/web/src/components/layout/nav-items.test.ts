@@ -55,6 +55,9 @@ describe('NAV_GROUPS', () => {
       expect(enabled).toEqual([
         '/finance/accounting/chart-of-accounts',
         '/finance/accounting/periods',
+        // Bootstrap tier 3. Sits with the other setup screens rather than with entry or
+        // reporting: a payment cannot name a bank until one is configured.
+        '/finance/accounting/bank-accounts',
         '/finance/accounting/journals',
         '/finance/accounting/trial-balance',
         '/finance/accounting/profit-loss',

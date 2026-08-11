@@ -54,7 +54,8 @@
     "purchaseOrders": "Orders",
     "goodsReceipts": "Goods Receipts",
     "commitments": "Commitments",
-    "suppliers": "Suppliers"
+    "suppliers": "Suppliers",
+    "bankAccounts": "Bank Accounts"
   },
   "user": {
     "menuLabel": "Account menu",

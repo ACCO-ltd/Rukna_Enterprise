@@ -83,6 +83,9 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/finance/accounting/chart-of-accounts', labelKey: 'chartOfAccounts' },
       { href: '/finance/accounting/periods', labelKey: 'fiscalPeriods' },
+      // Tier 3. Grouped with the other setup screens, before entry and reporting: a payment
+      // cannot name a bank until one is configured here.
+      { href: '/finance/accounting/bank-accounts', labelKey: 'bankAccounts' },
       { href: '/finance/accounting/journals', labelKey: 'journals' },
       { href: '/finance/accounting/trial-balance', labelKey: 'trialBalance' },
       { href: '/finance/accounting/profit-loss', labelKey: 'profitLoss' },

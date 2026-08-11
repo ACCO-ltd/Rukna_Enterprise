@@ -1,5 +1,6 @@
 import { apiClient } from '@/lib/api-client';
 
+import type { ConfigureBankAccountBody } from '../bank-account-setup';
 import type { CreateAccountBody } from '../coa-setup';
 import type {
   Account,
@@ -61,6 +62,28 @@ export function getAccount(id: string): Promise<Account> {
  */
 export function listBankAccounts(): Promise<BankAccount[]> {
   return apiClient<BankAccount[]>('/bank-accounts');
+}
+
+/**
+ * `POST /bank-accounts`
+ *
+ * Better guarded than most of this API: 404 when the GL code resolves to nothing, 400 when its
+ * subtype is not `CASH_AND_BANK`, 409 when another bank account already maps to it. All three
+ * are mirrored in the picker so they are not discovered by request.
+ *
+ * `accountNameAr` is accepted by the DTO, has no column on `BankAccount`, and the repository
+ * spreads the DTO straight into Prisma — so supplying it fails the request while omitting it
+ * succeeds (A19 / #42). `ConfigureBankAccountBody` omits it. Do not add it back until the
+ * column exists.
+ */
+export function configureBankAccount(
+  payload: ConfigureBankAccountBody,
+): Promise<BankAccount> {
+  return apiClient<BankAccount>('/bank-accounts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
 }
 
 /**

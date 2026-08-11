@@ -12,6 +12,7 @@ import {
   checkCloseGate,
   closeFiscalYear,
   closePeriod,
+  configureBankAccount,
   createAccount,
   createFiscalYear,
   getAccountLedger,
@@ -34,6 +35,7 @@ import {
   reverseJournal,
   submitJournal,
 } from '../api/accounting-api';
+import type { ConfigureBankAccountBody } from '../bank-account-setup';
 import type { CreateAccountBody } from '../coa-setup';
 import type {
   Account,
@@ -149,6 +151,24 @@ export function useCreateFiscalYear() {
       void qc.invalidateQueries({ queryKey: accountingKeys.fiscalYears() });
       void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'trial-balance'] });
       void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'profit-loss'] });
+    },
+  });
+}
+
+/**
+ * Configuring a bank account invalidates the bank list and the chart.
+ *
+ * The chart matters because the picker filters on which GL accounts are already mapped, and
+ * the newly-mapped one has to disappear from it — otherwise the next attempt offers an account
+ * that now answers 409.
+ */
+export function useConfigureBankAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ConfigureBankAccountBody) => configureBankAccount(payload),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: accountingKeys.bankAccounts() });
+      void qc.invalidateQueries({ queryKey: accountingKeys.accounts() });
     },
   });
 }
