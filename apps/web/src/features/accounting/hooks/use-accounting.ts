@@ -13,6 +13,7 @@ import {
   closeFiscalYear,
   closePeriod,
   createAccount,
+  createFiscalYear,
   getAccountLedger,
   getBalanceSheet,
   getMonthlyPL,
@@ -42,6 +43,7 @@ import type {
   CloseGate,
   MonthlyPL,
   ApproveJournalPayload,
+  CreateFiscalYearPayload,
   CreateJournalPayload,
   FiscalYear,
   JournalEntry,
@@ -129,6 +131,25 @@ export function useBankAccounts(): UseQueryResult<BankAccount[], Error> {
     queryKey: accountingKeys.bankAccounts(),
     queryFn: listBankAccounts,
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * Creating a fiscal year invalidates the year list and every report.
+ *
+ * A report is answered against the period covering its date, so a date that had no period a
+ * moment ago becomes reportable the instant the year exists. Leaving a report stale after
+ * creating the year it needed is how someone concludes the range is still unavailable.
+ */
+export function useCreateFiscalYear() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateFiscalYearPayload) => createFiscalYear(payload),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: accountingKeys.fiscalYears() });
+      void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'trial-balance'] });
+      void qc.invalidateQueries({ queryKey: [...accountingKeys.all, 'profit-loss'] });
+    },
   });
 }
 
