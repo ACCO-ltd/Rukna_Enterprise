@@ -577,5 +577,65 @@
       "amountNote": "The amount is taken from this certificate and cannot be edited here.",
       "dueOn": "Due {date}"
     }
+  },
+  "openingBalance": {
+    "title": "Opening Balance Migration",
+    "subtitle": "Brings an existing set of books onto this system as its opening position.",
+    "onceTitle": "This runs once",
+    "onceBody": "The migration posts a single opening journal and cannot be run again — a second attempt is refused until the first is reversed. Everything below is checked before the button becomes available.",
+    "scopeTitle": "Trial balance only",
+    "scopeBody": "Open customer invoices and supplier bills can also be imported by this endpoint, but not from this screen — each row needs a client or supplier chosen individually. Because the migration runs only once, importing the trial balance now means those documents cannot be added later without reversing it.",
+    "step1": "1. Cutover details",
+    "step2": "2. Trial balance",
+    "cutoverDate": "Cutover date",
+    "cutoverDateHint": "The first day of live operations on this system.",
+    "batchReference": "Batch reference",
+    "batchReferenceHint": "Your own reference for this migration, for example OB-2026-BATCH-01.",
+    "arAccount": "Accounts receivable control account",
+    "apAccount": "Accounts payable control account",
+    "paste": "Trial balance rows",
+    "pastePlaceholder": "10100\t5000.00\t0\n20000\t0\t5000.00",
+    "pasteHint": "One row per account: code, debit, credit. Paste from a spreadsheet or a CSV export — tabs, commas or spaces all work.",
+    "totalDebits": "Total debits",
+    "totalCredits": "Total credits",
+    "lineCount": "Rows",
+    "balanced": "The trial balance balances.",
+    "outOfBalance": "Out of balance by {difference}. The migration will be refused until both sides agree.",
+    "issuesTitle": "Some rows could not be read",
+    "issue": {
+      "malformed": "Row {line}: could not be read as an account code with a debit and a credit — “{raw}”. A comma-separated row cannot also use commas as thousands separators.",
+      "unparseable-amount": "Row {line}: the amount is not a number — “{raw}”.",
+      "negative": "Row {line} ({code}): amounts must not be negative. Put the value on the other side instead.",
+      "both-sides": "Row {line} ({code}): has both a debit and a credit. A trial balance line sits on one side."
+    },
+    "unknownTitle": "Some account codes are not in the chart",
+    "unknownBody": "These codes do not exist and the migration would be refused at the first one: {codes}. Add them to the chart of accounts, or correct them here.",
+    "zeroRows": "{count} row(s) have nothing on either side and will be ignored.",
+    "readyToRun": "Ready to run.",
+    "run": "Run migration",
+    "blocker": {
+      "no-lines": "Paste a trial balance to continue.",
+      "parse-issues": "Some rows could not be read.",
+      "unknown-codes": "Some account codes are not in the chart.",
+      "out-of-balance": "The trial balance does not balance.",
+      "all-zero": "Every row is zero — there is nothing to import.",
+      "missing-header": "Complete the cutover details above."
+    },
+    "report": {
+      "title": "Migration complete",
+      "subtitle": "Journal {journal} was posted for batch {batch}.",
+      "reconciledTitle": "Control accounts reconcile",
+      "reconciledBody": "Every control account agrees with its subledger.",
+      "varianceTitle": "A control account does not reconcile",
+      "varianceBody": "At least one control account disagrees with its subledger. A variance above 0.01 will block the period from closing.",
+      "journal": "Opening journal",
+      "arImported": "AR invoices imported",
+      "apImported": "AP bills imported",
+      "colAccount": "Control account",
+      "colGl": "General ledger",
+      "colSubledger": "Subledger",
+      "colVariance": "Variance",
+      "cfoApproval": "The migration reports itself ready for CFO approval. That is advisory — there is no approval step in the system, so the sign-off happens outside it."
+    }
   }
 }

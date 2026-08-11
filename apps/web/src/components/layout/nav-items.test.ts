@@ -58,6 +58,9 @@ describe('NAV_GROUPS', () => {
         // Bootstrap tier 3. Sits with the other setup screens rather than with entry or
         // reporting: a payment cannot name a bank until one is configured.
         '/finance/accounting/bank-accounts',
+        // Bootstrap tier 4, last of the setup screens: the migration is the cutover, so it
+        // follows the chart, the periods and the banks it depends on.
+        '/finance/accounting/opening-balance',
         '/finance/accounting/journals',
         '/finance/accounting/trial-balance',
         '/finance/accounting/profit-loss',

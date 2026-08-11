@@ -55,7 +55,8 @@
     "goodsReceipts": "إشعارات الاستلام",
     "commitments": "الارتباطات",
     "suppliers": "الموردون",
-    "bankAccounts": "الحسابات البنكية"
+    "bankAccounts": "الحسابات البنكية",
+    "openingBalance": "الأرصدة الافتتاحية"
   },
   "user": {
     "menuLabel": "قائمة الحساب",

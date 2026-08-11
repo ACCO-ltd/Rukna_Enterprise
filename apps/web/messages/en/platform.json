@@ -55,7 +55,8 @@
     "goodsReceipts": "Goods Receipts",
     "commitments": "Commitments",
     "suppliers": "Suppliers",
-    "bankAccounts": "Bank Accounts"
+    "bankAccounts": "Bank Accounts",
+    "openingBalance": "Opening Balance"
   },
   "user": {
     "menuLabel": "Account menu",
