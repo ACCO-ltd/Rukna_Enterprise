@@ -1,10 +1,15 @@
 'use client';
 
+import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Badge,
+  Button,
   type BadgeTone,
+  Sheet,
+  SheetContent,
+  SheetTitle,
   Table,
   TableBody,
   TableCell,
@@ -14,10 +19,12 @@ import {
   TableScroll,
 } from '@erp/ui';
 
+import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { formatDate } from '@/lib/format';
 
 import { useFiscalYears } from '../hooks/use-accounting';
 import type { AccountingPeriod, FiscalYear, FiscalYearStatus, PeriodStatus } from '../types';
+import { CreateFiscalYearForm } from './create-fiscal-year-form';
 import { FiscalYearCloseAction, PeriodActions } from './period-actions';
 
 /**
@@ -45,6 +52,8 @@ export function FiscalPeriods() {
   const tCommon = useTranslations('common');
 
   const years = useFiscalYears();
+  const [creating, setCreating] = useState(false);
+  const { can } = usePermissions();
 
   if (years.isPending) {
     return (
@@ -64,10 +73,29 @@ export function FiscalPeriods() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
+        </div>
+
+        {can(ACCOUNTING_PERMISSIONS.manageChart) ? (
+          <Button type="button" onClick={() => setCreating(true)}>
+            {t('create.new')}
+          </Button>
+        ) : null}
       </div>
+
+      <Sheet open={creating} onOpenChange={setCreating}>
+        <SheetContent className="p-6">
+          <SheetTitle className="text-lg font-semibold text-foreground">
+            {t('create.title')}
+          </SheetTitle>
+          <div className="mt-5">
+            <CreateFiscalYearForm onDone={() => setCreating(false)} />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* The lifecycle endpoints carry `JwtAuthGuard` and nothing else — any signed-in user
           can close a fiscal year (#25). The actions are gated on `can()` so one flag secures

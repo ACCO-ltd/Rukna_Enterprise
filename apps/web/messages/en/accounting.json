@@ -171,7 +171,24 @@
       "REOPENED": "Accepts postings again. Downstream snapshots were invalidated."
     },
     "managementUnavailable": "Locking, closing and reopening periods are not available in this build.",
-    "managementUnavailableHint": "The endpoints exist but have no authorization — any signed-in user could close a fiscal year. Raised as issue #25."
+    "managementUnavailableHint": "The endpoints exist but have no authorization — any signed-in user could close a fiscal year. Raised as issue #25.",
+    "create": {
+      "new": "New Fiscal Year",
+      "title": "Open a fiscal year",
+      "submit": "Open fiscal year",
+      "year": "Year",
+      "yearHint": "A four-digit calendar year between 2000 and 2100.",
+      "periodsNotice": "Twelve monthly periods are created with the year, all open, starting from your organisation’s fiscal year start month. They are listed here once the year exists.",
+      "retainedEarnings": "Retained earnings account",
+      "retainedEarningsHint": "Where the year-end close moves the profit or loss. Equity accounts marked as retained earnings are listed.",
+      "noRetainedTitle": "No equity account is available",
+      "noRetainedBody": "A fiscal year has to name a retained earnings account, and this chart has none. Add an equity account with the retained earnings subtype first.",
+      "problem": {
+        "year-range": "Enter a four-digit year between 2000 and 2100.",
+        "year-exists": "That fiscal year is already open.",
+        "retained-earnings": "Choose the retained earnings account."
+      }
+    }
   },
   "journals": {
     "title": "Journals",
