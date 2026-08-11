@@ -124,8 +124,10 @@ export interface ProjectMember {
  * `suspensions` holds at most the one unresolved record — so a non-empty `suspensions`
  * array means suspended right now, it is not a history.
  *
- * `members` is always empty in practice: no project can be given a first member (B1).
- * The field is typed correctly so the members UI is a rendering change once that lands.
+ * `members` is populated. This said "always empty in practice: no project can be given a first
+ * member (B1)" until 2026-08-11 — B1 was fixed in `e85bab9`, which auto-enrols the creator as
+ * PROJECT_MANAGER, so every project has had at least one member since. The note outlived the
+ * blocker by a week and kept the members page a placeholder.
  */
 export interface ProjectDetail extends Project {
   members: ProjectMember[];
