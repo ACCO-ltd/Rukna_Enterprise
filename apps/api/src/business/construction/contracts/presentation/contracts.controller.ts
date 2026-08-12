@@ -22,7 +22,8 @@ import {
 
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
-import type { RequestIdentity } from '@erp/types';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { ContractService } from '../application/contract.service.js';
 import { CreateContractDto } from './dto/create-contract.dto.js';
@@ -38,6 +39,7 @@ import { AddRetentionTermsDto } from './dto/add-retention-terms.dto.js';
 @ApiTags('Contracts')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.contractsView)
 @Controller('contracts')
 export class ContractsController {
   constructor(private readonly contractService: ContractService) {}
@@ -55,6 +57,7 @@ export class ContractsController {
   }
 
   @Post()
+  @RequirePermissions(PERMISSIONS.contractsCreate)
   @ApiOperation({ summary: 'Create a new contract in DRAFT status' })
   @ApiResponse({ status: 201, description: 'Contract created' })
   @ApiResponse({ status: 409, description: 'Contract number already exists' })
@@ -70,6 +73,7 @@ export class ContractsController {
   }
 
   @Patch(':id')
+  @RequirePermissions(PERMISSIONS.contractsManage)
   @ApiOperation({ summary: 'Update contract (DRAFT status only)' })
   @ApiParam({ name: 'id' })
   update(
@@ -83,6 +87,7 @@ export class ContractsController {
   // ─── Lifecycle commands ───────────────────────────────────────────────────────
 
   @Post(':id/submit')
+  @RequirePermissions(PERMISSIONS.contractsManage)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Submit contract for review: DRAFT → UNDER_REVIEW' })
   submit(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
@@ -90,6 +95,7 @@ export class ContractsController {
   }
 
   @Post(':id/approve-review')
+  @RequirePermissions(PERMISSIONS.contractsApprove)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Approve review: UNDER_REVIEW → PENDING_SIGNATURE' })
   approveReview(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
@@ -97,6 +103,7 @@ export class ContractsController {
   }
 
   @Post(':id/execute')
+  @RequirePermissions(PERMISSIONS.contractsApprove)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Mark contract as executed: PENDING_SIGNATURE → ACTIVE. Freezes client name and tax snapshots.' })
   execute(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
@@ -104,6 +111,7 @@ export class ContractsController {
   }
 
   @Post(':id/close')
+  @RequirePermissions(PERMISSIONS.contractsManage)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Close contract: FINAL_ACCOUNT_PENDING → CLOSED' })
   close(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
@@ -111,6 +119,7 @@ export class ContractsController {
   }
 
   @Post(':id/cancel')
+  @RequirePermissions(PERMISSIONS.contractsManage)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cancel contract (allowed from DRAFT, UNDER_REVIEW, PENDING_SIGNATURE)' })
   @ApiResponse({ status: 400, description: 'Cannot cancel from current status' })
@@ -123,6 +132,7 @@ export class ContractsController {
   }
 
   @Post(':id/terminate')
+  @RequirePermissions(PERMISSIONS.contractsApprove)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Terminate contract: ACTIVE → TERMINATED' })
   @ApiResponse({ status: 400, description: 'Only ACTIVE contracts can be terminated' })
@@ -137,6 +147,7 @@ export class ContractsController {
   // ─── Retention terms ──────────────────────────────────────────────────────────
 
   @Post(':id/retention-terms')
+  @RequirePermissions(PERMISSIONS.contractsManage)
   @ApiOperation({ summary: 'Set or replace retention terms for the contract' })
   @ApiParam({ name: 'id' })
   setRetentionTerms(
@@ -150,6 +161,7 @@ export class ContractsController {
   // ─── Advance terms ────────────────────────────────────────────────────────────
 
   @Post(':id/advance-terms')
+  @RequirePermissions(PERMISSIONS.contractsManage)
   @ApiOperation({ summary: 'Add an advance term to the contract' })
   @ApiParam({ name: 'id' })
   addAdvanceTerm(
@@ -161,6 +173,7 @@ export class ContractsController {
   }
 
   @Delete(':id/advance-terms/:termId')
+  @RequirePermissions(PERMISSIONS.contractsManage)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Remove an advance term' })
   removeAdvanceTerm(
@@ -174,6 +187,7 @@ export class ContractsController {
   // ─── Guarantees ───────────────────────────────────────────────────────────────
 
   @Post(':id/guarantees')
+  @RequirePermissions(PERMISSIONS.contractsManage)
   @ApiOperation({ summary: 'Add a guarantee (e.g. performance bond, advance guarantee)' })
   @ApiParam({ name: 'id' })
   addGuarantee(
@@ -185,6 +199,7 @@ export class ContractsController {
   }
 
   @Patch(':id/guarantees/:guaranteeId')
+  @RequirePermissions(PERMISSIONS.contractsManage)
   @ApiOperation({ summary: 'Update guarantee status or notes' })
   updateGuarantee(
     @CurrentUser() identity: RequestIdentity,
@@ -198,6 +213,7 @@ export class ContractsController {
   // ─── Milestones ───────────────────────────────────────────────────────────────
 
   @Post(':id/milestones')
+  @RequirePermissions(PERMISSIONS.contractsManage)
   @ApiOperation({ summary: 'Add a contract milestone' })
   @ApiParam({ name: 'id' })
   addMilestone(
@@ -209,6 +225,7 @@ export class ContractsController {
   }
 
   @Post(':id/milestones/:milestoneId/complete')
+  @RequirePermissions(PERMISSIONS.contractsManage)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Mark a contract milestone as complete' })
   completeMilestone(

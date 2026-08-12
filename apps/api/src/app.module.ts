@@ -1,7 +1,8 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { RolesGuard } from './common/guards/roles.guard.js';
+import { PermissionsGuard } from './common/guards/permissions.guard.js';
 
 import { DatabaseModule } from './platform/database/database.module.js';
 import { TenancyModule } from './platform/tenancy/tenancy.module.js';
@@ -20,6 +21,8 @@ import { AccountingModule } from './business/accounting/accounting.module.js';
 import { ProcurementModule } from './business/procurement/procurement.module.js';
 import { RetailModule } from './business/retail/retail.module.js';
 import { ManufacturingModule } from './business/manufacturing/manufacturing.module.js';
+import { ProjectAccessModule } from './platform/project-access/project-access.module.js';
+import { AuditInterceptor } from './platform/audit-logs/application/audit.interceptor.js';
 
 @Module({
   imports: [
@@ -34,6 +37,7 @@ import { ManufacturingModule } from './business/manufacturing/manufacturing.modu
     AuditLogsModule,
     WorkflowsModule,
     ClientsModule,
+    ProjectAccessModule,
     ConstructionModule,
     FinanceModule,
     AccountingModule,
@@ -45,6 +49,14 @@ import { ManufacturingModule } from './business/manufacturing/manufacturing.modu
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: PermissionsGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditInterceptor,
     },
   ],
 })

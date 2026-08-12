@@ -3,7 +3,7 @@ import { UserStatus } from '@erp/types';
 import type { UserEntity } from '../entities/user.entity.js';
 
 export interface IUsersRepository {
-  findById(id: string): Promise<UserEntity | null>;
+  findById(id: string, organizationId: string): Promise<UserEntity | null>;
   findByEmail(email: string): Promise<UserEntity | null>;
   findAll(orgId: string): Promise<UserEntity[]>;
   create(data: CreateUserData): Promise<UserEntity>;

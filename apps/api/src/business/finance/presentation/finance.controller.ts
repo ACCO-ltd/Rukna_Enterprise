@@ -21,7 +21,8 @@ import {
 
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator.js';
-import type { RequestIdentity } from '@erp/types';
+import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { FinanceService } from '../application/finance.service.js';
 import { CreateReceiptDto } from './dto/create-receipt.dto.js';
@@ -30,6 +31,7 @@ import { AllocateReceiptDto } from './dto/allocate-receipt.dto.js';
 @ApiTags('Finance')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.receiptsView)
 @Controller('receipts')
 export class FinanceController {
   constructor(private readonly financeService: FinanceService) {}
@@ -47,6 +49,7 @@ export class FinanceController {
   }
 
   @Post()
+  @RequirePermissions(PERMISSIONS.receiptsCreate)
   @ApiOperation({ summary: 'Record a new payment receipt from a client' })
   @ApiResponse({ status: 201, description: 'Receipt recorded' })
   create(@CurrentUser() identity: RequestIdentity, @Body() dto: CreateReceiptDto) {
@@ -63,6 +66,7 @@ export class FinanceController {
   // ─── Receipt Allocations ──────────────────────────────────────────────────────
 
   @Post(':id/allocations')
+  @RequirePermissions(PERMISSIONS.receiptsAllocate)
   @ApiOperation({
     summary:
       'Allocate part (or all) of a receipt against an IPC. ' +
@@ -79,6 +83,7 @@ export class FinanceController {
   }
 
   @Delete(':id/allocations/:allocationId')
+  @RequirePermissions(PERMISSIONS.receiptsAllocate)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Remove a receipt allocation' })
   removeAllocation(

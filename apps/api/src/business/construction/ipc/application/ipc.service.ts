@@ -9,6 +9,7 @@ import type { RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { IpcPrismaRepository } from '../infrastructure/ipc-prisma.repository.js';
+import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import type { CreateIpcDto } from '../presentation/dto/create-ipc.dto.js';
 import type { SupersedeIpcDto } from '../presentation/dto/supersede-ipc.dto.js';
 
@@ -19,14 +20,22 @@ export class IpcService {
   constructor(
     private readonly tenancyService: TenancyService,
     private readonly repo: IpcPrismaRepository,
+    private readonly projectAccess: ProjectAccessService,
   ) {}
 
   async findAll(identity: RequestIdentity, applicationId?: string) {
     const prisma = this.tenancyService.getClient();
-    return this.repo.findAll(prisma, identity.activeOrganizationId, applicationId);
+    if (applicationId) await this.projectAccess.assertApplication(identity, applicationId);
+    return this.repo.findAll(
+      prisma,
+      identity.activeOrganizationId,
+      applicationId,
+      this.projectAccess.hasBypass(identity) ? undefined : identity.userId,
+    );
   }
 
   async findOne(identity: RequestIdentity, id: string) {
+    await this.projectAccess.assertCertificate(identity, id);
     const prisma = this.tenancyService.getClient();
     const ipc = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!ipc) throw new NotFoundException(`IPC ${id} not found`);
@@ -49,6 +58,7 @@ export class IpcService {
   }
 
   async issue(identity: RequestIdentity, dto: CreateIpcDto) {
+    await this.projectAccess.assertApplication(identity, dto.applicationId);
     const prisma = this.tenancyService.getClient();
 
     // Guard: IPA must exist, belong to this org, and be SUBMITTED.
@@ -198,6 +208,8 @@ export class IpcService {
   // ─── Supersession ─────────────────────────────────────────────────────────────
 
   async supersede(identity: RequestIdentity, applicationId: string, dto: SupersedeIpcDto) {
+    await this.projectAccess.assertApplication(identity, applicationId);
+    await this.projectAccess.assertCertificate(identity, dto.newCertificateId);
     const prisma = this.tenancyService.getClient();
 
     const currentEffective = await this.repo.findEffectiveByApplication(prisma, applicationId);

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Client } from '@prisma/client';
 import type { RequestIdentity } from '@erp/types';
 
@@ -29,11 +29,16 @@ export class ClientService {
 
   async create(identity: RequestIdentity, dto: CreateClientDto): Promise<Client> {
     const prisma = this.tenancyService.getClient();
-    const duplicate = await this.repo.findByCode(prisma, identity.activeOrganizationId, dto.code);
-    if (duplicate) throw new ConflictException(`Client code '${dto.code}' already exists`);
     return this.repo.create(prisma, {
       organizationId: identity.activeOrganizationId,
-      ...dto,
+      name: dto.name,
+      nameAr: dto.nameAr,
+      type: dto.type,
+      taxNumber: dto.taxNumber,
+      defaultCurrency: dto.defaultCurrency,
+      address: dto.address,
+      notes: dto.notes,
+      primaryContact: dto.primaryContact,
     });
   }
 

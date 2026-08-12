@@ -8,6 +8,8 @@ import type { RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ContractPrismaRepository, ContractFull } from '../infrastructure/contract-prisma.repository.js';
+import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
+import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 import type { CreateContractDto } from '../presentation/dto/create-contract.dto.js';
 import type { UpdateContractDto } from '../presentation/dto/update-contract.dto.js';
 import type { AddAdvanceTermDto } from '../presentation/dto/add-advance-term.dto.js';
@@ -18,10 +20,14 @@ import type { AddRetentionTermsDto } from '../presentation/dto/add-retention-ter
 
 const CANCEL_ALLOWED_FROM = new Set(['DRAFT', 'UNDER_REVIEW', 'PENDING_SIGNATURE']);
 
+// Statuses where a CLIENT_CONTRACT is no longer current/effective.
+// A project may have a second CLIENT_CONTRACT only if the first reached one of these states.
+const CLIENT_CONTRACT_TERMINAL_STATUSES = new Set(['CLOSED', 'CANCELLED', 'TERMINATED']);
+
 const TRANSITIONS: Record<string, { from: string; to: string }> = {
-  submit:           { from: 'DRAFT',              to: 'UNDER_REVIEW' },
-  'approve-review': { from: 'UNDER_REVIEW',       to: 'PENDING_SIGNATURE' },
-  execute:          { from: 'PENDING_SIGNATURE',   to: 'ACTIVE' },
+  submit:           { from: 'DRAFT',                to: 'UNDER_REVIEW' },
+  'approve-review': { from: 'UNDER_REVIEW',         to: 'PENDING_SIGNATURE' },
+  execute:          { from: 'PENDING_SIGNATURE',     to: 'ACTIVE' },
   close:            { from: 'FINAL_ACCOUNT_PENDING', to: 'CLOSED' },
 };
 
@@ -30,14 +36,23 @@ export class ContractService {
   constructor(
     private readonly tenancyService: TenancyService,
     private readonly repo: ContractPrismaRepository,
+    private readonly projectAccess: ProjectAccessService,
+    private readonly auditOutbox: TransactionalAuditOutboxService,
   ) {}
 
   async findAll(identity: RequestIdentity, projectId?: string) {
     const prisma = this.tenancyService.getClient();
-    return this.repo.findAll(prisma, identity.activeOrganizationId, projectId);
+    if (projectId) await this.projectAccess.assertMember(identity, projectId);
+    return this.repo.findAll(
+      prisma,
+      identity.activeOrganizationId,
+      projectId,
+      this.projectAccess.scopedUserId(identity),
+    );
   }
 
   async findOne(identity: RequestIdentity, id: string): Promise<ContractFull> {
+    await this.projectAccess.assertContract(identity, id);
     const prisma = this.tenancyService.getClient();
     const contract = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!contract) throw new NotFoundException(`Contract ${id} not found`);
@@ -45,6 +60,7 @@ export class ContractService {
   }
 
   async create(identity: RequestIdentity, dto: CreateContractDto) {
+    await this.projectAccess.assertMember(identity, dto.projectId);
     const prisma = this.tenancyService.getClient();
 
     // Validate BOQ version exists for this project and is BASELINED.
@@ -72,24 +88,65 @@ export class ContractService {
       throw new ConflictException(`Contract number '${dto.contractNumber}' already exists`);
     }
 
-    return this.repo.create(prisma, {
-      organizationId: identity.activeOrganizationId,
-      projectId: dto.projectId,
-      clientId: dto.clientId,
-      boqVersionId: dto.boqVersionId,
-      contractNumber: dto.contractNumber,
-      contractValue: dto.contractValue,
-      currency: dto.currency,
-      billingModel: dto.billingModel,
-      startDate: dto.startDate ? new Date(dto.startDate) : undefined,
-      expectedEndDate: dto.expectedEndDate ? new Date(dto.expectedEndDate) : undefined,
-      createdBy: identity.userId,
+    const contractKind = dto.contractKind ?? 'CLIENT_CONTRACT';
+
+    // Invariant: at most one current/effective CLIENT_CONTRACT per project.
+    if (contractKind === 'CLIENT_CONTRACT') {
+      const existing = await prisma.contract.findFirst({
+        where: {
+          projectId: dto.projectId,
+          contractKind: 'CLIENT_CONTRACT',
+          status: { notIn: [...CLIENT_CONTRACT_TERMINAL_STATUSES] as never[] },
+        },
+        select: { id: true, contractNumber: true },
+      });
+      if (existing) {
+        throw new ConflictException(
+          `Project already has a current client contract (${existing.contractNumber}). ` +
+          `A second CLIENT_CONTRACT can only be created after the existing one is CLOSED, CANCELLED, or TERMINATED.`,
+        );
+      }
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const contract = await this.repo.create(tx, {
+        organizationId: identity.activeOrganizationId,
+        projectId: dto.projectId,
+        clientId: dto.clientId,
+        boqVersionId: dto.boqVersionId,
+        contractNumber: dto.contractNumber,
+        contractValue: dto.contractValue,
+        currency: dto.currency,
+        billingModel: dto.billingModel,
+        contractKind,
+        startDate: dto.startDate ? new Date(dto.startDate) : undefined,
+        expectedEndDate: dto.expectedEndDate ? new Date(dto.expectedEndDate) : undefined,
+        createdBy: identity.userId,
+      });
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'CREATE',
+        resourceType: 'Contract',
+        resourceId: contract.id,
+        sourceCommand: 'contract.create',
+        eventType: 'CONTRACT_CREATED',
+        idempotencyKey: `contract-create-${contract.id}`,
+        after: {
+          projectId: dto.projectId,
+          contractNumber: dto.contractNumber,
+          status: 'DRAFT',
+        },
+      });
+
+      return contract;
     });
   }
 
   async update(identity: RequestIdentity, id: string, dto: UpdateContractDto) {
     const prisma = this.tenancyService.getClient();
-    const contract = await this.requireContract(prisma, identity.activeOrganizationId, id);
+    const contract = await this.requireContract(prisma, identity, id);
 
     if (contract.status !== 'DRAFT') {
       throw new BadRequestException('Contract can only be edited in DRAFT status');
@@ -109,14 +166,15 @@ export class ContractService {
 
   async transition(identity: RequestIdentity, id: string, command: string) {
     const prisma = this.tenancyService.getClient();
-    const contract = await this.requireContract(prisma, identity.activeOrganizationId, id);
+    const contract = await this.requireContract(prisma, identity, id);
+    const fromStatus = contract.status;
 
-    const tx = TRANSITIONS[command];
-    if (!tx) throw new BadRequestException(`Unknown command '${command}'`);
+    const step = TRANSITIONS[command];
+    if (!step) throw new BadRequestException(`Unknown command '${command}'`);
 
-    if (contract.status !== tx.from) {
+    if (fromStatus !== step.from) {
       throw new BadRequestException(
-        `Cannot '${command}' a contract with status '${contract.status}'. Expected '${tx.from}'.`,
+        `Cannot '${command}' a contract with status '${fromStatus}'. Expected '${step.from}'.`,
       );
     }
 
@@ -127,43 +185,96 @@ export class ContractService {
       snapshotData['clientTaxSnapshot'] = contract.client.taxNumber ?? '';
     }
 
-    return this.repo.update(prisma, id, { status: tx.to, ...snapshotData });
+    return prisma.$transaction(async (tx) => {
+      const updated = await this.repo.update(tx, id, { status: step.to, ...snapshotData });
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'TRANSITION',
+        resourceType: 'Contract',
+        resourceId: id,
+        sourceCommand: `contract.${command}`,
+        eventType: `CONTRACT_${command.toUpperCase().replace(/-/g, '_')}`,
+        idempotencyKey: `contract-transition-${id}-${fromStatus}-to-${step.to}`,
+        before: { status: fromStatus },
+        after: { status: step.to },
+      });
+
+      return updated;
+    });
   }
 
   async cancel(identity: RequestIdentity, id: string, reason: string) {
     const prisma = this.tenancyService.getClient();
-    const contract = await this.requireContract(prisma, identity.activeOrganizationId, id);
+    const contract = await this.requireContract(prisma, identity, id);
+    const fromStatus = contract.status;
 
-    if (!CANCEL_ALLOWED_FROM.has(contract.status)) {
+    if (!CANCEL_ALLOWED_FROM.has(fromStatus)) {
       throw new BadRequestException(
-        `Cannot cancel a contract with status '${contract.status}'. ` +
+        `Cannot cancel a contract with status '${fromStatus}'. ` +
         `Allowed from: ${[...CANCEL_ALLOWED_FROM].join(', ')}.`,
       );
     }
 
-    void reason; // audit trail deferred to Phase 4 AuditLog
-    return this.repo.update(prisma, id, { status: 'CANCELLED' });
+    return prisma.$transaction(async (tx) => {
+      const updated = await this.repo.update(tx, id, { status: 'CANCELLED' });
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'CANCEL',
+        resourceType: 'Contract',
+        resourceId: id,
+        sourceCommand: 'contract.cancel',
+        eventType: 'CONTRACT_CANCELLED',
+        idempotencyKey: `contract-cancel-${id}-${fromStatus}`,
+        reason,
+        before: { status: fromStatus },
+        after: { status: 'CANCELLED' },
+      });
+
+      return updated;
+    });
   }
 
   async terminate(identity: RequestIdentity, id: string, reason: string) {
     const prisma = this.tenancyService.getClient();
-    const contract = await this.requireContract(prisma, identity.activeOrganizationId, id);
+    const contract = await this.requireContract(prisma, identity, id);
+    const fromStatus = contract.status;
 
-    if (contract.status !== 'ACTIVE') {
+    if (fromStatus !== 'ACTIVE') {
       throw new BadRequestException(
-        `Cannot terminate a contract with status '${contract.status}'. Only ACTIVE contracts can be terminated.`,
+        `Cannot terminate a contract with status '${fromStatus}'. Only ACTIVE contracts can be terminated.`,
       );
     }
 
-    void reason; // audit trail deferred to Phase 4 AuditLog
-    return this.repo.update(prisma, id, { status: 'TERMINATED' });
+    return prisma.$transaction(async (tx) => {
+      const updated = await this.repo.update(tx, id, { status: 'TERMINATED' });
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'TERMINATE',
+        resourceType: 'Contract',
+        resourceId: id,
+        sourceCommand: 'contract.terminate',
+        eventType: 'CONTRACT_TERMINATED',
+        idempotencyKey: `contract-terminate-${id}-${fromStatus}`,
+        reason,
+        before: { status: fromStatus },
+        after: { status: 'TERMINATED' },
+      });
+
+      return updated;
+    });
   }
 
   // ─── Sub-entity management ────────────────────────────────────────────────────
 
   async setRetentionTerms(identity: RequestIdentity, id: string, dto: AddRetentionTermsDto) {
     const prisma = this.tenancyService.getClient();
-    await this.requireContract(prisma, identity.activeOrganizationId, id);
+    await this.requireContract(prisma, identity, id);
     return this.repo.upsertRetentionTerms(prisma, id, {
       retentionRate: dto.retentionRate,
       retentionCap: dto.retentionCap,
@@ -174,7 +285,7 @@ export class ContractService {
 
   async addAdvanceTerm(identity: RequestIdentity, id: string, dto: AddAdvanceTermDto) {
     const prisma = this.tenancyService.getClient();
-    await this.requireContract(prisma, identity.activeOrganizationId, id);
+    await this.requireContract(prisma, identity, id);
     return this.repo.addAdvanceTerm(prisma, id, {
       advanceType: dto.advanceType,
       description: dto.description,
@@ -186,13 +297,13 @@ export class ContractService {
 
   async removeAdvanceTerm(identity: RequestIdentity, contractId: string, termId: string) {
     const prisma = this.tenancyService.getClient();
-    await this.requireContract(prisma, identity.activeOrganizationId, contractId);
+    await this.requireContract(prisma, identity, contractId);
     return this.repo.removeAdvanceTerm(prisma, termId);
   }
 
   async addGuarantee(identity: RequestIdentity, id: string, dto: AddGuaranteeDto) {
     const prisma = this.tenancyService.getClient();
-    await this.requireContract(prisma, identity.activeOrganizationId, id);
+    await this.requireContract(prisma, identity, id);
     return this.repo.addGuarantee(prisma, id, {
       guaranteeType: dto.guaranteeType,
       amount: dto.amount,
@@ -212,7 +323,7 @@ export class ContractService {
     dto: UpdateGuaranteeDto,
   ) {
     const prisma = this.tenancyService.getClient();
-    await this.requireContract(prisma, identity.activeOrganizationId, contractId);
+    await this.requireContract(prisma, identity, contractId);
     return this.repo.updateGuarantee(prisma, guaranteeId, {
       status: dto.status,
       notes: dto.notes,
@@ -221,7 +332,7 @@ export class ContractService {
 
   async addMilestone(identity: RequestIdentity, id: string, dto: AddMilestoneDto) {
     const prisma = this.tenancyService.getClient();
-    await this.requireContract(prisma, identity.activeOrganizationId, id);
+    await this.requireContract(prisma, identity, id);
     return this.repo.addMilestone(prisma, id, {
       name: dto.name,
       description: dto.description,
@@ -232,7 +343,7 @@ export class ContractService {
 
   async completeMilestone(identity: RequestIdentity, contractId: string, milestoneId: string) {
     const prisma = this.tenancyService.getClient();
-    await this.requireContract(prisma, identity.activeOrganizationId, contractId);
+    await this.requireContract(prisma, identity, contractId);
     return this.repo.completeMilestone(prisma, milestoneId, identity.userId);
   }
 
@@ -240,10 +351,11 @@ export class ContractService {
 
   private async requireContract(
     prisma: ReturnType<TenancyService['getClient']>,
-    organizationId: string,
+    identity: RequestIdentity,
     id: string,
   ): Promise<ContractFull> {
-    const contract = await this.repo.findById(prisma, organizationId, id);
+    await this.projectAccess.assertContract(identity, id);
+    const contract = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!contract) throw new NotFoundException(`Contract ${id} not found`);
     return contract;
   }

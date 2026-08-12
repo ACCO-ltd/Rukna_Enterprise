@@ -17,43 +17,47 @@ model Organization {
   createdAt DateTime           @default(now()) @map("created_at")
   updatedAt DateTime           @updatedAt @map("updated_at")
 
-  users               User[]
-  roles               Role[]
-  exchangeRates       ExchangeRate[]
-  workflowDefinitions WorkflowDefinition[]
-  memberships         OrganizationMembership[]
-  projects            Project[]
-  clients             Client[]
-  contracts           Contract[]
-  applications        InterimPaymentApplication[]
-  certificates        InterimPaymentCertificate[]
-  receipts            PaymentReceipt[]
-  workflowPolicies    WorkflowRequirementPolicy[]
+  users                    User[]
+  roles                    Role[]
+  exchangeRates            ExchangeRate[]
+  workflowDefinitions      WorkflowDefinition[]
+  workflowPolicyVersions   WorkflowPolicyVersion[]
+  segregationOfDutiesRules SegregationOfDutiesRule[]
+  auditOutboxEvents        AuditOutboxEvent[]
+  memberships              OrganizationMembership[]
+  projects                 Project[]
+  clients                  Client[]
+  clientCodeSequence       ClientCodeSequence?
+  contracts                Contract[]
+  applications             InterimPaymentApplication[]
+  certificates             InterimPaymentCertificate[]
+  receipts                 PaymentReceipt[]
+  workflowPolicies         WorkflowRequirementPolicy[]
   // Sprint 4 — Accounting
-  suppliers           Supplier[]
-  departments         Department[]
-  accounts            Account[]
-  fiscalYears         FiscalYear[]
-  taxCodes            TaxCode[]
-  treasuryGroups      TreasuryGroup[]
-  postingProfiles     PostingProfile[]
-  clientInvoices      ClientInvoice[]
-  supplierBills       SupplierBill[]
-  supplierPayments    SupplierPayment[]
-  journalEntries      JournalEntry[]
+  suppliers                Supplier[]
+  departments              Department[]
+  accounts                 Account[]
+  fiscalYears              FiscalYear[]
+  taxCodes                 TaxCode[]
+  treasuryGroups           TreasuryGroup[]
+  postingProfiles          PostingProfile[]
+  clientInvoices           ClientInvoice[]
+  supplierBills            SupplierBill[]
+  supplierPayments         SupplierPayment[]
+  journalEntries           JournalEntry[]
   // Sprint 5 — Procurement
-  unitsOfMeasure      UnitOfMeasure[]
-  materialCategories  MaterialCategory[]
-  spendCategories     SpendCategory[]
-  materials           Material[]
-  materialRequests    MaterialRequest[]
-  purchaseOrders      PurchaseOrder[]
-  poLineAllocations   PurchaseOrderLineRequestAllocation[]
-  grnNotes            GoodsReceiptNote[]
-  grnLineAllocations  GoodsReceiptLineAllocation[]
-  matchingPolicies    MatchingTolerancePolicy[]
-  overReceiptPolicies OverReceiptPolicy[]
-  commitmentEntries   CommitmentLedgerEntry[]
+  unitsOfMeasure           UnitOfMeasure[]
+  materialCategories       MaterialCategory[]
+  spendCategories          SpendCategory[]
+  materials                Material[]
+  materialRequests         MaterialRequest[]
+  purchaseOrders           PurchaseOrder[]
+  poLineAllocations        PurchaseOrderLineRequestAllocation[]
+  grnNotes                 GoodsReceiptNote[]
+  grnLineAllocations       GoodsReceiptLineAllocation[]
+  matchingPolicies         MatchingTolerancePolicy[]
+  overReceiptPolicies      OverReceiptPolicy[]
+  commitmentEntries        CommitmentLedgerEntry[]
 
   @@map("organizations")
 }
@@ -89,7 +93,7 @@ model Role {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  organization    Organization                @relation(fields: [organizationId], references: [id])
+  organization    Organization                 @relation(fields: [organizationId], references: [id])
   userRoles       UserRole[]
   rolePermissions RolePermission[]
   membershipRoles OrganizationMembershipRole[]
@@ -154,16 +158,22 @@ model RefreshToken {
 }
 
 model AuditLog {
-  id         String   @id @default(cuid())
-  userId     String   @map("user_id")
-  orgId      String   @map("org_id")
-  action     String
-  resource   String
-  resourceId String   @map("resource_id")
-  before     Json?
-  after      Json?
-  ipAddress  String?  @map("ip_address")
-  createdAt  DateTime @default(now()) @map("created_at")
+  id                 String   @id @default(cuid())
+  userId             String   @map("user_id")
+  orgId              String   @map("org_id")
+  action             String
+  resource           String
+  resourceId         String   @map("resource_id")
+  before             Json?
+  after              Json?
+  actorRoleContext   Json?    @map("actor_role_context")
+  reason             String?
+  sourceCommand      String?  @map("source_command")
+  approvalInstanceId String?  @map("approval_instance_id")
+  correlationId      String?  @map("correlation_id")
+  requestId          String?  @map("request_id")
+  ipAddress          String?  @map("ip_address")
+  createdAt          DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id])
 
@@ -171,6 +181,29 @@ model AuditLog {
   @@index([orgId])
   @@index([resource, resourceId])
   @@map("audit_logs")
+}
+
+// Delivery state is mutable; the referenced audit event and its payload are immutable.
+// A business mutation creates AuditLog + AuditOutboxEvent in the same tenant transaction.
+model AuditOutboxEvent {
+  id              String    @id @default(cuid())
+  organizationId  String    @map("organization_id")
+  auditLogId      String    @unique @map("audit_log_id")
+  aggregateType   String    @map("aggregate_type")
+  aggregateId     String    @map("aggregate_id")
+  eventType       String    @map("event_type")
+  idempotencyKey  String    @unique @map("idempotency_key")
+  payload         Json
+  occurredAt      DateTime  @default(now()) @map("occurred_at")
+  publishedAt     DateTime? @map("published_at")
+  publishAttempts Int       @default(0) @map("publish_attempts")
+  lastError       String?   @map("last_error")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, publishedAt, occurredAt])
+  @@index([aggregateType, aggregateId])
+  @@map("audit_outbox_events")
 }
 
 // ─── Multi-Currency ───────────────────────────────────────────────────────────
@@ -245,21 +278,21 @@ model WorkflowStep {
 }
 
 model ApprovalInstance {
-  id                   String                   @id @default(cuid())
-  workflowDefinitionId String                   @map("workflow_definition_id")
-  transactionType      WorkflowTransactionType? @map("transaction_type")
-  transactionId        String                   @map("transaction_id")
-  status               ApprovalStatus           @default(PENDING)
-  currentStepOrder     Int                      @default(1) @map("current_step_order")
-  initiatedBy          String                   @map("initiated_by")
-  initiatedAt          DateTime                 @default(now()) @map("initiated_at")
-  updatedAt            DateTime                 @updatedAt @map("updated_at")
+  id                    String                   @id @default(cuid())
+  workflowDefinitionId  String                   @map("workflow_definition_id")
+  transactionType       WorkflowTransactionType? @map("transaction_type")
+  transactionId         String                   @map("transaction_id")
+  status                ApprovalStatus           @default(PENDING)
+  currentStepOrder      Int                      @default(1) @map("current_step_order")
+  initiatedBy           String                   @map("initiated_by")
+  initiatedAt           DateTime                 @default(now()) @map("initiated_at")
+  updatedAt             DateTime                 @updatedAt @map("updated_at")
   // Sprint 5: immutable condition snapshot — why this policy was selected (ADR-007, Rule DOA-001)
-  evaluatedAmount      Decimal?                 @map("evaluated_amount") @db.Decimal(18, 2)
-  reportingCurrencyCode String?                 @map("reporting_currency_code") @db.VarChar(3)
-  matchedPolicyId      String?                  @map("matched_policy_id")
-  matchedPolicyVersion Int?                     @map("matched_policy_version")
-  conditionSnapshot    Json?                    @map("condition_snapshot")
+  evaluatedAmount       Decimal?                 @map("evaluated_amount") @db.Decimal(18, 2)
+  reportingCurrencyCode String?                  @map("reporting_currency_code") @db.VarChar(3)
+  matchedPolicyId       String?                  @map("matched_policy_id")
+  matchedPolicyVersion  Int?                     @map("matched_policy_version")
+  conditionSnapshot     Json?                    @map("condition_snapshot")
 
   definition WorkflowDefinition @relation(fields: [workflowDefinitionId], references: [id])
   actions    ApprovalAction[]
@@ -296,8 +329,8 @@ model OrganizationMembership {
   removedAt      DateTime?        @map("removed_at")
   removedBy      String?          @map("removed_by")
 
-  organization Organization                @relation(fields: [organizationId], references: [id])
-  user         User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization                 @relation(fields: [organizationId], references: [id])
+  user         User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
   roles        OrganizationMembershipRole[]
 
   @@unique([organizationId, userId])
@@ -328,21 +361,99 @@ model Client {
   code            String       @map("code") @db.VarChar(30)
   name            String
   nameAr          String?      @map("name_ar")
+  type            ClientType   @default(COMPANY)
   taxNumber       String?      @map("tax_number")
   defaultCurrency String?      @map("default_currency") @db.VarChar(3)
+  address         String?
+  notes           String?
   status          ClientStatus @default(ACTIVE)
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 
-  organization   Organization    @relation(fields: [organizationId], references: [id])
+  organization   Organization     @relation(fields: [organizationId], references: [id])
   contacts       ClientContact[]
   receipts       PaymentReceipt[]
   contracts      Contract[]
   clientInvoices ClientInvoice[]
+  projects       Project[]
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
   @@map("clients")
+}
+
+// A policy version is the effective-dated governance envelope. A version remains
+// inactive until its formal effective date and explicit activation.
+model WorkflowPolicyVersion {
+  id                String               @id @default(cuid())
+  organizationId    String               @map("organization_id")
+  policyKey         String               @map("policy_key")
+  version           Int
+  status            WorkflowPolicyStatus @default(DRAFT)
+  effectiveFrom     DateTime?            @map("effective_from")
+  effectiveTo       DateTime?            @map("effective_to")
+  reportingCurrency String               @map("reporting_currency") @db.VarChar(3)
+  amountBasis       WorkflowAmountBasis  @default(UNSPECIFIED) @map("amount_basis")
+  notes             String?
+  approvedAt        DateTime?            @map("approved_at")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+
+  organization           Organization              @relation(fields: [organizationId], references: [id])
+  rules                  WorkflowPolicyRule[]
+  segregationDutiesRules SegregationOfDutiesRule[]
+
+  @@unique([organizationId, policyKey, version])
+  @@index([organizationId, policyKey, status, effectiveFrom])
+  @@map("workflow_policy_versions")
+}
+
+// Rules are data, not service conditionals. Configuration preserves pending
+// decisions without activating an incomplete approval route.
+model WorkflowPolicyRule {
+  id                      String                   @id @default(cuid())
+  workflowPolicyVersionId String                   @map("workflow_policy_version_id")
+  ruleKey                 String                   @map("rule_key")
+  transactionType         WorkflowTransactionType? @map("transaction_type")
+  entityType              String?                  @map("entity_type")
+  status                  WorkflowPolicyRuleStatus @default(PENDING)
+  priority                Int                      @default(0)
+  configuration           Json
+  createdAt               DateTime                 @default(now()) @map("created_at")
+
+  policyVersion WorkflowPolicyVersion @relation(fields: [workflowPolicyVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowPolicyVersionId, ruleKey])
+  @@index([transactionType, status])
+  @@map("workflow_policy_rules")
+}
+
+model SegregationOfDutiesRule {
+  id                      String   @id @default(cuid())
+  organizationId          String   @map("organization_id")
+  workflowPolicyVersionId String   @map("workflow_policy_version_id")
+  code                    String
+  description             String
+  isActive                Boolean  @default(false) @map("is_active")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  organization  Organization          @relation(fields: [organizationId], references: [id])
+  policyVersion WorkflowPolicyVersion @relation(fields: [workflowPolicyVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, code])
+  @@index([organizationId, isActive])
+  @@map("segregation_of_duties_rules")
+}
+
+model ClientCodeSequence {
+  organizationId String   @id @map("organization_id")
+  nextValue      Int      @default(1) @map("next_value")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("client_code_sequences")
 }
 
 model ClientContact {
@@ -419,6 +530,8 @@ model Project {
   contractValue      Decimal?           @map("contract_value") @db.Decimal(18, 2)
   currency           String?            @db.VarChar(3)
   clientName         String?            @map("client_name")
+  clientId           String?            @map("client_id")
+  location           String?
   startDate          DateTime?          @map("start_date") @db.Date
   expectedEndDate    DateTime?          @map("expected_end_date") @db.Date
   createdBy          String             @map("created_by")
@@ -430,9 +543,11 @@ model Project {
   suspensions  ProjectSuspension[]
   boq          Boq?
   contracts    Contract[]
+  client       Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
+  @@index([organizationId, clientId])
   @@map("projects")
 }
 
@@ -527,31 +642,31 @@ model BoqVersion {
 }
 
 model BoqNode {
-  id                String            @id @default(cuid())
-  boqId             String            @map("boq_id")
-  versionId         String            @map("version_id")
-  parentId          String?           @map("parent_id")
-  path              String            @map("path")
-  depth             Int               @default(0)
-  sortOrder         Int               @default(0) @map("sort_order")
-  code              String            @db.VarChar(50)
-  description       String
-  descriptionAr     String?           @map("description_ar")
-  measurementMethod MeasurementMethod @default(QUANTITY) @map("measurement_method")
-  pricingBasis      PricingBasis      @default(UNIT_RATE) @map("pricing_basis")
-  unit              String?           @db.VarChar(20)
-  quantity          Decimal?          @db.Decimal(18, 3)
-  unitRate          Decimal?          @map("unit_rate") @db.Decimal(18, 2)
-  currency          String?           @db.VarChar(3)
-  totalAmount       Decimal?          @map("total_amount") @db.Decimal(18, 2)
-  isLeaf            Boolean           @default(false) @map("is_leaf")
-  originNodeId      String?           @map("origin_node_id")
+  id                  String            @id @default(cuid())
+  boqId               String            @map("boq_id")
+  versionId           String            @map("version_id")
+  parentId            String?           @map("parent_id")
+  path                String            @map("path")
+  depth               Int               @default(0)
+  sortOrder           Int               @default(0) @map("sort_order")
+  code                String            @db.VarChar(50)
+  description         String
+  descriptionAr       String?           @map("description_ar")
+  measurementMethod   MeasurementMethod @default(QUANTITY) @map("measurement_method")
+  pricingBasis        PricingBasis      @default(UNIT_RATE) @map("pricing_basis")
+  unit                String?           @db.VarChar(20)
+  quantity            Decimal?          @db.Decimal(18, 3)
+  unitRate            Decimal?          @map("unit_rate") @db.Decimal(18, 2)
+  currency            String?           @db.VarChar(3)
+  totalAmount         Decimal?          @map("total_amount") @db.Decimal(18, 2)
+  isLeaf              Boolean           @default(false) @map("is_leaf")
+  originNodeId        String?           @map("origin_node_id")
   // Sprint 5: variation-readiness — BASELINE nodes are original scope; VARIATION nodes
   // come from a ChangeOrder (Sprint 6). sourceChangeOrderId is null until Sprint 6 adds ChangeOrder.
-  sourceType        BoqSourceType     @default(BASELINE) @map("source_type")
-  sourceChangeOrderId String?         @map("source_change_order_id")
-  createdAt         DateTime          @default(now()) @map("created_at")
-  updatedAt         DateTime          @updatedAt @map("updated_at")
+  sourceType          BoqSourceType     @default(BASELINE) @map("source_type")
+  sourceChangeOrderId String?           @map("source_change_order_id")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
 
   version  BoqVersion @relation(fields: [versionId], references: [id])
   parent   BoqNode?   @relation("BoqNodeChildren", fields: [parentId], references: [id], onDelete: Restrict)
@@ -574,6 +689,7 @@ model Contract {
   contractValue      Decimal        @map("contract_value") @db.Decimal(18, 2)
   currency           String         @db.VarChar(3)
   billingModel       BillingModel   @default(MEASURED_IPC) @map("billing_model")
+  contractKind       ContractKind   @default(CLIENT_CONTRACT) @map("contract_kind")
   status             ContractStatus @default(DRAFT)
   clientNameSnapshot String?        @map("client_name_snapshot")
   clientTaxSnapshot  String?        @map("client_tax_snapshot")
@@ -583,9 +699,9 @@ model Contract {
   createdAt          DateTime       @default(now()) @map("created_at")
   updatedAt          DateTime       @updatedAt @map("updated_at")
 
-  project        Project                   @relation(fields: [projectId], references: [id])
-  organization   Organization              @relation(fields: [organizationId], references: [id])
-  client         Client                    @relation(fields: [clientId], references: [id])
+  project        Project                     @relation(fields: [projectId], references: [id])
+  organization   Organization                @relation(fields: [organizationId], references: [id])
+  client         Client                      @relation(fields: [clientId], references: [id])
   retentionTerms ContractRetentionTerms?
   advanceTerms   ContractAdvanceTerm[]
   guarantees     ContractGuarantee[]
@@ -776,38 +892,38 @@ model IpaAttachment {
 // ─── IPC Domain ───────────────────────────────────────────────────────────────
 
 model InterimPaymentCertificate {
-  id                 String    @id @default(cuid())
-  applicationId      String    @map("application_id")
-  organizationId     String    @map("organization_id")
-  certificateNumber  Int       @map("certificate_number")
-  certificateRef     String?   @map("certificate_ref")
-  status             IpcStatus
-  isEffective        Boolean   @default(false) @map("is_effective")
-  effectiveAt        DateTime? @map("effective_at")
-  supersededAt       DateTime? @map("superseded_at")
-  supersededById     String?   @map("superseded_by_id")
-  supersessionReason String?   @map("supersession_reason")
-  certifiedTotal     Decimal   @map("certified_total") @db.Decimal(18, 2)
-  currency           String    @db.VarChar(3)
-  exchangeRateCurrency String? @map("exchange_rate_currency") @db.VarChar(3)
-  exchangeRateBase     String? @map("exchange_rate_base") @db.VarChar(3)
-  exchangeRateValue    Decimal? @map("exchange_rate_value") @db.Decimal(18, 6)
+  id                   String    @id @default(cuid())
+  applicationId        String    @map("application_id")
+  organizationId       String    @map("organization_id")
+  certificateNumber    Int       @map("certificate_number")
+  certificateRef       String?   @map("certificate_ref")
+  status               IpcStatus
+  isEffective          Boolean   @default(false) @map("is_effective")
+  effectiveAt          DateTime? @map("effective_at")
+  supersededAt         DateTime? @map("superseded_at")
+  supersededById       String?   @map("superseded_by_id")
+  supersessionReason   String?   @map("supersession_reason")
+  certifiedTotal       Decimal   @map("certified_total") @db.Decimal(18, 2)
+  currency             String    @db.VarChar(3)
+  exchangeRateCurrency String?   @map("exchange_rate_currency") @db.VarChar(3)
+  exchangeRateBase     String?   @map("exchange_rate_base") @db.VarChar(3)
+  exchangeRateValue    Decimal?  @map("exchange_rate_value") @db.Decimal(18, 6)
   exchangeRateDate     DateTime? @map("exchange_rate_date") @db.Date
-  issuedAt           DateTime? @map("issued_at")
-  issuedBy           String?   @map("issued_by")
-  notes              String?
-  createdBy          String    @map("created_by")
-  createdAt          DateTime  @default(now()) @map("created_at")
+  issuedAt             DateTime? @map("issued_at")
+  issuedBy             String?   @map("issued_by")
+  notes                String?
+  createdBy            String    @map("created_by")
+  createdAt            DateTime  @default(now()) @map("created_at")
 
-  application  InterimPaymentApplication           @relation(fields: [applicationId], references: [id])
-  organization Organization                         @relation(fields: [organizationId], references: [id])
-  items        InterimPaymentCertificateItem[]
-  deductions   InterimPaymentCertificateDeduction[]
-  attachments  IpcAttachment[]
+  application   InterimPaymentApplication            @relation(fields: [applicationId], references: [id])
+  organization  Organization                         @relation(fields: [organizationId], references: [id])
+  items         InterimPaymentCertificateItem[]
+  deductions    InterimPaymentCertificateDeduction[]
+  attachments   IpcAttachment[]
   // Sprint 3 commercial billing tracking (receipt ↔ IPC)
-  allocations  ReceiptAllocation[]
-  supersededBy InterimPaymentCertificate?           @relation("CertSupersession", fields: [supersededById], references: [id])
-  supersedes   InterimPaymentCertificate[]          @relation("CertSupersession")
+  allocations   ReceiptAllocation[]
+  supersededBy  InterimPaymentCertificate?           @relation("CertSupersession", fields: [supersededById], references: [id])
+  supersedes    InterimPaymentCertificate[]          @relation("CertSupersession")
   // Sprint 4 — ClientInvoice generated when isEffective becomes true (Correction 10)
   clientInvoice ClientInvoice?
 
@@ -939,7 +1055,7 @@ model CostCenter {
   createdAt      DateTime        @default(now()) @map("created_at")
   createdBy      String          @map("created_by")
 
-  department Department       @relation(fields: [departmentId], references: [id])
+  department Department          @relation(fields: [departmentId], references: [id])
   versions   CostCenterVersion[]
 
   @@unique([organizationId, code])
@@ -982,11 +1098,11 @@ model Account {
   createdAt      DateTime      @default(now()) @map("created_at")
   createdBy      String        @map("created_by")
 
-  organization         Organization     @relation(fields: [organizationId], references: [id])
-  versions             AccountVersion[] @relation("AccountVersionOwner")
-  childVersions        AccountVersion[] @relation("AccountVersionParent")
-  bankAccount          BankAccount?
-  journalLines         JournalLine[]    @relation("JournalLineAccount")
+  organization  Organization     @relation(fields: [organizationId], references: [id])
+  versions      AccountVersion[] @relation("AccountVersionOwner")
+  childVersions AccountVersion[] @relation("AccountVersionParent")
+  bankAccount   BankAccount?
+  journalLines  JournalLine[]    @relation("JournalLineAccount")
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
@@ -1017,8 +1133,8 @@ model AccountVersion {
   changeReason            String?              @map("change_reason")
   createdAt               DateTime             @default(now()) @map("created_at")
 
-  account       Account        @relation("AccountVersionOwner", fields: [accountId], references: [id])
-  parentAccount Account?       @relation("AccountVersionParent", fields: [parentAccountId], references: [id])
+  account       Account       @relation("AccountVersionOwner", fields: [accountId], references: [id])
+  parentAccount Account?      @relation("AccountVersionParent", fields: [parentAccountId], references: [id])
   journalLines  JournalLine[]
 
   @@unique([accountId, versionNumber])
@@ -1029,20 +1145,20 @@ model AccountVersion {
 // ─── Fiscal Calendar ──────────────────────────────────────────────────────────
 
 model FiscalYear {
-  id                        String          @id @default(cuid())
-  organizationId            String          @map("organization_id")
-  name                      String          @db.VarChar(20)
-  startDate                 DateTime        @map("start_date") @db.Date
-  endDate                   DateTime        @map("end_date") @db.Date
+  id                        String           @id @default(cuid())
+  organizationId            String           @map("organization_id")
+  name                      String           @db.VarChar(20)
+  startDate                 DateTime         @map("start_date") @db.Date
+  endDate                   DateTime         @map("end_date") @db.Date
   // FK to Account; retainedEarningsAccountId must reference an EQUITY account.
-  retainedEarningsAccountId String          @map("retained_earnings_account_id")
+  retainedEarningsAccountId String           @map("retained_earnings_account_id")
   status                    FiscalYearStatus @default(DRAFT)
-  closedAt                  DateTime?       @map("closed_at")
-  closedBy                  String?         @map("closed_by")
-  createdAt                 DateTime        @default(now()) @map("created_at")
-  createdBy                 String          @map("created_by")
+  closedAt                  DateTime?        @map("closed_at")
+  closedBy                  String?          @map("closed_by")
+  createdAt                 DateTime         @default(now()) @map("created_at")
+  createdBy                 String           @map("created_by")
 
-  organization Organization      @relation(fields: [organizationId], references: [id])
+  organization Organization       @relation(fields: [organizationId], references: [id])
   periods      AccountingPeriod[]
 
   @@unique([organizationId, name])
@@ -1091,12 +1207,12 @@ model AccountingPeriod {
 // ─── Banking ──────────────────────────────────────────────────────────────────
 
 model TreasuryGroup {
-  id             String        @id @default(cuid())
-  organizationId String        @map("organization_id")
+  id             String          @id @default(cuid())
+  organizationId String          @map("organization_id")
   name           String
   status         DimensionStatus @default(ACTIVE)
-  createdAt      DateTime      @default(now()) @map("created_at")
-  createdBy      String        @map("created_by")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  createdBy      String          @map("created_by")
 
   organization Organization  @relation(fields: [organizationId], references: [id])
   bankAccounts BankAccount[]
@@ -1128,9 +1244,9 @@ model BankAccount {
   createdAt       DateTime          @default(now()) @map("created_at")
   createdBy       String            @map("created_by")
 
-  glAccount      Account         @relation(fields: [glAccountId], references: [id])
-  treasuryGroup  TreasuryGroup?  @relation(fields: [treasuryGroupId], references: [id])
-  receipts       PaymentReceipt[]
+  glAccount        Account           @relation(fields: [glAccountId], references: [id])
+  treasuryGroup    TreasuryGroup?    @relation(fields: [treasuryGroupId], references: [id])
+  receipts         PaymentReceipt[]
   supplierPayments SupplierPayment[]
 
   @@unique([organizationId, accountNumber])
@@ -1170,19 +1286,19 @@ model TaxCode {
 // ─── Suppliers ────────────────────────────────────────────────────────────────
 
 model Supplier {
-  id              String         @id @default(cuid())
-  organizationId  String         @map("organization_id")
-  code            String         @db.VarChar(30)
-  name            String
-  nameAr          String?        @map("name_ar")
-  taxNumber       String?        @map("tax_number")
-  defaultCurrency String?        @map("default_currency") @db.VarChar(3)
-  paymentTermsDays Int?          @map("payment_terms_days")
-  status          SupplierStatus @default(ACTIVE)
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
+  id               String         @id @default(cuid())
+  organizationId   String         @map("organization_id")
+  code             String         @db.VarChar(30)
+  name             String
+  nameAr           String?        @map("name_ar")
+  taxNumber        String?        @map("tax_number")
+  defaultCurrency  String?        @map("default_currency") @db.VarChar(3)
+  paymentTermsDays Int?           @map("payment_terms_days")
+  status           SupplierStatus @default(ACTIVE)
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
 
-  organization     Organization      @relation(fields: [organizationId], references: [id])
+  organization     Organization              @relation(fields: [organizationId], references: [id])
   contacts         SupplierContact[]
   bills            SupplierBill[]
   payments         SupplierPayment[]
@@ -1197,13 +1313,13 @@ model Supplier {
 }
 
 model SupplierContact {
-  id          String  @id @default(cuid())
-  supplierId  String  @map("supplier_id")
-  name        String
-  role        String?
-  email       String?
-  phone       String?
-  isPrimary   Boolean @default(false) @map("is_primary")
+  id         String  @id @default(cuid())
+  supplierId String  @map("supplier_id")
+  name       String
+  role       String?
+  email      String?
+  phone      String?
+  isPrimary  Boolean @default(false) @map("is_primary")
 
   supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
 
@@ -1225,7 +1341,7 @@ model PostingProfile {
   createdAt      DateTime      @default(now()) @map("created_at")
   createdBy      String        @map("created_by")
 
-  organization  Organization           @relation(fields: [organizationId], references: [id])
+  organization  Organization              @relation(fields: [organizationId], references: [id])
   versions      PostingProfileVersion[]
   ruleTemplates PostingRuleLineTemplate[]
 
@@ -1300,8 +1416,8 @@ model PostingRuleLineTemplate {
   requiredDimensions    String[]        @map("required_dimensions")
   descriptionTemplate   String?         @map("description_template")
 
-  rule          PostingRuleVersion @relation(fields: [postingRuleVersionId], references: [id])
-  postingProfile PostingProfile?   @relation(fields: [postingProfileId], references: [id])
+  rule           PostingRuleVersion @relation(fields: [postingRuleVersionId], references: [id])
+  postingProfile PostingProfile?    @relation(fields: [postingProfileId], references: [id])
 
   @@unique([postingRuleVersionId, lineNumber])
   @@map("posting_rule_line_templates")
@@ -1341,49 +1457,49 @@ model DocumentNumberSequence {
 //   Approved+unposted → Finance manually cancels, new invoice generated
 //   Posted → credit note (reversal JournalEntry) + replacement ClientInvoice
 model ClientInvoice {
-  id                   String          @id @default(cuid())
-  organizationId       String          @map("organization_id")
-  invoiceNumber        String?         @map("invoice_number") @db.VarChar(30)
-  invoiceDate          DateTime        @map("invoice_date") @db.Date
-  dueDate              DateTime        @map("due_date") @db.Date
-  clientId             String          @map("client_id")
+  id                     String           @id @default(cuid())
+  organizationId         String           @map("organization_id")
+  invoiceNumber          String?          @map("invoice_number") @db.VarChar(30)
+  invoiceDate            DateTime         @map("invoice_date") @db.Date
+  dueDate                DateTime         @map("due_date") @db.Date
+  clientId               String           @map("client_id")
   // sourceIpcId: the effective IPC that generated this invoice. NULL for migration-loaded records.
-  sourceIpcId          String?         @unique @map("source_ipc_id")
-  projectId            String?         @map("project_id")
-  contractId           String?         @map("contract_id")
-  currencyCode         String          @map("currency_code") @db.VarChar(3)
-  exchangeRateSnapshot Decimal         @map("exchange_rate_snapshot") @db.Decimal(18, 6)
-  exchangeRateDate     DateTime        @map("exchange_rate_date") @db.Date
-  exchangeRateSource   String          @map("exchange_rate_source")
-  subtotal             Decimal         @db.Decimal(18, 2)
-  vatAmount            Decimal         @map("vat_amount") @db.Decimal(18, 2)
-  totalAmount          Decimal         @map("total_amount") @db.Decimal(18, 2)
-  outstandingAmount    Decimal         @map("outstanding_amount") @db.Decimal(18, 2)
-  paymentTerms         String?         @map("payment_terms")
-  billingAddressSnapshot Json          @map("billing_address_snapshot")
-  documentStatus       InvoiceDocStatus @default(DRAFT) @map("document_status")
-  postingStatus        PostingStatus   @default(NOT_POSTED) @map("posting_status")
-  postedJournalEntryId String?         @map("posted_journal_entry_id")
-  postedAt             DateTime?       @map("posted_at")
-  postedBy             String?         @map("posted_by")
-  reversedAt           DateTime?       @map("reversed_at")
-  reversedBy           String?         @map("reversed_by")
-  reversalJournalEntryId String?       @map("reversal_journal_entry_id")
-  cancelledAt          DateTime?       @map("cancelled_at")
-  cancelledBy          String?         @map("cancelled_by")
-  cancellationReason   String?         @map("cancellation_reason")
-  lastPostingAttemptAt DateTime?       @map("last_posting_attempt_at")
-  lastPostingErrorCode String?         @map("last_posting_error_code")
-  migrationBatchId     String?         @map("migration_batch_id")
-  revision             Int             @default(1)
-  createdBy            String          @map("created_by")
-  approvedBy           String?         @map("approved_by")
-  approvedAt           DateTime?       @map("approved_at")
-  createdAt            DateTime        @default(now()) @map("created_at")
-  updatedAt            DateTime        @updatedAt @map("updated_at")
+  sourceIpcId            String?          @unique @map("source_ipc_id")
+  projectId              String?          @map("project_id")
+  contractId             String?          @map("contract_id")
+  currencyCode           String           @map("currency_code") @db.VarChar(3)
+  exchangeRateSnapshot   Decimal          @map("exchange_rate_snapshot") @db.Decimal(18, 6)
+  exchangeRateDate       DateTime         @map("exchange_rate_date") @db.Date
+  exchangeRateSource     String           @map("exchange_rate_source")
+  subtotal               Decimal          @db.Decimal(18, 2)
+  vatAmount              Decimal          @map("vat_amount") @db.Decimal(18, 2)
+  totalAmount            Decimal          @map("total_amount") @db.Decimal(18, 2)
+  outstandingAmount      Decimal          @map("outstanding_amount") @db.Decimal(18, 2)
+  paymentTerms           String?          @map("payment_terms")
+  billingAddressSnapshot Json             @map("billing_address_snapshot")
+  documentStatus         InvoiceDocStatus @default(DRAFT) @map("document_status")
+  postingStatus          PostingStatus    @default(NOT_POSTED) @map("posting_status")
+  postedJournalEntryId   String?          @map("posted_journal_entry_id")
+  postedAt               DateTime?        @map("posted_at")
+  postedBy               String?          @map("posted_by")
+  reversedAt             DateTime?        @map("reversed_at")
+  reversedBy             String?          @map("reversed_by")
+  reversalJournalEntryId String?          @map("reversal_journal_entry_id")
+  cancelledAt            DateTime?        @map("cancelled_at")
+  cancelledBy            String?          @map("cancelled_by")
+  cancellationReason     String?          @map("cancellation_reason")
+  lastPostingAttemptAt   DateTime?        @map("last_posting_attempt_at")
+  lastPostingErrorCode   String?          @map("last_posting_error_code")
+  migrationBatchId       String?          @map("migration_batch_id")
+  revision               Int              @default(1)
+  createdBy              String           @map("created_by")
+  approvedBy             String?          @map("approved_by")
+  approvedAt             DateTime?        @map("approved_at")
+  createdAt              DateTime         @default(now()) @map("created_at")
+  updatedAt              DateTime         @updatedAt @map("updated_at")
 
-  organization Organization            @relation(fields: [organizationId], references: [id])
-  client       Client                  @relation(fields: [clientId], references: [id])
+  organization Organization               @relation(fields: [organizationId], references: [id])
+  client       Client                     @relation(fields: [clientId], references: [id])
   sourceIpc    InterimPaymentCertificate? @relation(fields: [sourceIpcId], references: [id])
   allocations  ClientReceiptAllocation[]
 
@@ -1407,21 +1523,21 @@ model ClientInvoice {
 //   PaymentReceipt.totalAmount = allocatedAmount + unallocatedAmount  (always)
 //   ∑ ClientReceiptAllocation.allocatedAmount WHERE postingStatus IN (POSTED) = PaymentReceipt.allocatedAmount
 model ClientReceiptAllocation {
-  id               String        @id @default(cuid())
-  organizationId   String        @map("organization_id")
-  paymentReceiptId String        @map("payment_receipt_id")
-  clientInvoiceId  String        @map("client_invoice_id")
-  allocatedAmount  Decimal       @map("allocated_amount") @db.Decimal(18, 2)
-  allocationDate   DateTime      @map("allocation_date") @db.Date
+  id                     String        @id @default(cuid())
+  organizationId         String        @map("organization_id")
+  paymentReceiptId       String        @map("payment_receipt_id")
+  clientInvoiceId        String        @map("client_invoice_id")
+  allocatedAmount        Decimal       @map("allocated_amount") @db.Decimal(18, 2)
+  allocationDate         DateTime      @map("allocation_date") @db.Date
   // journalEntryId: for initial allocations = payment journal; for subsequent = allocation journal
-  journalEntryId   String?       @map("journal_entry_id")
-  postingStatus    PostingStatus @default(NOT_POSTED) @map("posting_status")
-  reversalJournalEntryId String? @map("reversal_journal_entry_id")
-  createdBy        String        @map("created_by")
-  createdAt        DateTime      @default(now()) @map("created_at")
+  journalEntryId         String?       @map("journal_entry_id")
+  postingStatus          PostingStatus @default(NOT_POSTED) @map("posting_status")
+  reversalJournalEntryId String?       @map("reversal_journal_entry_id")
+  createdBy              String        @map("created_by")
+  createdAt              DateTime      @default(now()) @map("created_at")
 
-  receipt  PaymentReceipt @relation(fields: [paymentReceiptId], references: [id])
-  invoice  ClientInvoice  @relation(fields: [clientInvoiceId], references: [id])
+  receipt PaymentReceipt @relation(fields: [paymentReceiptId], references: [id])
+  invoice ClientInvoice  @relation(fields: [clientInvoiceId], references: [id])
 
   @@index([paymentReceiptId])
   @@index([clientInvoiceId])
@@ -1435,37 +1551,37 @@ model ClientReceiptAllocation {
 // Correction 1: totalAmount = allocatedAmount + unallocatedAmount.
 // Unallocated portion posts Dr Bank / Cr Unapplied Client Receipts (CLIENT_ADVANCE_LIABILITY).
 model PaymentReceipt {
-  id                   String          @id @default(cuid())
-  organizationId       String          @map("organization_id")
-  clientId             String          @map("client_id")
-  bankAccountId        String?         @map("bank_account_id")
-  receiptDate          DateTime        @map("receipt_date") @db.Date
-  accountingDate       DateTime        @map("accounting_date") @db.Date
-  totalAmount          Decimal         @map("total_amount") @db.Decimal(18, 2)
-  allocatedAmount      Decimal         @default(0) @map("allocated_amount") @db.Decimal(18, 2)
-  unallocatedAmount    Decimal         @map("unallocated_amount") @db.Decimal(18, 2)
-  currencyCode         String          @map("currency_code") @db.VarChar(3)
-  exchangeRateSnapshot Decimal?        @map("exchange_rate_snapshot") @db.Decimal(18, 6)
-  exchangeRateDate     DateTime?       @map("exchange_rate_date") @db.Date
-  exchangeRateSource   String?         @map("exchange_rate_source")
-  paymentMethod        String?         @map("payment_method")
-  bankReference        String?         @map("bank_reference")
+  id                   String           @id @default(cuid())
+  organizationId       String           @map("organization_id")
+  clientId             String           @map("client_id")
+  bankAccountId        String?          @map("bank_account_id")
+  receiptDate          DateTime         @map("receipt_date") @db.Date
+  accountingDate       DateTime         @map("accounting_date") @db.Date
+  totalAmount          Decimal          @map("total_amount") @db.Decimal(18, 2)
+  allocatedAmount      Decimal          @default(0) @map("allocated_amount") @db.Decimal(18, 2)
+  unallocatedAmount    Decimal          @map("unallocated_amount") @db.Decimal(18, 2)
+  currencyCode         String           @map("currency_code") @db.VarChar(3)
+  exchangeRateSnapshot Decimal?         @map("exchange_rate_snapshot") @db.Decimal(18, 6)
+  exchangeRateDate     DateTime?        @map("exchange_rate_date") @db.Date
+  exchangeRateSource   String?          @map("exchange_rate_source")
+  paymentMethod        String?          @map("payment_method")
+  bankReference        String?          @map("bank_reference")
   reference            String?
   notes                String?
   documentStatus       PaymentDocStatus @default(DRAFT) @map("document_status")
-  postingStatus        PostingStatus   @default(NOT_POSTED) @map("posting_status")
-  postedJournalEntryId String?         @map("posted_journal_entry_id")
-  postedAt             DateTime?       @map("posted_at")
-  postedBy             String?         @map("posted_by")
-  lastPostingAttemptAt DateTime?       @map("last_posting_attempt_at")
-  lastPostingErrorCode String?         @map("last_posting_error_code")
-  migrationBatchId     String?         @map("migration_batch_id")
-  revision             Int             @default(1)
-  createdBy            String          @map("created_by")
-  approvedBy           String?         @map("approved_by")
-  approvedAt           DateTime?       @map("approved_at")
-  createdAt            DateTime        @default(now()) @map("created_at")
-  updatedAt            DateTime        @updatedAt @map("updated_at")
+  postingStatus        PostingStatus    @default(NOT_POSTED) @map("posting_status")
+  postedJournalEntryId String?          @map("posted_journal_entry_id")
+  postedAt             DateTime?        @map("posted_at")
+  postedBy             String?          @map("posted_by")
+  lastPostingAttemptAt DateTime?        @map("last_posting_attempt_at")
+  lastPostingErrorCode String?          @map("last_posting_error_code")
+  migrationBatchId     String?          @map("migration_batch_id")
+  revision             Int              @default(1)
+  createdBy            String           @map("created_by")
+  approvedBy           String?          @map("approved_by")
+  approvedAt           DateTime?        @map("approved_at")
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
 
   organization      Organization              @relation(fields: [organizationId], references: [id])
   client            Client                    @relation(fields: [clientId], references: [id])
@@ -1484,48 +1600,48 @@ model PaymentReceipt {
 // ─── AP Subledger ─────────────────────────────────────────────────────────────
 
 model SupplierBill {
-  id                        String        @id @default(cuid())
-  organizationId            String        @map("organization_id")
-  supplierId                String        @map("supplier_id")
-  billNumber                String?       @map("bill_number") @db.VarChar(30)
-  supplierInvoiceNumber     String        @map("supplier_invoice_number")
-  supplierInvoiceNumberNorm String        @map("supplier_invoice_number_norm")
-  billDate                  DateTime      @map("bill_date") @db.Date
-  dueDate                   DateTime      @map("due_date") @db.Date
-  currencyCode              String        @map("currency_code") @db.VarChar(3)
-  exchangeRateSnapshot      Decimal       @map("exchange_rate_snapshot") @db.Decimal(18, 6)
-  exchangeRateDate          DateTime      @map("exchange_rate_date") @db.Date
-  exchangeRateSource        String        @map("exchange_rate_source")
-  purchaseOrderId           String?       @map("purchase_order_id")
-  purchaseOrderRevisionId   String?       @map("purchase_order_revision_id")
+  id                        String          @id @default(cuid())
+  organizationId            String          @map("organization_id")
+  supplierId                String          @map("supplier_id")
+  billNumber                String?         @map("bill_number") @db.VarChar(30)
+  supplierInvoiceNumber     String          @map("supplier_invoice_number")
+  supplierInvoiceNumberNorm String          @map("supplier_invoice_number_norm")
+  billDate                  DateTime        @map("bill_date") @db.Date
+  dueDate                   DateTime        @map("due_date") @db.Date
+  currencyCode              String          @map("currency_code") @db.VarChar(3)
+  exchangeRateSnapshot      Decimal         @map("exchange_rate_snapshot") @db.Decimal(18, 6)
+  exchangeRateDate          DateTime        @map("exchange_rate_date") @db.Date
+  exchangeRateSource        String          @map("exchange_rate_source")
+  purchaseOrderId           String?         @map("purchase_order_id")
+  purchaseOrderRevisionId   String?         @map("purchase_order_revision_id")
   // Sprint 5: bill matching gate — posting blocked unless MATCHED/MATCHED_WITH_TOLERANCE/APPROVED_EXCEPTION
   matchStatus               BillMatchStatus @default(NOT_RUN) @map("match_status")
-  projectId                 String?       @map("project_id")
-  departmentId              String?       @map("department_id")
-  subtotal                  Decimal       @db.Decimal(18, 2)
-  vatAmount                 Decimal       @map("vat_amount") @db.Decimal(18, 2)
-  totalAmount               Decimal       @map("total_amount") @db.Decimal(18, 2)
-  outstandingAmount         Decimal       @map("outstanding_amount") @db.Decimal(18, 2)
-  documentStatus            BillDocStatus @default(DRAFT) @map("document_status")
-  postingStatus             PostingStatus @default(NOT_POSTED) @map("posting_status")
-  postedJournalEntryId      String?       @map("posted_journal_entry_id")
-  postedAt                  DateTime?     @map("posted_at")
-  postedBy                  String?       @map("posted_by")
-  reversedAt                DateTime?     @map("reversed_at")
-  reversedBy                String?       @map("reversed_by")
-  reversalJournalEntryId    String?       @map("reversal_journal_entry_id")
-  lastPostingAttemptAt      DateTime?     @map("last_posting_attempt_at")
-  lastPostingErrorCode      String?       @map("last_posting_error_code")
-  migrationBatchId          String?       @map("migration_batch_id")
-  revision                  Int           @default(1)
-  createdBy                 String        @map("created_by")
-  approvedBy                String?       @map("approved_by")
-  approvedAt                DateTime?     @map("approved_at")
-  createdAt                 DateTime      @default(now()) @map("created_at")
-  updatedAt                 DateTime      @updatedAt @map("updated_at")
+  projectId                 String?         @map("project_id")
+  departmentId              String?         @map("department_id")
+  subtotal                  Decimal         @db.Decimal(18, 2)
+  vatAmount                 Decimal         @map("vat_amount") @db.Decimal(18, 2)
+  totalAmount               Decimal         @map("total_amount") @db.Decimal(18, 2)
+  outstandingAmount         Decimal         @map("outstanding_amount") @db.Decimal(18, 2)
+  documentStatus            BillDocStatus   @default(DRAFT) @map("document_status")
+  postingStatus             PostingStatus   @default(NOT_POSTED) @map("posting_status")
+  postedJournalEntryId      String?         @map("posted_journal_entry_id")
+  postedAt                  DateTime?       @map("posted_at")
+  postedBy                  String?         @map("posted_by")
+  reversedAt                DateTime?       @map("reversed_at")
+  reversedBy                String?         @map("reversed_by")
+  reversalJournalEntryId    String?         @map("reversal_journal_entry_id")
+  lastPostingAttemptAt      DateTime?       @map("last_posting_attempt_at")
+  lastPostingErrorCode      String?         @map("last_posting_error_code")
+  migrationBatchId          String?         @map("migration_batch_id")
+  revision                  Int             @default(1)
+  createdBy                 String          @map("created_by")
+  approvedBy                String?         @map("approved_by")
+  approvedAt                DateTime?       @map("approved_at")
+  createdAt                 DateTime        @default(now()) @map("created_at")
+  updatedAt                 DateTime        @updatedAt @map("updated_at")
 
-  organization Organization             @relation(fields: [organizationId], references: [id])
-  supplier     Supplier                 @relation(fields: [supplierId], references: [id])
+  organization Organization                @relation(fields: [organizationId], references: [id])
+  supplier     Supplier                    @relation(fields: [supplierId], references: [id])
   lines        SupplierBillLine[]
   allocations  SupplierPaymentAllocation[]
 
@@ -1541,32 +1657,32 @@ model SupplierBill {
 //   grossAmount (= netAmount + vatAmount) posts to expense/inventory.
 //   No separate GL VAT debit line.
 model SupplierBillLine {
-  id                   String   @id @default(cuid())
-  supplierBillId       String   @map("supplier_bill_id")
-  lineNumber           Int      @map("line_number")
-  description          String
-  quantity             Decimal? @db.Decimal(18, 4)
-  unitPrice            Decimal? @map("unit_price") @db.Decimal(18, 4)
-  netAmount            Decimal  @map("net_amount") @db.Decimal(18, 2)
-  vatCodeId            String?  @map("vat_code_id")
-  vatAmount            Decimal  @map("vat_amount") @db.Decimal(18, 2)
+  id                  String              @id @default(cuid())
+  supplierBillId      String              @map("supplier_bill_id")
+  lineNumber          Int                 @map("line_number")
+  description         String
+  quantity            Decimal?            @db.Decimal(18, 4)
+  unitPrice           Decimal?            @map("unit_price") @db.Decimal(18, 4)
+  netAmount           Decimal             @map("net_amount") @db.Decimal(18, 2)
+  vatCodeId           String?             @map("vat_code_id")
+  vatAmount           Decimal             @map("vat_amount") @db.Decimal(18, 2)
   // grossAmount = netAmount + vatAmount; this is the amount posted to expense/inventory GL
-  grossAmount          Decimal  @map("gross_amount") @db.Decimal(18, 2)
+  grossAmount         Decimal             @map("gross_amount") @db.Decimal(18, 2)
   // Resolved at post time: PostingProfile.code identifying expense/inventory account
-  expenseProfileCode   String   @map("expense_profile_code") @db.VarChar(50)
-  projectId            String?  @map("project_id")
-  departmentId         String?  @map("department_id")
-  costCenterId         String?  @map("cost_center_id")
-  boqNodeId            String?             @map("boq_node_id")
-  purchaseOrderLineId  String?             @map("purchase_order_line_id")
+  expenseProfileCode  String              @map("expense_profile_code") @db.VarChar(50)
+  projectId           String?             @map("project_id")
+  departmentId        String?             @map("department_id")
+  costCenterId        String?             @map("cost_center_id")
+  boqNodeId           String?             @map("boq_node_id")
+  purchaseOrderLineId String?             @map("purchase_order_line_id")
   // Sprint 5: material catalogue linkage
-  materialId           String?             @map("material_id")
-  spendCategoryId      String?             @map("spend_category_id")
-  unitOfMeasureId      String?             @map("unit_of_measure_id")
-  lineType             ProcurementLineType @default(SERVICE) @map("line_type")
+  materialId          String?             @map("material_id")
+  spendCategoryId     String?             @map("spend_category_id")
+  unitOfMeasureId     String?             @map("unit_of_measure_id")
+  lineType            ProcurementLineType @default(SERVICE) @map("line_type")
 
-  bill         SupplierBill   @relation(fields: [supplierBillId], references: [id], onDelete: Cascade)
-  material     Material?      @relation(fields: [materialId], references: [id])
+  bill     SupplierBill @relation(fields: [supplierBillId], references: [id], onDelete: Cascade)
+  material Material?    @relation(fields: [materialId], references: [id])
 
   @@unique([supplierBillId, lineNumber])
   @@map("supplier_bill_lines")
@@ -1614,9 +1730,9 @@ model SupplierPayment {
   createdAt            DateTime         @default(now()) @map("created_at")
   updatedAt            DateTime         @updatedAt @map("updated_at")
 
-  organization Organization               @relation(fields: [organizationId], references: [id])
-  supplier     Supplier                   @relation(fields: [supplierId], references: [id])
-  bankAccount  BankAccount                @relation(fields: [bankAccountId], references: [id])
+  organization Organization                @relation(fields: [organizationId], references: [id])
+  supplier     Supplier                    @relation(fields: [supplierId], references: [id])
+  bankAccount  BankAccount                 @relation(fields: [bankAccountId], references: [id])
   allocations  SupplierPaymentAllocation[]
 
   @@index([organizationId, postingStatus])
@@ -1703,14 +1819,14 @@ model JournalEntry {
   createdAt                DateTime        @default(now()) @map("created_at")
   updatedAt                DateTime        @updatedAt @map("updated_at")
 
-  organization   Organization      @relation(fields: [organizationId], references: [id])
-  accountingPeriod AccountingPeriod? @relation(fields: [accountingPeriodId], references: [id])
-  lines          JournalLine[]
-  attachments    JournalEntryAttachment[]
-  reversalOf     JournalEntry?     @relation("JournalReversal", fields: [reversalOfJournalEntryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  reversals      JournalEntry[]    @relation("JournalReversal")
-  replacedBy     JournalEntry?     @relation("JournalReplacement", fields: [replacedByJournalEntryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  replacements   JournalEntry[]    @relation("JournalReplacement")
+  organization     Organization             @relation(fields: [organizationId], references: [id])
+  accountingPeriod AccountingPeriod?        @relation(fields: [accountingPeriodId], references: [id])
+  lines            JournalLine[]
+  attachments      JournalEntryAttachment[]
+  reversalOf       JournalEntry?            @relation("JournalReversal", fields: [reversalOfJournalEntryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reversals        JournalEntry[]           @relation("JournalReversal")
+  replacedBy       JournalEntry?            @relation("JournalReplacement", fields: [replacedByJournalEntryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  replacements     JournalEntry[]           @relation("JournalReplacement")
 
   // Prevents duplicate system-generated journals for the same source event
   @@unique([organizationId, sourceDocumentType, sourceDocumentId, accountingEventId])
@@ -1731,39 +1847,39 @@ model JournalEntry {
 // Version resolution (Correction 4): uses accountingDate, not period.endDate or generatedAt.
 // SQL: WHERE effectiveFrom <= accountingDate AND (effectiveTo IS NULL OR accountingDate < effectiveTo)
 model JournalLine {
-  id                      String                 @id @default(cuid())
-  journalEntryId          String                 @map("journal_entry_id")
-  lineNumber              Int                    @map("line_number")
+  id                      String         @id @default(cuid())
+  journalEntryId          String         @map("journal_entry_id")
+  lineNumber              Int            @map("line_number")
   // Stable account FK + immutable snapshots taken at post time
-  accountId               String                 @map("account_id")
-  accountVersionId        String?                @map("account_version_id")
-  accountCodeSnapshot     String                 @map("account_code_snapshot") @db.VarChar(20)
-  accountNameSnapshot     String                 @map("account_name_snapshot")
-  accountVersionNumber    Int                    @map("account_version_number")
-  debitAmount             Decimal                @default(0) @map("debit_amount") @db.Decimal(18, 2)
-  creditAmount            Decimal                @default(0) @map("credit_amount") @db.Decimal(18, 2)
-  transactionCurrencyCode String                 @map("transaction_currency_code") @db.VarChar(3)
-  transactionAmount       Decimal?               @map("transaction_amount") @db.Decimal(18, 2)
-  baseCurrencyAmount      Decimal                @map("base_currency_amount") @db.Decimal(18, 2)
-  exchangeRateSnapshot    Decimal?               @map("exchange_rate_snapshot") @db.Decimal(18, 6)
+  accountId               String         @map("account_id")
+  accountVersionId        String?        @map("account_version_id")
+  accountCodeSnapshot     String         @map("account_code_snapshot") @db.VarChar(20)
+  accountNameSnapshot     String         @map("account_name_snapshot")
+  accountVersionNumber    Int            @map("account_version_number")
+  debitAmount             Decimal        @default(0) @map("debit_amount") @db.Decimal(18, 2)
+  creditAmount            Decimal        @default(0) @map("credit_amount") @db.Decimal(18, 2)
+  transactionCurrencyCode String         @map("transaction_currency_code") @db.VarChar(3)
+  transactionAmount       Decimal?       @map("transaction_amount") @db.Decimal(18, 2)
+  baseCurrencyAmount      Decimal        @map("base_currency_amount") @db.Decimal(18, 2)
+  exchangeRateSnapshot    Decimal?       @map("exchange_rate_snapshot") @db.Decimal(18, 6)
   description             String?
-  postingOrigin           PostingOrigin          @map("posting_origin")
-  sourceSubledgerType     SubledgerType?         @map("source_subledger_type")
+  postingOrigin           PostingOrigin  @map("posting_origin")
+  sourceSubledgerType     SubledgerType? @map("source_subledger_type")
   // PostingProfile resolution audit: "PROJECT_REVENUE@v3" — immutable snapshot
-  resolutionSource        String?                @map("resolution_source")
+  resolutionSource        String?        @map("resolution_source")
   // FK to exact PostingProfileVersion used (Correction 8)
-  postingProfileVersionId String?                @map("posting_profile_version_id")
-  postingRuleVersionId    String?                @map("posting_rule_version_id")
+  postingProfileVersionId String?        @map("posting_profile_version_id")
+  postingRuleVersionId    String?        @map("posting_rule_version_id")
   // Dimensions
-  projectId               String?                @map("project_id")
-  departmentId            String?                @map("department_id")
-  costCenterId            String?                @map("cost_center_id")
-  clientId                String?                @map("client_id")
-  supplierId              String?                @map("supplier_id")
-  contractId              String?                @map("contract_id")
-  boqNodeId               String?                @map("boq_node_id")
-  taxCodeId               String?                @map("tax_code_id")
-  createdAt               DateTime               @default(now()) @map("created_at")
+  projectId               String?        @map("project_id")
+  departmentId            String?        @map("department_id")
+  costCenterId            String?        @map("cost_center_id")
+  clientId                String?        @map("client_id")
+  supplierId              String?        @map("supplier_id")
+  contractId              String?        @map("contract_id")
+  boqNodeId               String?        @map("boq_node_id")
+  taxCodeId               String?        @map("tax_code_id")
+  createdAt               DateTime       @default(now()) @map("created_at")
 
   entry                 JournalEntry           @relation(fields: [journalEntryId], references: [id])
   account               Account                @relation("JournalLineAccount", fields: [accountId], references: [id])
@@ -2068,6 +2184,26 @@ enum WorkflowRequirement {
   NONE
 }
 
+enum WorkflowPolicyStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  SUPERSEDED
+  RETIRED
+}
+
+enum WorkflowPolicyRuleStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+}
+
+enum WorkflowAmountBasis {
+  NET
+  GROSS
+  UNSPECIFIED
+}
+
 // ─── Enums — Construction ─────────────────────────────────────────────────────
 
 enum BoqVersionStatus {
@@ -2114,6 +2250,14 @@ enum ClientStatus {
   INACTIVE
 }
 
+enum ClientType {
+  COMPANY
+  GOVERNMENT
+  NGO
+  INDIVIDUAL
+  OTHER
+}
+
 enum ContractStatus {
   DRAFT
   UNDER_REVIEW
@@ -2123,6 +2267,11 @@ enum ContractStatus {
   CLOSED
   CANCELLED
   TERMINATED
+}
+
+enum ContractKind {
+  CLIENT_CONTRACT
+  SUBCONTRACT
 }
 
 enum BillingModel {
@@ -2475,21 +2624,21 @@ enum DimensionRequirement {
 // ─── Sprint 5: Procurement — Master Data ──────────────────────────────────────
 
 model UnitOfMeasure {
-  id             String   @id @default(cuid())
-  organizationId String   @map("organization_id")
-  code           String   @db.VarChar(20)
+  id             String           @id @default(cuid())
+  organizationId String           @map("organization_id")
+  code           String           @db.VarChar(20)
   name           String
-  nameAr         String?  @map("name_ar")
-  symbol         String   @db.VarChar(10)
+  nameAr         String?          @map("name_ar")
+  symbol         String           @db.VarChar(10)
   status         MasterDataStatus @default(ACTIVE)
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
 
-  organization  Organization          @relation(fields: [organizationId], references: [id])
-  materials     Material[]
-  mrLines       MaterialRequestLine[]
-  poLines       PurchaseOrderLine[]
-  grnLines      GoodsReceiptLine[]
+  organization Organization          @relation(fields: [organizationId], references: [id])
+  materials    Material[]
+  mrLines      MaterialRequestLine[]
+  poLines      PurchaseOrderLine[]
+  grnLines     GoodsReceiptLine[]
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
@@ -2497,18 +2646,18 @@ model UnitOfMeasure {
 }
 
 model MaterialCategory {
-  id             String   @id @default(cuid())
-  organizationId String   @map("organization_id")
-  code           String   @db.VarChar(30)
+  id             String           @id @default(cuid())
+  organizationId String           @map("organization_id")
+  code           String           @db.VarChar(30)
   name           String
-  nameAr         String?  @map("name_ar")
-  parentId       String?  @map("parent_id")
+  nameAr         String?          @map("name_ar")
+  parentId       String?          @map("parent_id")
   status         MasterDataStatus @default(ACTIVE)
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
 
-  organization Organization      @relation(fields: [organizationId], references: [id])
-  parent       MaterialCategory? @relation("MaterialCategoryChildren", fields: [parentId], references: [id])
+  organization Organization       @relation(fields: [organizationId], references: [id])
+  parent       MaterialCategory?  @relation("MaterialCategoryChildren", fields: [parentId], references: [id])
   children     MaterialCategory[] @relation("MaterialCategoryChildren")
   materials    Material[]
 
@@ -2518,25 +2667,25 @@ model MaterialCategory {
 }
 
 model SpendCategory {
-  id             String   @id @default(cuid())
-  organizationId String   @map("organization_id")
-  code           String   @db.VarChar(30)
+  id             String           @id @default(cuid())
+  organizationId String           @map("organization_id")
+  code           String           @db.VarChar(30)
   name           String
-  nameAr         String?  @map("name_ar")
-  parentId       String?  @map("parent_id")
+  nameAr         String?          @map("name_ar")
+  parentId       String?          @map("parent_id")
   status         MasterDataStatus @default(ACTIVE)
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
 
-  organization Organization   @relation(fields: [organizationId], references: [id])
-  parent       SpendCategory? @relation("SpendCategoryChildren", fields: [parentId], references: [id])
-  children     SpendCategory[] @relation("SpendCategoryChildren")
-  materials    Material[]     @relation("MaterialDefaultSpendCategory")
-  mrLines      MaterialRequestLine[]
-  poLines      PurchaseOrderLine[]
-  grnLines     GoodsReceiptLine[]
-  commitments  CommitmentLedgerEntry[]
-  matchingPolicies MatchingTolerancePolicy[]
+  organization        Organization              @relation(fields: [organizationId], references: [id])
+  parent              SpendCategory?            @relation("SpendCategoryChildren", fields: [parentId], references: [id])
+  children            SpendCategory[]           @relation("SpendCategoryChildren")
+  materials           Material[]                @relation("MaterialDefaultSpendCategory")
+  mrLines             MaterialRequestLine[]
+  poLines             PurchaseOrderLine[]
+  grnLines            GoodsReceiptLine[]
+  commitments         CommitmentLedgerEntry[]
+  matchingPolicies    MatchingTolerancePolicy[]
   overReceiptPolicies OverReceiptPolicy[]
 
   @@unique([organizationId, code])
@@ -2545,23 +2694,23 @@ model SpendCategory {
 }
 
 model Material {
-  id                    String           @id @default(cuid())
-  organizationId        String           @map("organization_id")
-  code                  String           @db.VarChar(50)
-  name                  String
-  nameAr                String?          @map("name_ar")
-  description           String?
-  materialCategoryId    String           @map("material_category_id")
-  defaultSpendCategoryId String?         @map("default_spend_category_id")
-  baseUnitOfMeasureId   String           @map("base_unit_of_measure_id")
-  status                MaterialStatus   @default(ACTIVE)
-  createdAt             DateTime         @default(now()) @map("created_at")
-  updatedAt             DateTime         @updatedAt @map("updated_at")
+  id                     String         @id @default(cuid())
+  organizationId         String         @map("organization_id")
+  code                   String         @db.VarChar(50)
+  name                   String
+  nameAr                 String?        @map("name_ar")
+  description            String?
+  materialCategoryId     String         @map("material_category_id")
+  defaultSpendCategoryId String?        @map("default_spend_category_id")
+  baseUnitOfMeasureId    String         @map("base_unit_of_measure_id")
+  status                 MaterialStatus @default(ACTIVE)
+  createdAt              DateTime       @default(now()) @map("created_at")
+  updatedAt              DateTime       @updatedAt @map("updated_at")
 
-  organization         Organization     @relation(fields: [organizationId], references: [id])
-  materialCategory     MaterialCategory @relation(fields: [materialCategoryId], references: [id])
-  defaultSpendCategory SpendCategory?   @relation("MaterialDefaultSpendCategory", fields: [defaultSpendCategoryId], references: [id])
-  baseUom              UnitOfMeasure    @relation(fields: [baseUnitOfMeasureId], references: [id])
+  organization         Organization            @relation(fields: [organizationId], references: [id])
+  materialCategory     MaterialCategory        @relation(fields: [materialCategoryId], references: [id])
+  defaultSpendCategory SpendCategory?          @relation("MaterialDefaultSpendCategory", fields: [defaultSpendCategoryId], references: [id])
+  baseUom              UnitOfMeasure           @relation(fields: [baseUnitOfMeasureId], references: [id])
   mrLines              MaterialRequestLine[]
   poLines              PurchaseOrderLine[]
   grnLines             GoodsReceiptLine[]
@@ -2576,22 +2725,22 @@ model Material {
 // ─── Sprint 5: Material Request ───────────────────────────────────────────────
 
 model MaterialRequest {
-  id              String               @id @default(cuid())
-  organizationId  String               @map("organization_id")
-  mrNumber        String               @map("mr_number") @db.VarChar(30)
-  requestScope    MaterialRequestScope @map("request_scope")
-  projectId       String?              @map("project_id")
-  requestedBy     String               @map("requested_by")
-  requestedDate   DateTime             @map("requested_date") @db.Date
-  requiredByDate  DateTime?            @map("required_by_date") @db.Date
-  description     String?
-  status          MaterialRequestStatus @default(DRAFT)
-  approvalInstanceId String?           @map("approval_instance_id")
-  notes           String?
-  createdAt       DateTime             @default(now()) @map("created_at")
-  updatedAt       DateTime             @updatedAt @map("updated_at")
+  id                 String                @id @default(cuid())
+  organizationId     String                @map("organization_id")
+  mrNumber           String                @map("mr_number") @db.VarChar(30)
+  requestScope       MaterialRequestScope  @map("request_scope")
+  projectId          String?               @map("project_id")
+  requestedBy        String                @map("requested_by")
+  requestedDate      DateTime              @map("requested_date") @db.Date
+  requiredByDate     DateTime?             @map("required_by_date") @db.Date
+  description        String?
+  status             MaterialRequestStatus @default(DRAFT)
+  approvalInstanceId String?               @map("approval_instance_id")
+  notes              String?
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
 
-  organization Organization        @relation(fields: [organizationId], references: [id])
+  organization Organization          @relation(fields: [organizationId], references: [id])
   lines        MaterialRequestLine[]
 
   @@unique([organizationId, mrNumber])
@@ -2619,10 +2768,10 @@ model MaterialRequestLine {
   createdAt             DateTime            @default(now()) @map("created_at")
   updatedAt             DateTime            @updatedAt @map("updated_at")
 
-  request      MaterialRequest @relation(fields: [materialRequestId], references: [id], onDelete: Cascade)
-  material     Material?       @relation(fields: [materialId], references: [id])
-  uom          UnitOfMeasure   @relation(fields: [unitOfMeasureId], references: [id])
-  spendCategory SpendCategory? @relation(fields: [spendCategoryId], references: [id])
+  request       MaterialRequest                      @relation(fields: [materialRequestId], references: [id], onDelete: Cascade)
+  material      Material?                            @relation(fields: [materialId], references: [id])
+  uom           UnitOfMeasure                        @relation(fields: [unitOfMeasureId], references: [id])
+  spendCategory SpendCategory?                       @relation(fields: [spendCategoryId], references: [id])
   poAllocations PurchaseOrderLineRequestAllocation[]
 
   @@unique([materialRequestId, lineNumber])
@@ -2633,23 +2782,23 @@ model MaterialRequestLine {
 // ─── Sprint 5: Purchase Order ─────────────────────────────────────────────────
 
 model PurchaseOrder {
-  id                String            @id @default(cuid())
-  organizationId    String            @map("organization_id")
-  supplierId        String            @map("supplier_id")
-  poNumber          String            @map("po_number") @db.VarChar(30)
-  currentRevisionId String?           @map("current_revision_id")
+  id                String              @id @default(cuid())
+  organizationId    String              @map("organization_id")
+  supplierId        String              @map("supplier_id")
+  poNumber          String              @map("po_number") @db.VarChar(30)
+  currentRevisionId String?             @map("current_revision_id")
   status            PurchaseOrderStatus @default(OPEN)
-  createdBy         String            @map("created_by")
-  createdAt         DateTime          @default(now()) @map("created_at")
-  updatedAt         DateTime          @updatedAt @map("updated_at")
+  createdBy         String              @map("created_by")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
 
-  organization Organization           @relation(fields: [organizationId], references: [id])
-  supplier     Supplier               @relation(fields: [supplierId], references: [id])
-  revisions    PurchaseOrderRevision[]
-  grnNotes     GoodsReceiptNote[]
-  matchingPolicies MatchingTolerancePolicy[]
+  organization        Organization              @relation(fields: [organizationId], references: [id])
+  supplier            Supplier                  @relation(fields: [supplierId], references: [id])
+  revisions           PurchaseOrderRevision[]
+  grnNotes            GoodsReceiptNote[]
+  matchingPolicies    MatchingTolerancePolicy[]
   overReceiptPolicies OverReceiptPolicy[]
-  commitments  CommitmentLedgerEntry[]
+  commitments         CommitmentLedgerEntry[]
 
   @@unique([organizationId, poNumber])
   @@index([organizationId, status])
@@ -2659,23 +2808,23 @@ model PurchaseOrder {
 
 // Immutable once status = ACTIVE. Any change creates a new revision. (ADR-007, Rule PO-001)
 model PurchaseOrderRevision {
-  id                   String                    @id @default(cuid())
-  purchaseOrderId      String                    @map("purchase_order_id")
-  revisionNumber       Int                       @map("revision_number")
+  id                   String                      @id @default(cuid())
+  purchaseOrderId      String                      @map("purchase_order_id")
+  revisionNumber       Int                         @map("revision_number")
   status               PurchaseOrderRevisionStatus @default(DRAFT)
-  currencyCode         String                    @map("currency_code") @db.VarChar(3)
-  effectiveFrom        DateTime                  @map("effective_from") @db.Date
+  currencyCode         String                      @map("currency_code") @db.VarChar(3)
+  effectiveFrom        DateTime                    @map("effective_from") @db.Date
   reason               String?
-  deliveryAddress      String?                   @map("delivery_address")
-  expectedDeliveryDate DateTime?                 @map("expected_delivery_date") @db.Date
-  approvedBy           String?                   @map("approved_by")
-  approvedAt           DateTime?                 @map("approved_at")
-  approvalInstanceId   String?                   @map("approval_instance_id")
-  createdBy            String                    @map("created_by")
-  createdAt            DateTime                  @default(now()) @map("created_at")
-  updatedAt            DateTime                  @updatedAt @map("updated_at")
+  deliveryAddress      String?                     @map("delivery_address")
+  expectedDeliveryDate DateTime?                   @map("expected_delivery_date") @db.Date
+  approvedBy           String?                     @map("approved_by")
+  approvedAt           DateTime?                   @map("approved_at")
+  approvalInstanceId   String?                     @map("approval_instance_id")
+  createdBy            String                      @map("created_by")
+  createdAt            DateTime                    @default(now()) @map("created_at")
+  updatedAt            DateTime                    @updatedAt @map("updated_at")
 
-  purchaseOrder PurchaseOrder        @relation(fields: [purchaseOrderId], references: [id])
+  purchaseOrder PurchaseOrder       @relation(fields: [purchaseOrderId], references: [id])
   lines         PurchaseOrderLine[]
   grnNotes      GoodsReceiptNote[]
 
@@ -2701,10 +2850,10 @@ model PurchaseOrderLine {
   notes                   String?
   createdAt               DateTime            @default(now()) @map("created_at")
 
-  revision      PurchaseOrderRevision @relation(fields: [purchaseOrderRevisionId], references: [id], onDelete: Cascade)
-  material      Material?             @relation(fields: [materialId], references: [id])
-  uom           UnitOfMeasure         @relation(fields: [unitOfMeasureId], references: [id])
-  spendCategory SpendCategory?        @relation(fields: [spendCategoryId], references: [id])
+  revision      PurchaseOrderRevision                @relation(fields: [purchaseOrderRevisionId], references: [id], onDelete: Cascade)
+  material      Material?                            @relation(fields: [materialId], references: [id])
+  uom           UnitOfMeasure                        @relation(fields: [unitOfMeasureId], references: [id])
+  spendCategory SpendCategory?                       @relation(fields: [spendCategoryId], references: [id])
   mrAllocations PurchaseOrderLineRequestAllocation[]
   grnLines      GoodsReceiptLine[]
   matchLines    SupplierBillMatchLine[]
@@ -2717,16 +2866,16 @@ model PurchaseOrderLine {
 // Many-to-many MR line ↔ PO line junction. (ADR-007, Decision 6)
 // Cost dimensions (projectId, boqNodeId) flow from the MR line through this allocation.
 model PurchaseOrderLineRequestAllocation {
-  id                    String  @id @default(cuid())
-  organizationId        String  @map("organization_id")
-  purchaseOrderLineId   String  @map("purchase_order_line_id")
-  materialRequestLineId String  @map("material_request_line_id")
-  allocatedQuantity     Decimal @map("allocated_quantity") @db.Decimal(18, 4)
+  id                    String   @id @default(cuid())
+  organizationId        String   @map("organization_id")
+  purchaseOrderLineId   String   @map("purchase_order_line_id")
+  materialRequestLineId String   @map("material_request_line_id")
+  allocatedQuantity     Decimal  @map("allocated_quantity") @db.Decimal(18, 4)
   createdAt             DateTime @default(now()) @map("created_at")
 
-  organization      Organization        @relation(fields: [organizationId], references: [id])
-  purchaseOrderLine PurchaseOrderLine   @relation(fields: [purchaseOrderLineId], references: [id])
-  mrLine            MaterialRequestLine @relation(fields: [materialRequestLineId], references: [id])
+  organization      Organization                 @relation(fields: [organizationId], references: [id])
+  purchaseOrderLine PurchaseOrderLine            @relation(fields: [purchaseOrderLineId], references: [id])
+  mrLine            MaterialRequestLine          @relation(fields: [materialRequestLineId], references: [id])
   grnAllocations    GoodsReceiptLineAllocation[]
 
   @@index([purchaseOrderLineId])
@@ -2753,11 +2902,11 @@ model GoodsReceiptNote {
   createdAt               DateTime  @default(now()) @map("created_at")
   updatedAt               DateTime  @updatedAt @map("updated_at")
 
-  organization    Organization          @relation(fields: [organizationId], references: [id])
-  purchaseOrder   PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id])
-  revision        PurchaseOrderRevision @relation(fields: [purchaseOrderRevisionId], references: [id])
-  supplier        Supplier              @relation(fields: [supplierId], references: [id])
-  lines           GoodsReceiptLine[]
+  organization  Organization          @relation(fields: [organizationId], references: [id])
+  purchaseOrder PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id])
+  revision      PurchaseOrderRevision @relation(fields: [purchaseOrderRevisionId], references: [id])
+  supplier      Supplier              @relation(fields: [supplierId], references: [id])
+  lines         GoodsReceiptLine[]
 
   @@unique([organizationId, grnNumber])
   @@index([organizationId, status])
@@ -2768,30 +2917,30 @@ model GoodsReceiptNote {
 // Records full physical delivery (receivedQuantity) and acceptance split.
 // Only acceptedQuantity generates ACCRUED commitment movement. (ADR-007, Rule GRN-003)
 model GoodsReceiptLine {
-  id                    String        @id @default(cuid())
-  goodsReceiptNoteId    String        @map("goods_receipt_note_id")
-  purchaseOrderLineId   String        @map("purchase_order_line_id")
-  lineNumber            Int           @map("line_number")
+  id                    String              @id @default(cuid())
+  goodsReceiptNoteId    String              @map("goods_receipt_note_id")
+  purchaseOrderLineId   String              @map("purchase_order_line_id")
+  lineNumber            Int                 @map("line_number")
   lineType              ProcurementLineType @map("line_type")
-  materialId            String?       @map("material_id")
-  unitOfMeasureId       String        @map("unit_of_measure_id")
-  spendCategoryId       String?       @map("spend_category_id")
-  orderedQuantity       Decimal       @map("ordered_quantity") @db.Decimal(18, 4)
-  previouslyReceivedQty Decimal       @default(0) @map("previously_received_qty") @db.Decimal(18, 4)
-  receivedQuantity      Decimal       @map("received_quantity") @db.Decimal(18, 4)
-  acceptedQuantity      Decimal       @map("accepted_quantity") @db.Decimal(18, 4)
-  rejectedQuantity      Decimal       @default(0) @map("rejected_quantity") @db.Decimal(18, 4)
-  rejectionReason       String?       @map("rejection_reason")
-  qualityStatus         QualityStatus @default(PENDING_INSPECTION) @map("quality_status")
+  materialId            String?             @map("material_id")
+  unitOfMeasureId       String              @map("unit_of_measure_id")
+  spendCategoryId       String?             @map("spend_category_id")
+  orderedQuantity       Decimal             @map("ordered_quantity") @db.Decimal(18, 4)
+  previouslyReceivedQty Decimal             @default(0) @map("previously_received_qty") @db.Decimal(18, 4)
+  receivedQuantity      Decimal             @map("received_quantity") @db.Decimal(18, 4)
+  acceptedQuantity      Decimal             @map("accepted_quantity") @db.Decimal(18, 4)
+  rejectedQuantity      Decimal             @default(0) @map("rejected_quantity") @db.Decimal(18, 4)
+  rejectionReason       String?             @map("rejection_reason")
+  qualityStatus         QualityStatus       @default(PENDING_INSPECTION) @map("quality_status")
   notes                 String?
-  createdAt             DateTime      @default(now()) @map("created_at")
-  updatedAt             DateTime      @updatedAt @map("updated_at")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
 
-  grn           GoodsReceiptNote  @relation(fields: [goodsReceiptNoteId], references: [id], onDelete: Cascade)
-  poLine        PurchaseOrderLine @relation(fields: [purchaseOrderLineId], references: [id])
-  material      Material?         @relation(fields: [materialId], references: [id])
-  uom           UnitOfMeasure     @relation(fields: [unitOfMeasureId], references: [id])
-  spendCategory SpendCategory?    @relation(fields: [spendCategoryId], references: [id])
+  grn           GoodsReceiptNote             @relation(fields: [goodsReceiptNoteId], references: [id], onDelete: Cascade)
+  poLine        PurchaseOrderLine            @relation(fields: [purchaseOrderLineId], references: [id])
+  material      Material?                    @relation(fields: [materialId], references: [id])
+  uom           UnitOfMeasure                @relation(fields: [unitOfMeasureId], references: [id])
+  spendCategory SpendCategory?               @relation(fields: [spendCategoryId], references: [id])
   allocations   GoodsReceiptLineAllocation[]
 
   @@unique([goodsReceiptNoteId, lineNumber])
@@ -2802,17 +2951,17 @@ model GoodsReceiptLine {
 
 // Per-allocation attribution for CommitmentLedger ACCRUED movements. (ADR-007, Decision 13)
 model GoodsReceiptLineAllocation {
-  id                                   String  @id @default(cuid())
-  organizationId                       String  @map("organization_id")
-  goodsReceiptLineId                   String  @map("goods_receipt_line_id")
-  purchaseOrderLineRequestAllocationId String  @map("po_line_request_allocation_id")
-  receivedQuantity                     Decimal @map("received_quantity") @db.Decimal(18, 4)
-  acceptedQuantity                     Decimal @map("accepted_quantity") @db.Decimal(18, 4)
-  rejectedQuantity                     Decimal @default(0) @map("rejected_quantity") @db.Decimal(18, 4)
+  id                                   String   @id @default(cuid())
+  organizationId                       String   @map("organization_id")
+  goodsReceiptLineId                   String   @map("goods_receipt_line_id")
+  purchaseOrderLineRequestAllocationId String   @map("po_line_request_allocation_id")
+  receivedQuantity                     Decimal  @map("received_quantity") @db.Decimal(18, 4)
+  acceptedQuantity                     Decimal  @map("accepted_quantity") @db.Decimal(18, 4)
+  rejectedQuantity                     Decimal  @default(0) @map("rejected_quantity") @db.Decimal(18, 4)
   createdAt                            DateTime @default(now()) @map("created_at")
 
-  organization    Organization                       @relation(fields: [organizationId], references: [id])
-  grnLine         GoodsReceiptLine                   @relation(fields: [goodsReceiptLineId], references: [id], onDelete: Cascade)
+  organization     Organization                       @relation(fields: [organizationId], references: [id])
+  grnLine          GoodsReceiptLine                   @relation(fields: [goodsReceiptLineId], references: [id], onDelete: Cascade)
   poLineAllocation PurchaseOrderLineRequestAllocation @relation(fields: [purchaseOrderLineRequestAllocationId], references: [id])
 
   @@index([goodsReceiptLineId])
@@ -2825,18 +2974,18 @@ model GoodsReceiptLineAllocation {
 // Explicit matching result per bill — "linked by construction" is not the same as matched.
 // (ADR-007, Rule MATCH-001)
 model SupplierBillMatch {
-  id              String          @id @default(cuid())
-  supplierBillId  String          @unique @map("supplier_bill_id")
-  matchType       BillMatchType   @map("match_type")
-  status          BillMatchStatus @default(NOT_RUN)
-  matchedAt       DateTime?       @map("matched_at")
-  matchedBy       String?         @map("matched_by")
-  approvedBy      String?         @map("approved_by")
-  approvedAt      DateTime?       @map("approved_at")
-  approvalReason  String?         @map("approval_reason")
-  approvalInstanceId String?      @map("approval_instance_id")
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
+  id                 String          @id @default(cuid())
+  supplierBillId     String          @unique @map("supplier_bill_id")
+  matchType          BillMatchType   @map("match_type")
+  status             BillMatchStatus @default(NOT_RUN)
+  matchedAt          DateTime?       @map("matched_at")
+  matchedBy          String?         @map("matched_by")
+  approvedBy         String?         @map("approved_by")
+  approvedAt         DateTime?       @map("approved_at")
+  approvalReason     String?         @map("approval_reason")
+  approvalInstanceId String?         @map("approval_instance_id")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
 
   lines SupplierBillMatchLine[]
 
@@ -2844,24 +2993,24 @@ model SupplierBillMatch {
 }
 
 model SupplierBillMatchLine {
-  id                   String  @id @default(cuid())
-  supplierBillMatchId  String  @map("supplier_bill_match_id")
-  supplierBillLineId   String  @map("supplier_bill_line_id")
-  purchaseOrderLineId  String  @map("purchase_order_line_id")
-  goodsReceiptLineId   String? @map("goods_receipt_line_id")
-  poQuantity           Decimal @map("po_quantity") @db.Decimal(18, 4)
-  receivedQuantity     Decimal? @map("received_quantity") @db.Decimal(18, 4)
-  billedQuantity       Decimal @map("billed_quantity") @db.Decimal(18, 4)
-  poUnitPrice          Decimal @map("po_unit_price") @db.Decimal(18, 4)
-  billedUnitPrice      Decimal @map("billed_unit_price") @db.Decimal(18, 4)
-  quantityVariance     Decimal @map("quantity_variance") @db.Decimal(18, 4)
-  priceVariance        Decimal @map("price_variance") @db.Decimal(18, 4)
-  amountVariance       Decimal @map("amount_variance") @db.Decimal(18, 2)
-  withinTolerance      Boolean @map("within_tolerance")
-  exceptionReason      String? @map("exception_reason")
-  createdAt            DateTime @default(now()) @map("created_at")
+  id                  String   @id @default(cuid())
+  supplierBillMatchId String   @map("supplier_bill_match_id")
+  supplierBillLineId  String   @map("supplier_bill_line_id")
+  purchaseOrderLineId String   @map("purchase_order_line_id")
+  goodsReceiptLineId  String?  @map("goods_receipt_line_id")
+  poQuantity          Decimal  @map("po_quantity") @db.Decimal(18, 4)
+  receivedQuantity    Decimal? @map("received_quantity") @db.Decimal(18, 4)
+  billedQuantity      Decimal  @map("billed_quantity") @db.Decimal(18, 4)
+  poUnitPrice         Decimal  @map("po_unit_price") @db.Decimal(18, 4)
+  billedUnitPrice     Decimal  @map("billed_unit_price") @db.Decimal(18, 4)
+  quantityVariance    Decimal  @map("quantity_variance") @db.Decimal(18, 4)
+  priceVariance       Decimal  @map("price_variance") @db.Decimal(18, 4)
+  amountVariance      Decimal  @map("amount_variance") @db.Decimal(18, 2)
+  withinTolerance     Boolean  @map("within_tolerance")
+  exceptionReason     String?  @map("exception_reason")
+  createdAt           DateTime @default(now()) @map("created_at")
 
-  billMatch       SupplierBillMatch @relation(fields: [supplierBillMatchId], references: [id], onDelete: Cascade)
+  billMatch         SupplierBillMatch @relation(fields: [supplierBillMatchId], references: [id], onDelete: Cascade)
   purchaseOrderLine PurchaseOrderLine @relation(fields: [purchaseOrderLineId], references: [id])
 
   @@index([supplierBillMatchId])
@@ -2870,23 +3019,23 @@ model SupplierBillMatchLine {
 
 // Hierarchical tolerance policy: PO → Supplier → SpendCategory → Organization (ADR-007, Rule MATCH-002)
 model MatchingTolerancePolicy {
-  id                      String              @id @default(cuid())
-  organizationId          String              @map("organization_id")
-  scopeType               ToleranceScopeType  @map("scope_type")
-  purchaseOrderId         String?             @map("purchase_order_id")
-  supplierId              String?             @map("supplier_id")
-  spendCategoryId         String?             @map("spend_category_id")
-  priceVariancePercent    Decimal?            @map("price_variance_percent") @db.Decimal(6, 3)
-  priceVarianceAbsolute   Decimal?            @map("price_variance_absolute") @db.Decimal(18, 2)
-  quantityVariancePercent Decimal?            @map("quantity_variance_percent") @db.Decimal(6, 3)
+  id                       String             @id @default(cuid())
+  organizationId           String             @map("organization_id")
+  scopeType                ToleranceScopeType @map("scope_type")
+  purchaseOrderId          String?            @map("purchase_order_id")
+  supplierId               String?            @map("supplier_id")
+  spendCategoryId          String?            @map("spend_category_id")
+  priceVariancePercent     Decimal?           @map("price_variance_percent") @db.Decimal(6, 3)
+  priceVarianceAbsolute    Decimal?           @map("price_variance_absolute") @db.Decimal(18, 2)
+  quantityVariancePercent  Decimal?           @map("quantity_variance_percent") @db.Decimal(6, 3)
   quantityVarianceAbsolute Decimal?           @map("quantity_variance_absolute") @db.Decimal(18, 4)
-  amountVarianceAbsolute  Decimal?            @map("amount_variance_absolute") @db.Decimal(18, 2)
-  effectiveFrom           DateTime            @map("effective_from") @db.Date
-  effectiveTo             DateTime?           @map("effective_to") @db.Date
-  status                  MasterDataStatus    @default(ACTIVE)
-  approvedBy              String?             @map("approved_by")
-  createdAt               DateTime            @default(now()) @map("created_at")
-  updatedAt               DateTime            @updatedAt @map("updated_at")
+  amountVarianceAbsolute   Decimal?           @map("amount_variance_absolute") @db.Decimal(18, 2)
+  effectiveFrom            DateTime           @map("effective_from") @db.Date
+  effectiveTo              DateTime?          @map("effective_to") @db.Date
+  status                   MasterDataStatus   @default(ACTIVE)
+  approvedBy               String?            @map("approved_by")
+  createdAt                DateTime           @default(now()) @map("created_at")
+  updatedAt                DateTime           @updatedAt @map("updated_at")
 
   organization  Organization   @relation(fields: [organizationId], references: [id])
   purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
@@ -2899,17 +3048,17 @@ model MatchingTolerancePolicy {
 
 // Hierarchical over-receipt policy: PO → SpendCategory → Organization (ADR-007, Rule OVREC-001)
 model OverReceiptPolicy {
-  id                   String             @id @default(cuid())
-  organizationId       String             @map("organization_id")
-  scopeType            ToleranceScopeType @map("scope_type")
-  purchaseOrderId      String?            @map("purchase_order_id")
-  spendCategoryId      String?            @map("spend_category_id")
-  overReceiptPercent   Decimal            @map("over_receipt_percent") @db.Decimal(6, 3)
-  status               MasterDataStatus   @default(ACTIVE)
-  effectiveFrom        DateTime           @map("effective_from") @db.Date
-  effectiveTo          DateTime?          @map("effective_to") @db.Date
-  createdAt            DateTime           @default(now()) @map("created_at")
-  updatedAt            DateTime           @updatedAt @map("updated_at")
+  id                 String             @id @default(cuid())
+  organizationId     String             @map("organization_id")
+  scopeType          ToleranceScopeType @map("scope_type")
+  purchaseOrderId    String?            @map("purchase_order_id")
+  spendCategoryId    String?            @map("spend_category_id")
+  overReceiptPercent Decimal            @map("over_receipt_percent") @db.Decimal(6, 3)
+  status             MasterDataStatus   @default(ACTIVE)
+  effectiveFrom      DateTime           @map("effective_from") @db.Date
+  effectiveTo        DateTime?          @map("effective_to") @db.Date
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
 
   organization  Organization   @relation(fields: [organizationId], references: [id])
   purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
@@ -2926,32 +3075,32 @@ model OverReceiptPolicy {
 // CommitmentLedger ACTUAL + JournalLine.
 // Never UPDATE rows — corrections create compensating entries.
 model CommitmentLedgerEntry {
-  id                 String                  @id @default(cuid())
-  organizationId     String                  @map("organization_id")
-  projectId          String?                 @map("project_id")
-  boqNodeId          String?                 @map("boq_node_id")
-  departmentId       String?                 @map("department_id")
-  costCenterId       String?                 @map("cost_center_id")
-  materialId         String?                 @map("material_id")
-  supplierId         String?                 @map("supplier_id")
-  purchaseOrderId    String?                 @map("purchase_order_id")
-  spendCategoryId    String?                 @map("spend_category_id")
-  stage              CommitmentStage         @map("stage")
+  id                   String                  @id @default(cuid())
+  organizationId       String                  @map("organization_id")
+  projectId            String?                 @map("project_id")
+  boqNodeId            String?                 @map("boq_node_id")
+  departmentId         String?                 @map("department_id")
+  costCenterId         String?                 @map("cost_center_id")
+  materialId           String?                 @map("material_id")
+  supplierId           String?                 @map("supplier_id")
+  purchaseOrderId      String?                 @map("purchase_order_id")
+  spendCategoryId      String?                 @map("spend_category_id")
+  stage                CommitmentStage         @map("stage")
   // Signed: positive = increase, negative = decrease/reversal
-  amount             Decimal                 @map("amount") @db.Decimal(18, 2)
-  currencyCode       String                  @map("currency_code") @db.VarChar(3)
-  reportingAmount    Decimal                 @map("reporting_amount") @db.Decimal(18, 2)
-  exchangeRateSnapshot Decimal              @map("exchange_rate_snapshot") @db.Decimal(18, 6)
-  sourceDocumentType CommitmentSourceDocType @map("source_document_type")
-  sourceDocumentId   String                  @map("source_document_id")
-  sourceLineId       String?                 @map("source_line_id")
-  sourceRevision     Int?                    @map("source_revision")
-  eventType          String                  @map("event_type")
+  amount               Decimal                 @map("amount") @db.Decimal(18, 2)
+  currencyCode         String                  @map("currency_code") @db.VarChar(3)
+  reportingAmount      Decimal                 @map("reporting_amount") @db.Decimal(18, 2)
+  exchangeRateSnapshot Decimal                 @map("exchange_rate_snapshot") @db.Decimal(18, 6)
+  sourceDocumentType   CommitmentSourceDocType @map("source_document_type")
+  sourceDocumentId     String                  @map("source_document_id")
+  sourceLineId         String?                 @map("source_line_id")
+  sourceRevision       Int?                    @map("source_revision")
+  eventType            String                  @map("event_type")
   // Idempotency: prevents duplicate commitment on retry (ADR-007, Rule CL-005)
-  idempotencyKey     String                  @unique @map("idempotency_key")
-  occurredAt         DateTime                @map("occurred_at")
-  accountingDate     DateTime                @map("accounting_date") @db.Date
-  createdAt          DateTime                @default(now()) @map("created_at")
+  idempotencyKey       String                  @unique @map("idempotency_key")
+  occurredAt           DateTime                @map("occurred_at")
+  accountingDate       DateTime                @map("accounting_date") @db.Date
+  createdAt            DateTime                @default(now()) @map("created_at")
 
   organization  Organization   @relation(fields: [organizationId], references: [id])
   material      Material?      @relation(fields: [materialId], references: [id])

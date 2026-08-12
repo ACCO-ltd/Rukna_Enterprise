@@ -14,7 +14,8 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@ne
 
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator.js';
-import type { RequestIdentity } from '@erp/types';
+import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { ClientService } from '../application/client.service.js';
 import { CreateClientDto } from './dto/create-client.dto.js';
@@ -24,6 +25,7 @@ import { AddContactDto } from './dto/add-contact.dto.js';
 @ApiTags('Clients')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.clientsView)
 @Controller('clients')
 export class ClientsController {
   constructor(private readonly clientService: ClientService) {}
@@ -35,6 +37,7 @@ export class ClientsController {
   }
 
   @Post()
+  @RequirePermissions(PERMISSIONS.clientsCreate)
   @ApiOperation({ summary: 'Create a new client' })
   @ApiResponse({ status: 201, description: 'Client created' })
   @ApiResponse({ status: 409, description: 'Client code already exists' })
@@ -50,6 +53,7 @@ export class ClientsController {
   }
 
   @Patch(':id')
+  @RequirePermissions(PERMISSIONS.clientsManage)
   @ApiOperation({ summary: 'Update client details' })
   @ApiParam({ name: 'id', description: 'Client ID' })
   update(
@@ -61,6 +65,7 @@ export class ClientsController {
   }
 
   @Post(':id/contacts')
+  @RequirePermissions(PERMISSIONS.clientsManage)
   @ApiOperation({ summary: 'Add a contact to a client' })
   @ApiParam({ name: 'id', description: 'Client ID' })
   addContact(
@@ -72,6 +77,7 @@ export class ClientsController {
   }
 
   @Delete(':id/contacts/:contactId')
+  @RequirePermissions(PERMISSIONS.clientsManage)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Remove a contact from a client' })
   @ApiParam({ name: 'id', description: 'Client ID' })

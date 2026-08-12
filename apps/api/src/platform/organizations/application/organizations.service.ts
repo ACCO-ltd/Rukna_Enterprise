@@ -10,7 +10,8 @@ export class OrganizationsService {
     private readonly organizationsRepository: IOrganizationsRepository,
   ) {}
 
-  async findById(id: string): Promise<OrganizationEntity | null> {
+  async findById(id: string, activeOrganizationId: string): Promise<OrganizationEntity | null> {
+    if (id !== activeOrganizationId) return null;
     return this.organizationsRepository.findById(id);
   }
 }

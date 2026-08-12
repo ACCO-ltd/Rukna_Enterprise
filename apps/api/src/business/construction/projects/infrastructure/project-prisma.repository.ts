@@ -15,10 +15,16 @@ export type ProjectFull = Prisma.ProjectGetPayload<{ include: typeof PROJECT_FUL
 export class ProjectPrismaRepository {
   // ─── Queries ─────────────────────────────────────────────────────────────────
 
-  async findAll(prisma: PrismaClient, organizationId: string, status?: string): Promise<Project[]> {
+  async findAll(
+    prisma: PrismaClient,
+    organizationId: string,
+    status?: string,
+    userId?: string,
+  ): Promise<Project[]> {
     return prisma.project.findMany({
       where: {
         organizationId,
+        ...(userId ? { members: { some: { userId, removedAt: null } } } : {}),
         ...(status ? { status: status as Prisma.EnumProjectStatusFilter } : {}),
       },
       orderBy: { createdAt: 'desc' },

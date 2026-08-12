@@ -7,8 +7,10 @@ import { Decimal } from '@prisma/client/runtime/library';
 import type { RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
-import { WorkflowTriggerResolverService } from '../../../../platform/workflows/application/workflow-trigger-resolver.service.js';
+import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
 import { IpaPrismaRepository } from '../infrastructure/ipa-prisma.repository.js';
+import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
+import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 import type { CreateIpaDto } from '../presentation/dto/create-ipa.dto.js';
 import type { AddIpaItemDto } from '../presentation/dto/add-ipa-item.dto.js';
 import type { AddIpaDeductionDto } from '../presentation/dto/add-ipa-deduction.dto.js';
@@ -34,16 +36,32 @@ const CANCEL_FROM = new Set(['DRAFT', 'RETURNED_FOR_REVISION']);
 export class IpaService {
   constructor(
     private readonly tenancyService: TenancyService,
-    private readonly triggerResolver: WorkflowTriggerResolverService,
+    private readonly commandGovernance: CommandGovernanceService,
     private readonly repo: IpaPrismaRepository,
+    private readonly projectAccess: ProjectAccessService,
+    private readonly auditOutbox: TransactionalAuditOutboxService,
   ) {}
 
-  async findAll(identity: RequestIdentity, contractId?: string) {
+  async findAll(identity: RequestIdentity, contractId?: string, projectId?: string) {
+    if (contractId && projectId) {
+      throw new BadRequestException('Provide contractId or projectId, not both.');
+    }
     const prisma = this.tenancyService.getClient();
-    return this.repo.findAll(prisma, identity.activeOrganizationId, contractId);
+    if (contractId) await this.projectAccess.assertContract(identity, contractId);
+    if (projectId) await this.projectAccess.assertMember(identity, projectId);
+    return this.repo.findAll(
+      prisma,
+      identity.activeOrganizationId,
+      contractId,
+      projectId,
+      // userId scope only applies to the unscoped (all-projects) list; single-resource
+      // assertions above already enforce access when a specific scope is provided.
+      contractId || projectId ? undefined : this.projectAccess.scopedUserId(identity),
+    );
   }
 
   async findOne(identity: RequestIdentity, id: string) {
+    await this.projectAccess.assertApplication(identity, id);
     const prisma = this.tenancyService.getClient();
     const ipa = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!ipa) throw new NotFoundException(`IPA ${id} not found`);
@@ -66,46 +84,66 @@ export class IpaService {
   }
 
   async create(identity: RequestIdentity, dto: CreateIpaDto) {
+    await this.projectAccess.assertContract(identity, dto.contractId);
     const prisma = this.tenancyService.getClient();
-    return this.repo.create(prisma, {
-      contractId: dto.contractId,
-      organizationId: identity.activeOrganizationId,
-      periodFrom: dto.periodFrom ? new Date(dto.periodFrom) : undefined,
-      periodTo: dto.periodTo ? new Date(dto.periodTo) : undefined,
-      exchangeRateCurrency: dto.exchangeRateCurrency,
-      exchangeRateBase: dto.exchangeRateBase,
-      exchangeRateValue: dto.exchangeRateValue,
-      exchangeRateDate: dto.exchangeRateDate ? new Date(dto.exchangeRateDate) : undefined,
-      notes: dto.notes,
-      createdBy: identity.userId,
+
+    return prisma.$transaction(async (tx) => {
+      const ipa = await this.repo.create(tx, {
+        contractId: dto.contractId,
+        organizationId: identity.activeOrganizationId,
+        periodFrom: dto.periodFrom ? new Date(dto.periodFrom) : undefined,
+        periodTo: dto.periodTo ? new Date(dto.periodTo) : undefined,
+        exchangeRateCurrency: dto.exchangeRateCurrency,
+        exchangeRateBase: dto.exchangeRateBase,
+        exchangeRateValue: dto.exchangeRateValue,
+        exchangeRateDate: dto.exchangeRateDate ? new Date(dto.exchangeRateDate) : undefined,
+        notes: dto.notes,
+        createdBy: identity.userId,
+      });
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'CREATE',
+        resourceType: 'InterimPaymentApplication',
+        resourceId: ipa.id,
+        sourceCommand: 'ipa.create',
+        eventType: 'IPA_CREATED',
+        idempotencyKey: `ipa-create-${ipa.id}`,
+        after: { contractId: dto.contractId, status: 'DRAFT' },
+      });
+
+      return ipa;
     });
   }
 
   async transition(identity: RequestIdentity, id: string, command: string) {
     const prisma = this.tenancyService.getClient();
-    const ipa = await this.requireIpa(prisma, identity.activeOrganizationId, id);
+    const ipa = await this.requireIpa(prisma, identity, id);
+    const fromStatus = ipa.status;
 
     const requiredFrom = TRANSITIONS[command];
     const toState = TRANSITION_TARGETS[command];
     if (!requiredFrom) throw new BadRequestException(`Unknown IPA command '${command}'`);
 
     const allowed = Array.isArray(requiredFrom) ? requiredFrom : [requiredFrom];
-    if (!allowed.includes(ipa.status)) {
+    if (!allowed.includes(fromStatus)) {
       throw new BadRequestException(
-        `Cannot '${command}' an IPA with status '${ipa.status}'. Expected: ${allowed.join(' or ')}.`,
+        `Cannot '${command}' an IPA with status '${fromStatus}'. Expected: ${allowed.join(' or ')}.`,
       );
     }
 
-    // Enforce WorkflowRequirementPolicy. Resolver throws 422 if REQUIRED and no binding configured.
-    // When a binding is found, transition proceeds — approval instance creation is Sprint 4+ work.
-    if (command === 'submit-for-approval' || command === 'return-for-revision') {
-      await this.triggerResolver.resolveForStateTransition(
-        identity.activeOrganizationId,
+    // Governance gate applies to all IPA transition commands uniformly.
+    throwIfGated(
+      await this.commandGovernance.gateStateTransition(
+        identity,
         'InterimPaymentApplication',
-        ipa.status,
+        fromStatus,
         toState,
-      );
-    }
+        id,
+      ),
+      `IPA transition '${command}' requires workflow approval.`,
+    );
 
     const extra: Record<string, unknown> = {};
 
@@ -122,26 +160,62 @@ export class IpaService {
       extra['submittedBy'] = identity.userId;
     }
 
-    return this.repo.update(prisma, id, { status: toState, ...extra } as never);
+    return prisma.$transaction(async (tx) => {
+      const updated = await this.repo.update(tx, id, { status: toState, ...extra } as never);
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'TRANSITION',
+        resourceType: 'InterimPaymentApplication',
+        resourceId: id,
+        sourceCommand: `ipa.${command}`,
+        eventType: `IPA_${command.toUpperCase().replace(/-/g, '_')}`,
+        idempotencyKey: `ipa-transition-${id}-${fromStatus}-to-${toState}`,
+        before: { status: fromStatus },
+        after: { status: toState },
+      });
+
+      return updated;
+    });
   }
 
   async cancel(identity: RequestIdentity, id: string) {
     const prisma = this.tenancyService.getClient();
-    const ipa = await this.requireIpa(prisma, identity.activeOrganizationId, id);
+    const ipa = await this.requireIpa(prisma, identity, id);
+    const fromStatus = ipa.status;
 
-    if (!CANCEL_FROM.has(ipa.status)) {
+    if (!CANCEL_FROM.has(fromStatus)) {
       throw new BadRequestException(
-        `Cannot cancel an IPA with status '${ipa.status}'. Allowed from: ${[...CANCEL_FROM].join(', ')}.`,
+        `Cannot cancel an IPA with status '${fromStatus}'. Allowed from: ${[...CANCEL_FROM].join(', ')}.`,
       );
     }
-    return this.repo.update(prisma, id, { status: 'CANCELLED' });
+
+    return prisma.$transaction(async (tx) => {
+      const updated = await this.repo.update(tx, id, { status: 'CANCELLED' });
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'CANCEL',
+        resourceType: 'InterimPaymentApplication',
+        resourceId: id,
+        sourceCommand: 'ipa.cancel',
+        eventType: 'IPA_CANCELLED',
+        idempotencyKey: `ipa-cancel-${id}-${fromStatus}`,
+        before: { status: fromStatus },
+        after: { status: 'CANCELLED' },
+      });
+
+      return updated;
+    });
   }
 
   // ─── Items ────────────────────────────────────────────────────────────────────
 
   async addItem(identity: RequestIdentity, id: string, dto: AddIpaItemDto) {
     const prisma = this.tenancyService.getClient();
-    const ipa = await this.requireIpa(prisma, identity.activeOrganizationId, id);
+    const ipa = await this.requireIpa(prisma, identity, id);
 
     if (!MUTABLE_STATUSES.has(ipa.status)) {
       throw new BadRequestException(`Cannot add items to an IPA with status '${ipa.status}'`);
@@ -204,7 +278,7 @@ export class IpaService {
 
   async removeItem(identity: RequestIdentity, ipaId: string, itemId: string) {
     const prisma = this.tenancyService.getClient();
-    const ipa = await this.requireIpa(prisma, identity.activeOrganizationId, ipaId);
+    const ipa = await this.requireIpa(prisma, identity, ipaId);
 
     if (!MUTABLE_STATUSES.has(ipa.status)) {
       throw new BadRequestException(`Cannot remove items from an IPA with status '${ipa.status}'`);
@@ -216,7 +290,7 @@ export class IpaService {
 
   async addDeduction(identity: RequestIdentity, id: string, dto: AddIpaDeductionDto) {
     const prisma = this.tenancyService.getClient();
-    const ipa = await this.requireIpa(prisma, identity.activeOrganizationId, id);
+    const ipa = await this.requireIpa(prisma, identity, id);
 
     if (!MUTABLE_STATUSES.has(ipa.status)) {
       throw new BadRequestException(`Cannot add deductions to an IPA with status '${ipa.status}'`);
@@ -232,7 +306,7 @@ export class IpaService {
 
   async removeDeduction(identity: RequestIdentity, ipaId: string, deductionId: string) {
     const prisma = this.tenancyService.getClient();
-    const ipa = await this.requireIpa(prisma, identity.activeOrganizationId, ipaId);
+    const ipa = await this.requireIpa(prisma, identity, ipaId);
 
     if (!MUTABLE_STATUSES.has(ipa.status)) {
       throw new BadRequestException(`Cannot remove deductions from an IPA with status '${ipa.status}'`);
@@ -244,10 +318,11 @@ export class IpaService {
 
   private async requireIpa(
     prisma: ReturnType<TenancyService['getClient']>,
-    organizationId: string,
+    identity: RequestIdentity,
     id: string,
   ) {
-    const ipa = await this.repo.findById(prisma, organizationId, id);
+    await this.projectAccess.assertApplication(identity, id);
+    const ipa = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!ipa) throw new NotFoundException(`IPA ${id} not found`);
     return ipa;
   }

@@ -18,6 +18,7 @@ import { MaterialService }            from '../../catalogue/application/material
 // ── Material Requests ─────────────────────────────────────────────────────────
 import { MaterialRequestRepository }  from '../../material-requests/infrastructure/material-request.repository.js';
 import { MaterialRequestService }     from '../../material-requests/application/material-request.service.js';
+import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 
 // ── Purchase Orders ───────────────────────────────────────────────────────────
 import { PurchaseOrderRepository }    from '../../purchase-orders/infrastructure/purchase-order.repository.js';
@@ -92,7 +93,8 @@ export function buildProcurementServices(prisma: PrismaClient): ProcurementServi
 
   // ── Services ──────────────────────────────────────────────────────────────
   const materialService = new MaterialService(tenancy, materialRepo, uomRepo, materialCategoryRepo, spendCategoryRepo);
-  const mrService       = new MaterialRequestService(tenancy, mrRepo, materialRepo, uomRepo);
+  const projectAccess   = new ProjectAccessService(tenancy);
+  const mrService       = new MaterialRequestService(tenancy, mrRepo, materialRepo, uomRepo, projectAccess);
   const poService       = new PurchaseOrderService(tenancy, poRepo, materialRepo, uomRepo, commitmentRepo);
   const grnService      = new GoodsReceiptService(tenancy, grnRepo, poRepo, commitmentRepo);
   const billMatchingService = new BillMatchingService(tenancy, billMatchRepo);

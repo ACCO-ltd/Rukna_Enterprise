@@ -390,6 +390,7 @@ apps/api/src/
 ├── platform/
 │   ├── auth/           — login, refresh (cookie), logout, JWT strategy
 │   ├── tenancy/        — TenancyMiddleware, TenancyService (LRU), TenantContext
+│   ├── project-access/ — cross-module project membership authorization policy
 │   ├── users/          — GET /users/:id
 │   ├── organizations/  — GET /organizations/:id
 │   ├── roles/          — GET /roles (by org)

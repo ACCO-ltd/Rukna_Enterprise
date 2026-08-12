@@ -1,6 +1,8 @@
 import { Controller, Get, Post, Body, Param, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { SpendCategoryService } from '../application/spend-category.service.js';
@@ -9,6 +11,7 @@ import { CreateSpendCategoryDto } from './dto/create-spend-category.dto.js';
 @ApiTags('Procurement — Spend Categories')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.procurementConfigManage)
 @Controller('procurement/spend-categories')
 export class SpendCategoryController {
   constructor(private readonly service: SpendCategoryService) {}

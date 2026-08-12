@@ -52,6 +52,7 @@ export class MaterialRequestRepository {
     prisma: TenantPrisma,
     organizationId: string,
     filters?: { status?: MaterialRequestStatus; projectId?: string; scope?: MaterialRequestScope },
+    accessibleProjectIds?: string[],
   ) {
     return prisma.materialRequest.findMany({
       where: {
@@ -59,6 +60,14 @@ export class MaterialRequestRepository {
         ...(filters?.status ? { status: filters.status } : {}),
         ...(filters?.projectId ? { projectId: filters.projectId } : {}),
         ...(filters?.scope ? { requestScope: filters.scope } : {}),
+        ...(accessibleProjectIds
+          ? {
+              OR: [
+                { requestScope: 'ORGANIZATION' },
+                { projectId: { in: accessibleProjectIds } },
+              ],
+            }
+          : {}),
       },
       include: MR_INCLUDE,
       orderBy: { createdAt: 'desc' },

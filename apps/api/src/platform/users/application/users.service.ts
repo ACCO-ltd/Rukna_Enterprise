@@ -10,8 +10,8 @@ export class UsersService {
     private readonly usersRepository: IUsersRepository,
   ) {}
 
-  async findById(id: string): Promise<UserEntity | null> {
-    return this.usersRepository.findById(id);
+  async findById(id: string, organizationId: string): Promise<UserEntity | null> {
+    return this.usersRepository.findById(id, organizationId);
   }
 
   async findByOrganization(organizationId: string): Promise<UserEntity[]> {

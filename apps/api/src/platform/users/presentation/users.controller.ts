@@ -1,14 +1,16 @@
 import { Controller, Get, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
-import type { RequestIdentity } from '@erp/types';
+import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator.js';
+import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator.js';
 import { UsersService } from '../application/users.service.js';
 
 @ApiTags('Users')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.usersView)
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
@@ -25,7 +27,7 @@ export class UsersController {
   @ApiParam({ name: 'id', description: 'User CUID' })
   @ApiResponse({ status: 200, description: 'User record' })
   @ApiResponse({ status: 404, description: 'User not found' })
-  findById(@Param('id') id: string) {
-    return this.usersService.findById(id);
+  findById(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.usersService.findById(id, identity.activeOrganizationId);
   }
 }

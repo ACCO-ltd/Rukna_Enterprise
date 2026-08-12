@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaClient, Client, ClientContact } from '@prisma/client';
+import { PrismaClient, Client, ClientContact, ClientType } from '@prisma/client';
 
 export type ClientWithContacts = Client & { contacts: ClientContact[] };
 
@@ -25,20 +25,50 @@ export class ClientPrismaRepository {
 
   async create(prisma: PrismaClient, data: {
     organizationId: string;
-    code: string;
     name: string;
     nameAr?: string;
+    type?: ClientType;
     taxNumber?: string;
     defaultCurrency?: string;
+    address?: string;
+    notes?: string;
+    primaryContact?: { name: string; phone?: string; email?: string };
   }): Promise<Client> {
-    return prisma.client.create({ data });
+    const { primaryContact, ...clientData } = data;
+    return prisma.$transaction(async (tx) => {
+      const sequence = await tx.clientCodeSequence.upsert({
+        where: { organizationId: data.organizationId },
+        create: { organizationId: data.organizationId, nextValue: 2 },
+        update: { nextValue: { increment: 1 } },
+        select: { nextValue: true },
+      });
+      const code = `CLI-${String(sequence.nextValue - 1).padStart(6, '0')}`;
+      const client = await tx.client.create({ data: { ...clientData, code } });
+
+      if (primaryContact) {
+        await tx.clientContact.create({
+          data: {
+            clientId: client.id,
+            name: primaryContact.name,
+            phone: primaryContact.phone,
+            email: primaryContact.email,
+            isPrimary: true,
+          },
+        });
+      }
+
+      return client;
+    });
   }
 
   async update(prisma: PrismaClient, id: string, data: {
     name?: string;
     nameAr?: string;
+    type?: ClientType;
     taxNumber?: string;
     defaultCurrency?: string;
+    address?: string;
+    notes?: string;
     status?: 'ACTIVE' | 'INACTIVE';
   }): Promise<Client> {
     return prisma.client.update({ where: { id }, data });

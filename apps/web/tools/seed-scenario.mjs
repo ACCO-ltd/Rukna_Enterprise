@@ -41,7 +41,7 @@ const DEFAULTS = {
   quiet: false,
   api: 'http://acco.localhost:3001/api/v1',
   email: 'admin@acco.com',
-  password: 'ChangeMe123!',
+  password: process.env.RUKNA_DEMO_PASSWORD,
 };
 
 const config = { ...DEFAULTS, ...parseArgs(process.argv.slice(2)) };
@@ -149,6 +149,11 @@ function ok(detail = '') {
 // ─── The scenario ────────────────────────────────────────────────────────────────
 
 async function main() {
+  if (!config.password) {
+    throw new Error(
+      'Demo password is required. Set RUKNA_DEMO_PASSWORD or pass --password <value>.',
+    );
+  }
   if (!config.quiet) {
     console.log(`\nSeeding ACCO billing scenario  (run ${RUN})`);
     console.log(`API: ${config.api}\n`);
@@ -297,10 +302,6 @@ async function main() {
   for (const leaf of nodes.leaves) {
     await post(`/ipa/${ipa.id}/items`, {
       boqNodeId: leaf.id,
-      // C3: the API takes this rate from the request rather than the BOQ node. The value
-      // sent here is the node's own rate, which is what the API should be reading itself.
-      unitRateSnapshot: leaf.unitRate.toFixed(2),
-      currencySnapshot: 'USD',
       // ~40% of the contracted quantity claimed to date.
       cumulativeClaimed: (leaf.quantity * 0.4).toFixed(3),
     });
@@ -339,10 +340,6 @@ async function main() {
     const cut = index === 0;
     const certifiedQuantity = cut ? round3(claimed * 0.9) : claimed;
     return {
-      // The amount is carried alongside the payload rather than inside it: the API derives
-      // each item's certifiedAmount itself, but requires the caller to send the TOTAL of
-      // those same amounts as `certifiedTotal`. That asymmetry is C1.
-      amount: round2(certifiedQuantity * Number(item.unitRateSnapshot)),
       payload: {
         applicationItemId: item.id,
         certifiedQuantity: certifiedQuantity.toFixed(3),
@@ -351,30 +348,11 @@ async function main() {
     };
   });
 
-  const certifiedTotal = round2(certifiedItems.reduce((sum, i) => sum + i.amount, 0));
-  const certRetention = round2(certifiedTotal * 0.05);
-  const advanceRecovery = round2(certifiedTotal * 0.1);
-
   const certificate = await post('/ipc', {
     applicationId: ipa.id,
     status: 'CERTIFIED',
-    certifiedTotal: certifiedTotal.toFixed(2),
     currency: 'USD',
     items: certifiedItems.map((i) => i.payload),
-    deductions: [
-      {
-        deductionType: 'RETENTION',
-        rate: '0.0500',
-        basis: certifiedTotal.toFixed(2),
-        amount: certRetention.toFixed(2),
-      },
-      {
-        deductionType: 'ADVANCE_RECOVERY',
-        rate: '0.1000',
-        basis: certifiedTotal.toFixed(2),
-        amount: advanceRecovery.toFixed(2),
-      },
-    ],
   });
   ok(certificate.certificateRef ?? `#${certificate.certificateNumber}`);
 

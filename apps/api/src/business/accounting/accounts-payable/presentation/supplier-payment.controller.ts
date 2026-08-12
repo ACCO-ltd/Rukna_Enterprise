@@ -4,6 +4,8 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { SupplierPaymentService } from '../application/supplier-payment.service.js';
@@ -16,6 +18,7 @@ import { ReverseAdvanceAllocationDto } from './dto/reverse-advance-allocation.dt
 @ApiTags('Supplier Payments')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.payablesManage)
 @Controller('payments')
 export class SupplierPaymentController {
   constructor(private readonly supplierPaymentService: SupplierPaymentService) {}

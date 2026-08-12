@@ -3,7 +3,6 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Project } from '@prisma/client';
@@ -13,6 +12,7 @@ import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js'
 import { WorkflowTriggerResolverService } from '../../../../platform/workflows/application/workflow-trigger-resolver.service.js';
 import { ProjectPrismaRepository, ProjectFull } from '../infrastructure/project-prisma.repository.js';
 import { ContractPrismaRepository } from '../../contracts/infrastructure/contract-prisma.repository.js';
+import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import type { CreateProjectDto } from '../presentation/dto/create-project.dto.js';
 import type { UpdateProjectDto } from '../presentation/dto/update-project.dto.js';
 import type { AddMemberDto } from '../presentation/dto/add-member.dto.js';
@@ -49,16 +49,23 @@ export class ProjectService {
     private readonly triggerResolver: WorkflowTriggerResolverService,
     private readonly repo: ProjectPrismaRepository,
     private readonly contractRepo: ContractPrismaRepository,
+    private readonly projectAccess: ProjectAccessService,
   ) {}
 
   // ─── Queries ─────────────────────────────────────────────────────────────────
 
   async findAll(identity: RequestIdentity, status?: string): Promise<Project[]> {
     const prisma = this.tenancyService.getClient();
-    return this.repo.findAll(prisma, identity.activeOrganizationId, status);
+    return this.repo.findAll(
+      prisma,
+      identity.activeOrganizationId,
+      status,
+      this.projectAccess.hasBypass(identity) ? undefined : identity.userId,
+    );
   }
 
   async findOne(identity: RequestIdentity, id: string): Promise<ProjectFull> {
+    await this.projectAccess.assertMember(identity, id);
     const prisma = this.tenancyService.getClient();
     const project = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!project) throw new NotFoundException(`Project ${id} not found`);
@@ -101,6 +108,7 @@ export class ProjectService {
   // ─── Update ──────────────────────────────────────────────────────────────────
 
   async update(identity: RequestIdentity, id: string, dto: UpdateProjectDto): Promise<Project> {
+    await this.projectAccess.assertMember(identity, id);
     const prisma = this.tenancyService.getClient();
     const project = await this.requireProject(prisma, identity.activeOrganizationId, id);
 
@@ -127,6 +135,7 @@ export class ProjectService {
     id: string,
     command: keyof typeof LIFECYCLE_TRANSITIONS,
   ): Promise<Project> {
+    await this.projectAccess.assertMember(identity, id);
     const prisma = this.tenancyService.getClient();
     const project = await this.requireProject(prisma, identity.activeOrganizationId, id);
 
@@ -172,6 +181,7 @@ export class ProjectService {
   }
 
   async cancel(identity: RequestIdentity, id: string, reason: string): Promise<Project> {
+    await this.projectAccess.assertMember(identity, id);
     const prisma = this.tenancyService.getClient();
     const project = await this.requireProject(prisma, identity.activeOrganizationId, id);
 
@@ -210,6 +220,7 @@ export class ProjectService {
   // ─── Suspension ──────────────────────────────────────────────────────────────
 
   async suspend(identity: RequestIdentity, id: string, reason: string): Promise<void> {
+    await this.projectAccess.assertMember(identity, id);
     const prisma = this.tenancyService.getClient();
     const project = await this.requireProject(prisma, identity.activeOrganizationId, id);
 
@@ -228,6 +239,7 @@ export class ProjectService {
   }
 
   async resume(identity: RequestIdentity, id: string): Promise<void> {
+    await this.projectAccess.assertMember(identity, id);
     const prisma = this.tenancyService.getClient();
     await this.requireProject(prisma, identity.activeOrganizationId, id);
 
@@ -240,15 +252,16 @@ export class ProjectService {
   // ─── Members ─────────────────────────────────────────────────────────────────
 
   async listMembers(identity: RequestIdentity, projectId: string) {
+    await this.projectAccess.assertMember(identity, projectId);
     const prisma = this.tenancyService.getClient();
     await this.requireProject(prisma, identity.activeOrganizationId, projectId);
     return this.repo.findAllMembers(prisma, projectId);
   }
 
   async addMember(identity: RequestIdentity, projectId: string, dto: AddMemberDto) {
+    await this.projectAccess.assertMember(identity, projectId);
     const prisma = this.tenancyService.getClient();
     await this.requireProject(prisma, identity.activeOrganizationId, projectId);
-    await this.assertMember(prisma, projectId, identity.userId);
 
     const existing = await this.repo.findActiveMember(prisma, projectId, dto.userId);
     if (existing) throw new ConflictException('User is already an active member of this project.');
@@ -264,9 +277,9 @@ export class ProjectService {
   }
 
   async removeMember(identity: RequestIdentity, projectId: string, userId: string) {
+    await this.projectAccess.assertMember(identity, projectId);
     const prisma = this.tenancyService.getClient();
     await this.requireProject(prisma, identity.activeOrganizationId, projectId);
-    await this.assertMember(prisma, projectId, identity.userId);
 
     const member = await this.repo.findActiveMember(prisma, projectId, userId);
     if (!member) throw new NotFoundException('User is not an active member of this project.');
@@ -280,12 +293,5 @@ export class ProjectService {
     const project = await this.repo.findById(prisma, organizationId, id);
     if (!project) throw new NotFoundException(`Project ${id} not found`);
     return project;
-  }
-
-  async assertMember(prisma: ReturnType<TenancyService['getClient']>, projectId: string, userId: string): Promise<void> {
-    const member = await this.repo.findActiveMember(prisma, projectId, userId);
-    if (!member) {
-      throw new ForbiddenException('You are not a member of this project.');
-    }
   }
 }

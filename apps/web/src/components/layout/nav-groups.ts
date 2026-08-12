@@ -9,7 +9,7 @@
  *
  * `moduleKey` maps to the `MODULE_PERMISSIONS` map in `can.ts` so the sidebar can
  * hide entire sections when the user has no permission to any item within them.
- * (While `PERMISSIONS_ENFORCED = false` this is a no-op.)
+ * Permission checks are active and keep navigation aligned with API authorization.
  *
  * `labelKey` resolves against the `platform.nav` namespace.
  */

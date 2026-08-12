@@ -7,16 +7,9 @@
  * not receive, or paying a price it did not agree. This tab is where a person sees the
  * variances and decides.
  *
- * **The Post gate implemented here is stricter than the server's.** §6.31 states that
- * posting requires `MATCHED`, `MATCHED_WITH_TOLERANCE` or `APPROVED_EXCEPTION`, and
- * §12.8 says the button must be disabled on `NOT_RUN` or `EXCEPTION`. The server's
- * `POSTABLE_MATCH_STATUSES` includes `NOT_RUN`, so it will happily post a bill that was
- * never matched (P15).
- *
- * `canPostBill` implements the documented rule, not the implemented one. That makes the
- * intended workflow obvious and prevents an accident — but it is an affordance, not a
- * control, because anything holding a token can call `POST /bills/:id/post` directly.
- * The tab says so rather than letting anyone mistake it for enforcement.
+ * Posting requires `MATCHED`, `MATCHED_WITH_TOLERANCE` or `APPROVED_EXCEPTION`.
+ * The API enforces the same rule, so the UI state is guidance while the server remains
+ * the security and financial-control boundary.
  */
 
 import { useState } from 'react';

@@ -3,6 +3,8 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { LedgerService } from '../application/ledger.service.js';
@@ -15,6 +17,7 @@ import { TrialBalanceQueryDto, PLQueryDto, BalanceSheetQueryDto } from './dto/re
 @ApiTags('Financial Reports')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.accountingView)
 @Controller('reports')
 export class ReportController {
   constructor(

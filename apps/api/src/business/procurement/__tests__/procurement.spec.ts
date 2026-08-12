@@ -548,11 +548,12 @@ test('T12 — SupplierBill post writes ACCRUED reversal + ACTUAL entry exactly o
     data: { documentStatus: 'SUBMITTED' },
   });
   await svc.supplierBillService.approve(identity(env), bill.id);
-  // Attach PO revision id (normally set via matching flow)
+  // Link the approved revision, then complete the required matching gate.
   await prisma.supplierBill.update({
     where: { id: bill.id },
     data: { purchaseOrderRevisionId: activeRev.id },
   });
+  await svc.billMatchingService.runMatching(identity(env), bill.id);
 
   await svc.supplierBillService.post(identity(env), { billId: bill.id, apAccountCode: 'AP-PROC' });
 

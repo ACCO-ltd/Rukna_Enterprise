@@ -5,7 +5,8 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
-import type { RequestIdentity } from '@erp/types';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import { PurchaseOrderService } from '../application/purchase-order.service.js';
 import {
   CreatePurchaseOrderDto,
@@ -16,6 +17,7 @@ import {
 @ApiTags('Procurement — Purchase Orders')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.procurementView)
 @Controller('procurement/purchase-orders')
 export class PurchaseOrderController {
   constructor(private readonly service: PurchaseOrderService) {}
@@ -33,6 +35,7 @@ export class PurchaseOrderController {
   }
 
   @Post()
+  @RequirePermissions(PERMISSIONS.purchaseOrdersCreate)
   @ApiOperation({ summary: 'Create a purchase order (DRAFT revision)' })
   create(@CurrentUser() identity: RequestIdentity, @Body() dto: CreatePurchaseOrderDto) {
     return this.service.create(identity, dto);
@@ -46,6 +49,7 @@ export class PurchaseOrderController {
   }
 
   @Post(':id/submit')
+  @RequirePermissions(PERMISSIONS.purchaseOrdersCreate)
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Submit PO revision for approval: DRAFT → SUBMITTED' })
@@ -54,6 +58,7 @@ export class PurchaseOrderController {
   }
 
   @Post(':id/approve')
+  @RequirePermissions(PERMISSIONS.purchaseOrdersApprove)
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Approve PO revision: SUBMITTED → ACTIVE. Writes CommitmentLedger COMMITTED entries.' })
@@ -62,6 +67,7 @@ export class PurchaseOrderController {
   }
 
   @Post(':id/revise')
+  @RequirePermissions(PERMISSIONS.purchaseOrdersCreate)
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Create a new DRAFT revision for an OPEN PO' })
@@ -70,6 +76,7 @@ export class PurchaseOrderController {
   }
 
   @Post(':id/cancel')
+  @RequirePermissions(PERMISSIONS.purchaseOrdersCreate)
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Cancel purchase order' })

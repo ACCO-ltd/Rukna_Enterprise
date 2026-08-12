@@ -20,7 +20,10 @@ import {
 
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
-import type { RequestIdentity } from '@erp/types';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { ProjectScoped } from '../../../../common/decorators/project-scoped.decorator.js';
+import { ProjectAccessGuard } from '../../../../platform/project-access/project-access.guard.js';
+import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { BoqVersioningService } from '../application/boq-versioning.service.js';
 import { BoqTreeService } from '../application/boq-tree.service.js';
@@ -31,7 +34,9 @@ import { MoveNodeDto } from './dto/move-node.dto.js';
 
 @ApiTags('BOQ')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ProjectAccessGuard)
+@RequirePermissions(PERMISSIONS.boqView)
+@ProjectScoped()
 @Controller('projects/:projectId/boq')
 export class BoqController {
   constructor(
@@ -42,6 +47,7 @@ export class BoqController {
   // ─── BOQ lifecycle ────────────────────────────────────────────────────────────
 
   @Post()
+  @RequirePermissions(PERMISSIONS.boqManage)
   @ApiOperation({ summary: 'Initialize BOQ for a project (idempotent — returns existing if already initialized)' })
   @ApiParam({ name: 'projectId' })
   initialize(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
@@ -56,6 +62,7 @@ export class BoqController {
   }
 
   @Post('draft')
+  @RequirePermissions(PERMISSIONS.boqManage)
   @ApiOperation({ summary: 'Create a new DRAFT version from the current approved version' })
   @ApiParam({ name: 'projectId' })
   @ApiResponse({ status: 409, description: 'Draft already exists — baseline or cancel it first' })
@@ -70,6 +77,7 @@ export class BoqController {
   // ─── Version commands ─────────────────────────────────────────────────────────
 
   @Post('versions/:versionId/baseline')
+  @RequirePermissions(PERMISSIONS.boqBaseline)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Baseline the current DRAFT version → BASELINED. Sets it as the approved version.' })
   @ApiParam({ name: 'projectId' })
@@ -84,6 +92,7 @@ export class BoqController {
   }
 
   @Post('versions/:versionId/cancel')
+  @RequirePermissions(PERMISSIONS.boqManage)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cancel the current DRAFT version — does not affect the approved version' })
   @ApiParam({ name: 'projectId' })
@@ -111,6 +120,7 @@ export class BoqController {
   }
 
   @Post('versions/:versionId/nodes')
+  @RequirePermissions(PERMISSIONS.boqManage)
   @ApiOperation({ summary: 'Add a node to the BOQ tree (DRAFT only)' })
   @ApiParam({ name: 'projectId' })
   @ApiParam({ name: 'versionId' })
@@ -124,6 +134,7 @@ export class BoqController {
   }
 
   @Patch('versions/:versionId/nodes/:nodeId')
+  @RequirePermissions(PERMISSIONS.boqManage)
   @ApiOperation({ summary: 'Update node description, quantities, or rates (DRAFT only)' })
   @ApiParam({ name: 'projectId' })
   @ApiParam({ name: 'versionId' })
@@ -139,6 +150,7 @@ export class BoqController {
   }
 
   @Post('versions/:versionId/nodes/:nodeId/move')
+  @RequirePermissions(PERMISSIONS.boqManage)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Move a node (and all its descendants) to a new position (DRAFT only)' })
   @ApiParam({ name: 'projectId' })
@@ -156,6 +168,7 @@ export class BoqController {
   }
 
   @Delete('versions/:versionId/nodes/:nodeId')
+  @RequirePermissions(PERMISSIONS.boqManage)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Delete a leaf node (DRAFT only — must have no children)' })
   @ApiParam({ name: 'projectId' })

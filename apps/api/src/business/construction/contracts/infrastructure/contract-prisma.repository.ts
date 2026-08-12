@@ -16,11 +16,12 @@ type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$tr
 
 @Injectable()
 export class ContractPrismaRepository {
-  findAll(prisma: TenantPrisma, organizationId: string, projectId?: string) {
+  findAll(prisma: TenantPrisma, organizationId: string, projectId?: string, userId?: string) {
     return prisma.contract.findMany({
       where: {
         organizationId,
         ...(projectId ? { projectId } : {}),
+        ...(userId ? { project: { members: { some: { userId, removedAt: null } } } } : {}),
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -63,6 +64,7 @@ export class ContractPrismaRepository {
       contractValue: string;
       currency: string;
       billingModel?: string;
+      contractKind?: string;
       startDate?: Date;
       expectedEndDate?: Date;
       createdBy: string;
@@ -78,6 +80,7 @@ export class ContractPrismaRepository {
         contractValue: data.contractValue,
         currency: data.currency,
         billingModel: (data.billingModel ?? 'MEASURED_IPC') as never,
+        contractKind: (data.contractKind ?? 'CLIENT_CONTRACT') as never,
         startDate: data.startDate,
         expectedEndDate: data.expectedEndDate,
         createdBy: data.createdBy,

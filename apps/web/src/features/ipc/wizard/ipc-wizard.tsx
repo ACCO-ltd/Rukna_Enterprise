@@ -211,18 +211,19 @@ export function IpcWizard({ contractId, ipaId }: IpcWizardProps) {
   }, [ipaId, context, rows, adHocDeductions, ipa.data]);
 
   // ── BOQ node map ────────────────────────────────────────────────────────────
+  const boqNodes = boqTree.data;
   const nodeMap = useMemo(() => {
-    if (!boqTree.data) return {};
+    if (!boqNodes) return {};
     const flat: BoqTreeNode[] = [];
-    const flatten = (nodes: typeof boqTree.data) => {
+    const flatten = (nodes: typeof boqNodes) => {
       for (const n of nodes) {
         flat.push(n);
         if (n.children.length) flatten(n.children);
       }
     };
-    flatten(boqTree.data);
+    flatten(boqNodes);
     return Object.fromEntries(flat.map((n) => [n.id, n]));
-  }, [boqTree.data]);
+  }, [boqNodes]);
 
   // ── Check for existing effective certificate ─────────────────────────────────
   const hasEffectiveCert = ipcs.data?.some((c) => c.isEffective) ?? false;
@@ -292,8 +293,8 @@ export function IpcWizard({ contractId, ipaId }: IpcWizardProps) {
 
   // ── Row update helpers ───────────────────────────────────────────────────────
   function updateRow(applicationItemId: string, patch: Partial<CertRow>) {
-    setRows((prev) =>
-      prev.map((r) => (r.applicationItemId === applicationItemId ? { ...r, ...patch } : r)),
+    setRows(
+      rows.map((r) => (r.applicationItemId === applicationItemId ? { ...r, ...patch } : r)),
     );
   }
 

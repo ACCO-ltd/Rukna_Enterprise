@@ -35,11 +35,23 @@ export class ProcurementFixtureFactory {
   static async create(prisma: PrismaClient): Promise<ProcurementTestEnv> {
     const suffix = `p${Date.now().toString(36)}`;
     const orgId = `proc-org-${suffix}`;
-    const userId = 'proc-test-user';
+    const userId = `${orgId}-user`;
 
     // ── Organization ──────────────────────────────────────────────────────────
     await prisma.organization.create({
       data: { id: orgId, name: `Procurement Test Org ${suffix}`, slug: `proc-${suffix}`, status: 'ACTIVE' },
+    });
+
+    await prisma.user.create({
+      data: {
+        id: userId,
+        organizationId: orgId,
+        email: `${userId}@example.test`,
+        passwordHash: 'not-used-by-procurement-tests',
+        firstName: 'Procurement',
+        lastName: 'Tester',
+        status: 'ACTIVE',
+      },
     });
 
     const identity: RequestIdentity = {
@@ -62,6 +74,13 @@ export class ProcurementFixtureFactory {
         organizationId: orgId, code: 'PRJ-001', name: 'Test Site',
         status: 'ACTIVE', commercialModel: 'CLIENT_CONTRACT', participationModel: 'SOLE',
         createdBy: userId,
+      },
+    });
+    await prisma.projectMember.create({
+      data: {
+        projectId: project.id,
+        userId,
+        joinedBy: userId,
       },
     });
 
@@ -222,11 +241,13 @@ export class ProcurementFixtureFactory {
     await prisma.$executeRaw`DELETE FROM boq_nodes WHERE version_id IN (SELECT bv.id FROM boq_versions bv JOIN boqs b ON bv.boq_id = b.id JOIN projects p ON b.project_id = p.id WHERE p.organization_id = ${orgId})`;
     await prisma.$executeRaw`DELETE FROM boq_versions WHERE boq_id IN (SELECT b.id FROM boqs b JOIN projects p ON b.project_id = p.id WHERE p.organization_id = ${orgId})`;
     await prisma.$executeRaw`DELETE FROM boqs WHERE project_id IN (SELECT id FROM projects WHERE organization_id = ${orgId})`;
+    await prisma.$executeRaw`DELETE FROM project_members WHERE project_id IN (SELECT id FROM projects WHERE organization_id = ${orgId})`;
     await prisma.$executeRaw`DELETE FROM projects WHERE organization_id = ${orgId}`;
 
     await prisma.$executeRaw`DELETE FROM account_versions WHERE account_id IN (SELECT id FROM accounts WHERE organization_id = ${orgId})`;
     await prisma.$executeRaw`DELETE FROM accounts WHERE organization_id = ${orgId}`;
     await prisma.$executeRaw`DELETE FROM suppliers WHERE organization_id = ${orgId}`;
+    await prisma.$executeRaw`DELETE FROM users WHERE organization_id = ${orgId}`;
     await prisma.$executeRaw`DELETE FROM organizations WHERE id = ${orgId}`;
   }
 }

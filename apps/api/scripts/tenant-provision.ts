@@ -6,6 +6,7 @@ import { PrismaClient as PlatformPrismaClient } from '../src/generated/platform-
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { seedAccoWorkflows } from '../src/platform/workflows/seeders/acco-workflows.seed.js';
+import { seedUserAccess } from './tenant-access.js';
 
 const { values } = parseArgs({
   options: {
@@ -21,10 +22,28 @@ const slug = values['slug'];
 const tenantName = values['name'];
 const plan = values['plan'] ?? 'standard';
 const adminEmail = values['admin-email'] ?? 'admin@acco.com';
-const adminPassword = values['admin-password'] ?? 'ChangeMe123!';
+const adminPassword = values['admin-password'];
 
-if (!slug || !tenantName) {
-  console.error('Usage: pnpm tenant:provision --slug=acco --name="ACCO Ltd"');
+if (!slug || !tenantName || !adminPassword) {
+  console.error(
+    'Usage: pnpm tenant:provision --slug=acco --name="ACCO Ltd" ' +
+      '--admin-email=admin@acco.com --admin-password=<secure-password>',
+  );
+  process.exit(1);
+}
+
+if (!/^[a-z][a-z0-9-]{1,48}[a-z0-9]$/.test(slug)) {
+  console.error('Tenant slug must be 3-50 lowercase letters, numbers, or hyphens');
+  process.exit(1);
+}
+
+if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
+  console.error('A valid --admin-email is required');
+  process.exit(1);
+}
+
+if (adminPassword.length < 12) {
+  console.error('Admin password must contain at least 12 characters');
   process.exit(1);
 }
 
@@ -108,6 +127,14 @@ async function main() {
     data: { userId: adminUser.id, roleId: adminRole.id },
   });
 
+  const access = await seedUserAccess(tenantPrisma, {
+    organizationId: org.id,
+    userId: adminUser.id,
+    roleId: adminRole.id,
+    isDefault: true,
+  });
+  console.log(`  Assigned active organization membership and ${access.permissionsAssigned} permissions`);
+
   console.log(`  Seeding ACCO workflow chains...`);
   await seedAccoWorkflows(tenantPrisma, org.id);
 
@@ -125,7 +152,7 @@ async function main() {
   console.log(`  API:      http://${slug}.localhost:3001/api/v1`);
   console.log(`  Web:      http://${slug}.localhost:3000`);
   console.log(`  Admin:    ${adminEmail}`);
-  console.log(`  Password: ${adminPassword}\n`);
+  console.log('  Password: supplied securely by the operator (not printed)\n');
 }
 
 function buildTenantDbUrl(platformUrl: string, dbName: string): string {

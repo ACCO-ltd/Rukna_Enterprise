@@ -2,7 +2,7 @@
 
 import { useId } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Input, Label, Select } from '@erp/ui';
+import { Alert, Button, FormField, Input, Select } from '@erp/ui';
 
 import { formatMoney } from '@/lib/format';
 import type { CertRow, AdHocDeduction, WizardContext } from './draft';

@@ -11,6 +11,7 @@ import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js'
 import { MaterialRequestRepository } from '../infrastructure/material-request.repository.js';
 import { MaterialRepository } from '../../catalogue/infrastructure/material.repository.js';
 import { UomRepository } from '../../catalogue/infrastructure/uom.repository.js';
+import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 
 export interface CreateMrLineDto {
   lineType: ProcurementLineType;
@@ -51,17 +52,25 @@ export class MaterialRequestService {
     private readonly repo: MaterialRequestRepository,
     private readonly materialRepo: MaterialRepository,
     private readonly uomRepo: UomRepository,
+    private readonly projectAccess: ProjectAccessService,
   ) {}
 
-  findAll(identity: RequestIdentity, filters?: { status?: MaterialRequestStatus; projectId?: string; scope?: MaterialRequestScope }) {
+  async findAll(identity: RequestIdentity, filters?: { status?: MaterialRequestStatus; projectId?: string; scope?: MaterialRequestScope }) {
     const prisma = this.tenancy.getClient();
-    return this.repo.findAll(prisma, identity.activeOrganizationId, filters);
+    if (filters?.projectId) await this.projectAccess.assertMember(identity, filters.projectId);
+    return this.repo.findAll(
+      prisma,
+      identity.activeOrganizationId,
+      filters,
+      await this.projectAccess.accessibleProjectIds(identity),
+    );
   }
 
   async findById(identity: RequestIdentity, id: string) {
     const prisma = this.tenancy.getClient();
     const mr = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!mr) throw new NotFoundException(`Material request ${id} not found`);
+    if (mr.projectId) await this.projectAccess.assertMember(identity, mr.projectId);
     return mr;
   }
 
@@ -80,8 +89,7 @@ export class MaterialRequestService {
 
     // P8: validate that projectId belongs to this org (cross-org prevention)
     if (dto.projectId) {
-      const project = await prisma.project.findFirst({ where: { id: dto.projectId, organizationId: orgId }, select: { id: true } });
-      if (!project) throw new BadRequestException(`projectId '${dto.projectId}' not found in this organization`);
+      await this.projectAccess.assertMember(identity, dto.projectId);
     }
 
     if (!dto.lines || dto.lines.length === 0) {
@@ -162,6 +170,7 @@ export class MaterialRequestService {
     const prisma = this.tenancy.getClient();
     const mr = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!mr) throw new NotFoundException(`Material request ${id} not found`);
+    if (mr.projectId) await this.projectAccess.assertMember(identity, mr.projectId);
 
     const allowed = NEXT_STATUS[mr.status] ?? [];
     if (!allowed.includes(to)) {

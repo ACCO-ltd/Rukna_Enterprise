@@ -5,13 +5,15 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
-import type { RequestIdentity } from '@erp/types';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import { MaterialRequestService } from '../application/material-request.service.js';
 import { CreateMaterialRequestDto } from './dto/create-material-request.dto.js';
 
 @ApiTags('Procurement — Material Requests')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.procurementView)
 @Controller('procurement/material-requests')
 export class MaterialRequestController {
   constructor(private readonly service: MaterialRequestService) {}
@@ -35,6 +37,7 @@ export class MaterialRequestController {
   }
 
   @Post()
+  @RequirePermissions(PERMISSIONS.materialRequestsCreate)
   @ApiOperation({ summary: 'Create a material request in DRAFT status' })
   create(@CurrentUser() identity: RequestIdentity, @Body() dto: CreateMaterialRequestDto) {
     return this.service.create(identity, dto);
@@ -48,6 +51,7 @@ export class MaterialRequestController {
   }
 
   @Post(':id/submit')
+  @RequirePermissions(PERMISSIONS.materialRequestsSubmit)
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Submit MR for approval: DRAFT → SUBMITTED' })
@@ -56,6 +60,7 @@ export class MaterialRequestController {
   }
 
   @Post(':id/approve')
+  @RequirePermissions(PERMISSIONS.materialRequestsApprove)
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Approve MR: SUBMITTED → APPROVED' })
@@ -64,6 +69,7 @@ export class MaterialRequestController {
   }
 
   @Post(':id/cancel')
+  @RequirePermissions(PERMISSIONS.materialRequestsCreate)
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Cancel a material request' })

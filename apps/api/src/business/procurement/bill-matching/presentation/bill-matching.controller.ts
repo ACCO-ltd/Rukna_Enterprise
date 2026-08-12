@@ -7,7 +7,8 @@ import { IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
-import type { RequestIdentity } from '@erp/types';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import { BillMatchingService } from '../application/bill-matching.service.js';
 
 class ApproveExceptionDto {
@@ -19,6 +20,7 @@ class ApproveExceptionDto {
 @ApiTags('Procurement — Bill Matching')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.procurementView)
 @Controller('procurement/bill-matching')
 export class BillMatchingController {
   constructor(private readonly service: BillMatchingService) {}
@@ -31,6 +33,7 @@ export class BillMatchingController {
   }
 
   @Post(':billId/run')
+  @RequirePermissions(PERMISSIONS.payablesManage)
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'billId' })
   @ApiOperation({ summary: 'Run two-way or three-way matching for a supplier bill' })
@@ -39,6 +42,7 @@ export class BillMatchingController {
   }
 
   @Post(':billId/approve-exception')
+  @RequirePermissions(PERMISSIONS.matchingExceptionsApprove)
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'billId' })
   @ApiOperation({ summary: 'Approve a matching exception: EXCEPTION → APPROVED_EXCEPTION' })

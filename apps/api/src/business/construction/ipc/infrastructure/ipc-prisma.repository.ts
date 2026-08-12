@@ -11,9 +11,19 @@ type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$tr
 
 @Injectable()
 export class IpcPrismaRepository {
-  findAll(prisma: TenantPrisma, organizationId: string, applicationId?: string) {
+  findAll(prisma: TenantPrisma, organizationId: string, applicationId?: string, userId?: string) {
     return prisma.interimPaymentCertificate.findMany({
-      where: { organizationId, ...(applicationId ? { applicationId } : {}) },
+      where: {
+        organizationId,
+        ...(applicationId ? { applicationId } : {}),
+        ...(userId
+          ? {
+              application: {
+                contract: { project: { members: { some: { userId, removedAt: null } } } },
+              },
+            }
+          : {}),
+      },
       orderBy: { createdAt: 'desc' },
     });
   }

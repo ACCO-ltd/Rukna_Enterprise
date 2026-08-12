@@ -11,9 +11,26 @@ type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$tr
 
 @Injectable()
 export class IpaPrismaRepository {
-  findAll(prisma: TenantPrisma, organizationId: string, contractId?: string) {
+  findAll(
+    prisma: TenantPrisma,
+    organizationId: string,
+    contractId?: string,
+    projectId?: string,
+    userId?: string,
+  ) {
+    // Build contract relation filter incrementally so multiple conditions don't
+    // overwrite each other through spread. The service guarantees that projectId
+    // and userId are never both truthy simultaneously.
+    const contractWhere: Record<string, unknown> = {};
+    if (projectId) contractWhere['projectId'] = projectId;
+    if (userId) contractWhere['project'] = { members: { some: { userId, removedAt: null } } };
+
     return prisma.interimPaymentApplication.findMany({
-      where: { organizationId, ...(contractId ? { contractId } : {}) },
+      where: {
+        organizationId,
+        ...(contractId ? { contractId } : {}),
+        ...(Object.keys(contractWhere).length > 0 ? { contract: contractWhere } : {}),
+      },
       orderBy: { createdAt: 'desc' },
     });
   }

@@ -1,6 +1,8 @@
 import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { ReconciliationService } from '../application/reconciliation.service.js';
@@ -9,6 +11,7 @@ import { RunReconciliationDto } from './dto/run-reconciliation.dto.js';
 @ApiTags('Reconciliation')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.accountingManage)
 @Controller('accounting/reconcile')
 export class ReconciliationController {
   constructor(private readonly reconciliationService: ReconciliationService) {}
