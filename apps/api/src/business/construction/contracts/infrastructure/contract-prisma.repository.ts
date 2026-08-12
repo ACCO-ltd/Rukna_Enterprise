@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { PrismaClient, Contract, ContractGuarantee } from '@prisma/client';
+import type { PrismaClient, Contract, ContractGuarantee, ContractKind } from '@prisma/client';
 
 export type ContractFull = Contract & {
   retentionTerms: import('@prisma/client').ContractRetentionTerms | null;
@@ -53,6 +53,25 @@ export class ContractPrismaRepository {
     });
   }
 
+  /**
+   * Returns the current/effective CLIENT_CONTRACT for a project, or null if none exists.
+   * "Effective" means not yet CLOSED, CANCELLED, or TERMINATED.
+   * Called inside a transaction so the check and the subsequent insert are atomic.
+   */
+  findEffectiveClientContract(
+    prisma: TenantPrisma,
+    projectId: string,
+  ): Promise<{ id: string; contractNumber: string } | null> {
+    return prisma.contract.findFirst({
+      where: {
+        projectId,
+        contractKind: 'CLIENT_CONTRACT',
+        status: { notIn: ['CLOSED', 'CANCELLED', 'TERMINATED'] as never[] },
+      },
+      select: { id: true, contractNumber: true },
+    });
+  }
+
   create(
     prisma: TenantPrisma,
     data: {
@@ -64,7 +83,7 @@ export class ContractPrismaRepository {
       contractValue: string;
       currency: string;
       billingModel?: string;
-      contractKind?: string;
+      contractKind?: ContractKind;
       startDate?: Date;
       expectedEndDate?: Date;
       createdBy: string;
@@ -80,7 +99,7 @@ export class ContractPrismaRepository {
         contractValue: data.contractValue,
         currency: data.currency,
         billingModel: (data.billingModel ?? 'MEASURED_IPC') as never,
-        contractKind: (data.contractKind ?? 'CLIENT_CONTRACT') as never,
+        contractKind: data.contractKind ?? 'CLIENT_CONTRACT',
         startDate: data.startDate,
         expectedEndDate: data.expectedEndDate,
         createdBy: data.createdBy,

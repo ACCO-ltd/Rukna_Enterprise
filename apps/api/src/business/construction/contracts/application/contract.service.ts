@@ -20,10 +20,6 @@ import type { AddRetentionTermsDto } from '../presentation/dto/add-retention-ter
 
 const CANCEL_ALLOWED_FROM = new Set(['DRAFT', 'UNDER_REVIEW', 'PENDING_SIGNATURE']);
 
-// Statuses where a CLIENT_CONTRACT is no longer current/effective.
-// A project may have a second CLIENT_CONTRACT only if the first reached one of these states.
-const CLIENT_CONTRACT_TERMINAL_STATUSES = new Set(['CLOSED', 'CANCELLED', 'TERMINATED']);
-
 const TRANSITIONS: Record<string, { from: string; to: string }> = {
   submit:           { from: 'DRAFT',                to: 'UNDER_REVIEW' },
   'approve-review': { from: 'UNDER_REVIEW',         to: 'PENDING_SIGNATURE' },
@@ -90,25 +86,20 @@ export class ContractService {
 
     const contractKind = dto.contractKind ?? 'CLIENT_CONTRACT';
 
-    // Invariant: at most one current/effective CLIENT_CONTRACT per project.
-    if (contractKind === 'CLIENT_CONTRACT') {
-      const existing = await prisma.contract.findFirst({
-        where: {
-          projectId: dto.projectId,
-          contractKind: 'CLIENT_CONTRACT',
-          status: { notIn: [...CLIENT_CONTRACT_TERMINAL_STATUSES] as never[] },
-        },
-        select: { id: true, contractNumber: true },
-      });
-      if (existing) {
-        throw new ConflictException(
-          `Project already has a current client contract (${existing.contractNumber}). ` +
-          `A second CLIENT_CONTRACT can only be created after the existing one is CLOSED, CANCELLED, or TERMINATED.`,
-        );
-      }
-    }
-
     return prisma.$transaction(async (tx) => {
+      // Invariant check inside the transaction so the read and the subsequent
+      // insert are atomic. A unique partial DB index is the backstop for races
+      // that slip through before the index is added.
+      if (contractKind === 'CLIENT_CONTRACT') {
+        const existing = await this.repo.findEffectiveClientContract(tx, dto.projectId);
+        if (existing) {
+          throw new ConflictException(
+            `Project already has a current client contract (${existing.contractNumber}). ` +
+            `A second CLIENT_CONTRACT can only be created after the existing one is CLOSED, CANCELLED, or TERMINATED.`,
+          );
+        }
+      }
+
       const contract = await this.repo.create(tx, {
         organizationId: identity.activeOrganizationId,
         projectId: dto.projectId,
