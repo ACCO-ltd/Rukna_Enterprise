@@ -14,6 +14,7 @@ import type { ThemePreference } from '@/features/theme/theme-preference';
 import { ControlsSection } from './controls-section';
 import { FoundationsSection } from './foundations-section';
 import { PatternsSection } from './patterns-section';
+import { RecordsSection } from './records-section';
 
 // ─── Contents ─────────────────────────────────────────────────────────────────
 
@@ -31,6 +32,11 @@ const CONTENTS = [
   { id: 'feedback', label: 'Feedback' },
   { id: 'flow', label: 'Progress and guidance' },
   { id: 'overlays', label: 'Overlays' },
+  { id: 'tiles', label: 'Stat tiles' },
+  { id: 'record', label: 'Record layout' },
+  { id: 'approval', label: 'Approval' },
+  { id: 'views', label: 'Saved views' },
+  { id: 'wizard', label: 'Guided flows' },
 ] as const;
 
 // ─── Toggle group ─────────────────────────────────────────────────────────────
@@ -61,7 +67,9 @@ function ToggleGroup<T extends string>({
               aria-pressed={active}
               onClick={() => onChange(option.value)}
               className={cn(
-                'rounded-[0.25rem] px-2.5 py-1 text-caption font-semibold transition-colors',
+                // rounded-control, not an arbitrary 4px: this page documents the radius
+                // scale, so it has no business being the one file that steps outside it.
+                'rounded-control px-2.5 py-1 text-caption font-semibold transition-colors',
                 'duration-(--motion-enter) ease-brand',
                 'focus-visible:outline-none focus-visible:shadow-ring',
                 active
@@ -181,6 +189,7 @@ export function Gallery() {
             <FoundationsSection />
             <ControlsSection />
             <PatternsSection />
+            <RecordsSection />
           </div>
         </DirectionProvider>
 
