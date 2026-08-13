@@ -399,6 +399,12 @@
     "allProjects": "All projects",
     "grossMarginLabel": "Gross margin {percent}%"
   },
+  "projectActualPl": {
+    "title": "Project Actual P&L (GL)",
+    "actualOnlyHint": "Posted accounting truth only — this excludes committed and forecast cost, so it is not the project's full financial position.",
+    "empty": "Nothing has been posted to this project in this range.",
+    "emptyHint": "Post a supplier bill or client invoice tagged to this project, or widen the dates."
+  },
   "balanceSheet": {
     "title": "Balance Sheet",
     "subtitle": "What the organisation owns, owes, and is worth, at a date.",

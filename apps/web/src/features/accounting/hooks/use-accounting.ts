@@ -27,6 +27,7 @@ import {
   getFiscalYear,
   getJournal,
   getProfitLoss,
+  getProjectActualPl,
   getTrialBalance,
   listAccounts,
   listBankAccounts,
@@ -72,6 +73,8 @@ export const accountingKeys = {
     [...accountingKeys.all, 'trial-balance', asOfDate, includeZero] as const,
   profitLoss: (fromDate: string, toDate: string, projectId?: string) =>
     [...accountingKeys.all, 'profit-loss', fromDate, toDate, projectId ?? 'all'] as const,
+  projectActualPl: (projectId: string, fromDate: string, toDate: string) =>
+    [...accountingKeys.all, 'project-actual-pl', projectId, fromDate, toDate] as const,
   balanceSheet: (asOfDate: string, comparativeDate?: string) =>
     [...accountingKeys.all, 'balance-sheet', asOfDate, comparativeDate ?? 'none'] as const,
   ledger: (accountId: string, fromDate: string, toDate: string) =>
@@ -314,6 +317,19 @@ export function useProfitLoss(
     queryKey: accountingKeys.profitLoss(fromDate, toDate, projectId),
     queryFn: () => getProfitLoss({ fromDate, toDate, projectId }),
     enabled: Boolean(fromDate && toDate),
+  });
+}
+
+/** Project Actual P&L (ADR-013) — posted GL only, via `GET /projects/:id/pl`. */
+export function useProjectActualPl(
+  projectId: string,
+  fromDate: string,
+  toDate: string,
+): UseQueryResult<ProfitLoss, Error> {
+  return useQuery({
+    queryKey: accountingKeys.projectActualPl(projectId, fromDate, toDate),
+    queryFn: () => getProjectActualPl(projectId, { fromDate, toDate }),
+    enabled: Boolean(projectId && fromDate && toDate),
   });
 }
 

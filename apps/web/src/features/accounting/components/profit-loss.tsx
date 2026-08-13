@@ -134,7 +134,7 @@ export function ProfitLossReport() {
   );
 }
 
-function Section({
+export function Section({
   section,
   label,
   locale,
@@ -180,7 +180,7 @@ function Section({
   );
 }
 
-function Subtotal({
+export function Subtotal({
   label,
   amount,
   locale,

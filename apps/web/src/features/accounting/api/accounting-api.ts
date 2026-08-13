@@ -290,6 +290,20 @@ export function getProfitLoss(params: {
 }
 
 /**
+ * `GET /projects/:id/pl` — Project Actual P&L (ADR-013). Posted GL truth only, scoped to the
+ * project; the path id overrides any projectId param. Excludes committed/forecast cost — that is
+ * the separate Project Financial Position, which is not built. Do not present as the full picture.
+ */
+export function getProjectActualPl(
+  projectId: string,
+  params: { fromDate: string; toDate: string },
+): Promise<ProfitLoss> {
+  return apiClient<ProfitLoss>(`/projects/${projectId}/pl`, {
+    params: { fromDate: params.fromDate, toDate: params.toDate },
+  });
+}
+
+/**
  * `GET /reports/balance-sheet`.
  *
  * `comparativeDate` adds a second column. Equity carries Current Year Earnings as a live P&L
