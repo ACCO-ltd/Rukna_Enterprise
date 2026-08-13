@@ -5,7 +5,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { CommercialModel, ParticipationModel, Project } from '@prisma/client';
-import { PERMISSIONS, type RequestIdentity } from '@erp/types';
+import { PERMISSIONS, type ProjectWorkspaceSummaryResponse, type RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
@@ -81,6 +81,81 @@ export class ProjectService {
     const project = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!project) throw new NotFoundException(`Project ${id} not found`);
     return project;
+  }
+
+  async getWorkspaceSummary(
+    identity: RequestIdentity,
+    id: string,
+  ): Promise<ProjectWorkspaceSummaryResponse> {
+    await this.projectAccess.assertMember(identity, id);
+    const prisma = this.tenancyService.getClient();
+    const [project, recentActivity] = await Promise.all([
+      this.repo.findWorkspaceSummary(prisma, identity.activeOrganizationId, id),
+      this.repo.findRecentProjectActivity(prisma, identity.activeOrganizationId, id),
+    ]);
+    if (!project) throw new NotFoundException(`Project ${id} not found`);
+
+    const mainContract = project.contracts[0] ?? null;
+    const projectManager = project.members.find((member) =>
+      member.roles.some((assignment) => assignment.role === 'PROJECT_MANAGER'),
+    );
+    const hasBaselinedBoq =
+      project.boq?.versions.some((version) => version.status === 'BASELINED') ?? false;
+    const contractApplicable = project.commercialModel === CommercialModel.CLIENT_CONTRACT;
+    const mayViewFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
+    const mayViewContracts = identity.permissions.includes(PERMISSIONS.contractsView);
+    // The creator is enrolled as PM automatically. A delivery team is ready only after a
+    // second active member joins; required-role policy remains a separate domain decision.
+    const teamReady = project.members.length > 1;
+
+    return {
+      projectId: project.id,
+      setup: {
+        identityComplete: true,
+        boqExists: project.boq !== null,
+        boqBaselined: hasBaselinedBoq,
+        mainContractApplicable: contractApplicable,
+        mainContractExists: mainContract !== null,
+        teamReady,
+        completedSteps:
+          1 +
+          (hasBaselinedBoq ? 1 : 0) +
+          (contractApplicable ? (mainContract ? 1 : 0) : 0) +
+          (teamReady ? 1 : 0),
+        totalSteps: contractApplicable ? 4 : 3,
+      },
+      responsibility: {
+        projectManager: projectManager
+          ? {
+              id: projectManager.user.id,
+              name: `${projectManager.user.firstName} ${projectManager.user.lastName}`.trim(),
+            }
+          : null,
+        teamCount: project.members.length,
+      },
+      mainContract: mayViewContracts && mainContract
+        ? {
+            id: mainContract.id,
+            contractNumber: mainContract.contractNumber,
+            status: mainContract.status,
+            startDate: mainContract.startDate?.toISOString() ?? null,
+            expectedEndDate: mainContract.expectedEndDate?.toISOString() ?? null,
+            contractValue: mayViewFinancials ? mainContract.contractValue.toString() : null,
+            currency: mayViewFinancials ? mainContract.currency : null,
+          }
+        : null,
+      financialsVisible: mayViewFinancials,
+      recentActivity: recentActivity.map((event) => ({
+        id: event.id,
+        action: event.action,
+        sourceCommand: event.sourceCommand,
+        occurredAt: event.createdAt.toISOString(),
+        actor: {
+          id: event.user.id,
+          name: `${event.user.firstName} ${event.user.lastName}`.trim(),
+        },
+      })),
+    };
   }
 
   // ─── Create ──────────────────────────────────────────────────────────────────

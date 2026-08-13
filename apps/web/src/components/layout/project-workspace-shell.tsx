@@ -29,10 +29,8 @@ import {
   Users,
 } from 'lucide-react';
 
-import { isOperationalClientContract } from '@/features/contracts/contract-eligibility';
-import { useContracts } from '@/features/contracts/hooks/use-contracts';
 import { ProjectStatusBadge } from '@/features/projects/components/project-status-badge';
-import { useProject } from '@/features/projects/hooks/use-project';
+import { useProject, useProjectWorkspaceSummary } from '@/features/projects/hooks/use-project';
 import { formatDate, formatMoney } from '@/lib/format';
 
 interface ProjectWorkspaceShellProps {
@@ -56,7 +54,7 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
   const router = useRouter();
   const locale = useLocale() as 'en' | 'ar';
   const projectQuery = useProject(id);
-  const contractsQuery = useContracts(id);
+  const summaryQuery = useProjectWorkspaceSummary(id);
   const project = projectQuery.data;
 
   const primaryTabs = [
@@ -76,8 +74,8 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
   }
 
   const commercialActive = commercialTabs.some((tab) => isActive(tab.href));
-  const mainContract = contractsQuery.data?.find(isOperationalClientContract);
-  const contractValue = mainContract
+  const mainContract = summaryQuery.data?.mainContract;
+  const contractValue = mainContract?.contractValue
     ? formatMoney(mainContract.contractValue, mainContract.currency, locale)
     : null;
   const programme = project?.startDate || project?.expectedEndDate
@@ -85,14 +83,7 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
         .filter(Boolean)
         .join(' - ')
     : null;
-  const projectManager = project?.projectManager ?? project?.members.find((member) =>
-    member.roles.some((assignment) => assignment.role === 'PROJECT_MANAGER'),
-  )?.user;
-  const projectManagerName = typeof projectManager === 'string'
-    ? projectManager
-    : projectManager
-      ? `${projectManager.firstName} ${projectManager.lastName}`.trim()
-      : null;
+  const projectManagerName = summaryQuery.data?.responsibility.projectManager?.name ?? null;
   const stageIndex = project?.status ? LIFECYCLE_STAGES.indexOf(project.status) : -1;
 
   if (projectQuery.isError) {
@@ -159,7 +150,7 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
               ) : null}
 
               <dl className="mt-5 grid overflow-hidden rounded-lg border border-border sm:grid-cols-2 lg:grid-cols-4">
-                <SummaryItem icon={BriefcaseBusiness} label={t('workspace.mainContract')} value={contractsQuery.isPending ? t('workspace.loadingValue') : contractValue ?? (project.commercialModel === 'INTERNAL_CAPITAL' ? t('workspace.notApplicable') : t('workspace.notCreated'))} />
+                <SummaryItem icon={BriefcaseBusiness} label={t('workspace.mainContract')} value={summaryQuery.isPending ? t('workspace.loadingValue') : contractValue ?? (project.commercialModel === 'INTERNAL_CAPITAL' ? t('workspace.notApplicable') : summaryQuery.data?.mainContract && !summaryQuery.data.financialsVisible ? t('workspace.restricted') : t('workspace.notCreated'))} />
                 <SummaryItem icon={CalendarDays} label={t('workspace.programme')} value={programme ?? t('detail.notSet')} />
                 <SummaryItem icon={UserRound} label={t('workspace.projectManager')} value={projectManagerName ?? t('detail.notSet')} />
                 <SummaryItem icon={Building2} label={t('workspace.currentStage')} value={t(`status.${project.status}`)} />
@@ -207,7 +198,7 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
         </nav>
       </section>
 
-      {contractsQuery.isError ? <div className="mb-4"><Alert variant="warning" messages={[t('workspace.contractSummaryUnavailable')]} /></div> : null}
+      {summaryQuery.isError ? <div className="mb-4"><Alert variant="warning" messages={[t('workspace.contractSummaryUnavailable')]} /></div> : null}
       {children}
     </div>
   );

@@ -7,18 +7,28 @@ import { useLifecycleCommand } from '@/features/lifecycle/use-lifecycle-command'
 import {
   cancelProject,
   getProject,
+  getProjectWorkspaceSummary,
   resumeProject,
   runProjectCommand,
   suspendProject,
 } from '../api/projects-api';
 import type { ProjectCommand } from '../project-actions';
-import type { ProjectDetail } from '../types';
+import type { ProjectDetail, ProjectWorkspaceSummary } from '../types';
 import { projectKeys } from './use-projects';
 
 export function useProject(id: string): UseQueryResult<ProjectDetail, Error> {
   return useQuery({
     queryKey: projectKeys.detail(id),
     queryFn: () => getProject(id),
+  });
+}
+
+export function useProjectWorkspaceSummary(
+  id: string,
+): UseQueryResult<ProjectWorkspaceSummary, Error> {
+  return useQuery({
+    queryKey: [...projectKeys.detail(id), 'workspace-summary'],
+    queryFn: () => getProjectWorkspaceSummary(id),
   });
 }
 

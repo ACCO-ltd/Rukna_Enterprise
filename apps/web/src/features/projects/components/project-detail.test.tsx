@@ -8,6 +8,7 @@ import { ApiError } from '@/lib/api-client';
 import {
   cancelProject,
   getProject,
+  getProjectWorkspaceSummary,
   resumeProject,
   runProjectCommand,
   suspendProject,
@@ -18,6 +19,7 @@ import { ProjectDetail } from './project-detail';
 
 vi.mock('@/features/projects/api/projects-api', () => ({
   getProject: vi.fn(),
+  getProjectWorkspaceSummary: vi.fn(),
   runProjectCommand: vi.fn(),
   cancelProject: vi.fn(),
   suspendProject: vi.fn(),
@@ -74,8 +76,30 @@ function project(overrides: Partial<ProjectDetailModel> = {}): ProjectDetailMode
   };
 }
 
+function workspaceSummary() {
+  return {
+    projectId: 'p1',
+    setup: {
+      identityComplete: true,
+      boqExists: false,
+      boqBaselined: false,
+      mainContractApplicable: true,
+      mainContractExists: false,
+      teamReady: false,
+      completedSteps: 1,
+      totalSteps: 4,
+    },
+    responsibility: { projectManager: null, teamCount: 0 },
+    mainContract: null,
+    financialsVisible: false,
+    recentActivity: [],
+  };
+}
+
 beforeEach(() => {
   vi.mocked(getProject).mockReset();
+  vi.mocked(getProjectWorkspaceSummary).mockReset();
+  vi.mocked(getProjectWorkspaceSummary).mockResolvedValue(workspaceSummary());
   vi.mocked(runProjectCommand).mockReset();
   vi.mocked(cancelProject).mockReset();
   vi.mocked(suspendProject).mockReset();

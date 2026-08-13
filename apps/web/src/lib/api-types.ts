@@ -69,6 +69,7 @@ import type {
   ProjectRole,
   ProjectStatus,
 } from '@erp/types';
+import type { ProjectWorkspaceSummaryResponse } from '@erp/types';
 
 // ─── Projects ────────────────────────────────────────────────────────────────────
 
@@ -139,6 +140,8 @@ export interface ProjectDetail extends Project {
   members: ProjectMember[];
   suspensions: ProjectSuspension[];
 }
+
+export type ProjectWorkspaceSummary = ProjectWorkspaceSummaryResponse;
 
 // ─── BOQ ─────────────────────────────────────────────────────────────────────────
 

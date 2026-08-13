@@ -12,6 +12,7 @@ export type {
   ProjectMember,
   ProjectMemberRoleAssignment,
   ProjectSuspension,
+  ProjectWorkspaceSummary,
 } from '@/lib/api-types';
 
 /** Lifecycle order, used to present status groupings in a stable, meaningful sequence. */

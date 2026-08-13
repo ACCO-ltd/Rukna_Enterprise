@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 import { useRouter } from 'next/navigation';
 
 import { useLifecycleCommand } from '@/features/lifecycle/use-lifecycle-command';
+import { projectKeys } from '@/features/projects/hooks/use-projects';
 
 import {
   cancelContract,
@@ -48,6 +49,7 @@ export function useCreateContract() {
     mutationFn: (payload: CreateContractPayload) => createContract(payload),
     onSuccess: async (contract) => {
       await queryClient.invalidateQueries({ queryKey: contractKeys.all });
+      await queryClient.invalidateQueries({ queryKey: projectKeys.detail(contract.projectId) });
       router.push(`/contracts/${contract.id}`);
     },
   });
@@ -59,8 +61,9 @@ export function useUpdateContract(id: string) {
 
   return useMutation({
     mutationFn: (payload: UpdateContractPayload) => updateContract(id, payload),
-    onSuccess: async () => {
+    onSuccess: async (contract) => {
       await queryClient.invalidateQueries({ queryKey: contractKeys.all });
+      await queryClient.invalidateQueries({ queryKey: projectKeys.detail(contract.projectId) });
       router.push(`/contracts/${id}`);
     },
   });

@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 
 import { ApiError } from '@/lib/api-client';
+import { projectKeys } from '@/features/projects/hooks/use-projects';
 
 import {
   addBoqNode,
@@ -73,6 +74,7 @@ function useBoqMutation<TArgs>(projectId: string, run: (args: TArgs) => Promise<
     mutationFn: run,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: boqKeys.all(projectId) });
+      await queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
     },
   });
 }

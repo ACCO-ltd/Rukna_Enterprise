@@ -344,7 +344,12 @@ All endpoints are scoped to the authenticated user's organization.
 | `GET` | `/projects` | List (`?status=ACTIVE`) |
 | `POST` | `/projects` | Create DRAFT |
 | `GET` | `/projects/:id` | Get with members + suspension |
+| `GET` | `/projects/:id/workspace-summary` | Permission-aware setup, responsibility and main-contract projection |
 | `PATCH` | `/projects/:id` | Update (DRAFT only) |
+
+The workspace summary is organization- and membership-scoped. Main-contract metadata requires
+`view:contract`; contract value and currency additionally require `view:financial-position`.
+It is the authoritative source for project setup state and workspace header summaries.
 
 **Create project — request body:**
 ```json

@@ -3,7 +3,7 @@ import type { ProjectRole, ProjectStatus } from '@erp/types';
 import { apiClient } from '@/lib/api-client';
 
 import type { ProjectCommand } from '../project-actions';
-import type { Project, ProjectDetail, ProjectMember } from '../types';
+import type { Project, ProjectDetail, ProjectMember, ProjectWorkspaceSummary } from '../types';
 
 /**
  * Body accepted by `POST /projects`, mirroring CreateProjectDto.
@@ -59,6 +59,10 @@ export function createProject(payload: CreateProjectPayload): Promise<Project> {
 
 export function getProject(id: string): Promise<ProjectDetail> {
   return apiClient<ProjectDetail>(`/projects/${id}`);
+}
+
+export function getProjectWorkspaceSummary(id: string): Promise<ProjectWorkspaceSummary> {
+  return apiClient<ProjectWorkspaceSummary>(`/projects/${id}/workspace-summary`);
 }
 
 /**

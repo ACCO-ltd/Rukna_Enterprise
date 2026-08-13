@@ -33,6 +33,43 @@ const PROJECT_LIST_INCLUDE = {
 
 export type ProjectListRecord = Prisma.ProjectGetPayload<{ include: typeof PROJECT_LIST_INCLUDE }>;
 
+const PROJECT_WORKSPACE_SUMMARY_INCLUDE = {
+  members: {
+    where: { removedAt: null },
+    include: {
+      roles: { where: { removedAt: null } },
+      user: { select: { id: true, firstName: true, lastName: true } },
+    },
+  },
+  boq: {
+    select: {
+      id: true,
+      versions: { select: { status: true } },
+    },
+  },
+  contracts: {
+    where: {
+      contractKind: 'CLIENT_CONTRACT',
+      status: { notIn: ['CLOSED', 'CANCELLED', 'TERMINATED'] },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 1,
+    select: {
+      id: true,
+      contractNumber: true,
+      contractValue: true,
+      currency: true,
+      status: true,
+      startDate: true,
+      expectedEndDate: true,
+    },
+  },
+} satisfies Prisma.ProjectInclude;
+
+export type ProjectWorkspaceSummaryRecord = Prisma.ProjectGetPayload<{
+  include: typeof PROJECT_WORKSPACE_SUMMARY_INCLUDE;
+}>;
+
 @Injectable()
 export class ProjectPrismaRepository {
   // ─── Queries ─────────────────────────────────────────────────────────────────
@@ -58,6 +95,36 @@ export class ProjectPrismaRepository {
     return prisma.project.findFirst({
       where: { id, organizationId },
       include: PROJECT_FULL_INCLUDE,
+    });
+  }
+
+  async findWorkspaceSummary(
+    prisma: TenantPrisma,
+    organizationId: string,
+    id: string,
+  ): Promise<ProjectWorkspaceSummaryRecord | null> {
+    return prisma.project.findFirst({
+      where: { id, organizationId },
+      include: PROJECT_WORKSPACE_SUMMARY_INCLUDE,
+    });
+  }
+
+  async findRecentProjectActivity(
+    prisma: TenantPrisma,
+    organizationId: string,
+    projectId: string,
+  ) {
+    return prisma.auditLog.findMany({
+      where: { orgId: organizationId, resource: 'Project', resourceId: projectId },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: {
+        id: true,
+        action: true,
+        sourceCommand: true,
+        createdAt: true,
+        user: { select: { id: true, firstName: true, lastName: true } },
+      },
     });
   }
 

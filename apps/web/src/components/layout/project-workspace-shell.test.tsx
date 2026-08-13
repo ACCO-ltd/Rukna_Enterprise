@@ -8,7 +8,7 @@ import { ProjectWorkspaceShell } from './project-workspace-shell';
 
 const push = vi.fn();
 const useProject = vi.fn();
-const useContracts = vi.fn();
+const useProjectWorkspaceSummary = vi.fn();
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/projects/project-1',
@@ -20,8 +20,10 @@ vi.mock('next/link', () => ({
     <a href={href} {...props}>{children}</a>,
 }));
 
-vi.mock('@/features/projects/hooks/use-project', () => ({ useProject: (...args: unknown[]) => useProject(...args) }));
-vi.mock('@/features/contracts/hooks/use-contracts', () => ({ useContracts: (...args: unknown[]) => useContracts(...args) }));
+vi.mock('@/features/projects/hooks/use-project', () => ({
+  useProject: (...args: unknown[]) => useProject(...args),
+  useProjectWorkspaceSummary: (...args: unknown[]) => useProjectWorkspaceSummary(...args),
+}));
 
 const project = {
   id: 'project-1',
@@ -51,14 +53,32 @@ const project = {
 beforeEach(() => {
   push.mockReset();
   useProject.mockReturnValue({ data: project, isPending: false, isError: false, refetch: vi.fn() });
-  useContracts.mockReturnValue({
-    data: [{
+  useProjectWorkspaceSummary.mockReturnValue({
+    data: {
+      projectId: 'project-1',
+      setup: {
+        identityComplete: true,
+        boqExists: true,
+        boqBaselined: true,
+        mainContractApplicable: true,
+        mainContractExists: true,
+        teamReady: true,
+        completedSteps: 4,
+        totalSteps: 4,
+      },
+      responsibility: { projectManager: { id: 'user-1', name: 'Ahmed Hassan' }, teamCount: 1 },
+      mainContract: {
       id: 'contract-1',
-      contractKind: 'CLIENT_CONTRACT',
       status: 'ACTIVE',
+      contractNumber: 'CTR-001',
       contractValue: '12500000.00',
       currency: 'USD',
-    }],
+      startDate: null,
+      expectedEndDate: null,
+      },
+      financialsVisible: true,
+      recentActivity: [],
+    },
     isPending: false,
     isError: false,
   });

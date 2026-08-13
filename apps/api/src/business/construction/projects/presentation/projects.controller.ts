@@ -61,6 +61,13 @@ export class ProjectsController {
     return this.projectService.create(identity, dto);
   }
 
+  @Get(':id/workspace-summary')
+  @ApiOperation({ summary: 'Get the permission-aware project workspace summary' })
+  @ApiParam({ name: 'id', description: 'Project ID' })
+  workspaceSummary(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.projectService.getWorkspaceSummary(identity, id);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get project details including active members and suspension' })
   @ApiParam({ name: 'id', description: 'Project ID' })

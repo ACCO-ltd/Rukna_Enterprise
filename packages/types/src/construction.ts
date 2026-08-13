@@ -8,6 +8,41 @@ import type {
   ClientStatus,
 } from './enums.js';
 
+export interface ProjectWorkspaceSummaryResponse {
+  projectId: string;
+  setup: {
+    identityComplete: boolean;
+    boqExists: boolean;
+    boqBaselined: boolean;
+    mainContractApplicable: boolean;
+    mainContractExists: boolean;
+    teamReady: boolean;
+    completedSteps: number;
+    totalSteps: number;
+  };
+  responsibility: {
+    projectManager: { id: string; name: string } | null;
+    teamCount: number;
+  };
+  mainContract: {
+    id: string;
+    contractNumber: string;
+    status: `${ContractStatus}`;
+    startDate: string | null;
+    expectedEndDate: string | null;
+    contractValue: string | null;
+    currency: string | null;
+  } | null;
+  financialsVisible: boolean;
+  recentActivity: Array<{
+    id: string;
+    action: string;
+    sourceCommand: string | null;
+    occurredAt: string;
+    actor: { id: string; name: string };
+  }>;
+}
+
 // ─── Client ───────────────────────────────────────────────────────────────────
 
 export interface ClientContactResponse {

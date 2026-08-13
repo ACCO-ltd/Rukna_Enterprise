@@ -6,7 +6,6 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Button } from '@erp/ui';
-import { BoqVersionStatus } from '@erp/types';
 import {
   ArrowRight,
   Building2,
@@ -14,20 +13,20 @@ import {
   Check,
   CircleCheck,
   DollarSign,
+  History,
   Lock,
+  Users,
 } from 'lucide-react';
 
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 
-import { useProject } from '../hooks/use-project';
-import { useContracts } from '@/features/contracts/hooks/use-contracts';
-import { isOperationalClientContract } from '@/features/contracts/contract-eligibility';
-import { useBoq } from '@/features/boq/hooks/use-boq';
+import { useProject, useProjectWorkspaceSummary } from '../hooks/use-project';
 import { ProjectCommitmentsCard } from '@/features/procurement/components/commitments';
 
 import { getAvailableActions } from '../project-actions';
 import type { ProjectDetail as ProjectDetailModel } from '../types';
+import type { ProjectWorkspaceSummary } from '../types';
 import { ProjectActionsPanel } from './project-actions-panel';
 import { KpiCard } from '@/components/widget/kpi-card';
 
@@ -38,12 +37,7 @@ export function ProjectDetail({ id }: { id: string }) {
   const searchParams = useSearchParams();
   const [showCreated, setShowCreated] = useState(searchParams?.get('created') === '1');
   const { data: project, isPending, isError, error } = useProject(id);
-  const contracts = useContracts(id);
-  const boq = useBoq(id);
-  const hasBoq = boq.data !== null && boq.data !== undefined;
-  const hasBaselinedBoq =
-    boq.data?.versions.some((version) => version.status === BoqVersionStatus.BASELINED) ?? false;
-  const hasEffectiveClientContract = contracts.data?.some(isOperationalClientContract) ?? false;
+  const summary = useProjectWorkspaceSummary(id);
 
   useEffect(() => {
     if (!showCreated) return;
@@ -106,16 +100,14 @@ export function ProjectDetail({ id }: { id: string }) {
       <Overview
         project={project}
         locale={locale}
-        hasEffectiveClientContract={hasEffectiveClientContract}
-        hasBoq={hasBoq}
-        hasBaselinedBoq={hasBaselinedBoq}
-        domainContractValue={contracts.data?.[0]?.contractValue ?? null}
-        domainCurrency={contracts.data?.[0]?.currency ?? null}
+        summary={summary.data}
+        summaryPending={summary.isPending}
+        summaryError={summary.isError}
       />
 
       <ProjectCommitmentsCard
         projectId={project.id}
-        currencyCode={contracts.data?.[0]?.currency ?? null}
+        currencyCode={summary.data?.mainContract?.currency ?? null}
       />
     </div>
   );
@@ -146,25 +138,21 @@ function ProjectHeaderActions({ project, label }: { project: ProjectDetailModel;
 function Overview({
   project,
   locale,
-  hasEffectiveClientContract,
-  hasBoq,
-  hasBaselinedBoq,
-  domainContractValue,
-  domainCurrency,
+  summary,
+  summaryPending,
+  summaryError,
 }: {
   project: ProjectDetailModel;
   locale: 'en' | 'ar';
-  hasEffectiveClientContract: boolean;
-  hasBoq: boolean;
-  hasBaselinedBoq: boolean;
-  /** contractValue from the Contract record; preferred over project.contractValue for new projects. */
-  domainContractValue: string | null;
-  domainCurrency: string | null;
+  summary: ProjectWorkspaceSummary | undefined;
+  summaryPending: boolean;
+  summaryError: boolean;
 }) {
   const t = useTranslations('platform.projects.detail');
+  const tProjects = useTranslations('platform.projects');
   const contractValueDisplay = formatMoney(
-    domainContractValue ?? project.contractValue,
-    domainCurrency ?? project.currency,
+    summary?.mainContract?.contractValue ?? null,
+    summary?.mainContract?.currency ?? null,
     locale,
   );
 
@@ -181,18 +169,28 @@ function Overview({
         { label: t('location'), value: project.location ?? null },
       ],
     },
-    {
-      title: t('overviewCommercial'),
-      icon: DollarSign,
-      rows: [{ label: t('contractValue'), value: contractValueDisplay }],
-    },
+    ...(summary?.financialsVisible
+      ? [{
+          title: t('overviewCommercial'),
+          icon: DollarSign,
+          rows: [{ label: t('contractValue'), value: contractValueDisplay }],
+        }]
+      : []),
     {
       title: t('overviewSchedule'),
       icon: CalendarDays,
       rows: [
         { label: t('startDate'), value: formatDate(project.startDate, locale) },
         { label: t('expectedEnd'), value: formatDate(project.expectedEndDate, locale) },
-        { label: t('created'), value: formatDate(project.createdAt, locale) },
+        { label: t('currentStage'), value: tProjects(`status.${project.status}`) },
+      ],
+    },
+    {
+      title: t('overviewResponsibility'),
+      icon: Users,
+      rows: [
+        { label: t('projectManager'), value: summary?.responsibility.projectManager?.name ?? null },
+        { label: t('teamCount'), value: summary ? String(summary.responsibility.teamCount) : null },
       ],
     },
   ];
@@ -200,23 +198,22 @@ function Overview({
   return (
     <div className="space-y-5">
       {project.status === 'DRAFT' ? (
-        <SetupStepper
-          project={project}
-          hasBoq={hasBoq}
-          hasEffectiveClientContract={hasEffectiveClientContract}
-          hasBaselinedBoq={hasBaselinedBoq}
-        />
+        summaryPending ? (
+          <div className="h-40 animate-pulse rounded-panel border border-border bg-muted" />
+        ) : summary ? (
+          <SetupStepper project={project} summary={summary} />
+        ) : null
       ) : null}
 
-      {project.status !== 'DRAFT' ? (
+      {summaryError ? <Alert variant="warning" messages={[t('summaryUnavailable')]} /> : null}
+
+      {project.status !== 'DRAFT' && summary ? (
         <div className="grid gap-4 sm:grid-cols-3">
-          <KpiCard label={t('contractValue')} value={contractValueDisplay ?? t('notSet')} />
-          <KpiCard
-            label={t('certifiedRevenue')}
-            value={t('notAvailable')}
-            sublabel={t('certifiedRevenueHint')}
-          />
-          <KpiCard label={t('received')} value={t('notAvailable')} sublabel={t('receivedHint')} />
+          {summary.financialsVisible ? (
+            <KpiCard label={t('contractValue')} value={contractValueDisplay ?? t('notSet')} />
+          ) : null}
+          <KpiCard label={t('projectManager')} value={summary.responsibility.projectManager?.name ?? t('notSet')} />
+          <KpiCard label={t('team')} value={t('teamMembers', { count: summary.responsibility.teamCount })} />
         </div>
       ) : null}
 
@@ -229,7 +226,7 @@ function Overview({
         </h2>
 
         <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
-          <dl className="grid divide-y divide-border lg:grid-cols-3 lg:divide-x lg:divide-y-0 rtl:lg:divide-x-reverse">
+          <dl className="grid divide-y divide-border md:grid-cols-2 md:divide-x md:divide-y-0 rtl:md:divide-x-reverse lg:grid-cols-4">
             {groups.map((group) => {
               const GroupIcon = group.icon;
               return (
@@ -269,8 +266,52 @@ function Overview({
           ) : null}
         </div>
       </section>
+
+      {summary ? (
+        <section aria-labelledby="recent-activity-heading">
+          <div className="mb-3 flex items-center gap-2">
+            <History size={17} className="text-muted-foreground" aria-hidden="true" />
+            <h2 id="recent-activity-heading" className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              {t('recentActivity')}
+            </h2>
+          </div>
+          <div className="overflow-hidden rounded-panel border border-border bg-surface shadow-e1">
+            {summary.recentActivity.length > 0 ? (
+              <ol className="divide-y divide-border">
+                {summary.recentActivity.map((event) => (
+                  <li key={event.id} className="flex items-start justify-between gap-4 px-4 py-3 sm:px-5">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">
+                        {t('activityEvent', { actor: event.actor.name, action: activityLabel(event.sourceCommand ?? event.action, t) })}
+                      </p>
+                    </div>
+                    <time className="shrink-0 text-xs text-muted-foreground" dateTime={event.occurredAt}>
+                      {formatDate(event.occurredAt, locale)}
+                    </time>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="px-5 py-8 text-center text-sm text-muted-foreground">{t('noRecentActivity')}</p>
+            )}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
+}
+
+function activityLabel(
+  command: string,
+  t: (key: 'activityProjectCreated' | 'activityProjectUpdated' | 'activityProjectSuspended' | 'activityProjectResumed' | 'activityProjectChanged') => string,
+): string {
+  const labels: Record<string, string> = {
+    'project.create': t('activityProjectCreated'),
+    'project.update': t('activityProjectUpdated'),
+    'project.suspend': t('activityProjectSuspended'),
+    'project.resume': t('activityProjectResumed'),
+  };
+  return labels[command] ?? t('activityProjectChanged');
 }
 
 // ─── Setup stepper ────────────────────────────────────────────────────────────
@@ -290,18 +331,12 @@ interface StepDef {
 
 function SetupStepper({
   project,
-  hasBoq,
-  hasEffectiveClientContract,
-  hasBaselinedBoq,
+  summary,
 }: {
   project: ProjectDetailModel;
-  hasBoq: boolean;
-  hasEffectiveClientContract: boolean;
-  hasBaselinedBoq: boolean;
+  summary: ProjectWorkspaceSummary;
 }) {
   const t = useTranslations('platform.projects.detail');
-  const hasTeam = project.members.length > 0;
-
   const steps: StepDef[] = [
     {
       labelKey: 'setupProject',
@@ -312,7 +347,7 @@ function SetupStepper({
     {
       labelKey: 'setupBoq',
       descKey: 'setupBoqDesc',
-      complete: hasBoq,
+      complete: summary.setup.boqBaselined,
       locked: false,
       href: `/projects/${project.id}/boq`,
       actionKey: 'continueSetup',
@@ -322,24 +357,24 @@ function SetupStepper({
       : [{
           labelKey: 'setupContract' as const,
           descKey: 'setupContractDesc' as const,
-          complete: hasEffectiveClientContract,
-          locked: !hasBaselinedBoq,
-          href: hasBaselinedBoq ? `/contracts/new?projectId=${project.id}` : undefined,
+          complete: summary.setup.mainContractExists,
+          locked: !summary.setup.boqBaselined,
+          href: summary.setup.boqBaselined ? `/contracts/new?projectId=${project.id}` : undefined,
           actionKey: 'createContract' as const,
           blockedKey: 'setupContractBlocked' as const,
         }]),
     {
       labelKey: 'setupTeam',
       descKey: 'setupTeamDesc',
-      complete: hasTeam,
+      complete: summary.setup.teamReady,
       locked: false,
       href: `/projects/${project.id}/members`,
       actionKey: 'addTeam',
     },
   ];
 
-  const doneCount = steps.filter((s) => s.complete).length;
-  const total = steps.length;
+  const doneCount = summary.setup.completedSteps;
+  const total = summary.setup.totalSteps;
   const progressPct = Math.round((doneCount / total) * 100);
 
   return (
