@@ -1,6 +1,17 @@
 'use client';
 
-import { Button, FormField, FormSection, Input, Label, Select, Textarea } from '@erp/ui';
+import { useState } from 'react';
+import {
+  Button,
+  DateInput,
+  FormField,
+  FormSection,
+  Input,
+  Label,
+  Select,
+  Textarea,
+  useToast,
+} from '@erp/ui';
 
 import { Pending, Row, Rule, Section, Specimen } from './gallery-chrome';
 
@@ -13,6 +24,8 @@ import { Pending, Row, Rule, Section, Specimen } from './gallery-chrome';
  * do not exist yet, rather than mocked up as though they do.
  */
 export function ControlsSection() {
+  const [notes, setNotes] = useState('');
+
   return (
     <>
       {/* ── Buttons ─────────────────────────────────────────────────────── */}
@@ -163,17 +176,99 @@ export function ControlsSection() {
           and says who owns it.
         </Rule>
 
-        <Pending>
-          Four states from the specification have no implementation:{' '}
-          <strong className="font-semibold">success</strong> (green border, tick, &ldquo;Verified
-          — matches registered supplier&rdquo;), <strong className="font-semibold">checking</strong>{' '}
-          for async validation, a <strong className="font-semibold">character counter</strong>,
-          and <strong className="font-semibold">icon or prefix slots</strong>. Phase 2 adds them
-          to <code className="font-mono text-caption">Input</code>,{' '}
-          <code className="font-mono text-caption">Select</code> and{' '}
-          <code className="font-mono text-caption">Textarea</code> together, because a field set
-          where only one control can show success is worse than one where none can.
-        </Pending>
+        <Specimen
+          label="The rest of the state matrix"
+          token="success · checking · counter · slots"
+          note="Success is only worth showing where the check told the user something they could not have known themselves — a lookup resolved, a figure reconciled. A tick on every field that merely passed a required-check is noise, and it devalues the tick on the field where it means something."
+        >
+          <div className="grid gap-5 sm:grid-cols-2">
+            <FormField
+              htmlFor="ds-tax2"
+              label="Supplier tax number"
+              success="Verified — matches registered supplier"
+            >
+              <Input id="ds-tax2" defaultValue="SO-0114-882-3" />
+            </FormField>
+
+            <FormField
+              htmlFor="ds-code2"
+              label="Contract number"
+              checking
+              checkingLabel="Checking this number is not already in use…"
+            >
+              <Input id="ds-code2" defaultValue="ACCO-2026-0184" />
+            </FormField>
+
+            <FormField
+              htmlFor="ds-notes2"
+              label="Variance reason"
+              requirementNote="optional until certified ≠ claimed"
+              hint="Explain any difference between the certified and claimed figures."
+              counter={{ value: notes.length, max: 120 }}
+              error={notes.length > 120 ? 'Shorten this to 120 characters or fewer.' : undefined}
+            >
+              <Textarea
+                id="ds-notes2"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Type past 120 characters to see the counter turn."
+              />
+            </FormField>
+
+            <div className="flex flex-col gap-5">
+              <FormField htmlFor="ds-amt2" label="Certified amount" hint="Start and end slots.">
+                <Input
+                  id="ds-amt2"
+                  defaultValue="486 200.00"
+                  className="text-end tabular-nums"
+                  startSlot={<span className="text-caption font-semibold">SOS</span>}
+                  endSlot={<span className="text-caption">.00</span>}
+                />
+              </FormField>
+
+              <FormField
+                htmlFor="ds-date2"
+                label="Accounting date"
+                required
+                hint="Must fall inside an open period — pass min/max so the picker cannot offer one that is closed."
+              >
+                <DateInput id="ds-date2" defaultValue="2026-08-13" min="2026-08-01" max="2026-08-31" />
+              </FormField>
+            </div>
+          </div>
+        </Specimen>
+
+        <Rule>
+          <code className="font-mono text-caption">DateInput</code> is a styled native{' '}
+          <code className="font-mono text-caption">&lt;input type=&quot;date&quot;&gt;</code>, for
+          the same reason <code className="font-mono text-caption">Select</code> is a native{' '}
+          <code className="font-mono text-caption">&lt;select&gt;</code> — and a stronger one. A
+          custom calendar has to decide what a week looks like, which calendar system to show,
+          and how to lay a month grid out right-to-left. This product is bilingual Arabic and
+          runs on site phones. What was actually broken was never the input, it was that every
+          date field was an <em>unstyled</em> one sitting next to inputs that honoured every
+          token.
+        </Rule>
+      </Section>
+
+      {/* ── Toast ───────────────────────────────────────────────────────── */}
+      <Section
+        id="toast"
+        title="Toast"
+        intro="The product had no way to say that anything had succeeded. A certificate was issued, a journal posted, a payment reversed — and the screen simply changed. Press these; they are live."
+      >
+        <ToastSpecimen />
+
+        <Rule>
+          Three rules make a toast trustworthy. <strong>A failure never disappears on a
+          timer</strong> — a success can auto-dismiss because the user watched it happen, but a
+          message explaining why a journal did not post must still be there when they look back,
+          so the error tone forces <code className="font-mono text-caption">duration: null</code>.{' '}
+          <strong>Errors announce assertively, everything else politely</strong> — two separate
+          live regions, because <code className="font-mono text-caption">aria-live</code> is a
+          property of the region, not the message. <strong>Hovering or focusing pauses the
+          timer</strong>, so nothing vanishes mid-sentence or while someone tabs to its action.
+        </Rule>
       </Section>
 
       {/* ── Form composition ────────────────────────────────────────────── */}
@@ -242,5 +337,74 @@ export function ControlsSection() {
         </Specimen>
       </Section>
     </>
+  );
+}
+
+// ─── Toast specimen ──────────────────────────────────────────────────────────
+
+/**
+ * Separate component so `useToast` is called under the provider mounted in the root
+ * layout — and so the gallery proves the provider is actually wired, not just exported.
+ */
+function ToastSpecimen() {
+  const { toast } = useToast();
+
+  return (
+    <Specimen label="Toast — live" token="useToast()">
+      <div className="flex flex-wrap gap-3">
+        <Button
+          onClick={() =>
+            toast({
+              tone: 'success',
+              title: 'Certificate IPC-2026-0042 issued',
+              description: 'Net certified 155 572.00 SOS. The application is now certified.',
+              action: { label: 'View certificate', onClick: () => undefined },
+            })
+          }
+        >
+          Success, with an action
+        </Button>
+
+        <Button
+          variant="destructive"
+          onClick={() =>
+            toast({
+              tone: 'error',
+              title: 'Journal could not be posted',
+              description:
+                'Period 2026-08 is closed. Reopen the period, or change the accounting date to one inside an open period.',
+              action: { label: 'Open fiscal periods', onClick: () => undefined },
+            })
+          }
+        >
+          Failure — will not self-dismiss
+        </Button>
+
+        <Button
+          variant="outline"
+          onClick={() =>
+            toast({
+              tone: 'warning',
+              title: 'Committed figures may be overstated',
+              description: 'Cancelling a purchase order does not reverse its commitment.',
+            })
+          }
+        >
+          Warning
+        </Button>
+
+        <Button
+          variant="ghost"
+          onClick={() => toast({ tone: 'info', title: 'Draft saved' })}
+        >
+          Info, bare
+        </Button>
+      </div>
+      <p className="mt-4 text-caption leading-5 text-muted-foreground">
+        Raise the success and the failure together, then hover the failure: its timer never
+        started, and hovering the success stops its own. Switch the direction toggle to RTL and
+        the stack moves to the other corner — the viewport is positioned with logical insets.
+      </p>
+    </Specimen>
   );
 }

@@ -1,22 +1,64 @@
+'use client';
+
 import * as React from 'react';
 
 import { cn } from '../lib/utils';
+import { FormFieldContext } from './form-field';
 
 export type TextareaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement>;
 
 export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ className, rows, ...props }, ref) => (
-    <textarea
-      ref={ref}
-      rows={rows ?? 3}
-      className={cn(
-        'flex w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground',
-        'transition-colors hover:border-slate-400 focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/15',
-        'disabled:cursor-not-allowed disabled:opacity-50',
-        className,
-      )}
-      {...props}
-    />
-  ),
+  (
+    {
+      className,
+      rows,
+      'aria-describedby': describedByProp,
+      'aria-invalid': invalidProp,
+      'aria-required': requiredProp,
+      ...props
+    },
+    ref,
+  ) => {
+    const field = React.useContext(FormFieldContext);
+
+    const ctxDescribedBy = field
+      ? [field.hintId, field.errorId, field.successId].filter(Boolean).join(' ') || undefined
+      : undefined;
+    const describedBy =
+      [describedByProp, ctxDescribedBy].filter(Boolean).join(' ') || undefined;
+
+    const isInvalid =
+      invalidProp !== undefined
+        ? invalidProp
+        : field?.hasError
+          ? (true as const)
+          : undefined;
+
+    const isRequired =
+      requiredProp !== undefined
+        ? requiredProp
+        : field?.required
+          ? (true as const)
+          : undefined;
+
+    return (
+      <textarea
+        ref={ref}
+        rows={rows ?? 3}
+        aria-describedby={describedBy}
+        aria-invalid={isInvalid}
+        aria-required={isRequired}
+        className={cn(
+          'flex min-h-28 w-full resize-y rounded-md border border-border-strong bg-surface px-3.5 py-3 text-sm leading-6 text-foreground shadow-e1 placeholder:text-muted-foreground',
+          'transition-[border-color,box-shadow] duration-150 hover:border-border-interactive focus:border-brand-primary focus:outline-none focus:shadow-ring',
+          'disabled:cursor-not-allowed disabled:opacity-50',
+          isInvalid === true && 'border-danger focus:border-danger',
+          field?.hasSuccess && isInvalid !== true && 'border-success',
+          className,
+        )}
+        {...props}
+      />
+    );
+  },
 );
 Textarea.displayName = 'Textarea';

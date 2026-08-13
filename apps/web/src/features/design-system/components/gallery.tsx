@@ -25,6 +25,7 @@ const CONTENTS = [
   { id: 'buttons', label: 'Buttons' },
   { id: 'fields', label: 'Fields' },
   { id: 'forms', label: 'Form composition' },
+  { id: 'toast', label: 'Toast' },
   { id: 'status', label: 'Status' },
   { id: 'data', label: 'Tables' },
   { id: 'feedback', label: 'Feedback' },
@@ -61,7 +62,7 @@ function ToggleGroup<T extends string>({
               onClick={() => onChange(option.value)}
               className={cn(
                 'rounded-[0.25rem] px-2.5 py-1 text-caption font-semibold transition-colors',
-                'duration-[var(--motion-enter)] ease-brand',
+                'duration-(--motion-enter) ease-brand',
                 'focus-visible:outline-none focus-visible:shadow-ring',
                 active
                   ? 'bg-brand-primary text-brand-on-primary'
@@ -165,7 +166,7 @@ export function Gallery() {
               <li key={item.id}>
                 <a
                   href={`#${item.id}`}
-                  className="inline-flex rounded-full border border-border bg-surface px-3 py-1 text-caption font-medium text-muted-foreground shadow-e1 transition-colors duration-[var(--motion-enter)] ease-brand hover:border-brand-primary/30 hover:bg-brand-accent hover:text-brand-primary focus-visible:outline-none focus-visible:shadow-ring"
+                  className="inline-flex rounded-full border border-border bg-surface px-3 py-1 text-caption font-medium text-muted-foreground shadow-e1 transition-colors duration-(--motion-enter) ease-brand hover:border-brand-primary/30 hover:bg-brand-accent hover:text-brand-primary focus-visible:outline-none focus-visible:shadow-ring"
                 >
                   {item.label}
                 </a>

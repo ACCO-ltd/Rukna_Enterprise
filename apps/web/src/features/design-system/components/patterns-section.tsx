@@ -23,6 +23,9 @@ import {
   SheetFooter,
   SheetTitle,
   SheetTrigger,
+  SkeletonForm,
+  SkeletonRecord,
+  SkeletonTable,
   Table,
   TableBody,
   TableCell,
@@ -278,12 +281,46 @@ export function PatternsSection() {
           thin.
         </Rule>
 
+        <Specimen
+          label="Skeleton — shaped like what it replaces"
+          token="<SkeletonTable> · <SkeletonForm> · <SkeletonRecord>"
+          note="A single grey rectangle tells the reader only that something is happening. A header row over four body rows tells them a table is coming and roughly how big — which costs one component and removes the layout shift when data lands. Rows read h-row, so a compact user's skeleton is compact and the page does not jump by 8px per row."
+        >
+          <div className="flex flex-col gap-6">
+            <div>
+              <p className="mb-3 text-micro font-semibold uppercase text-muted-foreground">
+                SkeletonTable · 5 columns
+              </p>
+              <SkeletonTable columns={5} rows={4} label="Loading bills" />
+            </div>
+            <div>
+              <p className="mb-3 text-micro font-semibold uppercase text-muted-foreground">
+                SkeletonForm · 4 fields
+              </p>
+              <SkeletonForm fields={4} label="Loading form" />
+            </div>
+            <div>
+              <p className="mb-3 text-micro font-semibold uppercase text-muted-foreground">
+                SkeletonRecord — header, tiles, body and rail
+              </p>
+              <SkeletonRecord label="Loading record" />
+            </div>
+          </div>
+        </Specimen>
+
+        <Rule>
+          Placeholders are <code className="font-mono text-caption">aria-hidden</code> and the
+          set is wrapped in one <code className="font-mono text-caption">role=&quot;status&quot;</code>{' '}
+          region carrying <code className="font-mono text-caption">aria-busy</code>. Without
+          that, a screen reader reads &ldquo;blank blank blank blank&rdquo; down a skeleton
+          table. The loading state is announced once, by the region that owns it.
+        </Rule>
+
         <Pending>
-          There is no <strong className="font-semibold">toast</strong> and no{' '}
-          <strong className="font-semibold">skeleton</strong> primitive. A successful post,
-          approval or reversal is currently silent, and 50 files hand-roll their own{' '}
-          <code className="font-mono text-caption">animate-pulse</code> block. Both are the
-          first two items in Phase 2 — highest value per line of code in the whole plan.
+          Retiring the <strong className="font-semibold">50 hand-rolled{' '}
+          <code className="font-mono text-caption">animate-pulse</code> blocks</strong> onto these
+          three is Phase 3 work, done per module as each screen is refitted — a sweep of all
+          fifty at once would collide with everything else in flight.
         </Pending>
       </Section>
 

@@ -72,6 +72,34 @@
 
   /* ── Easing — one curve for the whole product ─────────────────────────── */
   --ease-brand: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* ── Animations ───────────────────────────────────────────────────────
+     Named here rather than pulled in with tailwindcss-animate: the product
+     needs two, and a dependency for two keyframes is not a trade worth making.
+     Always used behind `motion-safe:` — the global reduced-motion rule shortens
+     durations, but an entrance that slides is better skipped than sped up. */
+  --animate-enter-up: enter-up 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-enter-fade: enter-fade 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes enter-up {
+  from {
+    opacity: 0;
+    transform: translateY(0.375rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes enter-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 :root {
@@ -126,7 +154,7 @@
   /* ── Motion ────────────────────────────────────────────────────────────
      Three durations, one curve (--ease-brand). Leaving is always faster than
      arriving, so a dismissed dialog never feels like it is dragging. Used as
-     `duration-[var(--motion-enter)] ease-brand`. */
+     `duration-(--motion-enter) ease-brand`. */
   --motion-exit: 120ms;                  /* dismiss, close, fade out */
   --motion-enter: 180ms;                 /* open, reveal, hover, focus */
   --motion-layout: 240ms;                /* sidebar collapse, accordion, resize */
