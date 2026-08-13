@@ -1890,6 +1890,9 @@ model JournalLine {
   @@unique([journalEntryId, lineNumber])
   @@index([accountId, createdAt])
   @@index([journalEntryId])
+  // Dimension indexes for project-scoped reporting (Project Actual P&L, ADR-013)
+  @@index([projectId])
+  @@index([contractId])
   @@map("journal_lines")
 }
 
