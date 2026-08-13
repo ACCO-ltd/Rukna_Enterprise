@@ -12,6 +12,7 @@ import { MaterialRequestRepository } from '../infrastructure/material-request.re
 import { MaterialRepository } from '../../catalogue/infrastructure/material.repository.js';
 import { UomRepository } from '../../catalogue/infrastructure/uom.repository.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
+import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 
 export interface CreateMrLineDto {
   lineType: ProcurementLineType;
@@ -53,6 +54,7 @@ export class MaterialRequestService {
     private readonly materialRepo: MaterialRepository,
     private readonly uomRepo: UomRepository,
     private readonly projectAccess: ProjectAccessService,
+    private readonly auditOutbox: TransactionalAuditOutboxService,
   ) {}
 
   async findAll(identity: RequestIdentity, filters?: { status?: MaterialRequestStatus; projectId?: string; scope?: MaterialRequestScope }) {
@@ -140,33 +142,54 @@ export class MaterialRequestService {
     const count = await this.repo.nextMrNumber(prisma, orgId);
     const mrNumber = `MR-${String(count).padStart(5, '0')}`;
 
-    return this.repo.create(prisma, {
-      organizationId: orgId,
-      mrNumber,
-      requestScope: dto.requestScope,
-      projectId: dto.projectId,
-      requestedBy: identity.userId,
-      requestedDate: new Date(dto.requestedDate),
-      requiredByDate: dto.requiredByDate ? new Date(dto.requiredByDate) : undefined,
-      description: dto.description,
-      notes: dto.notes,
-      lines: resolvedLines,
+    return prisma.$transaction(async (tx) => {
+      const mr = await this.repo.create(tx, {
+        organizationId: orgId,
+        mrNumber,
+        requestScope: dto.requestScope,
+        projectId: dto.projectId,
+        requestedBy: identity.userId,
+        requestedDate: new Date(dto.requestedDate),
+        requiredByDate: dto.requiredByDate ? new Date(dto.requiredByDate) : undefined,
+        description: dto.description,
+        notes: dto.notes,
+        lines: resolvedLines,
+      });
+
+      await this.auditOutbox.record(tx, {
+        organizationId: orgId,
+        actorUserId: identity.userId,
+        action: 'CREATE',
+        resourceType: 'MaterialRequest',
+        resourceId: mr.id,
+        sourceCommand: 'mr.create',
+        eventType: 'MR_CREATED',
+        idempotencyKey: `mr-create-${mr.id}`,
+        after: { mrNumber, requestScope: dto.requestScope, projectId: dto.projectId ?? null, status: 'DRAFT' },
+      });
+
+      return mr;
     });
   }
 
   async submit(identity: RequestIdentity, id: string) {
-    return this.transition(identity, id, 'SUBMITTED');
+    return this.transition(identity, id, 'SUBMITTED', 'mr.submit');
   }
 
   async approve(identity: RequestIdentity, id: string) {
-    return this.transition(identity, id, 'APPROVED');
+    return this.transition(identity, id, 'APPROVED', 'mr.approve');
   }
 
   async cancel(identity: RequestIdentity, id: string) {
-    return this.transition(identity, id, 'CANCELLED');
+    return this.transition(identity, id, 'CANCELLED', 'mr.cancel');
   }
 
-  private async transition(identity: RequestIdentity, id: string, to: MaterialRequestStatus) {
+  private async transition(
+    identity: RequestIdentity,
+    id: string,
+    to: MaterialRequestStatus,
+    sourceCommand: string,
+  ) {
     const prisma = this.tenancy.getClient();
     const mr = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!mr) throw new NotFoundException(`Material request ${id} not found`);
@@ -177,6 +200,25 @@ export class MaterialRequestService {
       throw new ConflictException(`Cannot transition MR from ${mr.status} to ${to}`);
     }
 
-    return this.repo.updateStatus(prisma, id, to);
+    const fromStatus = mr.status;
+
+    return prisma.$transaction(async (tx) => {
+      const updated = await this.repo.updateStatus(tx, id, to);
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'TRANSITION',
+        resourceType: 'MaterialRequest',
+        resourceId: id,
+        sourceCommand,
+        eventType: `MR_${to}`,
+        idempotencyKey: `mr-transition-${id}-${fromStatus}-to-${to}`,
+        before: { status: fromStatus },
+        after: { status: to },
+      });
+
+      return updated;
+    });
   }
 }

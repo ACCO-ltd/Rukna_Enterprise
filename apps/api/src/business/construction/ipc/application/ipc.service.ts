@@ -10,6 +10,7 @@ import type { RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { IpcPrismaRepository } from '../infrastructure/ipc-prisma.repository.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
+import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 import type { CreateIpcDto } from '../presentation/dto/create-ipc.dto.js';
 import type { SupersedeIpcDto } from '../presentation/dto/supersede-ipc.dto.js';
 
@@ -21,16 +22,22 @@ export class IpcService {
     private readonly tenancyService: TenancyService,
     private readonly repo: IpcPrismaRepository,
     private readonly projectAccess: ProjectAccessService,
+    private readonly auditOutbox: TransactionalAuditOutboxService,
   ) {}
 
-  async findAll(identity: RequestIdentity, applicationId?: string) {
+  async findAll(identity: RequestIdentity, applicationId?: string, projectId?: string) {
+    if (applicationId && projectId) {
+      throw new BadRequestException('Provide applicationId or projectId, not both.');
+    }
     const prisma = this.tenancyService.getClient();
     if (applicationId) await this.projectAccess.assertApplication(identity, applicationId);
+    if (projectId) await this.projectAccess.assertMember(identity, projectId);
     return this.repo.findAll(
       prisma,
       identity.activeOrganizationId,
       applicationId,
-      this.projectAccess.hasBypass(identity) ? undefined : identity.userId,
+      projectId,
+      applicationId || projectId ? undefined : this.projectAccess.scopedUserId(identity),
     );
   }
 
@@ -135,74 +142,95 @@ export class IpcService {
     const shouldBeEffective = EFFECTIVE_STATUSES.has(dto.status) && !existingEffective;
     const now = new Date();
 
-    const cert = await this.repo.create(prisma, {
-      applicationId: dto.applicationId,
-      organizationId: identity.activeOrganizationId,
-      certificateNumber: certNum,
-      certificateRef: `IPC-${certNum.toString().padStart(3, '0')}`,
-      status: dto.status,
-      isEffective: shouldBeEffective,
-      effectiveAt: shouldBeEffective ? now : undefined,
-      certifiedTotal: certifiedTotal.toFixed(2),
-      currency: dto.currency,
-      exchangeRateCurrency: dto.exchangeRateCurrency,
-      exchangeRateBase: dto.exchangeRateBase,
-      exchangeRateValue: dto.exchangeRateValue,
-      exchangeRateDate: dto.exchangeRateDate ? new Date(dto.exchangeRateDate) : undefined,
-      issuedAt: shouldBeEffective ? now : undefined,
-      issuedBy: shouldBeEffective ? identity.userId : undefined,
-      notes: dto.notes,
-      createdBy: identity.userId,
-    });
-
-    // Persist line items using pre-computed values (no second DB fetch).
-    for (const item of computedItems) {
-      await this.repo.addItem(prisma, cert.id, {
-        applicationItemId: item.applicationItemId,
-        certifiedQuantity: item.certifiedQuantity,
-        certifiedAmount: item.certifiedAmount.toFixed(2),
-        varianceQuantity: item.varianceQuantity,
-        varianceReason: item.varianceReason,
+    // All writes — cert, items, deductions, and audit evidence — commit atomically.
+    const certId = await prisma.$transaction(async (tx) => {
+      const cert = await this.repo.create(tx, {
+        applicationId: dto.applicationId,
+        organizationId: identity.activeOrganizationId,
+        certificateNumber: certNum,
+        certificateRef: `IPC-${certNum.toString().padStart(3, '0')}`,
+        status: dto.status,
+        isEffective: shouldBeEffective,
+        effectiveAt: shouldBeEffective ? now : undefined,
+        certifiedTotal: certifiedTotal.toFixed(2),
+        currency: dto.currency,
+        exchangeRateCurrency: dto.exchangeRateCurrency,
+        exchangeRateBase: dto.exchangeRateBase,
+        exchangeRateValue: dto.exchangeRateValue,
+        exchangeRateDate: dto.exchangeRateDate ? new Date(dto.exchangeRateDate) : undefined,
+        issuedAt: shouldBeEffective ? now : undefined,
+        issuedBy: shouldBeEffective ? identity.userId : undefined,
+        notes: dto.notes,
+        createdBy: identity.userId,
       });
-    }
 
-    // Auto-generate standard deductions from contract terms.
-    if (contract?.retentionTerms && certifiedTotal.greaterThan(0)) {
-      const rate = new Decimal(contract.retentionTerms.retentionRate.toString());
-      await this.repo.addDeduction(prisma, cert.id, {
-        deductionType: 'RETENTION',
-        rate: rate.toString(),
-        basis: certifiedTotal.toFixed(2),
-        amount: certifiedTotal.mul(rate).toFixed(2),
-      });
-    }
-    for (const term of contract?.advanceTerms ?? []) {
-      if (certifiedTotal.greaterThan(0)) {
-        const rate = new Decimal(term.recoveryRate.toString());
-        await this.repo.addDeduction(prisma, cert.id, {
-          deductionType: 'ADVANCE_RECOVERY',
-          sourceTermId: term.id,
+      for (const item of computedItems) {
+        await this.repo.addItem(tx, cert.id, {
+          applicationItemId: item.applicationItemId,
+          certifiedQuantity: item.certifiedQuantity,
+          certifiedAmount: item.certifiedAmount.toFixed(2),
+          varianceQuantity: item.varianceQuantity,
+          varianceReason: item.varianceReason,
+        });
+      }
+
+      // Auto-generate standard deductions from contract terms.
+      if (contract?.retentionTerms && certifiedTotal.greaterThan(0)) {
+        const rate = new Decimal(contract.retentionTerms.retentionRate.toString());
+        await this.repo.addDeduction(tx, cert.id, {
+          deductionType: 'RETENTION',
           rate: rate.toString(),
           basis: certifiedTotal.toFixed(2),
           amount: certifiedTotal.mul(rate).toFixed(2),
         });
       }
-    }
+      for (const term of contract?.advanceTerms ?? []) {
+        if (certifiedTotal.greaterThan(0)) {
+          const rate = new Decimal(term.recoveryRate.toString());
+          await this.repo.addDeduction(tx, cert.id, {
+            deductionType: 'ADVANCE_RECOVERY',
+            sourceTermId: term.id,
+            rate: rate.toString(),
+            basis: certifiedTotal.toFixed(2),
+            amount: certifiedTotal.mul(rate).toFixed(2),
+          });
+        }
+      }
 
-    // Persist ad-hoc deductions (client-supplied). Skip contract types — already computed above.
-    const CONTRACT_TYPES = new Set(['RETENTION', 'ADVANCE_RECOVERY']);
-    for (const ded of dto.deductions ?? []) {
-      if (CONTRACT_TYPES.has(ded.deductionType)) continue;
-      await this.repo.addDeduction(prisma, cert.id, {
-        deductionType: ded.deductionType,
-        sourceTermId: ded.sourceTermId,
-        rate: ded.rate,
-        basis: ded.basis,
-        amount: ded.amount,
+      // Persist ad-hoc deductions (client-supplied). Skip contract types — already computed above.
+      const CONTRACT_TYPES = new Set(['RETENTION', 'ADVANCE_RECOVERY']);
+      for (const ded of dto.deductions ?? []) {
+        if (CONTRACT_TYPES.has(ded.deductionType)) continue;
+        await this.repo.addDeduction(tx, cert.id, {
+          deductionType: ded.deductionType,
+          sourceTermId: ded.sourceTermId,
+          rate: ded.rate,
+          basis: ded.basis,
+          amount: ded.amount,
+        });
+      }
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'CREATE',
+        resourceType: 'InterimPaymentCertificate',
+        resourceId: cert.id,
+        sourceCommand: 'ipc.issue',
+        eventType: 'IPC_ISSUED',
+        idempotencyKey: `ipc-issue-${cert.id}`,
+        after: {
+          status: cert.status,
+          certifiedTotal: certifiedTotal.toFixed(2),
+          applicationId: dto.applicationId,
+          isEffective: shouldBeEffective,
+        },
       });
-    }
 
-    return this.repo.findById(prisma, identity.activeOrganizationId, cert.id);
+      return cert.id;
+    });
+
+    return this.repo.findById(prisma, identity.activeOrganizationId, certId);
   }
 
   // ─── Supersession ─────────────────────────────────────────────────────────────
@@ -216,7 +244,7 @@ export class IpcService {
     if (!currentEffective) {
       throw new BadRequestException(
         `No effective certificate exists for application ${applicationId}. ` +
-        'Supersession requires an existing effective certificate.',
+          'Supersession requires an existing effective certificate.',
       );
     }
 
@@ -239,12 +267,30 @@ export class IpcService {
       );
     }
 
-    return this.repo.supersede(
-      prisma,
-      currentEffective.id,
-      dto.newCertificateId,
-      dto.reason,
-      identity.userId,
-    );
+    // Both status flips and audit evidence commit together.
+    return prisma.$transaction(async (tx) => {
+      const updated = await this.repo.supersede(
+        tx,
+        currentEffective.id,
+        dto.newCertificateId,
+        dto.reason,
+        identity.userId,
+      );
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'SUPERSEDE',
+        resourceType: 'InterimPaymentCertificate',
+        resourceId: dto.newCertificateId,
+        sourceCommand: 'ipc.supersede',
+        eventType: 'IPC_SUPERSEDED',
+        idempotencyKey: `ipc-supersede-${currentEffective.id}-to-${dto.newCertificateId}`,
+        before: { effectiveId: currentEffective.id },
+        after: { effectiveId: dto.newCertificateId, reason: dto.reason },
+      });
+
+      return updated;
+    });
   }
 }

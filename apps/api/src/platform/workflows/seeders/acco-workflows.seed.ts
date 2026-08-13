@@ -1,4 +1,10 @@
-import { PrismaClient, WorkflowTransactionType, WorkflowTriggerKind } from '@prisma/client';
+import {
+  Prisma,
+  PrismaClient,
+  WorkflowPolicyRuleStatus,
+  WorkflowTransactionType,
+  WorkflowTriggerKind,
+} from '@prisma/client';
 
 /**
  * Seeds all ACCO workflow chains + project lifecycle trigger bindings for a given organization.
@@ -6,9 +12,154 @@ import { PrismaClient, WorkflowTransactionType, WorkflowTriggerKind } from '@pri
  * Amount thresholds are PLACEHOLDER values — must be confirmed by Eng Ahmed Shirie before activation.
  */
 export async function seedAccoWorkflows(prisma: PrismaClient, organizationId: string): Promise<void> {
+  await seedAccoGovernancePolicy(prisma, organizationId);
   await seedWorkflowRequirementPolicies(prisma);
   await seedDocumentWorkflows(prisma, organizationId);
   await seedProjectLifecycleBindings(prisma, organizationId);
+}
+
+/**
+ * Authoritative ACCO governance configuration. This version is intentionally
+ * scheduled without an effective date: no rule can affect production until the
+ * formal policy effective date is entered and the version is activated.
+ */
+async function seedAccoGovernancePolicy(prisma: PrismaClient, organizationId: string): Promise<void> {
+  const policyKey = 'ACCO_GOVERNANCE';
+  const existing = await prisma.workflowPolicyVersion.findUnique({
+    where: { organizationId_policyKey_version: { organizationId, policyKey, version: 1 } },
+  });
+
+  const policy = existing ?? await prisma.workflowPolicyVersion.create({
+    data: {
+      organizationId,
+      policyKey,
+      version: 1,
+      status: 'SCHEDULED',
+      reportingCurrency: 'USD',
+      amountBasis: 'UNSPECIFIED',
+      notes:
+        'CEO-approved ACCO governance. Activation is blocked until the formal policy effective date is recorded. ' +
+        'PO authority mapping and VAT basis remain pending.',
+    },
+  });
+
+  const rules: Array<{
+    ruleKey: string;
+    transactionType?: WorkflowTransactionType;
+    entityType?: string;
+    status: WorkflowPolicyRuleStatus;
+    priority: number;
+    configuration: Prisma.InputJsonValue;
+  }> = [
+    {
+      ruleKey: 'MR_APPROVAL_REQUIRED',
+      transactionType: WorkflowTransactionType.MATERIAL_REQUEST,
+      status: 'ACTIVE',
+      priority: 100,
+      configuration: {
+        approvalRequired: true,
+        amountCurrency: 'USD',
+        amountSource: 'REPORTING_AMOUNT_SNAPSHOT_AT_SUBMISSION',
+        baseApproverChain: 'PENDING_ACCO_CONFIRMATION',
+      },
+    },
+    {
+      ruleKey: 'MR_CFO_OVER_1000_USD',
+      transactionType: WorkflowTransactionType.MATERIAL_REQUEST,
+      status: 'ACTIVE',
+      priority: 90,
+      configuration: { operator: 'GT', amount: '1000.00', currency: 'USD', additionalApproverRole: 'CFO' },
+    },
+    {
+      ruleKey: 'MR_GROUP_CEO_OVER_10000_USD',
+      transactionType: WorkflowTransactionType.MATERIAL_REQUEST,
+      status: 'ACTIVE',
+      priority: 80,
+      configuration: { operator: 'GT', amount: '10000.00', currency: 'USD', additionalApproverRole: 'GROUP_CEO' },
+    },
+    {
+      ruleKey: 'PO_POLICY_PENDING_MAPPING_AND_VAT_BASIS',
+      transactionType: WorkflowTransactionType.PURCHASE_ORDER,
+      status: 'PENDING',
+      priority: 100,
+      configuration: {
+        reportingCurrency: 'USD',
+        amountSource: 'REPORTING_AMOUNT_SNAPSHOT_AT_SUBMISSION',
+        pending: ['10,000–50,000 USD authority mapping', 'above 50,000 USD authority mapping', 'NET_OR_GROSS_VAT_BASIS'],
+      },
+    },
+    {
+      ruleKey: 'SUPPLIER_PAYMENT_POLICY_PENDING_DETAIL',
+      transactionType: WorkflowTransactionType.SUPPLIER_PAYMENT,
+      status: 'PENDING',
+      priority: 100,
+      configuration: { pending: ['APPROVER_CHAIN', 'THRESHOLDS', 'CONTROLS'] },
+    },
+    {
+      ruleKey: 'PROJECT_LIFECYCLE_BINDINGS_PENDING_DETAIL',
+      entityType: 'Project',
+      status: 'PENDING',
+      priority: 100,
+      configuration: { lifecycle: 'LOCKED', approverMappings: 'PENDING_ACCO_CONFIRMATION' },
+    },
+    {
+      ruleKey: 'IPA_WORKFLOW_PENDING_DETAIL',
+      entityType: 'InterimPaymentApplication',
+      status: 'PENDING',
+      priority: 100,
+      configuration: { workflow: 'SEPARATE_IPA', approverChain: 'PENDING_ACCO_CONFIRMATION' },
+    },
+    {
+      ruleKey: 'IPC_WORKFLOW_PENDING_DETAIL',
+      transactionType: WorkflowTransactionType.IPC,
+      entityType: 'InterimPaymentCertificate',
+      status: 'PENDING',
+      priority: 100,
+      configuration: { workflow: 'SEPARATE_IPC', approverChain: 'PENDING_ACCO_CONFIRMATION' },
+    },
+    {
+      ruleKey: 'DELEGATION_ESCALATION_EMERGENCY_EXCEPTION_BOARD_PENDING_DETAIL',
+      status: 'PENDING',
+      priority: 100,
+      configuration: {
+        emergencyRoute: 'EXPLICIT_AUDITED_ROUTE_NEVER_BYPASS',
+        pending: ['DELEGATION_RULES', 'ESCALATION_RULES', 'EXCEPTION_AND_BOARD_REFERRAL_REQUIREMENTS'],
+      },
+    },
+  ];
+
+  for (const rule of rules) {
+    await prisma.workflowPolicyRule.upsert({
+      where: { workflowPolicyVersionId_ruleKey: { workflowPolicyVersionId: policy.id, ruleKey: rule.ruleKey } },
+      create: { workflowPolicyVersionId: policy.id, ...rule },
+      update: { status: rule.status, priority: rule.priority, configuration: rule.configuration },
+    });
+  }
+
+  const sodRules = [
+    ['REQUESTER_CANNOT_APPROVE_OWN_REQUEST', 'A requester cannot approve their own request.'],
+    ['PO_CREATOR_CANNOT_RECEIVE_GOODS', 'A purchase-order creator cannot receive goods against that order.'],
+    ['GOODS_RECEIVER_CANNOT_APPROVE_BILL', 'A goods receiver cannot approve the related supplier bill.'],
+    ['BILL_APPROVER_CANNOT_APPROVE_OR_RELEASE_PAYMENT', 'A bill approver cannot approve or release the related payment.'],
+    ['VENDOR_MAINTAINER_CANNOT_CREATE_PO_OR_PROCESS_PAYMENT', 'A vendor maintainer cannot create a purchase order or process a supplier payment.'],
+    ['JOURNAL_PREPARER_CANNOT_APPROVE_JOURNAL', 'A journal preparer cannot approve the same journal.'],
+    ['SYSTEM_ADMIN_CANNOT_APPROVE_BUSINESS_TRANSACTION', 'A system administrator cannot approve a business transaction.'],
+  ] as const;
+
+  for (const [code, description] of sodRules) {
+    await prisma.segregationOfDutiesRule.upsert({
+      where: { organizationId_code: { organizationId, code } },
+      create: { organizationId, workflowPolicyVersionId: policy.id, code, description, isActive: false },
+      update: { description, workflowPolicyVersionId: policy.id, isActive: false },
+    });
+  }
+
+  // Legacy placeholder chains may contain roles never confirmed by ACCO. They
+  // are retained for traceability but cannot become active through this seed.
+  await prisma.workflowDefinition.updateMany({
+    where: { organizationId, requiresCeoConfirmation: true },
+    data: { isActive: false },
+  });
 }
 
 /**

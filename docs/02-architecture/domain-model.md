@@ -1,9 +1,20 @@
 # Construction Domain Model
 
-Version: 5.0.0
+Version: 5.1.0
 Status: Active
-Last Updated: 2026-08-07
-Changes: v5 — Sprint 5 planning (ADR-007). Added procurement domain: UnitOfMeasure,
+Last Updated: 2026-08-12
+Changes: v5.1 — Post-Sprint 5 architecture review. No new schema entities. Platform service
+         layer additions: `CommitmentLedgerWriter` (application service over
+         `CommitmentLedgerRepository` — provides `committed()`, `accrued()`, `actual()`
+         with auto-computed `reportingAmount`/`occurredAt`; replaces direct repo injection
+         in `PurchaseOrderService`, `GoodsReceiptService`, `SupplierBillService`).
+         `CommandGovernanceService` new seam in `platform/workflows` (hides resolver +
+         ApprovalInstance creation; wired to Projects + IPA). `GovernedEntity` type added
+         to `@erp/types`. `SupplierBillService.commitmentLedgerRepo` changed from
+         `@Optional()` to required. All 7 business modules now use
+         `TransactionalAuditOutboxService` (ADR-008 complete).
+
+         v5 — Sprint 5 planning (ADR-007). Added procurement domain: UnitOfMeasure,
          MaterialCategory, SpendCategory, Material catalogue, MaterialRequest (dual-scope),
          PurchaseOrder (immutable revisions), PurchaseOrderLineRequestAllocation (many-to-many
          MR↔PO), GoodsReceiptNote + GoodsReceiptLineAllocation, SupplierBillMatch + MatchLine,
@@ -42,6 +53,19 @@ No aggregate may directly modify the internal state of another.
 
 ---
 
+## Platform Application Services (Post-Sprint 5)
+
+These are not entities — they are service-layer abstractions injected into business services.
+
+| Service | Location | Purpose |
+|---|---|---|
+| `TransactionalAuditOutboxService` | `platform/audit-logs/application/` | Writes `AuditLog` + `AuditOutboxEvent` in same transaction as business mutation. All 7 business modules use this. |
+| `CommandGovernanceService` | `platform/workflows/application/` | Single entry point for workflow governance on state transitions. Returns `null` (proceed) or `{ gated, approvalInstanceId }` (block). Business services must not import `WorkflowTriggerResolverService` directly. |
+| `CommitmentLedgerWriter` | `procurement/commitment-ledger/application/` | Writes commitment ledger entries at the correct stage (`committed`, `accrued`, `actual`). Auto-computes `reportingAmount = amount × rate` and sets `occurredAt`. Injected into `PurchaseOrderService`, `GoodsReceiptService`, `SupplierBillService`. |
+| `ProjectAccessService` | `platform/project-access/` | Resolves membership scope for collection queries: `scopedUserId()` returns `undefined` (bypass role — see all) or `userId` (filter to own projects). `hasBypass` is private. |
+
+---
+
 ## Entity Map
 
 ```
@@ -52,8 +76,14 @@ Organization
 │
 ├── Users, Roles, Permissions
 ├── WorkflowDefinition (DOA approval chains)
+├── WorkflowPolicyVersion (effective-dated governance envelope)
+│   ├── WorkflowPolicyRule (data-driven thresholds, routing and pending decisions)
+│   └── SegregationOfDutiesRule (central prohibited-actor controls)
 ├── WorkflowTriggerBinding (trigger event → workflow mapping — Sprint 2)
 ├── WorkflowRequirementPolicy (per-transition requirement: REQUIRED|OPTIONAL|NONE — Sprint 3)
+├── ApprovalInstance (created by CommandGovernanceService when a transition is gated)
+├── AuditLog (immutable audit evidence)
+└── AuditOutboxEvent (post-commit idempotent publication)
 ├── ExchangeRate (currency × date → rate)
 ├── Client (minimal aggregate — Sprint 3)
 │   └── ClientContact
@@ -451,6 +481,29 @@ lookup. A `REQUIRED` transition with no active binding is **rejected** — never
 | requirement | enum | `REQUIRED`, `OPTIONAL`, `NONE` |
 | organizationId | cuid? | null = tenant-wide default |
 
+### WorkflowPolicyVersion and WorkflowPolicyRule
+
+`WorkflowPolicyVersion` is the effective-dated approval-policy envelope. It
+holds reporting currency, amount basis, activation status, and the effective
+window. Only an `ACTIVE` version whose window includes the evaluation timestamp
+may route a transaction. `WorkflowPolicyRule` stores thresholds, workflow
+requirements, routing data, and explicit `PENDING` decisions as configuration.
+This prevents unconfirmed roles or VAT treatment from entering services as
+hardcoded logic.
+
+`SegregationOfDutiesRule` belongs to a policy version and is evaluated centrally
+from transaction actor facts. A rule is only enforced when both it and its policy
+version are active and effective.
+
+### AuditLog and AuditOutboxEvent
+
+`AuditLog` is immutable evidence for a command: actor and permission context,
+resource snapshots, reason, source command, correlation/request IDs, IP, and
+approval instance where applicable. `AuditOutboxEvent` references one audit log,
+has a unique idempotency key, and tracks only delivery state. Both are created in
+the same tenant transaction as the business mutation; publication happens after
+commit.
+
 ---
 
 ### Contract
@@ -729,3 +782,8 @@ Many-to-many bridge between `PaymentReceipt` and `InterimPaymentCertificate`.
 | RequestIdentity | request.user object set by JwtAuthGuard — carries userId, activeOrganizationId, roles, permissions |
 | commercialModel | PROJECT field: CLIENT_CONTRACT (requires signed Contract for IPC) or INTERNAL_CAPITAL (requires budget authorization) |
 | participationModel | PROJECT field: SOLE or JOINT_VENTURE — orthogonal to commercialModel |
+| Project Actual P&L | Statutory project view: posted GL revenue and posted project-cost lines only. Excludes commitments. Ship-thin capability over the existing dimensioned P&L. Never presented to a PM as the complete picture. (ADR-013) |
+| Project Financial Position | PM/control view: BOQ budget · certified · invoiced · received · actual cost · **remaining committed cost** · forecast cost · forecast margin. Built on the shared spine (BOQ + CommitmentLedger + GL actuals + commercial). Committed cost is mandatory here. (ADR-010, ADR-013) |
+| Counterparty | The other party on a Contract, selected by contractKind: a Client (CLIENT_CONTRACT) or a Supplier (SUBCONTRACT). Modelled as `clientId` XOR `supplierId` with counterparty snapshots. (ADR-012) |
+| Certification Direction | Whether a PaymentApplication/Certificate settles RECEIVABLE (client → AR) or PAYABLE (subcontractor → AP). Derived from Contract.contractKind; branches only at the posting boundary. (ADR-012) |
+| Commitment Source | A document that writes the CommitmentLedger (COMMITTED→ACCRUED→ACTUAL): a PurchaseOrder today, and a SUBCONTRACT Contract once built. The certificate→SupplierBill non-PO path does not commit by itself. (ADR-012) |

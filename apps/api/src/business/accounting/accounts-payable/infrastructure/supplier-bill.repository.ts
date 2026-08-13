@@ -15,6 +15,7 @@ export interface CreateSupplierBillData {
   exchangeRateDate: Date;
   exchangeRateSource: string;
   purchaseOrderId?: string;
+  purchaseOrderRevisionId?: string;
   projectId?: string;
   departmentId?: string;
   subtotal: Decimal;
@@ -72,6 +73,7 @@ export class SupplierBillRepository {
         exchangeRateDate: data.exchangeRateDate,
         exchangeRateSource: data.exchangeRateSource,
         purchaseOrderId: data.purchaseOrderId ?? null,
+        purchaseOrderRevisionId: data.purchaseOrderRevisionId ?? null,
         projectId: data.projectId ?? null,
         departmentId: data.departmentId ?? null,
         subtotal: data.subtotal,

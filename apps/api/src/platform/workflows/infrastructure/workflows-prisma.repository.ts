@@ -24,7 +24,7 @@ export class WorkflowsPrismaRepository {
 
   async createInstance(data: {
     workflowDefinitionId: string;
-    transactionType: WorkflowTransactionType;
+    transactionType: WorkflowTransactionType | null;
     transactionId: string;
     initiatedBy: string;
   }) {
@@ -32,10 +32,10 @@ export class WorkflowsPrismaRepository {
     return prisma.approvalInstance.create({ data: { ...data, currentStepOrder: 1 } });
   }
 
-  async findInstanceById(id: string) {
+  async findInstanceById(id: string, organizationId?: string) {
     const prisma = this.tenancyService.getClient();
-    return prisma.approvalInstance.findUnique({
-      where: { id },
+    return prisma.approvalInstance.findFirst({
+      where: { id, ...(organizationId ? { definition: { organizationId } } : {}) },
       include: { definition: { include: { steps: { orderBy: { stepOrder: 'asc' } } } }, actions: true },
     });
   }

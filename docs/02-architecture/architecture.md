@@ -1,9 +1,9 @@
 # Enterprise ERP Platform
 ## Software Architecture Document (SAD)
 
-Version: 3.0.0
+Version: 5.0.0
 
-Status: Active — Sprint 3 complete
+Status: Active — Sprint 5 complete (Post-Sprint 5 architecture review done)
 
 ---
 
@@ -381,7 +381,110 @@ Database Tables
 - ADR-003: Client aggregate
 - ADR-004: Sprint 2 corrections (already recorded)
 - ADR-005: Sprint 3 — Contracts, IPA, IPC, PaymentReceipt
-- ADR-006: Sprint 4 — Native Accounting Foundation (DRAFT — pending financial officer review)
+- ADR-006: Sprint 4 — Native Accounting Foundation (ACCEPTED)
+
+---
+
+### Sprint 4 Platform Additions — Implemented
+
+| Module | Status | Key deliverables |
+|---|---|---|
+| AuditLogs transactional outbox | ✅ Complete | `TransactionalAuditOutboxService` — writes `AuditLog` + `AuditOutboxEvent` in same DB transaction as the business mutation (ADR-008) |
+
+### Sprint 4 Business Modules — Implemented
+
+| Module | Status | Key deliverables |
+|---|---|---|
+| AccountingCore | ✅ Complete | Chart of Accounts (account versions, control accounts), FiscalYear + AccountingPeriod (OPEN/LOCKED/CLOSED), double-entry posting engine (`AccountingPostingService`), `DocumentSequenceRepository`, `JournalRepository`, `AccountRepository` |
+| ManualJournals | ✅ Complete | DRAFT → SUBMITTED → APPROVED → POSTED → REVERSED lifecycle, CFO four-eyes rule |
+| AccountsReceivable | ✅ Complete | `ClientInvoiceService` (from IPC), `CustomerReceiptService` (post + allocate), reversal chain (EVT-AR-001/003/005/006) |
+| AccountsPayable | ✅ Complete | `SupplierBillService` (create/submit/approve/post/reverse), `SupplierPaymentService` (post/advance allocation/reverse), NON_RECOVERABLE VAT (EVT-AP-001/003/005/006) |
+| GeneralLedger | ✅ Complete | `LedgerService` (running balance), `TrialBalanceService`, `PLReportService`, `BalanceSheetService`, `PeriodManagementService` (lock/close/reopen/snapshot/year-end) |
+| OpeningBalance | ✅ Complete | Migration wizard — trial balance import, open AR invoices, open AP bills |
+
+**Sprint 4 verification:** 87 integration tests passing across all accounting invariants
+(∑ Dr = ∑ Cr, trial balance closes, Balance Sheet equation, CLOSING entries excluded from P&L,
+closed periods use PeriodAccountBalance snapshots, cross-tenant blocked).
+
+### Sprint 4 Architecture Decisions
+
+- ADR-006: Native Accounting Foundation (ACCEPTED, FULLY LOCKED — 22 decisions)
+- ADR-008: Effective-Dated Governance and Transactional Audit Outbox (ACCEPTED)
+- Companion: `accounting-event-catalog.md` — v1.2, full posting event catalog
+
+### Module File Map (Sprint 4)
+
+```
+apps/api/src/
+├── platform/
+│   └── audit-logs/           — TransactionalAuditOutboxService, AuditLog/AuditOutboxEvent
+│
+└── business/
+    └── accounting/
+        ├── accounting-core/  — AccountingPostingService, AccountRepository,
+        │                       JournalRepository, DocumentSequenceRepository,
+        │                       PeriodValidator, DoubleEntryValidator, ControlAccountValidator
+        ├── manual-journals/  — ManualJournalService (4 endpoints)
+        ├── accounts-receivable/ — ClientInvoiceService, CustomerReceiptService (8 endpoints)
+        ├── accounts-payable/ — SupplierBillService, SupplierPaymentService,
+        │                       SupplierService (16 endpoints)
+        └── general-ledger/   — LedgerService, TrialBalanceService, PLReportService,
+                                BalanceSheetService, PeriodManagementService (12 endpoints)
+```
+
+---
+
+### Sprint 5 Platform Additions — Implemented
+
+| Module | Status | Key deliverables |
+|---|---|---|
+| Workflows — CommandGovernanceService | ✅ Complete | Single seam hiding `WorkflowTriggerResolverService` + `ApprovalInstance` creation. `gateStateTransition()` returns `null` (proceed) or `{ gated: true, approvalInstanceId }` (block). `throwIfGated()` helper throws 409 with instance ID. `GovernedEntity` type in `@erp/types` enforces typed entity names at the call site. |
+
+### Sprint 5 Business Modules — Implemented
+
+| Module | Status | Key deliverables |
+|---|---|---|
+| Catalogue | ✅ Complete | `UnitOfMeasure` (org-configurable), `MaterialCategory` (hierarchical, operational), `SpendCategory` (hierarchical, financial governance), `Material` catalogue |
+| MaterialRequests | ✅ Complete | Dual-scope (PROJECT \| ORGANIZATION), multi-line, BOQ-linked optional, DOA approval, `TransactionalAuditOutboxService` wired |
+| PurchaseOrders | ✅ Complete | Immutable revision model (`PurchaseOrder` + `PurchaseOrderRevision` + `PurchaseOrderLine`), MR↔PO many-to-many allocation (`PurchaseOrderLineRequestAllocation`), DOA conditional routing, `TransactionalAuditOutboxService` wired |
+| GoodsReceipts | ✅ Complete | `GoodsReceiptNote` + `GoodsReceiptLine` (received/accepted/rejected), `GoodsReceiptLineAllocation` (per-project attribution from PO ratios), over-receipt tolerance (`OverReceiptPolicy`), `EXCEPTION_PENDING` above tolerance, `TransactionalAuditOutboxService` wired |
+| BillMatching | ✅ Complete | `SupplierBillMatch` + `SupplierBillMatchLine` explicit audit result, `MatchingTolerancePolicy` (hierarchical: PO → SpendCategory → Org), THREE_WAY for MATERIAL / TWO_WAY for SERVICE, posting blocked unless MATCHED / MATCHED_WITH_TOLERANCE / APPROVED_EXCEPTION |
+| CommitmentLedger | ✅ Complete | Immutable signed `CommitmentLedgerEntry`: COMMITTED (PO approval) → ACCRUED (GRN post) → ACTUAL (Bill post). `CommitmentLedgerWriter` service provides `committed()`, `accrued()`, `actual()` methods — auto-computes `reportingAmount`, sets `occurredAt`, eliminates duplicated struct across 3 services |
+
+### Sprint 5 Architecture Decisions
+
+- ADR-007: Sprint 5 Procurement, AP Integration, and Commitment Control (ACCEPTED — 13 locked decisions)
+- ADR-009: Collapse Project-Access Scope Resolution into `ProjectAccessService` (ACCEPTED — internal refactor)
+- Post-Sprint 5 architecture review: 5 candidates resolved (see `roadmap.md` for detail)
+
+### Module File Map (Sprint 5)
+
+```
+apps/api/src/
+├── platform/
+│   └── workflows/
+│       ├── application/
+│       │   ├── command-governance.service.ts   — gateStateTransition(), throwIfGated()
+│       │   └── workflow-trigger-resolver.service.ts
+│       └── infrastructure/
+│           └── workflows-prisma.repository.ts
+│
+└── business/
+    └── procurement/
+        ├── catalogue/          — UomRepository, MaterialRepository,
+        │                         MaterialCategoryRepository, SpendCategoryRepository
+        │                         (8 endpoints)
+        ├── material-requests/  — MaterialRequestService (7 endpoints)
+        ├── purchase-orders/    — PurchaseOrderService (6 endpoints)
+        ├── goods-receipts/     — GoodsReceiptService (5 endpoints)
+        ├── bill-matching/      — BillMatchingService (3 endpoints)
+        └── commitment-ledger/
+            ├── application/
+            │   ├── commitment-ledger.service.ts  — query/reporting service
+            │   └── commitment-ledger-writer.service.ts  — committed/accrued/actual writes
+            └── infrastructure/
+                └── commitment-ledger.repository.ts
+```
 
 ### Module File Map (Sprint 2)
 

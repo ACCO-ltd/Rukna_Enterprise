@@ -1229,6 +1229,7 @@ model BankAccount {
   glAccountId     String            @unique @map("gl_account_id")
   bankName        String            @map("bank_name")
   accountName     String            @map("account_name")
+  accountNameAr   String?           @map("account_name_ar")
   accountNumber   String            @map("account_number") @db.VarChar(50)
   iban            String?           @db.VarChar(34)
   swiftCode       String?           @map("swift_code") @db.VarChar(11)

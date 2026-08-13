@@ -61,7 +61,7 @@ export class WorkflowsController {
     @Param('instanceId') instanceId: string,
     @Body() body: { notes?: string },
   ) {
-    return this.approvalService.approve(instanceId, identity.userId, body.notes);
+    return this.approvalService.approve(instanceId, identity.userId, identity.roles, identity.activeOrganizationId, body.notes);
   }
 
   @Post('instance/:instanceId/reject')
@@ -81,6 +81,6 @@ export class WorkflowsController {
     @Param('instanceId') instanceId: string,
     @Body() body: { notes?: string },
   ) {
-    return this.approvalService.reject(instanceId, identity.userId, body.notes);
+    return this.approvalService.reject(instanceId, identity.userId, identity.roles, identity.activeOrganizationId, body.notes);
   }
 }

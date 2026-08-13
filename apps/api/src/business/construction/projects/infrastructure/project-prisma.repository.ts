@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaClient, Project, ProjectRole, Prisma } from '@prisma/client';
 
+type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
+
 export const PROJECT_FULL_INCLUDE = {
   members: {
     where: { removedAt: null },
@@ -16,7 +18,7 @@ export class ProjectPrismaRepository {
   // ─── Queries ─────────────────────────────────────────────────────────────────
 
   async findAll(
-    prisma: PrismaClient,
+    prisma: TenantPrisma,
     organizationId: string,
     status?: string,
     userId?: string,
@@ -31,25 +33,25 @@ export class ProjectPrismaRepository {
     });
   }
 
-  async findById(prisma: PrismaClient, organizationId: string, id: string): Promise<ProjectFull | null> {
+  async findById(prisma: TenantPrisma, organizationId: string, id: string): Promise<ProjectFull | null> {
     return prisma.project.findFirst({
       where: { id, organizationId },
       include: PROJECT_FULL_INCLUDE,
     });
   }
 
-  async findByCode(prisma: PrismaClient, organizationId: string, code: string): Promise<Project | null> {
+  async findByCode(prisma: TenantPrisma, organizationId: string, code: string): Promise<Project | null> {
     return prisma.project.findUnique({ where: { organizationId_code: { organizationId, code } } });
   }
 
   // ─── Commands ────────────────────────────────────────────────────────────────
 
-  async create(prisma: PrismaClient, data: Prisma.ProjectUncheckedCreateInput): Promise<Project> {
+  async create(prisma: TenantPrisma, data: Prisma.ProjectUncheckedCreateInput): Promise<Project> {
     return prisma.project.create({ data });
   }
 
   async update(
-    prisma: PrismaClient,
+    prisma: TenantPrisma,
     id: string,
     data: Prisma.ProjectUncheckedUpdateInput,
   ): Promise<Project> {
@@ -59,14 +61,14 @@ export class ProjectPrismaRepository {
   // ─── Suspension ──────────────────────────────────────────────────────────────
 
   async createSuspension(
-    prisma: PrismaClient,
+    prisma: TenantPrisma,
     data: Prisma.ProjectSuspensionUncheckedCreateInput,
   ) {
     return prisma.projectSuspension.create({ data });
   }
 
   async resolveActiveSuspension(
-    prisma: PrismaClient,
+    prisma: TenantPrisma,
     projectId: string,
     resumedBy: string,
   ) {
@@ -76,20 +78,20 @@ export class ProjectPrismaRepository {
     });
   }
 
-  async findActiveSuspension(prisma: PrismaClient, projectId: string) {
+  async findActiveSuspension(prisma: TenantPrisma, projectId: string) {
     return prisma.projectSuspension.findFirst({ where: { projectId, resumedAt: null } });
   }
 
   // ─── Members ─────────────────────────────────────────────────────────────────
 
-  async findActiveMember(prisma: PrismaClient, projectId: string, userId: string) {
+  async findActiveMember(prisma: TenantPrisma, projectId: string, userId: string) {
     return prisma.projectMember.findFirst({
       where: { projectId, userId, removedAt: null },
       include: { roles: { where: { removedAt: null } } },
     });
   }
 
-  async findAllMembers(prisma: PrismaClient, projectId: string) {
+  async findAllMembers(prisma: TenantPrisma, projectId: string) {
     return prisma.projectMember.findMany({
       where: { projectId, removedAt: null },
       include: {
@@ -100,14 +102,14 @@ export class ProjectPrismaRepository {
   }
 
   async createMember(
-    prisma: PrismaClient,
+    prisma: TenantPrisma,
     data: Prisma.ProjectMemberUncheckedCreateInput,
   ) {
     return prisma.projectMember.create({ data });
   }
 
   async removeMember(
-    prisma: PrismaClient,
+    prisma: TenantPrisma,
     memberId: string,
     removedBy: string,
   ) {
@@ -118,7 +120,7 @@ export class ProjectPrismaRepository {
   }
 
   async addMemberRoles(
-    prisma: PrismaClient,
+    prisma: TenantPrisma,
     memberId: string,
     roles: string[],
     assignedBy: string,

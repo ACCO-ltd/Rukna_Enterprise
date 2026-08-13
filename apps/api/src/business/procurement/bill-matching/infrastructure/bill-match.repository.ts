@@ -69,7 +69,6 @@ export class BillMatchRepository {
     });
   }
 
-  // Fetch org-level tolerance policy (simplified — full hierarchy resolution built in Sprint 5 service)
   findOrgTolerancePolicy(prisma: TenantPrisma, organizationId: string) {
     return prisma.matchingTolerancePolicy.findFirst({
       where: { organizationId, scopeType: 'ORGANIZATION', status: 'ACTIVE' },
@@ -81,6 +80,37 @@ export class BillMatchRepository {
     return prisma.matchingTolerancePolicy.findFirst({
       where: { organizationId, scopeType: 'PURCHASE_ORDER', purchaseOrderId, status: 'ACTIVE' },
       orderBy: { effectiveFrom: 'desc' },
+    });
+  }
+
+  findBillForMatching(prisma: TenantPrisma, organizationId: string, billId: string) {
+    return prisma.supplierBill.findFirst({
+      where: { id: billId, organizationId },
+      include: { lines: { include: { material: true } } },
+    });
+  }
+
+  findPoRevisionForMatching(prisma: TenantPrisma, revisionId: string) {
+    return prisma.purchaseOrderRevision.findFirst({
+      where: { id: revisionId },
+      include: { lines: { include: { material: true } }, purchaseOrder: true },
+    });
+  }
+
+  findGrnLineForPoLine(prisma: TenantPrisma, poLineId: string, poRevisionId: string) {
+    return prisma.goodsReceiptLine.findFirst({
+      where: {
+        purchaseOrderLineId: poLineId,
+        grn: { status: 'POSTED', purchaseOrderRevisionId: poRevisionId },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  updateBillMatchStatus(prisma: TenantPrisma, billId: string, matchStatus: string) {
+    return prisma.supplierBill.update({
+      where: { id: billId },
+      data: { matchStatus: matchStatus as never },
     });
   }
 }

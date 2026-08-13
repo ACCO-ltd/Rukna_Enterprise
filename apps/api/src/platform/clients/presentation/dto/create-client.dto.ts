@@ -8,6 +8,12 @@ export class PrimaryContactDto {
   @IsString()
   name!: string;
 
+  @ApiPropertyOptional({ example: 'Commercial Director' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  role?: string;
+
   @ApiPropertyOptional({ example: '+252612345678' })
   @IsOptional()
   @IsString()

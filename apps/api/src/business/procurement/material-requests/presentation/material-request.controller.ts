@@ -1,7 +1,16 @@
 import {
-  Controller, Get, Post, Body, Param, Query,
-  HttpCode, HttpStatus, UseGuards,
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  HttpCode,
+  HttpStatus,
+  ParseEnumPipe,
+  UseGuards,
 } from '@nestjs/common';
+import { MaterialRequestScope, MaterialRequestStatus } from '@prisma/client';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
@@ -25,14 +34,16 @@ export class MaterialRequestController {
   @ApiQuery({ name: 'scope', required: false, enum: ['PROJECT', 'ORGANIZATION'] })
   findAll(
     @CurrentUser() identity: RequestIdentity,
-    @Query('status') status?: string,
+    @Query('status', new ParseEnumPipe(MaterialRequestStatus, { optional: true }))
+    status?: MaterialRequestStatus,
     @Query('projectId') projectId?: string,
-    @Query('scope') scope?: string,
+    @Query('scope', new ParseEnumPipe(MaterialRequestScope, { optional: true }))
+    scope?: MaterialRequestScope,
   ) {
     return this.service.findAll(identity, {
-      status: status as any,
+      status,
       projectId,
-      scope: scope as any,
+      scope,
     });
   }
 

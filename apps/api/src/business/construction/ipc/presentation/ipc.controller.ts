@@ -37,12 +37,22 @@ export class IpcController {
 
   @Get()
   @ApiOperation({ summary: 'List interim payment certificates' })
-  @ApiQuery({ name: 'applicationId', required: false })
+  @ApiQuery({
+    name: 'applicationId',
+    required: false,
+    description: 'Filter by application. Mutually exclusive with projectId.',
+  })
+  @ApiQuery({
+    name: 'projectId',
+    required: false,
+    description: 'Filter by project. Mutually exclusive with applicationId.',
+  })
   findAll(
     @CurrentUser() identity: RequestIdentity,
     @Query('applicationId') applicationId?: string,
+    @Query('projectId') projectId?: string,
   ) {
-    return this.ipcService.findAll(identity, applicationId);
+    return this.ipcService.findAll(identity, applicationId, projectId);
   }
 
   @Post()

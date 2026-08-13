@@ -4,7 +4,6 @@ import {
   BadRequestException,
   ConflictException,
   Inject,
-  Optional,
 } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import type { RequestIdentity } from '@erp/types';
@@ -16,7 +15,7 @@ import {
 import { AccountRepository } from '../../accounting-core/infrastructure/account.repository.js';
 import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
 import { SupplierBillRepository } from '../infrastructure/supplier-bill.repository.js';
-import { CommitmentLedgerRepository } from '../../../../business/procurement/commitment-ledger/infrastructure/commitment-ledger.repository.js';
+import { CommitmentLedgerWriter } from '../../../../business/procurement/commitment-ledger/application/commitment-ledger-writer.service.js';
 
 export interface CreateSupplierBillLineDto {
   description: string;
@@ -58,8 +57,7 @@ export class SupplierBillService {
     private readonly sequenceRepo: DocumentSequenceRepository,
     @Inject(ACCOUNTING_POSTING_PORT)
     private readonly postingPort: IAccountingPostingPort,
-    @Optional()
-    private readonly commitmentLedgerRepo?: CommitmentLedgerRepository,
+    private readonly commitmentWriter: CommitmentLedgerWriter,
   ) {}
 
   async create(identity: RequestIdentity, dto: CreateSupplierBillDto) {
@@ -91,6 +89,18 @@ export class SupplierBillService {
     // For NON_RECOVERABLE VAT (ACCO policy): gross posts to expense
     const totalAmount = lines.reduce((s, l) => s.plus(l.grossAmount), new Decimal(0));
 
+    let purchaseOrderRevisionId: string | undefined;
+    if (dto.purchaseOrderId) {
+      const activeRevision = await prisma.purchaseOrderRevision.findFirst({
+        where: { purchaseOrderId: dto.purchaseOrderId, status: 'ACTIVE' },
+        select: { id: true },
+      });
+      if (!activeRevision) {
+        throw new BadRequestException(`Purchase order ${dto.purchaseOrderId} has no ACTIVE revision`);
+      }
+      purchaseOrderRevisionId = activeRevision.id;
+    }
+
     return this.repo.create(prisma, {
       organizationId: orgId,
       supplierId: dto.supplierId,
@@ -102,6 +112,7 @@ export class SupplierBillService {
       exchangeRateDate: new Date(dto.billDate),
       exchangeRateSource: 'MANUAL',
       purchaseOrderId: dto.purchaseOrderId,
+      purchaseOrderRevisionId,
       projectId: dto.projectId,
       departmentId: dto.departmentId,
       subtotal,
@@ -242,42 +253,36 @@ export class SupplierBillService {
 
         // ACCRUED → ACTUAL commitment movement (ADR-007, Rule CL-003)
         // Only for procurement-linked bills (purchaseOrderRevisionId present).
-        if (this.commitmentLedgerRepo && bill.purchaseOrderRevisionId) {
+        if (bill.purchaseOrderRevisionId) {
           const billedTotal = new Decimal(bill.totalAmount.toString());
           const rate = new Decimal(bill.exchangeRateSnapshot.toString());
           const idempKey = `bill-actual-${bill.id}`;
-          const existing = await this.commitmentLedgerRepo.findByIdempotencyKey(tx as any, idempKey);
+          const existing = await this.commitmentWriter.findByIdempotencyKey(tx, idempKey);
           if (!existing) {
             // Reverse ACCRUED
-            await this.commitmentLedgerRepo.create(tx as any, {
+            await this.commitmentWriter.accrued(tx, {
               organizationId: orgId,
               supplierId: bill.supplierId,
-              stage: 'ACCRUED',
               amount: billedTotal.negated(),
               currencyCode: bill.currencyCode,
-              reportingAmount: billedTotal.negated().mul(rate),
-              exchangeRateSnapshot: rate,
+              rate,
               sourceDocumentType: 'SUPPLIER_BILL',
               sourceDocumentId: bill.id,
               eventType: 'BILL_POSTED_ACCRUED_REVERSAL',
               idempotencyKey: idempKey + '-accrued',
-              occurredAt: new Date(),
               accountingDate: bill.billDate,
             });
             // Record ACTUAL
-            await this.commitmentLedgerRepo.create(tx as any, {
+            await this.commitmentWriter.actual(tx, {
               organizationId: orgId,
               supplierId: bill.supplierId,
-              stage: 'ACTUAL',
               amount: billedTotal,
               currencyCode: bill.currencyCode,
-              reportingAmount: billedTotal.mul(rate),
-              exchangeRateSnapshot: rate,
+              rate,
               sourceDocumentType: 'SUPPLIER_BILL',
               sourceDocumentId: bill.id,
               eventType: 'BILL_POSTED_ACTUAL',
               idempotencyKey: idempKey,
-              occurredAt: new Date(),
               accountingDate: bill.billDate,
             });
           }

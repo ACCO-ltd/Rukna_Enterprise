@@ -34,6 +34,7 @@ import { BillMatchingService }        from '../../bill-matching/application/bill
 
 // ── Commitment Ledger ─────────────────────────────────────────────────────────
 import { CommitmentLedgerRepository } from '../../commitment-ledger/infrastructure/commitment-ledger.repository.js';
+import { CommitmentLedgerWriter }     from '../../commitment-ledger/application/commitment-ledger-writer.service.js';
 
 // ── Accounting (AP + posting) ─────────────────────────────────────────────────
 import { AccountingPostingService }   from '../../../accounting/accounting-core/infrastructure/accounting-posting.service.js';
@@ -42,6 +43,11 @@ import { DocumentSequenceRepository } from '../../../accounting/accounting-core/
 import { AccountRepository }          from '../../../accounting/accounting-core/infrastructure/account.repository.js';
 import { SupplierBillRepository }     from '../../../accounting/accounts-payable/infrastructure/supplier-bill.repository.js';
 import { SupplierBillService }        from '../../../accounting/accounts-payable/application/supplier-bill.service.js';
+import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
+
+// No-op stub: integration tests use real Prisma but skip audit persistence
+// so tests don't require auditLog / auditOutboxEvent tables to be seeded.
+const noOpAuditOutbox = { record: async () => {} } as unknown as TransactionalAuditOutboxService;
 
 export interface ProcurementServices {
   prisma: PrismaClient;
@@ -65,6 +71,7 @@ export interface ProcurementServices {
   billMatchingService: BillMatchingService;
   // Commitment Ledger
   commitmentRepo: CommitmentLedgerRepository;
+  commitmentWriter: CommitmentLedgerWriter;
   // AP (bill posting — needed for ACCRUED→ACTUAL tests)
   supplierBillRepo: SupplierBillRepository;
   supplierBillService: SupplierBillService;
@@ -83,6 +90,7 @@ export function buildProcurementServices(prisma: PrismaClient): ProcurementServi
   const grnRepo              = new GoodsReceiptRepository();
   const billMatchRepo        = new BillMatchRepository();
   const commitmentRepo       = new CommitmentLedgerRepository();
+  const commitmentWriter     = new CommitmentLedgerWriter(commitmentRepo);
 
   // ── Accounting ─────────────────────────────────────────────────────────────
   const journalRepo      = new JournalRepository();
@@ -94,19 +102,18 @@ export function buildProcurementServices(prisma: PrismaClient): ProcurementServi
   // ── Services ──────────────────────────────────────────────────────────────
   const materialService = new MaterialService(tenancy, materialRepo, uomRepo, materialCategoryRepo, spendCategoryRepo);
   const projectAccess   = new ProjectAccessService(tenancy);
-  const mrService       = new MaterialRequestService(tenancy, mrRepo, materialRepo, uomRepo, projectAccess);
-  const poService       = new PurchaseOrderService(tenancy, poRepo, materialRepo, uomRepo, commitmentRepo);
-  const grnService      = new GoodsReceiptService(tenancy, grnRepo, poRepo, commitmentRepo);
+  const mrService       = new MaterialRequestService(tenancy, mrRepo, materialRepo, uomRepo, projectAccess, noOpAuditOutbox);
+  const poService       = new PurchaseOrderService(tenancy, poRepo, materialRepo, uomRepo, commitmentWriter, noOpAuditOutbox);
+  const grnService      = new GoodsReceiptService(tenancy, grnRepo, poRepo, commitmentWriter, noOpAuditOutbox);
   const billMatchingService = new BillMatchingService(tenancy, billMatchRepo);
 
-  // SupplierBillService with CommitmentLedgerRepository wired (needed for ACCRUED→ACTUAL)
   const supplierBillService = new SupplierBillService(
     tenancy,
     supplierBillRepo,
     accountRepo,
     sequenceRepo,
     postingService,
-    commitmentRepo,
+    commitmentWriter,
   );
 
   return {
@@ -116,7 +123,7 @@ export function buildProcurementServices(prisma: PrismaClient): ProcurementServi
     poRepo, poService,
     grnRepo, grnService,
     billMatchRepo, billMatchingService,
-    commitmentRepo,
+    commitmentRepo, commitmentWriter,
     supplierBillRepo, supplierBillService,
   };
 }

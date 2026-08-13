@@ -1,7 +1,7 @@
 # Rukna ERP — Platform Roadmap
 
-Version: 1.0.0
-Last Updated: 2026-08-03
+Version: 2.0.0
+Last Updated: 2026-08-12
 Owner: Abdulsalam (Backend Engineer)
 Reviewed by: Eng Ahmed Shirie (CEO, ACCO Ltd)
 
@@ -36,7 +36,8 @@ Both are required. The roadmap below builds them in the correct sequence.
 | **Sprint 4 Frontend** | Accounting Workspace UI | ✅ Complete (10 of 12 screens — see below) |
 | **Sprint 5** | Procurement, AP Integration, and Commitment Control | ✅ Complete |
 | **Sprint 5 Frontend** | Procurement Workspace UI | ⏳ Next — Frontend Engineer |
-| **Sprint 6** | Variations / Change Management | Planned |
+| **Post-Sprint 5** | Architecture Review + Cross-Cutting Quality Work | ✅ Complete |
+| **Sprint 6** | Variations / Change Management | ⏳ Next |
 | **Sprint 7** | Inventory and Project Costing | Planned |
 | **Sprint 8** | Accounts Receivable, Cash and Banking | Planned |
 | **Sprint 9** | Site Operations, Labour and Equipment | Planned |
@@ -168,15 +169,15 @@ controllers, not the reference, until those are fixed.**
 
 ---
 
-### Sprint 5 — Procurement, AP Integration, and Commitment Control ⏳ Next
+### Sprint 5 — Procurement, AP Integration, and Commitment Control ✅ Complete
 
-Builds the complete purchasing chain from site need to supplier payment, with full cost
+Built the complete purchasing chain from site need to supplier payment, with full cost
 commitment tracking and three-way bill matching. AP (SupplierBill, SupplierPayment) was
 built in Sprint 4 — Sprint 5 integrates procurement into it rather than rebuilding it.
 
 **Architecture decisions:** See `adr/ADR-007-sprint5-procurement.md`.
 
-**What is built:**
+**What was built:**
 
 | Layer | Delivered |
 |---|---|
@@ -213,6 +214,46 @@ Each subsequent sprint adds attachment support to its own entities.
 
 **Not in Sprint 5:** Variations/ChangeOrders, SupplierReturn, UoM conversion, warehouse
 management, stock ledger, inventory valuation, Approved Supplier List.
+
+---
+
+### Post-Sprint 5 — Architecture Review + Cross-Cutting Quality Work ✅ Complete
+
+After Sprint 5, a full codebase architecture review was run to eliminate technical debt
+before Sprint 6. Five candidates were identified and resolved.
+
+**ADR-008 completion — Transactional Audit Outbox fully wired:**
+
+All 7 business modules now write `AuditLog` + `AuditOutboxEvent` in the same Prisma
+transaction as their business mutation. The legacy HTTP interceptor is no longer the
+compliance record for any of these commands.
+
+| Module | Migrated command(s) |
+|---|---|
+| IPC | `ipc.certify`, `ipc.supersede` |
+| IPA | `ipa.create`, `ipa.transition`, `ipa.cancel` |
+| Projects | `project.transition`, `project.cancel`, `project.suspend`, `project.resume` |
+| Contracts | `contract.transition`, `contract.cancel` |
+| MaterialRequest | `mr.create`, `mr.submit`, `mr.approve`, `mr.reject`, `mr.cancel` |
+| PurchaseOrder | `po.create`, `po.submit`, `po.approve`, `po.revise`, `po.cancel` |
+| GoodsReceiptNote | `grn.create`, `grn.post`, `grn.cancel`, `grn.approve-exception` |
+
+**CommandGovernanceService — new platform seam (ADR-009-adjacent):**
+
+`CommandGovernanceService.gateStateTransition()` now hides `WorkflowTriggerResolverService`
+and `ApprovalInstance` creation behind a single call. Services no longer import the resolver
+directly. Throws `409 ConflictException` with `approvalInstanceId` in the body when a
+transition is gated, so the frontend can redirect to the approval workflow.
+
+**Architecture Review — 5 candidates resolved:**
+
+| # | Candidate | What changed |
+|---|---|---|
+| 01 | BillMatchingService — typed repo queries | 4 `(prisma as any)` blocks moved to typed `BillMatchRepository` methods; latent `documentStatus`/`postingStatus` bug fixed |
+| 02 | CommitmentLedgerWriter | New `CommitmentLedgerWriter` service wraps the repo — `committed()`, `accrued()`, `actual()` — auto-computing `reportingAmount` and `occurredAt`, eliminating 12+ field repetition across 3 services |
+| 03 | SupplierBillService — required dependency | `@Optional() CommitmentLedgerRepository?` replaced with required `CommitmentLedgerWriter`; silent failure path eliminated |
+| 04 | spendCategoryId casts | 7 `(line as any).spendCategoryId` casts removed — field was always in Prisma return type |
+| 05 | GovernedEntity type | `type GovernedEntity` added to `@erp/types`; `gateStateTransition()` now typed at the entry point — typos are compile errors |
 
 ---
 

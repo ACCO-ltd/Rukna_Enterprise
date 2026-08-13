@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   HttpCode,
   HttpStatus,
   UseGuards,
@@ -34,6 +35,21 @@ export class ClientsController {
   @ApiOperation({ summary: 'List all clients for the authenticated organization' })
   findAll(@CurrentUser() identity: RequestIdentity) {
     return this.clientService.findAll(identity);
+  }
+
+  @Get('summary')
+  @ApiOperation({ summary: 'List client workspace summaries' })
+  findSummary(@CurrentUser() identity: RequestIdentity) {
+    return this.clientService.findListSummary(identity);
+  }
+
+  @Get('duplicate-candidates')
+  @ApiOperation({ summary: 'Find possible duplicate clients by name' })
+  findDuplicateCandidates(
+    @CurrentUser() identity: RequestIdentity,
+    @Query('name') name = '',
+  ) {
+    return this.clientService.findDuplicateCandidates(identity, name);
   }
 
   @Post()

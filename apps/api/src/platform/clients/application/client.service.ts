@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Client } from '@prisma/client';
-import type { RequestIdentity } from '@erp/types';
+import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../tenancy/tenancy.service.js';
 import { ClientPrismaRepository, ClientWithContacts } from '../infrastructure/client-prisma.repository.js';
@@ -20,6 +20,18 @@ export class ClientService {
     return this.repo.findAll(prisma, identity.activeOrganizationId);
   }
 
+  async findListSummary(identity: RequestIdentity) {
+    const prisma = this.tenancyService.getClient();
+    const includeFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
+    return this.repo.findListSummary(prisma, identity.activeOrganizationId, includeFinancials);
+  }
+
+  async findDuplicateCandidates(identity: RequestIdentity, name: string) {
+    if (name.trim().length < 3) return [];
+    const prisma = this.tenancyService.getClient();
+    return this.repo.findDuplicateCandidates(prisma, identity.activeOrganizationId, name);
+  }
+
   async findOne(identity: RequestIdentity, id: string): Promise<ClientWithContacts> {
     const prisma = this.tenancyService.getClient();
     const client = await this.repo.findById(prisma, identity.activeOrganizationId, id);
@@ -35,7 +47,7 @@ export class ClientService {
       nameAr: dto.nameAr,
       type: dto.type,
       taxNumber: dto.taxNumber,
-      defaultCurrency: dto.defaultCurrency,
+      defaultCurrency: 'USD',
       address: dto.address,
       notes: dto.notes,
       primaryContact: dto.primaryContact,

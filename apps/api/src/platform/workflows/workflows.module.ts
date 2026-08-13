@@ -4,10 +4,28 @@ import { WorkflowsService } from './application/workflows.service.js';
 import { ApprovalService } from './application/approval.service.js';
 import { WorkflowTriggerResolverService } from './application/workflow-trigger-resolver.service.js';
 import { WorkflowsPrismaRepository } from './infrastructure/workflows-prisma.repository.js';
+import { WorkflowPolicyService } from './application/workflow-policy.service.js';
+import { SegregationOfDutiesService } from './application/segregation-of-duties.service.js';
+import { CommandGovernanceService } from './application/command-governance.service.js';
 
 @Module({
   controllers: [WorkflowsController],
-  providers: [WorkflowsService, ApprovalService, WorkflowTriggerResolverService, WorkflowsPrismaRepository],
-  exports: [WorkflowsService, ApprovalService, WorkflowTriggerResolverService],
+  providers: [
+    WorkflowsService,
+    ApprovalService,
+    WorkflowTriggerResolverService,
+    WorkflowPolicyService,
+    SegregationOfDutiesService,
+    WorkflowsPrismaRepository,
+    CommandGovernanceService,
+  ],
+  exports: [
+    WorkflowsService,
+    ApprovalService,
+    WorkflowTriggerResolverService,
+    WorkflowPolicyService,
+    SegregationOfDutiesService,
+    CommandGovernanceService,
+  ],
 })
 export class WorkflowsModule {}

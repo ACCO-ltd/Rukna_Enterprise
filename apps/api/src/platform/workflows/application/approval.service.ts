@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { WorkflowTransactionType } from '@erp/types';
 import { WorkflowsPrismaRepository } from '../infrastructure/workflows-prisma.repository.js';
 import { WorkflowsService } from './workflows.service.js';
@@ -29,11 +29,16 @@ export class ApprovalService {
     });
   }
 
-  async approve(instanceId: string, actorId: string, notes?: string) {
-    const instance = await this.repo.findInstanceById(instanceId);
+  async approve(instanceId: string, actorId: string, actorRoles: string[], organizationId: string, notes?: string) {
+    const instance = await this.repo.findInstanceById(instanceId, organizationId);
     if (!instance) throw new NotFoundException(`Approval instance not found: ${instanceId}`);
     if (instance.status !== 'PENDING') {
       throw new BadRequestException(`Instance is not pending (current status: ${instance.status})`);
+    }
+
+    const currentStep = instance.definition.steps.find((s) => s.stepOrder === instance.currentStepOrder);
+    if (currentStep?.roleRequired && !actorRoles.includes(currentStep.roleRequired)) {
+      throw new ForbiddenException(`Step requires role '${currentStep.roleRequired}'`);
     }
 
     await this.repo.recordAction({
@@ -54,11 +59,16 @@ export class ApprovalService {
     }
   }
 
-  async reject(instanceId: string, actorId: string, notes?: string) {
-    const instance = await this.repo.findInstanceById(instanceId);
+  async reject(instanceId: string, actorId: string, actorRoles: string[], organizationId: string, notes?: string) {
+    const instance = await this.repo.findInstanceById(instanceId, organizationId);
     if (!instance) throw new NotFoundException(`Approval instance not found: ${instanceId}`);
     if (instance.status !== 'PENDING') {
       throw new BadRequestException(`Instance is not pending (current status: ${instance.status})`);
+    }
+
+    const currentStep = instance.definition.steps.find((s) => s.stepOrder === instance.currentStepOrder);
+    if (currentStep?.roleRequired && !actorRoles.includes(currentStep.roleRequired)) {
+      throw new ForbiddenException(`Step requires role '${currentStep.roleRequired}'`);
     }
 
     await this.repo.recordAction({
