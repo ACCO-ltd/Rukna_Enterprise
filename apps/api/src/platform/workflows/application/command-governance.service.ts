@@ -1,5 +1,5 @@
 import { Injectable, ConflictException } from '@nestjs/common';
-import type { RequestIdentity, GovernedEntity } from '@erp/types';
+import type { RequestIdentity, GovernedEntity, WorkflowTransactionType } from '@erp/types';
 import { WorkflowTriggerResolverService } from './workflow-trigger-resolver.service.js';
 import { WorkflowsPrismaRepository } from '../infrastructure/workflows-prisma.repository.js';
 
@@ -42,9 +42,27 @@ export class CommandGovernanceService {
 
     if (!binding) return null;
 
+    const transactionType = (binding.definition.transactionType as WorkflowTransactionType) ?? null;
+
+    // Loop-back (ADR-015, mechanism "re-drive"): reconcile against any prior approval for
+    // this resource before opening a new one.
+    const existing = await this.repo.findLatestInstanceForTransaction(transactionType, resourceId);
+
+    if (existing?.status === 'APPROVED') {
+      // Approval is complete. Consume it (single-use) and let the transition proceed.
+      await this.repo.markInstanceConsumed(existing.id);
+      return null;
+    }
+
+    if (existing?.status === 'PENDING') {
+      // Already awaiting approval — return the same instance rather than a duplicate.
+      return { gated: true, approvalInstanceId: existing.id };
+    }
+
+    // No prior instance, or a terminal (REJECTED/CANCELLED/consumed) one — open a fresh approval.
     const instance = await this.repo.createInstance({
       workflowDefinitionId: binding.workflowDefinitionId,
-      transactionType: (binding.definition.transactionType as import('@erp/types').WorkflowTransactionType) ?? null,
+      transactionType,
       transactionId: resourceId,
       initiatedBy: identity.userId,
     });
