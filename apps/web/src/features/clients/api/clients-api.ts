@@ -2,7 +2,7 @@ import type { ClientStatus } from '@erp/types';
 
 import { apiClient } from '@/lib/api-client';
 
-import type { Client, ClientContact, ClientDetail } from '../types';
+import type { Client, ClientContact, ClientDetail, ClientListItem } from '../types';
 
 /**
  * Body accepted by `POST /clients`, mirroring CreateClientDto.
@@ -14,11 +14,21 @@ import type { Client, ClientContact, ClientDetail } from '../types';
  * default; deactivating is a PATCH.
  */
 export interface CreateClientPayload {
-  code: string;
   name: string;
   nameAr?: string;
+  type?: 'COMPANY' | 'GOVERNMENT' | 'NGO' | 'INDIVIDUAL' | 'OTHER';
   taxNumber?: string;
   defaultCurrency?: string;
+  address?: string;
+  notes?: string;
+  primaryContact?: { name: string; role?: string; phone?: string; email?: string };
+}
+
+export interface ClientDuplicateCandidate {
+  id: string;
+  name: string;
+  type: 'COMPANY' | 'GOVERNMENT' | 'NGO' | 'INDIVIDUAL' | 'OTHER';
+  status: ClientStatus;
 }
 
 /**
@@ -34,8 +44,11 @@ export interface CreateClientPayload {
 export interface UpdateClientPayload {
   name?: string;
   nameAr?: string | null;
+  type?: 'COMPANY' | 'GOVERNMENT' | 'NGO' | 'INDIVIDUAL' | 'OTHER';
   taxNumber?: string | null;
   defaultCurrency?: string | null;
+  address?: string | null;
+  notes?: string | null;
   status?: ClientStatus;
 }
 
@@ -59,6 +72,14 @@ export interface AddContactPayload {
  */
 export function listClients(): Promise<Client[]> {
   return apiClient<Client[]>('/clients');
+}
+
+export function listClientSummaries(): Promise<ClientListItem[]> {
+  return apiClient<ClientListItem[]>('/clients/summary');
+}
+
+export function findClientDuplicateCandidates(name: string): Promise<ClientDuplicateCandidate[]> {
+  return apiClient<ClientDuplicateCandidate[]>(`/clients/duplicate-candidates?name=${encodeURIComponent(name)}`);
 }
 
 /** Returns the client with its contacts. */

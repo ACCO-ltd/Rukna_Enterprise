@@ -148,16 +148,14 @@ export class ClientPrismaRepository {
     phone?: string;
     isPrimary?: boolean;
   }): Promise<ClientContact> {
-    if (data.isPrimary) {
-      await prisma.clientContact.updateMany({
-        where: { clientId },
-        data: { isPrimary: false },
-      });
-    }
-    return prisma.clientContact.create({ data: { clientId, ...data } });
+    return prisma.$transaction(async (tx) => {
+      if (data.isPrimary) await tx.clientContact.updateMany({ where: { clientId }, data: { isPrimary: false } });
+      return tx.clientContact.create({ data: { clientId, ...data } });
+    });
   }
 
-  async removeContact(prisma: PrismaClient, contactId: string): Promise<void> {
-    await prisma.clientContact.delete({ where: { id: contactId } });
+  async removeContact(prisma: PrismaClient, clientId: string, contactId: string): Promise<boolean> {
+    const result = await prisma.clientContact.deleteMany({ where: { id: contactId, clientId } });
+    return result.count > 0;
   }
 }

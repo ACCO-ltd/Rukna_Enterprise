@@ -84,6 +84,8 @@ export interface Project {
   contractValue: string | null;
   currency: string | null;
   clientName: string | null;
+  clientId?: string | null;
+  location?: string | null;
   startDate: string | null;
   expectedEndDate: string | null;
   createdBy: string;
@@ -230,8 +232,11 @@ export interface Client {
   code: string;
   name: string;
   nameAr: string | null;
+  type?: 'COMPANY' | 'GOVERNMENT' | 'NGO' | 'INDIVIDUAL' | 'OTHER';
   taxNumber: string | null;
   defaultCurrency: string | null;
+  address?: string | null;
+  notes?: string | null;
   status: ClientStatus;
   createdAt: string;
   updatedAt: string;
@@ -240,6 +245,15 @@ export interface Client {
 /** `GET /clients/:id`. */
 export interface ClientDetail extends Client {
   contacts: ClientContact[];
+}
+
+export interface ClientListItem {
+  id: string;
+  name: string;
+  primaryContact: Pick<ClientContact, 'name' | 'role'> | null;
+  activeProjectCount: number;
+  outstandingBalance: string | null;
+  status: ClientStatus;
 }
 
 // ─── Contracts ───────────────────────────────────────────────────────────────────
@@ -263,6 +277,8 @@ export interface Contract {
   contractValue: string;
   currency: string;
   billingModel: BillingModel;
+  /** Discriminates main client contract from subcontracts. Added by migration 20260812. */
+  contractKind: 'CLIENT_CONTRACT' | 'SUBCONTRACT';
   status: ContractStatus;
   /**
    * Frozen at the ACTIVE transition and never updated again. Null until `execute` runs.

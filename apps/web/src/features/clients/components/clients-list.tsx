@@ -2,206 +2,75 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useLocale, useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import { ClientStatus } from '@erp/types';
-import {
-  Alert,
-  Button,
-  Input,
-  Label,
-  Select,
-  Table,
-  TableBody,
-  TableCell,
-  TableEmpty,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-} from '@erp/ui';
+import { Button, Label, Select } from '@erp/ui';
+import { FunnelSimple } from '@phosphor-icons/react';
 
-import { filterClients } from '../filter-clients';
-import { useClients } from '../hooks/use-clients';
-import { CLIENT_STATUS_ORDER, type Client } from '../types';
+import { EmptyState } from '@/components/empty-state';
+import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
+import { formatMoney } from '@/lib/format';
+
+import { useClientSummaries } from '../hooks/use-clients';
+import { CLIENT_STATUS_ORDER, type ClientListItem } from '../types';
 import { ClientStatusBadge } from './client-status-badge';
+
+function buildColumns(t: ReturnType<typeof useTranslations<'platform.clients'>>): GridColumn<ClientListItem>[] {
+  return [
+    {
+      key: 'client', header: t('columns.client'), sticky: true, sortable: true,
+      plainValue: (client) => client.name,
+      render: (client) => (
+        <Link href={`/clients/${client.id}`} className="-my-3 flex min-h-12 items-center font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary">
+          {client.name}
+        </Link>
+      ),
+    },
+    {
+      key: 'contact', header: t('columns.contact'),
+      plainValue: (client) => [client.primaryContact?.name, client.primaryContact?.role].filter(Boolean).join(' '),
+      render: (client) => client.primaryContact ? (
+        <div><p className="font-medium text-foreground">{client.primaryContact.name}</p>{client.primaryContact.role ? <p className="mt-0.5 text-xs text-muted-foreground">{client.primaryContact.role}</p> : null}</div>
+      ) : <span className="text-muted-foreground">{t('noPrimaryContact')}</span>,
+    },
+    {
+      key: 'projects', header: t('columns.activeProjects'), numeric: true,
+      plainValue: (client) => client.activeProjectCount,
+      render: (client) => <Link href={`/clients/${client.id}?tab=projects`} className="font-medium text-brand-primary hover:underline">{client.activeProjectCount}</Link>,
+    },
+    {
+      key: 'balance', header: t('columns.outstandingBalance'), numeric: true,
+      plainValue: (client) => client.outstandingBalance,
+      render: (client) => client.outstandingBalance === null
+        ? <span className="text-muted-foreground" title={t('balanceRestricted')}>{t('restricted')}</span>
+        : <span className="font-medium tabular-nums text-foreground">{formatMoney(client.outstandingBalance, 'USD')}</span>,
+    },
+    { key: 'status', header: t('columns.status'), render: (client) => <ClientStatusBadge status={client.status} /> },
+  ];
+}
 
 export function ClientsList() {
   const t = useTranslations('platform.clients');
-  const tCommon = useTranslations('common');
-  const locale = useLocale() as 'en' | 'ar';
-  const { data, isPending, isError, refetch, isFetching } = useClients();
-
-  const [search, setSearch] = useState('');
+  const { data = [], isPending, isError, refetch } = useClientSummaries();
   const [status, setStatus] = useState<ClientStatus | 'ALL'>('ALL');
-
-  const visible = useMemo(
-    () => filterClients(data ?? [], { search, status }),
-    [data, search, status],
-  );
-
-  if (isPending) {
-    return (
-      <div role="status" aria-live="polite">
-        <span className="sr-only">{tCommon('loading')}</span>
-        <div
-          className="h-64 animate-pulse rounded-lg border border-border bg-muted"
-          aria-hidden="true"
-        />
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <Alert variant="error" messages={[t('loadFailed')]}>
-        <div className="mt-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              void refetch();
-            }}
-            disabled={isFetching}
-          >
-            {t('retry')}
-          </Button>
-        </div>
-      </Alert>
-    );
-  }
-
-  // No clients at all is a different situation from no clients matching a filter — they
-  // need different wording and different escape routes.
-  if (data.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
-        <p className="text-sm font-medium text-foreground">{t('empty')}</p>
-        <p className="mt-1 text-sm text-muted-foreground">{t('emptyHint')}</p>
-        <div className="mt-4">
-          <Button asChild>
-            <Link href="/clients/new">{t('newClient')}</Link>
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  const hasFilters = search.trim() !== '' || status !== 'ALL';
+  const filtered = status === 'ALL' ? data : data.filter((client) => client.status === status);
+  const columns = useMemo(() => buildColumns(t), [t]);
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-        <div>
-          <Label htmlFor="client-search" className="sr-only">
-            {t('searchLabel')}
-          </Label>
-          <Input
-            id="client-search"
-            type="search"
-            placeholder={t('searchPlaceholder')}
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-            }}
-          />
-        </div>
-
-        <div>
-          <Label htmlFor="client-status" className="sr-only">
-            {t('filterByStatus')}
-          </Label>
-          <Select
-            id="client-status"
-            value={status}
-            onChange={(e) => {
-              setStatus(e.target.value as ClientStatus | 'ALL');
-            }}
-          >
+    <PlatformDataGrid
+      columns={columns} data={filtered} rowKey={(client) => client.id} label={t('title')}
+      isLoading={isPending} isError={isError} onRetry={() => void refetch()}
+      emptyState={<EmptyState title={t('empty')} description={t('emptyHint')} action={<Button asChild><Link href="/clients/new">{t('newClient')}</Link></Button>} />}
+      toolbarLeft={(
+        <div className="relative">
+          <Label htmlFor="client-status" className="sr-only">{t('filterByStatus')}</Label>
+          <Select id="client-status" value={status} className="ps-10" onChange={(event) => setStatus(event.target.value as ClientStatus | 'ALL')}>
             <option value="ALL">{t('allStatuses')}</option>
-            {CLIENT_STATUS_ORDER.map((value) => (
-              <option key={value} value={value}>
-                {t(`status.${value}`)}
-              </option>
-            ))}
+            {CLIENT_STATUS_ORDER.map((value) => <option key={value} value={value}>{t(`status.${value}`)}</option>)}
           </Select>
+          <FunnelSimple size={18} className="pointer-events-none absolute start-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/65" aria-hidden="true" />
         </div>
-      </div>
-
-      {/* Announced politely so filtering feedback reaches screen readers without
-          interrupting typing. */}
-      <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
-        {t('countLabel', { count: visible.length })}
-      </p>
-
-      <TableScroll aria-label={t('title')}>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('columns.code')}</TableHead>
-              <TableHead>{t('columns.name')}</TableHead>
-              <TableHead>{t('columns.taxNumber')}</TableHead>
-              <TableHead>{t('columns.currency')}</TableHead>
-              <TableHead>{t('columns.status')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {visible.length === 0 ? (
-              <TableEmpty colSpan={5}>
-                <p>{t('noMatches')}</p>
-                {hasFilters ? (
-                  <div className="mt-4">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSearch('');
-                        setStatus('ALL');
-                      }}
-                    >
-                      {t('clearFilters')}
-                    </Button>
-                  </div>
-                ) : null}
-              </TableEmpty>
-            ) : (
-              visible.map((client) => (
-                <ClientRow key={client.id} client={client} locale={locale} />
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableScroll>
-    </div>
-  );
-}
-
-function ClientRow({ client, locale }: { client: Client; locale: 'en' | 'ar' }) {
-  const t = useTranslations('platform.clients');
-
-  const displayName = locale === 'ar' && client.nameAr ? client.nameAr : client.name;
-  const unset = <span className="text-muted-foreground">{t('notSet')}</span>;
-
-  return (
-    <TableRow>
-      <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
-        {client.code}
-      </TableCell>
-      <TableCell>
-        {/* The link lives on the name rather than the row: a clickable <tr> cannot be
-            reached by keyboard or announced as a link, and wrapping every cell in an
-            anchor breaks the table semantics screen readers rely on. */}
-        <Link
-          href={`/clients/${client.id}`}
-          className="-my-3 flex min-h-11 items-center font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
-        >
-          {displayName}
-        </Link>
-      </TableCell>
-      <TableCell className="whitespace-nowrap">{client.taxNumber || unset}</TableCell>
-      <TableCell className="whitespace-nowrap">{client.defaultCurrency || unset}</TableCell>
-      <TableCell>
-        <ClientStatusBadge status={client.status} />
-      </TableCell>
-    </TableRow>
+      )}
+    />
   );
 }

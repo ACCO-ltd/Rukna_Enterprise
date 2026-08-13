@@ -25,15 +25,12 @@ export function useClient(id: string): UseQueryResult<ClientDetail, Error> {
 }
 
 export function useCreateClient() {
-  const router = useRouter();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (payload: CreateClientPayload) => createClient(payload),
     onSuccess: async (client) => {
-      // Awaited so the list is fresh before we navigate onto the new client's page.
       await queryClient.invalidateQueries({ queryKey: clientKeys.all });
-      router.push(`/clients/${client.id}`);
     },
   });
 }
