@@ -37,7 +37,9 @@ Both are required. The roadmap below builds them in the correct sequence.
 | **Sprint 5** | Procurement, AP Integration, and Commitment Control | ✅ Complete |
 | **Sprint 5 Frontend** | Procurement Workspace UI | ⏳ Next — Frontend Engineer |
 | **Post-Sprint 5** | Architecture Review + Cross-Cutting Quality Work | ✅ Complete |
-| **Sprint 6** | Variations / Change Management | ⏳ Next |
+| **Sprint 6 Backend** | Governance seam + loop-back, RBAC, Project Actual P&L, receipts fix | ✅ Delivered 2026-08-13 (merged to `main`, 197 tests) |
+| **Sprint 6 Frontend** | Surface the governance/approval flow + project P&L (see `frontend-surface-plan.md`) | ⏳ Next — Frontend Engineer |
+| **Sprint 6** | Variations / Change Management (ChangeOrder) | ⏳ Blocked on #51 (Eng Ahmed) |
 | **Sprint 7** | Inventory and Project Costing | Planned |
 | **Sprint 8** | Accounts Receivable, Cash and Banking | Planned |
 | **Sprint 9** | Site Operations, Labour and Equipment | Planned |
@@ -254,6 +256,27 @@ transition is gated, so the frontend can redirect to the approval workflow.
 | 03 | SupplierBillService — required dependency | `@Optional() CommitmentLedgerRepository?` replaced with required `CommitmentLedgerWriter`; silent failure path eliminated |
 | 04 | spendCategoryId casts | 7 `(line as any).spendCategoryId` casts removed — field was always in Prisma return type |
 | 05 | GovernedEntity type | `type GovernedEntity` added to `@erp/types`; `gateStateTransition()` now typed at the entry point — typos are compile errors |
+
+---
+
+### Sprint 6 Backend — Governance, RBAC, Reporting ✅ Delivered 2026-08-13
+
+The Sprint 6 backend prerequisites and the cross-cutting governance/quality work landed and
+merged to `main`. **197 integration tests green.** ADRs 011–015 record the decisions.
+
+| Area | Delivered |
+|---|---|
+| **RBAC** | `PermissionsGuard` wired as global `APP_GUARD`; accounting + procurement controllers declare `@RequirePermissions`; JWT carries permissions. Verified with an HTTP e2e returning `403`. Closes #25/#28. |
+| **Approval seam (ADR-011)** | PO `submit`, SupplierBill `submit`, SupplierPayment `approve` route through `CommandGovernanceService.gateStateTransition` (the same seam IPA/Project use). `GovernedEntity` extended. Backward-compatible: no binding → proceeds. |
+| **Approval loop-back (ADR-015)** | Re-drive mechanism — a gated command re-invoked after its instance is `APPROVED` consumes it and completes the transition. Governance is now **functional end-to-end**, not just armed. |
+| **Project Actual P&L (ADR-013)** | `GET /projects/:id/pl` + `journal_lines` dimension indexes. Posted-GL-only; excludes commitments (the rich _Project Financial Position_ is a separate, not-yet-built read model). |
+| **Receipts** | `POST /receipts` fixed (it 500'd on every call). The A12 domain question (one settlement ledger vs two) remains open for Eng Ahmed. |
+| **Sweep landed** | Commitment-ledger fixes (#31), AP fixes (#33/#34/#35/#36/#42), B16 approval-gate (#45), plus ADR-008/009/010 subsystems, all committed and tested. |
+
+**Not yet done (deliberately):** value-threshold routing (needs Eng Ahmed's CFO/CEO thresholds),
+SoD wiring (`SegregationOfDutiesService` has no callers), a dedicated `CONSUMED` approval status,
+and the rich Project Financial Position. **Frontend for all of the above is unbuilt** — see the
+frontend surface plan (`frontend-surface-plan.md`).
 
 ---
 

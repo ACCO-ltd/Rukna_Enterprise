@@ -4,6 +4,15 @@ Raised by: Frontend Engineer (`apps/web`, `packages/ui`)
 For: **Abdulsalam** (backend, `apps/api`) — and where marked, **Eng Ahmed Shirie** (domain)
 Raised: 2026-08-03 · Last re-verified: 2026-08-11, every open finding individually, at `4a895e7`
 
+> **UPDATE 2026-08-13 — the Sprint 6 backend delivery merged to `main` (197 tests) closed most of
+> the tracked backend findings.** Verified-and-closed on GitHub: **#24 (A1), #26 (A3), #27 (P6),
+> #29 (P15), #30 (P8), #31, #33 (A14), #34 (A16), #35 (A17), #36 (A18), #42 (A19), #45 (B16),
+> #25/#28 (RBAC — now enforced, HTTP-403 verified).** Still open by design: **A12** (receipts one
+> ledger vs two — Eng Ahmed) and **#51/#49/#50** frontend-domain items. New backend capability
+> now needs *frontend*: the governance `409` gate + loop-back, and the Project Actual P&L screen —
+> planned in [`frontend-surface-plan.md`](../02-architecture/frontend-surface-plan.md). The
+> per-finding statuses below predate this update and are being reconciled.
+
 Status: **all 37 open findings re-verified at `4a895e7`; all 37 are still open.** Three are
 new, found during the same sweep: [A14](#a14) (blocking, [#33](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/33)),
 [A15](#a15) and [B15](#b15). Three existing findings were **corrected** rather than merely

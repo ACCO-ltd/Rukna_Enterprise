@@ -277,6 +277,33 @@ All endpoints are scoped to the authenticated user's organization.
 > { "notes": "Approved — quantities verified on site" }
 > ```
 
+> `approve`/`reject` now **enforce** `step.roleRequired` against the caller's roles and are
+> org-scoped (B16/#45). A caller without the step's required role gets `403`.
+
+#### Governed state transitions — the `409` gate (ADR-011, ADR-015)
+
+Certain state-changing commands route through the governance seam. When a DOA
+`WorkflowTriggerBinding` is configured for the transition, the command creates an
+`ApprovalInstance` and returns **`409 Conflict`** with the instance id instead of transitioning:
+
+```json
+{ "message": "Purchase order submission requires workflow approval.", "approvalInstanceId": "cld..." }
+```
+
+Governed today: `POST /purchase-orders/:id/submit` (`PurchaseOrder` DRAFT→SUBMITTED),
+`POST /bills/:id/submit` (`SupplierBill` DRAFT→SUBMITTED),
+`POST /payments/:id/approve` (`SupplierPayment` DRAFT→APPROVED), plus IPA and Project transitions.
+
+**Loop-back (re-drive):** after approvers finish (`approve` down the chain until the instance is
+`APPROVED`), the client **re-invokes the same command**; the gate finds the approved instance,
+consumes it, and the transition proceeds. With **no** binding configured the command behaves
+exactly as before (no `409`). Frontend contract: on `409`, show "pending approval", surface the
+approval panel via `approvalInstanceId`, and re-call the command once the instance reads `APPROVED`.
+
+> With no seeded bindings, none of these gate today — governance is wired and functional but
+> **switched off by configuration**. There is no admin UI yet to create bindings/requirement
+> policies (the "config" gap).
+
 ---
 
 ### 6.6 Clients
@@ -1514,7 +1541,23 @@ Optional: `&projectId=cld...` `&departmentId=cld...`
 }
 ```
 
-> When `projectId` or `departmentId` is supplied, only journal lines tagged with that dimension are included. This gives project-level P&L without a separate endpoint.
+> When `projectId` or `departmentId` is supplied, only journal lines tagged with that dimension are included.
+
+#### Project Actual P&L (convenience route) — ADR-013
+
+```
+GET /projects/:id/pl?fromDate=2025-01-01&toDate=2025-12-31
+```
+
+Project-scoped wrapper over `/reports/pl`: the path project id becomes the `projectId` filter and
+**overrides** any `projectId` supplied in the query. Same `PLReportResult` shape as `/reports/pl`
+above, with `projectId` set. Requires `view:accounting`. Backed by the new `@@index([projectId])`
+on `journal_lines`.
+
+> **This is the _Project Actual P&L_ — posted GL truth only** (revenue + project-cost lines tagged
+> with this project). It **excludes committed and forecast cost** by design; those belong to the
+> separate _Project Financial Position_ read model (ADR-013), which is **not yet built**. Do not
+> present this to a PM as the complete project financial picture — surface it as "Actual (GL)".
 
 #### Monthly P&L Comparison
 
