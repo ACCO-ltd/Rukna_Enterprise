@@ -1,12 +1,14 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { BoqVersionStatus } from '@erp/types';
-import { Alert, Button, FormField, Input, Select } from '@erp/ui';
+import { Alert, Button, FormField, FormSection, Input, Select } from '@erp/ui';
 
 import { useBoq } from '@/features/boq/hooks/use-boq';
 import { useClients } from '@/features/clients/hooks/use-clients';
@@ -36,6 +38,8 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
   const tCommon = useTranslations('common');
   const tCurrency = useTranslations('common.currency');
   const isEdit = contract !== undefined;
+  const searchParams = useSearchParams();
+  const requestedProjectId = searchParams.get('projectId') ?? '';
 
   const create = useCreateContract();
   const update = useUpdateContract(contract?.id ?? '');
@@ -67,6 +71,7 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
     register,
     handleSubmit,
     formState: { errors },
+    setValue,
   } = useForm<ContractFormValues>({
     resolver: zodResolver(
       schema.refine(
@@ -77,7 +82,9 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
         { message: t('endBeforeStart'), path: ['expectedEndDate'] },
       ),
     ),
-    defaultValues: contract ? toContractFormValues(contract) : EMPTY_CONTRACT_FORM,
+    defaultValues: contract
+      ? toContractFormValues(contract)
+      : { ...EMPTY_CONTRACT_FORM, projectId: requestedProjectId },
   });
 
   // The BOQ version list depends on the chosen project, so the field is watched rather
@@ -85,6 +92,14 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
   // of React Compiler memoization.
   const selectedProjectId = useWatch({ control, name: 'projectId' });
   const boq = useBoq(selectedProjectId);
+
+  // The project command centre can open this form with its project in context. The related
+  // client is derived from that real project record rather than copied into the URL.
+  useEffect(() => {
+    if (isEdit || !requestedProjectId) return;
+    const project = (projects.data ?? []).find((item) => item.id === requestedProjectId);
+    if (project?.clientId) setValue('clientId', project.clientId, { shouldValidate: true });
+  }, [isEdit, projects.data, requestedProjectId, setValue]);
 
   /**
    * Only BASELINED versions may back a contract — `ContractService.create` rejects
@@ -123,10 +138,11 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
       {/* What a contract is FOR cannot change after creation — UpdateContractDto declares
           none of these three. In edit mode they are shown read-only rather than hidden, so
           the user can still see what the contract is against. */}
-      {isEdit ? (
-        <Alert variant="info" messages={[t('identityFixed')]} />
-      ) : (
-        <>
+      <FormSection title={t('project')}>
+        {isEdit ? (
+          <Alert variant="info" messages={[t('identityFixed')]} />
+        ) : (
+          <div className="grid gap-5 lg:grid-cols-2">
           <FormField htmlFor="contract-project" label={t('project')} error={errors.projectId?.message}>
             <Select
               id="contract-project"
@@ -190,20 +206,23 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
                     : t('boqVersionHint')}
             </p>
           </FormField>
-        </>
-      )}
+          </div>
+        )}
+      </FormSection>
 
-      <FormField
-        htmlFor="contract-number"
-        label={t('number')}
-        error={errors.contractNumber?.message ?? (isDuplicateNumber ? t('duplicateNumber') : undefined)}
-      >
-        <Input
-          id="contract-number"
-          aria-invalid={Boolean(errors.contractNumber)}
-          {...register('contractNumber')}
-        />
-      </FormField>
+      <FormSection title={t('billingModel')}>
+        <div className="grid gap-5 lg:grid-cols-2">
+          <FormField
+            htmlFor="contract-number"
+            label={t('number')}
+            error={errors.contractNumber?.message ?? (isDuplicateNumber ? t('duplicateNumber') : undefined)}
+          >
+            <Input
+              id="contract-number"
+              aria-invalid={Boolean(errors.contractNumber)}
+              {...register('contractNumber')}
+            />
+          </FormField>
 
       <div className="grid gap-5 sm:grid-cols-2">
         <FormField
@@ -245,8 +264,11 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
           ))}
         </Select>
       </FormField>
+        </div>
+      </FormSection>
 
-      <div className="grid gap-5 sm:grid-cols-2">
+      <FormSection title={t('startDate')}>
+        <div className="grid gap-5 sm:grid-cols-2">
         <FormField htmlFor="contract-start" label={t('startDate')}>
           <Input id="contract-start" type="date" {...register('startDate')} />
         </FormField>
@@ -263,9 +285,10 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
             {...register('expectedEndDate')}
           />
         </FormField>
-      </div>
+        </div>
+      </FormSection>
 
-      <div className="flex flex-col gap-3 sm:flex-row-reverse sm:justify-start">
+      <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4 shadow-sm sm:flex-row-reverse sm:justify-start">
         <Button type="submit" disabled={isPending}>
           {isPending ? tCommon('loading') : isEdit ? t('saveChanges') : t('submit')}
         </Button>

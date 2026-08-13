@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Button } from '@erp/ui';
+import { ArrowUpRight, FileText, Plus } from '@phosphor-icons/react';
 
 import { formatMoney } from '@/lib/format';
 
@@ -27,8 +28,11 @@ export function ProjectContractsSection({ projectId }: { projectId: string }) {
 
   return (
     <section className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-foreground">{t('heading')}</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3 shadow-[var(--shadow-panel)]">
+        <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-primary"><FileText size={17} weight="duotone" aria-hidden="true" /></span>
+          {t('heading')}
+        </h2>
         <div className="flex gap-2">
           {data && data.length > 0 ? (
             <Button variant="ghost" size="sm" asChild>
@@ -36,7 +40,7 @@ export function ProjectContractsSection({ projectId }: { projectId: string }) {
             </Button>
           ) : null}
           <Button size="sm" asChild>
-            <Link href="/contracts/new">{t('add')}</Link>
+            <Link href={`/contracts/new?projectId=${projectId}`} className="gap-2"><Plus size={15} aria-hidden="true" />{t('add')}</Link>
           </Button>
         </div>
       </div>
@@ -52,12 +56,13 @@ export function ProjectContractsSection({ projectId }: { projectId: string }) {
       ) : isError ? (
         <Alert variant="error" messages={[tContracts('loadFailed')]} />
       ) : data.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-8 text-center">
+        <div className="rounded-xl border border-dashed border-border bg-surface px-6 py-10 text-center shadow-[var(--shadow-control)]">
+          <span className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-primary"><FileText size={20} weight="duotone" aria-hidden="true" /></span>
           <p className="text-sm font-medium text-foreground">{t('none')}</p>
           <p className="mt-1 text-sm text-muted-foreground">{t('noneHint')}</p>
         </div>
       ) : (
-        <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
+        <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
           {data.map((contract) => (
             <li key={contract.id}>
               <Link
@@ -73,6 +78,7 @@ export function ProjectContractsSection({ projectId }: { projectId: string }) {
                 <span className="text-sm font-semibold text-foreground">
                   {formatMoney(contract.contractValue, contract.currency, locale) ?? ''}
                 </span>
+                <ArrowUpRight size={17} className="text-muted-foreground" aria-hidden="true" />
               </Link>
             </li>
           ))}

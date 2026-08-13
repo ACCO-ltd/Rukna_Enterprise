@@ -1,4 +1,5 @@
 import { type BadgeTone, Badge, cn } from '@erp/ui';
+import { Archive, CheckCircle, Circle, Clock, Warning, XCircle } from '@phosphor-icons/react';
 
 import { formatStatus, type StatusToken } from '@/lib/format';
 
@@ -14,12 +15,12 @@ import { formatStatus, type StatusToken } from '@/lib/format';
  * states mean in this domain (ACTIVE contract, CERTIFIED certificate, PAID receipt).
  */
 const TOKEN_TO_TONE: Record<StatusToken, BadgeTone> = {
-  NEUTRAL:     'neutral',
+  NEUTRAL: 'neutral',
   IN_PROGRESS: 'info',
-  WARNING:     'warning',
-  SUCCESS:     'live',
-  DANGER:      'danger',
-  HISTORICAL:  'neutral',
+  WARNING: 'warning',
+  SUCCESS: 'live',
+  DANGER: 'danger',
+  HISTORICAL: 'historical',
 };
 
 interface StatusBadgeProps {
@@ -55,8 +56,18 @@ export function StatusBadge({ status, label }: StatusBadgeProps) {
       .toLowerCase()
       .replace(/^\w/, (c) => c.toUpperCase());
 
+  const icon = {
+    NEUTRAL: <Circle size={12} weight="bold" aria-hidden="true" />,
+    IN_PROGRESS: <Clock size={12} weight="bold" aria-hidden="true" />,
+    WARNING: <Warning size={12} weight="bold" aria-hidden="true" />,
+    SUCCESS: <CheckCircle size={12} weight="fill" aria-hidden="true" />,
+    DANGER: <XCircle size={12} weight="fill" aria-hidden="true" />,
+    HISTORICAL: <Archive size={12} weight="fill" aria-hidden="true" />,
+  }[token];
+
   return (
-    <Badge tone={tone} className={cn(muted && 'opacity-60')}>
+    <Badge tone={tone} className={cn('gap-1.5', muted && token !== 'HISTORICAL' && 'opacity-70')}>
+      {icon}
       {displayLabel}
     </Badge>
   );

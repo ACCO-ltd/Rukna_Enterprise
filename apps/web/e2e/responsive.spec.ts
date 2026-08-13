@@ -46,6 +46,12 @@ test.describe('layout', () => {
     await expectNoHorizontalScroll(app);
   });
 
+  test('the project IPC workspace does not scroll sideways', async ({ app }) => {
+    await app.goto(`/projects/${scenario.projectId}/ipc`);
+    await app.getByRole('heading', { level: 1 }).waitFor();
+    await expectNoHorizontalScroll(app);
+  });
+
   // The widest surface in the app: six tabs over a six-column table of derived figures.
   test('the contract detail and its tabs do not scroll sideways', async ({ app }) => {
     await app.goto(`/contracts/${scenario.contractId}`);
@@ -142,5 +148,32 @@ test.describe('touch targets', () => {
     );
     await app.getByRole('heading', { level: 1 }).waitFor();
     await expectTouchTargets(app);
+  });
+});
+
+test.describe('theme and keyboard behavior', () => {
+  test('explicit themes paint the document and persist across navigation', async ({ app }) => {
+    await app.goto('/projects');
+    await app.locator('header button[aria-haspopup="menu"]').click();
+    await app.getByRole('menuitemradio', { name: 'Dark' }).click();
+    await expect(app.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect
+      .poll(() => app.evaluate(() => localStorage.getItem('rukna.theme.preference')))
+      .toBe('dark');
+
+    await app.goto(`/projects/${scenario.projectId}/ipc`);
+    await expect(app.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await app.locator('header button[aria-haspopup="menu"]').click();
+    await app.getByRole('menuitemradio', { name: 'Light' }).click();
+    await expect(app.locator('html')).toHaveAttribute('data-theme', 'light');
+  });
+
+  test('skip link reaches the primary content by keyboard', async ({ app }) => {
+    await app.goto('/projects');
+    await app.keyboard.press('Tab');
+    const skipLink = app.getByRole('link', { name: 'Skip to main content' });
+    await expect(skipLink).toBeFocused();
+    await app.keyboard.press('Enter');
+    await expect(app.locator('#main-content')).toBeFocused();
   });
 });

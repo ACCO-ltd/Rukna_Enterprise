@@ -88,10 +88,10 @@ export function BoqTree({
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-lg border border-border">
+      <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
         {/* Column headers exist only where the columns do — below `sm` the values are
             stacked into each row instead. */}
-        <div className="hidden items-center gap-3 border-b border-border bg-muted px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:flex">
+        <div className="hidden min-h-11 items-center gap-3 border-b border-border bg-surface-subtle px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground sm:flex">
           <span className="flex-1">{t('columnDescription')}</span>
           <span className="w-16 text-end">{t('columnUnit')}</span>
           <span className="w-24 text-end">{t('columnQuantity')}</span>
@@ -112,9 +112,9 @@ export function BoqTree({
           ))}
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-border bg-muted px-3 py-3">
-          <span className="text-sm font-semibold text-foreground">{t('grandTotal')}</span>
-          <span className="text-sm font-semibold tabular-nums text-foreground sm:w-40 sm:text-end">
+        <div className="flex min-h-14 items-center justify-between gap-3 border-t border-border-strong bg-brand-accent/35 px-4 py-3">
+          <span className="text-sm font-bold text-foreground">{t('grandTotal')}</span>
+          <span className="font-mono text-sm font-bold tabular-nums text-foreground sm:w-40 sm:text-end">
             {grandTotal.kind === 'mixed' ? (
               <span className="text-xs font-normal text-warning">{t('mixedCurrency')}</span>
             ) : (

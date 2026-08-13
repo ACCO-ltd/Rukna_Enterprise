@@ -256,6 +256,8 @@ export interface Contract {
   projectId: string;
   organizationId: string;
   clientId: string;
+  /** Identifies the employer contract from project subcontracts. */
+  contractKind: 'CLIENT_CONTRACT' | 'SUBCONTRACT';
   /**
    * Always a BASELINED version: `ContractService.create` rejects anything else
    * (`contract.service.ts:50-63`). The picker filters to BASELINED and the server backs

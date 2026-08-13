@@ -121,7 +121,7 @@ describe('BankAccounts list', () => {
 describe('configure form', () => {
   async function openForm() {
     const user = userEvent.setup();
-    renderWithProviders(<BankAccounts />);
+    renderWithProviders(<BankAccounts />, { permissions: ['manage:account'] });
     await user.click(screen.getByRole('button', { name: 'New Bank Account' }));
     return user;
   }

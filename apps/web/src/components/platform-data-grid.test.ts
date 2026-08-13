@@ -197,3 +197,36 @@ describe('searchRows()', () => {
     expect(() => searchRows(CONTRACTS, '9000', COLS)).not.toThrow();
   });
 });
+
+// ─── paginateRows ─────────────────────────────────────────────────────────────
+
+function paginateRows<T>(rows: T[], page: number, pageSize: number): T[] {
+  return rows.slice((page - 1) * pageSize, page * pageSize);
+}
+
+describe('paginateRows()', () => {
+  const rows = Array.from({ length: 10 }, (_, i) => ({ id: String(i + 1) }));
+
+  it('returns the first pageSize items for page 1', () => {
+    const result = paginateRows(rows, 1, 3);
+    expect(result.map((r) => r.id)).toEqual(['1', '2', '3']);
+  });
+
+  it('returns the next batch on page 2', () => {
+    const result = paginateRows(rows, 2, 3);
+    expect(result.map((r) => r.id)).toEqual(['4', '5', '6']);
+  });
+
+  it('returns the partial last page when rows do not divide evenly', () => {
+    const result = paginateRows(rows, 4, 3);
+    expect(result.map((r) => r.id)).toEqual(['10']);
+  });
+
+  it('returns an empty array when page is beyond total', () => {
+    expect(paginateRows(rows, 5, 3)).toHaveLength(0);
+  });
+
+  it('returns all rows when pageSize exceeds total', () => {
+    expect(paginateRows(rows, 1, 100)).toHaveLength(10);
+  });
+});

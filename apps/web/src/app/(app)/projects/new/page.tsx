@@ -13,9 +13,7 @@ export default async function NewProjectPage() {
         title={t('title')}
         subtitle={t('subtitle')}
       />
-      <div className="rounded-lg border border-border bg-surface p-5 sm:p-6">
-        <ProjectForm />
-      </div>
+      <ProjectForm />
     </div>
   );
 }

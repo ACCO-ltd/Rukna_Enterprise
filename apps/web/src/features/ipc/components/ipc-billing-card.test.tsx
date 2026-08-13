@@ -69,7 +69,7 @@ describe('IpcBillingCard', () => {
   });
 
   it('offers to generate when the certificate has no invoice', async () => {
-    renderWithProviders(<IpcBillingCard ipcId="ipc-1" isEffective currency="SOS" />);
+    renderWithProviders(<IpcBillingCard ipcId="ipc-1" isEffective currency="SOS" />, { permissions: ['manage:receivable'] });
 
     expect(
       await screen.findByText('No invoice has been raised against this certificate.'),
@@ -80,7 +80,7 @@ describe('IpcBillingCard', () => {
   it('shows the existing invoice instead of the action once one exists', async () => {
     vi.mocked(listInvoices).mockResolvedValue([invoice()]);
 
-    renderWithProviders(<IpcBillingCard ipcId="ipc-1" isEffective currency="SOS" />);
+    renderWithProviders(<IpcBillingCard ipcId="ipc-1" isEffective currency="SOS" />, { permissions: ['manage:receivable'] });
 
     expect(await screen.findByText('INV-2026-031')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'View invoice' })).toHaveAttribute(
@@ -95,7 +95,7 @@ describe('IpcBillingCard', () => {
       invoice({ id: 'other', invoiceNumber: 'INV-OTHER', sourceIpcId: 'ipc-999' }),
     ]);
 
-    renderWithProviders(<IpcBillingCard ipcId="ipc-1" isEffective currency="SOS" />);
+    renderWithProviders(<IpcBillingCard ipcId="ipc-1" isEffective currency="SOS" />, { permissions: ['manage:receivable'] });
 
     expect(
       await screen.findByText('No invoice has been raised against this certificate.'),
@@ -105,7 +105,7 @@ describe('IpcBillingCard', () => {
 
   it('sends the ipc id with the chosen dates', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<IpcBillingCard ipcId="ipc-1" isEffective currency="SOS" />);
+    renderWithProviders(<IpcBillingCard ipcId="ipc-1" isEffective currency="SOS" />, { permissions: ['manage:receivable'] });
 
     await user.click(await screen.findByRole('button', { name: 'Generate invoice' }));
     await user.click(screen.getByRole('button', { name: 'Generate invoice' }));
@@ -117,7 +117,7 @@ describe('IpcBillingCard', () => {
 
   it('defaults the due date to 30 days after the invoice date', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<IpcBillingCard ipcId="ipc-1" isEffective currency="SOS" />);
+    renderWithProviders(<IpcBillingCard ipcId="ipc-1" isEffective currency="SOS" />, { permissions: ['manage:receivable'] });
 
     await user.click(await screen.findByRole('button', { name: 'Generate invoice' }));
 
@@ -132,7 +132,7 @@ describe('IpcBillingCard', () => {
 
   it('will not let the due date fall before the invoice date', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<IpcBillingCard ipcId="ipc-1" isEffective currency="SOS" />);
+    renderWithProviders(<IpcBillingCard ipcId="ipc-1" isEffective currency="SOS" />, { permissions: ['manage:receivable'] });
 
     await user.click(await screen.findByRole('button', { name: 'Generate invoice' }));
 
@@ -142,7 +142,7 @@ describe('IpcBillingCard', () => {
 
   it('says the amount comes from the certificate rather than offering a field', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<IpcBillingCard ipcId="ipc-1" isEffective currency="SOS" />);
+    renderWithProviders(<IpcBillingCard ipcId="ipc-1" isEffective currency="SOS" />, { permissions: ['manage:receivable'] });
 
     await user.click(await screen.findByRole('button', { name: 'Generate invoice' }));
 

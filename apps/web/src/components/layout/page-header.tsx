@@ -30,16 +30,16 @@ interface PageHeaderProps {
  */
 export function PageHeader({ breadcrumbs, title, subtitle, actions }: PageHeaderProps) {
   return (
-    <div className="mb-6">
+    <div className="mb-7">
       {breadcrumbs && breadcrumbs.length > 0 ? (
         <div className="mb-2">
           <Breadcrumbs items={breadcrumbs} />
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+      <div className="flex min-h-14 flex-wrap items-center justify-between gap-x-6 gap-y-3">
         <div className="min-w-0">
-          <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">
+          <h1 className="truncate text-[28px] font-bold leading-tight tracking-[-0.025em] text-foreground">
             {title}
           </h1>
           {subtitle ? (

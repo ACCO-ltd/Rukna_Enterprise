@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Alert, Button } from '@erp/ui';
+import { Plus } from '@phosphor-icons/react';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { ApiError } from '@/lib/api-client';
@@ -111,13 +112,15 @@ export function BoqEditor({ projectId, versionId, nodes, projectCurrency }: BoqE
         <Alert variant="error" messages={[errorText(reorder.error, true, t('reorderFailed'))!]} />
       ) : null}
 
-      <div className="flex justify-start">
+      <div className="flex justify-end rounded-xl border border-border bg-surface p-3 shadow-[var(--shadow-control)]">
         <Button
           variant="outline"
+          className="gap-2"
           onClick={() => {
             setDialog({ mode: 'add', kind: 'section', parent: null });
           }}
         >
+          <Plus size={16} aria-hidden="true" />
           {t('addSection')}
         </Button>
       </div>

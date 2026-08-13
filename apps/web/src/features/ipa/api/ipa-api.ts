@@ -67,6 +67,11 @@ export function listIpas(contractId?: string): Promise<Ipa[]> {
   });
 }
 
+/** `GET /ipa?projectId=` — all applications across every contract on a project. */
+export function listIpasByProject(projectId: string): Promise<Ipa[]> {
+  return apiClient<Ipa[]>('/ipa', { params: { projectId } });
+}
+
 /** Returns the application with items, deductions and the three computed totals. */
 export function getIpa(id: string): Promise<IpaDetail> {
   return apiClient<IpaDetail>(`/ipa/${id}`);

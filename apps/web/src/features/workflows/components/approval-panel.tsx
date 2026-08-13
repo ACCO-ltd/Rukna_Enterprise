@@ -76,7 +76,7 @@ export function ApprovalPanel({
 
   return (
     <>
-      <section className="space-y-3 rounded-lg border border-border bg-surface p-4">
+      <section className="space-y-4 rounded-lg border border-brand-primary/20 bg-surface p-5 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-lg font-semibold text-foreground">{t('title')}</h2>
@@ -113,7 +113,7 @@ export function ApprovalPanel({
         ) : null}
 
         {current ? (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 border-t border-border pt-4">
             <Button
               type="button"
               disabled={blocked !== null || action.isPending}

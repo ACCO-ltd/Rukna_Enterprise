@@ -12,6 +12,7 @@ import {
   createIpa,
   getIpa,
   listIpas,
+  listIpasByProject,
   removeIpaDeduction,
   removeIpaItem,
   runIpaCommand,
@@ -25,6 +26,7 @@ import type { Ipa, IpaDetail } from '../types';
 export const ipaKeys = {
   all: ['ipa'] as const,
   list: (contractId?: string) => [...ipaKeys.all, 'list', contractId ?? 'all'] as const,
+  listByProject: (projectId: string) => [...ipaKeys.all, 'project', projectId] as const,
   detail: (id: string) => [...ipaKeys.all, 'detail', id] as const,
 };
 
@@ -32,6 +34,14 @@ export function useIpas(contractId?: string): UseQueryResult<Ipa[], Error> {
   return useQuery({
     queryKey: ipaKeys.list(contractId),
     queryFn: () => listIpas(contractId),
+  });
+}
+
+/** All payment applications across every contract on a project. */
+export function useIpasByProject(projectId: string): UseQueryResult<Ipa[], Error> {
+  return useQuery({
+    queryKey: ipaKeys.listByProject(projectId),
+    queryFn: () => listIpasByProject(projectId),
   });
 }
 

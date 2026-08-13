@@ -16,7 +16,7 @@ export default async function ProjectContractsPage({
     <div className="space-y-4">
       <div className="flex justify-end">
         <Button asChild size="sm">
-          <Link href="/contracts/new">{t('newContract')}</Link>
+          <Link href={`/contracts/new?projectId=${id}`}>{t('newContract')}</Link>
         </Button>
       </div>
       <ContractsList projectId={id} />

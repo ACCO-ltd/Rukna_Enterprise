@@ -82,7 +82,7 @@ describe('ProjectMembers', () => {
 
     expect(screen.getByText('Amina Yusuf')).toBeInTheDocument();
     expect(screen.getByText('u-2@acco.test')).toBeInTheDocument();
-    expect(screen.getByText('Project manager')).toBeInTheDocument();
+    expect(screen.getAllByText('Project manager')).toHaveLength(2);
     expect(screen.getByText('Site engineer')).toBeInTheDocument();
   });
 
@@ -161,6 +161,6 @@ describe('ProjectMembers', () => {
     renderWithProviders(<ProjectMembers projectId="p-1" />, { locale: 'ar' });
 
     expect(screen.getByRole('heading', { name: 'فريق المشروع' })).toBeInTheDocument();
-    expect(screen.getByText('مدير المشروع')).toBeInTheDocument();
+    expect(screen.getAllByText('مدير المشروع')).toHaveLength(2);
   });
 });

@@ -15,6 +15,7 @@ export interface Scenario {
   contractNumber: string;
   ipaId: string;
   ipaRef: string | null;
+  certificationIpaId: string;
   receiptId: string;
   receiptReference: string | null;
   ipcId: string;
@@ -45,6 +46,7 @@ async function globalSetup(): Promise<void> {
     contractNumber: seeded.contract.contractNumber,
     ipaId: seeded.ipa.id,
     ipaRef: seeded.ipa.applicationRef ?? null,
+    certificationIpaId: seeded.certificationIpa.id,
     receiptId: seeded.receipt.id,
     receiptReference: seeded.receipt.reference ?? null,
     ipcId: seeded.certificate.id,

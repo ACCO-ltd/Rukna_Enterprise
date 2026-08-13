@@ -15,6 +15,7 @@ function contract(status: ContractStatus): Contract {
     contractValue: '4500000.00',
     currency: 'USD',
     billingModel: BillingModel.MEASURED_IPC,
+    contractKind: 'CLIENT_CONTRACT' as const,
     status,
     clientNameSnapshot: null,
     clientTaxSnapshot: null,

@@ -1,191 +1,133 @@
 /**
- * Grouped primary navigation.
+ * Domain navigation. Each domain is a major product area with its own
+ * collapsible section and a stable entry route.
  *
- * Only entries backed by live endpoints are enabled. Procurement, Inventory, GL,
- * and several admin screens are declared here so the sidebar renders them as
- * visible-but-disabled placeholders — stakeholders see the roadmap, not a short menu.
- * This is a deliberate UX decision: a grayed-out "Exchange Rates" is honest about
- * what is coming; an absent one looks like the feature was forgotten.
- *
- * `moduleKey` maps to the `MODULE_PERMISSIONS` map in `can.ts` so the sidebar can
- * hide entire sections when the user has no permission to any item within them.
- * Permission checks are active and keep navigation aligned with API authorization.
- *
- * `labelKey` resolves against the `platform.nav` namespace.
+ * Two levels only: Domain → direct destination. No sub-groups.
+ * Domain-specific configuration lives inside its domain.
+ * Global Settings (org profile, integrations) is a separate future section.
  */
+
+export type NavIconKey =
+  | 'grid'
+  | 'building'
+  | 'folder'
+  | 'receipt'
+  | 'cog'
+  | 'pencil'
+  | 'chart-bar'
+  | 'users'
+  | 'clipboard'
+  | 'shopping-cart'
+  | 'truck'
+  | 'trending-up'
+  | 'shield'
+  | 'git-branch'
+  | 'list'
+  | 'briefcase'
+  | 'file-text'
+  | 'book-open'
+  | 'credit-card'
+  | 'wallet'
+  | 'calendar'
+  | 'storefront'
+  | 'package'
+  | 'ruler'
+  | 'tag'
+  | 'user-gear'
+  | 'key';
 
 export interface NavItem {
   href: string;
   labelKey: string;
-  /** When true the item is shown but non-interactive (future module). */
+  iconKey?: NavIconKey;
+  /** Permission required to see this item. */
+  permissionKey?: string;
+  /** Retained for test helpers; hidden in production navigation. */
   disabled?: boolean;
 }
 
-/**
- * A collapsible sub-group inside a nav group — one level of nesting, no more.
- *
- * Added in Sprint 5 for Procurement's four Setup screens. Without it that group renders
- * nine flat rows, four of which are administrator-only configuration that most users never
- * open. Inventory (Sprint 7) and HR (Sprint 8) each have the same shape, so this is not a
- * one-off.
- *
- * `permissionKey` is checked with `can()` rather than `moduleVisible()` — a sub-group hides
- * on a single specific permission, where a group hides on any of several.
- */
-export interface NavSubGroup {
-  /** Translation key in `platform.nav` for the sub-group heading. */
+export interface NavDomain {
+  /** Translation key — also used as the collapse-store key. */
   labelKey: string;
-  items: NavItem[];
-  /** Collapsed on first render. The user's choice is remembered thereafter. */
-  defaultCollapsed?: boolean;
-  /** When set, the sub-group renders only if the user holds this permission. */
-  permissionKey?: string;
-}
-
-export interface NavGroup {
-  /** Translation key in `platform.nav` for the group heading. */
-  labelKey: string;
-  /** Matches a key in `MODULE_PERMISSIONS` for permission gating. */
+  /** Where clicking the domain label navigates. */
+  href: string;
+  /** Module-visibility gate (passed to moduleVisible()). */
   moduleKey: string;
+  /** Icon shown on the domain header button. */
+  iconKey: NavIconKey;
+  /** Flat, direct destinations — no sub-groups inside. */
   items: NavItem[];
-  /** Rendered above `items`, in declaration order. */
-  subGroups?: NavSubGroup[];
 }
 
-/** Items that appear above the grouped sections — no section header. */
+// ─── Standalone (no domain) ───────────────────────────────────────────────────
+
 export const STANDALONE_NAV: NavItem[] = [
-  { href: '/dashboard', labelKey: 'dashboard' },
+  { href: '/dashboard', labelKey: 'dashboard', iconKey: 'grid' },
 ];
 
-export const NAV_GROUPS: NavGroup[] = [
+// ─── Domains ──────────────────────────────────────────────────────────────────
+
+export const NAV_DOMAINS: NavDomain[] = [
   {
-    labelKey: 'portfolio',
+    labelKey: 'projects',
+    href: '/projects',
     moduleKey: 'portfolio',
+    iconKey: 'folder',
     items: [
-      { href: '/projects', labelKey: 'projects' },
-      { href: '/clients', labelKey: 'clients' },
+      { href: '/clients', labelKey: 'clients', iconKey: 'building' },
+      { href: '/projects', labelKey: 'projects', iconKey: 'briefcase' },
     ],
   },
   {
-    labelKey: 'finance',
-    moduleKey: 'finance',
-    items: [
-      { href: '/receipts', labelKey: 'receipts' },
-      { href: '/finance/cash-position', labelKey: 'cashPosition', disabled: true },
-    ],
-  },
-  {
-    // Sprint 4. Ordered setup → entry → reporting, which is also the order a new
-    // organisation has to do them in: there is nothing to post until the chart of accounts
-    // and a fiscal year exist, and nothing to report until something is posted.
     labelKey: 'accounting',
+    href: '/accounting',
     moduleKey: 'accounting',
+    iconKey: 'chart-bar',
     items: [
-      { href: '/finance/accounting/chart-of-accounts', labelKey: 'chartOfAccounts' },
-      { href: '/finance/accounting/periods', labelKey: 'fiscalPeriods' },
-      // Tier 3. Grouped with the other setup screens, before entry and reporting: a payment
-      // cannot name a bank until one is configured here.
-      { href: '/finance/accounting/bank-accounts', labelKey: 'bankAccounts' },
-      // Tier 4, and last of the setup screens deliberately: the migration is the cutover, so
-      // it comes after the chart, the periods and the banks it depends on. An organisation
-      // uses it exactly once.
-      { href: '/finance/accounting/opening-balance', labelKey: 'openingBalance' },
-      { href: '/finance/accounting/journals', labelKey: 'journals' },
-      { href: '/finance/accounting/trial-balance', labelKey: 'trialBalance' },
-      { href: '/finance/accounting/profit-loss', labelKey: 'profitLoss' },
-      { href: '/finance/accounting/balance-sheet', labelKey: 'balanceSheet' },
-      { href: '/finance/accounting/monthly-comparison', labelKey: 'monthlyComparison' },
-      { href: '/finance/accounting/ledger', labelKey: 'accountLedger' },
-      // AR. Read-only: an invoice is raised from a certificate, so the create action lives on
-      // the IPC page (`POST /invoices/from-ipc` is the only way one exists). Sprint 4 recorded
-      // this as blocked by #24, which was wrong — that collision was on /receipts and this
-      // controller has always been mounted at /invoices.
-      { href: '/finance/accounting/invoices', labelKey: 'clientInvoices' },
-      // Read-only. Sprint 4 disabled this entirely on #26, which was over-cautious: only
-      // POST /bills needs a supplier. GET /bills and GET /bills/:id work, and Sprint 5's
-      // Matching tab (§12.8) has to hang off the detail page. Creating a bill is still
-      // blocked and the button on the page says so.
-      { href: '/finance/accounting/bills', labelKey: 'supplierBills' },
-      // Live since AP Tier C. Payments are raised as unallocated advances and settled through
-      // POST /payments/:id/allocations — POST /payments accepts an allocations[] array that it
-      // never persists (A16 / #34), so the create form does not offer one.
-      { href: '/finance/accounting/payments', labelKey: 'supplierPayments' },
+      { href: '/finance/accounting/chart-of-accounts', labelKey: 'chartOfAccounts', iconKey: 'list' },
+      { href: '/finance/accounting/journals', labelKey: 'journals', iconKey: 'book-open' },
+      { href: '/finance/accounting/invoices', labelKey: 'clientInvoices', iconKey: 'file-text' },
+      { href: '/receipts', labelKey: 'receipts', iconKey: 'receipt' },
+      { href: '/finance/accounting/bills', labelKey: 'supplierBills', iconKey: 'credit-card' },
+      { href: '/finance/accounting/payments', labelKey: 'supplierPayments', iconKey: 'wallet' },
+      { href: '/finance/accounting/ledger', labelKey: 'generalLedger', iconKey: 'clipboard' },
+      { href: '/accounting/reports', labelKey: 'accountingReports', iconKey: 'trending-up' },
+      { href: '/finance/accounting/periods', labelKey: 'fiscalPeriods', iconKey: 'calendar' },
     ],
   },
   {
-    // Sprint 5. A top-level group at the same level as Finance, per §12.1 — procurement is
-    // organisation-wide, not something that lives inside a project workspace.
-    //
-    // Ordered as the work happens: configure the catalogue, request, order, receive,
-    // reconcile against the bill, then read what it committed. Setup comes first and is
-    // collapsed, because it is done once and the other five are done daily.
-    //
-    // There is no Bill Matching item. §12.12's snippet lists one; §12.8 says matching is
-    // reached from the supplier bill and explicitly "not as a standalone list", and §12.8
-    // is the section that describes the screen. Matching is a tab on the bill detail page.
     labelKey: 'procurement',
+    href: '/procurement',
     moduleKey: 'procurement',
-    subGroups: [
-      {
-        labelKey: 'procurementSetup',
-        defaultCollapsed: true,
-        permissionKey: 'manage:procurement-config',
-        items: [
-          { href: '/procurement/setup/uom', labelKey: 'unitsOfMeasure' },
-          { href: '/procurement/setup/material-categories', labelKey: 'materialCategories' },
-          { href: '/procurement/setup/spend-categories', labelKey: 'spendCategories' },
-          { href: '/procurement/setup/materials', labelKey: 'materials' },
-        ],
-      },
-    ],
+    iconKey: 'shopping-cart',
     items: [
-      // Not in the Setup sub-group, deliberately. Setup is collapsed by default and gated
-      // on a single `manage:procurement-config` permission, justified there as "done once,
-      // while the other five are done daily". A supplier is neither: it is added whenever
-      // purchasing widens, and burying it behind the config gate would stop a buyer adding
-      // the supplier their own purchase order needs.
-      { href: '/procurement/suppliers', labelKey: 'suppliers' },
-      { href: '/procurement/requests', labelKey: 'materialRequests' },
-      { href: '/procurement/orders', labelKey: 'purchaseOrders' },
-      // /procurement/grn, not /procurement/receipts — §12.7 offers both and warns about
-      // the clash with Sprint 3's client payment receipts at /receipts. This one cannot
-      // be misread.
-      { href: '/procurement/grn', labelKey: 'goodsReceipts' },
-      { href: '/procurement/commitments', labelKey: 'commitments' },
-    ],
-  },
-  {
-    labelKey: 'operations',
-    moduleKey: 'operations',
-    items: [
-      { href: '/operations/inventory', labelKey: 'inventory', disabled: true },
-    ],
-  },
-  {
-    labelKey: 'reports',
-    moduleKey: 'reports',
-    items: [
-      { href: '/reports', labelKey: 'reports', disabled: true },
+      { href: '/procurement/suppliers', labelKey: 'suppliers', iconKey: 'storefront' },
+      { href: '/procurement/requests', labelKey: 'materialRequests', iconKey: 'clipboard' },
+      { href: '/procurement/orders', labelKey: 'purchaseOrders', iconKey: 'shopping-cart' },
+      { href: '/procurement/grn', labelKey: 'goodsReceipts', iconKey: 'truck' },
+      { href: '/procurement/commitments', labelKey: 'commitments', iconKey: 'chart-bar' },
+      { href: '/procurement/setup/materials', labelKey: 'materials', iconKey: 'package', permissionKey: 'manage:procurement-config' },
+      { href: '/procurement/setup/material-categories', labelKey: 'materialCategories', iconKey: 'tag', permissionKey: 'manage:procurement-config' },
+      { href: '/procurement/setup/uom', labelKey: 'unitsOfMeasure', iconKey: 'ruler', permissionKey: 'manage:procurement-config' },
+      { href: '/procurement/setup/spend-categories', labelKey: 'spendCategories', iconKey: 'credit-card', permissionKey: 'manage:procurement-config' },
     ],
   },
   {
     labelKey: 'administration',
+    href: '/admin',
     moduleKey: 'administration',
+    iconKey: 'shield',
     items: [
-      { href: '/admin/exchange-rates', labelKey: 'exchangeRates', disabled: true },
-      { href: '/admin/users', labelKey: 'users' },
-      { href: '/admin/roles', labelKey: 'roles' },
-      { href: '/admin/settings', labelKey: 'settings', disabled: true },
-      { href: '/admin/workflows', labelKey: 'workflows' },
-      { href: '/admin/audit-logs', labelKey: 'auditLogs' },
+      { href: '/admin/users', labelKey: 'users', iconKey: 'users' },
+      { href: '/admin/roles', labelKey: 'roles', iconKey: 'user-gear' },
+      { href: '/admin/workflows', labelKey: 'workflows', iconKey: 'git-branch' },
+      { href: '/admin/audit-logs', labelKey: 'auditLogs', iconKey: 'key' },
     ],
   },
 ];
 
-/**
- * True when `pathname` is at the nav destination or a page nested beneath it.
- * Exact-match for `/dashboard` to avoid it being active on every page.
- */
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 export function isActiveNavItem(pathname: string, href: string): boolean {
   if (href === '/dashboard') return pathname === '/dashboard';
   return pathname === href || pathname.startsWith(`${href}/`);

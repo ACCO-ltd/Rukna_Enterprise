@@ -82,6 +82,11 @@ beforeEach(() => {
   vi.mocked(resumeProject).mockReset();
 });
 
+async function chooseOverflowAction(user: ReturnType<typeof userEvent.setup>, name: string) {
+  await user.click(await screen.findByRole('button', { name: 'Actions' }));
+  await user.click(await screen.findByRole('menuitem', { name }));
+}
+
 describe('ProjectDetail — loading and failure', () => {
   it('announces loading', () => {
     vi.mocked(getProject).mockReturnValue(new Promise(() => {/* never settles */}));
@@ -112,15 +117,25 @@ describe('ProjectDetail — loading and failure', () => {
 });
 
 describe('ProjectDetail — available actions', () => {
-  it('offers approve, edit, suspend and cancel for a draft', async () => {
+  it('renders the setup workflow with the Arabic catalogue', async () => {
+    vi.mocked(getProject).mockResolvedValue(project());
+
+    renderWithProviders(<ProjectDetail id="p1" />, { locale: 'ar' });
+
+    expect(await screen.findByRole('progressbar')).toHaveAttribute('aria-valuemax', '4');
+  });
+
+  it('offers approve, edit, and secondary lifecycle actions for a draft', async () => {
+    const user = userEvent.setup();
     vi.mocked(getProject).mockResolvedValue(project());
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
     expect(await screen.findByRole('button', { name: 'Approve' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Edit' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Suspend' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cancel project' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Actions' })).toBeInTheDocument();
+    await chooseOverflowAction(user, 'Suspend');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
   it('offers nothing but the record for a closed project', async () => {
@@ -131,8 +146,7 @@ describe('ProjectDetail — available actions', () => {
     // Overview section heading is a reliable signal that the project loaded.
     await screen.findByText('Overview');
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Suspend' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Cancel project' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Actions' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument();
   });
 
@@ -147,7 +161,7 @@ describe('ProjectDetail — available actions', () => {
     expect(screen.getByText('Awaiting site access clearance')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Activate' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Suspend' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Actions' })).toBeInTheDocument();
   });
 });
 
@@ -195,7 +209,7 @@ describe('ProjectDetail — running commands', () => {
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
-    await user.click(await screen.findByRole('button', { name: 'Suspend' }));
+    await chooseOverflowAction(user, 'Suspend');
     await user.click(screen.getByRole('button', { name: 'Confirm' }));
 
     expect(await screen.findByText('Enter a reason')).toBeInTheDocument();
@@ -215,7 +229,7 @@ describe('ProjectDetail — running commands', () => {
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
-    await user.click(await screen.findByRole('button', { name: 'Cancel project' }));
+    await chooseOverflowAction(user, 'Cancel project');
     await user.type(screen.getByLabelText('Reason'), 'Client withdrew funding');
     await user.click(screen.getByRole('button', { name: 'Confirm' }));
 

@@ -7,6 +7,7 @@ import { ProjectStatus } from '@erp/types';
 
 import { KpiCard } from '@/components/widget/kpi-card';
 import { WidgetShell } from '@/components/widget/widget-shell';
+import { useClients } from '@/features/clients/hooks/use-clients';
 import { useProjects } from '@/features/projects/hooks/use-projects';
 import { formatNumber } from '@/lib/format';
 
@@ -40,25 +41,43 @@ export function DashboardContent() {
   const t = useTranslations('platform.dashboard');
   const locale = useLocale() as 'en' | 'ar';
   const { data, isPending, isError, refetch, isFetching } = useProjects();
+  const { data: clients, isPending: clientsLoading, isError: clientsError } = useClients();
+
+  // Client KPI is independent of the projects query — compute it early so it
+  // renders even when the projects fetch fails (D-07 failure isolation).
+  const clientCount = clients?.length ?? 0;
+  const clientValue = (clientsLoading || clientsError) ? '—' : (formatNumber(clientCount, locale) ?? clientCount);
 
   if (isPending) return <DashboardSkeleton />;
 
   if (isError) {
     return (
-      <Alert variant="error" messages={[t('loadFailed')]}>
-        <div className="mt-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              void refetch();
-            }}
-            disabled={isFetching}
-          >
-            {t('retry')}
-          </Button>
-        </div>
-      </Alert>
+      <div className="space-y-8">
+        <Alert variant="error" messages={[t('loadFailed')]}>
+          <div className="mt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                void refetch();
+              }}
+              disabled={isFetching}
+            >
+              {t('retry')}
+            </Button>
+          </div>
+        </Alert>
+        <WidgetShell id="clients-heading" title={t('kpiClients')}>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <KpiCard
+              label={t('kpiClients')}
+              value={clientValue}
+              sublabel={t('kpiClientsHint')}
+              href="/clients"
+            />
+          </div>
+        </WidgetShell>
+      </div>
     );
   }
 
@@ -80,7 +99,7 @@ export function DashboardContent() {
   return (
     <div className="space-y-8">
       <WidgetShell id="portfolio-heading" title={t('portfolioHeading')}>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <KpiCard
             label={t('totalProjects')}
             value={formatNumber(summary.total, locale) ?? summary.total}
@@ -102,6 +121,12 @@ export function DashboardContent() {
             label={t('kpiFinished')}
             value={formatNumber(finished, locale) ?? finished}
             sublabel={t('kpiFinishedHint')}
+          />
+          <KpiCard
+            label={t('kpiClients')}
+            value={clientValue}
+            sublabel={t('kpiClientsHint')}
+            href="/clients"
           />
         </div>
       </WidgetShell>
@@ -129,8 +154,8 @@ function DashboardSkeleton() {
     <div role="status" aria-live="polite" className="space-y-8">
       <span className="sr-only">{t('loading')}</span>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-hidden="true">
-        {[0, 1, 2, 3].map((i) => (
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5" aria-hidden="true">
+        {[0, 1, 2, 3, 4].map((i) => (
           <div key={i} className="h-24 animate-pulse rounded-lg border border-border bg-muted" />
         ))}
       </div>

@@ -3,7 +3,7 @@
 import { useForm } from 'react-hook-form';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Input } from '@erp/ui';
+import { Alert, Button, FormField, FormSection, Input } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
 
@@ -64,7 +64,8 @@ export function IpaForm({ contractId }: { contractId: string }) {
     >
       {errorMessages.length > 0 ? <Alert variant="error" messages={errorMessages} /> : null}
 
-      <div className="grid gap-5 sm:grid-cols-2">
+      <FormSection title={t('periodFrom')}>
+        <div className="grid gap-5 sm:grid-cols-2">
         <FormField htmlFor="ipa-from" label={t('periodFrom')}>
           <Input
             id="ipa-from"
@@ -89,17 +90,20 @@ export function IpaForm({ contractId }: { contractId: string }) {
             })}
           />
         </FormField>
-      </div>
+        </div>
 
-      <p id="ipa-period-hint" className="text-xs text-muted-foreground">
-        {t('periodHint')}
-      </p>
+        <p id="ipa-period-hint" className="text-xs text-muted-foreground">
+          {t('periodHint')}
+        </p>
+      </FormSection>
 
-      <FormField htmlFor="ipa-notes" label={t('notes')}>
-        <Input id="ipa-notes" {...register('notes')} />
-      </FormField>
+      <FormSection title={t('notes')}>
+        <FormField htmlFor="ipa-notes" label={t('notes')}>
+          <Input id="ipa-notes" {...register('notes')} />
+        </FormField>
+      </FormSection>
 
-      <div className="flex flex-col gap-3 sm:flex-row-reverse sm:justify-start">
+      <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4 shadow-sm sm:flex-row-reverse sm:justify-start">
         <Button type="submit" disabled={create.isPending}>
           {create.isPending ? tCommon('loading') : t('submit')}
         </Button>

@@ -7,6 +7,7 @@ import {
   getIpc,
   issueIpc,
   listIpcs,
+  listIpcsByProject,
   supersedeIpc,
 } from '../api/ipc-api';
 import type { SupersedeIpcPayload } from '../api/ipc-api';
@@ -15,6 +16,7 @@ import type { CertificatePaymentStatus, Ipc, IpcDetail, IssueIpcPayload } from '
 export const ipcKeys = {
   all: ['ipc'] as const,
   list: (applicationId?: string) => [...ipcKeys.all, 'list', applicationId ?? 'all'] as const,
+  listByProject: (projectId: string) => [...ipcKeys.all, 'project', projectId] as const,
   detail: (id: string) => [...ipcKeys.all, 'detail', id] as const,
   payment: (id: string) => [...ipcKeys.all, 'payment', id] as const,
 };
@@ -23,6 +25,13 @@ export function useIpcs(applicationId?: string): UseQueryResult<Ipc[], Error> {
   return useQuery({
     queryKey: ipcKeys.list(applicationId),
     queryFn: () => listIpcs(applicationId),
+  });
+}
+
+export function useIpcsByProject(projectId: string): UseQueryResult<Ipc[], Error> {
+  return useQuery({
+    queryKey: ipcKeys.listByProject(projectId),
+    queryFn: () => listIpcsByProject(projectId),
   });
 }
 

@@ -108,7 +108,7 @@ describe('OpeningBalanceWizard', () => {
 
   it('runs the migration when everything checks out', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<OpeningBalanceWizard />);
+    renderWithProviders(<OpeningBalanceWizard />, { permissions: ['manage:account'] });
 
     await fillHeader(user);
     await user.type(screen.getByLabelText('Trial balance rows'), '10100\t5000\t0');
@@ -171,7 +171,7 @@ describe('OpeningBalanceWizard', () => {
   /** Warned, not blocked — a zero row is not wrong, it just does nothing. */
   it('warns about rows the server will silently skip, without blocking', async () => {
     const user = userEvent.setup();
-    renderWithProviders(<OpeningBalanceWizard />);
+    renderWithProviders(<OpeningBalanceWizard />, { permissions: ['manage:account'] });
 
     await fillHeader(user);
     await user.type(screen.getByLabelText('Trial balance rows'), '10100\t5000\t0');
@@ -224,7 +224,7 @@ describe('migration report', () => {
   async function runToReport() {
     mutate.mockImplementation((_body, opts) => opts.onSuccess(report));
     const user = userEvent.setup();
-    renderWithProviders(<OpeningBalanceWizard />);
+    renderWithProviders(<OpeningBalanceWizard />, { permissions: ['manage:account'] });
 
     await fillHeader(user);
     await user.type(screen.getByLabelText('Trial balance rows'), '10100\t5000\t0');
