@@ -24,6 +24,11 @@ export interface ProjectWorkspaceSummaryResponse {
     projectManager: { id: string; name: string } | null;
     teamCount: number;
   };
+  programme: {
+    startDate: string | null;
+    expectedEndDate: string | null;
+    daysRemaining: number | null;
+  };
   mainContract: {
     id: string;
     contractNumber: string;
@@ -41,6 +46,21 @@ export interface ProjectWorkspaceSummaryResponse {
     occurredAt: string;
     actor: { id: string; name: string };
   }>;
+}
+
+export type ProjectWorkspaceGuidanceKind =
+  | 'PROGRAMME_DATES_MISSING'
+  | 'BOQ_BASELINE_REQUIRED'
+  | 'MAIN_CONTRACT_BLOCKED'
+  | 'MAIN_CONTRACT_REQUIRED'
+  | 'DELIVERY_TEAM_INCOMPLETE';
+
+export interface ProjectWorkspaceGuidanceItemResponse {
+  id: string;
+  severity: 'URGENT' | 'WARNING' | 'INFO';
+  kind: ProjectWorkspaceGuidanceKind;
+  actionUrl: string | null;
+  responsibleRole: 'PROJECT_MANAGER' | 'QUANTITY_SURVEYOR' | 'CONTRACT_ADMINISTRATOR' | null;
 }
 
 // ─── Client ───────────────────────────────────────────────────────────────────

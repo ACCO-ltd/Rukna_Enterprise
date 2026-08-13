@@ -7,6 +7,7 @@ import { useLifecycleCommand } from '@/features/lifecycle/use-lifecycle-command'
 import {
   cancelProject,
   getProject,
+  getProjectWorkspaceGuidance,
   getProjectWorkspaceSummary,
   resumeProject,
   runProjectCommand,
@@ -29,6 +30,13 @@ export function useProjectWorkspaceSummary(
   return useQuery({
     queryKey: [...projectKeys.detail(id), 'workspace-summary'],
     queryFn: () => getProjectWorkspaceSummary(id),
+  });
+}
+
+export function useProjectWorkspaceGuidance(id: string) {
+  return useQuery({
+    queryKey: [...projectKeys.detail(id), 'workspace-guidance'],
+    queryFn: () => getProjectWorkspaceGuidance(id),
   });
 }
 

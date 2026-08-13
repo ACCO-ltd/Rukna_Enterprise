@@ -8,6 +8,7 @@ import { ApiError } from '@/lib/api-client';
 import {
   cancelProject,
   getProject,
+  getProjectWorkspaceGuidance,
   getProjectWorkspaceSummary,
   resumeProject,
   runProjectCommand,
@@ -19,6 +20,7 @@ import { ProjectDetail } from './project-detail';
 
 vi.mock('@/features/projects/api/projects-api', () => ({
   getProject: vi.fn(),
+  getProjectWorkspaceGuidance: vi.fn(),
   getProjectWorkspaceSummary: vi.fn(),
   runProjectCommand: vi.fn(),
   cancelProject: vi.fn(),
@@ -38,7 +40,6 @@ vi.mock('next/link', () => ({
     </a>
   ),
 }));
-
 
 function suspension(overrides: Partial<ProjectSuspension> = {}): ProjectSuspension {
   return {
@@ -90,6 +91,7 @@ function workspaceSummary() {
       totalSteps: 4,
     },
     responsibility: { projectManager: null, teamCount: 0 },
+    programme: { startDate: null, expectedEndDate: null, daysRemaining: null },
     mainContract: null,
     financialsVisible: false,
     recentActivity: [],
@@ -100,6 +102,7 @@ beforeEach(() => {
   vi.mocked(getProject).mockReset();
   vi.mocked(getProjectWorkspaceSummary).mockReset();
   vi.mocked(getProjectWorkspaceSummary).mockResolvedValue(workspaceSummary());
+  vi.mocked(getProjectWorkspaceGuidance).mockResolvedValue([]);
   vi.mocked(runProjectCommand).mockReset();
   vi.mocked(cancelProject).mockReset();
   vi.mocked(suspendProject).mockReset();
@@ -113,7 +116,11 @@ async function chooseOverflowAction(user: ReturnType<typeof userEvent.setup>, na
 
 describe('ProjectDetail — loading and failure', () => {
   it('announces loading', () => {
-    vi.mocked(getProject).mockReturnValue(new Promise(() => {/* never settles */}));
+    vi.mocked(getProject).mockReturnValue(
+      new Promise(() => {
+        /* never settles */
+      }),
+    );
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
@@ -141,6 +148,27 @@ describe('ProjectDetail — loading and failure', () => {
 });
 
 describe('ProjectDetail — available actions', () => {
+  it('presents backend attention items with a direct next action', async () => {
+    vi.mocked(getProject).mockResolvedValue(project());
+    vi.mocked(getProjectWorkspaceGuidance).mockResolvedValue([
+      {
+        id: 'team',
+        severity: 'WARNING',
+        kind: 'DELIVERY_TEAM_INCOMPLETE',
+        actionUrl: '/projects/p1/members',
+        responsibleRole: 'PROJECT_MANAGER',
+      },
+    ]);
+
+    renderWithProviders(<ProjectDetail id="p1" />);
+
+    expect(await screen.findByText('Delivery team is incomplete')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Manage team' })).toHaveAttribute(
+      'href',
+      '/projects/p1/members',
+    );
+  });
+
   it('renders the setup workflow with the Arabic catalogue', async () => {
     vi.mocked(getProject).mockResolvedValue(project());
 
@@ -296,4 +324,3 @@ describe('ProjectDetail — running commands', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });
-

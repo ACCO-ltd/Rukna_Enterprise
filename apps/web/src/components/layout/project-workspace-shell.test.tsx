@@ -9,6 +9,7 @@ import { ProjectWorkspaceShell } from './project-workspace-shell';
 const push = vi.fn();
 const useProject = vi.fn();
 const useProjectWorkspaceSummary = vi.fn();
+const useProjectWorkspaceGuidance = vi.fn();
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/projects/project-1',
@@ -16,13 +17,21 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('next/link', () => ({
-  default: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) =>
-    <a href={href} {...props}>{children}</a>,
+  default: ({
+    href,
+    children,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
 }));
 
 vi.mock('@/features/projects/hooks/use-project', () => ({
   useProject: (...args: unknown[]) => useProject(...args),
   useProjectWorkspaceSummary: (...args: unknown[]) => useProjectWorkspaceSummary(...args),
+  useProjectWorkspaceGuidance: (...args: unknown[]) => useProjectWorkspaceGuidance(...args),
 }));
 
 const project = {
@@ -67,14 +76,15 @@ beforeEach(() => {
         totalSteps: 4,
       },
       responsibility: { projectManager: { id: 'user-1', name: 'Ahmed Hassan' }, teamCount: 1 },
+      programme: { startDate: '2026-08-05', expectedEndDate: '2028-10-14', daysRemaining: 793 },
       mainContract: {
-      id: 'contract-1',
-      status: 'ACTIVE',
-      contractNumber: 'CTR-001',
-      contractValue: '12500000.00',
-      currency: 'USD',
-      startDate: null,
-      expectedEndDate: null,
+        id: 'contract-1',
+        status: 'ACTIVE',
+        contractNumber: 'CTR-001',
+        contractValue: '12500000.00',
+        currency: 'USD',
+        startDate: null,
+        expectedEndDate: null,
       },
       financialsVisible: true,
       recentActivity: [],
@@ -82,21 +92,32 @@ beforeEach(() => {
     isPending: false,
     isError: false,
   });
+  useProjectWorkspaceGuidance.mockReturnValue({ data: [], isPending: false, isError: false });
 });
 
 describe('ProjectWorkspaceShell', () => {
-  it('presents project identity and uses the active main contract for the summary', () => {
-    renderWithProviders(<ProjectWorkspaceShell id="project-1"><p>Workspace content</p></ProjectWorkspaceShell>);
+  it('presents project identity and uses the authoritative main contract reference', () => {
+    renderWithProviders(
+      <ProjectWorkspaceShell id="project-1">
+        <p>Workspace content</p>
+      </ProjectWorkspaceShell>,
+    );
 
     expect(screen.getByRole('heading', { name: 'Baraka Tower' })).toBeInTheDocument();
     expect(screen.getByText('Mogadishu')).toBeInTheDocument();
     expect(screen.getByText('Baraka Real Estate')).toBeInTheDocument();
-    expect(screen.getByText('$12,500,000.00')).toBeInTheDocument();
+    expect(screen.getByText('CTR-001')).toBeInTheDocument();
+    expect(screen.queryByText('$12,500,000.00')).not.toBeInTheDocument();
     expect(screen.queryByText('$999,999.00')).not.toBeInTheDocument();
+    expect(screen.getByText('Controls up to date')).toBeInTheDocument();
   });
 
   it('shows only implemented workspace destinations and groups the commercial flow', () => {
-    renderWithProviders(<ProjectWorkspaceShell id="project-1"><p>Workspace content</p></ProjectWorkspaceShell>);
+    renderWithProviders(
+      <ProjectWorkspaceShell id="project-1">
+        <p>Workspace content</p>
+      </ProjectWorkspaceShell>,
+    );
 
     expect(screen.getByRole('navigation', { name: 'Project navigation' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Commercial/ })).toBeInTheDocument();

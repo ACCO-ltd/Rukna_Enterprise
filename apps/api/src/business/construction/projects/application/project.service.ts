@@ -5,11 +5,22 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { CommercialModel, ParticipationModel, Project } from '@prisma/client';
-import { PERMISSIONS, type ProjectWorkspaceSummaryResponse, type RequestIdentity } from '@erp/types';
+import {
+  PERMISSIONS,
+  type ProjectWorkspaceGuidanceItemResponse,
+  type ProjectWorkspaceSummaryResponse,
+  type RequestIdentity,
+} from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
-import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
-import { ProjectPrismaRepository, ProjectFull } from '../infrastructure/project-prisma.repository.js';
+import {
+  CommandGovernanceService,
+  throwIfGated,
+} from '../../../../platform/workflows/application/command-governance.service.js';
+import {
+  ProjectPrismaRepository,
+  ProjectFull,
+} from '../infrastructure/project-prisma.repository.js';
 import { ContractPrismaRepository } from '../../contracts/infrastructure/contract-prisma.repository.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
@@ -21,25 +32,25 @@ import type { AddMemberDto } from '../presentation/dto/add-member.dto.js';
 const CANCEL_ALLOWED_FROM = new Set(['DRAFT', 'APPROVED', 'MOBILIZING', 'ACTIVE']);
 
 const LIFECYCLE_TRANSITIONS: Record<string, string> = {
-  approve:               'APPROVED',
-  mobilize:              'MOBILIZING',
-  activate:              'ACTIVE',
-  'practical-completion':'PRACTICAL_COMPLETION',
-  closeout:              'CLOSEOUT',
-  close:                 'CLOSED',
-  'reopen-to-active':    'ACTIVE',
-  'reopen-to-pc':        'PRACTICAL_COMPLETION',
+  approve: 'APPROVED',
+  mobilize: 'MOBILIZING',
+  activate: 'ACTIVE',
+  'practical-completion': 'PRACTICAL_COMPLETION',
+  closeout: 'CLOSEOUT',
+  close: 'CLOSED',
+  'reopen-to-active': 'ACTIVE',
+  'reopen-to-pc': 'PRACTICAL_COMPLETION',
 };
 
 const LIFECYCLE_REQUIRED_FROM: Record<string, string> = {
-  approve:               'DRAFT',
-  mobilize:              'APPROVED',
-  activate:              'MOBILIZING',
-  'practical-completion':'ACTIVE',
-  closeout:              'PRACTICAL_COMPLETION',
-  close:                 'CLOSEOUT',
-  'reopen-to-active':    'PRACTICAL_COMPLETION',
-  'reopen-to-pc':        'CLOSEOUT',
+  approve: 'DRAFT',
+  mobilize: 'APPROVED',
+  activate: 'MOBILIZING',
+  'practical-completion': 'ACTIVE',
+  closeout: 'PRACTICAL_COMPLETION',
+  close: 'CLOSEOUT',
+  'reopen-to-active': 'PRACTICAL_COMPLETION',
+  'reopen-to-pc': 'CLOSEOUT',
 };
 
 @Injectable()
@@ -107,6 +118,9 @@ export class ProjectService {
     // The creator is enrolled as PM automatically. A delivery team is ready only after a
     // second active member joins; required-role policy remains a separate domain decision.
     const teamReady = project.members.length > 1;
+    const daysRemaining = project.expectedEndDate
+      ? Math.ceil((project.expectedEndDate.getTime() - Date.now()) / 86_400_000)
+      : null;
 
     return {
       projectId: project.id,
@@ -133,17 +147,23 @@ export class ProjectService {
           : null,
         teamCount: project.members.length,
       },
-      mainContract: mayViewContracts && mainContract
-        ? {
-            id: mainContract.id,
-            contractNumber: mainContract.contractNumber,
-            status: mainContract.status,
-            startDate: mainContract.startDate?.toISOString() ?? null,
-            expectedEndDate: mainContract.expectedEndDate?.toISOString() ?? null,
-            contractValue: mayViewFinancials ? mainContract.contractValue.toString() : null,
-            currency: mayViewFinancials ? mainContract.currency : null,
-          }
-        : null,
+      programme: {
+        startDate: project.startDate?.toISOString() ?? null,
+        expectedEndDate: project.expectedEndDate?.toISOString() ?? null,
+        daysRemaining,
+      },
+      mainContract:
+        mayViewContracts && mainContract
+          ? {
+              id: mainContract.id,
+              contractNumber: mainContract.contractNumber,
+              status: mainContract.status,
+              startDate: mainContract.startDate?.toISOString() ?? null,
+              expectedEndDate: mainContract.expectedEndDate?.toISOString() ?? null,
+              contractValue: mayViewFinancials ? mainContract.contractValue.toString() : null,
+              currency: mayViewFinancials ? mainContract.currency : null,
+            }
+          : null,
       financialsVisible: mayViewFinancials,
       recentActivity: recentActivity.map((event) => ({
         id: event.id,
@@ -156,6 +176,72 @@ export class ProjectService {
         },
       })),
     };
+  }
+
+  async getWorkspaceGuidance(
+    identity: RequestIdentity,
+    id: string,
+  ): Promise<ProjectWorkspaceGuidanceItemResponse[]> {
+    await this.projectAccess.assertMember(identity, id);
+    const prisma = this.tenancyService.getClient();
+    const project = await this.repo.findWorkspaceSummary(prisma, identity.activeOrganizationId, id);
+    if (!project) throw new NotFoundException(`Project ${id} not found`);
+
+    const items: ProjectWorkspaceGuidanceItemResponse[] = [];
+    const isDraft = project.status === 'DRAFT';
+    const hasBaselinedBoq =
+      project.boq?.versions.some((version) => version.status === 'BASELINED') ?? false;
+    const contractApplicable = project.commercialModel === CommercialModel.CLIENT_CONTRACT;
+    const canManageProject = identity.permissions.includes(PERMISSIONS.projectsManage);
+    const canViewBoq = identity.permissions.includes(PERMISSIONS.boqView);
+    const canCreateContract = identity.permissions.includes(PERMISSIONS.contractsCreate);
+    const canManageTeam = identity.permissions.includes(PERMISSIONS.projectMembersManage);
+
+    if (isDraft && (!project.startDate || !project.expectedEndDate)) {
+      items.push({
+        id: 'programme-dates-missing',
+        severity: 'WARNING',
+        kind: 'PROGRAMME_DATES_MISSING',
+        actionUrl: canManageProject ? `/projects/${id}/edit` : null,
+        responsibleRole: 'PROJECT_MANAGER',
+      });
+    }
+    if (isDraft && !hasBaselinedBoq) {
+      items.push({
+        id: 'boq-baseline-required',
+        severity: 'WARNING',
+        kind: 'BOQ_BASELINE_REQUIRED',
+        actionUrl: canViewBoq ? `/projects/${id}/boq` : null,
+        responsibleRole: 'QUANTITY_SURVEYOR',
+      });
+    }
+    if (isDraft && contractApplicable && !project.contracts[0]) {
+      items.push({
+        id: hasBaselinedBoq ? 'main-contract-required' : 'main-contract-blocked',
+        severity: hasBaselinedBoq ? 'WARNING' : 'INFO',
+        kind: hasBaselinedBoq ? 'MAIN_CONTRACT_REQUIRED' : 'MAIN_CONTRACT_BLOCKED',
+        actionUrl: hasBaselinedBoq
+          ? canCreateContract
+            ? `/contracts/new?projectId=${id}`
+            : null
+          : canViewBoq
+            ? `/projects/${id}/boq`
+            : null,
+        responsibleRole: 'CONTRACT_ADMINISTRATOR',
+      });
+    }
+    if (isDraft && project.members.length <= 1) {
+      items.push({
+        id: 'delivery-team-incomplete',
+        severity: 'WARNING',
+        kind: 'DELIVERY_TEAM_INCOMPLETE',
+        actionUrl: canManageTeam ? `/projects/${id}/members` : null,
+        responsibleRole: 'PROJECT_MANAGER',
+      });
+    }
+
+    const order = { URGENT: 0, WARNING: 1, INFO: 2 } as const;
+    return items.sort((a, b) => order[a.severity] - order[b.severity]);
   }
 
   // ─── Create ──────────────────────────────────────────────────────────────────
@@ -188,7 +274,13 @@ export class ProjectService {
         throw new BadRequestException('Inactive clients cannot be assigned to new projects');
       }
 
-      const code = dto.code ?? await this.repo.allocateCode(tx, identity.activeOrganizationId, new Date().getUTCFullYear());
+      const code =
+        dto.code ??
+        (await this.repo.allocateCode(
+          tx,
+          identity.activeOrganizationId,
+          new Date().getUTCFullYear(),
+        ));
 
       const project = await this.repo.create(tx, {
         organizationId: identity.activeOrganizationId,
@@ -251,7 +343,9 @@ export class ProjectService {
     }
 
     const client = dto.clientId
-      ? await prisma.client.findFirst({ where: { id: dto.clientId, organizationId: identity.activeOrganizationId } })
+      ? await prisma.client.findFirst({
+          where: { id: dto.clientId, organizationId: identity.activeOrganizationId },
+        })
       : null;
     if (dto.clientId && !client) throw new NotFoundException(`Client ${dto.clientId} not found`);
 
@@ -307,7 +401,13 @@ export class ProjectService {
     // a binding fires. throwIfGated throws 409 with approvalInstanceId so the client can
     // redirect to the approval workflow. Returns null when no approval is required.
     throwIfGated(
-      await this.commandGovernance.gateStateTransition(identity, 'Project', fromStatus, toState, id),
+      await this.commandGovernance.gateStateTransition(
+        identity,
+        'Project',
+        fromStatus,
+        toState,
+        id,
+      ),
       'This project transition requires workflow approval.',
     );
 
@@ -351,7 +451,13 @@ export class ProjectService {
     }
 
     throwIfGated(
-      await this.commandGovernance.gateStateTransition(identity, 'Project', fromStatus, 'CANCELLED', id),
+      await this.commandGovernance.gateStateTransition(
+        identity,
+        'Project',
+        fromStatus,
+        'CANCELLED',
+        id,
+      ),
       'Project cancellation requires workflow approval.',
     );
 
@@ -488,7 +594,11 @@ export class ProjectService {
 
   // ─── Internal helpers ─────────────────────────────────────────────────────────
 
-  private async requireProject(prisma: ReturnType<TenancyService['getClient']>, organizationId: string, id: string) {
+  private async requireProject(
+    prisma: ReturnType<TenancyService['getClient']>,
+    organizationId: string,
+    id: string,
+  ) {
     const project = await this.repo.findById(prisma, organizationId, id);
     if (!project) throw new NotFoundException(`Project ${id} not found`);
     return project;

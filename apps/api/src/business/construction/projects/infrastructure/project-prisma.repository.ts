@@ -1,12 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaClient, Project, ProjectRole, Prisma } from '@prisma/client';
 
-type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
+type TenantPrisma = Omit<
+  PrismaClient,
+  '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
+>;
 
 export const PROJECT_FULL_INCLUDE = {
   members: {
     where: { removedAt: null },
-    include: { roles: { where: { removedAt: null } }, user: { select: { id: true, firstName: true, lastName: true, email: true } } },
+    include: {
+      roles: { where: { removedAt: null } },
+      user: { select: { id: true, firstName: true, lastName: true, email: true } },
+    },
   },
   suspensions: { where: { resumedAt: null }, take: 1 },
 } satisfies Prisma.ProjectInclude;
@@ -64,6 +70,7 @@ const PROJECT_WORKSPACE_SUMMARY_INCLUDE = {
       expectedEndDate: true,
     },
   },
+  suspensions: { where: { resumedAt: null }, take: 1, select: { id: true } },
 } satisfies Prisma.ProjectInclude;
 
 export type ProjectWorkspaceSummaryRecord = Prisma.ProjectGetPayload<{
@@ -91,7 +98,11 @@ export class ProjectPrismaRepository {
     });
   }
 
-  async findById(prisma: TenantPrisma, organizationId: string, id: string): Promise<ProjectFull | null> {
+  async findById(
+    prisma: TenantPrisma,
+    organizationId: string,
+    id: string,
+  ): Promise<ProjectFull | null> {
     return prisma.project.findFirst({
       where: { id, organizationId },
       include: PROJECT_FULL_INCLUDE,
@@ -109,11 +120,7 @@ export class ProjectPrismaRepository {
     });
   }
 
-  async findRecentProjectActivity(
-    prisma: TenantPrisma,
-    organizationId: string,
-    projectId: string,
-  ) {
+  async findRecentProjectActivity(prisma: TenantPrisma, organizationId: string, projectId: string) {
     return prisma.auditLog.findMany({
       where: { orgId: organizationId, resource: 'Project', resourceId: projectId },
       orderBy: { createdAt: 'desc' },
@@ -128,7 +135,11 @@ export class ProjectPrismaRepository {
     });
   }
 
-  async findByCode(prisma: TenantPrisma, organizationId: string, code: string): Promise<Project | null> {
+  async findByCode(
+    prisma: TenantPrisma,
+    organizationId: string,
+    code: string,
+  ): Promise<Project | null> {
     return prisma.project.findUnique({ where: { organizationId_code: { organizationId, code } } });
   }
 
@@ -144,10 +155,11 @@ export class ProjectPrismaRepository {
       where: { organizationId, code: { startsWith: prefix } },
       select: { code: true },
     });
-    const firstValue = existing.reduce((max, project) => {
-      const suffix = Number(project.code.slice(prefix.length));
-      return Number.isInteger(suffix) ? Math.max(max, suffix) : max;
-    }, 0) + 1;
+    const firstValue =
+      existing.reduce((max, project) => {
+        const suffix = Number(project.code.slice(prefix.length));
+        return Number.isInteger(suffix) ? Math.max(max, suffix) : max;
+      }, 0) + 1;
     const sequence = await prisma.projectCodeSequence.upsert({
       where: { organizationId_year: { organizationId, year } },
       create: { organizationId, year, nextValue: firstValue + 1 },
@@ -168,18 +180,11 @@ export class ProjectPrismaRepository {
 
   // ─── Suspension ──────────────────────────────────────────────────────────────
 
-  async createSuspension(
-    prisma: TenantPrisma,
-    data: Prisma.ProjectSuspensionUncheckedCreateInput,
-  ) {
+  async createSuspension(prisma: TenantPrisma, data: Prisma.ProjectSuspensionUncheckedCreateInput) {
     return prisma.projectSuspension.create({ data });
   }
 
-  async resolveActiveSuspension(
-    prisma: TenantPrisma,
-    projectId: string,
-    resumedBy: string,
-  ) {
+  async resolveActiveSuspension(prisma: TenantPrisma, projectId: string, resumedBy: string) {
     return prisma.projectSuspension.updateMany({
       where: { projectId, resumedAt: null },
       data: { resumedAt: new Date(), resumedBy },
@@ -209,18 +214,11 @@ export class ProjectPrismaRepository {
     });
   }
 
-  async createMember(
-    prisma: TenantPrisma,
-    data: Prisma.ProjectMemberUncheckedCreateInput,
-  ) {
+  async createMember(prisma: TenantPrisma, data: Prisma.ProjectMemberUncheckedCreateInput) {
     return prisma.projectMember.create({ data });
   }
 
-  async removeMember(
-    prisma: TenantPrisma,
-    memberId: string,
-    removedBy: string,
-  ) {
+  async removeMember(prisma: TenantPrisma, memberId: string, removedBy: string) {
     return prisma.projectMember.update({
       where: { id: memberId },
       data: { removedAt: new Date(), removedBy },

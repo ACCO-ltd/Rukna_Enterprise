@@ -14,6 +14,7 @@ export type {
   ProjectSuspension,
   ProjectWorkspaceSummary,
 } from '@/lib/api-types';
+export type { ProjectWorkspaceGuidanceItemResponse as ProjectWorkspaceGuidanceItem } from '@erp/types';
 
 /** Lifecycle order, used to present status groupings in a stable, meaningful sequence. */
 export const PROJECT_STATUS_ORDER: ProjectStatus[] = [

@@ -68,6 +68,12 @@ export class ProjectsController {
     return this.projectService.getWorkspaceSummary(identity, id);
   }
 
+  @Get(':id/workspace-guidance')
+  @ApiOperation({ summary: 'List lifecycle-aware project setup and control guidance' })
+  workspaceGuidance(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.projectService.getWorkspaceGuidance(identity, id);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get project details including active members and suspension' })
   @ApiParam({ name: 'id', description: 'Project ID' })
@@ -153,7 +159,9 @@ export class ProjectsController {
   @Post(':id/reopen-to-active')
   @RequirePermissions(PERMISSIONS.projectsApprove)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Reopen project from PRACTICAL_COMPLETION → ACTIVE (requires workflow approval)' })
+  @ApiOperation({
+    summary: 'Reopen project from PRACTICAL_COMPLETION → ACTIVE (requires workflow approval)',
+  })
   reopenToActive(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
     return this.projectService.transition(identity, id, 'reopen-to-active');
   }
@@ -161,7 +169,9 @@ export class ProjectsController {
   @Post(':id/reopen-to-practical-completion')
   @RequirePermissions(PERMISSIONS.projectsApprove)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Reopen project from CLOSEOUT → PRACTICAL_COMPLETION (requires workflow approval)' })
+  @ApiOperation({
+    summary: 'Reopen project from CLOSEOUT → PRACTICAL_COMPLETION (requires workflow approval)',
+  })
   reopenToPracticalCompletion(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
     return this.projectService.transition(identity, id, 'reopen-to-pc');
   }

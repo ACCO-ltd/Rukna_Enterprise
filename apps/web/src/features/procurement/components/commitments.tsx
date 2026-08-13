@@ -37,10 +37,7 @@ import { formatDate, formatMoney } from '@/lib/format';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useProjects } from '@/features/projects/hooks/use-projects';
 
-import {
-  useProjectCommitmentSummary,
-  useProjectCommitments,
-} from '../hooks/use-procurement';
+import { useProjectCommitmentSummary, useProjectCommitments } from '../hooks/use-procurement';
 import type { CommitmentStage } from '../types';
 import { CommitmentStageTag } from './procurement-badges';
 
@@ -56,9 +53,11 @@ const STAGES: CommitmentStage[] = ['COMMITTED', 'ACCRUED', 'ACTUAL'];
 export function ProjectCommitmentsCard({
   projectId,
   currencyCode,
+  embedded = false,
 }: {
   projectId: string;
   currencyCode: string | null;
+  embedded?: boolean;
 }) {
   const t = useTranslations('procurement.commitments');
   const tc = useTranslations('procurement.common');
@@ -71,9 +70,13 @@ export function ProjectCommitmentsCard({
   if (!allowed) return null;
 
   return (
-    <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
+    <section
+      className={
+        embedded ? '' : 'overflow-hidden rounded-panel border border-border bg-surface shadow-e1'
+      }
+    >
       <div className="border-b border-border px-5 py-3 sm:px-6">
-        <h3 className="text-[13px] font-semibold text-foreground">{t('cardTitle')}</h3>
+        <h3 className="text-body-sm font-semibold text-foreground">{t('cardTitle')}</h3>
       </div>
 
       {summary.isPending ? (
@@ -91,19 +94,22 @@ export function ProjectCommitmentsCard({
         <p className="px-5 py-4 text-sm text-muted-foreground sm:px-6">{tc('loadFailed')}</p>
       ) : (
         <>
-          <dl className="grid gap-3 px-5 py-4 sm:grid-cols-3 sm:px-6">
-              {(
-                [
-                  ['committed', summary.data?.committed],
-                  ['accrued', summary.data?.accrued],
-                  ['actual', summary.data?.actual],
-                ] as const
-              ).map(([key, value], index) => {
-                const MetricIcon = [HandCoins, TrendUp, Receipt][index];
-                return (
-                <div key={key} className="rounded-xl border border-border bg-surface-subtle/55 p-4">
-                  <dt className="flex items-center gap-2 text-xs font-medium text-muted-foreground" title={t(`${key}Hint`)}>
-                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-primary">
+          <dl className="grid divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0 rtl:sm:divide-x-reverse">
+            {(
+              [
+                ['committed', summary.data?.committed],
+                ['accrued', summary.data?.accrued],
+                ['actual', summary.data?.actual],
+              ] as const
+            ).map(([key, value], index) => {
+              const MetricIcon = [HandCoins, TrendUp, Receipt][index];
+              return (
+                <div key={key} className="p-4 sm:p-5">
+                  <dt
+                    className="flex items-center gap-2 text-xs font-medium text-muted-foreground"
+                    title={t(`${key}Hint`)}
+                  >
+                    <span className="flex h-8 w-8 items-center justify-center rounded-control bg-surface-subtle text-muted-foreground">
                       <MetricIcon size={17} weight="duotone" aria-hidden="true" />
                     </span>
                     {t(key)}
@@ -112,12 +118,17 @@ export function ProjectCommitmentsCard({
                     {formatMoney(value, currencyCode, locale) ?? tc('notAvailable')}
                   </dd>
                 </div>
-              )})}
+              );
+            })}
           </dl>
 
           <div className="border-t border-border px-5 py-3 sm:px-6">
-            <p className="flex items-start gap-2 rounded-lg border border-warning/20 bg-warning/5 px-3 py-2.5 text-xs leading-5 text-muted-foreground">
-              <WarningCircle size={17} className="mt-0.5 shrink-0 text-warning" aria-hidden="true" />
+            <p className="flex items-start gap-2 text-caption leading-5 text-muted-foreground">
+              <WarningCircle
+                size={17}
+                className="mt-0.5 shrink-0 text-warning"
+                aria-hidden="true"
+              />
               {t('accuracyNotice')}
             </p>
             <Link
@@ -233,15 +244,11 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
                 ] as const
               ).map(([key, value, hint]) => (
                 <div key={key} className="bg-surface px-5 py-4">
-                  <dt
-                    className="text-xs font-medium text-muted-foreground"
-                    title={hint}
-                  >
+                  <dt className="text-xs font-medium text-muted-foreground" title={hint}>
                     {t(key)}
                   </dt>
                   <dd className="mt-1.5 text-sm font-semibold tabular-nums text-foreground">
-                    {formatMoney(value, project?.currency ?? null, locale) ??
-                      tc('notAvailable')}
+                    {formatMoney(value, project?.currency ?? null, locale) ?? tc('notAvailable')}
                   </dd>
                 </div>
               ))}
@@ -294,15 +301,10 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
                         </TableCell>
                         <TableCell className="text-end">
                           <span className="block font-medium tabular-nums">
-                            {formatMoney(
-                              entry.reportingAmount,
-                              project?.currency ?? null,
-                              locale,
-                            )}
+                            {formatMoney(entry.reportingAmount, project?.currency ?? null, locale)}
                           </span>
                           {/* Transaction currency shown only when different from reporting */}
-                          {entry.currencyCode !==
-                          (project?.currency ?? entry.currencyCode) ? (
+                          {entry.currencyCode !== (project?.currency ?? entry.currencyCode) ? (
                             <span className="block text-xs text-muted-foreground tabular-nums">
                               {formatMoney(entry.amount, entry.currencyCode, locale)}
                             </span>

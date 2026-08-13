@@ -16,6 +16,9 @@ const workspaceRecord = {
   id: 'project-1',
   organizationId: 'org-1',
   commercialModel: 'CLIENT_CONTRACT',
+  startDate: new Date('2026-02-01T00:00:00.000Z'),
+  expectedEndDate: new Date('2027-08-31T00:00:00.000Z'),
+  suspensions: [],
   members: [
     {
       user: { id: 'user-1', firstName: 'Ahmed', lastName: 'Hassan' },
@@ -119,5 +122,60 @@ describe('ProjectService workspace summary', () => {
       contractValue: null,
       currency: null,
     });
+  });
+
+  it('orders lifecycle-aware workspace guidance without deriving it in the frontend', async () => {
+    repo.findWorkspaceSummary.mockResolvedValue({
+      ...workspaceRecord,
+      startDate: null,
+      expectedEndDate: null,
+      suspensions: [{ id: 'suspension-1' }],
+      members: workspaceRecord.members.slice(0, 1),
+      boq: { id: 'boq-1', versions: [{ status: 'DRAFT' }] },
+      contracts: [],
+    });
+
+    const result = await service.getWorkspaceGuidance(identity([]), 'project-1');
+
+    expect(result.map((item) => item.kind)).toEqual([
+      'PROGRAMME_DATES_MISSING',
+      'BOQ_BASELINE_REQUIRED',
+      'DELIVERY_TEAM_INCOMPLETE',
+      'MAIN_CONTRACT_BLOCKED',
+    ]);
+    expect(result[0].severity).toBe('WARNING');
+    expect(result.at(-1)?.severity).toBe('INFO');
+    expect(result.find((item) => item.kind === 'PROGRAMME_DATES_MISSING')?.actionUrl).toBeNull();
+
+    const actionable = await service.getWorkspaceGuidance(
+      identity([
+        PERMISSIONS.projectsManage,
+        PERMISSIONS.boqView,
+        PERMISSIONS.contractsCreate,
+        PERMISSIONS.projectMembersManage,
+      ]),
+      'project-1',
+    );
+    expect(actionable.find((item) => item.kind === 'PROGRAMME_DATES_MISSING')?.actionUrl).toBe(
+      '/projects/project-1/edit',
+    );
+    expect(actionable.find((item) => item.kind === 'DELIVERY_TEAM_INCOMPLETE')?.actionUrl).toBe(
+      '/projects/project-1/members',
+    );
+  });
+
+  it('does not present draft setup guidance for a terminal project', async () => {
+    repo.findWorkspaceSummary.mockResolvedValue({
+      ...workspaceRecord,
+      status: ProjectStatus.CLOSED,
+      startDate: null,
+      expectedEndDate: null,
+      suspensions: [{ id: 'historical-suspension' }],
+      members: workspaceRecord.members.slice(0, 1),
+      boq: null,
+      contracts: [],
+    });
+
+    await expect(service.getWorkspaceGuidance(identity([]), 'project-1')).resolves.toEqual([]);
   });
 });

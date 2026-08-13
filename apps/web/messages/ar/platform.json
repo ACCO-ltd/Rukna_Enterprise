@@ -154,6 +154,15 @@
       "notCreated": "لم يتم إنشاؤه",
       "notApplicable": "لا ينطبق",
       "restricted": "مقيد",
+      "boqBaseline": "خط أساس جدول الكميات",
+      "setup": "الإعداد",
+      "complete": "مكتمل",
+      "required": "مطلوب",
+      "blocked": "محظور",
+      "guidance": "الإعداد والضوابط",
+      "guidanceCount": "{count, plural, one {عنصر واحد} other {# عناصر}}",
+      "noGuidance": "الضوابط محدثة",
+      "unavailable": "غير متاح",
       "loadingValue": "جارٍ التحميل...",
       "loadingProject": "جارٍ تحميل المشروع",
       "loadFailedHint": "تحقق من الاتصال أو حاول تحميل المشروع مرة أخرى.",
@@ -239,6 +248,9 @@
       "contractValue": "قيمة العقد",
       "startDate": "تاريخ البدء",
       "expectedEnd": "الإنجاز المتوقع",
+      "daysRemaining": "الأيام المتبقية",
+      "daysOverdue": "أيام التأخير",
+      "daysCount": "{count, plural, one {يوم واحد} other {# أيام}}",
       "created": "تاريخ الإنشاء",
       "description": "الوصف",
       "notSet": "غير محدّد",
@@ -287,7 +299,62 @@
       "activityProjectUpdated": "حدّث المشروع",
       "activityProjectSuspended": "أوقف المشروع",
       "activityProjectResumed": "استأنف المشروع",
-      "activityProjectChanged": "غيّر المشروع"
+      "activityProjectApproved": "اعتمد المشروع",
+      "activityProjectMobilized": "بدأ مرحلة التجهيز",
+      "activityProjectActivated": "فعّل المشروع",
+      "activityPracticalCompletion": "سجّل الإنجاز العملي",
+      "activityProjectCloseout": "نقل المشروع إلى الإقفال",
+      "activityProjectClosed": "أغلق المشروع",
+      "activityProjectCancelled": "ألغى المشروع",
+      "activityProjectChanged": "غيّر المشروع",
+      "workspaceGuidance": "إرشادات الإعداد والضوابط",
+      "attentionCount": "{count, plural, one {عنصر واحد} other {# عناصر}}",
+      "attentionClear": "لا توجد أمور عاجلة تتطلب الانتباه",
+      "attentionClearHint": "ضوابط المشروع محدثة حاليًا.",
+      "attentionUnavailable": "عناصر الانتباه غير متاحة مؤقتًا. تظل تفاصيل المشروع قابلة للاستخدام.",
+      "responsibleRole": "المسؤول: {role}",
+      "roles": {
+        "PROJECT_MANAGER": "مدير المشروع",
+        "QUANTITY_SURVEYOR": "حاسب الكميات",
+        "CONTRACT_ADMINISTRATOR": "مسؤول العقود"
+      },
+      "commercialCostPosition": "الوضع التجاري والتكلفة",
+      "openContract": "فتح العقد",
+      "mainContract": "العقد الرئيسي",
+      "notApplicable": "لا ينطبق",
+      "valueRestricted": "القيمة مقيدة",
+      "attention": {
+        "PROJECT_SUSPENDED": {
+          "title": "المشروع موقوف",
+          "description": "تبقى تغييرات دورة الحياة محظورة حتى استئناف المشروع.",
+          "action": "مراجعة الإيقاف"
+        },
+        "PROGRAMME_DATES_MISSING": {
+          "title": "تواريخ البرنامج غير مكتملة",
+          "description": "حدد تاريخ البدء المخطط والإنجاز المتوقع.",
+          "action": "تعديل البرنامج"
+        },
+        "BOQ_BASELINE_REQUIRED": {
+          "title": "خط أساس جدول الكميات مطلوب",
+          "description": "اعتمد نطاق الأعمال قبل بدء الإجراءات التجارية اللاحقة.",
+          "action": "فتح جدول الكميات"
+        },
+        "MAIN_CONTRACT_BLOCKED": {
+          "title": "العقد الرئيسي محظور",
+          "description": "يجب اعتماد جدول الكميات قبل إنشاء العقد الرئيسي.",
+          "action": "فتح جدول الكميات"
+        },
+        "MAIN_CONTRACT_REQUIRED": {
+          "title": "العقد الرئيسي مطلوب",
+          "description": "أنشئ عقد العميل لهذا المشروع.",
+          "action": "إنشاء العقد"
+        },
+        "DELIVERY_TEAM_INCOMPLETE": {
+          "title": "فريق التنفيذ غير مكتمل",
+          "description": "أضف عضوًا واحدًا على الأقل إلى جانب مدير المشروع.",
+          "action": "إدارة الفريق"
+        }
+      }
     },
     "members": {
       "title": "فريق المشروع",

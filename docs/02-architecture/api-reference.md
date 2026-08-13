@@ -345,11 +345,17 @@ All endpoints are scoped to the authenticated user's organization.
 | `POST` | `/projects` | Create DRAFT |
 | `GET` | `/projects/:id` | Get with members + suspension |
 | `GET` | `/projects/:id/workspace-summary` | Permission-aware setup, responsibility and main-contract projection |
+| `GET` | `/projects/:id/workspace-guidance` | Ordered, lifecycle-aware project setup and control guidance |
 | `PATCH` | `/projects/:id` | Update (DRAFT only) |
 
 The workspace summary is organization- and membership-scoped. Main-contract metadata requires
 `view:contract`; contract value and currency additionally require `view:financial-position`.
 It is the authoritative source for project setup state and workspace header summaries.
+Workspace guidance is computed server-side and returned in `URGENT`, `WARNING`, then
+`INFO` order; the frontend only localizes and presents their typed `kind`.
+This project-setup guidance is not the cross-domain `AttentionQueryService` contract
+reserved by `frontend-design.md` for approvals, expiry, payment, milestone, and suspension alerts.
+The workspace Overview presents it as setup and control guidance, not as the Attention Required panel.
 
 **Create project — request body:**
 ```json

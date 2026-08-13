@@ -8,27 +8,31 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Button } from '@erp/ui';
 import {
   ArrowRight,
+  AlertTriangle,
   Building2,
   CalendarDays,
   Check,
   CircleCheck,
-  DollarSign,
   History,
   Lock,
+  LockKeyhole,
   Users,
 } from 'lucide-react';
 
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 
-import { useProject, useProjectWorkspaceSummary } from '../hooks/use-project';
+import {
+  useProject,
+  useProjectWorkspaceGuidance,
+  useProjectWorkspaceSummary,
+} from '../hooks/use-project';
 import { ProjectCommitmentsCard } from '@/features/procurement/components/commitments';
 
 import { getAvailableActions } from '../project-actions';
 import type { ProjectDetail as ProjectDetailModel } from '../types';
 import type { ProjectWorkspaceSummary } from '../types';
 import { ProjectActionsPanel } from './project-actions-panel';
-import { KpiCard } from '@/components/widget/kpi-card';
 
 export function ProjectDetail({ id }: { id: string }) {
   const t = useTranslations('platform.projects.detail');
@@ -38,6 +42,7 @@ export function ProjectDetail({ id }: { id: string }) {
   const [showCreated, setShowCreated] = useState(searchParams?.get('created') === '1');
   const { data: project, isPending, isError, error } = useProject(id);
   const summary = useProjectWorkspaceSummary(id);
+  const guidance = useProjectWorkspaceGuidance(id);
 
   useEffect(() => {
     if (!showCreated) return;
@@ -51,7 +56,7 @@ export function ProjectDetail({ id }: { id: string }) {
       <div role="status" aria-live="polite">
         <span className="sr-only">{tCommon('loading')}</span>
         <div
-          className="h-64 animate-pulse rounded-lg border border-border bg-muted"
+          className="h-64 animate-pulse rounded-panel border border-border bg-muted"
           aria-hidden="true"
         />
       </div>
@@ -76,7 +81,11 @@ export function ProjectDetail({ id }: { id: string }) {
   return (
     <div className="space-y-6">
       {showCreated ? (
-        <div className="fixed end-5 top-5 z-50 flex max-w-sm items-start gap-3 rounded-md border border-success/30 bg-surface px-4 py-3 shadow-lg" role="status" aria-live="polite">
+        <div
+          className="fixed end-5 top-5 z-50 flex max-w-sm items-start gap-3 rounded-control border border-success/30 bg-surface px-4 py-3 shadow-e3"
+          role="status"
+          aria-live="polite"
+        >
           <CircleCheck className="mt-0.5 h-5 w-5 shrink-0 text-success" aria-hidden="true" />
           <div>
             <p className="text-sm font-semibold text-foreground">{t('createdTitle')}</p>
@@ -103,11 +112,9 @@ export function ProjectDetail({ id }: { id: string }) {
         summary={summary.data}
         summaryPending={summary.isPending}
         summaryError={summary.isError}
-      />
-
-      <ProjectCommitmentsCard
-        projectId={project.id}
-        currencyCode={summary.data?.mainContract?.currency ?? null}
+        guidance={guidance.data}
+        guidancePending={guidance.isPending}
+        guidanceError={guidance.isError}
       />
     </div>
   );
@@ -141,15 +148,20 @@ function Overview({
   summary,
   summaryPending,
   summaryError,
+  guidance,
+  guidancePending,
+  guidanceError,
 }: {
   project: ProjectDetailModel;
   locale: 'en' | 'ar';
   summary: ProjectWorkspaceSummary | undefined;
   summaryPending: boolean;
   summaryError: boolean;
+  guidance: import('../types').ProjectWorkspaceGuidanceItem[] | undefined;
+  guidancePending: boolean;
+  guidanceError: boolean;
 }) {
   const t = useTranslations('platform.projects.detail');
-  const tProjects = useTranslations('platform.projects');
   const contractValueDisplay = formatMoney(
     summary?.mainContract?.contractValue ?? null,
     summary?.mainContract?.currency ?? null,
@@ -169,20 +181,29 @@ function Overview({
         { label: t('location'), value: project.location ?? null },
       ],
     },
-    ...(summary?.financialsVisible
-      ? [{
-          title: t('overviewCommercial'),
-          icon: DollarSign,
-          rows: [{ label: t('contractValue'), value: contractValueDisplay }],
-        }]
-      : []),
     {
       title: t('overviewSchedule'),
       icon: CalendarDays,
       rows: [
-        { label: t('startDate'), value: formatDate(project.startDate, locale) },
-        { label: t('expectedEnd'), value: formatDate(project.expectedEndDate, locale) },
-        { label: t('currentStage'), value: tProjects(`status.${project.status}`) },
+        {
+          label: t('startDate'),
+          value: formatDate(summary?.programme.startDate ?? project.startDate, locale),
+        },
+        {
+          label: t('expectedEnd'),
+          value: formatDate(summary?.programme.expectedEndDate ?? project.expectedEndDate, locale),
+        },
+        summary?.programme.daysRemaining == null
+          ? { label: t('daysRemaining'), value: null }
+          : summary.programme.daysRemaining >= 0
+            ? {
+                label: t('daysRemaining'),
+                value: t('daysCount', { count: summary.programme.daysRemaining }),
+              }
+            : {
+                label: t('daysOverdue'),
+                value: t('daysCount', { count: Math.abs(summary.programme.daysRemaining) }),
+              },
       ],
     },
     {
@@ -197,6 +218,12 @@ function Overview({
 
   return (
     <div className="space-y-5">
+      <WorkspaceGuidancePanel
+        items={guidance}
+        isPending={guidancePending}
+        isError={guidanceError}
+      />
+
       {project.status === 'DRAFT' ? (
         summaryPending ? (
           <div className="h-40 animate-pulse rounded-panel border border-border bg-muted" />
@@ -207,16 +234,6 @@ function Overview({
 
       {summaryError ? <Alert variant="warning" messages={[t('summaryUnavailable')]} /> : null}
 
-      {project.status !== 'DRAFT' && summary ? (
-        <div className="grid gap-4 sm:grid-cols-3">
-          {summary.financialsVisible ? (
-            <KpiCard label={t('contractValue')} value={contractValueDisplay ?? t('notSet')} />
-          ) : null}
-          <KpiCard label={t('projectManager')} value={summary.responsibility.projectManager?.name ?? t('notSet')} />
-          <KpiCard label={t('team')} value={t('teamMembers', { count: summary.responsibility.teamCount })} />
-        </div>
-      ) : null}
-
       <section aria-labelledby="overview-heading">
         <h2
           id="overview-heading"
@@ -225,14 +242,14 @@ function Overview({
           {t('overview')}
         </h2>
 
-        <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
-          <dl className="grid divide-y divide-border md:grid-cols-2 md:divide-x md:divide-y-0 rtl:md:divide-x-reverse lg:grid-cols-4">
+        <div className="overflow-hidden rounded-container border border-border bg-surface shadow-e1">
+          <dl className="grid divide-y divide-border lg:grid-cols-3 lg:divide-x lg:divide-y-0 rtl:lg:divide-x-reverse">
             {groups.map((group) => {
               const GroupIcon = group.icon;
               return (
                 <div key={group.title} className="px-4 py-4 sm:px-5">
                   <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-primary/8 text-brand-primary">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-panel bg-brand-primary/8 text-brand-primary">
                       <GroupIcon size={17} strokeWidth={1.8} aria-hidden="true" />
                     </span>
                     {group.title}
@@ -267,11 +284,61 @@ function Overview({
         </div>
       </section>
 
+      <section aria-labelledby="commercial-cost-heading">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2
+            id="commercial-cost-heading"
+            className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+          >
+            {t('commercialCostPosition')}
+          </h2>
+          {summary?.mainContract ? (
+            <Button variant="ghost" size="sm" asChild>
+              <Link href={`/contracts/${summary.mainContract.id}`}>{t('openContract')}</Link>
+            </Button>
+          ) : null}
+        </div>
+        <div className="rounded-panel border border-border bg-surface shadow-e1">
+          <div className="grid border-b border-border sm:grid-cols-2">
+            <div className="p-4 sm:border-e sm:p-5 rtl:sm:border-e-0 rtl:sm:border-s">
+              <p className="text-caption font-medium text-muted-foreground">{t('mainContract')}</p>
+              <p className="mt-2 text-body-sm font-semibold text-foreground">
+                {summary?.mainContract?.contractNumber ??
+                  (project.commercialModel === 'INTERNAL_CAPITAL'
+                    ? t('notApplicable')
+                    : t('notSet'))}
+              </p>
+            </div>
+            <div className="p-4 sm:p-5">
+              <p className="text-caption font-medium text-muted-foreground">{t('contractValue')}</p>
+              {summary?.financialsVisible ? (
+                <p className="mt-2 text-body-sm font-semibold tabular-nums text-foreground">
+                  {contractValueDisplay ?? t('notSet')}
+                </p>
+              ) : (
+                <p className="mt-2 inline-flex items-center gap-2 text-body-sm font-medium text-muted-foreground">
+                  <LockKeyhole size={15} aria-hidden="true" />
+                  {t('valueRestricted')}
+                </p>
+              )}
+            </div>
+          </div>
+          <ProjectCommitmentsCard
+            projectId={project.id}
+            currencyCode={summary?.mainContract?.currency ?? null}
+            embedded
+          />
+        </div>
+      </section>
+
       {summary ? (
         <section aria-labelledby="recent-activity-heading">
           <div className="mb-3 flex items-center gap-2">
             <History size={17} className="text-muted-foreground" aria-hidden="true" />
-            <h2 id="recent-activity-heading" className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            <h2
+              id="recent-activity-heading"
+              className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+            >
               {t('recentActivity')}
             </h2>
           </div>
@@ -279,20 +346,31 @@ function Overview({
             {summary.recentActivity.length > 0 ? (
               <ol className="divide-y divide-border">
                 {summary.recentActivity.map((event) => (
-                  <li key={event.id} className="flex items-start justify-between gap-4 px-4 py-3 sm:px-5">
+                  <li
+                    key={event.id}
+                    className="flex items-start justify-between gap-4 px-4 py-3 sm:px-5"
+                  >
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground">
-                        {t('activityEvent', { actor: event.actor.name, action: activityLabel(event.sourceCommand ?? event.action, t) })}
+                        {t('activityEvent', {
+                          actor: event.actor.name,
+                          action: activityLabel(event.sourceCommand ?? event.action, t),
+                        })}
                       </p>
                     </div>
-                    <time className="shrink-0 text-xs text-muted-foreground" dateTime={event.occurredAt}>
-                      {formatDate(event.occurredAt, locale)}
+                    <time
+                      className="shrink-0 text-xs text-muted-foreground"
+                      dateTime={event.occurredAt}
+                    >
+                      {formatActivityTime(event.occurredAt, locale)}
                     </time>
                   </li>
                 ))}
               </ol>
             ) : (
-              <p className="px-5 py-8 text-center text-sm text-muted-foreground">{t('noRecentActivity')}</p>
+              <p className="px-5 py-8 text-center text-sm text-muted-foreground">
+                {t('noRecentActivity')}
+              </p>
             )}
           </div>
         </section>
@@ -301,15 +379,116 @@ function Overview({
   );
 }
 
+function WorkspaceGuidancePanel({
+  items,
+  isPending,
+  isError,
+}: {
+  items: import('../types').ProjectWorkspaceGuidanceItem[] | undefined;
+  isPending: boolean;
+  isError: boolean;
+}) {
+  const t = useTranslations('platform.projects.detail');
+  if (isPending)
+    return <div className="h-24 animate-pulse rounded-panel border border-border bg-muted" />;
+  if (isError) return <Alert variant="warning" messages={[t('attentionUnavailable')]} />;
+  const visible = items ?? [];
+  return (
+    <section aria-labelledby="workspace-guidance-heading">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <AlertTriangle
+            size={17}
+            className={visible.length ? 'text-warning' : 'text-success'}
+            aria-hidden="true"
+          />
+          <h2
+            id="workspace-guidance-heading"
+            className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+          >
+            {t('workspaceGuidance')}
+          </h2>
+        </div>
+        {visible.length ? (
+          <span className="text-caption text-muted-foreground">
+            {t('attentionCount', { count: items?.length ?? 0 })}
+          </span>
+        ) : null}
+      </div>
+      {visible.length ? (
+        <div className="divide-y divide-border rounded-panel border border-border bg-surface shadow-e1">
+          {visible.map((item) => (
+            <div
+              key={item.id}
+              className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"
+            >
+              <div>
+                <p className="text-body-sm font-semibold text-foreground">
+                  {t(`attention.${item.kind}.title`)}
+                </p>
+                <p className="mt-1 text-caption text-muted-foreground">
+                  {t(`attention.${item.kind}.description`)}
+                </p>
+                {item.responsibleRole ? (
+                  <p className="mt-1 text-micro font-medium text-muted-foreground">
+                    {t('responsibleRole', { role: t(`roles.${item.responsibleRole}`) })}
+                  </p>
+                ) : null}
+              </div>
+              {item.actionUrl ? (
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={item.actionUrl}>{t(`attention.${item.kind}.action`)}</Link>
+                </Button>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-panel border border-success/20 bg-success/5 px-5 py-4">
+          <p className="text-body-sm font-semibold text-foreground">{t('attentionClear')}</p>
+          <p className="mt-1 text-caption text-muted-foreground">{t('attentionClearHint')}</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function formatActivityTime(value: string, locale: 'en' | 'ar'): string {
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
+    new Date(value),
+  );
+}
+
 function activityLabel(
   command: string,
-  t: (key: 'activityProjectCreated' | 'activityProjectUpdated' | 'activityProjectSuspended' | 'activityProjectResumed' | 'activityProjectChanged') => string,
+  t: (
+    key:
+      | 'activityProjectCreated'
+      | 'activityProjectUpdated'
+      | 'activityProjectSuspended'
+      | 'activityProjectResumed'
+      | 'activityProjectApproved'
+      | 'activityProjectMobilized'
+      | 'activityProjectActivated'
+      | 'activityPracticalCompletion'
+      | 'activityProjectCloseout'
+      | 'activityProjectClosed'
+      | 'activityProjectCancelled'
+      | 'activityProjectChanged',
+  ) => string,
 ): string {
   const labels: Record<string, string> = {
     'project.create': t('activityProjectCreated'),
     'project.update': t('activityProjectUpdated'),
     'project.suspend': t('activityProjectSuspended'),
     'project.resume': t('activityProjectResumed'),
+    'project.approve': t('activityProjectApproved'),
+    'project.mobilize': t('activityProjectMobilized'),
+    'project.activate': t('activityProjectActivated'),
+    'project.practical-completion': t('activityPracticalCompletion'),
+    'project.closeout': t('activityProjectCloseout'),
+    'project.close': t('activityProjectClosed'),
+    'project.cancel': t('activityProjectCancelled'),
   };
   return labels[command] ?? t('activityProjectChanged');
 }
@@ -354,15 +533,17 @@ function SetupStepper({
     },
     ...(project.commercialModel === 'INTERNAL_CAPITAL'
       ? []
-      : [{
-          labelKey: 'setupContract' as const,
-          descKey: 'setupContractDesc' as const,
-          complete: summary.setup.mainContractExists,
-          locked: !summary.setup.boqBaselined,
-          href: summary.setup.boqBaselined ? `/contracts/new?projectId=${project.id}` : undefined,
-          actionKey: 'createContract' as const,
-          blockedKey: 'setupContractBlocked' as const,
-        }]),
+      : [
+          {
+            labelKey: 'setupContract' as const,
+            descKey: 'setupContractDesc' as const,
+            complete: summary.setup.mainContractExists,
+            locked: !summary.setup.boqBaselined,
+            href: summary.setup.boqBaselined ? `/contracts/new?projectId=${project.id}` : undefined,
+            actionKey: 'createContract' as const,
+            blockedKey: 'setupContractBlocked' as const,
+          },
+        ]),
     {
       labelKey: 'setupTeam',
       descKey: 'setupTeamDesc',
@@ -380,18 +561,18 @@ function SetupStepper({
   return (
     <section
       aria-labelledby="setup-heading"
-      className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]"
+      className="overflow-hidden rounded-container border border-border bg-surface shadow-e1"
     >
       <div className="border-b border-border px-4 py-3 sm:px-5">
         <div className="flex items-center justify-between gap-4">
-          <h2 id="setup-heading" className="text-[13px] font-semibold text-foreground">
+          <h2 id="setup-heading" className="text-body-sm font-semibold text-foreground">
             {t('setup')}
           </h2>
           <div className="flex shrink-0 items-center gap-2">
-            <span className="rounded-full bg-brand-primary/10 px-2 py-0.5 text-[11px] font-bold tabular-nums text-brand-primary">
+            <span className="rounded-full bg-brand-primary/10 px-2 py-0.5 text-micro font-bold tabular-nums text-brand-primary">
               {progressPct}%
             </span>
-            <span className="text-[12px] font-medium text-muted-foreground">
+            <span className="text-caption font-medium text-muted-foreground">
               {t('setupProgress', { done: doneCount, total })}
             </span>
           </div>
@@ -442,7 +623,7 @@ function SetupStepper({
               <div className="relative z-10 min-w-0 flex-1 bg-surface pe-2">
                 <p
                   className={cn(
-                    'truncate text-[12.5px] font-semibold leading-5',
+                    'truncate text-caption font-semibold leading-5',
                     step.complete
                       ? 'text-foreground'
                       : step.locked
@@ -455,7 +636,7 @@ function SetupStepper({
 
                 <p
                   className={cn(
-                    'mt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.06em]',
+                    'mt-0.5 text-micro font-semibold uppercase tracking-[0.06em]',
                     step.complete
                       ? 'text-success'
                       : step.locked
@@ -475,7 +656,7 @@ function SetupStepper({
                 {!step.complete ? (
                   <p
                     className={cn(
-                      'mt-0.5 line-clamp-1 text-[11.5px] leading-4',
+                      'mt-0.5 line-clamp-1 text-caption leading-4',
                       step.complete || step.locked
                         ? 'text-muted-foreground/70'
                         : 'text-muted-foreground',
@@ -488,7 +669,7 @@ function SetupStepper({
                 {/* Locked reason */}
                 {step.locked && step.blockedKey ? (
                   <p
-                    className="mt-1 line-clamp-1 text-[10.5px] font-medium text-warning"
+                    className="mt-1 line-clamp-1 text-micro font-medium text-warning"
                     title={t(step.blockedKey)}
                   >
                     {t(step.blockedKey)}
@@ -538,7 +719,7 @@ function StepIndicator({
 
   if (isNextAction) {
     return (
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-primary text-[11px] font-bold text-white ring-4 ring-brand-primary/15">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-primary text-micro font-bold text-white ring-4 ring-brand-primary/15">
         {index + 1}
       </span>
     );
@@ -553,7 +734,7 @@ function StepIndicator({
   }
 
   return (
-    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-border bg-surface text-[11px] font-semibold text-muted-foreground">
+    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-border bg-surface text-micro font-semibold text-muted-foreground">
       {index + 1}
     </span>
   );

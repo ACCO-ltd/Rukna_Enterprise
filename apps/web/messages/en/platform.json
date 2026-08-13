@@ -154,6 +154,15 @@
       "notCreated": "Not created",
       "notApplicable": "Not applicable",
       "restricted": "Restricted",
+      "boqBaseline": "BOQ baseline",
+      "setup": "Setup",
+      "complete": "Complete",
+      "required": "Required",
+      "blocked": "Blocked",
+      "guidance": "Setup & controls",
+      "guidanceCount": "{count, plural, one {# item} other {# items}}",
+      "noGuidance": "Controls up to date",
+      "unavailable": "Unavailable",
       "loadingValue": "Loading...",
       "loadingProject": "Loading project",
       "loadFailedHint": "Check your connection or try loading the project again.",
@@ -239,6 +248,9 @@
       "contractValue": "Contract value",
       "startDate": "Start date",
       "expectedEnd": "Expected completion",
+      "daysRemaining": "Days remaining",
+      "daysOverdue": "Days overdue",
+      "daysCount": "{count, plural, one {# day} other {# days}}",
       "created": "Created",
       "description": "Description",
       "notSet": "Not set",
@@ -287,7 +299,62 @@
       "activityProjectUpdated": "updated the project",
       "activityProjectSuspended": "suspended the project",
       "activityProjectResumed": "resumed the project",
-      "activityProjectChanged": "changed the project"
+      "activityProjectApproved": "approved the project",
+      "activityProjectMobilized": "started mobilization",
+      "activityProjectActivated": "activated the project",
+      "activityPracticalCompletion": "recorded practical completion",
+      "activityProjectCloseout": "moved the project to closeout",
+      "activityProjectClosed": "closed the project",
+      "activityProjectCancelled": "cancelled the project",
+      "activityProjectChanged": "changed the project",
+      "workspaceGuidance": "Setup and control guidance",
+      "attentionCount": "{count, plural, one {# item} other {# items}}",
+      "attentionClear": "No immediate attention required",
+      "attentionClearHint": "Project controls are currently up to date.",
+      "attentionUnavailable": "Attention items are temporarily unavailable. Project details remain usable.",
+      "responsibleRole": "Responsible: {role}",
+      "roles": {
+        "PROJECT_MANAGER": "Project manager",
+        "QUANTITY_SURVEYOR": "Quantity surveyor",
+        "CONTRACT_ADMINISTRATOR": "Contract administrator"
+      },
+      "commercialCostPosition": "Commercial and cost position",
+      "openContract": "Open contract",
+      "mainContract": "Main contract",
+      "notApplicable": "Not applicable",
+      "valueRestricted": "Value restricted",
+      "attention": {
+        "PROJECT_SUSPENDED": {
+          "title": "Project is suspended",
+          "description": "Lifecycle changes remain blocked until the project is resumed.",
+          "action": "Review suspension"
+        },
+        "PROGRAMME_DATES_MISSING": {
+          "title": "Programme dates are incomplete",
+          "description": "Set the planned start and expected completion dates.",
+          "action": "Edit programme"
+        },
+        "BOQ_BASELINE_REQUIRED": {
+          "title": "BOQ baseline is required",
+          "description": "Baseline the approved scope before downstream commercial work.",
+          "action": "Open BOQ"
+        },
+        "MAIN_CONTRACT_BLOCKED": {
+          "title": "Main contract is blocked",
+          "description": "The BOQ must be baselined before the main contract can be created.",
+          "action": "Open BOQ"
+        },
+        "MAIN_CONTRACT_REQUIRED": {
+          "title": "Main contract is required",
+          "description": "Create the client contract for this project.",
+          "action": "Create contract"
+        },
+        "DELIVERY_TEAM_INCOMPLETE": {
+          "title": "Delivery team is incomplete",
+          "description": "Add at least one delivery team member beyond the project manager.",
+          "action": "Manage team"
+        }
+      }
     },
     "members": {
       "title": "Project team",
