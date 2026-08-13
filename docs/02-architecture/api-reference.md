@@ -284,11 +284,16 @@ All endpoints are scoped to the authenticated user's organization.
 
 Certain state-changing commands route through the governance seam. When a DOA
 `WorkflowTriggerBinding` is configured for the transition, the command creates an
-`ApprovalInstance` and returns **`409 Conflict`** with the instance id instead of transitioning:
+`ApprovalInstance` and returns **`409 Conflict`** with the instance id instead of transitioning.
+The id is under `error.details` (the global error envelope):
 
 ```json
-{ "message": "Purchase order submission requires workflow approval.", "approvalInstanceId": "cld..." }
+{ "success": false, "error": {
+  "code": "...", "message": "Purchase order submission requires workflow approval.",
+  "details": { "approvalInstanceId": "cld..." } } }
 ```
+
+Frontend: read `error.details.approvalInstanceId` off the `409` (`ApiError.details`).
 
 Governed today: `POST /purchase-orders/:id/submit` (`PurchaseOrder` DRAFT→SUBMITTED),
 `POST /bills/:id/submit` (`SupplierBill` DRAFT→SUBMITTED),

@@ -78,6 +78,12 @@ export class CommandGovernanceService {
  */
 export function throwIfGated(gate: GovernanceGate | null, message: string): asserts gate is null {
   if (gate) {
-    throw new ConflictException({ message, approvalInstanceId: gate.approvalInstanceId });
+    // `approvalInstanceId` goes under `details` so GlobalExceptionFilter forwards it — the filter
+    // only propagates message/errorCode/details, so a top-level field would be dropped and the
+    // client could not find the instance to drive (ADR-011/015 loop-back).
+    throw new ConflictException({
+      message,
+      details: { approvalInstanceId: gate.approvalInstanceId },
+    });
   }
 }

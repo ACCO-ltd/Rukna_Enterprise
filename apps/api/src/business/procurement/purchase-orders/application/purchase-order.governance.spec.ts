@@ -50,11 +50,14 @@ describe('PurchaseOrderService.submit — governance seam (ADR-011)', () => {
     );
     expect(repo.updateRevisionStatus).not.toHaveBeenCalled();
 
-    // The 409 body carries the approval instance id for the client to redirect to.
+    // The 409 body carries the approval instance id (under details, so the global filter
+    // forwards it) for the client to drive the approval + re-drive.
     try {
       await svc.submit(identity, 'po1');
     } catch (e) {
-      expect((e as ConflictException).getResponse()).toMatchObject({ approvalInstanceId: 'ai-1' });
+      expect((e as ConflictException).getResponse()).toMatchObject({
+        details: { approvalInstanceId: 'ai-1' },
+      });
     }
   });
 
