@@ -18,6 +18,7 @@ import { MaterialRepository } from '../../catalogue/infrastructure/material.repo
 import { UomRepository } from '../../catalogue/infrastructure/uom.repository.js';
 import { CommitmentLedgerWriter } from '../../commitment-ledger/application/commitment-ledger-writer.service.js';
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
+import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
 
 export interface CreatePoLineDto {
   lineType: ProcurementLineType;
@@ -72,6 +73,7 @@ export class PurchaseOrderService {
     private readonly uomRepo: UomRepository,
     private readonly commitmentWriter: CommitmentLedgerWriter,
     private readonly auditOutbox: TransactionalAuditOutboxService,
+    private readonly commandGovernance: CommandGovernanceService,
   ) {}
 
   findAll(
@@ -143,6 +145,21 @@ export class PurchaseOrderService {
     if (!po) throw new NotFoundException(`Purchase order ${id} not found`);
     const draft = po.revisions.find((r) => r.status === 'DRAFT');
     if (!draft) throw new ConflictException('No DRAFT revision to submit');
+
+    // Governance seam (ADR-011): submitting a PO for approval routes through the same
+    // gateStateTransition used by IPA/Project. With no binding configured this resolves
+    // to null and submission proceeds unchanged; when a DOA binding exists it creates the
+    // approval instance and returns 409 with approvalInstanceId.
+    throwIfGated(
+      await this.commandGovernance.gateStateTransition(
+        identity,
+        'PurchaseOrder',
+        'DRAFT',
+        'SUBMITTED',
+        id,
+      ),
+      'Purchase order submission requires workflow approval.',
+    );
 
     await prisma.$transaction(async (tx) => {
       await this.repo.updateRevisionStatus(tx, draft.id, 'SUBMITTED');

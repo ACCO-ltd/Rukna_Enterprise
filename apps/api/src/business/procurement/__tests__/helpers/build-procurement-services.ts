@@ -45,6 +45,11 @@ import { SupplierBillRepository }     from '../../../accounting/accounts-payable
 import { SupplierBillService }        from '../../../accounting/accounts-payable/application/supplier-bill.service.js';
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 
+// ── Workflows / governance seam (ADR-011) ──────────────────────────────────────
+import { WorkflowTriggerResolverService } from '../../../../platform/workflows/application/workflow-trigger-resolver.service.js';
+import { WorkflowsPrismaRepository } from '../../../../platform/workflows/infrastructure/workflows-prisma.repository.js';
+import { CommandGovernanceService } from '../../../../platform/workflows/application/command-governance.service.js';
+
 // No-op stub: integration tests use real Prisma but skip audit persistence
 // so tests don't require auditLog / auditOutboxEvent tables to be seeded.
 const noOpAuditOutbox = { record: async () => {} } as unknown as TransactionalAuditOutboxService;
@@ -103,7 +108,11 @@ export function buildProcurementServices(prisma: PrismaClient): ProcurementServi
   const materialService = new MaterialService(tenancy, materialRepo, uomRepo, materialCategoryRepo, spendCategoryRepo);
   const projectAccess   = new ProjectAccessService(tenancy);
   const mrService       = new MaterialRequestService(tenancy, mrRepo, materialRepo, uomRepo, projectAccess, noOpAuditOutbox);
-  const poService       = new PurchaseOrderService(tenancy, poRepo, materialRepo, uomRepo, commitmentWriter, noOpAuditOutbox);
+  const commandGovernance = new CommandGovernanceService(
+    new WorkflowTriggerResolverService(tenancy),
+    new WorkflowsPrismaRepository(tenancy),
+  );
+  const poService       = new PurchaseOrderService(tenancy, poRepo, materialRepo, uomRepo, commitmentWriter, noOpAuditOutbox, commandGovernance);
   const grnService      = new GoodsReceiptService(tenancy, grnRepo, poRepo, commitmentWriter, noOpAuditOutbox);
   const billMatchingService = new BillMatchingService(tenancy, billMatchRepo);
 

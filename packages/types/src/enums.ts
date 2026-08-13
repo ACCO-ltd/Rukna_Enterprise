@@ -154,4 +154,7 @@ export enum IpcStatus {
 
 export type GovernedEntity =
   | 'Project'
-  | 'InterimPaymentApplication';
+  | 'InterimPaymentApplication'
+  | 'PurchaseOrder'
+  | 'SupplierBill'
+  | 'SupplierPayment';
