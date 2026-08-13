@@ -28,11 +28,11 @@ export const SheetContent = React.forwardRef<
 >(({ className, children, ...props }, ref) => (
   <DialogPrimitive.Portal>
     {/* Lighter than the Dialog overlay so the record behind remains readable. */}
-    <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-brand-ink/20" />
+    <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-overlay" />
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed z-50 flex flex-col overflow-y-auto border-border bg-surface shadow-xl',
+        'fixed z-50 flex flex-col overflow-y-auto border-border bg-surface-elevated shadow-[var(--shadow-overlay)]',
         // Mobile: full screen (no useful content is visible behind a 420px panel at 375px)
         'inset-0 border-0',
         // Desktop: right-anchored panel

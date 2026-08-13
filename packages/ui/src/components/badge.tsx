@@ -24,16 +24,17 @@ import { cn } from '../lib/utils';
  *  - `danger`   — stopped short of its normal end (CANCELLED, TERMINATED, REJECTED)
  */
 const badgeVariants = cva(
-  'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap',
+  'inline-flex min-h-6 items-center rounded-full border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap',
   {
     variants: {
       tone: {
-        neutral: 'bg-muted text-muted-foreground',
-        info: 'bg-brand-primary/10 text-brand-primary',
-        live: 'bg-brand-primary/15 text-brand-primary',
-        accent: 'bg-brand-accent/10 text-brand-accent',
-        warning: 'bg-warning-subtle text-warning',
-        danger: 'bg-danger-subtle text-danger',
+        neutral: 'border-border bg-muted text-muted-foreground',
+        info: 'border-brand-primary/20 bg-brand-accent text-brand-primary',
+        live: 'border-success/20 bg-success-subtle text-success',
+        accent: 'border-historical/20 bg-historical-subtle text-historical',
+        warning: 'border-warning/20 bg-warning-subtle text-warning',
+        danger: 'border-danger/20 bg-danger-subtle text-danger',
+        historical: 'border-historical/25 bg-historical-subtle text-historical',
       },
     },
     defaultVariants: { tone: 'neutral' },

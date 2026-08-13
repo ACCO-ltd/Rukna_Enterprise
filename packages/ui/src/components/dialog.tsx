@@ -42,14 +42,14 @@ export const DialogContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, ...props }, ref) => (
   <DialogPrimitive.Portal>
-    <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-brand-ink/40" />
+    <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-overlay" />
     <DialogPrimitive.Content
       ref={ref}
       // Anchored to the bottom on narrow screens and centred from `sm` up: a sheet within
       // thumb reach beats a box in the middle of a phone. `max-h` with an internal scroll
       // keeps a long dialog usable at 375px rather than pushing its buttons off-screen.
       className={cn(
-        'fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] overflow-y-auto border border-border bg-surface p-5 shadow-xl',
+        'fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] overflow-y-auto border border-border bg-surface-elevated p-5 shadow-[var(--shadow-overlay)]',
         'rounded-t-lg sm:rounded-lg',
         'sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2 sm:p-6',
         className,

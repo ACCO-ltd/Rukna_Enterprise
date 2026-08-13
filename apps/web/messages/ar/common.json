@@ -15,6 +15,10 @@
   "import": "استيراد",
   "required": "مطلوب",
   "optional": "اختياري",
+  "toast": {
+    "regionLabel": "الإشعارات",
+    "dismiss": "إغلاق"
+  },
   "language": {
     "label": "اللغة",
     "english": "English",
@@ -60,10 +64,51 @@
     "results": "{count} نتيجة",
     "noMatches": "لا توجد نتائج تطابق بحثك.",
     "clearSearch": "مسح البحث",
+    "clearFilters": "مسح الفلاتر",
     "loadFailed": "فشل تحميل البيانات.",
     "retry": "المحاولة مرة أخرى",
     "sortAscLabel": "ترتيب {column} تصاعدياً",
     "sortDescLabel": "ترتيب {column} تنازلياً",
-    "sortLabel": "ترتيب {column}"
+    "sortLabel": "ترتيب {column}",
+    "columnVisibility": "الأعمدة",
+    "showAllColumns": "إظهار الكل",
+    "prevPage": "الصفحة السابقة",
+    "nextPage": "الصفحة التالية",
+    "perPage": "لكل صفحة",
+    "page": "الصفحة {page} من {total}",
+    "showing": "عرض {from}–{to} من {count}"
+  },
+  "emptyState": {
+    "noData": "لا توجد عناصر بعد",
+    "noResults": "لا توجد نتائج",
+    "noMatches": "لا توجد نتائج مطابقة",
+    "error": "حدث خطأ ما",
+    "permissionDenied": "الوصول مرفوض",
+    "notFound": "غير موجود",
+    "tryAgain": "حاول مرة أخرى"
+  },
+  "formErrors": {
+    "title": "يرجى تصحيح ما يلي",
+    "fieldLink": "الانتقال إلى {field}"
+  },
+  "formActions": {
+    "pendingLabel": "جارٍ الحفظ…"
+  },
+  "stepper": {
+    "complete": "مكتمل",
+    "current": "الخطوة الحالية",
+    "upcoming": "قادم",
+    "error": "خطأ في هذه الخطوة"
+  },
+  "checklist": {
+    "complete": "مكتمل",
+    "incomplete": "غير مكتمل",
+    "blocked": "محظور",
+    "optional": "اختياري"
+  },
+  "unsavedChanges": {
+    "title": "المغادرة دون حفظ؟",
+    "body": "ستُفقد تغييراتك إذا غادرت هذه الصفحة.",
+    "leave": "مغادرة"
   }
 }
