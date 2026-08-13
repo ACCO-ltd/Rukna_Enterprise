@@ -30,15 +30,36 @@ export class FinancePrismaRepository {
       organizationId: string;
       clientId: string;
       receiptDate: Date;
-      amount: string;
-      currency: string;
-      exchangeRate?: string;
+      accountingDate: Date;
+      totalAmount: string;
+      currencyCode: string;
+      exchangeRateSnapshot?: string;
       reference?: string;
       notes?: string;
       createdBy: string;
     },
   ) {
-    return prisma.paymentReceipt.create({ data: data as never });
+    // A receipt is fully unallocated when recorded: unallocatedAmount = totalAmount,
+    // allocatedAmount = 0. The schema invariant is totalAmount = allocatedAmount +
+    // unallocatedAmount (always), and unallocatedAmount has no default — omitting it
+    // (the previous `data as never` path) made every POST /receipts fail at the DB.
+    return prisma.paymentReceipt.create({
+      data: {
+        organizationId: data.organizationId,
+        clientId: data.clientId,
+        receiptDate: data.receiptDate,
+        accountingDate: data.accountingDate,
+        totalAmount: new Decimal(data.totalAmount),
+        allocatedAmount: new Decimal(0),
+        unallocatedAmount: new Decimal(data.totalAmount),
+        currencyCode: data.currencyCode,
+        exchangeRateSnapshot:
+          data.exchangeRateSnapshot != null ? new Decimal(data.exchangeRateSnapshot) : null,
+        reference: data.reference ?? null,
+        notes: data.notes ?? null,
+        createdBy: data.createdBy,
+      },
+    });
   }
 
   // Returns the sum of all allocated amounts for a receipt as a Decimal string.
