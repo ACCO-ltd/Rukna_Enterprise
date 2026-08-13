@@ -24,6 +24,8 @@ export { Textarea } from './components/textarea';
 export type { TextareaProps } from './components/textarea';
 export { FormField } from './components/form-field';
 export type { FormFieldProps } from './components/form-field';
+export { FormSection } from './components/form-section';
+export type { FormSectionProps } from './components/form-section';
 export {
   Table,
   TableBody,

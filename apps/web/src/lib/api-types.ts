@@ -84,6 +84,12 @@ export interface Project {
   contractValue: string | null;
   currency: string | null;
   clientName: string | null;
+  clientId?: string | null;
+  location?: string | null;
+  commercialModel?: 'CLIENT_CONTRACT' | 'INTERNAL_CAPITAL';
+  participationModel?: 'SOLE' | 'JOINT_VENTURE';
+  projectManager?: string | null;
+  isSuspended?: boolean;
   startDate: string | null;
   expectedEndDate: string | null;
   createdBy: string;

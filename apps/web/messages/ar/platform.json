@@ -93,6 +93,23 @@
     "searchPlaceholder": "ابحث بالرمز أو الاسم أو العميل",
     "filterByStatus": "تصفية حسب الحالة",
     "allStatuses": "جميع الحالات",
+    "notSet": "غير محدد",
+    "notAssigned": "غير معين",
+    "restrictedOrNotSet": "مقيد أو غير محدد",
+    "columns": {
+      "project": "المشروع",
+      "stage": "المرحلة",
+      "manager": "مدير المشروع",
+      "programme": "البرنامج الزمني",
+      "contractValue": "قيمة العقد",
+      "attention": "يتطلب الانتباه"
+    },
+    "attention": {
+      "suspended": "موقوف",
+      "overdue": "تجاوز تاريخ الإنجاز المخطط",
+      "setup": "الإعداد قيد التنفيذ",
+      "clear": "لا يوجد إجراء مطلوب"
+    },
     "countLabel": "{count, plural, =0 {لا توجد مشاريع} one {مشروع واحد} two {مشروعان} few {# مشاريع} many {# مشروعاً} other {# مشروع}}",
     "empty": "لا توجد مشاريع بعد.",
     "emptyHint": "أنشئ أول مشروع للبدء.",
@@ -116,11 +133,34 @@
       "codeLabel": "رمز المشروع",
       "codeHint": "لا يمكن تغييره بعد إنشاء المشروع.",
       "codePlaceholder": "ACCO-2026-001",
+      "automaticCodeTitle": "يتم تعيين رمز المشروع تلقائيا",
+      "automaticCodeHint": "ستعين ركنة المرجع التالي المعتمد عند إنشاء هذه المسودة.",
       "nameLabel": "اسم المشروع",
       "namePlaceholder": "مشروع برج البركة",
       "nameArLabel": "اسم المشروع (بالعربية)",
       "descriptionLabel": "الوصف",
       "clientNameLabel": "العميل",
+      "clientRequired": "اختر عميلا",
+      "clientNotFound": "لم يتم العثور على العميل المشار إليه في الرابط.",
+      "clientInactiveWarning": "هذا العميل غير نشط ولا يمكن تعيينه لمشروع جديد.",
+      "locationLabel": "الموقع",
+      "identitySection": "هوية المشروع",
+      "identitySectionHint": "حدد نموذج التنفيذ والأطراف المسؤولة عن المشروع.",
+      "scheduleSection": "البرنامج والتفاصيل",
+      "scheduleSectionHint": "سجل التواريخ المخططة الآن أو أكملها أثناء بقاء المشروع مسودة.",
+      "detailsSection": "تفاصيل المشروع",
+      "projectManagerLabel": "مدير المشروع الأولي",
+      "projectManagerHint": "سيتم تعيينك مدير مشروع عند إنشاء هذه المسودة.",
+      "commercialModelLabel": "النموذج التجاري",
+      "participationModelLabel": "نموذج المشاركة",
+      "commercialModel": {
+        "clientContract": "عقد عميل",
+        "internalCapital": "رأس مال داخلي"
+      },
+      "participationModel": {
+        "sole": "تنفيذ منفرد",
+        "jointVenture": "مشروع مشترك"
+      },
       "contractValueLabel": "قيمة العقد",
       "currencyLabel": "العملة",
       "currencyNone": "غير محدّدة",
@@ -139,6 +179,18 @@
       "endBeforeStart": "لا يمكن أن يسبق الإنجاز المتوقع تاريخ البدء",
       "duplicateCode": "يوجد مشروع بهذا الرمز بالفعل.",
       "failed": "تعذّر إنشاء المشروع."
+      ,"wizard": {
+        "progress": "تقدم إنشاء المشروع",
+        "step1": "الهوية",
+        "step2": "البرنامج",
+        "step3": "المراجعة",
+        "next": "التالي",
+        "back": "السابق",
+        "reviewAction": "مراجعة وإنشاء",
+        "editStep": "تعديل",
+        "backToClients": "العودة إلى العملاء",
+        "codeImmutableWarning": "لا يمكن تغيير رمز المشروع بعد الإنشاء."
+      }
     },
     "detail": {
       "notFound": "هذا المشروع غير موجود، أو لا تملك صلاحية الوصول إليه.",
@@ -147,6 +199,7 @@
       "backToProject": "العودة إلى المشروع",
       "backToList": "العودة إلى المشاريع",
       "loadFailed": "تعذّر تحميل هذا المشروع.",
+      "createdTitle": "تم إنشاء المشروع",
       "overview": "نظرة عامة",
       "client": "العميل",
       "contractValue": "قيمة العقد",

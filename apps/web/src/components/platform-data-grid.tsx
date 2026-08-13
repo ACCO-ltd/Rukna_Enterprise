@@ -221,6 +221,13 @@ export interface PlatformDataGridProps<T> {
   isLoading?: boolean;
   isError?: boolean;
   onRetry?: () => void;
+  errorMessage?: string;
+  retryLabel?: string;
+  searchLabel?: string;
+  searchPlaceholder?: string;
+  resultLabel?: (count: number) => string;
+  noMatchMessage?: string;
+  clearFiltersLabel?: string;
 }
 
 /**
@@ -267,6 +274,13 @@ export function PlatformDataGrid<T>({
   isLoading,
   isError,
   onRetry,
+  errorMessage,
+  retryLabel,
+  searchLabel,
+  searchPlaceholder,
+  resultLabel,
+  noMatchMessage,
+  clearFiltersLabel,
 }: PlatformDataGridProps<T>) {
   const t = useTranslations('common.grid');
   const locale = useLocale() as 'en' | 'ar';
@@ -291,11 +305,11 @@ export function PlatformDataGrid<T>({
   // ── Error ────────────────────────────────────────────────────────────────
   if (isError) {
     return (
-      <Alert variant="error" messages={[t('loadFailed')]}>
+      <Alert variant="error" messages={[errorMessage ?? t('loadFailed')]}>
         {onRetry ? (
           <div className="mt-3">
             <Button variant="outline" size="sm" onClick={onRetry}>
-              {t('retry')}
+              {retryLabel ?? t('retry')}
             </Button>
           </div>
         ) : null}
@@ -334,12 +348,12 @@ export function PlatformDataGrid<T>({
         {/* Global search */}
         <div className="min-w-0 flex-1">
           <Label htmlFor={searchId} className="sr-only">
-            {t('searchLabel')}
+            {searchLabel ?? t('searchLabel')}
           </Label>
           <Input
             id={searchId}
             type="search"
-            placeholder={t('searchPlaceholder')}
+            placeholder={searchPlaceholder ?? t('searchPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full"
@@ -355,7 +369,7 @@ export function PlatformDataGrid<T>({
 
       {/* Result count — politely announced so screen readers catch filter changes. */}
       <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
-        {t('results', { count: visible.length })}
+        {resultLabel ? resultLabel(visible.length) : t('results', { count: visible.length })}
       </p>
 
       {/* Table */}
@@ -406,7 +420,7 @@ export function PlatformDataGrid<T>({
           <TableBody>
             {visible.length === 0 ? (
               <TableEmpty colSpan={colCount}>
-                <p>{t('noMatches')}</p>
+                <p>{noMatchMessage ?? t('noMatches')}</p>
                 {hasSearch ? (
                   <div className="mt-4">
                     <Button
@@ -414,7 +428,7 @@ export function PlatformDataGrid<T>({
                       size="sm"
                       onClick={() => setSearch('')}
                     >
-                      {t('clearSearch')}
+                      {clearFiltersLabel ?? t('clearSearch')}
                     </Button>
                   </div>
                 ) : null}
