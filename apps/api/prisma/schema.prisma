@@ -26,6 +26,7 @@ model Organization {
   auditOutboxEvents        AuditOutboxEvent[]
   memberships              OrganizationMembership[]
   projects                 Project[]
+  projectCodeSequences     ProjectCodeSequence[]
   clients                  Client[]
   clientCodeSequence       ClientCodeSequence?
   contracts                Contract[]
@@ -549,6 +550,18 @@ model Project {
   @@index([organizationId, status])
   @@index([organizationId, clientId])
   @@map("projects")
+}
+
+model ProjectCodeSequence {
+  organizationId String   @map("organization_id")
+  year           Int
+  nextValue      Int      @default(1) @map("next_value")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, year])
+  @@map("project_code_sequences")
 }
 
 model ProjectSuspension {

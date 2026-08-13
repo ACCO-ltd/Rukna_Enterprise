@@ -19,6 +19,9 @@
     "regionLabel": "Notifications",
     "dismiss": "Dismiss"
   },
+  "formErrors": {
+    "title": "Review the following"
+  },
   "language": {
     "label": "Language",
     "english": "English",

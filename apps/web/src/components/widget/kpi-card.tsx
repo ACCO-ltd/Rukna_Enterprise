@@ -22,12 +22,12 @@ export function KpiCard({ label, value, sublabel, href }: KpiCardProps) {
     return (
       <Link
         href={href}
-        className="block rounded-lg border border-border bg-surface p-5 transition-colors hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+        className="block rounded-lg border border-border bg-surface p-5 shadow-[var(--shadow-panel)] transition-colors hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
       >
         {inner}
       </Link>
     );
   }
 
-  return <div className="rounded-lg border border-border bg-surface p-5">{inner}</div>;
+  return <div className="rounded-lg border border-border bg-surface p-5 shadow-[var(--shadow-panel)]">{inner}</div>;
 }

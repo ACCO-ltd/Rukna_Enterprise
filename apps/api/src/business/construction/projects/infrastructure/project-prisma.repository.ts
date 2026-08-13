@@ -13,6 +13,26 @@ export const PROJECT_FULL_INCLUDE = {
 
 export type ProjectFull = Prisma.ProjectGetPayload<{ include: typeof PROJECT_FULL_INCLUDE }>;
 
+const PROJECT_LIST_INCLUDE = {
+  members: {
+    where: { removedAt: null, roles: { some: { role: 'PROJECT_MANAGER', removedAt: null } } },
+    take: 1,
+    select: { user: { select: { firstName: true, lastName: true } } },
+  },
+  suspensions: { where: { resumedAt: null }, take: 1, select: { id: true } },
+  contracts: {
+    where: {
+      contractKind: 'CLIENT_CONTRACT',
+      status: 'ACTIVE',
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 1,
+    select: { contractValue: true, currency: true },
+  },
+} satisfies Prisma.ProjectInclude;
+
+export type ProjectListRecord = Prisma.ProjectGetPayload<{ include: typeof PROJECT_LIST_INCLUDE }>;
+
 @Injectable()
 export class ProjectPrismaRepository {
   // ─── Queries ─────────────────────────────────────────────────────────────────
@@ -22,13 +42,14 @@ export class ProjectPrismaRepository {
     organizationId: string,
     status?: string,
     userId?: string,
-  ): Promise<Project[]> {
+  ): Promise<ProjectListRecord[]> {
     return prisma.project.findMany({
       where: {
         organizationId,
         ...(userId ? { members: { some: { userId, removedAt: null } } } : {}),
         ...(status ? { status: status as Prisma.EnumProjectStatusFilter } : {}),
       },
+      include: PROJECT_LIST_INCLUDE,
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -48,6 +69,26 @@ export class ProjectPrismaRepository {
 
   async create(prisma: TenantPrisma, data: Prisma.ProjectUncheckedCreateInput): Promise<Project> {
     return prisma.project.create({ data });
+  }
+
+  async allocateCode(prisma: TenantPrisma, organizationId: string, year: number): Promise<string> {
+    const prefix = `PRJ-${year}-`;
+    const existing = await prisma.project.findMany({
+      where: { organizationId, code: { startsWith: prefix } },
+      select: { code: true },
+    });
+    const firstValue = existing.reduce((max, project) => {
+      const suffix = Number(project.code.slice(prefix.length));
+      return Number.isInteger(suffix) ? Math.max(max, suffix) : max;
+    }, 0) + 1;
+    const sequence = await prisma.projectCodeSequence.upsert({
+      where: { organizationId_year: { organizationId, year } },
+      create: { organizationId, year, nextValue: firstValue + 1 },
+      update: { nextValue: { increment: 1 } },
+      select: { nextValue: true },
+    });
+    const allocated = sequence.nextValue - 1;
+    return `PRJ-${year}-${String(allocated).padStart(4, '0')}`;
   }
 
   async update(

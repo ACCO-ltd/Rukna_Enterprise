@@ -84,6 +84,12 @@ export interface Project {
   contractValue: string | null;
   currency: string | null;
   clientName: string | null;
+  clientId?: string | null;
+  location?: string | null;
+  commercialModel?: 'CLIENT_CONTRACT' | 'INTERNAL_CAPITAL';
+  participationModel?: 'SOLE' | 'JOINT_VENTURE';
+  projectManager?: string | null;
+  isSuspended?: boolean;
   startDate: string | null;
   expectedEndDate: string | null;
   createdBy: string;
@@ -250,6 +256,8 @@ export interface Contract {
   projectId: string;
   organizationId: string;
   clientId: string;
+  /** Identifies the employer contract from project subcontracts. */
+  contractKind: 'CLIENT_CONTRACT' | 'SUBCONTRACT';
   /**
    * Always a BASELINED version: `ContractService.create` rejects anything else
    * (`contract.service.ts:50-63`). The picker filters to BASELINED and the server backs

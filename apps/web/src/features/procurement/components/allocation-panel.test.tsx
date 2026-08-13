@@ -88,7 +88,7 @@ beforeEach(() => {
 
 describe('AllocationPanel', () => {
   it('offers an eligible bill in the picker', () => {
-    renderWithProviders(<AllocationPanel payment={payment()} />);
+    renderWithProviders(<AllocationPanel payment={payment()} />, { permissions: ['manage:payable'] });
 
     expect(screen.getByRole('option', { name: /INV-100/ })).toBeInTheDocument();
   });

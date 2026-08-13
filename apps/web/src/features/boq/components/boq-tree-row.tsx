@@ -51,9 +51,9 @@ export function BoqTreeRow({
   return (
     <div
       className={cn(
-        'flex flex-col gap-1 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3',
+        'flex min-h-14 flex-col gap-1 px-4 py-2.5 transition-colors sm:flex-row sm:items-center sm:gap-3',
         // Summary rows carry weight; leaves are the priced detail.
-        node.isLeaf ? 'bg-surface' : 'bg-surface-subtle font-medium',
+        node.isLeaf ? 'bg-surface hover:bg-brand-accent/25' : 'bg-surface-subtle font-medium hover:bg-brand-accent/35',
       )}
     >
       <div
@@ -79,8 +79,8 @@ export function BoqTreeRow({
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-2">
-            <span className="font-mono text-xs text-muted-foreground">{node.code}</span>
-            <span className="min-w-0 text-sm text-foreground">{description}</span>
+            <span className="font-mono text-xs font-medium text-brand-primary">{node.code}</span>
+            <span className={cn('min-w-0 text-sm text-foreground', !node.isLeaf && 'font-semibold')}>{description}</span>
           </div>
 
           {/* Quantity × rate belongs with the description on mobile, where the columns
@@ -106,7 +106,7 @@ export function BoqTreeRow({
         </span>
       </div>
 
-      <div className="shrink-0 text-sm tabular-nums sm:w-40 sm:text-end">
+      <div className="shrink-0 font-mono text-sm tabular-nums sm:w-40 sm:text-end">
         {currency.kind === 'mixed' ? (
           // D1: the server sums across currencies without checking them. Printing that
           // number with one symbol would be confidently wrong, so it is withheld.

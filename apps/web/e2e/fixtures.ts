@@ -2,12 +2,21 @@ import { readFileSync } from 'node:fs';
 
 import { test as base, expect, type Page } from '@playwright/test';
 
-import { SCENARIO_PATH, type Scenario } from './global-setup';
+import { SCENARIO_PATH, type Scenario } from './scenario';
 
 export { expect };
 
-/** The scenario seeded by `global-setup`, read once per worker. */
-export const scenario: Scenario = JSON.parse(readFileSync(SCENARIO_PATH, 'utf8')) as Scenario;
+let scenarioCache: Scenario | undefined;
+
+function readScenario(): Scenario {
+  scenarioCache ??= JSON.parse(readFileSync(SCENARIO_PATH, 'utf8')) as Scenario;
+  return scenarioCache;
+}
+
+/** Lazily read after global setup has written the scenario file. */
+export const scenario = new Proxy({} as Scenario, {
+  get: (_target, property: keyof Scenario) => readScenario()[property],
+});
 
 /**
  * Signs in through the real login form.
@@ -38,7 +47,9 @@ export async function signIn(page: Page): Promise<void> {
  */
 export async function switchTo(page: Page, locale: 'en' | 'ar'): Promise<void> {
   const endonym = locale === 'ar' ? 'العربية' : 'English';
-  await page.locator('[role="group"] > button', { hasText: endonym }).first().click();
+  void endonym;
+  await page.locator('header button[aria-haspopup="menu"]').click();
+  await page.getByRole('menuitem', { name: locale === 'ar' ? /^AR/ : /^EN/ }).click();
   await expect(page.locator('html')).toHaveAttribute('dir', locale === 'ar' ? 'rtl' : 'ltr');
 }
 
@@ -93,7 +104,9 @@ export async function expectTouchTargets(page: Page): Promise<void> {
     const MIN = 44;
     const problems: { text: string; height: number }[] = [];
 
-    for (const el of document.querySelectorAll('button, a[href], select, input:not([type="hidden"])')) {
+    for (const el of document.querySelectorAll(
+      'button, a[href], select, input:not([type="hidden"])',
+    )) {
       // Dev-only tooling is not our markup and is absent from a production build: Next.js
       // injects its overlay into a portal, and the TanStack Query devtools launcher is
       // mounted behind a NODE_ENV check (`src/providers/query-provider.tsx:15`).
@@ -113,7 +126,10 @@ export async function expectTouchTargets(page: Page): Promise<void> {
       if (el.tagName === 'A' && el.closest('p')) continue;
 
       if (rect.height < MIN) {
-        problems.push({ text: (el.textContent ?? '').trim().slice(0, 40), height: Math.round(rect.height) });
+        problems.push({
+          text: (el.textContent ?? '').trim().slice(0, 40),
+          height: Math.round(rect.height),
+        });
       }
     }
 

@@ -2,6 +2,7 @@
 
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
+import { Desktop, Moon, Sun } from '@phosphor-icons/react';
 import {
   cn,
   DropdownMenu,
@@ -15,6 +16,8 @@ import {
 
 import { useLogout } from '@/features/auth/hooks/use-logout';
 import { useSession } from '@/features/auth/session/use-session';
+import { setThemePreference, useThemePreference } from '@/features/theme/theme-store';
+import type { ThemePreference } from '@/features/theme/theme-preference';
 
 type SupportedLocale = 'en' | 'ar';
 
@@ -43,6 +46,7 @@ export function UserMenu() {
   const router = useRouter();
   const { user } = useSession();
   const { mutate: logout, isPending } = useLogout();
+  const themePreference = useThemePreference();
 
   const initials = user ? emailToInitials(user.email) : '??';
 
@@ -59,8 +63,8 @@ export function UserMenu() {
           type="button"
           aria-label={t('user.menuLabel')}
           className={cn(
-            'flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
-            'bg-brand-primary text-xs font-semibold text-white',
+            'flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
+            'bg-brand-primary text-xs font-semibold text-brand-on-primary shadow-[var(--shadow-control)] ring-2 ring-surface',
             'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
             'transition-opacity hover:opacity-90',
           )}
@@ -104,6 +108,30 @@ export function UserMenu() {
 
         <DropdownMenuSeparator />
 
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>{t('user.theme')}</DropdownMenuLabel>
+          <ThemeItem
+            preference="light"
+            current={themePreference}
+            label={t('user.themeLight')}
+            icon={<Sun size={16} aria-hidden="true" />}
+          />
+          <ThemeItem
+            preference="dark"
+            current={themePreference}
+            label={t('user.themeDark')}
+            icon={<Moon size={16} aria-hidden="true" />}
+          />
+          <ThemeItem
+            preference="system"
+            current={themePreference}
+            label={t('user.themeSystem')}
+            icon={<Desktop size={16} aria-hidden="true" />}
+          />
+        </DropdownMenuGroup>
+
+        <DropdownMenuSeparator />
+
         {/* Sign out */}
         <DropdownMenuItem
           destructive
@@ -114,6 +142,33 @@ export function UserMenu() {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+function ThemeItem({
+  preference,
+  current,
+  label,
+  icon,
+}: {
+  preference: ThemePreference;
+  current: ThemePreference;
+  label: string;
+  icon: React.ReactNode;
+}) {
+  const selected = preference === current;
+
+  return (
+    <DropdownMenuItem
+      onSelect={() => setThemePreference(preference)}
+      role="menuitemradio"
+      aria-checked={selected}
+      className={cn('min-h-11', selected && 'font-semibold text-brand-primary')}
+    >
+      {icon}
+      <span>{label}</span>
+      {selected ? <CheckIcon className="ms-auto" /> : null}
+    </DropdownMenuItem>
   );
 }
 

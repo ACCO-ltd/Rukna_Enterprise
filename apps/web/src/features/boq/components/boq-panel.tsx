@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { BoqVersionStatus } from '@erp/types';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, Label, Select } from '@erp/ui';
+import { Alert, Badge, Button, Label, Select } from '@erp/ui';
+import { ClipboardText, Plus, TreeStructure } from '@phosphor-icons/react';
 
 import { ApiError } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
@@ -25,7 +26,10 @@ export function BoqPanel({ projectId }: { projectId: string }) {
     return (
       <div role="status" aria-live="polite">
         <span className="sr-only">{tCommon('loading')}</span>
-        <div className="h-64 animate-pulse rounded-lg border border-border bg-muted" aria-hidden="true" />
+        <div className="space-y-3 rounded-xl border border-border bg-surface p-4" aria-hidden="true">
+          <div className="h-11 animate-pulse rounded-lg bg-muted" />
+          <div className="h-48 animate-pulse rounded-lg bg-muted" />
+        </div>
       </div>
     );
   }
@@ -43,7 +47,10 @@ function InitializeBoq({ projectId }: { projectId: string }) {
   const { mutate, isPending, isError } = useInitializeBoq(projectId);
 
   return (
-    <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
+    <div className="rounded-xl border border-dashed border-border bg-surface px-6 py-12 text-center shadow-[var(--shadow-panel)]">
+      <span className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-primary/10 text-brand-primary">
+        <ClipboardText size={25} weight="duotone" aria-hidden="true" />
+      </span>
       <p className="text-sm font-medium text-foreground">{t('notInitialized')}</p>
       <p className="mt-1 text-sm text-muted-foreground">{t('notInitializedHint')}</p>
 
@@ -54,15 +61,66 @@ function InitializeBoq({ projectId }: { projectId: string }) {
       ) : null}
 
       <div className="mt-4">
-        <Button
+        <Button className="gap-2"
           onClick={() => {
             mutate();
           }}
           disabled={isPending}
         >
+          <Plus size={16} aria-hidden="true" />
           {isPending ? t('initializing') : t('initialize')}
         </Button>
       </div>
+    </div>
+  );
+}
+
+const BOQ_STATUS_STAGES: BoqVersionStatus[] = [
+  BoqVersionStatus.DRAFT,
+  BoqVersionStatus.BASELINED,
+];
+
+function BoqStatusStrip({ currentStatus }: { currentStatus: BoqVersionStatus }) {
+  const t = useTranslations('platform.boq');
+
+  return (
+    <div className="flex items-center gap-0">
+      {BOQ_STATUS_STAGES.map((stage, index) => {
+        const isLast = index === BOQ_STATUS_STAGES.length - 1;
+        const isActive = stage === currentStatus;
+        const isPast = BOQ_STATUS_STAGES.indexOf(currentStatus) > index;
+
+        return (
+          <div key={stage} className="flex items-center">
+            <div className="flex flex-col items-center gap-1">
+              <div
+                className={[
+                  'flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold transition-all',
+                  isActive ? 'bg-brand-primary text-white ring-4 ring-brand-primary/15' : '',
+                  isPast ? 'bg-brand-primary/40 text-white' : '',
+                  !isActive && !isPast ? 'border border-border bg-surface text-muted-foreground' : '',
+                ].filter(Boolean).join(' ')}
+              />
+              <span
+                className={[
+                  'text-[10.5px] font-medium leading-none',
+                  isActive ? 'text-brand-primary' : 'text-muted-foreground/60',
+                ].join(' ')}
+              >
+                {t(`versionStatus.${stage}`)}
+              </span>
+            </div>
+            {!isLast ? (
+              <div
+                className={[
+                  'mb-3.5 h-px w-8 flex-shrink-0',
+                  isPast || isActive ? 'bg-brand-primary/40' : 'bg-border',
+                ].join(' ')}
+              />
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -96,14 +154,31 @@ function BoqVersions({ projectId, boq }: { projectId: string; boq: Boq }) {
 
   const { data: nodes, isPending, isError, error } = useBoqTree(projectId, selectedId);
 
+  const currentVersionStatus = selected?.status ?? boq.versions[0]?.status ?? BoqVersionStatus.DRAFT;
+  // Only show DRAFT and BASELINED in the strip — SUPERSEDED and CANCELLED are historical
+  // states not part of the primary progression flow.
+  const stripStatus = [BoqVersionStatus.DRAFT, BoqVersionStatus.BASELINED].includes(currentVersionStatus)
+    ? currentVersionStatus
+    : BoqVersionStatus.BASELINED;
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+    <div className="space-y-5">
+      {boq.versions.length > 0 ? (
+        <div className="overflow-x-auto rounded-xl border border-border bg-surface px-4 py-3 shadow-[var(--shadow-panel)] [-webkit-overflow-scrolling:touch]">
+          <BoqStatusStrip currentStatus={stripStatus} />
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap items-end justify-between gap-4 rounded-xl border border-border bg-surface p-4 shadow-[var(--shadow-panel)] sm:p-5">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="mt-6 hidden h-9 w-9 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-primary sm:flex">
+            <TreeStructure size={19} weight="duotone" aria-hidden="true" />
+          </span>
+          <div>
           <Label htmlFor="boq-version">{t('versionSelectLabel')}</Label>
           <Select
             id="boq-version"
-            className="mt-1 w-auto min-w-56"
+            className="mt-2 w-auto min-w-64"
             value={selectedId ?? ''}
             onChange={(e) => {
               setChosenId(e.target.value);
@@ -116,14 +191,13 @@ function BoqVersions({ projectId, boq }: { projectId: string; boq: Boq }) {
               </option>
             ))}
           </Select>
+          </div>
         </div>
 
         {selected ? (
-          <div className="text-xs text-muted-foreground">
+          <div className="ms-auto text-xs text-muted-foreground">
             {isDraft ? (
-              <span className="inline-flex items-center rounded-full bg-brand-primary/10 px-2.5 py-0.5 text-xs font-medium text-brand-primary">
-                {t('draftBadge')}
-              </span>
+              <Badge tone="info">{t('draftBadge')}</Badge>
             ) : (
               <span title={t('readOnlyHint')}>{t('readOnly')}</span>
             )}
@@ -134,17 +208,16 @@ function BoqVersions({ projectId, boq }: { projectId: string; boq: Boq }) {
             ) : null}
           </div>
         ) : null}
+        <BoqVersionActions
+          projectId={projectId}
+          boq={boq}
+          selected={selected}
+          isEmpty={(nodes?.length ?? 0) === 0}
+        />
       </div>
 
-      <BoqVersionActions
-        projectId={projectId}
-        boq={boq}
-        selected={selected}
-        isEmpty={(nodes?.length ?? 0) === 0}
-      />
-
       {selected?.notes ? (
-        <div className="rounded-md border border-border bg-surface-subtle px-4 py-3">
+        <div className="rounded-lg border border-border bg-surface px-5 py-4 shadow-[var(--shadow-control)]">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {t('notes')}
           </p>
@@ -155,7 +228,11 @@ function BoqVersions({ projectId, boq }: { projectId: string; boq: Boq }) {
       {isPending ? (
         <div role="status" aria-live="polite">
           <span className="sr-only">{tCommon('loading')}</span>
-          <div className="h-64 animate-pulse rounded-lg border border-border bg-muted" aria-hidden="true" />
+          <div className="space-y-2 rounded-xl border border-border bg-surface p-4" aria-hidden="true">
+            <div className="h-10 animate-pulse rounded bg-muted" />
+            <div className="h-12 animate-pulse rounded bg-muted" />
+            <div className="h-12 animate-pulse rounded bg-muted" />
+          </div>
         </div>
       ) : isError ? (
         <Alert
@@ -163,7 +240,7 @@ function BoqVersions({ projectId, boq }: { projectId: string; boq: Boq }) {
           messages={[error instanceof ApiError && error.messages.length > 0 ? error.messages[0]! : t('loadFailed')]}
         />
       ) : nodes.length === 0 && !isDraft ? (
-        <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
+    <div className="rounded-xl border border-dashed border-border-strong bg-surface px-6 py-12 text-center shadow-[var(--shadow-control)]">
           <p className="text-sm font-medium text-foreground">{t('empty')}</p>
           <p className="mt-1 text-sm text-muted-foreground">{t('emptyBaselinedHint')}</p>
         </div>

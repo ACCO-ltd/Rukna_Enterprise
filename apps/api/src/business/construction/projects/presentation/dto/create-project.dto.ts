@@ -1,11 +1,18 @@
-import { IsString, IsOptional, IsDateString, IsNumber, Length, MaxLength, Min } from 'class-validator';
+import { IsString, IsOptional, IsDateString, IsNumber, Length, MaxLength, Min, IsEnum } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CommercialModel, ParticipationModel } from '@prisma/client';
 
 export class CreateProjectDto {
-  @ApiProperty({ example: 'ACCO-2026-001', maxLength: 30 })
+  @ApiPropertyOptional({
+    example: 'ACCO-2026-001',
+    maxLength: 30,
+    deprecated: true,
+    description: 'Legacy compatibility only. Omit to receive an automatically assigned project code.',
+  })
+  @IsOptional()
   @IsString()
   @Length(1, 30)
-  code!: string;
+  code?: string;
 
   @ApiProperty({ example: 'Al-Baraka Tower Construction' })
   @IsString()
@@ -33,6 +40,16 @@ export class CreateProjectDto {
   @IsOptional()
   @IsString()
   clientId?: string;
+
+  @ApiPropertyOptional({ enum: CommercialModel, default: CommercialModel.CLIENT_CONTRACT })
+  @IsOptional()
+  @IsEnum(CommercialModel)
+  commercialModel?: CommercialModel;
+
+  @ApiPropertyOptional({ enum: ParticipationModel, default: ParticipationModel.SOLE })
+  @IsOptional()
+  @IsEnum(ParticipationModel)
+  participationModel?: ParticipationModel;
 
   @ApiPropertyOptional()
   @IsOptional()

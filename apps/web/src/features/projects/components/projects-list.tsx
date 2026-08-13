@@ -4,182 +4,138 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { ProjectStatus } from '@erp/types';
-import { Alert, Button, Input, Label, Select } from '@erp/ui';
+import { Button, Label, Select } from '@erp/ui';
+import { AlertTriangle, CalendarDays, Filter, Plus } from 'lucide-react';
 
+import { EmptyState } from '@/components/empty-state';
+import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { formatDate, formatMoney } from '@/lib/format';
+import { usePermissions } from '@/features/auth/permissions/can';
 
 import { filterProjects } from '../filter-projects';
 import { useProjects } from '../hooks/use-projects';
 import { PROJECT_STATUS_ORDER, type Project } from '../types';
 import { ProjectStatusBadge } from './project-status-badge';
 
-export function ProjectsList() {
-  const t = useTranslations('platform.projects');
-  const tCommon = useTranslations('common');
-  const locale = useLocale() as 'en' | 'ar';
-  const { data, isPending, isError, refetch, isFetching } = useProjects();
-
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<ProjectStatus | 'ALL'>('ALL');
-
-  const visible = useMemo(
-    () => filterProjects(data ?? [], { search, status }),
-    [data, search, status],
-  );
-
-  if (isPending) {
-    return (
-      <div role="status" aria-live="polite">
-        <span className="sr-only">{tCommon('loading')}</span>
-        <div className="h-64 animate-pulse rounded-lg border border-border bg-muted" aria-hidden="true" />
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <Alert variant="error" messages={[t('loadFailed')]}>
-        <div className="mt-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              void refetch();
-            }}
-            disabled={isFetching}
-          >
-            {t('retry')}
-          </Button>
-        </div>
-      </Alert>
-    );
-  }
-
-  // No projects at all is a different situation from no projects matching a filter, and
-  // the two need different wording and different escape routes.
-  if (data.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
-        <p className="text-sm font-medium text-foreground">{t('empty')}</p>
-        <p className="mt-1 text-sm text-muted-foreground">{t('emptyHint')}</p>
-        <div className="mt-4">
-          <Button asChild>
-            <Link href="/projects/new">{t('newProject')}</Link>
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  const hasFilters = search.trim() !== '' || status !== 'ALL';
-
-  return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-        <div>
-          <Label htmlFor="project-search" className="sr-only">
-            {t('searchLabel')}
-          </Label>
-          <Input
-            id="project-search"
-            type="search"
-            placeholder={t('searchPlaceholder')}
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-            }}
-          />
-        </div>
-
-        <div>
-          <Label htmlFor="project-status" className="sr-only">
-            {t('filterByStatus')}
-          </Label>
-          <Select
-            id="project-status"
-            value={status}
-            onChange={(e) => {
-              setStatus(e.target.value as ProjectStatus | 'ALL');
-            }}
-          >
-            <option value="ALL">{t('allStatuses')}</option>
-            {PROJECT_STATUS_ORDER.map((value) => (
-              <option key={value} value={value}>
-                {t(`status.${value}`)}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </div>
-
-      {/* Announced politely so filtering feedback reaches screen readers without
-          interrupting typing. */}
-      <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
-        {t('countLabel', { count: visible.length })}
-      </p>
-
-      {visible.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
-          <p className="text-sm text-muted-foreground">{t('noMatches')}</p>
-          {hasFilters ? (
-            <div className="mt-4">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setSearch('');
-                  setStatus('ALL');
-                }}
-              >
-                {t('clearFilters')}
-              </Button>
-            </div>
-          ) : null}
-        </div>
-      ) : (
-        <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
-          {visible.map((project) => (
-            <ProjectRow key={project.id} project={project} locale={locale} />
-          ))}
-        </ul>
-      )}
-    </div>
-  );
+function programme(project: Project, locale: 'en' | 'ar', notSet: string) {
+  const start = formatDate(project.startDate, locale);
+  const end = formatDate(project.expectedEndDate, locale);
+  if (!start && !end) return notSet;
+  return [start ?? notSet, end ?? notSet].join(' - ');
 }
 
-function ProjectRow({ project, locale }: { project: Project; locale: 'en' | 'ar' }) {
-  const t = useTranslations('platform.projects');
+function attention(project: Project, t: ReturnType<typeof useTranslations<'platform.projects'>>) {
+  if (project.isSuspended) return { label: t('attention.suspended'), urgent: true };
+  if (
+    project.expectedEndDate &&
+    new Date(project.expectedEndDate) < new Date() &&
+    ![ProjectStatus.CLOSED, ProjectStatus.CANCELLED].includes(project.status)
+  ) return { label: t('attention.overdue'), urgent: true };
+  if (project.status === ProjectStatus.DRAFT) return { label: t('attention.setup'), urgent: false };
+  return { label: t('attention.clear'), urgent: false };
+}
 
-  const displayName = locale === 'ar' && project.nameAr ? project.nameAr : project.name;
-  const value = formatMoney(project.contractValue, project.currency, locale);
-  const start = formatDate(project.startDate, locale);
+function buildColumns(
+  t: ReturnType<typeof useTranslations<'platform.projects'>>,
+  locale: 'en' | 'ar',
+): GridColumn<Project>[] {
+  return [
+    {
+      key: 'project',
+      header: t('columns.project'),
+      sticky: true,
+      sortable: true,
+      plainValue: (project) => [project.name, project.code, project.clientName].filter(Boolean).join(' '),
+      render: (project) => (
+        <Link href={`/projects/${project.id}`} className="group -my-2 flex min-h-12 flex-col justify-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary">
+          <span className="font-semibold text-foreground transition-colors group-hover:text-brand-primary">{locale === 'ar' && project.nameAr ? project.nameAr : project.name}</span>
+          <span className="mt-0.5 text-xs text-muted-foreground">{project.clientName ?? project.code}</span>
+        </Link>
+      ),
+    },
+    { key: 'stage', header: t('columns.stage'), render: (project) => <ProjectStatusBadge status={project.status} /> },
+    {
+      key: 'manager',
+      header: t('columns.manager'),
+      sortable: true,
+      plainValue: (project) => project.projectManager ?? '',
+      render: (project) => <span className="text-sm text-foreground">{project.projectManager ?? t('notAssigned')}</span>,
+    },
+    {
+      key: 'programme',
+      header: t('columns.programme'),
+      plainValue: (project) => project.expectedEndDate ?? project.startDate ?? '',
+      render: (project) => (
+        <span className="inline-flex items-center gap-2 whitespace-nowrap text-sm text-muted-foreground">
+          <CalendarDays className="h-4 w-4" aria-hidden="true" />
+          {programme(project, locale, t('notSet'))}
+        </span>
+      ),
+    },
+    {
+      key: 'contractValue',
+      header: t('columns.contractValue'),
+      numeric: true,
+      sortable: true,
+      plainValue: (project) => project.contractValue ? Number(project.contractValue) : null,
+      render: (project) => <span className="whitespace-nowrap font-medium tabular-nums">{formatMoney(project.contractValue, project.currency, locale) ?? t('restrictedOrNotSet')}</span>,
+    },
+    {
+      key: 'attention',
+      header: t('columns.attention'),
+      render: (project) => {
+        const state = attention(project, t);
+        return (
+          <span className={state.urgent ? 'inline-flex items-center gap-1.5 text-sm font-medium text-warning-foreground' : 'text-sm text-muted-foreground'}>
+            {state.urgent ? <AlertTriangle className="h-4 w-4 text-warning" aria-hidden="true" /> : null}
+            {state.label}
+          </span>
+        );
+      },
+    },
+  ];
+}
+
+export function ProjectsList() {
+  const t = useTranslations('platform.projects');
+  const locale = useLocale() as 'en' | 'ar';
+  const { data, isPending, isError, refetch } = useProjects();
+  const { can } = usePermissions();
+  const mayCreate = can('create:project');
+  const [status, setStatus] = useState<ProjectStatus | 'ALL'>('ALL');
+  const rows = useMemo(() => filterProjects(data ?? [], { search: '', status }), [data, status]);
+  const columns = useMemo(() => buildColumns(t, locale), [t, locale]);
+
+  const statusFilter = (
+    <div className="relative min-w-44">
+      <Label htmlFor="project-status" className="sr-only">{t('filterByStatus')}</Label>
+      <Select id="project-status" value={status} className="ps-10" onChange={(event) => setStatus(event.target.value as ProjectStatus | 'ALL')}>
+        <option value="ALL">{t('allStatuses')}</option>
+        {PROJECT_STATUS_ORDER.map((value) => <option key={value} value={value}>{t(`status.${value}`)}</option>)}
+      </Select>
+      <Filter className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+    </div>
+  );
 
   return (
-    <li>
-      <Link
-        href={`/projects/${project.id}`}
-        className="flex min-h-16 flex-col gap-2 px-4 py-3 transition-colors hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-primary sm:flex-row sm:items-center sm:gap-4"
-      >
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-xs text-muted-foreground">{project.code}</span>
-            <ProjectStatusBadge status={project.status} />
-          </div>
-          <p className="mt-1 truncate text-sm font-medium text-foreground">{displayName}</p>
-          {project.clientName ? (
-            <p className="truncate text-xs text-muted-foreground">{project.clientName}</p>
-          ) : null}
-        </div>
-
-        <div className="flex items-baseline gap-3 sm:flex-col sm:items-end sm:gap-0.5">
-          <span className="text-sm font-semibold text-foreground">
-            {value ?? (
-              <span className="font-normal text-muted-foreground">{t('noContractValue')}</span>
-            )}
-          </span>
-          {start ? <span className="text-xs text-muted-foreground">{start}</span> : null}
-        </div>
-      </Link>
-    </li>
+    <PlatformDataGrid
+      columns={columns}
+      data={rows}
+      rowKey={(project) => project.id}
+      label={t('title')}
+      isLoading={isPending}
+      isError={isError}
+      onRetry={() => void refetch()}
+      errorMessage={t('loadFailed')}
+      retryLabel={t('retry')}
+      searchLabel={t('searchLabel')}
+      searchPlaceholder={t('searchPlaceholder')}
+      resultLabel={(count) => t('countLabel', { count })}
+      noMatchMessage={t('noMatches')}
+      clearFiltersLabel={t('clearFilters')}
+      emptyState={<EmptyState title={t('empty')} description={t('emptyHint')} action={mayCreate ? <Button asChild><Link href="/projects/new"><Plus className="me-2 h-4 w-4" aria-hidden="true" />{t('newProject')}</Link></Button> : undefined} />}
+      toolbarLeft={statusFilter}
+      toolbarRight={mayCreate ? <Button asChild><Link href="/projects/new"><Plus className="me-2 h-4 w-4" aria-hidden="true" />{t('newProject')}</Link></Button> : undefined}
+    />
   );
 }

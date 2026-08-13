@@ -19,6 +19,9 @@
     "regionLabel": "الإشعارات",
     "dismiss": "إغلاق"
   },
+  "formErrors": {
+    "title": "راجع الحقول التالية"
+  },
   "language": {
     "label": "اللغة",
     "english": "English",

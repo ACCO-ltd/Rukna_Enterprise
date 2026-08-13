@@ -20,6 +20,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
+import { HandCoins, Receipt, TrendUp, WarningCircle } from '@phosphor-icons/react';
 import {
   Alert,
   Table,
@@ -36,13 +37,16 @@ import { formatDate, formatMoney } from '@/lib/format';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { useProjects } from '@/features/projects/hooks/use-projects';
 
-import { useProjectCommitmentSummary, useProjectCommitments } from '../hooks/use-procurement';
+import {
+  useProjectCommitmentSummary,
+  useProjectCommitments,
+} from '../hooks/use-procurement';
 import type { CommitmentStage } from '../types';
 import { CommitmentStageTag } from './procurement-badges';
 
 const STAGES: CommitmentStage[] = ['COMMITTED', 'ACCRUED', 'ACTUAL'];
 
-// ─── Project Command Center card (§12.9) ─────────────────────────────────────────
+// ─── Project card (§12.9) ─────────────────────────────────────────────────────
 
 /**
  * Rendered on the project page. Hidden entirely without `view:commitment-ledger` —
@@ -67,49 +71,69 @@ export function ProjectCommitmentsCard({
   if (!allowed) return null;
 
   return (
-    <section className="rounded-lg border border-border bg-surface p-4">
-      <h3 className="text-sm font-semibold text-foreground">{t('cardTitle')}</h3>
+    <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
+      <div className="border-b border-border px-5 py-3 sm:px-6">
+        <h3 className="text-[13px] font-semibold text-foreground">{t('cardTitle')}</h3>
+      </div>
 
       {summary.isPending ? (
-        <div className="mt-3 h-20 animate-pulse rounded bg-muted" aria-hidden="true" />
-      ) : summary.isError ? (
-        <p className="mt-2 text-sm text-muted-foreground">{tc('loadFailed')}</p>
-      ) : (
-        <>
-          <dl className="mt-3 space-y-2">
-            {(
-              [
-                ['committed', summary.data?.committed],
-                ['accrued', summary.data?.accrued],
-                ['actual', summary.data?.actual],
-              ] as const
-            ).map(([key, value]) => (
-              <div key={key} className="flex items-baseline justify-between gap-3">
-                <dt className="text-sm text-muted-foreground" title={t(`${key}Hint`)}>
-                  {t(key)}
-                </dt>
-                <dd className="text-sm font-semibold tabular-nums">
-                  {formatMoney(value, currencyCode, locale) ?? tc('notAvailable')}
-                </dd>
+        <div className="px-5 py-4 sm:px-6">
+          <div className="space-y-3">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="flex items-baseline justify-between gap-3">
+                <div className="h-3 w-20 animate-pulse rounded bg-muted" aria-hidden="true" />
+                <div className="h-3 w-16 animate-pulse rounded bg-muted" aria-hidden="true" />
               </div>
             ))}
+          </div>
+        </div>
+      ) : summary.isError ? (
+        <p className="px-5 py-4 text-sm text-muted-foreground sm:px-6">{tc('loadFailed')}</p>
+      ) : (
+        <>
+          <dl className="grid gap-3 px-5 py-4 sm:grid-cols-3 sm:px-6">
+              {(
+                [
+                  ['committed', summary.data?.committed],
+                  ['accrued', summary.data?.accrued],
+                  ['actual', summary.data?.actual],
+                ] as const
+              ).map(([key, value], index) => {
+                const MetricIcon = [HandCoins, TrendUp, Receipt][index];
+                return (
+                <div key={key} className="rounded-xl border border-border bg-surface-subtle/55 p-4">
+                  <dt className="flex items-center gap-2 text-xs font-medium text-muted-foreground" title={t(`${key}Hint`)}>
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-primary">
+                      <MetricIcon size={17} weight="duotone" aria-hidden="true" />
+                    </span>
+                    {t(key)}
+                  </dt>
+                  <dd className="mt-3 text-lg font-semibold tabular-nums text-foreground">
+                    {formatMoney(value, currencyCode, locale) ?? tc('notAvailable')}
+                  </dd>
+                </div>
+              )})}
           </dl>
 
-          <p className="mt-3 text-xs text-muted-foreground">{t('accuracyNotice')}</p>
-
-          <Link
-            href={`/procurement/commitments?projectId=${projectId}`}
-            className="mt-3 inline-block text-sm font-medium text-brand-primary underline-offset-2 hover:underline"
-          >
-            {t('viewLedger')} →
-          </Link>
+          <div className="border-t border-border px-5 py-3 sm:px-6">
+            <p className="flex items-start gap-2 rounded-lg border border-warning/20 bg-warning/5 px-3 py-2.5 text-xs leading-5 text-muted-foreground">
+              <WarningCircle size={17} className="mt-0.5 shrink-0 text-warning" aria-hidden="true" />
+              {t('accuracyNotice')}
+            </p>
+            <Link
+              href={`/procurement/commitments?projectId=${projectId}`}
+              className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-brand-primary underline-offset-2 hover:underline"
+            >
+              {t('viewLedger')} →
+            </Link>
+          </div>
         </>
       )}
     </section>
   );
 }
 
-// ─── Ledger screen ───────────────────────────────────────────────────────────────
+// ─── Ledger screen ────────────────────────────────────────────────────────────
 
 export function CommitmentLedger({ initialProjectId }: { initialProjectId?: string }) {
   const t = useTranslations('procurement.commitments');
@@ -122,18 +146,19 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
 
   const projects = useProjects();
   const entries = useProjectCommitments(projectId, stage ? { stage } : undefined);
+  const summary = useProjectCommitmentSummary(projectId, { enabled: Boolean(projectId) });
 
   const project = projects.data?.find((p) => p.id === projectId) ?? null;
 
   return (
     <div className="space-y-6">
+      {/* ── Page header ───────────────────────────────────────────────────── */}
       <div className="min-w-0">
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
         <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
       </div>
 
-      <Alert variant="warning" messages={[t('accuracyNotice')]} />
-
+      {/* ── Project + stage filters ───────────────────────────────────────── */}
       <div className="flex flex-wrap gap-4">
         <div className="min-w-56 flex-1">
           <label
@@ -146,7 +171,7 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
             id="ledger-project"
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
-            className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"
+            className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
           >
             <option value="">{t('selectProject')}</option>
             {(projects.data ?? []).map((p) => (
@@ -159,18 +184,17 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
         </div>
       </div>
 
-      {/* Stage tabs. Radio group rather than links, because the filter is a query
-          parameter on the same screen and each option is one of a set. */}
+      {/* ── Stage filter pills ────────────────────────────────────────────── */}
       <fieldset>
         <legend className="sr-only">{t('stage')}</legend>
         <div className="flex flex-wrap gap-2">
           {([''] as (CommitmentStage | '')[]).concat(STAGES).map((value) => (
             <label
               key={value || 'all'}
-              className={`inline-flex min-h-11 cursor-pointer items-center rounded-md border px-3 text-sm ${
+              className={`inline-flex min-h-9 cursor-pointer items-center rounded-md border px-3 text-sm transition-colors ${
                 stage === value
                   ? 'border-brand-primary bg-brand-primary/10 font-medium text-brand-primary'
-                  : 'border-border text-muted-foreground'
+                  : 'border-border text-muted-foreground hover:border-brand-primary/40 hover:text-foreground'
               }`}
             >
               <input
@@ -180,86 +204,143 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
                 checked={stage === value}
                 onChange={() => setStage(value)}
               />
-              {value === '' ? tc('all') : t(value.toLowerCase() as 'committed' | 'accrued' | 'actual')}
+              {value === ''
+                ? tc('all')
+                : t(value.toLowerCase() as 'committed' | 'accrued' | 'actual')}
             </label>
           ))}
         </div>
       </fieldset>
 
+      {/* ── No project selected ────────────────────────────────────────────── */}
       {projectId === '' ? (
-        <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
+        <div className="rounded-xl border border-dashed border-border bg-surface px-6 py-12 text-center shadow-[var(--shadow-panel)]">
           <p className="text-sm font-medium text-foreground">{t('selectProject')}</p>
           <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
             {t('selectProjectHint')}
           </p>
         </div>
-      ) : entries.isError ? (
-        <Alert variant="error" messages={[tc('loadFailed')]} />
       ) : (
-        <TableScroll aria-label={t('title')}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{tc('date')}</TableHead>
-                <TableHead>{t('eventType')}</TableHead>
-                <TableHead>{t('stage')}</TableHead>
-                <TableHead className="text-end">{t('reportingAmount')}</TableHead>
-                <TableHead>{t('sourceDoc')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(entries.data ?? []).length === 0 ? (
-                <TableEmpty colSpan={5}>{t('empty')}</TableEmpty>
-              ) : (
-                (entries.data ?? []).map((entry) => (
-                  <TableRow key={entry.id}>
-                    <TableCell className="text-sm text-muted-foreground">
-                      <bdi>{formatDate(entry.accountingDate, locale) ?? tc('notAvailable')}</bdi>
-                    </TableCell>
-                    <TableCell className="text-sm">{entry.eventType}</TableCell>
-                    <TableCell>
-                      <CommitmentStageTag stage={entry.stage} />
-                    </TableCell>
-                    <TableCell className="text-end">
-                      <span className="block font-medium tabular-nums">
-                        {formatMoney(entry.reportingAmount, project?.currency ?? null, locale)}
-                      </span>
-                      {/* The transaction currency is only shown when it differs from the
-                          reporting currency — otherwise it is the same number twice. */}
-                      {entry.currencyCode !== (project?.currency ?? entry.currencyCode) ? (
-                        <span className="block text-xs text-muted-foreground tabular-nums">
-                          {formatMoney(entry.amount, entry.currencyCode, locale)}
-                        </span>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {entry.sourceDocumentType === 'PURCHASE_ORDER_REVISION' &&
-                      entry.purchaseOrderId ? (
-                        <Link
-                          href={`/procurement/orders/${entry.purchaseOrderId}`}
-                          className="font-medium text-brand-primary underline-offset-2 hover:underline"
-                        >
-                          {tSource(entry.sourceDocumentType)}
-                        </Link>
-                      ) : entry.sourceDocumentType === 'GOODS_RECEIPT' ? (
-                        <Link
-                          href={`/procurement/grn/${entry.sourceDocumentId}`}
-                          className="font-medium text-brand-primary underline-offset-2 hover:underline"
-                        >
-                          {tSource(entry.sourceDocumentType)}
-                        </Link>
-                      ) : (
-                        <span className="text-muted-foreground">
-                          {tSource(entry.sourceDocumentType)}
-                        </span>
-                      )}
-                    </TableCell>
+        <>
+          {/* ── Summary tiles (when project is selected) ─────────────────── */}
+          {summary.data ? (
+            <dl className="grid gap-px overflow-hidden rounded-xl border border-border bg-border shadow-[var(--shadow-panel)] sm:grid-cols-3">
+              {(
+                [
+                  ['committed', summary.data.committed, t('committedHint')],
+                  ['accrued', summary.data.accrued, t('accruedHint')],
+                  ['actual', summary.data.actual, t('actualHint')],
+                ] as const
+              ).map(([key, value, hint]) => (
+                <div key={key} className="bg-surface px-5 py-4">
+                  <dt
+                    className="text-xs font-medium text-muted-foreground"
+                    title={hint}
+                  >
+                    {t(key)}
+                  </dt>
+                  <dd className="mt-1.5 text-sm font-semibold tabular-nums text-foreground">
+                    {formatMoney(value, project?.currency ?? null, locale) ??
+                      tc('notAvailable')}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          ) : summary.isPending ? (
+            <div className="grid gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-3">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="bg-surface px-5 py-4" aria-hidden="true">
+                  <div className="h-3 w-20 animate-pulse rounded bg-muted" />
+                  <div className="mt-2 h-4 w-24 animate-pulse rounded bg-muted" />
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {/* ── Error ────────────────────────────────────────────────────── */}
+          {entries.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
+
+          {/* ── Ledger table ─────────────────────────────────────────────── */}
+          <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
+            <div className="border-b border-border px-5 py-3 sm:px-6">
+              <h2 className="text-[13px] font-semibold text-foreground">{t('title')}</h2>
+            </div>
+
+            <TableScroll aria-label={t('title')}>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{tc('date')}</TableHead>
+                    <TableHead>{t('eventType')}</TableHead>
+                    <TableHead>{t('stage')}</TableHead>
+                    <TableHead className="text-end">{t('reportingAmount')}</TableHead>
+                    <TableHead>{t('sourceDoc')}</TableHead>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableScroll>
+                </TableHeader>
+                <TableBody>
+                  {(entries.data ?? []).length === 0 ? (
+                    <TableEmpty colSpan={5}>{t('empty')}</TableEmpty>
+                  ) : (
+                    (entries.data ?? []).map((entry) => (
+                      <TableRow key={entry.id}>
+                        <TableCell className="text-sm text-muted-foreground">
+                          <bdi>
+                            {formatDate(entry.accountingDate, locale) ?? tc('notAvailable')}
+                          </bdi>
+                        </TableCell>
+                        <TableCell className="text-sm">{entry.eventType}</TableCell>
+                        <TableCell>
+                          <CommitmentStageTag stage={entry.stage} />
+                        </TableCell>
+                        <TableCell className="text-end">
+                          <span className="block font-medium tabular-nums">
+                            {formatMoney(
+                              entry.reportingAmount,
+                              project?.currency ?? null,
+                              locale,
+                            )}
+                          </span>
+                          {/* Transaction currency shown only when different from reporting */}
+                          {entry.currencyCode !==
+                          (project?.currency ?? entry.currencyCode) ? (
+                            <span className="block text-xs text-muted-foreground tabular-nums">
+                              {formatMoney(entry.amount, entry.currencyCode, locale)}
+                            </span>
+                          ) : null}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {entry.sourceDocumentType === 'PURCHASE_ORDER_REVISION' &&
+                          entry.purchaseOrderId ? (
+                            <Link
+                              href={`/procurement/orders/${entry.purchaseOrderId}`}
+                              className="font-medium text-brand-primary underline-offset-2 hover:underline"
+                            >
+                              {tSource(entry.sourceDocumentType)}
+                            </Link>
+                          ) : entry.sourceDocumentType === 'GOODS_RECEIPT' ? (
+                            <Link
+                              href={`/procurement/grn/${entry.sourceDocumentId}`}
+                              className="font-medium text-brand-primary underline-offset-2 hover:underline"
+                            >
+                              {tSource(entry.sourceDocumentType)}
+                            </Link>
+                          ) : (
+                            <span className="text-muted-foreground">
+                              {tSource(entry.sourceDocumentType)}
+                            </span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </TableScroll>
+          </section>
+
+          {/* ── Accuracy notice — below the data it qualifies ─────────────── */}
+          <Alert variant="warning" messages={[t('accuracyNotice')]} />
+        </>
       )}
     </div>
   );

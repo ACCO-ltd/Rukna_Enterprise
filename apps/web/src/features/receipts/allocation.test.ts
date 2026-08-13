@@ -164,6 +164,7 @@ describe('certificatesForClient', () => {
     contractValue: '1000000.00',
     currency: 'USD',
     billingModel: BillingModel.MEASURED_IPC,
+    contractKind: 'CLIENT_CONTRACT' as const,
     status: ContractStatus.ACTIVE,
     clientNameSnapshot: null,
     clientTaxSnapshot: null,

@@ -373,8 +373,10 @@ export function IpcWizard({ contractId, ipaId }: IpcWizardProps) {
   const isRejected = context.status === 'REJECTED';
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 px-4 py-6 sm:px-6">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
+    <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6">
+      <div className="rounded-lg border border-border bg-surface p-5 shadow-sm sm:p-6">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
+      </div>
 
       {hasEffectiveCert ? (
         <Alert variant="warning" messages={[t('effectiveCertWarning')]} />
@@ -387,7 +389,7 @@ export function IpcWizard({ contractId, ipaId }: IpcWizardProps) {
       <ProgressBar step={step} isRejected={isRejected} />
 
       {/* Step heading */}
-      <div>
+      <div className="rounded-lg border border-border bg-surface px-5 py-4 shadow-sm">
         <h2 className="text-lg font-medium text-foreground">
           {step === 1
             ? t('step1.title')
@@ -398,6 +400,7 @@ export function IpcWizard({ contractId, ipaId }: IpcWizardProps) {
       </div>
 
       {/* Step content */}
+      <div className="rounded-lg border border-border bg-surface p-5 shadow-sm sm:p-6">
       {step === 1 ? (
         <Step1Context
           context={context}
@@ -435,6 +438,7 @@ export function IpcWizard({ contractId, ipaId }: IpcWizardProps) {
           errorMessage={issueError}
         />
       )}
+      </div>
     </div>
   );
 }

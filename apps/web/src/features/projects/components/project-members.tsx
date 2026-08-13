@@ -24,8 +24,10 @@
 import { useId, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ProjectRole } from '@erp/types';
+import { Plus, UsersThree } from '@phosphor-icons/react';
 import {
   Alert,
+  Badge,
   Button,
   Table,
   TableBody,
@@ -67,13 +69,24 @@ export function ProjectMembers({ projectId }: { projectId: string }) {
 
   const [pending, setPending] = useState<ProjectMember | null>(null);
 
-  const rows = members.data ?? [];
+  const rawRows = members.data ?? [];
+  // Project managers appear first; all other members follow in their original order.
+  const rows = [...rawRows].sort((a, b) => {
+    const aIsPm = memberRoles(a).includes(ProjectRole.PROJECT_MANAGER);
+    const bIsPm = memberRoles(b).includes(ProjectRole.PROJECT_MANAGER);
+    if (aIsPm && !bIsPm) return -1;
+    if (!aIsPm && bIsPm) return 1;
+    return 0;
+  });
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3 shadow-[var(--shadow-panel)]">
         <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-foreground">{t('title')}</h2>
+          <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-primary"><UsersThree size={18} weight="duotone" aria-hidden="true" /></span>
+            {t('title')}
+          </h2>
           <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
         </div>
       </div>
@@ -92,7 +105,7 @@ export function ProjectMembers({ projectId }: { projectId: string }) {
         <Alert variant="error" messages={[t('loadFailed')]} />
       ) : (
         <>
-          <TableScroll aria-label={t('title')}>
+          <TableScroll aria-label={t('title')} className="rounded-xl border-border shadow-[var(--shadow-panel)]">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -113,7 +126,12 @@ export function ProjectMembers({ projectId }: { projectId: string }) {
                     return (
                       <TableRow key={member.id}>
                         <TableCell className="text-sm text-foreground">
-                          {memberName(member)}
+                          <div className="flex flex-wrap items-center gap-2">
+                            {memberName(member)}
+                            {memberRoles(member).includes(ProjectRole.PROJECT_MANAGER) ? (
+                              <Badge tone="info">{t('role.PROJECT_MANAGER')}</Badge>
+                            ) : null}
+                          </div>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           <bdi>{member.user.email}</bdi>
@@ -222,7 +240,7 @@ function AddMemberForm({
   }
 
   return (
-    <section className="space-y-4 rounded-lg border border-border bg-surface p-4">
+    <section className="space-y-4 rounded-xl border border-border bg-surface p-4 shadow-[var(--shadow-panel)]">
       <div className="min-w-0">
         <h3 className="text-sm font-semibold text-foreground">{t('addTitle')}</h3>
         <p className="mt-1 max-w-prose text-xs text-muted-foreground">{t('addHint')}</p>
@@ -275,7 +293,8 @@ function AddMemberForm({
 
       {serverError ? <Alert variant="error" messages={[serverError]} /> : null}
 
-      <Button type="button" onClick={handleAdd} disabled={!complete || add.isPending}>
+      <Button type="button" className="gap-2" onClick={handleAdd} disabled={!complete || add.isPending}>
+        <Plus size={16} aria-hidden="true" />
         {t('add')}
       </Button>
     </section>

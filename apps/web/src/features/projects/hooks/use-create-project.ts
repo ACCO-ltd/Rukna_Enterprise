@@ -16,7 +16,7 @@ export function useCreateProject() {
       // The list and the dashboard counts both read the same query — invalidate once and
       // both are correct. Awaited so the list is fresh before we navigate onto it.
       await queryClient.invalidateQueries({ queryKey: projectKeys.all });
-      router.push(`/projects/${project.id}`);
+      router.push(`/projects/${project.id}?created=1`);
     },
   });
 }

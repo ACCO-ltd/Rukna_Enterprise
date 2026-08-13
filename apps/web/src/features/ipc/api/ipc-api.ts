@@ -17,6 +17,11 @@ export function listIpcs(applicationId?: string): Promise<Ipc[]> {
   });
 }
 
+/** `GET /ipc?projectId=` - certificates across the project's applications. */
+export function listIpcsByProject(projectId: string): Promise<Ipc[]> {
+  return apiClient<Ipc[]>('/ipc', { params: { projectId } });
+}
+
 /** Returns the certificate with items, deductions and the derived `netCertified`. */
 export function getIpc(id: string): Promise<IpcDetail> {
   return apiClient<IpcDetail>(`/ipc/${id}`);
@@ -51,10 +56,7 @@ export interface SupersedeIpcPayload {
  * The effective cert gets `isEffective = false` + `supersededAt` + `supersessionReason`.
  * The new certificate (`newCertificateId`) gets `isEffective = true` + `effectiveAt`.
  */
-export function supersedeIpc(
-  applicationId: string,
-  payload: SupersedeIpcPayload,
-): Promise<void> {
+export function supersedeIpc(applicationId: string, payload: SupersedeIpcPayload): Promise<void> {
   return apiClient<void>(`/ipc/${applicationId}/supersede`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

@@ -1,7 +1,16 @@
 import { type ReactElement, type ReactNode } from 'react';
+import { afterEach } from 'vitest';
 import { render, type RenderOptions, type RenderResult } from '@testing-library/react';
 import { NextIntlClientProvider, type AbstractIntlMessages } from 'next-intl';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+import { sessionStore } from '@/features/auth/session/session-store';
+
+// Clear any session seeded via renderWithProviders after each test so permission
+// state never leaks between tests.
+afterEach(() => {
+  sessionStore.clearSession();
+});
 
 import enCommon from '../../messages/en/common.json';
 import enAuth from '../../messages/en/auth.json';
@@ -48,12 +57,32 @@ interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
   /** Overrides the real catalogue. Use only when testing i18n behaviour itself. */
   messages?: AbstractIntlMessages;
   locale?: 'en' | 'ar';
+  /**
+   * Permission strings to grant for this render. Seeds the session store with a synthetic
+   * user holding exactly these permissions; the store is cleared automatically after each
+   * test. Omit when the test is verifying the no-permission path.
+   */
+  permissions?: string[];
 }
 
 export function renderWithProviders(
   ui: ReactElement,
-  { messages, locale = 'en', ...options }: RenderWithProvidersOptions = {},
+  { messages, locale = 'en', permissions, ...options }: RenderWithProvidersOptions = {},
 ): RenderResult {
+  if (permissions) {
+    sessionStore.setSession({
+      accessToken: 'test-token',
+      user: {
+        id: 'test-user',
+        email: 'test@example.com',
+        orgId: 'org-1',
+        tenantSlug: 'test',
+        roles: [],
+        permissions,
+        lang: 'en',
+      },
+    });
+  }
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });

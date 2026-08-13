@@ -34,7 +34,7 @@ export function LoginForm() {
 
   return (
     <main className="w-full max-w-5xl overflow-hidden rounded-lg border border-border bg-surface shadow-[0_18px_50px_rgba(23,32,51,0.10)] lg:grid lg:grid-cols-[0.9fr_1.1fr]">
-      <section className="relative flex flex-col justify-between bg-brand-ink px-6 py-6 text-white sm:min-h-72 sm:px-10 sm:py-8 lg:min-h-[620px] lg:px-12 lg:py-12">
+      <section className="relative flex flex-col justify-between bg-brand-panel px-6 py-6 text-white sm:min-h-72 sm:px-10 sm:py-8 lg:min-h-[620px] lg:px-12 lg:py-12">
         <div>
           <p className="text-sm font-semibold tracking-wide text-white">{t('companyName')}</p>
           <p className="mt-1 text-xs font-medium text-slate-400">{t('productName')}</p>
@@ -96,6 +96,7 @@ export function LoginForm() {
                 type="email"
                 autoComplete="email"
                 placeholder={t('emailPlaceholder')}
+                suppressHydrationWarning
                 aria-invalid={Boolean(errors.email)}
                 aria-describedby={errors.email ? 'email-error' : undefined}
                 {...register('email')}
@@ -114,6 +115,7 @@ export function LoginForm() {
                   autoComplete="current-password"
                   placeholder={t('passwordPlaceholder')}
                   className="pe-28"
+                  suppressHydrationWarning
                   aria-invalid={Boolean(errors.password)}
                   aria-describedby={errors.password ? 'password-error' : undefined}
                   {...register('password')}

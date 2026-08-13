@@ -21,6 +21,7 @@
  */
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -42,11 +43,13 @@ import {
   TabsList,
   TabsTrigger,
 } from '@erp/ui';
+import { WorkflowTransactionType } from '@erp/types';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { formatDate, formatMoney, formatNumber } from '@/lib/format';
 import { MONEY_SCALE, fromMinorUnits } from '@/lib/money';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+import { ApprovalPanel } from '@/features/workflows/components/approval-panel';
 
 import {
   useApprovePurchaseOrder,
@@ -56,13 +59,12 @@ import {
 } from '../hooks/use-procurement';
 import { activeRevision, revisionTotalMinor } from '../quantities';
 import type { PurchaseOrder, PurchaseOrderRevision } from '../types';
-import { WorkflowTransactionType } from '@erp/types';
-import { ApprovalPanel } from '@/features/workflows/components/approval-panel';
 import { ProcurementStatusBadge } from './procurement-badges';
 
 export function PoDetail({ id }: { id: string }) {
   const t = useTranslations('procurement.po');
   const tc = useTranslations('procurement.common');
+  const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
   const { can } = usePermissions();
 
@@ -76,13 +78,24 @@ export function PoDetail({ id }: { id: string }) {
   if (po.isPending) {
     return (
       <div role="status" aria-live="polite">
-        <div className="h-64 animate-pulse rounded-lg border border-border bg-muted" aria-hidden="true" />
+        <span className="sr-only">{tCommon('loading')}</span>
+        <div
+          className="h-64 animate-pulse rounded-xl border border-border bg-muted"
+          aria-hidden="true"
+        />
       </div>
     );
   }
 
   if (po.isError || !po.data) {
-    return <Alert variant="error" messages={[tc('loadFailed')]} />;
+    return (
+      <div className="space-y-4">
+        <Alert variant="error" messages={[tc('loadFailed')]} />
+        <Button variant="outline" asChild>
+          <Link href="/procurement/orders">{t('backToList')}</Link>
+        </Button>
+      </div>
+    );
   }
 
   const order: PurchaseOrder = po.data;
@@ -95,54 +108,89 @@ export function PoDetail({ id }: { id: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            {t('detailTitle', { number: order.poNumber })}
-          </h1>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <ProcurementStatusBadge status={order.status} />
-            <span className="text-sm text-muted-foreground">
-              {order.supplier?.name ?? tc('notAvailable')}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {isOpen && draft ? (
-            <Button
-              type="button"
-              onClick={() => submit.mutate(order.id)}
-              disabled={submit.isPending}
-            >
-              {t('submit')}
-            </Button>
-          ) : null}
-
-          {isOpen && submitted && can(PROCUREMENT_PERMISSIONS.approveOrder) ? (
-            <Button type="button" onClick={() => setApproving(true)}>
-              {t('approve')}
-            </Button>
-          ) : null}
-
-          {isOpen ? (
-            <Button type="button" variant="destructive" onClick={() => setCancelling(true)}>
-              {t('cancelOrder')}
-            </Button>
-          ) : null}
-        </div>
+      {/* ── Back link ─────────────────────────────────────────────────────── */}
+      <div>
+        <Link
+          href="/procurement/orders"
+          className="inline-flex min-h-9 items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
+        >
+          <ChevronStartIcon />
+          {t('backToList')}
+        </Link>
       </div>
 
+      {/* ── Header card ───────────────────────────────────────────────────── */}
+      <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
+        <div className="px-5 pt-5 sm:px-6 sm:pt-6">
+          {/* Top row: PO number + status */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-xs font-medium text-muted-foreground">
+              {order.poNumber}
+            </span>
+            <ProcurementStatusBadge status={order.status} />
+          </div>
+
+          {/* Primary heading: supplier name */}
+          <h1 className="mt-2 text-[26px] font-bold leading-tight tracking-[-0.025em] text-foreground sm:text-[28px]">
+            {order.supplier?.name ?? t('detailTitle', { number: order.poNumber })}
+          </h1>
+
+          {/* Subtitle: revision count */}
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t('revisionOf', {
+              number: active?.revisionNumber ?? order.revisions.length,
+              total: order.revisions.length,
+            })}
+          </p>
+        </div>
+
+        {/* Footer: lifecycle actions */}
+        {isOpen ? (
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-border px-5 py-3 sm:px-6">
+            {draft ? (
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => submit.mutate(order.id)}
+                disabled={submit.isPending}
+              >
+                {t('submit')}
+              </Button>
+            ) : null}
+
+            {submitted && can(PROCUREMENT_PERMISSIONS.approveOrder) ? (
+              <Button type="button" size="sm" onClick={() => setApproving(true)}>
+                {t('approve')}
+              </Button>
+            ) : null}
+
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setCancelling(true)}
+            >
+              {t('cancelOrder')}
+            </Button>
+          </div>
+        ) : null}
+      </div>
+
+      {/* ── Approval workflow actions ──────────────────────────────────────── */}
       <ApprovalPanel
         instanceId={order.approvalInstanceId}
         transactionType={WorkflowTransactionType.PURCHASE_ORDER}
       />
 
+      {/* ── Revision tabs ─────────────────────────────────────────────────── */}
       {order.revisions.length === 0 ? (
         <Alert variant="info" messages={[tc('noResults')]} />
       ) : (
-        <Tabs defaultValue={defaultTab}>
-          <TabsList>
+        <Tabs
+          defaultValue={defaultTab}
+          className="rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]"
+        >
+          <TabsList className="w-full justify-start rounded-none border-b border-border bg-transparent px-4 pt-2">
             {order.revisions.map((revision) => (
               <TabsTrigger key={revision.id} value={String(revision.revisionNumber)}>
                 {t('revisionTab', { number: revision.revisionNumber })}
@@ -151,20 +199,18 @@ export function PoDetail({ id }: { id: string }) {
           </TabsList>
 
           {order.revisions.map((revision) => (
-            <TabsContent key={revision.id} value={String(revision.revisionNumber)}>
-              <RevisionPanel
-                revision={revision}
-                total={t('revisionOf', {
-                  number: revision.revisionNumber,
-                  total: order.revisions.length,
-                })}
-                locale={locale}
-              />
+            <TabsContent
+              key={revision.id}
+              value={String(revision.revisionNumber)}
+              className="p-4 sm:p-6"
+            >
+              <RevisionPanel revision={revision} locale={locale} />
             </TabsContent>
           ))}
         </Tabs>
       )}
 
+      {/* ── Approve drawer ────────────────────────────────────────────────── */}
       {approving && submitted ? (
         <ApproveDrawer
           revision={submitted}
@@ -175,6 +221,7 @@ export function PoDetail({ id }: { id: string }) {
         />
       ) : null}
 
+      {/* ── Cancel confirm ────────────────────────────────────────────────── */}
       {cancelling ? (
         <ConfirmActionDialog
           title={t('cancelTitle', { number: order.poNumber })}
@@ -192,13 +239,13 @@ export function PoDetail({ id }: { id: string }) {
   );
 }
 
+// ─── Revision panel ───────────────────────────────────────────────────────────
+
 function RevisionPanel({
   revision,
-  total,
   locale,
 }: {
   revision: PurchaseOrderRevision;
-  total: string;
   locale: 'en' | 'ar';
 }) {
   const t = useTranslations('procurement.po');
@@ -209,95 +256,129 @@ function RevisionPanel({
   const totalMinor = revisionTotalMinor(lines);
 
   return (
-    <div className="space-y-4 pt-4">
-      <div className="flex flex-wrap items-center gap-3">
+    <div className="space-y-5">
+      {/* Revision status + label */}
+      <div className="flex flex-wrap items-center gap-2">
         <ProcurementStatusBadge status={revision.status} />
-        <span className="text-xs text-muted-foreground">{total}</span>
+        <span className="text-xs text-muted-foreground">
+          {t('revisionOf', {
+            number: revision.revisionNumber,
+            total: revision.revisionNumber,
+          })}
+        </span>
       </div>
 
-      <dl className="grid gap-4 rounded-lg border border-border bg-surface p-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Field label={tc('currency')} value={revision.currencyCode} />
-        <Field
-          label={t('effectiveFrom')}
-          value={formatDate(revision.effectiveFrom, locale) ?? tc('notAvailable')}
-        />
-        <Field
-          label={t('expectedDelivery')}
-          value={formatDate(revision.expectedDeliveryDate, locale) ?? tc('notAvailable')}
-        />
-        <Field label={t('deliveryAddress')} value={revision.deliveryAddress ?? tc('notAvailable')} />
-        {revision.reason ? <Field label={t('reason')} value={revision.reason} /> : null}
+      {/* Revision metadata — gap-px tile grid */}
+      <dl className="grid gap-px overflow-hidden rounded-xl border border-border bg-border shadow-[var(--shadow-panel)] sm:grid-cols-2 lg:grid-cols-4">
+        <div className="bg-surface px-5 py-4">
+          <dt className="text-xs font-medium text-muted-foreground">{tc('currency')}</dt>
+          <dd className="mt-1.5 text-sm font-semibold tabular-nums text-foreground">
+            {revision.currencyCode}
+          </dd>
+        </div>
+        <div className="bg-surface px-5 py-4">
+          <dt className="text-xs font-medium text-muted-foreground">{t('effectiveFrom')}</dt>
+          <dd className="mt-1.5 text-sm font-semibold text-foreground">
+            {formatDate(revision.effectiveFrom, locale) ?? tc('notAvailable')}
+          </dd>
+        </div>
+        <div className="bg-surface px-5 py-4">
+          <dt className="text-xs font-medium text-muted-foreground">{t('expectedDelivery')}</dt>
+          <dd className="mt-1.5 text-sm font-semibold text-foreground">
+            {formatDate(revision.expectedDeliveryDate, locale) ?? tc('notAvailable')}
+          </dd>
+        </div>
+        <div className="bg-surface px-5 py-4">
+          <dt className="text-xs font-medium text-muted-foreground">{t('deliveryAddress')}</dt>
+          <dd className="mt-1.5 truncate text-sm font-semibold text-foreground">
+            {revision.deliveryAddress ?? tc('notAvailable')}
+          </dd>
+        </div>
+        {revision.reason ? (
+          <div className="bg-surface px-5 py-4 sm:col-span-2">
+            <dt className="text-xs font-medium text-muted-foreground">{t('reason')}</dt>
+            <dd className="mt-1.5 text-sm font-semibold text-foreground">{revision.reason}</dd>
+          </div>
+        ) : null}
         {revision.approvedAt ? (
-          <Field
-            label={t('approve')}
-            value={formatDate(revision.approvedAt, locale) ?? tc('notAvailable')}
-          />
+          <div className="bg-surface px-5 py-4">
+            <dt className="text-xs font-medium text-muted-foreground">{t('approve')}</dt>
+            <dd className="mt-1.5 text-sm font-semibold text-foreground">
+              {formatDate(revision.approvedAt, locale) ?? tc('notAvailable')}
+            </dd>
+          </div>
         ) : null}
       </dl>
 
-      <TableScroll aria-label={t('detailTitle', { number: revision.revisionNumber })}>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="text-end">{tc('lineNumber')}</TableHead>
-              <TableHead>{tc('type')}</TableHead>
-              <TableHead>{tc('description')}</TableHead>
-              <TableHead>{tc('uom')}</TableHead>
-              <TableHead className="text-end">{t('orderedQuantity')}</TableHead>
-              <TableHead className="text-end">{tc('unitPrice')}</TableHead>
-              <TableHead className="text-end">{t('extendedAmount')}</TableHead>
-              <TableHead>{tc('spendCategory')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {lines.map((line) => (
-              <TableRow key={line.id}>
-                <TableCell className="text-end tabular-nums">{line.lineNumber}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {tType(line.lineType)}
-                </TableCell>
-                <TableCell className="text-sm">
-                  {line.material ? (
-                    <span className="me-2 font-mono text-xs text-muted-foreground">
-                      {line.material.code}
-                    </span>
-                  ) : null}
-                  {line.description}
-                </TableCell>
-                <TableCell>
-                  <bdi className="text-sm">{line.uom?.symbol ?? line.uom?.code ?? '—'}</bdi>
-                </TableCell>
-                <TableCell className="text-end tabular-nums">
-                  {formatNumber(line.orderedQuantity, locale)}
-                </TableCell>
-                <TableCell className="text-end tabular-nums">
-                  {formatMoney(line.unitPrice, revision.currencyCode, locale)}
-                </TableCell>
-                <TableCell className="text-end font-medium tabular-nums">
-                  {formatMoney(line.extendedAmount, revision.currencyCode, locale)}
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {line.spendCategory?.name ?? tc('notAvailable')}
-                </TableCell>
+      {/* Lines table */}
+      <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
+        <div className="border-b border-border px-5 py-3 sm:px-6">
+          <h3 className="text-[13px] font-semibold text-foreground">{tc('lines')}</h3>
+        </div>
+        <TableScroll aria-label={tc('lines')}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-end">{tc('lineNumber')}</TableHead>
+                <TableHead>{tc('type')}</TableHead>
+                <TableHead>{tc('description')}</TableHead>
+                <TableHead>{tc('uom')}</TableHead>
+                <TableHead className="text-end">{t('orderedQuantity')}</TableHead>
+                <TableHead className="text-end">{tc('unitPrice')}</TableHead>
+                <TableHead className="text-end">{t('extendedAmount')}</TableHead>
+                <TableHead>{tc('spendCategory')}</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableScroll>
+            </TableHeader>
+            <TableBody>
+              {lines.map((line) => (
+                <TableRow key={line.id}>
+                  <TableCell className="text-end tabular-nums">{line.lineNumber}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {tType(line.lineType)}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {line.material ? (
+                      <span className="me-2 font-mono text-xs text-muted-foreground">
+                        {line.material.code}
+                      </span>
+                    ) : null}
+                    {line.description}
+                  </TableCell>
+                  <TableCell>
+                    <bdi className="text-sm">{line.uom?.symbol ?? line.uom?.code ?? '—'}</bdi>
+                  </TableCell>
+                  <TableCell className="text-end tabular-nums">
+                    {formatNumber(line.orderedQuantity, locale)}
+                  </TableCell>
+                  <TableCell className="text-end tabular-nums">
+                    {formatMoney(line.unitPrice, revision.currencyCode, locale)}
+                  </TableCell>
+                  <TableCell className="text-end font-medium tabular-nums">
+                    {formatMoney(line.extendedAmount, revision.currencyCode, locale)}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {line.spendCategory?.name ?? tc('notAvailable')}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableScroll>
 
-      <p className="text-end text-sm">
-        <span className="text-muted-foreground">{tc('total')}: </span>
-        <span className="font-semibold tabular-nums">
-          {formatMoney(fromMinorUnits(totalMinor, MONEY_SCALE), revision.currencyCode, locale)}
-        </span>
-      </p>
+        <div className="border-t border-border px-5 py-3 text-end sm:px-6">
+          <span className="text-sm text-muted-foreground">{tc('total')}: </span>
+          <span className="text-sm font-semibold tabular-nums">
+            {formatMoney(fromMinorUnits(totalMinor, MONEY_SCALE), revision.currencyCode, locale)}
+          </span>
+        </div>
+      </section>
     </div>
   );
 }
 
+// ─── Approve drawer ───────────────────────────────────────────────────────────
+
 /**
- * Approval drawer.
- *
  * Shows what approving will commit, and — when a revision is being superseded — what the
  * reversal actually does, which is not what §12.6 says it does (P11).
  */
@@ -398,13 +479,22 @@ function ApproveDrawer({
   );
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+// ─── Icons ────────────────────────────────────────────────────────────────────
+
+function ChevronStartIcon() {
   return (
-    <div className="min-w-0">
-      <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </dt>
-      <dd className="mt-1 truncate text-sm text-foreground">{value}</dd>
-    </div>
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M15 18l-6-6 6-6" />
+    </svg>
   );
 }

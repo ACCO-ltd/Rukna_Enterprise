@@ -168,7 +168,10 @@ async function main() {
   // ── Client ────────────────────────────────────────────────────────────────────
   step('create client');
   const client = await post('/clients', {
-    code: `CL-${RUN}`,
+    // NOTE: no `code` field. The client code is server-generated, and CreateClientDto does
+    // not declare one — sending it was a 400 (`property code should not exist`) that broke
+    // this script at step 2. Unlike a project, whose code the caller chooses, a client's is
+    // assigned. Read it off the response instead.
     name: 'Baraka Real Estate LLC',
     nameAr: 'شركة البركة للعقارات',
     taxNumber: `SO-${RUN}`,
@@ -359,6 +362,28 @@ async function main() {
   const issued = await get(`/ipc/${certificate.id}`);
   const netCertified = Number(issued.netCertified);
 
+  // A separate submitted application with no certificates is reserved for the browser
+  // certification workflow. Keeping it separate prevents issue/supersession tests from
+  // changing the effective paid certificate used by the reconciliation assertions.
+  step('create application for certification workflow');
+  const certificationIpa = await post('/ipa', {
+    contractId: contract.id,
+    periodFrom: '2026-06-01',
+    periodTo: '2026-06-30',
+    notes: `Certification workflow ${RUN}`,
+  });
+  for (const leaf of nodes.leaves) {
+    await post(`/ipa/${certificationIpa.id}/items`, {
+      boqNodeId: leaf.id,
+      cumulativeClaimed: (leaf.quantity * 0.5).toFixed(3),
+    });
+  }
+  for (const command of ['submit-for-approval', 'approve-for-submission', 'submit']) {
+    await post(`/ipa/${certificationIpa.id}/${command}`);
+  }
+  const submittedCertificationIpa = await get(`/ipa/${certificationIpa.id}`);
+  ok(submittedCertificationIpa.applicationRef ?? 'submitted');
+
   // ── Receipt ───────────────────────────────────────────────────────────────────
   step('record receipt for the net certified');
   const receipt = await post('/receipts', {
@@ -384,6 +409,7 @@ async function main() {
     client,
     contract,
     ipa: submitted,
+    certificationIpa: submittedCertificationIpa,
     certificate: issued,
     receipt,
     payment,
@@ -426,8 +452,20 @@ async function buildBoqTree(projectId, versionId) {
       description: 'Substructure Works',
       descriptionAr: 'أعمال الأساسات',
       items: [
-        { code: '01.01', description: 'Excavation in ordinary soil', unit: 'm³', quantity: 1200, unitRate: 45 },
-        { code: '01.02', description: 'Reinforced concrete foundations', unit: 'm³', quantity: 480, unitRate: 320 },
+        {
+          code: '01.01',
+          description: 'Excavation in ordinary soil',
+          unit: 'm³',
+          quantity: 1200,
+          unitRate: 45,
+        },
+        {
+          code: '01.02',
+          description: 'Reinforced concrete foundations',
+          unit: 'm³',
+          quantity: 480,
+          unitRate: 320,
+        },
       ],
     },
     {
@@ -435,8 +473,20 @@ async function buildBoqTree(projectId, versionId) {
       description: 'Superstructure Works',
       descriptionAr: 'أعمال الهيكل',
       items: [
-        { code: '02.01', description: 'Reinforced concrete columns', unit: 'm³', quantity: 260, unitRate: 410 },
-        { code: '02.02', description: 'Blockwork walls, 200mm', unit: 'm²', quantity: 3400, unitRate: 28 },
+        {
+          code: '02.01',
+          description: 'Reinforced concrete columns',
+          unit: 'm³',
+          quantity: 260,
+          unitRate: 410,
+        },
+        {
+          code: '02.02',
+          description: 'Blockwork walls, 200mm',
+          unit: 'm²',
+          quantity: 3400,
+          unitRate: 28,
+        },
       ],
     },
   ];
@@ -480,7 +530,9 @@ function summarize(s) {
   console.log(`  Client       ${s.client.code}  ${s.client.name}`);
   console.log(`  Contract     ${s.contract.contractNumber}  (ACTIVE)`);
   console.log(`  Application  ${s.ipa.applicationRef ?? s.ipa.id}  (${s.ipa.status})`);
-  console.log(`  Certificate  ${s.certificate.certificateRef ?? s.certificate.id}  (${s.certificate.status})`);
+  console.log(
+    `  Certificate  ${s.certificate.certificateRef ?? s.certificate.id}  (${s.certificate.status})`,
+  );
   console.log(`  Receipt      ${s.receipt.reference}  ${s.receipt.amount} ${s.receipt.currency}\n`);
   console.log(`  Gross certified   ${s.certificate.totalCertifiedAmount} USD`);
   console.log(`  Deductions        ${s.certificate.totalDeductions} USD`);
@@ -529,7 +581,7 @@ function parseArgs(argv) {
  * CLI entry. Only runs when this file is executed directly — importing it (as the
  * end-to-end suite does) must not seed a scenario as a side effect.
  */
-const isCli = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'));
+const isCli = /(?:^|[\\/])seed-scenario\.mjs$/i.test(process.argv[1] ?? '');
 
 if (isCli) {
   main().catch((error) => {

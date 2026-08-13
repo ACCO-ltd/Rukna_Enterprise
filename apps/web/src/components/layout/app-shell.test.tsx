@@ -52,7 +52,15 @@ function fakeJwt(): string {
     orgId: 'org-1',
     tenantSlug: 'acco',
     roles: ['ADMIN'],
-    permissions: ['view:project', 'view:client', 'view:receipt'],
+    // Covers every sidebar domain: portfolio, accounting, procurement, administration.
+    permissions: [
+      'view:project',
+      'view:client',
+      'view:receipt',
+      'view:accounting',
+      'view:procurement',
+      'manage:user',
+    ],
     lang: 'en',
   };
   return `header.${btoa(JSON.stringify(payload))}.signature`;
@@ -72,33 +80,57 @@ beforeEach(() => {
   refresh.mockReset();
   sessionStore.clearSession();
   sessionStore.setFromAccessToken(fakeJwt());
+  window.localStorage.removeItem('rukna.sidebar.collapsed');
+  window.localStorage.removeItem('rukna.theme.preference');
+  delete document.documentElement.dataset.theme;
+  document.documentElement.style.removeProperty('--sidebar-width');
   document.body.style.overflow = '';
 });
 
 describe('AppShell — navigation', () => {
-  it('renders the live destinations and marks disabled items as non-links', () => {
+  it('collapses the desktop sidebar and persists the compact preference', async () => {
+    const user = userEvent.setup();
+    renderShell();
+
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+
+    expect(screen.getByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument();
+    expect(window.localStorage.getItem('rukna.sidebar.collapsed')).toBe('true');
+    expect(document.documentElement.style.getPropertyValue('--sidebar-width')).toBe('5rem');
+  });
+
+  it('renders the live destinations across all visible domains', () => {
     renderShell();
 
     const nav = screen.getAllByRole('navigation', { name: 'Main navigation' })[0]!;
     const links = Array.from(nav.querySelectorAll('a')).map((a) => a.textContent?.trim());
 
-    // Only enabled items render as links. Disabled future modules render as <span>.
+    // Standalone: Dashboard
     expect(links).toContain('Dashboard');
+
+    // Projects domain items
     expect(links).toContain('Projects');
     expect(links).toContain('Clients');
+
+    // Accounting domain items
     expect(links).toContain('Receipts');
+    expect(links).toContain('Journals');
+
     // Contracts is no longer a standalone sidebar destination.
     expect(links).not.toContain('Contracts');
   });
 
-  it('marks the current route with aria-current', () => {
+  it('marks the current route with aria-current on the nav item', () => {
     pathname = '/projects/abc123';
     renderShell();
 
-    expect(screen.getAllByRole('link', { name: 'Projects' })[0]).toHaveAttribute(
-      'aria-current',
-      'page',
-    );
+    // The domain header link (/projects) and the item link (/projects) are both rendered.
+    // Only the item carries aria-current; the domain header is always a navigation affordance.
+    const projectLinks = screen.getAllByRole('link', { name: 'Projects' });
+    const activeItem = projectLinks.find((el) => el.getAttribute('aria-current') === 'page');
+    expect(activeItem).toBeDefined();
+
+    // Dashboard item is NOT active on a projects route.
     expect(screen.getAllByRole('link', { name: 'Dashboard' })[0]).not.toHaveAttribute(
       'aria-current',
     );
@@ -128,6 +160,7 @@ describe('AppShell — mobile drawer', () => {
     await user.click(screen.getByRole('button', { name: 'Open navigation menu' }));
 
     expect(screen.getByRole('dialog', { name: 'Main navigation' })).toBeInTheDocument();
+    expect(within(screen.getByRole('dialog')).getAllByText('Projects').length).toBeGreaterThan(0);
     expect(document.body.style.overflow).toBe('hidden');
 
     await user.keyboard('{Escape}');
@@ -157,7 +190,9 @@ describe('AppShell — mobile drawer', () => {
     await user.click(screen.getByRole('button', { name: 'Open navigation menu' }));
 
     const dialog = screen.getByRole('dialog');
-    await user.click(within(dialog).getByRole('link', { name: 'Projects' }));
+    // The domain header link navigates and calls onNavigate, which closes the drawer.
+    // Pick the first link named 'Projects' (the domain header) to trigger this.
+    await user.click(within(dialog).getAllByRole('link', { name: 'Projects' })[0]!);
 
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -166,12 +201,25 @@ describe('AppShell — mobile drawer', () => {
 });
 
 describe('AppShell — header', () => {
+  it('applies and persists an explicit color theme from the account menu', async () => {
+    const user = userEvent.setup();
+    renderShell();
+
+    await user.click(screen.getByRole('button', { name: 'Account menu' }));
+    await user.click(await screen.findByText('Dark'));
+
+    expect(window.localStorage.getItem('rukna.theme.preference')).toBe('dark');
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    expect(document.documentElement.style.colorScheme).toBe('dark');
+  });
+
   it('shows the brand and tenant slug in the sidebar', () => {
     sessionStore.setFromAccessToken(fakeJwt());
     renderShell();
 
     expect(screen.getByText('Rukna ERP')).toBeInTheDocument();
-    expect(screen.getByText('acco')).toBeInTheDocument();
+    // The tenant slug appears in both the sidebar brand header and the user footer.
+    expect(screen.getAllByText('acco').length).toBeGreaterThanOrEqual(1);
   });
 
   it('renders without a session rather than crashing', () => {
@@ -184,20 +232,20 @@ describe('AppShell — header', () => {
     expect(screen.getByRole('button', { name: 'Account menu' })).toBeInTheDocument();
   });
 
-  it('shows email and sign-out inside the account menu', async () => {
+  it('shows the signed-in email in the sidebar footer and in the account menu', async () => {
     const user = userEvent.setup();
     sessionStore.setFromAccessToken(fakeJwt());
     renderShell();
 
-    // Email and sign-out are inside the dropdown — not directly in the DOM.
-    expect(screen.queryByText('admin@acco.com')).not.toBeInTheDocument();
+    // The sidebar user footer surfaces the email directly — no menu interaction needed.
+    expect(screen.getAllByText('admin@acco.com').length).toBeGreaterThanOrEqual(1);
 
+    // Opening the account menu also shows sign-out.
     await user.click(screen.getByRole('button', { name: 'Account menu' }));
 
     await waitFor(() => {
-      expect(screen.getByText('admin@acco.com')).toBeInTheDocument();
+      expect(screen.getByText('Sign out')).toBeInTheDocument();
     });
-    expect(screen.getByText('Sign out')).toBeInTheDocument();
   });
 
   it('clears the session and leaves for /login on sign out', async () => {

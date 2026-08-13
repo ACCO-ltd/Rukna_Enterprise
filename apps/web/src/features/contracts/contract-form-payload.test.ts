@@ -115,6 +115,7 @@ describe('toContractFormValues', () => {
       contractValue: '4500000.00',
       currency: 'USD',
       billingModel: BillingModel.MEASURED_IPC,
+      contractKind: 'CLIENT_CONTRACT' as const,
       status: 'DRAFT' as Contract['status'],
       clientNameSnapshot: null,
       clientTaxSnapshot: null,

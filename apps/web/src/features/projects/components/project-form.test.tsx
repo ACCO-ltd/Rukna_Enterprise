@@ -13,10 +13,20 @@ vi.mock('@/features/projects/api/projects-api', () => ({
   listProjects: vi.fn(),
 }));
 
+// Mutable so individual tests can set ?clientId= before rendering.
+let mockSearchParams = new URLSearchParams();
+
+vi.mock('@/features/clients/hooks/use-clients', () => ({
+  useClients: () => ({
+    data: [{ id: 'client-1', name: 'Baraka Real Estate', status: 'ACTIVE' }],
+    isPending: false,
+  }),
+}));
+
 const push = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push, refresh: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => mockSearchParams,
   usePathname: () => '/projects/new',
 }));
 
@@ -32,66 +42,92 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-
 function renderForm() {
   return renderWithProviders(<ProjectForm />);
+}
+
+// ── Wizard navigation helpers ──────────────────────────────────────────────────
+
+async function fillStep1(
+  user: ReturnType<typeof userEvent.setup>,
+  {
+    name = 'Tower',
+    clientValue = 'client-1',
+    location,
+  }: { name?: string; clientValue?: string; location?: string } = {},
+) {
+  // getByLabelText uses raw textContent which includes the aria-hidden asterisk on
+  // required fields; getByRole uses the ARIA accessible-name algorithm which excludes it.
+  await user.type(screen.getByRole('textbox', { name: /^project name/i }), name);
+  await user.selectOptions(screen.getByRole('combobox', { name: /^client/i }), clientValue);
+  if (location) await user.type(screen.getByLabelText('Location'), location);
+}
+
+async function goToStep2(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+}
+
+async function fillStep2(
+  user: ReturnType<typeof userEvent.setup>,
+  {
+    startDate,
+    endDate,
+    description,
+  }: { startDate?: string; endDate?: string; description?: string } = {},
+) {
+  if (startDate) await user.type(screen.getByLabelText('Start date'), startDate);
+  if (endDate) await user.type(screen.getByLabelText('Expected completion'), endDate);
+  if (description) await user.type(screen.getByLabelText('Description'), description);
+}
+
+async function goToStep3(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: 'Review & create' }));
+}
+
+async function submitWizard(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: 'Create project' }));
 }
 
 beforeEach(() => {
   push.mockReset();
   vi.mocked(createProject).mockReset();
+  mockSearchParams = new URLSearchParams();
 });
 
+// ── Validation ────────────────────────────────────────────────────────────────
+
 describe('ProjectForm — validation', () => {
-  it('does not submit an empty form', async () => {
+  it('validates step 1 fields when Next is clicked on an empty form', async () => {
     const user = userEvent.setup();
     renderForm();
 
-    await user.click(screen.getByRole('button', { name: 'Create project' }));
+    await user.click(screen.getByRole('button', { name: 'Next' }));
 
-    expect(await screen.findByText('Enter a project code')).toBeInTheDocument();
     expect(screen.getByText('Enter a project name')).toBeInTheDocument();
+    expect(screen.getByText('Select a client')).toBeInTheDocument();
     expect(createProject).not.toHaveBeenCalled();
   });
 
-  it('rejects a code longer than the column allows', async () => {
+  it('requires a client before advancing from step 1', async () => {
     const user = userEvent.setup();
     renderForm();
 
-    await user.type(screen.getByLabelText('Project code'), 'A'.repeat(31));
-    await user.type(screen.getByLabelText('Project name'), 'Tower');
-    await user.click(screen.getByRole('button', { name: 'Create project' }));
+    await user.type(screen.getByRole('textbox', { name: /^project name/i }), 'Tower');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
 
-    expect(await screen.findByText('Project code cannot exceed 30 characters')).toBeInTheDocument();
+    expect(await screen.findByText('Select a client')).toBeInTheDocument();
     expect(createProject).not.toHaveBeenCalled();
   });
 
-  it('rejects a contract value with more than two decimal places', async () => {
-    const user = userEvent.setup();
-    renderForm();
-
-    await user.type(screen.getByLabelText('Project code'), 'ACCO-1');
-    await user.type(screen.getByLabelText('Project name'), 'Tower');
-    await user.type(screen.getByLabelText('Contract value'), '100.999');
-    await user.click(screen.getByRole('button', { name: 'Create project' }));
-
-    expect(
-      await screen.findByText('Contract value can have at most 2 decimal places'),
-    ).toBeInTheDocument();
-    expect(createProject).not.toHaveBeenCalled();
-  });
-
-  // The server does not check this, and a completion date before the start date would
-  // quietly misreport the programme.
   it('rejects a completion date before the start date', async () => {
     const user = userEvent.setup();
     renderForm();
 
-    await user.type(screen.getByLabelText('Project code'), 'ACCO-1');
-    await user.type(screen.getByLabelText('Project name'), 'Tower');
-    await user.type(screen.getByLabelText('Start date'), '2028-03-31');
-    await user.type(screen.getByLabelText('Expected completion'), '2026-09-01');
-    await user.click(screen.getByRole('button', { name: 'Create project' }));
+    await fillStep1(user);
+    await goToStep2(user);
+
+    await fillStep2(user, { startDate: '2028-03-31', endDate: '2026-09-01' });
+    await goToStep3(user);
 
     expect(
       await screen.findByText('Expected completion cannot be before the start date'),
@@ -100,6 +136,8 @@ describe('ProjectForm — validation', () => {
   });
 });
 
+// ── Submission ────────────────────────────────────────────────────────────────
+
 describe('ProjectForm — submission', () => {
   it('sends a minimal payload and navigates to the created project', async () => {
     const user = userEvent.setup();
@@ -107,18 +145,21 @@ describe('ProjectForm — submission', () => {
 
     renderForm();
 
-    await user.type(screen.getByLabelText('Project code'), 'ACCO-2026-001');
-    await user.type(screen.getByLabelText('Project name'), 'Al-Baraka Tower');
-    await user.click(screen.getByRole('button', { name: 'Create project' }));
+    await fillStep1(user, { name: 'Al-Baraka Tower' });
+    await goToStep2(user);
+    await goToStep3(user);
+    await submitWizard(user);
 
     await waitFor(() => {
       expect(createProject).toHaveBeenCalledWith({
-        code: 'ACCO-2026-001',
         name: 'Al-Baraka Tower',
+        commercialModel: 'CLIENT_CONTRACT',
+        participationModel: 'SOLE',
+        clientId: 'client-1',
       });
     });
     await waitFor(() => {
-      expect(push).toHaveBeenCalledWith('/projects/p1');
+      expect(push).toHaveBeenCalledWith('/projects/p1?created=1');
     });
   });
 
@@ -128,60 +169,77 @@ describe('ProjectForm — submission', () => {
 
     renderForm();
 
-    await user.type(screen.getByLabelText('Project code'), 'ACCO-1');
-    await user.type(screen.getByLabelText('Project name'), 'Tower');
-    await user.type(screen.getByLabelText('Client'), 'Baraka Real Estate');
-    await user.type(screen.getByLabelText('Contract value'), '4500000.00');
-    await user.selectOptions(screen.getByLabelText('Currency'), 'USD');
-    await user.click(screen.getByRole('button', { name: 'Create project' }));
+    await fillStep1(user, { location: 'Mogadishu' });
+    await goToStep2(user);
+    await fillStep2(user, { startDate: '2026-09-01', description: 'Mixed-use tower' });
+    await goToStep3(user);
+    await submitWizard(user);
 
     await waitFor(() => {
       expect(createProject).toHaveBeenCalledWith({
-        code: 'ACCO-1',
         name: 'Tower',
-        clientName: 'Baraka Real Estate',
-        contractValue: 4500000,
-        currency: 'USD',
+        commercialModel: 'CLIENT_CONTRACT',
+        participationModel: 'SOLE',
+        clientId: 'client-1',
+        description: 'Mixed-use tower',
+        location: 'Mogadishu',
+        startDate: '2026-09-01',
       });
     });
-  });
-
-  it('explains a duplicate code rather than showing a generic failure', async () => {
-    const user = userEvent.setup();
-    vi.mocked(createProject).mockRejectedValue(
-      new ApiError(409, "Project code 'ACCO-1' already exists", 'CONFLICT'),
-    );
-
-    renderForm();
-
-    await user.type(screen.getByLabelText('Project code'), 'ACCO-1');
-    await user.type(screen.getByLabelText('Project name'), 'Tower');
-    await user.click(screen.getByRole('button', { name: 'Create project' }));
-
-    expect(
-      await screen.findByText('A project with this code already exists.'),
-    ).toBeInTheDocument();
-    expect(push).not.toHaveBeenCalled();
   });
 
   it('lists server validation messages individually', async () => {
     const user = userEvent.setup();
     vi.mocked(createProject).mockRejectedValue(
       new ApiError(400, 'invalid', 'INTERNAL_ERROR', [
-        'code must be shorter than or equal to 30 characters',
         'name should not be empty',
       ]),
     );
 
     renderForm();
 
-    await user.type(screen.getByLabelText('Project code'), 'ACCO-1');
-    await user.type(screen.getByLabelText('Project name'), 'Tower');
-    await user.click(screen.getByRole('button', { name: 'Create project' }));
+    await fillStep1(user);
+    await goToStep2(user);
+    await goToStep3(user);
+    await submitWizard(user);
 
     expect(await screen.findByText('name should not be empty')).toBeInTheDocument();
+  });
+});
+
+// ── Client preselection ────────────────────────────────────────────────────────
+
+describe('ProjectForm — client preselection', () => {
+  it('shows an error when the clientId param references an unknown client', async () => {
+    mockSearchParams = new URLSearchParams({ clientId: 'unknown-xyz' });
+    renderForm();
+
+    // The wizard should not render at all — just the error alert.
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
     expect(
-      screen.getByText('code must be shorter than or equal to 30 characters'),
+      screen.getByText(
+        'The client in the URL was not found. It may have been deactivated or does not exist.',
+      ),
     ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Next' })).not.toBeInTheDocument();
+  });
+
+  it('preselects and locks the client when a valid clientId param is provided', async () => {
+    const user = userEvent.setup();
+    vi.mocked(createProject).mockResolvedValue({ id: 'p1' } as never);
+    mockSearchParams = new URLSearchParams({ clientId: 'client-1' });
+
+    renderForm();
+
+    // The client field should be a locked read-only input, not a select.
+    const clientInput = await screen.findByDisplayValue('Baraka Real Estate');
+    expect(clientInput).toHaveAttribute('readonly');
+
+    // User can advance without selecting a client from a dropdown.
+    await user.type(screen.getByRole('textbox', { name: /^project name/i }), 'Tower');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    // Step 2 should be shown.
+    expect(screen.getByLabelText('Start date')).toBeInTheDocument();
   });
 });

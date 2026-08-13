@@ -84,7 +84,7 @@ export function ContractsList({ projectId }: ContractsListProps = {}) {
         <p className="mt-1 text-sm text-muted-foreground">{t('emptyHint')}</p>
         <div className="mt-4">
           <Button asChild>
-            <Link href="/contracts/new">{t('newContract')}</Link>
+            <Link href={projectId ? `/contracts/new?projectId=${projectId}` : '/contracts/new'}>{t('newContract')}</Link>
           </Button>
         </div>
       </div>
@@ -94,8 +94,8 @@ export function ContractsList({ projectId }: ContractsListProps = {}) {
   const hasFilters = search.trim() !== '' || status !== 'ALL';
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+    <div className="space-y-5">
+      <div className="grid gap-3 rounded-lg border border-border bg-surface p-4 shadow-sm sm:grid-cols-[1fr_15rem]">
         <div>
           <Label htmlFor="contract-search" className="sr-only">
             {t('searchLabel')}
@@ -136,7 +136,7 @@ export function ContractsList({ projectId }: ContractsListProps = {}) {
         {t('countLabel', { count: visible.length })}
       </p>
 
-      <TableScroll aria-label={t('title')}>
+      <TableScroll aria-label={t('title')} className="rounded-lg border-border shadow-sm">
         <Table>
           <TableHeader>
             <TableRow>
@@ -186,13 +186,13 @@ function ContractRow({ contract, locale }: { contract: Contract; locale: 'en' | 
   const unset = <span className="text-muted-foreground">{t('notSet')}</span>;
 
   return (
-    <TableRow>
+    <TableRow className="group hover:bg-brand-active-subtle/60">
       <TableCell className="whitespace-nowrap">
         {/* The link sits on the number, not the row: a clickable <tr> is unreachable by
             keyboard and breaks the table semantics screen readers rely on. */}
         <Link
           href={`/contracts/${contract.id}`}
-          className="-my-3 flex min-h-11 items-center font-mono text-xs font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+          className="-my-3 flex min-h-11 items-center font-mono text-xs font-semibold text-brand-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
         >
           {contract.contractNumber}
         </Link>

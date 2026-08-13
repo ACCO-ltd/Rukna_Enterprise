@@ -16,11 +16,15 @@ import type { Project, ProjectDetail, ProjectMember } from '../types';
  * API's: it accepts `@IsNumber` on the way in and serializes a Decimal on the way out.
  */
 export interface CreateProjectPayload {
-  code: string;
+  code?: string;
   name: string;
   nameAr?: string;
   description?: string;
   clientName?: string;
+  clientId?: string;
+  commercialModel?: 'CLIENT_CONTRACT' | 'INTERNAL_CAPITAL';
+  participationModel?: 'SOLE' | 'JOINT_VENTURE';
+  location?: string;
   contractValue?: number;
   currency?: string;
   startDate?: string;
@@ -69,6 +73,8 @@ export interface UpdateProjectPayload {
   nameAr?: string | null;
   description?: string | null;
   clientName?: string | null;
+  clientId?: string | null;
+  location?: string | null;
   contractValue?: number | null;
   currency?: string | null;
   startDate?: string | null;

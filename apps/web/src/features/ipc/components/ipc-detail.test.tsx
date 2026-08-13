@@ -68,6 +68,7 @@ function contract(): ContractDetail {
     contractValue: '1000000.00',
     currency: 'USD',
     billingModel: BillingModel.MEASURED_IPC,
+    contractKind: 'CLIENT_CONTRACT' as const,
     status: ContractStatus.ACTIVE,
     clientNameSnapshot: 'Baraka Real Estate LLC',
     clientTaxSnapshot: 'SO-123456',

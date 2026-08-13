@@ -65,12 +65,12 @@ export function MrList() {
 
   return (
     <div className="space-y-6">
+      {/* ── Page header ───────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
           <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
         </div>
-
         {can(PROCUREMENT_PERMISSIONS.createRequest) ? (
           <Button asChild>
             <Link href="/procurement/requests/new">{t('new')}</Link>
@@ -78,16 +78,20 @@ export function MrList() {
         ) : null}
       </div>
 
+      {/* ── Filters ───────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap gap-4">
         <div className="min-w-44 flex-1">
-          <label htmlFor={ids.status} className="mb-1 block text-xs font-medium text-muted-foreground">
+          <label
+            htmlFor={ids.status}
+            className="mb-1 block text-xs font-medium text-muted-foreground"
+          >
             {tc('status')}
           </label>
           <select
             id={ids.status}
             value={status}
             onChange={(e) => setStatus(e.target.value as MaterialRequestStatus | '')}
-            className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"
+            className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
           >
             <option value="">{tc('all')}</option>
             {STATUSES.map((s) => (
@@ -99,14 +103,17 @@ export function MrList() {
         </div>
 
         <div className="min-w-44 flex-1">
-          <label htmlFor={ids.scope} className="mb-1 block text-xs font-medium text-muted-foreground">
+          <label
+            htmlFor={ids.scope}
+            className="mb-1 block text-xs font-medium text-muted-foreground"
+          >
             {t('scope')}
           </label>
           <select
             id={ids.scope}
             value={scope}
             onChange={(e) => setScope(e.target.value as MaterialRequestScope | '')}
-            className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"
+            className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
           >
             <option value="">{tc('all')}</option>
             <option value="PROJECT">{t('scopeProject')}</option>
@@ -115,14 +122,17 @@ export function MrList() {
         </div>
 
         <div className="min-w-44 flex-1">
-          <label htmlFor={ids.project} className="mb-1 block text-xs font-medium text-muted-foreground">
+          <label
+            htmlFor={ids.project}
+            className="mb-1 block text-xs font-medium text-muted-foreground"
+          >
             {tc('project')}
           </label>
           <select
             id={ids.project}
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
-            className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"
+            className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
           >
             <option value="">{tc('all')}</option>
             {(projects.data ?? []).map((p) => (
@@ -134,59 +144,104 @@ export function MrList() {
         </div>
       </div>
 
+      {/* ── Error state ────────────────────────────────────────────────────── */}
       {requests.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
 
-      <TableScroll aria-label={t('title')}>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('number')}</TableHead>
-              <TableHead>{t('scope')}</TableHead>
-              <TableHead>{tc('project')}</TableHead>
-              <TableHead>{t('requestedDate')}</TableHead>
-              <TableHead>{t('requiredBy')}</TableHead>
-              <TableHead className="text-end">{tc('lines')}</TableHead>
-              <TableHead>{tc('status')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(requests.data ?? []).length === 0 ? (
-              <TableEmpty colSpan={7}>{t('empty')}</TableEmpty>
-            ) : (
-              (requests.data ?? []).map((mr) => (
-                <TableRow key={mr.id}>
-                  <TableCell>
-                    <Link
-                      href={`/procurement/requests/${mr.id}`}
-                      className="font-mono text-xs font-medium text-brand-primary underline-offset-2 hover:underline"
-                    >
-                      {mr.mrNumber}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {mr.requestScope === 'PROJECT' ? t('scopeProject') : t('scopeOrganization')}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {projectName(mr.projectId) ?? tc('notAvailable')}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    <bdi>{formatDate(mr.requestedDate, locale) ?? tc('notAvailable')}</bdi>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    <bdi>{formatDate(mr.requiredByDate, locale) ?? tc('notAvailable')}</bdi>
-                  </TableCell>
-                  <TableCell className="text-end text-sm tabular-nums text-muted-foreground">
-                    {mr.lines?.length ?? 0}
-                  </TableCell>
-                  <TableCell>
-                    <ProcurementStatusBadge status={mr.status} />
-                  </TableCell>
+      {/* ── Loading skeleton ───────────────────────────────────────────────── */}
+      {requests.isPending ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]"
+        >
+          <div className="border-b border-border px-5 py-3 sm:px-6">
+            <div className="h-3.5 w-28 animate-pulse rounded bg-muted" aria-hidden="true" />
+          </div>
+          <div className="divide-y divide-border">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="flex items-center gap-4 px-5 py-4 sm:px-6" aria-hidden="true">
+                <div className="h-3 w-20 animate-pulse rounded bg-muted" />
+                <div className="h-3 flex-1 animate-pulse rounded bg-muted" />
+                <div className="h-5 w-16 animate-pulse rounded-full bg-muted" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        /* ── Requests table ─────────────────────────────────────────────── */
+        <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
+          <div className="flex items-center justify-between border-b border-border px-5 py-3 sm:px-6">
+            <h2 className="text-[13px] font-semibold text-foreground">{t('title')}</h2>
+            {requests.data && requests.data.length > 0 ? (
+              <span className="text-xs text-muted-foreground">
+                {requests.data.length}
+              </span>
+            ) : null}
+          </div>
+
+          <TableScroll aria-label={t('title')}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('number')}</TableHead>
+                  <TableHead>{tc('description')}</TableHead>
+                  <TableHead>{tc('project')}</TableHead>
+                  <TableHead>{t('requestedDate')}</TableHead>
+                  <TableHead>{t('requiredBy')}</TableHead>
+                  <TableHead className="text-end">{tc('lines')}</TableHead>
+                  <TableHead>{tc('status')}</TableHead>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableScroll>
+              </TableHeader>
+              <TableBody>
+                {(requests.data ?? []).length === 0 ? (
+                  <TableEmpty colSpan={7}>{t('empty')}</TableEmpty>
+                ) : (
+                  (requests.data ?? []).map((mr) => (
+                    <TableRow key={mr.id}>
+                      <TableCell>
+                        <Link
+                          href={`/procurement/requests/${mr.id}`}
+                          className="font-mono text-xs font-semibold text-brand-primary underline-offset-2 hover:underline"
+                        >
+                          {mr.mrNumber}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="max-w-[18rem]">
+                        {mr.description ? (
+                          <span className="block truncate text-sm text-foreground">
+                            {mr.description}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">
+                            {mr.requestScope === 'PROJECT'
+                              ? t('scopeProject')
+                              : t('scopeOrganization')}
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {projectName(mr.projectId) ?? tc('notAvailable')}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        <bdi>{formatDate(mr.requestedDate, locale) ?? tc('notAvailable')}</bdi>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        <bdi>{formatDate(mr.requiredByDate, locale) ?? tc('notAvailable')}</bdi>
+                      </TableCell>
+                      <TableCell className="text-end text-sm tabular-nums text-muted-foreground">
+                        {mr.lines?.length ?? 0}
+                      </TableCell>
+                      <TableCell>
+                        <ProcurementStatusBadge status={mr.status} />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableScroll>
+        </section>
+      )}
     </div>
   );
 }

@@ -4,8 +4,8 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
-import { Project } from '@prisma/client';
-import type { RequestIdentity } from '@erp/types';
+import { CommercialModel, ParticipationModel, Project } from '@prisma/client';
+import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
@@ -55,14 +55,24 @@ export class ProjectService {
 
   // ─── Queries ─────────────────────────────────────────────────────────────────
 
-  async findAll(identity: RequestIdentity, status?: string): Promise<Project[]> {
+  async findAll(identity: RequestIdentity, status?: string) {
     const prisma = this.tenancyService.getClient();
-    return this.repo.findAll(
+    const projects = await this.repo.findAll(
       prisma,
       identity.activeOrganizationId,
       status,
       this.projectAccess.scopedUserId(identity),
     );
+    const mayViewFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
+    return projects.map(({ members, suspensions, contracts, ...project }) => ({
+      ...project,
+      projectManager: members[0]
+        ? `${members[0].user.firstName} ${members[0].user.lastName}`.trim()
+        : null,
+      isSuspended: suspensions.length > 0,
+      contractValue: mayViewFinancials ? (contracts[0]?.contractValue ?? null) : null,
+      currency: mayViewFinancials ? (contracts[0]?.currency ?? null) : null,
+    }));
   }
 
   async findOne(identity: RequestIdentity, id: string): Promise<ProjectFull> {
@@ -78,20 +88,36 @@ export class ProjectService {
   async create(identity: RequestIdentity, dto: CreateProjectDto): Promise<Project> {
     const prisma = this.tenancyService.getClient();
 
-    const duplicate = await this.repo.findByCode(prisma, identity.activeOrganizationId, dto.code);
-    if (duplicate) throw new ConflictException(`Project code '${dto.code}' already exists`);
+    if (dto.code) {
+      const duplicate = await this.repo.findByCode(prisma, identity.activeOrganizationId, dto.code);
+      if (duplicate) throw new ConflictException(`Project code '${dto.code}' already exists`);
+    }
 
     return prisma.$transaction(async (tx) => {
+      const commercialModel = dto.commercialModel ?? CommercialModel.CLIENT_CONTRACT;
+      const participationModel = dto.participationModel ?? ParticipationModel.SOLE;
+      if (commercialModel === CommercialModel.CLIENT_CONTRACT && !dto.clientId) {
+        throw new BadRequestException('A client is required for a client contract project');
+      }
+      if (commercialModel === CommercialModel.INTERNAL_CAPITAL && dto.clientId) {
+        throw new BadRequestException('An internal capital project cannot reference a client');
+      }
+
       const client = dto.clientId
         ? await tx.client.findFirst({
             where: { id: dto.clientId, organizationId: identity.activeOrganizationId },
           })
         : null;
       if (dto.clientId && !client) throw new NotFoundException(`Client ${dto.clientId} not found`);
+      if (client?.status === 'INACTIVE') {
+        throw new BadRequestException('Inactive clients cannot be assigned to new projects');
+      }
+
+      const code = dto.code ?? await this.repo.allocateCode(tx, identity.activeOrganizationId, new Date().getUTCFullYear());
 
       const project = await this.repo.create(tx, {
         organizationId: identity.activeOrganizationId,
-        code: dto.code,
+        code,
         name: dto.name,
         nameAr: dto.nameAr,
         description: dto.description,
@@ -99,6 +125,8 @@ export class ProjectService {
         clientId: dto.clientId,
         clientName: client?.name ?? dto.clientName,
         location: dto.location,
+        commercialModel,
+        participationModel,
         contractValue: dto.contractValue,
         currency: dto.currency,
         startDate: dto.startDate ? new Date(dto.startDate) : undefined,
@@ -151,6 +179,13 @@ export class ProjectService {
       ? await prisma.client.findFirst({ where: { id: dto.clientId, organizationId: identity.activeOrganizationId } })
       : null;
     if (dto.clientId && !client) throw new NotFoundException(`Client ${dto.clientId} not found`);
+
+    if (project.commercialModel === CommercialModel.INTERNAL_CAPITAL && dto.clientId) {
+      throw new BadRequestException('An internal capital project cannot reference a client');
+    }
+    if (client?.status === 'INACTIVE') {
+      throw new BadRequestException('Inactive clients cannot be assigned to projects');
+    }
 
     return this.repo.update(prisma, id, {
       name: dto.name,

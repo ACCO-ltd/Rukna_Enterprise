@@ -3,7 +3,15 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Button } from '@erp/ui';
+import { DotsThree, PencilSimple } from '@phosphor-icons/react';
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@erp/ui';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { ApiError } from '@/lib/api-client';
@@ -87,7 +95,10 @@ export function ProjectActionsPanel({ project }: { project: ProjectDetail }) {
 
         {actions.canEdit ? (
           <Button variant="outline" asChild>
-            <Link href={`/projects/${project.id}/edit`}>{t('edit')}</Link>
+            <Link href={`/projects/${project.id}/edit`} className="gap-2">
+              <PencilSimple size={16} aria-hidden="true" />
+              {t('edit')}
+            </Link>
           </Button>
         ) : null}
 
@@ -103,26 +114,27 @@ export function ProjectActionsPanel({ project }: { project: ProjectDetail }) {
           </Button>
         ) : null}
 
-        {actions.canSuspend ? (
-          <Button
-            variant="outline"
-            onClick={() => {
-              setPending({ kind: 'suspend' });
-            }}
-          >
-            {t('suspend')}
-          </Button>
-        ) : null}
-
-        {actions.canCancel ? (
-          <Button
-            variant="destructive"
-            onClick={() => {
-              setPending({ kind: 'cancel' });
-            }}
-          >
-            {t('cancel')}
-          </Button>
+        {(actions.canSuspend || actions.canCancel) ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" aria-label={t('more')} title={t('more')}>
+                <DotsThree size={20} weight="bold" aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {actions.canSuspend ? (
+                <DropdownMenuItem onSelect={() => setPending({ kind: 'suspend' })}>
+                  {t('suspend')}
+                </DropdownMenuItem>
+              ) : null}
+              {actions.canSuspend && actions.canCancel ? <DropdownMenuSeparator /> : null}
+              {actions.canCancel ? (
+                <DropdownMenuItem destructive onSelect={() => setPending({ kind: 'cancel' })}>
+                  {t('cancel')}
+                </DropdownMenuItem>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : null}
       </div>
 
