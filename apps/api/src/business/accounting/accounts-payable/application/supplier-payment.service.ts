@@ -16,6 +16,7 @@ import { AccountRepository } from '../../accounting-core/infrastructure/account.
 import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
 import { SupplierPaymentRepository } from '../infrastructure/supplier-payment.repository.js';
 import { SupplierBillRepository } from '../infrastructure/supplier-bill.repository.js';
+import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
 
 export interface CreateSupplierPaymentDto {
   supplierId: string;
@@ -57,6 +58,7 @@ export class SupplierPaymentService {
     private readonly sequenceRepo: DocumentSequenceRepository,
     @Inject(ACCOUNTING_POSTING_PORT)
     private readonly postingPort: IAccountingPostingPort,
+    private readonly commandGovernance: CommandGovernanceService,
   ) {}
 
   async create(identity: RequestIdentity, dto: CreateSupplierPaymentDto) {
@@ -134,6 +136,12 @@ export class SupplierPaymentService {
     if (payment.documentStatus !== 'DRAFT') {
       throw new BadRequestException(`Payment is already ${payment.documentStatus}`);
     }
+    // Governance seam (ADR-011) — the payment has no separate submit, so approval is the
+    // request transition. Backward-compatible: null when no binding is configured.
+    throwIfGated(
+      await this.commandGovernance.gateStateTransition(identity, 'SupplierPayment', 'DRAFT', 'APPROVED', paymentId),
+      'Supplier payment approval requires workflow approval.',
+    );
     return this.paymentRepo.approve(prisma, paymentId, identity.userId);
   }
 

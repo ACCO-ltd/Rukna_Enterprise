@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TenancyModule } from '../../../platform/tenancy/tenancy.module.js';
 import { AccountingCoreModule } from '../accounting-core/accounting-core.module.js';
 import { CommitmentLedgerModule } from '../../procurement/commitment-ledger/commitment-ledger.module.js';
+import { WorkflowsModule } from '../../../platform/workflows/workflows.module.js';
 import { SupplierBillRepository } from './infrastructure/supplier-bill.repository.js';
 import { SupplierPaymentRepository } from './infrastructure/supplier-payment.repository.js';
 import { SupplierRepository } from './infrastructure/supplier.repository.js';
@@ -14,7 +15,7 @@ import { SupplierController } from './presentation/supplier.controller.js';
 import { PostingProfileController } from './presentation/posting-profile.controller.js';
 
 @Module({
-  imports: [TenancyModule, AccountingCoreModule, CommitmentLedgerModule],
+  imports: [TenancyModule, AccountingCoreModule, CommitmentLedgerModule, WorkflowsModule],
   controllers: [SupplierBillController, SupplierPaymentController, SupplierController, PostingProfileController],
   providers: [
     SupplierBillRepository,

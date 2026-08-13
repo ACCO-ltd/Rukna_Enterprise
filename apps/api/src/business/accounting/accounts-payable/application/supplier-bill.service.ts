@@ -16,6 +16,7 @@ import { AccountRepository } from '../../accounting-core/infrastructure/account.
 import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
 import { SupplierBillRepository } from '../infrastructure/supplier-bill.repository.js';
 import { CommitmentLedgerWriter } from '../../../../business/procurement/commitment-ledger/application/commitment-ledger-writer.service.js';
+import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
 
 export interface CreateSupplierBillLineDto {
   description: string;
@@ -58,6 +59,7 @@ export class SupplierBillService {
     @Inject(ACCOUNTING_POSTING_PORT)
     private readonly postingPort: IAccountingPostingPort,
     private readonly commitmentWriter: CommitmentLedgerWriter,
+    private readonly commandGovernance: CommandGovernanceService,
   ) {}
 
   async create(identity: RequestIdentity, dto: CreateSupplierBillDto) {
@@ -126,6 +128,11 @@ export class SupplierBillService {
   async submit(identity: RequestIdentity, billId: string) {
     const prisma = this.tenancyService.getClient();
     const bill = await this.requireStatus(prisma, identity.activeOrganizationId, billId, 'DRAFT');
+    // Governance seam (ADR-011) — backward-compatible: null when no binding is configured.
+    throwIfGated(
+      await this.commandGovernance.gateStateTransition(identity, 'SupplierBill', 'DRAFT', 'SUBMITTED', bill.id),
+      'Supplier bill submission requires workflow approval.',
+    );
     return prisma.supplierBill.update({
       where: { id: bill.id },
       data: { documentStatus: 'SUBMITTED' },

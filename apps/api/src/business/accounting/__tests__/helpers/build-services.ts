@@ -28,6 +28,11 @@ import { SupplierPaymentService }    from '../../accounts-payable/application/su
 import { CommitmentLedgerRepository } from '../../../procurement/commitment-ledger/infrastructure/commitment-ledger.repository.js';
 import { CommitmentLedgerWriter }     from '../../../procurement/commitment-ledger/application/commitment-ledger-writer.service.js';
 
+// Workflows / governance seam (ADR-011)
+import { WorkflowTriggerResolverService } from '../../../../platform/workflows/application/workflow-trigger-resolver.service.js';
+import { WorkflowsPrismaRepository }      from '../../../../platform/workflows/infrastructure/workflows-prisma.repository.js';
+import { CommandGovernanceService }       from '../../../../platform/workflows/application/command-governance.service.js';
+
 // Phase 3
 import { SnapshotService }           from '../../general-ledger/application/snapshot.service.js';
 import { LedgerService }             from '../../general-ledger/application/ledger.service.js';
@@ -91,8 +96,12 @@ export function buildServices(prisma: PrismaClient): AccountingServices {
   const supplierBillRepo    = new SupplierBillRepository();
   const supplierPaymentRepo = new SupplierPaymentRepository();
   const commitmentWriter    = new CommitmentLedgerWriter(new CommitmentLedgerRepository());
-  const supplierBillService    = new SupplierBillService(tenancy, supplierBillRepo, accountRepo, sequenceRepo, postingService, commitmentWriter);
-  const supplierPaymentService = new SupplierPaymentService(tenancy, supplierPaymentRepo, supplierBillRepo, accountRepo, sequenceRepo, postingService);
+  const commandGovernance   = new CommandGovernanceService(
+    new WorkflowTriggerResolverService(tenancy),
+    new WorkflowsPrismaRepository(tenancy),
+  );
+  const supplierBillService    = new SupplierBillService(tenancy, supplierBillRepo, accountRepo, sequenceRepo, postingService, commitmentWriter, commandGovernance);
+  const supplierPaymentService = new SupplierPaymentService(tenancy, supplierPaymentRepo, supplierBillRepo, accountRepo, sequenceRepo, postingService, commandGovernance);
 
   // Phase 3 — GL reports and period management
   const snapshotService        = new SnapshotService(tenancy);
