@@ -20,7 +20,8 @@
     "dismiss": "Dismiss"
   },
   "formErrors": {
-    "title": "Review the following"
+    "title": "Please fix the following",
+    "fieldLink": "Go to {field}"
   },
   "language": {
     "label": "Language",
@@ -89,10 +90,6 @@
     "permissionDenied": "Access denied",
     "notFound": "Not found",
     "tryAgain": "Try again"
-  },
-  "formErrors": {
-    "title": "Please fix the following",
-    "fieldLink": "Go to {field}"
   },
   "formActions": {
     "pendingLabel": "Saving…"

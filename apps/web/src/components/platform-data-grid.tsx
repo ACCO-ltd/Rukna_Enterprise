@@ -672,7 +672,7 @@ export function PlatformDataGrid<T>({
               "2 071 350.00 outstanding" are one announcement, not two. */}
           {footerSummary ? footerSummary(visible, sorted) : null}
         </p>
-        {hasSearch ? (
+        {hasSearch && visible.length > 0 ? (
           <button
             type="button"
             onClick={() => { setSearch(''); setPage(1); }}

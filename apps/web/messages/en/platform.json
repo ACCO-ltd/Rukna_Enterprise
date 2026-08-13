@@ -3,11 +3,19 @@
     "primaryNavLabel": "Main navigation",
     "openMenu": "Open navigation menu",
     "closeMenu": "Close navigation menu",
+    "expandSidebar": "Expand sidebar",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSection": "Expand {section}",
+    "collapseSection": "Collapse {section}",
+    "helpTitle": "Need help?",
+    "helpDescription": "Contact your administrator",
     "skipToContent": "Skip to main content",
     "searchLabel": "Global search",
     "searchPlaceholder": "Search… (coming soon)",
     "attentionLabel": "Attention required",
-    "attentionNone": "No items require your attention"
+    "attentionNone": "No items require your attention",
+    "themeSwitchToLight": "Switch to light mode",
+    "themeSwitchToDark": "Switch to dark mode"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -45,6 +53,9 @@
     "supplierBills": "Supplier Bills",
     "supplierPayments": "Supplier Payments",
     "monthlyComparison": "Monthly Comparison",
+    "accountingSetup": "Setup",
+    "accountingEntry": "Transactions",
+    "financialReports": "Financial reports",
     "procurementSetup": "Setup",
     "unitsOfMeasure": "Units of Measure",
     "materialCategories": "Material Categories",
@@ -56,13 +67,18 @@
     "commitments": "Commitments",
     "suppliers": "Suppliers",
     "bankAccounts": "Bank Accounts",
-    "openingBalance": "Opening Balance"
+    "openingBalance": "Opening Balance",
+    "accountingReports": "Accounting Reports"
   },
   "user": {
     "menuLabel": "Account menu",
     "signOut": "Sign out",
     "signOutPending": "Signing out…",
-    "switchLanguage": "Language"
+    "switchLanguage": "Language",
+    "theme": "Appearance",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "themeSystem": "System"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -84,7 +100,9 @@
     "colProject": "Project",
     "colClient": "Client",
     "colStatus": "Status",
-    "colValue": "Contract value"
+    "colValue": "Contract value",
+    "kpiClients": "Clients",
+    "kpiClientsHint": "All registered clients"
   },
   "projects": {
     "title": "Projects",
@@ -138,7 +156,8 @@
       "loadingValue": "Loading...",
       "loadingProject": "Loading project",
       "loadFailedHint": "Check your connection or try loading the project again.",
-      "contractSummaryUnavailable": "The contract summary is temporarily unavailable. Other project information remains usable."
+      "contractSummaryUnavailable": "The contract summary is temporarily unavailable. Other project information remains usable.",
+      "ipc": "IPC"
     },
     "create": {
       "title": "New project",
@@ -192,8 +211,8 @@
       "contractValueDecimals": "Contract value can have at most 2 decimal places",
       "endBeforeStart": "Expected completion cannot be before the start date",
       "duplicateCode": "A project with this code already exists.",
-      "failed": "Could not create the project."
-      ,"wizard": {
+      "failed": "Could not create the project.",
+      "wizard": {
         "progress": "Project creation progress",
         "step1": "Identity",
         "step2": "Programme",
@@ -226,7 +245,33 @@
       "suspendedSince": "Suspended on {date}",
       "suspendedBlocks": "Lifecycle changes are blocked until the project is resumed.",
       "membersHeading": "Team",
-      "actionsHeading": "Actions"
+      "actionsHeading": "Actions",
+      "setup": "Project setup",
+      "setupProgress": "{done} of {total} steps complete",
+      "setupComplete": "Complete",
+      "setupBlocked": "Blocked",
+      "setupPending": "Pending",
+      "setupProject": "Project created",
+      "setupProjectDesc": "Project is created and in draft. You can still edit details.",
+      "setupBoq": "Bill of Quantities",
+      "setupBoqDesc": "Define the priced breakdown of works.",
+      "setupContract": "Main contract",
+      "setupContractDesc": "Issue the main contract against a baselined BOQ.",
+      "setupContractBlocked": "Baseline the BOQ first.",
+      "setupTeam": "Project team",
+      "setupTeamDesc": "Add the people who will work on this project.",
+      "createContract": "Create contract",
+      "addTeam": "Add team member",
+      "continueSetup": "Open BOQ",
+      "location": "Location",
+      "certifiedRevenue": "Certified Revenue",
+      "received": "Received",
+      "notAvailable": "—",
+      "certifiedRevenueHint": "IPC aggregation endpoint pending",
+      "receivedHint": "Receipt aggregation endpoint pending",
+      "overviewClient": "Client information",
+      "overviewCommercial": "Commercial",
+      "overviewSchedule": "Schedule"
     },
     "members": {
       "title": "Project team",
@@ -286,7 +331,8 @@
       "cancelReasonHint": "Recorded in the audit trail.",
       "confirm": "Confirm",
       "working": "Working...",
-      "dismiss": "Cancel"
+      "dismiss": "Cancel",
+      "more": "Actions"
     },
     "status": {
       "DRAFT": "Draft",
@@ -297,6 +343,25 @@
       "CLOSEOUT": "Closeout",
       "CLOSED": "Closed",
       "CANCELLED": "Cancelled"
+    },
+    "code": "Code",
+    "statusLabel": "Status",
+    "projectClient": "Project / client",
+    "startDate": "Start date",
+    "ipc": {
+      "comingSoon": "IPC workspace is coming soon.",
+      "heading": "Payment Applications",
+      "newApplication": "New Application",
+      "empty": "No payment applications yet",
+      "emptyHint": "Create the first application for this project.",
+      "noContract": "No active contract",
+      "noContractHint": "An active main contract is required before creating a payment application.",
+      "loadFailed": "Failed to load payment applications",
+      "unnumbered": "Draft",
+      "noPeriod": "No period set",
+      "noCertificates": "No certificate issued",
+      "issueCertificate": "Issue Certificate",
+      "supersedeCertificate": "Supersede"
     }
   },
   "boq": {
@@ -358,7 +423,7 @@
       "confirmCreateTitle": "Start a revision?",
       "confirmCreateDraft": "A new draft is created with a copy of every item in the approved version. The approved version stays in force until the new draft is baselined.",
       "notesLabel": "Notes for this revision",
-      "notesHint": "Optional. Explains why the revision was raised â€” for example a variation order reference.",
+      "notesHint": "Optional. Explains why the revision was raised — for example a variation order reference.",
       "confirmBaselineAction": "Baseline",
       "confirmCancelAction": "Discard",
       "confirmCreateAction": "Create revision"
@@ -506,7 +571,7 @@
   },
   "lifecycle": {
     "error": {
-      "workflow-not-configured": "Approval workflow not configured â€” contact your system administrator.",
+      "workflow-not-configured": "Approval workflow not configured — contact your system administrator.",
       "invalid-transition": "This record has moved on since the page was loaded. Refresh to see its current state.",
       "forbidden": "You do not have permission to perform this action.",
       "not-found": "This record no longer exists.",
@@ -515,12 +580,18 @@
     }
   },
   "clients": {
+    "noPrimaryContact": "Not assigned",
+    "balanceRestricted": "You do not have permission to view client balances.",
+    "restricted": "Restricted",
+    "projectCountShort": "{count, plural, one {# active project} other {# active projects}}",
     "title": "Clients",
     "newClient": "New client",
     "searchLabel": "Search clients",
     "searchPlaceholder": "Search by code, name or tax number",
     "filterByStatus": "Filter by status",
     "allStatuses": "All statuses",
+    "filterByType": "Filter by type",
+    "allTypes": "All types",
     "countLabel": "{count, plural, =0 {No clients} one {# client} other {# clients}}",
     "empty": "No clients yet.",
     "emptyHint": "Add the first client to get started.",
@@ -538,13 +609,39 @@
       "taxNumber": "Tax number",
       "currency": "Currency",
       "status": "Status",
-      "contact": "Primary contact"
+      "contact": "Primary contact",
+      "client": "Client",
+      "activeProjects": "Active projects",
+      "outstandingBalance": "Outstanding balance"
     },
     "notSet": "Not set",
     "detail": {
       "back": "Back to clients",
       "edit": "Edit client",
+      "more": "More actions",
+      "summary": "Client summary",
+      "activeProjects": "Active projects",
+      "outstandingBalance": "Outstanding balance",
+      "sections": "Client sections",
+      "invoices": "Invoices",
+      "receipts": "Receipts",
       "overview": "Overview",
+      "projects": "Projects",
+      "financials": "Financials",
+      "documents": "Documents",
+      "activity": "Activity",
+      "financialsEmpty": "Financial data will appear here once available.",
+      "documentsEmpty": "No documents attached to this client yet.",
+      "activityEmpty": "Activity log will appear here.",
+      "noProjects": "No projects have been created for this client yet.",
+      "projectsLoadFailed": "Could not load this client's projects.",
+      "newProject": "New project",
+      "clientType": "Client type",
+      "primaryContact": "Primary contact",
+      "phone": "Phone",
+      "email": "Email",
+      "address": "Address",
+      "notes": "Notes",
       "contacts": "Contacts",
       "taxNumber": "Tax number",
       "defaultCurrency": "Default currency",
@@ -557,13 +654,14 @@
       "deactivateBody": "An inactive client is hidden from the default list. Existing contracts and certificates are not affected.",
       "reactivateTitle": "Reactivate this client?",
       "reactivateBody": "The client will appear in the active list again.",
-      "statusChangeFailed": "Could not change the client status."
+      "statusChangeFailed": "Could not change the client status.",
+      "contactNeedsAttention": "Client created. Add the primary contact from the Contacts section below."
     },
     "contacts": {
       "heading": "Contacts",
       "add": "Add contact",
       "none": "No contacts recorded yet.",
-      "noneHint": "Add the person you deal with on this clientâ€™s side.",
+      "noneHint": "Add the person you deal with on this client’s side.",
       "primary": "Primary",
       "remove": "Remove",
       "removeTitle": "Remove this contact?",
@@ -581,12 +679,50 @@
       "save": "Add contact"
     },
     "create": {
+      "identityStep": "Client identity",
+      "contactStep": "Primary contact",
+      "progress": "Client creation progress",
+      "identityDescription": "Enter the client's name and business category.",
+      "contactDescription": "Add the main person your team communicates with.",
+      "automaticCode": "A unique client code will be assigned automatically.",
+      "namePlaceholder": "e.g. Baraka Real Estate LLC",
+      "nameHint": "Use the name that should appear on projects and contracts.",
+      "contactRole": "Job title (optional)",
+      "contactRolePlaceholder": "e.g. Commercial Director",
+      "contactRoleTooLong": "Job title cannot exceed 100 characters",
+      "contactNamePlaceholder": "e.g. Yusuf Ahmed",
+      "contactPhonePlaceholder": "e.g. +252 61 000 0000",
+      "contactEmailPlaceholder": "e.g. yusuf@company.com",
+      "additionalInformation": "Additional information",
+      "notesPlaceholder": "Add notes visible only to your organization...",
+      "notesHint": "Visible only to authorized Rukna users.",
+      "possibleDuplicate": "A client with a similar name may already exist.",
+      "openClient": "Open client",
+      "continueAnyway": "Continue anyway",
+      "next": "Continue",
+      "back": "Back",
+      "creating": "Creating client...",
+      "createdToast": "Client created",
+      "createProject": "Create project",
       "title": "New client",
       "editTitle": "Edit client",
       "code": "Client code",
       "codeHint": "Short unique reference, for example MOF-001. Cannot be changed later.",
       "name": "Name",
-      "nameAr": "Name (Arabic)",
+      "clientType": "Client type",
+      "primaryContact": "Primary contact",
+      "contactName": "Contact person",
+      "contactPhone": "Phone",
+      "contactEmail": "Email",
+      "address": "Address",
+      "notes": "Notes",
+      "clientTypes": {
+        "COMPANY": "Company",
+        "GOVERNMENT": "Government",
+        "NGO": "NGO",
+        "INDIVIDUAL": "Individual",
+        "OTHER": "Other"
+      },
       "taxNumber": "Tax number",
       "defaultCurrency": "Default currency",
       "currencyPlaceholder": "Not set",
@@ -595,11 +731,19 @@
       "nameRequired": "Enter a name",
       "nameTooLong": "Name cannot exceed 255 characters",
       "taxNumberTooLong": "Tax number cannot exceed 50 characters",
+      "contactPhoneTooLong": "Phone cannot exceed 50 characters",
+      "contactNameRequired": "Enter a contact person before adding their phone or email",
+      "contactEmailInvalid": "Enter a valid email address",
       "duplicateCode": "That client code is already in use. Choose another.",
       "submit": "Create client",
       "saveChanges": "Save changes",
       "cancel": "Cancel",
-      "failed": "Could not save the client."
+      "failed": "Could not save the client.",
+      "sectionBasic": "Basic Information",
+      "sectionContact": "Contact",
+      "sectionAddress": "Address",
+      "sectionBusiness": "Business Information",
+      "sectionAdditional": "Additional"
     }
   },
   "contracts": {
@@ -686,7 +830,7 @@
       "terminateTitle": "Terminate this contract?",
       "terminateBody": "Termination ends an active contract early and cannot be undone.",
       "terminateReason": "Reason for termination",
-      "reasonNotStored": "The API requires a reason but does not yet store it â€” keep a copy in your own records.",
+      "reasonNotStored": "The API requires a reason but does not yet store it — keep a copy in your own records.",
       "failed": "The command could not be completed."
     },
     "create": {
@@ -889,7 +1033,7 @@
       "numberedOnApproval": "An application number is assigned when it is approved for submission.",
       "frozenHint": "Lines are frozen while this application awaits internal approval. Returning it for revision reopens them.",
       "finalHint": "This application is final. Nothing about it can change.",
-      "stuckHint": "This application was returned for revision. Its lines can still be corrected, but the API does not accept a resubmission from this state â€” the only way forward is to cancel it and create a replacement. Raised with the backend as C14."
+      "stuckHint": "This application was returned for revision. Its lines can still be corrected, but the API does not accept a resubmission from this state — the only way forward is to cancel it and create a replacement. Raised with the backend as C14."
     },
     "actions": {
       "submit-for-approval": "Submit for approval",
@@ -909,15 +1053,15 @@
     "items": {
       "heading": "Claimed lines",
       "none": "No lines claimed yet.",
-      "noneHint": "Claim BOQ lines to build up this periodâ€™s valuation.",
+      "noneHint": "Claim BOQ lines to build up this period’s valuation.",
       "add": "Claim a line",
       "line": "BOQ line",
       "linePlaceholder": "Choose a line",
-      "noLines": "This contractâ€™s BOQ has no priced leaf lines to claim.",
+      "noLines": "This contract’s BOQ has no priced leaf lines to claim.",
       "allClaimed": "Every line on this BOQ is already claimed on this application.",
-      "unpriced": "no rate â€” cannot be claimed",
+      "unpriced": "no rate — cannot be claimed",
       "cumulativeClaimed": "Cumulative claimed",
-      "cumulativeHint": "The total claimed to date on this line, including this period â€” not this period alone.",
+      "cumulativeHint": "The total claimed to date on this line, including this period — not this period alone.",
       "unitRate": "Unit rate",
       "contractQuantity": "BOQ quantity",
       "previousCertified": "Previously certified",
@@ -945,8 +1089,8 @@
       "rate": "Rate",
       "rateHint": "Optional. Entering one shows the resulting amount below.",
       "amount": "Amount",
-      "computedHint": "{basis} Ã— {rate}% = {amount}",
-      "authoredHere": "The API stores this amount exactly as entered â€” it derives nothing from the contract terms. Check it against the contract before submitting.",
+      "computedHint": "{basis} × {rate}% = {amount}",
+      "authoredHere": "The API stores this amount exactly as entered — it derives nothing from the contract terms. Check it against the contract before submitting.",
       "contractRates": "Contract terms: {rates}",
       "retentionRate": "retention {rate}%",
       "recoveryRate": "advance recovery {rate}%",
@@ -1040,12 +1184,12 @@
       "exceeds-balance": "That is more than the unallocated balance on this receipt",
       "remove": "Remove",
       "removeTitle": "Remove this allocation?",
-      "removeBody": "The amount returns to the receiptâ€™s unallocated balance.",
+      "removeBody": "The amount returns to the receipt’s unallocated balance.",
       "removeFailed": "Could not remove the allocation.",
       "save": "Allocate",
       "failed": "Could not allocate the receipt.",
-      "statusCaveat": "A certificateâ€™s paid/unpaid status is not shown: the API compares payments against the gross certified total rather than the net, so a fully settled certificate never reads as paid (C7, issue #11).",
-      "currencyMismatch": "This certificate is in {certificateCurrency} but the receipt is in {receiptCurrency}. The API does not check this â€” allocate only if that is deliberate."
+      "statusCaveat": "A certificate’s paid/unpaid status is not shown: the API compares payments against the gross certified total rather than the net, so a fully settled certificate never reads as paid (C7, issue #11).",
+      "currencyMismatch": "This certificate is in {certificateCurrency} but the receipt is in {receiptCurrency}. The API does not check this — allocate only if that is deliberate."
     }
   },
   "ipc": {
@@ -1198,7 +1342,14 @@
       "noDeductionsHint": "The net certified amount is the same as the gross.",
       "superseded": "This certificate was superseded on {date}. It is a historical record and must not be paid against.",
       "supersededWithReason": "This certificate was superseded on {date} — {reason}. It is a historical record and must not be paid against.",
-      "grossMismatch": "This certificate records a gross total of {stated}, but its own lines add up to {summed}. Nothing on the server reconciles the two, so both are shown as recorded — raised as issue #12."
+      "grossMismatch": "This certificate records a gross total of {stated}, but its own lines add up to {summed}. Nothing on the server reconciles the two, so both are shown as recorded — raised as issue #12.",
+      "deductionType": {
+        "RETENTION": "Retention",
+        "ADVANCE_RECOVERY": "Advance recovery",
+        "TAX": "Tax",
+        "CONTRA": "Contra charge",
+        "OTHER": "Other"
+      }
     },
     "supersession": {
       "commandName": "Make Certificate Effective",
@@ -1238,5 +1389,20 @@
     "rejectTitle": "Reject this step?",
     "rejectBody": "This is final — nothing returns an approval to pending, and the document cannot proceed.",
     "rejectNotesHint": "Required. Nothing else will explain why the document stopped here."
+  },
+  "accountingReportsPage": {
+    "title": "Accounting Reports",
+    "subtitle": "Financial statements and ledger reports for this organisation.",
+    "trialBalance": "Trial Balance",
+    "trialBalanceDesc": "Verify that total debits equal total credits across all accounts for any period.",
+    "profitLoss": "Profit & Loss",
+    "profitLossDesc": "Revenue, costs and net result for a selected period.",
+    "balanceSheet": "Balance Sheet",
+    "balanceSheetDesc": "Assets, liabilities and equity at a point in time.",
+    "monthlyComparison": "Monthly Comparison",
+    "monthlyComparisonDesc": "Side-by-side view of income and expenses across months.",
+    "accountLedger": "Account Ledger",
+    "accountLedgerDesc": "Full transaction history for a single account with running balance.",
+    "open": "Open report"
   }
 }

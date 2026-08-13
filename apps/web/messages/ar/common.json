@@ -20,7 +20,8 @@
     "dismiss": "إغلاق"
   },
   "formErrors": {
-    "title": "راجع الحقول التالية"
+    "title": "يرجى تصحيح ما يلي",
+    "fieldLink": "الانتقال إلى {field}"
   },
   "language": {
     "label": "اللغة",
@@ -89,10 +90,6 @@
     "permissionDenied": "الوصول مرفوض",
     "notFound": "غير موجود",
     "tryAgain": "حاول مرة أخرى"
-  },
-  "formErrors": {
-    "title": "يرجى تصحيح ما يلي",
-    "fieldLink": "الانتقال إلى {field}"
   },
   "formActions": {
     "pendingLabel": "جارٍ الحفظ…"

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { ToastProvider } from '@erp/ui';
+import { ToastProvider } from '@/providers/toast-provider';
 
 import { GlobalSidebar } from './global-sidebar';
 import { TopBar } from './top-bar';

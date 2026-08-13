@@ -7,7 +7,15 @@
     "searchLabel": "البحث الشامل",
     "searchPlaceholder": "بحث… (قريباً)",
     "attentionLabel": "يحتاج إلى انتباهك",
-    "attentionNone": "لا توجد بنود تحتاج إلى انتباهك"
+    "attentionNone": "لا توجد بنود تحتاج إلى انتباهك",
+    "expandSidebar": "توسيع الشريط الجانبي",
+    "collapseSidebar": "طي الشريط الجانبي",
+    "expandSection": "توسيع {section}",
+    "collapseSection": "طي {section}",
+    "helpTitle": "تحتاج إلى مساعدة؟",
+    "helpDescription": "تواصل مع مسؤول النظام",
+    "themeSwitchToLight": "التبديل إلى الوضع الفاتح",
+    "themeSwitchToDark": "التبديل إلى الوضع الداكن"
   },
   "nav": {
     "dashboard": "لوحة التحكم",
@@ -56,13 +64,21 @@
     "commitments": "الارتباطات",
     "suppliers": "الموردون",
     "bankAccounts": "الحسابات البنكية",
-    "openingBalance": "الأرصدة الافتتاحية"
+    "openingBalance": "الأرصدة الافتتاحية",
+    "accountingSetup": "الإعداد",
+    "accountingEntry": "المعاملات",
+    "financialReports": "التقارير المالية",
+    "accountingReports": "تقارير المحاسبة"
   },
   "user": {
     "menuLabel": "قائمة الحساب",
     "signOut": "تسجيل الخروج",
     "signOutPending": "جارٍ الخروج…",
-    "switchLanguage": "اللغة"
+    "switchLanguage": "اللغة",
+    "theme": "المظهر",
+    "themeLight": "فاتح",
+    "themeDark": "داكن",
+    "themeSystem": "النظام"
   },
   "dashboard": {
     "title": "لوحة التحكم",
@@ -84,7 +100,9 @@
     "colProject": "المشروع",
     "colClient": "العميل",
     "colStatus": "الحالة",
-    "colValue": "قيمة العقد"
+    "colValue": "قيمة العقد",
+    "kpiClients": "العملاء",
+    "kpiClientsHint": "جميع العملاء المسجلين"
   },
   "projects": {
     "title": "المشاريع",
@@ -138,7 +156,8 @@
       "loadingValue": "جارٍ التحميل...",
       "loadingProject": "جارٍ تحميل المشروع",
       "loadFailedHint": "تحقق من الاتصال أو حاول تحميل المشروع مرة أخرى.",
-      "contractSummaryUnavailable": "ملخص العقد غير متاح مؤقتًا. لا تزال معلومات المشروع الأخرى متاحة."
+      "contractSummaryUnavailable": "ملخص العقد غير متاح مؤقتًا. لا تزال معلومات المشروع الأخرى متاحة.",
+      "ipc": "شهادات الدفع"
     },
     "create": {
       "title": "مشروع جديد",
@@ -192,8 +211,8 @@
       "contractValueDecimals": "يمكن أن تحتوي قيمة العقد على خانتين عشريتين كحد أقصى",
       "endBeforeStart": "لا يمكن أن يسبق الإنجاز المتوقع تاريخ البدء",
       "duplicateCode": "يوجد مشروع بهذا الرمز بالفعل.",
-      "failed": "تعذّر إنشاء المشروع."
-      ,"wizard": {
+      "failed": "تعذّر إنشاء المشروع.",
+      "wizard": {
         "progress": "تقدم إنشاء المشروع",
         "step1": "الهوية",
         "step2": "البرنامج",
@@ -226,7 +245,33 @@
       "suspendedSince": "أوقف بتاريخ {date}",
       "suspendedBlocks": "تغييرات دورة الحياة متوقفة حتى استئناف المشروع.",
       "membersHeading": "الفريق",
-      "actionsHeading": "الإجراءات"
+      "actionsHeading": "الإجراءات",
+      "setup": "إعداد المشروع",
+      "setupProgress": "{done} من {total} خطوات مكتملة",
+      "setupComplete": "مكتملة",
+      "setupBlocked": "محظورة",
+      "setupPending": "معلقة",
+      "setupProject": "تم إنشاء المشروع",
+      "setupProjectDesc": "المشروع منشأ وفي مرحلة المسودة. يمكنك تعديل التفاصيل حتى الآن.",
+      "setupBoq": "جدول الكميات",
+      "setupBoqDesc": "حدّد جدول الكميات المسعّرة للمشروع.",
+      "setupContract": "العقد الرئيسي",
+      "setupContractDesc": "أنشئ العقد الرئيسي بناءً على جدول كميات معتمد.",
+      "setupContractBlocked": "اعتمد جدول الكميات أولاً.",
+      "setupTeam": "فريق المشروع",
+      "setupTeamDesc": "أضف أعضاء الفريق الذين سيعملون في هذا المشروع.",
+      "createContract": "إنشاء عقد",
+      "addTeam": "إضافة عضو للفريق",
+      "continueSetup": "فتح جدول الكميات",
+      "location": "الموقع",
+      "certifiedRevenue": "الإيرادات المعتمدة",
+      "received": "المستلم",
+      "notAvailable": "—",
+      "certifiedRevenueHint": "في انتظار نقطة تجميع شهادات الدفع",
+      "receivedHint": "في انتظار نقطة تجميع الإيصالات",
+      "overviewClient": "معلومات العميل",
+      "overviewCommercial": "البيانات التجارية",
+      "overviewSchedule": "الجدول الزمني"
     },
     "members": {
       "title": "فريق المشروع",
@@ -286,7 +331,8 @@
       "cancelReasonHint": "يُسجَّل في سجل المراجعة.",
       "confirm": "تأكيد",
       "working": "جارٍ التنفيذ...",
-      "dismiss": "إلغاء"
+      "dismiss": "إلغاء",
+      "more": "إجراءات"
     },
     "status": {
       "DRAFT": "مسودة",
@@ -297,6 +343,25 @@
       "CLOSEOUT": "الإقفال",
       "CLOSED": "مغلق",
       "CANCELLED": "ملغي"
+    },
+    "code": "الرمز",
+    "statusLabel": "الحالة",
+    "projectClient": "المشروع / العميل",
+    "startDate": "تاريخ البدء",
+    "ipc": {
+      "comingSoon": "مساحة عمل شهادات الدفع قادمة قريباً.",
+      "heading": "طلبات الدفع",
+      "newApplication": "طلب جديد",
+      "empty": "لا توجد طلبات دفع بعد",
+      "emptyHint": "أنشئ أول طلب دفع لهذا المشروع.",
+      "noContract": "لا يوجد عقد نشط",
+      "noContractHint": "يلزم وجود عقد رئيسي نشط قبل إنشاء طلب دفع.",
+      "loadFailed": "فشل تحميل طلبات الدفع",
+      "unnumbered": "مسودة",
+      "noPeriod": "لم يُحدَّد الفترة",
+      "noCertificates": "لم تُصدر شهادة بعد",
+      "issueCertificate": "إصدار شهادة",
+      "supersedeCertificate": "إصدار شهادة معدّلة"
     }
   },
   "boq": {
@@ -538,7 +603,10 @@
       "taxNumber": "الرقم الضريبي",
       "currency": "العملة",
       "status": "الحالة",
-      "contact": "جهة الاتصال الرئيسية"
+      "contact": "جهة الاتصال الرئيسية",
+      "client": "العميل",
+      "activeProjects": "المشاريع النشطة",
+      "outstandingBalance": "الرصيد المستحق"
     },
     "notSet": "غير محدد",
     "detail": {
@@ -557,7 +625,31 @@
       "deactivateBody": "العميل غير النشط يُخفى من القائمة الافتراضية. لا تتأثر العقود والشهادات القائمة.",
       "reactivateTitle": "إعادة تنشيط هذا العميل؟",
       "reactivateBody": "سيظهر العميل في قائمة النشطين مرة أخرى.",
-      "statusChangeFailed": "تعذّر تغيير حالة العميل."
+      "statusChangeFailed": "تعذّر تغيير حالة العميل.",
+      "more": "إجراءات إضافية",
+      "summary": "ملخص العميل",
+      "activeProjects": "المشاريع النشطة",
+      "outstandingBalance": "الرصيد المستحق",
+      "sections": "أقسام العميل",
+      "invoices": "الفواتير",
+      "receipts": "الإيصالات",
+      "projects": "المشاريع",
+      "financials": "المالية",
+      "documents": "المستندات",
+      "activity": "النشاط",
+      "financialsEmpty": "ستظهر البيانات المالية هنا عند توفرها.",
+      "documentsEmpty": "لا توجد مستندات مرفقة بهذا العميل بعد.",
+      "activityEmpty": "سيظهر سجل النشاط هنا.",
+      "noProjects": "لم يتم إنشاء مشاريع لهذا العميل بعد.",
+      "projectsLoadFailed": "تعذر تحميل مشاريع هذا العميل.",
+      "newProject": "مشروع جديد",
+      "clientType": "نوع العميل",
+      "primaryContact": "جهة الاتصال الرئيسية",
+      "phone": "الهاتف",
+      "email": "البريد الإلكتروني",
+      "address": "العنوان",
+      "notes": "ملاحظات",
+      "contactNeedsAttention": "تم إنشاء العميل. أضف جهة الاتصال الرئيسية من قسم جهات الاتصال أدناه."
     },
     "contacts": {
       "heading": "جهات الاتصال",
@@ -586,7 +678,6 @@
       "code": "رمز العميل",
       "codeHint": "مرجع قصير فريد، مثل MOF-001. لا يمكن تغييره لاحقاً.",
       "name": "الاسم",
-      "nameAr": "الاسم بالعربية",
       "taxNumber": "الرقم الضريبي",
       "defaultCurrency": "العملة الافتراضية",
       "currencyPlaceholder": "غير محدد",
@@ -599,8 +690,61 @@
       "submit": "إنشاء العميل",
       "saveChanges": "حفظ التغييرات",
       "cancel": "إلغاء",
-      "failed": "تعذّر حفظ بيانات العميل."
-    }
+      "failed": "تعذّر حفظ بيانات العميل.",
+      "identityStep": "هوية العميل",
+      "contactStep": "جهة الاتصال الرئيسية",
+      "progress": "تقدم إنشاء العميل",
+      "identityDescription": "أدخل اسم العميل وفئته التجارية.",
+      "contactDescription": "أضف الشخص الرئيسي الذي يتواصل معه فريقك.",
+      "automaticCode": "سيتم تعيين رمز عميل فريد تلقائيًا.",
+      "namePlaceholder": "مثال: شركة بركة العقارية",
+      "nameHint": "استخدم الاسم الذي يجب أن يظهر في المشاريع والعقود.",
+      "contactRole": "المسمى الوظيفي (اختياري)",
+      "contactRolePlaceholder": "مثال: المدير التجاري",
+      "contactRoleTooLong": "لا يمكن أن يتجاوز المسمى الوظيفي 100 حرف",
+      "contactNamePlaceholder": "مثال: يوسف أحمد",
+      "contactPhonePlaceholder": "مثال: +252 61 000 0000",
+      "contactEmailPlaceholder": "مثال: yusuf@company.com",
+      "additionalInformation": "معلومات إضافية",
+      "notesPlaceholder": "أضف ملاحظات مرئية لمؤسستك فقط...",
+      "notesHint": "مرئية فقط لمستخدمي ركنة المصرح لهم.",
+      "possibleDuplicate": "قد يكون هناك عميل موجود باسم مشابه.",
+      "openClient": "فتح العميل",
+      "continueAnyway": "المتابعة على أي حال",
+      "next": "متابعة",
+      "back": "رجوع",
+      "creating": "جارٍ إنشاء العميل...",
+      "createdToast": "تم إنشاء العميل",
+      "createProject": "إنشاء مشروع",
+      "clientType": "نوع العميل",
+      "primaryContact": "جهة الاتصال الرئيسية",
+      "contactName": "اسم جهة الاتصال",
+      "contactPhone": "الهاتف",
+      "contactEmail": "البريد الإلكتروني",
+      "address": "العنوان",
+      "notes": "ملاحظات",
+      "clientTypes": {
+        "COMPANY": "شركة",
+        "GOVERNMENT": "جهة حكومية",
+        "NGO": "منظمة غير حكومية",
+        "INDIVIDUAL": "فرد",
+        "OTHER": "أخرى"
+      },
+      "contactPhoneTooLong": "لا يمكن أن يتجاوز الهاتف 50 حرفًا",
+      "contactNameRequired": "أدخل اسم جهة الاتصال قبل إضافة الهاتف أو البريد الإلكتروني",
+      "contactEmailInvalid": "أدخل بريدًا إلكترونيًا صالحًا",
+      "sectionBasic": "المعلومات الأساسية",
+      "sectionContact": "جهة الاتصال",
+      "sectionAddress": "العنوان",
+      "sectionBusiness": "المعلومات التجارية",
+      "sectionAdditional": "إضافي"
+    },
+    "noPrimaryContact": "غير معيّن",
+    "balanceRestricted": "ليست لديك صلاحية لعرض أرصدة العملاء.",
+    "restricted": "مقيّد",
+    "projectCountShort": "{count, plural, one {مشروع نشط واحد} two {مشروعان نشطان} few {# مشاريع نشطة} many {# مشروعًا نشطًا} other {# مشروع نشط}}",
+    "filterByType": "تصفية حسب النوع",
+    "allTypes": "جميع الأنواع"
   },
   "contracts": {
     "title": "العقود",
@@ -1198,7 +1342,14 @@
       "noDeductionsHint": "صافي المبلغ المعتمد يساوي الإجمالي.",
       "superseded": "استُبدلت هذه الشهادة في {date}. وهي سجل تاريخي ولا يجوز السداد مقابلها.",
       "supersededWithReason": "استُبدلت هذه الشهادة في {date} — {reason}. وهي سجل تاريخي ولا يجوز السداد مقابلها.",
-      "grossMismatch": "تسجّل هذه الشهادة إجمالياً قدره {stated}، بينما مجموع بنودها {summed}. لا شيء في الخادم يوفّق بين الرقمين، ولذلك يُعرض كلاهما كما هو مسجّل — مرفوعة في المسألة رقم ‎#12‎."
+      "grossMismatch": "تسجّل هذه الشهادة إجمالياً قدره {stated}، بينما مجموع بنودها {summed}. لا شيء في الخادم يوفّق بين الرقمين، ولذلك يُعرض كلاهما كما هو مسجّل — مرفوعة في المسألة رقم ‎#12‎.",
+      "deductionType": {
+        "RETENTION": "الاستقطاع",
+        "ADVANCE_RECOVERY": "استرداد السلفة",
+        "TAX": "ضريبة",
+        "CONTRA": "مقابل مطالبة مضادة",
+        "OTHER": "أخرى"
+      }
     },
     "supersession": {
       "commandName": "تفعيل الشهادة",
@@ -1238,5 +1389,20 @@
     "rejectTitle": "رفض هذه الخطوة؟",
     "rejectBody": "هذا القرار نهائي — لا شيء يعيد الاعتماد إلى الانتظار، ولا يمكن للمستند المتابعة.",
     "rejectNotesHint": "مطلوب. لا شيء آخر سيوضّح سبب توقف المستند هنا."
+  },
+  "accountingReportsPage": {
+    "title": "تقارير المحاسبة",
+    "subtitle": "البيانات المالية وتقارير دفتر الأستاذ للمنظمة.",
+    "trialBalance": "ميزان المراجعة",
+    "trialBalanceDesc": "التحقق من تعادل مجموع المدين مع مجموع الدائن لجميع الحسابات في أي فترة.",
+    "profitLoss": "الأرباح والخسائر",
+    "profitLossDesc": "الإيرادات والتكاليف وصافي النتيجة للفترة المختارة.",
+    "balanceSheet": "الميزانية العمومية",
+    "balanceSheetDesc": "الأصول والالتزامات وحقوق الملكية في نقطة زمنية معينة.",
+    "monthlyComparison": "المقارنة الشهرية",
+    "monthlyComparisonDesc": "عرض مقارن للإيرادات والمصروفات عبر الأشهر.",
+    "accountLedger": "دفتر الأستاذ",
+    "accountLedgerDesc": "السجل الكامل للمعاملات لحساب واحد مع الرصيد الجاري.",
+    "open": "فتح التقرير"
   }
 }

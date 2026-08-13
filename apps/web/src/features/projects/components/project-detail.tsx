@@ -36,7 +36,7 @@ export function ProjectDetail({ id }: { id: string }) {
   const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
   const searchParams = useSearchParams();
-  const [showCreated, setShowCreated] = useState(searchParams.get('created') === '1');
+  const [showCreated, setShowCreated] = useState(searchParams?.get('created') === '1');
   const { data: project, isPending, isError, error } = useProject(id);
   const contracts = useContracts(id);
   const boq = useBoq(id);
