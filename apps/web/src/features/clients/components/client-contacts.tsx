@@ -26,9 +26,10 @@ import type { ClientContact } from '../types';
 interface ClientContactsProps {
   clientId: string;
   contacts: ClientContact[];
+  canManage?: boolean;
 }
 
-export function ClientContacts({ clientId, contacts }: ClientContactsProps) {
+export function ClientContacts({ clientId, contacts, canManage = true }: ClientContactsProps) {
   const t = useTranslations('platform.clients.contacts');
   const [isAdding, setIsAdding] = useState(false);
   const [pendingRemoval, setPendingRemoval] = useState<ClientContact | null>(null);
@@ -39,14 +40,14 @@ export function ClientContacts({ clientId, contacts }: ClientContactsProps) {
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-foreground">{t('heading')}</h2>
-        <Button
+        {canManage ? <Button
           size="sm"
           onClick={() => {
             setIsAdding(true);
           }}
         >
           {t('add')}
-        </Button>
+        </Button> : null}
       </div>
 
       {contacts.length === 0 ? (
@@ -86,7 +87,7 @@ export function ClientContacts({ clientId, contacts }: ClientContactsProps) {
                 </div>
               </div>
 
-              <Button
+              {canManage ? <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => {
@@ -94,7 +95,7 @@ export function ClientContacts({ clientId, contacts }: ClientContactsProps) {
                 }}
               >
                 {t('remove')}
-              </Button>
+              </Button> : null}
             </li>
           ))}
         </ul>

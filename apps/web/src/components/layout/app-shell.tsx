@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { ToastProvider } from '@erp/ui';
 
 import { GlobalSidebar } from './global-sidebar';
 import { TopBar } from './top-bar';
@@ -29,6 +30,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const close = () => setMenuOpen(false);
 
   return (
+    <ToastProvider>
     <div className="min-h-screen bg-background">
       <a
         href="#main-content"
@@ -39,7 +41,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* ── Desktop sidebar — persistent, fixed ──────────────────────────── */}
       <aside
-        className="fixed inset-y-0 start-0 hidden w-60 border-e border-slate-800 bg-slate-900 lg:flex lg:flex-col"
+        className="fixed inset-y-0 start-0 z-40 hidden w-[var(--sidebar-width)] border-e border-border bg-surface shadow-[var(--shadow-panel)] transition-[width] duration-300 ease-out lg:flex lg:flex-col"
         aria-label={t('primaryNavLabel')}
       >
         <GlobalSidebar />
@@ -49,40 +51,41 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {isMenuOpen ? (
         <div className="lg:hidden">
           <div
-            className="fixed inset-0 z-40 bg-brand-ink/30"
+            className="fixed inset-0 z-40 bg-overlay"
             aria-hidden="true"
             onClick={close}
           />
           <div
-            className="fixed inset-y-0 start-0 z-50 flex w-72 max-w-[85vw] flex-col bg-slate-900 shadow-xl"
+            className="fixed inset-y-0 start-0 z-50 flex w-72 max-w-[85vw] flex-col bg-surface-elevated shadow-[var(--shadow-overlay)]"
             role="dialog"
             aria-modal="true"
             aria-label={t('primaryNavLabel')}
           >
-            <div className="flex h-14 shrink-0 items-center justify-end border-b border-slate-800 px-3">
+            <div className="flex h-14 shrink-0 items-center justify-end border-b border-border px-3">
               <button
                 type="button"
                 onClick={close}
-                className="flex h-9 w-9 items-center justify-center rounded-md text-slate-400 hover:bg-slate-800 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
+                className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
                 aria-label={t('closeMenu')}
               >
                 <CloseIcon />
               </button>
             </div>
-            <GlobalSidebar onNavigate={close} />
+            <GlobalSidebar collapsed={false} onNavigate={close} />
           </div>
         </div>
       ) : null}
 
       {/* ── Content column — offset by sidebar on desktop ─────────────────── */}
-      <div className="flex min-h-screen flex-col lg:ps-60">
+      <div className="flex min-h-screen flex-col transition-[padding] duration-300 ease-out lg:ps-[var(--sidebar-width)]">
         <TopBar onOpenMenu={() => setMenuOpen(true)} />
 
-        <main id="main-content" className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto w-full max-w-7xl">{children}</div>
+        <main id="main-content" className="flex-1 px-4 py-7 sm:px-6 lg:px-8 lg:py-8">
+          <div className="mx-auto w-full max-w-[1440px]">{children}</div>
         </main>
       </div>
     </div>
+    </ToastProvider>
   );
 }
 

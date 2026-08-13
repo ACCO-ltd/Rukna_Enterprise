@@ -69,7 +69,8 @@ export class ClientService {
   async removeContact(identity: RequestIdentity, clientId: string, contactId: string): Promise<void> {
     const prisma = this.tenancyService.getClient();
     await this.requireClient(prisma, identity.activeOrganizationId, clientId);
-    await this.repo.removeContact(prisma, contactId);
+    const removed = await this.repo.removeContact(prisma, clientId, contactId);
+    if (!removed) throw new NotFoundException(`Contact ${contactId} not found on client ${clientId}`);
   }
 
   private async requireClient(prisma: ReturnType<TenancyService['getClient']>, organizationId: string, id: string) {

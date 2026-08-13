@@ -5,7 +5,7 @@ import { ClientStatus } from '@erp/types';
  * returns — one place to check a backend contract, one place to delete when `@erp/types`
  * ships DTOs (B12). Re-exported here so feature code can import from `./types`.
  */
-export type { Client, ClientDetail, ClientContact } from '@/lib/api-types';
+export type { Client, ClientDetail, ClientContact, ClientListItem } from '@/lib/api-types';
 
 export { ClientStatus };
 

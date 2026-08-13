@@ -3,19 +3,33 @@ import type { Client } from './types';
 
 /** What the form holds — every field a string, as HTML inputs produce. */
 export interface ClientFormValues {
-  code: string;
+  /** Legacy fixture compatibility; no form control or request payload uses this. */
+  code?: string;
   name: string;
-  nameAr: string;
+  /** Legacy fixture compatibility; Arabic business names are no longer captured. */
+  nameAr?: string;
+  type?: 'COMPANY' | 'GOVERNMENT' | 'NGO' | 'INDIVIDUAL' | 'OTHER';
   taxNumber: string;
   defaultCurrency: string;
+  address?: string;
+  notes?: string;
+  contactName: string;
+  contactRole: string;
+  contactPhone: string;
+  contactEmail: string;
 }
 
 export const EMPTY_CLIENT_FORM: ClientFormValues = {
-  code: '',
   name: '',
-  nameAr: '',
+  type: 'COMPANY',
   taxNumber: '',
   defaultCurrency: '',
+  address: '',
+  notes: '',
+  contactName: '',
+  contactRole: '',
+  contactPhone: '',
+  contactEmail: '',
 };
 
 /**
@@ -28,20 +42,24 @@ export const EMPTY_CLIENT_FORM: ClientFormValues = {
  * nullable column should hold NULL for the second.
  */
 export function toCreateClientPayload(values: ClientFormValues): CreateClientPayload {
-  const payload: CreateClientPayload = {
-    code: values.code.trim(),
-    name: values.name.trim(),
-  };
+  const payload: CreateClientPayload = { name: values.name.trim() };
 
-  const optional = {
-    nameAr: values.nameAr,
-    taxNumber: values.taxNumber,
-    defaultCurrency: values.defaultCurrency,
-  } as const;
+  const optional = { notes: values.notes ?? '' } as const;
 
   for (const [key, value] of Object.entries(optional)) {
     const trimmed = value.trim();
     if (trimmed) payload[key as keyof typeof optional] = trimmed;
+  }
+  payload.type = values.type ?? 'COMPANY';
+
+  const contactName = values.contactName.trim();
+  if (contactName) {
+    payload.primaryContact = {
+      name: contactName,
+      role: values.contactRole.trim() || undefined,
+      phone: values.contactPhone.trim() || undefined,
+      email: values.contactEmail.trim() || undefined,
+    };
   }
 
   return payload;
@@ -71,19 +89,23 @@ export function toUpdateClientPayload(values: ClientFormValues): UpdateClientPay
 
   return {
     name: values.name.trim(),
-    nameAr: text(values.nameAr),
-    taxNumber: text(values.taxNumber),
-    defaultCurrency: text(values.defaultCurrency),
+    type: values.type ?? 'COMPANY',
+    notes: text(values.notes ?? ''),
   };
 }
 
 /** Fills the form from an existing client, converting nulls to the empty strings inputs need. */
 export function toClientFormValues(client: Client): ClientFormValues {
   return {
-    code: client.code,
     name: client.name,
-    nameAr: client.nameAr ?? '',
+    type: client.type ?? 'COMPANY',
     taxNumber: client.taxNumber ?? '',
     defaultCurrency: client.defaultCurrency ?? '',
+    address: client.address ?? '',
+    notes: client.notes ?? '',
+    contactName: '',
+    contactRole: '',
+    contactPhone: '',
+    contactEmail: '',
   };
 }

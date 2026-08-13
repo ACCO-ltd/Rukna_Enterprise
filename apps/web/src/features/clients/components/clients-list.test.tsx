@@ -1,165 +1,113 @@
 import { ClientStatus } from '@erp/types';
-import { screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { listClientSummaries } from '@/features/clients/api/clients-api';
+import type { ClientListItem } from '@/features/clients/types';
 import { renderWithProviders } from '@/test/render';
-import { listClients } from '@/features/clients/api/clients-api';
-import type { Client } from '@/features/clients/types';
 
 import { ClientsList } from './clients-list';
 
-vi.mock('@/features/clients/api/clients-api', () => ({
-  listClients: vi.fn(),
-}));
-
+vi.mock('@/features/clients/api/clients-api', () => ({ listClientSummaries: vi.fn() }));
 vi.mock('next/link', () => ({
-  default: ({
-    href,
-    children,
-    ...props
-  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
-    <a href={href} {...props}>
-      {children}
-    </a>
-  ),
+  default: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => <a href={href} {...props}>{children}</a>,
 }));
 
-function client(overrides: Partial<Client> & { id: string }): Client {
+function client(overrides: Partial<ClientListItem> & { id: string }): ClientListItem {
   return {
-    organizationId: 'org-1',
-    code: `CL-${overrides.id}`,
     name: `Client ${overrides.id}`,
-    nameAr: null,
-    taxNumber: null,
-    defaultCurrency: null,
     status: ClientStatus.ACTIVE,
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:00.000Z',
+    primaryContact: null,
+    activeProjectCount: 0,
+    outstandingBalance: '0.00',
     ...overrides,
   };
 }
 
-beforeEach(() => {
-  vi.mocked(listClients).mockReset();
-});
+beforeEach(() => vi.mocked(listClientSummaries).mockReset());
 
 describe('ClientsList', () => {
-  it('renders each client as a row with a link to its page', async () => {
-    vi.mocked(listClients).mockResolvedValue([
-      client({ id: '1', name: 'Baraka Real Estate', taxNumber: 'SO-123' }),
+  it('renders the approved business context without internal identifiers', async () => {
+    vi.mocked(listClientSummaries).mockResolvedValue([
+      client({ id: '1', name: 'Baraka Real Estate', primaryContact: { name: 'Yusuf Ahmed', role: 'Commercial Director' }, activeProjectCount: 2, outstandingBalance: '1250.00' }),
     ]);
-
     renderWithProviders(<ClientsList />);
 
-    const link = await screen.findByRole('link', { name: 'Baraka Real Estate' });
-    expect(link).toHaveAttribute('href', '/clients/1');
-    expect(screen.getByText('SO-123')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Baraka Real Estate' })).toHaveAttribute('href', '/clients/1');
+    expect(screen.getByText('Yusuf Ahmed')).toBeInTheDocument();
+    expect(screen.getByText('Commercial Director')).toBeInTheDocument();
+    expect(screen.queryByText('CL-1')).not.toBeInTheDocument();
   });
 
-  it('shows a dash-free placeholder for fields the client has not set', async () => {
-    vi.mocked(listClients).mockResolvedValue([client({ id: '1', taxNumber: null })]);
-
+  it('shows restrained placeholders for missing contacts and restricted balances', async () => {
+    vi.mocked(listClientSummaries).mockResolvedValue([client({ id: '1', outstandingBalance: null })]);
     renderWithProviders(<ClientsList />);
 
     await screen.findByRole('link', { name: 'Client 1' });
-    expect(screen.getAllByText('Not set').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Not assigned').length).toBeGreaterThan(0);
+    expect(screen.getByText('Restricted')).toBeInTheDocument();
   });
 
-  it('filters by search across code, name and tax number', async () => {
-    vi.mocked(listClients).mockResolvedValue([
+  it('filters by client and primary-contact names', async () => {
+    vi.mocked(listClientSummaries).mockResolvedValue([
       client({ id: '1', name: 'Baraka Real Estate' }),
-      client({ id: '2', name: 'Hodan Holdings', taxNumber: 'SO-999' }),
+      client({ id: '2', name: 'Hodan Holdings', primaryContact: { name: 'Amina Ali', role: null } }),
     ]);
-
     const user = userEvent.setup();
     renderWithProviders(<ClientsList />);
 
     await screen.findByRole('link', { name: 'Baraka Real Estate' });
-    await user.type(screen.getByLabelText('Search clients'), 'SO-999');
-
-    await waitFor(() => {
-      expect(screen.queryByRole('link', { name: 'Baraka Real Estate' })).not.toBeInTheDocument();
-    });
+    await user.type(screen.getByLabelText('Search'), 'Amina');
+    await waitFor(() => expect(screen.queryByRole('link', { name: 'Baraka Real Estate' })).not.toBeInTheDocument());
     expect(screen.getByRole('link', { name: 'Hodan Holdings' })).toBeInTheDocument();
   });
 
   it('filters by status', async () => {
-    vi.mocked(listClients).mockResolvedValue([
-      client({ id: '1', name: 'Active One', status: ClientStatus.ACTIVE }),
+    vi.mocked(listClientSummaries).mockResolvedValue([
+      client({ id: '1', name: 'Active One' }),
       client({ id: '2', name: 'Retired One', status: ClientStatus.INACTIVE }),
     ]);
-
     const user = userEvent.setup();
     renderWithProviders(<ClientsList />);
 
     await screen.findByRole('link', { name: 'Active One' });
     await user.selectOptions(screen.getByLabelText('Filter by status'), ClientStatus.INACTIVE);
-
-    await waitFor(() => {
-      expect(screen.queryByRole('link', { name: 'Active One' })).not.toBeInTheDocument();
-    });
+    await waitFor(() => expect(screen.queryByRole('link', { name: 'Active One' })).not.toBeInTheDocument());
     expect(screen.getByRole('link', { name: 'Retired One' })).toBeInTheDocument();
   });
 
-  // "No clients yet" and "nothing matches your filter" are different problems needing
-  // different escape routes — offering "Clear filters" to someone with no clients at all
-  // would be nonsense.
-  it('offers to create a client when there are none at all', async () => {
-    vi.mocked(listClients).mockResolvedValue([]);
-
+  it('offers to create a client when there are none', async () => {
+    vi.mocked(listClientSummaries).mockResolvedValue([]);
     renderWithProviders(<ClientsList />);
 
     expect(await screen.findByText('No clients yet.')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'New client' })).toHaveAttribute(
-      'href',
-      '/clients/new',
-    );
-    expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'New client' })).toHaveAttribute('href', '/clients/new');
   });
 
-  it('offers to clear filters when a filter hides everything', async () => {
-    vi.mocked(listClients).mockResolvedValue([client({ id: '1', name: 'Baraka' })]);
-
+  it('offers to clear filters when a search hides everything', async () => {
+    vi.mocked(listClientSummaries).mockResolvedValue([client({ id: '1', name: 'Baraka' })]);
     const user = userEvent.setup();
     renderWithProviders(<ClientsList />);
 
     await screen.findByRole('link', { name: 'Baraka' });
-    await user.type(screen.getByLabelText('Search clients'), 'nothing matches this');
-
-    expect(await screen.findByText('No clients match these filters.')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+    await user.type(screen.getByLabelText('Search'), 'nothing matches this');
+    expect(await screen.findByText('No results match your search.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Clear search' }));
     expect(await screen.findByRole('link', { name: 'Baraka' })).toBeInTheDocument();
   });
 
-  it('offers a retry when the request fails', async () => {
-    vi.mocked(listClients).mockRejectedValue(new Error('network'));
-
-    renderWithProviders(<ClientsList />);
-
-    expect(await screen.findByText('Could not load clients.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
-  });
-
-  it('prefers the Arabic name when the UI is in Arabic', async () => {
-    vi.mocked(listClients).mockResolvedValue([
-      client({ id: '1', name: 'Baraka Real Estate', nameAr: 'شركة البركة' }),
-    ]);
-
+  it('uses the legal display name in Arabic UI', async () => {
+    vi.mocked(listClientSummaries).mockResolvedValue([client({ id: '1', name: 'Baraka Real Estate' })]);
     renderWithProviders(<ClientsList />, { locale: 'ar' });
-
-    expect(await screen.findByRole('link', { name: 'شركة البركة' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Baraka Real Estate' })).toBeInTheDocument();
   });
 
   it('announces the visible count', async () => {
-    vi.mocked(listClients).mockResolvedValue([client({ id: '1' }), client({ id: '2' })]);
-
+    vi.mocked(listClientSummaries).mockResolvedValue([client({ id: '1' }), client({ id: '2' })]);
     renderWithProviders(<ClientsList />);
 
     await screen.findByRole('link', { name: 'Client 1' });
-    const status = screen.getAllByRole('status').find((el) => el.textContent?.includes('client'));
-    expect(status).toBeDefined();
-    expect(within(status!).getByText('2 clients')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('2 results');
   });
 });

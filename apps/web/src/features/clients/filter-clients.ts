@@ -2,9 +2,12 @@ import type { ClientStatus } from '@erp/types';
 
 import type { Client } from './types';
 
+export type ClientTypeFilter = 'COMPANY' | 'GOVERNMENT' | 'NGO' | 'INDIVIDUAL' | 'OTHER' | 'ALL';
+
 export interface ClientFilters {
   search: string;
   status: ClientStatus | 'ALL';
+  type?: ClientTypeFilter;
 }
 
 /**
@@ -27,6 +30,7 @@ export function filterClients(clients: Client[], filters: ClientFilters): Client
 
   return clients.filter((client) => {
     if (filters.status !== 'ALL' && client.status !== filters.status) return false;
+    if (filters.type && filters.type !== 'ALL' && client.type !== filters.type) return false;
     if (!needle) return true;
 
     return [client.code, client.name, client.nameAr, client.taxNumber].some((field) =>
