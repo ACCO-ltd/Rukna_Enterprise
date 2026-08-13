@@ -14,28 +14,24 @@ import {
   DropdownMenuTrigger,
 } from '@erp/ui';
 import {
-  ArrowLeft,
   BriefcaseBusiness,
   Building2,
   CalendarDays,
   Check,
   ChevronDown,
+  ChevronRight,
   ClipboardList,
   FileCheck2,
   FileText,
   LayoutDashboard,
   MapPin,
-  TriangleAlert,
   UserRound,
   Users,
+  Wallet,
 } from 'lucide-react';
 
 import { ProjectStatusBadge } from '@/features/projects/components/project-status-badge';
-import {
-  useProject,
-  useProjectWorkspaceGuidance,
-  useProjectWorkspaceSummary,
-} from '@/features/projects/hooks/use-project';
+import { useProject, useProjectWorkspaceSummary } from '@/features/projects/hooks/use-project';
 import { formatDate } from '@/lib/format';
 
 interface ProjectWorkspaceShellProps {
@@ -60,7 +56,6 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
   const locale = useLocale() as 'en' | 'ar';
   const projectQuery = useProject(id);
   const summaryQuery = useProjectWorkspaceSummary(id);
-  const guidanceQuery = useProjectWorkspaceGuidance(id);
   const project = projectQuery.data;
 
   const primaryTabs = [
@@ -80,6 +75,7 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
       href: `/projects/${id}/ipc`,
       icon: FileCheck2,
     },
+    { label: t('workspace.finance'), href: `/projects/${id}/pl`, icon: Wallet },
   ];
   const mobileTabs = [primaryTabs[0], primaryTabs[1], ...commercialTabs, primaryTabs[2]];
 
@@ -116,16 +112,21 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
 
   return (
     <div>
-      <Link
-        href="/projects"
-        className="mb-3 inline-flex min-h-9 items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
+      <nav
+        aria-label={t('workspace.breadcrumbLabel')}
+        className="mb-4 flex min-h-8 items-center gap-2 text-body-sm text-muted-foreground"
       >
-        <ArrowLeft size={15} className="rtl:rotate-180" aria-hidden="true" />
-        {t('detail.backToList')}
-      </Link>
+        <Link href="/projects" className="hover:text-foreground">
+          {t('title')}
+        </Link>
+        <ChevronRight size={14} className="rtl:rotate-180" aria-hidden="true" />
+        <span className="max-w-72 truncate">{project?.name ?? t('workspace.loadingProject')}</span>
+        <ChevronRight size={14} className="rtl:rotate-180" aria-hidden="true" />
+        <span className="font-medium text-foreground">{t('workspace.overview')}</span>
+      </nav>
 
-      <section className="mb-6 overflow-hidden rounded-panel border border-border bg-surface shadow-e1">
-        <div className="p-5 sm:p-6">
+      <section className="mb-5 overflow-hidden border-y border-border bg-surface">
+        <div className="px-1 py-4 sm:px-4 sm:py-5">
           {projectQuery.isPending ? (
             <div className="space-y-3" role="status" aria-label={t('workspace.loadingProject')}>
               <div className="h-12 w-12 animate-pulse rounded-panel bg-muted" />
@@ -136,7 +137,7 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
             <>
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="flex min-w-0 items-start gap-3.5">
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-panel border border-border bg-surface-subtle text-foreground">
+                  <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-panel border border-border bg-surface-subtle text-foreground">
                     <Building2 size={25} strokeWidth={1.8} aria-hidden="true" />
                   </span>
                   <div className="min-w-0">
@@ -146,14 +147,14 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
                       </h1>
                       <ProjectStatusBadge status={project.status} />
                     </div>
-                    <p className="mt-1 text-sm text-muted-foreground">
+                    <p className="mt-1 text-body-sm text-muted-foreground">
                       {project.code} {' / '}{' '}
                       {t(
                         `create.commercialModel.${project.commercialModel === 'INTERNAL_CAPITAL' ? 'internalCapital' : 'clientContract'}`,
                       )}
                     </p>
                     {project.clientName || project.location ? (
-                      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-caption text-muted-foreground">
                         {project.location ? (
                           <span className="inline-flex items-center gap-1.5">
                             <MapPin size={15} aria-hidden="true" />
@@ -174,88 +175,10 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
               </div>
 
               {project.status !== ProjectStatus.CANCELLED && stageIndex >= 0 ? (
-                <div className="mt-5 overflow-x-auto rounded-panel bg-surface-subtle px-4 py-3 [-webkit-overflow-scrolling:touch]">
+                <div className="mt-5 overflow-x-auto border-t border-border px-1 pt-4 [-webkit-overflow-scrolling:touch] sm:px-3">
                   <LifecycleStrip stages={LIFECYCLE_STAGES} current={stageIndex} t={t} />
                 </div>
               ) : null}
-
-              <dl className="mt-5 grid overflow-hidden rounded-panel border border-border sm:grid-cols-2 lg:grid-cols-4">
-                <SummaryItem
-                  icon={BriefcaseBusiness}
-                  label={
-                    project.status === ProjectStatus.DRAFT
-                      ? t('workspace.boqBaseline')
-                      : t('workspace.mainContract')
-                  }
-                  value={
-                    summaryQuery.isPending
-                      ? t('workspace.loadingValue')
-                      : project.status === ProjectStatus.DRAFT
-                        ? summaryQuery.data?.setup.boqBaselined
-                          ? t('workspace.complete')
-                          : t('workspace.required')
-                        : (mainContract?.contractNumber ??
-                          (project.commercialModel === 'INTERNAL_CAPITAL'
-                            ? t('workspace.notApplicable')
-                            : t('workspace.notCreated')))
-                  }
-                />
-                <SummaryItem
-                  icon={CalendarDays}
-                  label={
-                    project.status === ProjectStatus.DRAFT
-                      ? t('workspace.mainContract')
-                      : t('workspace.programme')
-                  }
-                  value={
-                    project.status === ProjectStatus.DRAFT
-                      ? summaryQuery.data?.setup.mainContractExists
-                        ? (mainContract?.contractNumber ?? t('workspace.complete'))
-                        : summaryQuery.data?.setup.boqBaselined
-                          ? t('workspace.required')
-                          : t('workspace.blocked')
-                      : (programme ?? t('detail.notSet'))
-                  }
-                />
-                <SummaryItem
-                  icon={UserRound}
-                  label={
-                    project.status === ProjectStatus.DRAFT
-                      ? t('workspace.team')
-                      : t('workspace.projectManager')
-                  }
-                  value={
-                    project.status === ProjectStatus.DRAFT
-                      ? t('detail.teamMembers', {
-                          count:
-                            summaryQuery.data?.responsibility.teamCount ?? project.members.length,
-                        })
-                      : (projectManagerName ?? t('detail.notSet'))
-                  }
-                />
-                <SummaryItem
-                  icon={project.status === ProjectStatus.DRAFT ? Building2 : TriangleAlert}
-                  label={
-                    project.status === ProjectStatus.DRAFT
-                      ? t('workspace.setup')
-                      : t('workspace.guidance')
-                  }
-                  value={
-                    project.status === ProjectStatus.DRAFT && summaryQuery.data
-                      ? t('detail.setupProgress', {
-                          done: summaryQuery.data.setup.completedSteps,
-                          total: summaryQuery.data.setup.totalSteps,
-                        })
-                      : guidanceQuery.isError
-                        ? t('workspace.unavailable')
-                        : guidanceQuery.isPending
-                          ? t('workspace.loadingValue')
-                          : guidanceQuery.data?.length
-                            ? t('workspace.guidanceCount', { count: guidanceQuery.data.length })
-                            : t('workspace.noGuidance')
-                  }
-                />
-              </dl>
             </>
           ) : null}
         </div>
@@ -277,7 +200,7 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
             ))}
           </select>
 
-          <div className="hidden items-center px-2 md:flex">
+          <div className="hidden items-center md:flex">
             {primaryTabs.slice(0, 2).map((tab) => (
               <WorkspaceLink
                 key={tab.href}
@@ -332,6 +255,95 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
             />
           </div>
         </nav>
+
+        {project ? (
+          <dl className="grid border-t border-border bg-surface-subtle sm:grid-cols-2 lg:grid-cols-4">
+            <SummaryItem
+              icon={BriefcaseBusiness}
+              label={
+                project.status === ProjectStatus.DRAFT
+                  ? t('workspace.boqBaseline')
+                  : t('workspace.mainContract')
+              }
+              value={
+                summaryQuery.isPending
+                  ? t('workspace.loadingValue')
+                  : project.status === ProjectStatus.DRAFT
+                    ? summaryQuery.data?.setup.boqBaselined
+                      ? t('workspace.complete')
+                      : t('workspace.required')
+                    : (mainContract?.contractNumber ??
+                      (project.commercialModel === 'INTERNAL_CAPITAL'
+                        ? t('workspace.notApplicable')
+                        : t('workspace.notCreated')))
+              }
+              supporting={
+                project.commercialModel === 'INTERNAL_CAPITAL'
+                  ? t('create.commercialModel.internalCapital')
+                  : t('create.commercialModel.clientContract')
+              }
+            />
+            <SummaryItem
+              icon={CalendarDays}
+              label={
+                project.status === ProjectStatus.DRAFT
+                  ? t('workspace.mainContract')
+                  : t('workspace.programme')
+              }
+              value={
+                project.status === ProjectStatus.DRAFT
+                  ? summaryQuery.data?.setup.mainContractExists
+                    ? (mainContract?.contractNumber ?? t('workspace.complete'))
+                    : summaryQuery.data?.setup.boqBaselined
+                      ? t('workspace.required')
+                      : t('workspace.blocked')
+                  : (programme ?? t('detail.notSet'))
+              }
+              supporting={
+                summaryQuery.data?.programme.daysRemaining == null
+                  ? undefined
+                  : summaryQuery.data.programme.daysRemaining >= 0
+                    ? t('detail.daysCount', { count: summaryQuery.data.programme.daysRemaining })
+                    : t('detail.daysOverdueCount', {
+                        count: Math.abs(summaryQuery.data.programme.daysRemaining),
+                      })
+              }
+            />
+            <SummaryItem
+              icon={UserRound}
+              label={
+                project.status === ProjectStatus.DRAFT
+                  ? t('workspace.team')
+                  : t('workspace.projectManager')
+              }
+              value={
+                project.status === ProjectStatus.DRAFT
+                  ? t('detail.teamMembers', {
+                      count: summaryQuery.data?.responsibility.teamCount ?? project.members.length,
+                    })
+                  : (projectManagerName ?? t('detail.notSet'))
+              }
+              supporting={
+                project.status === ProjectStatus.DRAFT
+                  ? t('workspace.setup')
+                  : t('workspace.projectManager')
+              }
+            />
+            <SummaryItem
+              icon={Building2}
+              label={t('workspace.currentStage')}
+              value={t(`status.${project.status}`)}
+              supporting={
+                project.status === ProjectStatus.DRAFT && summaryQuery.data
+                  ? t('detail.setupProgress', {
+                      done: summaryQuery.data.setup.completedSteps,
+                      total: summaryQuery.data.setup.totalSteps,
+                    })
+                  : undefined
+              }
+            />
+          </dl>
+        ) : null}
       </section>
 
       {summaryQuery.isError ? (
@@ -348,13 +360,15 @@ function SummaryItem({
   icon: Icon,
   label,
   value,
+  supporting,
 }: {
   icon: typeof Building2;
   label: string;
   value: string;
+  supporting?: string;
 }) {
   return (
-    <div className="border-b border-border p-4 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 sm:odd:border-e lg:border-b-0 lg:not-last:border-e">
+    <div className="border-b border-border px-5 py-4 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 sm:odd:border-e lg:border-b-0 lg:not-last:border-e">
       <dt className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
         <Icon size={15} aria-hidden="true" />
         {label}
@@ -362,6 +376,9 @@ function SummaryItem({
       <dd className="mt-2 truncate text-sm font-semibold text-foreground" title={value}>
         {value}
       </dd>
+      {supporting ? (
+        <dd className="mt-1 truncate text-caption text-muted-foreground">{supporting}</dd>
+      ) : null}
     </div>
   );
 }

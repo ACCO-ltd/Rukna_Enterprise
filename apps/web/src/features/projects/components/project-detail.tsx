@@ -162,6 +162,7 @@ function Overview({
   guidanceError: boolean;
 }) {
   const t = useTranslations('platform.projects.detail');
+  const tProjects = useTranslations('platform.projects');
   const contractValueDisplay = formatMoney(
     summary?.mainContract?.contractValue ?? null,
     summary?.mainContract?.currency ?? null,
@@ -177,8 +178,16 @@ function Overview({
       title: t('overviewClient'),
       icon: Building2,
       rows: [
-        { label: t('client'), value: project.clientName },
         { label: t('location'), value: project.location ?? null },
+        { label: t('description'), value: project.description },
+        {
+          label: t('commercialModel'),
+          value: tProjects(
+            `create.commercialModel.${project.commercialModel === 'INTERNAL_CAPITAL' ? 'internalCapital' : 'clientContract'}`,
+          ),
+        },
+        { label: t('projectCode'), value: project.code },
+        { label: t('client'), value: project.clientName },
       ],
     },
     {
@@ -204,6 +213,7 @@ function Overview({
                 label: t('daysOverdue'),
                 value: t('daysCount', { count: Math.abs(summary.programme.daysRemaining) }),
               },
+        { label: t('currentStage'), value: tProjects(`status.${project.status}`) },
       ],
     },
     {
@@ -212,6 +222,10 @@ function Overview({
       rows: [
         { label: t('projectManager'), value: summary?.responsibility.projectManager?.name ?? null },
         { label: t('teamCount'), value: summary ? String(summary.responsibility.teamCount) : null },
+        {
+          label: t('teamReadiness'),
+          value: summary?.setup.teamReady ? t('teamReady') : t('teamIncomplete'),
+        },
       ],
     },
   ];
@@ -235,114 +249,126 @@ function Overview({
       {summaryError ? <Alert variant="warning" messages={[t('summaryUnavailable')]} /> : null}
 
       <section aria-labelledby="overview-heading">
-        <h2
-          id="overview-heading"
-          className="mb-3 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground"
-        >
+        <h2 id="overview-heading" className="sr-only">
           {t('overview')}
         </h2>
-
-        <div className="overflow-hidden rounded-container border border-border bg-surface shadow-e1">
-          <dl className="grid divide-y divide-border lg:grid-cols-3 lg:divide-x lg:divide-y-0 rtl:lg:divide-x-reverse">
-            {groups.map((group) => {
-              const GroupIcon = group.icon;
-              return (
-                <div key={group.title} className="px-4 py-4 sm:px-5">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-panel bg-brand-primary/8 text-brand-primary">
-                      <GroupIcon size={17} strokeWidth={1.8} aria-hidden="true" />
-                    </span>
+        <dl className="grid gap-4 lg:grid-cols-3">
+          {groups.map((group) => {
+            const GroupIcon = group.icon;
+            return (
+              <div
+                key={group.title}
+                className="overflow-hidden rounded-panel border border-border bg-surface"
+              >
+                <div className="flex min-h-12 items-center justify-between border-b border-border px-5">
+                  <div className="flex items-center gap-2 text-body-sm font-semibold text-foreground">
+                    <GroupIcon
+                      size={16}
+                      className="text-muted-foreground"
+                      strokeWidth={1.8}
+                      aria-hidden="true"
+                    />
                     {group.title}
                   </div>
-                  <div className="mt-3 space-y-2.5">
-                    {group.rows.map((row) => (
-                      <div key={row.label} className="flex items-baseline justify-between gap-3">
-                        <dt className="text-xs text-muted-foreground">{row.label}</dt>
-                        <dd className="text-end text-sm font-semibold text-foreground">
-                          {row.value ?? (
-                            <span className="font-normal italic text-muted-foreground/60">
-                              {t('notSet')}
-                            </span>
-                          )}
-                        </dd>
-                      </div>
-                    ))}
-                  </div>
+                  {group.title === t('overviewClient') && project.status === 'DRAFT' ? (
+                    <Link
+                      href={`/projects/${project.id}/edit`}
+                      className="text-caption font-medium text-brand-primary hover:underline"
+                    >
+                      {t('editInformation')}
+                    </Link>
+                  ) : group.title === t('overviewResponsibility') ? (
+                    <Link
+                      href={`/projects/${project.id}/members`}
+                      className="text-caption font-medium text-brand-primary hover:underline"
+                    >
+                      {t('viewTeam')}
+                    </Link>
+                  ) : null}
                 </div>
-              );
-            })}
-          </dl>
-
-          {project.description ? (
-            <dl className="border-t border-border px-5 py-4">
-              <dt className="text-xs font-medium text-muted-foreground">{t('description')}</dt>
-              <dd className="mt-1.5 whitespace-pre-line text-sm leading-6 text-foreground">
-                {project.description}
-              </dd>
-            </dl>
-          ) : null}
-        </div>
+                <div className="px-5 py-3">
+                  {group.rows.map((row) => (
+                    <div
+                      key={row.label}
+                      className="grid grid-cols-[minmax(7rem,0.8fr)_minmax(0,1.2fr)] gap-4 border-b border-border/70 py-2.5 last:border-b-0"
+                    >
+                      <dt className="text-caption text-muted-foreground">{row.label}</dt>
+                      <dd className="text-end text-body-sm font-medium text-foreground">
+                        {row.value ?? (
+                          <span className="font-normal italic text-muted-foreground/60">
+                            {t('notSet')}
+                          </span>
+                        )}
+                      </dd>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </dl>
       </section>
 
-      <section aria-labelledby="commercial-cost-heading">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h2
-            id="commercial-cost-heading"
-            className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground"
-          >
-            {t('commercialCostPosition')}
-          </h2>
-          {summary?.mainContract ? (
-            <Button variant="ghost" size="sm" asChild>
-              <Link href={`/contracts/${summary.mainContract.id}`}>{t('openContract')}</Link>
-            </Button>
-          ) : null}
-        </div>
-        <div className="rounded-panel border border-border bg-surface shadow-e1">
-          <div className="grid border-b border-border sm:grid-cols-2">
-            <div className="p-4 sm:border-e sm:p-5 rtl:sm:border-e-0 rtl:sm:border-s">
-              <p className="text-caption font-medium text-muted-foreground">{t('mainContract')}</p>
-              <p className="mt-2 text-body-sm font-semibold text-foreground">
-                {summary?.mainContract?.contractNumber ??
-                  (project.commercialModel === 'INTERNAL_CAPITAL'
-                    ? t('notApplicable')
-                    : t('notSet'))}
-              </p>
-            </div>
-            <div className="p-4 sm:p-5">
-              <p className="text-caption font-medium text-muted-foreground">{t('contractValue')}</p>
-              {summary?.financialsVisible ? (
-                <p className="mt-2 text-body-sm font-semibold tabular-nums text-foreground">
-                  {contractValueDisplay ?? t('notSet')}
-                </p>
-              ) : (
-                <p className="mt-2 inline-flex items-center gap-2 text-body-sm font-medium text-muted-foreground">
-                  <LockKeyhole size={15} aria-hidden="true" />
-                  {t('valueRestricted')}
-                </p>
-              )}
-            </div>
+      <section className="grid gap-4 lg:grid-cols-2" aria-label={t('commercialCostPosition')}>
+        <div className="overflow-hidden rounded-panel border border-border bg-surface">
+          <div className="flex min-h-12 items-center justify-between border-b border-border px-5">
+            <h2 className="text-body-sm font-semibold text-foreground">
+              {t('commercialSnapshot')}
+            </h2>
+            {summary?.mainContract ? (
+              <Link
+                href={`/contracts/${summary.mainContract.id}`}
+                className="text-caption font-medium text-brand-primary hover:underline"
+              >
+                {t('openCommercial')}
+              </Link>
+            ) : null}
           </div>
-          <ProjectCommitmentsCard
-            projectId={project.id}
-            currencyCode={summary?.mainContract?.currency ?? null}
-            embedded
-          />
+          <div className="px-5 py-3">
+            <dl>
+              <div className="flex items-center justify-between gap-4 border-b border-border/70 py-2.5">
+                <dt className="text-caption text-muted-foreground">{t('mainContract')}</dt>
+                <dd className="text-body-sm font-semibold text-foreground">
+                  {summary?.mainContract?.contractNumber ??
+                    (project.commercialModel === 'INTERNAL_CAPITAL'
+                      ? t('notApplicable')
+                      : t('notSet'))}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-4 py-2.5">
+                <dt className="text-caption text-muted-foreground">{t('contractValue')}</dt>
+                <dd className="text-body-sm font-semibold tabular-nums text-foreground">
+                  {summary?.financialsVisible ? (
+                    (contractValueDisplay ?? t('notSet'))
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 font-medium text-muted-foreground">
+                      <LockKeyhole size={14} aria-hidden="true" />
+                      {t('valueRestricted')}
+                    </span>
+                  )}
+                </dd>
+              </div>
+            </dl>
+          </div>
         </div>
+        <ProjectCommitmentsCard
+          projectId={project.id}
+          currencyCode={summary?.mainContract?.currency ?? null}
+        />
       </section>
 
       {summary ? (
         <section aria-labelledby="recent-activity-heading">
-          <div className="mb-3 flex items-center gap-2">
-            <History size={17} className="text-muted-foreground" aria-hidden="true" />
-            <h2
-              id="recent-activity-heading"
-              className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground"
-            >
-              {t('recentActivity')}
-            </h2>
-          </div>
-          <div className="overflow-hidden rounded-panel border border-border bg-surface shadow-e1">
+          <div className="overflow-hidden rounded-panel border border-border bg-surface">
+            <div className="flex min-h-12 items-center gap-2 border-b border-border px-5">
+              <History size={16} className="text-muted-foreground" aria-hidden="true" />
+              <h2
+                id="recent-activity-heading"
+                className="text-body-sm font-semibold text-foreground"
+              >
+                {t('recentActivity')}
+              </h2>
+            </div>
             {summary.recentActivity.length > 0 ? (
               <ol className="divide-y divide-border">
                 {summary.recentActivity.map((event) => (

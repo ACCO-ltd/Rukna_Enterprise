@@ -109,7 +109,6 @@ describe('ProjectWorkspaceShell', () => {
     expect(screen.getByText('CTR-001')).toBeInTheDocument();
     expect(screen.queryByText('$12,500,000.00')).not.toBeInTheDocument();
     expect(screen.queryByText('$999,999.00')).not.toBeInTheDocument();
-    expect(screen.getByText('Controls up to date')).toBeInTheDocument();
   });
 
   it('shows only implemented workspace destinations and groups the commercial flow', () => {
@@ -123,12 +122,12 @@ describe('ProjectWorkspaceShell', () => {
     expect(screen.getByRole('button', { name: /Commercial/ })).toBeInTheDocument();
     expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
       'Overview',
-      'Scope & progress',
+      'BOQ',
       'Contracts',
       'Applications & certificates',
+      'Finance',
       'Team',
     ]);
     expect(screen.queryByText('Inventory')).not.toBeInTheDocument();
-    expect(screen.queryByText('Finance')).not.toBeInTheDocument();
   });
 });
