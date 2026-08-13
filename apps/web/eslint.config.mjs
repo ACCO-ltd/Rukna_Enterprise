@@ -20,6 +20,95 @@ const eslintConfig = defineConfig([
     files: ["e2e/**"],
     rules: { "react-hooks/rules-of-hooks": "off" },
   },
+  {
+    // ─── Design scale enforcement ─────────────────────────────────────────────
+    //
+    // The scales in `globals.css` are closed sets. Without a rule they are a
+    // suggestion: the type scale, the radius tokens and the elevation tokens all
+    // existed as CSS before this config did, and the codebase accumulated 14
+    // arbitrary font sizes, 290 ad-hoc radius classes and 68 verbose arbitrary
+    // box-shadow spellings anyway. `--radius-panel` was declared and referenced
+    // by nothing at all.
+    //
+    // Keep example class names out of these comments. Tailwind scans this file
+    // as source, so a comment containing a class-shaped string generates a real
+    // (and here invalid) utility — which is exactly how the CSS optimizer came
+    // to warn about `Unexpected token Delim('*')` on the first attempt.
+    //
+    // These are `warn` on purpose. Turning them to `error` today would fail lint
+    // on ~350 pre-existing call sites in one step; Phase 1 migrates them module
+    // by module and flips each rule to `error` as its last commit, so the ratchet
+    // only ever tightens. Rendered reference: `/design`.
+    //
+    // The selectors match Tailwind class text inside string and template
+    // literals, which is where these values are written. That catches the real
+    // cases without needing a Tailwind-aware plugin.
+    files: ["src/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-syntax": [
+        "warn",
+        {
+          selector: "Literal[value=/text-\\[[0-9.]+(px|rem|em)\\]/]",
+          message:
+            "Arbitrary font size. Use a type scale step: text-display, text-h1, text-h2, text-h3, text-body, text-body-sm, text-caption, text-micro. See /design.",
+        },
+        {
+          selector: "TemplateElement[value.raw=/text-\\[[0-9.]+(px|rem|em)\\]/]",
+          message:
+            "Arbitrary font size. Use a type scale step: text-display, text-h1, text-h2, text-h3, text-body, text-body-sm, text-caption, text-micro. See /design.",
+        },
+        {
+          selector: "Literal[value=/\\brounded-(sm|md|lg|xl|2xl|3xl)\\b/]",
+          message:
+            "Ad-hoc radius. Use rounded-control (6px), rounded-panel (10px), rounded-container (14px), or rounded-full. Radius encodes nesting depth. See /design.",
+        },
+        {
+          selector: "TemplateElement[value.raw=/\\brounded-(sm|md|lg|xl|2xl|3xl)\\b/]",
+          message:
+            "Ad-hoc radius. Use rounded-control (6px), rounded-panel (10px), rounded-container (14px), or rounded-full. See /design.",
+        },
+        {
+          selector: "Literal[value=/shadow-\\[var\\(--shadow-/]",
+          message:
+            "Use the elevation utilities instead: shadow-e1 (resting), shadow-e2 (raised), shadow-e3 (overlay), shadow-ring (focus). See /design.",
+        },
+        {
+          selector: "TemplateElement[value.raw=/shadow-\\[var\\(--shadow-/]",
+          message:
+            "Use the elevation utilities instead: shadow-e1, shadow-e2, shadow-e3, shadow-ring. See /design.",
+        },
+        {
+          selector: "Literal[value=/-\\[#[0-9a-fA-F]{3,8}\\]/]",
+          message:
+            "Hardcoded colour. Every colour comes from a semantic token so it resolves in both themes and a tenant can re-brand safely. See /design and docs/02-architecture/frontend-theme.md.",
+        },
+        {
+          selector: "TemplateElement[value.raw=/-\\[#[0-9a-fA-F]{3,8}\\]/]",
+          message:
+            "Hardcoded colour. Every colour comes from a semantic token. See /design.",
+        },
+        {
+          selector:
+            "Literal[value=/\\b[pm][xytblrse]?-(7|9|11|13|14|15|17|18|19|21|22|23)\\b/]",
+          message:
+            "Off-grid spacing. The scale is 1 2 3 4 5 6 8 10 12 16 (4-64px), plus the half-steps 0.5 1.5 2.5 3.5 for dense controls. See /design.",
+        },
+        {
+          selector:
+            "Literal[value=/\\bduration-(75|100|150|200|300|500|700|1000)\\b/]",
+          message:
+            "Hardcoded duration. Use duration-[var(--motion-exit)] (120ms), --motion-enter (180ms) or --motion-layout (240ms) with ease-brand. See /design.",
+        },
+      ],
+    },
+  },
+  {
+    // The gallery's whole purpose is to render each scale next to its own name,
+    // which means writing the values out literally. Exempting it keeps the rules
+    // above strict everywhere they matter.
+    files: ["src/features/design-system/**"],
+    rules: { "no-restricted-syntax": "off" },
+  },
 ]);
 
 export default eslintConfig;

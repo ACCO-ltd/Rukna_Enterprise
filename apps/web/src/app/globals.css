@@ -1,40 +1,250 @@
 @import 'tailwindcss';
 @source "../../../../packages/ui/src";
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESIGN SCALES — static, theme-independent, closed sets.
+   ═══════════════════════════════════════════════════════════════════════════
+   Everything in this block is a *scale*: a finite list of allowed values. It
+   lives in `@theme` rather than `:root` so Tailwind generates a utility for
+   each one, which is what makes the scale enforceable — a developer reaches
+   for `rounded-panel` because it exists, not because they remembered a rule.
+   Values that change between light and dark stay in `:root` below and are
+   bridged through `@theme inline`.
+
+   See `/design` for the rendered scale, and `docs/02-architecture/
+   frontend-theme.md` for the ownership rules.
+   ─────────────────────────────────────────────────────────────────────────── */
+@theme {
+  /* ── Type scale — eight steps, anchored on the 14px body ────────────────
+     Line height and letter spacing are baked in, because a size and its
+     leading are one typographic decision and should never drift apart.
+     Weight is deliberately NOT baked in: it stays an explicit `font-*` at the
+     call site, so composition order can never surprise anyone.
+
+     The intended weight per step, which the /design gallery demonstrates:
+       display 700 · h1 700 · h2 600 · h3 600
+       body 400 · body-sm 400 · caption 500 · micro 600
+
+     600 is the heaviest heading weight below h1 on purpose. Inter is loaded
+     variable and would render 650 faithfully, but IBM Plex Sans Arabic is
+     loaded at fixed 400/500/600/700 — so a 650 heading would be 650 in
+     English and 700 in Arabic. Same document, two different headings. */
+  --text-display: 1.875rem;              /* 30px */
+  --text-display--line-height: 2.25rem;  /* 36px */
+  --text-display--letter-spacing: -0.02em;
+
+  --text-h1: 1.5rem;                     /* 24px */
+  --text-h1--line-height: 2rem;          /* 32px */
+  --text-h1--letter-spacing: -0.015em;
+
+  --text-h2: 1.125rem;                   /* 18px */
+  --text-h2--line-height: 1.625rem;      /* 26px */
+  --text-h2--letter-spacing: -0.01em;
+
+  --text-h3: 0.9375rem;                  /* 15px */
+  --text-h3--line-height: 1.375rem;      /* 22px */
+
+  --text-body: 0.875rem;                 /* 14px */
+  --text-body--line-height: 1.375rem;    /* 22px */
+
+  --text-body-sm: 0.8125rem;             /* 13px */
+  --text-body-sm--line-height: 1.25rem;  /* 20px */
+
+  --text-caption: 0.75rem;               /* 12px */
+  --text-caption--line-height: 1rem;     /* 16px */
+
+  --text-micro: 0.6875rem;               /* 11px */
+  --text-micro--line-height: 0.875rem;   /* 14px */
+  --text-micro--letter-spacing: 0.06em;
+
+  /* ── Radius — three steps, by container size ──────────────────────────
+     Radius encodes nesting depth: a control inside a panel inside a
+     container reads 6 → 10 → 14, so hierarchy is legible without adding a
+     single extra border. `rounded-full` stays for pills and avatars.
+
+     These two token names existed before this commit and were referenced by
+     nothing — declared in `:root`, never registered with Tailwind, so no
+     utility was ever generated and 290 ad-hoc `rounded-lg|md|xl` took their
+     place. Registering them here is what makes them usable. */
+  --radius-control: 0.375rem;            /* 6px  — input, button, chip, tab */
+  --radius-panel: 0.625rem;              /* 10px — card, table, dialog, popover */
+  --radius-container: 0.875rem;          /* 14px — workspace shell, page-level frame */
+
+  /* ── Easing — one curve for the whole product ─────────────────────────── */
+  --ease-brand: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --sidebar-width: 17rem;
+  /* Rukna brand — the only layer tenant branding should override. */
+  color-scheme: light;
+  --background: #f4f6f8;
+  --foreground: #172033;
   --surface: #ffffff;
-  --surface-subtle: #f1f5f9;
-  --border: #e2e8f0;
-  --muted: #f1f5f9;
-  --muted-foreground: #475569;
-  --brand-ink: #0f172a;
-  --brand-primary: #2563eb;
-  --brand-primary-hover: #1d4ed8;
-  --brand-accent: #7c3aed;
-  --danger: #b91c1c;
-  --danger-subtle: #fef2f2;
-  --warning: #92400e;
-  --warning-subtle: #fffbeb;
+  --surface-elevated: #ffffff;
+  --surface-subtle: #f8f9fb;
+  --surface-hover: #f0f3f7;
+  --surface-selected: #eaf0ff;
+  --border: #dce1e8;
+  --border-strong: #c7cfda;
+  --border-interactive: #98a2b3;
+  --muted: #eef1f5;
+  --muted-foreground: #667085;
+  --disabled: #e7ebf0;
+  --disabled-foreground: #8a94a4;
+  --brand-ink: #172033;
+  --brand-ink-deep: #101828;
+  --brand-ink-soft: #344054;
+  --brand-panel: #172033;
+  --brand-primary: #255edb;
+  --brand-primary-hover: #194bbe;
+  --brand-primary-active: #123d9e;
+  --brand-on-primary: #ffffff;
+  --brand-accent: #edf2ff;
+  --brand-accent-strong: #dce6ff;
+  --danger: #b4232f;
+  --danger-hover: #941b25;
+  --danger-foreground: #ffffff;
+  --danger-subtle: #fff1f2;
+  --warning: #9a5b13;
+  --warning-subtle: #fff7e6;
+  --success: #087f5b;
+  --success-subtle: #eaf8f2;
+  --historical: #6941c6;
+  --historical-subtle: #f3f0ff;
+  --overlay: rgb(16 24 40 / 0.46);
+
+  /* ── Density ───────────────────────────────────────────────────────────
+     Comfortable is the default: most screens are read and approved, not
+     typed into. Compact is opt-in per user and exists for the screens where
+     someone spends the whole day entering rows — BOQ editors, manual
+     journals, the ledger and trial balance — where 36px rows show roughly a
+     third more data per screen. Overridden by [data-density] below. */
+  --row-height: 2.75rem;                 /* 44px */
+  --control-height: 2.75rem;             /* 44px */
+
+  /* ── Motion ────────────────────────────────────────────────────────────
+     Three durations, one curve (--ease-brand). Leaving is always faster than
+     arriving, so a dismissed dialog never feels like it is dragging. Used as
+     `duration-[var(--motion-enter)] ease-brand`. */
+  --motion-exit: 120ms;                  /* dismiss, close, fade out */
+  --motion-enter: 180ms;                 /* open, reveal, hover, focus */
+  --motion-layout: 240ms;                /* sidebar collapse, accordion, resize */
+
+  /* Elevation. The values change per theme; the three intent-named utilities
+     that consume them (shadow-e1/e2/e3) are bridged in @theme inline. */
+  --shadow-control: 0 1px 2px rgb(16 24 40 / 0.06);
+  --shadow-panel: 0 1px 3px rgb(16 24 40 / 0.05), 0 10px 28px rgb(16 24 40 / 0.035);
+  --shadow-overlay: 0 24px 48px rgb(16 24 40 / 0.16);
+  --shadow-focus: 0 0 0 3px rgb(37 94 219 / 0.2);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --background: #17191d;
+  --foreground: #f4f6fa;
+  --surface: #202226;
+  --surface-elevated: #27292e;
+  --surface-subtle: #1c1e22;
+  --surface-hover: #2c2f35;
+  --surface-selected: #25304a;
+  --border: #383c43;
+  --border-strong: #4a4f58;
+  --border-interactive: #667085;
+  --muted: #2a2d32;
+  --muted-foreground: #a8b0bf;
+  --disabled: #30333a;
+  --disabled-foreground: #7d8695;
+  --brand-ink: #e4e9f2;
+  --brand-ink-deep: #f4f6fa;
+  --brand-ink-soft: #c5ccd8;
+  --brand-panel: #151d2c;
+  --brand-primary: #6d96ff;
+  --brand-primary-hover: #88aaff;
+  --brand-primary-active: #a2bcff;
+  --brand-on-primary: #101828;
+  --brand-accent: #243253;
+  --brand-accent-strong: #30436f;
+  --danger: #ff7b86;
+  --danger-hover: #ff98a1;
+  --danger-foreground: #351018;
+  --danger-subtle: #46242a;
+  --warning: #f4bd62;
+  --warning-subtle: #45351d;
+  --success: #43c6a1;
+  --success-subtle: #173d35;
+  --historical: #b7a0ff;
+  --historical-subtle: #342a52;
+  --overlay: rgb(0 0 0 / 0.66);
+  --shadow-control: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-panel: 0 1px 3px rgb(0 0 0 / 0.28), 0 12px 32px rgb(0 0 0 / 0.18);
+  --shadow-overlay: 0 24px 56px rgb(0 0 0 / 0.42);
+  --shadow-focus: 0 0 0 3px rgb(109 150 255 / 0.28);
+}
+
+/* Compact density. Set on the root element by the density store, the same way
+   `data-theme` is — a display preference, resolved before hydration so a
+   compact user never sees one comfortable frame first. */
+:root[data-density='compact'] {
+  --row-height: 2.25rem;                 /* 36px */
+  --control-height: 2.25rem;             /* 36px */
 }
 
 @theme inline {
+  /* ── Density-aware sizes ──────────────────────────────────────────────
+     Registered through the spacing namespace so they work anywhere a length
+     does: `h-control` on a button, `h-row` on a table cell, and equally
+     `min-h-control` or `py-row` where a layout needs to reserve the space. */
+  --spacing-control: var(--control-height);
+  --spacing-row: var(--row-height);
+
+  /* ── Elevation, by intent rather than by look ─────────────────────────
+     `shadow-e1` replaces the `shadow-[var(--shadow-control)]` spelling that
+     appears 68 times across the codebase, and keeps the per-theme values.
+       e1 resting — panels, cards, table frames, inputs
+       e2 raised  — dropdowns, popovers, sticky headers, detached rails
+       e3 overlay — dialogs, sheets, command palette (always with a scrim)
+       ring       — focus, never used for elevation */
+  --shadow-e1: var(--shadow-control);
+  --shadow-e2: var(--shadow-panel);
+  --shadow-e3: var(--shadow-overlay);
+  --shadow-ring: var(--shadow-focus);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
   --color-surface-subtle: var(--surface-subtle);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-selected: var(--surface-selected);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-border-interactive: var(--border-interactive);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-disabled: var(--disabled);
+  --color-disabled-foreground: var(--disabled-foreground);
   --color-brand-ink: var(--brand-ink);
+  --color-brand-ink-deep: var(--brand-ink-deep);
+  --color-brand-ink-soft: var(--brand-ink-soft);
+  --color-brand-panel: var(--brand-panel);
   --color-brand-primary: var(--brand-primary);
   --color-brand-primary-hover: var(--brand-primary-hover);
+  --color-brand-primary-active: var(--brand-primary-active);
+  --color-brand-on-primary: var(--brand-on-primary);
   --color-brand-accent: var(--brand-accent);
+  --color-brand-accent-strong: var(--brand-accent-strong);
   --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger-foreground: var(--danger-foreground);
   --color-danger-subtle: var(--danger-subtle);
   --color-warning: var(--warning);
   --color-warning-subtle: var(--warning-subtle);
+  --color-success: var(--success);
+  --color-success-subtle: var(--success-subtle);
+  --color-historical: var(--historical);
+  --color-historical-subtle: var(--historical-subtle);
+  --color-overlay: var(--overlay);
   --font-sans: var(--font-inter);
 }
 
@@ -42,8 +252,43 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-inter), var(--font-plex-arabic), Arial, Helvetica, sans-serif;
+  font-size: 14px;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+:focus-visible {
+  scroll-margin: 5rem;
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--brand-primary) 20%, white);
+  background: color-mix(in srgb, var(--brand-primary) 28%, transparent);
+}
+
+/* One global reduced-motion rule, so no component has to remember it.
+   Durations collapse rather than animations being disabled outright: a
+   transition that completes in 1ms still fires `transitionend`, which some
+   Radix primitives wait on before unmounting. Setting `animation: none` here
+   would leave those panels mounted forever. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-exit: 1ms;
+    --motion-enter: 1ms;
+    --motion-layout: 1ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
 }
