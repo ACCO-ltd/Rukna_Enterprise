@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
+import { sessionStore } from '@/features/auth/session/session-store';
 
 import type { BillMatchResult, BillMatchStatus, SupplierBill } from '../types';
 import { canPostBill } from '../quantities';
@@ -104,17 +105,26 @@ function makeMatch(overrides: Partial<BillMatchResult> = {}): BillMatchResult {
 const idleMutation = { mutate: vi.fn(), isPending: false, isError: false, error: null };
 
 beforeEach(() => {
+  sessionStore.setSession({
+    accessToken: 'test-token',
+    user: {
+      id: 'user-1',
+      email: 'controller@acco.test',
+      orgId: 'org-1',
+      tenantSlug: 'acco',
+      roles: ['FINANCE_CONTROLLER'],
+      permissions: ['approve:matching-exception'],
+      lang: 'en',
+    },
+  });
   vi.clearAllMocks();
   mocks.useRunBillMatch.mockReturnValue(idleMutation);
   mocks.useApproveMatchException.mockReturnValue(idleMutation);
   mocks.useBillMatch.mockReturnValue({ data: null, isPending: false, isError: false });
 });
 
-describe('canPostBill — the gate is stricter than the server (P15)', () => {
-  it('blocks NOT_RUN even though POSTABLE_MATCH_STATUSES permits it', () => {
-    // supplier-bill.service.ts:149 lists NOT_RUN as postable. §6.31 and §12.8 both say
-    // it must not be. This UI implements the documented rule; do not "fix" it to match
-    // the server without fixing the server.
+describe('canPostBill — matching gate', () => {
+  it('blocks NOT_RUN', () => {
     expect(canPostBill('NOT_RUN', true)).toBe(false);
   });
 

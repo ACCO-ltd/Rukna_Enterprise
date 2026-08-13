@@ -24,6 +24,8 @@
     "db:migrate:tenant:prod": "prisma migrate deploy --schema=prisma/schema.prisma",
     "db:migrate:platform:prod": "prisma migrate deploy --schema=prisma-platform/schema.prisma",
     "tenant:provision": "tsx scripts/tenant-provision.ts",
+    "tenant:repair-access": "tsx scripts/tenant-repair-access.ts",
+    "tenant:demo-readiness": "tsx scripts/tenant-demo-readiness.ts",
     "postinstall": "prisma generate --schema=prisma/schema.prisma && prisma generate --schema=prisma-platform/schema.prisma"
   },
   "dependencies": {
@@ -81,7 +83,7 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": ["ts-jest", { "tsconfig": { "module": "commonjs" } }]
+      "^.+\\.ts$": ["ts-jest", { "tsconfig": { "module": "commonjs" } }]
     },
     "moduleNameMapper": {
       "^(\\.{1,2}/.*)\\.js$": "$1"
@@ -90,6 +92,8 @@
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "maxWorkers": 4,
+    "testTimeout": 15000
   }
 }

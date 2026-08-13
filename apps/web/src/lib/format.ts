@@ -214,10 +214,7 @@ const FALLBACK: StatusPresentation = { token: 'NEUTRAL', muted: false };
  * statuses correctly without overrides; add entity-specific entries here as new modules
  * introduce ambiguous status strings.
  */
-export function formatStatus(
-  status: string | null | undefined,
-  _entityType?: string,
-): StatusPresentation {
+export function formatStatus(status: string | null | undefined): StatusPresentation {
   if (!status) return FALLBACK;
   return GLOBAL_STATUS_MAP[status] ?? FALLBACK;
 }

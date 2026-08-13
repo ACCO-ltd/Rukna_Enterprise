@@ -1,6 +1,8 @@
 import { Controller, Get, Post, Body, Param, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { UomService } from '../application/uom.service.js';
@@ -9,6 +11,7 @@ import { CreateUomDto } from './dto/create-uom.dto.js';
 @ApiTags('Procurement — Units of Measure')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.procurementConfigManage)
 @Controller('procurement/uom')
 export class UomController {
   constructor(private readonly service: UomService) {}

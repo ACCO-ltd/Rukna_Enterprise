@@ -52,7 +52,7 @@ function fakeJwt(): string {
     orgId: 'org-1',
     tenantSlug: 'acco',
     roles: ['ADMIN'],
-    permissions: [],
+    permissions: ['view:project', 'view:client', 'view:receipt'],
     lang: 'en',
   };
   return `header.${btoa(JSON.stringify(payload))}.signature`;
@@ -71,6 +71,7 @@ beforeEach(() => {
   pathname = '/dashboard';
   refresh.mockReset();
   sessionStore.clearSession();
+  sessionStore.setFromAccessToken(fakeJwt());
   document.body.style.overflow = '';
 });
 
@@ -174,6 +175,7 @@ describe('AppShell — header', () => {
   });
 
   it('renders without a session rather than crashing', () => {
+    sessionStore.clearSession();
     renderShell();
 
     // Brand always present; no crash when no user is signed in.

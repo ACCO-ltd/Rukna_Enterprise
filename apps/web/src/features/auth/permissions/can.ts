@@ -3,23 +3,8 @@
 /**
  * Authorization seam for UI affordances.
  *
- * Deliberately permissive today, and that is a documented decision rather than an
- * oversight. Two facts drive it:
- *
- *  1. `tenant-provision.ts` seeds a single ADMIN role with NO rolePermissions, and the
- *     `permissions` table is never populated — so every JWT carries `permissions: []`.
- *     A faithful permission check would hide every action from every user, including the
- *     administrator.
- *  2. No Projects or BOQ endpoint uses RolesGuard. Only JwtAuthGuard is applied, so the
- *     server enforces the lifecycle state machine and nothing else.
- *
- * Showing an action the server would reject is the lesser evil versus shipping an app
- * where nothing is clickable. `constraints.md:299` is explicit that frontend
- * authorization exists for user experience only — the server is the boundary.
- *
- * When permissions are seeded and guards are added, this is the single file to change.
- * Components must call `can()` / `usePermissions()` rather than reading `permissions`
- * directly, so that switch stays a one-file change.
+ * Permission claims come from the user's active organization membership. Components call
+ * this seam instead of reading claims directly; the API remains the security boundary.
  */
 
 import { useSyncExternalStore } from 'react';
@@ -31,19 +16,15 @@ import { sessionStore } from '../session/session-store';
 export type PermissionKey = `${string}:${string}`;
 
 /**
- * Flip to `true` once the backend seeds the `permissions` table and applies RolesGuard to
- * the Projects and BOQ controllers. The enforcing implementation below is already correct;
- * this is the entire switch.
- *
- * Typed as `boolean` rather than inferred as `false` so the enforcing branch stays
- * type-checked instead of being treated as unreachable.
+ * Explicitly typed so both branches remain type-checked if local development ever needs
+ * a temporary diagnostic override.
  */
-const PERMISSIONS_ENFORCED: boolean = false;
+const PERMISSIONS_ENFORCED: boolean = true;
 
 /**
  * Minimum permission keys that grant visibility of each sidebar module section.
  * Keys must match the module identifiers passed to `moduleVisible()`.
- * When PERMISSIONS_ENFORCED is false every module is visible regardless.
+ * A module is visible when the current user holds at least one listed permission.
  */
 const MODULE_PERMISSIONS: Record<string, PermissionKey[]> = {
   portfolio:      ['view:project', 'create:project', 'view:client'],
@@ -66,11 +47,7 @@ const MODULE_PERMISSIONS: Record<string, PermissionKey[]> = {
  * `manage:role`), so they are spelled that way here. Raised on issue #25; if the backend
  * seeds the §11.2 spelling instead, this map is the one place to change.
  *
- * **None of these is enforced anywhere.** No `PermissionGuard` exists in `apps/api/src`, the
- * `permissions` table is never seeded, and every JWT carries `permissions: []` — so with
- * `PERMISSIONS_ENFORCED` false these all resolve true and nothing is hidden. Calling `can()`
- * regardless is the point: when a guard lands, one boolean secures every accounting screen
- * rather than a retrofit across fifteen of them.
+ * These names are shared with the API permission catalogue and enforced on both sides.
  */
 export const ACCOUNTING_PERMISSIONS = {
   /** Every accounting page. Read-only views included. */
@@ -115,11 +92,7 @@ export const ACCOUNTING_PERMISSIONS = {
  * instead of resolving it, and if the backend seeds the document's spelling, a key we
  * invented would silently never match.
  *
- * **None of these is enforced.** No procurement controller has anything but
- * `JwtAuthGuard`, the `permissions` table is never seeded, and every JWT carries
- * `permissions: []` (P5, issue #28). With `PERMISSIONS_ENFORCED` false they all resolve
- * true. Calling `can()` regardless is the point — when a guard lands, one boolean secures
- * both workspaces rather than a retrofit across thirty screens.
+ * These names are shared with the API permission catalogue and enforced on both sides.
  */
 export const PROCUREMENT_PERMISSIONS = {
   /** Any procurement page. Minimum required; gates the whole sidebar group. */

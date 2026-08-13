@@ -3,12 +3,14 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import type { Prisma } from '@prisma/client';
 
 import type { JwtPayload } from '@erp/types';
 
 import { TenancyService } from '../../tenancy/tenancy.service.js';
 import { tenancyStorage } from '../../tenancy/tenancy.context.js'; // TenantContext (slug/id only)
 import type { LoginDto } from '../presentation/dto/login.dto.js';
+import { AuditLogsService } from '../../audit-logs/application/audit-logs.service.js';
 
 // Internal pair returned from service to controller; controller sets the cookie.
 interface TokenPairInternal {
@@ -18,12 +20,28 @@ interface TokenPairInternal {
 
 const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+const membershipInclude = {
+  roles: {
+    where: { removedAt: null },
+    include: {
+      role: {
+        include: { rolePermissions: { include: { permission: true } } },
+      },
+    },
+  },
+} satisfies Prisma.OrganizationMembershipInclude;
+
+type AuthMembership = Prisma.OrganizationMembershipGetPayload<{
+  include: typeof membershipInclude;
+}>;
+
 @Injectable()
 export class AuthService {
   constructor(
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
     private readonly tenancyService: TenancyService,
+    private readonly auditLogs: AuditLogsService,
   ) {}
 
   async login(dto: LoginDto, deviceHint?: string): Promise<TokenPairInternal> {
@@ -33,13 +51,16 @@ export class AuthService {
     const user = await prisma.user.findUnique({
       where: { email: dto.email },
       include: {
-        userRoles: {
-          include: { role: { include: { rolePermissions: { include: { permission: true } } } } },
+        memberships: {
+          where: { status: 'ACTIVE' },
+          orderBy: [{ isDefault: 'desc' }, { joinedAt: 'asc' }],
+          include: membershipInclude,
         },
       },
     });
 
-    if (!user || user.status !== 'ACTIVE') {
+    const membership = user?.memberships[0];
+    if (!user || user.status !== 'ACTIVE' || !membership) {
       throw new UnauthorizedException('Invalid email or password');
     }
 
@@ -48,7 +69,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    const payload = this.buildPayload(user, ctx.tenantSlug);
+    const payload = this.buildPayload(user, membership, ctx.tenantSlug);
     const accessToken = this.jwtService.sign(payload);
 
     const jti = randomUUID();
@@ -58,6 +79,13 @@ export class AuthService {
 
     await prisma.refreshToken.create({
       data: { jti, tokenFamilyId, userId: user.id, expiresAt, deviceHint },
+    });
+    await this.auditLogs.log({
+      userId: user.id,
+      orgId: membership.organizationId,
+      action: 'LOGIN',
+      resource: 'session',
+      resourceId: jti,
     });
 
     return { accessToken, refreshToken };
@@ -79,6 +107,9 @@ export class AuthService {
 
     if (!payload.jti) {
       throw new UnauthorizedException('Malformed refresh token');
+    }
+    if (payload.tenantSlug !== ctx.tenantSlug) {
+      throw new UnauthorizedException('Refresh token tenant mismatch');
     }
 
     // O(1) lookup by jti
@@ -104,20 +135,24 @@ export class AuthService {
     });
 
     // Re-fetch user for fresh roles/permissions
-    const user = await prisma.user.findUnique({
-      where: { id: payload.sub },
+    const membership = await prisma.organizationMembership.findFirst({
+      where: {
+        userId: payload.sub,
+        organizationId: payload.orgId,
+        status: 'ACTIVE',
+        user: { status: 'ACTIVE' },
+      },
       include: {
-        userRoles: {
-          include: { role: { include: { rolePermissions: { include: { permission: true } } } } },
-        },
+        ...membershipInclude,
+        user: true,
       },
     });
 
-    if (!user || user.status !== 'ACTIVE') {
-      throw new UnauthorizedException('User not found or inactive');
+    if (!membership) {
+      throw new UnauthorizedException('User or organization membership is inactive');
     }
 
-    const newPayload = this.buildPayload(user, ctx.tenantSlug);
+    const newPayload = this.buildPayload(membership.user, membership, ctx.tenantSlug);
     const accessToken = this.jwtService.sign(newPayload);
 
     // Rotate: new jti, same family
@@ -126,7 +161,20 @@ export class AuthService {
     const expiresAt = new Date(Date.now() + REFRESH_TTL_MS);
 
     await prisma.refreshToken.create({
-      data: { jti: newJti, tokenFamilyId: stored.tokenFamilyId, userId: user.id, expiresAt, deviceHint },
+      data: {
+        jti: newJti,
+        tokenFamilyId: stored.tokenFamilyId,
+        userId: membership.user.id,
+        expiresAt,
+        deviceHint,
+      },
+    });
+    await this.auditLogs.log({
+      userId: membership.user.id,
+      orgId: membership.organizationId,
+      action: 'REFRESH',
+      resource: 'session',
+      resourceId: newJti,
     });
 
     return { accessToken, refreshToken };
@@ -150,10 +198,19 @@ export class AuthService {
 
     if (!payload.jti) return;
 
-    await prisma.refreshToken.updateMany({
+    const revoked = await prisma.refreshToken.updateMany({
       where: { jti: payload.jti, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    if (revoked.count > 0) {
+      await this.auditLogs.log({
+        userId: payload.sub,
+        orgId: payload.orgId,
+        action: 'LOGOUT',
+        resource: 'session',
+        resourceId: payload.jti,
+      });
+    }
   }
 
   // ─── Private helpers ─────────────────────────────────────────────────────────
@@ -162,22 +219,22 @@ export class AuthService {
     user: {
       id: string;
       email: string;
-      organizationId: string;
       preferredLanguage: string;
-      userRoles: Array<{
-        role: {
-          name: string;
-          rolePermissions: Array<{ permission: { action: string; resource: string } }>;
-        };
-      }>;
     },
+    membership: AuthMembership,
     tenantSlug: string,
   ): JwtPayload {
-    const roles = user.userRoles.map((ur) => ur.role.name);
+    const scopedAssignments = membership.roles.filter(
+      (assignment) => assignment.role.organizationId === membership.organizationId,
+    );
+    const roles = [...new Set(scopedAssignments.map((assignment) => assignment.role.name))];
     const permissions = [
       ...new Set(
-        user.userRoles.flatMap((ur) =>
-          ur.role.rolePermissions.map((rp) => `${rp.permission.action}:${rp.permission.resource}`),
+        scopedAssignments.flatMap((assignment) =>
+          assignment.role.rolePermissions.map(
+            (rolePermission) =>
+              `${rolePermission.permission.action}:${rolePermission.permission.resource}`,
+          ),
         ),
       ),
     ];
@@ -186,7 +243,7 @@ export class AuthService {
     return {
       sub: user.id,
       email: user.email,
-      orgId: user.organizationId,
+      orgId: membership.organizationId,
       tenantSlug,
       roles,
       permissions,

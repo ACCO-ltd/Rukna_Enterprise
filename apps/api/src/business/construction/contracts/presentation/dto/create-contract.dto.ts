@@ -9,6 +9,7 @@ import {
   IsNotEmpty,
 } from 'class-validator';
 import { BillingModel } from '@erp/types';
+import { ContractKind } from '@prisma/client';
 
 export class CreateContractDto {
   @ApiProperty({ description: 'Project ID this contract belongs to' })
@@ -44,6 +45,15 @@ export class CreateContractDto {
   @IsEnum(BillingModel)
   @IsOptional()
   billingModel?: BillingModel;
+
+  @ApiPropertyOptional({
+    enum: ContractKind,
+    default: ContractKind.CLIENT_CONTRACT,
+    description: 'CLIENT_CONTRACT = main client-facing agreement (at most one effective per project). SUBCONTRACT = subcontractor agreement.',
+  })
+  @IsEnum(ContractKind)
+  @IsOptional()
+  contractKind?: ContractKind;
 
   @ApiPropertyOptional({ example: '2026-01-15' })
   @IsDateString()

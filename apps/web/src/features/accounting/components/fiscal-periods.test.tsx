@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
 import { listFiscalYears } from '@/features/accounting/api/accounting-api';
+import { sessionStore } from '@/features/auth/session/session-store';
 import type { AccountingPeriod, FiscalYear, PeriodStatus } from '@/features/accounting/types';
 
 import { FiscalPeriods } from './fiscal-periods';
@@ -52,6 +53,18 @@ function fiscalYear(overrides: Partial<FiscalYear> = {}): FiscalYear {
 }
 
 beforeEach(() => {
+  sessionStore.setSession({
+    accessToken: 'test-token',
+    user: {
+      id: 'user-1',
+      email: 'controller@acco.test',
+      orgId: 'org-1',
+      tenantSlug: 'acco',
+      roles: ['FINANCE_CONTROLLER'],
+      permissions: ['manage:period', 'manage:fiscal-year'],
+      lang: 'en',
+    },
+  });
   vi.mocked(listFiscalYears).mockReset();
   vi.mocked(listFiscalYears).mockResolvedValue([fiscalYear()]);
 });
@@ -114,21 +127,6 @@ describe('FiscalPeriods', () => {
   });
 
   describe('period actions', () => {
-    /**
-     * The lifecycle endpoints carry `JwtAuthGuard` and nothing else. The buttons are gated on
-     * `can()` so one flag secures them when a guard lands, but with `PERMISSIONS_ENFORCED`
-     * false that gating hides nothing — so the screen says plainly that the server is not
-     * checking, rather than looking authorised.
-     */
-    it('warns that these actions have no server-side authorization', async () => {
-      renderWithProviders(<FiscalPeriods />);
-
-      expect(
-        await screen.findByText(/no server-side authorization/),
-      ).toBeInTheDocument();
-      expect(screen.getByText(/issue #25/)).toBeInTheDocument();
-    });
-
     it('offers only the transition each status allows', async () => {
       renderWithProviders(<FiscalPeriods />);
 

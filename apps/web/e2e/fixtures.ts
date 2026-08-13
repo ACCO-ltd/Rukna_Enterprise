@@ -18,9 +18,11 @@ export const scenario: Scenario = JSON.parse(readFileSync(SCENARIO_PATH, 'utf8')
  * whose failure hides every other test's failure behind a redirect.
  */
 export async function signIn(page: Page): Promise<void> {
+  const password = process.env['RUKNA_DEMO_PASSWORD'];
+  if (!password) throw new Error('RUKNA_DEMO_PASSWORD is required for browser tests');
   await page.goto('/login');
   await page.getByLabel('Email address').fill('admin@acco.com');
-  await page.getByLabel('Password', { exact: true }).fill('ChangeMe123!');
+  await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL(/\/(dashboard|projects|clients|contracts|receipts)/);
 }

@@ -4,6 +4,8 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { CustomerReceiptService } from '../application/customer-receipt.service.js';
@@ -15,6 +17,7 @@ import { ReverseAllocationDto } from './dto/reverse-allocation.dto.js';
 @ApiTags('Customer Receipts')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.receivablesManage)
 @Controller('customer-receipts')
 export class CustomerReceiptController {
   constructor(private readonly customerReceiptService: CustomerReceiptService) {}

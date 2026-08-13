@@ -22,7 +22,10 @@ import {
 
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
-import type { RequestIdentity } from '@erp/types';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { ProjectScoped } from '../../../../common/decorators/project-scoped.decorator.js';
+import { ProjectAccessGuard } from '../../../../platform/project-access/project-access.guard.js';
+import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { ProjectService } from '../application/project.service.js';
 import { CreateProjectDto } from './dto/create-project.dto.js';
@@ -33,7 +36,9 @@ import { AddMemberDto } from './dto/add-member.dto.js';
 
 @ApiTags('Projects')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ProjectAccessGuard)
+@RequirePermissions(PERMISSIONS.projectsView)
+@ProjectScoped('id')
 @Controller('projects')
 export class ProjectsController {
   constructor(private readonly projectService: ProjectService) {}
@@ -48,6 +53,7 @@ export class ProjectsController {
   }
 
   @Post()
+  @RequirePermissions(PERMISSIONS.projectsCreate)
   @ApiOperation({ summary: 'Create a new project in DRAFT status' })
   @ApiResponse({ status: 201, description: 'Project created' })
   @ApiResponse({ status: 409, description: 'Project code already exists' })
@@ -63,6 +69,7 @@ export class ProjectsController {
   }
 
   @Patch(':id')
+  @RequirePermissions(PERMISSIONS.projectsManage)
   @ApiOperation({ summary: 'Update project (DRAFT status only)' })
   @ApiParam({ name: 'id', description: 'Project ID' })
   update(
@@ -76,6 +83,7 @@ export class ProjectsController {
   // ─── Lifecycle commands ───────────────────────────────────────────────────────
 
   @Post(':id/approve')
+  @RequirePermissions(PERMISSIONS.projectsApprove)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Transition project from DRAFT → APPROVED' })
   approve(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
@@ -83,6 +91,7 @@ export class ProjectsController {
   }
 
   @Post(':id/mobilize')
+  @RequirePermissions(PERMISSIONS.projectsManage)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Transition project from APPROVED → MOBILIZING' })
   mobilize(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
@@ -90,6 +99,7 @@ export class ProjectsController {
   }
 
   @Post(':id/activate')
+  @RequirePermissions(PERMISSIONS.projectsManage)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Transition project from MOBILIZING → ACTIVE' })
   activate(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
@@ -97,6 +107,7 @@ export class ProjectsController {
   }
 
   @Post(':id/practical-completion')
+  @RequirePermissions(PERMISSIONS.projectsManage)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Transition project from ACTIVE → PRACTICAL_COMPLETION' })
   practicalCompletion(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
@@ -104,6 +115,7 @@ export class ProjectsController {
   }
 
   @Post(':id/closeout')
+  @RequirePermissions(PERMISSIONS.projectsManage)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Transition project from PRACTICAL_COMPLETION → CLOSEOUT' })
   closeout(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
@@ -111,6 +123,7 @@ export class ProjectsController {
   }
 
   @Post(':id/close')
+  @RequirePermissions(PERMISSIONS.projectsManage)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Transition project from CLOSEOUT → CLOSED' })
   close(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
@@ -118,6 +131,7 @@ export class ProjectsController {
   }
 
   @Post(':id/cancel')
+  @RequirePermissions(PERMISSIONS.projectsManage)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cancel project (allowed from DRAFT, APPROVED, MOBILIZING, ACTIVE)' })
   @ApiResponse({ status: 400, description: 'Project cannot be cancelled from current status' })
@@ -130,6 +144,7 @@ export class ProjectsController {
   }
 
   @Post(':id/reopen-to-active')
+  @RequirePermissions(PERMISSIONS.projectsApprove)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reopen project from PRACTICAL_COMPLETION → ACTIVE (requires workflow approval)' })
   reopenToActive(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
@@ -137,6 +152,7 @@ export class ProjectsController {
   }
 
   @Post(':id/reopen-to-practical-completion')
+  @RequirePermissions(PERMISSIONS.projectsApprove)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reopen project from CLOSEOUT → PRACTICAL_COMPLETION (requires workflow approval)' })
   reopenToPracticalCompletion(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
@@ -146,6 +162,7 @@ export class ProjectsController {
   // ─── Suspension ──────────────────────────────────────────────────────────────
 
   @Post(':id/suspend')
+  @RequirePermissions(PERMISSIONS.projectsManage)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Suspend project — blocks lifecycle transitions' })
   @ApiResponse({ status: 409, description: 'Project already has an active suspension' })
@@ -158,6 +175,7 @@ export class ProjectsController {
   }
 
   @Post(':id/resume')
+  @RequirePermissions(PERMISSIONS.projectsManage)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Resume a suspended project' })
   @ApiResponse({ status: 400, description: 'No active suspension to resume' })
@@ -174,6 +192,7 @@ export class ProjectsController {
   }
 
   @Post(':id/members')
+  @RequirePermissions(PERMISSIONS.projectMembersManage)
   @ApiOperation({ summary: 'Add a user to the project with one or more roles' })
   @ApiResponse({ status: 409, description: 'User is already an active member' })
   addMember(
@@ -185,6 +204,7 @@ export class ProjectsController {
   }
 
   @Delete(':id/members/:userId')
+  @RequirePermissions(PERMISSIONS.projectMembersManage)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Remove a user from the project (soft-delete)' })
   removeMember(

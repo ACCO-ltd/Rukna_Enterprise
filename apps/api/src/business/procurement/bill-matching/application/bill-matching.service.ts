@@ -31,63 +31,41 @@ export class BillMatchingService {
     const prisma = this.tenancy.getClient();
     const orgId = identity.activeOrganizationId;
 
-    // Load the bill with lines and PO linkage
-    const bill = await (prisma as any).supplierBill.findFirst({
-      where: { id: billId, organizationId: orgId },
-      include: {
-        lines: {
-          include: {
-            material: true,
-          },
-        },
-      },
-    });
-
+    const bill = await this.repo.findBillForMatching(prisma, orgId, billId);
     if (!bill) throw new NotFoundException(`Supplier bill ${billId} not found`);
-    if (bill.documentStatus === 'POSTED') throw new ConflictException('Cannot re-match a posted bill');
-
-    // Determine match type: THREE_WAY if any MATERIAL line, else TWO_WAY (ADR-007, Rule MATCH-001)
-    const hasMaterialLine = bill.lines.some((l: any) => l.lineType === 'MATERIAL');
-    const matchType = hasMaterialLine ? 'THREE_WAY' : 'TWO_WAY';
+    if (bill.postingStatus === 'POSTED') throw new ConflictException('Cannot re-match a posted bill');
 
     if (!bill.purchaseOrderRevisionId) {
       throw new BadRequestException('Bill is not linked to a PO revision — cannot run matching');
     }
 
-    // Load the PO revision lines
-    const poRevision = await (prisma as any).purchaseOrderRevision.findFirst({
-      where: { id: bill.purchaseOrderRevisionId },
-      include: {
-        lines: {
-          include: { material: true },
-        },
-        purchaseOrder: true,
-      },
-    });
+    // Determine match type: THREE_WAY if any MATERIAL line, else TWO_WAY (ADR-007, Rule MATCH-001)
+    const hasMaterialLine = bill.lines.some(l => l.lineType === 'MATERIAL');
+    const matchType = hasMaterialLine ? 'THREE_WAY' : 'TWO_WAY';
+
+    const poRevision = await this.repo.findPoRevisionForMatching(prisma, bill.purchaseOrderRevisionId);
     if (!poRevision) throw new NotFoundException('Associated PO revision not found');
 
-    // Load resolved tolerance policy (PO-level takes priority over org-level)
     const poPolicy = await this.repo.findPoTolerancePolicy(prisma, orgId, poRevision.purchaseOrderId);
     const orgPolicy = await this.repo.findOrgTolerancePolicy(prisma, orgId);
     const policy = poPolicy ?? orgPolicy;
 
-    // If no tolerance policy, matching must still run but produces EXCEPTION for any variance
     const priceTolPct = policy?.priceVariancePercent ? new Decimal(policy.priceVariancePercent) : null;
     const qtyTolPct = policy?.quantityVariancePercent ? new Decimal(policy.quantityVariancePercent) : null;
 
     const matchLines = await Promise.all(
-      bill.lines.map(async (billLine: any) => {
-        // Match by lineType + materialId if MATERIAL, else by line position
+      bill.lines.map(async (billLine, idx) => {
+        // Match by materialId when present (MATERIAL lines), else by position
         const poLine = billLine.materialId
-          ? poRevision.lines.find((l: any) => l.materialId === billLine.materialId)
-          : poRevision.lines[bill.lines.indexOf(billLine)];
+          ? poRevision.lines.find(l => l.materialId === billLine.materialId)
+          : poRevision.lines[idx];
 
         if (!poLine) {
           throw new BadRequestException(`No matching PO line found for bill line ${billLine.lineNumber}`);
         }
 
-        const poQty: Decimal = poLine.orderedQuantity;
-        const poPrice: Decimal = poLine.unitPrice;
+        const poQty = poLine.orderedQuantity as Decimal;
+        const poPrice = poLine.unitPrice as Decimal;
         const billedQty = new Decimal(billLine.quantity ?? 0);
         const billedPrice = new Decimal(billLine.unitPrice ?? 0);
 
@@ -95,7 +73,6 @@ export class BillMatchingService {
         const priceVar = billedPrice.sub(poPrice);
         const amtVar = billedQty.mul(billedPrice).sub(poQty.mul(poPrice));
 
-        // Within tolerance check
         const qtyVarPct = poQty.greaterThan(0) ? qtyVar.abs().div(poQty).mul(100) : new Decimal(0);
         const priceVarPct = poPrice.greaterThan(0) ? priceVar.abs().div(poPrice).mul(100) : new Decimal(0);
 
@@ -103,17 +80,10 @@ export class BillMatchingService {
         const priceOk = !priceTolPct || priceVarPct.lessThanOrEqualTo(priceTolPct);
         const withinTolerance = qtyOk && priceOk;
 
-        // THREE_WAY: also verify received quantity from GRN
         let grnLineId: string | undefined;
         let receivedQty: Decimal | undefined;
         if (matchType === 'THREE_WAY') {
-          const grnLine = await (prisma as any).goodsReceiptLine.findFirst({
-            where: {
-              purchaseOrderLineId: poLine.id,
-              grn: { status: 'POSTED', purchaseOrderRevisionId: bill.purchaseOrderRevisionId },
-            },
-            orderBy: { createdAt: 'desc' },
-          });
+          const grnLine = await this.repo.findGrnLineForPoLine(prisma, poLine.id, bill.purchaseOrderRevisionId!);
           if (grnLine) {
             grnLineId = grnLine.id;
             receivedQty = grnLine.acceptedQuantity as Decimal;
@@ -133,26 +103,22 @@ export class BillMatchingService {
           priceVariance: priceVar,
           amountVariance: amtVar,
           withinTolerance,
-          exceptionReason: withinTolerance ? undefined : `Qty variance: ${qtyVarPct.toFixed(2)}%, Price variance: ${priceVarPct.toFixed(2)}%`,
+          exceptionReason: withinTolerance
+            ? undefined
+            : `Qty variance: ${qtyVarPct.toFixed(2)}%, Price variance: ${priceVarPct.toFixed(2)}%`,
         };
       }),
     );
 
     const allWithinTolerance = matchLines.every(l => l.withinTolerance);
-    await this.repo.createOrReplace(prisma, billId, matchType, matchLines);
-
     const finalStatus = allWithinTolerance ? 'MATCHED' : 'MATCHED_WITH_TOLERANCE';
 
+    await this.repo.createOrReplace(prisma, billId, matchType, matchLines);
     await this.repo.updateStatus(prisma, billId, finalStatus, {
       matchedAt: new Date(),
       matchedBy: identity.userId,
     });
-
-    // Update bill.matchStatus
-    await (prisma as any).supplierBill.update({
-      where: { id: billId },
-      data: { matchStatus: finalStatus },
-    });
+    await this.repo.updateBillMatchStatus(prisma, billId, finalStatus);
 
     return this.repo.findByBillId(prisma, billId);
   }
@@ -170,10 +136,7 @@ export class BillMatchingService {
       approvedAt: new Date(),
       approvalReason: dto.approvalReason,
     });
-    await (prisma as any).supplierBill.update({
-      where: { id: billId },
-      data: { matchStatus: 'APPROVED_EXCEPTION' },
-    });
+    await this.repo.updateBillMatchStatus(prisma, billId, 'APPROVED_EXCEPTION');
 
     return this.repo.findByBillId(prisma, billId);
   }

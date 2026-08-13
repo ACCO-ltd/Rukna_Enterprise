@@ -16,6 +16,7 @@ import { AccountRepository } from '../../accounting-core/infrastructure/account.
 import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
 import { SupplierPaymentRepository } from '../infrastructure/supplier-payment.repository.js';
 import { SupplierBillRepository } from '../infrastructure/supplier-bill.repository.js';
+import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
 
 export interface CreateSupplierPaymentDto {
   supplierId: string;
@@ -57,38 +58,74 @@ export class SupplierPaymentService {
     private readonly sequenceRepo: DocumentSequenceRepository,
     @Inject(ACCOUNTING_POSTING_PORT)
     private readonly postingPort: IAccountingPostingPort,
+    private readonly commandGovernance: CommandGovernanceService,
   ) {}
 
   async create(identity: RequestIdentity, dto: CreateSupplierPaymentDto) {
     const prisma = this.tenancyService.getClient();
     const { activeOrganizationId: orgId, userId } = identity;
 
-    const allocatedAmount = dto.allocations?.reduce(
+    const allocationLines = dto.allocations ?? [];
+    const allocatedAmount = allocationLines.reduce(
       (s, a) => s.plus(new Decimal(a.amount)), new Decimal(0),
-    ) ?? new Decimal(0);
+    );
 
     const totalAmount = new Decimal(dto.totalAmount);
     if (allocatedAmount.gt(totalAmount)) {
       throw new BadRequestException(`Total allocations exceed payment amount`);
     }
 
-    return this.paymentRepo.create(prisma, {
-      organizationId: orgId,
-      supplierId: dto.supplierId,
-      bankAccountId: dto.bankAccountId,
-      paymentDate: new Date(dto.paymentDate),
-      accountingDate: new Date(dto.accountingDate ?? dto.paymentDate),
-      currencyCode: dto.currencyCode,
-      exchangeRateSnapshot: new Decimal(dto.exchangeRateSnapshot ?? 1),
-      exchangeRateDate: new Date(dto.paymentDate),
-      exchangeRateSource: 'MANUAL',
-      totalAmount,
-      allocatedAmount,
-      unallocatedAmount: totalAmount.minus(allocatedAmount),
-      paymentMethod: dto.paymentMethod,
-      bankReference: dto.bankReference,
-      notes: dto.notes,
-      createdBy: userId,
+    const paymentDate = new Date(dto.paymentDate);
+
+    return prisma.$transaction(async (tx) => {
+      const payment = await this.paymentRepo.create(tx as never, {
+        organizationId: orgId,
+        supplierId: dto.supplierId,
+        bankAccountId: dto.bankAccountId,
+        paymentDate,
+        accountingDate: new Date(dto.accountingDate ?? dto.paymentDate),
+        currencyCode: dto.currencyCode,
+        exchangeRateSnapshot: new Decimal(dto.exchangeRateSnapshot ?? 1),
+        exchangeRateDate: paymentDate,
+        exchangeRateSource: 'MANUAL',
+        totalAmount,
+        allocatedAmount,
+        unallocatedAmount: totalAmount.minus(allocatedAmount),
+        paymentMethod: dto.paymentMethod,
+        bankReference: dto.bankReference,
+        notes: dto.notes,
+        createdBy: userId,
+      });
+
+      for (const alloc of allocationLines) {
+        const bill = await this.billRepo.findById(tx as never, orgId, alloc.supplierBillId);
+        if (!bill) throw new NotFoundException(`SupplierBill ${alloc.supplierBillId} not found`);
+        if (bill.supplierId !== dto.supplierId) {
+          throw new BadRequestException(`Bill ${alloc.supplierBillId} supplier does not match payment supplier`);
+        }
+        if (bill.currencyCode !== dto.currencyCode) {
+          throw new BadRequestException(`Bill ${alloc.supplierBillId} currency does not match payment currency`);
+        }
+        const allocAmt = new Decimal(alloc.amount);
+        const outstanding = new Decimal(bill.outstandingAmount.toString());
+        if (allocAmt.gt(outstanding)) {
+          throw new BadRequestException(`Allocation ${allocAmt.toFixed(2)} exceeds bill outstanding balance ${outstanding.toFixed(2)}`);
+        }
+
+        await this.paymentRepo.createAllocation(tx as never, {
+          organizationId: orgId,
+          supplierPaymentId: payment.id,
+          supplierBillId: alloc.supplierBillId,
+          allocatedAmount: allocAmt,
+          allocationDate: paymentDate,
+          postingStatus: 'NOT_POSTED',
+          createdBy: userId,
+        });
+
+        await this.billRepo.updateOutstandingAmount(tx as never, bill.id, outstanding.minus(allocAmt));
+      }
+
+      return payment;
     });
   }
 
@@ -99,6 +136,12 @@ export class SupplierPaymentService {
     if (payment.documentStatus !== 'DRAFT') {
       throw new BadRequestException(`Payment is already ${payment.documentStatus}`);
     }
+    // Governance seam (ADR-011) — the payment has no separate submit, so approval is the
+    // request transition. Backward-compatible: null when no binding is configured.
+    throwIfGated(
+      await this.commandGovernance.gateStateTransition(identity, 'SupplierPayment', 'DRAFT', 'APPROVED', paymentId),
+      'Supplier payment approval requires workflow approval.',
+    );
     return this.paymentRepo.approve(prisma, paymentId, identity.userId);
   }
 
@@ -191,7 +234,14 @@ export class SupplierPaymentService {
         );
 
         const pmtNum = await this.sequenceRepo.claimNext(tx as never, orgId, 'SUPPLIER_PAYMENT');
-        await this.paymentRepo.markPosted(prisma, payment.id, postResult.journalEntryId, pmtNum.formattedNumber, userId);
+        await this.paymentRepo.markPosted(tx as never, payment.id, postResult.journalEntryId, pmtNum.formattedNumber, userId);
+
+        // Stamp any pre-created allocations (from create-time dto.allocations[]) with
+        // this journal entry id so that the reverse() flow can find and restore them.
+        await (tx as never as typeof prisma).supplierPaymentAllocation.updateMany({
+          where: { supplierPaymentId: payment.id, postingStatus: 'NOT_POSTED' },
+          data: { postingStatus: 'POSTED', journalEntryId: postResult.journalEntryId },
+        });
 
         return { ...postResult, paymentNumber: pmtNum.formattedNumber };
       });
@@ -226,6 +276,12 @@ export class SupplierPaymentService {
     if (!bill) throw new NotFoundException(`SupplierBill ${dto.supplierBillId} not found`);
     if (bill.postingStatus !== 'POSTED') {
       throw new BadRequestException(`Bill must be POSTED before advance allocation`);
+    }
+    if (bill.supplierId !== payment.supplierId) {
+      throw new BadRequestException(`Bill supplier does not match payment supplier`);
+    }
+    if (bill.currencyCode !== payment.currencyCode) {
+      throw new BadRequestException(`Bill currency does not match payment currency`);
     }
 
     const apGl = await this.accountRepo.findByCode(prisma, orgId, dto.apAccountCode);
@@ -272,7 +328,7 @@ export class SupplierPaymentService {
         tx as never,
       );
 
-      await this.paymentRepo.createAllocation(prisma, {
+      const allocation = await this.paymentRepo.createAllocation(tx as never, {
         organizationId: orgId,
         supplierPaymentId: payment.id,
         supplierBillId: bill.id,
@@ -285,12 +341,12 @@ export class SupplierPaymentService {
 
       const newUnallocated = unallocated.minus(amount);
       const newAllocated = new Decimal(payment.allocatedAmount.toString()).plus(amount);
-      await this.paymentRepo.updateAllocations(prisma, payment.id, newAllocated, newUnallocated);
+      await this.paymentRepo.updateAllocations(tx as never, payment.id, newAllocated, newUnallocated);
 
       const newBillOutstanding = new Decimal(bill.outstandingAmount.toString()).minus(amount);
-      await this.billRepo.updateOutstandingAmount(prisma, bill.id, newBillOutstanding);
+      await this.billRepo.updateOutstandingAmount(tx as never, bill.id, newBillOutstanding);
 
-      return postResult;
+      return { ...postResult, allocationId: allocation.id };
     });
   }
 

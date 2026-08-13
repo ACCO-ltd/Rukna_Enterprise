@@ -2,12 +2,14 @@ import { Controller, Post, Body, Req, Res, HttpCode, HttpStatus } from '@nestjs/
 import { ApiTags, ApiOperation, ApiResponse, ApiCookieAuth } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 
+import { Public } from '../../../common/decorators/public.decorator.js';
 import { AuthService } from '../application/auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
 
 const COOKIE_NAME = 'refreshToken';
 const COOKIE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+@Public()
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {

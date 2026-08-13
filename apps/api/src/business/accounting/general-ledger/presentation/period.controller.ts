@@ -4,6 +4,8 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { PeriodManagementService } from '../application/period-management.service.js';
@@ -14,6 +16,7 @@ import { ReopenPeriodDto } from './dto/period-action.dto.js';
 @ApiTags('Period Management')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.periodsManage)
 @Controller('periods')
 export class PeriodController {
   constructor(

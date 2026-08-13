@@ -1,11 +1,21 @@
 import {
-  Controller, Get, Post, Body, Param, Query,
-  HttpCode, HttpStatus, UseGuards,
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  HttpCode,
+  HttpStatus,
+  ParseEnumPipe,
+  UseGuards,
 } from '@nestjs/common';
+import { PurchaseOrderStatus } from '@prisma/client';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
-import type { RequestIdentity } from '@erp/types';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import { PurchaseOrderService } from '../application/purchase-order.service.js';
 import {
   CreatePurchaseOrderDto,
@@ -16,6 +26,7 @@ import {
 @ApiTags('Procurement — Purchase Orders')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.procurementView)
 @Controller('procurement/purchase-orders')
 export class PurchaseOrderController {
   constructor(private readonly service: PurchaseOrderService) {}
@@ -26,13 +37,15 @@ export class PurchaseOrderController {
   @ApiQuery({ name: 'supplierId', required: false })
   findAll(
     @CurrentUser() identity: RequestIdentity,
-    @Query('status') status?: string,
+    @Query('status', new ParseEnumPipe(PurchaseOrderStatus, { optional: true }))
+    status?: PurchaseOrderStatus,
     @Query('supplierId') supplierId?: string,
   ) {
-    return this.service.findAll(identity, { status: status as any, supplierId });
+    return this.service.findAll(identity, { status, supplierId });
   }
 
   @Post()
+  @RequirePermissions(PERMISSIONS.purchaseOrdersCreate)
   @ApiOperation({ summary: 'Create a purchase order (DRAFT revision)' })
   create(@CurrentUser() identity: RequestIdentity, @Body() dto: CreatePurchaseOrderDto) {
     return this.service.create(identity, dto);
@@ -46,6 +59,7 @@ export class PurchaseOrderController {
   }
 
   @Post(':id/submit')
+  @RequirePermissions(PERMISSIONS.purchaseOrdersCreate)
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Submit PO revision for approval: DRAFT → SUBMITTED' })
@@ -54,22 +68,35 @@ export class PurchaseOrderController {
   }
 
   @Post(':id/approve')
+  @RequirePermissions(PERMISSIONS.purchaseOrdersApprove)
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })
-  @ApiOperation({ summary: 'Approve PO revision: SUBMITTED → ACTIVE. Writes CommitmentLedger COMMITTED entries.' })
-  approve(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: ApprovePurchaseOrderDto) {
+  @ApiOperation({
+    summary: 'Approve PO revision: SUBMITTED → ACTIVE. Writes CommitmentLedger COMMITTED entries.',
+  })
+  approve(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: ApprovePurchaseOrderDto,
+  ) {
     return this.service.approve(identity, id, dto);
   }
 
   @Post(':id/revise')
+  @RequirePermissions(PERMISSIONS.purchaseOrdersCreate)
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Create a new DRAFT revision for an OPEN PO' })
-  revise(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: RevisePurchaseOrderDto) {
+  revise(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: RevisePurchaseOrderDto,
+  ) {
     return this.service.revise(identity, id, dto);
   }
 
   @Post(':id/cancel')
+  @RequirePermissions(PERMISSIONS.purchaseOrdersCreate)
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Cancel purchase order' })

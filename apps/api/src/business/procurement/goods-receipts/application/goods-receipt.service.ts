@@ -10,7 +10,8 @@ import type { QualityStatus } from '@prisma/client';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { GoodsReceiptRepository } from '../infrastructure/goods-receipt.repository.js';
 import { PurchaseOrderRepository } from '../../purchase-orders/infrastructure/purchase-order.repository.js';
-import { CommitmentLedgerRepository } from '../../commitment-ledger/infrastructure/commitment-ledger.repository.js';
+import { CommitmentLedgerWriter } from '../../commitment-ledger/application/commitment-ledger-writer.service.js';
+import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 
 // Platform fallback when no OverReceiptPolicy is seeded for the org yet.
 // Seed an OverReceiptPolicy record to override this per ADR-007, Decision 11.
@@ -39,7 +40,8 @@ export class GoodsReceiptService {
     private readonly tenancy: TenancyService,
     private readonly repo: GoodsReceiptRepository,
     private readonly poRepo: PurchaseOrderRepository,
-    private readonly commitmentRepo: CommitmentLedgerRepository,
+    private readonly commitmentWriter: CommitmentLedgerWriter,
+    private readonly auditOutbox: TransactionalAuditOutboxService,
   ) {}
 
   findAll(identity: RequestIdentity, filters?: { purchaseOrderId?: string }) {
@@ -82,7 +84,7 @@ export class GoodsReceiptService {
           prisma,
           orgId,
           dto.purchaseOrderId,
-          (poLine as any).spendCategoryId ?? undefined,
+          poLine.spendCategoryId ?? undefined,
         );
         const tolerancePercent = resolvedPercent ?? PLATFORM_FALLBACK_OVER_RECEIPT_PERCENT;
 
@@ -119,62 +121,82 @@ export class GoodsReceiptService {
     const count = await this.repo.countGrnNumbers(prisma, orgId);
     const grnNumber = `GRN-${String(count + 1).padStart(5, '0')}`;
 
-    const grn = await this.repo.create(prisma, {
-      organizationId: orgId,
-      grnNumber,
-      purchaseOrderId: po.id,
-      purchaseOrderRevisionId: activeRevision.id,
-      supplierId: po.supplierId,
-      status: grnStatus,
-      deliveryDate: new Date(dto.deliveryDate),
-      deliveryNoteRef: dto.deliveryNoteRef,
-      createdBy: identity.userId,
-      lines: resolvedLines.map(r => ({
-        purchaseOrderLineId: r.poLine.id,
-        lineNumber: resolvedLines.indexOf(r) + 1,
-        lineType: r.poLine.lineType,
-        materialId: r.poLine.materialId ?? undefined,
-        unitOfMeasureId: r.poLine.unitOfMeasureId,
-        spendCategoryId: (r.poLine as any).spendCategoryId ?? undefined,
-        orderedQuantity: r.poLine.orderedQuantity as Decimal,
-        previouslyReceivedQty: r.previouslyReceivedQty,
-        receivedQuantity: new Decimal(r.line.receivedQuantity),
-        acceptedQuantity: r.accepted,
-        rejectedQuantity: r.rejected,
-        rejectionReason: r.line.rejectionReason,
-        qualityStatus: r.line.qualityStatus,
-        notes: r.line.notes,
-      })),
+    const grnId = await prisma.$transaction(async (tx) => {
+      const grn = await this.repo.create(tx, {
+        organizationId: orgId,
+        grnNumber,
+        purchaseOrderId: po.id,
+        purchaseOrderRevisionId: activeRevision.id,
+        supplierId: po.supplierId,
+        status: grnStatus,
+        deliveryDate: new Date(dto.deliveryDate),
+        deliveryNoteRef: dto.deliveryNoteRef,
+        createdBy: identity.userId,
+        lines: resolvedLines.map(r => ({
+          purchaseOrderLineId: r.poLine.id,
+          lineNumber: resolvedLines.indexOf(r) + 1,
+          lineType: r.poLine.lineType,
+          materialId: r.poLine.materialId ?? undefined,
+          unitOfMeasureId: r.poLine.unitOfMeasureId,
+          spendCategoryId: r.poLine.spendCategoryId ?? undefined,
+          orderedQuantity: r.poLine.orderedQuantity as Decimal,
+          previouslyReceivedQty: r.previouslyReceivedQty,
+          receivedQuantity: new Decimal(r.line.receivedQuantity),
+          acceptedQuantity: r.accepted,
+          rejectedQuantity: r.rejected,
+          rejectionReason: r.line.rejectionReason,
+          qualityStatus: r.line.qualityStatus,
+          notes: r.line.notes,
+        })),
+      });
+
+      // Pre-populate GRN line allocations from PO allocation ratios
+      for (const grnLine of grn!.lines) {
+        const poAllocations = await this.repo.findPoLineAllocations(tx, grnLine.purchaseOrderLineId);
+        if (!poAllocations.length) continue;
+
+        const totalAllocated = poAllocations.reduce(
+          (sum, a) => sum.add(a.allocatedQuantity as Decimal),
+          new Decimal(0),
+        );
+
+        for (const alloc of poAllocations) {
+          const ratio = (alloc.allocatedQuantity as Decimal).div(totalAllocated);
+          const allocReceived = (grnLine.receivedQuantity as Decimal).mul(ratio);
+          const allocAccepted = (grnLine.acceptedQuantity as Decimal).mul(ratio);
+          const allocRejected = (grnLine.rejectedQuantity as Decimal).mul(ratio);
+
+          await this.repo.createLineAllocation(tx, {
+            organizationId: orgId,
+            goodsReceiptLineId: grnLine.id,
+            purchaseOrderLineRequestAllocationId: alloc.id,
+            receivedQuantity: allocReceived,
+            acceptedQuantity: allocAccepted,
+            rejectedQuantity: allocRejected,
+          });
+        }
+      }
+
+      await this.auditOutbox.record(tx, {
+        organizationId: orgId,
+        actorUserId: identity.userId,
+        action: 'CREATE',
+        resourceType: 'GoodsReceiptNote',
+        resourceId: grn!.id,
+        sourceCommand: 'grn.create',
+        eventType: 'GRN_CREATED',
+        idempotencyKey: `grn-create-${grn!.id}`,
+        after: {
+          grnNumber,
+          purchaseOrderId: dto.purchaseOrderId,
+          status: grnStatus,
+        },
+      });
+
+      return grn!.id;
     });
 
-    // Pre-populate GRN line allocations from PO allocation ratios
-    for (const grnLine of grn!.lines) {
-      const poAllocations = await this.repo.findPoLineAllocations(prisma, grnLine.purchaseOrderLineId);
-      if (!poAllocations.length) continue;
-
-      const totalAllocated = poAllocations.reduce(
-        (sum, a) => sum.add(a.allocatedQuantity as Decimal),
-        new Decimal(0),
-      );
-
-      for (const alloc of poAllocations) {
-        const ratio = (alloc.allocatedQuantity as Decimal).div(totalAllocated);
-        const allocReceived = (grnLine.receivedQuantity as Decimal).mul(ratio);
-        const allocAccepted = (grnLine.acceptedQuantity as Decimal).mul(ratio);
-        const allocRejected = (grnLine.rejectedQuantity as Decimal).mul(ratio);
-
-        await this.repo.createLineAllocation(prisma, {
-          organizationId: orgId,
-          goodsReceiptLineId: grnLine.id,
-          purchaseOrderLineRequestAllocationId: alloc.id,
-          receivedQuantity: allocReceived,
-          acceptedQuantity: allocAccepted,
-          rejectedQuantity: allocRejected,
-        });
-      }
-    }
-
-    return this.repo.findById(prisma, orgId, grn!.id);
+    return this.repo.findById(prisma, orgId, grnId);
   }
 
   async post(identity: RequestIdentity, id: string, dto: { exchangeRate: number; reportingCurrencyCode: string }) {
@@ -204,49 +226,56 @@ export class GoodsReceiptService {
         const accrualAmount = acceptedQty.mul(unitPrice);
 
         // COMMITTED reduction
-        await this.commitmentRepo.create(tx as any, {
+        await this.commitmentWriter.committed(tx, {
           organizationId: orgId,
           supplierId: grn.supplierId,
           purchaseOrderId: grn.purchaseOrderId,
-          spendCategoryId: (line as any).spendCategoryId ?? undefined,
-          stage: 'COMMITTED',
+          spendCategoryId: line.spendCategoryId ?? undefined,
           amount: accrualAmount.negated(),
           currencyCode: activeRev.currencyCode,
-          reportingAmount: accrualAmount.negated().mul(rate),
-          exchangeRateSnapshot: rate,
+          rate,
           sourceDocumentType: 'GOODS_RECEIPT',
           sourceDocumentId: grn.id,
           sourceLineId: line.id,
           eventType: 'GRN_POSTED_COMMITTED_REDUCTION',
           idempotencyKey: `grn-committed-${grn.id}-${line.id}`,
-          occurredAt: new Date(),
           accountingDate: new Date(grn.deliveryDate),
         });
 
         // ACCRUED increase
-        await this.commitmentRepo.create(tx as any, {
+        await this.commitmentWriter.accrued(tx, {
           organizationId: orgId,
           supplierId: grn.supplierId,
           purchaseOrderId: grn.purchaseOrderId,
-          spendCategoryId: (line as any).spendCategoryId ?? undefined,
-          stage: 'ACCRUED',
+          spendCategoryId: line.spendCategoryId ?? undefined,
           amount: accrualAmount,
           currencyCode: activeRev.currencyCode,
-          reportingAmount: accrualAmount.mul(rate),
-          exchangeRateSnapshot: rate,
+          rate,
           sourceDocumentType: 'GOODS_RECEIPT',
           sourceDocumentId: grn.id,
           sourceLineId: line.id,
           eventType: 'GRN_POSTED_ACCRUED',
           idempotencyKey: `grn-accrued-${grn.id}-${line.id}`,
-          occurredAt: new Date(),
           accountingDate: new Date(grn.deliveryDate),
         });
       }
 
-      await this.repo.updateStatus(tx as any, id, 'POSTED', {
+      await this.repo.updateStatus(tx, id, 'POSTED', {
         postedAt: new Date(),
         postedBy: identity.userId,
+      });
+
+      await this.auditOutbox.record(tx, {
+        organizationId: orgId,
+        actorUserId: identity.userId,
+        action: 'POST',
+        resourceType: 'GoodsReceiptNote',
+        resourceId: id,
+        sourceCommand: 'grn.post',
+        eventType: 'GRN_POSTED',
+        idempotencyKey: `grn-post-${id}`,
+        before: { status: 'DRAFT' },
+        after: { status: 'POSTED' },
       });
     });
 
@@ -258,7 +287,26 @@ export class GoodsReceiptService {
     const grn = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!grn) throw new NotFoundException(`Goods receipt ${id} not found`);
     if (grn.status === 'POSTED') throw new ConflictException('Cannot cancel a POSTED goods receipt');
-    return this.repo.updateStatus(prisma, id, 'CANCELLED');
+    const fromStatus = grn.status;
+
+    return prisma.$transaction(async (tx) => {
+      const updated = await this.repo.updateStatus(tx, id, 'CANCELLED');
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'CANCEL',
+        resourceType: 'GoodsReceiptNote',
+        resourceId: id,
+        sourceCommand: 'grn.cancel',
+        eventType: 'GRN_CANCELLED',
+        idempotencyKey: `grn-cancel-${id}-${fromStatus}`,
+        before: { status: fromStatus },
+        after: { status: 'CANCELLED' },
+      });
+
+      return updated;
+    });
   }
 
   // P10: supervisor approves over-receipt exception — EXCEPTION_PENDING → DRAFT so GRN can be posted
@@ -269,6 +317,26 @@ export class GoodsReceiptService {
     if (grn.status !== 'EXCEPTION_PENDING') {
       throw new ConflictException(`GRN is ${grn.status} — only EXCEPTION_PENDING GRNs can have their exception approved`);
     }
-    return this.repo.updateStatus(prisma, id, 'DRAFT', { exceptionReason: `Exception approved by ${identity.userId}` });
+
+    return prisma.$transaction(async (tx) => {
+      const updated = await this.repo.updateStatus(tx, id, 'DRAFT', {
+        exceptionReason: `Exception approved by ${identity.userId}`,
+      });
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'APPROVE_EXCEPTION',
+        resourceType: 'GoodsReceiptNote',
+        resourceId: id,
+        sourceCommand: 'grn.approve-exception',
+        eventType: 'GRN_EXCEPTION_APPROVED',
+        idempotencyKey: `grn-approve-exception-${id}`,
+        before: { status: 'EXCEPTION_PENDING' },
+        after: { status: 'DRAFT' },
+      });
+
+      return updated;
+    });
   }
 }

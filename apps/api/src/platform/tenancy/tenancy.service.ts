@@ -23,8 +23,9 @@ export class TenancyService implements OnApplicationShutdown {
     const tenant = await this.platformPrisma.tenant.findUnique({ where: { slug } });
 
     if (!tenant) throw new NotFoundException(`Tenant '${slug}' not found`);
-    if (tenant.status === 'SUSPENDED') throw new NotFoundException(`Tenant '${slug}' is suspended`);
-    if (tenant.status === 'TERMINATED') throw new NotFoundException(`Tenant '${slug}' is terminated`);
+    if (tenant.status !== 'ACTIVE') {
+      throw new NotFoundException(`Tenant '${slug}' is not active`);
+    }
 
     const client = this.getOrCreateClient(slug, tenant.dbUrl);
     return { tenantId: tenant.id, tenantSlug: slug, client };

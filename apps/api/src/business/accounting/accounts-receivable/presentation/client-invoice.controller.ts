@@ -4,6 +4,8 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { ClientInvoiceService } from '../application/client-invoice.service.js';
@@ -14,6 +16,7 @@ import { ReverseInvoiceDto } from './dto/reverse-invoice.dto.js';
 @ApiTags('Client Invoices')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.receivablesManage)
 @Controller('invoices')
 export class ClientInvoiceController {
   constructor(private readonly clientInvoiceService: ClientInvoiceService) {}

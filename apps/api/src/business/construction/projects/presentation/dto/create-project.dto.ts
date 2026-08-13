@@ -29,6 +29,17 @@ export class CreateProjectDto {
   @MaxLength(255)
   clientName?: string;
 
+  @ApiPropertyOptional({ description: 'Client selected from the organization client registry' })
+  @IsOptional()
+  @IsString()
+  clientId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  location?: string;
+
   @ApiPropertyOptional({ example: 4500000.0, description: 'Contract value (set when approved)' })
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })

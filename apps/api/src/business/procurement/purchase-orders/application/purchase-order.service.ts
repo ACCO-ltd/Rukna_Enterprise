@@ -6,12 +6,19 @@ import {
 } from '@nestjs/common';
 import type { RequestIdentity } from '@erp/types';
 import { Decimal } from '@prisma/client/runtime/library';
-import type { PurchaseOrderStatus, ProcurementLineType } from '@prisma/client';
+import type {
+  Prisma,
+  PrismaClient,
+  PurchaseOrderStatus,
+  ProcurementLineType,
+} from '@prisma/client';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { PurchaseOrderRepository } from '../infrastructure/purchase-order.repository.js';
 import { MaterialRepository } from '../../catalogue/infrastructure/material.repository.js';
 import { UomRepository } from '../../catalogue/infrastructure/uom.repository.js';
-import { CommitmentLedgerRepository } from '../../commitment-ledger/infrastructure/commitment-ledger.repository.js';
+import { CommitmentLedgerWriter } from '../../commitment-ledger/application/commitment-ledger-writer.service.js';
+import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
+import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
 
 export interface CreatePoLineDto {
   lineType: ProcurementLineType;
@@ -50,6 +57,13 @@ export interface ApprovePurchaseOrderDto {
   exchangeRate: number;
 }
 
+type TenantPrisma = Omit<
+  PrismaClient,
+  '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
+>;
+
+type RevisionLineForAllocation = { id: string };
+
 @Injectable()
 export class PurchaseOrderService {
   constructor(
@@ -57,10 +71,15 @@ export class PurchaseOrderService {
     private readonly repo: PurchaseOrderRepository,
     private readonly materialRepo: MaterialRepository,
     private readonly uomRepo: UomRepository,
-    private readonly commitmentRepo: CommitmentLedgerRepository,
+    private readonly commitmentWriter: CommitmentLedgerWriter,
+    private readonly auditOutbox: TransactionalAuditOutboxService,
+    private readonly commandGovernance: CommandGovernanceService,
   ) {}
 
-  findAll(identity: RequestIdentity, filters?: { status?: PurchaseOrderStatus; supplierId?: string }) {
+  findAll(
+    identity: RequestIdentity,
+    filters?: { status?: PurchaseOrderStatus; supplierId?: string },
+  ) {
     const prisma = this.tenancy.getClient();
     return this.repo.findAll(prisma, identity.activeOrganizationId, filters);
   }
@@ -76,28 +95,46 @@ export class PurchaseOrderService {
     const prisma = this.tenancy.getClient();
     const orgId = identity.activeOrganizationId;
 
-    if (!dto.lines || dto.lines.length === 0) throw new BadRequestException('At least one line is required');
+    if (!dto.lines || dto.lines.length === 0)
+      throw new BadRequestException('At least one line is required');
 
     const resolvedLines = await this.resolveLines(prisma, orgId, dto.lines);
     const count = await this.repo.countPoNumbers(prisma, orgId);
     const poNumber = `PO-${String(count + 1).padStart(5, '0')}`;
 
-    const po = await this.repo.createWithRevision(prisma, {
-      organizationId: orgId,
-      supplierId: dto.supplierId,
-      poNumber,
-      currencyCode: dto.currencyCode,
-      effectiveFrom: new Date(dto.effectiveFrom),
-      reason: dto.reason,
-      deliveryAddress: dto.deliveryAddress,
-      expectedDeliveryDate: dto.expectedDeliveryDate ? new Date(dto.expectedDeliveryDate) : undefined,
-      createdBy: identity.userId,
-      lines: resolvedLines,
-    });
+    const po = await prisma.$transaction(async (tx) => {
+      const created = await this.repo.createWithRevision(tx, {
+        organizationId: orgId,
+        supplierId: dto.supplierId,
+        poNumber,
+        currencyCode: dto.currencyCode,
+        effectiveFrom: new Date(dto.effectiveFrom),
+        reason: dto.reason,
+        deliveryAddress: dto.deliveryAddress,
+        expectedDeliveryDate: dto.expectedDeliveryDate
+          ? new Date(dto.expectedDeliveryDate)
+          : undefined,
+        createdBy: identity.userId,
+        lines: resolvedLines,
+      });
 
-    // Wire MR-line allocations after PO lines are created
-    const revision = po!.revisions[0];
-    await this.wireAllocations(prisma, orgId, revision.lines, dto.lines);
+      const revision = created!.revisions[0];
+      await this.wireAllocations(tx, orgId, revision.lines, dto.lines);
+
+      await this.auditOutbox.record(tx, {
+        organizationId: orgId,
+        actorUserId: identity.userId,
+        action: 'CREATE',
+        resourceType: 'PurchaseOrder',
+        resourceId: created!.id,
+        sourceCommand: 'po.create',
+        eventType: 'PO_CREATED',
+        idempotencyKey: `po-create-${created!.id}`,
+        after: { poNumber, supplierId: dto.supplierId, status: 'DRAFT' },
+      });
+
+      return created;
+    });
 
     return this.repo.findById(prisma, orgId, po!.id);
   }
@@ -106,9 +143,41 @@ export class PurchaseOrderService {
     const prisma = this.tenancy.getClient();
     const po = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!po) throw new NotFoundException(`Purchase order ${id} not found`);
-    const draft = po.revisions.find(r => r.status === 'DRAFT');
+    const draft = po.revisions.find((r) => r.status === 'DRAFT');
     if (!draft) throw new ConflictException('No DRAFT revision to submit');
-    await this.repo.updateRevisionStatus(prisma, draft.id, 'SUBMITTED');
+
+    // Governance seam (ADR-011): submitting a PO for approval routes through the same
+    // gateStateTransition used by IPA/Project. With no binding configured this resolves
+    // to null and submission proceeds unchanged; when a DOA binding exists it creates the
+    // approval instance and returns 409 with approvalInstanceId.
+    throwIfGated(
+      await this.commandGovernance.gateStateTransition(
+        identity,
+        'PurchaseOrder',
+        'DRAFT',
+        'SUBMITTED',
+        id,
+      ),
+      'Purchase order submission requires workflow approval.',
+    );
+
+    await prisma.$transaction(async (tx) => {
+      await this.repo.updateRevisionStatus(tx, draft.id, 'SUBMITTED');
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'TRANSITION',
+        resourceType: 'PurchaseOrder',
+        resourceId: id,
+        sourceCommand: 'po.submit',
+        eventType: 'PO_SUBMITTED',
+        idempotencyKey: `po-submit-${id}-rev-${draft.id}`,
+        before: { revisionStatus: 'DRAFT' },
+        after: { revisionStatus: 'SUBMITTED' },
+      });
+    });
+
     return this.repo.findById(prisma, identity.activeOrganizationId, id);
   }
 
@@ -117,80 +186,92 @@ export class PurchaseOrderService {
     const po = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!po) throw new NotFoundException(`Purchase order ${id} not found`);
 
-    const submitted = po.revisions.find(r => r.status === 'SUBMITTED');
+    const submitted = po.revisions.find((r) => r.status === 'SUBMITTED');
     if (!submitted) throw new ConflictException('No SUBMITTED revision to approve');
 
     // Supersede previous ACTIVE revision if one exists
-    const currentActive = po.revisions.find(r => r.status === 'ACTIVE');
+    const currentActive = po.revisions.find((r) => r.status === 'ACTIVE');
 
-    // Atomically: approve revision → ACTIVE, supersede old, write CommitmentLedger entries
+    // Atomically: approve revision → ACTIVE, supersede old, write CommitmentLedger entries, audit
+    const rate = new Decimal(dto.exchangeRate);
     await prisma.$transaction(async (tx) => {
       if (currentActive) {
-        await this.repo.updateRevisionStatus(tx as any, currentActive.id, 'SUPERSEDED');
+        await this.repo.updateRevisionStatus(tx, currentActive.id, 'SUPERSEDED');
         // P11: reverse only the net uncommitted balance (committed - already_accrued)
         for (const line of currentActive.lines) {
-          const committedEntries = await this.commitmentRepo.queryByPoLineAndStage(
-            tx as any, po.organizationId, po.id, line.id, 'COMMITTED',
+          const committedEntries = await this.commitmentWriter.queryByPoLineAndStage(
+            tx,
+            po.organizationId,
+            po.id,
+            line.id,
+            'COMMITTED',
           );
           const netCommitted = committedEntries.reduce(
             (sum, e) => sum.add(e.amount as Decimal),
             new Decimal(0),
           );
           if (netCommitted.lessThanOrEqualTo(0)) continue;
-          await this.commitmentRepo.create(tx as any, {
+          await this.commitmentWriter.committed(tx, {
             organizationId: po.organizationId,
             supplierId: po.supplierId,
             purchaseOrderId: po.id,
-            spendCategoryId: (line as any).spendCategoryId ?? undefined,
-            stage: 'COMMITTED',
+            spendCategoryId: line.spendCategoryId ?? undefined,
             amount: netCommitted.negated(),
             currencyCode: submitted.currencyCode,
-            reportingAmount: netCommitted.negated().mul(new Decimal(dto.exchangeRate)),
-            exchangeRateSnapshot: new Decimal(dto.exchangeRate),
+            rate,
             sourceDocumentType: 'PO_CANCELLATION',
             sourceDocumentId: po.id,
             sourceLineId: line.id,
             sourceRevision: currentActive.revisionNumber,
             eventType: 'REVISION_SUPERSEDED',
             idempotencyKey: `po-supersede-${currentActive.id}-${line.id}`,
-            occurredAt: new Date(),
             accountingDate: new Date(submitted.effectiveFrom),
           });
         }
       }
 
       // Mark submitted revision as ACTIVE
-      await this.repo.updateRevisionStatus(tx as any, submitted.id, 'ACTIVE', {
+      await this.repo.updateRevisionStatus(tx, submitted.id, 'ACTIVE', {
         approvedBy: identity.userId,
         approvedAt: new Date(),
       });
-      await this.repo.updatePoStatus(tx as any, po.id, 'OPEN', submitted.id);
+      await this.repo.updatePoStatus(tx, po.id, 'OPEN', submitted.id);
 
       // Write COMMITTED entries for new revision lines (ADR-007, Rule CL-001)
       for (const line of submitted.lines) {
         const unitPrice = 'unitPrice' in line ? (line.unitPrice as Decimal) : new Decimal(0);
         const qty = 'orderedQuantity' in line ? (line.orderedQuantity as Decimal) : new Decimal(0);
         const amount = unitPrice.mul(qty);
-        await this.commitmentRepo.create(tx as any, {
+        await this.commitmentWriter.committed(tx, {
           organizationId: po.organizationId,
           supplierId: po.supplierId,
           purchaseOrderId: po.id,
-          spendCategoryId: (line as any).spendCategoryId ?? undefined,
-          stage: 'COMMITTED',
+          spendCategoryId: line.spendCategoryId ?? undefined,
           amount,
           currencyCode: submitted.currencyCode,
-          reportingAmount: amount.mul(new Decimal(dto.exchangeRate)),
-          exchangeRateSnapshot: new Decimal(dto.exchangeRate),
+          rate,
           sourceDocumentType: 'PURCHASE_ORDER_REVISION',
           sourceDocumentId: po.id,
           sourceLineId: line.id,
           sourceRevision: submitted.revisionNumber,
           eventType: 'PO_APPROVED',
           idempotencyKey: `po-commit-${submitted.id}-${line.id}`,
-          occurredAt: new Date(),
           accountingDate: new Date(submitted.effectiveFrom),
         });
       }
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'APPROVE',
+        resourceType: 'PurchaseOrder',
+        resourceId: id,
+        sourceCommand: 'po.approve',
+        eventType: 'PO_APPROVED',
+        idempotencyKey: `po-approve-${id}-rev-${submitted.id}`,
+        before: { revisionStatus: 'SUBMITTED' },
+        after: { revisionStatus: 'ACTIVE', poStatus: 'OPEN' },
+      });
     });
 
     return this.repo.findById(prisma, identity.activeOrganizationId, id);
@@ -202,24 +283,42 @@ export class PurchaseOrderService {
     if (!po) throw new NotFoundException(`Purchase order ${id} not found`);
     if (po.status !== 'OPEN') throw new ConflictException('Can only revise an OPEN purchase order');
 
-    const hasDraft = po.revisions.some(r => r.status === 'DRAFT');
-    if (hasDraft) throw new ConflictException('A DRAFT revision already exists — submit or cancel it first');
+    const hasDraft = po.revisions.some((r) => r.status === 'DRAFT');
+    if (hasDraft)
+      throw new ConflictException('A DRAFT revision already exists — submit or cancel it first');
 
-    const nextRevNum = Math.max(...po.revisions.map(r => r.revisionNumber)) + 1;
+    const nextRevNum = Math.max(...po.revisions.map((r) => r.revisionNumber)) + 1;
     const orgId = identity.activeOrganizationId;
     const resolvedLines = await this.resolveLines(prisma, orgId, dto.lines);
 
-    const newRev = await this.repo.createRevision(prisma, po.id, nextRevNum, {
-      currencyCode: dto.currencyCode,
-      effectiveFrom: new Date(dto.effectiveFrom),
-      reason: dto.reason,
-      deliveryAddress: dto.deliveryAddress,
-      expectedDeliveryDate: dto.expectedDeliveryDate ? new Date(dto.expectedDeliveryDate) : undefined,
-      createdBy: identity.userId,
-      lines: resolvedLines,
+    await prisma.$transaction(async (tx) => {
+      const newRev = await this.repo.createRevision(tx, po.id, nextRevNum, {
+        currencyCode: dto.currencyCode,
+        effectiveFrom: new Date(dto.effectiveFrom),
+        reason: dto.reason,
+        deliveryAddress: dto.deliveryAddress,
+        expectedDeliveryDate: dto.expectedDeliveryDate
+          ? new Date(dto.expectedDeliveryDate)
+          : undefined,
+        createdBy: identity.userId,
+        lines: resolvedLines,
+      });
+
+      await this.wireAllocations(tx, orgId, newRev.lines, dto.lines);
+
+      await this.auditOutbox.record(tx, {
+        organizationId: orgId,
+        actorUserId: identity.userId,
+        action: 'REVISE',
+        resourceType: 'PurchaseOrder',
+        resourceId: id,
+        sourceCommand: 'po.revise',
+        eventType: 'PO_REVISED',
+        idempotencyKey: `po-revise-${id}-rev-${nextRevNum}`,
+        after: { revisionNumber: nextRevNum, reason: dto.reason },
+      });
     });
 
-    await this.wireAllocations(prisma, orgId, newRev.lines, dto.lines);
     return this.repo.findById(prisma, orgId, id);
   }
 
@@ -227,15 +326,20 @@ export class PurchaseOrderService {
     const prisma = this.tenancy.getClient();
     const po = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!po) throw new NotFoundException(`Purchase order ${id} not found`);
-    if (po.status === 'CANCELLED') throw new ConflictException('Purchase order is already cancelled');
+    if (po.status === 'CANCELLED')
+      throw new ConflictException('Purchase order is already cancelled');
 
     await prisma.$transaction(async (tx) => {
       // P12: write COMMITTED reversal for remaining uncommitted balance before cancelling
-      const activeRevision = po.revisions.find(r => r.status === 'ACTIVE');
+      const activeRevision = po.revisions.find((r) => r.status === 'ACTIVE');
       if (activeRevision) {
         for (const line of activeRevision.lines) {
-          const committedEntries = await this.commitmentRepo.queryByPoLineAndStage(
-            tx as any, po.organizationId, po.id, line.id, 'COMMITTED',
+          const committedEntries = await this.commitmentWriter.queryByPoLineAndStage(
+            tx,
+            po.organizationId,
+            po.id,
+            line.id,
+            'COMMITTED',
           );
           const netCommitted = committedEntries.reduce(
             (sum, e) => sum.add(e.amount as Decimal),
@@ -245,23 +349,20 @@ export class PurchaseOrderService {
           const lastRate = committedEntries.length
             ? (committedEntries[committedEntries.length - 1].exchangeRateSnapshot as Decimal)
             : new Decimal(1);
-          await this.commitmentRepo.create(tx as any, {
+          await this.commitmentWriter.committed(tx, {
             organizationId: po.organizationId,
             supplierId: po.supplierId,
             purchaseOrderId: po.id,
-            spendCategoryId: (line as any).spendCategoryId ?? undefined,
-            stage: 'COMMITTED',
+            spendCategoryId: line.spendCategoryId ?? undefined,
             amount: netCommitted.negated(),
             currencyCode: activeRevision.currencyCode,
-            reportingAmount: netCommitted.negated().mul(lastRate),
-            exchangeRateSnapshot: lastRate,
+            rate: lastRate,
             sourceDocumentType: 'PO_CANCELLATION',
             sourceDocumentId: po.id,
             sourceLineId: line.id,
             sourceRevision: activeRevision.revisionNumber,
             eventType: 'PO_CANCELLED',
             idempotencyKey: `po-cancel-${po.id}-${line.id}`,
-            occurredAt: new Date(),
             accountingDate: new Date(),
           });
         }
@@ -269,16 +370,29 @@ export class PurchaseOrderService {
 
       for (const rev of po.revisions) {
         if (rev.status !== 'SUPERSEDED' && rev.status !== 'CANCELLED') {
-          await this.repo.updateRevisionStatus(tx as any, rev.id, 'CANCELLED');
+          await this.repo.updateRevisionStatus(tx, rev.id, 'CANCELLED');
         }
       }
-      await this.repo.updatePoStatus(tx as any, po.id, 'CANCELLED');
+      await this.repo.updatePoStatus(tx, po.id, 'CANCELLED');
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'CANCEL',
+        resourceType: 'PurchaseOrder',
+        resourceId: id,
+        sourceCommand: 'po.cancel',
+        eventType: 'PO_CANCELLED',
+        idempotencyKey: `po-cancel-${id}`,
+        before: { status: po.status },
+        after: { status: 'CANCELLED' },
+      });
     });
 
     return this.repo.findById(prisma, identity.activeOrganizationId, id);
   }
 
-  private async resolveLines(prisma: any, orgId: string, dtoLines: CreatePoLineDto[]) {
+  private async resolveLines(prisma: TenantPrisma, orgId: string, dtoLines: CreatePoLineDto[]) {
     return Promise.all(
       dtoLines.map(async (line, i) => {
         if (line.lineType === 'MATERIAL' && !line.materialCode) {
@@ -290,7 +404,8 @@ export class PurchaseOrderService {
 
         if (line.materialCode) {
           const material = await this.materialRepo.findByCode(prisma, orgId, line.materialCode);
-          if (!material) throw new NotFoundException(`Line ${i + 1}: material '${line.materialCode}' not found`);
+          if (!material)
+            throw new NotFoundException(`Line ${i + 1}: material '${line.materialCode}' not found`);
           materialId = material.id;
           resolvedUomId = material.baseUnitOfMeasureId;
         } else {
@@ -319,7 +434,12 @@ export class PurchaseOrderService {
     );
   }
 
-  private async wireAllocations(prisma: any, orgId: string, revLines: any[], dtoLines: CreatePoLineDto[]) {
+  private async wireAllocations(
+    prisma: Prisma.TransactionClient,
+    orgId: string,
+    revLines: RevisionLineForAllocation[],
+    dtoLines: CreatePoLineDto[],
+  ) {
     for (let i = 0; i < revLines.length; i++) {
       const poLine = revLines[i];
       const dtoLine = dtoLines[i];
@@ -339,8 +459,8 @@ export class PurchaseOrderService {
           throw new BadRequestException(`MR line ${alloc.materialRequestLineId} not found`);
         }
 
-        const existingTotal = (mrLine.poAllocations as any[]).reduce(
-          (sum: Decimal, a: any) => sum.add(a.allocatedQuantity as Decimal),
+        const existingTotal = mrLine.poAllocations.reduce(
+          (sum, allocation) => sum.add(allocation.allocatedQuantity),
           new Decimal(0),
         );
         const newTotal = existingTotal.add(new Decimal(alloc.allocatedQuantity));
@@ -349,7 +469,7 @@ export class PurchaseOrderService {
         if (newTotal.greaterThan(cap)) {
           throw new BadRequestException(
             `MR line ${alloc.materialRequestLineId}: total PO allocation (${newTotal}) would exceed ` +
-            `approved quantity (${cap}). Reduce the allocated quantity.`,
+              `approved quantity (${cap}). Reduce the allocated quantity.`,
           );
         }
 

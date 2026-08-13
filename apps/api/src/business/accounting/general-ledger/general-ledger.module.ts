@@ -13,6 +13,7 @@ import { YearEndCloseService } from './application/year-end-close.service.js';
 
 // Presentation
 import { ReportController } from './presentation/report.controller.js';
+import { ProjectReportController } from './presentation/project-report.controller.js';
 import { PeriodController } from './presentation/period.controller.js';
 
 @Module({
@@ -27,7 +28,7 @@ import { PeriodController } from './presentation/period.controller.js';
     PeriodManagementService, // depends on SnapshotService
     YearEndCloseService,     // depends on SnapshotService + ACCOUNTING_POSTING_PORT
   ],
-  controllers: [ReportController, PeriodController],
+  controllers: [ReportController, ProjectReportController, PeriodController],
   exports: [
     SnapshotService,
     LedgerService,

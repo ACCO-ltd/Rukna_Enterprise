@@ -24,8 +24,14 @@
 
 import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import { ProcurementFixtureFactory, type ProcurementTestEnv } from './helpers/procurement-fixture.factory.js';
-import { buildProcurementServices, type ProcurementServices } from './helpers/build-procurement-services.js';
+import {
+  ProcurementFixtureFactory,
+  type ProcurementTestEnv,
+} from './helpers/procurement-fixture.factory.js';
+import {
+  buildProcurementServices,
+  type ProcurementServices,
+} from './helpers/build-procurement-services.js';
 
 const prisma = new PrismaClient();
 let env: ProcurementTestEnv;
@@ -44,15 +50,17 @@ async function createApprovedMr(qty = 100) {
     requestScope: 'PROJECT',
     projectId: env.projectId,
     requestedDate: '2026-08-10',
-    lines: [{
-      lineType: 'MATERIAL',
-      materialCode: 'REBAR-12',
-      description: '12mm Rebar',
-      uomCode: 'TON',
-      requestedQuantity: qty,
-      boqNodeId: env.boqNodeId,
-      spendCategoryId: env.spendCategoryId,
-    }],
+    lines: [
+      {
+        lineType: 'MATERIAL',
+        materialCode: 'REBAR-12',
+        description: '12mm Rebar',
+        uomCode: 'TON',
+        requestedQuantity: qty,
+        boqNodeId: env.boqNodeId,
+        spendCategoryId: env.spendCategoryId,
+      },
+    ],
   });
   // DRAFT → SUBMITTED → APPROVED
   await svc.mrService.submit(identity(env), mr.id);
@@ -69,33 +77,54 @@ async function createAndApprovePo(mrLineId: string, qty: number, price = 500) {
     supplierId: env.supplierId,
     currencyCode: 'USD',
     effectiveFrom: '2026-08-15',
-    lines: [{
-      lineType: 'MATERIAL',
-      materialCode: 'REBAR-12',
-      description: '12mm Rebar',
-      uomCode: 'TON',
-      orderedQuantity: qty,
-      unitPrice: price,
-      spendCategoryId: env.spendCategoryId,
-      mrLineAllocations: [{ materialRequestLineId: mrLineId, allocatedQuantity: qty }],
-    }],
+    lines: [
+      {
+        lineType: 'MATERIAL',
+        materialCode: 'REBAR-12',
+        description: '12mm Rebar',
+        uomCode: 'TON',
+        orderedQuantity: qty,
+        unitPrice: price,
+        spendCategoryId: env.spendCategoryId,
+        mrLineAllocations: [{ materialRequestLineId: mrLineId, allocatedQuantity: qty }],
+      },
+    ],
   });
   await svc.poService.submit(identity(env), po!.id);
-  await svc.poService.approve(identity(env), po!.id, { reportingCurrencyCode: 'USD', exchangeRate: 1 });
+  await svc.poService.approve(identity(env), po!.id, {
+    reportingCurrencyCode: 'USD',
+    exchangeRate: 1,
+  });
   return prisma.purchaseOrder.findUniqueOrThrow({
     where: { id: po!.id },
     include: { revisions: { include: { lines: true } } },
   });
 }
 
-async function createAndPostGrn(poId: string, poLineId: string, received: number, accepted: number) {
+async function createAndPostGrn(
+  poId: string,
+  poLineId: string,
+  received: number,
+  accepted: number,
+) {
   const rejected = received - accepted;
   const grn = await svc.grnService.create(identity(env), {
     purchaseOrderId: poId,
     deliveryDate: '2026-08-20',
-    lines: [{ purchaseOrderLineId: poLineId, receivedQuantity: received, acceptedQuantity: accepted, rejectedQuantity: rejected, qualityStatus: rejected > 0 ? 'REJECTED' : 'ACCEPTED' }],
+    lines: [
+      {
+        purchaseOrderLineId: poLineId,
+        receivedQuantity: received,
+        acceptedQuantity: accepted,
+        rejectedQuantity: rejected,
+        qualityStatus: rejected > 0 ? 'REJECTED' : 'ACCEPTED',
+      },
+    ],
   });
-  await svc.grnService.post(identity(env), grn!.id, { exchangeRate: 1, reportingCurrencyCode: 'USD' });
+  await svc.grnService.post(identity(env), grn!.id, {
+    exchangeRate: 1,
+    reportingCurrencyCode: 'USD',
+  });
   return prisma.goodsReceiptNote.findUniqueOrThrow({
     where: { id: grn!.id },
     include: { lines: true },
@@ -111,14 +140,16 @@ async function createDraftBill(poId: string, poRevisionId: string, qty: number, 
     currencyCode: 'USD',
     exchangeRateSnapshot: 1,
     purchaseOrderId: poId,
-    lines: [{
-      description: '12mm Rebar',
-      quantity: qty,
-      unitPrice: price,
-      netAmount: qty * price,
-      vatAmount: 0,
-      expenseProfileCode: env.postingProfileCode,
-    }],
+    lines: [
+      {
+        description: '12mm Rebar',
+        quantity: qty,
+        unitPrice: price,
+        netAmount: qty * price,
+        vatAmount: 0,
+        expenseProfileCode: env.postingProfileCode,
+      },
+    ],
   });
 }
 
@@ -141,7 +172,7 @@ test('T01 — PO approval writes one COMMITTED entry per line with correct amoun
   const mr = await createApprovedMr(100);
   const mrLineId = mr.lines[0].id;
   const po = await createAndApprovePo(mrLineId, 100, 500);
-  const activeRev = po.revisions.find(r => r.status === 'ACTIVE')!;
+  const activeRev = po.revisions.find((r) => r.status === 'ACTIVE')!;
   const line = activeRev.lines[0];
 
   const entries = await prisma.commitmentLedgerEntry.findMany({
@@ -165,19 +196,24 @@ test('T02 — Revising a PO creates compensating reversal for old revision and n
     reason: 'Price adjustment',
     currencyCode: 'USD',
     effectiveFrom: '2026-08-16',
-    lines: [{
-      lineType: 'MATERIAL',
-      materialCode: 'REBAR-12',
-      description: '12mm Rebar',
-      uomCode: 'TON',
-      orderedQuantity: 100,
-      unitPrice: 600,
-      spendCategoryId: env.spendCategoryId,
-    }],
+    lines: [
+      {
+        lineType: 'MATERIAL',
+        materialCode: 'REBAR-12',
+        description: '12mm Rebar',
+        uomCode: 'TON',
+        orderedQuantity: 100,
+        unitPrice: 600,
+        spendCategoryId: env.spendCategoryId,
+      },
+    ],
   });
 
   await svc.poService.submit(identity(env), po.id);
-  await svc.poService.approve(identity(env), po.id, { reportingCurrencyCode: 'USD', exchangeRate: 1 });
+  await svc.poService.approve(identity(env), po.id, {
+    reportingCurrencyCode: 'USD',
+    exchangeRate: 1,
+  });
 
   const allEntries = await prisma.commitmentLedgerEntry.findMany({
     where: { purchaseOrderId: po.id },
@@ -185,8 +221,8 @@ test('T02 — Revising a PO creates compensating reversal for old revision and n
   });
 
   // Should have: original +50000, supersede -50000, new +60000
-  const positives = allEntries.filter(e => new Decimal(e.amount.toString()).greaterThan(0));
-  const negatives = allEntries.filter(e => new Decimal(e.amount.toString()).lessThan(0));
+  const positives = allEntries.filter((e) => new Decimal(e.amount.toString()).greaterThan(0));
+  const negatives = allEntries.filter((e) => new Decimal(e.amount.toString()).lessThan(0));
 
   expect(positives).toHaveLength(2);
   expect(negatives).toHaveLength(1);
@@ -231,16 +267,18 @@ test('T04 — Second PO allocation that would exceed MR approved quantity is rej
       supplierId: env.supplierId,
       currencyCode: 'USD',
       effectiveFrom: '2026-08-15',
-      lines: [{
-        lineType: 'MATERIAL',
-        materialCode: 'REBAR-12',
-        description: '12mm Rebar',
-        uomCode: 'TON',
-        orderedQuantity: 30,
-        unitPrice: 500,
-        spendCategoryId: env.spendCategoryId,
-        mrLineAllocations: [{ materialRequestLineId: mrLineId, allocatedQuantity: 30 }],
-      }],
+      lines: [
+        {
+          lineType: 'MATERIAL',
+          materialCode: 'REBAR-12',
+          description: '12mm Rebar',
+          uomCode: 'TON',
+          orderedQuantity: 30,
+          unitPrice: 500,
+          spendCategoryId: env.spendCategoryId,
+          mrLineAllocations: [{ materialRequestLineId: mrLineId, allocatedQuantity: 30 }],
+        },
+      ],
     }),
   ).rejects.toThrow(/exceed/i);
 });
@@ -249,7 +287,7 @@ test('T04 — Second PO allocation that would exceed MR approved quantity is rej
 test('T05 — GRN post: accepted quantity accrues, rejected quantity does not affect ACCRUED stage', async () => {
   const mr = await createApprovedMr(100);
   const po = await createAndApprovePo(mr.lines[0].id, 100, 500);
-  const activeRev = po.revisions.find(r => r.status === 'ACTIVE')!;
+  const activeRev = po.revisions.find((r) => r.status === 'ACTIVE')!;
   const poLineId = activeRev.lines[0].id;
 
   // Receive 100, accept 80, reject 20
@@ -260,8 +298,10 @@ test('T05 — GRN post: accepted quantity accrues, rejected quantity does not af
     orderBy: { occurredAt: 'asc' },
   });
 
-  const accrued = entries.filter(e => e.stage === 'ACCRUED');
-  const committedNeg = entries.filter(e => e.stage === 'COMMITTED' && new Decimal(e.amount.toString()).lessThan(0));
+  const accrued = entries.filter((e) => e.stage === 'ACCRUED');
+  const committedNeg = entries.filter(
+    (e) => e.stage === 'COMMITTED' && new Decimal(e.amount.toString()).lessThan(0),
+  );
 
   // ACCRUED entry = acceptedQty × unitPrice = 80 × 500 = 40000
   expect(accrued).toHaveLength(1);
@@ -276,14 +316,22 @@ test('T05 — GRN post: accepted quantity accrues, rejected quantity does not af
 test('T06 — GRN exactly at 5% over-receipt threshold stays DRAFT (reads OverReceiptPolicy)', async () => {
   const mr = await createApprovedMr(100);
   const po = await createAndApprovePo(mr.lines[0].id, 100, 500);
-  const activeRev = po.revisions.find(r => r.status === 'ACTIVE')!;
+  const activeRev = po.revisions.find((r) => r.status === 'ACTIVE')!;
   const poLineId = activeRev.lines[0].id;
 
   // 105 = exactly 5% over ordered 100
   const grn = await svc.grnService.create(identity(env), {
     purchaseOrderId: po.id,
     deliveryDate: '2026-08-20',
-    lines: [{ purchaseOrderLineId: poLineId, receivedQuantity: 105, acceptedQuantity: 105, rejectedQuantity: 0, qualityStatus: 'ACCEPTED' }],
+    lines: [
+      {
+        purchaseOrderLineId: poLineId,
+        receivedQuantity: 105,
+        acceptedQuantity: 105,
+        rejectedQuantity: 0,
+        qualityStatus: 'ACCEPTED',
+      },
+    ],
   });
 
   const record = await prisma.goodsReceiptNote.findUniqueOrThrow({ where: { id: grn!.id } });
@@ -294,14 +342,22 @@ test('T06 — GRN exactly at 5% over-receipt threshold stays DRAFT (reads OverRe
 test('T07 — GRN 6% over ordered quantity goes to EXCEPTION_PENDING', async () => {
   const mr = await createApprovedMr(100);
   const po = await createAndApprovePo(mr.lines[0].id, 100, 500);
-  const activeRev = po.revisions.find(r => r.status === 'ACTIVE')!;
+  const activeRev = po.revisions.find((r) => r.status === 'ACTIVE')!;
   const poLineId = activeRev.lines[0].id;
 
   // 106 = 6% over
   const grn = await svc.grnService.create(identity(env), {
     purchaseOrderId: po.id,
     deliveryDate: '2026-08-20',
-    lines: [{ purchaseOrderLineId: poLineId, receivedQuantity: 106, acceptedQuantity: 106, rejectedQuantity: 0, qualityStatus: 'ACCEPTED' }],
+    lines: [
+      {
+        purchaseOrderLineId: poLineId,
+        receivedQuantity: 106,
+        acceptedQuantity: 106,
+        rejectedQuantity: 0,
+        qualityStatus: 'ACCEPTED',
+      },
+    ],
   });
 
   const record = await prisma.goodsReceiptNote.findUniqueOrThrow({ where: { id: grn!.id } });
@@ -312,7 +368,7 @@ test('T07 — GRN 6% over ordered quantity goes to EXCEPTION_PENDING', async () 
 test('T08 — GRN allocation totals reconcile to GRN line received and accepted quantities', async () => {
   const mr = await createApprovedMr(100);
   const po = await createAndApprovePo(mr.lines[0].id, 100, 500);
-  const activeRev = po.revisions.find(r => r.status === 'ACTIVE')!;
+  const activeRev = po.revisions.find((r) => r.status === 'ACTIVE')!;
   const poLineId = activeRev.lines[0].id;
 
   const grn = await createAndPostGrn(po.id, poLineId, 100, 90);
@@ -322,8 +378,14 @@ test('T08 — GRN allocation totals reconcile to GRN line received and accepted 
     where: { goodsReceiptLineId: grnLine.id },
   });
 
-  const totalReceived = allocs.reduce((sum, a) => sum.add(a.receivedQuantity as Decimal), new Decimal(0));
-  const totalAccepted = allocs.reduce((sum, a) => sum.add(a.acceptedQuantity as Decimal), new Decimal(0));
+  const totalReceived = allocs.reduce(
+    (sum, a) => sum.add(a.receivedQuantity as Decimal),
+    new Decimal(0),
+  );
+  const totalAccepted = allocs.reduce(
+    (sum, a) => sum.add(a.acceptedQuantity as Decimal),
+    new Decimal(0),
+  );
 
   // Allocations must sum to the GRN line quantities
   expect(totalReceived.equals(grnLine.receivedQuantity as Decimal)).toBe(true);
@@ -334,7 +396,7 @@ test('T08 — GRN allocation totals reconcile to GRN line received and accepted 
 test('T09 — Two-way matching produces correct price and quantity variance', async () => {
   const mr = await createApprovedMr(100);
   const po = await createAndApprovePo(mr.lines[0].id, 100, 500);
-  const activeRev = po.revisions.find(r => r.status === 'ACTIVE')!;
+  const activeRev = po.revisions.find((r) => r.status === 'ACTIVE')!;
   const poRevisionId = activeRev.id;
 
   // Seed a MatchingTolerancePolicy with 2% price, 2% qty
@@ -374,17 +436,19 @@ test('T09 — Two-way matching produces correct price and quantity variance', as
       purchaseOrderId: po.id,
       createdBy: env.identity.userId,
       lines: {
-        create: [{
-          lineNumber: 1,
-          description: 'Consulting service',
-          quantity: new Decimal('100'),
-          unitPrice: new Decimal('510'),
-          netAmount: new Decimal('51000'),
-          vatAmount: new Decimal('0'),
-          grossAmount: new Decimal('51000'),
-          expenseProfileCode: env.postingProfileCode,
-          lineType: 'SERVICE',
-        }],
+        create: [
+          {
+            lineNumber: 1,
+            description: 'Consulting service',
+            quantity: new Decimal('100'),
+            unitPrice: new Decimal('510'),
+            netAmount: new Decimal('51000'),
+            vatAmount: new Decimal('0'),
+            grossAmount: new Decimal('51000'),
+            expenseProfileCode: env.postingProfileCode,
+            lineType: 'SERVICE',
+          },
+        ],
       },
     },
     include: { lines: true },
@@ -405,7 +469,7 @@ test('T09 — Two-way matching produces correct price and quantity variance', as
 test('T10 — Three-way matching records GRN accepted quantity on match lines', async () => {
   const mr = await createApprovedMr(100);
   const po = await createAndApprovePo(mr.lines[0].id, 100, 500);
-  const activeRev = po.revisions.find(r => r.status === 'ACTIVE')!;
+  const activeRev = po.revisions.find((r) => r.status === 'ACTIVE')!;
   const poLineId = activeRev.lines[0].id;
 
   // Post a GRN accepting 90
@@ -435,18 +499,20 @@ test('T10 — Three-way matching records GRN accepted quantity on match lines', 
       purchaseOrderId: po.id,
       createdBy: env.identity.userId,
       lines: {
-        create: [{
-          lineNumber: 1,
-          description: '12mm Rebar',
-          quantity: new Decimal('90'),
-          unitPrice: new Decimal('500'),
-          netAmount: new Decimal('45000'),
-          vatAmount: new Decimal('0'),
-          grossAmount: new Decimal('45000'),
-          expenseProfileCode: env.postingProfileCode,
-          lineType: 'MATERIAL',
-          materialId: env.materialId,
-        }],
+        create: [
+          {
+            lineNumber: 1,
+            description: '12mm Rebar',
+            quantity: new Decimal('90'),
+            unitPrice: new Decimal('500'),
+            netAmount: new Decimal('45000'),
+            vatAmount: new Decimal('0'),
+            grossAmount: new Decimal('45000'),
+            expenseProfileCode: env.postingProfileCode,
+            lineType: 'MATERIAL',
+            materialId: env.materialId,
+          },
+        ],
       },
     },
     include: { lines: true },
@@ -466,7 +532,7 @@ test('T11 — Bill with EXCEPTION status is blocked from posting', async () => {
   // Create a bill without matching → matchStatus null
   const mr = await createApprovedMr(100);
   const po = await createAndApprovePo(mr.lines[0].id, 100, 500);
-  const activeRev = po.revisions.find(r => r.status === 'ACTIVE')!;
+  const activeRev = po.revisions.find((r) => r.status === 'ACTIVE')!;
 
   const invNumBlocked = `INV-BLOCKED-${Date.now()}`;
   const bill = await prisma.supplierBill.create({
@@ -492,15 +558,17 @@ test('T11 — Bill with EXCEPTION status is blocked from posting', async () => {
       purchaseOrderId: po.id,
       createdBy: env.identity.userId,
       lines: {
-        create: [{
-          lineNumber: 1,
-          description: 'Blocked line',
-          netAmount: new Decimal('50000'),
-          vatAmount: new Decimal('0'),
-          grossAmount: new Decimal('50000'),
-          expenseProfileCode: env.postingProfileCode,
-          lineType: 'MATERIAL',
-        }],
+        create: [
+          {
+            lineNumber: 1,
+            description: 'Blocked line',
+            netAmount: new Decimal('50000'),
+            vatAmount: new Decimal('0'),
+            grossAmount: new Decimal('50000'),
+            expenseProfileCode: env.postingProfileCode,
+            lineType: 'MATERIAL',
+          },
+        ],
       },
     },
   });
@@ -535,7 +603,7 @@ test('T11 — Bill with EXCEPTION status is blocked from posting', async () => {
 test('T12 — SupplierBill post writes ACCRUED reversal + ACTUAL entry exactly once', async () => {
   const mr = await createApprovedMr(100);
   const po = await createAndApprovePo(mr.lines[0].id, 100, 500);
-  const activeRev = po.revisions.find(r => r.status === 'ACTIVE')!;
+  const activeRev = po.revisions.find((r) => r.status === 'ACTIVE')!;
   const poLineId = activeRev.lines[0].id;
 
   // Post GRN first to generate ACCRUED entry
@@ -548,11 +616,12 @@ test('T12 — SupplierBill post writes ACCRUED reversal + ACTUAL entry exactly o
     data: { documentStatus: 'SUBMITTED' },
   });
   await svc.supplierBillService.approve(identity(env), bill.id);
-  // Attach PO revision id (normally set via matching flow)
+  // Link the approved revision, then complete the required matching gate.
   await prisma.supplierBill.update({
     where: { id: bill.id },
     data: { purchaseOrderRevisionId: activeRev.id },
   });
+  await svc.billMatchingService.runMatching(identity(env), bill.id);
 
   await svc.supplierBillService.post(identity(env), { billId: bill.id, apAccountCode: 'AP-PROC' });
 
@@ -561,8 +630,12 @@ test('T12 — SupplierBill post writes ACCRUED reversal + ACTUAL entry exactly o
     orderBy: { occurredAt: 'asc' },
   });
 
-  const actualEntry = entries.find(e => e.stage === 'ACTUAL' && new Decimal(e.amount.toString()).greaterThan(0));
-  const accruedReversal = entries.find(e => e.stage === 'ACCRUED' && new Decimal(e.amount.toString()).lessThan(0));
+  const actualEntry = entries.find(
+    (e) => e.stage === 'ACTUAL' && new Decimal(e.amount.toString()).greaterThan(0),
+  );
+  const accruedReversal = entries.find(
+    (e) => e.stage === 'ACCRUED' && new Decimal(e.amount.toString()).lessThan(0),
+  );
 
   expect(actualEntry).toBeTruthy();
   expect(accruedReversal).toBeTruthy();
@@ -591,10 +664,10 @@ test('T13 — CommitmentLedger rejects a duplicate idempotencyKey', async () => 
     accountingDate: new Date('2026-08-10'),
   };
 
-  await svc.commitmentRepo.create(prisma as any, data);
+  await svc.commitmentRepo.create(prisma, data);
 
   // Second write with same key must fail (unique constraint)
-  await expect(svc.commitmentRepo.create(prisma as any, data)).rejects.toThrow();
+  await expect(svc.commitmentRepo.create(prisma, data)).rejects.toThrow();
 });
 
 // ── T14: PO cancellation creates compensating entries, not edits ─────────────
@@ -606,7 +679,9 @@ test('T14 — Cancelling an approved PO writes compensating COMMITTED reversal w
     where: { purchaseOrderId: po.id },
   });
   // Original positive COMMITTED entry must exist
-  expect(before.some(e => new Decimal(e.amount.toString()).equals(new Decimal('50000')))).toBe(true);
+  expect(before.some((e) => new Decimal(e.amount.toString()).equals(new Decimal('50000')))).toBe(
+    true,
+  );
 
   // Cancel via PO service
   await svc.poService.cancel(identity(env), po.id);
@@ -616,7 +691,7 @@ test('T14 — Cancelling an approved PO writes compensating COMMITTED reversal w
   });
 
   // Original row unchanged (immutable)
-  const original = after.find(e => new Decimal(e.amount.toString()).equals(new Decimal('50000')));
+  const original = after.find((e) => new Decimal(e.amount.toString()).equals(new Decimal('50000')));
   expect(original).toBeTruthy();
 
   // But a new -50000 compensating row should exist OR the PO was cancelled before any extra entry
@@ -637,14 +712,21 @@ test('T15 — Organisation isolation: org2 cannot see org1 POs, MRs, or commitme
     const po1 = await createAndApprovePo(mr1.lines[0].id, 50, 500);
 
     // Querying from org2 identity should return empty results
-    const org2POs = await svc.poService.findAll({ ...identity(env), activeOrganizationId: env2.orgId });
-    const org2MRs = await prisma.materialRequest.findMany({ where: { organizationId: env2.orgId } });
-    const org2Commitments = await prisma.commitmentLedgerEntry.findMany({ where: { organizationId: env2.orgId } });
+    const org2POs = await svc.poService.findAll({
+      ...identity(env),
+      activeOrganizationId: env2.orgId,
+    });
+    const org2MRs = await prisma.materialRequest.findMany({
+      where: { organizationId: env2.orgId },
+    });
+    const org2Commitments = await prisma.commitmentLedgerEntry.findMany({
+      where: { organizationId: env2.orgId },
+    });
 
     // Org2 should see none of org1's data
-    expect(org2POs.every((po: any) => po.organizationId === env2.orgId)).toBe(true);
-    expect(org2MRs.every(mr => mr.organizationId === env2.orgId)).toBe(true);
-    expect(org2Commitments.every(e => e.organizationId === env2.orgId)).toBe(true);
+    expect(org2POs.every((po) => po.organizationId === env2.orgId)).toBe(true);
+    expect(org2MRs.every((mr) => mr.organizationId === env2.orgId)).toBe(true);
+    expect(org2Commitments.every((e) => e.organizationId === env2.orgId)).toBe(true);
 
     // Org1 data must still exist (not accidentally deleted)
     const org1PO = await prisma.purchaseOrder.findUnique({ where: { id: po1.id } });

@@ -4,6 +4,8 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { SupplierBillService } from '../application/supplier-bill.service.js';
@@ -14,6 +16,7 @@ import { ReverseSupplierBillDto } from './dto/reverse-supplier-bill.dto.js';
 @ApiTags('Supplier Bills')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.payablesManage)
 @Controller('bills')
 export class SupplierBillController {
   constructor(private readonly supplierBillService: SupplierBillService) {}

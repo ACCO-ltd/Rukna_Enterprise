@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 import { TenancyModule } from '../../../platform/tenancy/tenancy.module.js';
 import { CatalogueModule } from '../catalogue/catalogue.module.js';
+import { AuditLogsModule } from '../../../platform/audit-logs/audit-logs.module.js';
 import { MaterialRequestRepository } from './infrastructure/material-request.repository.js';
 import { MaterialRequestService } from './application/material-request.service.js';
 import { MaterialRequestController } from './presentation/material-request.controller.js';
 
 @Module({
-  imports: [TenancyModule, CatalogueModule],
+  imports: [TenancyModule, CatalogueModule, AuditLogsModule],
   controllers: [MaterialRequestController],
   providers: [MaterialRequestRepository, MaterialRequestService],
   exports: [MaterialRequestService, MaterialRequestRepository],

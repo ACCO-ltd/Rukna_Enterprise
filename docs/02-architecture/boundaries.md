@@ -120,6 +120,7 @@ Changes to `packages/config/`, `packages/tsconfig/`, or `packages/eslint/` affec
 | Permissions | `apps/api/src/platform/permissions/` | Abdulsalam | ✅ Built |
 | Audit Logs | `apps/api/src/platform/audit-logs/` | Abdulsalam | ✅ Built |
 | Multi-tenancy | `apps/api/src/platform/tenancy/` | Abdulsalam | ✅ Built |
+| Project authorization | `apps/api/src/platform/project-access/` | Abdulsalam | ✅ Built |
 | DOA / Workflows | `apps/api/src/platform/workflows/` | Abdulsalam | ✅ Built |
 | Construction — Projects | `apps/api/src/business/construction/projects/` | Abdulsalam | ✅ Built |
 | Construction — Contracts | `apps/api/src/business/construction/contracts/` | Abdulsalam | ✅ Built |

@@ -29,16 +29,16 @@ function setSession(overrides: Partial<AuthenticatedUser> = {}) {
 describe('can()', () => {
   beforeEach(() => sessionStore.clearSession());
 
-  it('returns true for any permission while PERMISSIONS_ENFORCED is false', () => {
+  it('returns false without an authenticated session', () => {
     // No session — still returns true because enforcement is off
-    expect(can('create:project')).toBe(true);
-    expect(can('manage:user')).toBe(true);
-    expect(can('approve:contract')).toBe(true);
+    expect(can('create:project')).toBe(false);
+    expect(can('manage:user')).toBe(false);
+    expect(can('approve:contract')).toBe(false);
   });
 
-  it('returns true even when the user has no matching permission (not enforced)', () => {
+  it('returns false when the user has no matching permission', () => {
     setSession({ permissions: [] });
-    expect(can('manage:user')).toBe(true);
+    expect(can('manage:user')).toBe(false);
   });
 });
 
@@ -82,21 +82,21 @@ describe('usePermissions()', () => {
     expect(result.current.moduleVisible).toBeTypeOf('function');
   });
 
-  it('returns true for can() while PERMISSIONS_ENFORCED is false', () => {
+  it('returns false for can() without a session', () => {
     const { result } = renderHook(() => usePermissions());
-    expect(result.current.can('create:project')).toBe(true);
-    expect(result.current.can('approve:contract')).toBe(true);
+    expect(result.current.can('create:project')).toBe(false);
+    expect(result.current.can('approve:contract')).toBe(false);
   });
 
-  it('returns true for canAny() including an empty array while not enforced', () => {
+  it('returns false for canAny() without matching grants', () => {
     const { result } = renderHook(() => usePermissions());
-    expect(result.current.canAny(['create:project', 'manage:user'])).toBe(true);
+    expect(result.current.canAny(['create:project', 'manage:user'])).toBe(false);
     // canAny on an empty array: no permissions to satisfy → false even unenforced
     // because some([]) is false — this is intentional caller behaviour
     expect(result.current.canAny([])).toBe(false);
   });
 
-  it('returns true for all known modules while PERMISSIONS_ENFORCED is false', () => {
+  it('hides all known modules without a session', () => {
     const { result } = renderHook(() => usePermissions());
     // Named `moduleKey`, not `module`: assigning to a bare `module` shadows the CommonJS
     // global and `@next/next/no-assign-module-variable` fails the build on it.
@@ -109,13 +109,13 @@ describe('usePermissions()', () => {
       'administration',
     ];
     for (const moduleKey of moduleKeys) {
-      expect(result.current.moduleVisible(moduleKey)).toBe(true);
+      expect(result.current.moduleVisible(moduleKey)).toBe(false);
     }
   });
 
-  it('returns true for an unknown module while PERMISSIONS_ENFORCED is false', () => {
+  it('hides an unknown module', () => {
     const { result } = renderHook(() => usePermissions());
-    expect(result.current.moduleVisible('inventory')).toBe(true);
+    expect(result.current.moduleVisible('inventory')).toBe(false);
   });
 
   it('re-renders when the session is set (login)', () => {
@@ -151,8 +151,7 @@ describe('usePermissions()', () => {
     });
 
     expect(renders.length).toBeGreaterThan(renderCountBefore);
-    // Still true because PERMISSIONS_ENFORCED=false
-    expect(result.current.can('view:project')).toBe(true);
+    expect(result.current.can('view:project')).toBe(false);
   });
 
   it('unsubscribes from the store on unmount (no memory leak)', () => {

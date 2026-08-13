@@ -1,6 +1,7 @@
 import { IsString, IsOptional, IsEnum, Length, MaxLength } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { ClientStatus } from '@erp/types';
+import { ClientType } from '@prisma/client';
 
 export class UpdateClientDto {
   @ApiPropertyOptional()
@@ -13,6 +14,11 @@ export class UpdateClientDto {
   @IsString()
   nameAr?: string;
 
+  @ApiPropertyOptional({ enum: ClientType })
+  @IsOptional()
+  @IsEnum(ClientType)
+  type?: ClientType;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -24,6 +30,16 @@ export class UpdateClientDto {
   @IsString()
   @Length(3, 3)
   defaultCurrency?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  notes?: string;
 
   @ApiPropertyOptional({ enum: ClientStatus })
   @IsOptional()

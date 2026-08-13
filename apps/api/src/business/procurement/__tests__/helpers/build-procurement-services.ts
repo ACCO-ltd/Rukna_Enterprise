@@ -18,6 +18,7 @@ import { MaterialService }            from '../../catalogue/application/material
 // ── Material Requests ─────────────────────────────────────────────────────────
 import { MaterialRequestRepository }  from '../../material-requests/infrastructure/material-request.repository.js';
 import { MaterialRequestService }     from '../../material-requests/application/material-request.service.js';
+import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 
 // ── Purchase Orders ───────────────────────────────────────────────────────────
 import { PurchaseOrderRepository }    from '../../purchase-orders/infrastructure/purchase-order.repository.js';
@@ -33,6 +34,7 @@ import { BillMatchingService }        from '../../bill-matching/application/bill
 
 // ── Commitment Ledger ─────────────────────────────────────────────────────────
 import { CommitmentLedgerRepository } from '../../commitment-ledger/infrastructure/commitment-ledger.repository.js';
+import { CommitmentLedgerWriter }     from '../../commitment-ledger/application/commitment-ledger-writer.service.js';
 
 // ── Accounting (AP + posting) ─────────────────────────────────────────────────
 import { AccountingPostingService }   from '../../../accounting/accounting-core/infrastructure/accounting-posting.service.js';
@@ -41,6 +43,16 @@ import { DocumentSequenceRepository } from '../../../accounting/accounting-core/
 import { AccountRepository }          from '../../../accounting/accounting-core/infrastructure/account.repository.js';
 import { SupplierBillRepository }     from '../../../accounting/accounts-payable/infrastructure/supplier-bill.repository.js';
 import { SupplierBillService }        from '../../../accounting/accounts-payable/application/supplier-bill.service.js';
+import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
+
+// ── Workflows / governance seam (ADR-011) ──────────────────────────────────────
+import { WorkflowTriggerResolverService } from '../../../../platform/workflows/application/workflow-trigger-resolver.service.js';
+import { WorkflowsPrismaRepository } from '../../../../platform/workflows/infrastructure/workflows-prisma.repository.js';
+import { CommandGovernanceService } from '../../../../platform/workflows/application/command-governance.service.js';
+
+// No-op stub: integration tests use real Prisma but skip audit persistence
+// so tests don't require auditLog / auditOutboxEvent tables to be seeded.
+const noOpAuditOutbox = { record: async () => {} } as unknown as TransactionalAuditOutboxService;
 
 export interface ProcurementServices {
   prisma: PrismaClient;
@@ -64,6 +76,7 @@ export interface ProcurementServices {
   billMatchingService: BillMatchingService;
   // Commitment Ledger
   commitmentRepo: CommitmentLedgerRepository;
+  commitmentWriter: CommitmentLedgerWriter;
   // AP (bill posting — needed for ACCRUED→ACTUAL tests)
   supplierBillRepo: SupplierBillRepository;
   supplierBillService: SupplierBillService;
@@ -82,6 +95,7 @@ export function buildProcurementServices(prisma: PrismaClient): ProcurementServi
   const grnRepo              = new GoodsReceiptRepository();
   const billMatchRepo        = new BillMatchRepository();
   const commitmentRepo       = new CommitmentLedgerRepository();
+  const commitmentWriter     = new CommitmentLedgerWriter(commitmentRepo);
 
   // ── Accounting ─────────────────────────────────────────────────────────────
   const journalRepo      = new JournalRepository();
@@ -92,19 +106,24 @@ export function buildProcurementServices(prisma: PrismaClient): ProcurementServi
 
   // ── Services ──────────────────────────────────────────────────────────────
   const materialService = new MaterialService(tenancy, materialRepo, uomRepo, materialCategoryRepo, spendCategoryRepo);
-  const mrService       = new MaterialRequestService(tenancy, mrRepo, materialRepo, uomRepo);
-  const poService       = new PurchaseOrderService(tenancy, poRepo, materialRepo, uomRepo, commitmentRepo);
-  const grnService      = new GoodsReceiptService(tenancy, grnRepo, poRepo, commitmentRepo);
+  const projectAccess   = new ProjectAccessService(tenancy);
+  const mrService       = new MaterialRequestService(tenancy, mrRepo, materialRepo, uomRepo, projectAccess, noOpAuditOutbox);
+  const commandGovernance = new CommandGovernanceService(
+    new WorkflowTriggerResolverService(tenancy),
+    new WorkflowsPrismaRepository(tenancy),
+  );
+  const poService       = new PurchaseOrderService(tenancy, poRepo, materialRepo, uomRepo, commitmentWriter, noOpAuditOutbox, commandGovernance);
+  const grnService      = new GoodsReceiptService(tenancy, grnRepo, poRepo, commitmentWriter, noOpAuditOutbox);
   const billMatchingService = new BillMatchingService(tenancy, billMatchRepo);
 
-  // SupplierBillService with CommitmentLedgerRepository wired (needed for ACCRUED→ACTUAL)
   const supplierBillService = new SupplierBillService(
     tenancy,
     supplierBillRepo,
     accountRepo,
     sequenceRepo,
     postingService,
-    commitmentRepo,
+    commitmentWriter,
+    commandGovernance,
   );
 
   return {
@@ -114,7 +133,7 @@ export function buildProcurementServices(prisma: PrismaClient): ProcurementServi
     poRepo, poService,
     grnRepo, grnService,
     billMatchRepo, billMatchingService,
-    commitmentRepo,
+    commitmentRepo, commitmentWriter,
     supplierBillRepo, supplierBillService,
   };
 }

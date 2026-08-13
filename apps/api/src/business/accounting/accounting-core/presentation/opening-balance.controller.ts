@@ -1,6 +1,8 @@
 import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { OpeningBalanceService } from '../application/opening-balance.service.js';
@@ -9,6 +11,7 @@ import { RunOpeningBalanceDto } from './dto/run-opening-balance.dto.js';
 @ApiTags('Opening Balance')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.accountingManage)
 @Controller('accounting/opening-balance')
 export class OpeningBalanceController {
   constructor(private readonly openingBalanceService: OpeningBalanceService) {}

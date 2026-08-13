@@ -249,13 +249,15 @@ reads `db_url` from the platform DB at runtime — not from env vars.
 When a new client signs up, run:
 
 ```bash
-pnpm tenant:provision --slug=newclient --name="New Client Ltd" --plan=standard
+pnpm tenant:provision --slug=newclient --name="New Client Ltd" --plan=standard \
+  --admin-email=admin@newclient.example --admin-password=<secure-password>
 ```
 
 The script:
 1. Creates the tenant database: `CREATE DATABASE rukna_newclient`
 2. Runs tenant migrations: `prisma migrate deploy --schema=prisma/schema.prisma`
-3. Seeds default data: roles, permissions, workflow templates, WorkflowTriggerBinding defaults
+3. Seeds the ADMIN role, canonical permissions, active organization membership,
+   role grants, workflow templates, and WorkflowTriggerBinding defaults
 4. Registers in platform DB: `INSERT INTO tenants (slug, name, db_url, status)`
    (`db_url` encrypted before insert)
 5. Creates default Organization record in tenant DB
@@ -264,6 +266,17 @@ The script:
    (does NOT output db_url)
 
 The TenancyService cache picks up the new tenant on the next request automatically.
+The script never prints the database URL or admin password.
+
+For a tenant provisioned before membership and permission seeding was added, run
+`pnpm tenant:repair-access --slug=newclient --dry-run`, review the report, then rerun
+without `--dry-run`. Repair is idempotent and never reactivates suspended memberships.
+
+Before a CEO demo, run
+`pnpm tenant:demo-readiness --slug=newclient`. This read-only check reports demo data,
+ADMIN access, workflow definitions/bindings, and required workflow policies without exposing
+credentials or database URLs. See `p1-ceo-demo-readiness.md` for the demo route and the
+workflow activation gate.
 
 ---
 

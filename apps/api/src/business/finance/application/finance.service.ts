@@ -32,13 +32,17 @@ export class FinanceService {
 
   async create(identity: RequestIdentity, dto: CreateReceiptDto) {
     const prisma = this.tenancyService.getClient();
+    // No separate accounting date is captured on the commercial receipt form, so the
+    // receipt date is its accounting date. (GL posting — Sprint 4 — owns its own dating.)
+    const receiptDate = new Date(dto.receiptDate);
     return this.repo.create(prisma, {
       organizationId: identity.activeOrganizationId,
       clientId: dto.clientId,
-      receiptDate: new Date(dto.receiptDate),
-      amount: dto.amount,
-      currency: dto.currency,
-      exchangeRate: dto.exchangeRate,
+      receiptDate,
+      accountingDate: receiptDate,
+      totalAmount: dto.amount,
+      currencyCode: dto.currency,
+      exchangeRateSnapshot: dto.exchangeRate,
       reference: dto.reference,
       notes: dto.notes,
       createdBy: identity.userId,

@@ -1,16 +1,18 @@
 import { Controller, Get, Post, Param, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiBody } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
-import type { RequestIdentity } from '@erp/types';
+import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { WorkflowsService } from '../application/workflows.service.js';
 import { ApprovalService } from '../application/approval.service.js';
 import { WorkflowTransactionType } from '@erp/types';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator.js';
+import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator.js';
 
 @ApiTags('Workflows')
 @ApiBearerAuth('access-token')
 @UseGuards(AuthGuard('jwt'))
+@RequirePermissions(PERMISSIONS.workflowsView)
 @Controller('workflows')
 export class WorkflowsController {
   constructor(
@@ -43,6 +45,7 @@ export class WorkflowsController {
   }
 
   @Post('instance/:instanceId/approve')
+  @RequirePermissions(PERMISSIONS.workflowsManage)
   @ApiOperation({ summary: 'Approve the current step of a workflow instance' })
   @ApiParam({ name: 'instanceId', description: 'Workflow instance CUID' })
   @ApiBody({
@@ -58,10 +61,11 @@ export class WorkflowsController {
     @Param('instanceId') instanceId: string,
     @Body() body: { notes?: string },
   ) {
-    return this.approvalService.approve(instanceId, identity.userId, body.notes);
+    return this.approvalService.approve(instanceId, identity.userId, identity.roles, identity.activeOrganizationId, body.notes);
   }
 
   @Post('instance/:instanceId/reject')
+  @RequirePermissions(PERMISSIONS.workflowsManage)
   @ApiOperation({ summary: 'Reject the current step of a workflow instance' })
   @ApiParam({ name: 'instanceId', description: 'Workflow instance CUID' })
   @ApiBody({
@@ -77,6 +81,6 @@ export class WorkflowsController {
     @Param('instanceId') instanceId: string,
     @Body() body: { notes?: string },
   ) {
-    return this.approvalService.reject(instanceId, identity.userId, body.notes);
+    return this.approvalService.reject(instanceId, identity.userId, identity.roles, identity.activeOrganizationId, body.notes);
   }
 }

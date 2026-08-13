@@ -48,9 +48,9 @@ const YEAR_TONES: Record<FiscalYearStatus, BadgeTone> = {
 
 export function FiscalPeriods() {
   const t = useTranslations('accounting.periods');
-  const tActions = useTranslations('accounting.periodActions');
   const tCommon = useTranslations('common');
 
+  const tActions = useTranslations('accounting.periodActions');
   const years = useFiscalYears();
   const [creating, setCreating] = useState(false);
   const { can } = usePermissions();
@@ -102,6 +102,7 @@ export function FiscalPeriods() {
           them when a guard lands, but that is presentation only, and saying so is more honest
           than a screen that looks authorised. */}
       <Alert variant="warning" messages={[tActions('unauthorizedNote')]} />
+
 
       {years.data.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">

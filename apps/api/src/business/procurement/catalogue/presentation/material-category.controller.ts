@@ -1,6 +1,8 @@
 import { Controller, Get, Post, Body, Param, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { MaterialCategoryService } from '../application/material-category.service.js';
@@ -9,6 +11,7 @@ import { CreateMaterialCategoryDto } from './dto/create-material-category.dto.js
 @ApiTags('Procurement — Material Categories')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.procurementConfigManage)
 @Controller('procurement/material-categories')
 export class MaterialCategoryController {
   constructor(private readonly service: MaterialCategoryService) {}

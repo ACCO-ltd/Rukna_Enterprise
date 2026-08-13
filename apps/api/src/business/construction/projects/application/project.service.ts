@@ -3,16 +3,16 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
-  ForbiddenException,
-  UnprocessableEntityException,
 } from '@nestjs/common';
 import { Project } from '@prisma/client';
 import type { RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
-import { WorkflowTriggerResolverService } from '../../../../platform/workflows/application/workflow-trigger-resolver.service.js';
+import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
 import { ProjectPrismaRepository, ProjectFull } from '../infrastructure/project-prisma.repository.js';
 import { ContractPrismaRepository } from '../../contracts/infrastructure/contract-prisma.repository.js';
+import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
+import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 import type { CreateProjectDto } from '../presentation/dto/create-project.dto.js';
 import type { UpdateProjectDto } from '../presentation/dto/update-project.dto.js';
 import type { AddMemberDto } from '../presentation/dto/add-member.dto.js';
@@ -46,19 +46,27 @@ const LIFECYCLE_REQUIRED_FROM: Record<string, string> = {
 export class ProjectService {
   constructor(
     private readonly tenancyService: TenancyService,
-    private readonly triggerResolver: WorkflowTriggerResolverService,
+    private readonly commandGovernance: CommandGovernanceService,
     private readonly repo: ProjectPrismaRepository,
     private readonly contractRepo: ContractPrismaRepository,
+    private readonly projectAccess: ProjectAccessService,
+    private readonly auditOutbox: TransactionalAuditOutboxService,
   ) {}
 
   // ─── Queries ─────────────────────────────────────────────────────────────────
 
   async findAll(identity: RequestIdentity, status?: string): Promise<Project[]> {
     const prisma = this.tenancyService.getClient();
-    return this.repo.findAll(prisma, identity.activeOrganizationId, status);
+    return this.repo.findAll(
+      prisma,
+      identity.activeOrganizationId,
+      status,
+      this.projectAccess.scopedUserId(identity),
+    );
   }
 
   async findOne(identity: RequestIdentity, id: string): Promise<ProjectFull> {
+    await this.projectAccess.assertMember(identity, id);
     const prisma = this.tenancyService.getClient();
     const project = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!project) throw new NotFoundException(`Project ${id} not found`);
@@ -73,34 +81,65 @@ export class ProjectService {
     const duplicate = await this.repo.findByCode(prisma, identity.activeOrganizationId, dto.code);
     if (duplicate) throw new ConflictException(`Project code '${dto.code}' already exists`);
 
-    const project = await this.repo.create(prisma, {
-      organizationId: identity.activeOrganizationId,
-      code: dto.code,
-      name: dto.name,
-      nameAr: dto.nameAr,
-      description: dto.description,
-      clientName: dto.clientName,
-      contractValue: dto.contractValue,
-      currency: dto.currency,
-      startDate: dto.startDate ? new Date(dto.startDate) : undefined,
-      expectedEndDate: dto.expectedEndDate ? new Date(dto.expectedEndDate) : undefined,
-      createdBy: identity.userId,
-    });
+    return prisma.$transaction(async (tx) => {
+      const client = dto.clientId
+        ? await tx.client.findFirst({
+            where: { id: dto.clientId, organizationId: identity.activeOrganizationId },
+          })
+        : null;
+      if (dto.clientId && !client) throw new NotFoundException(`Client ${dto.clientId} not found`);
 
-    // Auto-enrol the creator so they can immediately manage members.
-    const member = await this.repo.createMember(prisma, {
-      projectId: project.id,
-      userId: identity.userId,
-      joinedBy: identity.userId,
-    });
-    await this.repo.addMemberRoles(prisma, member.id, ['PROJECT_MANAGER'], identity.userId);
+      const project = await this.repo.create(tx, {
+        organizationId: identity.activeOrganizationId,
+        code: dto.code,
+        name: dto.name,
+        nameAr: dto.nameAr,
+        description: dto.description,
+        // Preserve the legacy display field while new records reference the client aggregate.
+        clientId: dto.clientId,
+        clientName: client?.name ?? dto.clientName,
+        location: dto.location,
+        contractValue: dto.contractValue,
+        currency: dto.currency,
+        startDate: dto.startDate ? new Date(dto.startDate) : undefined,
+        expectedEndDate: dto.expectedEndDate ? new Date(dto.expectedEndDate) : undefined,
+        createdBy: identity.userId,
+      });
 
-    return project;
+      // A project is not initialized until its creator can administer it.
+      const member = await this.repo.createMember(tx, {
+        projectId: project.id,
+        userId: identity.userId,
+        joinedBy: identity.userId,
+      });
+      await this.repo.addMemberRoles(tx, member.id, ['PROJECT_MANAGER'], identity.userId);
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'CREATE',
+        resourceType: 'Project',
+        resourceId: project.id,
+        sourceCommand: 'project.create',
+        eventType: 'PROJECT_CREATED',
+        idempotencyKey: `project-create-${project.id}`,
+        after: {
+          code: project.code,
+          name: project.name,
+          clientId: project.clientId,
+          status: project.status,
+          initialProjectManagerUserId: identity.userId,
+        },
+      });
+
+      return project;
+    });
   }
 
   // ─── Update ──────────────────────────────────────────────────────────────────
 
   async update(identity: RequestIdentity, id: string, dto: UpdateProjectDto): Promise<Project> {
+    await this.projectAccess.assertMember(identity, id);
     const prisma = this.tenancyService.getClient();
     const project = await this.requireProject(prisma, identity.activeOrganizationId, id);
 
@@ -108,11 +147,18 @@ export class ProjectService {
       throw new BadRequestException('Project can only be edited in DRAFT status');
     }
 
+    const client = dto.clientId
+      ? await prisma.client.findFirst({ where: { id: dto.clientId, organizationId: identity.activeOrganizationId } })
+      : null;
+    if (dto.clientId && !client) throw new NotFoundException(`Client ${dto.clientId} not found`);
+
     return this.repo.update(prisma, id, {
       name: dto.name,
       nameAr: dto.nameAr,
       description: dto.description,
-      clientName: dto.clientName,
+      clientName: client?.name ?? dto.clientName,
+      clientId: dto.clientId,
+      location: dto.location,
       contractValue: dto.contractValue,
       currency: dto.currency,
       startDate: dto.startDate ? new Date(dto.startDate) : undefined,
@@ -127,15 +173,17 @@ export class ProjectService {
     id: string,
     command: keyof typeof LIFECYCLE_TRANSITIONS,
   ): Promise<Project> {
+    await this.projectAccess.assertMember(identity, id);
     const prisma = this.tenancyService.getClient();
     const project = await this.requireProject(prisma, identity.activeOrganizationId, id);
+    const fromStatus = project.status;
 
     const requiredFrom = LIFECYCLE_REQUIRED_FROM[command];
     const toState = LIFECYCLE_TRANSITIONS[command];
 
-    if (project.status !== requiredFrom) {
+    if (fromStatus !== requiredFrom) {
       throw new BadRequestException(
-        `Cannot ${command} a project with status '${project.status}'. Expected '${requiredFrom}'.`,
+        `Cannot ${command} a project with status '${fromStatus}'. Expected '${requiredFrom}'.`,
       );
     }
 
@@ -145,71 +193,92 @@ export class ProjectService {
       throw new BadRequestException('Project is suspended. Resume it before changing status.');
     }
 
-    // WorkflowRequirementPolicy check: resolver throws UnprocessableEntityException if
-    // REQUIRED and no active binding. Returns null for OPTIONAL with no binding (pass-through).
-    // Returns a binding when one is active — approval initiation wired in Phase 3.
-    const binding = await this.triggerResolver.resolveForStateTransition(
-      identity.activeOrganizationId,
-      'Project',
-      project.status,
-      toState,
+    // Governance gate: resolver checks WorkflowRequirementPolicy, creates ApprovalInstance if
+    // a binding fires. throwIfGated throws 409 with approvalInstanceId so the client can
+    // redirect to the approval workflow. Returns null when no approval is required.
+    throwIfGated(
+      await this.commandGovernance.gateStateTransition(identity, 'Project', fromStatus, toState, id),
+      'This project transition requires workflow approval.',
     );
-    if (binding) {
-      throw new UnprocessableEntityException(
-        'This project transition requires workflow approval. ' +
-        'Approval workflow initiation will be available once the approval engine is fully wired.',
-      );
-    }
 
-    const updated = await this.repo.update(prisma, id, { status: toState as never });
+    // Status update, cross-aggregate contract move (for PRACTICAL_COMPLETION), and audit
+    // evidence all commit in one transaction.
+    return prisma.$transaction(async (tx) => {
+      const updated = await this.repo.update(tx, id, { status: toState as never });
 
-    // Cross-aggregate: practical completion moves all ACTIVE contracts to FINAL_ACCOUNT_PENDING.
-    if (toState === 'PRACTICAL_COMPLETION') {
-      await this.contractRepo.moveActiveContractsToFinalAccount(prisma, id);
-    }
+      // Cross-aggregate: practical completion moves all ACTIVE contracts to FINAL_ACCOUNT_PENDING.
+      if (toState === 'PRACTICAL_COMPLETION') {
+        await this.contractRepo.moveActiveContractsToFinalAccount(tx, id);
+      }
 
-    return updated;
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'TRANSITION',
+        resourceType: 'Project',
+        resourceId: id,
+        sourceCommand: `project.${command}`,
+        eventType: `PROJECT_${command.toUpperCase().replace(/-/g, '_')}`,
+        idempotencyKey: `project-transition-${id}-${fromStatus}-to-${toState}`,
+        before: { status: fromStatus },
+        after: { status: toState },
+      });
+
+      return updated;
+    });
   }
 
   async cancel(identity: RequestIdentity, id: string, reason: string): Promise<Project> {
+    await this.projectAccess.assertMember(identity, id);
     const prisma = this.tenancyService.getClient();
     const project = await this.requireProject(prisma, identity.activeOrganizationId, id);
+    const fromStatus = project.status;
 
-    if (!CANCEL_ALLOWED_FROM.has(project.status)) {
+    if (!CANCEL_ALLOWED_FROM.has(fromStatus)) {
       throw new BadRequestException(
-        `Cannot cancel a project with status '${project.status}'. Allowed from: ${[...CANCEL_ALLOWED_FROM].join(', ')}.`,
+        `Cannot cancel a project with status '${fromStatus}'. Allowed from: ${[...CANCEL_ALLOWED_FROM].join(', ')}.`,
       );
     }
 
-    // WorkflowRequirementPolicy check for cancellation.
-    const binding = await this.triggerResolver.resolveForStateTransition(
-      identity.activeOrganizationId,
-      'Project',
-      project.status,
-      'CANCELLED',
+    throwIfGated(
+      await this.commandGovernance.gateStateTransition(identity, 'Project', fromStatus, 'CANCELLED', id),
+      'Project cancellation requires workflow approval.',
     );
-    if (binding) {
-      throw new UnprocessableEntityException(
-        'Project cancellation requires workflow approval. ' +
-        'Approval workflow initiation will be available once the approval engine is fully wired.',
-      );
-    }
 
-    // Log cancellation reason as a suspension record for audit trail.
-    await this.repo.createSuspension(prisma, {
-      projectId: id,
-      reason: `CANCELLED: ${reason}`,
-      suspendedBy: identity.userId,
-      resumedAt: new Date(),
-      resumedBy: identity.userId,
+    return prisma.$transaction(async (tx) => {
+      // Cancellation reason is logged as a closed suspension record for the audit trail.
+      await this.repo.createSuspension(tx, {
+        projectId: id,
+        reason: `CANCELLED: ${reason}`,
+        suspendedBy: identity.userId,
+        resumedAt: new Date(),
+        resumedBy: identity.userId,
+      });
+
+      const updated = await this.repo.update(tx, id, { status: 'CANCELLED' });
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'CANCEL',
+        resourceType: 'Project',
+        resourceId: id,
+        sourceCommand: 'project.cancel',
+        eventType: 'PROJECT_CANCELLED',
+        idempotencyKey: `project-cancel-${id}-${fromStatus}`,
+        reason,
+        before: { status: fromStatus },
+        after: { status: 'CANCELLED' },
+      });
+
+      return updated;
     });
-
-    return this.repo.update(prisma, id, { status: 'CANCELLED' });
   }
 
   // ─── Suspension ──────────────────────────────────────────────────────────────
 
   async suspend(identity: RequestIdentity, id: string, reason: string): Promise<void> {
+    await this.projectAccess.assertMember(identity, id);
     const prisma = this.tenancyService.getClient();
     const project = await this.requireProject(prisma, identity.activeOrganizationId, id);
 
@@ -220,35 +289,68 @@ export class ProjectService {
     const existing = await this.repo.findActiveSuspension(prisma, id);
     if (existing) throw new ConflictException('Project already has an active suspension.');
 
-    await this.repo.createSuspension(prisma, {
-      projectId: id,
-      reason,
-      suspendedBy: identity.userId,
+    await prisma.$transaction(async (tx) => {
+      const suspension = await this.repo.createSuspension(tx, {
+        projectId: id,
+        reason,
+        suspendedBy: identity.userId,
+      });
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'SUSPEND',
+        resourceType: 'Project',
+        resourceId: id,
+        sourceCommand: 'project.suspend',
+        eventType: 'PROJECT_SUSPENDED',
+        idempotencyKey: `project-suspend-${suspension.id}`,
+        reason,
+        before: { status: project.status, suspended: false },
+        after: { status: project.status, suspended: true },
+      });
     });
   }
 
   async resume(identity: RequestIdentity, id: string): Promise<void> {
+    await this.projectAccess.assertMember(identity, id);
     const prisma = this.tenancyService.getClient();
     await this.requireProject(prisma, identity.activeOrganizationId, id);
 
     const existing = await this.repo.findActiveSuspension(prisma, id);
     if (!existing) throw new BadRequestException('No active suspension to resume.');
 
-    await this.repo.resolveActiveSuspension(prisma, id, identity.userId);
+    await prisma.$transaction(async (tx) => {
+      await this.repo.resolveActiveSuspension(tx, id, identity.userId);
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'RESUME',
+        resourceType: 'Project',
+        resourceId: id,
+        sourceCommand: 'project.resume',
+        eventType: 'PROJECT_RESUMED',
+        idempotencyKey: `project-resume-${existing.id}`,
+        before: { suspensionId: existing.id, suspended: true },
+        after: { suspended: false },
+      });
+    });
   }
 
   // ─── Members ─────────────────────────────────────────────────────────────────
 
   async listMembers(identity: RequestIdentity, projectId: string) {
+    await this.projectAccess.assertMember(identity, projectId);
     const prisma = this.tenancyService.getClient();
     await this.requireProject(prisma, identity.activeOrganizationId, projectId);
     return this.repo.findAllMembers(prisma, projectId);
   }
 
   async addMember(identity: RequestIdentity, projectId: string, dto: AddMemberDto) {
+    await this.projectAccess.assertMember(identity, projectId);
     const prisma = this.tenancyService.getClient();
     await this.requireProject(prisma, identity.activeOrganizationId, projectId);
-    await this.assertMember(prisma, projectId, identity.userId);
 
     const existing = await this.repo.findActiveMember(prisma, projectId, dto.userId);
     if (existing) throw new ConflictException('User is already an active member of this project.');
@@ -264,9 +366,9 @@ export class ProjectService {
   }
 
   async removeMember(identity: RequestIdentity, projectId: string, userId: string) {
+    await this.projectAccess.assertMember(identity, projectId);
     const prisma = this.tenancyService.getClient();
     await this.requireProject(prisma, identity.activeOrganizationId, projectId);
-    await this.assertMember(prisma, projectId, identity.userId);
 
     const member = await this.repo.findActiveMember(prisma, projectId, userId);
     if (!member) throw new NotFoundException('User is not an active member of this project.');
@@ -280,12 +382,5 @@ export class ProjectService {
     const project = await this.repo.findById(prisma, organizationId, id);
     if (!project) throw new NotFoundException(`Project ${id} not found`);
     return project;
-  }
-
-  async assertMember(prisma: ReturnType<TenancyService['getClient']>, projectId: string, userId: string): Promise<void> {
-    const member = await this.repo.findActiveMember(prisma, projectId, userId);
-    if (!member) {
-      throw new ForbiddenException('You are not a member of this project.');
-    }
   }
 }

@@ -1,18 +1,25 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, ParseEnumPipe, Query, UseGuards } from '@nestjs/common';
+import { CommitmentStage } from '@prisma/client';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
-import type { RequestIdentity } from '@erp/types';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { ProjectScoped } from '../../../../common/decorators/project-scoped.decorator.js';
+import { ProjectAccessGuard } from '../../../../platform/project-access/project-access.guard.js';
+import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import { CommitmentLedgerService } from '../application/commitment-ledger.service.js';
 
 @ApiTags('Procurement — Commitment Ledger')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.commitmentsView)
 @Controller('procurement/commitment-ledger')
 export class CommitmentLedgerController {
   constructor(private readonly service: CommitmentLedgerService) {}
 
   @Get('projects/:projectId')
+  @UseGuards(ProjectAccessGuard)
+  @ProjectScoped()
   @ApiParam({ name: 'projectId' })
   @ApiQuery({ name: 'stage', required: false, enum: ['COMMITTED', 'ACCRUED', 'ACTUAL'] })
   @ApiQuery({ name: 'boqNodeId', required: false })
@@ -20,15 +27,20 @@ export class CommitmentLedgerController {
   queryByProject(
     @CurrentUser() identity: RequestIdentity,
     @Param('projectId') projectId: string,
-    @Query('stage') stage?: string,
+    @Query('stage', new ParseEnumPipe(CommitmentStage, { optional: true }))
+    stage?: CommitmentStage,
     @Query('boqNodeId') boqNodeId?: string,
   ) {
-    return this.service.queryByProject(identity, projectId, { stage: stage as any, boqNodeId });
+    return this.service.queryByProject(identity, projectId, { stage, boqNodeId });
   }
 
   @Get('projects/:projectId/summary')
+  @UseGuards(ProjectAccessGuard)
+  @ProjectScoped()
   @ApiParam({ name: 'projectId' })
-  @ApiOperation({ summary: 'Summarized commitment totals (COMMITTED / ACCRUED / ACTUAL) for a project' })
+  @ApiOperation({
+    summary: 'Summarized commitment totals (COMMITTED / ACCRUED / ACTUAL) for a project',
+  })
   summarizeByProject(
     @CurrentUser() identity: RequestIdentity,
     @Param('projectId') projectId: string,

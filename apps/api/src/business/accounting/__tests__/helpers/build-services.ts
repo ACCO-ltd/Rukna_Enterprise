@@ -25,6 +25,13 @@ import { SupplierBillRepository }    from '../../accounts-payable/infrastructure
 import { SupplierPaymentRepository } from '../../accounts-payable/infrastructure/supplier-payment.repository.js';
 import { SupplierBillService }       from '../../accounts-payable/application/supplier-bill.service.js';
 import { SupplierPaymentService }    from '../../accounts-payable/application/supplier-payment.service.js';
+import { CommitmentLedgerRepository } from '../../../procurement/commitment-ledger/infrastructure/commitment-ledger.repository.js';
+import { CommitmentLedgerWriter }     from '../../../procurement/commitment-ledger/application/commitment-ledger-writer.service.js';
+
+// Workflows / governance seam (ADR-011)
+import { WorkflowTriggerResolverService } from '../../../../platform/workflows/application/workflow-trigger-resolver.service.js';
+import { WorkflowsPrismaRepository }      from '../../../../platform/workflows/infrastructure/workflows-prisma.repository.js';
+import { CommandGovernanceService }       from '../../../../platform/workflows/application/command-governance.service.js';
 
 // Phase 3
 import { SnapshotService }           from '../../general-ledger/application/snapshot.service.js';
@@ -88,8 +95,13 @@ export function buildServices(prisma: PrismaClient): AccountingServices {
   // AP
   const supplierBillRepo    = new SupplierBillRepository();
   const supplierPaymentRepo = new SupplierPaymentRepository();
-  const supplierBillService    = new SupplierBillService(tenancy, supplierBillRepo, accountRepo, sequenceRepo, postingService);
-  const supplierPaymentService = new SupplierPaymentService(tenancy, supplierPaymentRepo, supplierBillRepo, accountRepo, sequenceRepo, postingService);
+  const commitmentWriter    = new CommitmentLedgerWriter(new CommitmentLedgerRepository());
+  const commandGovernance   = new CommandGovernanceService(
+    new WorkflowTriggerResolverService(tenancy),
+    new WorkflowsPrismaRepository(tenancy),
+  );
+  const supplierBillService    = new SupplierBillService(tenancy, supplierBillRepo, accountRepo, sequenceRepo, postingService, commitmentWriter, commandGovernance);
+  const supplierPaymentService = new SupplierPaymentService(tenancy, supplierPaymentRepo, supplierBillRepo, accountRepo, sequenceRepo, postingService, commandGovernance);
 
   // Phase 3 — GL reports and period management
   const snapshotService        = new SnapshotService(tenancy);

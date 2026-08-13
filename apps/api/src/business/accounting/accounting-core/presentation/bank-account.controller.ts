@@ -1,6 +1,8 @@
 import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { BankAccountService } from '../application/bank-account.service.js';
@@ -9,6 +11,7 @@ import { ConfigureBankAccountDto } from './dto/configure-bank-account.dto.js';
 @ApiTags('Bank Accounts')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.accountingManage)
 @Controller('bank-accounts')
 export class BankAccountController {
   constructor(private readonly bankAccountService: BankAccountService) {}

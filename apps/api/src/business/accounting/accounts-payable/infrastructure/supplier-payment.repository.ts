@@ -25,8 +25,11 @@ export interface CreateSupplierPaymentData {
 
 @Injectable()
 export class SupplierPaymentRepository {
-  findById(prisma: TenantPrisma, organizationId: string, id: string): Promise<SupplierPayment | null> {
-    return prisma.supplierPayment.findFirst({ where: { id, organizationId } });
+  findById(prisma: TenantPrisma, organizationId: string, id: string) {
+    return prisma.supplierPayment.findFirst({
+      where: { id, organizationId },
+      include: { allocations: { orderBy: { createdAt: 'asc' } } },
+    });
   }
 
   findAll(prisma: TenantPrisma, organizationId: string, supplierId?: string) {

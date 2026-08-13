@@ -109,8 +109,8 @@ P&L, Balance Sheet, Account Ledger, Monthly Comparison, and period management.
 3. **Accounting strings live in `messages/{en,ar}/accounting.json`,** not `platform.json`.
    Give procurement its own `procurement.json` and register it in `src/i18n/request.ts` and
    `src/test/render.tsx`. `src/i18n/catalogues.test.ts` guards duplicate keys and en/ar parity.
-4. **`can()` is called on every accounting action** with `PERMISSIONS_ENFORCED` still false.
-   Do the same in procurement — one boolean then secures both workspaces.
+4. **`can()` is called on every accounting and procurement action.** Permission enforcement
+   is active; the API remains the security boundary and the UI hides unavailable actions.
 
 > **Superseded 2026-08-11 — this paragraph used to say four screens were blocked, and by the
 > time anyone read it, three of the four claims were wrong.** Kept, corrected, rather than

@@ -24,7 +24,7 @@ export class WorkflowsPrismaRepository {
 
   async createInstance(data: {
     workflowDefinitionId: string;
-    transactionType: WorkflowTransactionType;
+    transactionType: WorkflowTransactionType | null;
     transactionId: string;
     initiatedBy: string;
   }) {
@@ -32,10 +32,36 @@ export class WorkflowsPrismaRepository {
     return prisma.approvalInstance.create({ data: { ...data, currentStepOrder: 1 } });
   }
 
-  async findInstanceById(id: string) {
+  /** Most recent approval instance for a given transaction (loop-back lookup, ADR-015). */
+  async findLatestInstanceForTransaction(
+    transactionType: WorkflowTransactionType | null,
+    transactionId: string,
+  ) {
     const prisma = this.tenancyService.getClient();
-    return prisma.approvalInstance.findUnique({
+    return prisma.approvalInstance.findFirst({
+      where: { transactionId, transactionType },
+      orderBy: { initiatedAt: 'desc' },
+    });
+  }
+
+  /**
+   * Marks an approval instance as consumed once its entity transition has been driven
+   * through (ADR-015). There is no dedicated CONSUMED enum value yet — that needs a
+   * Prisma client regen — so CANCELLED is the terminal "closed" state. The approver audit
+   * trail lives in ApprovalAction rows, which are left intact.
+   */
+  async markInstanceConsumed(id: string) {
+    const prisma = this.tenancyService.getClient();
+    return prisma.approvalInstance.update({
       where: { id },
+      data: { status: 'CANCELLED' as never },
+    });
+  }
+
+  async findInstanceById(id: string, organizationId?: string) {
+    const prisma = this.tenancyService.getClient();
+    return prisma.approvalInstance.findFirst({
+      where: { id, ...(organizationId ? { definition: { organizationId } } : {}) },
       include: { definition: { include: { steps: { orderBy: { stepOrder: 'asc' } } } }, actions: true },
     });
   }

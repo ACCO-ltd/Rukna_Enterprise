@@ -1,6 +1,8 @@
 import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { FiscalYearService } from '../application/fiscal-year.service.js';
@@ -9,6 +11,7 @@ import { CreateFiscalYearDto } from './dto/create-fiscal-year.dto.js';
 @ApiTags('Fiscal Years')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.fiscalYearsManage)
 @Controller('fiscal-years')
 export class FiscalYearController {
   constructor(private readonly fiscalYearService: FiscalYearService) {}

@@ -20,7 +20,8 @@ import {
 
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
-import type { RequestIdentity } from '@erp/types';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { IpcService } from '../application/ipc.service.js';
 import { CreateIpcDto } from './dto/create-ipc.dto.js';
@@ -29,21 +30,33 @@ import { SupersedeIpcDto } from './dto/supersede-ipc.dto.js';
 @ApiTags('IPC')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.ipcView)
 @Controller('ipc')
 export class IpcController {
   constructor(private readonly ipcService: IpcService) {}
 
   @Get()
   @ApiOperation({ summary: 'List interim payment certificates' })
-  @ApiQuery({ name: 'applicationId', required: false })
+  @ApiQuery({
+    name: 'applicationId',
+    required: false,
+    description: 'Filter by application. Mutually exclusive with projectId.',
+  })
+  @ApiQuery({
+    name: 'projectId',
+    required: false,
+    description: 'Filter by project. Mutually exclusive with applicationId.',
+  })
   findAll(
     @CurrentUser() identity: RequestIdentity,
     @Query('applicationId') applicationId?: string,
+    @Query('projectId') projectId?: string,
   ) {
-    return this.ipcService.findAll(identity, applicationId);
+    return this.ipcService.findAll(identity, applicationId, projectId);
   }
 
   @Post()
+  @RequirePermissions(PERMISSIONS.ipcIssue)
   @ApiOperation({
     summary:
       'Issue a new IPC. The first CERTIFIED or PARTIALLY_CERTIFIED certificate per application automatically becomes effective.',
@@ -65,6 +78,7 @@ export class IpcController {
   }
 
   @Post(':applicationId/supersede')
+  @RequirePermissions(PERMISSIONS.ipcSupersede)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:

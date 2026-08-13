@@ -98,7 +98,7 @@ pnpm --filter @erp/api run tenant:provision \
   --slug=acco \
   --name="ACCO Ltd" \
   --admin-email=admin@acco.com \
-  --admin-password=ChangeMe123!
+  --admin-password=<secure-password>
 ```
 
 This creates the `rukna_acco` database, seeds default roles, and registers the tenant in the platform registry.
@@ -112,7 +112,7 @@ pnpm dev
 ```
 
 Open `http://acco.localhost:3000` in your browser.
-Login with `admin@acco.com` / `ChangeMe123!`.
+Login with `admin@acco.com` and the password supplied during provisioning.
 
 ---
 
@@ -149,7 +149,14 @@ pnpm type-check
 pnpm lint
 
 # Provision a new tenant
-pnpm --filter @erp/api run tenant:provision --slug=<slug> --name="<Name>"
+pnpm --filter @erp/api run tenant:provision --slug=<slug> --name="<Name>" \
+  --admin-email=<email> --admin-password=<secure-password>
+
+# Inspect/repair access records created by older provisioning runs
+pnpm --filter @erp/api run tenant:repair-access --slug=<slug> --dry-run
+
+# Inspect demo data, access readiness, and workflow configuration without changing a tenant
+pnpm --filter @erp/api run tenant:demo-readiness --slug=<slug>
 
 # Run migrations after schema changes
 pnpm --filter @erp/api run db:migrate:tenant

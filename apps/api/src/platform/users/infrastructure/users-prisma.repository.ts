@@ -14,9 +14,9 @@ import { UserEntity } from '../domain/entities/user.entity.js';
 export class UsersPrismaRepository implements IUsersRepository {
   constructor(private readonly tenancyService: TenancyService) {}
 
-  async findById(id: string): Promise<UserEntity | null> {
+  async findById(id: string, organizationId: string): Promise<UserEntity | null> {
     const prisma = this.tenancyService.getClient();
-    const user = await prisma.user.findUnique({ where: { id } });
+    const user = await prisma.user.findFirst({ where: { id, organizationId } });
     return user ? this.toDomain(user) : null;
   }
 

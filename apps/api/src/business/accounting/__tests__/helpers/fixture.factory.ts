@@ -12,6 +12,7 @@
 
 import { PrismaClient } from '@prisma/client';
 import type { RequestIdentity } from '@erp/types';
+import { randomUUID } from 'node:crypto';
 
 // ─── Public shape returned to spec files ─────────────────────────────────────
 
@@ -50,7 +51,9 @@ export interface AccountingTestEnv {
 
 export class AccountingFixtureFactory {
   static async create(prisma: PrismaClient): Promise<AccountingTestEnv> {
-    const suffix = `t${Date.now().toString(36)}`;
+    // Date.now() collides when Jest workers enter this factory in the same
+    // millisecond. A UUID keeps parallel integration suites truly isolated.
+    const suffix = `t${randomUUID().slice(0, 12)}`;
     const orgId = `test-org-${suffix}`;
     const userId = 'test-user-001';
 

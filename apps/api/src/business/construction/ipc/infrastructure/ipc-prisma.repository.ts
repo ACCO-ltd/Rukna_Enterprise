@@ -7,13 +7,34 @@ export type IpcFull = InterimPaymentCertificate & {
   attachments: import('@prisma/client').IpcAttachment[];
 };
 
-type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
+type TenantPrisma = Omit<
+  PrismaClient,
+  '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
+>;
 
 @Injectable()
 export class IpcPrismaRepository {
-  findAll(prisma: TenantPrisma, organizationId: string, applicationId?: string) {
+  findAll(
+    prisma: TenantPrisma,
+    organizationId: string,
+    applicationId?: string,
+    projectId?: string,
+    userId?: string,
+  ) {
     return prisma.interimPaymentCertificate.findMany({
-      where: { organizationId, ...(applicationId ? { applicationId } : {}) },
+      where: {
+        organizationId,
+        ...(applicationId ? { applicationId } : {}),
+        ...(projectId
+          ? { application: { contract: { projectId } } }
+          : userId
+            ? {
+                application: {
+                  contract: { project: { members: { some: { userId, removedAt: null } } } },
+                },
+              }
+            : {}),
+      },
       orderBy: { createdAt: 'desc' },
     });
   }

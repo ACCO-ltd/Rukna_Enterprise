@@ -151,3 +151,10 @@ export enum IpcStatus {
   PARTIALLY_CERTIFIED = 'PARTIALLY_CERTIFIED',
   REJECTED = 'REJECTED',
 }
+
+export type GovernedEntity =
+  | 'Project'
+  | 'InterimPaymentApplication'
+  | 'PurchaseOrder'
+  | 'SupplierBill'
+  | 'SupplierPayment';

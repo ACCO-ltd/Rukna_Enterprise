@@ -5,3 +5,4 @@ export * from './user';
 export * from './organization';
 export * from './pagination';
 export * from './construction';
+export * from './permissions';

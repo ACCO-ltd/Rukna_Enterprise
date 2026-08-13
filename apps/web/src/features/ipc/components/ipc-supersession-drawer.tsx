@@ -28,7 +28,6 @@ export function IpcSupersessionDrawer({
   onSuccess,
 }: IpcSupersessionDrawerProps) {
   const t = useTranslations('platform.ipc.supersession');
-  const tIpc = useTranslations('platform.ipc');
   const supersede = useSupersede(applicationId);
 
   const currentRef = effectiveCert

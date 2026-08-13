@@ -4,6 +4,8 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { MaterialService } from '../application/material.service.js';
@@ -12,6 +14,7 @@ import { CreateMaterialDto } from './dto/create-material.dto.js';
 @ApiTags('Procurement — Materials')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.procurementConfigManage)
 @Controller('procurement/materials')
 export class MaterialController {
   constructor(private readonly service: MaterialService) {}
