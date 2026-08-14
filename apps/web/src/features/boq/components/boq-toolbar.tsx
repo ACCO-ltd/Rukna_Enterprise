@@ -42,7 +42,7 @@ export function BoqToolbar({
   const filtering = search.trim().length > 0 || pricing !== 'all';
 
   return (
-    <div className="flex flex-col gap-3 border-b border-border pb-3 lg:flex-row lg:items-center lg:justify-between">
+    <div className="flex flex-col gap-3 border-b border-border pb-2.5 lg:flex-row lg:items-center lg:justify-between">
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-0 flex-1 sm:flex-initial">
           <Search
@@ -97,8 +97,11 @@ export function BoqToolbar({
           {t('export')}
         </Button>
 
+        {/* Outline, not primary. The status bar owns the one blue button on this page —
+            "Add section" competing with it meant two primaries and neither reading as the
+            answer to "what do I do next". */}
         {canManage ? (
-          <Button size="sm" className={cn('gap-2')} onClick={onAddSection}>
+          <Button variant="outline" size="sm" className={cn('gap-2')} onClick={onAddSection}>
             <Plus size={15} aria-hidden="true" />
             {t('addSection')}
           </Button>

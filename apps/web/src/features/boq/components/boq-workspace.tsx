@@ -1,17 +1,38 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ClipboardList, GitCompare, Plus } from 'lucide-react';
+import { ClipboardList, GitCompare, MoreHorizontal, Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, Skeleton } from '@erp/ui';
+import {
+  Alert,
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Skeleton,
+  cn,
+} from '@erp/ui';
+
+import type { BoqTreeNodeResponse } from '@erp/types';
 
 import { ApiError } from '@/lib/api-client';
+import { fromMinorUnits, sumMinorUnits, MONEY_SCALE } from '@/lib/money';
 import { EmptyState } from '@/components/empty-state';
 import { LifecycleCommandDrawer } from '@/components/lifecycle-command-drawer';
 import { usePermissions } from '@/features/auth/permissions/can';
 
-import { buildRows, collectSectionIds, countTree, type PricingFilter } from '../boq-rows';
+import {
+  buildRows,
+  collectSectionIds,
+  countTree,
+  flattenTree,
+  isPriced,
+  type PricingFilter,
+} from '../boq-rows';
 import { compareToCsv, downloadCsv, treeToCsv } from '../boq-export';
+import { resolveNextStep, type BoqNextStep } from '../boq-next-step';
 import {
   useBaselineVersion,
   useBoqCompare,
@@ -30,10 +51,10 @@ import { BOQ_PERMISSIONS } from '../permissions';
 import { getVersionActions } from '../version-actions';
 import { BoqComparePanel } from './boq-compare-panel';
 import { BoqGrid, type BoqRowCommands } from './boq-grid';
-import { BoqHeader } from './boq-header';
 import { BoqItemDrawer, type DrawerTarget } from './boq-item-drawer';
 import { BoqReadinessBanner } from './boq-readiness-banner';
-import { BoqSummaryStrip } from './boq-summary-strip';
+import { BoqStatusBar } from './boq-status-bar';
+import { BoqStickyBar, useIsOffScreen } from './boq-sticky-bar';
 import { BoqToolbar } from './boq-toolbar';
 import { BoqVersionPanel } from './boq-version-panel';
 
@@ -63,6 +84,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const [drawer, setDrawer] = useState<DrawerTarget | null>(null);
   const [command, setCommand] = useState<Command>(null);
   const [comparing, setComparing] = useState<{ left: string; right: string } | null>(null);
+  const [stickyRef, stickyOffScreen] = useIsOffScreen();
 
   // Derived during render rather than synchronised in an effect: a cancelled draft or a
   // version baselined in another tab disappears from the list, and an effect would render
@@ -135,6 +157,52 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
 
   const allSectionIds = collectSectionIds(nodes);
   const allExpanded = collapsed.size === 0;
+  const isFiltered = search.trim().length > 0 || pricing !== 'all';
+  const nextStep = resolveNextStep(workspace, selectedVersionId);
+
+  /** Narrows the grid to specific rows and scrolls them into view. */
+  const showNodes = (nodeIds: string[]) => {
+    setHighlighted(new Set(nodeIds));
+    setSearch('');
+    setPricing('all');
+    // Expand everything: a blocker inside a collapsed section would otherwise be filtered
+    // to and then not shown, which reads as the button doing nothing.
+    setCollapsed(new Set());
+    document.getElementById('boq-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  /**
+   * Runs whatever `resolveNextStep` decided. Fix steps navigate; transitions open their
+   * lifecycle drawer. The button is the instruction and the navigation both.
+   */
+  const runNextStep = () => {
+    switch (nextStep.kind) {
+      case 'INITIALIZE':
+        initialize.mutate();
+        return;
+      case 'ADD_ITEMS':
+        setDrawer({ mode: 'add', kind: 'section', parent: null, node: null });
+        return;
+      case 'PRICE_ITEMS':
+      case 'FIX_BLOCKERS':
+        showNodes(nextStep.targetNodeIds ?? []);
+        return;
+      case 'SUBMIT_BASELINE':
+        setCommand('baseline');
+        return;
+      case 'START_REVISION':
+        setCommand('revise');
+        return;
+      default:
+        return;
+    }
+  };
+
+  // The sum of what is on screen, so a filtered footer does not show a count and a total
+  // that describe different sets of rows.
+  const visibleAmount = isFiltered
+    ? sumVisibleItems(rows.map((row) => row.node))
+    : (selected?.totalAmount ?? null);
 
   const toggleCollapsed = (nodeId: string) =>
     setCollapsed((current) => {
@@ -176,90 +244,100 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   };
 
   return (
-    <div className="space-y-5">
-      <BoqHeader
-        version={selected}
-        revision={isDraft ? workspace.revision : null}
-        currency={workspace.currency}
-        canViewCommercials={canViewCommercials}
-        actions={
-          <>
-            {workspace.revision ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={() =>
-                  setComparing({
-                    left: workspace.revision!.basedOnVersionId,
-                    right: workspace.draft!.id,
-                  })
-                }
-              >
-                <GitCompare size={16} aria-hidden="true" />
-                {t('actions.reviewChanges')}
-              </Button>
-            ) : null}
+    <div className="space-y-3">
+      <div ref={stickyRef}>
+        <BoqStatusBar
+          version={selected}
+          revision={isDraft ? workspace.revision : null}
+          currency={workspace.currency}
+          sectionCount={counts.sections}
+          itemCount={counts.items}
+          pricedCount={counts.priced}
+          contractBaseline={workspace.contractBaseline}
+          contractMatchesApproved={
+            workspace.contractBaseline?.id === workspace.approved?.id
+          }
+          canViewCommercials={canViewCommercials}
+          actions={
+            <>
+              {/* Exactly one primary, and it is never disabled — see boq-next-step.ts. */}
+              <NextStepButton step={nextStep} onRun={runNextStep} />
 
-            {actions.canCreateDraft ? (
-              <Button variant="outline" size="sm" onClick={() => setCommand('revise')}>
-                {t('actions.startRevision')}
-              </Button>
-            ) : null}
+              {workspace.revision ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() =>
+                    setComparing({
+                      left: workspace.revision!.basedOnVersionId,
+                      right: workspace.draft!.id,
+                    })
+                  }
+                >
+                  <GitCompare size={16} aria-hidden="true" />
+                  {t('actions.reviewChanges')}
+                </Button>
+              ) : null}
 
-            {actions.canCancelDraft ? (
-              <Button variant="outline" size="sm" onClick={() => setCommand('discard')}>
-                {t('actions.discardDraft')}
-              </Button>
-            ) : null}
+              {/* Everything else moves behind the overflow. Four peer buttons is a toolbar,
+                  not a decision. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" aria-label={t('actions.more')}>
+                    <MoreHorizontal size={16} aria-hidden="true" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={handleExportTree}>
+                    {t('toolbar.export')}
+                  </DropdownMenuItem>
+                  {actions.canCreateDraft && nextStep.kind !== 'START_REVISION' ? (
+                    <DropdownMenuItem onSelect={() => setCommand('revise')}>
+                      {t('actions.startRevision')}
+                    </DropdownMenuItem>
+                  ) : null}
+                  {actions.canBaseline && nextStep.kind !== 'SUBMIT_BASELINE' ? (
+                    <DropdownMenuItem onSelect={() => setCommand('baseline')}>
+                      {t('actions.submitForBaseline')}
+                    </DropdownMenuItem>
+                  ) : null}
+                  {actions.canCancelDraft ? (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onSelect={() => setCommand('discard')}>
+                        {t('actions.discardDraft')}
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          }
+        />
+      </div>
 
-            {isDraft && workspace.capabilities.canBaseline ? (
-              <Button
-                size="sm"
-                disabled={!actions.canBaseline}
-                title={actions.blockedReason === 'NOT_READY' ? t('actions.notReadyHint') : undefined}
-                onClick={() => setCommand('baseline')}
-              >
-                {t('actions.submitForBaseline')}
-              </Button>
-            ) : null}
-          </>
-        }
-      />
-
-      <BoqSummaryStrip
+      <BoqStickyBar
+        visible={stickyOffScreen}
+        versionNumber={selected?.versionNumber ?? null}
+        status={selected?.status ?? 'DRAFT'}
         totalAmount={selected?.totalAmount ?? null}
         currency={workspace.currency}
-        sectionCount={counts.sections}
-        itemCount={counts.items}
-        pricedCount={counts.priced}
-        contractBaselineLabel={
-          workspace.contractBaseline
-            ? t('versionNumber', { number: workspace.contractBaseline.versionNumber })
-            : t('summary.noContractBaseline')
-        }
-        contractBaselineNote={
-          workspace.contractBaseline
-            ? workspace.contractBaseline.id === workspace.approved?.id
-              ? t('summary.contractCurrent')
-              : t('summary.contractBehind')
-            : t('summary.noContractBaselineHint')
-        }
         canViewCommercials={canViewCommercials}
+        action={<NextStepButton step={nextStep} onRun={runNextStep} />}
       />
 
-      {workspace.readiness ? (
+      {workspace.readiness && isDraft ? (
         <BoqReadinessBanner
           readiness={workspace.readiness}
-          showClearState={isDraft}
-          onReviewBlockers={(nodeIds) => {
-            setHighlighted(new Set(nodeIds));
-            setPricing('incomplete');
-          }}
+          // Not dismissible while it is the thing standing between the user and a
+          // baseline — closing it would leave a screen with nothing to act on.
+          dismissible={workspace.readiness.ready}
+          onShowNodes={showNodes}
         />
       ) : null}
 
-      <div className="space-y-3">
+      <div id="boq-grid" className="space-y-3 scroll-mt-4">
         <BoqToolbar
           search={search}
           onSearchChange={setSearch}
@@ -289,6 +367,8 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
             totalRows={counts.sections + counts.items}
             currency={workspace.currency}
             totalAmount={selected?.totalAmount ?? null}
+            visibleAmount={visibleAmount}
+            isFiltered={isFiltered}
             canManage={canManage}
             canViewCommercials={canViewCommercials}
             highlighted={highlighted}
@@ -452,6 +532,44 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
 
     return errorText(mutation.error, translate(`commands.${current}.failed`));
   }
+}
+
+/**
+ * The single primary action.
+ *
+ * `attention` renders amber rather than blue, because the step is work standing in the way
+ * of a transition rather than the transition itself — and because a page whose only
+ * emphasis is brand blue tells the reader nothing about progress. It is never rendered
+ * disabled: `resolveNextStep` returns something the user can actually do, or nothing.
+ */
+function NextStepButton({ step, onRun }: { step: BoqNextStep; onRun: () => void }) {
+  const t = useTranslations('platform.boq.nextStep');
+  if (step.tone === 'none') return null;
+
+  return (
+    <Button
+      size="sm"
+      onClick={onRun}
+      className={cn(
+        'gap-2',
+        step.tone === 'attention' &&
+          'bg-warning text-white hover:bg-warning/90 focus-visible:outline-warning',
+      )}
+    >
+      {t(step.kind, { count: step.count ?? 0 })}
+    </Button>
+  );
+}
+
+/** Sum of the visible billable rows, in minor units, so a filtered footer stays honest. */
+function sumVisibleItems(nodes: BoqTreeNodeResponse[]): string | null {
+  const items = flattenTree(nodes).filter((node) => node.isLeaf && isPriced(node));
+  if (items.length === 0) return null;
+  const minor = sumMinorUnits(
+    items.map((item) => item.computedTotal),
+    MONEY_SCALE,
+  );
+  return fromMinorUnits(minor, MONEY_SCALE);
 }
 
 function businessImpact(

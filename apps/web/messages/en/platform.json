@@ -483,29 +483,20 @@
       "startRevision": "Start revision",
       "discardDraft": "Discard draft",
       "submitForBaseline": "Submit for baseline",
-      "notReadyHint": "Resolve the outstanding items before this BOQ can be baselined."
+      "more": "More actions"
     },
     "summary": {
-      "value": "BOQ value",
-      "structure": "Structure",
       "pricingCompleteness": "Pricing completeness",
-      "contractBaseline": "Contract baseline",
       "sectionsAndItems": "{sections} sections · {items} items",
-      "billableItems": "{count} billable items",
       "pricedOf": "{priced} of {total} items priced",
       "notPriced": "Not priced",
       "restricted": "Restricted",
       "restrictedHint": "You do not have commercial visibility",
-      "noContractBaseline": "Not referenced",
       "noContractBaselineHint": "No contract references a BOQ version yet",
-      "contractCurrent": "Matches the approved baseline",
-      "contractBehind": "An approved revision supersedes it"
+      "contractCurrentAt": "Contract baseline: Version {number} — matches approved",
+      "contractBehindAt": "Contract baseline: Version {number} — an approved revision supersedes it"
     },
     "readiness": {
-      "heading": "Baseline readiness",
-      "title": "{count, plural, one {# item requires} other {# items require}} attention before this BOQ can be submitted.",
-      "completeness": "Pricing complete: {priced} of {total}",
-      "review": "Review {count} blockers",
       "dismiss": "Dismiss",
       "ready": "Ready to baseline",
       "readyHint": "All {items} billable items are priced and the structure is valid.",
@@ -518,6 +509,20 @@
         "CURRENCY_MISMATCH": "{count, plural, one {# item in another currency} other {# items in another currency}}",
         "STRUCTURE_INVALID": "Invalid structure",
         "VARIATION_REQUIRED": "Changes need an approved Variation Order"
+      },
+      "consequence": "Items without a rate cannot be certified or invoiced against.",
+      "showThese": "Show these",
+      "blockedGeneric": "This BOQ cannot be baselined yet.",
+      "headlineMixed": "{count, plural, one {# item needs} other {# items need}} attention before this BOQ can be baselined.",
+      "headline": {
+        "NO_BILLABLE_ITEMS": "This BOQ has no billable items yet.",
+        "DUPLICATE_CODE": "{count, plural, one {# item code is} other {# item codes are}} used more than once.",
+        "MISSING_UNIT": "{count, plural, one {# item needs} other {# items need}} a unit before this BOQ can be baselined.",
+        "MISSING_QUANTITY": "{count, plural, one {# item needs} other {# items need}} a quantity before this BOQ can be baselined.",
+        "MISSING_RATE": "{count, plural, one {# item needs} other {# items need}} a rate before this BOQ can be baselined.",
+        "CURRENCY_MISMATCH": "{count, plural, one {# item is} other {# items are}} priced in another currency.",
+        "STRUCTURE_INVALID": "The BOQ structure is not valid.",
+        "VARIATION_REQUIRED": "Post-award changes need an approved Variation Order."
       }
     },
     "toolbar": {
@@ -562,12 +567,13 @@
       "moveUp": "Move up",
       "moveDown": "Move down",
       "delete": "Delete",
-      "rowCount": "{shown} of {total} rows",
-      "total": "Total",
       "totalRestricted": "Total restricted",
       "empty": "This version has no items.",
       "emptyDraft": "Add a section to start building the BOQ.",
-      "noMatches": "No rows match the current filters."
+      "noMatches": "No rows match the current filters.",
+      "showingRows": "Showing {shown} of {total} rows",
+      "visibleTotal": "Visible",
+      "boqTotal": "BOQ total"
     },
     "editor": {
       "addItem": "Add BOQ item",
@@ -697,6 +703,16 @@
         "notesHint": "Why this revision is being raised. Shown in version history.",
         "failed": "Could not start a revision."
       }
+    },
+    "versionShort": "V{number}",
+    "nextStep": {
+      "INITIALIZE": "Create BOQ",
+      "ADD_ITEMS": "Add the first section",
+      "PRICE_ITEMS": "{count, plural, one {Price # item} other {Price # items}}",
+      "FIX_BLOCKERS": "{count, plural, one {Resolve # issue} other {Resolve # issues}}",
+      "SUBMIT_BASELINE": "Submit for baseline",
+      "START_REVISION": "Start revision",
+      "VIEW_ONLY": ""
     }
   },
   "users": {

@@ -483,29 +483,20 @@
       "startRevision": "بدء مراجعة",
       "discardDraft": "إلغاء المسودة",
       "submitForBaseline": "تقديم للاعتماد",
-      "notReadyHint": "عالج البنود المعلّقة قبل اعتماد جدول الكميات."
+      "more": "إجراءات أخرى"
     },
     "summary": {
-      "value": "قيمة جدول الكميات",
-      "structure": "الهيكل",
       "pricingCompleteness": "اكتمال التسعير",
-      "contractBaseline": "أساس العقد",
       "sectionsAndItems": "{sections} أقسام · {items} بنود",
-      "billableItems": "{count} بند قابل للفوترة",
       "pricedOf": "{priced} من {total} بند مسعّر",
       "notPriced": "غير مسعّر",
       "restricted": "مقيّد",
       "restrictedHint": "لا تملك صلاحية الاطلاع التجاري",
-      "noContractBaseline": "غير مرجعي",
       "noContractBaselineHint": "لا يوجد عقد يشير إلى إصدار من جدول الكميات",
-      "contractCurrent": "مطابق للإصدار المعتمد",
-      "contractBehind": "توجد مراجعة معتمدة تستبدله"
+      "contractCurrentAt": "أساس العقد: الإصدار {number} — مطابق للمعتمد",
+      "contractBehindAt": "أساس العقد: الإصدار {number} — توجد مراجعة معتمدة تستبدله"
     },
     "readiness": {
-      "heading": "جاهزية الاعتماد",
-      "title": "{count, plural, one {بند واحد يحتاج} other {# بنود تحتاج}} إلى معالجة قبل تقديم جدول الكميات.",
-      "completeness": "اكتمال التسعير: {priced} من {total}",
-      "review": "مراجعة {count} معوّقات",
       "dismiss": "إخفاء",
       "ready": "جاهز للاعتماد",
       "readyHint": "جميع البنود القابلة للفوترة ({items}) مسعّرة والهيكل صحيح.",
@@ -518,6 +509,20 @@
         "CURRENCY_MISMATCH": "{count, plural, one {بند بعملة أخرى} other {# بنود بعملة أخرى}}",
         "STRUCTURE_INVALID": "هيكل غير صالح",
         "VARIATION_REQUIRED": "التغييرات تتطلب أمر تغيير معتمد"
+      },
+      "consequence": "البنود بدون سعر لا يمكن اعتمادها أو إصدار فواتير عنها.",
+      "showThese": "عرض هذه البنود",
+      "blockedGeneric": "لا يمكن اعتماد جدول الكميات بعد.",
+      "headlineMixed": "{count, plural, one {بند واحد يحتاج} other {# بنود تحتاج}} إلى معالجة قبل اعتماد جدول الكميات.",
+      "headline": {
+        "NO_BILLABLE_ITEMS": "لا توجد بنود قابلة للفوترة بعد.",
+        "DUPLICATE_CODE": "{count, plural, one {رمز بند واحد مكرر} other {# رموز بنود مكررة}}.",
+        "MISSING_UNIT": "{count, plural, one {بند واحد يحتاج} other {# بنود تحتاج}} إلى وحدة قبل اعتماد جدول الكميات.",
+        "MISSING_QUANTITY": "{count, plural, one {بند واحد يحتاج} other {# بنود تحتاج}} إلى كمية قبل اعتماد جدول الكميات.",
+        "MISSING_RATE": "{count, plural, one {بند واحد يحتاج} other {# بنود تحتاج}} إلى سعر قبل اعتماد جدول الكميات.",
+        "CURRENCY_MISMATCH": "{count, plural, one {بند واحد مسعّر} other {# بنود مسعّرة}} بعملة أخرى.",
+        "STRUCTURE_INVALID": "هيكل جدول الكميات غير صالح.",
+        "VARIATION_REQUIRED": "التغييرات بعد الترسية تتطلب أمر تغيير معتمد."
       }
     },
     "toolbar": {
@@ -562,12 +567,13 @@
       "moveUp": "تحريك لأعلى",
       "moveDown": "تحريك لأسفل",
       "delete": "حذف",
-      "rowCount": "{shown} من {total} صف",
-      "total": "الإجمالي",
       "totalRestricted": "الإجمالي مقيّد",
       "empty": "لا توجد بنود في هذا الإصدار.",
       "emptyDraft": "أضف قسمًا لبدء بناء جدول الكميات.",
-      "noMatches": "لا توجد صفوف مطابقة للتصفية الحالية."
+      "noMatches": "لا توجد صفوف مطابقة للتصفية الحالية.",
+      "showingRows": "عرض {shown} من {total} صف",
+      "visibleTotal": "المعروض",
+      "boqTotal": "إجمالي جدول الكميات"
     },
     "editor": {
       "addItem": "إضافة بند",
@@ -697,6 +703,16 @@
         "notesHint": "سبب رفع هذه المراجعة. يظهر في سجل الإصدارات.",
         "failed": "تعذّر بدء المراجعة."
       }
+    },
+    "versionShort": "إصدار {number}",
+    "nextStep": {
+      "INITIALIZE": "إنشاء جدول الكميات",
+      "ADD_ITEMS": "أضف القسم الأول",
+      "PRICE_ITEMS": "{count, plural, one {تسعير بند واحد} other {تسعير # بنود}}",
+      "FIX_BLOCKERS": "{count, plural, one {معالجة مشكلة واحدة} other {معالجة # مشكلات}}",
+      "SUBMIT_BASELINE": "تقديم للاعتماد",
+      "START_REVISION": "بدء مراجعة",
+      "VIEW_ONLY": ""
     }
   },
   "users": {

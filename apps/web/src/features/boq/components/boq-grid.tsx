@@ -52,6 +52,8 @@ export function BoqGrid({
   totalRows,
   currency,
   totalAmount,
+  visibleAmount,
+  isFiltered,
   canManage,
   canViewCommercials,
   highlighted,
@@ -65,6 +67,9 @@ export function BoqGrid({
   totalRows: number;
   currency: string;
   totalAmount: string | null;
+  /** Sum of the items currently visible. Shown only while a filter narrows the list. */
+  visibleAmount: string | null;
+  isFiltered: boolean;
   canManage: boolean;
   canViewCommercials: boolean;
   /** Node ids the readiness banner asked to draw attention to. */
@@ -128,16 +133,33 @@ export function BoqGrid({
         </Table>
       </TableScroll>
 
+      {/* Footer. "26 of 67 rows" used to sit beside a total covering all 67, so a filtered
+          view showed a count and a figure that did not describe the same thing. */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-surface-subtle px-4 py-3 sm:px-5">
         <span className="text-caption text-muted-foreground">
-          {t('rowCount', { shown: rows.length, total: totalRows })}
+          {t('showingRows', { shown: rows.length, total: totalRows })}
         </span>
         {canViewCommercials ? (
-          <span className="text-body-sm font-semibold text-foreground">
-            {t('total')}{' '}
-            <LtrValue className="tabular-nums">
-              {formatMoney(totalAmount, currency, locale) ?? '—'}
-            </LtrValue>
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            {isFiltered ? (
+              <>
+                <span className="text-caption text-muted-foreground">
+                  {t('visibleTotal')}{' '}
+                  <LtrValue className="font-medium tabular-nums text-foreground">
+                    {formatMoney(visibleAmount, currency, locale) ?? '—'}
+                  </LtrValue>
+                </span>
+                <span className="text-muted-foreground" aria-hidden="true">
+                  ·
+                </span>
+              </>
+            ) : null}
+            <span className="text-body-sm font-semibold text-foreground">
+              {t('boqTotal')}{' '}
+              <LtrValue className="tabular-nums">
+                {formatMoney(totalAmount, currency, locale) ?? '—'}
+              </LtrValue>
+            </span>
           </span>
         ) : (
           <span className="inline-flex items-center gap-1.5 text-caption font-medium text-muted-foreground">
@@ -185,6 +207,12 @@ function GridRow({
         // Sections read as structure, items as data. Restrained: a tint and a weight, not a
         // second background colour per level.
         !node.isLeaf && 'bg-surface-subtle/60 font-medium',
+        // An unpriced row carries an amber leading edge rather than a 6px dot. A dot is
+        // invisible while scrolling 400 rows, which is exactly when it matters; an edge is
+        // the only thing at this density the eye can catch in peripheral vision.
+        incomplete && 'border-s-2 border-s-warning',
+        // The result of pressing "Show these" — the rows asked for, tinted so the jump is
+        // visibly the answer to the button.
         highlighted && 'bg-warning-subtle',
         !node.isActive && 'opacity-60',
       )}
@@ -212,13 +240,8 @@ function GridRow({
           ) : (
             <span className="h-7 w-7 shrink-0" aria-hidden="true" />
           )}
-          {incomplete ? (
-            <span
-              className="me-1 h-1.5 w-1.5 shrink-0 rounded-full bg-warning"
-              aria-label={t('incomplete')}
-            />
-          ) : null}
           <LtrValue className="font-mono text-caption">{node.code}</LtrValue>
+          {incomplete ? <span className="sr-only">{t('incomplete')}</span> : null}
         </div>
       </TableCell>
 
@@ -228,11 +251,15 @@ function GridRow({
         </span>
       </TableCell>
 
-      <TableCell className="text-caption text-muted-foreground">
+      {/* TYPE and UNIT are the quietest columns on the row and should look it. They used
+          `text-muted-foreground` — #667085, a blue-cast grey that at 12px reads as faint
+          blue, which is the "everything is blue" problem in miniature. `opacity` over the
+          neutral foreground keeps them genuinely grey in both themes. */}
+      <TableCell className="text-caption text-foreground/55">
         {node.isLeaf ? t('typeItem') : t('typeSection')}
       </TableCell>
 
-      <TableCell className="text-caption text-muted-foreground">{node.unit ?? '—'}</TableCell>
+      <TableCell className="text-caption text-foreground/55">{node.unit ?? '—'}</TableCell>
 
       <TableCell numeric>
         {node.quantity ? (
@@ -294,7 +321,7 @@ function SourceCell({ node }: { node: BoqTreeNodeResponse }) {
     );
   }
 
-  return <span className="text-caption text-muted-foreground">{t('sourceBaseline')}</span>;
+  return <span className="text-caption text-foreground/55">{t('sourceBaseline')}</span>;
 }
 
 /**

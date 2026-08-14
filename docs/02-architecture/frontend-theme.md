@@ -60,6 +60,40 @@ Tenant branding may override brand tokens only. It must not override status, dan
 success, surface, border, or text tokens because those carry accessibility and business meaning.
 Semantic color is never the accent, and the accent never carries state meaning.
 
+### What each colour means
+
+The rule above is easy to agree with and easy to break. The BOQ workspace broke it on its
+first pass: the pricing-completeness bar was `brand-primary`, so a fully priced BOQ and a
+half-priced one looked identical, and every accent on the screen — active tab, links, both
+primary buttons, the progress bar, the selected row — was the same blue. The screen carried
+plenty of information and no signal.
+
+| Meaning | Token | Carried by |
+|---|---|---|
+| Complete, approved, on track | `success` / `success-subtle` | Baselined and posted badges, a 100% progress bar, "matches approved baseline", reconciled figures |
+| In progress, needs attention | `warning` / `warning-subtle` | Draft badges, a sub-100% progress bar, rows missing required data, readiness and exception banners |
+| Blocking or destructive | `danger` / `danger-subtle` | Validation failures, discard and delete, over-claim, currency mismatch |
+| Historical, superseded | `historical` / `historical-subtle` | Superseded versions, reversed journals, prior revisions |
+| **Interactive** | `brand-primary` | The single primary action, links, the active tab, the focus ring — **and nothing else** |
+| Structure and figures | `foreground` / `muted-foreground` | Codes, descriptions, units, and money |
+
+Two consequences worth stating outright, because both are counter-intuitive:
+
+**Money stays neutral.** Colouring figures turns a dense table into a heat map and the eye
+stops landing on the number. Colour belongs on the *state* beside the figure — a row edge, a
+badge — not on the figure.
+
+**A progress indicator is a status carrier, not an accent.** If it can reach a finished
+state it must look different when it gets there. `warning` while incomplete, `success` at
+100%. A brand-blue progress bar is the accent pretending to carry state, which is exactly
+what the ownership rule forbids.
+
+**One primary per screen.** `brand-primary` marks the single action the user should take
+next. Two blue buttons compete and neither reads as the answer; a *disabled* blue button is
+worse still, because the one thing drawing the eye is the one thing that cannot be done.
+Where the obvious next action changes with state, resolve it in a pure module and let the
+button follow — see `apps/web/src/features/boq/boq-next-step.ts`.
+
 ## Theme behavior
 
 The account menu exposes Light, Dark, and System preferences. The non-sensitive display

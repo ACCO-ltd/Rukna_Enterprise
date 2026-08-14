@@ -345,3 +345,93 @@ dark-mode run. Locale is the `lang` cookie (`user-menu.tsx`); theme is
   screen with a gated primary action — worth a separate look.
 - The dev tenant now carries a seeded draft revision (Version 2) on `PRJ-A2SBM`. It is a
   draft, so "Discard draft" removes it and returns the project to baselined Version 1.
+
+---
+
+# BOQ workspace — decision clarity and semantic colour, 2026-08-14
+
+## Why a second pass
+
+The first pass was correct and matched the design language, and it still left a user asking
+"where do I start". Reviewed against the shipped screenshots:
+
+- **The action hierarchy was inverted.** The only enabled forward action, "Review 5 blockers",
+  was a small outline button inside a *dismissible* banner. The visual primary, "Submit for
+  baseline", was disabled — the one element drawing the eye was the one that could not be
+  pressed. "Add section" was a second blue primary. Four buttons, none saying *do this next*.
+- **Colour carried no meaning.** Blue was the active tab, links, both primaries, the progress
+  bar and the selected row. A fully priced BOQ looked identical to a half-priced one, because
+  the completeness bar was `brand-primary`.
+- **The page repeated itself.** The number 5 appeared three times in one banner, "38 of 43"
+  twice within 100px, and the version relationship in three places.
+- **Two visually identical 4-tile rows** (project, then BOQ) left no way to tell context from
+  subject.
+
+## Evidence
+
+- `docs/qa/boq/boq-fold-1440x900.png` — **what a laptop actually sees**, viewport-sized
+- `docs/qa/boq/boq-sticky-scrolled.png` — the sticky context bar, scrolled 1400px in
+- `boq-desktop-en-light.png` · `boq-desktop-en-dark.png` · `boq-desktop-ar-rtl.png`
+- `boq-mobile-375-en.png` · `boq-mobile-375-ar-rtl.png`
+
+State: `PRJ-A2SBM`, BOQ Version 2 draft — 24 sections, 43 items, 5 unpriced, USD 13,638,194.
+
+## Measured, not eyeballed
+
+| Check | Result |
+|---|---|
+| `dir` / `data-theme` read off the DOM | ltr/light, ltr/dark, **rtl**/light, 375 ltr, 375 **rtl** |
+| Document horizontal overflow, all five | **0px** |
+| Console, all five | clean |
+| Sticky bar after a 1400px scroll | present at `top: 0` — `BOQ ǀ V2 ǀ Draft ǀ $13,638,194.00 ǀ Price 5 items` |
+| Table header top at 1440×900 | **818px** (visible) |
+| First data row top at 1440×900 | **862px** (partially visible; was 934px) |
+
+## Two faults the screenshots hid, found by measuring
+
+**The sticky bar never appeared.** `useIsOffScreen` took a `RefObject` and observed
+`ref.current` in an effect keyed on the ref's identity. The workspace renders a skeleton
+while its query is pending, so on the first commit `current` was null, the effect bailed —
+and a ref's identity never changes, so it never ran again once the real element mounted. It
+is now a **callback ref**, keyed on the node. A full-page screenshot is taken at scroll zero
+and could never have caught this.
+
+**Zero *complete* data rows above the fold**, then and now. See the outstanding item below.
+
+## What changed
+
+- **One primary, resolved from state, never disabled** — `features/boq/boq-next-step.ts`,
+  13 unit tests. Unready draft → "Price 5 items" (amber); ready → "Submit for baseline"
+  (blue); baselined → "Start revision". The fix steps carry the blocking node ids, so the
+  button is the navigation as well as the instruction. Everything else moved to a `⋯` menu,
+  and "Add section" dropped to outline.
+- **The BOQ band is a status bar, not a second tile row** — state-coloured leading edge,
+  value dominant, counts on one line. Absorbed the old header and summary strip.
+- **The progress bar is amber below 100% and green at 100%.** A status carrier has to look
+  different when it reaches its finished state; brand blue could not.
+- **Unpriced rows carry an amber leading edge** instead of a 6px dot — visible in
+  `boq-sticky-scrolled.png` while scrolling, which is exactly when a dot is not.
+- **Banner deduplicated**: the specific line is the headline ("5 items need a rate before
+  this BOQ can be baselined"), with a consequence line, and it is **not dismissible while it
+  owns the only next step**.
+- **Footer disambiguated**: "Showing 26 of 67 rows" and "BOQ total", with a "Visible" subtotal
+  only while filtered — the count and the figure now describe the same set of rows.
+- Colour semantics written into `docs/02-architecture/frontend-theme.md`, so this is a rule
+  rather than a one-screen choice.
+
+## Outstanding
+
+**No *complete* BOQ row is visible at 1440×900.** The first row begins at 862px against a
+900px viewport, so it is cut. This pass reclaimed 147px (1042 → 862) from the BOQ's own
+bands; the remaining ~530px is the project shell — breadcrumb, project header, lifecycle
+strip, tab bar and the four project tiles — which renders on every project tab and was
+deliberately left alone.
+
+Closing it needs a shell decision, not a BOQ one: collapse the four project tiles on
+sub-tabs, or make them collapsible with a remembered preference. That affects Overview,
+Commercial and Team as well, so it is not the BOQ feature's call to make unilaterally.
+
+**Minor:** TYPE and UNIT still read faintly cool. They are now `text-foreground/55` rather
+than `text-muted-foreground` (`#667085`), but `--foreground` is itself a navy (`#172033`),
+so any tint derived from it keeps a slight blue cast. Genuinely neutralising them would mean
+adding a colour outside the closed token set, which the theme rules forbid.
