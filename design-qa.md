@@ -264,3 +264,57 @@ final result: implementation passed; authenticated visual evidence pending envir
 - Responsive and bilingual readiness: logical layout and existing translated strings are preserved; dedicated Arabic/mobile visual regression coverage remains a later rollout task.
 
 final result: passed
+
+---
+
+# BOQ workspace QA — ADR-016 rebuild, 2026-08-14
+
+## Result
+
+**Automated gates: pass. Browser visual pass: not run — blocked on the demo tenant password.**
+
+Recorded honestly rather than marked complete, following the pattern the Phase 3B entry set:
+a QA section that claims a browser pass it did not perform is worse than one that names what
+is outstanding.
+
+## What was verified
+
+| Gate | Result |
+|---|---|
+| `apps/api` integration suite (real Postgres `rukna_acco`, `--runInBand`) | **33 suites / 235 tests** green, incl. 34 new BOQ tests |
+| `apps/web` typecheck | clean |
+| `apps/web` lint over `features/boq`, the workspace shell, `lib/api-types.ts`, `lib/format.ts` | clean — **no token-rule warnings**, which the old BOQ files produced on radius, elevation and type |
+| `apps/web` unit/component suite | **87 files / 1288 tests** green |
+| `apps/web` production build | succeeds; `/projects/[id]/boq` compiles |
+| i18n | 197 `platform.boq` keys per locale, en/ar parity asserted before writing |
+
+Backend correctness is covered by tests that could not be faked at the UI layer: decimal
+line and section totals (`0.100 × 1.00` summed three times is exactly `0.30`), currency
+rejection, duplicate-code rejection, transactional sibling reindex on move, subtree path and
+depth rewrite, delete blocked by a real `CommitmentLedgerEntry`, org isolation, the
+governance gate returning 409 and completing on re-drive, and commercial figures withheld
+from a caller without `view:boq`.
+
+## What is outstanding
+
+The browser pass in the plan — `/design` gallery with theme, direction and density switched;
+Playwright at 375px and 1440px; en and ar; light and dark; the twelve required states; and a
+400-item BOQ for scroll and render — needs a sign-in. `apps/web/e2e/fixtures.ts` requires
+`RUKNA_DEMO_PASSWORD`, which is not in the repo or either `.env`, and `admin@acco.com` did
+not match any guessed value. Resetting that password would change the developer's own
+environment, so it was left alone.
+
+Everything the pass needs is in place: the e2e harness, `playwright.config.ts` with its
+375px project, and the seeded scenario in `global-setup.ts`.
+
+## Design decisions to check when the pass runs
+
+- The header lost its card framing, matching `a25c3e1` — full-bleed rules, no radius, no shadow.
+- Info surfaces carry `border border-border` and **no** `shadow-e1`; only the readiness panel
+  is raised, because it is an interruption rather than a container.
+- The facts strip is rule-separated with `sm:odd:border-e lg:not-last:border-e`; verify the
+  dividers land on the correct edge in RTL, which is the whole reason they are logical.
+- Every figure is wrapped in `LtrValue`. In Arabic, an unwrapped `12,585,000.00` reverses —
+  `tabular-nums` does not fix bidi, and BOQ is the most number-dense screen in the product.
+- The grid scrolls inside `TableScroll`. The page body must not scroll sideways at 375px.
+- One row menu, not six buttons. Verify the 44px touch target on the chevron survives.
