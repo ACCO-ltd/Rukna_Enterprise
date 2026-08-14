@@ -1,0 +1,177 @@
+{
+  "title": "Commercial",
+  "subtitle": "Client contract administration and certification",
+  "actions": {
+    "more": "More",
+    "backToProject": "Back to project",
+    "viewApplications": "Applications & Certificates",
+    "view": "View"
+  },
+  "states": {
+    "loadFailed": "Could not load commercial data",
+    "loadFailedHint": "Something went wrong loading this workspace. Try again.",
+    "retry": "Retry"
+  },
+  "tabs": {
+    "label": "Commercial sections",
+    "overview": "Overview",
+    "main-contract": "Main Contract",
+    "applications": "Applications & Certificates",
+    "retention-advances": "Retention & Advances",
+    "guarantees": "Guarantees"
+  },
+  "metric": {
+    "contractValue": "Contract Value",
+    "certified": "Certified",
+    "invoiced": "Invoiced",
+    "received": "Received",
+    "outstanding": "Outstanding"
+  },
+  "metricState": {
+    "restricted": "Restricted",
+    "unavailable": "Not available",
+    "failed": "Could not load",
+    "restrictedShort": "—"
+  },
+  "contractStatus": {
+    "DRAFT": "Draft",
+    "UNDER_REVIEW": "Under review",
+    "PENDING_SIGNATURE": "Pending signature",
+    "ACTIVE": "Active",
+    "FINAL_ACCOUNT_PENDING": "Final account pending",
+    "CLOSED": "Closed",
+    "CANCELLED": "Cancelled",
+    "TERMINATED": "Terminated"
+  },
+  "overview": {
+    "attention": "Attention & Next Action",
+    "recentActivity": "Recent Commercial Activity",
+    "noActivity": "No commercial activity yet.",
+    "noContractTitle": "No main contract yet",
+    "noContractHint": "This project has no client contract. Create one to begin certification and billing."
+  },
+  "attention": {
+    "none": "Nothing needs attention right now.",
+    "severity": {
+      "URGENT": "Urgent",
+      "WARNING": "Warning",
+      "INFO": "Info"
+    },
+    "NO_MAIN_CONTRACT": {
+      "title": "No main contract",
+      "impact": "Certification and billing cannot start until a client contract exists.",
+      "action": "Create contract"
+    },
+    "GUARANTEE_EXPIRING": {
+      "title": "Guarantee expiring soon",
+      "impact": "A guarantee will expire within the attention window and may need renewal.",
+      "action": "Review guarantee"
+    },
+    "GUARANTEE_EXPIRED": {
+      "title": "Guarantee expired",
+      "impact": "A guarantee has passed its expiry date and no longer provides cover.",
+      "action": "Review guarantee"
+    },
+    "UNINVOICED_CERTIFICATE": {
+      "title": "Certified work not invoiced",
+      "impact": "An effective certificate has no client invoice, so entitlement is not yet billed.",
+      "action": "Generate invoice"
+    },
+    "RECONCILIATION_FAILED": {
+      "title": "Figures could not be reconciled",
+      "impact": "Part of the commercial position failed to load. Amounts shown may be incomplete.",
+      "action": "Retry"
+    }
+  },
+  "mainContract": {
+    "identity": "Contract",
+    "programme": "Programme",
+    "number": "Contract number",
+    "status": "Status",
+    "client": "Client",
+    "value": "Contract Value",
+    "startDate": "Start date",
+    "expectedEndDate": "Expected completion",
+    "frozenTitle": "Commercial baseline is locked",
+    "frozenHint": "This contract is active, so its commercial baseline cannot be edited directly. Material changes require a Variation."
+  },
+  "retention": {
+    "title": "Retention",
+    "rate": "Retention rate",
+    "cap": "Retention cap",
+    "splitOnPc": "Released at practical completion",
+    "none": "No retention terms set."
+  },
+  "advances": {
+    "title": "Advances",
+    "count": "Advance terms",
+    "none": "No advance terms set.",
+    "amount": "Amount",
+    "percentage": "Percentage",
+    "recoveryRate": "Recovery rate",
+    "recoveryAt": "Recovered at {rate}",
+    "type": {
+      "MOBILIZATION": "Mobilization",
+      "MATERIAL_ON_SITE": "Material on site",
+      "EQUIPMENT": "Equipment",
+      "OTHER": "Other"
+    }
+  },
+  "retentionAdvances": {
+    "readFirstNote": "Contractual terms only. Held, released and recovered balances are calculated by a future release and are not shown here yet."
+  },
+  "guarantees": {
+    "none": "No guarantees recorded.",
+    "total": "Guarantees",
+    "attentionNeeded": "Need attention",
+    "emptyTitle": "No guarantees",
+    "emptyHint": "No performance bonds or guarantees have been recorded for this contract.",
+    "amount": "Amount",
+    "beneficiary": "Beneficiary",
+    "issueDate": "Issued",
+    "expiryDate": "Expires"
+  },
+  "guaranteeStatus": {
+    "ACTIVE": "Active",
+    "DISCHARGED": "Discharged",
+    "EXPIRED": "Expired",
+    "CALLED": "Called"
+  },
+  "guaranteeAttention": {
+    "EXPIRING_SOON": "Expiring soon",
+    "EXPIRED": "Expired"
+  },
+  "applications": {
+    "emptyTitle": "No applications yet",
+    "emptyHint": "No interim payment applications have been raised against this contract.",
+    "draftInvoice": "Draft",
+    "superseded": "{count} superseded",
+    "col": {
+      "application": "Application",
+      "period": "Period",
+      "claimed": "Claimed",
+      "certified": "Certified",
+      "deductions": "Deductions",
+      "net": "Net",
+      "invoice": "Invoice",
+      "received": "Received",
+      "outstanding": "Outstanding",
+      "settlement": "Settlement",
+      "nextAction": "Next action"
+    }
+  },
+  "settlement": {
+    "UNINVOICED": "Uninvoiced",
+    "UNPAID": "Unpaid",
+    "PARTIALLY_PAID": "Part paid",
+    "PAID": "Paid"
+  },
+  "nextAction": {
+    "SUBMIT_APPLICATION": "Submit application",
+    "REVIEW_APPLICATION": "Review application",
+    "ISSUE_CERTIFICATE": "Issue certificate",
+    "GENERATE_INVOICE": "Generate invoice",
+    "POST_INVOICE": "Post invoice",
+    "RECORD_RECEIPT": "Record receipt"
+  }
+}

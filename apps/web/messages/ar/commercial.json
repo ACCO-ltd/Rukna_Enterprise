@@ -1,0 +1,177 @@
+{
+  "title": "الشؤون التجارية",
+  "subtitle": "إدارة عقود العملاء والشهادات",
+  "actions": {
+    "more": "المزيد",
+    "backToProject": "العودة إلى المشروع",
+    "viewApplications": "المستخلصات والشهادات",
+    "view": "عرض"
+  },
+  "states": {
+    "loadFailed": "تعذّر تحميل البيانات التجارية",
+    "loadFailedHint": "حدث خطأ أثناء تحميل مساحة العمل. حاول مرة أخرى.",
+    "retry": "إعادة المحاولة"
+  },
+  "tabs": {
+    "label": "أقسام الشؤون التجارية",
+    "overview": "نظرة عامة",
+    "main-contract": "العقد الرئيسي",
+    "applications": "المستخلصات والشهادات",
+    "retention-advances": "المحتجزات والدفعات المقدمة",
+    "guarantees": "الضمانات"
+  },
+  "metric": {
+    "contractValue": "قيمة العقد",
+    "certified": "المعتمد",
+    "invoiced": "المفوتر",
+    "received": "المُحصّل",
+    "outstanding": "المتبقي"
+  },
+  "metricState": {
+    "restricted": "مقيّد",
+    "unavailable": "غير متاح",
+    "failed": "تعذّر التحميل",
+    "restrictedShort": "—"
+  },
+  "contractStatus": {
+    "DRAFT": "مسودة",
+    "UNDER_REVIEW": "قيد المراجعة",
+    "PENDING_SIGNATURE": "بانتظار التوقيع",
+    "ACTIVE": "نشط",
+    "FINAL_ACCOUNT_PENDING": "بانتظار الحساب الختامي",
+    "CLOSED": "مغلق",
+    "CANCELLED": "ملغى",
+    "TERMINATED": "منهى"
+  },
+  "overview": {
+    "attention": "التنبيهات والإجراء التالي",
+    "recentActivity": "النشاط التجاري الأخير",
+    "noActivity": "لا يوجد نشاط تجاري بعد.",
+    "noContractTitle": "لا يوجد عقد رئيسي بعد",
+    "noContractHint": "لا يحتوي هذا المشروع على عقد عميل. أنشئ عقداً لبدء الشهادات والفوترة."
+  },
+  "attention": {
+    "none": "لا شيء يحتاج إلى انتباه حالياً.",
+    "severity": {
+      "URGENT": "عاجل",
+      "WARNING": "تحذير",
+      "INFO": "معلومة"
+    },
+    "NO_MAIN_CONTRACT": {
+      "title": "لا يوجد عقد رئيسي",
+      "impact": "لا يمكن بدء الشهادات والفوترة قبل وجود عقد عميل.",
+      "action": "إنشاء عقد"
+    },
+    "GUARANTEE_EXPIRING": {
+      "title": "ضمان يقترب من الانتهاء",
+      "impact": "سينتهي ضمان خلال فترة التنبيه وقد يحتاج إلى تجديد.",
+      "action": "مراجعة الضمان"
+    },
+    "GUARANTEE_EXPIRED": {
+      "title": "ضمان منتهٍ",
+      "impact": "تجاوز أحد الضمانات تاريخ انتهائه ولم يعد يوفّر تغطية.",
+      "action": "مراجعة الضمان"
+    },
+    "UNINVOICED_CERTIFICATE": {
+      "title": "أعمال معتمدة غير مفوترة",
+      "impact": "توجد شهادة سارية بدون فاتورة عميل، لذا لم يُفوتر الاستحقاق بعد.",
+      "action": "إنشاء فاتورة"
+    },
+    "RECONCILIATION_FAILED": {
+      "title": "تعذّرت مطابقة الأرقام",
+      "impact": "تعذّر تحميل جزء من المركز التجاري. قد تكون المبالغ المعروضة غير مكتملة.",
+      "action": "إعادة المحاولة"
+    }
+  },
+  "mainContract": {
+    "identity": "العقد",
+    "programme": "البرنامج الزمني",
+    "number": "رقم العقد",
+    "status": "الحالة",
+    "client": "العميل",
+    "value": "قيمة العقد",
+    "startDate": "تاريخ البدء",
+    "expectedEndDate": "الإنجاز المتوقع",
+    "frozenTitle": "الأساس التجاري مقفل",
+    "frozenHint": "هذا العقد نشط، لذا لا يمكن تعديل أساسه التجاري مباشرة. تتطلب التغييرات الجوهرية أمر تغيير."
+  },
+  "retention": {
+    "title": "المحتجزات",
+    "rate": "نسبة الاحتجاز",
+    "cap": "حد الاحتجاز",
+    "splitOnPc": "يُفرج عنه عند الإنجاز الفعلي",
+    "none": "لم تُحدد شروط احتجاز."
+  },
+  "advances": {
+    "title": "الدفعات المقدمة",
+    "count": "شروط الدفعات المقدمة",
+    "none": "لم تُحدد شروط دفعات مقدمة.",
+    "amount": "المبلغ",
+    "percentage": "النسبة",
+    "recoveryRate": "نسبة الاسترداد",
+    "recoveryAt": "يُسترد بنسبة {rate}",
+    "type": {
+      "MOBILIZATION": "التعبئة",
+      "MATERIAL_ON_SITE": "مواد بالموقع",
+      "EQUIPMENT": "معدات",
+      "OTHER": "أخرى"
+    }
+  },
+  "retentionAdvances": {
+    "readFirstNote": "الشروط التعاقدية فقط. تُحتسب الأرصدة المحتجزة والمُفرج عنها والمُستردة في إصدار لاحق ولا تظهر هنا بعد."
+  },
+  "guarantees": {
+    "none": "لا توجد ضمانات مسجلة.",
+    "total": "الضمانات",
+    "attentionNeeded": "تحتاج انتباهاً",
+    "emptyTitle": "لا توجد ضمانات",
+    "emptyHint": "لم تُسجّل أي سندات أداء أو ضمانات لهذا العقد.",
+    "amount": "المبلغ",
+    "beneficiary": "المستفيد",
+    "issueDate": "تاريخ الإصدار",
+    "expiryDate": "تاريخ الانتهاء"
+  },
+  "guaranteeStatus": {
+    "ACTIVE": "نشط",
+    "DISCHARGED": "مُبرأ",
+    "EXPIRED": "منتهٍ",
+    "CALLED": "مُطالَب به"
+  },
+  "guaranteeAttention": {
+    "EXPIRING_SOON": "يقترب من الانتهاء",
+    "EXPIRED": "منتهٍ"
+  },
+  "applications": {
+    "emptyTitle": "لا توجد مستخلصات بعد",
+    "emptyHint": "لم تُقدَّم أي مستخلصات دفع مرحلية على هذا العقد.",
+    "draftInvoice": "مسودة",
+    "superseded": "{count} مُستبدل",
+    "col": {
+      "application": "المستخلص",
+      "period": "الفترة",
+      "claimed": "المطالب به",
+      "certified": "المعتمد",
+      "deductions": "الاستقطاعات",
+      "net": "الصافي",
+      "invoice": "الفاتورة",
+      "received": "المُحصّل",
+      "outstanding": "المتبقي",
+      "settlement": "التسوية",
+      "nextAction": "الإجراء التالي"
+    }
+  },
+  "settlement": {
+    "UNINVOICED": "غير مفوتر",
+    "UNPAID": "غير مدفوع",
+    "PARTIALLY_PAID": "مدفوع جزئياً",
+    "PAID": "مدفوع"
+  },
+  "nextAction": {
+    "SUBMIT_APPLICATION": "تقديم المستخلص",
+    "REVIEW_APPLICATION": "مراجعة المستخلص",
+    "ISSUE_CERTIFICATE": "إصدار الشهادة",
+    "GENERATE_INVOICE": "إنشاء فاتورة",
+    "POST_INVOICE": "ترحيل الفاتورة",
+    "RECORD_RECEIPT": "تسجيل تحصيل"
+  }
+}

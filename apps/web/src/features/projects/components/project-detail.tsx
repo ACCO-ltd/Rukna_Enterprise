@@ -317,7 +317,7 @@ function Overview({
             </h2>
             {summary?.mainContract ? (
               <Link
-                href={`/contracts/${summary.mainContract.id}`}
+                href={`/projects/${project.id}/commercial`}
                 className="text-caption font-medium text-brand-primary hover:underline"
               >
                 {t('openCommercial')}
