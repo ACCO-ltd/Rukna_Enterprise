@@ -46,3 +46,4 @@ CLAUDE.local.md
 # tool session artifacts
 .playwright-cli/
 output/
+.scratch/

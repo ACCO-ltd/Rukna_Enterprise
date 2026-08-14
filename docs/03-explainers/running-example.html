@@ -1,0 +1,1748 @@
+<title>Hodan Heights</title>
+
+<style>
+/* ─────────────────────────────────────────────────────────────
+   Tokens lifted from the Rukna System Map so this sheet and the
+   chapters that draw from it read as one document. Two hues carry
+   meaning: green = value earned / money in, amber = money out or
+   money held back. Slate carries structure.
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --paper:      #f6f7f9;
+  --card:       #ffffff;
+  --sunk:       #eceef2;
+  --ink:        #14181f;
+  --ink-2:      #39414f;
+  --ink-3:      #6b7482;
+  --line:       #dadee5;
+  --line-2:     #c2c8d2;
+  --slate:      #2f4f7c;
+  --slate-soft: #e9eff8;
+  --slate-line: #c3d3e8;
+  --ok:         #1c6b4a;
+  --ok-soft:    #e6f4ec;
+  --ok-line:    #b6dcc6;
+  --gap:        #8a5510;
+  --gap-soft:   #fdf3e2;
+  --gap-line:   #ecd5a8;
+  --none:       #7a7f89;
+  --none-soft:  #eef0f3;
+  --sh-1: 0 1px 2px rgb(20 24 31 / .05);
+  --sh-2: 0 1px 3px rgb(20 24 31 / .06), 0 10px 26px rgb(20 24 31 / .04);
+  --sans: ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:      #12151a;
+    --card:       #1b1f26;
+    --sunk:       #171a20;
+    --ink:        #f2f4f8;
+    --ink-2:      #c4cad4;
+    --ink-3:      #939ba8;
+    --line:       #2e333c;
+    --line-2:     #414855;
+    --slate:      #8fb2e0;
+    --slate-soft: #1c2941;
+    --slate-line: #32456a;
+    --ok:         #58c894;
+    --ok-soft:    #123326;
+    --ok-line:    #1f5a41;
+    --gap:        #e8b45f;
+    --gap-soft:   #37290f;
+    --gap-line:   #5d4519;
+    --none:       #8b929d;
+    --none-soft:  #21252c;
+    --sh-1: 0 1px 2px rgb(0 0 0 / .3);
+    --sh-2: 0 1px 3px rgb(0 0 0 / .3), 0 10px 26px rgb(0 0 0 / .2);
+  }
+}
+:root[data-theme="dark"] {
+  --paper:      #12151a;
+  --card:       #1b1f26;
+  --sunk:       #171a20;
+  --ink:        #f2f4f8;
+  --ink-2:      #c4cad4;
+  --ink-3:      #939ba8;
+  --line:       #2e333c;
+  --line-2:     #414855;
+  --slate:      #8fb2e0;
+  --slate-soft: #1c2941;
+  --slate-line: #32456a;
+  --ok:         #58c894;
+  --ok-soft:    #123326;
+  --ok-line:    #1f5a41;
+  --gap:        #e8b45f;
+  --gap-soft:   #37290f;
+  --gap-line:   #5d4519;
+  --none:       #8b929d;
+  --none-soft:  #21252c;
+  --sh-1: 0 1px 2px rgb(0 0 0 / .3);
+  --sh-2: 0 1px 3px rgb(0 0 0 / .3), 0 10px 26px rgb(0 0 0 / .2);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink-2);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 1000px; margin: 0 auto; padding: 0 28px 100px; }
+@media (max-width: 640px) { .wrap { padding: 0 18px 64px; } }
+
+/* ── masthead ─────────────────────────────────────────────── */
+header.mast { padding: 56px 0 30px; border-bottom: 2px solid var(--ink); margin-bottom: 36px; }
+.eyebrow {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--slate);
+  margin: 0 0 16px;
+}
+h1 {
+  font-size: 40px; line-height: 1.08; letter-spacing: -.028em; font-weight: 800;
+  color: var(--ink); margin: 0 0 16px; max-width: 20ch; text-wrap: balance;
+}
+.mast p { font-size: 17px; line-height: 1.6; color: var(--ink-2); margin: 0; max-width: 66ch; }
+.mast .facts {
+  display: flex; flex-wrap: wrap; gap: 6px 22px; margin-top: 22px;
+  font-family: var(--mono); font-size: 11.5px; color: var(--ink-3);
+}
+.mast .facts b { color: var(--ink-2); font-weight: 600; }
+
+/* ── jump nav ─────────────────────────────────────────────── */
+nav.jump { margin: 0 0 44px; }
+nav.jump ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 7px; }
+nav.jump a {
+  display: inline-flex; align-items: baseline; gap: 7px;
+  padding: 5px 11px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--card); box-shadow: var(--sh-1);
+  font-size: 13px; color: var(--ink-2); text-decoration: none;
+}
+nav.jump a:hover, nav.jump a:focus-visible { border-color: var(--slate); color: var(--slate); }
+nav.jump a:focus-visible { outline: 2px solid var(--slate); outline-offset: 2px; }
+nav.jump .n { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); }
+
+/* ── sections ─────────────────────────────────────────────── */
+section { margin-bottom: 68px; scroll-margin-top: 20px; }
+.sec-h { display: flex; align-items: baseline; gap: 13px; margin-bottom: 12px; }
+.sec-h .n {
+  font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--slate);
+  flex: none; padding-top: 4px;
+}
+h2 {
+  font-size: 25px; line-height: 1.2; letter-spacing: -.02em; font-weight: 750;
+  color: var(--ink); margin: 0; text-wrap: balance;
+}
+h3 {
+  font-size: 16px; line-height: 1.4; font-weight: 700; color: var(--ink);
+  margin: 34px 0 10px;
+}
+p { margin: 0 0 15px; max-width: 72ch; }
+p:last-child { margin-bottom: 0; }
+.lede { font-size: 16.5px; color: var(--ink-2); max-width: 70ch; margin-bottom: 20px; }
+strong { color: var(--ink); font-weight: 650; }
+code {
+  font-family: var(--mono); font-size: .87em;
+  background: var(--sunk); border: 1px solid var(--line);
+  border-radius: 4px; padding: 1px 5px; color: var(--ink-2); white-space: nowrap;
+}
+a { color: var(--slate); }
+
+/* ── figures ──────────────────────────────────────────────── */
+figure {
+  margin: 26px 0 8px; padding: 22px;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--card); box-shadow: var(--sh-1);
+  overflow-x: auto;
+}
+figure svg { display: block; max-width: 100%; height: auto; margin: 0 auto; color: var(--ink-2); }
+figcaption {
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line);
+  font-size: 13px; line-height: 1.6; color: var(--ink-3); max-width: 76ch;
+}
+figcaption b { color: var(--ink-2); }
+
+/* ── legend chips ─────────────────────────────────────────── */
+.legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0 0 4px; }
+.lg { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ink-2); }
+.lg i { width: 22px; height: 3px; border-radius: 2px; flex: none; }
+.lg.ok i { background: var(--ok); }
+.lg.gap i { background: var(--gap); }
+.lg.sl i { background: var(--slate); }
+.lg.none i { background: none; height: 0; border-bottom: 2px dashed var(--none); }
+
+/* ── tables ───────────────────────────────────────────────── */
+.tw { overflow-x: auto; border: 1px solid var(--line); border-radius: 9px; background: var(--card); margin: 20px 0; box-shadow: var(--sh-1); }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 580px; }
+th {
+  text-align: left; font-family: var(--mono); font-size: 10px; font-weight: 700;
+  letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3);
+  padding: 11px 14px; background: var(--sunk); border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+td { padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--ink-2); }
+tr:last-child td { border-bottom: 0; }
+td:first-child { color: var(--ink); font-weight: 600; }
+td.mono, th.mono { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+td.num, th.num { text-align: right; font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+tr.grp td { background: var(--sunk); }
+tr.tot td { font-weight: 700; color: var(--ink); background: var(--slate-soft); }
+
+/* ── status pills ─────────────────────────────────────────── */
+.p {
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  font-size: 11.5px; font-weight: 650; border-radius: 999px; padding: 2px 9px; border: 1px solid;
+}
+.p::before { content: ""; width: 5px; height: 5px; border-radius: 999px; background: currentColor; flex: none; }
+.p.ok   { color: var(--ok);   background: var(--ok-soft);   border-color: var(--ok-line); }
+.p.gap  { color: var(--gap);  background: var(--gap-soft);  border-color: var(--gap-line); }
+.p.no   { color: var(--none); background: var(--none-soft); border-color: var(--line-2); }
+.p.info { color: var(--slate); background: var(--slate-soft); border-color: var(--slate-line); }
+
+/* ── decoder list ─────────────────────────────────────────── */
+.decode { display: flex; flex-direction: column; gap: 0; margin: 20px 0; }
+.dec {
+  display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 20px;
+  padding: 14px 0; border-bottom: 1px solid var(--line);
+}
+.dec:last-child { border-bottom: 0; }
+@media (max-width: 620px) { .dec { grid-template-columns: minmax(0, 1fr); gap: 5px; } }
+.dec .term b { display: block; font-size: 14.5px; color: var(--ink); font-weight: 700; }
+.dec .term span { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+.dec .body { font-size: 14px; line-height: 1.6; }
+.dec .body .dev {
+  display: block; margin-top: 6px; padding: 8px 11px;
+  background: var(--slate-soft); border: 1px solid var(--slate-line); border-radius: 6px;
+  font-size: 13px; color: var(--ink-2);
+}
+.dec .body .dev b { color: var(--slate); font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; display: block; margin-bottom: 2px; }
+
+/* ── callouts ─────────────────────────────────────────────── */
+.call {
+  border-radius: 9px; padding: 16px 18px; margin: 22px 0;
+  border: 1px solid; font-size: 14.5px; line-height: 1.6;
+}
+.call .h {
+  font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; display: block; margin-bottom: 7px;
+}
+.call.key  { background: var(--gap-soft);  border-color: var(--gap-line);  color: var(--ink-2); }
+.call.key .h { color: var(--gap); }
+.call.good { background: var(--ok-soft);   border-color: var(--ok-line);   color: var(--ink-2); }
+.call.good .h { color: var(--ok); }
+.call.note { background: var(--slate-soft); border-color: var(--slate-line); color: var(--ink-2); }
+.call.note .h { color: var(--slate); }
+.call p { max-width: 72ch; }
+.call p:last-child { margin-bottom: 0; }
+
+/* ── key/value strip ──────────────────────────────────────── */
+.kv { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin: 22px 0; }
+.kvi {
+  border: 1px solid var(--line); border-left: 3px solid var(--slate);
+  border-radius: 8px; background: var(--card); padding: 13px 15px; box-shadow: var(--sh-1);
+}
+.kvi .k {
+  font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--slate);
+}
+.kvi .v { font-size: 19px; font-weight: 750; color: var(--ink); margin-top: 4px; font-family: var(--mono); letter-spacing: -.02em; }
+.kvi .s { font-size: 12.5px; color: var(--ink-3); margin-top: 3px; line-height: 1.45; }
+.kvi.g { border-left-color: var(--ok); } .kvi.g .k { color: var(--ok); }
+.kvi.a { border-left-color: var(--gap); } .kvi.a .k { color: var(--gap); }
+
+ul.plain { margin: 12px 0 0; padding-left: 20px; }
+ul.plain li { margin-bottom: 7px; font-size: 14.5px; }
+
+hr.r { border: 0; border-top: 1px solid var(--line); margin: 0 0 44px; }
+.foot { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-3); max-width: 74ch; }
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <p class="eyebrow">Running example · every chapter draws its numbers from this sheet</p>
+  <h1>Hodan Heights</h1>
+  <p>
+    One invented job, carried through every explainer chapter. The same client, the same bill of
+    quantities, the same certificate, the same supplier — so that chapter 10 posts the journal
+    entries for the certificate chapter 7 issued, against the quantities chapter 5 priced.
+  </p>
+  <div class="facts">
+    <span><b>$14,850,000</b> contract</span>
+    <span><b>38%</b> certified</span>
+    <span><b>312</b> BOQ lines</span>
+    <span><b>4</b> certificates issued</span>
+    <span><b>4</b> of 8 events reach the ledger</span>
+    <span>all figures as at <b>14 Aug 2026</b></span>
+  </div>
+</header>
+
+<nav class="jump" aria-label="Contents">
+  <ul>
+    <li><a href="#deal"><span class="n">01</span>The deal</a></li>
+    <li><a href="#records"><span class="n">02</span>Client &amp; project</a></li>
+    <li><a href="#boq"><span class="n">03</span>The BOQ</a></li>
+    <li><a href="#contract"><span class="n">04</span>Contract terms</a></li>
+    <li><a href="#cert"><span class="n">05</span>Certificate 04</a></li>
+    <li><a href="#position"><span class="n">06</span>The four numbers</a></li>
+    <li><a href="#procure"><span class="n">07</span>The spend thread</a></li>
+    <li><a href="#people"><span class="n">08</span>People &amp; authority</a></li>
+    <li><a href="#books"><span class="n">09</span>Into the books</a></li>
+    <li><a href="#whole"><span class="n">10</span>The whole system</a></li>
+    <li><a href="#rules"><span class="n">11</span>Using this sheet</a></li>
+  </ul>
+</nav>
+
+<!-- ═══ 01 ═══════════════════════════════════════════════════ -->
+<section id="deal">
+  <div class="sec-h"><span class="n">01</span><h2>The deal, in one line each</h2></div>
+  <p class="lede">
+    ACCO is building a nine-storey mixed-use tower for a private developer. The job is eight
+    months into a twenty-two month programme, 38% of the work has been certified, and one
+    supplier package is part-delivered and part-billed. Everything on this sheet is invented — no
+    real ACCO client, project, or figure appears here.
+  </p>
+
+  <div class="kv">
+    <div class="kvi">
+      <div class="k">Client</div>
+      <div class="v" style="font-size:15px">Hodan Property<br>Development Ltd</div>
+      <div class="s">Private developer · <code>CL-0042</code></div>
+    </div>
+    <div class="kvi">
+      <div class="k">Project</div>
+      <div class="v" style="font-size:15px">Hodan Heights</div>
+      <div class="s">9 storeys, mixed use · <code>PRJ-2026-014</code></div>
+    </div>
+    <div class="kvi g">
+      <div class="k">Contract value</div>
+      <div class="v">$14,850,000</div>
+      <div class="s">USD · measured, certified monthly</div>
+    </div>
+    <div class="kvi a">
+      <div class="k">Certified to date</div>
+      <div class="v">$5,643,000</div>
+      <div class="s">38.0% · four certificates issued</div>
+    </div>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 900 250" role="img" aria-label="A timeline of the job from client registration in October 2025 to expected completion in September 2027, marking the contract signing, the advance receipt, four payment certificates, and the as-at date of 14 August 2026 at 38 percent complete.">
+      <defs>
+        <marker id="t-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="currentColor" />
+        </marker>
+      </defs>
+
+      <!-- axis -->
+      <line x1="60" y1="120" x2="855" y2="120" stroke="currentColor" stroke-width="1.4" marker-end="url(#t-ah)"/>
+      <text x="60" y="152" font-size="10.5" fill="currentColor" font-family="ui-monospace, monospace" opacity=".7">Oct 2025</text>
+      <text x="855" y="152" font-size="10.5" fill="currentColor" font-family="ui-monospace, monospace" text-anchor="end" opacity=".7">Sep 2027</text>
+
+      <!-- pre-contract phase band -->
+      <rect x="60" y="112" width="68" height="16" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="4 3" opacity=".55"/>
+      <text x="94" y="176" text-anchor="middle" font-size="10" fill="currentColor" opacity=".65">setup</text>
+
+      <!-- on-site band, certified portion -->
+      <rect x="128" y="112" width="271" height="16" rx="2" fill="var(--ok-soft)" stroke="var(--ok)" stroke-width="1.2"/>
+      <text x="263" y="176" text-anchor="middle" font-size="10.5" fill="var(--ok)" font-weight="650">certified · 38%</text>
+
+      <!-- remaining band -->
+      <rect x="399" y="112" width="441" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="5 4" opacity=".45"/>
+      <text x="620" y="176" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".65">remaining · 62%</text>
+
+      <!-- events above -->
+      <g font-size="10.5" fill="currentColor">
+        <line x1="60"  y1="112" x2="60"  y2="92" stroke="currentColor" stroke-width="1"/>
+        <text x="60" y="84" text-anchor="middle">client registered</text>
+        <line x1="128" y1="112" x2="128" y2="66" stroke="var(--ok)" stroke-width="1.4"/>
+        <text x="128" y="58" text-anchor="middle" fill="var(--ok)" font-weight="650">contract ACTIVE</text>
+        <text x="128" y="44" text-anchor="middle" fill="var(--ok)" font-size="9.5" font-family="ui-monospace, monospace">1 Dec 2025</text>
+      </g>
+
+      <!-- advance -->
+      <g font-size="10" fill="var(--gap)">
+        <line x1="149" y1="128" x2="149" y2="200" stroke="var(--gap)" stroke-width="1.2"/>
+        <circle cx="149" cy="128" r="3" fill="var(--gap)"/>
+        <text x="149" y="214" text-anchor="middle" font-family="ui-monospace, monospace">advance in</text>
+        <text x="149" y="226" text-anchor="middle" font-family="ui-monospace, monospace">$1,485,000</text>
+      </g>
+
+      <!-- certificates -->
+      <g font-size="9.5" fill="var(--ok)" font-family="ui-monospace, monospace">
+        <circle cx="196" cy="120" r="4.5" fill="var(--ok-soft)" stroke="var(--ok)" stroke-width="1.5"/>
+        <text x="196" y="103" text-anchor="middle">IPC-01</text>
+        <text x="196" y="93" text-anchor="middle" opacity=".75">7.5%</text>
+
+        <circle cx="264" cy="120" r="4.5" fill="var(--ok-soft)" stroke="var(--ok)" stroke-width="1.5"/>
+        <text x="264" y="103" text-anchor="middle">IPC-02</text>
+        <text x="264" y="93" text-anchor="middle" opacity=".75">18%</text>
+
+        <circle cx="331" cy="120" r="4.5" fill="var(--ok-soft)" stroke="var(--ok)" stroke-width="1.5"/>
+        <text x="331" y="103" text-anchor="middle">IPC-03</text>
+        <text x="331" y="93" text-anchor="middle" opacity=".75">29%</text>
+
+        <circle cx="399" cy="120" r="6" fill="var(--ok)" stroke="var(--ok)" stroke-width="1.5"/>
+        <text x="399" y="103" text-anchor="middle" font-weight="700">IPC-04</text>
+        <text x="399" y="93" text-anchor="middle" opacity=".75">38%</text>
+      </g>
+
+      <!-- as-at marker -->
+      <line x1="399" y1="128" x2="399" y2="212" stroke="var(--slate)" stroke-width="1.6" stroke-dasharray="5 3"/>
+      <rect x="341" y="214" width="116" height="26" rx="5" fill="var(--slate-soft)" stroke="var(--slate)" stroke-width="1.3"/>
+      <text x="399" y="231" text-anchor="middle" font-size="11" font-weight="700" fill="var(--slate)" font-family="ui-monospace, monospace">as at 14 Aug 2026</text>
+
+      <!-- procurement marker -->
+      <g font-size="9.5" fill="var(--gap)" font-family="ui-monospace, monospace">
+        <line x1="345" y1="112" x2="345" y2="66" stroke="var(--gap)" stroke-width="1.1" stroke-dasharray="3 2"/>
+        <text x="345" y="58" text-anchor="middle">PO-2026-0091</text>
+        <text x="345" y="46" text-anchor="middle" opacity=".8">concrete supply</text>
+      </g>
+    </svg>
+    <figcaption>
+      <b>Eight months in, 38% certified, and the advance not yet fully recovered.</b> The green
+      band is work the client's engineer has agreed and certified; the dashed band is everything
+      still to come. Every figure elsewhere on this sheet is measured at the slate line — 14
+      August 2026, immediately after certificate 04 was issued. When a chapter says "as things
+      stand", this is where it is standing.
+    </figcaption>
+  </figure>
+</section>
+
+<hr class="r" />
+
+<!-- ═══ 02 ═══════════════════════════════════════════════════ -->
+<section id="records">
+  <div class="sec-h"><span class="n">02</span><h2>The client and project records</h2></div>
+  <p class="lede">
+    These are the fields as they sit on <code>Client</code> and <code>Project</code>. The chapter
+    <em>A client walks in</em> works through why each one matters; this sheet just fixes the
+    values so every chapter reports the same ones.
+  </p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th style="width:34%">Field</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr class="grp"><td colspan="2" style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)">Client</td></tr>
+        <tr><td class="mono">code</td><td class="mono">CL-0042</td></tr>
+        <tr><td class="mono">name</td><td>Hodan Property Development Ltd</td></tr>
+        <tr><td class="mono">nameAr</td><td dir="rtl" lang="ar">هودان للتطوير العقاري المحدودة</td></tr>
+        <tr><td class="mono">type</td><td><code>COMPANY</code> — a private developer, not a government body or an NGO</td></tr>
+        <tr><td class="mono">taxNumber</td><td class="mono">TIN-4471-0092</td></tr>
+        <tr><td class="mono">defaultCurrency</td><td class="mono">USD</td></tr>
+        <tr><td class="mono">status</td><td><span class="p ok">ACTIVE</span> since 14 Oct 2025</td></tr>
+        <tr><td class="mono">contacts</td><td>Two — a commercial contact for certificates, a finance contact for remittances</td></tr>
+
+        <tr class="grp"><td colspan="2" style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)">Project</td></tr>
+        <tr><td class="mono">code</td><td class="mono">PRJ-2026-014</td></tr>
+        <tr><td class="mono">name</td><td>Hodan Heights — 9-storey mixed-use tower, ground-floor retail over eight residential floors</td></tr>
+        <tr><td class="mono">status</td><td><span class="p ok">ACTIVE</span> since 1 Dec 2025</td></tr>
+        <tr><td class="mono">commercialModel</td><td><code>CLIENT_CONTRACT</code> — built for a paying client, not on ACCO's own capital</td></tr>
+        <tr><td class="mono">participationModel</td><td><code>SOLE</code> — no joint venture partner</td></tr>
+        <tr><td class="mono">contractValue</td><td class="mono">14,850,000.00 USD</td></tr>
+        <tr><td class="mono">startDate → expectedEndDate</td><td class="mono">2025-12-01 → 2027-09-30</td></tr>
+        <tr><td class="mono">location</td><td>Hodan District</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="call note">
+    <span class="h">One client, two projects</span>
+    <p>
+      Hodan Property Development also has a second, smaller job with ACCO — <code>PRJ-2026-021</code>,
+      a $2,100,000 warehouse refit, still in <code>DRAFT</code>. It exists on this sheet purely so
+      chapters can show what a client-level view aggregates across projects, and what stays
+      isolated between them. No numbers are given for it; if a chapter needs them, add them here
+      first rather than inventing them locally.
+    </p>
+  </div>
+</section>
+
+<hr class="r" />
+
+<!-- ═══ 03 ═══════════════════════════════════════════════════ -->
+<section id="boq">
+  <div class="sec-h"><span class="n">03</span><h2>The bill of quantities</h2></div>
+  <p class="lede">
+    312 lines across six sections, four levels deep, version 2, <code>BASELINED</code> on 24 Nov
+    2025 — one week before the contract went <code>ACTIVE</code>, which is the order the platform
+    requires. Eight lines are named below with real quantities and rates; chapters cite these by
+    code. The remaining 304 are summarised.
+  </p>
+
+  <figure>
+    <div class="legend" role="note" style="margin-bottom:16px">
+      <span class="lg sl"><i></i>group node — no quantity, no rate, total is the sum of its children</span>
+      <span class="lg ok"><i></i>leaf node — carries quantity × rate</span>
+    </div>
+    <svg viewBox="0 0 900 660" role="img" aria-label="An indented tree of the bill of quantities. Group nodes carry no rate; leaf nodes carry quantity times rate. Curved arrows on the right show leaf totals summing up into their parent group, group totals summing into section totals, and section totals summing into the contract value of 14,850,000.">
+      <defs>
+        <marker id="b-up" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--ok)" />
+        </marker>
+        <marker id="b-up2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--slate)" />
+        </marker>
+      </defs>
+
+      <!-- root -->
+      <rect x="14" y="14" width="676" height="30" rx="5" fill="var(--slate-soft)" stroke="var(--slate)" stroke-width="1.6"/>
+      <text x="26" y="34" font-size="12.5" font-weight="750" fill="var(--slate)">Hodan Heights BOQ · version 2 · BASELINED</text>
+      <text x="678" y="34" font-size="12.5" font-weight="750" fill="var(--slate)" text-anchor="end" font-family="ui-monospace, monospace">14,850,000.00</text>
+
+      <g font-size="11.5" fill="currentColor" font-family="ui-monospace, monospace">
+        <!-- 01 -->
+        <text x="34" y="72">01</text><text x="66" y="72" font-family="var(--sans)">Preliminaries &amp; General</text>
+        <text x="678" y="72" text-anchor="end">890,000.00</text>
+        <line x1="14" y1="82" x2="690" y2="82" stroke="currentColor" stroke-width=".5" opacity=".25"/>
+
+        <!-- 02 -->
+        <text x="34" y="104">02</text><text x="66" y="104" font-family="var(--sans)">Substructure</text>
+        <text x="678" y="104" text-anchor="end">1,745,000.00</text>
+
+        <text x="56" y="130">02.01</text><text x="104" y="130" font-family="var(--sans)" opacity=".85">Excavation &amp; earthworks</text>
+        <text x="678" y="130" text-anchor="end" opacity=".85">468,000.00</text>
+
+        <text x="78" y="156" fill="var(--ok)">02.01.001</text>
+        <text x="152" y="156" font-family="var(--sans)" fill="var(--ok)">Bulk excavation, ordinary soil</text>
+        <text x="400" y="156" fill="var(--ok)" opacity=".8">8,400.000 m³ × 12.50</text>
+        <text x="678" y="156" text-anchor="end" fill="var(--ok)">105,000.00</text>
+
+        <text x="78" y="178" opacity=".55">…4 further lines</text>
+        <text x="678" y="178" text-anchor="end" opacity=".55">363,000.00</text>
+
+        <text x="56" y="204">02.02</text><text x="104" y="204" font-family="var(--sans)" opacity=".85">Foundations</text>
+        <text x="678" y="204" text-anchor="end" opacity=".85">1,277,000.00</text>
+
+        <text x="78" y="230" fill="var(--ok)">02.02.002</text>
+        <text x="152" y="230" font-family="var(--sans)" fill="var(--ok)">RC grade C30 to pile caps</text>
+        <text x="400" y="230" fill="var(--ok)" opacity=".8">1,240.000 m³ × 168.00</text>
+        <text x="678" y="230" text-anchor="end" fill="var(--ok)">208,320.00</text>
+
+        <text x="78" y="252" opacity=".55">…7 further lines</text>
+        <text x="678" y="252" text-anchor="end" opacity=".55">1,068,680.00</text>
+        <line x1="14" y1="264" x2="690" y2="264" stroke="currentColor" stroke-width=".5" opacity=".25"/>
+
+        <!-- 03 -->
+        <text x="34" y="288">03</text><text x="66" y="288" font-family="var(--sans)">Superstructure</text>
+        <text x="678" y="288" text-anchor="end">5,120,000.00</text>
+
+        <text x="56" y="314">03.01</text><text x="104" y="314" font-family="var(--sans)" opacity=".85">Concrete works</text>
+        <text x="678" y="314" text-anchor="end" opacity=".85">2,860,000.00</text>
+
+        <text x="78" y="340" fill="var(--ok)">03.01.001</text>
+        <text x="152" y="340" font-family="var(--sans)" fill="var(--ok)">RC grade C35 to columns</text>
+        <text x="400" y="340" fill="var(--ok)" opacity=".8">2,400.000 m³ × 185.00</text>
+        <text x="678" y="340" text-anchor="end" fill="var(--ok)">444,000.00</text>
+
+        <text x="78" y="362" fill="var(--ok)">03.01.002</text>
+        <text x="152" y="362" font-family="var(--sans)" fill="var(--ok)">RC grade C35 to suspended slabs</text>
+        <text x="400" y="362" fill="var(--ok)" opacity=".8">3,150.000 m³ × 176.00</text>
+        <text x="678" y="362" text-anchor="end" fill="var(--ok)">554,400.00</text>
+
+        <text x="78" y="384" fill="var(--ok)">03.01.003</text>
+        <text x="152" y="384" font-family="var(--sans)" fill="var(--ok)">Prefabricated column rebar cages</text>
+        <text x="400" y="384" fill="var(--ok)" opacity=".8">82.000 t × 3,132.00</text>
+        <text x="678" y="384" text-anchor="end" fill="var(--ok)">256,824.00</text>
+
+        <text x="78" y="406" fill="var(--ok)">03.01.004</text>
+        <text x="152" y="406" font-family="var(--sans)" fill="var(--ok)">High-yield deformed bar, loose</text>
+        <text x="400" y="406" fill="var(--ok)" opacity=".8">412.000 t × 1,145.00</text>
+        <text x="678" y="406" text-anchor="end" fill="var(--ok)">471,740.00</text>
+
+        <text x="78" y="428" opacity=".55">…6 further lines</text>
+        <text x="678" y="428" text-anchor="end" opacity=".55">1,133,036.00</text>
+
+        <text x="56" y="454">03.02</text><text x="104" y="454" font-family="var(--sans)" opacity=".85">Masonry</text>
+        <text x="678" y="454" text-anchor="end" opacity=".85">730,000.00</text>
+
+        <text x="78" y="480" fill="var(--ok)">03.02.001</text>
+        <text x="152" y="480" font-family="var(--sans)" fill="var(--ok)">200mm solid block walling</text>
+        <text x="400" y="480" fill="var(--ok)" opacity=".8">14,600.000 m² × 28.50</text>
+        <text x="678" y="480" text-anchor="end" fill="var(--ok)">416,100.00</text>
+
+        <text x="56" y="506">03.03 · 03.04</text><text x="152" y="506" font-family="var(--sans)" opacity=".85">Structural steel · formwork</text>
+        <text x="678" y="506" text-anchor="end" opacity=".85">1,530,000.00</text>
+        <line x1="14" y1="518" x2="690" y2="518" stroke="currentColor" stroke-width=".5" opacity=".25"/>
+
+        <!-- 04 05 06 -->
+        <text x="34" y="542">04</text><text x="66" y="542" font-family="var(--sans)">Finishes</text>
+        <text x="678" y="542" text-anchor="end">2,980,000.00</text>
+
+        <text x="34" y="568">05</text><text x="66" y="568" font-family="var(--sans)">MEP services</text>
+        <text x="678" y="568" text-anchor="end">3,145,000.00</text>
+
+        <text x="78" y="590" fill="var(--ok)">05.01.001</text>
+        <text x="152" y="590" font-family="var(--sans)" fill="var(--ok)">Electrical installation</text>
+        <text x="400" y="590" fill="var(--ok)" opacity=".8">LUMP_SUM · 1 item</text>
+        <text x="678" y="590" text-anchor="end" fill="var(--ok)">1,240,000.00</text>
+
+        <text x="34" y="616">06</text><text x="66" y="616" font-family="var(--sans)">External works &amp; landscaping</text>
+        <text x="678" y="616" text-anchor="end">970,000.00</text>
+      </g>
+
+      <!-- roll-up arrows -->
+      <path d="M700 424 L742 424 L742 318" stroke="var(--ok)" stroke-width="1.4" fill="none" marker-end="url(#b-up)"/>
+      <text x="748" y="380" font-size="10" fill="var(--ok)" font-family="ui-monospace, monospace">leaves sum</text>
+      <text x="748" y="392" font-size="10" fill="var(--ok)" font-family="ui-monospace, monospace">into 03.01</text>
+
+      <path d="M756 502 L800 502 L800 292" stroke="var(--ok)" stroke-width="1.4" fill="none" marker-end="url(#b-up)"/>
+      <text x="806" y="404" font-size="10" fill="var(--ok)" font-family="ui-monospace, monospace">groups sum</text>
+      <text x="806" y="416" font-size="10" fill="var(--ok)" font-family="ui-monospace, monospace">into 03</text>
+
+      <path d="M700 612 L860 612 L860 38" stroke="var(--slate)" stroke-width="1.6" fill="none" marker-end="url(#b-up2)"/>
+      <text x="836" y="330" font-size="10.5" fill="var(--slate)" font-family="ui-monospace, monospace" text-anchor="middle" transform="rotate(-90 836 330)">sections sum into the contract value</text>
+    </svg>
+    <figcaption>
+      <b>Money flows up this tree, not down.</b> Only the green leaves carry a quantity and a rate;
+      every other total in the figure is derived by summing children. That is why a group node has
+      no <code>unitRate</code> and why editing a leaf silently changes six totals above it — and
+      why the version has to freeze before a contract can point at it. The three named lines in
+      03.01 are the ones later chapters certify against; 05.01.001 is deliberately
+      <code>LUMP_SUM</code> rather than <code>UNIT_RATE</code>, so chapters have one line that is
+      measured by percentage rather than by quantity.
+    </figcaption>
+  </figure>
+
+  <div class="call note">
+    <span class="h">Version history</span>
+    <p>
+      <b>v1</b> — <code>DRAFT</code>, prepared 5 Nov 2025, never baselined. <b>v2</b> —
+      <code>BASELINED</code> 24 Nov 2025, <code>derivedFromVersionId</code> pointing at v1, and the
+      version the contract references. There is no v3 yet; when the chapters need to show what a
+      revision does to work already certified, they create one <em>in the narrative</em> and say so
+      — they do not change v2 here.
+    </p>
+  </div>
+</section>
+
+<hr class="r" />
+
+<!-- ═══ 04 ═══════════════════════════════════════════════════ -->
+<section id="contract">
+  <div class="sec-h"><span class="n">04</span><h2>Contract terms — the formula every certificate runs through</h2></div>
+  <p class="lede">
+    Contract <code>CTR-2026-014</code>, <code>ACTIVE</code> since 1 Dec 2025,
+    <code>billingModel: MEASURED_IPC</code>. The terms below are not paperwork — they are the
+    arithmetic that turns a certified amount into a payable amount, every month, for two years.
+  </p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th style="width:30%">Term</th><th class="mono" style="width:20%">Field</th><th>Value and what it does</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Retention rate</td><td class="mono">retentionRate</td>
+          <td><b>5.00%</b> (<code>0.0500</code>) — withheld from the gross value of every certificate as security against defects.</td>
+        </tr>
+        <tr>
+          <td>Retention cap</td><td class="mono">retentionCap</td>
+          <td><b>3.50%</b> of contract value (<code>0.0350</code>) = <b>$519,750</b> — once cumulative retention reaches this, withholding stops. On this contract that happens at 70% complete, around certificate 08.</td>
+        </tr>
+        <tr>
+          <td>Retention release</td><td class="mono">retentionSplitOnPC</td>
+          <td><b>50%</b> (<code>0.5000</code>) — half released at practical completion, half after the twelve-month defects liability period.</td>
+        </tr>
+        <tr>
+          <td>Advance payment</td><td class="mono">ContractAdvanceTerm</td>
+          <td><b>$1,485,000</b> — 10% of contract value, received 11 Dec 2025 so ACCO could mobilise.</td>
+        </tr>
+        <tr>
+          <td>Advance recovery</td><td class="mono">recoveryRate</td>
+          <td><b>20.00%</b> (<code>0.2000</code>) of each certificate's gross — clawing the advance back. Fully recovered at 50% complete, during certificate 06.</td>
+        </tr>
+        <tr>
+          <td>Payment terms</td><td class="mono">—</td>
+          <td><b>30 days</b> from certificate issue.</td>
+        </tr>
+        <tr>
+          <td>Guarantees</td><td class="mono">ContractGuarantee</td>
+          <td>Advance payment guarantee $1,485,000 (reducing as recovered) · performance bond 10% = $1,485,000.</td>
+        </tr>
+        <tr>
+          <td>Client snapshot</td><td class="mono">clientNameSnapshot<br>clientTaxSnapshot</td>
+          <td>Frozen at execution: <code>Hodan Property Development Ltd</code> / <code>TIN-4471-0092</code>. Later edits to the client record do not follow.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <figure>
+    <div class="legend" role="note" style="margin-bottom:16px">
+      <span class="lg gap"><i></i>money withheld or clawed back</span>
+      <span class="lg none"><i></i>projected — not yet certified</span>
+    </div>
+    <svg viewBox="0 0 900 470" role="img" aria-label="Two stacked charts sharing an x axis of payment certificates. The upper chart shows the outstanding advance draining from 1,485,000 to zero by certificate 06. The lower chart shows retention held accumulating toward a cap of 519,750 reached around certificate 08.">
+      <defs>
+        <marker id="c-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--gap)" />
+        </marker>
+      </defs>
+
+      <!-- ── upper: advance outstanding ── -->
+      <text x="100" y="34" font-size="12" font-weight="700" fill="currentColor">Advance outstanding — drains as work is certified</text>
+      <line x1="100" y1="50" x2="100" y2="190" stroke="currentColor" stroke-width="1" opacity=".45"/>
+      <line x1="100" y1="190" x2="860" y2="190" stroke="currentColor" stroke-width="1" opacity=".45"/>
+      <text x="92" y="64" text-anchor="end" font-size="9.5" fill="currentColor" font-family="ui-monospace, monospace" opacity=".7">1.6M</text>
+      <text x="92" y="194" text-anchor="end" font-size="9.5" fill="currentColor" font-family="ui-monospace, monospace" opacity=".7">0</text>
+
+      <!-- solid, actual -->
+      <polyline points="100,60 194,80 288,107 381,135 475,159" fill="none" stroke="var(--gap)" stroke-width="2.2"/>
+      <!-- dashed, projected -->
+      <polyline points="475,159 569,185 663,190 756,190 850,190" fill="none" stroke="var(--gap)" stroke-width="1.8" stroke-dasharray="6 4"/>
+
+      <g fill="var(--gap)">
+        <circle cx="100" cy="60" r="3.5"/><circle cx="194" cy="80" r="3.5"/>
+        <circle cx="288" cy="107" r="3.5"/><circle cx="381" cy="135" r="3.5"/>
+        <circle cx="475" cy="159" r="5"/>
+      </g>
+      <text x="100" y="52" font-size="9.5" fill="var(--gap)" font-family="ui-monospace, monospace">1,485,000</text>
+      <text x="489" y="152" font-size="10" fill="var(--gap)" font-family="ui-monospace, monospace" font-weight="700">356,400</text>
+      <text x="663" y="182" font-size="9.5" fill="var(--gap)" font-family="ui-monospace, monospace" text-anchor="middle">fully recovered</text>
+
+      <!-- ── lower: retention held ── -->
+      <text x="100" y="234" font-size="12" font-weight="700" fill="currentColor">Retention held — accumulates until it hits the cap</text>
+      <line x1="100" y1="250" x2="100" y2="390" stroke="currentColor" stroke-width="1" opacity=".45"/>
+      <line x1="100" y1="390" x2="860" y2="390" stroke="currentColor" stroke-width="1" opacity=".45"/>
+      <text x="92" y="264" text-anchor="end" font-size="9.5" fill="currentColor" font-family="ui-monospace, monospace" opacity=".7">600k</text>
+      <text x="92" y="394" text-anchor="end" font-size="9.5" fill="currentColor" font-family="ui-monospace, monospace" opacity=".7">0</text>
+
+      <!-- cap line -->
+      <line x1="100" y1="269" x2="860" y2="269" stroke="var(--gap)" stroke-width="1.4" stroke-dasharray="7 4"/>
+      <text x="860" y="264" text-anchor="end" font-size="10" fill="var(--gap)" font-family="ui-monospace, monospace">cap · 519,750</text>
+
+      <polyline points="100,390 194,377 288,359 381,340 475,324" fill="none" stroke="var(--gap)" stroke-width="2.2"/>
+      <polyline points="475,324 569,307 663,290 756,272 850,269" fill="none" stroke="var(--gap)" stroke-width="1.8" stroke-dasharray="6 4"/>
+      <g fill="var(--gap)">
+        <circle cx="194" cy="377" r="3.5"/><circle cx="288" cy="359" r="3.5"/>
+        <circle cx="381" cy="340" r="3.5"/><circle cx="475" cy="324" r="5"/>
+      </g>
+      <text x="489" y="318" font-size="10" fill="var(--gap)" font-family="ui-monospace, monospace" font-weight="700">282,150</text>
+
+      <!-- shared x axis -->
+      <g font-size="10" fill="currentColor" font-family="ui-monospace, monospace" opacity=".75">
+        <text x="100" y="414" text-anchor="middle">sign</text>
+        <text x="194" y="414" text-anchor="middle">01</text>
+        <text x="288" y="414" text-anchor="middle">02</text>
+        <text x="381" y="414" text-anchor="middle">03</text>
+        <text x="475" y="414" text-anchor="middle" font-weight="700" fill="var(--slate)">04</text>
+        <text x="569" y="414" text-anchor="middle">05</text>
+        <text x="663" y="414" text-anchor="middle">06</text>
+        <text x="756" y="414" text-anchor="middle">07</text>
+        <text x="850" y="414" text-anchor="middle">08</text>
+        <text x="480" y="434" text-anchor="middle" font-size="10.5">payment certificate</text>
+      </g>
+
+      <!-- as-at line spanning both charts -->
+      <line x1="475" y1="50" x2="475" y2="398" stroke="var(--slate)" stroke-width="1.4" stroke-dasharray="5 3" opacity=".8"/>
+      <rect x="418" y="440" width="116" height="22" rx="5" fill="var(--slate-soft)" stroke="var(--slate)" stroke-width="1.2"/>
+      <text x="476" y="455" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--slate)" font-family="ui-monospace, monospace">as at 14 Aug 2026</text>
+    </svg>
+    <figcaption>
+      <b>Two balances move in opposite directions, and they are the reason a contractor's cash is
+      always behind their revenue.</b> The advance was cash received before any work — so it drains
+      as certificates are issued, at 20% of each. Retention is cash earned but not received — so it
+      builds, until the 3.5% cap stops the withholding around certificate 08. Read the two charts
+      together at the slate line: as at 14 August, ACCO still owes $356,400 of advance back and is
+      owed $519,750 that has not yet been released, of which $282,150 is currently held.
+    </figcaption>
+  </figure>
+</section>
+
+<hr class="r" />
+
+<!-- ═══ 05 ═══════════════════════════════════════════════════ -->
+<section id="cert">
+  <div class="sec-h"><span class="n">05</span><h2>Certificate 04, worked end to end</h2></div>
+  <p class="lede">
+    The cycle every chapter that touches certification uses. Application
+    <code>IPA-2026-004</code> covering June–July 2026 was submitted on 29 July; certificate
+    <code>IPC-2026-004</code> was issued on 5 August 2026 with status
+    <code>PARTIALLY_CERTIFIED</code> — the client's engineer agreed less than was claimed on three
+    lines.
+  </p>
+
+  <h3>What the contractor claimed, and what the engineer agreed</h3>
+
+  <figure>
+    <div class="legend" role="note" style="margin-bottom:16px">
+      <span class="lg sl"><i></i>already certified in an earlier cycle</span>
+      <span class="lg ok"><i></i>certified this period</span>
+      <span class="lg gap"><i></i>claimed but not certified</span>
+    </div>
+    <svg viewBox="0 0 900 280" role="img" aria-label="Two bars over a quantity ruler for BOQ line 03.01.001. The upper bar is the contractor's claim of 1,800 cubic metres cumulative; the lower bar is the engineer's certificate of 1,750. The 50 cubic metre difference, worth 9,250 dollars, is shown in amber.">
+      <!-- ruler -->
+      <line x1="100" y1="238" x2="840" y2="238" stroke="currentColor" stroke-width="1.2" opacity=".5"/>
+      <g font-size="9.5" fill="currentColor" font-family="ui-monospace, monospace" opacity=".65">
+        <line x1="100" y1="238" x2="100" y2="245" stroke="currentColor"/><text x="100" y="258" text-anchor="middle">0</text>
+        <line x1="285" y1="238" x2="285" y2="245" stroke="currentColor"/><text x="285" y="258" text-anchor="middle">600</text>
+        <line x1="470" y1="238" x2="470" y2="245" stroke="currentColor"/><text x="470" y="258" text-anchor="middle">1,200</text>
+        <line x1="655" y1="238" x2="655" y2="245" stroke="currentColor"/><text x="655" y="258" text-anchor="middle">1,800</text>
+        <line x1="840" y1="238" x2="840" y2="245" stroke="currentColor"/><text x="840" y="258" text-anchor="middle">2,400 m³</text>
+      </g>
+      <text x="470" y="274" text-anchor="middle" font-size="10.5" fill="currentColor" opacity=".7">BOQ line 03.01.001 · RC grade C35 to columns · 2,400.000 m³ in the priced scope</text>
+
+      <!-- BOQ envelope -->
+      <rect x="100" y="40" width="740" height="164" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="4 4" opacity=".35"/>
+
+      <!-- claim bar -->
+      <text x="100" y="66" font-size="11.5" font-weight="700" fill="currentColor">The claim — IPA-2026-004</text>
+      <rect x="100" y="74" width="430" height="34" fill="var(--slate-soft)" stroke="var(--slate)" stroke-width="1.2"/>
+      <rect x="530" y="74" width="125" height="34" fill="var(--gap-soft)" stroke="var(--gap)" stroke-width="1.4"/>
+      <text x="315" y="96" text-anchor="middle" font-size="10.5" fill="var(--slate)" font-family="ui-monospace, monospace">previouslyCertified 1,395.000</text>
+      <text x="592" y="96" text-anchor="middle" font-size="10.5" fill="var(--gap)" font-family="ui-monospace, monospace">period 405.000</text>
+      <text x="663" y="88" font-size="10.5" fill="var(--gap)" font-family="ui-monospace, monospace">cumulativeClaimed 1,800.000</text>
+      <text x="663" y="102" font-size="10.5" fill="var(--gap)" font-family="ui-monospace, monospace">periodAmount $74,925.00</text>
+
+      <!-- certificate bar -->
+      <text x="100" y="152" font-size="11.5" font-weight="700" fill="currentColor">The certificate — IPC-2026-004</text>
+      <rect x="100" y="160" width="430" height="34" fill="var(--slate-soft)" stroke="var(--slate)" stroke-width="1.2"/>
+      <rect x="530" y="160" width="109.5" height="34" fill="var(--ok-soft)" stroke="var(--ok)" stroke-width="1.5"/>
+      <rect x="639.5" y="160" width="15.5" height="34" fill="var(--gap-soft)" stroke="var(--gap)" stroke-width="1.4" stroke-dasharray="3 2"/>
+      <text x="315" y="182" text-anchor="middle" font-size="10.5" fill="var(--slate)" font-family="ui-monospace, monospace">unchanged</text>
+      <text x="584" y="182" text-anchor="middle" font-size="10.5" fill="var(--ok)" font-family="ui-monospace, monospace">355.000</text>
+      <text x="663" y="174" font-size="10.5" fill="var(--ok)" font-family="ui-monospace, monospace">certifiedAmount $65,675.00</text>
+
+      <!-- variance callout -->
+      <line x1="647" y1="200" x2="700" y2="222" stroke="var(--gap)" stroke-width="1.2"/>
+      <text x="704" y="212" font-size="10.5" fill="var(--gap)" font-weight="700" font-family="ui-monospace, monospace">varianceQuantity −50.000</text>
+      <text x="704" y="226" font-size="10" fill="var(--gap)">$9,250 · cube tests outstanding</text>
+    </svg>
+    <figcaption>
+      <b>Claimed and certified are two different numbers, and the gap is normal.</b> The contractor
+      says 1,800 m³ of columns are poured; the engineer accepts 1,750 and records a
+      <code>varianceReason</code> for the 50 m³ withheld — the grid D4–D7 pours had cube-test
+      results outstanding at the cut-off. Note that the previously-certified portion never moves:
+      an application always states a <em>cumulative</em> figure, and the period amount is derived by
+      subtracting what was already agreed. Across all lines, $1,414,800 was claimed and $1,336,500
+      certified.
+    </figcaption>
+  </figure>
+
+  <h3>From gross certified to money actually payable</h3>
+
+  <figure>
+    <svg viewBox="0 0 900 400" role="img" aria-label="A waterfall. Gross certified of 1,336,500 has retention of 66,825, advance recovery of 267,300 and a contra-charge of 41,800 deducted in turn, arriving at a net payable of 960,575.">
+      <defs>
+        <marker id="w-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--gap)" />
+        </marker>
+      </defs>
+
+      <!-- gross -->
+      <rect x="90" y="46" width="750" height="40" rx="3" fill="var(--ok-soft)" stroke="var(--ok)" stroke-width="1.8"/>
+      <text x="102" y="71" font-size="12.5" font-weight="700" fill="var(--ok)">Gross certified this period</text>
+      <text x="828" y="71" text-anchor="end" font-size="13" font-weight="750" fill="var(--ok)" font-family="ui-monospace, monospace">1,336,500.00</text>
+
+      <!-- retention -->
+      <line x1="840" y1="86" x2="840" y2="106" stroke="var(--gap)" stroke-width="1.2" stroke-dasharray="3 2"/>
+      <rect x="802.5" y="106" width="37.5" height="40" rx="3" fill="var(--gap-soft)" stroke="var(--gap)" stroke-width="1.6"/>
+      <text x="792" y="124" text-anchor="end" font-size="12" fill="var(--gap)" font-weight="650">Retention withheld · 5.00% of gross</text>
+      <text x="792" y="139" text-anchor="end" font-size="10" fill="var(--gap)" font-family="ui-monospace, monospace" opacity=".8">deductionType RETENTION · basis 1,336,500.00</text>
+      <text x="848" y="131" font-size="12" fill="var(--gap)" font-family="ui-monospace, monospace" font-weight="700">−66,825.00</text>
+
+      <!-- advance recovery -->
+      <line x1="802.5" y1="146" x2="802.5" y2="166" stroke="var(--gap)" stroke-width="1.2" stroke-dasharray="3 2"/>
+      <rect x="652.5" y="166" width="150" height="40" rx="3" fill="var(--gap-soft)" stroke="var(--gap)" stroke-width="1.6"/>
+      <text x="642" y="184" text-anchor="end" font-size="12" fill="var(--gap)" font-weight="650">Advance recovery · 20.00% of gross</text>
+      <text x="642" y="199" text-anchor="end" font-size="10" fill="var(--gap)" font-family="ui-monospace, monospace" opacity=".8">deductionType ADVANCE_RECOVERY</text>
+      <text x="810" y="191" font-size="12" fill="var(--gap)" font-family="ui-monospace, monospace" font-weight="700">−267,300.00</text>
+
+      <!-- contra -->
+      <line x1="652.5" y1="206" x2="652.5" y2="226" stroke="var(--gap)" stroke-width="1.2" stroke-dasharray="3 2"/>
+      <rect x="629" y="226" width="23.5" height="40" rx="3" fill="var(--gap-soft)" stroke="var(--gap)" stroke-width="1.6"/>
+      <text x="618" y="244" text-anchor="end" font-size="12" fill="var(--gap)" font-weight="650">Contra-charge · temporary power from client supply</text>
+      <text x="618" y="259" text-anchor="end" font-size="10" fill="var(--gap)" font-family="ui-monospace, monospace" opacity=".8">rate null · amount entered directly</text>
+      <text x="660" y="251" font-size="12" fill="var(--gap)" font-family="ui-monospace, monospace" font-weight="700">−41,800.00</text>
+
+      <!-- net -->
+      <line x1="629" y1="266" x2="629" y2="292" stroke="var(--ok)" stroke-width="1.4" stroke-dasharray="3 2"/>
+      <rect x="90" y="292" width="539" height="46" rx="4" fill="var(--ok-soft)" stroke="var(--ok)" stroke-width="2.4"/>
+      <text x="102" y="320" font-size="13.5" font-weight="750" fill="var(--ok)">Net payable — what the invoice is raised for</text>
+      <text x="617" y="320" text-anchor="end" font-size="15" font-weight="800" fill="var(--ok)" font-family="ui-monospace, monospace">960,575.00</text>
+
+      <!-- the withheld remainder -->
+      <rect x="629" y="292" width="211" height="46" rx="4" fill="none" stroke="var(--gap)" stroke-width="1.4" stroke-dasharray="5 4"/>
+      <text x="734" y="312" text-anchor="middle" font-size="11" fill="var(--gap)" font-weight="650">withheld or recovered</text>
+      <text x="734" y="328" text-anchor="middle" font-size="11.5" fill="var(--gap)" font-family="ui-monospace, monospace" font-weight="700">375,925.00</text>
+
+      <!-- scale note -->
+      <text x="90" y="366" font-size="10" fill="currentColor" opacity=".6" font-family="ui-monospace, monospace">bars are to scale · 1 px ≈ $1,782</text>
+      <text x="90" y="384" font-size="11" fill="currentColor" opacity=".8">Deductions are generated by the platform from the contract terms. They are never submitted by the claimant.</text>
+    </svg>
+    <figcaption>
+      <b>This waterfall is the single most reused figure in the whole explainer set.</b> Certifying
+      work does not mean being paid for it: 28% of what the engineer agreed this period never
+      reaches the invoice. Two of the three deductions are computed from the contract terms fixed in
+      section 04 — the third is a one-off entered by the commercial team, which is why
+      <code>deductionType</code> is an open string and <code>rate</code> is nullable. The chapters
+      on signing, certifying, and getting paid all redraw this shape with these numbers.
+    </figcaption>
+  </figure>
+
+  <div class="call key">
+    <span class="h">Open question · for Eng Ahmed</span>
+    <p>
+      <code>InterimPaymentCertificateItem.certifiedQuantity</code> is read on this sheet as the
+      <em>period</em> quantity certified (355.000), not the cumulative agreed figure (1,750.000),
+      because <code>varianceQuantity</code> only makes sense against the period claim. If the code
+      actually stores it cumulatively, the certificate bar in the first figure is drawn wrong and
+      every chapter citing it needs the same correction. Confirm before <em>Certifying the work</em>
+      is drawn.
+    </p>
+  </div>
+</section>
+
+<hr class="r" />
+
+<!-- ═══ 06 ═══════════════════════════════════════════════════ -->
+<section id="position">
+  <div class="sec-h"><span class="n">06</span><h2>The four numbers, as at 14 August 2026</h2></div>
+  <p class="lede">
+    Certified, invoiced, received, and held. In conversation all four are "the money"; in the
+    platform they are four different figures with three meaningful gaps between them. A reader who
+    cannot say which is which will misread every commercial screen.
+  </p>
+
+  <figure>
+    <svg viewBox="0 0 900 340" role="img" aria-label="Three nested horizontal bars. Gross certified 5,643,000; net invoiced 4,112,850; cash received 3,050,000. The gaps between them are labelled as contract deductions and as outstanding receivable. Retention held of 282,150 is drawn separately as money earned but not yet claimable.">
+      <defs>
+        <marker id="f-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--gap)" />
+        </marker>
+        <marker id="f-ah2" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto">
+          <path d="M10 0 L0 5 L10 10 z" fill="var(--gap)" />
+        </marker>
+      </defs>
+
+      <!-- 1 certified -->
+      <text x="110" y="42" font-size="12" font-weight="700" fill="currentColor">Gross certified to date</text>
+      <text x="110" y="57" font-size="10" fill="currentColor" opacity=".7">work the engineer has agreed · 38.0% of contract</text>
+      <rect x="110" y="64" width="700" height="34" rx="3" fill="var(--ok-soft)" stroke="var(--ok)" stroke-width="1.8"/>
+      <text x="822" y="86" font-size="12.5" font-weight="700" fill="var(--ok)" font-family="ui-monospace, monospace">5,643,000</text>
+
+      <!-- 2 invoiced -->
+      <text x="110" y="140" font-size="12" font-weight="700" fill="currentColor">Net invoiced to date</text>
+      <text x="110" y="155" font-size="10" fill="currentColor" opacity=".7">four client invoices, one per effective certificate</text>
+      <rect x="110" y="162" width="510" height="34" rx="3" fill="var(--slate-soft)" stroke="var(--slate)" stroke-width="1.8"/>
+      <text x="632" y="184" font-size="12.5" font-weight="700" fill="var(--slate)" font-family="ui-monospace, monospace">4,112,850</text>
+
+      <!-- gap 1 -->
+      <line x1="620" y1="122" x2="810" y2="122" stroke="var(--gap)" stroke-width="1.3" marker-end="url(#f-ah)" marker-start="url(#f-ah2)"/>
+      <line x1="810" y1="98" x2="810" y2="122" stroke="var(--gap)" stroke-width=".9" stroke-dasharray="3 2"/>
+      <line x1="620" y1="122" x2="620" y2="162" stroke="var(--gap)" stroke-width=".9" stroke-dasharray="3 2"/>
+      <text x="715" y="116" text-anchor="middle" font-size="10.5" fill="var(--gap)" font-weight="700" font-family="ui-monospace, monospace">1,530,150 never invoiced</text>
+
+      <!-- 3 received -->
+      <text x="110" y="238" font-size="12" font-weight="700" fill="currentColor">Cash received to date</text>
+      <text x="110" y="253" font-size="10" fill="currentColor" opacity=".7">excludes the $1,485,000 advance — that was not against a certificate</text>
+      <rect x="110" y="260" width="378" height="34" rx="3" fill="var(--slate-soft)" stroke="var(--slate)" stroke-width="1.8" opacity=".75"/>
+      <text x="500" y="282" font-size="12.5" font-weight="700" fill="var(--slate)" font-family="ui-monospace, monospace">3,050,000</text>
+
+      <!-- gap 2 -->
+      <line x1="488" y1="220" x2="620" y2="220" stroke="var(--gap)" stroke-width="1.3" marker-end="url(#f-ah)" marker-start="url(#f-ah2)"/>
+      <line x1="620" y1="196" x2="620" y2="220" stroke="var(--gap)" stroke-width=".9" stroke-dasharray="3 2"/>
+      <line x1="488" y1="220" x2="488" y2="260" stroke="var(--gap)" stroke-width=".9" stroke-dasharray="3 2"/>
+      <text x="554" y="214" text-anchor="middle" font-size="10.5" fill="var(--gap)" font-weight="700" font-family="ui-monospace, monospace">1,062,850 outstanding</text>
+
+      <!-- breakdown of gap 1 -->
+      <text x="110" y="322" font-size="10.5" fill="var(--gap)" font-family="ui-monospace, monospace">the 1,530,150 splits: retention held 282,150 · advance recovered 1,128,600 · other deductions 119,400</text>
+      <rect x="105" y="308" width="4" height="18" fill="var(--gap)"/>
+    </svg>
+    <figcaption>
+      <b>Only the top bar is what ACCO has earned; only the bottom bar is what ACCO has.</b> The
+      first gap is contractual — money the client is entitled to keep or claw back, of which
+      $282,150 of retention is genuinely ACCO's money simply not yet releasable. The second gap is
+      credit: invoices issued and inside their 30-day terms, or overdue. Certificate 04's invoice
+      of $960,575 is the largest part of it, issued 5 August and not yet due. Three of these four
+      numbers appear on the commercial workspace; a reader who conflates them will read that screen
+      wrong.
+    </figcaption>
+  </figure>
+
+  <div class="call note">
+    <span class="h">All four figures are net of VAT</span>
+    <p>
+      The commercial side of the platform works in net amounts — the contract, the BOQ, the
+      certificates, and the bar chart above. Output VAT of 5% is added when the invoice is raised,
+      so the amount the client is actually billed is higher: certificate 04's $960,575 becomes an
+      invoice of <b>$1,008,603.75</b>. Section 09 picks the story up from there.
+    </p>
+  </div>
+</section>
+
+<hr class="r" />
+
+<!-- ═══ 07 ═══════════════════════════════════════════════════ -->
+<section id="procure">
+  <div class="sec-h"><span class="n">07</span><h2>The spend thread — one concrete supply package</h2></div>
+  <p class="lede">
+    Every chapter that touches procurement, commitments, or cost follows this one package. It is
+    deliberately tied to BOQ lines 03.01.001 and 03.01.002 — the same columns and slabs being
+    certified in section 05 — so that revenue and cost meet on the same nodes.
+  </p>
+
+  <figure>
+    <div class="legend" role="note" style="margin-bottom:16px">
+      <span class="lg ok"><i></i>reaches the general ledger</span>
+      <span class="lg gap"><i></i>commitment ledger — a side book, not the GL</span>
+      <span class="lg none"><i></i>not yet happened</span>
+    </div>
+    <svg viewBox="0 0 900 430" role="img" aria-label="A left-to-right chain: material request, purchase order revision 2, goods receipt note, supplier bill, supplier payment. Below it the commitment ledger picks up committed value from the purchase order, accrued value from the goods receipt, and actual value from the bill.">
+      <defs>
+        <marker id="p-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="currentColor" />
+        </marker>
+        <marker id="p-ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--gap)" />
+        </marker>
+      </defs>
+
+      <!-- chain -->
+      <g font-size="11.5" fill="currentColor">
+        <rect x="20" y="50" width="150" height="52" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="95" y="72" text-anchor="middle" font-weight="650">Material request</text>
+        <text x="95" y="88" text-anchor="middle" font-size="10" font-family="ui-monospace, monospace" opacity=".75">MR-2026-0188</text>
+
+        <rect x="196" y="50" width="150" height="52" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="271" y="72" text-anchor="middle" font-weight="650">Purchase order · rev 2</text>
+        <text x="271" y="88" text-anchor="middle" font-size="10" font-family="ui-monospace, monospace" opacity=".75">PO-2026-0091 · 501,750</text>
+
+        <rect x="372" y="50" width="150" height="52" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <text x="447" y="72" text-anchor="middle" font-weight="650">Goods receipt</text>
+        <text x="447" y="88" text-anchor="middle" font-size="10" font-family="ui-monospace, monospace" opacity=".75">GRN-2026-0342 · 1,860 m³</text>
+
+        <rect x="548" y="50" width="150" height="52" rx="6" fill="var(--ok-soft)" stroke="var(--ok)" stroke-width="1.7"/>
+        <text x="623" y="72" text-anchor="middle" font-weight="700" fill="var(--ok)">Supplier bill</text>
+        <text x="623" y="88" text-anchor="middle" font-size="10" font-family="ui-monospace, monospace" fill="var(--ok)">BILL-SR-4471 · 334,800</text>
+
+        <rect x="724" y="50" width="150" height="52" rx="6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="5 4" opacity=".6"/>
+        <text x="799" y="72" text-anchor="middle" opacity=".7">Supplier payment</text>
+        <text x="799" y="88" text-anchor="middle" font-size="10" font-family="ui-monospace, monospace" opacity=".6">due 24 Aug 2026</text>
+      </g>
+      <g stroke="currentColor" stroke-width="1.3" marker-end="url(#p-ah)" fill="none">
+        <line x1="172" y1="76" x2="192" y2="76"/>
+        <line x1="348" y1="76" x2="368" y2="76"/>
+        <line x1="524" y1="76" x2="544" y2="76"/>
+      </g>
+      <line x1="700" y1="76" x2="720" y2="76" stroke="currentColor" stroke-width="1.2" marker-end="url(#p-ah)" stroke-dasharray="4 3" opacity=".6"/>
+
+      <!-- dates row -->
+      <g font-size="9.5" fill="currentColor" opacity=".6" font-family="ui-monospace, monospace">
+        <text x="95" y="120" text-anchor="middle">22 Apr 2026</text>
+        <text x="271" y="120" text-anchor="middle">29 May 2026</text>
+        <text x="447" y="120" text-anchor="middle">2 Jul 2026</text>
+        <text x="623" y="120" text-anchor="middle">25 Jul 2026</text>
+      </g>
+
+      <!-- commitment ledger -->
+      <rect x="20" y="176" width="854" height="120" rx="8" fill="var(--gap-soft)" stroke="var(--gap-line)" stroke-width="1.4"/>
+      <text x="38" y="200" font-size="12.5" font-weight="700" fill="var(--gap)">Commitment ledger — <tspan font-weight="400" font-size="11">CommitmentLedgerEntry · a side book, never the general ledger</tspan></text>
+
+      <g font-family="ui-monospace, monospace" font-size="11">
+        <text x="38" y="230" fill="var(--gap)" font-weight="700">COMMITTED</text>
+        <text x="150" y="230" fill="var(--gap)" opacity=".8">on PO revision 2</text>
+        <text x="420" y="230" fill="var(--gap)" font-weight="700">501,750.00</text>
+        <text x="520" y="230" fill="var(--gap)" opacity=".75">money no longer free to spend elsewhere</text>
+
+        <text x="38" y="256" fill="var(--gap)" font-weight="700">ACCRUED</text>
+        <text x="150" y="256" fill="var(--gap)" opacity=".8">on goods receipt</text>
+        <text x="420" y="256" fill="var(--gap)" font-weight="700">334,800.00</text>
+        <text x="520" y="256" fill="var(--gap)" opacity=".75">1,860.000 m³ delivered of 2,700.000 ordered</text>
+
+        <text x="38" y="282" fill="var(--gap)" font-weight="700">ACTUAL</text>
+        <text x="150" y="282" fill="var(--gap)" opacity=".8">on bill posted</text>
+        <text x="420" y="282" fill="var(--gap)" font-weight="700">334,800.00</text>
+        <text x="520" y="282" fill="var(--gap)" opacity=".75">three-way matched, MATCHED</text>
+      </g>
+
+      <line x1="271" y1="104" x2="271" y2="172" stroke="var(--gap)" stroke-width="1.2" marker-end="url(#p-ahg)" stroke-dasharray="4 3"/>
+      <line x1="447" y1="104" x2="447" y2="172" stroke="var(--gap)" stroke-width="1.2" marker-end="url(#p-ahg)" stroke-dasharray="4 3"/>
+      <line x1="623" y1="104" x2="623" y2="172" stroke="var(--gap)" stroke-width="1.2" marker-end="url(#p-ahg)" stroke-dasharray="4 3"/>
+
+      <!-- the exception -->
+      <rect x="20" y="322" width="854" height="86" rx="8" fill="none" stroke="var(--gap)" stroke-width="1.5" stroke-dasharray="6 4"/>
+      <text x="38" y="346" font-size="12" font-weight="700" fill="var(--gap)">The match exception — kept deliberately on this sheet</text>
+      <text x="38" y="368" font-size="11.5" fill="currentColor">A second bill, <tspan font-family="ui-monospace, monospace" font-size="10.5">BILL-SR-4502</tspan> dated 4 Aug 2026, invoices 1,910.000 m³ — fifty more than the goods receipt records.</text>
+      <text x="38" y="388" font-size="11.5" fill="currentColor">The three-way match fails, <tspan font-family="ui-monospace, monospace" font-size="10.5">matchStatus</tspan> blocks posting, and $9,000 does not reach the ledger. It is still blocked as at 14 Aug.</text>
+    </svg>
+    <figcaption>
+      <b>The purchase order spends nothing, and yet it is the most important event in this chain.</b>
+      No money has left ACCO and no journal has been written, but $501,750 is no longer available
+      for anything else — which is what the commitment ledger records and the general ledger cannot.
+      The three amber arrows are the three moments a commitment changes state. The blocked bill at
+      the bottom is on this sheet on purpose: the chapters need one failure to draw, not only the
+      happy path.
+    </figcaption>
+  </figure>
+
+  <h3>Why committed cost is not a nicety</h3>
+
+  <figure>
+    <svg viewBox="0 0 900 250" role="img" aria-label="A single budget bar of 540,000 for the concrete package. Actual spend of 334,800 fills 62 percent, open commitments of 166,950 fill a further 31 percent, leaving headroom of only 38,250 or 7 percent.">
+      <text x="100" y="38" font-size="12" font-weight="700" fill="currentColor">Concrete supply package · internal cost budget $540,000</text>
+
+      <rect x="100" y="52" width="740" height="46" rx="3" fill="none" stroke="currentColor" stroke-width="1.3"/>
+      <rect x="100" y="52" width="459" height="46" fill="var(--ok-soft)" stroke="var(--ok)" stroke-width="1.5"/>
+      <rect x="559" y="52" width="229" height="46" fill="var(--gap-soft)" stroke="var(--gap)" stroke-width="1.5"/>
+
+      <text x="329" y="80" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--ok)">ACTUAL · 334,800</text>
+      <text x="673" y="80" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--gap)">OPEN COMMITMENT · 166,950</text>
+      <text x="814" y="80" text-anchor="middle" font-size="10" font-weight="700" fill="currentColor">38,250</text>
+
+      <!-- the two readings -->
+      <line x1="100" y1="112" x2="559" y2="112" stroke="var(--ok)" stroke-width="1.4"/>
+      <line x1="100" y1="108" x2="100" y2="116" stroke="var(--ok)" stroke-width="1.4"/>
+      <line x1="559" y1="108" x2="559" y2="116" stroke="var(--ok)" stroke-width="1.4"/>
+      <text x="329" y="132" text-anchor="middle" font-size="11.5" fill="var(--ok)" font-weight="650">What a spend report shows — 62% used</text>
+      <text x="329" y="148" text-anchor="middle" font-size="11" fill="var(--ok)" opacity=".85">"we have $205,200 left"</text>
+
+      <line x1="100" y1="176" x2="788" y2="176" stroke="var(--gap)" stroke-width="1.4"/>
+      <line x1="100" y1="172" x2="100" y2="180" stroke="var(--gap)" stroke-width="1.4"/>
+      <line x1="788" y1="172" x2="788" y2="180" stroke="var(--gap)" stroke-width="1.4"/>
+      <text x="444" y="196" text-anchor="middle" font-size="11.5" fill="var(--gap)" font-weight="650">What is actually left once the order is honoured — 93% committed</text>
+      <text x="444" y="212" text-anchor="middle" font-size="11" fill="var(--gap)" opacity=".9">"we have $38,250 left"</text>
+
+      <text x="100" y="238" font-size="10.5" fill="currentColor" opacity=".65">Same package, same day, same data — the difference is whether committed cost is counted.</text>
+    </svg>
+    <figcaption>
+      <b>A project looks solvent right up until the invoices arrive.</b> Both readings are honest
+      arithmetic over the same records; only one of them tells the project manager they have almost
+      no room left on this package. This single bar is the argument for the commitment ledger
+      existing at all, and the chapter on procurement builds to it.
+    </figcaption>
+  </figure>
+
+  <div class="kv">
+    <div class="kvi">
+      <div class="k">Supplier</div>
+      <div class="v" style="font-size:15px">Shabelle Ready-Mix</div>
+      <div class="s"><code>SUP-0117</code> · 30-day terms</div>
+    </div>
+    <div class="kvi">
+      <div class="k">PO revision 1 → 2</div>
+      <div class="v" style="font-size:17px">+21,600</div>
+      <div class="s">rate rose 172.00 → 180.00 per m³ after a cement price move</div>
+    </div>
+    <div class="kvi">
+      <div class="k">Subcontract, for ADR-012</div>
+      <div class="v" style="font-size:15px">$1,180,000</div>
+      <div class="s">Barakaat Aluminium &amp; Glazing · <code>SC-2026-007</code> · <code>contractKind: SUBCONTRACT</code>, certified through the same IPA/IPC machinery, 5% retention</div>
+    </div>
+  </div>
+</section>
+
+<hr class="r" />
+
+<!-- ═══ 08 ═══════════════════════════════════════════════════ -->
+<section id="people">
+  <div class="sec-h"><span class="n">08</span><h2>The people, and who may approve what</h2></div>
+  <p class="lede">
+    Named so that the approval-engine chapter can draw a real chain rather than "User A approves
+    User B". One of these people is not an ACCO user at all — which is the point of listing them
+    together.
+  </p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th style="width:24%">Person</th><th style="width:26%">Role</th><th>What they do on Hodan Heights</th></tr></thead>
+      <tbody>
+        <tr><td>Ilhan Warsame</td><td>Quantity Surveyor</td><td>Prepared BOQ v2. Measures progress and raises each interim payment application.</td></tr>
+        <tr><td>Nasteexo Ahmed</td><td>Project Manager</td><td>Project member with the project-manager role. Owns the programme; approves material requests.</td></tr>
+        <tr><td>Abdirahman Osman</td><td>Commercial Manager</td><td>Approves applications for submission to the client. Enters contra-charges.</td></tr>
+        <tr><td>Mohamed Sheikh</td><td>Procurement Officer</td><td>Converts material requests into purchase orders; manages supplier records.</td></tr>
+        <tr><td>Sagal Omar</td><td>Storekeeper</td><td>Raises goods receipt notes on delivery.</td></tr>
+        <tr><td>Yusuf Barre</td><td>Finance Controller</td><td>Posts supplier bills, records client receipts, closes fiscal periods.</td></tr>
+        <tr><td>Faduma Ali</td><td>Managing Director</td><td>The delegation-of-authority approver above $250,000.</td></tr>
+        <tr style="background:var(--gap-soft)"><td>Eng. Halima Yusuf</td><td>The Engineer <span class="p gap">client side</span></td><td><b>Not an ACCO user.</b> Employed by Hodan Property Development to inspect and certify. Issues the IPC. Has no login to ACCO's tenant — certificates are recorded by ACCO staff on the strength of a signed document.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Delegation of authority</h3>
+
+  <div class="tw">
+    <table>
+      <thead>
+        <tr><th style="width:28%">Document</th><th>≤ $50,000</th><th>$50,001 – $250,000</th><th>&gt; $250,000</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Purchase order</td>
+          <td>Procurement Officer</td>
+          <td>+ Commercial Manager</td>
+          <td>+ Managing Director</td>
+        </tr>
+        <tr>
+          <td>Interim payment application</td>
+          <td>Commercial Manager</td>
+          <td>Commercial Manager</td>
+          <td>+ Managing Director</td>
+        </tr>
+        <tr>
+          <td>Supplier bill — posting</td>
+          <td>Finance Controller</td>
+          <td>Finance Controller</td>
+          <td>+ Managing Director</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p style="margin-top:18px">
+    Both live documents on this sheet cross the top threshold and therefore need the full chain:
+    <code>PO-2026-0091</code> at $501,750, and <code>IPA-2026-004</code> at $1,414,800 claimed. The
+    approval-engine chapter plots exactly these two onto the grid.
+  </p>
+</section>
+
+<hr class="r" />
+
+<!-- ═══ 09 ═══════════════════════════════════════════════════ -->
+<section id="books">
+  <div class="sec-h"><span class="n">09</span><h2>Into the books — every event, and the journal it writes</h2></div>
+  <p class="lede">
+    Nothing above this section is accounting. A bill of quantities, a certificate, a purchase
+    order — those are operational records of what was agreed and what was done. Accounting is what
+    the company <em>writes down</em> as a consequence, and it happens at far fewer moments than
+    newcomers expect.
+  </p>
+
+  <h3>Just enough double entry</h3>
+  <p>
+    Every journal entry has at least two lines and they must sum to zero: total debits equal total
+    credits. A debit increases an asset or an expense; a credit increases a liability, equity, or
+    revenue. That is the whole rule. If a journal does not balance the platform refuses it —
+    <code>IMBALANCED_JOURNAL</code> is classed as a platform bug that must never reach Finance.
+  </p>
+  <p>
+    The <strong>chart of accounts</strong> is the list of buckets those lines land in. These are
+    the ones Hodan Heights touches, taken from the accounting event catalog:
+  </p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th class="mono" style="width:12%">Code</th><th style="width:30%">Account</th><th style="width:16%">Type</th><th>What lands here on this job</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">10100</td><td>Salaam Bank</td><td>Asset</td><td>Cash actually received from the client and paid to suppliers</td></tr>
+        <tr><td class="mono">11000</td><td>Accounts Receivable</td><td>Asset</td><td>Invoiced to the client and not yet collected</td></tr>
+        <tr><td class="mono">20000</td><td>Accounts Payable</td><td>Liability</td><td>Billed by suppliers and not yet paid</td></tr>
+        <tr><td class="mono">20200</td><td>VAT Payable</td><td>Liability</td><td>The 5% output VAT collected on client invoices, owed onward</td></tr>
+        <tr><td class="mono">42600</td><td>Project Income</td><td>Revenue</td><td>Revenue recognised — carries <code>projectId</code></td></tr>
+        <tr><td class="mono">50303</td><td>Cement Cost</td><td>Cost of sales</td><td>The concrete package, carrying project, department and cost centre</td></tr>
+        <tr><td class="mono">60200</td><td>Accrued Expense</td><td>Liability</td><td>Exists in the chart — but see the open question below</td></tr>
+        <tr><td class="mono">—</td><td>Unapplied Client Receipts</td><td>Liability</td><td>Cash received with no invoice to sit against. Resolved by account <em>subtype</em>, not a fixed code.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="call note">
+    <span class="h">VAT on this job</span>
+    <p>
+      Output VAT is <b>5%</b>, added on top of the certified amount when the client invoice is
+      raised. Input VAT is <b>non-recoverable</b> for ACCO, so a supplier bill posts its
+      <em>gross</em> amount straight to the expense account with no separate VAT line — the VAT is
+      retained on the bill line for the VAT return only. Every figure in sections 01–08 of this
+      sheet is stated <strong>net of VAT</strong>, which is how the commercial side works; the
+      journals below are the first place VAT appears.
+    </p>
+  </div>
+
+  <h3>The eight moments that matter</h3>
+
+  <figure>
+    <div class="legend" role="note" style="margin-bottom:16px">
+      <span class="lg ok"><i></i>writes a journal — reaches the general ledger</span>
+      <span class="lg none"><i></i>writes no journal — operational record only</span>
+    </div>
+    <svg viewBox="0 0 900 810" role="img" aria-label="Eight events in date order down the page. The advance receipt, a client payment, the supplier bill and the client invoice each produce a balanced journal shown line by line. The purchase order, the goods receipt and the certificate itself produce no journal at all. The supplier payment has not happened yet.">
+      <defs>
+        <marker id="j-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="currentColor" />
+        </marker>
+      </defs>
+
+      <text x="20" y="22" font-size="11" fill="currentColor" opacity=".6" font-family="ui-monospace, monospace">EVENT</text>
+      <text x="300" y="22" font-size="11" fill="currentColor" opacity=".6" font-family="ui-monospace, monospace">JOURNAL WRITTEN</text>
+      <text x="866" y="22" font-size="11" fill="currentColor" opacity=".6" font-family="ui-monospace, monospace" text-anchor="end">USD</text>
+
+      <!-- ── 1 · advance ── -->
+      <rect x="20" y="42" width="240" height="76" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"/>
+      <text x="32" y="62" font-size="9.5" fill="currentColor" opacity=".7" font-family="ui-monospace, monospace">11 DEC 2025</text>
+      <text x="32" y="82" font-size="12" font-weight="700" fill="currentColor">Advance received</text>
+      <text x="32" y="100" font-size="9.5" fill="currentColor" opacity=".7" font-family="ui-monospace, monospace">PAYMENT_RECEIPT.POSTED</text>
+      <line x1="264" y1="80" x2="292" y2="80" stroke="currentColor" stroke-width="1.2" marker-end="url(#j-ah)"/>
+      <rect x="296" y="42" width="584" height="76" rx="6" fill="var(--ok-soft)" stroke="var(--ok)" stroke-width="1.5"/>
+      <g font-family="ui-monospace, monospace" font-size="11.5" fill="var(--ok)">
+        <text x="312" y="72" font-weight="700">Dr</text><text x="344" y="72">10100</text><text x="404" y="72">Salaam Bank</text><text x="866" y="72" text-anchor="end" font-weight="700">1,485,000.00</text>
+        <text x="312" y="98" font-weight="700">Cr</text><text x="344" y="98">—</text><text x="404" y="98">Unapplied Client Receipts</text><text x="866" y="98" text-anchor="end" font-weight="700">1,485,000.00</text>
+      </g>
+
+      <!-- ── 2 · PO ── -->
+      <rect x="20" y="138" width="240" height="76" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"/>
+      <text x="32" y="158" font-size="9.5" fill="currentColor" opacity=".7" font-family="ui-monospace, monospace">29 MAY 2026</text>
+      <text x="32" y="178" font-size="12" font-weight="700" fill="currentColor">Purchase order issued</text>
+      <text x="32" y="196" font-size="9.5" fill="currentColor" opacity=".7" font-family="ui-monospace, monospace">PO-2026-0091 rev 2 · 501,750</text>
+      <line x1="264" y1="176" x2="292" y2="176" stroke="currentColor" stroke-width="1" marker-end="url(#j-ah)" stroke-dasharray="4 3" opacity=".55"/>
+      <rect x="296" y="138" width="584" height="76" rx="6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="6 4" opacity=".5"/>
+      <text x="588" y="172" text-anchor="middle" font-size="12" fill="currentColor" opacity=".75">No journal. Nothing has been spent.</text>
+      <text x="588" y="192" text-anchor="middle" font-size="11" fill="var(--gap)" font-family="ui-monospace, monospace">commitment ledger only · COMMITTED 501,750.00</text>
+
+      <!-- ── 3 · GRN ── -->
+      <rect x="20" y="234" width="240" height="76" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"/>
+      <text x="32" y="254" font-size="9.5" fill="currentColor" opacity=".7" font-family="ui-monospace, monospace">2 JUL 2026</text>
+      <text x="32" y="274" font-size="12" font-weight="700" fill="currentColor">Goods received</text>
+      <text x="32" y="292" font-size="9.5" fill="currentColor" opacity=".7" font-family="ui-monospace, monospace">GRN-2026-0342 · 1,860 m³</text>
+      <line x1="264" y1="272" x2="292" y2="272" stroke="currentColor" stroke-width="1" marker-end="url(#j-ah)" stroke-dasharray="4 3" opacity=".55"/>
+      <rect x="296" y="234" width="584" height="76" rx="6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="6 4" opacity=".5"/>
+      <text x="588" y="268" text-anchor="middle" font-size="12" fill="currentColor" opacity=".75">No journal — the catalog has no goods-received event.</text>
+      <text x="588" y="288" text-anchor="middle" font-size="11" fill="var(--gap)" font-family="ui-monospace, monospace">commitment ledger only · ACCRUED 334,800.00</text>
+
+      <!-- ── 4 · receipt ── -->
+      <rect x="20" y="330" width="240" height="76" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"/>
+      <text x="32" y="350" font-size="9.5" fill="currentColor" opacity=".7" font-family="ui-monospace, monospace">20 JUL 2026</text>
+      <text x="32" y="370" font-size="12" font-weight="700" fill="currentColor">Client pays, in part</text>
+      <text x="32" y="388" font-size="9.5" fill="currentColor" opacity=".7" font-family="ui-monospace, monospace">against IPC-03's invoice</text>
+      <line x1="264" y1="368" x2="292" y2="368" stroke="currentColor" stroke-width="1.2" marker-end="url(#j-ah)"/>
+      <rect x="296" y="330" width="584" height="76" rx="6" fill="var(--ok-soft)" stroke="var(--ok)" stroke-width="1.5"/>
+      <g font-family="ui-monospace, monospace" font-size="11.5" fill="var(--ok)">
+        <text x="312" y="360" font-weight="700">Dr</text><text x="344" y="360">10100</text><text x="404" y="360">Salaam Bank</text><text x="866" y="360" text-anchor="end" font-weight="700">900,000.00</text>
+        <text x="312" y="386" font-weight="700">Cr</text><text x="344" y="386">11000</text><text x="404" y="386">Accounts Receivable</text><text x="866" y="386" text-anchor="end" font-weight="700">900,000.00</text>
+      </g>
+
+      <!-- ── 5 · supplier bill ── -->
+      <rect x="20" y="426" width="240" height="94" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"/>
+      <text x="32" y="446" font-size="9.5" fill="currentColor" opacity=".7" font-family="ui-monospace, monospace">25 JUL 2026</text>
+      <text x="32" y="466" font-size="12" font-weight="700" fill="currentColor">Supplier bill posted</text>
+      <text x="32" y="484" font-size="9.5" fill="currentColor" opacity=".7" font-family="ui-monospace, monospace">SUPPLIER_BILL.POSTED</text>
+      <text x="32" y="502" font-size="9.5" fill="var(--gap)" font-family="ui-monospace, monospace">net 334,800 + VAT 16,740</text>
+      <line x1="264" y1="473" x2="292" y2="473" stroke="currentColor" stroke-width="1.2" marker-end="url(#j-ah)"/>
+      <rect x="296" y="426" width="584" height="94" rx="6" fill="var(--ok-soft)" stroke="var(--ok)" stroke-width="1.5"/>
+      <g font-family="ui-monospace, monospace" font-size="11.5" fill="var(--ok)">
+        <text x="312" y="456" font-weight="700">Dr</text><text x="344" y="456">50303</text><text x="404" y="456">Cement Cost</text><text x="866" y="456" text-anchor="end" font-weight="700">351,540.00</text>
+        <text x="404" y="474" font-size="9.5" opacity=".8">dim: projectId PRJ-2026-014 · dept CONST · costCentre SITE-HH</text>
+        <text x="312" y="500" font-weight="700">Cr</text><text x="344" y="500">20000</text><text x="404" y="500">Accounts Payable</text><text x="866" y="500" text-anchor="end" font-weight="700">351,540.00</text>
+      </g>
+
+      <!-- ── 6 · IPC issued ── -->
+      <rect x="20" y="540" width="240" height="76" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"/>
+      <text x="32" y="560" font-size="9.5" fill="currentColor" opacity=".7" font-family="ui-monospace, monospace">5 AUG 2026</text>
+      <text x="32" y="580" font-size="12" font-weight="700" fill="currentColor">Certificate 04 issued</text>
+      <text x="32" y="598" font-size="9.5" fill="currentColor" opacity=".7" font-family="ui-monospace, monospace">IPC-2026-004 · isEffective</text>
+      <line x1="264" y1="578" x2="292" y2="578" stroke="currentColor" stroke-width="1" marker-end="url(#j-ah)" stroke-dasharray="4 3" opacity=".55"/>
+      <rect x="296" y="540" width="584" height="76" rx="6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="6 4" opacity=".5"/>
+      <text x="588" y="574" text-anchor="middle" font-size="12" fill="currentColor" opacity=".75">No journal. A certificate is an agreement, not a demand.</text>
+      <text x="588" y="594" text-anchor="middle" font-size="11" fill="var(--slate)" font-family="ui-monospace, monospace">it generates the client invoice, and that posts</text>
+
+      <!-- ── 7 · client invoice ── -->
+      <rect x="20" y="636" width="240" height="94" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"/>
+      <text x="32" y="656" font-size="9.5" fill="currentColor" opacity=".7" font-family="ui-monospace, monospace">5 AUG 2026</text>
+      <text x="32" y="676" font-size="12" font-weight="700" fill="currentColor">Client invoice posted</text>
+      <text x="32" y="694" font-size="9.5" fill="currentColor" opacity=".7" font-family="ui-monospace, monospace">CLIENT_INVOICE.POSTED</text>
+      <text x="32" y="712" font-size="9.5" fill="var(--gap)" font-family="ui-monospace, monospace">net 960,575 + VAT 48,028.75</text>
+      <line x1="264" y1="683" x2="292" y2="683" stroke="currentColor" stroke-width="1.2" marker-end="url(#j-ah)"/>
+      <rect x="296" y="636" width="584" height="94" rx="6" fill="var(--ok-soft)" stroke="var(--ok)" stroke-width="2"/>
+      <g font-family="ui-monospace, monospace" font-size="11.5" fill="var(--ok)">
+        <text x="312" y="662" font-weight="700">Dr</text><text x="344" y="662">11000</text><text x="404" y="662">Accounts Receivable</text><text x="866" y="662" text-anchor="end" font-weight="700">1,008,603.75</text>
+        <text x="312" y="686" font-weight="700">Cr</text><text x="344" y="686">42600</text><text x="404" y="686">Project Income</text><text x="866" y="686" text-anchor="end" font-weight="700">960,575.00</text>
+        <text x="312" y="710" font-weight="700">Cr</text><text x="344" y="710">20200</text><text x="404" y="710">VAT Payable</text><text x="866" y="710" text-anchor="end" font-weight="700">48,028.75</text>
+      </g>
+
+      <!-- ── 8 · supplier payment ── -->
+      <rect x="20" y="750" width="240" height="46" rx="6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="5 4" opacity=".6"/>
+      <text x="32" y="768" font-size="9.5" fill="currentColor" opacity=".6" font-family="ui-monospace, monospace">24 AUG 2026</text>
+      <text x="32" y="786" font-size="12" font-weight="650" fill="currentColor" opacity=".7">Supplier payment due</text>
+      <rect x="296" y="750" width="584" height="46" rx="6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="6 4" opacity=".5"/>
+      <text x="588" y="778" text-anchor="middle" font-size="11.5" fill="currentColor" opacity=".7">Not yet. When it posts: Dr 20000 Accounts Payable / Cr 10100 Salaam Bank · 351,540.00</text>
+    </svg>
+    <figcaption>
+      <b>Four documents out of eight events touch the ledger, and two of them are just cash moving.</b>
+      Read the dashed cards first — they are the surprise. A purchase order commits half a million
+      dollars and writes nothing. A certificate agrees a million dollars of work and writes nothing.
+      Value only enters the books through a <em>client invoice</em> or a <em>supplier bill</em>,
+      which is why those are the only two seams between the operational half of Rukna and the
+      accounting half. Notice too that the client invoice is the first place VAT appears, and the
+      supplier bill posts its VAT-inclusive gross straight to cost because ACCO cannot reclaim it.
+    </figcaption>
+  </figure>
+
+  <div class="call key">
+    <span class="h">Open question · two things the catalog does not have</span>
+    <p>
+      <b>Retention has no account.</b> The client invoice is raised for the net amount, so the
+      $282,150 of retention held has never been recognised as revenue and appears nowhere on the
+      balance sheet. Under most construction accounting it would sit as a retention receivable.
+      Either the catalog is missing an event, or ACCO deliberately recognises revenue only on the
+      claimable amount — a real policy question, not a documentation gap.
+    </p>
+    <p>
+      <b>Goods received but not invoiced has no event.</b> Account <code>60200 Accrued Expense</code>
+      exists in the chart, but nothing writes to it from a goods receipt. Between 2 July and 25
+      July, $334,800 of concrete was on site, consumed, and invisible to the general ledger. It was
+      only ever in the commitment ledger.
+    </p>
+  </div>
+
+  <h3>Which date a posting takes</h3>
+
+  <figure>
+    <svg viewBox="0 0 900 320" role="img" aria-label="Two parallel timelines. The upper one shows when documents happened — a supplier bill on 25 July and a client invoice on 5 August. The lower shows Finance processing both on 2 September, after the July and August periods closed. Arrows show the posting landing in the document's own period, not September.">
+      <defs>
+        <marker id="d-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--ok)" />
+        </marker>
+        <marker id="d-ahx" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--gap)" />
+        </marker>
+      </defs>
+
+      <!-- period bands -->
+      <rect x="60" y="34" width="240" height="238" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="3 3" opacity=".3"/>
+      <rect x="300" y="34" width="240" height="238" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="3 3" opacity=".3"/>
+      <rect x="540" y="34" width="300" height="238" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="3 3" opacity=".3"/>
+      <text x="180" y="28" text-anchor="middle" font-size="11" font-weight="700" fill="currentColor" font-family="ui-monospace, monospace">JULY 2026</text>
+      <text x="420" y="28" text-anchor="middle" font-size="11" font-weight="700" fill="currentColor" font-family="ui-monospace, monospace">AUGUST 2026</text>
+      <text x="690" y="28" text-anchor="middle" font-size="11" font-weight="700" fill="currentColor" font-family="ui-monospace, monospace">SEPTEMBER 2026</text>
+
+      <!-- upper timeline -->
+      <text x="60" y="62" font-size="12" font-weight="700" fill="currentColor">When it happened — the document's own date</text>
+      <line x1="60" y1="98" x2="840" y2="98" stroke="currentColor" stroke-width="1.4"/>
+      <circle cx="220" cy="98" r="5" fill="var(--ok)"/>
+      <text x="220" y="88" text-anchor="middle" font-size="10.5" fill="var(--ok)" font-family="ui-monospace, monospace">bill · 25 Jul</text>
+      <circle cx="336" cy="98" r="5" fill="var(--ok)"/>
+      <text x="336" y="88" text-anchor="middle" font-size="10.5" fill="var(--ok)" font-family="ui-monospace, monospace">invoice · 5 Aug</text>
+
+      <!-- lower timeline -->
+      <text x="60" y="212" font-size="12" font-weight="700" fill="currentColor">When Finance got round to it — the processing date</text>
+      <line x1="60" y1="248" x2="840" y2="248" stroke="currentColor" stroke-width="1.4"/>
+      <circle cx="620" cy="248" r="5" fill="var(--gap)"/>
+      <text x="620" y="268" text-anchor="middle" font-size="10.5" fill="var(--gap)" font-family="ui-monospace, monospace">both posted · 2 Sep</text>
+
+      <!-- correct routing -->
+      <path d="M620 240 L620 150 L228 150 L222 106" stroke="var(--ok)" stroke-width="1.6" fill="none" marker-end="url(#d-ah)"/>
+      <path d="M620 240 L620 172 L340 172 L338 106" stroke="var(--ok)" stroke-width="1.6" fill="none" marker-end="url(#d-ah)"/>
+      <text x="430" y="144" text-anchor="middle" font-size="11" fill="var(--ok)" font-weight="650">accountingDate comes from the document — the cost lands in July, the revenue in August</text>
+
+      <!-- wrong routing -->
+      <line x1="660" y1="240" x2="700" y2="112" stroke="var(--gap)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#d-ahx)"/>
+      <text x="712" y="140" font-size="11" fill="var(--gap)" font-weight="650">if it took today's date instead:</text>
+      <text x="712" y="156" font-size="10.5" fill="var(--gap)">July's costs vanish from July,</text>
+      <text x="712" y="170" font-size="10.5" fill="var(--gap)">September's margin collapses,</text>
+      <text x="712" y="184" font-size="10.5" fill="var(--gap)">both months are reported wrong.</text>
+
+      <!-- closed period -->
+      <line x1="300" y1="34" x2="300" y2="272" stroke="var(--gap)" stroke-width="1.8"/>
+      <text x="294" y="296" text-anchor="end" font-size="10.5" fill="var(--gap)" font-weight="650" font-family="ui-monospace, monospace">31 Jul — period closes</text>
+      <text x="308" y="296" font-size="10.5" fill="var(--gap)">posting into a CLOSED period is rejected: PERIOD_CLOSED</text>
+    </svg>
+    <figcaption>
+      <b>A posting takes the date of the thing that happened, never the date it was typed in.</b>
+      This reads as pedantry until you see it drawn: the same two documents, processed in the same
+      batch, must land in two different months, because that is where the work and the cost actually
+      occurred. It follows that a reversal must carry the <em>original</em> document's date too —
+      reversing a July bill into September would corrupt both months. And it follows that closing a
+      period has teeth: once July is closed, the July posting is refused outright rather than
+      quietly misfiled into an open month.
+    </figcaption>
+  </figure>
+
+  <div class="call good">
+    <span class="h">Correct by reversal, never by edit</span>
+    <p>
+      A posted journal is immutable. A mistake is fixed by posting a <code>REVERSAL</code> that
+      negates every line — carrying the original's accounting date — and then a fresh correct entry.
+      The audit trail therefore shows the error, the undoing, and the fix, in that order. Nothing is
+      ever quietly rewritten, which is the property that makes the ledger worth trusting at all.
+    </p>
+  </div>
+</section>
+
+<hr class="r" />
+
+<!-- ═══ 10 ═══════════════════════════════════════════════════ -->
+<section id="whole">
+  <div class="sec-h"><span class="n">10</span><h2>The whole system, end to end</h2></div>
+  <p class="lede">
+    Everything on this sheet, in one picture. Two chains run down the page — value coming in on the
+    left, value going out on the right — and they meet only at the bottom, in the ledger. Underneath
+    all of it sits the platform layer, which every single arrow passes through whether the diagram
+    draws it or not.
+  </p>
+
+  <figure>
+    <div class="legend" role="note" style="margin-bottom:16px">
+      <span class="lg ok"><i></i>writes to the general ledger</span>
+      <span class="lg gap"><i></i>commitment ledger — a separate book</span>
+      <span class="lg sl"><i></i>operational record — no accounting effect</span>
+      <span class="lg none"><i></i>data present, report not built</span>
+    </div>
+    <svg viewBox="0 0 900 880" role="img" aria-label="The whole system. A platform layer band across the top carries tenancy, authentication, project access, the approval engine and audit. Below it a revenue chain runs from client through project, BOQ, contract, application and certificate to the client invoice and receipt; a spend chain runs from material request through purchase order, goods receipt and three-way match to the supplier bill and payment. Both converge on the general ledger, which feeds the company reports. A commitment ledger runs alongside the spend chain. Project profitability is marked as data present but report not built.">
+      <defs>
+        <marker id="s-ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="currentColor" />
+        </marker>
+        <marker id="s-ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--gap)" />
+        </marker>
+        <marker id="s-aho" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--ok)" />
+        </marker>
+        <marker id="s-ahs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--slate)" />
+        </marker>
+      </defs>
+
+      <!-- ══ platform band ══ -->
+      <rect x="20" y="16" width="860" height="74" rx="9" fill="var(--slate-soft)" stroke="var(--slate)" stroke-width="1.8"/>
+      <text x="34" y="38" font-size="11" font-weight="700" fill="var(--slate)" font-family="ui-monospace, monospace" letter-spacing="1">LAYER 0 · PLATFORM — every arrow below passes through here</text>
+      <g font-size="10.5" fill="var(--slate)" font-family="ui-monospace, monospace">
+        <rect x="36"  y="50" width="150" height="26" rx="5" fill="var(--card)" stroke="var(--slate-line)"/>
+        <text x="111" y="67" text-anchor="middle">tenancy · one DB each</text>
+        <rect x="198" y="50" width="120" height="26" rx="5" fill="var(--card)" stroke="var(--slate-line)"/>
+        <text x="258" y="67" text-anchor="middle">auth · identity</text>
+        <rect x="330" y="50" width="150" height="26" rx="5" fill="var(--card)" stroke="var(--slate-line)"/>
+        <text x="405" y="67" text-anchor="middle">project access scope</text>
+        <rect x="492" y="50" width="180" height="26" rx="5" fill="var(--card)" stroke="var(--slate-line)"/>
+        <text x="582" y="67" text-anchor="middle">approval engine · DOA</text>
+        <rect x="684" y="50" width="180" height="26" rx="5" fill="var(--card)" stroke="var(--slate-line)"/>
+        <text x="774" y="67" text-anchor="middle">audit log · outbox</text>
+      </g>
+
+      <!-- column headings -->
+      <text x="150" y="118" text-anchor="middle" font-size="12" font-weight="700" fill="var(--ok)" letter-spacing=".5">REVENUE — what the client owes us</text>
+      <text x="590" y="118" text-anchor="middle" font-size="12" font-weight="700" fill="var(--gap)" letter-spacing=".5">SPEND — what we owe suppliers</text>
+
+      <!-- ══ revenue chain ══ -->
+      <g font-size="11.5" fill="currentColor">
+        <rect x="30" y="132" width="240" height="34" rx="6" fill="none" stroke="var(--slate)" stroke-width="1.3"/>
+        <text x="150" y="154" text-anchor="middle">Client · Hodan Property</text>
+
+        <rect x="30" y="184" width="240" height="34" rx="6" fill="none" stroke="var(--slate)" stroke-width="1.3"/>
+        <text x="150" y="206" text-anchor="middle">Project · Hodan Heights</text>
+
+        <rect x="30" y="236" width="240" height="34" rx="6" fill="none" stroke="var(--slate)" stroke-width="1.3"/>
+        <text x="150" y="258" text-anchor="middle">BOQ v2 · BASELINED</text>
+
+        <rect x="30" y="288" width="240" height="34" rx="6" fill="none" stroke="var(--slate)" stroke-width="1.3"/>
+        <text x="150" y="310" text-anchor="middle">Contract · 14,850,000</text>
+
+        <rect x="30" y="340" width="240" height="34" rx="6" fill="none" stroke="var(--slate)" stroke-width="1.3"/>
+        <text x="150" y="362" text-anchor="middle">IPA · the claim</text>
+
+        <rect x="30" y="392" width="240" height="34" rx="6" fill="none" stroke="var(--slate)" stroke-width="1.3"/>
+        <text x="150" y="414" text-anchor="middle">IPC · the certificate</text>
+      </g>
+      <g stroke="var(--slate)" stroke-width="1.3" marker-end="url(#s-ahs)" fill="none">
+        <line x1="150" y1="166" x2="150" y2="180"/>
+        <line x1="150" y1="218" x2="150" y2="232"/>
+        <line x1="150" y1="270" x2="150" y2="284"/>
+        <line x1="150" y1="322" x2="150" y2="336"/>
+        <line x1="150" y1="374" x2="150" y2="388"/>
+      </g>
+
+      <rect x="30" y="452" width="240" height="46" rx="7" fill="var(--ok-soft)" stroke="var(--ok)" stroke-width="2"/>
+      <text x="150" y="472" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--ok)">Client Invoice</text>
+      <text x="150" y="488" text-anchor="middle" font-size="9.5" fill="var(--ok)" font-family="ui-monospace, monospace">net + 5% VAT · sourceIpcId unique</text>
+      <line x1="150" y1="426" x2="150" y2="448" stroke="var(--ok)" stroke-width="1.8" marker-end="url(#s-aho)"/>
+
+      <rect x="30" y="518" width="240" height="46" rx="7" fill="var(--ok-soft)" stroke="var(--ok)" stroke-width="1.6"/>
+      <text x="150" y="538" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--ok)">Payment Receipt</text>
+      <text x="150" y="554" text-anchor="middle" font-size="9.5" fill="var(--ok)" font-family="ui-monospace, monospace">cash in · allocated to invoices</text>
+      <line x1="150" y1="498" x2="150" y2="514" stroke="var(--ok)" stroke-width="1.6" marker-end="url(#s-aho)"/>
+
+      <!-- ══ spend chain ══ -->
+      <g font-size="11.5" fill="currentColor">
+        <rect x="470" y="132" width="240" height="34" rx="6" fill="none" stroke="var(--slate)" stroke-width="1.3"/>
+        <text x="590" y="154" text-anchor="middle">Material Request</text>
+
+        <rect x="470" y="184" width="240" height="34" rx="6" fill="none" stroke="var(--slate)" stroke-width="1.3"/>
+        <text x="590" y="206" text-anchor="middle">Purchase Order · rev 2</text>
+
+        <rect x="470" y="236" width="240" height="34" rx="6" fill="none" stroke="var(--slate)" stroke-width="1.3"/>
+        <text x="590" y="258" text-anchor="middle">Goods Receipt</text>
+
+        <rect x="470" y="288" width="240" height="34" rx="6" fill="none" stroke="var(--slate)" stroke-width="1.3"/>
+        <text x="590" y="310" text-anchor="middle">Three-way match</text>
+      </g>
+      <g stroke="var(--slate)" stroke-width="1.3" marker-end="url(#s-ahs)" fill="none">
+        <line x1="590" y1="166" x2="590" y2="180"/>
+        <line x1="590" y1="218" x2="590" y2="232"/>
+        <line x1="590" y1="270" x2="590" y2="284"/>
+        <line x1="590" y1="322" x2="590" y2="448"/>
+      </g>
+      <text x="600" y="392" font-size="10" fill="var(--gap)" font-family="ui-monospace, monospace">blocks posting</text>
+      <text x="600" y="406" font-size="10" fill="var(--gap)" font-family="ui-monospace, monospace">until matched</text>
+
+      <rect x="470" y="452" width="240" height="46" rx="7" fill="var(--ok-soft)" stroke="var(--ok)" stroke-width="2"/>
+      <text x="590" y="472" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--ok)">Supplier Bill</text>
+      <text x="590" y="488" text-anchor="middle" font-size="9.5" fill="var(--ok)" font-family="ui-monospace, monospace">gross to cost · VAT not recoverable</text>
+
+      <rect x="470" y="518" width="240" height="46" rx="7" fill="var(--ok-soft)" stroke="var(--ok)" stroke-width="1.6"/>
+      <text x="590" y="538" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--ok)">Supplier Payment</text>
+      <text x="590" y="554" text-anchor="middle" font-size="9.5" fill="var(--ok)" font-family="ui-monospace, monospace">cash out</text>
+      <line x1="590" y1="498" x2="590" y2="514" stroke="var(--ok)" stroke-width="1.6" marker-end="url(#s-aho)"/>
+
+      <!-- ══ commitment ledger ══ -->
+      <rect x="742" y="180" width="138" height="184" rx="8" fill="var(--gap-soft)" stroke="var(--gap-line)" stroke-width="1.5"/>
+      <text x="811" y="204" text-anchor="middle" font-size="11" font-weight="700" fill="var(--gap)">Commitment</text>
+      <text x="811" y="219" text-anchor="middle" font-size="11" font-weight="700" fill="var(--gap)">ledger</text>
+      <g font-size="10" fill="var(--gap)" font-family="ui-monospace, monospace">
+        <text x="811" y="248" text-anchor="middle">COMMITTED</text>
+        <text x="811" y="262" text-anchor="middle" opacity=".8">501,750</text>
+        <text x="811" y="288" text-anchor="middle">ACCRUED</text>
+        <text x="811" y="302" text-anchor="middle" opacity=".8">334,800</text>
+        <text x="811" y="328" text-anchor="middle">ACTUAL</text>
+        <text x="811" y="342" text-anchor="middle" opacity=".8">334,800</text>
+      </g>
+      <text x="811" y="380" text-anchor="middle" font-size="9.5" fill="var(--gap)" opacity=".85">not the GL — a side book</text>
+      <line x1="714" y1="201" x2="738" y2="240" stroke="var(--gap)" stroke-width="1.3" marker-end="url(#s-ahg)"/>
+      <line x1="714" y1="253" x2="738" y2="282" stroke="var(--gap)" stroke-width="1.3" marker-end="url(#s-ahg)"/>
+      <path d="M714 475 L728 475 L728 336 L738 336" stroke="var(--gap)" stroke-width="1.3" fill="none" marker-end="url(#s-ahg)"/>
+
+      <!-- ══ the ledger ══ -->
+      <path d="M150 564 L150 604 L300 604 L300 626" stroke="var(--ok)" stroke-width="2" fill="none" marker-end="url(#s-aho)"/>
+      <path d="M590 564 L590 604 L440 604 L440 626" stroke="var(--ok)" stroke-width="2" fill="none" marker-end="url(#s-aho)"/>
+      <text x="222" y="598" font-size="10.5" fill="var(--ok)" font-family="ui-monospace, monospace">post</text>
+      <text x="494" y="598" font-size="10.5" fill="var(--ok)" font-family="ui-monospace, monospace">post</text>
+
+      <rect x="250" y="630" width="240" height="72" rx="9" fill="var(--slate-soft)" stroke="var(--slate)" stroke-width="2.4"/>
+      <text x="370" y="656" text-anchor="middle" font-size="14.5" font-weight="750" fill="var(--slate)">General Ledger</text>
+      <text x="370" y="674" text-anchor="middle" font-size="10" fill="var(--slate)" font-family="ui-monospace, monospace">one posting service · every journal balances</text>
+      <text x="370" y="690" text-anchor="middle" font-size="10" fill="var(--slate)" font-family="ui-monospace, monospace">JournalLine carries projectId + boqNodeId</text>
+
+      <!-- reports -->
+      <rect x="30" y="756" width="300" height="70" rx="8" fill="none" stroke="var(--slate)" stroke-width="1.4"/>
+      <text x="180" y="780" text-anchor="middle" font-size="12" font-weight="700" fill="var(--slate)">Trial balance · P&amp;L · Balance sheet</text>
+      <text x="180" y="798" text-anchor="middle" font-size="10.5" fill="var(--slate)">company-wide — built and working</text>
+      <text x="180" y="815" text-anchor="middle" font-size="10" fill="var(--slate)" opacity=".8">"what is true, in money, for ASAS Group"</text>
+      <path d="M310 702 L310 730 L180 730 L180 752" stroke="var(--slate)" stroke-width="1.6" fill="none" marker-end="url(#s-ahs)"/>
+
+      <!-- project P&L gap -->
+      <rect x="400" y="756" width="330" height="70" rx="8" fill="var(--gap-soft)" stroke="var(--gap)" stroke-width="2" stroke-dasharray="7 5"/>
+      <text x="565" y="780" text-anchor="middle" font-size="12" font-weight="700" fill="var(--gap)">Did Hodan Heights make money?</text>
+      <text x="565" y="798" text-anchor="middle" font-size="10.5" fill="var(--gap)">every journal line already carries the project</text>
+      <text x="565" y="815" text-anchor="middle" font-size="10" fill="var(--gap)" opacity=".85">the data is here · the report is not</text>
+      <path d="M430 702 L430 730 L565 730 L565 752" stroke="var(--gap)" stroke-width="1.6" fill="none" marker-end="url(#s-ahg)"/>
+
+      <!-- annotation on the two doors -->
+      <text x="370" y="472" text-anchor="middle" font-size="10.5" fill="var(--ok)" font-weight="700">the only two doors</text>
+      <text x="370" y="486" text-anchor="middle" font-size="10.5" fill="var(--ok)" font-weight="700">into the ledger</text>
+      <line x1="316" y1="475" x2="276" y2="475" stroke="var(--ok)" stroke-width="1.3" marker-end="url(#s-aho)"/>
+      <line x1="424" y1="475" x2="464" y2="475" stroke="var(--ok)" stroke-width="1.3" marker-end="url(#s-aho)"/>
+    </svg>
+    <figcaption>
+      <b>Two chains, one ledger, and a platform layer that touches every step of both.</b> Read the
+      slate boxes as operational bookkeeping — real, auditable, approval-governed, and completely
+      invisible to accounting. Read the green boxes as the border crossing: exactly two documents
+      carry value across it, and two more move cash. The amber column on the right is the second
+      book that exists because the general ledger cannot answer "what have we already promised to
+      spend". And the dashed amber box at the bottom is the question a construction company actually
+      asks every week — the arrow into it is solid, because both chains already tag their journal
+      lines with the project. The data is there. The report is not.
+    </figcaption>
+  </figure>
+
+  <div class="call note">
+    <span class="h">Reading this diagram against the chapters</span>
+    <p>
+      Each slate box is roughly one chapter of the explainer set, and the platform band across the
+      top is the four reference chapters. If a chapter cannot be placed on this diagram, either the
+      diagram is incomplete or the chapter has drifted out of scope — that is what it is for.
+    </p>
+  </div>
+</section>
+
+<hr class="r" />
+
+<!-- ═══ 11 ═══════════════════════════════════════════════════ -->
+<section id="rules">
+  <div class="sec-h"><span class="n">11</span><h2>How to use this sheet</h2></div>
+
+  <div class="call good">
+    <span class="h">The contract with every chapter</span>
+    <p>
+      Read this sheet before drawing anything, and take every number from it. If a chapter needs a
+      figure that is not here — a fifth certificate, a variation order, a second supplier — it is
+      added <strong>here first</strong>, checked for consistency against everything above, and only
+      then used. A number invented locally inside one chapter is how the set stops compounding.
+    </p>
+  </div>
+
+  <div class="decode">
+    <div class="dec">
+      <div class="term"><b>All figures are USD</b><span>base currency</span></div>
+      <div class="body">
+        Confirmed from the code — the accounting module's examples and opening-balance defaults are
+        all <code>USD</code>. No multi-currency case is drawn on this sheet; if a chapter needs one,
+        add an explicit foreign-currency supplier here rather than improvising a rate.
+      </div>
+    </div>
+    <div class="dec">
+      <div class="term"><b>Everything is invented</b><span>no real ACCO data</span></div>
+      <div class="body">
+        No real client, project, person, or figure from ASAS CONSTRUCTION appears here. Names were
+        chosen to be plausible for the market ACCO works in and nothing more.
+      </div>
+    </div>
+    <div class="dec">
+      <div class="term"><b>Two numbers are inherited</b><span>continuity with the System Map</span></div>
+      <div class="body">
+        The already-published Rukna System Map uses <em>2,400 m³ of concrete at 185/m³</em> and the
+        claim-versus-certify example <em>1,800 claimed, 1,750 agreed</em>. Both are preserved
+        exactly, as BOQ line 03.01.001 and its certificate 04 entry, so a reader arriving from that
+        page recognises the numbers.
+        <span class="dev"><b>Consequence</b>Do not renumber 03.01.001. Anything else on this sheet
+        can be revised; that line and that variance are load-bearing across two documents.</span>
+      </div>
+    </div>
+    <div class="dec">
+      <div class="term"><b>The arithmetic is checked</b><span>and must stay checked</span></div>
+      <div class="body">
+        Section totals sum to $14,850,000. The 03.01 leaves sum to $2,860,000. The waterfall lands
+        on $960,575. Certified minus deductions equals invoiced. If a chapter changes a figure and
+        the sums stop closing, the chapter is wrong, not the sheet.
+      </div>
+    </div>
+  </div>
+
+  <div class="call key">
+    <span class="h">Open questions carried by this sheet</span>
+    <p>
+      <b>1 — Retention is not in the books.</b> The client invoice posts the net amount, so $282,150
+      of retention held is neither revenue nor an asset anywhere in the ledger. Missing event, or
+      deliberate policy? See section 09.
+    </p>
+    <p>
+      <b>2 — Goods received but not invoiced writes nothing.</b> Account <code>60200 Accrued
+      Expense</code> exists and nothing reaches it from a goods receipt. See section 09.
+    </p>
+    <p>
+      <b>3 — <code>certifiedQuantity</code> semantics.</b> Read as a period figure; see the callout
+      in section 05.
+    </p>
+    <p>
+      <b>4 — <code>retentionCap</code> basis.</b> Read as a rate applied to contract value, giving a
+      $519,750 ceiling. If the code instead caps against cumulative certified, the cap never binds
+      and the second chart in section 04 is wrong.
+    </p>
+    <p>
+      <b>5 — Does the commitment ledger record net or gross?</b> This sheet assumes the commitment
+      ledger tracks the net purchase-order value ($334,800) while the general ledger takes the
+      VAT-inclusive gross ($351,540), because ACCO cannot reclaim input VAT. If both are net, the
+      two books disagree by the VAT on every package.
+    </p>
+  </div>
+
+  <p class="foot">
+    Running example for the Rukna explainer set · all figures as at 14 August 2026 · invented in
+    full. Chapter 0 is the <a href="https://claude.ai/code/artifact/1b0c41c7-fb51-4c27-bf04-6c4ab08e1757">Rukna System Map</a>.
+  </p>
+</section>
+
+</div>
