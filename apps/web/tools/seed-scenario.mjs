@@ -199,6 +199,10 @@ async function main() {
     name: 'Hodan District Office Tower',
     nameAr: 'برج مكاتب حي هودان',
     description: 'Eight-storey commercial tower, Mogadishu.',
+    // A CLIENT_CONTRACT project (the default) requires the client aggregate id, not just the
+    // legacy display name (ADR-005). Without it the API rejects the create with 400
+    // "A client is required for a client contract project". The seed predates that rule.
+    clientId: client.id,
     clientName: client.name,
     contractValue: 4_500_000,
     currency: 'USD',
