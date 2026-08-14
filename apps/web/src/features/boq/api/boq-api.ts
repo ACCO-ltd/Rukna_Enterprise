@@ -1,44 +1,94 @@
+import type {
+  BoqBaselineReadinessResponse,
+  BoqCompareResponse,
+  BoqResponse,
+  BoqTreeNodeResponse,
+  BoqWorkspaceResponse,
+} from '@erp/types';
+
 import { apiClient } from '@/lib/api-client';
 
-import type { Boq, BoqTreeNode } from '../types';
+/**
+ * BOQ API client.
+ *
+ * Every shape here comes from `@erp/types` — the feature used to keep its own copies in
+ * `features/boq/types.ts` and `lib/api-types.ts`, which is how a `computedTotal` that the
+ * server sends as a string ended up typed as a number (B7/B12).
+ *
+ * **Money and quantities are decimal strings.** Do not parse them to `number` for anything
+ * but display; see `lib/money.ts` for arithmetic.
+ */
+
+/** Creates the BOQ and its first DRAFT version. Idempotent — a double click is harmless. */
+export function initializeBoq(projectId: string): Promise<BoqResponse> {
+  return apiClient<BoqResponse>(`/projects/${projectId}/boq`, { method: 'POST' });
+}
 
 /**
- * Creates the BOQ and its first DRAFT version. Idempotent — returns the existing BOQ if
- * one is already initialized, so a double click is harmless.
+ * The workspace read model: versions, totals, contract baseline, readiness, capabilities.
+ *
+ * One request instead of the four the screen used to stitch together. Rate and amount
+ * fields come back null when the caller lacks commercial visibility — that decision is the
+ * server's, and the UI renders the restriction rather than deciding it.
  */
-export function initializeBoq(projectId: string): Promise<Boq> {
-  return apiClient<Boq>(`/projects/${projectId}/boq`, { method: 'POST' });
+export function getBoqWorkspace(projectId: string): Promise<BoqWorkspaceResponse> {
+  return apiClient<BoqWorkspaceResponse>(`/projects/${projectId}/boq/workspace`);
 }
 
-/** 404 when the project has no BOQ yet — that is the "not initialized" state, not an error. */
-export function getBoq(projectId: string): Promise<Boq> {
-  return apiClient<Boq>(`/projects/${projectId}/boq`);
+/** Full recursive tree for one version, with server-computed section totals. */
+export function getBoqTree(
+  projectId: string,
+  versionId: string,
+): Promise<BoqTreeNodeResponse[]> {
+  return apiClient<BoqTreeNodeResponse[]>(
+    `/projects/${projectId}/boq/versions/${versionId}/tree`,
+  );
 }
 
-/** Full recursive tree for one version, with server-computed totals. */
-export function getBoqTree(projectId: string, versionId: string): Promise<BoqTreeNode[]> {
-  return apiClient<BoqTreeNode[]>(`/projects/${projectId}/boq/versions/${versionId}/tree`);
+/** Baseline readiness — the same evaluation the baseline command enforces. */
+export function getBoqReadiness(
+  projectId: string,
+  versionId: string,
+): Promise<BoqBaselineReadinessResponse> {
+  return apiClient<BoqBaselineReadinessResponse>(
+    `/projects/${projectId}/boq/versions/${versionId}/readiness`,
+  );
+}
+
+/** Diffs two versions. Paired on `originNodeId`, so a renumbered line reads as a change. */
+export function compareBoqVersions(
+  projectId: string,
+  leftId: string,
+  rightId: string,
+): Promise<BoqCompareResponse> {
+  return apiClient<BoqCompareResponse>(
+    `/projects/${projectId}/boq/versions/${leftId}/compare/${rightId}`,
+  );
 }
 
 /**
  * Body for `POST .../nodes`, mirroring CreateNodeDto.
  *
- * `sortOrder` is required and the server never allocates it — the client picks a position
- * among the destination siblings. Optional fields are omitted rather than sent empty, for
- * the same reason as the project payloads: the pipeline runs `forbidNonWhitelisted` and
- * `currency` is `@Length(3, 3)`, so `""` is an invalid code rather than an absent one.
+ * `quantity` and `unitRate` are decimal **strings** (CONST-BOQ-014). `sortOrder` is optional
+ * — omit it to append; sibling positions are dense, unique and server-owned, so the client
+ * no longer allocates them. `currency` is omitted entirely: a BOQ has one currency and the
+ * server stamps it (CONST-BOQ-013).
+ *
+ * Optional fields are omitted rather than sent empty — the pipeline runs
+ * `forbidNonWhitelisted` and `""` is an invalid value, not an absent one.
  */
 export interface CreateNodePayload {
   parentId?: string;
-  sortOrder: number;
+  sortOrder?: number;
   code: string;
   description: string;
   descriptionAr?: string;
   isLeaf?: boolean;
   unit?: string;
-  quantity?: number;
-  unitRate?: number;
-  currency?: string;
+  quantity?: string;
+  unitRate?: string;
+  measurementMethod?: 'QUANTITY' | 'PERCENTAGE' | 'MILESTONE';
+  pricingBasis?: 'UNIT_RATE' | 'LUMP_SUM';
 }
 
 /** Body for `PATCH .../nodes/:id`. `parentId` and `sortOrder` are not accepted — use move. */
@@ -48,11 +98,11 @@ export function addBoqNode(
   projectId: string,
   versionId: string,
   payload: CreateNodePayload,
-): Promise<BoqTreeNode> {
-  return apiClient<BoqTreeNode>(`/projects/${projectId}/boq/versions/${versionId}/nodes`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
+): Promise<BoqTreeNodeResponse> {
+  return apiClient<BoqTreeNodeResponse>(
+    `/projects/${projectId}/boq/versions/${versionId}/nodes`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
 }
 
 export function updateBoqNode(
@@ -60,14 +110,20 @@ export function updateBoqNode(
   versionId: string,
   nodeId: string,
   payload: UpdateNodePayload,
-): Promise<BoqTreeNode> {
-  return apiClient<BoqTreeNode>(
+): Promise<BoqTreeNodeResponse> {
+  return apiClient<BoqTreeNodeResponse>(
     `/projects/${projectId}/boq/versions/${versionId}/nodes/${nodeId}`,
     { method: 'PATCH', body: JSON.stringify(payload) },
   );
 }
 
-/** Hard delete. The server refuses a node that still has children. Returns an empty body. */
+/**
+ * Hard delete, draft only.
+ *
+ * Refused with `400` when the node has children, and with `409` when a claim, request,
+ * bill, journal or commitment references it (CONST-BOQ-003) — that response carries
+ * `details.references` naming what is in the way.
+ */
 export function deleteBoqNode(
   projectId: string,
   versionId: string,
@@ -79,18 +135,19 @@ export function deleteBoqNode(
 }
 
 /**
- * Repositions a node and its descendants. Returns an empty body (B6).
+ * Repositions a node and its whole subtree, and returns the reindexed tree.
  *
- * The server writes the given `sortOrder` onto this node alone and does NOT reindex its
- * siblings (B13), so callers are responsible for keeping sibling order values distinct.
+ * One call, not two. The server used to write the given `sortOrder` onto the node alone
+ * without reindexing its siblings (B13), so the client had to plan a second displacing
+ * write; positions are now dense and server-owned.
  */
 export function moveBoqNode(
   projectId: string,
   versionId: string,
   nodeId: string,
   payload: { newParentId?: string; newSortOrder: number },
-): Promise<void> {
-  return apiClient<void>(
+): Promise<BoqTreeNodeResponse[]> {
+  return apiClient<BoqTreeNodeResponse[]>(
     `/projects/${projectId}/boq/versions/${versionId}/nodes/${nodeId}/move`,
     { method: 'POST', body: JSON.stringify(payload) },
   );
@@ -99,19 +156,22 @@ export function moveBoqNode(
 /**
  * Locks the open draft in as the approved BOQ.
  *
- * The previously approved version becomes SUPERSEDED, and on the first baseline the BOQ's
- * `originalBaselineVersionId` is set and is immutable thereafter — that pointer is the
- * original contract BOQ every later variation is measured against.
+ * Refused with `400` and `details.blockers` when the version is not Baseline Ready, and
+ * with `409` and `details.approvalInstanceId` when a workflow binding gates it — approve
+ * the instance, then call this again (ADR-015 re-drive).
  */
-export function baselineVersion(projectId: string, versionId: string): Promise<Boq> {
-  return apiClient<Boq>(`/projects/${projectId}/boq/versions/${versionId}/baseline`, {
+export function baselineVersion(projectId: string, versionId: string): Promise<BoqResponse> {
+  return apiClient<BoqResponse>(`/projects/${projectId}/boq/versions/${versionId}/baseline`, {
     method: 'POST',
   });
 }
 
 /** Discards the open draft. The approved version is untouched. */
-export function cancelDraftVersion(projectId: string, versionId: string): Promise<Boq> {
-  return apiClient<Boq>(`/projects/${projectId}/boq/versions/${versionId}/cancel`, {
+export function cancelDraftVersion(
+  projectId: string,
+  versionId: string,
+): Promise<BoqResponse> {
+  return apiClient<BoqResponse>(`/projects/${projectId}/boq/versions/${versionId}/cancel`, {
     method: 'POST',
   });
 }
@@ -120,10 +180,9 @@ export function cancelDraftVersion(projectId: string, versionId: string): Promis
  * Starts a revision by copying every node from the approved version into a new draft.
  * Requires an approved version (400 otherwise) and no draft already open (409).
  */
-export function createDraftVersion(projectId: string, notes: string): Promise<Boq> {
-  return apiClient<Boq>(`/projects/${projectId}/boq/draft`, {
+export function createDraftVersion(projectId: string, notes: string): Promise<BoqResponse> {
+  return apiClient<BoqResponse>(`/projects/${projectId}/boq/draft`, {
     method: 'POST',
-    // `notes` is optional server-side; omit rather than send an empty string.
     body: JSON.stringify(notes ? { notes } : {}),
   });
 }

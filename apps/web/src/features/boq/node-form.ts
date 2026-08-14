@@ -1,5 +1,8 @@
+import type { BoqTreeNodeResponse } from '@erp/types';
+
+import { fromMinorUnits, parseMinorUnits } from '@/lib/money';
+
 import type { CreateNodePayload, UpdateNodePayload } from './api/boq-api';
-import type { BoqTreeNode } from './types';
 
 /** Mirrors CreateNodeDto's constraints so the user is not sent to the server to be refused. */
 export const NODE_LIMITS = {
@@ -13,6 +16,9 @@ export const NODE_LIMITS = {
 /** A section groups other rows; an item carries the quantity and rate. */
 export type NodeKind = 'section' | 'item';
 
+export type MeasurementMethodValue = 'QUANTITY' | 'PERCENTAGE' | 'MILESTONE';
+export type PricingBasisValue = 'UNIT_RATE' | 'LUMP_SUM';
+
 export interface NodeFormValues {
   code: string;
   description: string;
@@ -20,6 +26,8 @@ export interface NodeFormValues {
   unit: string;
   quantity: string;
   unitRate: string;
+  measurementMethod: MeasurementMethodValue;
+  pricingBasis: PricingBasisValue;
 }
 
 export const EMPTY_NODE_FORM: NodeFormValues = {
@@ -29,9 +37,11 @@ export const EMPTY_NODE_FORM: NodeFormValues = {
   unit: '',
   quantity: '',
   unitRate: '',
+  measurementMethod: 'QUANTITY',
+  pricingBasis: 'UNIT_RATE',
 };
 
-export function toNodeFormValues(node: BoqTreeNode): NodeFormValues {
+export function toNodeFormValues(node: BoqTreeNodeResponse): NodeFormValues {
   return {
     code: node.code,
     description: node.description,
@@ -39,38 +49,31 @@ export function toNodeFormValues(node: BoqTreeNode): NodeFormValues {
     unit: node.unit ?? '',
     quantity: node.quantity ?? '',
     unitRate: node.unitRate ?? '',
+    measurementMethod: node.measurementMethod,
+    pricingBasis: node.pricingBasis,
   };
 }
 
 /**
  * Builds the create payload.
  *
- * CURRENCY IS NOT A FORM FIELD. It is taken from the project's contract currency and
- * written onto every priced node, rather than being chosen per node.
+ * **Currency is not a form field and is no longer sent.** A BOQ has one currency, fixed at
+ * initialization from the project, and the server stamps it onto every priced node
+ * (CONST-BOQ-013). This module used to write the project's currency onto each node itself,
+ * as a frontend guard against the API's per-node currency permitting a BOQ whose sections
+ * were denominated differently — that guard is now a backend invariant, so the client
+ * stopped asserting it.
  *
- * The API models `currency` as an optional per-node field, which permits a BOQ whose
- * sections are denominated differently and whose parent totals are therefore meaningless —
- * see subtree-currency.ts and D1. Offering a per-node currency picker would be building the
- * feature that creates that problem while the tree deliberately hides its consequences.
- * Locking to the project keeps the data internally consistent by construction.
- *
- * This is a documented assumption, not a discovered rule. If ACCO confirms a BOQ may hold
- * several currencies, this is where the picker goes and nothing else needs to change.
- *
- * A project with no contract currency yields unlabelled amounts, which is honest: the
- * figure is real, the denomination simply is not recorded yet.
+ * **Quantity and rate are sent as decimal strings**, not numbers (CONST-BOQ-014). The user
+ * typed `"680.500"`; converting that to a float and back is a lossy round trip for no gain.
+ * `sortOrder` is omitted so the server appends — sibling positions are dense and
+ * server-owned (CONST-BOQ-017).
  */
 export function toCreateNodePayload(
   values: NodeFormValues,
-  options: {
-    kind: NodeKind;
-    sortOrder: number;
-    parentId?: string | undefined;
-    projectCurrency: string | null;
-  },
+  options: { kind: NodeKind; parentId?: string | undefined },
 ): CreateNodePayload {
   const payload: CreateNodePayload = {
-    sortOrder: options.sortOrder,
     code: values.code.trim(),
     description: values.description.trim(),
     isLeaf: options.kind === 'item',
@@ -81,22 +84,20 @@ export function toCreateNodePayload(
   const descriptionAr = values.descriptionAr.trim();
   if (descriptionAr) payload.descriptionAr = descriptionAr;
 
-  // Sections carry no quantities: the server computes their total from descendants, and
-  // sending a rate on a section would be silently ignored while implying it was priced.
+  // Sections carry no measurement or pricing: the server rejects them outright, and a rate
+  // on a section would either be ignored or double-counted against its children's total.
   if (options.kind === 'item') {
     const unit = values.unit.trim();
     if (unit) payload.unit = unit;
 
-    const quantity = parseDecimal(values.quantity);
+    const quantity = normaliseDecimal(values.quantity);
     if (quantity !== null) payload.quantity = quantity;
 
-    const unitRate = parseDecimal(values.unitRate);
+    const unitRate = normaliseDecimal(values.unitRate);
     if (unitRate !== null) payload.unitRate = unitRate;
 
-    // Only a priced row needs a denomination.
-    if (options.projectCurrency && (quantity !== null || unitRate !== null)) {
-      payload.currency = options.projectCurrency;
-    }
+    payload.measurementMethod = values.measurementMethod;
+    payload.pricingBasis = values.pricingBasis;
   }
 
   return payload;
@@ -111,7 +112,7 @@ export function toCreateNodePayload(
  */
 export function toUpdateNodePayload(
   values: NodeFormValues,
-  options: { kind: NodeKind; projectCurrency: string | null },
+  options: { kind: NodeKind },
 ): UpdateNodePayload {
   const payload: UpdateNodePayload = {
     code: values.code.trim(),
@@ -122,40 +123,52 @@ export function toUpdateNodePayload(
   if (options.kind === 'item') {
     payload.unit = values.unit.trim() || undefined;
 
-    const quantity = parseDecimal(values.quantity);
-    const unitRate = parseDecimal(values.unitRate);
-
+    const quantity = normaliseDecimal(values.quantity);
+    const unitRate = normaliseDecimal(values.unitRate);
     if (quantity !== null) payload.quantity = quantity;
     if (unitRate !== null) payload.unitRate = unitRate;
 
-    if (options.projectCurrency && (quantity !== null || unitRate !== null)) {
-      payload.currency = options.projectCurrency;
-    }
+    payload.measurementMethod = values.measurementMethod;
+    payload.pricingBasis = values.pricingBasis;
   }
 
   return payload;
 }
 
-/** Returns null for blank or non-numeric input rather than NaN. */
-function parseDecimal(value: string): number | null {
+/**
+ * Validates and normalises a typed decimal, without going through `Number`.
+ *
+ * Returns null for blank or malformed input. Keeping the string means `"680.500"` reaches
+ * the server exactly as typed, trailing zeros and all — trailing zeros in a BOQ quantity
+ * are a statement about measurement precision.
+ */
+function normaliseDecimal(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
-
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? parsed : null;
+  return /^\d+(\.\d+)?$/.test(trimmed) ? trimmed : null;
 }
 
 /**
  * Preview of the amount an item will carry once saved.
  *
- * The server owns the real figure — it recomputes quantity × unitRate on write — so this
- * is explicitly a preview and is never persisted or summed. It exists so a quantity
+ * The server owns the real figure — it recomputes quantity × unitRate in Decimal on write —
+ * so this is explicitly a preview and is never persisted or summed. It exists so a quantity
  * surveyor can sanity-check a rate before committing it.
+ *
+ * Computed through `lib/money.ts` in integer minor units rather than with float
+ * multiplication, so the preview and the saved value agree to the cent.
  */
-export function previewLineTotal(values: NodeFormValues): number | null {
-  const quantity = parseDecimal(values.quantity);
-  const unitRate = parseDecimal(values.unitRate);
+export function previewLineTotal(values: NodeFormValues): string | null {
+  const quantity = parseMinorUnits(values.quantity, NODE_LIMITS.quantityDecimals);
+  const unitRate = parseMinorUnits(values.unitRate, NODE_LIMITS.rateDecimals);
   if (quantity === null || unitRate === null) return null;
 
-  return Math.round(quantity * unitRate * 100) / 100;
+  // quantity is scaled by 10³ and rate by 10², so the product carries 10⁵. Dividing by 10³
+  // brings it back to the amount's two decimal places; rounding matches the server's
+  // Decimal.toDecimalPlaces(2).
+  const product = quantity * unitRate;
+  if (!Number.isSafeInteger(product)) return null;
+
+  const amountMinor = Math.round(product / 10 ** NODE_LIMITS.quantityDecimals);
+  return fromMinorUnits(amountMinor, NODE_LIMITS.rateDecimals);
 }

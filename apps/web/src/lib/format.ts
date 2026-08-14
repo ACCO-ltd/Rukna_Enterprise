@@ -56,17 +56,29 @@ export function formatMoney(
   }).format(amount);
 }
 
-/** Formats a count or quantity. Never used to derive a monetary total. */
+/**
+ * Formats a count or quantity. Never used to derive a monetary total.
+ *
+ * `fractionDigits` pins the decimal places exactly. BOQ quantities are `Decimal(18,3)` and
+ * quantity surveying convention shows all three, so `4250` reads as `4,250.000` — the
+ * trailing zeros state the measurement precision rather than padding the number.
+ */
 export function formatNumber(
   value: string | number | null | undefined,
   locale: Locale = 'en',
+  fractionDigits?: number,
 ): string | null {
   if (value === null || value === undefined || value === '') return null;
 
   const amount = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(amount)) return null;
 
-  return new Intl.NumberFormat(numericLocale(locale)).format(amount);
+  return new Intl.NumberFormat(
+    numericLocale(locale),
+    fractionDigits === undefined
+      ? {}
+      : { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits },
+  ).format(amount);
 }
 
 /** Formats an ISO date string as a short calendar date. Returns null when absent. */

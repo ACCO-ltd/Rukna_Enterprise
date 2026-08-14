@@ -10,7 +10,7 @@ import { useTranslations } from 'next-intl';
 import { BoqVersionStatus } from '@erp/types';
 import { Alert, Button, FormField, FormSection, Input, Select } from '@erp/ui';
 
-import { useBoq } from '@/features/boq/hooks/use-boq';
+import { useBoqWorkspace } from '@/features/boq/hooks/use-boq';
 import { useClients } from '@/features/clients/hooks/use-clients';
 import { useProjects } from '@/features/projects/hooks/use-projects';
 import { ApiError } from '@/lib/api-client';
@@ -91,7 +91,7 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
   // than read once. `useWatch` rather than `watch()` — the latter opts the component out
   // of React Compiler memoization.
   const selectedProjectId = useWatch({ control, name: 'projectId' });
-  const boq = useBoq(selectedProjectId);
+  const boq = useBoqWorkspace(selectedProjectId);
 
   // The project command centre can open this form with its project in context. The related
   // client is derived from that real project record rather than copied into the URL.
@@ -107,7 +107,7 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
    * cannot offer a choice the server will refuse.
    */
   const baselinedVersions = (boq.data?.versions ?? []).filter(
-    (v) => v.status === BoqVersionStatus.BASELINED,
+    (version) => version.status === BoqVersionStatus.BASELINED,
   );
 
   const onSubmit = (values: ContractFormValues) => {

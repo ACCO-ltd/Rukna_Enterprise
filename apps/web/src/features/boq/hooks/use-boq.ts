@@ -1,54 +1,58 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import type {
+  BoqCompareResponse,
+  BoqTreeNodeResponse,
+  BoqWorkspaceResponse,
+} from '@erp/types';
 
-import { ApiError } from '@/lib/api-client';
 import { projectKeys } from '@/features/projects/hooks/use-projects';
 
 import {
   addBoqNode,
   baselineVersion,
   cancelDraftVersion,
+  compareBoqVersions,
   createDraftVersion,
   deleteBoqNode,
-  getBoq,
   getBoqTree,
+  getBoqWorkspace,
   initializeBoq,
   moveBoqNode,
   updateBoqNode,
   type CreateNodePayload,
   type UpdateNodePayload,
 } from '../api/boq-api';
-import type { Boq, BoqTreeNode } from '../types';
 
 export const boqKeys = {
   all: (projectId: string) => ['boq', projectId] as const,
-  summary: (projectId: string) => [...boqKeys.all(projectId), 'summary'] as const,
+  workspace: (projectId: string) => [...boqKeys.all(projectId), 'workspace'] as const,
   tree: (projectId: string, versionId: string) =>
     [...boqKeys.all(projectId), 'tree', versionId] as const,
+  compare: (projectId: string, leftId: string, rightId: string) =>
+    [...boqKeys.all(projectId), 'compare', leftId, rightId] as const,
 };
 
-export function useBoq(projectId: string): UseQueryResult<Boq | null, Error> {
+/**
+ * The workspace read model.
+ *
+ * A project with no BOQ is not a 404 here — the server answers with `boq: null`, which is
+ * the "not initialized" state the screen renders an offer to fix. The old `useBoq` had to
+ * catch a 404 and translate it, which meant a genuine 404 (wrong project id) looked
+ * identical to a legitimate starting state.
+ */
+export function useBoqWorkspace(projectId: string): UseQueryResult<BoqWorkspaceResponse, Error> {
   return useQuery({
-    queryKey: boqKeys.summary(projectId),
-    queryFn: async () => {
-      try {
-        return await getBoq(projectId);
-      } catch (error) {
-        // A project without a BOQ answers 404. That is a legitimate state — "not
-        // initialized yet" — not a failure, so it resolves to null and the UI offers to
-        // create one. Anything else is a real error and propagates.
-        if (error instanceof ApiError && error.status === 404) return null;
-        throw error;
-      }
-    },
+    queryKey: boqKeys.workspace(projectId),
+    queryFn: () => getBoqWorkspace(projectId),
   });
 }
 
 export function useBoqTree(
   projectId: string,
   versionId: string | null,
-): UseQueryResult<BoqTreeNode[], Error> {
+): UseQueryResult<BoqTreeNodeResponse[], Error> {
   return useQuery({
     queryKey: boqKeys.tree(projectId, versionId ?? 'none'),
     queryFn: () => getBoqTree(projectId, versionId!),
@@ -56,15 +60,23 @@ export function useBoqTree(
   });
 }
 
-export function useInitializeBoq(projectId: string) {
-  // `void` so callers can write `mutate()` — this command takes no variables.
-  return useBoqMutation<void>(projectId, () => initializeBoq(projectId));
+/** Enabled only once both versions are chosen — comparing a version with itself is a 400. */
+export function useBoqCompare(
+  projectId: string,
+  leftId: string | null,
+  rightId: string | null,
+): UseQueryResult<BoqCompareResponse, Error> {
+  return useQuery({
+    queryKey: boqKeys.compare(projectId, leftId ?? 'none', rightId ?? 'none'),
+    queryFn: () => compareBoqVersions(projectId, leftId!, rightId!),
+    enabled: leftId !== null && rightId !== null && leftId !== rightId,
+  });
 }
 
 /**
- * Every versioning command reshuffles which version is the draft and which is approved, and
- * can change node membership (creating a draft copies the approved nodes). Invalidating the
- * whole BOQ key rather than patching the cache keeps the summary, the version list and
+ * Every versioning command reshuffles which version is draft and which is approved, and can
+ * change node membership (creating a draft copies the approved nodes). Invalidating the
+ * whole BOQ key rather than patching the cache keeps the workspace, the version list and
  * every cached tree consistent with each other.
  */
 function useBoqMutation<TArgs>(projectId: string, run: (args: TArgs) => Promise<unknown>) {
@@ -77,6 +89,11 @@ function useBoqMutation<TArgs>(projectId: string, run: (args: TArgs) => Promise<
       await queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
     },
   });
+}
+
+export function useInitializeBoq(projectId: string) {
+  // `void` so callers can write `mutate()` — this command takes no variables.
+  return useBoqMutation<void>(projectId, () => initializeBoq(projectId));
 }
 
 export function useBaselineVersion(projectId: string) {
@@ -112,30 +129,19 @@ export function useDeleteNode(projectId: string, versionId: string) {
 }
 
 /**
- * Reorders a node among its siblings.
+ * Moves a node among its siblings or under a new parent.
  *
- * Two writes, because `moveNode` never reindexes siblings (B13) — see planReorder. They run
- * in sequence rather than in parallel: both touch the same sibling set, and a failure
- * halfway is easier to reason about than two racing writes.
+ * One request. This used to issue two writes and compute a displacing position itself,
+ * because the server did not reindex siblings (B13); it does now, so the client states the
+ * destination and the server owns the ordering.
  */
-export function useReorderNode(projectId: string, versionId: string) {
+export function useMoveNode(projectId: string, versionId: string) {
   return useBoqMutation(
     projectId,
-    async (plan: {
-      moved: { id: string; sortOrder: number };
-      displaced: { id: string; sortOrder: number };
-      parentId: string | null;
-    }) => {
-      const parent = plan.parentId ? { newParentId: plan.parentId } : {};
-
-      await moveBoqNode(projectId, versionId, plan.moved.id, {
-        ...parent,
-        newSortOrder: plan.moved.sortOrder,
-      });
-      await moveBoqNode(projectId, versionId, plan.displaced.id, {
-        ...parent,
-        newSortOrder: plan.displaced.sortOrder,
-      });
-    },
+    (args: { nodeId: string; newParentId?: string; newSortOrder: number }) =>
+      moveBoqNode(projectId, versionId, args.nodeId, {
+        ...(args.newParentId ? { newParentId: args.newParentId } : {}),
+        newSortOrder: args.newSortOrder,
+      }),
   );
 }

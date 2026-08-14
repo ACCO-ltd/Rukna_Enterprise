@@ -1,6 +1,4 @@
-import { MeasurementMethod, PricingBasis } from '@erp/types';
-
-import type { BoqTreeNode } from './types';
+import type { BoqTreeNodeResponse } from '@erp/types';
 
 /**
  * Builds a BOQ tree node for tests.
@@ -11,7 +9,9 @@ import type { BoqTreeNode } from './types';
  * This lived as three identical copies across the BOQ test files until `measurementMethod`
  * and `pricingBasis` had to be added to all of them at once.
  */
-export function testNode(overrides: Partial<BoqTreeNode> & { id: string }): BoqTreeNode {
+export function testNode(
+  overrides: Partial<BoqTreeNodeResponse> & { id: string },
+): BoqTreeNodeResponse {
   return {
     boqId: 'b1',
     versionId: 'v1',
@@ -22,15 +22,20 @@ export function testNode(overrides: Partial<BoqTreeNode> & { id: string }): BoqT
     code: '01',
     description: 'Section',
     descriptionAr: null,
-    measurementMethod: MeasurementMethod.QUANTITY,
-    pricingBasis: PricingBasis.UNIT_RATE,
+    measurementMethod: 'QUANTITY',
+    pricingBasis: 'UNIT_RATE',
     unit: null,
     quantity: null,
     unitRate: null,
-    currency: null,
+    // A node always reports a currency now — the BOQ's, stamped by the server
+    // (CONST-BOQ-013). It was nullable and per-node before ADR-016.
+    currency: 'USD',
     totalAmount: null,
     isLeaf: false,
     originNodeId: null,
+    sourceType: 'BASELINE',
+    sourceChangeOrderId: null,
+    isActive: true,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     children: [],

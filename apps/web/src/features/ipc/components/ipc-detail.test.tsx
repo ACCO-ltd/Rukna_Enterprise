@@ -154,10 +154,15 @@ function boqNode(): BoqTreeNode {
     totalAmount: '60000.00',
     isLeaf: true,
     originNodeId: null,
+    sourceType: 'BASELINE',
+    sourceChangeOrderId: null,
+    isActive: true,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     children: [],
-    computedTotal: 60000,
+    // A decimal string like every other money field since ADR-016 — it used to be the one
+    // JSON number on this shape (B7).
+    computedTotal: '60000.00',
   };
 }
 

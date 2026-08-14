@@ -65,7 +65,10 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
       href: `/projects/${id}`,
       icon: LayoutDashboard,
     },
-    { key: 'boq', label: t('workspace.scope'), href: `/projects/${id}/boq`, icon: ClipboardList },
+    // Named "BOQ", not "Scope". For construction professionals BOQ is the precise term;
+    // "Scope" reads as programme, milestones and progress too, which are separate controls
+    // living behind a Programme & Progress tab that does not exist yet. See ADR-016.
+    { key: 'boq', label: t('workspace.boq'), href: `/projects/${id}/boq`, icon: ClipboardList },
     { key: 'team', label: t('workspace.team'), href: `/projects/${id}/members`, icon: Users },
   ];
   const commercialTabs = [
@@ -85,6 +88,12 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
   }
 
   const commercialActive = commercialTabs.some((tab) => isActive(tab.href));
+
+  // The last breadcrumb used to read "Overview" on every tab, so the BOQ page announced
+  // itself as the overview. Derive it from whichever tab is actually active.
+  const activeCrumb =
+    [...primaryTabs, ...commercialTabs].find((tab) => isActive(tab.href))?.label ??
+    t('workspace.overview');
   const mainContract = summaryQuery.data?.mainContract;
   const programme =
     project?.startDate || project?.expectedEndDate
@@ -122,7 +131,7 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
         <ChevronRight size={14} className="rtl:rotate-180" aria-hidden="true" />
         <span className="max-w-72 truncate">{project?.name ?? t('workspace.loadingProject')}</span>
         <ChevronRight size={14} className="rtl:rotate-180" aria-hidden="true" />
-        <span className="font-medium text-foreground">{t('workspace.overview')}</span>
+        <span className="font-medium text-foreground">{activeCrumb}</span>
       </nav>
 
       <section className="mb-5 overflow-hidden border-y border-border bg-surface">

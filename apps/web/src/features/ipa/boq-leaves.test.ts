@@ -101,11 +101,18 @@ describe('isClaimable', () => {
     expect(isClaimable(line!)).toBe(false);
   });
 
-  it('rejects a leaf with no currency', () => {
+  /**
+   * A node with no currency used to be possible and used to block a claim. Since ADR-016 a
+   * BOQ has one currency and the server stamps it on every node (CONST-BOQ-013), so a
+   * priced leaf always carries one and the rate is the only thing left to check.
+   */
+  it('accepts a priced leaf without asking for a currency it always has', () => {
     const [line] = claimableLines([
-      testNode({ id: 'x', code: '9', description: 'No currency', isLeaf: true, unitRate: '10.00' }),
+      testNode({ id: 'x', code: '9', description: 'Priced', isLeaf: true, unitRate: '10.00' }),
     ]);
-    expect(isClaimable(line!)).toBe(false);
+
+    expect(line!.currency).toBe('USD');
+    expect(isClaimable(line!)).toBe(true);
   });
 
   it('accepts a fully priced leaf', () => {

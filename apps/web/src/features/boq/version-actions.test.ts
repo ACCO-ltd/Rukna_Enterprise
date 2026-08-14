@@ -1,164 +1,237 @@
-import { BoqVersionStatus } from '@erp/types';
 import { describe, expect, it } from 'vitest';
+import type {
+  BoqBaselineReadinessResponse,
+  BoqVersionSummary,
+  BoqWorkspaceResponse,
+} from '@erp/types';
 
-import type { Boq, BoqVersion } from './types';
 import { getVersionActions } from './version-actions';
 
-function version(overrides: Partial<BoqVersion> & { id: string }): BoqVersion {
+function version(overrides: Partial<BoqVersionSummary> & { id: string }): BoqVersionSummary {
   return {
     boqId: 'b1',
     versionNumber: 1,
-    status: BoqVersionStatus.DRAFT,
-    notes: null,
-    baselinedAt: null,
-    baselinedBy: null,
-    createdBy: 'user-1',
+    status: 'DRAFT',
+    createdBy: 'u1',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
+    totalAmount: '1000.00',
+    itemCount: 4,
+    isContractBaseline: false,
     ...overrides,
   };
 }
 
-function boq(overrides: Partial<Boq> = {}): Boq {
+function readiness(ready: boolean): BoqBaselineReadinessResponse {
   return {
-    id: 'b1',
+    ready,
+    sectionCount: 1,
+    itemCount: 4,
+    pricedItemCount: ready ? 4 : 2,
+    incompleteItemCount: ready ? 0 : 2,
+    duplicateCodeCount: 0,
+    totalAmount: '1000.00',
+    currency: 'USD',
+    blockers: ready
+      ? []
+      : [
+          {
+            kind: 'MISSING_RATE',
+            nodeId: 'n1',
+            code: '01.001',
+            description: 'Excavation',
+            message: 'Item 01.001 is missing a rate.',
+          },
+        ],
+    warnings: [],
+  };
+}
+
+function workspace(overrides: Partial<BoqWorkspaceResponse> = {}): BoqWorkspaceResponse {
+  const draft = version({ id: 'v2', versionNumber: 2, status: 'DRAFT' });
+  const approved = version({ id: 'v1', versionNumber: 1, status: 'BASELINED' });
+
+  return {
     projectId: 'p1',
-    organizationId: 'org-1',
-    originalBaselineVersionId: null,
-    currentApprovedVersionId: null,
-    currentDraftVersionId: null,
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:00.000Z',
-    versions: [],
+    boq: {
+      id: 'b1',
+      projectId: 'p1',
+      organizationId: 'o1',
+      currency: 'USD',
+      originalBaselineVersionId: 'v1',
+      currentApprovedVersionId: 'v1',
+      currentDraftVersionId: 'v2',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      versions: [draft, approved],
+    },
+    currency: 'USD',
+    draft,
+    approved,
+    contractBaseline: null,
+    versions: [draft, approved],
+    readiness: readiness(true),
+    revision: null,
+    capabilities: {
+      canView: true,
+      canManage: true,
+      canBaseline: true,
+      canViewCommercials: true,
+    },
     ...overrides,
   };
 }
 
-const draft = version({ id: 'v1' });
-
-describe('getVersionActions — baseline and discard', () => {
-  it('offers both on the open draft', () => {
-    const actions = getVersionActions(
-      boq({ currentDraftVersionId: 'v1', versions: [draft] }),
-      draft,
-      false,
-    );
+describe('getVersionActions — baseline', () => {
+  it('offers baseline on the open draft when it is ready and the user may baseline', () => {
+    const actions = getVersionActions(workspace(), 'v2');
 
     expect(actions.canBaseline).toBe(true);
-    expect(actions.canCancelDraft).toBe(true);
+    expect(actions.blockedReason).toBeNull();
   });
 
-  // BoqVersioningService rejects anything that is not the version the BOQ points at.
-  it('offers neither on a version that is not the current draft', () => {
-    const other = version({ id: 'v2', versionNumber: 2, status: BoqVersionStatus.BASELINED });
+  /**
+   * The server refuses an unready version with 400 and `details.blockers`. Offering the
+   * button anyway sends the user to be rejected, and the reason lives in a toast rather
+   * than next to the rows that need fixing.
+   */
+  it('withholds baseline when the server says the version is not ready', () => {
+    const actions = getVersionActions(workspace({ readiness: readiness(false) }), 'v2');
+
+    expect(actions.canBaseline).toBe(false);
+    expect(actions.blockedReason).toBe('NOT_READY');
+  });
+
+  /**
+   * The BOQ feature had no permission check at all before ADR-016 — a viewer was shown a
+   * Baseline button that the API would refuse with 403.
+   */
+  it('withholds baseline without baseline:boq', () => {
+    const base = workspace();
     const actions = getVersionActions(
-      boq({ currentDraftVersionId: 'v1', versions: [draft, other] }),
-      other,
-      false,
+      { ...base, capabilities: { ...base.capabilities, canBaseline: false } },
+      'v2',
     );
+
+    expect(actions.canBaseline).toBe(false);
+    expect(actions.blockedReason).toBe('NO_PERMISSION');
+  });
+
+  it('offers no version command while looking at a baselined version', () => {
+    const actions = getVersionActions(workspace(), 'v1');
 
     expect(actions.canBaseline).toBe(false);
     expect(actions.canCancelDraft).toBe(false);
-  });
-
-  it('offers neither when the pointer is stale and the version is no longer DRAFT', () => {
-    const stale = version({ id: 'v1', status: BoqVersionStatus.CANCELLED });
-    const actions = getVersionActions(
-      boq({ currentDraftVersionId: 'v1', versions: [stale] }),
-      stale,
-      false,
-    );
-
-    expect(actions.canBaseline).toBe(false);
-  });
-
-  it('offers neither when nothing is selected', () => {
-    expect(getVersionActions(boq({ currentDraftVersionId: 'v1' }), null, false).canBaseline).toBe(
-      false,
-    );
+    expect(actions.blockedReason).toBeNull();
   });
 });
 
-describe('getVersionActions — starting a revision', () => {
-  it('is offered once a version is approved and no draft is open', () => {
-    const actions = getVersionActions(boq({ currentApprovedVersionId: 'v1' }), null, false);
+describe('getVersionActions — revisions', () => {
+  /** The API refuses a second draft with 409 while one is already open. */
+  it('does not offer a revision while a draft is open', () => {
+    expect(getVersionActions(workspace(), 'v2').canCreateDraft).toBe(false);
+  });
+
+  it('offers a revision once the draft is gone', () => {
+    const base = workspace();
+    const approved = base.approved!;
+    const actions = getVersionActions(
+      {
+        ...base,
+        draft: null,
+        boq: { ...base.boq!, currentDraftVersionId: undefined, versions: [approved] },
+        versions: [approved],
+      },
+      'v1',
+    );
 
     expect(actions.canCreateDraft).toBe(true);
   });
 
-  // The API answers 400 — there is nothing to copy from.
-  it('is withheld before anything has been baselined', () => {
-    expect(getVersionActions(boq(), null, false).canCreateDraft).toBe(false);
-  });
-
-  // The API answers 409 — one draft at a time.
-  it('is withheld while a draft is already open', () => {
+  /** Without an approved version there is nothing to copy — the API answers 400. */
+  it('does not offer a revision before anything is baselined', () => {
+    const base = workspace();
+    const draft = base.draft!;
     const actions = getVersionActions(
-      boq({ currentApprovedVersionId: 'v1', currentDraftVersionId: 'v2' }),
-      null,
-      false,
+      {
+        ...base,
+        approved: null,
+        boq: {
+          ...base.boq!,
+          currentApprovedVersionId: undefined,
+          originalBaselineVersionId: undefined,
+          versions: [draft],
+        },
+        versions: [draft],
+      },
+      'v2',
     );
 
     expect(actions.canCreateDraft).toBe(false);
   });
+
+  it('needs manage:boq to discard a draft or start a revision', () => {
+    const base = workspace();
+    const actions = getVersionActions(
+      { ...base, capabilities: { ...base.capabilities, canManage: false } },
+      'v2',
+    );
+
+    expect(actions.canCancelDraft).toBe(false);
+    expect(actions.canCreateDraft).toBe(false);
+  });
 });
 
-describe('getVersionActions — warnings', () => {
+describe('getVersionActions — baseline consequence', () => {
   /**
-   * The API permits baselining a draft with no items. Approving an empty Bill of
-   * Quantities is almost always a mistake, so the confirmation says so rather than
-   * blocking it — the server is the authority on what is allowed.
+   * The first baseline fixes the original contract BOQ, which is immutable thereafter.
+   * A later one supersedes a revision. The confirmation copy differs, so the caller has to
+   * be able to tell them apart.
    */
-  it('flags baselining an empty draft', () => {
-    const actions = getVersionActions(
-      boq({ currentDraftVersionId: 'v1', versions: [draft] }),
-      draft,
-      true,
+  it('distinguishes the first baseline from a post-award revision', () => {
+    const base = workspace();
+    const first = getVersionActions(
+      {
+        ...base,
+        boq: { ...base.boq!, originalBaselineVersionId: undefined },
+      },
+      'v2',
     );
 
-    expect(actions.canBaseline).toBe(true);
-    expect(actions.wouldBaselineEmpty).toBe(true);
-  });
+    expect(first.isFirstBaseline).toBe(true);
+    expect(first.isPostAwardRevision).toBe(false);
 
-  it('does not flag emptiness on a draft that has items', () => {
+    const later = getVersionActions(base, 'v2');
+    expect(later.isFirstBaseline).toBe(false);
+    expect(later.isPostAwardRevision).toBe(true);
+  });
+});
+
+describe('getVersionActions — no BOQ', () => {
+  it('offers nothing when the project has no BOQ yet', () => {
     const actions = getVersionActions(
-      boq({ currentDraftVersionId: 'v1', versions: [draft] }),
-      draft,
-      false,
+      {
+        projectId: 'p1',
+        boq: null,
+        currency: 'USD',
+        draft: null,
+        approved: null,
+        contractBaseline: null,
+        versions: [],
+        readiness: null,
+        revision: null,
+        capabilities: {
+          canView: true,
+          canManage: true,
+          canBaseline: true,
+          canViewCommercials: true,
+        },
+      },
+      null,
     );
 
-    expect(actions.wouldBaselineEmpty).toBe(false);
-  });
-
-  /**
-   * The first baseline also sets originalBaselineVersionId, which the service never
-   * overwrites — it is the original contract BOQ every later variation is measured
-   * against. Worth saying out loud before it is fixed permanently.
-   */
-  it('flags the first baseline, which permanently fixes the contract BOQ', () => {
-    const actions = getVersionActions(
-      boq({ currentDraftVersionId: 'v1', originalBaselineVersionId: null, versions: [draft] }),
-      draft,
-      false,
-    );
-
-    expect(actions.isFirstBaseline).toBe(true);
-  });
-
-  it('does not flag later baselines', () => {
-    const actions = getVersionActions(
-      boq({ currentDraftVersionId: 'v1', originalBaselineVersionId: 'v0', versions: [draft] }),
-      draft,
-      false,
-    );
-
-    expect(actions.isFirstBaseline).toBe(false);
-  });
-
-  it('does not flag anything when no draft is open', () => {
-    const actions = getVersionActions(boq({ currentApprovedVersionId: 'v1' }), null, true);
-
-    expect(actions.wouldBaselineEmpty).toBe(false);
-    expect(actions.isFirstBaseline).toBe(false);
+    expect(actions.canBaseline).toBe(false);
+    expect(actions.canCancelDraft).toBe(false);
+    expect(actions.canCreateDraft).toBe(false);
   });
 });

@@ -31,9 +31,12 @@
  * the shared type would type-check and break that panel at runtime. `IpcPaymentStatusResponse`
  * is worse — wrong in all five of its fields.
  *
- * Only `IpaResponse`, `IpcItemResponse` and `IpcDeductionResponse` are safe to adopt, and
- * the file cannot be deleted regardless while B12 is open: `@erp/types` still has no
- * Project or BOQ DTO at all.
+ * Only `IpaResponse`, `IpcItemResponse` and `IpcDeductionResponse` are safe to adopt.
+ *
+ * **The BOQ half of B12 is now closed (ADR-016, 2026-08-14).** `@erp/types` exports
+ * `BoqResponse`, `BoqVersionResponse` and `BoqTreeNodeResponse`, generated against the
+ * shipped controller and covered by backend tests, so the BOQ shapes below are aliases
+ * rather than copies. Project and ProjectMember are still hand-maintained here.
  *
  * Revisit when #21 is fixed — ideally by generating the DTOs rather than hand-writing them.
  *
@@ -48,15 +51,14 @@
  *  - Where a service computes a value at query time it is called out, because those fields
  *    exist on the detail response only and are absent from list responses.
  *
- * Two server-computed fields break the string rule and return JS numbers instead:
- * `BoqTreeNode.computedTotal` and `CertificatePaymentStatus.totalAllocated`. Both are
- * flagged at their declaration. See B7 and C8.
+ * One server-computed field still breaks the string rule and returns a JS number:
+ * `CertificatePaymentStatus.totalAllocated` (C8). `BoqTreeNode.computedTotal` used to be
+ * the other; ADR-016 made it a decimal string like every other money field (B7).
  *
  * Every shape below was read from `apps/api/prisma/schema.prisma` and the repository
  * `include` clauses, not inferred from documentation.
  */
 import type {
-  BoqVersionStatus,
   ClientStatus,
   ContractStatus,
   BillingModel,
@@ -65,11 +67,15 @@ import type {
   IpaStatus,
   IpcStatus,
   MeasurementMethod,
-  PricingBasis,
   ProjectRole,
   ProjectStatus,
 } from '@erp/types';
-import type { ProjectWorkspaceSummaryResponse } from '@erp/types';
+import type {
+  BoqResponse,
+  BoqTreeNodeResponse,
+  BoqVersionResponse,
+  ProjectWorkspaceSummaryResponse,
+} from '@erp/types';
 
 // ─── Projects ────────────────────────────────────────────────────────────────────
 
@@ -144,75 +150,15 @@ export interface ProjectDetail extends Project {
 export type ProjectWorkspaceSummary = ProjectWorkspaceSummaryResponse;
 
 // ─── BOQ ─────────────────────────────────────────────────────────────────────────
+//
+// These were hand-maintained here (blocker B12) and drifted: `computedTotal` was typed as
+// a number because the server sent one, while `totalAmount` beside it was a string — the
+// same quantity in two representations (B7). ADR-016 fixed both ends. The contracts now
+// live in `@erp/types` and these are aliases so existing call sites keep working.
 
-export interface BoqVersion {
-  id: string;
-  boqId: string;
-  versionNumber: number;
-  status: BoqVersionStatus;
-  notes: string | null;
-  baselinedAt: string | null;
-  baselinedBy: string | null;
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/** `GET /projects/:id/boq`. */
-export interface Boq {
-  id: string;
-  projectId: string;
-  organizationId: string;
-  /** The first-ever baseline. Immutable once set — the original contract BOQ. */
-  originalBaselineVersionId: string | null;
-  currentApprovedVersionId: string | null;
-  currentDraftVersionId: string | null;
-  createdAt: string;
-  updatedAt: string;
-  /** Newest version first, as the API orders them. */
-  versions: BoqVersion[];
-}
-
-/**
- * `GET /projects/:id/boq/versions/:vId/tree`.
- *
- * `measurementMethod` and `pricingBasis` were added to `BoqNode` in Sprint 3 and are
- * returned by the tree query (`findNodesByVersion` selects the whole row). The IPA item
- * picker needs `measurementMethod` to label a claim as quantity, percentage or milestone.
- */
-export interface BoqTreeNode {
-  id: string;
-  boqId: string;
-  versionId: string;
-  parentId: string | null;
-  /** Materialized path of node ids, "rootId/childId/grandchildId". */
-  path: string;
-  depth: number;
-  sortOrder: number;
-  code: string;
-  description: string;
-  descriptionAr: string | null;
-  measurementMethod: MeasurementMethod;
-  pricingBasis: PricingBasis;
-  unit: string | null;
-  quantity: string | null;
-  unitRate: string | null;
-  currency: string | null;
-  totalAmount: string | null;
-  isLeaf: boolean;
-  originNodeId: string | null;
-  createdAt: string;
-  updatedAt: string;
-  children: BoqTreeNode[];
-  /**
-   * Server-computed: own amount for a leaf, sum of descendants for a summary.
-   *
-   * A NUMBER, not a string — the only money field on this shape that is. It is summed in
-   * floating point server-side (B7), and mixed-currency subtrees sum without regard to
-   * currency (D1), which is why `subtree-currency.ts` suppresses parent totals that mix.
-   */
-  computedTotal: number | null;
-}
+export type BoqVersion = BoqVersionResponse;
+export type Boq = BoqResponse;
+export type BoqTreeNode = BoqTreeNodeResponse;
 
 // ─── Clients ─────────────────────────────────────────────────────────────────────
 

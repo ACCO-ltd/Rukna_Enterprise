@@ -1,15 +1,17 @@
-import { BoqVersionStatus } from '@erp/types';
-
-import type { Boq, BoqVersion } from './types';
+import type { BoqWorkspaceResponse } from '@erp/types';
 
 /**
  * Which versioning commands the BOQ will accept, given the version currently on screen.
  *
- * Mirrors BoqVersioningService: baseline and cancel act only on the version the BOQ points
- * at as its current draft and only while that version is still DRAFT; a new draft can be
- * started only from an approved version and only when no draft is open. The server remains
- * the authority — this exists so the UI offers commands that will succeed rather than
- * buttons that answer 400 or 409.
+ * Mirrors `BoqVersioningService`: baseline and cancel act only on the version the BOQ points
+ * at as its current draft and only while that version is DRAFT; a revision can be started
+ * only from an approved version and only when no draft is open.
+ *
+ * Two things changed with ADR-016. Permissions are now consulted — the feature had no
+ * `can()` call at all, so a viewer was shown a Baseline button the server would refuse. And
+ * readiness is no longer guessed from "does this version have any items": the server
+ * evaluates it, and `blockedReason` reports the server's verdict rather than a second
+ * opinion about it.
  */
 export interface VersionActions {
   /** Lock the open draft in as the approved BOQ. */
@@ -18,30 +20,43 @@ export interface VersionActions {
   canCancelDraft: boolean;
   /** Start a revision by copying the approved version. */
   canCreateDraft: boolean;
-  /** True when baselining would approve a BOQ with no items — allowed, but worth warning. */
-  wouldBaselineEmpty: boolean;
+  /** Set when the baseline command exists but is not currently available. */
+  blockedReason: 'NOT_READY' | 'NO_PERMISSION' | null;
   /** True when this baseline establishes the original contract BOQ, which is immutable. */
   isFirstBaseline: boolean;
+  /** True when this is a post-award revision, which changes the consequence copy. */
+  isPostAwardRevision: boolean;
 }
 
 export function getVersionActions(
-  boq: Boq,
-  selected: BoqVersion | null,
-  /** True when the selected version contains no items at all. */
-  isEmpty: boolean,
+  workspace: BoqWorkspaceResponse,
+  selectedVersionId: string | null,
 ): VersionActions {
+  const { boq, draft, readiness, capabilities } = workspace;
+
   const isOpenDraft =
-    selected !== null &&
-    selected.id === boq.currentDraftVersionId &&
-    selected.status === BoqVersionStatus.DRAFT;
+    boq !== null && draft !== null && selectedVersionId === draft.id && draft.status === 'DRAFT';
+
+  const ready = readiness?.ready ?? false;
 
   return {
-    canBaseline: isOpenDraft,
-    canCancelDraft: isOpenDraft,
+    canBaseline: isOpenDraft && capabilities.canBaseline && ready,
+    canCancelDraft: isOpenDraft && capabilities.canManage,
     // Both conditions matter: without an approved version there is nothing to copy (400),
     // and with a draft already open the API refuses a second one (409).
-    canCreateDraft: boq.currentApprovedVersionId !== null && boq.currentDraftVersionId === null,
-    wouldBaselineEmpty: isOpenDraft && isEmpty,
-    isFirstBaseline: isOpenDraft && boq.originalBaselineVersionId === null,
+    canCreateDraft:
+      capabilities.canManage &&
+      boq !== null &&
+      boq.currentApprovedVersionId !== undefined &&
+      boq.currentDraftVersionId === undefined,
+    blockedReason: !isOpenDraft
+      ? null
+      : !capabilities.canBaseline
+        ? 'NO_PERMISSION'
+        : !ready
+          ? 'NOT_READY'
+          : null,
+    isFirstBaseline: isOpenDraft && boq?.originalBaselineVersionId === undefined,
+    isPostAwardRevision: isOpenDraft && boq?.originalBaselineVersionId !== undefined,
   };
 }

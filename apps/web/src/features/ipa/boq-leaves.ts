@@ -1,4 +1,4 @@
-import type { BoqTreeNode } from '@/features/boq/types';
+import type { BoqTreeNodeResponse as BoqTreeNode } from '@erp/types';
 
 /**
  * A BOQ line that can be claimed on a payment application.
