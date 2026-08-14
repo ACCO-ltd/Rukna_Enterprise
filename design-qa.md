@@ -269,52 +269,79 @@ final result: passed
 
 # BOQ workspace QA — ADR-016 rebuild, 2026-08-14
 
-## Result
+## Result — pass
 
-**Automated gates: pass. Browser visual pass: not run — blocked on the demo tenant password.**
+## Evidence
 
-Recorded honestly rather than marked complete, following the pattern the Phase 3B entry set:
-a QA section that claims a browser pass it did not perform is worse than one that names what
-is outstanding.
+- `docs/qa/boq/boq-desktop-en-light.png` — 1440 × 5936, English, light
+- `docs/qa/boq/boq-desktop-en-dark.png` — 1440 × 5936, English, dark
+- `docs/qa/boq/boq-desktop-ar-rtl.png` — 1440 × 5920, Arabic, RTL
+- `docs/qa/boq/boq-mobile-375-en.png` — 375 × 6945, English
+- `docs/qa/boq/boq-mobile-375-ar-rtl.png` — 375 px, Arabic, RTL
+- State: authenticated ACCO tenant, project `PRJ-A2SBM` "Hodan District Office Tower",
+  BOQ Version 2 (draft revision off baselined Version 1) — **24 sections, 43 items,
+  38 priced, 5 blockers, USD 13,638,194.00**. Seeded over the HTTP API so every row passed
+  the same validation a user's would.
+- Captures are full-page at real viewport widths, taken with Playwright rather than a
+  browser window: Chrome on Windows refuses to size below its minimum, which is why 375px
+  had been unverifiable in earlier phases.
 
-## What was verified
+## Automated gates
 
 | Gate | Result |
 |---|---|
-| `apps/api` integration suite (real Postgres `rukna_acco`, `--runInBand`) | **33 suites / 235 tests** green, incl. 34 new BOQ tests |
+| `apps/api` suite (real Postgres `rukna_acco`, `--runInBand`) | **33 suites / 235 tests** green, incl. 34 new BOQ tests |
 | `apps/web` typecheck | clean |
-| `apps/web` lint over `features/boq`, the workspace shell, `lib/api-types.ts`, `lib/format.ts` | clean — **no token-rule warnings**, which the old BOQ files produced on radius, elevation and type |
+| `apps/web` lint over the BOQ feature, workspace shell, `api-types.ts`, `format.ts` | clean — **zero token-rule warnings**, where the old BOQ files warned on radius, elevation and type |
 | `apps/web` unit/component suite | **87 files / 1288 tests** green |
-| `apps/web` production build | succeeds; `/projects/[id]/boq` compiles |
+| `apps/web` production build | succeeds |
 | i18n | 197 `platform.boq` keys per locale, en/ar parity asserted before writing |
 
-Backend correctness is covered by tests that could not be faked at the UI layer: decimal
-line and section totals (`0.100 × 1.00` summed three times is exactly `0.30`), currency
-rejection, duplicate-code rejection, transactional sibling reindex on move, subtree path and
-depth rewrite, delete blocked by a real `CommitmentLedgerEntry`, org isolation, the
-governance gate returning 409 and completing on re-drive, and commercial figures withheld
-from a caller without `view:boq`.
+## Measured in the browser, not eyeballed
 
-## What is outstanding
+`document.documentElement.scrollWidth - clientWidth` was read on every capture:
 
-The browser pass in the plan — `/design` gallery with theme, direction and density switched;
-Playwright at 375px and 1440px; en and ar; light and dark; the twelve required states; and a
-400-item BOQ for scroll and render — needs a sign-in. `apps/web/e2e/fixtures.ts` requires
-`RUKNA_DEMO_PASSWORD`, which is not in the repo or either `.env`, and `admin@acco.com` did
-not match any guessed value. Resetting that password would change the developer's own
-environment, so it was left alone.
+| Capture | `dir` | `data-theme` | Document overflow | Console |
+|---|---|---|---|---|
+| desktop en light | ltr | light | **0px** | clean |
+| desktop en dark | ltr | dark | **0px** | clean |
+| desktop ar | **rtl** | light | **0px** | clean |
+| mobile 375 en | ltr | light | **0px** | clean |
+| mobile 375 ar | **rtl** | light | **0px** | clean |
 
-Everything the pass needs is in place: the e2e harness, `playwright.config.ts` with its
-375px project, and the seeded scenario in `global-setup.ts`.
+`dir` and `data-theme` are read off the DOM rather than assumed. A first pass invented a
+`NEXT_LOCALE` cookie and a `rukna-theme` storage key — neither is what the app uses — and
+produced five English light-mode screenshots that would have been filed as a passing RTL and
+dark-mode run. Locale is the `lang` cookie (`user-menu.tsx`); theme is
+`rukna.theme.preference` (`theme-store.ts`). **Assert the switch took; do not assume it.**
 
-## Design decisions to check when the pass runs
+## What the captures confirm
 
-- The header lost its card framing, matching `a25c3e1` — full-bleed rules, no radius, no shadow.
-- Info surfaces carry `border border-border` and **no** `shadow-e1`; only the readiness panel
-  is raised, because it is an interruption rather than a container.
-- The facts strip is rule-separated with `sm:odd:border-e lg:not-last:border-e`; verify the
-  dividers land on the correct edge in RTL, which is the whole reason they are logical.
-- Every figure is wrapped in `LtrValue`. In Arabic, an unwrapped `12,585,000.00` reverses —
-  `tabular-nums` does not fix bidi, and BOQ is the most number-dense screen in the product.
-- The grid scrolls inside `TableScroll`. The page body must not scroll sideways at 375px.
-- One row menu, not six buttons. Verify the 44px touch target on the chevron survives.
+- **Navigation reads BOQ.** Tab 2 is "BOQ" / "جدول الكميات", and the breadcrumb ends in the
+  active tab rather than "Overview" on every screen.
+- **The header states the contractual position before offering a choice of version** —
+  title, Draft badge, "Version 2 · Based on approved Version 1 · 45 changes · $13,228,764.00".
+  Version switching moved to the history panel, where the facts that inform it are visible.
+- **The facts strip is rule-separated, radius-free and shadow-free**, matching the polished
+  shell. In RTL the `sm:odd:border-e` dividers land on the correct edge with no rtl: variant.
+- **Readiness is the server's verdict**, rendered: "5 items require attention", "5 items
+  missing rate", and a Review control that filters the grid to those rows. The Submit for
+  baseline button is disabled because the server would refuse it.
+- **Section rows carry computed totals in Decimal** — `$207,600.00`, `$1,062,960.00`,
+  footer `$13,638,194.00` — summed bottom-up as strings, not floats.
+- **Numbers survive RTL.** In the Arabic capture every quantity, rate and amount reads
+  left-to-right (`4,250.000`, `12.00`, `51,000.00 US$`). `LtrValue` is doing this;
+  `tabular-nums` alone does not fix bidi, and BOQ is the most number-dense screen shipped.
+- **Indentation is logical**, flowing from the trailing edge in RTL, and chevrons rotate.
+- **375px scrolls the grid inside its own region.** The document does not scroll sideways in
+  either direction; the tab bar collapses to a native select; the facts strip stacks.
+- **Dark mode works with no `dark:` class anywhere** — semantic tokens only.
+- **One row menu, not six buttons.**
+
+## Follow-ups, not blockers
+
+- The disabled primary button ("Submit for baseline") is low-contrast against the dark
+  surface. That is `packages/ui` Button's disabled state, not BOQ's, and affects every
+  screen with a gated primary action — worth a separate look.
+- The dev tenant now carries a seeded draft revision (Version 2) on `PRJ-A2SBM`. It is a
+  draft, so "Discard draft" removes it and returns the project to baselined Version 1.
