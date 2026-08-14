@@ -574,3 +574,90 @@ BOQ a client signed — a case where the obvious data-grid feature is wrong for 
 90 test files / 1327 tests, typecheck, lint (0 errors) and the production build green. All
 five captures re-verified: `dir` and `data-theme` read off the DOM, 0px document overflow,
 clean console.
+
+---
+
+## Commercial workspace — measured pass (2026-08-14)
+
+Captures in `docs/qa/commercial/`, five modes against `PRJ-A2SBM`
+(`/projects/cmsra2syt0071tgt4dv2yvt54/commercial`). `dir` and `data-theme` read off the DOM
+rather than trusted from the request — locale is the `lang` cookie, theme is
+`rukna.theme.preference`.
+
+```text
+01-desktop-en-light  dir=ltr theme=light  overflow=0px  panels=7  under44=12  console=clean
+02-desktop-en-dark   dir=ltr theme=dark   overflow=0px  panels=7  under44=12  console=clean
+03-desktop-ar        dir=rtl theme=light  overflow=0px  panels=7  under44=12  console=clean
+04-mobile-en         dir=ltr theme=light  overflow=0px  panels=7  under44=0   console=clean
+05-mobile-ar         dir=rtl theme=light  overflow=0px  panels=7  under44=0   console=clean
+```
+
+`under44` counts controls inside `[data-commercial-root]` shorter than 44px. Twelve on
+desktop is the intended `min-h-11 sm:min-h-0` pattern — the touch target relaxes above the
+`sm` breakpoint. Zero at 375px is the gate that matters, and it is the one
+`e2e/commercial-mobile.spec.ts` asserts.
+
+### Reachability and the merge
+
+```text
+workspace tabs     ["(overview)","boq","commercial","pl","members"]
+Commercial dropdown present   false
+/projects/:id/contracts  ->  /projects/:id/commercial/main-contract
+/projects/:id/ipc        ->  /projects/:id/commercial/applications
+```
+
+### The fold at 1440x900
+
+```text
+root top                430px
+summary strip           579 -> 707px
+Attention & Next Action        ends 835px
+Receivables position           ends 1052px
+page height             1971px
+```
+
+Contract value, certified gross and net, invoiced, outstanding and the attention list all sit
+above the fold. That is the acceptance criterion for this screen, and it is met with 65px to
+spare.
+
+### Three bugs this caught
+
+**A page that scrolled sideways on a phone.** 227px of horizontal overflow at 375px in
+English, 155px in Arabic — while every panel individually looked correct and the screenshot
+showed nothing wrong. The cause was `ProgressStepper`: it wraps its row in `overflow-x-auto`
+and gives the row `min-w-max`, which is right, but it sat in a grid column, and **a grid item
+defaults to `min-width: auto`, meaning min-content**. The column refused to shrink below the
+stepper's natural width, so the stepper never scrolled and the whole document did instead.
+`min-w-0` on the two body columns and on `SectionCard` lets the column shrink and hands the
+scroll back to the element that opted into it.
+
+The general form: *a child that opts into its own overflow only gets it if every ancestor is
+allowed to shrink.* `overflow-x-auto` is not self-sufficient inside flex or grid.
+
+**A translation called with the wrong placeholder.** `advances.recoveryAt` already existed as
+`"Recovered at {rate}"`; the new call site passed `{ percent }`. next-intl raises
+`FORMATTING_ERROR` and renders the raw pattern — visible as literal `{rate}` on screen, and
+invisible to every unit test, because the tests assert on the label, not the interpolation.
+Caught only by watching the console during the capture. **Read the existing message before
+adding a call site to it; a `setdefault` that keeps the old string keeps the old contract.**
+
+**Nine untranslated audit commands in the activity feed.**
+`MISSING_MESSAGE: commercial.activity.contract.approve-review`, and the same for `submit`,
+`create`, `update`, `cancel`, `terminate`, `removeAdvanceTerm`, `addMilestone` and
+`completeMilestone` — every contract command except the four that happened to be in the
+seed data when the namespace was written. The rows still rendered, because `describe()` fell
+back to the raw command, so nothing looked broken; the only symptom was console noise and a
+feed that said `contract.approve-review` instead of "approved the contract review".
+
+Fixed in `e2028a8`: the nine keys added in both locales, and `describe()` switched from
+comparing `t()`'s return against the key path to **`t.has()`**. The old string-comparison
+fallback worked but still triggered next-intl's error path on every miss; `t.has` asks the
+question without raising. Any future command degrades to the raw command silently.
+
+*Worth recording how this was nearly missed.* On seeing the error I checked the JSON, found
+the key present, and concluded it was a stale dev bundle. It was not — a parallel session had
+added the keys between the capture and the check, and I read the fixed file. **A source file
+that disagrees with a runtime error is not automatically the source file being right; check
+whether the file changed under you before dismissing the error.**
+
+97 test files / 1370 tests, `tsc --noEmit` silent, lint 0 errors.

@@ -319,6 +319,7 @@ UNPAID, with the unit tests passing throughout because they mocked the old shape
 | [C14](#c14) | **Blocking — bug** | IPA | `RETURNED_FOR_REVISION` is a dead end — editable, unsubmittable | **fixed** `e85bab9` — `submit-for-approval` accepts `RETURNED_FOR_REVISION`, which is also in `MUTABLE_STATUSES`. |
 | [C15](#c15) | Gap | IPA | Claimed items carry a bare `boqNodeId` — no code or description | in doc |
 | [C17](#c17) | **Correctness — bug** | Finance | A negative allocation is accepted and defeats the over-allocation guard | **fixed** `e85bab9` — `finance.service.ts:74` rejects `allocatedAmount <= 0`. |
+| [C18](#c18) | **Domain** | Contracts | The guarantee lifecycle has three names for one state and no `CANCELLED` | open — Eng Ahmed |
 | [D3](#d3) | Docs | Clients, Contracts | Documented request shapes that return `400` | in doc |
 | [D4](#d4) | **Domain** | IPA | May a claim go below what was already certified? | [domain-questions.md](./domain-questions.md) |
 
@@ -1865,6 +1866,41 @@ same one — `constraints.md`'s money-as-string rule is either the rule or it is
 validation, `extendedAmount`, and the `accepted + rejected = received` check — and converts at
 the API boundary only, in a single `toApiNumber()` in `src/features/procurement/api/`. That
 function is the one thing to delete when this is fixed.
+
+### <a id="c18"></a>C18 — The guarantee lifecycle has three names and is missing one state
+
+> *Raised 2026-08-14 while building the Commercial Overview guarantees table. A domain
+> question for **Eng Ahmed Shirie**, not a bug to patch.*
+
+Three sources disagree about the states a bank guarantee can be in:
+
+| Source | States |
+|---|---|
+| `GuaranteeStatus` (`schema.prisma:2334`) | `ACTIVE` · `DISCHARGED` · `EXPIRED` · `CALLED` |
+| ADR-017 §"Guarantee attention" | `ACTIVE` · `DISCHARGED` · `CALLED` · `EXPIRED` · `CANCELLED`* |
+| The Commercial specification | Active · **Released** · Expired · Called |
+
+Two separate problems.
+
+**"Discharged" vs "Released."** The same event under two names. A quantity surveyor reading
+"Discharged" and a contract administrator reading "Released" cannot be sure they are looking
+at the same fact, and the UI currently shows whichever word the translation file happened to
+get. One name, chosen by the domain, then used in the enum, the ADR, the spec and both
+locales.
+
+**There is no `CANCELLED`.** ADR-017 lists it with an asterisk; the enum does not have it.
+A guarantee issued against a contract that is later cancelled before execution has nowhere
+to go — it is not discharged (nothing was performed), not expired (the date has not passed),
+and not called. Today it stays `ACTIVE` forever on a dead contract, which is exactly the row
+that will trigger a false "expiring soon" prompt later.
+
+**Frontend position meanwhile:** the guarantees table renders the enum verbatim through
+`guaranteeStatusTone`, and keeps **lifecycle** and **attention** in two separate columns —
+`EXPIRING_SOON` is a prompt, not a legal status, and merging them would make an ACTIVE
+guarantee look expired. Nothing is invented and no state is renamed in the UI. When the
+naming is settled the change is one enum, one migration, and two translation values.
+
+---
 
 ---
 
