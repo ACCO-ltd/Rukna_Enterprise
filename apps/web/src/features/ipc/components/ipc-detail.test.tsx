@@ -10,16 +10,13 @@ import { screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
-import { getCertificatePaymentStatus, getIpc, listIpcs } from '@/features/ipc/api/ipc-api';
+import { getIpc, listIpcs } from '@/features/ipc/api/ipc-api';
 import { getContract } from '@/features/contracts/api/contracts-api';
 import { getIpa } from '@/features/ipa/api/ipa-api';
 import { getBoqTree } from '@/features/boq/api/boq-api';
 import type { ContractDetail } from '@/features/contracts/types';
 import type { BoqTreeNode, IpaDetail as IpaDetailType } from '@/lib/api-types';
-import type {
-  CertificatePaymentStatus,
-  IpcDetail as IpcDetailType,
-} from '@/features/ipc/types';
+import type { IpcDetail as IpcDetailType } from '@/features/ipc/types';
 import { ApiError } from '@/lib/api-client';
 
 import { IpcDetail } from './ipc-detail';
@@ -27,7 +24,6 @@ import { IpcDetail } from './ipc-detail';
 vi.mock('@/features/ipc/api/ipc-api', () => ({
   listIpcs: vi.fn(),
   getIpc: vi.fn(),
-  getCertificatePaymentStatus: vi.fn(),
 }));
 
 // The screen walks certificate → application → BOQ to put a description on each certified
@@ -179,21 +175,6 @@ function certifiedLine() {
   };
 }
 
-/**
- * A payment-status response. All three fields are decimal strings — `totalAllocated` was a
- * JS number until C8 was fixed, and `settlementFor` guarded it with `Number.isFinite`,
- * which is false for a string. Mocking a number here is what hid that.
- *
- * Every certificate in this file nets to 47,500 (gross 50,000 less 2,500 retention) — the
- * shape C7 (#11) could not report as paid.
- */
-function payment(
-  totalAllocated: string,
-  status: CertificatePaymentStatus['status'],
-): CertificatePaymentStatus {
-  return { totalAllocated, netCertified: '47500.00', status };
-}
-
 /** Gross 50,000 less 2,500 retention = 47,500 net — the shape C7 (#11) cannot report as paid. */
 function certificate(overrides: Partial<IpcDetailType> = {}): IpcDetailType {
   return {
@@ -232,7 +213,6 @@ function certificate(overrides: Partial<IpcDetailType> = {}): IpcDetailType {
 beforeEach(() => {
   vi.mocked(getIpc).mockReset();
   vi.mocked(getContract).mockReset();
-  vi.mocked(getCertificatePaymentStatus).mockReset();
   vi.mocked(listIpcs).mockReset();
   vi.mocked(getIpa).mockReset();
   vi.mocked(getBoqTree).mockReset();
@@ -245,7 +225,6 @@ beforeEach(() => {
   vi.mocked(getIpa).mockResolvedValue(application());
   // Every test renders the settlement section, so give it a default rather than leaving the
   // query resolving undefined in the tests that are not about payment.
-  vi.mocked(getCertificatePaymentStatus).mockResolvedValue(payment('0.00', 'UNPAID'));
 });
 
 function renderDetail() {
@@ -255,7 +234,6 @@ function renderDetail() {
 describe('IpcDetail', () => {
   it('leads with the net certified amount, which is what the client owes', async () => {
     vi.mocked(getIpc).mockResolvedValue(certificate());
-    vi.mocked(getCertificatePaymentStatus).mockResolvedValue(payment('0.00', 'UNPAID'));
 
     renderDetail();
 
@@ -263,60 +241,26 @@ describe('IpcDetail', () => {
     expect(screen.getByText('Net certified')).toBeInTheDocument();
   });
 
-  describe('settlement', () => {
-    /**
-     * The reason this screen derives settlement instead of displaying the API's. The
-     * endpoint measures allocations against the GROSS total, so a certificate carrying
-     * retention and settled in full reports PARTIALLY_PAID forever (C7, #11). Here the API
-     * says exactly that and the screen must still say Paid.
-     */
-    it('reports a fully settled certificate as paid even when the API says otherwise', async () => {
+  /**
+   * A12 / ADR-017 CONST-COM-004. This screen used to derive a paid balance from
+   * `GET /receipts/certificate/:id/payment-status`, which reads the legacy receipt->IPC
+   * ledger. ADR-017 nominates receipt->invoice as the settlement authority, so the same
+   * certificate could show one figure here and a different one in the Commercial workspace.
+   * Settlement now belongs to the invoice, and the billing card links to it.
+   */
+  describe('settlement ownership', () => {
+    it('states no paid balance of its own', async () => {
       vi.mocked(getIpc).mockResolvedValue(certificate());
-      vi.mocked(getCertificatePaymentStatus).mockResolvedValue(payment('47500.00', 'PARTIALLY_PAID'));
 
       renderDetail();
+      await screen.findByRole('heading', { level: 1 });
 
-      expect(await screen.findByText('Paid')).toBeInTheDocument();
-      expect(screen.queryByText('Partly paid')).not.toBeInTheDocument();
+      for (const label of ['Paid', 'Partly paid', 'Unpaid', 'Over-allocated']) {
+        expect(screen.queryByText(label)).not.toBeInTheDocument();
+      }
+      expect(screen.queryByText('Allocated')).not.toBeInTheDocument();
     });
 
-    it('shows what has been allocated and what is still outstanding', async () => {
-      vi.mocked(getIpc).mockResolvedValue(certificate());
-      vi.mocked(getCertificatePaymentStatus).mockResolvedValue(payment('20000.00', 'PARTIALLY_PAID'));
-
-      renderDetail();
-
-      expect(await screen.findByText('Partly paid')).toBeInTheDocument();
-      expect(screen.getByText('$20,000.00')).toBeInTheDocument();
-      expect(screen.getByText('$27,500.00')).toBeInTheDocument();
-    });
-
-    it('flags a certificate with more allocated against it than it is worth', async () => {
-      vi.mocked(getIpc).mockResolvedValue(certificate());
-      vi.mocked(getCertificatePaymentStatus).mockResolvedValue(payment('48000.00', 'PAID'));
-
-      renderDetail();
-
-      expect(await screen.findByText('Over-allocated')).toBeInTheDocument();
-      expect(
-        screen.getByText('More has been allocated to this certificate than it is worth.'),
-      ).toBeInTheDocument();
-    });
-
-    it('keeps the certificate readable when the allocation total cannot be loaded', async () => {
-      vi.mocked(getIpc).mockResolvedValue(certificate());
-      vi.mocked(getCertificatePaymentStatus).mockRejectedValue(new Error('network'));
-
-      renderDetail();
-
-      expect(
-        await screen.findByText(
-          'The amount paid against this certificate could not be loaded. The certificate itself is unaffected.',
-        ),
-      ).toBeInTheDocument();
-      // The document itself is unaffected — the headline figure is still there.
-      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('$47,500.00');
-    });
   });
 
   describe('when the stored gross disagrees with the certificate own lines', () => {
@@ -324,7 +268,6 @@ describe('IpcDetail', () => {
       vi.mocked(getIpc).mockResolvedValue(
         certificate({ certifiedTotal: '50500.00', totalCertifiedAmount: '50000.00' }),
       );
-      vi.mocked(getCertificatePaymentStatus).mockResolvedValue(payment('0.00', 'UNPAID'));
 
       renderDetail();
 
@@ -334,7 +277,6 @@ describe('IpcDetail', () => {
 
     it('says nothing when the two agree', async () => {
       vi.mocked(getIpc).mockResolvedValue(certificate());
-      vi.mocked(getCertificatePaymentStatus).mockResolvedValue(payment('0.00', 'UNPAID'));
 
       renderDetail();
 
@@ -351,7 +293,6 @@ describe('IpcDetail', () => {
         supersessionReason: 'Re-measured after site inspection',
       }),
     );
-    vi.mocked(getCertificatePaymentStatus).mockResolvedValue(payment('0.00', 'UNPAID'));
 
     renderDetail();
 
@@ -387,7 +328,6 @@ describe('IpcDetail', () => {
 
   it('shows a certified line with the reason the certifier cut it', async () => {
     vi.mocked(getIpc).mockResolvedValue(certificate({ items: [certifiedLine()] }));
-    vi.mocked(getCertificatePaymentStatus).mockResolvedValue(payment('0.00', 'UNPAID'));
 
     renderDetail();
 

@@ -3,7 +3,6 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 
 import {
-  getCertificatePaymentStatus,
   getIpc,
   issueIpc,
   listIpcs,
@@ -11,7 +10,7 @@ import {
   supersedeIpc,
 } from '../api/ipc-api';
 import type { SupersedeIpcPayload } from '../api/ipc-api';
-import type { CertificatePaymentStatus, Ipc, IpcDetail, IssueIpcPayload } from '../types';
+import type { Ipc, IpcDetail, IssueIpcPayload } from '../types';
 
 export const ipcKeys = {
   all: ['ipc'] as const,
@@ -63,19 +62,3 @@ export function useSupersede(applicationId: string) {
   });
 }
 
-/**
- * Allocation total for a certificate — read `totalAllocated`, never `status`. See the note
- * on `getCertificatePaymentStatus` and `settlementFor`.
- *
- * Kept separate from `useIpc` rather than folded into it: the certificate itself is a fixed
- * document, while what has been paid against it changes whenever a receipt is allocated. A
- * failure here should cost the payment line, not the whole certificate.
- */
-export function useCertificatePaymentStatus(
-  id: string,
-): UseQueryResult<CertificatePaymentStatus, Error> {
-  return useQuery({
-    queryKey: ipcKeys.payment(id),
-    queryFn: () => getCertificatePaymentStatus(id),
-  });
-}

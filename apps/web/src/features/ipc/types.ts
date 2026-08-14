@@ -5,7 +5,6 @@ export type {
   IpcDetail,
   IpcItem,
   IpcDeduction,
-  CertificatePaymentStatus,
 } from '@/lib/api-types';
 
 export { IpcStatus };

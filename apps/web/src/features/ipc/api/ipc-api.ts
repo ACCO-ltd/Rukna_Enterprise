@@ -1,6 +1,6 @@
 import { apiClient } from '@/lib/api-client';
 
-import type { CertificatePaymentStatus, Ipc, IpcDetail, IssueIpcPayload } from '../types';
+import type { Ipc, IpcDetail, IssueIpcPayload } from '../types';
 
 /**
  * `GET /ipc`, optionally scoped to one application.
@@ -65,27 +65,11 @@ export function supersedeIpc(applicationId: string, payload: SupersedeIpcPayload
 }
 
 /**
- * Settlement status for one certificate.
+ * `GET /receipts/certificate/:id/payment-status` is deliberately NOT wrapped here.
  *
- * Returns `{ totalAllocated, netCertified, status }`, all decimal strings.
- *
- * Both defects this endpoint used to carry are fixed, verified against
- * `finance.repository.ts` on 2026-08-09:
- *
- *  - C7 (#11) — `status` compared allocations against the GROSS `certifiedTotal`, so any
- *    certificate carrying a deduction was pinned at PARTIALLY_PAID. It compares against
- *    `netCertified` now.
- *  - C8 — `totalAllocated` was a JS number rather than a decimal string. It is `.toFixed(2)`
- *    now, like every other money field.
- *
- * `settlementFor` still derives the state locally rather than reading `status`: the server
- * has no `OVER_ALLOCATED`, and the net it measures against must be the one this screen
- * displays. See the note on that function.
+ * It reads the legacy receipt->IPC allocation ledger, which ADR-017 declares is not the
+ * settlement authority (CONST-COM-004) — receipt->invoice is. Consuming it gave the same
+ * certificate two different paid balances depending on which screen you were on. The
+ * endpoint is still live; removing it is Eng Ahmed's call under A12. Settlement is read
+ * from the invoice.
  */
-export function getCertificatePaymentStatus(
-  certificateId: string,
-): Promise<CertificatePaymentStatus> {
-  return apiClient<CertificatePaymentStatus>(
-    `/receipts/certificate/${certificateId}/payment-status`,
-  );
-}

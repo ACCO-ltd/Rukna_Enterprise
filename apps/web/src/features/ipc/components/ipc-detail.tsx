@@ -19,15 +19,14 @@ import { useBoqTree } from '@/features/boq/hooks/use-boq';
 import { fractionToPercent } from '@/features/contracts/contract-terms';
 import { useContract } from '@/features/contracts/hooks/use-contracts';
 import { useIpa } from '@/features/ipa/hooks/use-ipa';
-import { MONEY_SCALE, fromMinorUnits } from '@/lib/money';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney, formatNumber } from '@/lib/format';
 import type { BoqTreeNode, IpcItem } from '@/lib/api-types';
 
-import { useCertificatePaymentStatus, useIpc, useIpcs } from '../hooks/use-ipc';
-import { grossDisagreementMinor, settlementFor } from '../settlement';
+import { useIpc, useIpcs } from '../hooks/use-ipc';
+import { grossDisagreementMinor } from '../settlement';
 import { IpcBillingCard } from './ipc-billing-card';
-import { IpcEffectiveBadge, IpcStatusBadge, SettlementBadge } from './ipc-status-badge';
+import { IpcEffectiveBadge, IpcStatusBadge } from './ipc-status-badge';
 import { IpcSupersessionDrawer } from './ipc-supersession-drawer';
 
 interface IpcDetailProps {
@@ -58,9 +57,11 @@ export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
   // The contract is the authority on the currency this money is denominated in, and it is
   // already cached from the application page the user arrived from.
   const contract = useContract(contractId);
-  // Deliberately not blocking the page: a certificate is readable whether or not we can say
-  // what has been paid against it. See `useCertificatePaymentStatus`.
-  const payment = useCertificatePaymentStatus(ipcId);
+
+  // Settlement is deliberately absent here. An IPC must not carry its own paid balance
+  // (ADR-017 CONST-COM-004): the invoice generated from it owns outstanding, and reading the
+  // legacy receipt->IPC ledger produced a second, non-authoritative figure for the same
+  // certificate. IpcBillingCard shows the invoice that settles this one.
 
   // The application and the BOQ exist only to put a description on each certified line. The
   // certificate carries a bare `applicationItemId` and nothing else identifying the work
@@ -113,7 +114,6 @@ export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
   const currency = contract.data.currency;
   const reference = ipc.certificateRef ?? `#${ipc.certificateNumber}`;
 
-  const settlement = settlementFor(ipc.netCertified, payment.data?.totalAllocated ?? null);
   const disagreement = grossDisagreementMinor(ipc.certifiedTotal, ipc.totalCertifiedAmount);
 
   // Two distinct non-effective states, and they must not both render. A superseded cert is
@@ -242,13 +242,6 @@ export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
         ) : null}
       </dl>
 
-      <SettlementSection
-        settlement={settlement}
-        currency={currency}
-        isPending={payment.isPending}
-        isError={payment.isError}
-      />
-
       {/* Sprint 4 AR. Renders nothing unless the certificate is effective, which is the only
           state `POST /invoices/from-ipc` accepts. */}
       <IpcBillingCard ipcId={ipc.id} isEffective={ipc.isEffective} currency={currency} />
@@ -355,73 +348,6 @@ export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
   );
 }
 
-// ─── Settlement ────────────────────────────────────────────────────────────────
-
-function SettlementSection({
-  settlement,
-  currency,
-  isPending,
-  isError,
-}: {
-  settlement: ReturnType<typeof settlementFor>;
-  currency: string;
-  isPending: boolean;
-  isError: boolean;
-}) {
-  const t = useTranslations('platform.ipc.settlement');
-  const tCommon = useTranslations('common');
-  const locale = useLocale() as 'en' | 'ar';
-
-  return (
-    <section className="space-y-4">
-      <h2 className="text-lg font-semibold text-foreground">{t('heading')}</h2>
-
-      {isPending ? (
-        <div role="status" aria-live="polite">
-          <span className="sr-only">{tCommon('loading')}</span>
-          <div
-            className="h-20 animate-pulse rounded-lg border border-border bg-muted"
-            aria-hidden="true"
-          />
-        </div>
-      ) : isError ? (
-        // The certificate is still fully readable — only what has been paid is unknown.
-        <Alert variant="info" messages={[t('unavailable')]} />
-      ) : (
-        <div className="rounded-lg border border-border bg-surface p-5 shadow-sm sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <SettlementBadge state={settlement.state} />
-            {settlement.state === 'OVER_ALLOCATED' ? (
-              <p className="text-xs text-danger">{t('overAllocatedHint')}</p>
-            ) : null}
-          </div>
-
-          <dl className="mt-4 grid gap-4 sm:grid-cols-2">
-            <div>
-              <dt className="text-xs text-muted-foreground">{t('allocated')}</dt>
-              <dd className="mt-0.5 text-sm font-medium text-foreground">
-                <bdi>{formatMoney(fromMinorUnits(settlement.allocatedMinor, MONEY_SCALE), currency, locale)}</bdi>
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted-foreground">{t('outstanding')}</dt>
-              <dd className="mt-0.5 text-sm font-medium text-foreground">
-                <bdi>
-                  {formatMoney(fromMinorUnits(settlement.outstandingMinor, MONEY_SCALE), currency, locale)}
-                </bdi>
-              </dd>
-            </div>
-          </dl>
-
-          {/* Why this figure is derived here rather than taken from the endpoint that exists
-              to report it. Stated on the screen because a finance officer comparing this to
-              the API would otherwise find an unexplained difference. */}
-          <p className="mt-4 text-xs text-muted-foreground">{t('derivedNote')}</p>
-        </div>
-      )}
-    </section>
-  );
-}
 
 // ─── Item row ──────────────────────────────────────────────────────────────────
 
