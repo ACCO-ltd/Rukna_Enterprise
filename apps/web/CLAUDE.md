@@ -7,14 +7,15 @@
 
 Read these documents **in order** before making any change or answering any question:
 
-1. `/docs/02-architecture/api-reference.md` — **Every live endpoint, request/response shapes, auth flow, error format. Read this first.**
-2. `/docs/02-architecture/frontend-design.md` — **Canonical frontend design plan: navigation, components, build sequence, interaction patterns.**
-3. `/docs/02-architecture/domain-model.md` — Entity definitions, enums, business rules
-4. `/docs/02-architecture/architecture.md` — Stack, module map, Clean Architecture rules
-4. `/docs/02-architecture/tenancy.md` — Multi-tenancy (subdomain), TenantContext
-5. `/AGENTS.md` — Engineering operating manual
-6. `/docs/02-architecture/constraints.md` — Engineering constraints
-7. `/docs/02-architecture/boundaries.md` — Team ownership
+1. `/docs/reference/api-reference.md` — **Every live endpoint, request/response shapes, auth flow, error format. Read this first.**
+2. `/docs/01-capability-matrix.md` — What is actually built, backend vs frontend (authoritative status)
+3. `/docs/reference/frontend-design.md` — **Canonical frontend design plan: navigation, components, build sequence, interaction patterns.**
+4. `/docs/reference/domain-model.md` — Entity definitions, enums, business rules
+5. `/docs/reference/architecture.md` — Stack, module map, Clean Architecture rules
+6. `/docs/reference/tenancy.md` — Multi-tenancy (subdomain), TenantContext
+7. `/AGENTS.md` — Engineering operating manual
+8. `/docs/reference/constraints.md` — Engineering constraints
+9. `/docs/02-domain-boundaries.md` — Aggregate ownership
 
 ---
 
@@ -58,7 +59,7 @@ packages/ui/src/**        ← Shared UI components (you own this)
 
 ## What Is Live Right Now
 
-`/docs/02-architecture/api-reference.md` is the endpoint reference — every path, request
+`/docs/reference/api-reference.md` is the endpoint reference — every path, request
 and response shape. Read it there rather than from a copy here.
 
 This file used to carry its own endpoint listing. It drifted: it documented a

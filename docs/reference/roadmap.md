@@ -38,7 +38,7 @@ Both are required. The roadmap below builds them in the correct sequence.
 | **Sprint 5 Frontend** | Procurement Workspace UI | ⏳ Next — Frontend Engineer |
 | **Post-Sprint 5** | Architecture Review + Cross-Cutting Quality Work | ✅ Complete |
 | **Sprint 6 Backend** | Governance seam + loop-back, RBAC, Project Actual P&L, receipts fix | ✅ Delivered 2026-08-13 (merged to `main`, 197 tests) |
-| **Sprint 6 Frontend** | Surface the governance/approval flow + project P&L (see `frontend-surface-plan.md`) | ⏳ Next — Frontend Engineer |
+| **Sprint 6 Frontend** | Surface the governance/approval flow + project P&L (see `docs/01-capability-matrix.md` for what's built vs pending UI) | ⏳ Next — Frontend Engineer |
 | **Sprint 6** | Variations / Change Management (ChangeOrder) | ⏳ Blocked on #51 (Eng Ahmed) |
 | **Sprint 7** | Inventory and Project Costing | Planned |
 | **Sprint 8** | Accounts Receivable, Cash and Banking | Planned |
@@ -210,9 +210,13 @@ Supplier Payment (posted)
   ↓ GL JournalEntry: Dr Accounts Payable / Cr Bank
 ```
 
-**File attachments foundation (also Sprint 5):**
-Sprint 5 builds the shared file-serving layer (S3-compatible storage + `Attachment` entity).
-Each subsequent sprint adds attachment support to its own entities.
+**File attachments foundation — NOT built (correction 2026-08-14):**
+This was planned for Sprint 5 but was **not** delivered. There is no shared file-serving
+layer, no S3-compatible storage, and no `PlatformFile`/`Attachment` aggregate in the code.
+What exists today is **per-entity attachment metadata rows** (`ContractAttachment`,
+`IpaAttachment`, `IpcAttachment`, `GuaranteeAttachment`, `JournalEntryAttachment`) that record
+a reference but cannot store or serve a file. The design lives in ADR-014; implementation is
+still pending. See `docs/01-capability-matrix.md`.
 
 **Not in Sprint 5:** Variations/ChangeOrders, SupplierReturn, UoM conversion, warehouse
 management, stock ledger, inventory valuation, Approved Supplier List.
@@ -269,14 +273,15 @@ merged to `main`. **197 integration tests green.** ADRs 011–015 record the dec
 | **RBAC** | `PermissionsGuard` wired as global `APP_GUARD`; accounting + procurement controllers declare `@RequirePermissions`; JWT carries permissions. Verified with an HTTP e2e returning `403`. Closes #25/#28. |
 | **Approval seam (ADR-011)** | PO `submit`, SupplierBill `submit`, SupplierPayment `approve` route through `CommandGovernanceService.gateStateTransition` (the same seam IPA/Project use). `GovernedEntity` extended. Backward-compatible: no binding → proceeds. |
 | **Approval loop-back (ADR-015)** | Re-drive mechanism — a gated command re-invoked after its instance is `APPROVED` consumes it and completes the transition. Governance is now **functional end-to-end**, not just armed. |
-| **Project Actual P&L (ADR-013)** | `GET /projects/:id/pl` + `journal_lines` dimension indexes. Posted-GL-only; excludes commitments (the rich _Project Financial Position_ is a separate, not-yet-built read model). |
+| **Project Actual P&L (ADR-013)** | `GET /projects/:id/pl` + `journal_lines` dimension indexes. Posted-GL-only; excludes commitments. The rich _Project Financial Position_ is a **separate read model — now built** (`GET /projects/:id/financial-position`, `ProjectFinancialPositionController/Service`): actual cost + remaining committed cost (COMMITTED + ACCRUED) + forecast margin. |
 | **Receipts** | `POST /receipts` fixed (it 500'd on every call). The A12 domain question (one settlement ledger vs two) remains open for Eng Ahmed. |
 | **Sweep landed** | Commitment-ledger fixes (#31), AP fixes (#33/#34/#35/#36/#42), B16 approval-gate (#45), plus ADR-008/009/010 subsystems, all committed and tested. |
 
 **Not yet done (deliberately):** value-threshold routing (needs Eng Ahmed's CFO/CEO thresholds),
-SoD wiring (`SegregationOfDutiesService` has no callers), a dedicated `CONSUMED` approval status,
-and the rich Project Financial Position. **Frontend for all of the above is unbuilt** — see the
-frontend surface plan (`frontend-surface-plan.md`).
+SoD wiring (`SegregationOfDutiesService` has no callers), and a dedicated `CONSUMED` approval
+status. (The rich Project Financial Position read model has since been built — see ADR-013 and
+`GET /projects/:id/financial-position`.) For the current backend/frontend status of every
+capability, see `docs/01-capability-matrix.md`.
 
 ---
 

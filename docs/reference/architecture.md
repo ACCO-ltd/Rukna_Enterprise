@@ -1,9 +1,17 @@
 # Enterprise ERP Platform
 ## Software Architecture Document (SAD)
 
-Version: 5.0.0
+Version: 5.1.0
 
-Status: Active — Sprint 5 complete (Post-Sprint 5 architecture review done)
+Status: Active — reference SAD. Records durable architecture principles (Clean Architecture,
+modular monolith, dependency rules, security, ADR discipline). These are stable and current.
+
+> **Implementation status has moved.** The per-sprint "Implemented" tables below are a
+> historical record up to Sprint 6 and are no longer maintained here. For the authoritative,
+> code-verified status of every capability (backend / frontend / integrated / missing), see
+> **`docs/01-capability-matrix.md`**. For the mental model of the whole system, see
+> **`docs/00-system-map.md`**; for aggregate ownership and source-of-truth rules, see
+> **`docs/02-domain-boundaries.md`**.
 
 ---
 
@@ -374,7 +382,7 @@ Database Tables
 
 > **Sprint 3 Finance is construction billing tracking only — NOT full accounting.**
 > Full accounting (GL, AP, AR, journal entries, trial balance, financial statements) begins in Sprint 4.
-> See `docs/02-architecture/roadmap.md` for the 9-sprint plan.
+> See `docs/reference/roadmap.md` for the 9-sprint plan.
 
 ### Sprint 3 Architecture Decisions
 
@@ -739,39 +747,19 @@ The guiding principle is:
 
 "Extend the platform by adding modules, not by rewriting the foundation."
 
-
 ---
 
-## Before we continue
+## Repository shape
 
-I want to make **one architectural change** before we write any more documents.
+The platform is a **Turborepo monorepo** (decided at inception, ADR-001):
 
-You originally proposed:
-
-> NestJS + PostgreSQL + Next.js
-
-I recommend we formalize this as a **Turborepo monorepo** from day one.
-
-
+```
 apps/
-api/ (NestJS)
-web/ (Next.js)
-
+  api/   (NestJS)
+  web/   (Next.js)
 packages/
-ui/
-config/
-types/
-eslint/
-tsconfig/
+  ui/  config/  types/  eslint/  tsconfig/
+```
 
-
-For a 2–3 engineer team, this provides:
-
-- Shared TypeScript configuration
-- Shared UI components
-- Shared types
-- Shared linting and formatting
-- Consistent dependency management
-- Easier CI/CD
-
-It keeps one repository while avoiding duplication, and it scales well as you add more ap
+One repository, shared TypeScript config / UI / types / linting, consistent dependency
+management, and simpler CI — without duplication across apps.

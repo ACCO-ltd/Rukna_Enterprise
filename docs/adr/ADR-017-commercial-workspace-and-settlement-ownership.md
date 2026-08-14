@@ -126,7 +126,7 @@ migration).
 ## Provisional decisions (require Eng Ahmed Shirie confirmation)
 
 - **Guarantee "expiring soon" window = 30 days.** Taken from the accepted platform default
-  in `docs/02-architecture/frontend-design.md` (guarantee expiring within 30 days is a
+  in `docs/reference/frontend-design.md` (guarantee expiring within 30 days is a
   WARNING signal). Made explicit in `guarantee-attention-policy.ts`.
 - **Operational carve-outs.** Guarantee-status changes allowed in any non-terminal status;
   milestone completion allowed in ACTIVE and FINAL_ACCOUNT_PENDING only.

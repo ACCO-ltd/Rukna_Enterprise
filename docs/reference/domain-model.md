@@ -785,17 +785,25 @@ Many-to-many bridge between `PaymentReceipt` and `InterimPaymentCertificate`.
 
 ## Entities Not Yet Implemented
 
-| Entity | Sprint |
+> **Correction (2026-08-14):** Procurement — MaterialRequest, PurchaseOrder,
+> GoodsReceiptNote, SupplierBillMatch, CommitmentLedgerEntry — is **implemented** and was
+> removed from this list. It is documented in `docs/domains/procurement.md`. For the
+> authoritative built/partial/missing status of every capability, always consult
+> `docs/01-capability-matrix.md` (the single source of truth for implementation status).
+
+| Entity | Status |
 |---|---|
-| BudgetAuthorization (INTERNAL_CAPITAL projects) | Sprint 4 |
-| ContractMilestone certification + invoice-generation | Sprint 4+ |
-| Subcontract, SubcontractCertificate | Sprint 4+ |
-| MaterialRequest, PurchaseOrder, GoodsReceiptNote | Sprint 4+ |
-| StockLedger, StockTransfer | Sprint 4+ |
-| CostLedger | Sprint 4+ (after Procurement + Inventory stable) |
-| DailyProgressReport, MeasurementSheet, ITC | Sprint 4+ |
-| LabourAttendance, EquipmentLog | Sprint 4+ |
-| Platform File aggregate (storage) | Sprint 4+ |
+| BudgetAuthorization (INTERNAL_CAPITAL projects) | Not built |
+| ContractMilestone certification + invoice-generation | Not built |
+| Subcontract, SubcontractCertificate | Not built — design in ADR-012 |
+| StockLedger, StockTransfer, Warehouse | Not built |
+| CostLedger | Not built — after Inventory is stable |
+| DailyProgressReport, MeasurementSheet, ITC | Not built |
+| Programme / Schedule / Activity | Not built |
+| ChangeOrder / Variation | Not built — `BoqNode.sourceType`/`sourceChangeOrderId` provenance prepared |
+| LabourAttendance, EquipmentLog | Not built |
+| Platform File aggregate + file serving (ADR-014) | Not built — per-entity attachment metadata rows exist (`ContractAttachment`, `IpaAttachment`, `IpcAttachment`, `GuaranteeAttachment`, `JournalEntryAttachment`); no storage or serving layer |
+| Notifications delivery | Not built — `notification-event.policy.ts` domain stub only |
 
 ---
 

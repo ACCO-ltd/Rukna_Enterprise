@@ -275,8 +275,8 @@ without `--dry-run`. Repair is idempotent and never reactivates suspended member
 Before a CEO demo, run
 `pnpm tenant:demo-readiness --slug=newclient`. This read-only check reports demo data,
 ADMIN access, workflow definitions/bindings, and required workflow policies without exposing
-credentials or database URLs. See `p1-ceo-demo-readiness.md` for the demo route and the
-workflow activation gate.
+credentials or database URLs. Governance/workflow activation is gated pending the CFO/CEO
+approval thresholds from Eng Ahmed (see `docs/01-capability-matrix.md` → Workflow / DOA).
 
 ---
 

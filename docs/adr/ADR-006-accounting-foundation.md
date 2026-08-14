@@ -2065,7 +2065,7 @@ Sprint 4 is complete when all of the following are satisfied:
 ---
 
 **Companion documents:**
-- `docs/02-architecture/accounting-event-catalog.md` — the authoritative catalog of all accounting events, posting rules, journal structures, and error codes. Every event type referenced in `PostingRuleVersion.eventType` must have an entry there.
+- `docs/reference/accounting-event-catalog.md` — the authoritative catalog of all accounting events, posting rules, journal structures, and error codes. Every event type referenced in `PostingRuleVersion.eventType` must have an entry there.
 
 *ADR-006 — Accepted 2026-08-05. Corrections applied 2026-08-05: R-06 bank-resolution migration, period-close gate refinement, year-end close as dedicated capability, P&L/Balance Sheet in Sprint 4 reporting, Cash Flow deferred, IPC→ClientInvoice Draft integration, opening-balance reconciliation identities, 8–11 week single-engineer timeline, all active bank accounts in Phase 1, VAT line detail preservation. Architecture improvements 2026-08-05: Clean Architecture layering, PostingProfile entity, Account/Dimension versioning, AccountingConfiguration module. Integrity addendum 2026-08-06: opening-balance subledger loading, allocation event protocol, P&L/Trial Balance filter rules, period-close gate unresolved-failures-only, snapshot rebuild sequence, allocation invariants, attachment immutability.*
 *Next review: Sprint 5 kickoff, or immediately upon any change to the accounting engine scope.*
