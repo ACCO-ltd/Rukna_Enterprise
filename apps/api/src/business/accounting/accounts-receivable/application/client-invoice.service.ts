@@ -5,6 +5,7 @@ import {
   ConflictException,
   Inject,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import type { AccountWithCurrentVersion } from '../../accounting-core/infrastructure/account.repository.js';
 import type { RequestIdentity } from '@erp/types';
@@ -51,18 +52,18 @@ export class ClientInvoiceService {
 
   /**
    * Generate a draft ClientInvoice from an effective IPC.
-   * Enforces one invoice per IPC.
+   *
+   * CONST-COM-006 — idempotent: one effective IPC maps to at most one ClientInvoice.
+   * Repeating the command returns the existing invoice rather than creating a second AR
+   * receivable. Concurrency is closed by the unique index on ClientInvoice.sourceIpcId:
+   * a racing insert fails with P2002 and we return the invoice the winner created.
    */
   async generateFromIpc(identity: RequestIdentity, dto: GenerateInvoiceFromIpcDto) {
     const prisma = this.tenancyService.getClient();
     const { activeOrganizationId: orgId, userId } = identity;
 
     const existing = await this.repo.findByIpc(prisma, orgId, dto.ipcId);
-    if (existing) {
-      throw new ConflictException(
-        `A ClientInvoice already exists for IPC ${dto.ipcId} (invoice ${existing.id})`,
-      );
-    }
+    if (existing) return existing;
 
     const ipc = await prisma.interimPaymentCertificate.findFirst({
       where: { id: dto.ipcId, organizationId: orgId },
@@ -79,25 +80,35 @@ export class ClientInvoiceService {
     const vatAmount = subtotal.mul(vatRate).toDecimalPlaces(2);
     const totalAmount = subtotal.plus(vatAmount);
 
-    return this.repo.create(prisma, {
-      organizationId: orgId,
-      clientId: contract.clientId,
-      sourceIpcId: dto.ipcId,
-      projectId: contract.projectId,
-      contractId: contract.id,
-      invoiceDate: new Date(dto.invoiceDate),
-      dueDate: new Date(dto.dueDate),
-      currencyCode: ipc.currency,
-      exchangeRateSnapshot: new Decimal(ipc.exchangeRateValue?.toString() ?? '1'),
-      exchangeRateDate: new Date(dto.invoiceDate),
-      exchangeRateSource: 'IPC',
-      subtotal,
-      vatAmount,
-      totalAmount,
-      paymentTerms: dto.paymentTerms,
-      billingAddressSnapshot: { clientName: contract.client.name },
-      createdBy: userId,
-    });
+    try {
+      return await this.repo.create(prisma, {
+        organizationId: orgId,
+        clientId: contract.clientId,
+        sourceIpcId: dto.ipcId,
+        projectId: contract.projectId,
+        contractId: contract.id,
+        invoiceDate: new Date(dto.invoiceDate),
+        dueDate: new Date(dto.dueDate),
+        currencyCode: ipc.currency,
+        exchangeRateSnapshot: new Decimal(ipc.exchangeRateValue?.toString() ?? '1'),
+        exchangeRateDate: new Date(dto.invoiceDate),
+        exchangeRateSource: 'IPC',
+        subtotal,
+        vatAmount,
+        totalAmount,
+        paymentTerms: dto.paymentTerms,
+        billingAddressSnapshot: { clientName: contract.client.name },
+        createdBy: userId,
+      });
+    } catch (err) {
+      // Concurrent generation lost the race on the unique(source_ipc_id) index.
+      // Return the invoice the winning request created — still exactly one receivable.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const winner = await this.repo.findByIpc(prisma, orgId, dto.ipcId);
+        if (winner) return winner;
+      }
+      throw err;
+    }
   }
 
   async approve(identity: RequestIdentity, invoiceId: string) {

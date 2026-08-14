@@ -11,6 +11,7 @@ import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js'
 import { IpcPrismaRepository } from '../infrastructure/ipc-prisma.repository.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
+import { reconcileCertificate } from '../domain/ipc-calculation-policy.js';
 import type { CreateIpcDto } from '../presentation/dto/create-ipc.dto.js';
 import type { SupersedeIpcDto } from '../presentation/dto/supersede-ipc.dto.js';
 
@@ -47,20 +48,21 @@ export class IpcService {
     const ipc = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!ipc) throw new NotFoundException(`IPC ${id} not found`);
 
-    const totalCertifiedAmount = ipc.items.reduce(
-      (sum, i) => sum.plus(new Decimal(i.certifiedAmount.toString())),
-      new Decimal(0),
-    );
-    const totalDeductions = ipc.deductions.reduce(
-      (sum, d) => sum.plus(new Decimal(d.amount.toString())),
-      new Decimal(0),
+    // CONST-COM-007 — one reconciliation policy owns the totals the frontend displays.
+    const reconciliation = reconcileCertificate(
+      ipc.items.map((i) => ({ certifiedAmount: new Decimal(i.certifiedAmount.toString()) })),
+      ipc.deductions.map((d) => ({
+        deductionType: d.deductionType,
+        amount: new Decimal(d.amount.toString()),
+      })),
     );
 
     return {
       ...ipc,
-      totalCertifiedAmount: totalCertifiedAmount.toFixed(2),
-      totalDeductions: totalDeductions.toFixed(2),
-      netCertified: totalCertifiedAmount.minus(totalDeductions).toFixed(2),
+      totalCertifiedAmount: reconciliation.grossCertified,
+      totalDeductions: reconciliation.totalDeductions,
+      netCertified: reconciliation.netCertified,
+      reconciliation,
     };
   }
 
@@ -135,6 +137,56 @@ export class IpcService {
       new Decimal(0),
     );
 
+    // Build the full deduction set (contract-derived + ad-hoc) as plain data so it can be
+    // reconciled through the single calculation policy BEFORE anything is persisted.
+    type DeductionData = {
+      deductionType: string;
+      sourceTermId?: string;
+      rate?: string;
+      basis: string;
+      amount: string;
+    };
+    const deductionData: DeductionData[] = [];
+    if (contract?.retentionTerms && certifiedTotal.greaterThan(0)) {
+      const rate = new Decimal(contract.retentionTerms.retentionRate.toString());
+      deductionData.push({
+        deductionType: 'RETENTION',
+        rate: rate.toString(),
+        basis: certifiedTotal.toFixed(2),
+        amount: certifiedTotal.mul(rate).toFixed(2),
+      });
+    }
+    for (const term of contract?.advanceTerms ?? []) {
+      if (certifiedTotal.greaterThan(0)) {
+        const rate = new Decimal(term.recoveryRate.toString());
+        deductionData.push({
+          deductionType: 'ADVANCE_RECOVERY',
+          sourceTermId: term.id,
+          rate: rate.toString(),
+          basis: certifiedTotal.toFixed(2),
+          amount: certifiedTotal.mul(rate).toFixed(2),
+        });
+      }
+    }
+    const CONTRACT_TYPES = new Set(['RETENTION', 'ADVANCE_RECOVERY']);
+    for (const ded of dto.deductions ?? []) {
+      if (CONTRACT_TYPES.has(ded.deductionType)) continue;
+      deductionData.push({
+        deductionType: ded.deductionType,
+        sourceTermId: ded.sourceTermId,
+        rate: ded.rate,
+        basis: ded.basis,
+        amount: ded.amount,
+      });
+    }
+
+    // CONST-COM-007 — reconcile through the single authoritative policy. Throws (issuance
+    // fails atomically, before any write) if lines/deductions do not reconcile.
+    reconcileCertificate(
+      computedItems.map((i) => ({ certifiedAmount: i.certifiedAmount })),
+      deductionData.map((d) => ({ deductionType: d.deductionType, amount: new Decimal(d.amount) })),
+    );
+
     const certNum = await this.repo.getNextCertificateNumber(prisma, dto.applicationId);
 
     // First valid (non-REJECTED) certificate for this application becomes effective automatically.
@@ -174,33 +226,8 @@ export class IpcService {
         });
       }
 
-      // Auto-generate standard deductions from contract terms.
-      if (contract?.retentionTerms && certifiedTotal.greaterThan(0)) {
-        const rate = new Decimal(contract.retentionTerms.retentionRate.toString());
-        await this.repo.addDeduction(tx, cert.id, {
-          deductionType: 'RETENTION',
-          rate: rate.toString(),
-          basis: certifiedTotal.toFixed(2),
-          amount: certifiedTotal.mul(rate).toFixed(2),
-        });
-      }
-      for (const term of contract?.advanceTerms ?? []) {
-        if (certifiedTotal.greaterThan(0)) {
-          const rate = new Decimal(term.recoveryRate.toString());
-          await this.repo.addDeduction(tx, cert.id, {
-            deductionType: 'ADVANCE_RECOVERY',
-            sourceTermId: term.id,
-            rate: rate.toString(),
-            basis: certifiedTotal.toFixed(2),
-            amount: certifiedTotal.mul(rate).toFixed(2),
-          });
-        }
-      }
-
-      // Persist ad-hoc deductions (client-supplied). Skip contract types — already computed above.
-      const CONTRACT_TYPES = new Set(['RETENTION', 'ADVANCE_RECOVERY']);
-      for (const ded of dto.deductions ?? []) {
-        if (CONTRACT_TYPES.has(ded.deductionType)) continue;
+      // Persist the reconciled deduction set (contract-derived + ad-hoc) computed above.
+      for (const ded of deductionData) {
         await this.repo.addDeduction(tx, cert.id, {
           deductionType: ded.deductionType,
           sourceTermId: ded.sourceTermId,
