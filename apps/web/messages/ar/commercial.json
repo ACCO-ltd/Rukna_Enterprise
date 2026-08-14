@@ -5,12 +5,16 @@
     "more": "المزيد",
     "backToProject": "العودة إلى المشروع",
     "viewApplications": "المستخلصات والشهادات",
-    "view": "عرض"
+    "view": "عرض",
+    "open": "فتح",
+    "viewTerms": "عرض الشروط",
+    "retry": "إعادة المحاولة"
   },
   "states": {
     "loadFailed": "تعذّر تحميل البيانات التجارية",
     "loadFailedHint": "حدث خطأ أثناء تحميل مساحة العمل. حاول مرة أخرى.",
-    "retry": "إعادة المحاولة"
+    "retry": "إعادة المحاولة",
+    "notSet": "غير محدد"
   },
   "tabs": {
     "label": "أقسام الشؤون التجارية",
@@ -25,13 +29,24 @@
     "certified": "المعتمد",
     "invoiced": "المفوتر",
     "received": "المُحصّل",
-    "outstanding": "المتبقي"
+    "outstanding": "المتبقي",
+    "gross": "إجمالي",
+    "net": "صافي",
+    "certifiedGross": "إجمالي المعتمد",
+    "certifiedNet": "صافي المعتمد",
+    "uninvoicedCertified": "معتمد غير مفوتر",
+    "effectiveCertificates": "{count} شهادة سارية",
+    "postedInvoices": "{count} فاتورة مرحّلة",
+    "receivablesOutstanding": "ذمم مدينة قائمة"
   },
   "metricState": {
     "restricted": "مقيّد",
     "unavailable": "غير متاح",
     "failed": "تعذّر التحميل",
-    "restrictedShort": "—"
+    "restrictedShort": "—",
+    "RESTRICTED": "مقيّد",
+    "UNAVAILABLE": "غير منطبق",
+    "FAILED": "غير متاح"
   },
   "contractStatus": {
     "DRAFT": "مسودة",
@@ -48,7 +63,13 @@
     "recentActivity": "النشاط التجاري الأخير",
     "noActivity": "لا يوجد نشاط تجاري بعد.",
     "noContractTitle": "لا يوجد عقد رئيسي بعد",
-    "noContractHint": "لا يحتوي هذا المشروع على عقد عميل. أنشئ عقداً لبدء الشهادات والفوترة."
+    "noContractHint": "لا يحتوي هذا المشروع على عقد عميل. أنشئ عقداً لبدء الشهادات والفوترة.",
+    "terminal": {
+      "CLOSED": "هذا العقد مغلق وللقراءة فقط تجاريًا.",
+      "CANCELLED": "تم إلغاء هذا العقد وهو للقراءة فقط تجاريًا.",
+      "TERMINATED": "تم إنهاء هذا العقد وهو للقراءة فقط تجاريًا."
+    },
+    "terminalHint": "تبقى السجلات متاحة للرجوع والتصدير. لا يمكن رفع مستخلصات أو شهادات جديدة عليه."
   },
   "attention": {
     "none": "لا شيء يحتاج إلى انتباه حالياً.",
@@ -93,14 +114,24 @@
     "startDate": "تاريخ البدء",
     "expectedEndDate": "الإنجاز المتوقع",
     "frozenTitle": "الأساس التجاري مقفل",
-    "frozenHint": "هذا العقد نشط، لذا لا يمكن تعديل أساسه التجاري مباشرة. تتطلب التغييرات الجوهرية أمر تغيير."
+    "frozenHint": "هذا العقد نشط، لذا لا يمكن تعديل أساسه التجاري مباشرة. تتطلب التغييرات الجوهرية أمر تغيير.",
+    "title": "العقد الرئيسي",
+    "effectiveDate": "تاريخ السريان",
+    "completionDate": "تاريخ الإنجاز",
+    "boqBaseline": "أساس جدول الكميات",
+    "boqVersion": "الإصدار {number}",
+    "billingModel": "نموذج الفوترة",
+    "termsLocked": "شروط العقد مقفلة أثناء سريان العقد."
   },
   "retention": {
     "title": "المحتجزات",
     "rate": "نسبة الاحتجاز",
     "cap": "حد الاحتجاز",
     "splitOnPc": "يُفرج عنه عند الإنجاز الفعلي",
-    "none": "لم تُحدد شروط احتجاز."
+    "none": "لم تُحدد شروط احتجاز.",
+    "capOfValue": "{percent} من قيمة العقد",
+    "release": "شروط الإفراج",
+    "releaseTerms": "{pc} عند الإنجاز الفعلي، {fc} عند الإنجاز النهائي"
   },
   "advances": {
     "title": "الدفعات المقدمة",
@@ -115,10 +146,12 @@
       "MATERIAL_ON_SITE": "مواد بالموقع",
       "EQUIPMENT": "معدات",
       "OTHER": "أخرى"
-    }
+    },
+    "percentageOfValue": "{percent} من قيمة العقد"
   },
   "retentionAdvances": {
-    "readFirstNote": "الشروط التعاقدية فقط. تُحتسب الأرصدة المحتجزة والمُفرج عنها والمُستردة في إصدار لاحق ولا تظهر هنا بعد."
+    "readFirstNote": "الشروط التعاقدية فقط. تُحتسب الأرصدة المحتجزة والمُفرج عنها والمُستردة في إصدار لاحق ولا تظهر هنا بعد.",
+    "title": "المحتجزات والدفعات المقدمة"
   },
   "guarantees": {
     "none": "لا توجد ضمانات مسجلة.",
@@ -129,7 +162,9 @@
     "amount": "المبلغ",
     "beneficiary": "المستفيد",
     "issueDate": "تاريخ الإصدار",
-    "expiryDate": "تاريخ الانتهاء"
+    "expiryDate": "تاريخ الانتهاء",
+    "title": "الضمانات",
+    "expires": "تنتهي {date}"
   },
   "guaranteeStatus": {
     "ACTIVE": "نشط",
@@ -173,5 +208,62 @@
     "GENERATE_INVOICE": "إنشاء فاتورة",
     "POST_INVOICE": "ترحيل الفاتورة",
     "RECORD_RECEIPT": "تسجيل تحصيل"
+  },
+  "certification": {
+    "title": "موقف الاعتماد",
+    "applications": "المستخلصات",
+    "certificates": "الشهادات",
+    "invoices": "الفواتير",
+    "unavailable": "تعذّر تحميل أرقام الاعتماد."
+  },
+  "receivables": {
+    "title": "موقف الذمم المدينة",
+    "collectionRate": "معدل التحصيل",
+    "overdueBy": "{days, plural, one {متأخرة يومًا واحدًا} other {متأخرة # يومًا}}",
+    "due": "استحقاق {date}",
+    "unnumbered": "بدون رقم بعد",
+    "unavailable": "تعذّر تحميل الذمم المدينة."
+  },
+  "advanceType": {
+    "MOBILIZATION": "دفعة تعبئة",
+    "MATERIAL_ON_SITE": "مواد في الموقع",
+    "EQUIPMENT": "دفعة معدات",
+    "OTHER": "دفعة مقدمة"
+  },
+  "billingModel": {
+    "MEASURED_IPC": "اعتماد الإنجاز",
+    "MILESTONE": "بالمراحل",
+    "TIME_AND_MATERIAL": "بالوقت والمواد",
+    "HYBRID": "مختلط"
+  },
+  "nextStep": {
+    "CREATE_CONTRACT": "إنشاء العقد الرئيسي",
+    "ADVANCE_CONTRACT": "تقدم بالعقد",
+    "GENERATE_INVOICE": "{count, plural, one {فوترة شهادة واحدة} other {فوترة # شهادات}}",
+    "CREATE_APPLICATION": "إنشاء مستخلص",
+    "VIEW_HISTORY": "عرض السجل"
+  },
+  "activity": {
+    "contract": {
+      "execute": "أبرم العقد",
+      "close": "أغلق العقد",
+      "addGuarantee": "أضاف ضمانًا",
+      "updateGuarantee": "حدّث ضمانًا",
+      "setRetentionTerms": "حدد شروط المحتجزات",
+      "addAdvanceTerm": "أضاف دفعة مقدمة"
+    },
+    "ipc": {
+      "issue": "أصدر شهادة",
+      "supersede": "استبدل شهادة"
+    },
+    "ipa": {
+      "submit": "قدّم مستخلصًا"
+    },
+    "invoice": {
+      "post": "رحّل فاتورة عميل"
+    },
+    "receipt": {
+      "allocate": "خصص دفعة مقبوضة"
+    }
   }
 }

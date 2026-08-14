@@ -22,6 +22,10 @@ function summary(overrides: Partial<CommercialSummaryResponse> = {}): Commercial
       clientName: 'ACCO',
       startDate: '2026-01-01T00:00:00.000Z',
       expectedEndDate: '2026-12-31T00:00:00.000Z',
+      contractValue: '1000000.00',
+      currency: 'USD',
+      billingModel: 'MEASURED_IPC',
+      boqVersionNumber: 3,
     },
     metrics: {
       contractValue: metric('OK', '1000000.00'),
@@ -30,7 +34,10 @@ function summary(overrides: Partial<CommercialSummaryResponse> = {}): Commercial
       invoiced: metric('RESTRICTED', null),
       received: metric('OK', '200000.00'),
       outstanding: metric('OK', '300000.00'),
+      uninvoicedCertified: metric('OK', '240000.00'),
     },
+    certification: { applicationsSubmitted: 9, effectiveCertificates: 8, postedInvoices: 7 },
+    receivables: { collectionRate: 82, outstandingInvoices: [] },
     retention: { retentionRate: '0.05', retentionCap: '0.10', retentionSplitOnPC: '0.5' },
     advances: [],
     guarantees: [],
@@ -61,17 +68,78 @@ function summary(overrides: Partial<CommercialSummaryResponse> = {}): Commercial
 }
 
 describe('OverviewTab', () => {
-  it('renders the five summary metrics with a genuine zero and a restricted blank', () => {
+  it('renders the summary metrics with a genuine zero and a restricted blank', () => {
     renderWithProviders(<OverviewTab projectId="p-1" summary={summary()} />, {
       permissions: ['view:contract', 'view:financial-position'],
     });
 
-    expect(screen.getByText('Contract Value')).toBeInTheDocument();
-    expect(screen.getByText('Outstanding')).toBeInTheDocument();
+    // Labels appear twice by design — once as the headline in the summary strip, once as a
+    // row in the panel that owns the record. Same fact, two altitudes.
+    expect(screen.getAllByText('Contract Value').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Outstanding').length).toBeGreaterThan(0);
     // A genuine zero is a formatted value, not a blank.
-    expect(screen.getByText('$0.00')).toBeInTheDocument();
+    expect(screen.getAllByText('$0.00').length).toBeGreaterThan(0);
     // A restricted metric explains itself and never shows a number.
-    expect(screen.getByText('Restricted')).toBeInTheDocument();
+    expect(screen.getAllByText('Restricted').length).toBeGreaterThan(0);
+  });
+
+  it('states the contract identity the panel is responsible for', () => {
+    renderWithProviders(<OverviewTab projectId="p-1" summary={summary()} />, {
+      permissions: ['view:contract', 'view:financial-position'],
+    });
+
+    expect(screen.getAllByText('CN-2026-001').length).toBeGreaterThan(0);
+    expect(screen.getByText('Version 3')).toBeInTheDocument();
+    expect(screen.getByText('Progress certification')).toBeInTheDocument();
+    // The baseline is immutable while the contract governs work — say it, do not offer Edit.
+    expect(
+      screen.getByText('Contract terms are locked while the contract is active.'),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the certification chain as counts', () => {
+    renderWithProviders(<OverviewTab projectId="p-1" summary={summary()} />, {
+      permissions: ['view:contract', 'view:financial-position'],
+    });
+
+    expect(screen.getByText('9')).toBeInTheDocument();
+    expect(screen.getByText('8')).toBeInTheDocument();
+    expect(screen.getByText('7')).toBeInTheDocument();
+  });
+
+  /** A closed contract is a record. The banner says so rather than leaving it to be inferred. */
+  it('marks a terminal contract read-only', () => {
+    const base = summary();
+    renderWithProviders(
+      <OverviewTab
+        projectId="p-1"
+        summary={{ ...base, mainContract: { ...base.mainContract!, status: 'CLOSED' } }}
+      />,
+      { permissions: ['view:contract', 'view:financial-position'] },
+    );
+
+    expect(
+      screen.getByText('This contract is closed and commercially read-only.'),
+    ).toBeInTheDocument();
+  });
+
+  /** allSettled on the server only pays off if the UI degrades per panel. */
+  it('reports a failed metric in its own panel without losing the page', () => {
+    const base = summary();
+    renderWithProviders(
+      <OverviewTab
+        projectId="p-1"
+        summary={{
+          ...base,
+          metrics: { ...base.metrics, invoiced: metric('FAILED', null) },
+        }}
+      />,
+      { permissions: ['view:contract', 'view:financial-position'] },
+    );
+
+    expect(screen.getByText('Receivables could not be loaded.')).toBeInTheDocument();
+    // The rest of the screen is untouched.
+    expect(screen.getAllByText('CN-2026-001').length).toBeGreaterThan(0);
   });
 
   it('surfaces attention items with their action', () => {
@@ -110,6 +178,6 @@ describe('OverviewTab', () => {
       locale: 'ar',
       permissions: ['view:contract'],
     });
-    expect(screen.getByText('قيمة العقد')).toBeInTheDocument();
+    expect(screen.getAllByText('قيمة العقد').length).toBeGreaterThan(0);
   });
 });

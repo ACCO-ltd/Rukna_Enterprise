@@ -5,12 +5,16 @@
     "more": "More",
     "backToProject": "Back to project",
     "viewApplications": "Applications & Certificates",
-    "view": "View"
+    "view": "View",
+    "open": "Open",
+    "viewTerms": "View terms",
+    "retry": "Retry"
   },
   "states": {
     "loadFailed": "Could not load commercial data",
     "loadFailedHint": "Something went wrong loading this workspace. Try again.",
-    "retry": "Retry"
+    "retry": "Retry",
+    "notSet": "Not set"
   },
   "tabs": {
     "label": "Commercial sections",
@@ -25,13 +29,24 @@
     "certified": "Certified",
     "invoiced": "Invoiced",
     "received": "Received",
-    "outstanding": "Outstanding"
+    "outstanding": "Outstanding",
+    "gross": "Gross",
+    "net": "Net",
+    "certifiedGross": "Certified gross",
+    "certifiedNet": "Certified net",
+    "uninvoicedCertified": "Uninvoiced certified",
+    "effectiveCertificates": "{count} effective certificates",
+    "postedInvoices": "{count} posted invoices",
+    "receivablesOutstanding": "Receivables outstanding"
   },
   "metricState": {
     "restricted": "Restricted",
     "unavailable": "Not available",
     "failed": "Could not load",
-    "restrictedShort": "—"
+    "restrictedShort": "—",
+    "RESTRICTED": "Restricted",
+    "UNAVAILABLE": "Not applicable",
+    "FAILED": "Unavailable"
   },
   "contractStatus": {
     "DRAFT": "Draft",
@@ -48,7 +63,13 @@
     "recentActivity": "Recent Commercial Activity",
     "noActivity": "No commercial activity yet.",
     "noContractTitle": "No main contract yet",
-    "noContractHint": "This project has no client contract. Create one to begin certification and billing."
+    "noContractHint": "This project has no client contract. Create one to begin certification and billing.",
+    "terminal": {
+      "CLOSED": "This contract is closed and commercially read-only.",
+      "CANCELLED": "This contract was cancelled and is commercially read-only.",
+      "TERMINATED": "This contract was terminated and is commercially read-only."
+    },
+    "terminalHint": "Records remain available for reference and export. No further applications or certificates can be raised against it."
   },
   "attention": {
     "none": "Nothing needs attention right now.",
@@ -93,14 +114,24 @@
     "startDate": "Start date",
     "expectedEndDate": "Expected completion",
     "frozenTitle": "Commercial baseline is locked",
-    "frozenHint": "This contract is active, so its commercial baseline cannot be edited directly. Material changes require a Variation."
+    "frozenHint": "This contract is active, so its commercial baseline cannot be edited directly. Material changes require a Variation.",
+    "title": "Main contract",
+    "effectiveDate": "Effective date",
+    "completionDate": "Completion date",
+    "boqBaseline": "BOQ baseline",
+    "boqVersion": "Version {number}",
+    "billingModel": "Billing model",
+    "termsLocked": "Contract terms are locked while the contract is active."
   },
   "retention": {
     "title": "Retention",
     "rate": "Retention rate",
     "cap": "Retention cap",
     "splitOnPc": "Released at practical completion",
-    "none": "No retention terms set."
+    "none": "No retention terms set.",
+    "capOfValue": "{percent} of contract value",
+    "release": "Release terms",
+    "releaseTerms": "{pc} at practical completion, {fc} at final completion"
   },
   "advances": {
     "title": "Advances",
@@ -115,10 +146,12 @@
       "MATERIAL_ON_SITE": "Material on site",
       "EQUIPMENT": "Equipment",
       "OTHER": "Other"
-    }
+    },
+    "percentageOfValue": "{percent} of contract value"
   },
   "retentionAdvances": {
-    "readFirstNote": "Contractual terms only. Held, released and recovered balances are calculated by a future release and are not shown here yet."
+    "readFirstNote": "Contractual terms only. Held, released and recovered balances are calculated by a future release and are not shown here yet.",
+    "title": "Retention & advances"
   },
   "guarantees": {
     "none": "No guarantees recorded.",
@@ -129,7 +162,9 @@
     "amount": "Amount",
     "beneficiary": "Beneficiary",
     "issueDate": "Issued",
-    "expiryDate": "Expires"
+    "expiryDate": "Expires",
+    "title": "Guarantees",
+    "expires": "expires {date}"
   },
   "guaranteeStatus": {
     "ACTIVE": "Active",
@@ -173,5 +208,62 @@
     "GENERATE_INVOICE": "Generate invoice",
     "POST_INVOICE": "Post invoice",
     "RECORD_RECEIPT": "Record receipt"
+  },
+  "certification": {
+    "title": "Certification position",
+    "applications": "Applications",
+    "certificates": "Certificates",
+    "invoices": "Invoices",
+    "unavailable": "Certification figures could not be loaded."
+  },
+  "receivables": {
+    "title": "Receivables position",
+    "collectionRate": "Collection rate",
+    "overdueBy": "{days, plural, one {Overdue by # day} other {Overdue by # days}}",
+    "due": "Due {date}",
+    "unnumbered": "Not yet numbered",
+    "unavailable": "Receivables could not be loaded."
+  },
+  "advanceType": {
+    "MOBILIZATION": "Mobilization advance",
+    "MATERIAL_ON_SITE": "Material on site",
+    "EQUIPMENT": "Equipment advance",
+    "OTHER": "Advance"
+  },
+  "billingModel": {
+    "MEASURED_IPC": "Progress certification",
+    "MILESTONE": "Milestone",
+    "TIME_AND_MATERIAL": "Time and material",
+    "HYBRID": "Hybrid"
+  },
+  "nextStep": {
+    "CREATE_CONTRACT": "Create main contract",
+    "ADVANCE_CONTRACT": "Advance contract",
+    "GENERATE_INVOICE": "{count, plural, one {Invoice # certificate} other {Invoice # certificates}}",
+    "CREATE_APPLICATION": "Create application",
+    "VIEW_HISTORY": "View history"
+  },
+  "activity": {
+    "contract": {
+      "execute": "executed the contract",
+      "close": "closed the contract",
+      "addGuarantee": "added a guarantee",
+      "updateGuarantee": "updated a guarantee",
+      "setRetentionTerms": "set the retention terms",
+      "addAdvanceTerm": "added an advance term"
+    },
+    "ipc": {
+      "issue": "issued a certificate",
+      "supersede": "superseded a certificate"
+    },
+    "ipa": {
+      "submit": "submitted an application"
+    },
+    "invoice": {
+      "post": "posted a client invoice"
+    },
+    "receipt": {
+      "allocate": "allocated a receipt"
+    }
   }
 }

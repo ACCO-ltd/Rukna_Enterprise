@@ -19,6 +19,7 @@ import { ApiError } from '@/lib/api-client';
 import { formatMoney } from '@/lib/format';
 import { usePermissions } from '@/features/auth/permissions/can';
 
+import { resolveCommercialNextStep } from '../commercial-next-step';
 import { useCommercialSummary } from '../hooks/use-commercial';
 import { contractStatusTone } from '../presentation';
 import { CommercialNav, type CommercialTab } from './commercial-nav';
@@ -71,7 +72,7 @@ export function CommercialWorkspace({
   const summary = query.data;
 
   return (
-    <div className="space-y-3" data-commercial-root>
+    <div className="space-y-4" data-commercial-root>
       <Header projectId={projectId} summary={summary} />
       <CommercialNav projectId={projectId} active={active} />
       <div>
@@ -93,12 +94,14 @@ function Header({
   summary: CommercialSummaryResponse | null;
 }) {
   const t = useTranslations('commercial');
+  const tStep = useTranslations('commercial.nextStep');
   const locale = useLocale() as 'en' | 'ar';
   const { can } = usePermissions();
 
-  // Exactly one primary action, and it is always doable: the highest-severity attention
-  // item that carries an action the current user is permitted to take.
-  const primary = summary?.attention.find((item) => item.actionUrl) ?? null;
+  // Exactly one primary action, resolved from the contract's own state rather than from
+  // "whichever attention item happens to carry a URL" — that ordering made the button change
+  // meaning as unrelated items appeared and disappeared. See commercial-next-step.ts.
+  const step = summary ? resolveCommercialNextStep(summary, projectId) : null;
   const contract = summary?.mainContract ?? null;
   const value = contract && summary ? summary.metrics.contractValue : null;
 
@@ -123,9 +126,9 @@ function Header({
       </div>
 
       <div className="flex items-center gap-2">
-        {primary ? (
-          <Button asChild size="sm" className="min-h-[44px] sm:min-h-0">
-            <Link href={primary.actionUrl!}>{t(`attention.${primary.kind}.action`)}</Link>
+        {step ? (
+          <Button asChild size="sm" className="min-h-11 sm:min-h-0">
+            <Link href={step.href}>{tStep(step.kind, { count: step.count ?? 0 })}</Link>
           </Button>
         ) : null}
         <DropdownMenu>
@@ -163,12 +166,13 @@ function WorkspaceSkeleton({ label }: { label: string }) {
       <span className="sr-only">{label}</span>
       <Skeleton className="h-14 w-full" aria-hidden="true" />
       <Skeleton className="h-10 w-full" aria-hidden="true" />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <Skeleton key={i} className="h-24 w-full" aria-hidden="true" />
-        ))}
+      {/* Skeletons mirror the final layout: one summary band, then the two-column body. */}
+      <Skeleton className="h-28 w-full" aria-hidden="true" />
+      <Skeleton className="h-24 w-full" aria-hidden="true" />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Skeleton className="h-80 w-full" aria-hidden="true" />
+        <Skeleton className="h-80 w-full" aria-hidden="true" />
       </div>
-      <Skeleton className="h-64 w-full" aria-hidden="true" />
     </div>
   );
 }
