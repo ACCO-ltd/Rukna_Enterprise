@@ -30,7 +30,7 @@ export function SectionCard({
 }) {
   return (
     <section
-      className={cn('overflow-hidden rounded-panel border border-border bg-surface', className)}
+      className={cn('min-w-0 overflow-hidden rounded-panel border border-border bg-surface', className)}
     >
       <div className="flex min-h-12 items-center justify-between gap-3 border-b border-border px-4 sm:px-5">
         <h2 className="text-body-sm font-semibold text-foreground">{title}</h2>

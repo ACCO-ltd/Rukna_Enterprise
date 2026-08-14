@@ -91,14 +91,18 @@ export function OverviewTab({
         <AttentionList items={summary.attention} />
       </SectionCard>
 
+      {/* min-w-0 on the columns: a grid item defaults to min-width:auto (min-content), so a
+          wide child — the lifecycle stepper's min-w-max row — would force the column past the
+          viewport and scroll the whole page. min-w-0 lets the column shrink and the stepper's
+          own overflow-x-auto contain the scroll. */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           <MainContractPanel base={base} summary={summary} locale={locale} />
           <CertificationPanel base={base} summary={summary} />
           <RetentionAdvancesPanel base={base} summary={summary} />
         </div>
 
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           <ReceivablesPanel base={base} summary={summary} locale={locale} />
           <GuaranteesPanel base={base} summary={summary} locale={locale} />
           <CommercialActivity items={summary.recentActivity} />
@@ -285,7 +289,7 @@ function RetentionAdvancesPanel({
                 ? t('advances.percentageOfValue', { percent: percent(advance.percentage) })
                 : (advance.amount ?? t('states.notSet'))}
               {' · '}
-              {t('advances.recoveryAt', { percent: percent(advance.recoveryRate) })}
+              {t('advances.recoveryAt', { rate: percent(advance.recoveryRate) })}
             </FactRow>
           ))
         )}

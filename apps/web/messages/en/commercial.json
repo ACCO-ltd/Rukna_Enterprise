@@ -245,12 +245,21 @@
   },
   "activity": {
     "contract": {
+      "create": "created the contract",
+      "update": "updated the contract",
+      "submit": "submitted the contract for review",
+      "approve-review": "approved the contract review",
       "execute": "executed the contract",
       "close": "closed the contract",
+      "cancel": "cancelled the contract",
+      "terminate": "terminated the contract",
       "addGuarantee": "added a guarantee",
       "updateGuarantee": "updated a guarantee",
       "setRetentionTerms": "set the retention terms",
-      "addAdvanceTerm": "added an advance term"
+      "addAdvanceTerm": "added an advance term",
+      "removeAdvanceTerm": "removed an advance term",
+      "addMilestone": "added a milestone",
+      "completeMilestone": "completed a milestone"
     },
     "ipc": {
       "issue": "issued a certificate",

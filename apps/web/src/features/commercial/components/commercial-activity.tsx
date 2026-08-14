@@ -23,6 +23,18 @@ export function CommercialActivity({ items }: { items: CommercialActivityItem[] 
   const t = useTranslations('commercial');
   const locale = useLocale() as 'en' | 'ar';
 
+  /**
+   * A readable sentence for the event. `sourceCommand` values are dotted business commands;
+   * where a translation exists it wins, otherwise the raw command is shown rather than an
+   * invented phrase — a made-up description of an audited event is the wrong thing to record.
+   * `t.has` is used so an untranslated command degrades gracefully instead of emitting a
+   * MISSING_MESSAGE console error.
+   */
+  const describe = (event: CommercialActivityItem): string => {
+    const key = event.sourceCommand ?? event.action;
+    return t.has(`activity.${key}`) ? t(`activity.${key}`) : key;
+  };
+
   return (
     <SectionCard title={t('overview.recentActivity')} bodyClassName="px-0 py-0">
       {items.length === 0 ? (
@@ -42,9 +54,7 @@ export function CommercialActivity({ items }: { items: CommercialActivityItem[] 
               <div className="min-w-0 flex-1">
                 <p className="text-body-sm text-foreground">
                   <span className="font-medium">{event.actor.name}</span>{' '}
-                  <span className="text-muted-foreground">
-                    {describe(event, t as (key: string) => string)}
-                  </span>
+                  <span className="text-muted-foreground">{describe(event)}</span>
                 </p>
                 <p className="mt-0.5 text-caption text-muted-foreground">
                   {relativeTime(event.occurredAt, locale)}
@@ -56,19 +66,6 @@ export function CommercialActivity({ items }: { items: CommercialActivityItem[] 
       )}
     </SectionCard>
   );
-}
-
-/**
- * A readable sentence for the event.
- *
- * `sourceCommand` values are dotted business commands. Where a translation exists it wins;
- * otherwise the raw command is shown rather than an invented phrase — a made-up description
- * of an audited event is exactly the wrong thing to put in an audit trail.
- */
-function describe(event: CommercialActivityItem, t: (key: string) => string): string {
-  const key = event.sourceCommand ?? event.action;
-  const translated = t(`activity.${key}`);
-  return translated === `commercial.activity.${key}` ? key : translated;
 }
 
 function initial(name: string): string {

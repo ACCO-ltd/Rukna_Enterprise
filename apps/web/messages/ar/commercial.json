@@ -245,12 +245,21 @@
   },
   "activity": {
     "contract": {
+      "create": "أنشأ العقد",
+      "update": "حدّث العقد",
+      "submit": "قدّم العقد للمراجعة",
+      "approve-review": "اعتمد مراجعة العقد",
       "execute": "أبرم العقد",
       "close": "أغلق العقد",
+      "cancel": "ألغى العقد",
+      "terminate": "أنهى العقد",
       "addGuarantee": "أضاف ضمانًا",
       "updateGuarantee": "حدّث ضمانًا",
       "setRetentionTerms": "حدد شروط المحتجزات",
-      "addAdvanceTerm": "أضاف دفعة مقدمة"
+      "addAdvanceTerm": "أضاف دفعة مقدمة",
+      "removeAdvanceTerm": "أزال دفعة مقدمة",
+      "addMilestone": "أضاف معلمًا",
+      "completeMilestone": "أكمل معلمًا"
     },
     "ipc": {
       "issue": "أصدر شهادة",
