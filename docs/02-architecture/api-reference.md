@@ -449,20 +449,25 @@ DELETE /projects/:id/members/:userId
 
 ### 6.8 BOQ (Bill of Quantities)
 
-All routes nested under `/projects/:projectId/boq`.
+All routes nested under `/projects/:projectId/boq`. Governed by ADR-016 — read it before
+changing anything here. Response contracts live in `@erp/types` (`BoqWorkspaceResponse`,
+`BoqTreeNodeResponse`, `BoqBaselineReadinessResponse`, `BoqCompareResponse`).
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/projects/:id/boq` | Initialize BOQ (idempotent) |
-| `GET` | `/projects/:id/boq` | Get BOQ + version list |
-| `POST` | `/projects/:id/boq/draft` | New draft from approved (`{ "notes": "..." }`) |
-| `POST` | `/projects/:id/boq/versions/:vId/baseline` | Lock draft as approved |
-| `POST` | `/projects/:id/boq/versions/:vId/cancel` | Cancel draft |
-| `GET` | `/projects/:id/boq/versions/:vId/tree` | Full recursive tree |
-| `POST` | `/projects/:id/boq/versions/:vId/nodes` | Add node |
-| `PATCH` | `/projects/:id/boq/versions/:vId/nodes/:nId` | Update node |
-| `POST` | `/projects/:id/boq/versions/:vId/nodes/:nId/move` | Move node + all descendants |
-| `DELETE` | `/projects/:id/boq/versions/:vId/nodes/:nId` | Delete leaf node |
+| Method | Path | Permission | Description |
+|---|---|---|---|
+| `POST` | `/projects/:id/boq` | `manage:boq` | Initialize BOQ (idempotent). Currency is seeded from the project. |
+| `GET` | `/projects/:id/boq` | `view:boq` | BOQ + version list |
+| `GET` | `/projects/:id/boq/workspace` | `view:boq` | **Workspace read model** — versions, totals, contract baseline, readiness, capabilities |
+| `GET` | `/projects/:id/boq/versions/:leftId/compare/:rightId` | `view:boq` | Version diff, paired on `originNodeId` |
+| `POST` | `/projects/:id/boq/draft` | `manage:boq` | New draft from approved (`{ "notes": "..." }`) |
+| `GET` | `/projects/:id/boq/versions/:vId/readiness` | `view:boq` | **Baseline readiness** — the same evaluation `baseline` enforces |
+| `POST` | `/projects/:id/boq/versions/:vId/baseline` | `baseline:boq` | Lock draft as approved |
+| `POST` | `/projects/:id/boq/versions/:vId/cancel` | `manage:boq` | Cancel draft |
+| `GET` | `/projects/:id/boq/versions/:vId/tree` | `view:boq` | Full recursive tree |
+| `POST` | `/projects/:id/boq/versions/:vId/nodes` | `manage:boq` | Add node |
+| `PATCH` | `/projects/:id/boq/versions/:vId/nodes/:nId` | `manage:boq` | Update node |
+| `POST` | `/projects/:id/boq/versions/:vId/nodes/:nId/move` | `manage:boq` | Move node + descendants. **Returns the reindexed tree.** |
+| `DELETE` | `/projects/:id/boq/versions/:vId/nodes/:nId` | `manage:boq` | Delete a node |
 
 **Add node — request body:**
 ```json
@@ -474,15 +479,26 @@ All routes nested under `/projects/:projectId/boq`.
   "descriptionAr": "حفر",
   "isLeaf": true,
   "unit": "m³",
-  "quantity": 1200,
-  "unitRate": 45.00,
+  "quantity": "1200.000",
+  "unitRate": "45.00",
   "currency": "USD",
   "measurementMethod": "QUANTITY",
   "pricingBasis": "UNIT_RATE"
 }
 ```
 
-> `measurementMethod` and `pricingBasis` are leaf-node properties. Default: `QUANTITY` / `UNIT_RATE`. These values are snapshotted onto IPA items — do not change after BOQ is baselined.
+> **`quantity` and `unitRate` are decimal strings, not numbers** (CONST-BOQ-014) — the same
+> convention as `AddIpaItemDto`. They were JSON numbers before ADR-016.
+>
+> `sortOrder` is optional; omit it to append. Sibling positions are dense, unique and
+> server-owned (CONST-BOQ-017), so an out-of-range value is clamped rather than rejected.
+>
+> `currency` is optional and must equal the BOQ currency when supplied — a BOQ holds one
+> currency (CONST-BOQ-013). Sections carry no unit, quantity, rate or currency.
+>
+> `measurementMethod` and `pricingBasis` are leaf-node properties, default `QUANTITY` /
+> `UNIT_RATE`. They are snapshotted onto IPA items — do not change them after baselining.
+> (These were documented here but unreachable through the API until ADR-016 — blocker C9.)
 
 **Tree node response shape:**
 ```json
@@ -490,10 +506,52 @@ All routes nested under `/projects/:projectId/boq`.
   "id": "cld...", "code": "01.01", "description": "Excavation",
   "isLeaf": true, "unit": "m³", "quantity": "1200.000",
   "unitRate": "45.00", "totalAmount": "54000.00",
-  "measurementMethod": "QUANTITY", "pricingBasis": "UNIT_RATE",
-  "computedTotal": 54000.00, "children": []
+  "currency": "USD", "measurementMethod": "QUANTITY", "pricingBasis": "UNIT_RATE",
+  "sourceType": "BASELINE", "sourceChangeOrderId": null, "isActive": true,
+  "computedTotal": "54000.00", "children": []
 }
 ```
+
+> **`computedTotal` is a string.** It was a JSON number while `totalAmount` beside it was a
+> string — the same quantity in two representations on one object (blocker B7). A section's
+> `computedTotal` is the decimal sum of its descendants; `null` means unpriced, which is not
+> the same fact as `"0.00"`.
+
+**Baseline readiness — response:**
+```json
+{
+  "ready": false,
+  "sectionCount": 18, "itemCount": 426,
+  "pricedItemCount": 409, "incompleteItemCount": 17,
+  "duplicateCodeCount": 3,
+  "totalAmount": "12585000.00", "currency": "USD",
+  "blockers": [
+    { "kind": "MISSING_RATE", "nodeId": "cld...", "code": "02.01.002",
+      "description": "Rock excavation", "message": "Item 02.01.002 is missing a rate." }
+  ],
+  "warnings": [
+    { "kind": "EMPTY_SECTION", "nodeId": "cld...", "code": "03",
+      "message": "Section 03 contains no items." }
+  ]
+}
+```
+
+Blocker kinds: `NO_BILLABLE_ITEMS`, `DUPLICATE_CODE`, `MISSING_UNIT`, `MISSING_QUANTITY`,
+`MISSING_RATE`, `CURRENCY_MISMATCH`, `STRUCTURE_INVALID`, `VARIATION_REQUIRED`.
+Warnings never block — a zero rate is a provisional sum, not an error.
+
+**Error responses specific to BOQ:**
+
+| Status | When | Payload |
+|---|---|---|
+| `400` | Node validation failed | `details.violations[]` with `code` + `message` |
+| `400` | Baseline attempted on an unready version | `details.blockers[]` — same shape as the readiness query |
+| `403` | Any node write against a non-DRAFT version (CONST-BOQ-005) | — |
+| `409` | Delete blocked by downstream references (CONST-BOQ-003) | `details.references[]` = `{ source, count }` |
+| `409` | Baseline requires approval (CONST-BOQ-018 / ADR-011) | `details.approvalInstanceId` |
+
+The `409` approval path follows ADR-015 re-drive: approve the instance, then re-invoke
+`POST …/baseline` and it completes.
 
 ---
 

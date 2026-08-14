@@ -621,6 +621,10 @@ model Boq {
   id                        String   @id @default(cuid())
   projectId                 String   @unique @map("project_id")
   organizationId            String   @map("organization_id")
+  // CONST-BOQ-013 — the BOQ's unit of account. Seeded from Project.currency at
+  // initialization. Every node either carries this currency or none; the aggregate sums
+  // amounts, so it cannot hold two.
+  currency                  String   @default("USD") @db.VarChar(3)
   originalBaselineVersionId String?  @map("original_baseline_version_id")
   currentApprovedVersionId  String?  @map("current_approved_version_id")
   currentDraftVersionId     String?  @map("current_draft_version_id")
@@ -640,6 +644,13 @@ model BoqVersion {
   versionNumber Int              @map("version_number")
   status        BoqVersionStatus @default(DRAFT)
   notes         String?
+  // CONST-BOQ-018 attribution. ADR-004 specified derivedFromVersionId; it never shipped,
+  // so a revision could not state which baseline it was copied from. Soft reference — no
+  // FK, matching the version pointers on Boq.
+  derivedFromVersionId String?   @map("derived_from_version_id")
+  preparedBy    String?          @map("prepared_by")
+  submittedBy   String?          @map("submitted_by")
+  submittedAt   DateTime?        @map("submitted_at")
   baselinedAt   DateTime?        @map("baselined_at")
   baselinedBy   String?          @map("baselined_by")
   createdBy     String           @map("created_by")
@@ -678,6 +689,8 @@ model BoqNode {
   // come from a ChangeOrder (Sprint 6). sourceChangeOrderId is null until Sprint 6 adds ChangeOrder.
   sourceType          BoqSourceType     @default(BASELINE) @map("source_type")
   sourceChangeOrderId String?           @map("source_change_order_id")
+  // CONST-BOQ-003 — a node referenced by a downstream record is deactivated, never deleted.
+  isActive            Boolean           @default(true) @map("is_active")
   createdAt           DateTime          @default(now()) @map("created_at")
   updatedAt           DateTime          @updatedAt @map("updated_at")
 
@@ -685,6 +698,13 @@ model BoqNode {
   parent   BoqNode?   @relation("BoqNodeChildren", fields: [parentId], references: [id], onDelete: Restrict)
   children BoqNode[]  @relation("BoqNodeChildren")
 
+  // CONST-BOQ-015 — codes address lines in a contract; two nodes answering to "02.01.002"
+  // makes every downstream reference ambiguous.
+  @@unique([versionId, code])
+  // CONST-BOQ-017 — dense, unique sibling order. Postgres treats NULLs as distinct, so this
+  // constrains non-root siblings only; the migration adds a partial unique index covering
+  // root nodes (parent_id IS NULL).
+  @@unique([versionId, parentId, sortOrder])
   @@index([versionId, parentId])
   @@index([versionId, path])
   @@map("boq_nodes")
@@ -2168,6 +2188,8 @@ enum WorkflowTransactionType {
   SUPPLIER_BILL
   PAYMENT_RECEIPT
   MANUAL_JOURNAL
+  // ADR-016 CONST-BOQ-018 — baselining a BOQ version routes through the ADR-011 gate.
+  BOQ_BASELINE
 }
 
 enum ApprovalStatus {

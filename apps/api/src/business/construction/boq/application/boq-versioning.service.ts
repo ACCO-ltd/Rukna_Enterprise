@@ -10,18 +10,55 @@ import { BoqNode, Prisma } from '@prisma/client';
 import type { RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
+import {
+  CommandGovernanceService,
+  throwIfGated,
+} from '../../../../platform/workflows/application/command-governance.service.js';
 import { BoqPrismaRepository, BoqWithVersions } from '../infrastructure/boq-prisma.repository.js';
+import {
+  evaluateReadiness,
+  type BoqBaselineReadiness,
+} from '../domain/boq-readiness.policy.js';
+
+/**
+ * CONST-BOQ-001 enforcement switch — see `ReadinessContext.enforceVariationOrigin`.
+ *
+ * Off until the Variations module exists. Turning it on before there is a way to raise a
+ * Change Order would block every post-award revision with no route to satisfying the rule.
+ */
+const ENFORCE_VARIATION_ORIGIN = false;
 
 @Injectable()
 export class BoqVersioningService {
   constructor(
     private readonly tenancyService: TenancyService,
     private readonly repo: BoqPrismaRepository,
+    private readonly commandGovernance: CommandGovernanceService,
   ) {}
 
   async getBoq(identity: RequestIdentity, projectId: string): Promise<BoqWithVersions> {
     const prisma = this.tenancyService.getClient();
     return this.requireBoq(prisma, projectId, identity.activeOrganizationId);
+  }
+
+  /** CONST-BOQ-016. The same evaluation `baseline` enforces. */
+  async getReadiness(
+    identity: RequestIdentity,
+    projectId: string,
+    versionId: string,
+  ): Promise<BoqBaselineReadiness> {
+    const prisma = this.tenancyService.getClient();
+    const boq = await this.requireBoq(prisma, projectId, identity.activeOrganizationId);
+    if (!boq.versions.some((version) => version.id === versionId)) {
+      throw new NotFoundException(`Version ${versionId} does not belong to this BOQ`);
+    }
+
+    const nodes = await this.repo.findNodesByVersion(prisma, versionId);
+    return evaluateReadiness(nodes, {
+      boqCurrency: boq.currency,
+      isPostAward: boq.originalBaselineVersionId !== null,
+      enforceVariationOrigin: ENFORCE_VARIATION_ORIGIN,
+    });
   }
 
   /**
@@ -37,9 +74,18 @@ export class BoqVersioningService {
       return existing;
     }
 
+    // CONST-BOQ-013 — the BOQ's unit of account is fixed at initialization from the
+    // project. It is not per node and not chosen per line.
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { currency: true },
+    });
+    if (!project) throw new NotFoundException(`Project ${projectId} not found`);
+
     const boq = await this.repo.createBoq(prisma, {
       projectId,
       organizationId: identity.activeOrganizationId,
+      currency: project.currency || 'USD',
     });
 
     const firstVersion = await this.repo.createVersion(prisma, {
@@ -47,6 +93,7 @@ export class BoqVersioningService {
       versionNumber: 1,
       status: 'DRAFT',
       createdBy: identity.userId,
+      preparedBy: identity.userId,
     });
 
     await this.repo.updateBoq(prisma, boq.id, { currentDraftVersionId: firstVersion.id });
@@ -86,6 +133,10 @@ export class BoqVersioningService {
       status: 'DRAFT',
       notes,
       createdBy: identity.userId,
+      preparedBy: identity.userId,
+      // ADR-004 specified this and it never shipped, so a revision could not say which
+      // baseline it was copied from — the one fact a reviewer needs first.
+      derivedFromVersionId: boq.currentApprovedVersionId,
     });
 
     if (approvedNodes.length > 0) {
@@ -120,6 +171,38 @@ export class BoqVersioningService {
     if (!version || version.status !== 'DRAFT') {
       throw new BadRequestException('Version is not in DRAFT status.');
     }
+
+    // CONST-BOQ-016 — the same evaluation the readiness endpoint returns. The screen shows
+    // the blockers; this refuses the command. Neither can drift from the other.
+    const readiness = evaluateReadiness(
+      await this.repo.findNodesByVersion(prisma, versionId),
+      {
+        boqCurrency: boq.currency,
+        isPostAward: boq.originalBaselineVersionId !== null,
+        enforceVariationOrigin: ENFORCE_VARIATION_ORIGIN,
+      },
+    );
+    if (!readiness.ready) {
+      throw new BadRequestException({
+        message: 'This BOQ version is not ready to be baselined.',
+        details: { blockers: readiness.blockers },
+      });
+    }
+
+    // CONST-BOQ-018 / ADR-011 — baselining is the transition a contract is signed against,
+    // so it goes through the same gate as PO submission and AP approval. With no binding
+    // configured this resolves to null and baselining proceeds exactly as before; adding a
+    // binding turns on four-eyes approval without touching this code.
+    throwIfGated(
+      await this.commandGovernance.gateStateTransition(
+        identity,
+        'BoqVersion',
+        'DRAFT',
+        'BASELINED',
+        versionId,
+      ),
+      'Baselining this BOQ version requires workflow approval.',
+    );
 
     // Supersede the previously approved version.
     if (boq.currentApprovedVersionId) {
@@ -227,6 +310,15 @@ export class BoqVersioningService {
         currency: node.currency ?? undefined,
         totalAmount: node.totalAmount ?? undefined,
         isLeaf: node.isLeaf,
+        // A revision is a copy of the approved scope, so it must carry the contractual
+        // properties of every line. These four were dropped, silently resetting each item
+        // to QUANTITY / UNIT_RATE / BASELINE — which would have changed how an inherited
+        // lump-sum item is measured for payment the moment the revision was baselined.
+        measurementMethod: node.measurementMethod,
+        pricingBasis: node.pricingBasis,
+        sourceType: node.sourceType,
+        sourceChangeOrderId: node.sourceChangeOrderId ?? undefined,
+        isActive: node.isActive,
         originNodeId: node.id,
       };
     });

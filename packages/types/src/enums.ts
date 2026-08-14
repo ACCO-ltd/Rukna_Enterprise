@@ -157,4 +157,7 @@ export type GovernedEntity =
   | 'InterimPaymentApplication'
   | 'PurchaseOrder'
   | 'SupplierBill'
-  | 'SupplierPayment';
+  | 'SupplierPayment'
+  // ADR-016 CONST-BOQ-018 — baselining fixes the scope a contract is signed against and
+  // every certificate is claimed from, so it belongs behind the same gate.
+  | 'BoqVersion';

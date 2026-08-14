@@ -6,6 +6,9 @@ import type {
   IpaStatus,
   IpcStatus,
   ClientStatus,
+  BoqVersionStatus,
+  MeasurementMethod,
+  PricingBasis,
 } from './enums.js';
 
 export interface ProjectWorkspaceSummaryResponse {
@@ -298,4 +301,208 @@ export interface PaymentReceiptResponse {
   createdBy: string;
   createdAt: string;
   allocations: ReceiptAllocationResponse[];
+}
+
+// ─── BOQ (ADR-016) ────────────────────────────────────────────────────────────
+//
+// Closes B12. The web app used to hand-maintain these shapes in
+// `apps/web/src/features/boq/types.ts` and `src/lib/api-types.ts`.
+//
+// Every quantity, rate and amount is a decimal **string** — CONST-BOQ-014. A JSON number
+// cannot represent a rate exactly, and these values are multiplied and summed hundreds of
+// times per BOQ.
+
+export interface BoqVersionResponse {
+  id: string;
+  boqId: string;
+  versionNumber: number;
+  status: `${BoqVersionStatus}`;
+  notes?: string;
+  /** The baseline this revision was copied from. Null on the first version. */
+  derivedFromVersionId?: string;
+  preparedBy?: string;
+  submittedBy?: string;
+  submittedAt?: string;
+  baselinedAt?: string;
+  baselinedBy?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BoqResponse {
+  id: string;
+  projectId: string;
+  organizationId: string;
+  /** CONST-BOQ-013 — the BOQ's single unit of account. */
+  currency: string;
+  originalBaselineVersionId?: string;
+  currentApprovedVersionId?: string;
+  currentDraftVersionId?: string;
+  createdAt: string;
+  updatedAt: string;
+  versions: BoqVersionResponse[];
+}
+
+export interface BoqTreeNodeResponse {
+  id: string;
+  boqId: string;
+  versionId: string;
+  parentId: string | null;
+  path: string;
+  depth: number;
+  sortOrder: number;
+  code: string;
+  description: string;
+  descriptionAr: string | null;
+  isLeaf: boolean;
+  measurementMethod: `${MeasurementMethod}`;
+  pricingBasis: `${PricingBasis}`;
+  unit: string | null;
+  quantity: string | null;
+  unitRate: string | null;
+  currency: string;
+  totalAmount: string | null;
+  originNodeId: string | null;
+  sourceType: 'BASELINE' | 'VARIATION';
+  sourceChangeOrderId: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  children: BoqTreeNodeResponse[];
+
+  // Server-computed — always present on GET …/tree
+  /** Leaf: its own amount. Section: the sum of its descendants. Null when unpriced. */
+  computedTotal: string | null;
+}
+
+export type BoqReadinessBlockerKind =
+  | 'NO_BILLABLE_ITEMS'
+  | 'DUPLICATE_CODE'
+  | 'MISSING_UNIT'
+  | 'MISSING_QUANTITY'
+  | 'MISSING_RATE'
+  | 'CURRENCY_MISMATCH'
+  | 'STRUCTURE_INVALID'
+  | 'VARIATION_REQUIRED';
+
+export interface BoqReadinessBlocker {
+  kind: BoqReadinessBlockerKind;
+  /** Null for version-wide blockers such as an empty BOQ. */
+  nodeId: string | null;
+  code: string | null;
+  description: string | null;
+  message: string;
+}
+
+export interface BoqReadinessWarning {
+  kind: 'ZERO_QUANTITY' | 'ZERO_RATE' | 'EMPTY_SECTION' | 'INACTIVE_ITEM';
+  nodeId: string;
+  code: string;
+  message: string;
+}
+
+export interface BoqBaselineReadinessResponse {
+  ready: boolean;
+  sectionCount: number;
+  itemCount: number;
+  pricedItemCount: number;
+  incompleteItemCount: number;
+  duplicateCodeCount: number;
+  totalAmount: string | null;
+  currency: string;
+  blockers: BoqReadinessBlocker[];
+  warnings: BoqReadinessWarning[];
+}
+
+/** What the signed-in user may do here. Resolved server-side; the API stays the boundary. */
+export interface BoqCapabilities {
+  canView: boolean;
+  canManage: boolean;
+  canBaseline: boolean;
+  /** False when rate and amount fields are omitted from this response. */
+  canViewCommercials: boolean;
+}
+
+export interface BoqVersionSummary extends BoqVersionResponse {
+  totalAmount: string | null;
+  itemCount: number;
+  /** True when Contract.boqVersionId points at this version. */
+  isContractBaseline: boolean;
+}
+
+export interface BoqRevisionSummary {
+  basedOnVersionId: string;
+  basedOnVersionNumber: number;
+  changedItemCount: number;
+  /** Signed: positive is an increase against the baseline it derives from. */
+  netDelta: string | null;
+}
+
+/**
+ * The BOQ workspace read model — one query instead of the four the screen used to stitch
+ * together. Deliberately deep: pricing completeness, readiness and the contract reference
+ * are business judgements, and the frontend must render them rather than re-derive them.
+ */
+export interface BoqWorkspaceResponse {
+  projectId: string;
+  boq: BoqResponse | null;
+  currency: string;
+  /** The editable version, if one is open. */
+  draft: BoqVersionSummary | null;
+  /** The current approved baseline. */
+  approved: BoqVersionSummary | null;
+  /** The version the main contract references — may be older than `approved`. */
+  contractBaseline: BoqVersionSummary | null;
+  versions: BoqVersionSummary[];
+  /** Readiness of the draft, or of the approved version when there is no draft. */
+  readiness: BoqBaselineReadinessResponse | null;
+  revision: BoqRevisionSummary | null;
+  capabilities: BoqCapabilities;
+}
+
+export type BoqChangeKind =
+  | 'ADDED'
+  | 'REMOVED'
+  | 'DESCRIPTION_CHANGED'
+  | 'QUANTITY_CHANGED'
+  | 'RATE_CHANGED'
+  | 'AMOUNT_CHANGED'
+  | 'MOVED'
+  | 'VARIATION_ORIGINATED';
+
+export interface BoqNodeChange {
+  kinds: BoqChangeKind[];
+  /** Node id in the left (older) version. Null when the node was added. */
+  leftNodeId: string | null;
+  /** Node id in the right (newer) version. Null when the node was removed. */
+  rightNodeId: string | null;
+  code: string;
+  description: string;
+  isLeaf: boolean;
+  oldQuantity: string | null;
+  newQuantity: string | null;
+  oldUnitRate: string | null;
+  newUnitRate: string | null;
+  oldAmount: string | null;
+  newAmount: string | null;
+  /** newAmount − oldAmount. Null when neither side has an amount. */
+  amountDelta: string | null;
+  /** Percentage change against the old amount. Null when the old amount is absent or zero. */
+  amountDeltaPercent: string | null;
+}
+
+export interface BoqCompareResponse {
+  leftVersionId: string;
+  leftVersionNumber: number;
+  rightVersionId: string;
+  rightVersionNumber: number;
+  currency: string;
+  leftTotal: string | null;
+  rightTotal: string | null;
+  netDelta: string | null;
+  addedCount: number;
+  removedCount: number;
+  changedCount: number;
+  changes: BoqNodeChange[];
 }

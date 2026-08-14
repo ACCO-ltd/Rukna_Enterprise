@@ -348,6 +348,31 @@ VIEWER
 
 ---
 
+### BOQ vocabulary (ADR-016)
+
+These seven terms are fixed. Use them in code, in the API, and on screen; do not invent
+synonyms for them.
+
+| Term | Definition |
+|---|---|
+| **Working Draft** | The single editable version (`status = DRAFT`). At most one per BOQ. |
+| **Approved Baseline** | A `BASELINED` version. Permanently immutable. |
+| **Contract Baseline** | The version referenced by `Contract.boqVersionId`. May be older than the current Approved Baseline. |
+| **Revision** | A Working Draft deep-copied from the Approved Baseline, each node carrying `originNodeId`. |
+| **Variation Item** | A node with `sourceType = VARIATION` and a `sourceChangeOrderId`. |
+| **Pricing Complete** | Every billable item has unit, quantity, rate and the BOQ currency. |
+| **Baseline Ready** | Structurally valid, Pricing Complete, ≥1 billable item, no duplicate codes, lifecycle permits it. |
+
+**Billable item** = `isLeaf = true`. Sections are structural and never billable.
+
+**Ownership boundaries.** BOQ owns scope structure and pricing — nothing else writes a
+`BoqNode`. Contract owns the negotiated contract value; a BOQ total never replaces it.
+Programme owns time and progress. Procurement and Accounting reference BOQ nodes as a cost
+dimension but never mutate them. Rate and amount visibility is enforced server-side, not
+by hiding fields in the UI.
+
+---
+
 ### Boq
 
 BOQ aggregate root. One BOQ per project. Carries three version pointers — each

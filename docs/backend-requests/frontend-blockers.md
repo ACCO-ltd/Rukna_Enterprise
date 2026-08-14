@@ -567,6 +567,10 @@ rather than after.
 
 ### <a id="b6"></a>B6 — Undocumented empty response bodies
 
+> **PARTIALLY RESOLVED 2026-08-14 (ADR-016).** The two BOQ rows are closed: `move` now
+> returns the reindexed tree, and `DELETE` documents its `409` reference payload. Other
+> modules in the table remain open.
+
 > *Verified live at `c8afdd6` (2026-08-04).*
 
 > *Re-verified at `4a895e7` (2026-08-11) — still open.*
@@ -599,6 +603,11 @@ The frontend now handles empty bodies defensively either way, so this is not blo
 ---
 
 ### <a id="b7"></a>B7 — Money totals computed in floating point
+
+> **RESOLVED 2026-08-14 (ADR-016, CONST-BOQ-014).** `domain/boq-money.ts` does every
+> multiplication and sum in `Prisma.Decimal`; `computedTotal` and `totalAmount` both leave
+> as decimal strings. Covered by `__tests__/boq-tree.spec.ts` ("computes line and section
+> totals in decimal, not floating point").
 
 > *Verified live at `c8afdd6` (2026-08-04).*
 
@@ -666,6 +675,12 @@ Not urgent — raised so it is on the roadmap rather than discovered later.
 
 ### <a id="b13"></a>B13 — `move` never reindexes siblings, so positions can tie
 
+> **RESOLVED 2026-08-14 (ADR-016, CONST-BOQ-017).** `moveNode` now runs one interactive
+> transaction that parks the node, compacts the source range, opens a gap at the destination
+> and rewrites the subtree via a recursive CTE. `@@unique([versionId, parentId, sortOrder])`
+> plus a partial unique index for root nodes make a tie unstorable. Reorder can be enabled
+> in the UI.
+
 > *Verified live at `c8afdd6` (2026-08-04).*
 
 > *Re-verified at `4a895e7` (2026-08-11) — still open, with one correction to the finding: `sortOrder` is **not** required on create. `schema.prisma:536` declares `Int @default(0)`, so an omitted value ties at 0 rather than being rejected — ties are easier to produce than recorded, not harder. `moveNode` still writes the moved node alone (`boq-prisma.repository.ts:109`) and there is still no unique constraint on `(version_id, parent_id, sort_order)`.*
@@ -686,6 +701,11 @@ rather than silently stored. Lower priority than B14, but the two are worth fixi
 together since both live in `moveNode`.
 
 ### <a id="b12"></a>B12 — `@erp/types` exports no Project DTO
+
+> **RESOLVED for BOQ 2026-08-14 (ADR-016).** `packages/types/src/construction.ts` now
+> exports `BoqResponse`, `BoqVersionResponse`, `BoqTreeNodeResponse`,
+> `BoqBaselineReadinessResponse`, `BoqWorkspaceResponse` and `BoqCompareResponse`. The
+> Project/ProjectMember half of this entry is still open.
 
 > *Verified live at `c8afdd6` (2026-08-04).*
 
@@ -997,6 +1017,10 @@ whether a payment is accepted.
 
 ### <a id="c9"></a>C9 — `measurementMethod` and `pricingBasis` can never be set
 
+> **RESOLVED 2026-08-14 (ADR-016).** `CreateNodeDto` / `UpdateNodeDto` accept both fields,
+> and `copyNodes` carries them into a revision — it used to drop them, silently resetting an
+> inherited lump-sum item to QUANTITY / UNIT_RATE.
+
 > *Verified live at `c8afdd6` (2026-08-04).*
 
 > *Re-verified at `4a895e7` (2026-08-11) — still open.*
@@ -1233,6 +1257,10 @@ our calls are correct — but nothing stops another client from getting it wrong
 ## Domain questions — for Eng Ahmed Shirie
 
 ### <a id="d1"></a>D1 — Mixed-currency BOQ nodes sum into one meaningless total
+
+> **RESOLVED 2026-08-14 (ADR-016, CONST-BOQ-013).** A BOQ has one currency, seeded from the
+> project at initialization. A node presenting any other currency is rejected, so aggregate
+> totals are always meaningful. The frontend's mixed-currency suppression is retired.
 
 > *Verified live at `c8afdd6` (2026-08-04).*
 

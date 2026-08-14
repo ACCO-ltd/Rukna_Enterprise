@@ -27,6 +27,7 @@ import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { BoqVersioningService } from '../application/boq-versioning.service.js';
 import { BoqTreeService } from '../application/boq-tree.service.js';
+import { BoqWorkspaceService } from '../application/boq-workspace.service.js';
 import { CreateDraftDto } from './dto/create-draft.dto.js';
 import { CreateNodeDto } from './dto/create-node.dto.js';
 import { UpdateNodeDto } from './dto/update-node.dto.js';
@@ -42,7 +43,34 @@ export class BoqController {
   constructor(
     private readonly versioningService: BoqVersioningService,
     private readonly treeService: BoqTreeService,
+    private readonly workspaceService: BoqWorkspaceService,
   ) {}
+
+  // ─── Workspace read models ────────────────────────────────────────────────────
+
+  @Get('workspace')
+  @ApiOperation({
+    summary:
+      'Everything the BOQ workspace needs in one response: versions, totals, contract baseline, readiness, capabilities',
+  })
+  @ApiParam({ name: 'projectId' })
+  workspace(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
+    return this.workspaceService.getWorkspace(identity, projectId);
+  }
+
+  @Get('versions/:leftId/compare/:rightId')
+  @ApiOperation({ summary: 'Diff two versions, paired on originNodeId lineage' })
+  @ApiParam({ name: 'projectId' })
+  @ApiParam({ name: 'leftId', description: 'The older version' })
+  @ApiParam({ name: 'rightId', description: 'The newer version' })
+  compare(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Param('leftId') leftId: string,
+    @Param('rightId') rightId: string,
+  ) {
+    return this.workspaceService.compare(identity, projectId, leftId, rightId);
+  }
 
   // ─── BOQ lifecycle ────────────────────────────────────────────────────────────
 
@@ -76,13 +104,35 @@ export class BoqController {
 
   // ─── Version commands ─────────────────────────────────────────────────────────
 
+  @Get('versions/:versionId/readiness')
+  @ApiOperation({
+    summary: 'Baseline readiness for a version — the same evaluation POST /baseline enforces',
+  })
+  @ApiParam({ name: 'projectId' })
+  @ApiParam({ name: 'versionId' })
+  readiness(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Param('versionId') versionId: string,
+  ) {
+    return this.versioningService.getReadiness(identity, projectId, versionId);
+  }
+
   @Post('versions/:versionId/baseline')
   @RequirePermissions(PERMISSIONS.boqBaseline)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Baseline the current DRAFT version → BASELINED. Sets it as the approved version.' })
   @ApiParam({ name: 'projectId' })
   @ApiParam({ name: 'versionId' })
-  @ApiResponse({ status: 400, description: 'Version is not the current draft or not in DRAFT status' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Not the current draft, not DRAFT status, or not Baseline Ready — details.blockers lists why',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Approval required — details.approvalInstanceId identifies the instance',
+  })
   baseline(
     @CurrentUser() identity: RequestIdentity,
     @Param('projectId') projectId: string,
@@ -152,11 +202,14 @@ export class BoqController {
   @Post('versions/:versionId/nodes/:nodeId/move')
   @RequirePermissions(PERMISSIONS.boqManage)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Move a node (and all its descendants) to a new position (DRAFT only)' })
+  @ApiOperation({
+    summary:
+      'Move a node and its descendants to a new position (DRAFT only). Returns the reindexed tree.',
+  })
   @ApiParam({ name: 'projectId' })
   @ApiParam({ name: 'versionId' })
   @ApiParam({ name: 'nodeId' })
-  @ApiResponse({ status: 400, description: 'Circular move or target is a leaf node' })
+  @ApiResponse({ status: 400, description: 'Circular move, target is an item, or depth exceeded' })
   moveNode(
     @CurrentUser() identity: RequestIdentity,
     @Param('projectId') projectId: string,
@@ -170,11 +223,16 @@ export class BoqController {
   @Delete('versions/:versionId/nodes/:nodeId')
   @RequirePermissions(PERMISSIONS.boqManage)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Delete a leaf node (DRAFT only — must have no children)' })
+  @ApiOperation({ summary: 'Delete a node (DRAFT only — must have no children and no references)' })
   @ApiParam({ name: 'projectId' })
   @ApiParam({ name: 'versionId' })
   @ApiParam({ name: 'nodeId' })
   @ApiResponse({ status: 400, description: 'Node has children — delete or re-parent them first' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Referenced by downstream records (CONST-BOQ-003) — details.references lists them. Deactivate instead.',
+  })
   deleteNode(
     @CurrentUser() identity: RequestIdentity,
     @Param('projectId') projectId: string,

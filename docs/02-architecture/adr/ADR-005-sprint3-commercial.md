@@ -258,14 +258,17 @@ Full milestone certification and invoice-generation workflows are deferred.
 
 ## Decision 9 — BOQ Node Extensions (Sprint 3 migration)
 
-**Rule CONST-BOQ-010:** Add two fields to `BoqNode` (migration against existing table):
+**Rule CONST-BOQ-011:** Add two fields to `BoqNode` (migration against existing table):
+
+> Renumbered from CONST-BOQ-010 by ADR-016 — ADR-004 had already assigned that identifier
+> to "stable node IDs in path". The rule itself is unchanged.
 
 ```
 measurementMethod   enum    QUANTITY | PERCENTAGE | MILESTONE
 pricingBasis        enum    UNIT_RATE | LUMP_SUM
 ```
 
-**Rule CONST-BOQ-011:**
+**Rule CONST-BOQ-012:**
 - `measurementMethod` is a property of the BOQ leaf item. It defines the contractual
   measurement method and must remain consistent across all payment applications referencing
   that node. `InterimPaymentApplicationItem` uses this method and stores an immutable
@@ -542,8 +545,8 @@ CONST-CONTRACT-007 ContractGuarantee is 1:many with Contract
 CONST-CONTRACT-008 Guarantee types are organization-configurable
 CONST-CONTRACT-009 Guarantee expiry alerts are required
 CONST-CONTRACT-010 ContractMilestone (schema only) — name is unambiguous
-CONST-BOQ-010   measurementMethod and pricingBasis added to BoqNode
-CONST-BOQ-011   measurementMethod is leaf-node property; items must map to leaf nodes only
+CONST-BOQ-011   measurementMethod and pricingBasis added to BoqNode
+CONST-BOQ-012   measurementMethod is leaf-node property; items must map to leaf nodes only
 PLAT-WF-010     WorkflowRequirementPolicy table
 PLAT-WF-011     REQUIRED transition with no active binding → rejected
 PLAT-WF-012     Do not hardcode controlled-entity set; do not put flag on WorkflowDefinition
