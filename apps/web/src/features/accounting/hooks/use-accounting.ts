@@ -344,11 +344,15 @@ export function useProjectActualPl(
  */
 export function useProjectFinancialPosition(
   projectId: string,
+  options: { enabled?: boolean } = {},
 ): UseQueryResult<ProjectFinancialPositionResponse, Error> {
   return useQuery({
     queryKey: accountingKeys.projectFinancialPosition(projectId),
     queryFn: () => getProjectFinancialPosition(projectId),
-    enabled: Boolean(projectId),
+    // The endpoint requires view:financial-position and 403s without it. Callers that cannot
+    // establish the permission must pass `enabled: false` so no request is made — the API
+    // stays the security boundary, but the UI never provokes a 403 it will only discard.
+    enabled: Boolean(projectId) && (options.enabled ?? true),
   });
 }
 

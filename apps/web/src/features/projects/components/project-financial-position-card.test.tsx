@@ -51,12 +51,22 @@ describe('ProjectFinancialPositionCard', () => {
     expect(screen.getByText(/250,000/)).toBeInTheDocument();
   });
 
-  it('renders nothing without view:financial-position', () => {
-    permMocks.can.mockReturnValue(false);
+  it('enables the query only with view:financial-position', () => {
     hookMocks.useProjectFinancialPosition.mockReturnValue({ data: position(), isPending: false, isError: false });
+    renderWithProviders(<ProjectFinancialPositionCard projectId="p1" />);
+    // The permission decides whether the request may be made at all.
+    expect(hookMocks.useProjectFinancialPosition).toHaveBeenCalledWith('p1', { enabled: true });
+  });
+
+  it('renders nothing and disables the query without view:financial-position', () => {
+    permMocks.can.mockReturnValue(false);
+    hookMocks.useProjectFinancialPosition.mockReturnValue({ data: undefined, isPending: false, isError: false });
     const { container } = renderWithProviders(<ProjectFinancialPositionCard projectId="p1" />);
 
     expect(container).toBeEmptyDOMElement();
+    // No permission → the query is disabled, so no request is ever sent (proven end-to-end in
+    // project-financial-position-card.request-gating.test.tsx).
+    expect(hookMocks.useProjectFinancialPosition).toHaveBeenCalledWith('p1', { enabled: false });
   });
 
   it('hides revenue and margin, and explains, when there is no main contract', () => {

@@ -24,11 +24,14 @@ export function ProjectFinancialPositionCard({ projectId }: { projectId: string 
   const tShared = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
   const { can } = usePermissions();
+  const canView = can(FINANCIAL_POSITION_VIEW);
 
-  const fp = useProjectFinancialPosition(projectId);
+  // Gate the request on the permission: without it the query is disabled, so the frontend
+  // never sends a call it would only 403 on. The endpoint remains the security boundary.
+  const fp = useProjectFinancialPosition(projectId, { enabled: canView });
 
-  // No permission → no card. The endpoint is the security boundary; this avoids a 403 state.
-  if (!can(FINANCIAL_POSITION_VIEW)) return null;
+  // No permission → no card, matching the existing UX.
+  if (!canView) return null;
 
   const money = (amount: string | null, currency: string | null): string => {
     if (amount === null) return tShared('notAvailable');
