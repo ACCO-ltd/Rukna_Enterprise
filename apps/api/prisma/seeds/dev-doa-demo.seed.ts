@@ -1,21 +1,28 @@
 /**
- * DEV-ONLY DoA demo seed — makes the ADR-011/015 approval gate fire on a real document.
+ * DEV-ONLY DoA demo seed — makes the ADR-011/015 approval gate fire on real documents.
  *
  * The shared `acco-workflows.seed.ts` seeds every chain and binding **inactive** on purpose:
  * no governance rule may take effect until ACCO records the formal policy effective date. That
  * is correct for any real environment, and it also means that out of the box every governed
  * command sails straight through — there is nothing to *see*.
  *
- * This script wires the smallest possible live gate so a developer can watch the whole loop:
+ * This script wires the smallest possible live gate on each of the three governed commands so a
+ * developer can watch the whole loop:
  *
- *     submit bill → 409 (gated) → approve the one step → "Complete" re-drives → SUBMITTED
+ *     submit/approve → 409 (gated) → approve the one step → "Complete" re-drives → transitioned
  *
- * It activates ONE binding: SupplierBill DRAFT → SUBMITTED, backed by a single-step chain the
- * seeded ADMIN can approve. Nothing else is touched. It is idempotent, and never registered in
- * any automatic seed path — run it by hand, only against a dev tenant DB:
+ * It activates one binding per governed transition, each backed by a single-step chain the
+ * seeded ADMIN can approve:
  *
- *     npx tsx prisma/seeds/dev-doa-demo.seed.ts            # enable the demo gate
- *     npx tsx prisma/seeds/dev-doa-demo.seed.ts --off      # deactivate it again
+ *     SupplierBill    DRAFT → SUBMITTED   (bill submit)
+ *     PurchaseOrder   DRAFT → SUBMITTED   (PO submit)
+ *     SupplierPayment DRAFT → APPROVED    (payment approve — no separate submit)
+ *
+ * Nothing else is touched. It is idempotent, and never registered in any automatic seed path —
+ * run it by hand, only against a dev tenant DB:
+ *
+ *     npx tsx prisma/seeds/dev-doa-demo.seed.ts            # enable the demo gates
+ *     npx tsx prisma/seeds/dev-doa-demo.seed.ts --off      # deactivate them again
  *
  * Requires DATABASE_URL pointing at the dev tenant database, and ACCO_ORG_SLUG (default "acco").
  */
@@ -26,61 +33,78 @@ const prisma = new PrismaClient();
 const ORG_SLUG = process.env.ACCO_ORG_SLUG ?? 'acco';
 const DISABLE = process.argv.includes('--off');
 
-const DEFINITION_NAME = 'DEV — Supplier Bill Approval (demo)';
-const ENTITY_TYPE = 'SupplierBill';
-const FROM_STATE = 'DRAFT';
-const TO_STATE = 'SUBMITTED';
-/** The seeded tenant admin holds ADMIN, so it can act on this step from the approval panel. */
+/** The seeded tenant admin holds ADMIN, so it can act on these steps from the approval panel. */
 const STEP_ROLE = 'ADMIN';
 
-async function main() {
-  const org = await prisma.organization.findFirst({ where: { slug: ORG_SLUG } });
-  if (!org) {
-    throw new Error(`Organization "${ORG_SLUG}" not found. Provision the tenant first.`);
-  }
-  console.log(`DoA demo gate for org: ${org.name} (${org.id})`);
+/** One live gate per governed transition (the three call sites wired for ADR-011). */
+const GATES: Array<{
+  label: string;
+  nameAr: string;
+  transactionType: WorkflowTransactionType;
+  entityType: string;
+  fromState: string;
+  toState: string;
+}> = [
+  {
+    label: 'DEV — Supplier Bill Approval (demo)',
+    nameAr: 'موافقة فاتورة المورد (تجريبي)',
+    transactionType: WorkflowTransactionType.SUPPLIER_BILL,
+    entityType: 'SupplierBill',
+    fromState: 'DRAFT',
+    toState: 'SUBMITTED',
+  },
+  {
+    label: 'DEV — Purchase Order Approval (demo)',
+    nameAr: 'موافقة أمر الشراء (تجريبي)',
+    transactionType: WorkflowTransactionType.PURCHASE_ORDER,
+    entityType: 'PurchaseOrder',
+    fromState: 'DRAFT',
+    toState: 'SUBMITTED',
+  },
+  {
+    label: 'DEV — Supplier Payment Approval (demo)',
+    nameAr: 'موافقة دفع المورد (تجريبي)',
+    transactionType: WorkflowTransactionType.SUPPLIER_PAYMENT,
+    entityType: 'SupplierPayment',
+    fromState: 'DRAFT',
+    toState: 'APPROVED',
+  },
+];
 
-  // ── The single-step definition the gate opens an approval against ─────────────
+async function seedGate(orgId: string, gate: (typeof GATES)[number], isActive: boolean) {
+  // ── A single-step definition the gate opens an approval against ───────────────
   const existingDef = await prisma.workflowDefinition.findFirst({
-    where: { organizationId: org.id, name: DEFINITION_NAME },
+    where: { organizationId: orgId, name: gate.label },
   });
 
   const definition =
     existingDef ??
     (await prisma.workflowDefinition.create({
       data: {
-        organizationId: org.id,
-        transactionType: WorkflowTransactionType.SUPPLIER_BILL,
-        name: DEFINITION_NAME,
-        nameAr: 'موافقة فاتورة المورد (تجريبي)',
+        organizationId: orgId,
+        transactionType: gate.transactionType,
+        name: gate.label,
+        nameAr: gate.nameAr,
         // Deliberately not requiresCeoConfirmation — that flag is what the shared seed uses to
-        // force chains inactive, and this one must stay active for the demo.
+        // force chains inactive, and these must stay active for the demo.
         isActive: true,
         requiresCeoConfirmation: false,
         steps: {
-          create: [
-            { stepOrder: 1, roleRequired: STEP_ROLE, isOptional: false, notifyRoles: [] },
-          ],
+          create: [{ stepOrder: 1, roleRequired: STEP_ROLE, isOptional: false, notifyRoles: [] }],
         },
       },
     }));
 
-  if (!existingDef) {
-    console.log(`  ✓ Created definition ${definition.id} (1 step, ${STEP_ROLE})`);
-  }
-
-  // ── The binding that turns bill submission into a gated transition ────────────
+  // ── The binding that turns the transition into a gated one ────────────────────
   const existingBinding = await prisma.workflowTriggerBinding.findFirst({
     where: {
-      organizationId: org.id,
+      organizationId: orgId,
       triggerKind: WorkflowTriggerKind.STATE_TRANSITION,
-      entityType: ENTITY_TYPE,
-      fromState: FROM_STATE,
-      toState: TO_STATE,
+      entityType: gate.entityType,
+      fromState: gate.fromState,
+      toState: gate.toState,
     },
   });
-
-  const isActive = !DISABLE;
 
   if (existingBinding) {
     await prisma.workflowTriggerBinding.update({
@@ -90,12 +114,12 @@ async function main() {
   } else {
     await prisma.workflowTriggerBinding.create({
       data: {
-        organizationId: org.id,
+        organizationId: orgId,
         triggerKind: WorkflowTriggerKind.STATE_TRANSITION,
-        entityType: ENTITY_TYPE,
-        transactionType: WorkflowTransactionType.SUPPLIER_BILL,
-        fromState: FROM_STATE,
-        toState: TO_STATE,
+        entityType: gate.entityType,
+        transactionType: gate.transactionType,
+        fromState: gate.fromState,
+        toState: gate.toState,
         workflowDefinitionId: definition.id,
         priority: 100,
         isActive,
@@ -104,12 +128,27 @@ async function main() {
   }
 
   console.log(
-    `  ✓ Binding ${ENTITY_TYPE} ${FROM_STATE} → ${TO_STATE} is now ${isActive ? 'ACTIVE' : 'INACTIVE'}`,
+    `  ✓ ${gate.entityType} ${gate.fromState} → ${gate.toState} is now ${isActive ? 'ACTIVE' : 'INACTIVE'}`,
   );
+}
+
+async function main() {
+  const org = await prisma.organization.findFirst({ where: { slug: ORG_SLUG } });
+  if (!org) {
+    throw new Error(`Organization "${ORG_SLUG}" not found. Provision the tenant first.`);
+  }
+  console.log(`DoA demo gates for org: ${org.name} (${org.id})`);
+
+  const isActive = !DISABLE;
+  for (const gate of GATES) {
+    await seedGate(org.id, gate, isActive);
+  }
+
   console.log(
     isActive
-      ? '\nSubmit a DRAFT supplier bill to see it gate (409 + approvalInstanceId), then approve and Complete.'
-      : '\nDemo gate deactivated — supplier bill submission proceeds ungated again.',
+      ? '\nSubmit a DRAFT bill or PO, or approve a DRAFT payment, to see it gate (409 + ' +
+          'approvalInstanceId), then approve the step and Complete.'
+      : '\nDemo gates deactivated — these transitions proceed ungated again.',
   );
 }
 
