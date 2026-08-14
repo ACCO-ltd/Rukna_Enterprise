@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef, useState } from 'react';
 import type { BoqTreeNodeResponse } from '@erp/types';
 import { ChevronRight, LockKeyhole, MoreHorizontal, Plus } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
@@ -25,6 +26,7 @@ import {
 
 import { formatMoney, formatNumber } from '@/lib/format';
 
+import { clamp, isNavigationKey, resolveKeyIntent } from '../boq-keyboard';
 import { isIncomplete, type BoqRow } from '../boq-rows';
 
 export interface BoqRowCommands {
@@ -82,38 +84,81 @@ export function BoqGrid({
 }) {
   const t = useTranslations('platform.boq.grid');
   const locale = useLocale() as 'en' | 'ar';
+  const bodyRef = useRef<HTMLTableSectionElement>(null);
+
+  // Roving tab stop: one row is reachable by Tab, the arrows move between them. Sixty-seven
+  // individually tabbable rows would be worse than none.
+  const [focusIndex, setFocusIndex] = useState(0);
+  const activeIndex = clamp(focusIndex, rows.length);
 
   const columnCount = canViewCommercials ? 9 : 7;
+
+  const focusRow = (index: number) => {
+    setFocusIndex(index);
+    bodyRef.current?.querySelectorAll<HTMLTableRowElement>('tr')[index]?.focus();
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTableSectionElement>) => {
+    // Let a control inside the row keep its own keys — Enter on the ⋯ trigger should open
+    // the menu, not the item drawer.
+    if (event.target !== event.currentTarget && !(event.target as HTMLElement).matches('tr')) {
+      return;
+    }
+    if (!isNavigationKey(event.key)) return;
+
+    const intent = resolveKeyIntent(event.key, activeIndex, rows, locale === 'ar');
+    if (!intent) return;
+
+    event.preventDefault();
+    if (intent.type === 'focus') focusRow(intent.index);
+    else if (intent.type === 'toggle') onToggle(intent.nodeId);
+    else if (intent.type === 'open') onSelect(rows[intent.index]!.node);
+  };
 
   return (
     <div className="overflow-hidden rounded-panel border border-border bg-surface">
       <TableScroll className="rounded-none border-0">
-        <Table>
+        {/* `role="grid"` announces this as navigable with the arrow keys. The native table
+            semantics underneath are untouched. */}
+        <Table role="grid">
           <TableHeader className="sticky top-0 z-10 shadow-e1">
             <TableRow className="hover:bg-surface-subtle">
-              <TableHead className="min-w-40">{t('code')}</TableHead>
-              <TableHead className="min-w-64">{t('description')}</TableHead>
-              <TableHead>{t('type')}</TableHead>
-              <TableHead>{t('unit')}</TableHead>
-              <TableHead numeric>{t('quantity')}</TableHead>
+              {/* Fixed, and pinned. Fixed because the auto layout was handing slack to the
+                  code column and starving the description; pinned because between ~375 and
+                  1100px this grid scrolls sideways, and a rate with no visible item code
+                  beside it is a number nobody can act on. */}
+              <TableHead className="sticky start-0 z-20 w-56 border-e border-border bg-surface-subtle">
+                {t('code')}
+              </TableHead>
+              {/* Takes every spare pixel, so wide viewports widen the column that benefits. */}
+              <TableHead className="w-full min-w-64">{t('description')}</TableHead>
+              <TableHead className="whitespace-nowrap">{t('type')}</TableHead>
+              <TableHead className="whitespace-nowrap">{t('unit')}</TableHead>
+              <TableHead numeric className="whitespace-nowrap">
+                {t('quantity')}
+              </TableHead>
               {canViewCommercials ? (
                 <>
-                  <TableHead numeric>{t('rate', { currency })}</TableHead>
-                  <TableHead numeric>{t('amount', { currency })}</TableHead>
+                  <TableHead numeric className="whitespace-nowrap">
+                    {t('rate', { currency })}
+                  </TableHead>
+                  <TableHead numeric className="whitespace-nowrap">
+                    {t('amount', { currency })}
+                  </TableHead>
                 </>
               ) : null}
-              <TableHead>{t('source')}</TableHead>
+              <TableHead className="whitespace-nowrap">{t('source')}</TableHead>
               <TableHead className="w-12">
                 <span className="sr-only">{t('actions')}</span>
               </TableHead>
             </TableRow>
           </TableHeader>
 
-          <TableBody>
+          <TableBody ref={bodyRef} onKeyDown={handleKeyDown}>
             {rows.length === 0 ? (
               <TableEmpty colSpan={columnCount}>{emptyMessage}</TableEmpty>
             ) : (
-              rows.map((row) => (
+              rows.map((row, index) => (
                 <GridRow
                   key={row.node.id}
                   row={row}
@@ -123,6 +168,8 @@ export function BoqGrid({
                   canViewCommercials={canViewCommercials}
                   highlighted={highlighted.has(row.node.id)}
                   collapsed={collapsed.has(row.node.id)}
+                  tabbable={index === activeIndex}
+                  onFocus={() => setFocusIndex(index)}
                   onToggle={onToggle}
                   onSelect={onSelect}
                   commands={commands}
@@ -180,6 +227,8 @@ function GridRow({
   canViewCommercials,
   highlighted,
   collapsed,
+  tabbable,
+  onFocus,
   onToggle,
   onSelect,
   commands,
@@ -191,6 +240,9 @@ function GridRow({
   canViewCommercials: boolean;
   highlighted: boolean;
   collapsed: boolean;
+  /** True for the single row holding the grid's tab stop. */
+  tabbable: boolean;
+  onFocus: () => void;
   onToggle: (nodeId: string) => void;
   onSelect: (node: BoqTreeNodeResponse) => void;
   commands: BoqRowCommands | null;
@@ -199,11 +251,23 @@ function GridRow({
   const { node, depth, hasChildren } = row;
   const incomplete = isIncomplete(node);
 
+  // The sticky cell needs its own opaque background or the columns scrolling underneath
+  // show through it. It has to track the row's state, not just default to the surface.
+  const stickyBackground = highlighted
+    ? 'bg-warning-subtle'
+    : node.isLeaf
+      ? 'bg-surface'
+      : 'bg-[color-mix(in_oklab,var(--surface-subtle)_60%,var(--surface))]';
+
   return (
     <TableRow
       onClick={() => onSelect(node)}
+      onFocus={onFocus}
+      tabIndex={tabbable ? 0 : -1}
+      aria-expanded={hasChildren ? !collapsed : undefined}
       className={cn(
         'cursor-pointer',
+        'focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-brand-primary',
         // Sections read as structure, items as data. Restrained: a tint and a weight, not a
         // second background colour per level.
         !node.isLeaf && 'bg-surface-subtle/60 font-medium',
@@ -217,7 +281,12 @@ function GridRow({
         !node.isActive && 'opacity-60',
       )}
     >
-      <TableCell className="whitespace-nowrap">
+      <TableCell
+        className={cn(
+          'sticky start-0 z-10 w-56 whitespace-nowrap border-e border-border',
+          stickyBackground,
+        )}
+      >
         {/* Logical inline padding, so the indent flows from the trailing edge in RTL. */}
         <div className="flex items-center gap-1" style={{ paddingInlineStart: depth * 1.25 + 'rem' }}>
           {hasChildren ? (
@@ -261,7 +330,9 @@ function GridRow({
         {node.isLeaf ? t('typeItem') : t('typeSection')}
       </TableCell>
 
-      <TableCell className="text-caption text-muted-foreground">{node.unit ?? '—'}</TableCell>
+      <TableCell className="text-caption text-muted-foreground">
+        {node.isLeaf ? (node.unit ?? '—') : ''}
+      </TableCell>
 
       <TableCell numeric>
         {node.quantity ? (

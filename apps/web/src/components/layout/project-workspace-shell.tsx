@@ -130,7 +130,15 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
           {t('title')}
         </Link>
         <ChevronRight size={14} className="rtl:rotate-180" aria-hidden="true" />
-        <span className="max-w-72 truncate">{project?.name ?? t('workspace.loadingProject')}</span>
+        {/* The one crumb that should navigate and did not. Only rendered as a link once the
+            project has loaded — a link to a record we cannot name yet is not a way back. */}
+        {project ? (
+          <Link href={`/projects/${id}`} className="max-w-72 truncate hover:text-foreground">
+            {project.name}
+          </Link>
+        ) : (
+          <span className="max-w-72 truncate">{t('workspace.loadingProject')}</span>
+        )}
         <ChevronRight size={14} className="rtl:rotate-180" aria-hidden="true" />
         <span className="font-medium text-foreground">{activeCrumb}</span>
       </nav>

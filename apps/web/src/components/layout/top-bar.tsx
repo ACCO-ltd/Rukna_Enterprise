@@ -17,9 +17,10 @@ interface TopBarProps {
  *
  * Contains, left to right:
  *  - Mobile hamburger trigger
- *  - Global search (placeholder — no backend endpoint yet)
  *  - Attention indicator (placeholder — no GET /attention-items yet)
  *  - User avatar menu
+ *
+ * Global search is deliberately absent until `GET /search` exists — see the note below.
  *
  * When a project workspace is active the breadcrumbs and page title live
  * in the `PageHeader` component below this bar, not in the bar itself.
@@ -45,27 +46,13 @@ export function TopBar({ onOpenMenu }: TopBarProps) {
         <MenuIcon />
       </button>
 
-      {/* Search — disabled until GET /search is available */}
-      <div className="flex-1">
-        <label className="sr-only" htmlFor="global-search">
-          {t('searchLabel')}
-        </label>
-        <div className="relative max-w-[440px]">
-          <SearchIcon className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
-          <input
-            id="global-search"
-            type="search"
-            placeholder={t('searchPlaceholder')}
-            disabled
-            className={cn(
-              'h-10 w-full rounded-md border border-border bg-surface-subtle ps-9 pe-3 text-sm shadow-[var(--shadow-control)]',
-              'placeholder:text-muted-foreground/50',
-              'disabled:cursor-not-allowed disabled:opacity-60',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-1',
-            )}
-          />
-        </div>
-      </div>
+      {/* No global search until `GET /search` exists.
+          A disabled input reading "Search… (coming soon)" sat here, in the most prominent
+          position on every page in the product. A control that advertises it does not work
+          earns a support question on every screen and pays nothing back — nobody misses a
+          feature they were never shown. This spacer keeps the menu button leading and the
+          account cluster trailing; the field comes back when there is a search to run. */}
+      <div className="flex-1" />
 
       {/* Right cluster */}
       <div className="flex shrink-0 items-center gap-1.5">
@@ -147,24 +134,6 @@ function MenuIcon() {
   );
 }
 
-function SearchIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      aria-hidden="true"
-      className={className}
-    >
-      <circle cx="11" cy="11" r="8" />
-      <path d="M21 21l-4.35-4.35" />
-    </svg>
-  );
-}
 
 function BellIcon() {
   return (

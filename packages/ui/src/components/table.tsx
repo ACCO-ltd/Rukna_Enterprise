@@ -40,9 +40,17 @@ export function TableHeader({ className, ...props }: React.HTMLAttributes<HTMLTa
   return <thead className={cn('bg-surface-subtle', className)} {...props} />;
 }
 
-export function TableBody({ className, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) {
-  return <tbody className={cn('divide-y divide-border', className)} {...props} />;
-}
+/**
+ * Forwards a ref because a grid with keyboard navigation has to reach its own rows to move
+ * focus between them — see the BOQ grid's roving tab stop.
+ */
+export const TableBody = React.forwardRef<
+  HTMLTableSectionElement,
+  React.HTMLAttributes<HTMLTableSectionElement>
+>(({ className, ...props }, ref) => (
+  <tbody ref={ref} className={cn('divide-y divide-border', className)} {...props} />
+));
+TableBody.displayName = 'TableBody';
 
 export function TableRow({ className, ...props }: React.HTMLAttributes<HTMLTableRowElement>) {
   return <tr className={cn('bg-surface transition-colors hover:bg-surface-subtle', className)} {...props} />;

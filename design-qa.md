@@ -490,3 +490,87 @@ Evidence: `docs/qa/boq/boq-fold-1440x900.png` (BOQ, tiles absent) and
 All five captures re-taken: `dir` and `data-theme` verified off the DOM, document overflow
 0px, console clean. 88 test files / 1303 tests, typecheck, lint on the touched files, and the
 production build green.
+
+## Defects, keyboard access, and a dead control
+
+A review of the shipped UI found four defects, one accessibility failure and one dead
+control. None were taste questions.
+
+### The accessibility failure
+
+`boq-grid.tsx` rendered every row as `<TableRow onClick={…}>` with `cursor-pointer` and
+nothing else — no `tabIndex`, no `role`, no key handler. **Opening a BOQ item could not be
+done from a keyboard at all**: WCAG 2.1.1 Keyboard (Level A), on the primary interaction of
+the densest screen in the product.
+
+Fixed with the roving-tabindex grid pattern — `role="grid"`, one tab stop, arrows to move —
+because 67 individually tabbable rows would have been worse than none. The key mapping lives
+in a pure module (`boq-keyboard.ts`, 14 tests) so it is tested against a row list rather than
+a rendered 400-row table.
+
+| Key | Action |
+|---|---|
+| ↓ ↑ | Next / previous visible row |
+| → | Open a closed section, else step into it |
+| ← | Close an open section, else step out to the parent |
+| Enter / Space | Open the focused item |
+| Home / End | First / last visible row |
+
+← and → swap in RTL: in Arabic the tree opens towards the leading edge, so reusing the LTR
+mapping would fold the tree backwards for half the users.
+
+### The other five
+
+| Fault | Fix |
+|---|---|
+| The breadcrumb's project name was a `<span>` — the one crumb that should navigate, and the only one that did not | Now a `Link`, rendered as plain text until the project loads |
+| Sections printed `—` under UNIT while QUANTITY correctly printed nothing. A section has no unit *by definition*; a dash says "missing", which is what the amber row edge already means | Blank for sections |
+| `CODE` carried `min-w-40` and `DESCRIPTION` had no `w-full`, so wide viewports inflated the code column and starved the description | `CODE` fixed at `w-56`, `DESCRIPTION` takes the slack, the rest shrink to content |
+| Between ~375 and 1100px the grid scrolls sideways and the item code scrolls away with it, leaving rates attached to nothing | `CODE` pinned with `sticky start-0`, opaque background tracking row state, border seam |
+| The global header carried a disabled input reading "Search… (coming soon)" — the same fault as the Import button deliberately left out of this feature, in the most prominent position on every page | Removed, with its orphaned i18n keys. It returns when `GET /search` exists |
+
+### Measured in the browser
+
+Three of these cannot be seen in a screenshot, so they were asserted directly:
+
+```text
+breadcrumb   Hodan District Office Tower -> /projects/cmsra2syt0071tgt4dv2yvt54
+keyboard     4x ArrowDown -> activeElement is <TR>, code 02.01, outline 2px
+             Enter -> drawer opens; Escape -> closes
+sticky code  scrollLeft 0 -> 190 (max): cell left 26px -> 25px, header pinned,
+             background opaque
+header       advertises "coming soon": false
+```
+
+**One bug this caught.** The first sticky attempt used `inset-inline-start-0`, which is not a
+class in Tailwind v4 — the logical inset utility is `start-0`, exactly as
+`platform-data-grid.tsx:744` already had it. With no offset emitted, `position: sticky`
+resolves to `left: auto` and does nothing; the measurement showed the cell travelling from
+26px to −164px while the DOM and a scroll-zero screenshot both looked correct. **Reuse the
+pattern already in the repo before inventing a class, and measure behaviour rather than
+markup.**
+
+### Grid capabilities — two taken, two declined
+
+Chosen on the product's behalf from the original audit's list.
+
+**Taken:** arrow-key navigation (it is the accessibility fix *and* what makes 400 rows
+workable) and the sticky code column (a rate detached from its item code is a number nobody
+can act on).
+
+**Declined — row selection and bulk actions.** Bulk delete on BOQ nodes is a bulk `409`:
+`CONST-BOQ-003` refuses any node referenced by a claim, bill, journal or commitment, so on a
+live project most of a selection would fail one by one. It also spends the decision clarity
+the previous passes bought. Revisit once single-row editing has been used in anger.
+
+**Declined — column visibility chooser.** Fixing the width distribution and pinning the code
+column removes the pressure that would justify it, and it introduces a state where someone
+hides Rate and then cannot reconcile the total in front of them.
+
+**Not doing — column sorting.** A BOQ's order *is* the document order. Sorting by amount
+would break the hierarchy and produce something that cannot be reconciled against the printed
+BOQ a client signed — a case where the obvious data-grid feature is wrong for the document.
+
+90 test files / 1327 tests, typecheck, lint (0 errors) and the production build green. All
+five captures re-verified: `dir` and `data-theme` read off the DOM, 0px document overflow,
+clean console.
