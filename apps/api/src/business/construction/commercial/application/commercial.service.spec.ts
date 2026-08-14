@@ -23,6 +23,8 @@ const baseContract = {
   status: 'ACTIVE',
   currency: 'USD',
   contractValue: new Decimal('1000000'),
+  billingModel: 'MEASURED_IPC',
+  boqVersionId: 'boq-v-1',
   clientNameSnapshot: 'ACCO',
   client: { id: 'client-1', name: 'ACCO' },
   startDate: new Date('2026-01-01'),
@@ -39,6 +41,8 @@ function build(overrides: {
   invoices?: unknown;
   applications?: unknown;
   certRejects?: boolean;
+  boqVersionNumber?: number | null;
+  applicationCount?: number;
 }) {
   const repo = {
     findMainContract: jest
@@ -50,6 +54,8 @@ function build(overrides: {
     findInvoices: jest.fn().mockResolvedValue(overrides.invoices ?? []),
     findApplicationsWithCertificates: jest.fn().mockResolvedValue(overrides.applications ?? []),
     findRecentActivity: jest.fn().mockResolvedValue([]),
+    findBoqVersionNumber: jest.fn().mockResolvedValue(overrides.boqVersionNumber ?? 3),
+    countSubmittedApplications: jest.fn().mockResolvedValue(overrides.applicationCount ?? 0),
   };
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
   const tenancy = { getClient: () => ({}) };
@@ -84,6 +90,9 @@ describe('CommercialService.getSummary', () => {
           documentStatus: 'APPROVED',
           postingStatus: 'POSTED',
           totalAmount: new Decimal('525000'),
+          outstandingAmount: new Decimal('325000'),
+          invoiceDate: new Date('2026-07-01'),
+          dueDate: new Date('2026-07-31'),
           currencyCode: 'USD',
           allocations: [{ allocatedAmount: new Decimal('200000') }],
         },
@@ -159,6 +168,147 @@ describe('CommercialService.getSummary', () => {
     });
     const res = await service.getSummary(financeIdentity, 'p-1');
     expect(res.attention.map((a) => a.kind)).toContain('UNINVOICED_CERTIFICATE');
+  });
+
+  /**
+   * Certified work nobody has asked to be paid for. It is derived from the same effective
+   * set as certifiedNet, so the two can never tell different stories about one certificate.
+   */
+  it('sums certified net on effective certificates with no posted invoice', async () => {
+    const { service } = build({
+      certs: [
+        { id: 'ipc-1', certifiedTotal: new Decimal('300000'), deductions: [{ amount: new Decimal('30000') }] },
+        { id: 'ipc-2', certifiedTotal: new Decimal('200000'), deductions: [] },
+      ],
+      invoices: [
+        {
+          id: 'inv-1',
+          sourceIpcId: 'ipc-1',
+          invoiceNumber: 'INV-1',
+          documentStatus: 'APPROVED',
+          postingStatus: 'POSTED',
+          totalAmount: new Decimal('270000'),
+          outstandingAmount: new Decimal('0'),
+          invoiceDate: new Date('2026-07-01'),
+          dueDate: new Date('2026-07-31'),
+          currencyCode: 'USD',
+          allocations: [{ allocatedAmount: new Decimal('270000') }],
+        },
+      ],
+    });
+    const res = await service.getSummary(financeIdentity, 'p-1');
+
+    // ipc-2 only: 200,000 with no deductions and no invoice behind it.
+    expect(res.metrics.uninvoicedCertified).toMatchObject({ state: 'OK', amount: '200000.00', sourceCount: 1 });
+  });
+
+  it('counts the certification chain, and keeps the counts readable without financial access', async () => {
+    const { service } = build({
+      applicationCount: 9,
+      certs: [
+        { id: 'ipc-1', certifiedTotal: new Decimal('1'), deductions: [] },
+        { id: 'ipc-2', certifiedTotal: new Decimal('1'), deductions: [] },
+      ],
+      invoices: [
+        {
+          id: 'inv-1', sourceIpcId: 'ipc-1', invoiceNumber: 'INV-1',
+          documentStatus: 'APPROVED', postingStatus: 'POSTED',
+          totalAmount: new Decimal('1'), outstandingAmount: new Decimal('0'),
+          invoiceDate: new Date('2026-07-01'), dueDate: new Date('2026-07-31'),
+          currencyCode: 'USD', allocations: [],
+        },
+      ],
+    });
+
+    const res = await service.getSummary(financeIdentity, 'p-1');
+    expect(res.certification).toEqual({
+      applicationsSubmitted: 9,
+      effectiveCertificates: 2,
+      postedInvoices: 1,
+    });
+
+    // How many documents exist is not a commercial secret; what they are worth is.
+    const restricted = await service.getSummary(noFinanceIdentity, 'p-1');
+    expect(restricted.certification.effectiveCertificates).toBe(2);
+    expect(restricted.metrics.uninvoicedCertified.state).toBe('RESTRICTED');
+  });
+
+  it('lists outstanding posted invoices soonest-due first, with overdue days off the server clock', async () => {
+    const now = new Date();
+    const sixDaysAgo = new Date(now);
+    sixDaysAgo.setUTCDate(sixDaysAgo.getUTCDate() - 6);
+    const inTwoWeeks = new Date(now);
+    inTwoWeeks.setUTCDate(inTwoWeeks.getUTCDate() + 14);
+
+    const { service } = build({
+      invoices: [
+        {
+          id: 'inv-late', sourceIpcId: null, invoiceNumber: 'INV-2026-005',
+          documentStatus: 'APPROVED', postingStatus: 'POSTED',
+          totalAmount: new Decimal('70000'), outstandingAmount: new Decimal('70000'),
+          invoiceDate: new Date('2026-07-10'), dueDate: sixDaysAgo,
+          currencyCode: 'USD', allocations: [],
+        },
+        {
+          id: 'inv-soon', sourceIpcId: null, invoiceNumber: 'INV-2026-007',
+          documentStatus: 'APPROVED', postingStatus: 'POSTED',
+          totalAmount: new Decimal('310000'), outstandingAmount: new Decimal('310000'),
+          invoiceDate: new Date('2026-07-28'), dueDate: inTwoWeeks,
+          currencyCode: 'USD', allocations: [],
+        },
+        {
+          id: 'inv-settled', sourceIpcId: null, invoiceNumber: 'INV-2026-004',
+          documentStatus: 'APPROVED', postingStatus: 'POSTED',
+          totalAmount: new Decimal('50000'), outstandingAmount: new Decimal('0'),
+          invoiceDate: new Date('2026-06-01'), dueDate: new Date('2026-06-30'),
+          currencyCode: 'USD', allocations: [{ allocatedAmount: new Decimal('50000') }],
+        },
+      ],
+    });
+    const res = await service.getSummary(financeIdentity, 'p-1');
+
+    // Settled invoices are not outstanding; the latest due date is not the most urgent.
+    expect(res.receivables.outstandingInvoices.map((i) => i.invoiceNumber)).toEqual([
+      'INV-2026-005',
+      'INV-2026-007',
+    ]);
+    expect(res.receivables.outstandingInvoices[0]!.daysOverdue).toBe(6);
+    expect(res.receivables.outstandingInvoices[1]!.daysOverdue).toBe(0);
+    // 430,000 invoiced, 50,000 received.
+    expect(res.receivables.collectionRate).toBe(12);
+  });
+
+  it('withholds the contract value and the receivables list without financial access', async () => {
+    const { service } = build({
+      invoices: [
+        {
+          id: 'inv-1', sourceIpcId: null, invoiceNumber: 'INV-1',
+          documentStatus: 'APPROVED', postingStatus: 'POSTED',
+          totalAmount: new Decimal('100'), outstandingAmount: new Decimal('100'),
+          invoiceDate: new Date('2026-07-01'), dueDate: new Date('2026-07-31'),
+          currencyCode: 'USD', allocations: [],
+        },
+      ],
+    });
+    const res = await service.getSummary(noFinanceIdentity, 'p-1');
+
+    // The identity panel must not leak the figure the metric one card away is hiding.
+    expect(res.mainContract?.contractValue).toBeNull();
+    expect(res.receivables.outstandingInvoices).toEqual([]);
+    expect(res.receivables.collectionRate).toBeNull();
+  });
+
+  it('carries the contract identity the Main Contract panel states', async () => {
+    const { service } = build({ boqVersionNumber: 3 });
+    const res = await service.getSummary(financeIdentity, 'p-1');
+
+    expect(res.mainContract).toMatchObject({
+      contractNumber: 'CN-1',
+      billingModel: 'MEASURED_IPC',
+      boqVersionNumber: 3,
+      currency: 'USD',
+      contractValue: '1000000',
+    });
   });
 });
 

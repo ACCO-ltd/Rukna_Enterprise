@@ -778,6 +778,10 @@ model ContractAdvanceTerm {
 model ContractGuarantee {
   id            String          @id @default(cuid())
   contractId    String          @map("contract_id")
+  // The instrument's own reference — "BG-003", "APG-002". How a guarantee is identified in a
+  // conversation with the issuing bank and on the document itself. Nullable: guarantees loaded
+  // before this column existed have none, and inventing one would be worse than leaving it blank.
+  reference     String?         @db.VarChar(50)
   guaranteeType String          @map("guarantee_type")
   amount        Decimal         @db.Decimal(18, 2)
   currency      String          @db.VarChar(3)

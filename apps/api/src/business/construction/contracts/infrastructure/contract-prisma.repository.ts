@@ -190,6 +190,7 @@ export class ContractPrismaRepository {
     contractId: string,
     data: {
       guaranteeType: string;
+      reference?: string;
       amount: string;
       currency: string;
       issuer: string;

@@ -116,6 +116,8 @@ export interface ContractGuaranteeResponse {
   id: string;
   contractId: string;
   guaranteeType: string;
+  /** The instrument's own reference, e.g. "BG-003". Absent on rows predating the column. */
+  reference?: string;
   issuer: string;
   beneficiary: string;
   amount: string;
@@ -541,6 +543,50 @@ export interface CommercialContractSummary {
   clientName: string;
   startDate: string | null;
   expectedEndDate: string | null;
+  /** Withheld (null) without financial visibility, exactly as the metrics are. */
+  contractValue: string | null;
+  currency: string;
+  billingModel: `${BillingModel}`;
+  /** The baselined BOQ version this contract is measured against. */
+  boqVersionNumber: number | null;
+}
+
+/**
+ * The certification chain, as counts.
+ *
+ * Three numbers rather than a funnel chart: a surveyor reads "9 applications → 8 effective
+ * certificates → 7 posted invoices" and immediately knows one application is uncertified and
+ * one certificate is uninvoiced. Counts are visible without financial permission — how many
+ * documents exist is not a commercial secret; what they are worth is.
+ */
+export interface CommercialCertificationSummary {
+  applicationsSubmitted: number;
+  effectiveCertificates: number;
+  postedInvoices: number;
+}
+
+export interface CommercialOutstandingInvoice {
+  id: string;
+  invoiceNumber: string | null;
+  invoiceDate: string;
+  dueDate: string;
+  outstandingAmount: string;
+  currency: string;
+  /**
+   * Positive when past due, computed against the **server** clock.
+   *
+   * Whether an invoice is overdue is a commercial fact, not a rendering choice — a browser
+   * with a wrong clock must not be able to decide it. Same reasoning as
+   * `guarantee-attention-policy.ts` for expiry.
+   */
+  daysOverdue: number;
+}
+
+export interface CommercialReceivablesSummary {
+  /** received ÷ invoiced, as a whole percent. Null when nothing is invoiced yet. */
+  collectionRate: number | null;
+  /** Posted invoices still carrying a balance, soonest due first. Capped server-side. */
+  outstandingInvoices: CommercialOutstandingInvoice[];
 }
 
 export interface CommercialRetentionSummary {
@@ -578,7 +624,15 @@ export interface CommercialSummaryResponse {
     invoiced: CommercialMetric;
     received: CommercialMetric;
     outstanding: CommercialMetric;
+    /**
+     * Certified net on effective certificates with no posted invoice — work that has been
+     * agreed and is not yet asking to be paid for. The one figure that is nobody's job by
+     * default, which is why it earns a place beside the settlement chain.
+     */
+    uninvoicedCertified: CommercialMetric;
   };
+  certification: CommercialCertificationSummary;
+  receivables: CommercialReceivablesSummary;
   /** Read-first contractual terms only — no held/released/recovered values (Gate C C5). */
   retention: CommercialRetentionSummary | null;
   advances: CommercialAdvanceSummary[];

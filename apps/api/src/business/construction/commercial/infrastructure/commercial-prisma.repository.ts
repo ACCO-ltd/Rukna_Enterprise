@@ -33,6 +33,21 @@ export class CommercialPrismaRepository {
     });
   }
 
+  /**
+   * The version number behind `Contract.boqVersionId`.
+   *
+   * A separate lookup because `boqVersionId` is a bare column with no Prisma relation — the
+   * BOQ is its own aggregate and the contract references it by id rather than owning it. One
+   * extra query beats declaring a relation the domain model does not have.
+   */
+  async findBoqVersionNumber(prisma: TenantPrisma, boqVersionId: string): Promise<number | null> {
+    const version = await prisma.boqVersion.findUnique({
+      where: { id: boqVersionId },
+      select: { versionNumber: true },
+    });
+    return version?.versionNumber ?? null;
+  }
+
   /** All effective certificates for a contract — the only ones that count (CONST-COM-003). */
   findEffectiveCertificates(prisma: TenantPrisma, organizationId: string, contractId: string) {
     return prisma.interimPaymentCertificate.findMany({
@@ -75,6 +90,22 @@ export class CommercialPrismaRepository {
     });
   }
 
+  /**
+   * How many applications have reached the client.
+   *
+   * DRAFT and PENDING_INTERNAL_APPROVAL are internal working states — counting them would
+   * tell a commercial manager they have submitted more than they have.
+   */
+  countSubmittedApplications(prisma: TenantPrisma, organizationId: string, contractId: string) {
+    return prisma.interimPaymentApplication.count({
+      where: {
+        organizationId,
+        contractId,
+        status: { in: ['APPROVED_FOR_SUBMISSION', 'SUBMITTED'] as never[] },
+      },
+    });
+  }
+
   /** Posted-or-pending client invoices for a contract, with their posted receipt allocations. */
   findInvoices(prisma: TenantPrisma, organizationId: string, contractId: string) {
     return prisma.clientInvoice.findMany({
@@ -86,6 +117,12 @@ export class CommercialPrismaRepository {
         documentStatus: true,
         postingStatus: true,
         totalAmount: true,
+        // Carried so the Receivables panel can list what is still owed and when it was due,
+        // without a second round trip. `outstandingAmount` is maintained by the AR allocation
+        // path — it is the settlement truth ADR-017 nominates.
+        outstandingAmount: true,
+        invoiceDate: true,
+        dueDate: true,
         currencyCode: true,
         allocations: {
           where: { postingStatus: 'POSTED' },
@@ -113,6 +150,13 @@ export class CommercialPrismaRepository {
             'ContractRetentionTerms',
             'ContractMilestone',
             'InterimPaymentCertificate',
+            // The settlement half of the story. Without these the feed reports certification
+            // and contract terms and then falls silent exactly where a commercial manager is
+            // watching — an invoice posting, a receipt landing against it.
+            'InterimPaymentApplication',
+            'ClientInvoice',
+            'PaymentReceipt',
+            'ClientReceiptAllocation',
           ],
         },
         resourceId: { in: resourceIds },

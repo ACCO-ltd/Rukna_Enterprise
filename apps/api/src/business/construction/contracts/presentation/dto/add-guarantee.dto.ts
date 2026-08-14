@@ -7,6 +7,16 @@ export class AddGuaranteeDto {
   @MaxLength(100)
   guaranteeType!: string;
 
+  @ApiPropertyOptional({
+    example: 'BG-003',
+    description:
+      "The instrument's own reference, as issued. How the guarantee is identified with the bank.",
+  })
+  @IsString()
+  @MaxLength(50)
+  @IsOptional()
+  reference?: string;
+
   @ApiProperty({ example: '250000.00' })
   @IsDecimal()
   amount!: string;

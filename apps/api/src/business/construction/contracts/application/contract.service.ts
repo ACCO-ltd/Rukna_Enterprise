@@ -409,6 +409,7 @@ export class ContractService {
     return prisma.$transaction(async (tx) => {
       const guarantee = await this.repo.addGuarantee(tx, id, {
         guaranteeType: dto.guaranteeType,
+        reference: dto.reference,
         amount: dto.amount,
         currency: dto.currency,
         issuer: dto.issuer,
@@ -430,6 +431,7 @@ export class ContractService {
         after: {
           contractId: id,
           guaranteeType: dto.guaranteeType,
+          reference: dto.reference ?? null,
           amount: dto.amount,
           currency: dto.currency,
           expiryDate: dto.expiryDate,

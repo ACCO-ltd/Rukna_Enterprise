@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import {
   PERMISSIONS,
   type CommercialAdvanceSummary,
+  type CommercialOutstandingInvoice,
   type CommercialApplicationRow,
   type CommercialApplicationsResponse,
   type CommercialAttentionItem,
@@ -73,7 +74,16 @@ export class CommercialService {
           invoiced: unavailable(),
           received: unavailable(),
           outstanding: unavailable(),
+          uninvoicedCertified: unavailable(),
         },
+        // Zero, not unavailable: without a contract there genuinely are no applications,
+        // certificates or invoices. The counts are true, and the screen hides the panels.
+        certification: {
+          applicationsSubmitted: 0,
+          effectiveCertificates: 0,
+          postedInvoices: 0,
+        },
+        receivables: { collectionRate: null, outstandingInvoices: [] },
         retention: null,
         advances: [],
         guarantees: [],
@@ -162,6 +172,26 @@ export class CommercialService {
       identity,
     );
 
+    // Certified work with no posted invoice behind it. Nobody owns this number by default —
+    // the certificate is issued, the surveyor has moved on, and the money has not been asked
+    // for. Computed from the same effective set, so it can never disagree with certifiedNet.
+    const invoicedIpcIds = new Set(
+      invoices.filter((i) => i.postingStatus === 'POSTED' && i.sourceIpcId).map((i) => i.sourceIpcId!),
+    );
+    let uninvoicedCertified = ZERO;
+    let uninvoicedCount = 0;
+    for (const cert of certs) {
+      if (invoicedIpcIds.has(cert.id)) continue;
+      const deductions = cert.deductions.reduce(
+        (sum, d) => sum.plus(new Decimal(d.amount.toString())),
+        ZERO,
+      );
+      uninvoicedCertified = uninvoicedCertified.plus(
+        new Decimal(cert.certifiedTotal.toString()).minus(deductions),
+      );
+      uninvoicedCount += 1;
+    }
+
     // Recent commercial activity spans the contract and its audited children.
     const resourceIds = [
       contract.id,
@@ -169,10 +199,13 @@ export class CommercialService {
       ...contract.advanceTerms.map((a) => a.id),
       ...contract.milestones.map((m) => m.id),
       ...certs.map((c) => c.id),
+      ...invoices.map((i) => i.id),
     ];
-    const activity = await this.repo
-      .findRecentActivity(prisma, orgId, resourceIds)
-      .catch(() => []);
+    const [activity, boqVersionNumber, applicationCount] = await Promise.all([
+      this.repo.findRecentActivity(prisma, orgId, resourceIds).catch(() => []),
+      this.repo.findBoqVersionNumber(prisma, contract.boqVersionId).catch(() => null),
+      this.repo.countSubmittedApplications(prisma, orgId, contract.id).catch(() => 0),
+    ]);
 
     return {
       projectId,
@@ -185,6 +218,13 @@ export class CommercialService {
         clientName: contract.clientNameSnapshot ?? contract.client.name,
         startDate: contract.startDate?.toISOString() ?? null,
         expectedEndDate: contract.expectedEndDate?.toISOString() ?? null,
+        // Withheld like every other figure — the contract value is the most sensitive number
+        // on the screen, and leaking it through the identity panel would defeat the metric's
+        // RESTRICTED state one card away.
+        contractValue: mayViewFinancials ? contract.contractValue.toString() : null,
+        currency,
+        billingModel: contract.billingModel,
+        boqVersionNumber,
       },
       metrics: {
         contractValue: metric({
@@ -223,6 +263,28 @@ export class CommercialService {
           sourceCount: settlement.postedInvoiceCount,
           drillTo: drill.applications,
         }),
+        uninvoicedCertified: metric({
+          failed: certFailed || invoiceFailed,
+          amount: uninvoicedCertified,
+          sourceCount: uninvoicedCount,
+          drillTo: drill.applications,
+        }),
+      },
+      // Counts, not money — how many documents exist is not a commercial secret, so these
+      // stay readable without financial visibility. What they are worth does not.
+      certification: {
+        applicationsSubmitted: applicationCount,
+        effectiveCertificates: certs.length,
+        postedInvoices: settlement.postedInvoiceCount,
+      },
+      receivables: {
+        collectionRate:
+          !mayViewFinancials || invoiceFailed || settlement.invoiced.isZero()
+            ? null
+            : Math.round(settlement.received.div(settlement.invoiced).mul(100).toNumber()),
+        outstandingInvoices: mayViewFinancials
+          ? this.outstandingInvoices(invoices, asOf, currency)
+          : [],
       },
       retention: contract.retentionTerms
         ? {
@@ -377,6 +439,42 @@ export class CommercialService {
     return { invoiced, received, outstanding: invoiced.minus(received), postedInvoiceCount, allocationCount };
   }
 
+  /**
+   * Posted invoices still carrying a balance, soonest due first, capped at five.
+   *
+   * `daysOverdue` is measured against the **server** clock in whole UTC calendar days, the
+   * same way `guarantee-attention-policy.ts` derives expiry. Whether a client is late is a
+   * commercial fact with consequences; a browser with a skewed clock must not get a vote.
+   */
+  private outstandingInvoices(
+    invoices: InvoiceRow[],
+    asOf: Date,
+    currency: string,
+  ): CommercialOutstandingInvoice[] {
+    const today = Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth(), asOf.getUTCDate());
+
+    return invoices
+      .filter((inv) => inv.postingStatus === 'POSTED' && new Decimal(inv.outstandingAmount.toString()).greaterThan(0))
+      .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime())
+      .slice(0, 5)
+      .map((inv) => {
+        const due = Date.UTC(
+          inv.dueDate.getUTCFullYear(),
+          inv.dueDate.getUTCMonth(),
+          inv.dueDate.getUTCDate(),
+        );
+        return {
+          id: inv.id,
+          invoiceNumber: inv.invoiceNumber,
+          invoiceDate: inv.invoiceDate.toISOString(),
+          dueDate: inv.dueDate.toISOString(),
+          outstandingAmount: new Decimal(inv.outstandingAmount.toString()).toFixed(2),
+          currency,
+          daysOverdue: Math.max(0, Math.round((today - due) / 86_400_000)),
+        };
+      });
+  }
+
   private settlementState(
     invoicePosted: boolean,
     invoiced: Decimal,
@@ -413,7 +511,7 @@ export class CommercialService {
     return {
       id: g.id,
       guaranteeType: g.guaranteeType,
-      reference: null,
+      reference: g.reference ?? null,
       issuer: g.issuer,
       beneficiary: g.beneficiary,
       amount: g.amount.toString(),
