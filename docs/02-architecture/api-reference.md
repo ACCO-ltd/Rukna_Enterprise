@@ -619,6 +619,17 @@ The `409` approval path follows ADR-015 re-drive: approve the instance, then re-
 
 > `FINAL_ACCOUNT_PENDING` is set automatically when the parent project reaches `PRACTICAL_COMPLETION`. The user cannot set it manually.
 
+> **Commercial term lifecycle gate (CONST-COM-001 / ADR-017).** The retention, advance,
+> guarantee (add), and milestone (add) endpoints below, and `PATCH /contracts/:id`, mutate
+> the commercial **baseline** and are accepted only while the contract is `DRAFT`. On any
+> later status they return **`409 Conflict`** with a reason code
+> (`CONTRACT_UNDER_REVIEW` | `CONTRACT_BASELINE_FROZEN` | `CONTRACT_TERMINAL`). Operational
+> exceptions: `PATCH /contracts/:id/guarantees/:guaranteeId` (status change) is allowed in
+> any non-terminal status, and `POST /contracts/:id/milestones/:milestoneId/complete` is
+> allowed in `ACTIVE`/`FINAL_ACCOUNT_PENDING`. Every child endpoint is scoped by
+> `contractId + childId` and returns **`404`** if the child belongs to another contract or
+> tenant (CONST-COM-002).
+
 #### Retention Terms (1:1)
 
 ```
@@ -697,6 +708,43 @@ POST /contracts/:id/milestones/:milestoneId/complete
   "sortOrder": 1
 }
 ```
+
+---
+
+### 6.9b Commercial workspace read models (ADR-017, Gate B)
+
+Project-scoped, read-only aggregation across contract / IPA / IPC / AR. Construction reads
+AR data (ARCH-BOUNDARY-001: construction → accounting). Guarded by `view:contract` +
+project membership.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/projects/:projectId/commercial/summary` | Permission-aware commercial summary |
+| `GET` | `/projects/:projectId/commercial/applications` | IPA → IPC → invoice → settlement chain |
+
+**Metric provenance.** Every money figure in `/summary.metrics` is a `CommercialMetric`
+carrying `{ state, amount, currency, sourceCount, drillTo, asOf }`. `state` distinguishes:
+
+- `OK` — a real value (`amount` present)
+- `ZERO` — query succeeded, no source records (`amount` = `"0.00"`)
+- `UNAVAILABLE` — no main contract exists (`amount` null)
+- `RESTRICTED` — caller lacks `view:financial-position` (`amount` null)
+- `FAILED` — a source query failed; never rendered as `0` (`amount` null)
+
+**Metric definitions (CONST-COM-003/004).** Contract Value = effective main client
+contract; Certified (gross/net) = effective IPC totals; Invoiced = posted client invoice
+totals; Received = posted receipt allocations; Outstanding = Invoiced − Received. Settlement
+figures come only from posted AR — IPC never exposes an independent paid balance.
+
+`capabilities` (both endpoints) is a backend-evaluated `CommercialCapabilities`
+(`canEditContract`, `canCreateApplication`, `canGenerateInvoice`, …). It is presentation
+convenience only — every command still enforces authorization server-side.
+
+`GET …/applications` returns one `CommercialApplicationRow` per IPA with the full chain
+(claimed → effective IPC gross/deductions/net + superseded count → invoice doc/posting
+status → received → outstanding), a `settlement` state (`UNINVOICED | UNPAID |
+PARTIALLY_PAID | PAID`) and a logical `nextAction`. Money fields are `null` when the caller
+lacks `view:financial-position`.
 
 ---
 
@@ -1262,6 +1310,13 @@ Formal accounting invoice raised against a certified IPC. This is the AR-layer c
 ```
 
 > The server reads `certifiedTotal`, `currency`, and `clientId` from the IPC. You do not supply amounts — they come from the IPC.
+
+> **Idempotent (CONST-COM-006 / ADR-017):** one effective IPC maps to at most one client
+> invoice. Repeating `POST /invoices/from-ipc` for the same IPC returns the **existing**
+> invoice (200-style success) instead of raising `409` and never creates a second
+> receivable. Concurrency is closed by the unique `source_ipc_id` index; a racing request
+> resolves to the winner's invoice. Frontend: treat a returned invoice with an existing id
+> as success, not an error.
 
 **Post to GL — body:**
 ```json

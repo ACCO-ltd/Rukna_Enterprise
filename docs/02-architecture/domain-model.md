@@ -562,6 +562,15 @@ TERMINATED: from ACTIVE only
 ```
 `FINAL_ACCOUNT_PENDING` triggered when the Project reaches `PRACTICAL_COMPLETION`.
 
+**Commercial term lifecycle (CONST-COM-001/002/008 — see ADR-017).** The contract's
+commercial baseline (header, retention, advances, guarantees, milestones as a set) is
+mutable only in `DRAFT`; once past DRAFT it is frozen and material change must flow through
+Variations (deferred). The single backend gate is `CommercialTermPolicy.evaluate(status,
+mutationKind)`; a blocked mutation returns `409`. Operational exceptions: guarantee **status**
+changes are allowed in any non-terminal status; milestone **completion** is allowed in
+`ACTIVE`/`FINAL_ACCOUNT_PENDING`. Every nested child mutation is scoped by
+`organizationId + contractId + childId` (CONST-COM-002) and audited (CONST-COM-005).
+
 ### ContractRetentionTerms (1:1 with Contract)
 
 | Field | Type | Notes |
@@ -599,8 +608,13 @@ Actual disbursements and recoveries are separate financial transactions.
 | beneficiary | string | |
 | issueDate | date | |
 | expiryDate | date | expiry alerts required |
-| status | enum | `ACTIVE`, `DISCHARGED`, `EXPIRED`, `CALLED` |
+| status | enum | stored legal lifecycle: `ACTIVE`, `DISCHARGED`, `EXPIRED`, `CALLED` |
 | notes | string? | |
+
+**Derived attention (A7 — see ADR-017).** Expiry attention (`NONE | EXPIRING_SOON |
+EXPIRED`) is derived by `deriveGuaranteeAttention(expiryDate, status, now)` from an
+authoritative backend clock — never the browser clock — using a provisional 30-day
+"expiring soon" window. It is kept separate from the stored legal lifecycle above.
 
 ### ContractMilestone (schema foundation only — Sprint 3)
 
