@@ -1,3 +1,5 @@
+import type { ProjectFinancialPositionResponse } from '@erp/types';
+
 import { apiClient } from '@/lib/api-client';
 
 import type { ConfigureBankAccountBody } from '../bank-account-setup';
@@ -292,7 +294,8 @@ export function getProfitLoss(params: {
 /**
  * `GET /projects/:id/pl` — Project Actual P&L (ADR-013). Posted GL truth only, scoped to the
  * project; the path id overrides any projectId param. Excludes committed/forecast cost — that is
- * the separate Project Financial Position, which is not built. Do not present as the full picture.
+ * the separate Project Financial Position (`getProjectFinancialPosition`). Do not present this as
+ * the full picture.
  */
 export function getProjectActualPl(
   projectId: string,
@@ -301,6 +304,18 @@ export function getProjectActualPl(
   return apiClient<ProfitLoss>(`/projects/${projectId}/pl`, {
     params: { fromDate: params.fromDate, toDate: params.toDate },
   });
+}
+
+/**
+ * `GET /projects/:id/financial-position` — Project Financial Position (ADR-013). The PM/control
+ * view: posted actual cost plus remaining committed cost, and the forecast margin that follows,
+ * alongside contract/certified/invoiced/received revenue. Requires `view:financial-position`.
+ * Unlike the Actual P&L, committed cost is included — this is the complete project money picture.
+ */
+export function getProjectFinancialPosition(
+  projectId: string,
+): Promise<ProjectFinancialPositionResponse> {
+  return apiClient<ProjectFinancialPositionResponse>(`/projects/${projectId}/financial-position`);
 }
 
 /**

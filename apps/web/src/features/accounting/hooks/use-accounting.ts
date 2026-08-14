@@ -28,6 +28,7 @@ import {
   getJournal,
   getProfitLoss,
   getProjectActualPl,
+  getProjectFinancialPosition,
   getTrialBalance,
   listAccounts,
   listBankAccounts,
@@ -40,6 +41,8 @@ import {
 } from '../api/accounting-api';
 import type { ConfigureBankAccountBody } from '../bank-account-setup';
 import type { CreateAccountBody } from '../coa-setup';
+import type { ProjectFinancialPositionResponse } from '@erp/types';
+
 import type { OpeningBalanceBody } from '../opening-balance';
 import type {
   Account,
@@ -75,6 +78,8 @@ export const accountingKeys = {
     [...accountingKeys.all, 'profit-loss', fromDate, toDate, projectId ?? 'all'] as const,
   projectActualPl: (projectId: string, fromDate: string, toDate: string) =>
     [...accountingKeys.all, 'project-actual-pl', projectId, fromDate, toDate] as const,
+  projectFinancialPosition: (projectId: string) =>
+    [...accountingKeys.all, 'project-financial-position', projectId] as const,
   balanceSheet: (asOfDate: string, comparativeDate?: string) =>
     [...accountingKeys.all, 'balance-sheet', asOfDate, comparativeDate ?? 'none'] as const,
   ledger: (accountId: string, fromDate: string, toDate: string) =>
@@ -330,6 +335,20 @@ export function useProjectActualPl(
     queryKey: accountingKeys.projectActualPl(projectId, fromDate, toDate),
     queryFn: () => getProjectActualPl(projectId, { fromDate, toDate }),
     enabled: Boolean(projectId && fromDate && toDate),
+  });
+}
+
+/**
+ * Project Financial Position (ADR-013) — the rich PM view: posted actuals plus remaining committed
+ * cost and forecast, via `GET /projects/:id/financial-position`. Requires `view:financial-position`.
+ */
+export function useProjectFinancialPosition(
+  projectId: string,
+): UseQueryResult<ProjectFinancialPositionResponse, Error> {
+  return useQuery({
+    queryKey: accountingKeys.projectFinancialPosition(projectId),
+    queryFn: () => getProjectFinancialPosition(projectId),
+    enabled: Boolean(projectId),
   });
 }
 

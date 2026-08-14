@@ -405,6 +405,25 @@
     "empty": "Nothing has been posted to this project in this range.",
     "emptyHint": "Post a supplier bill or client invoice tagged to this project, or widen the dates."
   },
+  "projectFinancialPosition": {
+    "title": "Financial Position",
+    "hint": "Posted actuals plus remaining committed cost — the full project picture, not just the GL.",
+    "loadFailed": "Could not load the financial position.",
+    "noContract": "No main contract — revenue and forecast margin are unavailable. Cost and forecast are still shown.",
+    "revenue": "Revenue",
+    "cost": "Cost",
+    "contractValue": "Contract value",
+    "certifiedRevenue": "Certified",
+    "invoicedRevenue": "Invoiced",
+    "receivedRevenue": "Received",
+    "outstandingReceivables": "Outstanding",
+    "actualCost": "Actual cost",
+    "remainingCommitments": "Remaining committed",
+    "forecastCost": "Forecast cost",
+    "forecastMargin": "Forecast margin",
+    "forecastMarginHint": "Contract value minus forecast cost (actual + remaining committed).",
+    "committedHint": "Approved POs and received-but-unbilled cost — not yet in the GL."
+  },
   "balanceSheet": {
     "title": "Balance Sheet",
     "subtitle": "What the organisation owns, owes, and is worth, at a date.",
