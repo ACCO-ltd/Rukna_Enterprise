@@ -4,6 +4,7 @@ import { ManualJournalsModule } from './manual-journals/manual-journals.module.j
 import { AccountsReceivableModule } from './accounts-receivable/accounts-receivable.module.js';
 import { AccountsPayableModule } from './accounts-payable/accounts-payable.module.js';
 import { GeneralLedgerModule } from './general-ledger/general-ledger.module.js';
+import { FinancialPositionModule } from './financial-position/financial-position.module.js';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { GeneralLedgerModule } from './general-ledger/general-ledger.module.js';
     AccountsReceivableModule,
     AccountsPayableModule,
     GeneralLedgerModule,
+    FinancialPositionModule,
   ],
   exports: [
     AccountingCoreModule,

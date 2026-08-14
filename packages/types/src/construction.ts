@@ -461,6 +461,215 @@ export interface BoqWorkspaceResponse {
   capabilities: BoqCapabilities;
 }
 
+// ─── Commercial workspace read models (ADR-017, Gate B) ─────────────────────────
+//
+// Backend-owned response contracts for the Commercial workspace. The frontend consumes
+// these and MUST NOT rebuild any financial policy (CONST-COM-004/007) or lifecycle table
+// (CONST-COM-001) client-side. Every monetary value is a decimal string.
+
+/**
+ * A financial figure is never a bare number. It carries provenance and a state so the UI can
+ * tell apart a genuine zero, data the user may not see, data that could not be loaded, and
+ * data that does not exist yet.
+ */
+export type CommercialMetricState = 'OK' | 'ZERO' | 'UNAVAILABLE' | 'RESTRICTED' | 'FAILED';
+
+export interface CommercialMetric {
+  state: CommercialMetricState;
+  /** Present only when state is OK or ZERO. */
+  amount: string | null;
+  currency: string | null;
+  /** How many source records back this figure (invoices, certificates, allocations). */
+  sourceCount: number;
+  /** Route the UI can navigate to for the breakdown, or null. */
+  drillTo: string | null;
+  /** ISO timestamp the figure was computed as-of, or null. */
+  asOf: string | null;
+}
+
+export type GuaranteeAttentionState = 'NONE' | 'EXPIRING_SOON' | 'EXPIRED';
+
+export interface CommercialGuaranteeSummary {
+  id: string;
+  guaranteeType: string;
+  reference: string | null;
+  issuer: string;
+  beneficiary: string;
+  amount: string;
+  currency: string;
+  issueDate: string;
+  expiryDate: string;
+  /** Stored legal lifecycle. */
+  status: `${GuaranteeStatus}`;
+  /** Backend-derived from the expiry date against the server clock (A7). */
+  attention: GuaranteeAttentionState;
+}
+
+/** What the signed-in user may do in the Commercial workspace. Backend commands still enforce. */
+export interface CommercialCapabilities {
+  canViewFinancials: boolean;
+  canEditContract: boolean;
+  canAdvanceContract: boolean;
+  canCreateApplication: boolean;
+  canReviewApplication: boolean;
+  canIssueCertificate: boolean;
+  canGenerateInvoice: boolean;
+  canManageGuarantee: boolean;
+}
+
+export type CommercialAttentionKind =
+  | 'NO_MAIN_CONTRACT'
+  | 'GUARANTEE_EXPIRING'
+  | 'GUARANTEE_EXPIRED'
+  | 'UNINVOICED_CERTIFICATE'
+  | 'RECONCILIATION_FAILED';
+
+export interface CommercialAttentionItem {
+  id: string;
+  severity: 'URGENT' | 'WARNING' | 'INFO';
+  kind: CommercialAttentionKind;
+  actionUrl: string | null;
+  responsibleRole: string | null;
+  /** Id of the entity the item concerns (guarantee, certificate…), or null. */
+  contextId: string | null;
+}
+
+export interface CommercialContractSummary {
+  id: string;
+  contractNumber: string;
+  status: `${ContractStatus}`;
+  clientName: string;
+  startDate: string | null;
+  expectedEndDate: string | null;
+}
+
+export interface CommercialRetentionSummary {
+  retentionRate: string;
+  retentionCap: string;
+  retentionSplitOnPC: string;
+}
+
+export interface CommercialAdvanceSummary {
+  id: string;
+  advanceType: `${AdvanceType}`;
+  description: string | null;
+  amount: string | null;
+  percentage: string | null;
+  recoveryRate: string;
+}
+
+export interface CommercialActivityItem {
+  id: string;
+  action: string;
+  sourceCommand: string | null;
+  occurredAt: string;
+  actor: { id: string; name: string };
+}
+
+export interface CommercialSummaryResponse {
+  projectId: string;
+  currency: string | null;
+  financialsVisible: boolean;
+  mainContract: CommercialContractSummary | null;
+  metrics: {
+    contractValue: CommercialMetric;
+    certifiedGross: CommercialMetric;
+    certifiedNet: CommercialMetric;
+    invoiced: CommercialMetric;
+    received: CommercialMetric;
+    outstanding: CommercialMetric;
+  };
+  /** Read-first contractual terms only — no held/released/recovered values (Gate C C5). */
+  retention: CommercialRetentionSummary | null;
+  advances: CommercialAdvanceSummary[];
+  guarantees: CommercialGuaranteeSummary[];
+  attention: CommercialAttentionItem[];
+  capabilities: CommercialCapabilities;
+  recentActivity: CommercialActivityItem[];
+  asOf: string;
+}
+
+// ─── Applications & Certificates chain (B3) ─────────────────────────────────────
+
+export type CommercialSettlementState = 'UNINVOICED' | 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
+
+export type CommercialNextAction =
+  | 'SUBMIT_APPLICATION'
+  | 'REVIEW_APPLICATION'
+  | 'ISSUE_CERTIFICATE'
+  | 'GENERATE_INVOICE'
+  | 'POST_INVOICE'
+  | 'RECORD_RECEIPT'
+  | 'NONE';
+
+export interface CommercialApplicationRow {
+  ipaId: string;
+  applicationNumber: number | null;
+  applicationRef: string | null;
+  ipaStatus: `${IpaStatus}`;
+  periodFrom: string | null;
+  periodTo: string | null;
+  /** Null when the caller may not see financials. */
+  claimedAmount: string | null;
+  // Effective certificate (CONST-COM-003)
+  ipcId: string | null;
+  ipcStatus: `${IpcStatus}` | null;
+  certifiedGross: string | null;
+  deductions: string | null;
+  certifiedNet: string | null;
+  supersededCertificateCount: number;
+  // Client invoice (AR-owned)
+  invoiceId: string | null;
+  invoiceNumber: string | null;
+  invoiceDocumentStatus: string | null;
+  invoicePostingStatus: string | null;
+  invoicedAmount: string | null;
+  // Settlement (AR-owned — CONST-COM-004)
+  receivedAmount: string | null;
+  outstandingAmount: string | null;
+  settlement: CommercialSettlementState;
+  nextAction: CommercialNextAction;
+}
+
+export interface CommercialApplicationsResponse {
+  projectId: string;
+  contractId: string | null;
+  financialsVisible: boolean;
+  applications: CommercialApplicationRow[];
+  capabilities: CommercialCapabilities;
+  asOf: string;
+}
+
+// ─── Project Financial Position (ADR-013) ───────────────────────────────────────
+
+/**
+ * The PM/control view of a project's money: posted actuals **and** remaining committed cost, so
+ * forecast margin is honest. Distinct from the Project Actual P&L (posted GL only) — commitments
+ * never enter the accounting P&L. All amounts are decimal strings in the contract currency.
+ *
+ * Cost figures are always present (they do not need a contract). Contract-derived figures
+ * (`contractValue`, revenue, `forecastMargin`) are null when the project has no main contract.
+ */
+export interface ProjectFinancialPositionResponse {
+  projectId: string;
+  currency: string | null;
+  hasContract: boolean;
+  contractValue: string | null;
+  certifiedRevenue: string | null;
+  invoicedRevenue: string | null;
+  receivedRevenue: string | null;
+  outstandingReceivables: string | null;
+  /** Posted GL cost attributed to the project (COST_OF_SALES + EXPENSE), project-to-date. */
+  actualCost: string;
+  /** Commitment ledger COMMITTED + ACCRUED — open commitments not yet posted to the GL. */
+  remainingCommitments: string;
+  /** actualCost + remainingCommitments. */
+  forecastCost: string;
+  /** contractValue − forecastCost. Null without a contract. */
+  forecastMargin: string | null;
+  asOf: string;
+}
+
 export type BoqChangeKind =
   | 'ADDED'
   | 'REMOVED'

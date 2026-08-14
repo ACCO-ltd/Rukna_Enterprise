@@ -1622,8 +1622,45 @@ on `journal_lines`.
 
 > **This is the _Project Actual P&L_ — posted GL truth only** (revenue + project-cost lines tagged
 > with this project). It **excludes committed and forecast cost** by design; those belong to the
-> separate _Project Financial Position_ read model (ADR-013), which is **not yet built**. Do not
-> present this to a PM as the complete project financial picture — surface it as "Actual (GL)".
+> separate _Project Financial Position_ read model below. Do not present this to a PM as the
+> complete project financial picture — surface it as "Actual (GL)".
+
+#### Project Financial Position — ADR-013
+
+```
+GET /projects/:id/financial-position
+```
+
+The PM/control view: posted actuals **plus** remaining committed cost, so forecast margin is not
+overstated. Requires `view:financial-position` and project membership (`ProjectAccessGuard`).
+
+**Response** (all amounts decimal strings, contract currency):
+```json
+{
+  "projectId": "cld...",
+  "currency": "USD",
+  "hasContract": true,
+  "contractValue": "1000000.00",
+  "certifiedRevenue": "700000.00",
+  "invoicedRevenue": "650000.00",
+  "receivedRevenue": "500000.00",
+  "outstandingReceivables": "150000.00",
+  "actualCost": "600000.00",
+  "remainingCommitments": "150000.00",
+  "forecastCost": "750000.00",
+  "forecastMargin": "250000.00",
+  "asOf": "2026-08-14T..."
+}
+```
+
+- `actualCost` — posted GL cost carrying this `projectId` (COST_OF_SALES + EXPENSE), project-to-date.
+- `remainingCommitments` — commitment-ledger **COMMITTED + ACCRUED** (excludes ACTUAL, already in
+  the GL actual, to avoid double-counting).
+- `forecastCost = actualCost + remainingCommitments`; `forecastMargin = contractValue − forecastCost`.
+- Without a main contract, `hasContract` is `false` and all contract-derived fields (`contractValue`,
+  revenue, `forecastMargin`) are `null`; cost/forecast are still reported.
+- First cut is single-currency (contract currency assumed = reporting); multi-currency conversion via
+  approved-rate snapshots (ADR-010) is a follow-up.
 
 #### Monthly P&L Comparison
 
