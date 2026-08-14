@@ -114,7 +114,13 @@ describe('ProjectWorkspaceShell', () => {
     expect(screen.queryByText('$999,999.00')).not.toBeInTheDocument();
   });
 
-  it('shows only implemented workspace destinations and groups the commercial flow', () => {
+  /**
+   * Five peers, no nesting. Commercial used to be a dropdown holding Contracts, Applications
+   * & certificates and Finance — the only nested control in the bar, and a duplicate of the
+   * Commercial workspace's own sub-navigation. Every tab here leads to a workspace that
+   * exists; Programme & Progress, Procurement, Documents and Activity join when theirs do.
+   */
+  it('shows one flat row of implemented destinations', () => {
     renderWithProviders(
       <ProjectWorkspaceShell id="project-1">
         <p>Workspace content</p>
@@ -122,16 +128,30 @@ describe('ProjectWorkspaceShell', () => {
     );
 
     expect(screen.getByRole('navigation', { name: 'Project navigation' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Commercial/ })).toBeInTheDocument();
     expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
       'Overview',
       'BOQ',
-      'Contracts',
-      'Applications & certificates',
+      'Commercial',
       'Finance',
       'Team',
     ]);
     expect(screen.queryByText('Inventory')).not.toBeInTheDocument();
+  });
+
+  it('reaches the Commercial workspace directly rather than through a menu', () => {
+    renderWithProviders(
+      <ProjectWorkspaceShell id="project-1">
+        <p>Workspace content</p>
+      </ProjectWorkspaceShell>,
+    );
+
+    // The workspace shipped unreachable: the shell had no Commercial tab at all, and its
+    // dropdown pointed at the older /contracts, /ipc and /pl routes instead.
+    const commercial = screen
+      .getAllByRole('link', { name: /Commercial/ })
+      .find((link) => link.getAttribute('href') === '/projects/project-1/commercial');
+    expect(commercial).toBeDefined();
+    expect(screen.queryByRole('button', { name: /Commercial/ })).not.toBeInTheDocument();
   });
 
   /**

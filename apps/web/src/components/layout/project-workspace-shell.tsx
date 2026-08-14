@@ -8,21 +8,14 @@ import {
   Alert,
   Button,
   cn,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
 } from '@erp/ui';
 import {
   BriefcaseBusiness,
   Building2,
   CalendarDays,
   Check,
-  ChevronDown,
   ChevronRight,
   ClipboardList,
-  FileCheck2,
-  FileText,
   LayoutDashboard,
   MapPin,
   UserRound,
@@ -69,32 +62,32 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
     // "Scope" reads as programme, milestones and progress too, which are separate controls
     // living behind a Programme & Progress tab that does not exist yet. See ADR-016.
     { key: 'boq', label: t('workspace.boq'), href: `/projects/${id}/boq`, icon: ClipboardList },
+    // One tab, not a dropdown. Commercial was three flat entries — Contracts, Applications &
+    // certificates, Finance — inside the only nested control in this bar, and they duplicated
+    // the Commercial workspace's own sub-nav. The contract and certificate routes now live
+    // under /commercial/*; Finance is its own tab because accounting truth and client contract
+    // administration are different responsibilities.
+    {
+      key: 'commercial',
+      label: t('workspace.commercial'),
+      href: `/projects/${id}/commercial`,
+      icon: BriefcaseBusiness,
+    },
+    { key: 'finance', label: t('workspace.finance'), href: `/projects/${id}/pl`, icon: Wallet },
     { key: 'team', label: t('workspace.team'), href: `/projects/${id}/members`, icon: Users },
   ];
-  const commercialTabs = [
-    { label: t('workspace.contracts'), href: `/projects/${id}/contracts`, icon: FileText },
-    {
-      label: t('workspace.applicationsCertificates'),
-      href: `/projects/${id}/ipc`,
-      icon: FileCheck2,
-    },
-    { label: t('workspace.finance'), href: `/projects/${id}/pl`, icon: Wallet },
-  ];
-  const mobileTabs = [primaryTabs[0], primaryTabs[1], ...commercialTabs, primaryTabs[2]];
 
   function isActive(href: string): boolean {
     if (href === `/projects/${id}`) return pathname === href || pathname === `${href}/edit`;
     return pathname === href || pathname.startsWith(`${href}/`);
   }
 
-  const commercialActive = commercialTabs.some((tab) => isActive(tab.href));
   const isOverview = isActive(`/projects/${id}`);
 
   // The last breadcrumb used to read "Overview" on every tab, so the BOQ page announced
   // itself as the overview. Derive it from whichever tab is actually active.
   const activeCrumb =
-    [...primaryTabs, ...commercialTabs].find((tab) => isActive(tab.href))?.label ??
-    t('workspace.overview');
+    primaryTabs.find((tab) => isActive(tab.href))?.label ?? t('workspace.overview');
   const mainContract = summaryQuery.data?.mainContract;
   const programme =
     project?.startDate || project?.expectedEndDate
@@ -208,18 +201,20 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
           <select
             id="project-workspace-menu"
             className="mx-5 my-3 min-h-11 w-[calc(100%-2.5rem)] rounded-control border border-border bg-surface px-3 text-sm font-medium text-foreground md:hidden"
-            value={mobileTabs.find((tab) => isActive(tab.href))?.href ?? `/projects/${id}`}
+            value={primaryTabs.find((tab) => isActive(tab.href))?.href ?? `/projects/${id}`}
             onChange={(event) => router.push(event.target.value)}
           >
-            {mobileTabs.map((tab) => (
+            {primaryTabs.map((tab) => (
               <option key={tab.href} value={tab.href}>
                 {tab.label}
               </option>
             ))}
           </select>
 
+          {/* Five peers, no nesting. Every tab leads to a workspace that exists — Programme &
+              Progress, Procurement, Documents and Activity join when theirs do. */}
           <div className="hidden items-center md:flex">
-            {primaryTabs.slice(0, 2).map((tab) => (
+            {primaryTabs.map((tab) => (
               <WorkspaceLink
                 key={tab.href}
                 label={tab.label}
@@ -228,49 +223,6 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
                 active={isActive(tab.href)}
               />
             ))}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className={cn(
-                    'inline-flex min-h-12 items-center gap-2 border-b-2 px-4 text-body-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
-                    commercialActive
-                      ? 'border-brand-primary text-brand-primary'
-                      : 'border-transparent text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  <BriefcaseBusiness size={17} aria-hidden="true" />
-                  {t('workspace.commercial')}
-                  <ChevronDown size={14} aria-hidden="true" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-64">
-                {commercialTabs.map((tab) => {
-                  const Icon = tab.icon;
-                  return (
-                    <DropdownMenuItem key={tab.href} asChild className="min-h-11">
-                      <Link href={tab.href} aria-current={isActive(tab.href) ? 'page' : undefined}>
-                        <Icon size={17} aria-hidden="true" />
-                        <span>{tab.label}</span>
-                        {isActive(tab.href) ? (
-                          <Check
-                            size={15}
-                            className="ms-auto text-brand-primary"
-                            aria-hidden="true"
-                          />
-                        ) : null}
-                      </Link>
-                    </DropdownMenuItem>
-                  );
-                })}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <WorkspaceLink
-              label={primaryTabs[2].label}
-              href={primaryTabs[2].href}
-              icon={primaryTabs[2].icon}
-              active={isActive(primaryTabs[2].href)}
-            />
           </div>
         </nav>
 
