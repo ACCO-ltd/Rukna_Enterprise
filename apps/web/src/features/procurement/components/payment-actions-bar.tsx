@@ -20,9 +20,12 @@ import {
   DialogTitle,
 } from '@erp/ui';
 
+import { WorkflowTransactionType } from '@erp/types';
+
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { useAccounts, useBankAccounts } from '@/features/accounting/hooks/use-accounting';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+import { GatedActionButton } from '@/features/workflows/components/gated-action-button';
 import { formatMoney } from '@/lib/format';
 
 import {
@@ -38,7 +41,9 @@ import {
 } from '../payment-actions';
 import type { SupplierPayment } from '../types';
 
-const ORDER: PaymentAction[] = ['approve', 'post', 'reverse'];
+// Approve is rendered separately — it is the governed transition (DRAFT → APPROVED) and runs
+// through the ADR-011 gate. The rest keep the plain confirm-then-mutate flow.
+const ORDER: PaymentAction[] = ['post', 'reverse'];
 
 export function PaymentActionBar({ payment }: { payment: SupplierPayment }) {
   const t = useTranslations('procurement.payments');
@@ -64,8 +69,30 @@ export function PaymentActionBar({ payment }: { payment: SupplierPayment }) {
     setPending(null);
   }
 
+  const approveReason = paymentBlockReason(payment, 'approve');
+
   return (
-    <>
+    <div className="space-y-4">
+      {/* Approve routes through the approval gate (ADR-011): with a DoA binding configured the
+          server opens an approval instead of transitioning, and the panel + "Complete" re-drive
+          carry it through. When approve is not available it stays on screen, disabled with its
+          reason, matching the rest of the bar. */}
+      {allowed.includes('approve') ? (
+        <GatedActionButton
+          command={() => approve.mutateAsync(payment.id)}
+          transactionType={WorkflowTransactionType.SUPPLIER_PAYMENT}
+          label={t('approve')}
+        />
+      ) : (
+        <Button
+          type="button"
+          disabled
+          title={approveReason ? t(`blockReason.${approveReason}`) : undefined}
+        >
+          {t('approve')}
+        </Button>
+      )}
+
       <div className="flex flex-wrap gap-2">
         {ORDER.map((action) => {
           const reason = paymentBlockReason(payment, action);
@@ -83,18 +110,6 @@ export function PaymentActionBar({ payment }: { payment: SupplierPayment }) {
           );
         })}
       </div>
-
-      {pending === 'approve' ? (
-        <ConfirmActionDialog
-          title={t('approveTitle')}
-          description={t('approveBody')}
-          confirmLabel={t('approve')}
-          isPending={approve.isPending}
-          errorMessage={approve.isError ? tc('loadFailed') : undefined}
-          onConfirm={() => approve.mutate(payment.id, { onSuccess: close })}
-          onDismiss={close}
-        />
-      ) : null}
 
       {pending === 'post' ? (
         <PostPaymentDialog
@@ -127,7 +142,7 @@ export function PaymentActionBar({ payment }: { payment: SupplierPayment }) {
           onDismiss={close}
         />
       ) : null}
-    </>
+    </div>
   );
 }
 

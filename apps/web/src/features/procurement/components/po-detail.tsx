@@ -50,6 +50,7 @@ import { formatDate, formatMoney, formatNumber } from '@/lib/format';
 import { MONEY_SCALE, fromMinorUnits } from '@/lib/money';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { ApprovalPanel } from '@/features/workflows/components/approval-panel';
+import { GatedActionButton } from '@/features/workflows/components/gated-action-button';
 
 import {
   useApprovePurchaseOrder,
@@ -147,17 +148,6 @@ export function PoDetail({ id }: { id: string }) {
         {/* Footer: lifecycle actions */}
         {isOpen ? (
           <div className="mt-4 flex flex-wrap gap-2 border-t border-border px-5 py-3 sm:px-6">
-            {draft ? (
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => submit.mutate(order.id)}
-                disabled={submit.isPending}
-              >
-                {t('submit')}
-              </Button>
-            ) : null}
-
             {submitted && can(PROCUREMENT_PERMISSIONS.approveOrder) ? (
               <Button type="button" size="sm" onClick={() => setApproving(true)}>
                 {t('approve')}
@@ -177,10 +167,22 @@ export function PoDetail({ id }: { id: string }) {
       </div>
 
       {/* ── Approval workflow actions ──────────────────────────────────────── */}
-      <ApprovalPanel
-        instanceId={order.approvalInstanceId}
-        transactionType={WorkflowTransactionType.PURCHASE_ORDER}
-      />
+      {/* Submitting a DRAFT revision is the governed transition (ADR-011): with a DoA binding
+          configured the server opens an approval instead of moving to SUBMITTED, and the panel
+          + "Complete" re-drive carry it through. Once submitted (or when no draft remains) the
+          static panel shows whatever the order's own persisted instance is. */}
+      {isOpen && draft ? (
+        <GatedActionButton
+          command={() => submit.mutateAsync(order.id)}
+          transactionType={WorkflowTransactionType.PURCHASE_ORDER}
+          label={t('submit')}
+        />
+      ) : (
+        <ApprovalPanel
+          instanceId={order.approvalInstanceId}
+          transactionType={WorkflowTransactionType.PURCHASE_ORDER}
+        />
+      )}
 
       {/* ── Revision tabs ─────────────────────────────────────────────────── */}
       {order.revisions.length === 0 ? (
