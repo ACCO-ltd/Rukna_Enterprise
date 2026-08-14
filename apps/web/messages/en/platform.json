@@ -644,7 +644,8 @@
       "items": "{count} items",
       "baselined": "Baselined {date}",
       "created": "Created {date}",
-      "compare": "Compare"
+      "compare": "Compare",
+      "viewing": "Viewing"
     },
     "compare": {
       "heading": "Version comparison",

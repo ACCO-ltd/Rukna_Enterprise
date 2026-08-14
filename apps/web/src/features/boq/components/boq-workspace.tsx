@@ -12,7 +12,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   Skeleton,
-  cn,
 } from '@erp/ui';
 
 import type { BoqTreeNodeResponse } from '@erp/types';
@@ -535,27 +534,25 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
 }
 
 /**
- * The single primary action.
+ * The single primary action. Always `brand-primary`.
  *
- * `attention` renders amber rather than blue, because the step is work standing in the way
- * of a transition rather than the transition itself — and because a page whose only
- * emphasis is brand blue tells the reader nothing about progress. It is never rendered
- * disabled: `resolveNextStep` returns something the user can actually do, or nothing.
+ * A first attempt filled this with `warning` when the step was a fix, on the theory that an
+ * amber button would read as urgency. Two things were wrong with that. `--warning` is
+ * `#9a5b13` — a token sized for *text* contrast on a light surface, so as a fill it renders
+ * brown and looks like a disabled or broken control rather than an invitation. And it
+ * contradicts the rule in `frontend-theme.md`: brand is the interactive colour and nothing
+ * else, status colours sit on status.
+ *
+ * Urgency is already carried where it belongs — the amber banner above and the amber row
+ * edges below. The button's job is to be the one obvious thing to press, and it is never
+ * rendered disabled: `resolveNextStep` returns something doable, or nothing at all.
  */
 function NextStepButton({ step, onRun }: { step: BoqNextStep; onRun: () => void }) {
   const t = useTranslations('platform.boq.nextStep');
   if (step.tone === 'none') return null;
 
   return (
-    <Button
-      size="sm"
-      onClick={onRun}
-      className={cn(
-        'gap-2',
-        step.tone === 'attention' &&
-          'bg-warning text-white hover:bg-warning/90 focus-visible:outline-warning',
-      )}
-    >
+    <Button size="sm" className="gap-2" onClick={onRun}>
       {t(step.kind, { count: step.count ?? 0 })}
     </Button>
   );

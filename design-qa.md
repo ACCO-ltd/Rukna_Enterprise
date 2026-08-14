@@ -435,3 +435,24 @@ Commercial and Team as well, so it is not the BOQ feature's call to make unilate
 than `text-muted-foreground` (`#667085`), but `--foreground` is itself a navy (`#172033`),
 so any tint derived from it keeps a slight blue cast. Genuinely neutralising them would mean
 adding a colour outside the closed token set, which the theme rules forbid.
+
+## Colour-consistency review, same day
+
+Reviewed the shipped result against the semantics table it was supposed to follow, measuring
+computed styles rather than judging from screenshots. Five contradictions, four of them
+introduced by the pass that was meant to fix colour:
+
+| Fault | Measured / seen | Fix |
+|---|---|---|
+| The primary action was filled with `warning` | `rgb(154, 91, 19)` — **brown**, not amber. `--warning` is sized for text contrast on a light surface, so as a fill it renders mud. It also contradicted the rule that brand is the interactive colour and nothing else. | Primary is always `brand-primary`. Urgency stays on the banner and the row edges, where state belongs. |
+| "Contract baseline" wore `accent` | Accent maps to the **historical purple**, which SUPERSEDED wears in the same list — a live contractual reference and a dead version in one colour. | `info` |
+| `DRAFT` was amber in the status bar and blue in the version panel | Two colours for one badge | Both amber; the maps now carry a note to stay in step |
+| A blue ✓ sat beside a "Draft" badge | A tick reads as approved | Replaced with a "Viewing" label; the row is already tinted and carries `aria-current` |
+| The revision delta was amber | A warning colour on a figure that is a fact — a revision adding scope is not a problem | Neutral, with an explicit `+` sign |
+
+**Not fixed, and why.** TYPE and UNIT measure `oklab(0.245, −0.004, −0.039)` — genuinely
+blue-shifted. That is the product's grey ramp, not a BOQ choice: `--foreground` is the navy
+`#172033`, so every grey derived from it carries the cast. An earlier attempt at
+`text-foreground/55` only produced an off-system value on one screen and did not change the
+hue. These are back on `text-muted-foreground`, the sanctioned token. A warmer ramp is a
+token decision for the whole product.

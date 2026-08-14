@@ -251,15 +251,17 @@ function GridRow({
         </span>
       </TableCell>
 
-      {/* TYPE and UNIT are the quietest columns on the row and should look it. They used
-          `text-muted-foreground` — #667085, a blue-cast grey that at 12px reads as faint
-          blue, which is the "everything is blue" problem in miniature. `opacity` over the
-          neutral foreground keeps them genuinely grey in both themes. */}
-      <TableCell className="text-caption text-foreground/55">
+      {/* TYPE and UNIT are the quietest columns on the row and should look it.
+          `text-muted-foreground` is the sanctioned secondary-text token. An earlier attempt
+          used `text-foreground/55` to dodge the faint blue cast these read with at 12px —
+          measured, the composite is still cool, because `--foreground` is itself a navy and
+          every grey in the ramp inherits that. Fighting it here only produced an off-system
+          value on one screen; a warmer ramp is a token decision for the whole product. */}
+      <TableCell className="text-caption text-muted-foreground">
         {node.isLeaf ? t('typeItem') : t('typeSection')}
       </TableCell>
 
-      <TableCell className="text-caption text-foreground/55">{node.unit ?? '—'}</TableCell>
+      <TableCell className="text-caption text-muted-foreground">{node.unit ?? '—'}</TableCell>
 
       <TableCell numeric>
         {node.quantity ? (
@@ -321,7 +323,7 @@ function SourceCell({ node }: { node: BoqTreeNodeResponse }) {
     );
   }
 
-  return <span className="text-caption text-foreground/55">{t('sourceBaseline')}</span>;
+  return <span className="text-caption text-muted-foreground">{t('sourceBaseline')}</span>;
 }
 
 /**

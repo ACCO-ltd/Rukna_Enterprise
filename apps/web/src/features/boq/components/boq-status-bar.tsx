@@ -93,8 +93,11 @@ export function BoqStatusBar({
                 <Badge tone={STATUS_TONE[status] ?? 'neutral'}>
                   {t(`versionStatus.${status}`)}
                 </Badge>
+                {/* `info`, not `accent`. Accent maps to the historical purple, which
+                    already means "superseded" one panel below — so a live contractual
+                    reference and a dead version were wearing the same colour. */}
                 {version.isContractBaseline ? (
-                  <Badge tone="accent">{t('contractBaselineBadge')}</Badge>
+                  <Badge tone="info">{t('contractBaselineBadge')}</Badge>
                 ) : null}
               </>
             ) : null}
@@ -156,13 +159,14 @@ export function BoqStatusBar({
               <span>{t('basedOn', { number: revision.basedOnVersionNumber })}</span>
             ) : null}
 
+            {/* Neutral, with an explicit sign. This was amber, which put a warning colour on
+                a figure that is simply a fact — a revision that adds scope is not a problem,
+                and money stays neutral so the eye lands on the number rather than the hue. */}
             {revision && canViewCommercials && revision.netDelta ? (
-              <LtrValue
-                className={revision.netDelta.startsWith('-') ? 'text-success' : 'text-warning'}
-              >
+              <LtrValue className="font-medium text-foreground">
                 {t('changeSummary', {
                   count: revision.changedItemCount,
-                  amount: formatMoney(revision.netDelta, currency, locale) ?? '',
+                  amount: signed(formatMoney(revision.netDelta, currency, locale), revision.netDelta),
                 })}
               </LtrValue>
             ) : null}
@@ -182,6 +186,12 @@ export function BoqStatusBar({
       </div>
     </section>
   );
+}
+
+/** Prefixes an increase with `+`. `formatMoney` already carries the sign on a decrease. */
+function signed(formatted: string | null, raw: string): string {
+  if (!formatted) return '';
+  return raw.startsWith('-') ? formatted : `+${formatted}`;
 }
 
 /**

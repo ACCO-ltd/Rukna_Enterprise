@@ -1,14 +1,15 @@
 'use client';
 
 import type { BoqVersionSummary } from '@erp/types';
-import { Check, GitCompare, History } from 'lucide-react';
+import { GitCompare, History } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Badge, Button, LtrValue, cn, type BadgeTone } from '@erp/ui';
 
 import { formatDate, formatMoney } from '@/lib/format';
 
+/** Must match the status bar's map — the same badge in two colours is worse than no colour. */
 const STATUS_TONE: Record<string, BadgeTone> = {
-  DRAFT: 'info',
+  DRAFT: 'warning',
   BASELINED: 'live',
   SUPERSEDED: 'historical',
   CANCELLED: 'neutral',
@@ -84,11 +85,17 @@ export function BoqVersionPanel({
                     <Badge tone={STATUS_TONE[version.status] ?? 'neutral'}>
                       {t(`status.${version.status}`)}
                     </Badge>
+                    {/* `info`, not `accent` — accent is the historical purple, which is what
+                        SUPERSEDED already wears in this very list. */}
                     {version.isContractBaseline ? (
-                      <Badge tone="accent">{t('contractBaseline')}</Badge>
+                      <Badge tone="info">{t('contractBaseline')}</Badge>
                     ) : null}
+                    {/* A tick beside a "Draft" badge reads as approved. The row is already
+                        tinted and carries aria-current; say plainly what it means instead. */}
                     {selected ? (
-                      <Check size={14} className="text-brand-primary" aria-hidden="true" />
+                      <span className="text-micro font-semibold uppercase text-brand-primary">
+                        {t('viewing')}
+                      </span>
                     ) : null}
                   </div>
 
