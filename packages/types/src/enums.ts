@@ -19,6 +19,13 @@ export enum WorkflowTransactionType {
   SUBCONTRACT_CERTIFICATE = 'SUBCONTRACT_CERTIFICATE',
   IPC = 'IPC',
   VARIATION = 'VARIATION',
+  // Sprint 4 — Accounting
+  CLIENT_INVOICE = 'CLIENT_INVOICE',
+  SUPPLIER_BILL = 'SUPPLIER_BILL',
+  PAYMENT_RECEIPT = 'PAYMENT_RECEIPT',
+  MANUAL_JOURNAL = 'MANUAL_JOURNAL',
+  // ADR-016 — BOQ version baselining routes through the ADR-011 gate.
+  BOQ_BASELINE = 'BOQ_BASELINE',
 }
 
 export enum ApprovalStatus {

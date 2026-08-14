@@ -24,9 +24,12 @@ import {
   DialogTitle,
 } from '@erp/ui';
 
+import { WorkflowTransactionType } from '@erp/types';
+
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { useAccounts, usePostingProfiles } from '@/features/accounting/hooks/use-accounting';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+import { GatedActionButton } from '@/features/workflows/components/gated-action-button';
 import { formatMoney } from '@/lib/format';
 
 import {
@@ -43,7 +46,9 @@ import {
 } from '../hooks/use-procurement';
 import type { SupplierBill } from '../types';
 
-const ORDER: BillAction[] = ['submit', 'approve', 'post', 'reverse'];
+// Submit is rendered separately — it runs through the ADR-011 approval gate. The rest keep the
+// plain confirm-then-mutate flow.
+const ORDER: BillAction[] = ['approve', 'post', 'reverse'];
 
 export function BillActionBar({ bill }: { bill: SupplierBill }) {
   const t = useTranslations('procurement.bills');
@@ -72,8 +77,30 @@ export function BillActionBar({ bill }: { bill: SupplierBill }) {
     setPending(null);
   }
 
+  const submitReason = billBlockReason(bill, 'submit');
+
   return (
-    <>
+    <div className="space-y-4">
+      {/* Submit routes through the approval gate (ADR-011): with a DoA binding configured the
+          server opens an approval instead of transitioning, and the panel + "Complete" re-drive
+          carry it through. When submit is not available it stays on screen, disabled with its
+          reason, per this bar's stated principle of never hiding an action. */}
+      {allowed.includes('submit') ? (
+        <GatedActionButton
+          command={() => submit.mutateAsync(bill.id)}
+          transactionType={WorkflowTransactionType.SUPPLIER_BILL}
+          label={t('submit')}
+        />
+      ) : (
+        <Button
+          type="button"
+          disabled
+          title={submitReason ? t(`blockReason.${submitReason}`) : undefined}
+        >
+          {t('submit')}
+        </Button>
+      )}
+
       <div className="flex flex-wrap gap-2">
         {ORDER.map((action) => {
           const reason = billBlockReason(bill, action);
@@ -92,18 +119,6 @@ export function BillActionBar({ bill }: { bill: SupplierBill }) {
           );
         })}
       </div>
-
-      {pending === 'submit' ? (
-        <ConfirmActionDialog
-          title={t('submitTitle')}
-          description={t('submitBody')}
-          confirmLabel={t('submit')}
-          isPending={submit.isPending}
-          errorMessage={submit.isError ? tc('loadFailed') : undefined}
-          onConfirm={() => submit.mutate(bill.id, { onSuccess: close })}
-          onDismiss={close}
-        />
-      ) : null}
 
       {pending === 'approve' ? (
         <ConfirmActionDialog
@@ -152,7 +167,7 @@ export function BillActionBar({ bill }: { bill: SupplierBill }) {
           onDismiss={close}
         />
       ) : null}
-    </>
+    </div>
   );
 }
 
