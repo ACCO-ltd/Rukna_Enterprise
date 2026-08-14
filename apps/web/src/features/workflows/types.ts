@@ -22,6 +22,26 @@ export interface WorkflowStep {
   notifyRoles: string[];
 }
 
+export type WorkflowTriggerKind = 'STATE_TRANSITION' | 'DOCUMENT';
+
+/**
+ * `GET /workflows/bindings` — one governance trigger binding with the definition it routes to.
+ * `organizationId === null` marks a tenant default rather than an org-specific binding.
+ */
+export interface WorkflowTriggerBinding {
+  id: string;
+  organizationId: string | null;
+  triggerKind: WorkflowTriggerKind;
+  entityType: string;
+  transactionType: WorkflowTransactionType | null;
+  fromState: string | null;
+  toState: string | null;
+  workflowDefinitionId: string;
+  priority: number;
+  isActive: boolean;
+  definition: WorkflowDefinition;
+}
+
 /** `GET /workflows/definition/:transactionType` */
 export interface WorkflowDefinition {
   id: string;

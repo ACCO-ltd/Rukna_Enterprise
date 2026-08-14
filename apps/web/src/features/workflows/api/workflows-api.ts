@@ -1,6 +1,19 @@
 import { ApiError, apiClient } from '@/lib/api-client';
 
-import type { WorkflowDefinition, WorkflowStep, WorkflowTransactionType } from '../types';
+import type {
+  WorkflowDefinition,
+  WorkflowStep,
+  WorkflowTransactionType,
+  WorkflowTriggerBinding,
+} from '../types';
+
+/**
+ * `GET /workflows/bindings` — the governance configuration the organization is subject to: every
+ * trigger binding (its own plus tenant defaults) with the definition it routes to. Read-only.
+ */
+export function getWorkflowBindings(): Promise<WorkflowTriggerBinding[]> {
+  return apiClient<WorkflowTriggerBinding[]>('/workflows/bindings');
+}
 
 /**
  * Returns null when no definition exists for this transaction type (404).
