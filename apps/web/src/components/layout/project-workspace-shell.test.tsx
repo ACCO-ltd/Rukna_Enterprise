@@ -11,8 +11,10 @@ const useProject = vi.fn();
 const useProjectWorkspaceSummary = vi.fn();
 const useProjectWorkspaceGuidance = vi.fn();
 
+let pathname = '/projects/project-1';
+
 vi.mock('next/navigation', () => ({
-  usePathname: () => '/projects/project-1',
+  usePathname: () => pathname,
   useRouter: () => ({ push }),
 }));
 
@@ -93,6 +95,7 @@ beforeEach(() => {
     isError: false,
   });
   useProjectWorkspaceGuidance.mockReturnValue({ data: [], isPending: false, isError: false });
+  pathname = '/projects/project-1';
 });
 
 describe('ProjectWorkspaceShell', () => {
@@ -129,5 +132,37 @@ describe('ProjectWorkspaceShell', () => {
       'Team',
     ]);
     expect(screen.queryByText('Inventory')).not.toBeInTheDocument();
+  });
+
+  /**
+   * The project's headline facts belong to Overview. Repeating them above every working tab
+   * gave the BOQ two visually identical tile rows — the project's and its own — and pushed
+   * the first BOQ row below the fold at 1440x900. The lifecycle strip and the header above
+   * still say which project this is and where it stands.
+   */
+  it('shows the project summary tiles on Overview', () => {
+    renderWithProviders(
+      <ProjectWorkspaceShell id="project-1">
+        <p>Workspace content</p>
+      </ProjectWorkspaceShell>,
+    );
+
+    expect(screen.getByText('Main contract')).toBeInTheDocument();
+    expect(screen.getByText('Programme')).toBeInTheDocument();
+  });
+
+  it('hides them on a working tab, where the feature brings its own', () => {
+    pathname = '/projects/project-1/boq';
+
+    renderWithProviders(
+      <ProjectWorkspaceShell id="project-1">
+        <p>Workspace content</p>
+      </ProjectWorkspaceShell>,
+    );
+
+    expect(screen.queryByText('Main contract')).not.toBeInTheDocument();
+    expect(screen.queryByText('Programme')).not.toBeInTheDocument();
+    // Identity and lifecycle stay: losing those would be losing context, not decluttering.
+    expect(screen.getByRole('heading', { name: 'Baraka Tower' })).toBeInTheDocument();
   });
 });

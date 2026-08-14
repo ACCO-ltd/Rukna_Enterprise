@@ -88,6 +88,7 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
   }
 
   const commercialActive = commercialTabs.some((tab) => isActive(tab.href));
+  const isOverview = isActive(`/projects/${id}`);
 
   // The last breadcrumb used to read "Overview" on every tab, so the BOQ page announced
   // itself as the overview. Derive it from whichever tab is actually active.
@@ -265,7 +266,15 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
           </div>
         </nav>
 
-        {project ? (
+        {/* Overview only.
+
+            These four are the project's headline facts, and Overview is where someone goes
+            to read them. On a working tab they are a second, competing tile row above the
+            one the feature brought — on BOQ that meant eight visually identical boxes and no
+            complete BOQ row above the fold at 1440x900. The context is one tab away, and the
+            lifecycle strip and header above still say which project this is and where it is
+            in its life. */}
+        {project && isOverview ? (
           <dl className="grid border-t border-border bg-surface-subtle sm:grid-cols-2 lg:grid-cols-4">
             <SummaryItem
               icon={BriefcaseBusiness}
@@ -443,44 +452,57 @@ function LifecycleStrip({ stages, current, t }: LifecycleStripProps) {
           <span>{current < stages.length - 1 ? t(`status.${stages[current + 1]}`) : ''}</span>
         </div>
       </div>
+      {/* Green for stages already passed, blue for the one in progress, grey for the rest.
+          The whole strip used to be brand blue up to the current stage, which meant the
+          colour said "brand" rather than "done" — and blue is the interactive colour
+          everywhere else in the product. See the semantics table in frontend-theme.md. */}
       <div className="hidden min-w-max items-start sm:flex">
-        {stages.map((stage, index) => (
-          <div key={stage} className="flex items-start">
-            <div className="flex w-24 flex-col items-center gap-1.5 lg:w-28">
-              <div
-                title={t(`status.${stage}`)}
-                className={cn(
-                  'flex h-5 w-5 items-center justify-center rounded-full',
-                  index === current && 'ring-4 ring-brand-primary/15',
-                  index <= current ? 'bg-brand-primary' : 'border border-border bg-surface',
-                )}
-              >
-                {index < current ? (
-                  <Check size={11} strokeWidth={3} className="text-white" aria-hidden="true" />
-                ) : null}
-                {index === current ? (
-                  <span className="h-1.5 w-1.5 rounded-full bg-white" aria-hidden="true" />
-                ) : null}
+        {stages.map((stage, index) => {
+          const complete = index < current;
+          const active = index === current;
+
+          return (
+            <div key={stage} className="flex items-start">
+              <div className="flex w-24 flex-col items-center gap-1.5 lg:w-28">
+                <div
+                  title={t(`status.${stage}`)}
+                  className={cn(
+                    'flex h-5 w-5 items-center justify-center rounded-full',
+                    active && 'bg-brand-primary ring-4 ring-brand-primary/15',
+                    complete && 'bg-success',
+                    !complete && !active && 'border border-border bg-surface',
+                  )}
+                >
+                  {complete ? (
+                    <Check size={11} strokeWidth={3} className="text-white" aria-hidden="true" />
+                  ) : null}
+                  {active ? (
+                    <span className="h-1.5 w-1.5 rounded-full bg-white" aria-hidden="true" />
+                  ) : null}
+                </div>
+                <span
+                  className={cn(
+                    'text-center text-micro font-medium leading-4',
+                    active && 'text-brand-primary',
+                    complete && 'text-success',
+                    !complete && !active && 'text-muted-foreground',
+                  )}
+                >
+                  {t(`status.${stage}`)}
+                </span>
               </div>
-              <span
-                className={cn(
-                  'text-center text-micro font-medium leading-4',
-                  index === current ? 'text-brand-primary' : 'text-muted-foreground',
-                )}
-              >
-                {t(`status.${stage}`)}
-              </span>
+              {index < stages.length - 1 ? (
+                <div
+                  className={cn(
+                    'mt-2.5 h-px w-4 lg:w-6',
+                    // The connector belongs to the stage behind it: green once passed.
+                    complete ? 'bg-success' : 'bg-border',
+                  )}
+                />
+              ) : null}
             </div>
-            {index < stages.length - 1 ? (
-              <div
-                className={cn(
-                  'mt-2.5 h-px w-4 lg:w-6',
-                  index < current ? 'bg-brand-primary' : 'bg-border',
-                )}
-              />
-            ) : null}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </>
   );

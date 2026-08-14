@@ -456,3 +456,37 @@ blue-shifted. That is the product's grey ramp, not a BOQ choice: `--foreground` 
 `text-foreground/55` only produced an off-system value on one screen and did not change the
 hue. These are back on `text-muted-foreground`, the sanctioned token. A warmer ramp is a
 token decision for the whole product.
+
+## Shell pass — completed stages read green, and the BOQ clears the fold
+
+Two faults raised in the review were in the project shell rather than the BOQ, so they were
+put to the owner before being touched. Both approved.
+
+**Completed lifecycle stages are green.** The strip was brand blue from Draft up to the
+current stage, which made the colour say "brand" rather than "done" — and blue is the
+interactive colour everywhere else. Now: green circle, tick and connector for a stage already
+passed; blue ring for the stage in progress; grey ahead. Applies to every project tab.
+
+**The four project tiles show on Overview only.** MAIN CONTRACT / PROGRAMME / PROJECT MANAGER
+/ CURRENT STAGE are the project's headline facts and Overview is where they are read. Above a
+working tab they were a second, competing tile row — on BOQ that meant eight visually
+identical boxes. Identity, lifecycle and tabs stay on every tab, so nothing about *which*
+project or *where it stands* is lost; the facts are one tab away.
+
+Guarded by two tests in `project-workspace-shell.test.tsx` — present on Overview, absent on
+BOQ, heading still rendered — so the rule cannot revert silently.
+
+### Fold, measured at 1440×900
+
+| Pass | First data row | Complete rows above the fold |
+|---|---|---|
+| Original rebuild | 1042px | 0 |
+| Decision-clarity pass | 862px | 0 |
+| **Shell pass** | **765px** | **1** |
+
+Evidence: `docs/qa/boq/boq-fold-1440x900.png` (BOQ, tiles absent) and
+`docs/qa/boq/project-overview-tiles-retained.png` (Overview, tiles present).
+
+All five captures re-taken: `dir` and `data-theme` verified off the DOM, document overflow
+0px, console clean. 88 test files / 1303 tests, typecheck, lint on the touched files, and the
+production build green.
