@@ -22,6 +22,20 @@ export class WorkflowsPrismaRepository {
     });
   }
 
+  /**
+   * Every trigger binding visible to an organization — its own plus the tenant-defaults
+   * (organizationId = null) — with the definition (and its steps) each one routes to. This is
+   * the read model behind the governance-configuration view: what is wired, and what is active.
+   */
+  async findBindingsForOrg(organizationId: string) {
+    const prisma = this.tenancyService.getClient();
+    return prisma.workflowTriggerBinding.findMany({
+      where: { OR: [{ organizationId }, { organizationId: null }] },
+      include: { definition: { include: { steps: { orderBy: { stepOrder: 'asc' } } } } },
+      orderBy: [{ entityType: 'asc' }, { priority: 'desc' }],
+    });
+  }
+
   async createInstance(data: {
     workflowDefinitionId: string;
     transactionType: WorkflowTransactionType | null;

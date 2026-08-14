@@ -21,4 +21,13 @@ export class WorkflowsService {
     if (!definition) throw new NotFoundException(`Workflow definition not found: ${definitionId}`);
     return definition.steps;
   }
+
+  /**
+   * The governance configuration an organization is subject to: every trigger binding (its own
+   * plus tenant-defaults) with the definition it routes to. Read-only — activation stays a
+   * deliberate act, not a UI toggle, until ACCO confirms the policy (ADR-007).
+   */
+  async listBindings(organizationId: string) {
+    return this.repo.findBindingsForOrg(organizationId);
+  }
 }

@@ -20,6 +20,18 @@ export class WorkflowsController {
     private readonly approvalService: ApprovalService,
   ) {}
 
+  @Get('bindings')
+  @ApiOperation({ summary: 'List the governance trigger bindings the organization is subject to' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Trigger bindings (org-specific + tenant defaults) with the definition each routes to. ' +
+      'Read-only: shows what is wired and what is active.',
+  })
+  listBindings(@CurrentUser() identity: RequestIdentity) {
+    return this.workflowsService.listBindings(identity.activeOrganizationId);
+  }
+
   @Get('definition/:transactionType')
   @ApiOperation({ summary: 'Get the workflow definition for a transaction type' })
   @ApiParam({

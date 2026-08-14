@@ -265,10 +265,13 @@ All endpoints are scoped to the authenticated user's organization.
 
 | Method | Path | Description |
 |---|---|---|
+| `GET` | `/workflows/bindings` | Governance trigger bindings the org is subject to (own + tenant defaults), read-only |
 | `GET` | `/workflows/definition/:transactionType` | Active workflow definition (org from JWT — no body) |
 | `GET` | `/workflows/instance/:instanceId/step` | Current pending approval step |
 | `POST` | `/workflows/instance/:instanceId/approve` | Approve current step |
 | `POST` | `/workflows/instance/:instanceId/reject` | Reject current step |
+
+> `GET /workflows/bindings` (permission `workflows:view`) returns each `WorkflowTriggerBinding` — `triggerKind`, `entityType`, `transactionType`, `fromState`, `toState`, `priority`, `isActive`, `organizationId` (null = tenant default) — with the `definition` it routes to and that definition's ordered `steps`. It shows **what is wired and what is active**; it does not activate anything. Activation stays a deliberate act until ACCO confirms the policy (ADR-007), so there is intentionally no create/toggle endpoint here yet.
 
 > `GET /workflows/definition/:transactionType` requires **no request body** and no query params — the organization is read from the JWT automatically.
 
