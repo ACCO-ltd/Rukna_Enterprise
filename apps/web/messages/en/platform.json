@@ -1625,7 +1625,12 @@
     "approveNotesHint": "Optional. Recorded against your approval.",
     "rejectTitle": "Reject this step?",
     "rejectBody": "This is final — nothing returns an approval to pending, and the document cannot proceed.",
-    "rejectNotesHint": "Required. Nothing else will explain why the document stopped here."
+    "rejectNotesHint": "Required. Nothing else will explain why the document stopped here.",
+    "gate": {
+      "awaiting": "This action needs approval before it can proceed. Approve every step below, then complete it.",
+      "complete": "Complete",
+      "completeHint": "Once every step above is approved, complete the action. Trying earlier leaves it waiting."
+    }
   },
   "accountingReportsPage": {
     "title": "Accounting Reports",
