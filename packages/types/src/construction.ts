@@ -513,10 +513,14 @@ export interface CommercialCapabilities {
   canEditContract: boolean;
   canAdvanceContract: boolean;
   canCreateApplication: boolean;
+  canManageApplication: boolean;
   canReviewApplication: boolean;
   canIssueCertificate: boolean;
   canGenerateInvoice: boolean;
+  canPostInvoice: boolean;
   canManageGuarantee: boolean;
+  canRecordReceipt: boolean;
+  canAllocateReceipt: boolean;
 }
 
 export type CommercialAttentionKind =
@@ -691,6 +695,77 @@ export interface CommercialApplicationsResponse {
   financialsVisible: boolean;
   applications: CommercialApplicationRow[];
   capabilities: CommercialCapabilities;
+  asOf: string;
+}
+
+export type CommercialCycleStage =
+  | 'NO_CONTRACT'
+  | 'CONTRACT_DRAFT'
+  | 'READY_FOR_APPLICATION'
+  | 'APPLICATION_DRAFT'
+  | 'APPLICATION_SUBMITTED'
+  | 'APPLICATION_RETURNED'
+  | 'AWAITING_CERTIFICATION'
+  | 'CERTIFIED'
+  | 'AWAITING_INVOICE'
+  | 'INVOICE_DRAFT'
+  | 'AWAITING_PAYMENT'
+  | 'PARTIALLY_PAID'
+  | 'SETTLED'
+  | 'TERMINAL';
+
+export type CommercialCycleAction =
+  | 'CREATE_CONTRACT'
+  | 'EDIT_CONTRACT'
+  | 'ADVANCE_CONTRACT'
+  | 'CREATE_APPLICATION'
+  | 'CONTINUE_APPLICATION'
+  | 'SUBMIT_APPLICATION'
+  | 'REVISE_APPLICATION'
+  | 'REVIEW_APPLICATION'
+  | 'ISSUE_CERTIFICATE'
+  | 'GENERATE_INVOICE'
+  | 'POST_INVOICE'
+  | 'RECORD_RECEIPT'
+  | 'ALLOCATE_RECEIPT'
+  | 'VIEW_HISTORY';
+
+export type CommercialCycleBlocker =
+  | 'MAIN_CONTRACT_MISSING'
+  | 'CONTRACT_NOT_ACTIVE'
+  | 'CONTRACT_TERMINAL'
+  | 'APPLICATION_AWAITING_APPROVAL'
+  | 'CERTIFICATE_MISSING'
+  | 'INVOICE_NOT_POSTED'
+  | 'RECEIPT_WORKFLOW_UNAVAILABLE'
+  | 'PERMISSION_REQUIRED';
+
+export interface CommercialCurrentCycleResponse {
+  projectId: string;
+  contract: {
+    id: string;
+    contractNumber: string;
+    status: `${ContractStatus}`;
+    clientId: string;
+    clientName: string;
+  } | null;
+  stage: CommercialCycleStage;
+  application: CommercialApplicationRow | null;
+  nextAction: {
+    kind: CommercialCycleAction;
+    href: string;
+  } | null;
+  blockers: CommercialCycleBlocker[];
+  capabilities: CommercialCapabilities;
+  responsibleRole:
+    | 'PROJECT_MANAGER'
+    | 'QUANTITY_SURVEYOR'
+    | 'SITE_ENGINEER'
+    | 'COMMERCIAL_MANAGER'
+    | 'FINANCE_REVIEWER'
+    | 'VIEWER'
+    | 'CONTRACT_ADMINISTRATOR'
+    | null;
   asOf: string;
 }
 

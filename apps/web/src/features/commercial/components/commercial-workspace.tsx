@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { MoreHorizontal } from 'lucide-react';
+import { Building2, MoreHorizontal } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -19,15 +19,13 @@ import { ApiError } from '@/lib/api-client';
 import { formatMoney } from '@/lib/format';
 import { usePermissions } from '@/features/auth/permissions/can';
 
-import { resolveCommercialNextStep } from '../commercial-next-step';
-import { useCommercialSummary } from '../hooks/use-commercial';
+import { useCommercialCurrentCycle, useCommercialSummary } from '../hooks/use-commercial';
 import { contractStatusTone } from '../presentation';
 import { CommercialNav, type CommercialTab } from './commercial-nav';
 import { OverviewTab } from './overview-tab';
-import { MainContractTab } from './main-contract-tab';
+import { ContractSecurityTab } from './contract-security-tab';
 import { ApplicationsTab } from './applications-tab';
-import { RetentionAdvancesTab } from './retention-advances-tab';
-import { GuaranteesTab } from './guarantees-tab';
+import { BillingCollectionTab } from './billing-collection-tab';
 
 /**
  * The Commercial workspace shell.
@@ -72,15 +70,18 @@ export function CommercialWorkspace({
   const summary = query.data;
 
   return (
-    <div className="space-y-4" data-commercial-root>
+    <div className="space-y-3" data-commercial-root>
       <Header projectId={projectId} summary={summary} />
       <CommercialNav projectId={projectId} active={active} />
       <div>
         {active === 'overview' ? <OverviewTab projectId={projectId} summary={summary} /> : null}
-        {active === 'main-contract' ? <MainContractTab summary={summary} /> : null}
-        {active === 'applications' ? <ApplicationsTab projectId={projectId} summary={summary} /> : null}
-        {active === 'retention-advances' ? <RetentionAdvancesTab summary={summary} /> : null}
-        {active === 'guarantees' ? <GuaranteesTab summary={summary} /> : null}
+        {active === 'contract-security' ? <ContractSecurityTab summary={summary} /> : null}
+        {active === 'applications' ? (
+          <ApplicationsTab projectId={projectId} summary={summary} />
+        ) : null}
+        {active === 'billing-collection' ? (
+          <BillingCollectionTab projectId={projectId} summary={summary} />
+        ) : null}
       </div>
     </div>
   );
@@ -94,41 +95,48 @@ function Header({
   summary: CommercialSummaryResponse | null;
 }) {
   const t = useTranslations('commercial');
-  const tStep = useTranslations('commercial.nextStep');
+  const tCycle = useTranslations('commercial.cycle.actions');
   const locale = useLocale() as 'en' | 'ar';
   const { can } = usePermissions();
+  const cycleQuery = useCommercialCurrentCycle(projectId);
 
   // Exactly one primary action, resolved from the contract's own state rather than from
   // "whichever attention item happens to carry a URL" — that ordering made the button change
   // meaning as unrelated items appeared and disappeared. See commercial-next-step.ts.
-  const step = summary ? resolveCommercialNextStep(summary, projectId) : null;
+  const step = summary ? (cycleQuery.data?.nextAction ?? null) : null;
   const contract = summary?.mainContract ?? null;
   const value = contract && summary ? summary.metrics.contractValue : null;
 
   return (
-    <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-      <div className="min-w-0">
-        <h1 className="text-h2 font-bold text-foreground">{t('title')}</h1>
-        <p className="text-body-sm text-muted-foreground">{t('subtitle')}</p>
-        {contract ? (
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-body-sm">
-            <span className="font-medium text-foreground">{contract.contractNumber}</span>
-            <Badge tone={contractStatusTone(contract.status)}>
-              {t(`contractStatus.${contract.status}`)}
-            </Badge>
-            {value && value.state !== 'RESTRICTED' && value.amount ? (
-              <span className="tabular-nums text-muted-foreground">
-                {formatMoney(value.amount, value.currency, locale)}
-              </span>
-            ) : null}
-          </div>
-        ) : null}
+    <header className="flex flex-col gap-3 rounded-panel border border-border bg-surface px-4 py-3 shadow-e1 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+      <div className="flex min-w-0 items-start gap-3">
+        <div className="flex size-11 shrink-0 items-center justify-center rounded-control border border-brand-primary/20 bg-brand-primary-subtle text-brand-primary">
+          <Building2 size={22} strokeWidth={1.8} aria-hidden="true" />
+        </div>
+        <div className="min-w-0">
+          <h1 className="text-h3 font-bold text-foreground">{t('title')}</h1>
+          <p className="text-body-sm text-muted-foreground">{t('subtitle')}</p>
+          {contract ? (
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-body-sm">
+              <span className="font-medium text-foreground">{contract.contractNumber}</span>
+              <Badge tone={contractStatusTone(contract.status)}>
+                {t(`contractStatus.${contract.status}`)}
+              </Badge>
+              {value && value.state !== 'RESTRICTED' && value.amount ? (
+                <span className="tabular-nums text-muted-foreground">
+                  {formatMoney(value.amount, value.currency, locale)}
+                </span>
+              ) : null}
+              <span className="text-muted-foreground">{contract.clientName}</span>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <div className="flex items-center gap-2">
         {step ? (
           <Button asChild size="sm" className="min-h-11 sm:min-h-0">
-            <Link href={step.href}>{tStep(step.kind, { count: step.count ?? 0 })}</Link>
+            <Link href={step.href}>{tCycle(step.kind)}</Link>
           </Button>
         ) : null}
         <DropdownMenu>

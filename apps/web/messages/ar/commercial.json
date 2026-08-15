@@ -17,6 +17,8 @@
     "notSet": "غير محدد"
   },
   "tabs": {
+    "contract-security": "العقد والضمانات",
+    "billing-collection": "الفوترة والتحصيل",
     "label": "أقسام الشؤون التجارية",
     "overview": "نظرة عامة",
     "main-contract": "العقد الرئيسي",
@@ -25,6 +27,7 @@
     "guarantees": "الضمانات"
   },
   "metric": {
+    "receiptsAllocated": "تخصيصات المقبوضات المرحلة",
     "contractValue": "قيمة العقد",
     "certified": "المعتمد",
     "invoiced": "المفوتر",
@@ -154,6 +157,7 @@
     "title": "المحتجزات والدفعات المقدمة"
   },
   "guarantees": {
+    "manage": "إدارة الضمانات",
     "none": "لا توجد ضمانات مسجلة.",
     "total": "الضمانات",
     "attentionNeeded": "تحتاج انتباهاً",
@@ -177,11 +181,20 @@
     "EXPIRED": "منتهٍ"
   },
   "applications": {
+    "create": "إنشاء مستخلص",
+    "title": "المستخلصات والاعتماد",
+    "subtitle": "إعداد ومراجعة واعتماد مستخلصات الدفعات المرحلية.",
+    "summary": {
+      "open": "المستخلصات المفتوحة",
+      "submitted": "المستخلصات المقدمة",
+      "certified": "الشهادات الفعالة"
+    },
     "emptyTitle": "لا توجد مستخلصات بعد",
     "emptyHint": "لم تُقدَّم أي مستخلصات دفع مرحلية على هذا العقد.",
     "draftInvoice": "مسودة",
     "superseded": "{count} مُستبدل",
     "col": {
+      "certificate": "الشهادة",
       "application": "المستخلص",
       "period": "الفترة",
       "claimed": "المطالب به",
@@ -193,6 +206,80 @@
       "outstanding": "المتبقي",
       "settlement": "التسوية",
       "nextAction": "الإجراء التالي"
+    }
+  },
+  "contractSecurity": {
+    "manageTerms": "ضبط شروط العقد",
+    "title": "العقد والضمانات",
+    "subtitle": "الأساس التجاري والشروط التعاقدية والأدوات التي تحمي تنفيذ العقد.",
+    "guarantees": "الضمانات"
+  },
+  "billing": {
+    "readyTitle": "الأعمال المعتمدة جاهزة للفوترة",
+    "readyHint": "أنشئ فاتورة العميل من الشهادة الفعالة قبل بدء التحصيل.",
+    "title": "الفوترة والتحصيل",
+    "subtitle": "فواتير العملاء المرحلة وتخصيصات المقبوضات والرصيد المحاسبي المستحق.",
+    "invoices": "فواتير العملاء",
+    "emptyTitle": "لا توجد فواتير عملاء",
+    "emptyHint": "سيظهر العمل المعتمد هنا بعد إنشاء فاتورة العميل.",
+    "col": {
+      "action": "الإجراء",
+      "invoice": "الفاتورة",
+      "source": "المستخلص المصدر",
+      "amount": "المفوتر",
+      "received": "المحصل",
+      "outstanding": "المستحق",
+      "status": "حالة السداد"
+    }
+  },
+  "cycle": {
+    "loadFailed": "تعذر تحميل دورة الدفع",
+    "loadFailedHint": "حالة سير العمل غير متاحة. أعد المحاولة قبل تنفيذ إجراء تجاري.",
+    "retry": "إعادة المحاولة",
+    "title": "دورة الدفع الحالية",
+    "label": "تقدم دورة الدفع",
+    "unnumbered": "المستخلص الحالي",
+    "stages": {
+      "contract": "العقد فعال",
+      "prepare": "إعداد المستخلص",
+      "submitted": "تم تقديم المستخلص",
+      "certification": "بانتظار الاعتماد",
+      "certified": "صدرت الشهادة",
+      "invoice": "إنشاء الفاتورة",
+      "payment": "بانتظار السداد",
+      "settled": "تمت التسوية"
+    },
+    "actions": {
+      "CREATE_CONTRACT": "إنشاء العقد",
+      "EDIT_CONTRACT": "استكمال العقد",
+      "ADVANCE_CONTRACT": "تقديم العقد",
+      "CREATE_APPLICATION": "إنشاء مستخلص",
+      "CONTINUE_APPLICATION": "متابعة المستخلص",
+      "REVISE_APPLICATION": "تعديل المستخلص",
+      "ALLOCATE_RECEIPT": "تخصيص التحصيل",
+      "VIEW_HISTORY": "عرض السجل",
+      "SUBMIT_APPLICATION": "تقديم المستخلص",
+      "REVIEW_APPLICATION": "مراجعة المستخلص",
+      "ISSUE_CERTIFICATE": "إصدار الشهادة",
+      "GENERATE_INVOICE": "إنشاء الفاتورة",
+      "POST_INVOICE": "ترحيل الفاتورة",
+      "RECORD_RECEIPT": "تسجيل التحصيل"
+    },
+    "stageSummary": {
+      "NO_CONTRACT": "أنشئ العقد الرئيسي للبدء",
+      "CONTRACT_DRAFT": "استكمل العقد الرئيسي وفعّله",
+      "READY_FOR_APPLICATION": "جاهز لإنشاء أول مستخلص",
+      "APPLICATION_DRAFT": "جارٍ إعداد المستخلص",
+      "APPLICATION_SUBMITTED": "المستخلص قيد المراجعة الداخلية",
+      "APPLICATION_RETURNED": "المستخلص يحتاج إلى تعديل",
+      "AWAITING_CERTIFICATION": "تم التقديم للعميل وبانتظار الشهادة",
+      "CERTIFIED": "تم اعتماد الأعمال",
+      "AWAITING_INVOICE": "الشهادة جاهزة للفوترة",
+      "INVOICE_DRAFT": "الفاتورة تحتاج إلى ترحيل",
+      "AWAITING_PAYMENT": "الفاتورة المرحلة بانتظار التحصيل",
+      "PARTIALLY_PAID": "تم تحصيل جزء وما زال رصيد",
+      "SETTLED": "تمت تسوية أحدث دورة دفع",
+      "TERMINAL": "السجل التجاري للعرض فقط"
     }
   },
   "settlement": {

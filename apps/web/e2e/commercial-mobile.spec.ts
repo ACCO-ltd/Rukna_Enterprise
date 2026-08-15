@@ -48,9 +48,9 @@ const MODES = [
 function pagesFor(projectId: string) {
   return [
     { id: 'overview', path: `/projects/${projectId}/commercial` },
+    { id: 'contract-security', path: `/projects/${projectId}/commercial/contract-security` },
     { id: 'applications', path: `/projects/${projectId}/commercial/applications` },
-    { id: 'guarantees', path: `/projects/${projectId}/commercial/guarantees` },
-    { id: 'financial-position', path: `/projects/${projectId}/pl` },
+    { id: 'billing-collection', path: `/projects/${projectId}/commercial/billing-collection` },
   ];
 }
 
@@ -139,7 +139,9 @@ for (const mode of MODES) {
       ).toBeLessThanOrEqual(metrics.clientWidth + 1);
     }
 
-    console.log(`[QA] ${mode.id} consoleErrors=${JSON.stringify(errors)} failedApi=${JSON.stringify(failedRequests)}`);
+    console.log(
+      `[QA] ${mode.id} consoleErrors=${JSON.stringify(errors)} failedApi=${JSON.stringify(failedRequests)}`,
+    );
 
     // Commercial-owned controls must all clear 44px tall (breadcrumbs/shell excluded by scope).
     expect(allUnder, `Commercial controls under 44px tall in ${mode.id}`).toEqual([]);

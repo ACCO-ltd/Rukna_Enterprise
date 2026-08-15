@@ -8,6 +8,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard.js';
 import { DatabaseModule } from './platform/database/database.module.js';
 import { TenancyModule } from './platform/tenancy/tenancy.module.js';
 import { TenancyMiddleware } from './platform/tenancy/tenancy.middleware.js';
+import { HealthModule } from './platform/health/health.module.js';
 import { AuthModule } from './platform/auth/auth.module.js';
 import { UsersModule } from './platform/users/users.module.js';
 import { OrganizationsModule } from './platform/organizations/organizations.module.js';
@@ -30,6 +31,7 @@ import { AuditInterceptor } from './platform/audit-logs/application/audit.interc
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
     DatabaseModule,
     TenancyModule,
+    HealthModule,
     AuthModule,
     UsersModule,
     OrganizationsModule,
@@ -67,6 +69,7 @@ import { AuditInterceptor } from './platform/audit-logs/application/audit.interc
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(TenancyMiddleware).forRoutes('*');
+    // health is excluded so a platform probe never depends on tenant resolution
+    consumer.apply(TenancyMiddleware).exclude('health').forRoutes('*');
   }
 }

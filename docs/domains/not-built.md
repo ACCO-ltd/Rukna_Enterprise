@@ -4,12 +4,14 @@ These are real domain capabilities, not just missing screens. Listed in the depe
 which they should be built to complete the Construction operating loop. Authoritative status:
 `docs/01-capability-matrix.md`.
 
-## 1. Programme & Progress — `NOT_DESIGNED` (highest priority)
+## 1. Programme & Progress — `POLICY_FROZEN / DESIGN_READY / NOT_IMPLEMENTED` (highest priority)
 
 The authoritative *time* and *physical completion* domain: schedule, activities, baseline
 programme, progress updates, measurements/evidence, delay/variance. Without it, IPA valuation is
 manual rather than measured, and the control triangle (Scope–Time–Cost) is missing its Time
-vertex. No models, no ADR.
+vertex. ACCO policy is frozen and the delivery specification is in
+[`programme-progress-delivery-spec.md`](programme-progress-delivery-spec.md). No models or
+Programme ADR exist yet.
 
 ## 2. Inventory / Site Stores — `NOT_DESIGNED`
 

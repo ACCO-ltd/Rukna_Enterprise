@@ -34,6 +34,9 @@ wins** — it is verified against the code. Fix the other document.
 [`domains/`](domains/) — platform · project-and-boq · commercial · procurement · accounting ·
 not-built (Programme, Inventory, Variations, Subcontracts, Site, Documents, Notifications).
 
+Programme & Progress continuation spec:
+[`domains/programme-progress-delivery-spec.md`](domains/programme-progress-delivery-spec.md).
+
 ## Reference (detailed, kept but not authoritative on status)
 
 [`reference/`](reference/) — `domain-model.md`, `api-reference.md`, `accounting-event-catalog.md`,

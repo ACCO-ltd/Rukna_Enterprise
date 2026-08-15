@@ -1,0 +1,39 @@
+# Never copy host-built artefacts into the image — node_modules in particular
+# carries platform-native Prisma engines built for the host OS.
+node_modules
+**/node_modules
+.pnpm-store
+
+dist
+**/dist
+build
+**/build
+.next
+**/.next
+out
+**/out
+*.tsbuildinfo
+
+.turbo
+**/.turbo
+
+# Secrets must arrive as runtime env vars, never baked into an image layer
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+.git
+.github
+.scratch
+coverage
+**/coverage
+playwright-report
+**/playwright-report
+test-results
+**/test-results
+docs
+*.md
+!README.md

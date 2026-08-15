@@ -8,6 +8,7 @@ import {
   type CommercialApplicationsResponse,
   type CommercialAttentionItem,
   type CommercialCapabilities,
+  type CommercialCurrentCycleResponse,
   type CommercialGuaranteeSummary,
   type CommercialMetric,
   type CommercialNextAction,
@@ -144,10 +145,24 @@ export class CommercialService {
       drillTo: string | null;
     }): CommercialMetric => {
       if (!mayViewFinancials) {
-        return { state: 'RESTRICTED', amount: null, currency: null, sourceCount: 0, drillTo: null, asOf: asOfIso };
+        return {
+          state: 'RESTRICTED',
+          amount: null,
+          currency: null,
+          sourceCount: 0,
+          drillTo: null,
+          asOf: asOfIso,
+        };
       }
       if (opts.failed) {
-        return { state: 'FAILED', amount: null, currency, sourceCount: 0, drillTo: opts.drillTo, asOf: asOfIso };
+        return {
+          state: 'FAILED',
+          amount: null,
+          currency,
+          sourceCount: 0,
+          drillTo: opts.drillTo,
+          asOf: asOfIso,
+        };
       }
       return {
         state: opts.sourceCount === 0 ? 'ZERO' : 'OK',
@@ -159,9 +174,7 @@ export class CommercialService {
       };
     };
 
-    const guarantees = contract.guarantees.map((g) =>
-      this.toGuaranteeSummary(g, asOf),
-    );
+    const guarantees = contract.guarantees.map((g) => this.toGuaranteeSummary(g, asOf));
 
     const attention = this.buildAttention(
       projectId,
@@ -176,7 +189,9 @@ export class CommercialService {
     // the certificate is issued, the surveyor has moved on, and the money has not been asked
     // for. Computed from the same effective set, so it can never disagree with certifiedNet.
     const invoicedIpcIds = new Set(
-      invoices.filter((i) => i.postingStatus === 'POSTED' && i.sourceIpcId).map((i) => i.sourceIpcId!),
+      invoices
+        .filter((i) => i.postingStatus === 'POSTED' && i.sourceIpcId)
+        .map((i) => i.sourceIpcId!),
     );
     let uninvoicedCertified = ZERO;
     let uninvoicedCount = 0;
@@ -293,16 +308,14 @@ export class CommercialService {
             retentionSplitOnPC: contract.retentionTerms.retentionSplitOnPC.toString(),
           }
         : null,
-      advances: contract.advanceTerms.map(
-        (a): CommercialAdvanceSummary => ({
-          id: a.id,
-          advanceType: a.advanceType,
-          description: a.description ?? null,
-          amount: a.amount?.toString() ?? null,
-          percentage: a.percentage?.toString() ?? null,
-          recoveryRate: a.recoveryRate.toString(),
-        }),
-      ),
+      advances: contract.advanceTerms.map((a): CommercialAdvanceSummary => ({
+        id: a.id,
+        advanceType: a.advanceType,
+        description: a.description ?? null,
+        amount: a.amount?.toString() ?? null,
+        percentage: a.percentage?.toString() ?? null,
+        recoveryRate: a.recoveryRate.toString(),
+      })),
       guarantees,
       attention,
       capabilities: this.capabilities(identity, contract),
@@ -367,7 +380,8 @@ export class CommercialService {
       let certDed = ZERO;
       if (effectiveCert) {
         certGross = new Decimal(effectiveCert.certifiedTotal.toString());
-        for (const d of effectiveCert.deductions) certDed = certDed.plus(new Decimal(d.amount.toString()));
+        for (const d of effectiveCert.deductions)
+          certDed = certDed.plus(new Decimal(d.amount.toString()));
       }
       const certNet = certGross.minus(certDed);
 
@@ -406,7 +420,13 @@ export class CommercialService {
         receivedAmount: invoice ? money(received) : null,
         outstandingAmount: invoicePosted ? money(outstanding) : null,
         settlement: settlementState,
-        nextAction: this.nextAction(ipa.status, effectiveCert !== null, invoice, invoicePosted, outstanding),
+        nextAction: this.nextAction(
+          ipa.status,
+          effectiveCert !== null,
+          invoice,
+          invoicePosted,
+          outstanding,
+        ),
       };
     });
 
@@ -417,6 +437,117 @@ export class CommercialService {
       applications: rows,
       capabilities: this.capabilities(identity, contract),
       asOf: asOfIso,
+    };
+  }
+
+  async getCurrentCycle(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<CommercialCurrentCycleResponse> {
+    const result = await this.getApplications(identity, projectId);
+    const asOf = new Date().toISOString();
+    const contract = await this.repo.findMainContract(
+      this.tenancyService.getClient(),
+      identity.activeOrganizationId,
+      projectId,
+    );
+
+    if (!contract) {
+      const allowed = identity.permissions.includes(PERMISSIONS.contractsCreate);
+      return {
+        projectId,
+        contract: null,
+        stage: 'NO_CONTRACT',
+        application: null,
+        nextAction: allowed
+          ? { kind: 'CREATE_CONTRACT', href: `/contracts/new?projectId=${projectId}` }
+          : null,
+        blockers: ['MAIN_CONTRACT_MISSING', ...(allowed ? [] : (['PERMISSION_REQUIRED'] as const))],
+        capabilities: result.capabilities,
+        responsibleRole: 'CONTRACT_ADMINISTRATOR',
+        asOf,
+      };
+    }
+
+    const identitySummary = {
+      id: contract.id,
+      contractNumber: contract.contractNumber,
+      status: contract.status,
+      clientId: contract.client.id,
+      clientName: contract.clientNameSnapshot ?? contract.client.name,
+    };
+    const terminal = CommercialTermPolicy.isTerminal(contract.status);
+    if (terminal) {
+      return {
+        projectId,
+        contract: identitySummary,
+        stage: 'TERMINAL',
+        application: this.selectCurrentApplication(result.applications),
+        nextAction: {
+          kind: 'VIEW_HISTORY',
+          href: `/projects/${projectId}/commercial/applications`,
+        },
+        blockers: ['CONTRACT_TERMINAL'],
+        capabilities: result.capabilities,
+        responsibleRole: 'COMMERCIAL_MANAGER',
+        asOf,
+      };
+    }
+
+    if (contract.status !== 'ACTIVE') {
+      const mayEdit = result.capabilities.canEditContract;
+      const mayAdvance = result.capabilities.canAdvanceContract;
+      return {
+        projectId,
+        contract: identitySummary,
+        stage: 'CONTRACT_DRAFT',
+        application: null,
+        nextAction: mayEdit
+          ? { kind: 'EDIT_CONTRACT', href: `/contracts/${contract.id}/edit` }
+          : mayAdvance
+            ? { kind: 'ADVANCE_CONTRACT', href: `/contracts/${contract.id}` }
+            : null,
+        blockers: [
+          'CONTRACT_NOT_ACTIVE',
+          ...(!mayEdit && !mayAdvance ? (['PERMISSION_REQUIRED'] as const) : []),
+        ],
+        capabilities: result.capabilities,
+        responsibleRole: 'CONTRACT_ADMINISTRATOR',
+        asOf,
+      };
+    }
+
+    const application = this.selectCurrentApplication(result.applications);
+    if (!application) {
+      const allowed = result.capabilities.canCreateApplication;
+      return {
+        projectId,
+        contract: identitySummary,
+        stage: 'READY_FOR_APPLICATION',
+        application: null,
+        nextAction: allowed
+          ? { kind: 'CREATE_APPLICATION', href: `/contracts/${contract.id}/applications/new` }
+          : null,
+        blockers: allowed ? [] : ['PERMISSION_REQUIRED'],
+        capabilities: result.capabilities,
+        responsibleRole: 'QUANTITY_SURVEYOR',
+        asOf,
+      };
+    }
+
+    const projection = this.projectCycleAction(
+      application,
+      contract.id,
+      projectId,
+      result.capabilities,
+    );
+    return {
+      projectId,
+      contract: identitySummary,
+      application,
+      capabilities: result.capabilities,
+      asOf,
+      ...projection,
     };
   }
 
@@ -436,7 +567,13 @@ export class CommercialService {
         allocationCount += 1;
       }
     }
-    return { invoiced, received, outstanding: invoiced.minus(received), postedInvoiceCount, allocationCount };
+    return {
+      invoiced,
+      received,
+      outstanding: invoiced.minus(received),
+      postedInvoiceCount,
+      allocationCount,
+    };
   }
 
   /**
@@ -454,7 +591,11 @@ export class CommercialService {
     const today = Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth(), asOf.getUTCDate());
 
     return invoices
-      .filter((inv) => inv.postingStatus === 'POSTED' && new Decimal(inv.outstandingAmount.toString()).greaterThan(0))
+      .filter(
+        (inv) =>
+          inv.postingStatus === 'POSTED' &&
+          new Decimal(inv.outstandingAmount.toString()).greaterThan(0),
+      )
       .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime())
       .slice(0, 5)
       .map((inv) => {
@@ -486,6 +627,124 @@ export class CommercialService {
     return 'PARTIALLY_PAID';
   }
 
+  private selectCurrentApplication(
+    rows: CommercialApplicationRow[],
+  ): CommercialApplicationRow | null {
+    for (let index = rows.length - 1; index >= 0; index -= 1) {
+      if (rows[index]!.settlement !== 'PAID') return rows[index]!;
+    }
+    return rows.at(-1) ?? null;
+  }
+
+  private projectCycleAction(
+    row: CommercialApplicationRow,
+    contractId: string,
+    projectId: string,
+    capabilities: CommercialCapabilities,
+  ): Pick<CommercialCurrentCycleResponse, 'stage' | 'nextAction' | 'blockers' | 'responsibleRole'> {
+    const applicationHref = `/contracts/${contractId}/applications/${row.ipaId}`;
+    const applicationsHref = `/projects/${projectId}/commercial/applications`;
+    const denied = (
+      stage: CommercialCurrentCycleResponse['stage'],
+      role: CommercialCurrentCycleResponse['responsibleRole'],
+    ): Pick<
+      CommercialCurrentCycleResponse,
+      'stage' | 'nextAction' | 'blockers' | 'responsibleRole'
+    > => ({
+      stage,
+      nextAction: null,
+      blockers: ['PERMISSION_REQUIRED'],
+      responsibleRole: role,
+    });
+
+    if (row.settlement === 'PAID')
+      return {
+        stage: 'SETTLED',
+        nextAction: { kind: 'VIEW_HISTORY', href: applicationsHref },
+        blockers: [],
+        responsibleRole: null,
+      };
+    if (row.settlement === 'PARTIALLY_PAID')
+      return {
+        stage: 'PARTIALLY_PAID',
+        nextAction: null,
+        blockers: ['RECEIPT_WORKFLOW_UNAVAILABLE'],
+        responsibleRole: 'FINANCE_REVIEWER',
+      };
+    if (row.invoiceId && row.invoicePostingStatus === 'POSTED')
+      return {
+        stage: 'AWAITING_PAYMENT',
+        nextAction: null,
+        blockers: ['RECEIPT_WORKFLOW_UNAVAILABLE'],
+        responsibleRole: 'FINANCE_REVIEWER',
+      };
+    if (row.invoiceId)
+      return capabilities.canPostInvoice
+        ? {
+            stage: 'INVOICE_DRAFT',
+            nextAction: {
+              kind: 'POST_INVOICE',
+              href: `/finance/accounting/invoices/${row.invoiceId}`,
+            },
+            blockers: ['INVOICE_NOT_POSTED'],
+            responsibleRole: 'FINANCE_REVIEWER',
+          }
+        : denied('INVOICE_DRAFT', 'FINANCE_REVIEWER');
+    if (row.ipcId)
+      return capabilities.canGenerateInvoice
+        ? {
+            stage: 'AWAITING_INVOICE',
+            nextAction: { kind: 'GENERATE_INVOICE', href: applicationHref },
+            blockers: [],
+            responsibleRole: 'FINANCE_REVIEWER',
+          }
+        : denied('AWAITING_INVOICE', 'FINANCE_REVIEWER');
+    if (row.ipaStatus === 'SUBMITTED')
+      return capabilities.canIssueCertificate
+        ? {
+            stage: 'AWAITING_CERTIFICATION',
+            nextAction: { kind: 'ISSUE_CERTIFICATE', href: `${applicationHref}/certificates/new` },
+            blockers: ['CERTIFICATE_MISSING'],
+            responsibleRole: 'QUANTITY_SURVEYOR',
+          }
+        : denied('AWAITING_CERTIFICATION', 'QUANTITY_SURVEYOR');
+    if (row.ipaStatus === 'PENDING_INTERNAL_APPROVAL')
+      return capabilities.canReviewApplication
+        ? {
+            stage: 'APPLICATION_SUBMITTED',
+            nextAction: { kind: 'REVIEW_APPLICATION', href: applicationHref },
+            blockers: ['APPLICATION_AWAITING_APPROVAL'],
+            responsibleRole: 'COMMERCIAL_MANAGER',
+          }
+        : denied('APPLICATION_SUBMITTED', 'COMMERCIAL_MANAGER');
+    if (row.ipaStatus === 'APPROVED_FOR_SUBMISSION')
+      return capabilities.canManageApplication
+        ? {
+            stage: 'APPLICATION_SUBMITTED',
+            nextAction: { kind: 'SUBMIT_APPLICATION', href: applicationHref },
+            blockers: [],
+            responsibleRole: 'QUANTITY_SURVEYOR',
+          }
+        : denied('APPLICATION_SUBMITTED', 'QUANTITY_SURVEYOR');
+    if (row.ipaStatus === 'RETURNED_FOR_REVISION')
+      return capabilities.canManageApplication
+        ? {
+            stage: 'APPLICATION_RETURNED',
+            nextAction: { kind: 'REVISE_APPLICATION', href: applicationHref },
+            blockers: [],
+            responsibleRole: 'QUANTITY_SURVEYOR',
+          }
+        : denied('APPLICATION_RETURNED', 'QUANTITY_SURVEYOR');
+    return capabilities.canManageApplication
+      ? {
+          stage: 'APPLICATION_DRAFT',
+          nextAction: { kind: 'CONTINUE_APPLICATION', href: applicationHref },
+          blockers: [],
+          responsibleRole: 'QUANTITY_SURVEYOR',
+        }
+      : denied('APPLICATION_DRAFT', 'QUANTITY_SURVEYOR');
+  }
+
   private nextAction(
     ipaStatus: string,
     hasEffectiveCert: boolean,
@@ -494,9 +753,8 @@ export class CommercialService {
     outstanding: Decimal,
   ): CommercialNextAction {
     if (ipaStatus === 'DRAFT' || ipaStatus === 'RETURNED_FOR_REVISION') return 'SUBMIT_APPLICATION';
-    if (ipaStatus === 'PENDING_INTERNAL_APPROVAL' || ipaStatus === 'APPROVED_FOR_SUBMISSION') {
-      return 'REVIEW_APPLICATION';
-    }
+    if (ipaStatus === 'PENDING_INTERNAL_APPROVAL') return 'REVIEW_APPLICATION';
+    if (ipaStatus === 'APPROVED_FOR_SUBMISSION') return 'SUBMIT_APPLICATION';
     if (ipaStatus === 'SUBMITTED' && !hasEffectiveCert) return 'ISSUE_CERTIFICATE';
     if (hasEffectiveCert && !invoice) return 'GENERATE_INVOICE';
     if (invoice && !invoicePosted) return 'POST_INVOICE';
@@ -602,10 +860,14 @@ export class CommercialService {
         CommercialTermPolicy.evaluate(status, 'CONTRACT_HEADER').allowed,
       canAdvanceContract: has(PERMISSIONS.contractsApprove) && notTerminal,
       canCreateApplication: has(PERMISSIONS.ipaCreate) && status === 'ACTIVE',
+      canManageApplication: has(PERMISSIONS.ipaManage) && status === 'ACTIVE',
       canReviewApplication: has(PERMISSIONS.ipaApprove),
       canIssueCertificate: has(PERMISSIONS.ipcIssue),
       canGenerateInvoice: has(PERMISSIONS.receivablesManage),
+      canPostInvoice: has(PERMISSIONS.receivablesManage),
       canManageGuarantee: has(PERMISSIONS.contractsManage) && notTerminal,
+      canRecordReceipt: false,
+      canAllocateReceipt: false,
     };
   }
 }

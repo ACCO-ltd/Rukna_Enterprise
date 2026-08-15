@@ -17,11 +17,13 @@ Contract ──┬── Scope (BOQ)
 | Retention / advances / guarantees / milestones | (in contracts) | ADR-005 | `contracts/...` | commercial tabs | INTEGRATED |
 | IPA | `construction/ipa` | ADR-005 | `ipa` | `/contracts/[id]/applications/...` | INTEGRATED |
 | IPC | `construction/ipc` | ADR-005 | `ipc` | `.../certificates/...`, `/projects/[id]/ipc` | INTEGRATED |
-| Commercial workspace (5-tab) | `construction/commercial` | ADR-017 | `projects/:projectId/commercial` | `/projects/[id]/commercial/*` | INTEGRATED |
+| Commercial workspace (4-section) | `construction/commercial` | ADR-017 | `projects/:projectId/commercial` | `/projects/[id]/commercial/*` | INTEGRATED |
 
-**Workspace tabs (ADR-017):** Overview · main-contract · retention-advances · guarantees ·
-applications. en/ar with RTL, dark, and mobile. Settlement ownership and one settlement number
-per certificate are defined in ADR-017.
+**Workspace sections:** Overview · Contract & Security · Applications & Certificates ·
+Billing & Collection. The server-owned current cycle guides Contract → IPA → IPC → AR Invoice.
+Posted AR settlement is read-only here; canonical CustomerReceipt creation/allocation remains
+blocked on A12 and is never routed through the legacy receipt ledger. en/ar with RTL, dark,
+and mobile.
 
 **Frozen baseline:** after a contract leaves DRAFT, material change should flow through a
 **Variation** rather than editing the executed contract. Variations are **not built** —

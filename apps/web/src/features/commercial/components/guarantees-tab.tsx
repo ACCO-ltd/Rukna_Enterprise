@@ -1,8 +1,9 @@
 'use client';
 
 import { useLocale, useTranslations } from 'next-intl';
+import Link from 'next/link';
 import { ShieldCheck } from 'lucide-react';
-import { Badge } from '@erp/ui';
+import { Badge, Button } from '@erp/ui';
 import { EmptyState } from '@/components/empty-state';
 import { formatDate, formatMoney } from '@/lib/format';
 import type { CommercialSummaryResponse } from '@erp/types';
@@ -16,11 +17,19 @@ export function GuaranteesTab({ summary }: { summary: CommercialSummaryResponse 
   const locale = useLocale() as 'en' | 'ar';
 
   if (!summary.mainContract) {
+    const createUrl = summary.attention.find((item) => item.kind === 'NO_MAIN_CONTRACT')?.actionUrl;
     return (
       <EmptyState
         variant="page"
         title={t('overview.noContractTitle')}
         description={t('overview.noContractHint')}
+        action={
+          createUrl ? (
+            <Button asChild>
+              <Link href={createUrl}>{t('attention.NO_MAIN_CONTRACT.action')}</Link>
+            </Button>
+          ) : undefined
+        }
       />
     );
   }
@@ -32,6 +41,13 @@ export function GuaranteesTab({ summary }: { summary: CommercialSummaryResponse 
         icon={<ShieldCheck size={25} strokeWidth={1.8} aria-hidden="true" />}
         title={t('guarantees.emptyTitle')}
         description={t('guarantees.emptyHint')}
+        action={
+          summary.capabilities.canManageGuarantee ? (
+            <Button asChild variant="outline">
+              <Link href={`/contracts/${summary.mainContract.id}`}>{t('guarantees.manage')}</Link>
+            </Button>
+          ) : undefined
+        }
       />
     );
   }

@@ -720,6 +720,7 @@ project membership.
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/projects/:projectId/commercial/summary` | Permission-aware commercial summary |
+| `GET` | `/projects/:projectId/commercial/current-cycle` | Server-owned lifecycle stage, blocker and permitted next action |
 | `GET` | `/projects/:projectId/commercial/applications` | IPA → IPC → invoice → settlement chain |
 
 **Metric provenance.** Every money figure in `/summary.metrics` is a `CommercialMetric`

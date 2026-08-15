@@ -1,6 +1,6 @@
 {
   "title": "Commercial",
-  "subtitle": "Client contract administration and certification",
+  "subtitle": "Contract administration, certification, billing and collection",
   "actions": {
     "more": "More",
     "backToProject": "Back to project",
@@ -17,6 +17,8 @@
     "notSet": "Not set"
   },
   "tabs": {
+    "contract-security": "Contract & Security",
+    "billing-collection": "Billing & Collection",
     "label": "Commercial sections",
     "overview": "Overview",
     "main-contract": "Main Contract",
@@ -25,6 +27,7 @@
     "guarantees": "Guarantees"
   },
   "metric": {
+    "receiptsAllocated": "Posted receipt allocations",
     "contractValue": "Contract Value",
     "certified": "Certified",
     "invoiced": "Invoiced",
@@ -159,6 +162,7 @@
     "attentionNeeded": "Need attention",
     "emptyTitle": "No guarantees",
     "emptyHint": "No performance bonds or guarantees have been recorded for this contract.",
+    "manage": "Manage guarantees",
     "amount": "Amount",
     "beneficiary": "Beneficiary",
     "issueDate": "Issued",
@@ -177,11 +181,20 @@
     "EXPIRED": "Expired"
   },
   "applications": {
+    "title": "Applications & Certification",
+    "subtitle": "Prepare, review and certify interim payment applications.",
+    "summary": {
+      "open": "Open applications",
+      "submitted": "Submitted applications",
+      "certified": "Effective certificates"
+    },
     "emptyTitle": "No applications yet",
     "emptyHint": "No interim payment applications have been raised against this contract.",
+    "create": "Create application",
     "draftInvoice": "Draft",
     "superseded": "{count} superseded",
     "col": {
+      "certificate": "Certificate",
       "application": "Application",
       "period": "Period",
       "claimed": "Claimed",
@@ -193,6 +206,80 @@
       "outstanding": "Outstanding",
       "settlement": "Settlement",
       "nextAction": "Next action"
+    }
+  },
+  "contractSecurity": {
+    "title": "Contract & Security",
+    "subtitle": "The commercial baseline, contractual terms and instruments that protect performance.",
+    "guarantees": "Guarantees",
+    "manageTerms": "Set contract terms"
+  },
+  "billing": {
+    "title": "Billing & Collection",
+    "subtitle": "Posted client invoices, receipt allocations and the outstanding accounting balance.",
+    "invoices": "Client invoices",
+    "emptyTitle": "No client invoices",
+    "emptyHint": "Certified work will appear here after a client invoice is generated.",
+    "readyTitle": "Certified work is ready to invoice",
+    "readyHint": "Generate the client invoice from the effective certificate before collection can begin.",
+    "col": {
+      "action": "Action",
+      "invoice": "Invoice",
+      "source": "Source application",
+      "amount": "Invoiced",
+      "received": "Received",
+      "outstanding": "Outstanding",
+      "status": "Payment status"
+    }
+  },
+  "cycle": {
+    "title": "Current Payment Cycle",
+    "loadFailed": "Could not load the payment cycle",
+    "loadFailedHint": "The workflow state is unavailable. Retry before taking commercial action.",
+    "retry": "Retry",
+    "label": "Payment cycle progress",
+    "unnumbered": "Current application",
+    "stages": {
+      "contract": "Contract active",
+      "prepare": "Prepare application",
+      "submitted": "Application submitted",
+      "certification": "Awaiting certification",
+      "certified": "Certificate issued",
+      "invoice": "Generate invoice",
+      "payment": "Awaiting payment",
+      "settled": "Settled"
+    },
+    "actions": {
+      "CREATE_CONTRACT": "Create contract",
+      "EDIT_CONTRACT": "Complete contract",
+      "ADVANCE_CONTRACT": "Advance contract",
+      "CREATE_APPLICATION": "Create application",
+      "CONTINUE_APPLICATION": "Continue application",
+      "REVISE_APPLICATION": "Revise application",
+      "SUBMIT_APPLICATION": "Submit application",
+      "REVIEW_APPLICATION": "Review application",
+      "ISSUE_CERTIFICATE": "Issue certificate",
+      "GENERATE_INVOICE": "Generate invoice",
+      "POST_INVOICE": "Post invoice",
+      "RECORD_RECEIPT": "Record receipt",
+      "ALLOCATE_RECEIPT": "Allocate receipt",
+      "VIEW_HISTORY": "View history"
+    },
+    "stageSummary": {
+      "NO_CONTRACT": "Create the main contract to begin",
+      "CONTRACT_DRAFT": "Complete and activate the main contract",
+      "READY_FOR_APPLICATION": "Ready for the first payment application",
+      "APPLICATION_DRAFT": "Application preparation in progress",
+      "APPLICATION_SUBMITTED": "Application is in internal review",
+      "APPLICATION_RETURNED": "Application requires revision",
+      "AWAITING_CERTIFICATION": "Submitted to the client; certification is due",
+      "CERTIFIED": "Work has been certified",
+      "AWAITING_INVOICE": "Certificate is ready to invoice",
+      "INVOICE_DRAFT": "Invoice requires posting",
+      "AWAITING_PAYMENT": "Posted invoice is awaiting payment",
+      "PARTIALLY_PAID": "Payment received; balance remains",
+      "SETTLED": "Latest payment cycle is settled",
+      "TERMINAL": "Commercial record is read-only"
     }
   },
   "settlement": {

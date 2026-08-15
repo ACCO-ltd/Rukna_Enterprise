@@ -19,8 +19,8 @@ Client ✓
   → Receipt ✓               (cash collected + allocated)
 ```
 
-The Commercial workspace (ADR-017) presents Contract/retention/advances/guarantees/applications
-as one 5-tab surface. **Gap in this flow:** there is no Programme/Progress domain, so "work
+The Commercial workspace (ADR-017) presents Overview, Contract & Security, Applications &
+Certificates, and Billing & Collection as one guided surface. **Gap in this flow:** there is no Programme/Progress domain, so "work
 performed" is not an authoritative fact — valuation relies on manual IPA entry rather than
 measured progress.
 

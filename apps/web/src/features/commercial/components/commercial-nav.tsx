@@ -6,18 +6,13 @@ import { useTranslations } from 'next-intl';
 import { Select, cn } from '@erp/ui';
 
 export type CommercialTab =
-  | 'overview'
-  | 'main-contract'
-  | 'applications'
-  | 'retention-advances'
-  | 'guarantees';
+  'overview' | 'contract-security' | 'applications' | 'billing-collection';
 
 const TABS: readonly CommercialTab[] = [
   'overview',
-  'main-contract',
+  'contract-security',
   'applications',
-  'retention-advances',
-  'guarantees',
+  'billing-collection',
 ];
 
 function href(projectId: string, tab: CommercialTab): string {
@@ -30,13 +25,7 @@ function href(projectId: string, tab: CommercialTab): string {
  * collapses to a single stable selector (44px target) so five tabs never wrap or overflow.
  * Variations and Subcontracts are deliberately absent — not "coming soon".
  */
-export function CommercialNav({
-  projectId,
-  active,
-}: {
-  projectId: string;
-  active: CommercialTab;
-}) {
+export function CommercialNav({ projectId, active }: { projectId: string; active: CommercialTab }) {
   const t = useTranslations('commercial.tabs');
   const router = useRouter();
 

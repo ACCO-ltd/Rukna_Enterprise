@@ -1,6 +1,4 @@
-import type {
-  BadgeTone,
-} from '@erp/ui';
+import type { BadgeTone } from '@erp/ui';
 import type {
   CommercialMetric,
   CommercialSettlementState,

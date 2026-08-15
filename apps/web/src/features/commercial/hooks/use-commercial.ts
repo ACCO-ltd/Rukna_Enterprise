@@ -3,16 +3,21 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import type {
   CommercialApplicationsResponse,
+  CommercialCurrentCycleResponse,
   CommercialSummaryResponse,
 } from '@erp/types';
 
-import { getCommercialApplications, getCommercialSummary } from '../api/commercial-api';
+import {
+  getCommercialApplications,
+  getCommercialCurrentCycle,
+  getCommercialSummary,
+} from '../api/commercial-api';
 
 export const commercialKeys = {
   all: (projectId: string) => ['commercial', projectId] as const,
   summary: (projectId: string) => [...commercialKeys.all(projectId), 'summary'] as const,
-  applications: (projectId: string) =>
-    [...commercialKeys.all(projectId), 'applications'] as const,
+  applications: (projectId: string) => [...commercialKeys.all(projectId), 'applications'] as const,
+  currentCycle: (projectId: string) => [...commercialKeys.all(projectId), 'current-cycle'] as const,
 };
 
 /**
@@ -26,6 +31,15 @@ export function useCommercialSummary(
   return useQuery({
     queryKey: commercialKeys.summary(projectId),
     queryFn: () => getCommercialSummary(projectId),
+  });
+}
+
+export function useCommercialCurrentCycle(
+  projectId: string,
+): UseQueryResult<CommercialCurrentCycleResponse, Error> {
+  return useQuery({
+    queryKey: commercialKeys.currentCycle(projectId),
+    queryFn: () => getCommercialCurrentCycle(projectId),
   });
 }
 

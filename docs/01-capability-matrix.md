@@ -56,7 +56,7 @@ Last verified against code: **2026-08-14** (branch `main`). Verified from the Pr
 | Contracts (retention, advances, guarantees, milestones) | ✓ | ✓ | INTEGRATED | 8-state lifecycle, client snapshot on execute. |
 | IPA (Interim Payment Application) | ✓ | ✓ | INTEGRATED | Items + deductions, effective-certified resolution. |
 | IPC (Interim Payment Certificate) | ✓ | ✓ | INTEGRATED | Atomic supersession, variance reason. |
-| Commercial workspace (5-tab) | ✓ | ✓ | INTEGRATED | ADR-017. Overview / main-contract / retention-advances / guarantees / applications. en/ar + RTL. |
+| Commercial workspace (4-section) | ✓ | ✓ | PARTIAL | ADR-017. Guided through AR invoice; posted settlement is read-only. CustomerReceipt create/allocation blocked on A12. en/ar + RTL. |
 | Milestone certification + invoice generation | — | — | NOT_DESIGNED | Milestones stored; certification/auto-invoice not built. |
 | Variations / Change Orders | — | — | DESIGNED | `BoqNode.sourceType`/`sourceChangeOrderId` provenance prepared; no ChangeOrder aggregate. BLOCKED on #51 (Eng Ahmed). |
 
