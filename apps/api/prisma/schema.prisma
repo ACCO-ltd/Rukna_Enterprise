@@ -639,23 +639,23 @@ model Boq {
 }
 
 model BoqVersion {
-  id            String           @id @default(cuid())
-  boqId         String           @map("boq_id")
-  versionNumber Int              @map("version_number")
-  status        BoqVersionStatus @default(DRAFT)
-  notes         String?
+  id                   String           @id @default(cuid())
+  boqId                String           @map("boq_id")
+  versionNumber        Int              @map("version_number")
+  status               BoqVersionStatus @default(DRAFT)
+  notes                String?
   // CONST-BOQ-018 attribution. ADR-004 specified derivedFromVersionId; it never shipped,
   // so a revision could not state which baseline it was copied from. Soft reference — no
   // FK, matching the version pointers on Boq.
-  derivedFromVersionId String?   @map("derived_from_version_id")
-  preparedBy    String?          @map("prepared_by")
-  submittedBy   String?          @map("submitted_by")
-  submittedAt   DateTime?        @map("submitted_at")
-  baselinedAt   DateTime?        @map("baselined_at")
-  baselinedBy   String?          @map("baselined_by")
-  createdBy     String           @map("created_by")
-  createdAt     DateTime         @default(now()) @map("created_at")
-  updatedAt     DateTime         @updatedAt @map("updated_at")
+  derivedFromVersionId String?          @map("derived_from_version_id")
+  preparedBy           String?          @map("prepared_by")
+  submittedBy          String?          @map("submitted_by")
+  submittedAt          DateTime?        @map("submitted_at")
+  baselinedAt          DateTime?        @map("baselined_at")
+  baselinedBy          String?          @map("baselined_by")
+  createdBy            String           @map("created_by")
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
 
   boq   Boq       @relation(fields: [boqId], references: [id])
   nodes BoqNode[]
@@ -732,15 +732,16 @@ model Contract {
   createdAt          DateTime       @default(now()) @map("created_at")
   updatedAt          DateTime       @updatedAt @map("updated_at")
 
-  project        Project                     @relation(fields: [projectId], references: [id])
-  organization   Organization                @relation(fields: [organizationId], references: [id])
-  client         Client                      @relation(fields: [clientId], references: [id])
-  retentionTerms ContractRetentionTerms?
-  advanceTerms   ContractAdvanceTerm[]
-  guarantees     ContractGuarantee[]
-  milestones     ContractMilestone[]
-  attachments    ContractAttachment[]
-  applications   InterimPaymentApplication[]
+  project             Project                      @relation(fields: [projectId], references: [id])
+  organization        Organization                 @relation(fields: [organizationId], references: [id])
+  client              Client                       @relation(fields: [clientId], references: [id])
+  retentionTerms      ContractRetentionTerms?
+  advanceTerms        ContractAdvanceTerm[]
+  guarantees          ContractGuarantee[]
+  milestones          ContractMilestone[]
+  attachments         ContractAttachment[]
+  applications        InterimPaymentApplication[]
+  paymentInstallments ContractPaymentInstallment[]
 
   @@unique([organizationId, contractNumber])
   @@index([projectId, status])
@@ -773,6 +774,32 @@ model ContractAdvanceTerm {
 
   @@index([contractId])
   @@map("contract_advance_terms")
+}
+
+// ADR-023: the negotiated payment schedule for a PAYMENT_SCHEDULE (MILESTONE) contract.
+// The installments ARE the plan (no separate 1:1 plan header). Only the percentage is stored;
+// the amount is derived (percentage × contract value), so there is no monetary field to pair
+// with a currency and no drift between a stored amount and the contract value.
+// Invariant: Σ(percentage) = 1.0000 across a contract's installments (validated in the service).
+// ACCO V1: no retention, no advance recovery (ADR-023 CONST-COM-013/014).
+model ContractPaymentInstallment {
+  id             String         @id @default(cuid())
+  contractId     String         @map("contract_id")
+  sortOrder      Int            @default(0) @map("sort_order")
+  name           String
+  percentage     Decimal        @db.Decimal(5, 4)
+  triggerType    PaymentTrigger @map("trigger_type")
+  // TIME_BASED triggers: due N days after commencement, or on an explicit date.
+  dueOffsetDays  Int?           @map("due_offset_days")
+  dueDate        DateTime?      @map("due_date") @db.Date
+  // MILESTONE triggers: a label now; will optionally reference a verified programme milestone (ADR-021).
+  milestoneLabel String?        @map("milestone_label")
+
+  contract      Contract       @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  clientInvoice ClientInvoice? // ADR-023: the invoice generated from this installment, if any
+
+  @@index([contractId])
+  @@map("contract_payment_installments")
 }
 
 model ContractGuarantee {
@@ -1503,6 +1530,9 @@ model ClientInvoice {
   clientId               String           @map("client_id")
   // sourceIpcId: the effective IPC that generated this invoice. NULL for migration-loaded records.
   sourceIpcId            String?          @unique @map("source_ipc_id")
+  // ADR-023: the payment-schedule installment that generated this invoice (MILESTONE contracts).
+  // Unique → one invoice per installment (idempotent billing). Mutually exclusive with sourceIpcId.
+  sourceInstallmentId    String?          @unique @map("source_installment_id")
   projectId              String?          @map("project_id")
   contractId             String?          @map("contract_id")
   currencyCode           String           @map("currency_code") @db.VarChar(3)
@@ -1536,10 +1566,11 @@ model ClientInvoice {
   createdAt              DateTime         @default(now()) @map("created_at")
   updatedAt              DateTime         @updatedAt @map("updated_at")
 
-  organization Organization               @relation(fields: [organizationId], references: [id])
-  client       Client                     @relation(fields: [clientId], references: [id])
-  sourceIpc    InterimPaymentCertificate? @relation(fields: [sourceIpcId], references: [id])
-  allocations  ClientReceiptAllocation[]
+  organization      Organization                @relation(fields: [organizationId], references: [id])
+  client            Client                      @relation(fields: [clientId], references: [id])
+  sourceIpc         InterimPaymentCertificate?  @relation(fields: [sourceIpcId], references: [id])
+  sourceInstallment ContractPaymentInstallment? @relation(fields: [sourceInstallmentId], references: [id])
+  allocations       ClientReceiptAllocation[]
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, clientId, postingStatus])
@@ -2329,6 +2360,13 @@ enum AdvanceType {
   MATERIAL_ON_SITE
   EQUIPMENT
   OTHER
+}
+
+// ADR-023: how a payment-schedule installment becomes billable.
+enum PaymentTrigger {
+  ADVANCE // billed on contract commencement
+  TIME_BASED // due N days after commencement, or on a fixed date
+  MILESTONE // on completion of a construction stage (verified progress, ADR-021)
 }
 
 enum GuaranteeStatus {

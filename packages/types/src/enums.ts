@@ -137,6 +137,13 @@ export enum AdvanceType {
   OTHER = 'OTHER',
 }
 
+// ADR-023: how a payment-schedule installment becomes billable.
+export enum PaymentTrigger {
+  ADVANCE = 'ADVANCE',
+  TIME_BASED = 'TIME_BASED',
+  MILESTONE = 'MILESTONE',
+}
+
 export enum GuaranteeStatus {
   ACTIVE = 'ACTIVE',
   DISCHARGED = 'DISCHARGED',

@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import type { RequestIdentity } from '@erp/types';
 
 import { ContractService } from './contract.service.js';
@@ -294,5 +294,83 @@ describe('Same-organization wrong-parent contract id (CONST-COM-002)', () => {
       'milestone-of-contract-B',
     );
     expect(repo.completeMilestone).not.toHaveBeenCalled();
+  });
+});
+
+describe('ADR-023 — payment schedule on contract create (CONST-COM-012)', () => {
+  function buildForCreate() {
+    const repo = {
+      findByNumber: jest.fn().mockResolvedValue(null),
+      findEffectiveClientContract: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({ id: 'c-1' }),
+      createPaymentInstallments: jest.fn().mockResolvedValue({ count: 0 }),
+    };
+    const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const prisma = {
+      boqVersion: { findFirst: jest.fn().mockResolvedValue({ status: 'BASELINED' }) },
+      $transaction: (fn: (tx: unknown) => unknown) => fn({}),
+    };
+    const tenancy = { getClient: () => prisma };
+    const service = new ContractService(
+      tenancy as never,
+      repo as never,
+      projectAccess as never,
+      audit as never,
+    );
+    return { repo, service };
+  }
+
+  const base = {
+    projectId: 'p-1',
+    clientId: 'cl-1',
+    boqVersionId: 'bv-1',
+    contractNumber: 'ACCO-1',
+    contractValue: '1000000.00',
+    currency: 'USD',
+  };
+
+  // ACCO's default template: Advance 40% / Structure 30% / Partition&Plastering 20% / Install&Paint 10%.
+  const accoPlan = [
+    { sortOrder: 0, name: 'Advance', percentage: 0.4, triggerType: 'ADVANCE' as const },
+    { sortOrder: 1, name: 'Structure', percentage: 0.3, triggerType: 'MILESTONE' as const },
+    { sortOrder: 2, name: 'Partition & Plastering', percentage: 0.2, triggerType: 'MILESTONE' as const },
+    { sortOrder: 3, name: 'Installation & Paint', percentage: 0.1, triggerType: 'MILESTONE' as const },
+  ];
+
+  it('writes the installments when the plan totals 100% (MILESTONE contract)', async () => {
+    const { service, repo } = buildForCreate();
+    await service.create(identity, {
+      ...base,
+      billingModel: 'MILESTONE',
+      paymentPlan: accoPlan,
+    } as never);
+    expect(repo.create).toHaveBeenCalled();
+    expect(repo.createPaymentInstallments).toHaveBeenCalledWith(expect.anything(), 'c-1', accoPlan);
+  });
+
+  it('rejects a plan that does not total 100% and writes nothing', async () => {
+    const { service, repo } = buildForCreate();
+    await expect(
+      service.create(identity, {
+        ...base,
+        billingModel: 'MILESTONE',
+        paymentPlan: accoPlan.slice(0, 3), // 40 + 30 + 20 = 90%
+      } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.create).not.toHaveBeenCalled();
+    expect(repo.createPaymentInstallments).not.toHaveBeenCalled();
+  });
+
+  it('rejects a payment plan on a certified-progress (MEASURED_IPC) contract', async () => {
+    const { service, repo } = buildForCreate();
+    await expect(
+      service.create(identity, {
+        ...base,
+        billingModel: 'MEASURED_IPC',
+        paymentPlan: accoPlan,
+      } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.createPaymentInstallments).not.toHaveBeenCalled();
   });
 });

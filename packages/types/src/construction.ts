@@ -2,6 +2,7 @@ import type {
   ContractStatus,
   BillingModel,
   AdvanceType,
+  PaymentTrigger,
   GuaranteeStatus,
   IpaStatus,
   IpcStatus,
@@ -140,6 +141,31 @@ export interface ContractMilestoneResponse {
   createdAt: string;
 }
 
+// ADR-023: one installment of a payment-schedule (MILESTONE) contract. `percentage` is a
+// fraction string (0..1), e.g. "0.4000"; the amount is derived (percentage × contractValue).
+export interface ContractPaymentInstallmentResponse {
+  id: string;
+  contractId: string;
+  sortOrder: number;
+  name: string;
+  percentage: string;
+  triggerType: PaymentTrigger;
+  dueOffsetDays?: number;
+  dueDate?: string;
+  milestoneLabel?: string;
+}
+
+// Request shape the contract-creation form sends. `percentage` is a fraction number (0..1).
+export interface PaymentInstallmentInput {
+  sortOrder: number;
+  name: string;
+  percentage: number;
+  triggerType: PaymentTrigger;
+  dueOffsetDays?: number;
+  dueDate?: string;
+  milestoneLabel?: string;
+}
+
 export interface ContractResponse {
   id: string;
   organizationId: string;
@@ -162,6 +188,7 @@ export interface ContractResponse {
   advanceTerms: ContractAdvanceTermResponse[];
   guarantees: ContractGuaranteeResponse[];
   milestones: ContractMilestoneResponse[];
+  paymentInstallments: ContractPaymentInstallmentResponse[];
 }
 
 // ─── IPA ──────────────────────────────────────────────────────────────────────
@@ -712,7 +739,46 @@ export type CommercialCycleStage =
   | 'AWAITING_PAYMENT'
   | 'PARTIALLY_PAID'
   | 'SETTLED'
+  // ADR-023: a MILESTONE (payment-schedule) contract's cycle is its payment plan, not the IPA chain.
+  | 'MILESTONE_SCHEDULE'
   | 'TERMINAL';
+
+// ADR-023: per-installment billing status, derived from the installment's own linked invoice
+// (sourceInstallmentId). NEXT is the first un-invoiced installment (where "Generate invoice" lives);
+// UPCOMING are the later un-invoiced ones; BILLED means an invoice exists but nothing is collected
+// yet; PARTIALLY_PAID / PAID reflect posted receipts against that invoice.
+export type PaymentInstallmentBillStatus =
+  | 'PAID'
+  | 'PARTIALLY_PAID'
+  | 'BILLED'
+  | 'NEXT'
+  | 'UPCOMING';
+
+export interface CommercialPaymentScheduleInstallment {
+  id: string;
+  sortOrder: number;
+  name: string;
+  /** Fraction string, e.g. "0.4000". Structural — always visible. */
+  percentage: string;
+  /** Derived: percentage × contract value. Null when the caller cannot view financials. */
+  amount: string | null;
+  /** Waterfalled from total collected. Null when the caller cannot view financials. */
+  amountPaid: string | null;
+  triggerType: `${PaymentTrigger}`;
+  milestoneLabel: string | null;
+  dueOffsetDays: number | null;
+  dueDate: string | null;
+  status: PaymentInstallmentBillStatus;
+}
+
+export interface CommercialPaymentSchedule {
+  currency: string;
+  /** Null when the caller cannot view financials. */
+  contractValue: string | null;
+  /** Null when the caller cannot view financials. */
+  totalCollected: string | null;
+  installments: CommercialPaymentScheduleInstallment[];
+}
 
 export type CommercialCycleAction =
   | 'CREATE_CONTRACT'
@@ -751,6 +817,8 @@ export interface CommercialCurrentCycleResponse {
   } | null;
   stage: CommercialCycleStage;
   application: CommercialApplicationRow | null;
+  /** ADR-023: present when the contract's billingModel is MILESTONE (stage === 'MILESTONE_SCHEDULE'). */
+  paymentSchedule?: CommercialPaymentSchedule | null;
   nextAction: {
     kind: CommercialCycleAction;
     href: string;

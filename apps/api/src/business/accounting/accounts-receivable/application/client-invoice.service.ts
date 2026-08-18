@@ -25,6 +25,13 @@ export interface GenerateInvoiceFromIpcDto {
   paymentTerms?: string;
 }
 
+export interface GenerateInvoiceFromInstallmentDto {
+  installmentId: string;
+  invoiceDate: string;
+  dueDate: string;
+  paymentTerms?: string;
+}
+
 export interface ApproveInvoiceDto {
   invoiceId: string;
 }
@@ -105,6 +112,78 @@ export class ClientInvoiceService {
       // Return the invoice the winning request created — still exactly one receivable.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         const winner = await this.repo.findByIpc(prisma, orgId, dto.ipcId);
+        if (winner) return winner;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * ADR-023: generate a draft ClientInvoice from a payment-schedule installment (MILESTONE contract).
+   *
+   * Idempotent, exactly like generateFromIpc: one installment maps to at most one invoice, enforced by
+   * the unique index on ClientInvoice.sourceInstallmentId. The amount is derived from
+   * contract value × installment percentage — never re-keyed, so the invoice cannot drift from the plan.
+   * This is ADR-023's BillableEntitlement → guarded invoice for the payment-schedule model.
+   */
+  async generateFromInstallment(identity: RequestIdentity, dto: GenerateInvoiceFromInstallmentDto) {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId, userId } = identity;
+
+    const existing = await this.repo.findByInstallment(prisma, orgId, dto.installmentId);
+    if (existing) return existing;
+
+    const installment = await prisma.contractPaymentInstallment.findFirst({
+      where: { id: dto.installmentId, contract: { organizationId: orgId } },
+      include: { contract: { include: { client: true } } },
+    });
+    if (!installment) {
+      throw new NotFoundException(`Payment installment ${dto.installmentId} not found`);
+    }
+
+    const contract = installment.contract;
+    if (contract.billingModel !== 'MILESTONE') {
+      throw new BadRequestException(
+        'Installment invoicing applies only to MILESTONE (payment-schedule) contracts.',
+      );
+    }
+    if (contract.status !== 'ACTIVE') {
+      throw new BadRequestException(
+        `Contract ${contract.contractNumber} must be ACTIVE to bill an installment (currently ${contract.status}).`,
+      );
+    }
+
+    const subtotal = new Decimal(contract.contractValue.toString())
+      .mul(new Decimal(installment.percentage.toString()))
+      .toDecimalPlaces(2);
+    const vatRate = new Decimal('0.05');
+    const vatAmount = subtotal.mul(vatRate).toDecimalPlaces(2);
+    const totalAmount = subtotal.plus(vatAmount);
+
+    try {
+      return await this.repo.create(prisma, {
+        organizationId: orgId,
+        clientId: contract.clientId,
+        sourceInstallmentId: dto.installmentId,
+        projectId: contract.projectId,
+        contractId: contract.id,
+        invoiceDate: new Date(dto.invoiceDate),
+        dueDate: new Date(dto.dueDate),
+        currencyCode: contract.currency,
+        exchangeRateSnapshot: new Decimal('1'),
+        exchangeRateDate: new Date(dto.invoiceDate),
+        exchangeRateSource: 'CONTRACT',
+        subtotal,
+        vatAmount,
+        totalAmount,
+        paymentTerms: dto.paymentTerms,
+        billingAddressSnapshot: { clientName: contract.client.name, installment: installment.name },
+        createdBy: userId,
+      });
+    } catch (err) {
+      // Concurrent generation lost the race on unique(source_installment_id): return the winner's invoice.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const winner = await this.repo.findByInstallment(prisma, orgId, dto.installmentId);
         if (winner) return winner;
       }
       throw err;

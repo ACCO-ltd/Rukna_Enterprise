@@ -46,11 +46,13 @@ function build(overrides: {
   certRejects?: boolean;
   boqVersionNumber?: number | null;
   applicationCount?: number;
+  installments?: unknown;
 }) {
   const repo = {
     findMainContract: jest
       .fn()
       .mockResolvedValue('contract' in overrides ? overrides.contract : baseContract),
+    findPaymentInstallments: jest.fn().mockResolvedValue(overrides.installments ?? []),
     findEffectiveCertificates: overrides.certRejects
       ? jest.fn().mockRejectedValue(new Error('db down'))
       : jest.fn().mockResolvedValue(overrides.certs ?? []),
@@ -65,6 +67,63 @@ function build(overrides: {
   const service = new CommercialService(tenancy as never, projectAccess as never, repo as never);
   return { repo, service };
 }
+
+describe('ADR-023 — getCurrentCycle for a MILESTONE contract', () => {
+  const milestoneContract = { ...baseContract, billingModel: 'MILESTONE' };
+  const accoPlan = [
+    { id: 'i0', sortOrder: 0, name: 'Advance', percentage: new Decimal('0.4'), triggerType: 'ADVANCE', milestoneLabel: null, dueOffsetDays: null, dueDate: null },
+    { id: 'i1', sortOrder: 1, name: 'Structure', percentage: new Decimal('0.3'), triggerType: 'MILESTONE', milestoneLabel: 'Structure', dueOffsetDays: null, dueDate: null },
+    { id: 'i2', sortOrder: 2, name: 'Partition & Plastering', percentage: new Decimal('0.2'), triggerType: 'MILESTONE', milestoneLabel: 'Partition', dueOffsetDays: null, dueDate: null },
+    { id: 'i3', sortOrder: 3, name: 'Installation & Paint', percentage: new Decimal('0.1'), triggerType: 'MILESTONE', milestoneLabel: 'Install', dueOffsetDays: null, dueDate: null },
+  ];
+  // The advance installment (i0) is invoiced and fully collected (outstanding 0).
+  const advancePaidInvoices = [
+    { id: 'inv-1', sourceInstallmentId: 'i0', postingStatus: 'POSTED', totalAmount: new Decimal('400000'), outstandingAmount: new Decimal('0'), allocations: [{ allocatedAmount: new Decimal('400000') }] },
+  ];
+
+  it('returns MILESTONE_SCHEDULE with the plan, not the IPA chain', async () => {
+    const { service } = build({ contract: milestoneContract, installments: accoPlan, invoices: advancePaidInvoices });
+    const res = await service.getCurrentCycle(financeIdentity, 'p-1');
+    expect(res.stage).toBe('MILESTONE_SCHEDULE');
+    expect(res.application).toBeNull();
+    expect(res.paymentSchedule?.installments).toHaveLength(4);
+  });
+
+  it('derives status per installment from its own invoice: advance PAID, structure NEXT, rest UPCOMING', async () => {
+    const { service } = build({ contract: milestoneContract, installments: accoPlan, invoices: advancePaidInvoices });
+    const res = await service.getCurrentCycle(financeIdentity, 'p-1');
+    const s = res.paymentSchedule!.installments;
+    expect(s.map((i) => i.status)).toEqual(['PAID', 'NEXT', 'UPCOMING', 'UPCOMING']);
+    expect(s[0].amount).toBe('400000.00');
+    expect(s[0].amountPaid).toBe('400000.00');
+    expect(s[1].amount).toBe('300000.00');
+    expect(s[1].amountPaid).toBe('0.00');
+  });
+
+  it('marks an invoiced-but-unpaid installment BILLED (invoice raised, not posted)', async () => {
+    const invoices = [
+      ...advancePaidInvoices,
+      // Structure (i1) invoiced but not yet posted → collected fraction 0 → BILLED.
+      { id: 'inv-2', sourceInstallmentId: 'i1', postingStatus: 'NOT_POSTED', totalAmount: new Decimal('300000'), outstandingAmount: new Decimal('300000'), allocations: [] },
+    ];
+    const { service } = build({ contract: milestoneContract, installments: accoPlan, invoices });
+    const res = await service.getCurrentCycle(financeIdentity, 'p-1');
+    const s = res.paymentSchedule!.installments;
+    // Advance PAID, Structure BILLED, then the first un-invoiced (Partition) is NEXT.
+    expect(s.map((i) => i.status)).toEqual(['PAID', 'BILLED', 'NEXT', 'UPCOMING']);
+  });
+
+  it('hides money but keeps the plan structure without financial permission', async () => {
+    const { service } = build({ contract: milestoneContract, installments: accoPlan, invoices: advancePaidInvoices });
+    const res = await service.getCurrentCycle(noFinanceIdentity, 'p-1');
+    expect(res.stage).toBe('MILESTONE_SCHEDULE');
+    expect(res.paymentSchedule?.contractValue).toBeNull();
+    expect(res.paymentSchedule?.installments[0].amount).toBeNull();
+    // Structure (percentage + status) stays visible.
+    expect(res.paymentSchedule?.installments[0].percentage).toBe('0.4');
+    expect(res.paymentSchedule?.installments[0].status).toBe('PAID');
+  });
+});
 
 describe('CommercialService.getSummary', () => {
   it('reports UNAVAILABLE (not zero) and NO_MAIN_CONTRACT when there is no contract', async () => {

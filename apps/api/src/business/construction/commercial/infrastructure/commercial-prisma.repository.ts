@@ -106,6 +106,14 @@ export class CommercialPrismaRepository {
     });
   }
 
+  /** ADR-023: the payment-schedule installments for a MILESTONE contract, in plan order. */
+  findPaymentInstallments(prisma: TenantPrisma, contractId: string) {
+    return prisma.contractPaymentInstallment.findMany({
+      where: { contractId },
+      orderBy: { sortOrder: 'asc' },
+    });
+  }
+
   /** Posted-or-pending client invoices for a contract, with their posted receipt allocations. */
   findInvoices(prisma: TenantPrisma, organizationId: string, contractId: string) {
     return prisma.clientInvoice.findMany({
@@ -113,6 +121,7 @@ export class CommercialPrismaRepository {
       select: {
         id: true,
         sourceIpcId: true,
+        sourceInstallmentId: true,
         invoiceNumber: true,
         documentStatus: true,
         postingStatus: true,
