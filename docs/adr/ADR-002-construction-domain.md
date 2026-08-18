@@ -110,6 +110,11 @@ Each BOQ Item (leaf node) is configured with one measurement method at BOQ creat
 
 **Constraint CONST-PROG-003:** Progress records are immutable once the DPR is approved. Corrections require a new DPR entry referencing the corrected item.
 
+> **Extended by ADR-021 (proposed).** `CONST-PROG-001/002/003` above stand unchanged. ADR-021 adds
+> `CONST-PROG-004…016` (the professional control model: BOQ→WorkPackage→Activity, weighted physical
+> progress, Baseline/Forecast/Actual separation, excess-classification, the commercial firewall). It
+> **reuses** the `measurementMethod` table above rather than inventing a parallel one.
+
 ---
 
 ## Decision 5 — Inventory / Stock Management

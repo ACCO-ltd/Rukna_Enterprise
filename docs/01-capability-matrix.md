@@ -29,7 +29,7 @@ Last verified against code: **2026-08-14** (branch `main`). Verified from the Pr
 | Multi-tenancy (DB-per-tenant) | ✓ | ✓ | INTEGRATED | Subdomain → tenant, LRU client cache. `platform/tenancy` |
 | Organizations / Membership | ✓ | ✓ | INTEGRATED | Membership validated on every request. |
 | RBAC (roles / permissions) | ✓ | ✓ | INTEGRATED | Global `PermissionsGuard`, `@RequirePermissions`, JWT carries permissions. |
-| Workflow / DOA engine | ✓ | ✓ (admin) | PARTIAL | Engine + `CommandGovernanceService` seam + loop-back (ADR-011/015) done. **Value-threshold routing and SoD wiring not active** (need CFO/CEO thresholds from Eng Ahmed; `SegregationOfDutiesService` has no callers). |
+| Workflow / DOA engine | ✓ | ✓ (admin) | PARTIAL | Engine + `CommandGovernanceService` seam + loop-back (ADR-011/015) done. **Value-threshold routing + SoD now CONFIRMED REQUIRED — complete, do not delete (ADR-022).** ACCO thresholds/SoD/approval chains signed off 2026-08-17; `SegregationOfDutiesService` + `WorkflowStep` + per-command threshold ladders to be wired. |
 | Audit (transactional outbox) | ✓ | ✓ (view) | INTEGRATED | `AuditLog` + `AuditOutboxEvent` in the same tx as the mutation (ADR-008), all 7 business modules. |
 | Exchange rates | ✓ | — | BACKEND | `ExchangeRate` model + resolution. |
 | Notifications (delivery) | — | — | NOT_DESIGNED | Only `notification-event.policy.ts` domain stub. No persistence, no delivery, no UI. |
@@ -91,7 +91,7 @@ Last verified against code: **2026-08-14** (branch `main`). Verified from the Pr
 | Material Requests (dual-scope, DOA) | ✓ | ✓ | INTEGRATED | PROJECT \| ORGANIZATION. |
 | Purchase Orders (immutable revisions, MR↔PO allocation) | ✓ | ✓ | INTEGRATED | |
 | Goods Receipts (accept/reject, over-receipt tolerance) | ✓ | ✓ | INTEGRATED | `EXCEPTION_PENDING` above tolerance. |
-| Bill Matching (2-way / 3-way, tolerance policy) | ✓ | — | BACKEND | Posting blocked unless MATCHED / MATCHED_WITH_TOLERANCE / APPROVED_EXCEPTION. |
+| Bill Matching (2-way / 3-way, tolerance policy) | ✓ (gaps) | — | PARTIAL | **Control does not fully hold — see ADR-018.** Verdict is a single boolean (amount dimension unevaluated); "3-way" ignores the GRN in the tolerance decision; matching is invoice-isolated (not cumulative); out-of-tolerance posts as `MATCHED_WITH_TOLERANCE` (gate is toothless). Corrective invariants frozen in ADR-018, gated on Eng Ahmed sign-off. |
 | Commitment Ledger (COMMITTED→ACCRUED→ACTUAL) | ✓ | ✓ | INTEGRATED | Immutable signed entries; `CommitmentLedgerWriter`. |
 | Subcontracts (subcontract BOQ, certificate, AP) | — | — | DESIGNED | ADR-012 (reuse certify engine + AP). Not built. |
 | Approved Supplier List / Supplier Return | — | — | NOT_DESIGNED | |
