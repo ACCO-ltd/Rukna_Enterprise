@@ -844,6 +844,39 @@ model ContractMilestone {
   @@map("contract_milestones")
 }
 
+// ADR-014: shared, immutable file-metadata entity. Bytes live in S3-compatible object storage
+// behind FileStoragePort (MinIO first adapter); this row is the metadata + tenant-prefixed key.
+// The five *Attachment tables relate to it. Immutable rows (audit-relevant) cannot be deleted.
+model PlatformFile {
+  id             String             @id @default(cuid())
+  organizationId String             @map("organization_id")
+  originalName   String             @map("original_name")
+  mimeType       String             @map("mime_type")
+  sizeBytes      Int                @map("size_bytes")
+  checksumSha256 String?            @map("checksum_sha256")
+  storageBucket  String             @map("storage_bucket")
+  storageKey     String             @unique @map("storage_key")
+  status         PlatformFileStatus @default(PENDING)
+  immutable      Boolean            @default(false)
+  uploadedBy     String             @map("uploaded_by")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  confirmedAt    DateTime?          @map("confirmed_at")
+
+  contractAttachments     ContractAttachment[]
+  guaranteeAttachments    GuaranteeAttachment[]
+  ipaAttachments          IpaAttachment[]
+  ipcAttachments          IpcAttachment[]
+  journalEntryAttachments JournalEntryAttachment[]
+
+  @@index([organizationId])
+  @@map("platform_files")
+}
+
+enum PlatformFileStatus {
+  PENDING // metadata created; awaiting client upload + confirm
+  READY // uploaded and checksum-verified
+}
+
 model ContractAttachment {
   id             String   @id @default(cuid())
   contractId     String   @map("contract_id")
@@ -851,7 +884,8 @@ model ContractAttachment {
   createdAt      DateTime @default(now()) @map("created_at")
   createdBy      String   @map("created_by")
 
-  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  platformFile PlatformFile @relation(fields: [platformFileId], references: [id])
 
   @@index([contractId])
   @@map("contract_attachments")
@@ -864,7 +898,8 @@ model GuaranteeAttachment {
   createdAt      DateTime @default(now()) @map("created_at")
   createdBy      String   @map("created_by")
 
-  guarantee ContractGuarantee @relation(fields: [guaranteeId], references: [id], onDelete: Cascade)
+  guarantee    ContractGuarantee @relation(fields: [guaranteeId], references: [id], onDelete: Cascade)
+  platformFile PlatformFile      @relation(fields: [platformFileId], references: [id])
 
   @@index([guaranteeId])
   @@map("guarantee_attachments")
@@ -947,7 +982,8 @@ model IpaAttachment {
   createdAt      DateTime @default(now()) @map("created_at")
   createdBy      String   @map("created_by")
 
-  application InterimPaymentApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  application  InterimPaymentApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  platformFile PlatformFile              @relation(fields: [platformFileId], references: [id])
 
   @@index([applicationId])
   @@map("ipa_attachments")
@@ -1036,7 +1072,8 @@ model IpcAttachment {
   createdAt      DateTime @default(now()) @map("created_at")
   createdBy      String   @map("created_by")
 
-  certificate InterimPaymentCertificate @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+  certificate  InterimPaymentCertificate @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+  platformFile PlatformFile              @relation(fields: [platformFileId], references: [id])
 
   @@index([certificateId])
   @@map("ipc_attachments")
@@ -1980,6 +2017,7 @@ model JournalEntryAttachment {
   createdBy        String   @map("created_by")
 
   journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id])
+  platformFile PlatformFile @relation(fields: [platformFileId], references: [id])
 
   @@index([journalEntryId])
   @@map("journal_entry_attachments")
