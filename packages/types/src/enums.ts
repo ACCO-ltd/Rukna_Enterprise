@@ -144,6 +144,28 @@ export enum PaymentTrigger {
   MILESTONE = 'MILESTONE',
 }
 
+// ADR-021 Progress: daily-progress-report lifecycle.
+export enum DprStatus {
+  DRAFT = 'DRAFT',
+  SUBMITTED = 'SUBMITTED',
+  APPROVED = 'APPROVED',
+  RETURNED = 'RETURNED',
+}
+
+// Documents tab (ADR-014): category of a standalone project document.
+export enum DocumentCategory {
+  PERMIT = 'PERMIT',
+  LICENSE = 'LICENSE',
+  DRAWING = 'DRAWING',
+  CONTRACT = 'CONTRACT',
+  CERTIFICATE = 'CERTIFICATE',
+  INSURANCE = 'INSURANCE',
+  GUARANTEE = 'GUARANTEE',
+  CORRESPONDENCE = 'CORRESPONDENCE',
+  PHOTO = 'PHOTO',
+  OTHER = 'OTHER',
+}
+
 export enum GuaranteeStatus {
   ACTIVE = 'ACTIVE',
   DISCHARGED = 'DISCHARGED',

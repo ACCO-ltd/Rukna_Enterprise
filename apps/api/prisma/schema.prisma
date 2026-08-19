@@ -539,17 +539,123 @@ model Project {
   createdAt          DateTime           @default(now()) @map("created_at")
   updatedAt          DateTime           @updatedAt @map("updated_at")
 
-  organization Organization        @relation(fields: [organizationId], references: [id])
-  members      ProjectMember[]
-  suspensions  ProjectSuspension[]
-  boq          Boq?
-  contracts    Contract[]
-  client       Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  organization         Organization          @relation(fields: [organizationId], references: [id])
+  members              ProjectMember[]
+  suspensions          ProjectSuspension[]
+  boq                  Boq?
+  contracts            Contract[]
+  documents            ProjectDocument[]
+  dailyProgressReports DailyProgressReport[]
+  client               Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
   @@index([organizationId, clientId])
   @@map("projects")
+}
+
+// ADR-014 / Documents tab: a standalone project document (permit, drawing, licence...) linking a
+// PlatformFile to a project with a human title + category. Distinct from the per-entity *Attachment
+// tables (which the Documents tab also surfaces as "linked documents").
+model ProjectDocument {
+  id             String           @id @default(cuid())
+  organizationId String           @map("organization_id")
+  projectId      String           @map("project_id")
+  platformFileId String           @map("platform_file_id")
+  category       DocumentCategory
+  title          String
+  uploadedBy     String           @map("uploaded_by")
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  platformFile PlatformFile @relation(fields: [platformFileId], references: [id])
+
+  @@index([projectId])
+  @@map("project_documents")
+}
+
+enum DocumentCategory {
+  PERMIT
+  LICENSE
+  DRAWING
+  CONTRACT
+  CERTIFICATE
+  INSURANCE
+  GUARANTEE
+  CORRESPONDENCE
+  PHOTO
+  OTHER
+}
+
+// ADR-021 Progress MVP: the daily site record. An evidence container (weather, labour, narrative,
+// delay reason, photo/measurement attachments). Progress becomes verified only when APPROVED
+// (CONST-PROG-008); once approved it is immutable outside a controlled reopen (CONST-PROG-010).
+model DailyProgressReport {
+  id             String    @id @default(cuid())
+  organizationId String    @map("organization_id")
+  projectId      String    @map("project_id")
+  reportDate     DateTime  @map("report_date") @db.Date
+  status         DprStatus @default(DRAFT)
+  weather        String?
+  labourCount    Int?      @map("labour_count")
+  equipmentNote  String?   @map("equipment_note")
+  narrative      String?
+  // CONST-PROG-012: raw material for delay analysis, captured now; the formal DelayEvent is deferred.
+  delayReason    String?   @map("delay_reason")
+  preparedBy     String    @map("prepared_by")
+  submittedBy    String?   @map("submitted_by")
+  submittedAt    DateTime? @map("submitted_at")
+  approvedBy     String?   @map("approved_by")
+  approvedAt     DateTime? @map("approved_at")
+  returnReason   String?   @map("return_reason")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  project      Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  measurements ProgressMeasurement[]
+  attachments  DprAttachment[]
+
+  @@index([projectId, reportDate])
+  @@map("daily_progress_reports")
+}
+
+// ADR-021: a measured quantity inside a DPR, against a BOQ leaf. Verified when its DPR is APPROVED.
+// Cumulative verified quantity per BOQ node cannot exceed the node's measurable quantity (CONST-PROG-002/009).
+model ProgressMeasurement {
+  id             String  @id @default(cuid())
+  organizationId String  @map("organization_id")
+  dprId          String  @map("dpr_id")
+  boqNodeId      String  @map("boq_node_id")
+  quantity       Decimal @db.Decimal(18, 3)
+  notes          String?
+  createdBy      String  @map("created_by")
+
+  dpr     DailyProgressReport @relation(fields: [dprId], references: [id], onDelete: Cascade)
+  boqNode BoqNode             @relation(fields: [boqNodeId], references: [id])
+
+  @@index([dprId])
+  @@index([boqNodeId])
+  @@map("progress_measurements")
+}
+
+// ADR-021/014: evidence attached to a DPR (photos, measurement sheets), stored via PlatformFile.
+model DprAttachment {
+  id             String @id @default(cuid())
+  dprId          String @map("dpr_id")
+  platformFileId String @map("platform_file_id")
+  createdBy      String @map("created_by")
+
+  dpr          DailyProgressReport @relation(fields: [dprId], references: [id], onDelete: Cascade)
+  platformFile PlatformFile        @relation(fields: [platformFileId], references: [id])
+
+  @@index([dprId])
+  @@map("dpr_attachments")
+}
+
+enum DprStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  RETURNED
 }
 
 model ProjectCodeSequence {
@@ -694,9 +800,10 @@ model BoqNode {
   createdAt           DateTime          @default(now()) @map("created_at")
   updatedAt           DateTime          @updatedAt @map("updated_at")
 
-  version  BoqVersion @relation(fields: [versionId], references: [id])
-  parent   BoqNode?   @relation("BoqNodeChildren", fields: [parentId], references: [id], onDelete: Restrict)
-  children BoqNode[]  @relation("BoqNodeChildren")
+  version              BoqVersion            @relation(fields: [versionId], references: [id])
+  parent               BoqNode?              @relation("BoqNodeChildren", fields: [parentId], references: [id], onDelete: Restrict)
+  children             BoqNode[]             @relation("BoqNodeChildren")
+  progressMeasurements ProgressMeasurement[]
 
   // CONST-BOQ-015 — codes address lines in a contract; two nodes answering to "02.01.002"
   // makes every downstream reference ambiguous.
@@ -867,6 +974,8 @@ model PlatformFile {
   ipaAttachments          IpaAttachment[]
   ipcAttachments          IpcAttachment[]
   journalEntryAttachments JournalEntryAttachment[]
+  projectDocuments        ProjectDocument[]
+  dprAttachments          DprAttachment[]
 
   @@index([organizationId])
   @@map("platform_files")

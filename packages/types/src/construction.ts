@@ -3,6 +3,8 @@ import type {
   BillingModel,
   AdvanceType,
   PaymentTrigger,
+  DocumentCategory,
+  DprStatus,
   GuaranteeStatus,
   IpaStatus,
   IpcStatus,
@@ -164,6 +166,58 @@ export interface PaymentInstallmentInput {
   dueOffsetDays?: number;
   dueDate?: string;
   milestoneLabel?: string;
+}
+
+// ADR-021 Progress: a verified-progress line per BOQ leaf (from approved DPRs).
+export interface ProjectProgressLine {
+  boqNodeId: string;
+  code: string;
+  description: string;
+  measurableQuantity: string;
+  verifiedToDate: string;
+  /** Whole percent (verified ÷ measurable), null when the BOQ line has no measurable quantity. */
+  percentComplete: number | null;
+}
+
+export interface ProgressMeasurementResponse {
+  id: string;
+  dprId: string;
+  boqNodeId: string;
+  quantity: string;
+  notes?: string;
+}
+
+export interface DailyProgressReportResponse {
+  id: string;
+  projectId: string;
+  reportDate: string;
+  status: `${DprStatus}`;
+  weather?: string;
+  labourCount?: number;
+  equipmentNote?: string;
+  narrative?: string;
+  delayReason?: string;
+  preparedBy: string;
+  submittedBy?: string;
+  approvedBy?: string;
+}
+
+// Documents tab (ADR-014): a standalone project document + its stored-file metadata.
+export interface ProjectDocumentResponse {
+  id: string;
+  projectId: string;
+  platformFileId: string;
+  category: `${DocumentCategory}`;
+  title: string;
+  uploadedBy: string;
+  createdAt: string;
+  platformFile: {
+    originalName: string;
+    mimeType: string;
+    sizeBytes: number;
+    /** PlatformFileStatus: PENDING | READY. */
+    status: string;
+  };
 }
 
 export interface ContractResponse {
