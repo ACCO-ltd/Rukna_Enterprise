@@ -54,6 +54,13 @@ export class ProgressController {
     return this.service.getRollup(identity, projectId);
   }
 
+  @Get('projects/:projectId/progress/signal')
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({ summary: 'Physical-vs-financial early warning (built % vs cost consumed %)' })
+  signal(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
+    return this.service.getPhysicalFinancialSignal(identity, projectId);
+  }
+
   @Post('projects/:projectId/work-packages')
   @ApiParam({ name: 'projectId' })
   @ApiOperation({ summary: 'Create a work package (control unit with a progress weight)' })

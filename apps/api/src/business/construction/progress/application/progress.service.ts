@@ -5,6 +5,9 @@ import type { RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { ProgressRepository } from '../infrastructure/progress.repository.js';
+import { ProjectFinancialPositionService } from '../../../accounting/financial-position/application/project-financial-position.service.js';
+
+const DIVERGENCE_THRESHOLD = 20; // percentage points before the signal flags a divergence (cf. ADR-023 CONST-COM-018)
 
 const ZERO = new Decimal(0);
 
@@ -33,6 +36,7 @@ export class ProgressService {
     private readonly tenancy: TenancyService,
     private readonly repo: ProgressRepository,
     private readonly projectAccess: ProjectAccessService,
+    private readonly financialPosition: ProjectFinancialPositionService,
   ) {}
 
   async createDpr(identity: RequestIdentity, projectId: string, dto: CreateDprDto) {
@@ -269,6 +273,46 @@ export class ProgressService {
       weightsTotal: weightsTotal.toString(),
       weightsComplete: weightsTotal.minus(1).abs().lessThan(0.0001),
       packages: packageLines,
+    };
+  }
+
+  /**
+   * Physical-vs-financial early warning (ADR-021/023): weighted physical % (roll-up) vs cost-consumed
+   * % (posted actual ÷ forecast cost, from the ADR-013 Financial Position). A large positive gap
+   * (cost ahead of progress) says "investigate"; a large negative gap means progress is ahead of
+   * spend (ACCO financing the client). The cost read crosses into accounting — the allowed direction.
+   */
+  async getPhysicalFinancialSignal(identity: RequestIdentity, projectId: string) {
+    await this.projectAccess.assertMember(identity, projectId);
+    const rollup = await this.getRollup(identity, projectId);
+    const fp = await this.financialPosition.getForProject(identity, projectId);
+
+    const forecastCost = new Decimal(fp.forecastCost);
+    const actualCost = new Decimal(fp.actualCost);
+    const costConsumedPercent = forecastCost.greaterThan(ZERO)
+      ? Math.round(actualCost.div(forecastCost).mul(100).toNumber() * 100) / 100
+      : null;
+
+    const physicalPercent = rollup.physicalPercent;
+    let divergence: number | null = null;
+    let status: 'ALIGNED' | 'COST_AHEAD' | 'PROGRESS_AHEAD' | 'INSUFFICIENT_DATA' =
+      'INSUFFICIENT_DATA';
+    if (costConsumedPercent !== null) {
+      divergence = Math.round((physicalPercent - costConsumedPercent) * 100) / 100;
+      if (costConsumedPercent - physicalPercent > DIVERGENCE_THRESHOLD) status = 'COST_AHEAD';
+      else if (physicalPercent - costConsumedPercent > DIVERGENCE_THRESHOLD) status = 'PROGRESS_AHEAD';
+      else status = 'ALIGNED';
+    }
+
+    return {
+      projectId,
+      physicalPercent,
+      actualCost: fp.actualCost,
+      forecastCost: fp.forecastCost,
+      costConsumedPercent,
+      divergence,
+      status,
+      weightsComplete: rollup.weightsComplete,
     };
   }
 }

@@ -188,6 +188,21 @@ export interface IpaPrefillResponse {
   suggestions: IpaPrefillLine[];
 }
 
+// ADR-021/023: physical-vs-financial early warning for the Finance/Overview cockpit.
+export interface PhysicalFinancialSignalResponse {
+  projectId: string;
+  physicalPercent: number;
+  actualCost: string;
+  forecastCost: string;
+  /** actualCost ÷ forecastCost × 100. Null when there is no forecast cost yet. */
+  costConsumedPercent: number | null;
+  /** physicalPercent − costConsumedPercent (positive = built ahead of spend). */
+  divergence: number | null;
+  status: 'ALIGNED' | 'COST_AHEAD' | 'PROGRESS_AHEAD' | 'INSUFFICIENT_DATA';
+  /** From the roll-up: false when work-package weights don't total 100%. */
+  weightsComplete: boolean;
+}
+
 // ADR-021 CONST-PROG-007: work-package roll-up → weighted project physical %.
 export interface WorkPackageRollupLine {
   id: string;

@@ -19,6 +19,7 @@ type Over = {
   file?: unknown;
   workPackages?: unknown[];
   measurements?: unknown[];
+  fp?: unknown;
 };
 
 function build(over: Over = {}) {
@@ -42,7 +43,15 @@ function build(over: Over = {}) {
   };
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
   const tenancy = { getClient: () => ({}) };
-  const service = new ProgressService(tenancy as never, repo as never, projectAccess as never);
+  const financialPosition = {
+    getForProject: jest.fn().mockResolvedValue(over.fp ?? { actualCost: '0', forecastCost: '0' }),
+  };
+  const service = new ProgressService(
+    tenancy as never,
+    repo as never,
+    projectAccess as never,
+    financialPosition as never,
+  );
   return { repo, service };
 }
 
@@ -135,5 +144,28 @@ describe('ProgressService (ADR-021 MVP)', () => {
     const res = await service.getRollup(identity, 'p-1');
     expect(res.weightsComplete).toBe(false);
     expect(res.weightsTotal).toBe('0.5');
+  });
+
+  it('signal: COST_AHEAD when cost consumed outpaces physical progress', async () => {
+    const { service } = build({
+      workPackages: [{ id: 'a', code: 'WP', name: 'x', responsibleOwner: null, progressWeight: '1', boqLinks: [{ boqNodeId: 'n1' }] }],
+      measurements: [{ boqNodeId: 'n1', quantity: 200, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }], // 20% built
+      fp: { actualCost: '510', forecastCost: '1000' }, // 51% cost consumed
+    });
+    const res = await service.getPhysicalFinancialSignal(identity, 'p-1');
+    expect(res.physicalPercent).toBe(20);
+    expect(res.costConsumedPercent).toBe(51);
+    expect(res.divergence).toBe(-31);
+    expect(res.status).toBe('COST_AHEAD');
+  });
+
+  it('signal: ALIGNED when physical and cost are within the threshold', async () => {
+    const { service } = build({
+      workPackages: [{ id: 'a', code: 'WP', name: 'x', responsibleOwner: null, progressWeight: '1', boqLinks: [{ boqNodeId: 'n1' }] }],
+      measurements: [{ boqNodeId: 'n1', quantity: 200, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }], // 20%
+      fp: { actualCost: '250', forecastCost: '1000' }, // 25%
+    });
+    const res = await service.getPhysicalFinancialSignal(identity, 'p-1');
+    expect(res.status).toBe('ALIGNED');
   });
 });
