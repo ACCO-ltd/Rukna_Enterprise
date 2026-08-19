@@ -20,6 +20,7 @@ import {
   FolderOpen,
   LayoutDashboard,
   MapPin,
+  ShoppingCart,
   UserRound,
   Users,
   Wallet,
@@ -82,6 +83,12 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
       icon: BriefcaseBusiness,
     },
     { key: 'finance', label: t('workspace.finance'), href: `/projects/${id}/pl`, icon: Wallet },
+    {
+      key: 'procurement',
+      label: t('workspace.procurement'),
+      href: `/projects/${id}/procurement`,
+      icon: ShoppingCart,
+    },
     { key: 'team', label: t('workspace.team'), href: `/projects/${id}/members`, icon: Users },
     {
       key: 'documents',
@@ -225,8 +232,7 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
             ))}
           </select>
 
-          {/* Seven peers, no nesting. Every tab leads to a workspace that exists — Procurement
-              joins when its own does. */}
+          {/* Eight peers, no nesting. Every tab leads to a workspace that exists. */}
           <div className="hidden items-center md:flex">
             {primaryTabs.map((tab) => (
               <WorkspaceLink
