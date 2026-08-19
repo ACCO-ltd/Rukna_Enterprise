@@ -27,6 +27,7 @@ import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs
 import type { CreateProjectDto } from '../presentation/dto/create-project.dto.js';
 import type { UpdateProjectDto } from '../presentation/dto/update-project.dto.js';
 import type { AddMemberDto } from '../presentation/dto/add-member.dto.js';
+import type { SetMemberRolesDto } from '../presentation/dto/set-member-roles.dto.js';
 
 // Transitions allowed from each status
 const CANCEL_ALLOWED_FROM = new Set(['DRAFT', 'APPROVED', 'MOBILIZING', 'ACTIVE']);
@@ -590,6 +591,33 @@ export class ProjectService {
     if (!member) throw new NotFoundException('User is not an active member of this project.');
 
     await this.repo.removeMember(prisma, member.id, identity.userId);
+  }
+
+  /**
+   * Corrects a member's roles without the remove/re-add churn that used to be the only way.
+   * A versioned edit: the current active role rows are closed and the new set is opened in one
+   * transaction, so the member is never briefly left with no roles and the history stays legible
+   * (`assignedAt` / `removedAt` on each row is the audit trail).
+   */
+  async setMemberRoles(
+    identity: RequestIdentity,
+    projectId: string,
+    userId: string,
+    dto: SetMemberRolesDto,
+  ) {
+    await this.projectAccess.assertMember(identity, projectId);
+    const prisma = this.tenancyService.getClient();
+    await this.requireProject(prisma, identity.activeOrganizationId, projectId);
+
+    const member = await this.repo.findActiveMember(prisma, projectId, userId);
+    if (!member) throw new NotFoundException('User is not an active member of this project.');
+
+    await prisma.$transaction(async (tx) => {
+      await this.repo.deactivateMemberRoles(tx, member.id);
+      await this.repo.addMemberRoles(tx, member.id, dto.roles, identity.userId);
+    });
+
+    return this.repo.findActiveMember(prisma, projectId, userId);
   }
 
   // ─── Internal helpers ─────────────────────────────────────────────────────────

@@ -29,6 +29,11 @@ import {
   Alert,
   Badge,
   Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
   Table,
   TableBody,
   TableCell,
@@ -48,10 +53,13 @@ import {
   useAddProjectMember,
   useProjectMembers,
   useRemoveProjectMember,
+  useSetProjectMemberRoles,
 } from '../hooks/use-project-members';
 import {
-  PROJECT_ROLE_ORDER,
+  ASSIGNABLE_PROJECT_ROLES,
   addableUsers,
+  isAssignableRole,
+  isLastProjectManager,
   memberName,
   memberRoles,
   removeBlockReason,
@@ -65,9 +73,11 @@ export function ProjectMembers({ projectId }: { projectId: string }) {
 
   const members = useProjectMembers(projectId);
   const remove = useRemoveProjectMember(projectId);
+  const setRoles = useSetProjectMemberRoles(projectId);
   const { user } = useSession();
 
   const [pending, setPending] = useState<ProjectMember | null>(null);
+  const [editing, setEditing] = useState<ProjectMember | null>(null);
 
   const rawRows = members.data ?? [];
   // Project managers appear first; all other members follow in their original order.
@@ -137,20 +147,47 @@ export function ProjectMembers({ projectId }: { projectId: string }) {
                           <bdi>{member.user.email}</bdi>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {memberRoles(member)
-                            .map((role) => t(`role.${role}`))
-                            .join(' · ') || t('noRoles')}
+                          {memberRoles(member).length === 0 ? (
+                            t('noRoles')
+                          ) : (
+                            <span className="inline-flex flex-wrap items-center">
+                              {memberRoles(member).map((role, index) => (
+                                <span key={role} className="inline-flex items-center">
+                                  {index > 0 ? (
+                                    <span className="mx-1.5 text-muted-foreground/40" aria-hidden="true">
+                                      ·
+                                    </span>
+                                  ) : null}
+                                  <span
+                                    className={isAssignableRole(role) ? undefined : 'italic text-muted-foreground/70'}
+                                    title={isAssignableRole(role) ? undefined : t('roleDeprecated')}
+                                  >
+                                    {t(`role.${role}`)}
+                                  </span>
+                                </span>
+                              ))}
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell>
-                          <button
-                            type="button"
-                            onClick={() => setPending(member)}
-                            disabled={blocked !== null}
-                            title={blocked ? t(`removeBlocked.${blocked}`) : undefined}
-                            className="min-h-11 text-sm font-medium text-danger underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
-                          >
-                            {t('remove')}
-                          </button>
+                          <div className="flex items-center justify-end gap-4">
+                            <button
+                              type="button"
+                              onClick={() => setEditing(member)}
+                              className="min-h-11 text-sm font-medium text-brand-primary underline-offset-2 hover:underline"
+                            >
+                              {t('editRoles')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPending(member)}
+                              disabled={blocked !== null}
+                              title={blocked ? t(`removeBlocked.${blocked}`) : undefined}
+                              className="min-h-11 text-sm font-medium text-danger underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
+                            >
+                              {t('remove')}
+                            </button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -179,7 +216,136 @@ export function ProjectMembers({ projectId }: { projectId: string }) {
           onDismiss={() => setPending(null)}
         />
       ) : null}
+
+      {editing ? (
+        <EditRolesDialog
+          member={editing}
+          lastManager={isLastProjectManager(editing, rows)}
+          isPending={setRoles.isPending}
+          errorMessage={setRoles.error instanceof ApiError ? setRoles.error.message : undefined}
+          onSave={(roles) =>
+            setRoles.mutate(
+              { userId: editing.userId, roles },
+              { onSuccess: () => setEditing(null) },
+            )
+          }
+          onDismiss={() => {
+            if (!setRoles.isPending) setEditing(null);
+          }}
+        />
+      ) : null}
     </div>
+  );
+}
+
+// ─── Edit roles ────────────────────────────────────────────────────────────────────
+
+/**
+ * Corrects a member's roles without the remove/re-add churn (PATCH …/roles). Offers the
+ * assignable roles pre-selected from what the member already holds; a legacy role they carry is
+ * simply not re-offered, so saving replaces it with a current one.
+ *
+ * When the member is the project's only project manager, the Project Manager toggle is locked
+ * on — the same rule the remove flow enforces, so an edit cannot leave a project no one can
+ * administer.
+ */
+function EditRolesDialog({
+  member,
+  lastManager,
+  isPending,
+  errorMessage,
+  onSave,
+  onDismiss,
+}: {
+  member: ProjectMember;
+  lastManager: boolean;
+  isPending: boolean;
+  errorMessage: string | undefined;
+  onSave: (roles: ProjectRole[]) => void;
+  onDismiss: () => void;
+}) {
+  const t = useTranslations('platform.projects.members');
+
+  const [roles, setRolesState] = useState<ProjectRole[]>(() =>
+    memberRoles(member).filter(isAssignableRole),
+  );
+
+  const preventWhilePending = (event: Event) => {
+    if (isPending) event.preventDefault();
+  };
+
+  function toggle(role: ProjectRole) {
+    // The last manager cannot drop PROJECT_MANAGER.
+    if (lastManager && role === ProjectRole.PROJECT_MANAGER) return;
+    setRolesState((prev) =>
+      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role],
+    );
+  }
+
+  const effective =
+    lastManager && !roles.includes(ProjectRole.PROJECT_MANAGER)
+      ? [ProjectRole.PROJECT_MANAGER, ...roles]
+      : roles;
+  const canSave = effective.length > 0;
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(next) => {
+        if (!next && !isPending) onDismiss();
+      }}
+    >
+      <DialogContent
+        onEscapeKeyDown={preventWhilePending}
+        onPointerDownOutside={preventWhilePending}
+        onInteractOutside={preventWhilePending}
+      >
+        <DialogTitle>{t('editRolesTitle', { name: memberName(member) })}</DialogTitle>
+        <DialogDescription>{t('editRolesHint')}</DialogDescription>
+
+        {errorMessage ? (
+          <div className="mt-4">
+            <Alert variant="error" messages={[errorMessage]} />
+          </div>
+        ) : null}
+
+        <fieldset className="mt-4 space-y-2">
+          <legend className="sr-only">{t('colRoles')}</legend>
+          <div className="flex flex-wrap gap-2">
+            {ASSIGNABLE_PROJECT_ROLES.map((role) => {
+              const selected = effective.includes(role);
+              const locked = lastManager && role === ProjectRole.PROJECT_MANAGER;
+              return (
+                <button
+                  key={role}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => toggle(role)}
+                  disabled={locked}
+                  title={locked ? t('lastManagerLocked') : undefined}
+                  className={
+                    selected
+                      ? 'min-h-11 rounded-control border border-brand-primary bg-brand-primary px-3 text-sm font-medium text-white disabled:opacity-70'
+                      : 'min-h-11 rounded-control border border-border bg-surface px-3 text-sm text-foreground'
+                  }
+                >
+                  {t(`role.${role}`)}
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
+
+        <DialogFooter>
+          <Button onClick={() => onSave(effective)} disabled={!canSave || isPending}>
+            {t('save')}
+          </Button>
+          <Button variant="outline" onClick={onDismiss} disabled={isPending}>
+            {t('cancel')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -270,7 +436,7 @@ function AddMemberForm({
       <fieldset className="space-y-2">
         <legend className="text-xs font-medium text-muted-foreground">{t('colRoles')}</legend>
         <div className="flex flex-wrap gap-2">
-          {PROJECT_ROLE_ORDER.map((role) => {
+          {ASSIGNABLE_PROJECT_ROLES.map((role) => {
             const selected = roles.includes(role);
             return (
               <button

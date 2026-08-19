@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { ProjectRole } from '@erp/types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   useProjectMembers: vi.fn(),
   useAddProjectMember: vi.fn(),
   useRemoveProjectMember: vi.fn(),
+  useSetProjectMemberRoles: vi.fn(),
 }));
 
 const usersMocks = vi.hoisted(() => ({ useUsers: vi.fn() }));
@@ -66,6 +67,12 @@ beforeEach(() => {
     error: null,
   });
   mocks.useRemoveProjectMember.mockReturnValue({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+  });
+  mocks.useSetProjectMemberRoles.mockReturnValue({
     mutate: vi.fn(),
     isPending: false,
     isError: false,
@@ -148,6 +155,29 @@ describe('ProjectMembers', () => {
     renderWithProviders(<ProjectMembers projectId="p-1" />);
 
     expect(screen.getByRole('button', { name: 'Add to project' })).toBeDisabled();
+  });
+
+  it('edit roles: offers only the assignable roles, not the deprecated ones', () => {
+    renderWithProviders(<ProjectMembers projectId="p-1" />);
+
+    // ENGINEER (row 1) is not the last manager — open its role editor.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit roles' })[1]);
+
+    expect(screen.getByRole('button', { name: 'Project manager' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Site engineer' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Viewer' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Quantity surveyor' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Commercial manager' })).not.toBeInTheDocument();
+  });
+
+  it("edit roles: locks the Project Manager toggle for the project's last manager", () => {
+    renderWithProviders(<ProjectMembers projectId="p-1" />);
+
+    // MANAGER (row 0) is the only project manager — its PM role cannot be dropped.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit roles' })[0]);
+
+    expect(screen.getByRole('button', { name: 'Project manager' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Site engineer' })).toBeEnabled();
   });
 
   it('renders an empty team without error', () => {
