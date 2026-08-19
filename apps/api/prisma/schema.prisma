@@ -546,6 +546,7 @@ model Project {
   contracts            Contract[]
   documents            ProjectDocument[]
   dailyProgressReports DailyProgressReport[]
+  workPackages         WorkPackage[]
   client               Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, code])
@@ -656,6 +657,44 @@ enum DprStatus {
   SUBMITTED
   APPROVED
   RETURNED
+}
+
+// ADR-021 CONST-PROG-005: the always-explicit control seam between BOQ scope and site execution.
+// A WorkPackage carries a responsible owner and a progressWeight; the project's weights should total
+// 1.0 (100%). Physical progress rolls up by these weights, never by BOQ money (CONST-PROG-007).
+model WorkPackage {
+  id               String   @id @default(cuid())
+  organizationId   String   @map("organization_id")
+  projectId        String   @map("project_id")
+  code             String
+  name             String
+  responsibleOwner String?  @map("responsible_owner")
+  progressWeight   Decimal  @default(0) @map("progress_weight") @db.Decimal(5, 4)
+  createdBy        String   @map("created_by")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  project  Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  boqLinks WorkPackageBoqNode[]
+
+  @@unique([projectId, code])
+  @@index([projectId])
+  @@map("work_packages")
+}
+
+// BOQ leaf ↔ WorkPackage allocation (many-to-many). Anti-double-counting is enforced by the unique
+// pair; a leaf's verified progress contributes to each package it is allocated to.
+model WorkPackageBoqNode {
+  id            String @id @default(cuid())
+  workPackageId String @map("work_package_id")
+  boqNodeId     String @map("boq_node_id")
+
+  workPackage WorkPackage @relation(fields: [workPackageId], references: [id], onDelete: Cascade)
+  boqNode     BoqNode     @relation(fields: [boqNodeId], references: [id])
+
+  @@unique([workPackageId, boqNodeId])
+  @@index([workPackageId])
+  @@index([boqNodeId])
+  @@map("work_package_boq_nodes")
 }
 
 model ProjectCodeSequence {
@@ -804,6 +843,7 @@ model BoqNode {
   parent               BoqNode?              @relation("BoqNodeChildren", fields: [parentId], references: [id], onDelete: Restrict)
   children             BoqNode[]             @relation("BoqNodeChildren")
   progressMeasurements ProgressMeasurement[]
+  workPackageLinks     WorkPackageBoqNode[]
 
   // CONST-BOQ-015 — codes address lines in a contract; two nodes answering to "02.01.002"
   // makes every downstream reference ambiguous.

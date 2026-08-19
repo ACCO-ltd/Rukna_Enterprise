@@ -88,4 +88,29 @@ export class ProgressRepository {
       select: { id: true, status: true },
     });
   }
+
+  // ─── Work packages (ADR-021 roll-up) ────────────────────────────────────────────
+
+  createWorkPackage(prisma: TenantPrisma, data: Prisma.WorkPackageUncheckedCreateInput) {
+    return prisma.workPackage.create({ data });
+  }
+
+  findWorkPackageById(prisma: TenantPrisma, organizationId: string, id: string) {
+    return prisma.workPackage.findFirst({
+      where: { id, organizationId },
+      select: { id: true, projectId: true },
+    });
+  }
+
+  findWorkPackages(prisma: TenantPrisma, organizationId: string, projectId: string) {
+    return prisma.workPackage.findMany({
+      where: { organizationId, projectId },
+      orderBy: { code: 'asc' },
+      include: { boqLinks: { select: { boqNodeId: true } } },
+    });
+  }
+
+  allocateBoqNode(prisma: TenantPrisma, workPackageId: string, boqNodeId: string) {
+    return prisma.workPackageBoqNode.create({ data: { workPackageId, boqNodeId } });
+  }
 }

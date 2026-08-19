@@ -52,3 +52,27 @@ export class ReturnDprDto {
   @IsString() @IsNotEmpty() @MaxLength(255)
   reason!: string;
 }
+
+export class CreateWorkPackageDto {
+  @ApiProperty({ example: 'WP-01' })
+  @IsString() @IsNotEmpty() @MaxLength(50)
+  code!: string;
+
+  @ApiProperty({ example: 'Substructure' })
+  @IsString() @IsNotEmpty() @MaxLength(255)
+  name!: string;
+
+  @ApiPropertyOptional({ example: 'Ahmed Ali' })
+  @IsString() @IsOptional() @MaxLength(255)
+  responsibleOwner?: string;
+
+  @ApiPropertyOptional({ example: 0.35, description: 'Fraction of project weight (0..1)' })
+  @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @IsOptional()
+  progressWeight?: number;
+}
+
+export class AllocateBoqNodeDto {
+  @ApiProperty({ description: 'A BOQ leaf node id' })
+  @IsString() @IsNotEmpty()
+  boqNodeId!: string;
+}

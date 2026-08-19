@@ -194,4 +194,88 @@ export class ProgressService {
         : null,
     }));
   }
+
+  // ─── Work packages + roll-up (ADR-021 CONST-PROG-005/007) ─────────────────────────
+
+  async createWorkPackage(identity: RequestIdentity, projectId: string, dto: CreateWorkPackageDto) {
+    await this.projectAccess.assertMember(identity, projectId);
+    return this.repo.createWorkPackage(this.tenancy.getClient(), {
+      organizationId: identity.activeOrganizationId,
+      projectId,
+      code: dto.code,
+      name: dto.name,
+      responsibleOwner: dto.responsibleOwner ?? null,
+      progressWeight: dto.progressWeight ?? 0,
+      createdBy: identity.userId,
+    });
+  }
+
+  async allocateBoqNode(identity: RequestIdentity, workPackageId: string, boqNodeId: string) {
+    const prisma = this.tenancy.getClient();
+    const wp = await this.repo.findWorkPackageById(prisma, identity.activeOrganizationId, workPackageId);
+    if (!wp) throw new NotFoundException(`Work package ${workPackageId} not found`);
+    await this.projectAccess.assertMember(identity, wp.projectId);
+
+    const node = await this.repo.findBoqNodeForProject(prisma, wp.projectId, boqNodeId);
+    if (!node) throw new NotFoundException('BOQ node not found for this project.');
+    if (!node.isLeaf) throw new BadRequestException('Allocate a BOQ leaf item, not a section.');
+
+    return this.repo.allocateBoqNode(prisma, workPackageId, boqNodeId);
+  }
+
+  async listWorkPackages(identity: RequestIdentity, projectId: string) {
+    await this.projectAccess.assertMember(identity, projectId);
+    return this.repo.findWorkPackages(this.tenancy.getClient(), identity.activeOrganizationId, projectId);
+  }
+
+  /**
+   * Project physical %: each package's progress is the simple mean of its allocated BOQ leaves'
+   * verified % (not money-weighted, CONST-PROG-007), rolled up by the package `progressWeight`.
+   * Reports weightsTotal + weightsComplete so an incomplete plan (weights ≠ 100%) is visible.
+   */
+  async getRollup(identity: RequestIdentity, projectId: string) {
+    await this.projectAccess.assertMember(identity, projectId);
+    const prisma = this.tenancy.getClient();
+
+    const packages = await this.repo.findWorkPackages(prisma, identity.activeOrganizationId, projectId);
+    const progressLines = await this.getProjectProgress(identity, projectId);
+    const pctByNode = new Map<string, number>();
+    for (const l of progressLines) pctByNode.set(l.boqNodeId, l.percentComplete ?? 0);
+
+    let weightsTotal = ZERO;
+    let weighted = ZERO;
+    const packageLines = packages.map((wp) => {
+      const leaves = wp.boqLinks.map((b) => b.boqNodeId);
+      const pct = leaves.length
+        ? leaves.reduce((sum, n) => sum + (pctByNode.get(n) ?? 0), 0) / leaves.length
+        : 0;
+      const weight = new Decimal(wp.progressWeight.toString());
+      weightsTotal = weightsTotal.plus(weight);
+      weighted = weighted.plus(weight.mul(pct));
+      return {
+        id: wp.id,
+        code: wp.code,
+        name: wp.name,
+        responsibleOwner: wp.responsibleOwner,
+        weight: weight.toString(),
+        percentComplete: Math.round(pct),
+        leafCount: leaves.length,
+      };
+    });
+
+    return {
+      projectId,
+      physicalPercent: Math.round(weighted.toNumber() * 100) / 100,
+      weightsTotal: weightsTotal.toString(),
+      weightsComplete: weightsTotal.minus(1).abs().lessThan(0.0001),
+      packages: packageLines,
+    };
+  }
+}
+
+export interface CreateWorkPackageDto {
+  code: string;
+  name: string;
+  responsibleOwner?: string;
+  progressWeight?: number;
 }

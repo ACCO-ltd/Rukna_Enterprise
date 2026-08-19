@@ -10,6 +10,8 @@ import {
   AddMeasurementDto,
   AttachEvidenceDto,
   ReturnDprDto,
+  CreateWorkPackageDto,
+  AllocateBoqNodeDto,
 } from './dto/progress.dto.js';
 
 // ADR-021 Progress MVP: daily progress reports + measurements + evidence, and verified progress.
@@ -43,6 +45,42 @@ export class ProgressController {
   @ApiOperation({ summary: 'Verified physical progress per BOQ leaf (approved DPRs only)' })
   progress(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
     return this.service.getProjectProgress(identity, projectId);
+  }
+
+  @Get('projects/:projectId/progress/rollup')
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({ summary: 'Weighted project physical % (work-package roll-up)' })
+  rollup(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
+    return this.service.getRollup(identity, projectId);
+  }
+
+  @Post('projects/:projectId/work-packages')
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({ summary: 'Create a work package (control unit with a progress weight)' })
+  createWorkPackage(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Body() dto: CreateWorkPackageDto,
+  ) {
+    return this.service.createWorkPackage(identity, projectId, dto);
+  }
+
+  @Get('projects/:projectId/work-packages')
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({ summary: 'List the project work packages' })
+  listWorkPackages(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
+    return this.service.listWorkPackages(identity, projectId);
+  }
+
+  @Post('work-packages/:workPackageId/boq-nodes')
+  @ApiParam({ name: 'workPackageId' })
+  @ApiOperation({ summary: 'Allocate a BOQ leaf to a work package' })
+  allocateBoqNode(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('workPackageId') workPackageId: string,
+    @Body() dto: AllocateBoqNodeDto,
+  ) {
+    return this.service.allocateBoqNode(identity, workPackageId, dto.boqNodeId);
   }
 
   @Get('progress/reports/:dprId')

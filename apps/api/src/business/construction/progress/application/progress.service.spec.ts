@@ -17,6 +17,8 @@ type Over = {
   node?: unknown;
   prior?: unknown;
   file?: unknown;
+  workPackages?: unknown[];
+  measurements?: unknown[];
 };
 
 function build(over: Over = {}) {
@@ -31,8 +33,12 @@ function build(over: Over = {}) {
     createAttachment: jest.fn().mockResolvedValue({ id: 'att-1' }),
     findBoqNodeForProject: jest.fn().mockResolvedValue(over.node ?? { id: 'n1', quantity: 1000, isLeaf: true }),
     sumVerifiedForNode: jest.fn().mockResolvedValue(over.prior ?? { _sum: { quantity: '0' } }),
-    approvedMeasurementsForProject: jest.fn().mockResolvedValue([]),
+    approvedMeasurementsForProject: jest.fn().mockResolvedValue(over.measurements ?? []),
     findFileStatus: jest.fn().mockResolvedValue(over.file ?? { id: 'f-1', status: 'READY' }),
+    createWorkPackage: jest.fn().mockResolvedValue({ id: 'wp-1' }),
+    findWorkPackageById: jest.fn().mockResolvedValue({ id: 'wp-1', projectId: 'p-1' }),
+    findWorkPackages: jest.fn().mockResolvedValue(over.workPackages ?? []),
+    allocateBoqNode: jest.fn().mockResolvedValue({ id: 'wpn-1' }),
   };
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
   const tenancy = { getClient: () => ({}) };
@@ -99,5 +105,35 @@ describe('ProgressService (ADR-021 MVP)', () => {
     const { repo, service } = build({ file: { id: 'f-1', status: 'PENDING' } });
     await expect(service.attachEvidence(identity, 'dpr-1', 'f-1')).rejects.toBeInstanceOf(BadRequestException);
     expect(repo.createAttachment).not.toHaveBeenCalled();
+  });
+
+  it('getRollup: weighted project physical % from work packages (CONST-PROG-007)', async () => {
+    const { service } = build({
+      workPackages: [
+        { id: 'a', code: 'WP-A', name: 'Sub', responsibleOwner: null, progressWeight: '0.6', boqLinks: [{ boqNodeId: 'n1' }] },
+        { id: 'b', code: 'WP-B', name: 'Super', responsibleOwner: null, progressWeight: '0.4', boqLinks: [{ boqNodeId: 'n2' }] },
+      ],
+      measurements: [
+        { boqNodeId: 'n1', quantity: 500, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }, // 50%
+        { boqNodeId: 'n2', quantity: 200, boqNode: { id: 'n2', code: '2', description: 'y', quantity: 1000 } }, // 20%
+      ],
+    });
+    const res = await service.getRollup(identity, 'p-1');
+    // 0.6*50 + 0.4*20 = 38
+    expect(res.physicalPercent).toBe(38);
+    expect(res.weightsComplete).toBe(true);
+    expect(res.packages).toHaveLength(2);
+  });
+
+  it('getRollup: flags an incomplete weight plan (weights ≠ 100%)', async () => {
+    const { service } = build({
+      workPackages: [
+        { id: 'a', code: 'WP-A', name: 'Sub', responsibleOwner: null, progressWeight: '0.5', boqLinks: [] },
+      ],
+      measurements: [],
+    });
+    const res = await service.getRollup(identity, 'p-1');
+    expect(res.weightsComplete).toBe(false);
+    expect(res.weightsTotal).toBe('0.5');
   });
 });

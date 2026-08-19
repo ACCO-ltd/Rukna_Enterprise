@@ -188,6 +188,27 @@ export interface IpaPrefillResponse {
   suggestions: IpaPrefillLine[];
 }
 
+// ADR-021 CONST-PROG-007: work-package roll-up → weighted project physical %.
+export interface WorkPackageRollupLine {
+  id: string;
+  code: string;
+  name: string;
+  responsibleOwner: string | null;
+  /** Fraction of project weight (0..1). */
+  weight: string;
+  percentComplete: number;
+  leafCount: number;
+}
+export interface ProjectRollupResponse {
+  projectId: string;
+  /** Weighted project physical % (0..100). Understated when weights are incomplete. */
+  physicalPercent: number;
+  weightsTotal: string;
+  /** True when the package weights total 100%. */
+  weightsComplete: boolean;
+  packages: WorkPackageRollupLine[];
+}
+
 // ADR-021 Progress: a verified-progress line per BOQ leaf (from approved DPRs).
 export interface ProjectProgressLine {
   boqNodeId: string;
