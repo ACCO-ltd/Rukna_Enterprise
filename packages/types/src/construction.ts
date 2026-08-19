@@ -168,6 +168,26 @@ export interface PaymentInstallmentInput {
   milestoneLabel?: string;
 }
 
+// ADR-021/023: firewall-safe IPA pre-fill — suggested claim per BOQ leaf from verified progress.
+export interface IpaPrefillLine {
+  boqNodeId: string;
+  code: string;
+  description: string;
+  measurableQuantity: string;
+  verifiedToDate: string;
+  previousEffectiveCertified: string;
+  /** Suggested total-to-date claim (verified, clamped to [prev-certified, BOQ measurable]). */
+  suggestedCumulativeClaim: string;
+  /** Suggested this-period claim (cumulative − previously certified). */
+  suggestedPeriodClaim: string;
+}
+export interface IpaPrefillResponse {
+  contractId: string;
+  projectId: string;
+  source: 'VERIFIED_PROGRESS';
+  suggestions: IpaPrefillLine[];
+}
+
 // ADR-021 Progress: a verified-progress line per BOQ leaf (from approved DPRs).
 export interface ProjectProgressLine {
   boqNodeId: string;
