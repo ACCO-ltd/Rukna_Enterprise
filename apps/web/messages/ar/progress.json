@@ -19,7 +19,8 @@
     "allocate": "تخصيص بند الكميات",
     "retry": "إعادة المحاولة",
     "cancel": "إلغاء",
-    "save": "حفظ"
+    "save": "حفظ",
+    "download": "Download"
   },
   "states": {
     "loading": "جارٍ التحميل…",
@@ -55,7 +56,13 @@
       "required": "أدخل سبب الإعادة"
     },
     "draftOnlyHint": "لا يمكن إضافة القياسات إلا أثناء كون التقرير مسودة.",
-    "approvedHint": "هذا التقرير معتمد وأصبحت قياساته تقدّمًا مُتحقّقًا."
+    "approvedHint": "هذا التقرير معتمد وأصبحت قياساته تقدّمًا مُتحقّقًا.",
+    "statusLabel": "Status",
+    "backToList": "Back to reports",
+    "approveConfirmTitle": "Approve this report?",
+    "approveConfirmBody": "Its measurements become verified progress and the report becomes read-only.",
+    "returnConfirmTitle": "Return for revision?",
+    "returnConfirmBody": "The report goes back to the author to correct."
   },
   "measurement": {
     "title": "القياسات",
@@ -73,7 +80,8 @@
     "add": "إرفاق دليل",
     "hint": "صور أو كشوف قياس أو إيصالات تسليم. الصورة تُثبت حدوث العمل لا الكمية الدقيقة.",
     "empty": "لا توجد أدلّة مُرفقة.",
-    "notReady": "الملف لا يزال قيد الرفع. حاول مجددًا بعد اكتماله."
+    "notReady": "الملف لا يزال قيد الرفع. حاول مجددًا بعد اكتماله.",
+    "item": "Evidence file {n}"
   },
   "verified": {
     "title": "التقدّم المُتحقّق",
@@ -100,7 +108,9 @@
       "responsibleOwner": "المسؤول",
       "progressWeight": "وزن التقدّم",
       "weightHint": "نسبة من المشروع (0–1). يجب أن يبلغ مجموع أوزان حزم العمل 100٪.",
-      "submit": "إنشاء حزمة عمل"
+      "submit": "إنشاء حزمة عمل",
+      "codeRequired": "Enter a code",
+      "nameRequired": "Enter a name"
     },
     "col": {
       "code": "الرمز",
@@ -114,7 +124,9 @@
       "title": "تخصيص بند كميات",
       "boqNode": "بند الكميات",
       "leafOnly": "لا يمكن تخصيص سوى بنود الكميات الطرفية.",
-      "submit": "تخصيص"
+      "submit": "تخصيص",
+      "workPackage": "Work package",
+      "noBaseline": "Baseline the BOQ before allocating items."
     }
   },
   "rollup": {
@@ -122,6 +134,7 @@
     "physicalPercent": "نسبة الإنجاز الفعلي",
     "weightsIncomplete": "مجموع أوزان حزم العمل {total} — الرقم منقوص حتى تبلغ 100٪.",
     "weightsComplete": "الأوزان مكتملة",
+    "weightsLabel": "Work-package weights",
     "unavailable": "أضف حزم عمل بأوزان لعرض رقم للمشروع."
   },
   "signal": {

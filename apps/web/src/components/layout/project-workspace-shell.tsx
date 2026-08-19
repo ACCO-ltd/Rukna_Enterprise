@@ -10,6 +10,7 @@ import {
   cn,
 } from '@erp/ui';
 import {
+  Activity,
   BriefcaseBusiness,
   Building2,
   CalendarDays,
@@ -63,6 +64,12 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
     // "Scope" reads as programme, milestones and progress too, which are separate controls
     // living behind a Programme & Progress tab that does not exist yet. See ADR-016.
     { key: 'boq', label: t('workspace.boq'), href: `/projects/${id}/boq`, icon: ClipboardList },
+    {
+      key: 'progress',
+      label: t('workspace.progress'),
+      href: `/projects/${id}/progress`,
+      icon: Activity,
+    },
     // One tab, not a dropdown. Commercial was three flat entries — Contracts, Applications &
     // certificates, Finance — inside the only nested control in this bar, and they duplicated
     // the Commercial workspace's own sub-nav. The contract and certificate routes now live
@@ -218,8 +225,8 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
             ))}
           </select>
 
-          {/* Six peers, no nesting. Every tab leads to a workspace that exists — Programme &
-              Progress and Procurement join when theirs do. */}
+          {/* Seven peers, no nesting. Every tab leads to a workspace that exists — Procurement
+              joins when its own does. */}
           <div className="hidden items-center md:flex">
             {primaryTabs.map((tab) => (
               <WorkspaceLink

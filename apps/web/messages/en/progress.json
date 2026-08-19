@@ -19,7 +19,8 @@
     "allocate": "Allocate BOQ item",
     "retry": "Retry",
     "cancel": "Cancel",
-    "save": "Save"
+    "save": "Save",
+    "download": "Download"
   },
   "states": {
     "loading": "Loading…",
@@ -55,7 +56,13 @@
       "required": "Enter a reason for the return"
     },
     "draftOnlyHint": "Measurements can only be added while the report is a draft.",
-    "approvedHint": "This report is approved and its measurements are now verified progress."
+    "approvedHint": "This report is approved and its measurements are now verified progress.",
+    "statusLabel": "Status",
+    "backToList": "Back to reports",
+    "approveConfirmTitle": "Approve this report?",
+    "approveConfirmBody": "Its measurements become verified progress and the report becomes read-only.",
+    "returnConfirmTitle": "Return for revision?",
+    "returnConfirmBody": "The report goes back to the author to correct."
   },
   "measurement": {
     "title": "Measurements",
@@ -73,7 +80,8 @@
     "add": "Attach evidence",
     "hint": "Photos, measurement sheets or delivery tickets. A photo shows work happened, not the exact quantity.",
     "empty": "No evidence attached.",
-    "notReady": "The file is still uploading. Try again once it finishes."
+    "notReady": "The file is still uploading. Try again once it finishes.",
+    "item": "Evidence file {n}"
   },
   "verified": {
     "title": "Verified progress",
@@ -100,7 +108,9 @@
       "responsibleOwner": "Responsible owner",
       "progressWeight": "Progress weight",
       "weightHint": "Fraction of the project (0–1). All work-package weights should total 100%.",
-      "submit": "Create work package"
+      "submit": "Create work package",
+      "codeRequired": "Enter a code",
+      "nameRequired": "Enter a name"
     },
     "col": {
       "code": "Code",
@@ -114,7 +124,9 @@
       "title": "Allocate BOQ item",
       "boqNode": "BOQ item",
       "leafOnly": "Only BOQ items (leaves) can be allocated.",
-      "submit": "Allocate"
+      "submit": "Allocate",
+      "workPackage": "Work package",
+      "noBaseline": "Baseline the BOQ before allocating items."
     }
   },
   "rollup": {
@@ -122,6 +134,7 @@
     "physicalPercent": "Physical complete",
     "weightsIncomplete": "Work-package weights total {total} — the project figure is understated until they reach 100%.",
     "weightsComplete": "Weights complete",
+    "weightsLabel": "Work-package weights",
     "unavailable": "Add work packages with weights to see a project figure."
   },
   "signal": {
