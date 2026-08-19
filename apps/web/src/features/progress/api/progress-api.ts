@@ -1,4 +1,5 @@
 import type {
+  CollectionProgressSignalResponse,
   DailyProgressReportResponse,
   PhysicalFinancialSignalResponse,
   ProgressMeasurementResponse,
@@ -138,6 +139,15 @@ export function getPhysicalFinancialSignal(
   projectId: string,
 ): Promise<PhysicalFinancialSignalResponse> {
   return apiClient<PhysicalFinancialSignalResponse>(`/projects/${projectId}/progress/signal`);
+}
+
+/** Collection-vs-progress early warning (collected % vs built %). */
+export function getCollectionProgressSignal(
+  projectId: string,
+): Promise<CollectionProgressSignalResponse> {
+  return apiClient<CollectionProgressSignalResponse>(
+    `/projects/${projectId}/progress/collection-signal`,
+  );
 }
 
 // ─── Work packages ────────────────────────────────────────────────────────────────────────

@@ -156,5 +156,20 @@
     "progressAheadHint": "التقدّم الفعلي يسبق التكلفة المسجّلة.",
     "alignedHint": "التقدّم الفعلي والتكلفة متقاربان.",
     "insufficientHint": "لا توجد تكلفة متوقّعة بعد، لذا لا يمكن إجراء المقارنة."
+  },
+  "collectionSignal": {
+    "title": "Collection vs progress",
+    "collected": "Collected",
+    "link": "Billing & collection",
+    "status": {
+      "ALIGNED": "On track",
+      "CASH_AHEAD": "Cash ahead of work",
+      "WORK_AHEAD": "Work ahead of cash",
+      "INSUFFICIENT_DATA": "Not enough data"
+    },
+    "alignedHint": "Collection and physical progress are broadly aligned.",
+    "cashAheadHint": "Collection is running ahead of physical progress — the client is financing the work; watch advance exposure.",
+    "workAheadHint": "Physical progress is ahead of collection — ACCO is financing the client; chase certification and billing.",
+    "insufficientHint": "There is no contract value yet, so no comparison can be made."
   }
 }

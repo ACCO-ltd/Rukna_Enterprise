@@ -168,4 +168,39 @@ describe('ProgressService (ADR-021 MVP)', () => {
     const res = await service.getPhysicalFinancialSignal(identity, 'p-1');
     expect(res.status).toBe('ALIGNED');
   });
+
+  it('collection signal: CASH_AHEAD when collection outpaces physical progress', async () => {
+    const { service } = build({
+      workPackages: [{ id: 'a', code: 'WP', name: 'x', responsibleOwner: null, progressWeight: '1', boqLinks: [{ boqNodeId: 'n1' }] }],
+      measurements: [{ boqNodeId: 'n1', quantity: 200, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }], // 20% built
+      fp: { actualCost: '0', forecastCost: '0', contractValue: '1000', receivedRevenue: '700' }, // 70% collected
+    });
+    const res = await service.getCollectionProgressSignal(identity, 'p-1');
+    expect(res.physicalPercent).toBe(20);
+    expect(res.collectedPercent).toBe(70);
+    expect(res.divergence).toBe(50);
+    expect(res.status).toBe('CASH_AHEAD');
+  });
+
+  it('collection signal: WORK_AHEAD when building outpaces collection', async () => {
+    const { service } = build({
+      workPackages: [{ id: 'a', code: 'WP', name: 'x', responsibleOwner: null, progressWeight: '1', boqLinks: [{ boqNodeId: 'n1' }] }],
+      measurements: [{ boqNodeId: 'n1', quantity: 800, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }], // 80% built
+      fp: { actualCost: '0', forecastCost: '0', contractValue: '1000', receivedRevenue: '100' }, // 10% collected
+    });
+    const res = await service.getCollectionProgressSignal(identity, 'p-1');
+    expect(res.status).toBe('WORK_AHEAD');
+    expect(res.divergence).toBe(-70);
+  });
+
+  it('collection signal: INSUFFICIENT_DATA without a contract value', async () => {
+    const { service } = build({
+      workPackages: [{ id: 'a', code: 'WP', name: 'x', responsibleOwner: null, progressWeight: '1', boqLinks: [{ boqNodeId: 'n1' }] }],
+      measurements: [{ boqNodeId: 'n1', quantity: 200, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }],
+      fp: { actualCost: '0', forecastCost: '0', contractValue: null, receivedRevenue: null },
+    });
+    const res = await service.getCollectionProgressSignal(identity, 'p-1');
+    expect(res.collectedPercent).toBeNull();
+    expect(res.status).toBe('INSUFFICIENT_DATA');
+  });
 });

@@ -61,6 +61,13 @@ export class ProgressController {
     return this.service.getPhysicalFinancialSignal(identity, projectId);
   }
 
+  @Get('projects/:projectId/progress/collection-signal')
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({ summary: 'Collection-vs-progress early warning (collected % vs built %)' })
+  collectionSignal(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
+    return this.service.getCollectionProgressSignal(identity, projectId);
+  }
+
   @Post('projects/:projectId/work-packages')
   @ApiParam({ name: 'projectId' })
   @ApiOperation({ summary: 'Create a work package (control unit with a progress weight)' })

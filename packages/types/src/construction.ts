@@ -203,6 +203,21 @@ export interface PhysicalFinancialSignalResponse {
   weightsComplete: boolean;
 }
 
+// ADR-021/023: collection-vs-progress early warning — cash collected vs work built.
+export interface CollectionProgressSignalResponse {
+  projectId: string;
+  physicalPercent: number;
+  contractValue: string | null;
+  receivedRevenue: string | null;
+  /** receivedRevenue ÷ contractValue × 100. Null when there is no contract value yet. */
+  collectedPercent: number | null;
+  /** collectedPercent − physicalPercent (positive = cash ahead of work). */
+  divergence: number | null;
+  status: 'ALIGNED' | 'CASH_AHEAD' | 'WORK_AHEAD' | 'INSUFFICIENT_DATA';
+  /** From the roll-up: false when work-package weights don't total 100%. */
+  weightsComplete: boolean;
+}
+
 // ADR-021 CONST-PROG-007: work-package roll-up → weighted project physical %.
 export interface WorkPackageRollupLine {
   id: string;

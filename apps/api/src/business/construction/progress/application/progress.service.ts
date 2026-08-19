@@ -315,6 +315,47 @@ export class ProgressService {
       weightsComplete: rollup.weightsComplete,
     };
   }
+
+  /**
+   * Collection-vs-progress early warning (ADR-021/023): how much of the contract has been COLLECTED
+   * (received ÷ contract value) against how much has been physically BUILT (weighted roll-up). A large
+   * positive gap (cash ahead of work) is the client financing ACCO — healthy cashflow, but flags
+   * exposure if the advance is spent before the work is delivered; a large negative gap (work ahead of
+   * cash) is ACCO financing the client. The revenue read crosses into accounting — the allowed direction.
+   */
+  async getCollectionProgressSignal(identity: RequestIdentity, projectId: string) {
+    await this.projectAccess.assertMember(identity, projectId);
+    const rollup = await this.getRollup(identity, projectId);
+    const fp = await this.financialPosition.getForProject(identity, projectId);
+
+    const contractValue = fp.contractValue === null ? null : new Decimal(fp.contractValue);
+    const received = fp.receivedRevenue === null ? null : new Decimal(fp.receivedRevenue);
+    const collectedPercent =
+      contractValue !== null && received !== null && contractValue.greaterThan(ZERO)
+        ? Math.round(received.div(contractValue).mul(100).toNumber() * 100) / 100
+        : null;
+
+    const physicalPercent = rollup.physicalPercent;
+    let divergence: number | null = null;
+    let status: 'ALIGNED' | 'CASH_AHEAD' | 'WORK_AHEAD' | 'INSUFFICIENT_DATA' = 'INSUFFICIENT_DATA';
+    if (collectedPercent !== null) {
+      divergence = Math.round((collectedPercent - physicalPercent) * 100) / 100;
+      if (collectedPercent - physicalPercent > DIVERGENCE_THRESHOLD) status = 'CASH_AHEAD';
+      else if (physicalPercent - collectedPercent > DIVERGENCE_THRESHOLD) status = 'WORK_AHEAD';
+      else status = 'ALIGNED';
+    }
+
+    return {
+      projectId,
+      physicalPercent,
+      contractValue: fp.contractValue,
+      receivedRevenue: fp.receivedRevenue,
+      collectedPercent,
+      divergence,
+      status,
+      weightsComplete: rollup.weightsComplete,
+    };
+  }
 }
 
 export interface CreateWorkPackageDto {

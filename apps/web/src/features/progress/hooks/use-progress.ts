@@ -8,6 +8,7 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query';
 import type {
+  CollectionProgressSignalResponse,
   DailyProgressReportResponse,
   PhysicalFinancialSignalResponse,
   ProjectProgressLine,
@@ -21,6 +22,7 @@ import {
   attachEvidence,
   createDpr,
   createWorkPackage,
+  getCollectionProgressSignal,
   getDpr,
   getPhysicalFinancialSignal,
   getProjectProgress,
@@ -42,6 +44,8 @@ export const progressKeys = {
   verified: (projectId: string) => [...progressKeys.all(projectId), 'verified'] as const,
   rollup: (projectId: string) => [...progressKeys.all(projectId), 'rollup'] as const,
   signal: (projectId: string) => [...progressKeys.all(projectId), 'signal'] as const,
+  collectionSignal: (projectId: string) =>
+    [...progressKeys.all(projectId), 'collection-signal'] as const,
   workPackages: (projectId: string) => [...progressKeys.all(projectId), 'work-packages'] as const,
   /** A DPR detail is keyed by its own id, not the project. */
   report: (dprId: string) => ['progress-report', dprId] as const,
@@ -57,6 +61,7 @@ function invalidateVerifiedDerived(queryClient: QueryClient, projectId: string):
     queryClient.invalidateQueries({ queryKey: progressKeys.verified(projectId) }),
     queryClient.invalidateQueries({ queryKey: progressKeys.rollup(projectId) }),
     queryClient.invalidateQueries({ queryKey: progressKeys.signal(projectId) }),
+    queryClient.invalidateQueries({ queryKey: progressKeys.collectionSignal(projectId) }),
   ]).then(() => undefined);
 }
 
@@ -101,6 +106,16 @@ export function usePhysicalFinancialSignal(
   return useQuery({
     queryKey: progressKeys.signal(projectId),
     queryFn: () => getPhysicalFinancialSignal(projectId),
+    enabled: Boolean(projectId),
+  });
+}
+
+export function useCollectionProgressSignal(
+  projectId: string,
+): UseQueryResult<CollectionProgressSignalResponse, Error> {
+  return useQuery({
+    queryKey: progressKeys.collectionSignal(projectId),
+    queryFn: () => getCollectionProgressSignal(projectId),
     enabled: Boolean(projectId),
   });
 }
