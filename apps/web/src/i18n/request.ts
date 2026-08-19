@@ -7,18 +7,30 @@ export default getRequestConfig(async () => {
   // `accounting` is a namespace of its own rather than another branch of `platform`.
   // `platform.json` is already the file every feature edits, and it is where the last rebase
   // silently produced a duplicate key that dropped 54 lines of translations.
-  const [common, auth, platform, accounting, procurement, commercial] = await Promise.all([
-    import(`../../messages/${locale}/common.json`).then((m) => m.default),
-    import(`../../messages/${locale}/auth.json`).then((m) => m.default),
-    import(`../../messages/${locale}/platform.json`).then((m) => m.default),
-    import(`../../messages/${locale}/accounting.json`).then((m) => m.default),
-    import(`../../messages/${locale}/procurement.json`).then((m) => m.default),
-    import(`../../messages/${locale}/commercial.json`).then((m) => m.default),
-  ]);
+  const [common, auth, platform, accounting, procurement, commercial, documents, progress] =
+    await Promise.all([
+      import(`../../messages/${locale}/common.json`).then((m) => m.default),
+      import(`../../messages/${locale}/auth.json`).then((m) => m.default),
+      import(`../../messages/${locale}/platform.json`).then((m) => m.default),
+      import(`../../messages/${locale}/accounting.json`).then((m) => m.default),
+      import(`../../messages/${locale}/procurement.json`).then((m) => m.default),
+      import(`../../messages/${locale}/commercial.json`).then((m) => m.default),
+      import(`../../messages/${locale}/documents.json`).then((m) => m.default),
+      import(`../../messages/${locale}/progress.json`).then((m) => m.default),
+    ]);
 
   return {
     locale,
-    messages: { common, auth, platform, accounting, procurement, commercial },
+    messages: {
+      common,
+      auth,
+      platform,
+      accounting,
+      procurement,
+      commercial,
+      documents,
+      progress,
+    },
   };
 });
 

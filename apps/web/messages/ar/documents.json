@@ -1,0 +1,60 @@
+{
+  "title": "المستندات",
+  "subtitle": "تصاريح المشروع والمخططات والتراخيص والسجلات الأخرى.",
+  "actions": {
+    "upload": "رفع مستند",
+    "add": "إضافة مستند",
+    "download": "تنزيل",
+    "open": "فتح",
+    "remove": "إزالة",
+    "retry": "إعادة المحاولة",
+    "cancel": "إلغاء"
+  },
+  "states": {
+    "loading": "جارٍ تحميل المستندات…",
+    "loadFailed": "تعذّر تحميل المستندات",
+    "loadFailedHint": "حدث خطأ أثناء تحميل السجل. حاول مرة أخرى.",
+    "emptyTitle": "لا توجد مستندات بعد",
+    "emptyHint": "ارفع تصريحًا أو مخططًا أو ترخيصًا لبدء سجل المشروع.",
+    "uploading": "جارٍ الرفع…",
+    "uploadFailed": "فشل الرفع",
+    "removeFailed": "تعذّرت إزالة المستند"
+  },
+  "form": {
+    "title": "إضافة مستند",
+    "fileLabel": "الملف",
+    "filePlaceholder": "اختر ملفًا",
+    "titleLabel": "العنوان",
+    "titlePlaceholder": "مثال: رخصة البناء",
+    "categoryLabel": "الفئة",
+    "submit": "إرفاق المستند",
+    "titleRequired": "أدخل عنوان المستند",
+    "fileRequired": "اختر ملفًا للرفع"
+  },
+  "col": {
+    "title": "العنوان",
+    "category": "الفئة",
+    "fileName": "الملف",
+    "size": "الحجم",
+    "uploadedBy": "رفع بواسطة",
+    "uploadedAt": "التاريخ",
+    "actions": "إجراءات"
+  },
+  "category": {
+    "PERMIT": "تصريح",
+    "LICENSE": "ترخيص",
+    "DRAWING": "مخطط",
+    "CONTRACT": "عقد",
+    "CERTIFICATE": "شهادة",
+    "INSURANCE": "تأمين",
+    "GUARANTEE": "ضمان",
+    "CORRESPONDENCE": "مراسلات",
+    "PHOTO": "صورة",
+    "OTHER": "أخرى"
+  },
+  "remove": {
+    "confirmTitle": "إزالة المستند؟",
+    "confirmBody": "سيؤدي هذا إلى فصل «{title}» عن سجل المشروع.",
+    "confirm": "إزالة"
+  }
+}

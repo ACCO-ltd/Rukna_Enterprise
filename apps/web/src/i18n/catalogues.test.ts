@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest';
  */
 
 const LOCALES = ['en', 'ar'] as const;
-const NAMESPACES = ['common', 'auth', 'platform', 'accounting', 'procurement', 'commercial'] as const;
+const NAMESPACES = ['common', 'auth', 'platform', 'accounting', 'procurement', 'commercial', 'documents', 'progress'] as const;
 
 const messagesDir = join(__dirname, '..', '..', 'messages');
 

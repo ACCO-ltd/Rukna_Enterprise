@@ -1,0 +1,60 @@
+{
+  "title": "Documents",
+  "subtitle": "Project permits, drawings, licences and other records.",
+  "actions": {
+    "upload": "Upload document",
+    "add": "Add document",
+    "download": "Download",
+    "open": "Open",
+    "remove": "Remove",
+    "retry": "Retry",
+    "cancel": "Cancel"
+  },
+  "states": {
+    "loading": "Loading documents…",
+    "loadFailed": "Could not load documents",
+    "loadFailedHint": "Something went wrong loading the register. Try again.",
+    "emptyTitle": "No documents yet",
+    "emptyHint": "Upload a permit, drawing or licence to start the project register.",
+    "uploading": "Uploading…",
+    "uploadFailed": "Upload failed",
+    "removeFailed": "Could not remove the document"
+  },
+  "form": {
+    "title": "Add document",
+    "fileLabel": "File",
+    "filePlaceholder": "Choose a file",
+    "titleLabel": "Title",
+    "titlePlaceholder": "e.g. Building permit",
+    "categoryLabel": "Category",
+    "submit": "Attach document",
+    "titleRequired": "Enter a document title",
+    "fileRequired": "Choose a file to upload"
+  },
+  "col": {
+    "title": "Title",
+    "category": "Category",
+    "fileName": "File",
+    "size": "Size",
+    "uploadedBy": "Uploaded by",
+    "uploadedAt": "Date",
+    "actions": "Actions"
+  },
+  "category": {
+    "PERMIT": "Permit",
+    "LICENSE": "Licence",
+    "DRAWING": "Drawing",
+    "CONTRACT": "Contract",
+    "CERTIFICATE": "Certificate",
+    "INSURANCE": "Insurance",
+    "GUARANTEE": "Guarantee",
+    "CORRESPONDENCE": "Correspondence",
+    "PHOTO": "Photo",
+    "OTHER": "Other"
+  },
+  "remove": {
+    "confirmTitle": "Remove document?",
+    "confirmBody": "This detaches “{title}” from the project register.",
+    "confirm": "Remove"
+  }
+}
