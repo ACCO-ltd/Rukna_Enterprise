@@ -16,6 +16,7 @@ import {
   Check,
   ChevronRight,
   ClipboardList,
+  FolderOpen,
   LayoutDashboard,
   MapPin,
   UserRound,
@@ -75,6 +76,12 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
     },
     { key: 'finance', label: t('workspace.finance'), href: `/projects/${id}/pl`, icon: Wallet },
     { key: 'team', label: t('workspace.team'), href: `/projects/${id}/members`, icon: Users },
+    {
+      key: 'documents',
+      label: t('workspace.documents'),
+      href: `/projects/${id}/documents`,
+      icon: FolderOpen,
+    },
   ];
 
   function isActive(href: string): boolean {
@@ -211,8 +218,8 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
             ))}
           </select>
 
-          {/* Five peers, no nesting. Every tab leads to a workspace that exists — Programme &
-              Progress, Procurement, Documents and Activity join when theirs do. */}
+          {/* Six peers, no nesting. Every tab leads to a workspace that exists — Programme &
+              Progress and Procurement join when theirs do. */}
           <div className="hidden items-center md:flex">
             {primaryTabs.map((tab) => (
               <WorkspaceLink

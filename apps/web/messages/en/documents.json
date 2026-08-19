@@ -18,7 +18,8 @@
     "emptyHint": "Upload a permit, drawing or licence to start the project register.",
     "uploading": "Uploading…",
     "uploadFailed": "Upload failed",
-    "removeFailed": "Could not remove the document"
+    "removeFailed": "Could not remove the document",
+    "downloadFailed": "Could not open the file"
   },
   "form": {
     "title": "Add document",
