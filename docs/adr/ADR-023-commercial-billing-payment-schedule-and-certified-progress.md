@@ -103,3 +103,26 @@ Eng Ahmed* (default: flag at >20% gap).
 - Firewall preserved (ADR-018/020/021): a trigger/progress *suggests* billing entitlement; a human
   authorizes the invoice.
 - Open items (pending Eng Ahmed) block only the numeric config, not the structure.
+
+## Implementation reconciliation (2026-08-19)
+
+Two points where the shipped code differs from the wording above — recorded here so the divergence
+is intentional, not drift:
+
+- **`billingModel` vocabulary.** CONST-COM-009 names the values `{ PAYMENT_SCHEDULE, CERTIFIED_PROGRESS }`.
+  The code ships the **pre-existing** `BillingModel = { MILESTONE, MEASURED_IPC }` enum, mapping
+  **`MILESTONE ↔ PAYMENT_SCHEDULE`** and **`MEASURED_IPC ↔ CERTIFIED_PROGRESS`**. The existing enum was
+  reused deliberately: renaming it is a breaking, cross-cutting migration (enum column + ~15 call sites +
+  the commercial `responsibleRole`/workflow seed) for no behavioural gain — the same subtraction-not-rewrite
+  principle applied elsewhere. Behaviour matches the ADR; only the labels differ. Reconcile by renaming later
+  *or* treat this note as the naming amendment.
+- **CONST-COM-011 milestone evidence — deferred.** The rule wants a `MILESTONE`/`PAYMENT_SCHEDULE`
+  installment to reference a **verified programme milestone (ADR-021)** as its evidence. Programme milestones
+  are ADR-021 *phase 2* (not built), so `ContractPaymentInstallment.milestoneLabel` is a free-text interim
+  seam and `generateFromInstallment` bills on `percentage × contractValue`. The invoice remains a guarded
+  human command (CONST-COM-015), so the cost↔revenue firewall holds; the evidence *link* lands with Programme
+  milestones.
+
+**Tracked tech-debt (not blocking):** `ipa.service.ts::getPrefill` reads `contract`/`certificate` via Prisma
+directly in the application layer (an in-file pattern predating this ADR). It should route through
+`IpaPrismaRepository` when that repo's reads are consolidated.

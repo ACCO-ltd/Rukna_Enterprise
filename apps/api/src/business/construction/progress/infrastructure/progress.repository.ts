@@ -110,6 +110,14 @@ export class ProgressRepository {
     });
   }
 
+  /** The work package a leaf is already allocated to, or null. A leaf allocates to at most one. */
+  findLeafAllocation(prisma: TenantPrisma, boqNodeId: string) {
+    return prisma.workPackageBoqNode.findUnique({
+      where: { boqNodeId },
+      select: { workPackageId: true },
+    });
+  }
+
   allocateBoqNode(prisma: TenantPrisma, workPackageId: string, boqNodeId: string) {
     return prisma.workPackageBoqNode.create({ data: { workPackageId, boqNodeId } });
   }

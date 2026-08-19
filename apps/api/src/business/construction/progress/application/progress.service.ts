@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
-import type { RequestIdentity } from '@erp/types';
+import { DprStatus, type RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
@@ -10,6 +10,26 @@ import { ProjectFinancialPositionService } from '../../../accounting/financial-p
 const DIVERGENCE_THRESHOLD = 20; // percentage points before the signal flags a divergence (cf. ADR-023 CONST-COM-018)
 
 const ZERO = new Decimal(0);
+
+/**
+ * Classifies a signed percentage-point gap against DIVERGENCE_THRESHOLD, shared by the two cockpit
+ * signals (physical-vs-financial, collection-vs-progress). `diff` = primary − secondary (positive =
+ * primary ahead); `null` primary → INSUFFICIENT_DATA. Same threshold cascade, different status labels.
+ */
+function classifyDivergence<P extends string, N extends string>(
+  diff: number | null,
+  positiveStatus: P,
+  negativeStatus: N,
+): { divergence: number | null; status: P | N | 'ALIGNED' | 'INSUFFICIENT_DATA' } {
+  if (diff === null) return { divergence: null, status: 'INSUFFICIENT_DATA' };
+  const status =
+    diff > DIVERGENCE_THRESHOLD
+      ? positiveStatus
+      : diff < -DIVERGENCE_THRESHOLD
+        ? negativeStatus
+        : 'ALIGNED';
+  return { divergence: Math.round(diff * 100) / 100, status };
+}
 
 export interface CreateDprDto {
   reportDate: string;
@@ -65,7 +85,7 @@ export class ProgressService {
   async addMeasurement(identity: RequestIdentity, dprId: string, dto: AddMeasurementDto) {
     const prisma = this.tenancy.getClient();
     const dpr = await this.requireDpr(identity, dprId);
-    if (dpr.status !== 'DRAFT' && dpr.status !== 'RETURNED') {
+    if (dpr.status !== DprStatus.DRAFT && dpr.status !== DprStatus.RETURNED) {
       throw new BadRequestException('Measurements can only be added to a DRAFT report.');
     }
     if (!(dto.quantity > 0)) throw new BadRequestException('Quantity must be greater than 0.');
@@ -101,11 +121,11 @@ export class ProgressService {
 
   async submit(identity: RequestIdentity, dprId: string) {
     const dpr = await this.requireDpr(identity, dprId);
-    if (dpr.status !== 'DRAFT' && dpr.status !== 'RETURNED') {
+    if (dpr.status !== DprStatus.DRAFT && dpr.status !== DprStatus.RETURNED) {
       throw new BadRequestException(`Cannot submit a ${dpr.status} report.`);
     }
     return this.repo.updateDprStatus(this.tenancy.getClient(), dprId, {
-      status: 'SUBMITTED',
+      status: DprStatus.SUBMITTED,
       submittedBy: identity.userId,
       submittedAt: new Date(),
     });
@@ -115,7 +135,7 @@ export class ProgressService {
   async approve(identity: RequestIdentity, dprId: string) {
     const prisma = this.tenancy.getClient();
     const dpr = await this.requireDpr(identity, dprId);
-    if (dpr.status !== 'SUBMITTED') {
+    if (dpr.status !== DprStatus.SUBMITTED) {
       throw new BadRequestException(`Only a SUBMITTED report can be approved (is ${dpr.status}).`);
     }
 
@@ -138,7 +158,7 @@ export class ProgressService {
     }
 
     return this.repo.updateDprStatus(prisma, dprId, {
-      status: 'APPROVED',
+      status: DprStatus.APPROVED,
       approvedBy: identity.userId,
       approvedAt: new Date(),
     });
@@ -146,11 +166,11 @@ export class ProgressService {
 
   async returnForRevision(identity: RequestIdentity, dprId: string, reason: string) {
     const dpr = await this.requireDpr(identity, dprId);
-    if (dpr.status !== 'SUBMITTED') {
+    if (dpr.status !== DprStatus.SUBMITTED) {
       throw new BadRequestException('Only a SUBMITTED report can be returned.');
     }
     return this.repo.updateDprStatus(this.tenancy.getClient(), dprId, {
-      status: 'RETURNED',
+      status: DprStatus.RETURNED,
       returnReason: reason,
     });
   }
@@ -224,6 +244,13 @@ export class ProgressService {
     if (!node) throw new NotFoundException('BOQ node not found for this project.');
     if (!node.isLeaf) throw new BadRequestException('Allocate a BOQ leaf item, not a section.');
 
+    // CONST-PROG-012: a leaf belongs to at most one work package, so its verified progress is
+    // counted once in the roll-up. Surface the clash rather than let the unique index 500.
+    const existing = await this.repo.findLeafAllocation(prisma, boqNodeId);
+    if (existing && existing.workPackageId !== workPackageId) {
+      throw new BadRequestException('This BOQ item is already allocated to another work package.');
+    }
+
     return this.repo.allocateBoqNode(prisma, workPackageId, boqNodeId);
   }
 
@@ -294,15 +321,11 @@ export class ProgressService {
       : null;
 
     const physicalPercent = rollup.physicalPercent;
-    let divergence: number | null = null;
-    let status: 'ALIGNED' | 'COST_AHEAD' | 'PROGRESS_AHEAD' | 'INSUFFICIENT_DATA' =
-      'INSUFFICIENT_DATA';
-    if (costConsumedPercent !== null) {
-      divergence = Math.round((physicalPercent - costConsumedPercent) * 100) / 100;
-      if (costConsumedPercent - physicalPercent > DIVERGENCE_THRESHOLD) status = 'COST_AHEAD';
-      else if (physicalPercent - costConsumedPercent > DIVERGENCE_THRESHOLD) status = 'PROGRESS_AHEAD';
-      else status = 'ALIGNED';
-    }
+    const { divergence, status } = classifyDivergence(
+      costConsumedPercent === null ? null : physicalPercent - costConsumedPercent,
+      'PROGRESS_AHEAD',
+      'COST_AHEAD',
+    );
 
     return {
       projectId,
@@ -336,14 +359,11 @@ export class ProgressService {
         : null;
 
     const physicalPercent = rollup.physicalPercent;
-    let divergence: number | null = null;
-    let status: 'ALIGNED' | 'CASH_AHEAD' | 'WORK_AHEAD' | 'INSUFFICIENT_DATA' = 'INSUFFICIENT_DATA';
-    if (collectedPercent !== null) {
-      divergence = Math.round((collectedPercent - physicalPercent) * 100) / 100;
-      if (collectedPercent - physicalPercent > DIVERGENCE_THRESHOLD) status = 'CASH_AHEAD';
-      else if (physicalPercent - collectedPercent > DIVERGENCE_THRESHOLD) status = 'WORK_AHEAD';
-      else status = 'ALIGNED';
-    }
+    const { divergence, status } = classifyDivergence(
+      collectedPercent === null ? null : collectedPercent - physicalPercent,
+      'CASH_AHEAD',
+      'WORK_AHEAD',
+    );
 
     return {
       projectId,

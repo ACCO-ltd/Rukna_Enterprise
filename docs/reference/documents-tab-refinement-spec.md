@@ -1,6 +1,8 @@
 # Documents tab — refinement spec
 
-Status: **DESIGN — hard-gated on the PlatformFile build (ADR-014).** Not built.
+Status: **PARTIALLY BUILT (2026-08-19).** PlatformFile (ADR-014) + the standalone **Project documents**
+register (§1) and the Documents tab UI are built and shipped. The **Linked documents** aggregation (§2)
+is **DEFERRED** — its own future task (see the §2 note below). Not gated anymore; it's a scoped follow-up.
 Owners: Backend — Abdulsalam · Frontend — frontend engineer · Storage decision — ADR-014.
 
 ## Purpose
@@ -29,10 +31,16 @@ These are uploaded *in the Documents tab* and belong to the project, not to a sp
 `category ∈ PERMIT | LICENSE | DRAWING | CONTRACT | CERTIFICATE | INSURANCE | GUARANTEE |
 CORRESPONDENCE | PHOTO | OTHER`.
 
-**2. Linked documents (aggregated — read-only).** The Documents tab also **surfaces every file
-attached elsewhere in the project** — contract attachments, IPA/IPC attachments, guarantee
-attachments — each with a link back to its entity. One place to see *all* project files; you manage
-the standalone ones here and jump to the entity for the rest.
+**2. Linked documents (aggregated — read-only). — DEFERRED (2026-08-19), own future task.** The Documents
+tab also **surfaces every file attached elsewhere in the project** — contract attachments, IPA/IPC
+attachments, guarantee attachments, DPR evidence — each with a link back to its entity. One place to see
+*all* project files; you manage the standalone ones here and jump to the entity for the rest.
+
+> **Deferred:** this section is not built. It needs a backend read model aggregating the five
+> `*Attachment` tables (`Contract`/`Guarantee`/`Ipa`/`Ipc`/`Dpr`) through their joins to the project — a
+> bounded, read-only endpoint (`GET /projects/:id/linked-documents`) — plus a "Linked documents" section
+> in `documents-tab.tsx`. Tracked as a scoped follow-up, not an accidental gap. The standalone register
+> (§1) ships without it.
 
 ```
 DOCUMENTS — Al-Baraka

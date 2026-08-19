@@ -681,8 +681,10 @@ model WorkPackage {
   @@map("work_packages")
 }
 
-// BOQ leaf ↔ WorkPackage allocation (many-to-many). Anti-double-counting is enforced by the unique
-// pair; a leaf's verified progress contributes to each package it is allocated to.
+// BOQ leaf → WorkPackage allocation. A leaf belongs to AT MOST ONE work package (unique on
+// boqNodeId), so its verified progress is counted exactly once in the weighted roll-up — the
+// anti-double-counting invariant (CONST-PROG-012). Splitting a leaf across packages would need a
+// proportional fraction; deferred.
 model WorkPackageBoqNode {
   id            String @id @default(cuid())
   workPackageId String @map("work_package_id")
@@ -691,9 +693,8 @@ model WorkPackageBoqNode {
   workPackage WorkPackage @relation(fields: [workPackageId], references: [id], onDelete: Cascade)
   boqNode     BoqNode     @relation(fields: [boqNodeId], references: [id])
 
-  @@unique([workPackageId, boqNodeId])
+  @@unique([boqNodeId])
   @@index([workPackageId])
-  @@index([boqNodeId])
   @@map("work_package_boq_nodes")
 }
 

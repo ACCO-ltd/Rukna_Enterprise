@@ -537,7 +537,7 @@ export class CommercialService {
                 href: `/projects/${projectId}/commercial/billing-collection`,
               }
             : null,
-        blockers: built.schedule.installments.length === 0 ? [] : [],
+        blockers: [],
         capabilities: result.capabilities,
         responsibleRole: 'COMMERCIAL_MANAGER',
         asOf,

@@ -20,6 +20,7 @@ type Over = {
   workPackages?: unknown[];
   measurements?: unknown[];
   fp?: unknown;
+  leafAllocation?: unknown;
 };
 
 function build(over: Over = {}) {
@@ -39,6 +40,7 @@ function build(over: Over = {}) {
     createWorkPackage: jest.fn().mockResolvedValue({ id: 'wp-1' }),
     findWorkPackageById: jest.fn().mockResolvedValue({ id: 'wp-1', projectId: 'p-1' }),
     findWorkPackages: jest.fn().mockResolvedValue(over.workPackages ?? []),
+    findLeafAllocation: jest.fn().mockResolvedValue(over.leafAllocation ?? null),
     allocateBoqNode: jest.fn().mockResolvedValue({ id: 'wpn-1' }),
   };
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
@@ -144,6 +146,20 @@ describe('ProgressService (ADR-021 MVP)', () => {
     const res = await service.getRollup(identity, 'p-1');
     expect(res.weightsComplete).toBe(false);
     expect(res.weightsTotal).toBe('0.5');
+  });
+
+  it('allocateBoqNode: allocates a free BOQ leaf to a work package', async () => {
+    const { repo, service } = build();
+    await service.allocateBoqNode(identity, 'wp-1', 'n1');
+    expect(repo.allocateBoqNode).toHaveBeenCalledWith(expect.anything(), 'wp-1', 'n1');
+  });
+
+  it('allocateBoqNode: rejects a leaf already allocated to another package (CONST-PROG-012)', async () => {
+    const { repo, service } = build({ leafAllocation: { workPackageId: 'wp-OTHER' } });
+    await expect(service.allocateBoqNode(identity, 'wp-1', 'n1')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(repo.allocateBoqNode).not.toHaveBeenCalled();
   });
 
   it('signal: COST_AHEAD when cost consumed outpaces physical progress', async () => {

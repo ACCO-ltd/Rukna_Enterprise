@@ -33,8 +33,8 @@ Last verified against code: **2026-08-14** (branch `main`). Verified from the Pr
 | Audit (transactional outbox) | ✓ | ✓ (view) | INTEGRATED | `AuditLog` + `AuditOutboxEvent` in the same tx as the mutation (ADR-008), all 7 business modules. |
 | Exchange rates | ✓ | — | BACKEND | `ExchangeRate` model + resolution. |
 | Notifications (delivery) | — | — | NOT_DESIGNED | Only `notification-event.policy.ts` domain stub. No persistence, no delivery, no UI. |
-| Files / document storage | — | — | DESIGNED | ADR-014 (`PlatformFile`). **Not built.** Only per-entity attachment *metadata* rows exist (see below); nothing stores or serves a file. |
-| Document register / revisions / transmittals | — | — | NOT_DESIGNED | |
+| Files / document storage | ✓ | ✓ | INTEGRATED | ADR-014 (`PlatformFile`): `FileStoragePort` + MinIO adapter, presigned PUT/GET (15-min TTL), tenant-partitioned keys, immutable-where-audit-relevant. `platform/files` |
+| Document register / revisions / transmittals | ✓ | ✓ | PARTIAL | Standalone project **document register** (`ProjectDocument`: category + title on a PlatformFile) + Documents tab shipped. **Linked-documents aggregation (files attached to contracts/IPAs/IPCs/guarantees/DPRs) DEFERRED** — see `documents-tab-refinement-spec.md` §2. Revisions/transmittals still out of scope. |
 
 ---
 
@@ -45,7 +45,7 @@ Last verified against code: **2026-08-14** (branch `main`). Verified from the Pr
 | Projects (lifecycle, suspend/resume, members) | ✓ | ✓ | INTEGRATED | 8-state lifecycle. `construction/projects` |
 | BOQ (versioning, tree, baseline) | ✓ | ✓ | INTEGRATED | DRAFT→BASELINED→SUPERSEDED, materialized path. ADR-016 workspace. |
 | Programme / Schedule / Activities | — | — | NOT_DESIGNED | **Biggest construction gap.** No time/schedule domain. |
-| Physical Progress / Measurement | — | — | NOT_DESIGNED | No authoritative progress domain. |
+| Physical Progress / Measurement | ✓ | ✓ | PARTIAL | ADR-021 MVP: DPR lifecycle → verified progress (approved-DPR provenance, cumulative ≤ BOQ scope), work-package weighted roll-up (one-leaf-one-package, CONST-PROG-012), physical-vs-financial + collection-vs-progress signals, IPA pre-fill. Programme/schedule + dependency network are phase 2 (row above). `construction/progress` |
 
 ---
 
