@@ -1,6 +1,10 @@
 {
   "title": "Progress",
   "subtitle": "Daily site records, verified physical progress and performance.",
+  "overview": {
+    "title": "Delivery progress",
+    "link": "Open Progress"
+  },
   "tabs": {
     "label": "Progress sections",
     "reports": "Daily Reports",

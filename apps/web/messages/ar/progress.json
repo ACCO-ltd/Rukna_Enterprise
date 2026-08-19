@@ -1,6 +1,10 @@
 {
   "title": "التقدّم",
   "subtitle": "السجلات اليومية للموقع والتقدّم الفعلي المُتحقّق والأداء.",
+  "overview": {
+    "title": "Delivery progress",
+    "link": "Open Progress"
+  },
   "tabs": {
     "label": "أقسام التقدّم",
     "reports": "التقارير اليومية",

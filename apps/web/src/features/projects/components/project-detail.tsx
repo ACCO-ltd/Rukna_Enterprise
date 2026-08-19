@@ -28,6 +28,7 @@ import {
   useProjectWorkspaceSummary,
 } from '../hooks/use-project';
 import { ProjectCommitmentsCard } from '@/features/procurement/components/commitments';
+import { ProjectProgressCard } from '@/features/progress/components/project-progress-card';
 
 import { getAvailableActions } from '../project-actions';
 import type { ProjectDetail as ProjectDetailModel } from '../types';
@@ -309,7 +310,11 @@ function Overview({
         </dl>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2" aria-label={t('commercialCostPosition')}>
+      <section
+        className={cn('grid gap-4', project.status === 'DRAFT' ? 'lg:grid-cols-2' : 'lg:grid-cols-3')}
+        aria-label={t('commercialCostPosition')}
+      >
+        {project.status === 'DRAFT' ? null : <ProjectProgressCard projectId={project.id} />}
         <div className="overflow-hidden rounded-panel border border-border bg-surface">
           <div className="flex min-h-12 items-center justify-between border-b border-border px-5">
             <h2 className="text-body-sm font-semibold text-foreground">
