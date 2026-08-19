@@ -18,12 +18,16 @@ import enPlatform from '../../messages/en/platform.json';
 import enAccounting from '../../messages/en/accounting.json';
 import enProcurement from '../../messages/en/procurement.json';
 import enCommercial from '../../messages/en/commercial.json';
+import enDocuments from '../../messages/en/documents.json';
+import enProgress from '../../messages/en/progress.json';
 import arCommon from '../../messages/ar/common.json';
 import arAuth from '../../messages/ar/auth.json';
 import arPlatform from '../../messages/ar/platform.json';
 import arAccounting from '../../messages/ar/accounting.json';
 import arProcurement from '../../messages/ar/procurement.json';
 import arCommercial from '../../messages/ar/commercial.json';
+import arDocuments from '../../messages/ar/documents.json';
+import arProgress from '../../messages/ar/progress.json';
 
 /**
  * The REAL message catalogues, loaded the same way `src/i18n/request.ts` loads them.
@@ -42,6 +46,8 @@ const MESSAGES = {
     accounting: enAccounting,
     procurement: enProcurement,
     commercial: enCommercial,
+    documents: enDocuments,
+    progress: enProgress,
   },
   ar: {
     common: arCommon,
@@ -50,6 +56,8 @@ const MESSAGES = {
     accounting: arAccounting,
     procurement: arProcurement,
     commercial: arCommercial,
+    documents: arDocuments,
+    progress: arProgress,
   },
 } as const;
 

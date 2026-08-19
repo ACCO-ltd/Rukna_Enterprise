@@ -2,6 +2,9 @@ import type {
   ContractStatus,
   BillingModel,
   AdvanceType,
+  PaymentTrigger,
+  DocumentCategory,
+  DprStatus,
   GuaranteeStatus,
   IpaStatus,
   IpcStatus,
@@ -140,6 +143,154 @@ export interface ContractMilestoneResponse {
   createdAt: string;
 }
 
+// ADR-023: one installment of a payment-schedule (MILESTONE) contract. `percentage` is a
+// fraction string (0..1), e.g. "0.4000"; the amount is derived (percentage × contractValue).
+export interface ContractPaymentInstallmentResponse {
+  id: string;
+  contractId: string;
+  sortOrder: number;
+  name: string;
+  percentage: string;
+  triggerType: PaymentTrigger;
+  dueOffsetDays?: number;
+  dueDate?: string;
+  milestoneLabel?: string;
+}
+
+// Request shape the contract-creation form sends. `percentage` is a fraction number (0..1).
+export interface PaymentInstallmentInput {
+  sortOrder: number;
+  name: string;
+  percentage: number;
+  triggerType: PaymentTrigger;
+  dueOffsetDays?: number;
+  dueDate?: string;
+  milestoneLabel?: string;
+}
+
+// ADR-021/023: firewall-safe IPA pre-fill — suggested claim per BOQ leaf from verified progress.
+export interface IpaPrefillLine {
+  boqNodeId: string;
+  code: string;
+  description: string;
+  measurableQuantity: string;
+  verifiedToDate: string;
+  previousEffectiveCertified: string;
+  /** Suggested total-to-date claim (verified, clamped to [prev-certified, BOQ measurable]). */
+  suggestedCumulativeClaim: string;
+  /** Suggested this-period claim (cumulative − previously certified). */
+  suggestedPeriodClaim: string;
+}
+export interface IpaPrefillResponse {
+  contractId: string;
+  projectId: string;
+  source: 'VERIFIED_PROGRESS';
+  suggestions: IpaPrefillLine[];
+}
+
+// ADR-021/023: physical-vs-financial early warning for the Finance/Overview cockpit.
+export interface PhysicalFinancialSignalResponse {
+  projectId: string;
+  physicalPercent: number;
+  actualCost: string;
+  forecastCost: string;
+  /** actualCost ÷ forecastCost × 100. Null when there is no forecast cost yet. */
+  costConsumedPercent: number | null;
+  /** physicalPercent − costConsumedPercent (positive = built ahead of spend). */
+  divergence: number | null;
+  status: 'ALIGNED' | 'COST_AHEAD' | 'PROGRESS_AHEAD' | 'INSUFFICIENT_DATA';
+  /** From the roll-up: false when work-package weights don't total 100%. */
+  weightsComplete: boolean;
+}
+
+// ADR-021/023: collection-vs-progress early warning — cash collected vs work built.
+export interface CollectionProgressSignalResponse {
+  projectId: string;
+  physicalPercent: number;
+  contractValue: string | null;
+  receivedRevenue: string | null;
+  /** receivedRevenue ÷ contractValue × 100. Null when there is no contract value yet. */
+  collectedPercent: number | null;
+  /** collectedPercent − physicalPercent (positive = cash ahead of work). */
+  divergence: number | null;
+  status: 'ALIGNED' | 'CASH_AHEAD' | 'WORK_AHEAD' | 'INSUFFICIENT_DATA';
+  /** From the roll-up: false when work-package weights don't total 100%. */
+  weightsComplete: boolean;
+}
+
+// ADR-021 CONST-PROG-007: work-package roll-up → weighted project physical %.
+export interface WorkPackageRollupLine {
+  id: string;
+  code: string;
+  name: string;
+  responsibleOwner: string | null;
+  /** Fraction of project weight (0..1). */
+  weight: string;
+  percentComplete: number;
+  leafCount: number;
+}
+export interface ProjectRollupResponse {
+  projectId: string;
+  /** Weighted project physical % (0..100). Understated when weights are incomplete. */
+  physicalPercent: number;
+  weightsTotal: string;
+  /** True when the package weights total 100%. */
+  weightsComplete: boolean;
+  packages: WorkPackageRollupLine[];
+}
+
+// ADR-021 Progress: a verified-progress line per BOQ leaf (from approved DPRs).
+export interface ProjectProgressLine {
+  boqNodeId: string;
+  code: string;
+  description: string;
+  measurableQuantity: string;
+  verifiedToDate: string;
+  /** Whole percent (verified ÷ measurable), null when the BOQ line has no measurable quantity. */
+  percentComplete: number | null;
+}
+
+export interface ProgressMeasurementResponse {
+  id: string;
+  dprId: string;
+  boqNodeId: string;
+  quantity: string;
+  notes?: string;
+}
+
+export interface DailyProgressReportResponse {
+  id: string;
+  projectId: string;
+  reportDate: string;
+  status: `${DprStatus}`;
+  weather?: string;
+  labourCount?: number;
+  equipmentNote?: string;
+  narrative?: string;
+  delayReason?: string;
+  preparedBy: string;
+  submittedBy?: string;
+  approvedBy?: string;
+}
+
+// Documents tab (ADR-014): a standalone project document + its stored-file metadata.
+export interface ProjectDocumentResponse {
+  id: string;
+  projectId: string;
+  platformFileId: string;
+  category: `${DocumentCategory}`;
+  title: string;
+  uploadedBy: string;
+  createdAt: string;
+  platformFile: {
+    originalName: string;
+    mimeType: string;
+    sizeBytes: number;
+    /** PlatformFileStatus: PENDING | READY. */
+    status: string;
+  };
+}
+
 export interface ContractResponse {
   id: string;
   organizationId: string;
@@ -162,6 +313,7 @@ export interface ContractResponse {
   advanceTerms: ContractAdvanceTermResponse[];
   guarantees: ContractGuaranteeResponse[];
   milestones: ContractMilestoneResponse[];
+  paymentInstallments: ContractPaymentInstallmentResponse[];
 }
 
 // ─── IPA ──────────────────────────────────────────────────────────────────────
@@ -712,7 +864,46 @@ export type CommercialCycleStage =
   | 'AWAITING_PAYMENT'
   | 'PARTIALLY_PAID'
   | 'SETTLED'
+  // ADR-023: a MILESTONE (payment-schedule) contract's cycle is its payment plan, not the IPA chain.
+  | 'MILESTONE_SCHEDULE'
   | 'TERMINAL';
+
+// ADR-023: per-installment billing status, derived from the installment's own linked invoice
+// (sourceInstallmentId). NEXT is the first un-invoiced installment (where "Generate invoice" lives);
+// UPCOMING are the later un-invoiced ones; BILLED means an invoice exists but nothing is collected
+// yet; PARTIALLY_PAID / PAID reflect posted receipts against that invoice.
+export type PaymentInstallmentBillStatus =
+  | 'PAID'
+  | 'PARTIALLY_PAID'
+  | 'BILLED'
+  | 'NEXT'
+  | 'UPCOMING';
+
+export interface CommercialPaymentScheduleInstallment {
+  id: string;
+  sortOrder: number;
+  name: string;
+  /** Fraction string, e.g. "0.4000". Structural — always visible. */
+  percentage: string;
+  /** Derived: percentage × contract value. Null when the caller cannot view financials. */
+  amount: string | null;
+  /** Waterfalled from total collected. Null when the caller cannot view financials. */
+  amountPaid: string | null;
+  triggerType: `${PaymentTrigger}`;
+  milestoneLabel: string | null;
+  dueOffsetDays: number | null;
+  dueDate: string | null;
+  status: PaymentInstallmentBillStatus;
+}
+
+export interface CommercialPaymentSchedule {
+  currency: string;
+  /** Null when the caller cannot view financials. */
+  contractValue: string | null;
+  /** Null when the caller cannot view financials. */
+  totalCollected: string | null;
+  installments: CommercialPaymentScheduleInstallment[];
+}
 
 export type CommercialCycleAction =
   | 'CREATE_CONTRACT'
@@ -751,6 +942,8 @@ export interface CommercialCurrentCycleResponse {
   } | null;
   stage: CommercialCycleStage;
   application: CommercialApplicationRow | null;
+  /** ADR-023: present when the contract's billingModel is MILESTONE (stage === 'MILESTONE_SCHEDULE'). */
+  paymentSchedule?: CommercialPaymentSchedule | null;
   nextAction: {
     kind: CommercialCycleAction;
     href: string;

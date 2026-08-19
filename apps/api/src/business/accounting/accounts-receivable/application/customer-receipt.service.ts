@@ -158,6 +158,7 @@ export class CustomerReceiptService {
       for (const alloc of initialAllocations) {
         const invoice = await this.invoiceRepo.findById(prisma, orgId, alloc.clientInvoiceId);
         if (!invoice) throw new NotFoundException(`Invoice ${alloc.clientInvoiceId} not found`);
+        this.assertAllocatable(receipt, invoice, new Decimal(alloc.amount));
 
         await this.receiptRepo.createAllocation(prisma, {
           organizationId: orgId,
@@ -177,6 +178,43 @@ export class CustomerReceiptService {
 
       return postResult;
     });
+  }
+
+  /**
+   * A receipt may only settle an invoice that is the SAME client, SAME currency, already POSTED,
+   * and by no more than the invoice's remaining outstanding. Without these, a receipt could settle
+   * another client's debt, cross currencies, pay an unrecognised (unposted) receivable, or drive
+   * `outstandingAmount` negative. Applies to milestone (installment) invoices and IPC invoices alike.
+   */
+  private assertAllocatable(
+    receipt: { clientId: string; currencyCode: string },
+    invoice: {
+      clientId: string;
+      currencyCode: string;
+      postingStatus: string;
+      outstandingAmount: Decimal | string;
+    },
+    amount: Decimal,
+  ): void {
+    if (invoice.clientId !== receipt.clientId) {
+      throw new BadRequestException(
+        'Cannot allocate: the invoice belongs to a different client than the receipt.',
+      );
+    }
+    if (invoice.currencyCode !== receipt.currencyCode) {
+      throw new BadRequestException(
+        `Currency mismatch: receipt is ${receipt.currencyCode}, invoice is ${invoice.currencyCode}.`,
+      );
+    }
+    if (invoice.postingStatus !== 'POSTED') {
+      throw new BadRequestException('Invoice must be POSTED before allocation.');
+    }
+    const outstanding = new Decimal(invoice.outstandingAmount.toString());
+    if (amount.gt(outstanding)) {
+      throw new BadRequestException(
+        `Allocation ${amount.toFixed(2)} exceeds the invoice outstanding ${outstanding.toFixed(2)}.`,
+      );
+    }
   }
 
   /**
@@ -204,9 +242,7 @@ export class CustomerReceiptService {
 
     const invoice = await this.invoiceRepo.findById(prisma, orgId, dto.clientInvoiceId);
     if (!invoice) throw new NotFoundException(`Invoice ${dto.clientInvoiceId} not found`);
-    if (invoice.postingStatus !== 'POSTED') {
-      throw new BadRequestException(`Invoice must be POSTED before allocation`);
-    }
+    this.assertAllocatable(receipt, invoice, amount);
 
     const arGl = await this.accountRepo.findByCode(prisma, orgId, dto.arAccountCode);
     if (!arGl) throw new NotFoundException(`AR GL ${dto.arAccountCode} not found`);

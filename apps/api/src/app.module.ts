@@ -15,6 +15,7 @@ import { OrganizationsModule } from './platform/organizations/organizations.modu
 import { RolesModule } from './platform/roles/roles.module.js';
 import { PermissionsModule } from './platform/permissions/permissions.module.js';
 import { AuditLogsModule } from './platform/audit-logs/audit-logs.module.js';
+import { FilesModule } from './platform/files/files.module.js';
 import { WorkflowsModule } from './platform/workflows/workflows.module.js';
 import { ClientsModule } from './platform/clients/clients.module.js';
 import { ConstructionModule } from './business/construction/construction.module.js';
@@ -38,6 +39,7 @@ import { AuditInterceptor } from './platform/audit-logs/application/audit.interc
     RolesModule,
     PermissionsModule,
     AuditLogsModule,
+    FilesModule,
     WorkflowsModule,
     ClientsModule,
     ProjectAccessModule,

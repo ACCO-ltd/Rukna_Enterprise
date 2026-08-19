@@ -10,6 +10,7 @@ import { CurrentUser } from '../../../../common/decorators/current-user.decorato
 import type { RequestIdentity } from '@erp/types';
 import { ClientInvoiceService } from '../application/client-invoice.service.js';
 import { GenerateInvoiceFromIpcDto } from './dto/generate-invoice-from-ipc.dto.js';
+import { GenerateInvoiceFromInstallmentDto } from './dto/generate-invoice-from-installment.dto.js';
 import { PostInvoiceDto } from './dto/post-invoice.dto.js';
 import { ReverseInvoiceDto } from './dto/reverse-invoice.dto.js';
 
@@ -36,6 +37,18 @@ export class ClientInvoiceController {
   @ApiResponse({ status: 409, description: 'Invoice already exists for this IPC' })
   generateFromIpc(@CurrentUser() identity: RequestIdentity, @Body() dto: GenerateInvoiceFromIpcDto) {
     return this.clientInvoiceService.generateFromIpc(identity, dto);
+  }
+
+  @Post('from-installment')
+  @ApiOperation({
+    summary: 'ADR-023: generate a draft invoice from a payment-schedule installment (one per installment)',
+  })
+  @ApiResponse({ status: 400, description: 'Contract is not MILESTONE billing, or not ACTIVE' })
+  generateFromInstallment(
+    @CurrentUser() identity: RequestIdentity,
+    @Body() dto: GenerateInvoiceFromInstallmentDto,
+  ) {
+    return this.clientInvoiceService.generateFromInstallment(identity, dto);
   }
 
   @Get(':id')

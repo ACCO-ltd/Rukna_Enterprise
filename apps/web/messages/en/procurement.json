@@ -1,4 +1,14 @@
 {
+  "projectTab": {
+    "title": "Procurement",
+    "subtitle": "This project's requests, commitments and cost.",
+    "mrEmpty": "No material requests for this project yet.",
+    "elsewhereTitle": "Purchase orders & goods receipts",
+    "elsewhereHint": "Ordering and receiving run in the shared Procurement workspace — the buyer's cross-project queue, not scoped to one project.",
+    "ordersLink": "Purchase Orders",
+    "grnLink": "Goods Receipts",
+    "inventoryNote": "Issuing material to site (consumption → project cost) arrives with Inventory."
+  },
   "common": {
     "loadFailed": "This page could not be loaded.",
     "retry": "Retry",

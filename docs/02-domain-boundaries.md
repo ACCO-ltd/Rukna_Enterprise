@@ -13,7 +13,10 @@ separate aggregates that each own their lifecycle and invariants:
 | Aggregate | Owns | Must NOT own |
 |---|---|---|
 | **Project** | Identity, status, membership, commercial/participation model, reporting root | BOQ pricing, contract terms, journals |
-| **BOQ** | Scope structure, quantity, unit, rate, pricing, baseline, revision lineage | Progress, time, actual cost, money paid |
+| **BOQ** | Scope structure, quantity, unit, rate, pricing, `measurementMethod`, baseline, revision lineage | Progress, time, actual cost, money paid |
+| **Programme** *(ADR-021, not built)* | Time: activities, dates (baseline/forecast/actual), milestones, versions, `ProgressTarget` curve | BOQ scope/quantity/rate; contract value; IPA/IPC quantities |
+| **WorkPackage** *(ADR-021, not built)* | Control seam: responsible owner, `progressWeight`, BOQ↔activity allocation, status | Scope/price (references BOQ); certification |
+| **Progress (DPR/Measurement)** *(ADR-021, not built)* | Verified physical progress from approved DPRs; evidence chain | Claimed/certified quantity; auto-billing |
 | **Contract** | Terms, retention, advances, guarantees, milestones, contract value | Scope structure (references BOQ), postings |
 | **IPA** | Client-facing valuation (what we claim) | Certification decision |
 | **IPC** | Certified valuation (what the client accepted) | AR posting |

@@ -2,10 +2,13 @@
 
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 
+import type { ProjectRole } from '@erp/types';
+
 import {
   addProjectMember,
   listProjectMembers,
   removeProjectMember,
+  setProjectMemberRoles,
   type AddProjectMemberPayload,
 } from '../api/projects-api';
 import type { ProjectMember } from '../types';
@@ -58,5 +61,14 @@ export function useAddProjectMember(projectId: string) {
 export function useRemoveProjectMember(projectId: string) {
   return useMemberMutation(projectId, (userId: string) =>
     removeProjectMember(projectId, userId),
+  );
+}
+
+/** Corrects a member's roles (PATCH …/roles). Keyed on the user id, like remove. */
+export function useSetProjectMemberRoles(projectId: string) {
+  return useMemberMutation(
+    projectId,
+    ({ userId, roles }: { userId: string; roles: ProjectRole[] }) =>
+      setProjectMemberRoles(projectId, userId, roles),
   );
 }

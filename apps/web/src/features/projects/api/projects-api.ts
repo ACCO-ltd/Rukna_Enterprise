@@ -41,9 +41,9 @@ export interface CreateProjectPayload {
  * Body of `POST /projects/:id/members`.
  *
  * `roles` is `@ArrayMinSize(1)` and `@IsEnum(ProjectRole, { each: true })`, so a member must
- * be given at least one role at the moment they are added — there is no bare "add to project"
- * and no endpoint that changes a member's roles afterwards. Correcting a role means removing
- * the member and adding them again.
+ * be given at least one role at the moment they are added — there is no bare "add to project".
+ * A member's roles CAN be corrected afterwards via `setProjectMemberRoles` (PATCH …/roles),
+ * so a mistyped role no longer forces a remove/re-add.
  */
 export interface AddProjectMemberPayload {
   userId: string;
@@ -181,4 +181,22 @@ export function addProjectMember(
  */
 export function removeProjectMember(projectId: string, userId: string): Promise<void> {
   return apiClient<void>(`/projects/${projectId}/members/${userId}`, { method: 'DELETE' });
+}
+
+/**
+ * `PATCH /projects/:id/members/:userId/roles` — corrects a member's roles.
+ *
+ * Keyed on the user id (like remove). A versioned edit server-side: the current active role
+ * rows are closed and the new set opened in one transaction, so `@ArrayMinSize(1)` still holds
+ * — a member is never left with no roles. Returns the updated member.
+ */
+export function setProjectMemberRoles(
+  projectId: string,
+  userId: string,
+  roles: ProjectRole[],
+): Promise<ProjectMember> {
+  return apiClient<ProjectMember>(`/projects/${projectId}/members/${userId}/roles`, {
+    method: 'PATCH',
+    body: JSON.stringify({ roles }),
+  });
 }

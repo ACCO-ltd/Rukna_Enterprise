@@ -10,14 +10,17 @@ import {
   cn,
 } from '@erp/ui';
 import {
+  Activity,
   BriefcaseBusiness,
   Building2,
   CalendarDays,
   Check,
   ChevronRight,
   ClipboardList,
+  FolderOpen,
   LayoutDashboard,
   MapPin,
+  ShoppingCart,
   UserRound,
   Users,
   Wallet,
@@ -62,6 +65,12 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
     // "Scope" reads as programme, milestones and progress too, which are separate controls
     // living behind a Programme & Progress tab that does not exist yet. See ADR-016.
     { key: 'boq', label: t('workspace.boq'), href: `/projects/${id}/boq`, icon: ClipboardList },
+    {
+      key: 'progress',
+      label: t('workspace.progress'),
+      href: `/projects/${id}/progress`,
+      icon: Activity,
+    },
     // One tab, not a dropdown. Commercial was three flat entries — Contracts, Applications &
     // certificates, Finance — inside the only nested control in this bar, and they duplicated
     // the Commercial workspace's own sub-nav. The contract and certificate routes now live
@@ -74,7 +83,19 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
       icon: BriefcaseBusiness,
     },
     { key: 'finance', label: t('workspace.finance'), href: `/projects/${id}/pl`, icon: Wallet },
+    {
+      key: 'procurement',
+      label: t('workspace.procurement'),
+      href: `/projects/${id}/procurement`,
+      icon: ShoppingCart,
+    },
     { key: 'team', label: t('workspace.team'), href: `/projects/${id}/members`, icon: Users },
+    {
+      key: 'documents',
+      label: t('workspace.documents'),
+      href: `/projects/${id}/documents`,
+      icon: FolderOpen,
+    },
   ];
 
   function isActive(href: string): boolean {
@@ -211,8 +232,7 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
             ))}
           </select>
 
-          {/* Five peers, no nesting. Every tab leads to a workspace that exists — Programme &
-              Progress, Procurement, Documents and Activity join when theirs do. */}
+          {/* Eight peers, no nesting. Every tab leads to a workspace that exists. */}
           <div className="hidden items-center md:flex">
             {primaryTabs.map((tab) => (
               <WorkspaceLink

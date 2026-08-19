@@ -1,5 +1,6 @@
+import { NotFoundException } from '@nestjs/common';
 import { ContractStatus, ProjectStatus } from '@prisma/client';
-import { PERMISSIONS, type RequestIdentity } from '@erp/types';
+import { PERMISSIONS, ProjectRole, type RequestIdentity } from '@erp/types';
 
 import { ProjectService } from './project.service';
 
@@ -177,5 +178,57 @@ describe('ProjectService workspace summary', () => {
     });
 
     await expect(service.getWorkspaceGuidance(identity([]), 'project-1')).resolves.toEqual([]);
+  });
+});
+
+describe('ProjectService.setMemberRoles', () => {
+  function buildRoleEdit(member: unknown) {
+    const repo = {
+      findById: jest.fn().mockResolvedValue({ id: 'project-1' }),
+      findActiveMember: jest.fn().mockResolvedValue(member),
+      deactivateMemberRoles: jest.fn().mockResolvedValue({ count: 1 }),
+      addMemberRoles: jest.fn().mockResolvedValue({ count: 1 }),
+    };
+    // $transaction runs the callback with a throwaway tx client — repo calls are mocked, so the
+    // client it receives is irrelevant.
+    const prisma = { $transaction: (fn: (tx: unknown) => unknown) => fn({}) };
+    const tenancy = { getClient: () => prisma };
+    const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
+    const service = new ProjectService(
+      tenancy as never,
+      {} as never,
+      repo as never,
+      {} as never,
+      projectAccess as never,
+      {} as never,
+    );
+    return { service, repo };
+  }
+
+  it('closes the current roles and opens the new set (versioned edit)', async () => {
+    const { service, repo } = buildRoleEdit({ id: 'member-1' });
+
+    await service.setMemberRoles(identity([]), 'project-1', 'user-2', {
+      roles: [ProjectRole.SITE_ENGINEER, ProjectRole.VIEWER],
+    });
+
+    expect(repo.deactivateMemberRoles).toHaveBeenCalledWith(expect.anything(), 'member-1');
+    expect(repo.addMemberRoles).toHaveBeenCalledWith(
+      expect.anything(),
+      'member-1',
+      [ProjectRole.SITE_ENGINEER, ProjectRole.VIEWER],
+      'user-1',
+    );
+  });
+
+  it('rejects when the user is not an active member', async () => {
+    const { service, repo } = buildRoleEdit(null);
+
+    await expect(
+      service.setMemberRoles(identity([]), 'project-1', 'user-2', { roles: [ProjectRole.VIEWER] }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    expect(repo.deactivateMemberRoles).not.toHaveBeenCalled();
+    expect(repo.addMemberRoles).not.toHaveBeenCalled();
   });
 });

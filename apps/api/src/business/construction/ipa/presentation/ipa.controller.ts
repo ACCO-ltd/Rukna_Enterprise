@@ -51,6 +51,16 @@ export class IpaController {
     return this.ipaService.findAll(identity, contractId, projectId);
   }
 
+  @Get('prefill')
+  @ApiOperation({
+    summary:
+      'ADR-021/023: suggested claim quantities from verified physical progress (firewall-safe — a QS confirms).',
+  })
+  @ApiQuery({ name: 'contractId', required: true })
+  getPrefill(@CurrentUser() identity: RequestIdentity, @Query('contractId') contractId: string) {
+    return this.ipaService.getPrefill(identity, contractId);
+  }
+
   @Post()
   @RequirePermissions(PERMISSIONS.ipaCreate)
   @ApiOperation({ summary: 'Create a new IPA in DRAFT status' })

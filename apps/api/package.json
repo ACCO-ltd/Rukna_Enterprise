@@ -30,6 +30,8 @@
     "postinstall": "prisma generate --schema=prisma/schema.prisma && prisma generate --schema=prisma-platform/schema.prisma"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1112.0",
+    "@aws-sdk/s3-request-presigner": "^3.1112.0",
     "@erp/config": "workspace:*",
     "@erp/types": "workspace:*",
     "@nestjs/common": "^11.0.1",
@@ -84,7 +86,14 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.ts$": ["ts-jest", { "tsconfig": { "module": "commonjs" } }]
+      "^.+\\.ts$": [
+        "ts-jest",
+        {
+          "tsconfig": {
+            "module": "commonjs"
+          }
+        }
+      ]
     },
     "moduleNameMapper": {
       "^(\\.{1,2}/.*)\\.js$": "$1"

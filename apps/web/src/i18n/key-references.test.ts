@@ -7,11 +7,15 @@ import arAccounting from '../../messages/ar/accounting.json';
 import arAuth from '../../messages/ar/auth.json';
 import arPlatform from '../../messages/ar/platform.json';
 import arProcurement from '../../messages/ar/procurement.json';
+import arDocuments from '../../messages/ar/documents.json';
+import arProgress from '../../messages/ar/progress.json';
 import enCommon from '../../messages/en/common.json';
 import enAccounting from '../../messages/en/accounting.json';
 import enAuth from '../../messages/en/auth.json';
 import enPlatform from '../../messages/en/platform.json';
 import enProcurement from '../../messages/en/procurement.json';
+import enDocuments from '../../messages/en/documents.json';
+import enProgress from '../../messages/en/progress.json';
 
 /**
  * ─── Every key the code asks for exists in both catalogues ──────────────────────
@@ -38,6 +42,8 @@ const CATALOGUES: Record<string, { en: unknown; ar: unknown }> = {
   auth: { en: enAuth, ar: arAuth },
   platform: { en: enPlatform, ar: arPlatform },
   procurement: { en: enProcurement, ar: arProcurement },
+  documents: { en: enDocuments, ar: arDocuments },
+  progress: { en: enProgress, ar: arProgress },
 };
 
 const SRC = join(__dirname, '..');

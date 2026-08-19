@@ -12,8 +12,11 @@ import {
   type CommercialGuaranteeSummary,
   type CommercialMetric,
   type CommercialNextAction,
+  type CommercialPaymentSchedule,
+  type CommercialPaymentScheduleInstallment,
   type CommercialSettlementState,
   type CommercialSummaryResponse,
+  type PaymentInstallmentBillStatus,
   type RequestIdentity,
 } from '@erp/types';
 
@@ -517,6 +520,30 @@ export class CommercialService {
       };
     }
 
+    // ADR-023: a MILESTONE (payment-schedule) contract's cycle is its payment plan, not the IPA
+    // chain. Branch before the application path so we never force IPA ceremony onto it.
+    if (contract.billingModel === 'MILESTONE') {
+      const built = await this.buildPaymentSchedule(identity, contract);
+      return {
+        projectId,
+        contract: identitySummary,
+        stage: 'MILESTONE_SCHEDULE',
+        application: null,
+        paymentSchedule: built.schedule,
+        nextAction:
+          built.hasFocus && result.capabilities.canGenerateInvoice
+            ? {
+                kind: 'GENERATE_INVOICE',
+                href: `/projects/${projectId}/commercial/billing-collection`,
+              }
+            : null,
+        blockers: [],
+        capabilities: result.capabilities,
+        responsibleRole: 'COMMERCIAL_MANAGER',
+        asOf,
+      };
+    }
+
     const application = this.selectCurrentApplication(result.applications);
     if (!application) {
       const allowed = result.capabilities.canCreateApplication;
@@ -552,6 +579,82 @@ export class CommercialService {
   }
 
   // ─── Internal helpers ───────────────────────────────────────────────────────────
+
+  /**
+   * ADR-023: build the payment-schedule cycle for a MILESTONE contract. Each installment's status is
+   * derived from its **own linked invoice** (ClientInvoice.sourceInstallmentId): un-invoiced →
+   * NEXT (the first one, where "Generate invoice" lives) / UPCOMING; invoiced but uncollected →
+   * BILLED; posted with partial/full receipts → PARTIALLY_PAID / PAID. Amounts stay on the plan
+   * (ex-VAT) basis: `amount = percentage × contractValue`, `amountPaid = amount × collected-fraction`
+   * of the linked invoice, so the header % and the rows stay coherent.
+   */
+  private async buildPaymentSchedule(
+    identity: RequestIdentity,
+    contract: MainContract,
+  ): Promise<{ schedule: CommercialPaymentSchedule; hasFocus: boolean }> {
+    const prisma = this.tenancyService.getClient();
+    const mayViewFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
+
+    const installments = await this.repo.findPaymentInstallments(prisma, contract.id);
+    const invoices = await this.repo.findInvoices(prisma, identity.activeOrganizationId, contract.id);
+    const byInstallment = new Map(
+      invoices.filter((inv) => inv.sourceInstallmentId).map((inv) => [inv.sourceInstallmentId, inv]),
+    );
+    const contractValue = new Decimal(contract.contractValue.toString());
+
+    // Fraction of a posted invoice already collected (0..1). Non-posted invoices count as 0.
+    const collectedFraction = (inv: InvoiceRow): Decimal => {
+      if (inv.postingStatus !== 'POSTED') return ZERO;
+      const total = new Decimal(inv.totalAmount.toString());
+      if (total.lte(ZERO)) return ZERO;
+      return total.minus(new Decimal(inv.outstandingAmount.toString())).div(total);
+    };
+
+    let collected = ZERO;
+    let nextAssigned = false;
+    const lines: CommercialPaymentScheduleInstallment[] = installments.map((inst) => {
+      const amount = contractValue.mul(new Decimal(inst.percentage.toString()));
+      const inv = byInstallment.get(inst.id);
+
+      let status: PaymentInstallmentBillStatus;
+      let paidFraction = ZERO;
+      if (!inv) {
+        status = nextAssigned ? 'UPCOMING' : 'NEXT';
+        nextAssigned = true;
+      } else {
+        paidFraction = collectedFraction(inv);
+        status = paidFraction.gte(1) ? 'PAID' : paidFraction.gt(ZERO) ? 'PARTIALLY_PAID' : 'BILLED';
+      }
+
+      const paid = amount.mul(paidFraction);
+      collected = collected.plus(paid);
+
+      return {
+        id: inst.id,
+        sortOrder: inst.sortOrder,
+        name: inst.name,
+        percentage: inst.percentage.toString(),
+        amount: mayViewFinancials ? amount.toFixed(2) : null,
+        amountPaid: mayViewFinancials ? paid.toFixed(2) : null,
+        triggerType: inst.triggerType,
+        milestoneLabel: inst.milestoneLabel,
+        dueOffsetDays: inst.dueOffsetDays,
+        dueDate: inst.dueDate ? inst.dueDate.toISOString().slice(0, 10) : null,
+        status,
+      };
+    });
+
+    return {
+      schedule: {
+        currency: contract.currency,
+        contractValue: mayViewFinancials ? contractValue.toFixed(2) : null,
+        totalCollected: mayViewFinancials ? collected.toFixed(2) : null,
+        installments: lines,
+      },
+      // Focus = there is a first un-invoiced installment (where "Generate invoice" points).
+      hasFocus: !nextAssigned ? false : lines.some((l) => l.status === 'NEXT'),
+    };
+  }
 
   private summariseSettlement(invoices: InvoiceRow[]) {
     let invoiced = ZERO;

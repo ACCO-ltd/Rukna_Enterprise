@@ -14,6 +14,22 @@ a genuine contradiction with an existing locked invariant.
 Implementation status remains `NOT_IMPLEMENTED`. This specification must not be used to imply
 that Programme, DPR, progress measurement, delay management, or imports already exist.
 
+> **Refined by ADR-021 (proposed) — read that first.** This frozen spec is the full ambition; ADR-021
+> is the **smallest professional architecture that enforces the controls without becoming Primavera**,
+> and it governs where the two differ:
+> - **WorkPackage is an always-explicit control layer** (BOQ → WorkPackage → Activity); weight + owner
+>   live on the WorkPackage.
+> - **Measurement method is reused from `BoqNode.measurementMethod`** (already snapshotted into IPA) —
+>   no parallel enum.
+> - **PlatformFile (ADR-014) is a hard prerequisite** and is built first; it also unblocks Documents.
+> - **Value-first sequencing:** PlatformFile → Progress core (DPR + measurement + roll-up + Overview
+>   heartbeat + IPA pre-fill + physical-vs-financial signal) → Programme light (dates + milestones +
+>   `ProgressTarget` curve). **Deferred:** dependency networks, P6/MSP import, recovery programmes,
+>   formal DelayEvent/EOT/claims, EVM, CPM.
+> - **Separated metrics:** physical / financial / quality / safety are distinct — no composite score.
+> - **Commercial firewall** (progress suggests, QS confirms, never auto-bills) is shared with
+>   ADR-018 `CONST-MATCH-013` and ADR-020 `CONST-BOQ-025`.
+
 ## 1. Purpose
 
 Programme & Progress supplies the missing Time and Physical Completion vertices of project

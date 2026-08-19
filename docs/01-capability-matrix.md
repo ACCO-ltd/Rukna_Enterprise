@@ -29,12 +29,12 @@ Last verified against code: **2026-08-14** (branch `main`). Verified from the Pr
 | Multi-tenancy (DB-per-tenant) | ✓ | ✓ | INTEGRATED | Subdomain → tenant, LRU client cache. `platform/tenancy` |
 | Organizations / Membership | ✓ | ✓ | INTEGRATED | Membership validated on every request. |
 | RBAC (roles / permissions) | ✓ | ✓ | INTEGRATED | Global `PermissionsGuard`, `@RequirePermissions`, JWT carries permissions. |
-| Workflow / DOA engine | ✓ | ✓ (admin) | PARTIAL | Engine + `CommandGovernanceService` seam + loop-back (ADR-011/015) done. **Value-threshold routing and SoD wiring not active** (need CFO/CEO thresholds from Eng Ahmed; `SegregationOfDutiesService` has no callers). |
+| Workflow / DOA engine | ✓ | ✓ (admin) | PARTIAL | Engine + `CommandGovernanceService` seam + loop-back (ADR-011/015) done. **Value-threshold routing + SoD now CONFIRMED REQUIRED — complete, do not delete (ADR-022).** ACCO thresholds/SoD/approval chains signed off 2026-08-17; `SegregationOfDutiesService` + `WorkflowStep` + per-command threshold ladders to be wired. |
 | Audit (transactional outbox) | ✓ | ✓ (view) | INTEGRATED | `AuditLog` + `AuditOutboxEvent` in the same tx as the mutation (ADR-008), all 7 business modules. |
 | Exchange rates | ✓ | — | BACKEND | `ExchangeRate` model + resolution. |
 | Notifications (delivery) | — | — | NOT_DESIGNED | Only `notification-event.policy.ts` domain stub. No persistence, no delivery, no UI. |
-| Files / document storage | — | — | DESIGNED | ADR-014 (`PlatformFile`). **Not built.** Only per-entity attachment *metadata* rows exist (see below); nothing stores or serves a file. |
-| Document register / revisions / transmittals | — | — | NOT_DESIGNED | |
+| Files / document storage | ✓ | ✓ | INTEGRATED | ADR-014 (`PlatformFile`): `FileStoragePort` + MinIO adapter, presigned PUT/GET (15-min TTL), tenant-partitioned keys, immutable-where-audit-relevant. `platform/files` |
+| Document register / revisions / transmittals | ✓ | ✓ | PARTIAL | Standalone project **document register** (`ProjectDocument`: category + title on a PlatformFile) + Documents tab shipped. **Linked-documents aggregation (files attached to contracts/IPAs/IPCs/guarantees/DPRs) DEFERRED** — see `documents-tab-refinement-spec.md` §2. Revisions/transmittals still out of scope. |
 
 ---
 
@@ -45,7 +45,7 @@ Last verified against code: **2026-08-14** (branch `main`). Verified from the Pr
 | Projects (lifecycle, suspend/resume, members) | ✓ | ✓ | INTEGRATED | 8-state lifecycle. `construction/projects` |
 | BOQ (versioning, tree, baseline) | ✓ | ✓ | INTEGRATED | DRAFT→BASELINED→SUPERSEDED, materialized path. ADR-016 workspace. |
 | Programme / Schedule / Activities | — | — | NOT_DESIGNED | **Biggest construction gap.** No time/schedule domain. |
-| Physical Progress / Measurement | — | — | NOT_DESIGNED | No authoritative progress domain. |
+| Physical Progress / Measurement | ✓ | ✓ | PARTIAL | ADR-021 MVP: DPR lifecycle → verified progress (approved-DPR provenance, cumulative ≤ BOQ scope), work-package weighted roll-up (one-leaf-one-package, CONST-PROG-012), physical-vs-financial + collection-vs-progress signals, IPA pre-fill. Programme/schedule + dependency network are phase 2 (row above). `construction/progress` |
 
 ---
 
@@ -91,7 +91,7 @@ Last verified against code: **2026-08-14** (branch `main`). Verified from the Pr
 | Material Requests (dual-scope, DOA) | ✓ | ✓ | INTEGRATED | PROJECT \| ORGANIZATION. |
 | Purchase Orders (immutable revisions, MR↔PO allocation) | ✓ | ✓ | INTEGRATED | |
 | Goods Receipts (accept/reject, over-receipt tolerance) | ✓ | ✓ | INTEGRATED | `EXCEPTION_PENDING` above tolerance. |
-| Bill Matching (2-way / 3-way, tolerance policy) | ✓ | — | BACKEND | Posting blocked unless MATCHED / MATCHED_WITH_TOLERANCE / APPROVED_EXCEPTION. |
+| Bill Matching (2-way / 3-way, tolerance policy) | ✓ (gaps) | — | PARTIAL | **Control does not fully hold — see ADR-018.** Verdict is a single boolean (amount dimension unevaluated); "3-way" ignores the GRN in the tolerance decision; matching is invoice-isolated (not cumulative); out-of-tolerance posts as `MATCHED_WITH_TOLERANCE` (gate is toothless). Corrective invariants frozen in ADR-018, gated on Eng Ahmed sign-off. |
 | Commitment Ledger (COMMITTED→ACCRUED→ACTUAL) | ✓ | ✓ | INTEGRATED | Immutable signed entries; `CommitmentLedgerWriter`. |
 | Subcontracts (subcontract BOQ, certificate, AP) | — | — | DESIGNED | ADR-012 (reuse certify engine + AP). Not built. |
 | Approved Supplier List / Supplier Return | — | — | NOT_DESIGNED | |

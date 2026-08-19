@@ -104,3 +104,81 @@ describe('A5 — IPC-to-invoice idempotency (CONST-COM-006)', () => {
     await expect(service.generateFromIpc(identity, dto)).rejects.toBeInstanceOf(NotFoundException);
   });
 });
+
+describe('ADR-023 — generateFromInstallment (milestone billing)', () => {
+  const instDto = { installmentId: 'inst-1', invoiceDate: '2026-06-05', dueDate: '2026-07-05' };
+  const milestoneContract = {
+    id: 'c-1',
+    contractNumber: 'CN-1',
+    clientId: 'client-1',
+    projectId: 'p-1',
+    currency: 'USD',
+    contractValue: '1000000',
+    billingModel: 'MILESTONE',
+    status: 'ACTIVE',
+    client: { name: 'ACCO' },
+  };
+  const structureInstallment = {
+    id: 'inst-1',
+    name: 'Structure',
+    percentage: '0.3',
+    contract: milestoneContract,
+  };
+
+  function buildInstallment(inst: unknown) {
+    const repo = { findByInstallment: jest.fn().mockResolvedValue(null), create: jest.fn() };
+    const prisma = { contractPaymentInstallment: { findFirst: jest.fn().mockResolvedValue(inst) } };
+    const tenancy = { getClient: () => prisma };
+    const service = new ClientInvoiceService(
+      tenancy as never,
+      repo as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    return { repo, service };
+  }
+
+  it('creates one invoice for percentage × contract value (30% of 1,000,000)', async () => {
+    const { repo, service } = buildInstallment(structureInstallment);
+    repo.create.mockResolvedValue({ id: 'inv-new' });
+    await service.generateFromInstallment(identity, instDto);
+    expect(repo.create).toHaveBeenCalledTimes(1);
+    const data = repo.create.mock.calls[0][1];
+    expect(data.sourceInstallmentId).toBe('inst-1');
+    expect(data.subtotal.toString()).toBe('300000');
+    expect(data.vatAmount.toString()).toBe('15000');
+    expect(data.totalAmount.toString()).toBe('315000');
+  });
+
+  it('is idempotent — returns the existing invoice, no second create', async () => {
+    const { repo, service } = buildInstallment(structureInstallment);
+    const existing = { id: 'inv-existing' };
+    repo.findByInstallment.mockResolvedValue(existing);
+    const result = await service.generateFromInstallment(identity, instDto);
+    expect(result).toBe(existing);
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a certified-progress (MEASURED_IPC) contract', async () => {
+    const { repo, service } = buildInstallment({
+      ...structureInstallment,
+      contract: { ...milestoneContract, billingModel: 'MEASURED_IPC' },
+    });
+    await expect(service.generateFromInstallment(identity, instDto)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects when the contract is not ACTIVE', async () => {
+    const { repo, service } = buildInstallment({
+      ...structureInstallment,
+      contract: { ...milestoneContract, status: 'DRAFT' },
+    });
+    await expect(service.generateFromInstallment(identity, instDto)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+});

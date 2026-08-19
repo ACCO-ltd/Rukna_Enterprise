@@ -33,6 +33,7 @@ import { UpdateProjectDto } from './dto/update-project.dto.js';
 import { CancelProjectDto } from './dto/cancel-project.dto.js';
 import { SuspendProjectDto } from './dto/suspend-project.dto.js';
 import { AddMemberDto } from './dto/add-member.dto.js';
+import { SetMemberRolesDto } from './dto/set-member-roles.dto.js';
 
 @ApiTags('Projects')
 @ApiBearerAuth('access-token')
@@ -230,5 +231,20 @@ export class ProjectsController {
     @Param('userId') userId: string,
   ) {
     return this.projectService.removeMember(identity, id, userId);
+  }
+
+  @Patch(':id/members/:userId/roles')
+  @RequirePermissions(PERMISSIONS.projectMembersManage)
+  @ApiOperation({
+    summary: "Correct a member's roles (closes the current roles, opens the new set)",
+  })
+  @ApiResponse({ status: 404, description: 'User is not an active member' })
+  setMemberRoles(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Param('userId') userId: string,
+    @Body() dto: SetMemberRolesDto,
+  ) {
+    return this.projectService.setMemberRoles(identity, id, userId, dto);
   }
 }
