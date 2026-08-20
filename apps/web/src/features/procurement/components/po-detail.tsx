@@ -271,12 +271,6 @@ function RevisionPanel({
       {/* Revision metadata — gap-px tile grid */}
       <dl className="grid gap-px overflow-hidden rounded-xl border border-border bg-border shadow-[var(--shadow-panel)] sm:grid-cols-2 lg:grid-cols-4">
         <div className="bg-surface px-5 py-4">
-          <dt className="text-xs font-medium text-muted-foreground">{tc('currency')}</dt>
-          <dd className="mt-1.5 text-sm font-semibold tabular-nums text-foreground">
-            {revision.currencyCode}
-          </dd>
-        </div>
-        <div className="bg-surface px-5 py-4">
           <dt className="text-xs font-medium text-muted-foreground">{t('effectiveFrom')}</dt>
           <dd className="mt-1.5 text-sm font-semibold text-foreground">
             {formatDate(revision.effectiveFrom, locale) ?? tc('notAvailable')}

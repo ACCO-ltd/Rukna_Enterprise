@@ -87,12 +87,11 @@ beforeEach(() => {
 });
 
 describe('BankAccounts list', () => {
-  it('lists each account with its bank, name and currency', () => {
+  it('lists each account with its bank and name', () => {
     renderWithProviders(<BankAccounts />);
 
     expect(screen.getByText('Salaam Bank')).toBeInTheDocument();
     expect(screen.getByText('Main Operating')).toBeInTheDocument();
-    expect(screen.getByText('USD')).toBeInTheDocument();
   });
 
   /** A full account number on a list screen is a detail nobody needs and everyone can screenshot. */

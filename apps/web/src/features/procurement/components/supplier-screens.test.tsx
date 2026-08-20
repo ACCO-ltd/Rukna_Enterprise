@@ -97,9 +97,9 @@ describe('SupplierList', () => {
   it('falls back to a placeholder for every optional field left empty', () => {
     renderWithProviders(<SupplierList />);
 
-    // Horn Cement has no tax number, currency or terms — three placeholders on its row.
+    // Horn Cement has no tax number or terms — two placeholders on its row.
     expect(screen.getByText('Horn Cement')).toBeInTheDocument();
-    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(3);
+    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
   });
 
   /**

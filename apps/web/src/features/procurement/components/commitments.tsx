@@ -303,12 +303,6 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
                           <span className="block font-medium tabular-nums">
                             {formatMoney(entry.reportingAmount, project?.currency ?? null, locale)}
                           </span>
-                          {/* Transaction currency shown only when different from reporting */}
-                          {entry.currencyCode !== (project?.currency ?? entry.currencyCode) ? (
-                            <span className="block text-xs text-muted-foreground tabular-nums">
-                              {formatMoney(entry.amount, entry.currencyCode, locale)}
-                            </span>
-                          ) : null}
                         </TableCell>
                         <TableCell className="text-sm">
                           {entry.sourceDocumentType === 'PURCHASE_ORDER_REVISION' &&

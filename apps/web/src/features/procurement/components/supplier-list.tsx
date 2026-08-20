@@ -105,14 +105,13 @@ export function SupplierList() {
               <TableHead>{tc('code')}</TableHead>
               <TableHead>{tc('name')}</TableHead>
               <TableHead>{t('taxNumber')}</TableHead>
-              <TableHead>{t('defaultCurrency')}</TableHead>
               <TableHead>{t('paymentTerms')}</TableHead>
               <TableHead>{tc('status')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.length === 0 ? (
-              <TableEmpty colSpan={6}>
+              <TableEmpty colSpan={5}>
                 {query ? tc('noResults') : t('empty')}
               </TableEmpty>
             ) : (
@@ -124,9 +123,6 @@ export function SupplierList() {
                   </TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">
                     {supplier.taxNumber ?? tc('notAvailable')}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {supplier.defaultCurrency ?? tc('notAvailable')}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {supplier.paymentTermsDays === null
@@ -169,7 +165,6 @@ function SupplierCreateForm({ onDone }: { onDone: () => void }) {
     const code = String(form.get('code') ?? '').trim();
     const name = String(form.get('name') ?? '').trim();
     const taxNumber = String(form.get('taxNumber') ?? '').trim();
-    const defaultCurrency = String(form.get('defaultCurrency') ?? '').trim().toUpperCase();
     const terms = String(form.get('paymentTermsDays') ?? '').trim();
 
     if (!code || !name) return;
@@ -184,7 +179,8 @@ function SupplierCreateForm({ onDone }: { onDone: () => void }) {
         code,
         name,
         ...(taxNumber ? { taxNumber } : {}),
-        ...(defaultCurrency ? { defaultCurrency } : {}),
+        // Single-currency platform (ADR-024): suppliers default to USD implicitly.
+        defaultCurrency: 'USD',
         ...(paymentTermsDays !== undefined ? { paymentTermsDays } : {}),
       },
       { onSuccess: onDone },
@@ -214,20 +210,6 @@ function SupplierCreateForm({ onDone }: { onDone: () => void }) {
       <FormField htmlFor={ids.taxNumber} label={`${t('taxNumber')} (${tc('optional')})`}>
         <Input id={ids.taxNumber} name="taxNumber" maxLength={50} autoComplete="off" />
         <p className="text-xs text-muted-foreground">{t('taxNumberHint')}</p>
-      </FormField>
-
-      <FormField
-        htmlFor={ids.currency}
-        label={`${t('defaultCurrency')} (${tc('optional')})`}
-      >
-        <Input
-          id={ids.currency}
-          name="defaultCurrency"
-          maxLength={3}
-          className="uppercase"
-          autoComplete="off"
-        />
-        <p className="text-xs text-muted-foreground">{t('currencyHint')}</p>
       </FormField>
 
       <FormField htmlFor={ids.terms} label={`${t('paymentTerms')} (${tc('optional')})`}>

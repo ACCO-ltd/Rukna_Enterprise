@@ -172,10 +172,6 @@ export function JournalDetail({ journalId }: { journalId: string }) {
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-muted-foreground">{t('currency')}</dt>
-            <dd className="mt-0.5 text-sm text-foreground">{entry.currencyCode}</dd>
-          </div>
-          <div>
             <dt className="text-xs text-muted-foreground">{t('createdBy')}</dt>
             <dd className="mt-0.5 text-sm text-foreground">{entry.createdBy.slice(-8)}</dd>
           </div>

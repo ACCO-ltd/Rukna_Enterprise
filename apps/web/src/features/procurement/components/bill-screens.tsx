@@ -218,7 +218,6 @@ export function SupplierBillDetail({ id }: { id: string }) {
                 label={t('dueDate')}
                 value={formatDate(bill.dueDate, locale) ?? tc('notAvailable')}
               />
-              <Field label={tc('currency')} value={bill.currencyCode} />
               <Field
                 label={t('totalAmount')}
                 value={formatMoney(bill.totalAmount, bill.currencyCode, locale) ?? ''}
