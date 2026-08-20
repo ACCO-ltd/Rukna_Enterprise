@@ -1,5 +1,5 @@
 ---
-Status: proposed
+Status: accepted
 ---
 
 # Commercial billing: payment-schedule and certified-progress models
@@ -9,9 +9,12 @@ Status: proposed
 Extends ADR-005 (commercial) and ADR-017 (commercial workspace). Domain input from **Eng Ahmed
 Shirie**: ACCO bills primarily by a **negotiated payment schedule** (advance + staged milestone
 installments), with certified-progress (IPA/IPC) for consultant-supervised contracts. Payment
-milestone structure + configurability confirmed 2026-08-17. **Pending confirmation** (memo
-`docs/backend-requests/commercial-payment-model-for-ceo.md`): advance-recovery method, retention
-%/release, invoice-issue authority, divergence threshold, and the Handover-line question. Reuses
+milestone structure + configurability confirmed 2026-08-17. **Remaining items confirmed 2026-08-20:**
+no advance recovery, no retention (V1); invoice-issue authority = DOA (ADR-022); divergence alert
+at **>20%**; and the **standard ACCO payment template** = Advance **40** / Structure **30** /
+Partition & Plastering **20** / Installation & Paint **10**, with **Inspection & Handover as the
+final-acceptance milestone** (releases the final installment; no separate %, sums to 100%). This
+template pre-fills the payment-plan builder. Reuses
 ADR-019 (guarded commands/readiness), ADR-021 (verified progress, the firewall), ADR-022 (DOA).
 
 ## Context

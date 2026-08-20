@@ -201,12 +201,10 @@ describe('toJournalPayload', () => {
       {
         accountId: 'acc-expense',
         debitAmount: 2500,
-        transactionCurrencyCode: 'USD',
       },
       {
         accountId: 'acc-accrual',
         creditAmount: 2500,
-        transactionCurrencyCode: 'USD',
       },
     ]);
   });

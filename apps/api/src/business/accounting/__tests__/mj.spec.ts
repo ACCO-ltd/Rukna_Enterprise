@@ -32,8 +32,8 @@ it('MJ-01: full lifecycle DRAFT→SUBMIT→APPROVE→POST produces a POSTED GL e
     description:    'Test MJ-01',
     currencyCode:   'USD',
     lines: [
-      { accountId: env.accounts.revId, debitAmount:  500, transactionCurrencyCode: 'USD' },
-      { accountId: env.accounts.expId, creditAmount: 500, transactionCurrencyCode: 'USD' },
+      { accountId: env.accounts.revId, debitAmount:  500 },
+      { accountId: env.accounts.expId, creditAmount: 500 },
     ],
   });
 
@@ -67,8 +67,8 @@ it('MJ-02: posting an unbalanced draft is rejected', async () => {
     description:    'Unbalanced MJ-02',
     currencyCode:   'USD',
     lines: [
-      { accountId: env.accounts.revId, debitAmount:  1000, transactionCurrencyCode: 'USD' },
-      { accountId: env.accounts.expId, creditAmount:  999, transactionCurrencyCode: 'USD' },
+      { accountId: env.accounts.revId, debitAmount:  1000 },
+      { accountId: env.accounts.expId, creditAmount:  999 },
     ],
   });
 
@@ -87,8 +87,8 @@ it('MJ-03: MANUAL origin is blocked from posting to a SYSTEM_ONLY control accoun
     description:    'MJ-03 control account test',
     currencyCode:   'USD',
     lines: [
-      { accountId: env.accounts.ctrlId, debitAmount:  100, transactionCurrencyCode: 'USD' },
-      { accountId: env.accounts.expId,  creditAmount: 100, transactionCurrencyCode: 'USD' },
+      { accountId: env.accounts.ctrlId, debitAmount:  100 },
+      { accountId: env.accounts.expId,  creditAmount: 100 },
     ],
   });
 
@@ -107,8 +107,8 @@ it('MJ-04: posted manual journal can be reversed with swapped Dr/Cr', async () =
     description:    'MJ-04 to be reversed',
     currencyCode:   'USD',
     lines: [
-      { accountId: env.accounts.revId, debitAmount:  750, transactionCurrencyCode: 'USD' },
-      { accountId: env.accounts.expId, creditAmount: 750, transactionCurrencyCode: 'USD' },
+      { accountId: env.accounts.revId, debitAmount:  750 },
+      { accountId: env.accounts.expId, creditAmount: 750 },
     ],
   });
 

@@ -18,7 +18,6 @@ export interface CreateCommitmentEntryData {
   amount: Decimal;
   currencyCode: string;
   reportingAmount: Decimal;
-  exchangeRateSnapshot: Decimal;
   sourceDocumentType: CommitmentSourceDocType;
   sourceDocumentId: string;
   sourceLineId?: string;
@@ -72,7 +71,7 @@ export class CommitmentLedgerRepository {
   ) {
     return prisma.commitmentLedgerEntry.findMany({
       where: { organizationId, purchaseOrderId, sourceLineId, stage },
-      select: { amount: true, exchangeRateSnapshot: true },
+      select: { amount: true },
       orderBy: { occurredAt: 'asc' },
     });
   }

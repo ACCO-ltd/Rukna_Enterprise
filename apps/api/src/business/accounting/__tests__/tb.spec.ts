@@ -39,8 +39,8 @@ beforeAll(async () => {
         postingOrigin:      'MANUAL',
         createdBy:          env.identity.userId,
         lines: [
-          { accountId: env.accounts.bankId, debitAmount: new Decimal('1000'), creditAmount: new Decimal(0), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('1000') },
-          { accountId: env.accounts.revId,  debitAmount: new Decimal(0),    creditAmount: new Decimal('1000'), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('1000') },
+          { accountId: env.accounts.bankId, debitAmount: new Decimal('1000'), creditAmount: new Decimal(0) },
+          { accountId: env.accounts.revId,  debitAmount: new Decimal(0),    creditAmount: new Decimal('1000') },
         ],
       },
       tx as never,
@@ -127,8 +127,8 @@ it('TB-04: trial balance for a CLOSED period with a valid snapshot uses the snap
           postingOrigin:      'MANUAL',
           createdBy:          freshEnv.identity.userId,
           lines: [
-            { accountId: freshEnv.accounts.bankId, debitAmount: new Decimal('400'), creditAmount: new Decimal(0), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('400') },
-            { accountId: freshEnv.accounts.revId,  debitAmount: new Decimal(0),    creditAmount: new Decimal('400'), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('400') },
+            { accountId: freshEnv.accounts.bankId, debitAmount: new Decimal('400'), creditAmount: new Decimal(0) },
+            { accountId: freshEnv.accounts.revId,  debitAmount: new Decimal(0),    creditAmount: new Decimal('400') },
           ],
         },
         tx as never,
@@ -186,8 +186,8 @@ it('TB-05: trial balance is org-scoped — other org entries never appear', asyn
           postingOrigin:      'MANUAL',
           createdBy:          otherEnv.identity.userId,
           lines: [
-            { accountId: otherEnv.accounts.bankId, debitAmount: new Decimal('99999'), creditAmount: new Decimal(0), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('99999') },
-            { accountId: otherEnv.accounts.revId,  debitAmount: new Decimal(0),      creditAmount: new Decimal('99999'), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('99999') },
+            { accountId: otherEnv.accounts.bankId, debitAmount: new Decimal('99999'), creditAmount: new Decimal(0) },
+            { accountId: otherEnv.accounts.revId,  debitAmount: new Decimal(0),      creditAmount: new Decimal('99999') },
           ],
         },
         tx as never,

@@ -36,9 +36,6 @@ export class CreateSupplierPaymentDto {
   @IsString() @IsNotEmpty() @MaxLength(3)
   currencyCode!: string;
 
-  @ApiPropertyOptional({ example: 1.0 })
-  @IsNumber() @IsOptional()
-  exchangeRateSnapshot?: number;
 
   @ApiProperty({ example: 10000 })
   @IsNumber() @Min(0.01)

@@ -19,7 +19,6 @@ export interface ManualJournalLineDto {
   accountId: string;
   debitAmount?: number;
   creditAmount?: number;
-  transactionCurrencyCode?: string;
   memo?: string;
   projectId?: string;
   departmentId?: string;
@@ -94,8 +93,6 @@ export class ManualJournalService {
             accountVersionNumber: 0,
             debitAmount: new Decimal(line.debitAmount ?? 0),
             creditAmount: new Decimal(line.creditAmount ?? 0),
-            transactionCurrencyCode: line.transactionCurrencyCode ?? dto.currencyCode,
-            baseCurrencyAmount: new Decimal(line.debitAmount ?? line.creditAmount ?? 0),
             postingOrigin: 'MANUAL',
             description: line.memo ?? null,
             projectId: line.projectId ?? null,
@@ -177,8 +174,6 @@ export class ManualJournalService {
             accountId: line.accountId,
             debitAmount: line.debitAmount as unknown as Decimal,
             creditAmount: line.creditAmount as unknown as Decimal,
-            transactionCurrencyCode: line.transactionCurrencyCode,
-            baseCurrencyAmount: line.baseCurrencyAmount as unknown as Decimal,
             sourceSubledgerType: undefined,
             memo: line.description ?? undefined,
             projectId: line.projectId ?? undefined,
@@ -255,8 +250,6 @@ export class ManualJournalService {
             // Swap debit/credit for reversal
             debitAmount: line.creditAmount as unknown as Decimal,
             creditAmount: line.debitAmount as unknown as Decimal,
-            transactionCurrencyCode: line.transactionCurrencyCode,
-            baseCurrencyAmount: line.baseCurrencyAmount as unknown as Decimal,
             memo: `Reversal: ${line.description ?? ''}`,
             projectId: line.projectId ?? undefined,
             departmentId: line.departmentId ?? undefined,

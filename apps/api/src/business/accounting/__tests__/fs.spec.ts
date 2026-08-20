@@ -45,8 +45,8 @@ function postJournal(sourceDocId: string, debitId: string, creditId: string, amo
         postingOrigin:      'MANUAL',
         createdBy:          env.identity.userId,
         lines: [
-          { accountId: debitId,  debitAmount: amount,            creditAmount: new Decimal(0), transactionCurrencyCode: 'USD', baseCurrencyAmount: amount },
-          { accountId: creditId, debitAmount: new Decimal(0), creditAmount: amount,            transactionCurrencyCode: 'USD', baseCurrencyAmount: amount },
+          { accountId: debitId,  debitAmount: amount,            creditAmount: new Decimal(0) },
+          { accountId: creditId, debitAmount: new Decimal(0), creditAmount: amount },
         ],
       },
       tx as never,
@@ -118,8 +118,8 @@ it('FS-03: reversal lines appear in the GL and cancel out the original to net ze
         reversalOfJournalEntryId: orig.journalEntryId,
         createdBy: env.identity.userId,
         lines: [
-          { accountId: env.accounts.bankId, debitAmount: amount,            creditAmount: new Decimal(0), transactionCurrencyCode: 'USD', baseCurrencyAmount: amount },
-          { accountId: env.accounts.expId,  debitAmount: new Decimal(0), creditAmount: amount,            transactionCurrencyCode: 'USD', baseCurrencyAmount: amount },
+          { accountId: env.accounts.bankId, debitAmount: amount,            creditAmount: new Decimal(0) },
+          { accountId: env.accounts.expId,  debitAmount: new Decimal(0), creditAmount: amount },
         ],
       },
       tx as never,

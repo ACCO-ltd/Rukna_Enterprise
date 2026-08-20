@@ -243,7 +243,6 @@ export class AccountingFixtureFactory {
         isEffective: true,
         certifiedTotal: 10500,
         currency: 'USD',
-        exchangeRateValue: 1,
         createdBy: userId,
       },
     });

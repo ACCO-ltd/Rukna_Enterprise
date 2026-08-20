@@ -366,10 +366,6 @@ export interface IpaResponse {
   applicationRef?: string;
   periodFrom?: string;
   periodTo?: string;
-  exchangeRateCurrency?: string;
-  exchangeRateBase?: string;
-  exchangeRateValue?: string;
-  exchangeRateDate?: string;
   submittedAt?: string;
   submittedBy?: string;
   notes?: string;
@@ -417,10 +413,6 @@ export interface IpcResponse {
   effectiveAt?: string;
   certifiedTotal: string;
   currency: string;
-  exchangeRateCurrency?: string;
-  exchangeRateBase?: string;
-  exchangeRateValue?: string;
-  exchangeRateDate?: string;
   issuedAt?: string;
   issuedBy?: string;
   supersededAt?: string;
@@ -465,7 +457,6 @@ export interface PaymentReceiptResponse {
   receiptDate: string;
   amount: string;
   currency: string;
-  exchangeRate?: string;
   reference?: string;
   notes?: string;
   createdBy: string;

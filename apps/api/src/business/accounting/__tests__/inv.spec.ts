@@ -45,8 +45,8 @@ it('INV-01: document numbers are sequential (JE-000001, JE-000002, …)', async 
           postingOrigin:      'MANUAL',
           createdBy:          env.identity.userId,
           lines: [
-            { accountId: env.accounts.revId, debitAmount: new Decimal('10'), creditAmount: new Decimal(0), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('10') },
-            { accountId: env.accounts.expId, debitAmount: new Decimal(0), creditAmount: new Decimal('10'), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('10') },
+            { accountId: env.accounts.revId, debitAmount: new Decimal('10'), creditAmount: new Decimal(0) },
+            { accountId: env.accounts.expId, debitAmount: new Decimal(0), creditAmount: new Decimal('10') },
           ],
         },
         tx as never,
@@ -86,8 +86,8 @@ it('INV-02: SYSTEM_ONLY control account blocks MANUAL posting origin', async () 
           postingOrigin:      'MANUAL',
           createdBy:          env.identity.userId,
           lines: [
-            { accountId: env.accounts.ctrlId, debitAmount: new Decimal('100'), creditAmount: new Decimal(0), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('100') },
-            { accountId: env.accounts.expId,  debitAmount: new Decimal(0), creditAmount: new Decimal('100'), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('100') },
+            { accountId: env.accounts.ctrlId, debitAmount: new Decimal('100'), creditAmount: new Decimal(0) },
+            { accountId: env.accounts.expId,  debitAmount: new Decimal(0), creditAmount: new Decimal('100') },
           ],
         },
         tx as never,
@@ -115,8 +115,8 @@ it('INV-03: idempotent posting returns the same journalEntryId on repeat call', 
     postingOrigin:      'MANUAL' as const,
     createdBy:          env.identity.userId,
     lines: [
-      { accountId: env.accounts.revId, debitAmount: new Decimal('200'), creditAmount: new Decimal(0), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('200') },
-      { accountId: env.accounts.expId, debitAmount: new Decimal(0), creditAmount: new Decimal('200'), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('200') },
+      { accountId: env.accounts.revId, debitAmount: new Decimal('200'), creditAmount: new Decimal(0) },
+      { accountId: env.accounts.expId, debitAmount: new Decimal(0), creditAmount: new Decimal('200') },
     ],
   });
 

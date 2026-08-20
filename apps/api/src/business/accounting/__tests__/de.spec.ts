@@ -46,8 +46,8 @@ async function postTestJournal(sourceDocId: string, debitAccountId: string, cred
         postingOrigin:      'MANUAL',
         createdBy:          env.identity.userId,
         lines: [
-          { accountId: debitAccountId,  debitAmount: amount, creditAmount: new Decimal(0), transactionCurrencyCode: 'USD', baseCurrencyAmount: amount },
-          { accountId: creditAccountId, debitAmount: new Decimal(0), creditAmount: amount, transactionCurrencyCode: 'USD', baseCurrencyAmount: amount },
+          { accountId: debitAccountId,  debitAmount: amount, creditAmount: new Decimal(0) },
+          { accountId: creditAccountId, debitAmount: new Decimal(0), creditAmount: amount },
         ],
       },
       tx as never,
@@ -91,7 +91,7 @@ it('DE-02: single-line journal is rejected', async () => {
           postingOrigin:      'MANUAL',
           createdBy:          env.identity.userId,
           lines: [
-            { accountId: env.accounts.revId, debitAmount: new Decimal('500'), creditAmount: new Decimal(0), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('500') },
+            { accountId: env.accounts.revId, debitAmount: new Decimal('500'), creditAmount: new Decimal(0) },
           ],
         },
         tx as never,
@@ -119,8 +119,8 @@ it('DE-03: line with both debit and credit is rejected', async () => {
           postingOrigin:      'MANUAL',
           createdBy:          env.identity.userId,
           lines: [
-            { accountId: env.accounts.revId, debitAmount: new Decimal('500'), creditAmount: new Decimal('500'), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('500') },
-            { accountId: env.accounts.expId, debitAmount: new Decimal(0), creditAmount: new Decimal(0), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal(0) },
+            { accountId: env.accounts.revId, debitAmount: new Decimal('500'), creditAmount: new Decimal('500') },
+            { accountId: env.accounts.expId, debitAmount: new Decimal(0), creditAmount: new Decimal(0) },
           ],
         },
         tx as never,
@@ -148,8 +148,8 @@ it('DE-04: unbalanced journal (∑Dr ≠ ∑Cr) is rejected', async () => {
           postingOrigin:      'MANUAL',
           createdBy:          env.identity.userId,
           lines: [
-            { accountId: env.accounts.revId, debitAmount: new Decimal('1000'), creditAmount: new Decimal(0), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('1000') },
-            { accountId: env.accounts.expId, debitAmount: new Decimal(0), creditAmount: new Decimal('999'), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('999') },
+            { accountId: env.accounts.revId, debitAmount: new Decimal('1000'), creditAmount: new Decimal(0) },
+            { accountId: env.accounts.expId, debitAmount: new Decimal(0), creditAmount: new Decimal('999') },
           ],
         },
         tx as never,
@@ -184,8 +184,8 @@ it('DE-05: reversal produces a balanced journal with swapped Dr/Cr', async () =>
         createdBy:          env.identity.userId,
         lines: [
           // Swapped: credit side becomes debit
-          { accountId: env.accounts.expId, debitAmount: amount, creditAmount: new Decimal(0), transactionCurrencyCode: 'USD', baseCurrencyAmount: amount },
-          { accountId: env.accounts.revId, debitAmount: new Decimal(0), creditAmount: amount, transactionCurrencyCode: 'USD', baseCurrencyAmount: amount },
+          { accountId: env.accounts.expId, debitAmount: amount, creditAmount: new Decimal(0) },
+          { accountId: env.accounts.revId, debitAmount: new Decimal(0), creditAmount: amount },
         ],
       },
       tx as never,

@@ -6,10 +6,8 @@ import type { Ipa, IpaDeduction, IpaDetail, IpaItem } from '../types';
 /**
  * Body accepted by `POST /ipa`.
  *
- * Everything except `contractId` is optional. The exchange-rate fields are a snapshot
- * frozen at creation and are only meaningful on a contract billed in a currency other than
- * the one the books are kept in — they are not offered in the form until there is a rate
- * source to populate them from. Sending a partial set would record a rate with no base.
+ * Everything except `contractId` is optional. The platform is single-currency (USD) — see
+ * ADR-024 — so there are no exchange-rate fields on this payload.
  */
 export interface CreateIpaPayload {
   contractId: string;

@@ -581,11 +581,6 @@ export interface RevisePurchaseOrderPayload extends CreatePurchaseOrderPayload {
   reason: string;
 }
 
-export interface ApprovePurchaseOrderPayload {
-  reportingCurrencyCode: string;
-  exchangeRate: number;
-}
-
 export interface CreateGrnLinePayload {
   purchaseOrderLineId: string;
   receivedQuantity: number;
@@ -601,11 +596,6 @@ export interface CreateGoodsReceiptPayload {
   deliveryDate: string;
   deliveryNoteRef?: string;
   lines: CreateGrnLinePayload[];
-}
-
-export interface PostGoodsReceiptPayload {
-  exchangeRate: number;
-  reportingCurrencyCode: string;
 }
 
 export interface ApproveExceptionPayload {

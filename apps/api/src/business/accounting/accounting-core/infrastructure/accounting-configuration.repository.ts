@@ -5,10 +5,6 @@ type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$tr
 
 @Injectable()
 export class AccountingConfigurationRepository {
-  getMonetaryPolicy(prisma: TenantPrisma, organizationId: string) {
-    return prisma.monetaryPolicy.findUnique({ where: { organizationId } });
-  }
-
   getFiscalCalendarPolicy(prisma: TenantPrisma, organizationId: string) {
     return prisma.fiscalCalendarPolicy.findUnique({ where: { organizationId } });
   }
@@ -31,18 +27,6 @@ export class AccountingConfigurationRepository {
 
   getBankingPolicy(prisma: TenantPrisma, organizationId: string) {
     return prisma.bankingPolicy.findUnique({ where: { organizationId } });
-  }
-
-  upsertMonetaryPolicy(
-    prisma: TenantPrisma,
-    organizationId: string,
-    data: { baseCurrencyCode: string; reportingCurrencyCode: string; updatedBy: string },
-  ) {
-    return prisma.monetaryPolicy.upsert({
-      where: { organizationId },
-      create: { organizationId, ...data },
-      update: data,
-    });
   }
 
   upsertFiscalCalendarPolicy(

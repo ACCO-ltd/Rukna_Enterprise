@@ -14,10 +14,6 @@ export interface IssueIpcPayload {
   applicationId: string;
   status: 'CERTIFIED' | 'PARTIALLY_CERTIFIED' | 'REJECTED';
   currency: string;
-  exchangeRateCurrency?: string;
-  exchangeRateBase?: string;
-  exchangeRateValue?: string;
-  exchangeRateDate?: string;
   notes?: string;
   items: Array<{
     applicationItemId: string;

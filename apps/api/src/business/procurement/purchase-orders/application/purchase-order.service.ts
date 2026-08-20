@@ -52,11 +52,6 @@ export interface RevisePoDto {
   lines: CreatePoLineDto[];
 }
 
-export interface ApprovePurchaseOrderDto {
-  reportingCurrencyCode: string;
-  exchangeRate: number;
-}
-
 type TenantPrisma = Omit<
   PrismaClient,
   '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
@@ -181,7 +176,7 @@ export class PurchaseOrderService {
     return this.repo.findById(prisma, identity.activeOrganizationId, id);
   }
 
-  async approve(identity: RequestIdentity, id: string, dto: ApprovePurchaseOrderDto) {
+  async approve(identity: RequestIdentity, id: string) {
     const prisma = this.tenancy.getClient();
     const po = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!po) throw new NotFoundException(`Purchase order ${id} not found`);
@@ -193,7 +188,6 @@ export class PurchaseOrderService {
     const currentActive = po.revisions.find((r) => r.status === 'ACTIVE');
 
     // Atomically: approve revision → ACTIVE, supersede old, write CommitmentLedger entries, audit
-    const rate = new Decimal(dto.exchangeRate);
     await prisma.$transaction(async (tx) => {
       if (currentActive) {
         await this.repo.updateRevisionStatus(tx, currentActive.id, 'SUPERSEDED');
@@ -218,7 +212,6 @@ export class PurchaseOrderService {
             spendCategoryId: line.spendCategoryId ?? undefined,
             amount: netCommitted.negated(),
             currencyCode: submitted.currencyCode,
-            rate,
             sourceDocumentType: 'PO_CANCELLATION',
             sourceDocumentId: po.id,
             sourceLineId: line.id,
@@ -249,7 +242,6 @@ export class PurchaseOrderService {
           spendCategoryId: line.spendCategoryId ?? undefined,
           amount,
           currencyCode: submitted.currencyCode,
-          rate,
           sourceDocumentType: 'PURCHASE_ORDER_REVISION',
           sourceDocumentId: po.id,
           sourceLineId: line.id,
@@ -346,9 +338,6 @@ export class PurchaseOrderService {
             new Decimal(0),
           );
           if (netCommitted.lessThanOrEqualTo(0)) continue;
-          const lastRate = committedEntries.length
-            ? (committedEntries[committedEntries.length - 1].exchangeRateSnapshot as Decimal)
-            : new Decimal(1);
           await this.commitmentWriter.committed(tx, {
             organizationId: po.organizationId,
             supplierId: po.supplierId,
@@ -356,7 +345,6 @@ export class PurchaseOrderService {
             spendCategoryId: line.spendCategoryId ?? undefined,
             amount: netCommitted.negated(),
             currencyCode: activeRevision.currencyCode,
-            rate: lastRate,
             sourceDocumentType: 'PO_CANCELLATION',
             sourceDocumentId: po.id,
             sourceLineId: line.id,

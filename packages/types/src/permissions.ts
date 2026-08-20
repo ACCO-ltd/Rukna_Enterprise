@@ -8,7 +8,6 @@ export const PERMISSIONS = {
   workflowsView: 'view:workflow',
   workflowsManage: 'manage:workflow',
   auditLogsView: 'view:audit-log',
-  exchangeRatesManage: 'manage:exchange-rate',
 
   clientsView: 'view:client',
   clientsCreate: 'create:client',
@@ -84,7 +83,6 @@ const DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.workflowsView]: 'View workflow definitions and approval state',
   [PERMISSIONS.workflowsManage]: 'Configure workflows and act on approvals',
   [PERMISSIONS.auditLogsView]: 'View the organization audit log',
-  [PERMISSIONS.exchangeRatesManage]: 'Manage exchange rates',
   [PERMISSIONS.clientsView]: 'View clients',
   [PERMISSIONS.clientsCreate]: 'Create clients',
   [PERMISSIONS.clientsManage]: 'Update clients and contacts',

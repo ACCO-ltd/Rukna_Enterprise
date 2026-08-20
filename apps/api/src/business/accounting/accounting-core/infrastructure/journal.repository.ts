@@ -9,7 +9,6 @@ export type JournalWithLines = JournalEntry & {
   lines: {
     id: string; lineNumber: number; accountId: string; accountCodeSnapshot: string;
     accountNameSnapshot: string; debitAmount: unknown; creditAmount: unknown;
-    transactionCurrencyCode: string; baseCurrencyAmount: unknown; memo: string | null;
   }[];
 };
 

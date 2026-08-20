@@ -60,14 +60,3 @@ export class CreateGoodsReceiptDto {
   @Type(() => CreateGrnLineDto)
   lines: CreateGrnLineDto[];
 }
-
-export class PostGoodsReceiptDto {
-  @ApiProperty({ example: 1.0 })
-  @IsNumber()
-  @IsPositive()
-  exchangeRate: number;
-
-  @ApiProperty({ example: 'SAR' })
-  @IsString()
-  reportingCurrencyCode: string;
-}

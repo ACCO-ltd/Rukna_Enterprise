@@ -230,16 +230,6 @@ export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
             <dd className="mt-1.5 text-sm text-foreground">{ipc.notes}</dd>
           </div>
         ) : null}
-
-        {ipc.exchangeRateValue ? (
-          <div className="bg-surface px-5 py-4 sm:col-span-2">
-            <dt className="text-xs font-medium text-muted-foreground">{t('exchangeRateLabel')}</dt>
-            <dd className="mt-1.5 text-sm text-foreground">
-              {ipc.exchangeRateCurrency} → {ipc.exchangeRateBase} @ {ipc.exchangeRateValue}
-              {ipc.exchangeRateDate ? ` (${formatDate(ipc.exchangeRateDate, locale)})` : null}
-            </dd>
-          </div>
-        ) : null}
       </dl>
 
       {/* Sprint 4 AR. Renders nothing unless the certificate is effective, which is the only

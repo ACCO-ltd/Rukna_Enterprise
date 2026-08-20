@@ -151,7 +151,6 @@ export class IpcService {
       const rate = new Decimal(contract.retentionTerms.retentionRate.toString());
       deductionData.push({
         deductionType: 'RETENTION',
-        rate: rate.toString(),
         basis: certifiedTotal.toFixed(2),
         amount: certifiedTotal.mul(rate).toFixed(2),
       });
@@ -162,7 +161,6 @@ export class IpcService {
         deductionData.push({
           deductionType: 'ADVANCE_RECOVERY',
           sourceTermId: term.id,
-          rate: rate.toString(),
           basis: certifiedTotal.toFixed(2),
           amount: certifiedTotal.mul(rate).toFixed(2),
         });
@@ -174,7 +172,6 @@ export class IpcService {
       deductionData.push({
         deductionType: ded.deductionType,
         sourceTermId: ded.sourceTermId,
-        rate: ded.rate,
         basis: ded.basis,
         amount: ded.amount,
       });
@@ -206,10 +203,6 @@ export class IpcService {
         effectiveAt: shouldBeEffective ? now : undefined,
         certifiedTotal: certifiedTotal.toFixed(2),
         currency: dto.currency,
-        exchangeRateCurrency: dto.exchangeRateCurrency,
-        exchangeRateBase: dto.exchangeRateBase,
-        exchangeRateValue: dto.exchangeRateValue,
-        exchangeRateDate: dto.exchangeRateDate ? new Date(dto.exchangeRateDate) : undefined,
         issuedAt: shouldBeEffective ? now : undefined,
         issuedBy: shouldBeEffective ? identity.userId : undefined,
         notes: dto.notes,
@@ -231,7 +224,6 @@ export class IpcService {
         await this.repo.addDeduction(tx, cert.id, {
           deductionType: ded.deductionType,
           sourceTermId: ded.sourceTermId,
-          rate: ded.rate,
           basis: ded.basis,
           amount: ded.amount,
         });

@@ -36,6 +36,10 @@ titles also collapse: several proposed roles are the same job at different scope
   account, AP/AR certification, journal preparation. Finance participates through the construction gates.
 - **System Administrator** — no business-transaction approval authority.
 
+> **Finance ladder confirmed 2026-08-20:** the finance hierarchy is **Accountant → Finance Officer
+> → CFO** (three tiers). Where this ADR writes "Finance Manager" (e.g. the payment ≤ $1,000 tier),
+> read **Finance Officer**. There is no separate Finance-Manager role above the Finance Officer.
+
 **Project-scoped (per project; chain configurable):**
 - **Site Engineer** — prepares DPRs, enters progress, raises MRs (requester), takes site decisions.
 - **Project Manager** — the single project-level authority (ACCO treats *Project Engineer /

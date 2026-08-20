@@ -18,10 +18,6 @@ export class ManualJournalLineDto {
   @IsNumber() @Min(0) @IsOptional()
   creditAmount?: number;
 
-  @ApiPropertyOptional({ example: 'USD' })
-  @IsString() @IsOptional() @MaxLength(3)
-  transactionCurrencyCode?: string;
-
   @ApiPropertyOptional()
   @IsString() @IsOptional() @MaxLength(500)
   memo?: string;

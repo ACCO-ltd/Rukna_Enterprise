@@ -3,7 +3,6 @@ import {
   calculateFinancialPosition,
   FINANCIAL_POSITION_IPC_STATUSES,
   FINANCIAL_POSITION_PROJECT_STATUSES,
-  toReportingAmount,
 } from './financial-position.policy.js';
 
 const d = (value: string) => new Decimal(value);
@@ -28,12 +27,5 @@ describe('Financial Position policy', () => {
     expect(result.outstandingReceivables.toString()).toBe('375');
     expect(result.forecastCost.toString()).toBe('600');
     expect(result.forecastMargin.toString()).toBe('400');
-  });
-
-  it('requires a positive approved exchange-rate snapshot', () => {
-    expect(() => toReportingAmount(d('100'), d('0'))).toThrow(
-      'APPROVED_EXCHANGE_RATE_SNAPSHOT_REQUIRED',
-    );
-    expect(toReportingAmount(d('100'), d('1.25')).toString()).toBe('125');
   });
 });

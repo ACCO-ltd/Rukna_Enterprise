@@ -211,7 +211,6 @@ export function toJournalPayload(draft: JournalDraft): CreateJournalPayload {
         // it makes a line's direction ambiguous to read back in a payload log.
         ...(debitMinor > 0 ? { debitAmount: debitMinor / 10 ** MONEY_SCALE } : {}),
         ...(creditMinor > 0 ? { creditAmount: creditMinor / 10 ** MONEY_SCALE } : {}),
-        transactionCurrencyCode: draft.currencyCode,
         ...(line.memo.trim() ? { memo: line.memo.trim() } : {}),
       };
     });

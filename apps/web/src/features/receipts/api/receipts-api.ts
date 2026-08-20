@@ -8,7 +8,6 @@ export interface CreateReceiptPayload {
   receiptDate: string;
   amount: string;
   currency: string;
-  exchangeRate?: string;
   reference?: string;
   notes?: string;
 }

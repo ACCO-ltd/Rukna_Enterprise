@@ -131,8 +131,6 @@ export class YearEndCloseService {
       accountId: string;
       debitAmount?: Decimal;
       creditAmount?: Decimal;
-      transactionCurrencyCode: string;
-      baseCurrencyAmount: Decimal;
       memo: string;
     }> = [];
 
@@ -160,15 +158,12 @@ export class YearEndCloseService {
       if (netBalance.isZero()) continue;
 
       const accountClass = account.versions[0]?.accountClass;
-      const currencyCode = 'USD'; // base currency
 
       if (netBalance.gt(0)) {
         // Debit-heavy (normal for EXPENSE/COST_OF_SALES): Cr to zero
         closingLines.push({
           accountId: account.id,
           creditAmount: netBalance,
-          transactionCurrencyCode: currencyCode,
-          baseCurrencyAmount: netBalance,
           memo: `Year-end close — ${accountClass}`,
         });
         if (accountClass === 'INCOME') {
@@ -182,8 +177,6 @@ export class YearEndCloseService {
         closingLines.push({
           accountId: account.id,
           debitAmount: absBalance,
-          transactionCurrencyCode: currencyCode,
-          baseCurrencyAmount: absBalance,
           memo: `Year-end close — ${accountClass}`,
         });
         if (accountClass === 'INCOME') {
@@ -207,8 +200,6 @@ export class YearEndCloseService {
       closingLines.push({
         accountId: fy.retainedEarningsAccountId,
         creditAmount: netPL,
-        transactionCurrencyCode: baseCurrency,
-        baseCurrencyAmount: netPL,
         memo: `Net income for ${fy.name}`,
       });
     } else if (netPL.lt(0)) {
@@ -217,8 +208,6 @@ export class YearEndCloseService {
       closingLines.push({
         accountId: fy.retainedEarningsAccountId,
         debitAmount: lossAmount,
-        transactionCurrencyCode: baseCurrency,
-        baseCurrencyAmount: lossAmount,
         memo: `Net loss for ${fy.name}`,
       });
     }
@@ -244,8 +233,6 @@ export class YearEndCloseService {
             accountId: l.accountId,
             debitAmount: l.debitAmount,
             creditAmount: l.creditAmount,
-            transactionCurrencyCode: l.transactionCurrencyCode,
-            baseCurrencyAmount: l.baseCurrencyAmount,
             memo: l.memo,
           })),
         },

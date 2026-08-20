@@ -42,7 +42,6 @@ export class FinanceService {
       accountingDate: receiptDate,
       totalAmount: dto.amount,
       currencyCode: dto.currency,
-      exchangeRateSnapshot: dto.exchangeRate,
       reference: dto.reference,
       notes: dto.notes,
       createdBy: identity.userId,

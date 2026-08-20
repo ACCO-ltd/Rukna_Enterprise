@@ -23,15 +23,10 @@ async function main() {
   const orgId = org.id;
   console.log(`Seeding accounting config for org: ${org.name} (${orgId})`);
 
-  // ── 1. Monetary policy ────────────────────────────────────────────────────
-  await prisma.monetaryPolicy.upsert({
-    where: { organizationId: orgId },
-    create: { organizationId: orgId, baseCurrencyCode: 'USD', reportingCurrencyCode: 'USD', updatedBy: SEED_USER },
-    update: { baseCurrencyCode: 'USD', reportingCurrencyCode: 'USD', updatedBy: SEED_USER },
-  });
-  console.log('  ✓ MonetaryPolicy');
+  // ADR-024: single-currency (USD). MonetaryPolicy was dropped — the base currency
+  // is now a constant, not a per-org configuration row.
 
-  // ── 2. Fiscal calendar policy ─────────────────────────────────────────────
+  // ── 1. Fiscal calendar policy ─────────────────────────────────────────────
   await prisma.fiscalCalendarPolicy.upsert({
     where: { organizationId: orgId },
     create: {

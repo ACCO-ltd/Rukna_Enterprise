@@ -58,14 +58,12 @@ function postJournal(opts: {
           {
             accountId: opts.debitId,
             debitAmount: amt, creditAmount: new Decimal(0),
-            transactionCurrencyCode: 'USD', baseCurrencyAmount: amt,
             projectId: opts.projectId,
             departmentId: opts.departmentId,
           },
           {
             accountId: opts.creditId,
             debitAmount: new Decimal(0), creditAmount: amt,
-            transactionCurrencyCode: 'USD', baseCurrencyAmount: amt,
             projectId: opts.projectId,
             departmentId: opts.departmentId,
           },
@@ -207,8 +205,8 @@ it('GL-04: ledger is scoped to requesting organization — cross-org entries exc
           createdBy:          otherEnv.identity.userId,
           lines: [
             // Both orgs happen to use same account IDs (orgId-prefixed codes, but same accountId structure)
-            { accountId: otherEnv.accounts.bankId, debitAmount: new Decimal('9999'), creditAmount: new Decimal(0), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('9999') },
-            { accountId: otherEnv.accounts.revId,  debitAmount: new Decimal(0), creditAmount: new Decimal('9999'), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('9999') },
+            { accountId: otherEnv.accounts.bankId, debitAmount: new Decimal('9999'), creditAmount: new Decimal(0) },
+            { accountId: otherEnv.accounts.revId,  debitAmount: new Decimal(0), creditAmount: new Decimal('9999') },
           ],
         },
         tx as never,
@@ -279,8 +277,8 @@ it('GL-06: drill-down returns all journal entries for a given source document', 
         postingOrigin:      'MANUAL',
         createdBy:          env.identity.userId,
         lines: [
-          { accountId: env.accounts.bankId, debitAmount: new Decimal('750'), creditAmount: new Decimal(0), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('750') },
-          { accountId: env.accounts.revId,  debitAmount: new Decimal(0), creditAmount: new Decimal('750'), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('750') },
+          { accountId: env.accounts.bankId, debitAmount: new Decimal('750'), creditAmount: new Decimal(0) },
+          { accountId: env.accounts.revId,  debitAmount: new Decimal(0), creditAmount: new Decimal('750') },
         ],
       },
       tx as never,

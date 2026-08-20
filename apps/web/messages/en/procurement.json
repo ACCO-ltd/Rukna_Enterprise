@@ -50,8 +50,6 @@
     "search": "Search",
     "all": "All",
     "deactivate": "Deactivate",
-    "reportingCurrency": "Reporting Currency",
-    "exchangeRate": "Exchange Rate",
     "blockedTitle": "Not available yet",
     "permissionDenied": "You do not have permission to perform this action."
   },
@@ -257,8 +255,6 @@
     "approveCommitmentNotice": "Approving this revision writes commitment ledger entries totalling {amount}.",
     "approveSupersedeNotice": "The current active revision will be superseded and reversing entries written for it.",
     "approveSupersedeWarning": "The reversal uses the revision's full original value, not its uncommitted balance. If goods have already been received, committed cost for this order may be understated.",
-    "reportingCurrency": "Reporting Currency",
-    "exchangeRate": "Exchange Rate",
     "reason": "Reason",
     "reasonRequired": "A reason is required for a revision.",
     "reviseTitle": "Revise {number}",

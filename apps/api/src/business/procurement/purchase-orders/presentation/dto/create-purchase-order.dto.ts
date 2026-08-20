@@ -1,6 +1,6 @@
 import {
   IsString, IsEnum, IsOptional, IsArray, ValidateNested,
-  IsPositive, IsDateString, ArrayMinSize, IsNumber,
+  IsPositive, IsDateString, ArrayMinSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -98,17 +98,6 @@ export class CreatePurchaseOrderDto {
   @ValidateNested({ each: true })
   @Type(() => CreatePoLineDto)
   lines: CreatePoLineDto[];
-}
-
-export class ApprovePurchaseOrderDto {
-  @ApiProperty({ example: 'SAR' })
-  @IsString()
-  reportingCurrencyCode: string;
-
-  @ApiProperty({ example: 1.0, description: 'Exchange rate to reporting currency' })
-  @IsNumber()
-  @IsPositive()
-  exchangeRate: number;
 }
 
 export class RevisePurchaseOrderDto extends CreatePurchaseOrderDto {
