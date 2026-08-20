@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import {
+  Controller,
   useFieldArray,
   useForm,
   useWatch,
@@ -16,7 +17,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { BoqVersionStatus, PaymentTrigger } from '@erp/types';
-import { Alert, Button, FormField, FormSection, Input, Select } from '@erp/ui';
+import { Alert, Button, FormField, FormSection, Input, MoneyInput, Select } from '@erp/ui';
 
 import { useBoqWorkspace } from '@/features/boq/hooks/use-boq';
 import { useClients } from '@/features/clients/hooks/use-clients';
@@ -292,12 +293,21 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
           label={t('value')}
           error={errors.contractValue?.message}
         >
-          <Input
-            id="contract-value"
-            inputMode="decimal"
-            dir="ltr"
-            aria-invalid={Boolean(errors.contractValue)}
-            {...register('contractValue')}
+          <Controller
+            name="contractValue"
+            control={control}
+            render={({ field }) => (
+              <MoneyInput
+                id="contract-value"
+                dir="ltr"
+                aria-invalid={Boolean(errors.contractValue)}
+                value={field.value}
+                onValueChange={field.onChange}
+                onBlur={field.onBlur}
+                ref={field.ref}
+                name={field.name}
+              />
+            )}
           />
         </FormField>
 

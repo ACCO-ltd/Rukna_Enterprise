@@ -25,7 +25,7 @@
 import { useId, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Input } from '@erp/ui';
+import { Alert, Button, FormField, Input, MoneyInput } from '@erp/ui';
 
 import { accountName } from '@/features/accounting/account-display';
 import { useAccounts, usePostingProfiles } from '@/features/accounting/hooks/use-accounting';
@@ -342,21 +342,19 @@ function BillLineRow({
 
       <div className="flex flex-wrap gap-4">
         <FormField htmlFor={ids.net} label={t('netAmount')} className="min-w-40 flex-1">
-          <Input
+          <MoneyInput
             id={ids.net}
             value={line.netAmount}
-            onChange={(e) => onChange({ netAmount: e.target.value })}
-            inputMode="decimal"
+            onValueChange={(v) => onChange({ netAmount: v })}
             autoComplete="off"
           />
         </FormField>
 
         <FormField htmlFor={ids.vat} label={t('vatAmount')} className="min-w-40 flex-1">
-          <Input
+          <MoneyInput
             id={ids.vat}
             value={line.vatAmount}
-            onChange={(e) => onChange({ vatAmount: e.target.value })}
-            inputMode="decimal"
+            onValueChange={(v) => onChange({ vatAmount: v })}
             autoComplete="off"
           />
           <p className="text-xs text-muted-foreground">{t('vatHint')}</p>

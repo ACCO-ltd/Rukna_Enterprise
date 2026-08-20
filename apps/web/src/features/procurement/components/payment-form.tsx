@@ -22,7 +22,7 @@
 import { useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Input, Textarea } from '@erp/ui';
+import { Alert, Button, FormField, Input, MoneyInput, Textarea } from '@erp/ui';
 
 import { useBankAccounts } from '@/features/accounting/hooks/use-accounting';
 import { ApiError } from '@/lib/api-client';
@@ -185,11 +185,10 @@ export function SupplierPaymentForm() {
 
         <div className="flex flex-wrap gap-4">
           <FormField htmlFor={ids.amount} label={t('totalAmount')} className="min-w-44 flex-1">
-            <Input
+            <MoneyInput
               id={ids.amount}
               value={totalAmount}
-              onChange={(e) => setTotalAmount(e.target.value)}
-              inputMode="decimal"
+              onValueChange={setTotalAmount}
               autoComplete="off"
             />
             {showErrors && !amountValid ? (

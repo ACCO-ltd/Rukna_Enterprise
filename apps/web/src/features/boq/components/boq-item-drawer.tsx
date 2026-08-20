@@ -9,6 +9,7 @@ import {
   FormField,
   Input,
   LtrValue,
+  MoneyInput,
   Select,
   Sheet,
   SheetContent,
@@ -222,13 +223,12 @@ export function BoqItemDrawer({
                   label={t('rate', { currency })}
                   error={touched ? errors.unitRate : undefined}
                 >
-                  <Input
+                  <MoneyInput
                     id="boq-rate"
-                    inputMode="decimal"
                     dir="ltr"
                     value={values.unitRate}
                     disabled={readOnly || isPending}
-                    onChange={(event) => set('unitRate', event.target.value)}
+                    onValueChange={(v) => set('unitRate', v)}
                   />
                 </FormField>
 

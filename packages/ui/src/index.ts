@@ -32,6 +32,8 @@ export type { DateInputProps } from './components/date-input';
 export { DirectionProvider } from './components/direction-provider';
 export { Input } from './components/input';
 export type { InputProps } from './components/input';
+export { MoneyInput, formatThousands, sanitizeMoney } from './components/money-input';
+export type { MoneyInputProps } from './components/money-input';
 export {
   DefinitionList,
   DefinitionRow,

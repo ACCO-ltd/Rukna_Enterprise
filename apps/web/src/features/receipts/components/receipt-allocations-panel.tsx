@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useForm, useWatch } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -12,7 +12,7 @@ import {
   DialogFooter,
   DialogTitle,
   FormField,
-  Input,
+  MoneyInput,
   Select,
 } from '@erp/ui';
 
@@ -323,19 +323,29 @@ function AllocateDialog({ receipt, onClose }: { receipt: ReceiptDetail; onClose:
           ) : null}
 
           <FormField htmlFor="allocation-amount" label={t('amount')} error={errors.amount?.message}>
-            <Input
-              id="allocation-amount"
-              inputMode="decimal"
-              aria-describedby="allocation-remaining"
-              aria-invalid={Boolean(errors.amount)}
-              {...register('amount', {
+            <Controller
+              name="amount"
+              control={control}
+              rules={{
                 // Mirrors the server's guard and adds the lower bound it lacks, so an
                 // over-allocation or a negative never costs a round-trip.
                 validate: (v) => {
                   const problem = allocationProblem(v, receipt.amount, receipt.allocations);
                   return problem === null || t(problem);
                 },
-              })}
+              }}
+              render={({ field }) => (
+                <MoneyInput
+                  id="allocation-amount"
+                  aria-describedby="allocation-remaining"
+                  aria-invalid={Boolean(errors.amount)}
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  onBlur={field.onBlur}
+                  ref={field.ref}
+                  name={field.name}
+                />
+              )}
             />
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p id="allocation-remaining" className="text-xs text-muted-foreground">

@@ -9,6 +9,7 @@ import {
   Button,
   FormField,
   Input,
+  MoneyInput,
   Select,
   Table,
   TableBody,
@@ -237,22 +238,20 @@ export function JournalForm() {
                       </TableCell>
 
                       <TableCell numeric className="min-w-[120px]">
-                        <Input
+                        <MoneyInput
                           aria-label={`${t('colDebit')} ${index + 1}`}
-                          inputMode="decimal"
                           className="text-end tabular-nums"
                           value={line.debit}
-                          onChange={(e) => updateLine(index, { debit: e.target.value })}
+                          onValueChange={(v) => updateLine(index, { debit: v })}
                         />
                       </TableCell>
 
                       <TableCell numeric className="min-w-[120px]">
-                        <Input
+                        <MoneyInput
                           aria-label={`${t('colCredit')} ${index + 1}`}
-                          inputMode="decimal"
                           className="text-end tabular-nums"
                           value={line.credit}
-                          onChange={(e) => updateLine(index, { credit: e.target.value })}
+                          onValueChange={(v) => updateLine(index, { credit: v })}
                         />
                       </TableCell>
 

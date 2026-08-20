@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useForm, useWatch } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useLocale, useTranslations } from 'next-intl';
 import { AdvanceType } from '@erp/types';
 import {
@@ -13,6 +13,7 @@ import {
   DialogTitle,
   FormField,
   Input,
+  MoneyInput,
   Select,
 } from '@erp/ui';
 
@@ -267,15 +268,25 @@ function AddAdvanceTermDialog({
 
           {basis === 'amount' ? (
             <FormField htmlFor="advance-amount" label={t('amount')} error={errors.amount?.message}>
-              <Input
-                id="advance-amount"
-                inputMode="decimal"
-                dir="ltr"
-                aria-invalid={Boolean(errors.amount)}
-                {...register('amount', {
+              <Controller
+                name="amount"
+                control={control}
+                rules={{
                   validate: (v) =>
                     (v.trim() !== '' && Number.isFinite(Number(v))) || t('amountRequired'),
-                })}
+                }}
+                render={({ field }) => (
+                  <MoneyInput
+                    id="advance-amount"
+                    dir="ltr"
+                    aria-invalid={Boolean(errors.amount)}
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    onBlur={field.onBlur}
+                    ref={field.ref}
+                    name={field.name}
+                  />
+                )}
               />
             </FormField>
           ) : (

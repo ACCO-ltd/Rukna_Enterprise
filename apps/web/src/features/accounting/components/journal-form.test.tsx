@@ -186,7 +186,8 @@ describe('JournalForm', () => {
     await screen.findByLabelText('Account 1');
     await user.type(screen.getByLabelText('Description'), 'Typo');
     await user.selectOptions(screen.getByLabelText('Account 1'), 'acc-expense');
-    await user.type(screen.getByLabelText('Debit 1'), '1,000');
+    // A lone decimal point is non-blank but has no value — it must not read as zero.
+    await user.type(screen.getByLabelText('Debit 1'), '.');
     await user.selectOptions(screen.getByLabelText('Account 2'), 'acc-accrual');
     await user.type(screen.getByLabelText('Credit 2'), '1000.00');
 
@@ -194,6 +195,33 @@ describe('JournalForm', () => {
 
     expect(vi.mocked(createJournal)).not.toHaveBeenCalled();
     expect(screen.getByText('Enter a valid amount.')).toBeInTheDocument();
+  });
+
+  it('accepts amounts typed with thousands separators', async () => {
+    const user = userEvent.setup();
+    vi.mocked(createJournal).mockResolvedValue({ id: 'jrn-2' } as never);
+
+    renderWithProviders(<JournalForm />);
+    await screen.findByLabelText('Account 1');
+    await user.type(screen.getByLabelText('Description'), 'Grouped');
+    await user.selectOptions(screen.getByLabelText('Account 1'), 'acc-expense');
+    const debit = screen.getByLabelText('Debit 1') as HTMLInputElement;
+    await user.type(debit, '1000000');
+    // The field groups as you type; the raw value sent stays comma-free.
+    expect(debit.value).toBe('1,000,000');
+    await user.selectOptions(screen.getByLabelText('Account 2'), 'acc-accrual');
+    await user.type(screen.getByLabelText('Credit 2'), '1000000');
+
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
+
+    expect(vi.mocked(createJournal)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        lines: [
+          expect.objectContaining({ accountId: 'acc-expense', debitAmount: 1000000 }),
+          expect.objectContaining({ accountId: 'acc-accrual', creditAmount: 1000000 }),
+        ],
+      }),
+    );
   });
 
   it('rejects a line carrying both a debit and a credit', async () => {

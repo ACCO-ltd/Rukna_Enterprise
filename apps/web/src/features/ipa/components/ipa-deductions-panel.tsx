@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useForm, useWatch } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -12,6 +12,7 @@ import {
   DialogTitle,
   FormField,
   Input,
+  MoneyInput,
 } from '@erp/ui';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
@@ -277,15 +278,25 @@ function AddDeductionDialog({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField htmlFor="deduction-basis" label={t('basis')} error={errors.basis?.message}>
-              <Input
-                id="deduction-basis"
-                inputMode="decimal"
-                aria-describedby="deduction-basis-hint"
-                aria-invalid={Boolean(errors.basis)}
-                {...register('basis', {
+              <Controller
+                name="basis"
+                control={control}
+                rules={{
                   validate: (v) =>
                     (v.trim() !== '' && Number.isFinite(Number(v))) || t('basisRequired'),
-                })}
+                }}
+                render={({ field }) => (
+                  <MoneyInput
+                    id="deduction-basis"
+                    aria-describedby="deduction-basis-hint"
+                    aria-invalid={Boolean(errors.basis)}
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    onBlur={field.onBlur}
+                    ref={field.ref}
+                    name={field.name}
+                  />
+                )}
               />
               <p id="deduction-basis-hint" className="text-xs text-muted-foreground">
                 {t('basisHint')}
@@ -306,14 +317,24 @@ function AddDeductionDialog({
           </div>
 
           <FormField htmlFor="deduction-amount" label={t('amount')} error={errors.amount?.message}>
-            <Input
-              id="deduction-amount"
-              inputMode="decimal"
-              aria-invalid={Boolean(errors.amount)}
-              {...register('amount', {
+            <Controller
+              name="amount"
+              control={control}
+              rules={{
                 validate: (v) =>
                   (v.trim() !== '' && Number.isFinite(Number(v))) || t('amountRequired'),
-              })}
+              }}
+              render={({ field }) => (
+                <MoneyInput
+                  id="deduction-amount"
+                  aria-invalid={Boolean(errors.amount)}
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  onBlur={field.onBlur}
+                  ref={field.ref}
+                  name={field.name}
+                />
+              )}
             />
             {preview ? (
               <p className="text-xs text-muted-foreground">
