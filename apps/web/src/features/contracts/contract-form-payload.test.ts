@@ -2,12 +2,17 @@ import { BillingModel } from '@erp/types';
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildPaymentPlan,
   EMPTY_CONTRACT_FORM,
+  EMPTY_PAYMENT_PLAN_ROW,
+  paymentPlanTotalPercent,
+  percentToFraction,
   toContractFormValues,
   toCreateContractPayload,
   toDecimalString,
   toUpdateContractPayload,
   type ContractFormValues,
+  type PaymentPlanRow,
 } from './contract-form-payload';
 import type { Contract } from './types';
 
@@ -21,7 +26,12 @@ const filled: ContractFormValues = {
   billingModel: BillingModel.MEASURED_IPC,
   startDate: '2026-02-01',
   expectedEndDate: '2027-08-31',
+  paymentPlan: [],
 };
+
+function planRow(overrides: Partial<PaymentPlanRow> = {}): PaymentPlanRow {
+  return { ...EMPTY_PAYMENT_PLAN_ROW, ...overrides };
+}
 
 describe('toDecimalString', () => {
   it.each([
@@ -136,6 +146,89 @@ describe('toContractFormValues', () => {
       billingModel: BillingModel.MEASURED_IPC,
       startDate: '2026-02-01',
       expectedEndDate: '',
+      paymentPlan: [],
     });
+  });
+});
+
+describe('percentToFraction', () => {
+  it.each([
+    ['40', 0.4],
+    ['33.33', 0.3333],
+    ['100', 1],
+    ['  20  ', 0.2],
+  ])('converts %s%% to fraction %s', (input, expected) => {
+    expect(percentToFraction(input)).toBe(expected);
+  });
+
+  it('returns null (never 0) for a blank or non-numeric value', () => {
+    expect(percentToFraction('')).toBeNull();
+    expect(percentToFraction('  ')).toBeNull();
+    expect(percentToFraction('abc')).toBeNull();
+  });
+});
+
+describe('paymentPlanTotalPercent', () => {
+  it('sums the whole percents, ignoring blank/invalid rows', () => {
+    const rows = [
+      planRow({ percentage: '20' }),
+      planRow({ percentage: '30' }),
+      planRow({ percentage: '' }),
+      planRow({ percentage: 'x' }),
+      planRow({ percentage: '50' }),
+    ];
+    expect(paymentPlanTotalPercent(rows)).toBe(100);
+  });
+});
+
+describe('buildPaymentPlan', () => {
+  it('maps rows to installment bodies: 1-based sortOrder, fraction percentage, trimmed name', () => {
+    const rows = [
+      planRow({ name: ' Mobilization ', percentage: '20', triggerType: 'ADVANCE' }),
+      planRow({ name: 'Foundation', percentage: '30', triggerType: 'MILESTONE', milestoneLabel: ' Foundation done ' }),
+    ];
+    expect(buildPaymentPlan(rows)).toEqual([
+      { sortOrder: 1, name: 'Mobilization', percentage: 0.2, triggerType: 'ADVANCE' },
+      { sortOrder: 2, name: 'Foundation', percentage: 0.3, triggerType: 'MILESTONE', milestoneLabel: 'Foundation done' },
+    ]);
+  });
+
+  it('carries dueOffsetDays only for a TIME_BASED trigger', () => {
+    const timeBased = buildPaymentPlan([
+      planRow({ name: 'Handover', percentage: '50', triggerType: 'TIME_BASED', dueOffsetDays: '30' }),
+    ]);
+    expect(timeBased[0]).toMatchObject({ triggerType: 'TIME_BASED', dueOffsetDays: 30 });
+
+    const milestone = buildPaymentPlan([
+      planRow({ name: 'Stage', percentage: '50', triggerType: 'MILESTONE', dueOffsetDays: '30' }),
+    ]);
+    expect(milestone[0]).not.toHaveProperty('dueOffsetDays');
+  });
+});
+
+describe('toCreateContractPayload — payment plan', () => {
+  const milestoneForm: ContractFormValues = {
+    ...filled,
+    billingModel: BillingModel.MILESTONE,
+    paymentPlan: [
+      planRow({ name: 'Advance', percentage: '40', triggerType: 'ADVANCE' }),
+      planRow({ name: 'Completion', percentage: '60', triggerType: 'MILESTONE' }),
+    ],
+  };
+
+  it('attaches the plan for a MILESTONE contract with rows', () => {
+    const payload = toCreateContractPayload(milestoneForm);
+    expect(payload.paymentPlan).toHaveLength(2);
+    expect(payload.paymentPlan?.[0]).toMatchObject({ sortOrder: 1, percentage: 0.4 });
+  });
+
+  it('omits the plan when the contract is not MILESTONE, even if rows exist', () => {
+    const payload = toCreateContractPayload({ ...milestoneForm, billingModel: BillingModel.MEASURED_IPC });
+    expect(payload).not.toHaveProperty('paymentPlan');
+  });
+
+  it('omits the plan for a MILESTONE contract with no rows', () => {
+    const payload = toCreateContractPayload({ ...milestoneForm, paymentPlan: [] });
+    expect(payload).not.toHaveProperty('paymentPlan');
   });
 });
