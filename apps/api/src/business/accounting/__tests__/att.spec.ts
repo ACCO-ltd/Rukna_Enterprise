@@ -18,9 +18,38 @@ const prisma = new PrismaClient();
 let env: AccountingTestEnv;
 let svc: AccountingServices;
 
+// The fixed platform-file ids these tests attach to journals. ADR-014 gave
+// JournalEntryAttachment.platformFileId a real FK to PlatformFile, so the referenced files must
+// exist before an attachment can be inserted.
+const ATTACHMENT_FILE_IDS = [
+  'file-att-01',
+  'file-att-02-post',
+  'file-att-03',
+  'file-att-04',
+  'file-att-05-a',
+  'file-att-05-b',
+  'file-att-05-c',
+];
+
 beforeAll(async () => {
   env = await AccountingFixtureFactory.create(prisma);
   svc = buildServices(prisma);
+
+  // Seed the PlatformFile rows the attachment FK now requires. Idempotent (skipDuplicates) so it
+  // is safe whether the DB is fresh or already carries these ids.
+  await prisma.platformFile.createMany({
+    data: ATTACHMENT_FILE_IDS.map((id) => ({
+      id,
+      organizationId: env.orgId,
+      originalName: `${id}.pdf`,
+      mimeType: 'application/pdf',
+      sizeBytes: 1,
+      storageBucket: 'test-bucket',
+      storageKey: `test/${id}`,
+      uploadedBy: env.identity.userId,
+    })),
+    skipDuplicates: true,
+  });
 });
 
 afterAll(async () => {
