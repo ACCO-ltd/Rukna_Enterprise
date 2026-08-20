@@ -14,13 +14,14 @@ import {
   CommercialTermPolicy,
   type CommercialMutationKind,
 } from '../domain/commercial-term-policy.js';
-import type { CreateContractDto } from '../presentation/dto/create-contract.dto.js';
+import type { CreateContractDto, PaymentInstallmentDto } from '../presentation/dto/create-contract.dto.js';
 import type { UpdateContractDto } from '../presentation/dto/update-contract.dto.js';
 import type { AddAdvanceTermDto } from '../presentation/dto/add-advance-term.dto.js';
 import type { AddGuaranteeDto } from '../presentation/dto/add-guarantee.dto.js';
 import type { UpdateGuaranteeDto } from '../presentation/dto/update-guarantee.dto.js';
 import type { AddMilestoneDto } from '../presentation/dto/add-milestone.dto.js';
 import type { AddRetentionTermsDto } from '../presentation/dto/add-retention-terms.dto.js';
+import type { SetInstallmentMilestoneDto } from '../presentation/dto/set-installment-milestone.dto.js';
 
 const CANCEL_ALLOWED_FROM = new Set(['DRAFT', 'UNDER_REVIEW', 'PENDING_SIGNATURE']);
 
@@ -59,6 +60,42 @@ export class ContractService {
     return contract;
   }
 
+  /**
+   * ADR-023 CONST-COM-011: link (or unlink) a programme milestone as a milestone installment's
+   * billing evidence. A verified link then gates invoice generation for that installment.
+   */
+  async setInstallmentMilestone(
+    identity: RequestIdentity,
+    contractId: string,
+    installmentId: string,
+    dto: SetInstallmentMilestoneDto,
+  ) {
+    await this.projectAccess.assertContract(identity, contractId);
+    const prisma = this.tenancyService.getClient();
+    const contract = await this.repo.findById(prisma, identity.activeOrganizationId, contractId);
+    if (!contract) throw new NotFoundException(`Contract ${contractId} not found`);
+    if (contract.billingModel !== 'MILESTONE') {
+      throw new BadRequestException(
+        'Only MILESTONE (payment-schedule) contracts have milestone installments.',
+      );
+    }
+    const installment = await this.repo.findInstallmentInContract(prisma, contractId, installmentId);
+    if (!installment) {
+      throw new NotFoundException(`Installment ${installmentId} not found on this contract`);
+    }
+    if (dto.programmeMilestoneId) {
+      const milestone = await this.repo.findProjectMilestone(
+        prisma,
+        contract.projectId,
+        dto.programmeMilestoneId,
+      );
+      if (!milestone) {
+        throw new BadRequestException("The milestone does not belong to this contract's project.");
+      }
+    }
+    return this.repo.setInstallmentMilestone(prisma, installmentId, dto.programmeMilestoneId ?? null);
+  }
+
   async create(identity: RequestIdentity, dto: CreateContractDto) {
     await this.projectAccess.assertMember(identity, dto.projectId);
     const prisma = this.tenancyService.getClient();
@@ -90,6 +127,18 @@ export class ContractService {
 
     const contractKind = dto.contractKind ?? 'CLIENT_CONTRACT';
 
+    // ADR-023: a payment schedule belongs only to a MILESTONE (payment-schedule) contract,
+    // and must reconcile to 100% before it is written.
+    const billingModel = dto.billingModel ?? 'MEASURED_IPC';
+    if (dto.paymentPlan && dto.paymentPlan.length > 0) {
+      if (billingModel !== 'MILESTONE') {
+        throw new BadRequestException(
+          'A payment plan applies only to a MILESTONE (payment-schedule) contract.',
+        );
+      }
+      this.assertPaymentPlanReconciles(dto.paymentPlan);
+    }
+
     return prisma.$transaction(async (tx) => {
       // Invariant check inside the transaction so the read and the subsequent
       // insert are atomic. A unique partial DB index is the backstop for races
@@ -119,6 +168,10 @@ export class ContractService {
         createdBy: identity.userId,
       });
 
+      if (dto.paymentPlan && dto.paymentPlan.length > 0) {
+        await this.repo.createPaymentInstallments(tx, contract.id, dto.paymentPlan);
+      }
+
       await this.auditOutbox.record(tx, {
         organizationId: identity.activeOrganizationId,
         actorUserId: identity.userId,
@@ -137,6 +190,38 @@ export class ContractService {
 
       return contract;
     });
+  }
+
+  /**
+   * ADR-023 CONST-COM-012: a payment schedule's percentages must reconcile to 100%.
+   * Percentages are fractions (0..1); Σ must equal 1 within a 4-dp tolerance. Each installment
+   * must be positive, and a TIME_BASED installment must carry a due offset or an explicit date.
+   */
+  private assertPaymentPlanReconciles(plan: PaymentInstallmentDto[]): void {
+    let sum = 0;
+    for (const line of plan) {
+      if (!(line.percentage > 0)) {
+        throw new BadRequestException(
+          `Payment installment "${line.name}" must have a percentage greater than 0.`,
+        );
+      }
+      if (
+        line.triggerType === 'TIME_BASED' &&
+        line.dueOffsetDays === undefined &&
+        line.dueDate === undefined
+      ) {
+        throw new BadRequestException(
+          `Time-based installment "${line.name}" needs a due offset (days) or a due date.`,
+        );
+      }
+      sum += line.percentage;
+    }
+    // Round to 4 decimals before comparing so float error (0.1 + 0.2 …) does not fail a valid plan.
+    if (Math.abs(Math.round(sum * 10000) / 10000 - 1) > 1e-4) {
+      throw new BadRequestException(
+        `Payment plan percentages must total 100%. Current total: ${(sum * 100).toFixed(2)}%.`,
+      );
+    }
   }
 
   async update(identity: RequestIdentity, id: string, dto: UpdateContractDto) {

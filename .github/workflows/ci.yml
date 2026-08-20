@@ -9,11 +9,30 @@ on:
 env:
   TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
   TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+  # #48: the API integration suite runs against a real Postgres. The app has two Prisma schemas —
+  # tenant (DATABASE_URL) and platform (PLATFORM_DATABASE_URL) — both served by the container below.
+  DATABASE_URL: postgresql://erp_user:erp_password@localhost:5432/rukna_ci_tenant
+  PLATFORM_DATABASE_URL: postgresql://erp_user:erp_password@localhost:5432/rukna_ci_platform
 
 jobs:
   ci:
     name: Lint, Type-Check, Test, Build
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: erp_user
+          POSTGRES_PASSWORD: erp_password
+          POSTGRES_DB: rukna_ci_tenant
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U erp_user -d rukna_ci_tenant"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout
@@ -35,6 +54,16 @@ jobs:
 
       - name: Generate Prisma clients
         run: pnpm --filter @erp/api run db:generate
+
+      # The service container seeds only one database (POSTGRES_DB); the platform schema needs a
+      # second one alongside it.
+      - name: Create platform database
+        run: PGPASSWORD=erp_password psql -h localhost -U erp_user -d rukna_ci_tenant -c "CREATE DATABASE rukna_ci_platform;"
+
+      - name: Run database migrations
+        run: |
+          pnpm --filter @erp/api run db:migrate:tenant:prod
+          pnpm --filter @erp/api run db:migrate:platform:prod
 
       - name: Lint
         run: pnpm lint

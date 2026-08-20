@@ -235,4 +235,12 @@ export class ProjectPrismaRepository {
       data: roles.map((role) => ({ memberId, role: role as ProjectRole, assignedBy })),
     });
   }
+
+  /** Closes every currently-active role row for a member (versioned edit — no hard delete). */
+  async deactivateMemberRoles(prisma: TenantPrisma, memberId: string) {
+    return prisma.projectMemberRole.updateMany({
+      where: { memberId, removedAt: null },
+      data: { removedAt: new Date() },
+    });
+  }
 }

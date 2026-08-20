@@ -6,7 +6,10 @@ import { renderWithProviders } from '@/test/render';
 
 import { OverviewTab } from './overview-tab';
 
-function metric(state: CommercialSummaryResponse['metrics']['invoiced']['state'], amount: string | null) {
+function metric(
+  state: CommercialSummaryResponse['metrics']['invoiced']['state'],
+  amount: string | null,
+) {
   return { state, amount, currency: 'USD', sourceCount: amount ? 1 : 0, drillTo: null, asOf: null };
 }
 
@@ -56,10 +59,14 @@ function summary(overrides: Partial<CommercialSummaryResponse> = {}): Commercial
       canEditContract: false,
       canAdvanceContract: true,
       canCreateApplication: true,
+      canManageApplication: true,
       canReviewApplication: false,
       canIssueCertificate: false,
       canGenerateInvoice: false,
+      canPostInvoice: false,
       canManageGuarantee: false,
+      canRecordReceipt: false,
+      canAllocateReceipt: false,
     },
     recentActivity: [],
     asOf: '2026-08-14T00:00:00.000Z',

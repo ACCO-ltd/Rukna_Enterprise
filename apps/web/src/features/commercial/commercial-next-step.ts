@@ -50,13 +50,13 @@ export function resolveCommercialNextStep(
   // A closed or terminated contract is a record, not a workspace. Offering "create
   // application" here would invite a 409 from CommercialTermPolicy.
   if (TERMINAL.has(mainContract.status)) {
-    return { kind: 'VIEW_HISTORY', href: `${base}/main-contract` };
+    return { kind: 'VIEW_HISTORY', href: `${base}/contract-security` };
   }
 
   // Before execution the contract is the work in progress. Certification cannot begin.
   if (PRE_EXECUTION.has(mainContract.status)) {
     return capabilities.canAdvanceContract
-      ? { kind: 'ADVANCE_CONTRACT', href: `${base}/main-contract` }
+      ? { kind: 'ADVANCE_CONTRACT', href: `${base}/contract-security` }
       : null;
   }
 

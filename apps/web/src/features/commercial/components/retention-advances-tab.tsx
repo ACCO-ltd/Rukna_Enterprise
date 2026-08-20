@@ -35,8 +35,12 @@ export function RetentionAdvancesTab({ summary }: { summary: CommercialSummaryRe
         <SectionCard title={t('retention.title')}>
           {summary.retention ? (
             <>
-              <FactRow label={t('retention.rate')}>{percent(summary.retention.retentionRate)}</FactRow>
-              <FactRow label={t('retention.cap')}>{percent(summary.retention.retentionCap)}</FactRow>
+              <FactRow label={t('retention.rate')}>
+                {percent(summary.retention.retentionRate)}
+              </FactRow>
+              <FactRow label={t('retention.cap')}>
+                {percent(summary.retention.retentionCap)}
+              </FactRow>
               <FactRow label={t('retention.splitOnPc')}>
                 {percent(summary.retention.retentionSplitOnPC)}
               </FactRow>

@@ -539,17 +539,200 @@ model Project {
   createdAt          DateTime           @default(now()) @map("created_at")
   updatedAt          DateTime           @updatedAt @map("updated_at")
 
-  organization Organization        @relation(fields: [organizationId], references: [id])
-  members      ProjectMember[]
-  suspensions  ProjectSuspension[]
-  boq          Boq?
-  contracts    Contract[]
-  client       Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  organization         Organization          @relation(fields: [organizationId], references: [id])
+  members              ProjectMember[]
+  suspensions          ProjectSuspension[]
+  boq                  Boq?
+  contracts            Contract[]
+  documents            ProjectDocument[]
+  dailyProgressReports DailyProgressReport[]
+  workPackages         WorkPackage[]
+  programmeMilestones  ProgrammeMilestone[]
+  client               Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
   @@index([organizationId, clientId])
   @@map("projects")
+}
+
+// ADR-014 / Documents tab: a standalone project document (permit, drawing, licence...) linking a
+// PlatformFile to a project with a human title + category. Distinct from the per-entity *Attachment
+// tables (which the Documents tab also surfaces as "linked documents").
+model ProjectDocument {
+  id             String           @id @default(cuid())
+  organizationId String           @map("organization_id")
+  projectId      String           @map("project_id")
+  platformFileId String           @map("platform_file_id")
+  category       DocumentCategory
+  title          String
+  uploadedBy     String           @map("uploaded_by")
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  platformFile PlatformFile @relation(fields: [platformFileId], references: [id])
+
+  @@index([projectId])
+  @@map("project_documents")
+}
+
+enum DocumentCategory {
+  PERMIT
+  LICENSE
+  DRAWING
+  CONTRACT
+  CERTIFICATE
+  INSURANCE
+  GUARANTEE
+  CORRESPONDENCE
+  PHOTO
+  OTHER
+}
+
+// ADR-021 Progress MVP: the daily site record. An evidence container (weather, labour, narrative,
+// delay reason, photo/measurement attachments). Progress becomes verified only when APPROVED
+// (CONST-PROG-008); once approved it is immutable outside a controlled reopen (CONST-PROG-010).
+model DailyProgressReport {
+  id             String    @id @default(cuid())
+  organizationId String    @map("organization_id")
+  projectId      String    @map("project_id")
+  reportDate     DateTime  @map("report_date") @db.Date
+  status         DprStatus @default(DRAFT)
+  weather        String?
+  labourCount    Int?      @map("labour_count")
+  equipmentNote  String?   @map("equipment_note")
+  narrative      String?
+  // CONST-PROG-012: raw material for delay analysis, captured now; the formal DelayEvent is deferred.
+  delayReason    String?   @map("delay_reason")
+  preparedBy     String    @map("prepared_by")
+  submittedBy    String?   @map("submitted_by")
+  submittedAt    DateTime? @map("submitted_at")
+  approvedBy     String?   @map("approved_by")
+  approvedAt     DateTime? @map("approved_at")
+  returnReason   String?   @map("return_reason")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  project      Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  measurements ProgressMeasurement[]
+  attachments  DprAttachment[]
+
+  @@index([projectId, reportDate])
+  @@map("daily_progress_reports")
+}
+
+// ADR-021: a measured quantity inside a DPR, against a BOQ leaf. Verified when its DPR is APPROVED.
+// Cumulative verified quantity per BOQ node cannot exceed the node's measurable quantity (CONST-PROG-002/009).
+model ProgressMeasurement {
+  id             String  @id @default(cuid())
+  organizationId String  @map("organization_id")
+  dprId          String  @map("dpr_id")
+  boqNodeId      String  @map("boq_node_id")
+  quantity       Decimal @db.Decimal(18, 3)
+  notes          String?
+  createdBy      String  @map("created_by")
+
+  dpr     DailyProgressReport @relation(fields: [dprId], references: [id], onDelete: Cascade)
+  boqNode BoqNode             @relation(fields: [boqNodeId], references: [id])
+
+  @@index([dprId])
+  @@index([boqNodeId])
+  @@map("progress_measurements")
+}
+
+// ADR-021/014: evidence attached to a DPR (photos, measurement sheets), stored via PlatformFile.
+model DprAttachment {
+  id             String @id @default(cuid())
+  dprId          String @map("dpr_id")
+  platformFileId String @map("platform_file_id")
+  createdBy      String @map("created_by")
+
+  dpr          DailyProgressReport @relation(fields: [dprId], references: [id], onDelete: Cascade)
+  platformFile PlatformFile        @relation(fields: [platformFileId], references: [id])
+
+  @@index([dprId])
+  @@map("dpr_attachments")
+}
+
+enum DprStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  RETURNED
+}
+
+// ADR-021 CONST-PROG-005: the always-explicit control seam between BOQ scope and site execution.
+// A WorkPackage carries a responsible owner and a progressWeight; the project's weights should total
+// 1.0 (100%). Physical progress rolls up by these weights, never by BOQ money (CONST-PROG-007).
+model WorkPackage {
+  id               String   @id @default(cuid())
+  organizationId   String   @map("organization_id")
+  projectId        String   @map("project_id")
+  code             String
+  name             String
+  responsibleOwner String?  @map("responsible_owner")
+  progressWeight   Decimal  @default(0) @map("progress_weight") @db.Decimal(5, 4)
+  createdBy        String   @map("created_by")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  project  Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  boqLinks WorkPackageBoqNode[]
+
+  @@unique([projectId, code])
+  @@index([projectId])
+  @@map("work_packages")
+}
+
+// BOQ leaf → WorkPackage allocation. A leaf belongs to AT MOST ONE work package (unique on
+// boqNodeId), so its verified progress is counted exactly once in the weighted roll-up — the
+// anti-double-counting invariant (CONST-PROG-012). Splitting a leaf across packages would need a
+// proportional fraction; deferred.
+model WorkPackageBoqNode {
+  id            String @id @default(cuid())
+  workPackageId String @map("work_package_id")
+  boqNodeId     String @map("boq_node_id")
+
+  workPackage WorkPackage @relation(fields: [workPackageId], references: [id], onDelete: Cascade)
+  boqNode     BoqNode     @relation(fields: [boqNodeId], references: [id])
+
+  @@unique([boqNodeId])
+  @@index([workPackageId])
+  @@map("work_package_boq_nodes")
+}
+
+enum ProgrammeMilestoneStatus {
+  PLANNED // a planned construction stage carrying a baseline date
+  VERIFIED // the stage is confirmed complete (actual date recorded) — billing evidence (CONST-COM-011)
+}
+
+// ADR-021 phase 2: a programme delivery milestone — a named construction stage on the project's
+// programme, with baseline / forecast / actual dates. An authorized member verifies it when the stage
+// is complete; a MILESTONE payment installment may reference a VERIFIED milestone as its billing
+// evidence (ADR-023 CONST-COM-011). Optionally links to a ContractMilestone; the two lifecycles stay
+// separate.
+model ProgrammeMilestone {
+  id                  String                   @id @default(cuid())
+  organizationId      String                   @map("organization_id")
+  projectId           String                   @map("project_id")
+  code                String
+  name                String
+  status              ProgrammeMilestoneStatus @default(PLANNED)
+  baselineDate        DateTime                 @map("baseline_date") @db.Date
+  forecastDate        DateTime?                @map("forecast_date") @db.Date
+  actualDate          DateTime?                @map("actual_date") @db.Date
+  sortOrder           Int                      @default(0) @map("sort_order")
+  contractMilestoneId String?                  @map("contract_milestone_id")
+  verifiedBy          String?                  @map("verified_by")
+  verifiedAt          DateTime?                @map("verified_at")
+  createdBy           String                   @map("created_by")
+  createdAt           DateTime                 @default(now()) @map("created_at")
+
+  project           Project                      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contractMilestone ContractMilestone?           @relation(fields: [contractMilestoneId], references: [id], onDelete: SetNull)
+  installments      ContractPaymentInstallment[]
+
+  @@unique([projectId, code])
+  @@index([projectId])
+  @@map("programme_milestones")
 }
 
 model ProjectCodeSequence {
@@ -639,23 +822,23 @@ model Boq {
 }
 
 model BoqVersion {
-  id            String           @id @default(cuid())
-  boqId         String           @map("boq_id")
-  versionNumber Int              @map("version_number")
-  status        BoqVersionStatus @default(DRAFT)
-  notes         String?
+  id                   String           @id @default(cuid())
+  boqId                String           @map("boq_id")
+  versionNumber        Int              @map("version_number")
+  status               BoqVersionStatus @default(DRAFT)
+  notes                String?
   // CONST-BOQ-018 attribution. ADR-004 specified derivedFromVersionId; it never shipped,
   // so a revision could not state which baseline it was copied from. Soft reference — no
   // FK, matching the version pointers on Boq.
-  derivedFromVersionId String?   @map("derived_from_version_id")
-  preparedBy    String?          @map("prepared_by")
-  submittedBy   String?          @map("submitted_by")
-  submittedAt   DateTime?        @map("submitted_at")
-  baselinedAt   DateTime?        @map("baselined_at")
-  baselinedBy   String?          @map("baselined_by")
-  createdBy     String           @map("created_by")
-  createdAt     DateTime         @default(now()) @map("created_at")
-  updatedAt     DateTime         @updatedAt @map("updated_at")
+  derivedFromVersionId String?          @map("derived_from_version_id")
+  preparedBy           String?          @map("prepared_by")
+  submittedBy          String?          @map("submitted_by")
+  submittedAt          DateTime?        @map("submitted_at")
+  baselinedAt          DateTime?        @map("baselined_at")
+  baselinedBy          String?          @map("baselined_by")
+  createdBy            String           @map("created_by")
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
 
   boq   Boq       @relation(fields: [boqId], references: [id])
   nodes BoqNode[]
@@ -694,9 +877,11 @@ model BoqNode {
   createdAt           DateTime          @default(now()) @map("created_at")
   updatedAt           DateTime          @updatedAt @map("updated_at")
 
-  version  BoqVersion @relation(fields: [versionId], references: [id])
-  parent   BoqNode?   @relation("BoqNodeChildren", fields: [parentId], references: [id], onDelete: Restrict)
-  children BoqNode[]  @relation("BoqNodeChildren")
+  version              BoqVersion            @relation(fields: [versionId], references: [id])
+  parent               BoqNode?              @relation("BoqNodeChildren", fields: [parentId], references: [id], onDelete: Restrict)
+  children             BoqNode[]             @relation("BoqNodeChildren")
+  progressMeasurements ProgressMeasurement[]
+  workPackageLinks     WorkPackageBoqNode[]
 
   // CONST-BOQ-015 — codes address lines in a contract; two nodes answering to "02.01.002"
   // makes every downstream reference ambiguous.
@@ -732,15 +917,16 @@ model Contract {
   createdAt          DateTime       @default(now()) @map("created_at")
   updatedAt          DateTime       @updatedAt @map("updated_at")
 
-  project        Project                     @relation(fields: [projectId], references: [id])
-  organization   Organization                @relation(fields: [organizationId], references: [id])
-  client         Client                      @relation(fields: [clientId], references: [id])
-  retentionTerms ContractRetentionTerms?
-  advanceTerms   ContractAdvanceTerm[]
-  guarantees     ContractGuarantee[]
-  milestones     ContractMilestone[]
-  attachments    ContractAttachment[]
-  applications   InterimPaymentApplication[]
+  project             Project                      @relation(fields: [projectId], references: [id])
+  organization        Organization                 @relation(fields: [organizationId], references: [id])
+  client              Client                       @relation(fields: [clientId], references: [id])
+  retentionTerms      ContractRetentionTerms?
+  advanceTerms        ContractAdvanceTerm[]
+  guarantees          ContractGuarantee[]
+  milestones          ContractMilestone[]
+  attachments         ContractAttachment[]
+  applications        InterimPaymentApplication[]
+  paymentInstallments ContractPaymentInstallment[]
 
   @@unique([organizationId, contractNumber])
   @@index([projectId, status])
@@ -773,6 +959,35 @@ model ContractAdvanceTerm {
 
   @@index([contractId])
   @@map("contract_advance_terms")
+}
+
+// ADR-023: the negotiated payment schedule for a PAYMENT_SCHEDULE (MILESTONE) contract.
+// The installments ARE the plan (no separate 1:1 plan header). Only the percentage is stored;
+// the amount is derived (percentage × contract value), so there is no monetary field to pair
+// with a currency and no drift between a stored amount and the contract value.
+// Invariant: Σ(percentage) = 1.0000 across a contract's installments (validated in the service).
+// ACCO V1: no retention, no advance recovery (ADR-023 CONST-COM-013/014).
+model ContractPaymentInstallment {
+  id             String         @id @default(cuid())
+  contractId     String         @map("contract_id")
+  sortOrder      Int            @default(0) @map("sort_order")
+  name           String
+  percentage     Decimal        @db.Decimal(5, 4)
+  triggerType    PaymentTrigger @map("trigger_type")
+  // TIME_BASED triggers: due N days after commencement, or on an explicit date.
+  dueOffsetDays  Int?           @map("due_offset_days")
+  dueDate        DateTime?      @map("due_date") @db.Date
+  // MILESTONE triggers: a free-text label (interim/fallback) plus an optional link to a verified
+  // programme milestone (ADR-021), which is the billing evidence when present (CONST-COM-011).
+  milestoneLabel      String? @map("milestone_label")
+  programmeMilestoneId String? @map("programme_milestone_id")
+
+  contract           Contract            @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  clientInvoice      ClientInvoice? // ADR-023: the invoice generated from this installment, if any
+  programmeMilestone ProgrammeMilestone? @relation(fields: [programmeMilestoneId], references: [id], onDelete: SetNull)
+
+  @@index([contractId])
+  @@map("contract_payment_installments")
 }
 
 model ContractGuarantee {
@@ -811,10 +1026,46 @@ model ContractMilestone {
   sortOrder   Int       @default(0) @map("sort_order")
   createdAt   DateTime  @default(now()) @map("created_at")
 
-  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contract            Contract             @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  programmeMilestones ProgrammeMilestone[]
 
   @@index([contractId])
   @@map("contract_milestones")
+}
+
+// ADR-014: shared, immutable file-metadata entity. Bytes live in S3-compatible object storage
+// behind FileStoragePort (MinIO first adapter); this row is the metadata + tenant-prefixed key.
+// The five *Attachment tables relate to it. Immutable rows (audit-relevant) cannot be deleted.
+model PlatformFile {
+  id             String             @id @default(cuid())
+  organizationId String             @map("organization_id")
+  originalName   String             @map("original_name")
+  mimeType       String             @map("mime_type")
+  sizeBytes      Int                @map("size_bytes")
+  checksumSha256 String?            @map("checksum_sha256")
+  storageBucket  String             @map("storage_bucket")
+  storageKey     String             @unique @map("storage_key")
+  status         PlatformFileStatus @default(PENDING)
+  immutable      Boolean            @default(false)
+  uploadedBy     String             @map("uploaded_by")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  confirmedAt    DateTime?          @map("confirmed_at")
+
+  contractAttachments     ContractAttachment[]
+  guaranteeAttachments    GuaranteeAttachment[]
+  ipaAttachments          IpaAttachment[]
+  ipcAttachments          IpcAttachment[]
+  journalEntryAttachments JournalEntryAttachment[]
+  projectDocuments        ProjectDocument[]
+  dprAttachments          DprAttachment[]
+
+  @@index([organizationId])
+  @@map("platform_files")
+}
+
+enum PlatformFileStatus {
+  PENDING // metadata created; awaiting client upload + confirm
+  READY // uploaded and checksum-verified
 }
 
 model ContractAttachment {
@@ -824,7 +1075,8 @@ model ContractAttachment {
   createdAt      DateTime @default(now()) @map("created_at")
   createdBy      String   @map("created_by")
 
-  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contract     Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  platformFile PlatformFile @relation(fields: [platformFileId], references: [id])
 
   @@index([contractId])
   @@map("contract_attachments")
@@ -837,7 +1089,8 @@ model GuaranteeAttachment {
   createdAt      DateTime @default(now()) @map("created_at")
   createdBy      String   @map("created_by")
 
-  guarantee ContractGuarantee @relation(fields: [guaranteeId], references: [id], onDelete: Cascade)
+  guarantee    ContractGuarantee @relation(fields: [guaranteeId], references: [id], onDelete: Cascade)
+  platformFile PlatformFile      @relation(fields: [platformFileId], references: [id])
 
   @@index([guaranteeId])
   @@map("guarantee_attachments")
@@ -920,7 +1173,8 @@ model IpaAttachment {
   createdAt      DateTime @default(now()) @map("created_at")
   createdBy      String   @map("created_by")
 
-  application InterimPaymentApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  application  InterimPaymentApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  platformFile PlatformFile              @relation(fields: [platformFileId], references: [id])
 
   @@index([applicationId])
   @@map("ipa_attachments")
@@ -1009,7 +1263,8 @@ model IpcAttachment {
   createdAt      DateTime @default(now()) @map("created_at")
   createdBy      String   @map("created_by")
 
-  certificate InterimPaymentCertificate @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+  certificate  InterimPaymentCertificate @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+  platformFile PlatformFile              @relation(fields: [platformFileId], references: [id])
 
   @@index([certificateId])
   @@map("ipc_attachments")
@@ -1503,6 +1758,9 @@ model ClientInvoice {
   clientId               String           @map("client_id")
   // sourceIpcId: the effective IPC that generated this invoice. NULL for migration-loaded records.
   sourceIpcId            String?          @unique @map("source_ipc_id")
+  // ADR-023: the payment-schedule installment that generated this invoice (MILESTONE contracts).
+  // Unique → one invoice per installment (idempotent billing). Mutually exclusive with sourceIpcId.
+  sourceInstallmentId    String?          @unique @map("source_installment_id")
   projectId              String?          @map("project_id")
   contractId             String?          @map("contract_id")
   currencyCode           String           @map("currency_code") @db.VarChar(3)
@@ -1536,10 +1794,11 @@ model ClientInvoice {
   createdAt              DateTime         @default(now()) @map("created_at")
   updatedAt              DateTime         @updatedAt @map("updated_at")
 
-  organization Organization               @relation(fields: [organizationId], references: [id])
-  client       Client                     @relation(fields: [clientId], references: [id])
-  sourceIpc    InterimPaymentCertificate? @relation(fields: [sourceIpcId], references: [id])
-  allocations  ClientReceiptAllocation[]
+  organization      Organization                @relation(fields: [organizationId], references: [id])
+  client            Client                      @relation(fields: [clientId], references: [id])
+  sourceIpc         InterimPaymentCertificate?  @relation(fields: [sourceIpcId], references: [id])
+  sourceInstallment ContractPaymentInstallment? @relation(fields: [sourceInstallmentId], references: [id])
+  allocations       ClientReceiptAllocation[]
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, clientId, postingStatus])
@@ -1949,6 +2208,7 @@ model JournalEntryAttachment {
   createdBy        String   @map("created_by")
 
   journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id])
+  platformFile PlatformFile @relation(fields: [platformFileId], references: [id])
 
   @@index([journalEntryId])
   @@map("journal_entry_attachments")
@@ -2329,6 +2589,13 @@ enum AdvanceType {
   MATERIAL_ON_SITE
   EQUIPMENT
   OTHER
+}
+
+// ADR-023: how a payment-schedule installment becomes billable.
+enum PaymentTrigger {
+  ADVANCE // billed on contract commencement
+  TIME_BASED // due N days after commencement, or on a fixed date
+  MILESTONE // on completion of a construction stage (verified progress, ADR-021)
 }
 
 enum GuaranteeStatus {

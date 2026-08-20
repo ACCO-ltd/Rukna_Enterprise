@@ -23,12 +23,15 @@
     "db:migrate:platform": "prisma migrate dev --schema=prisma-platform/schema.prisma",
     "db:migrate:tenant:prod": "prisma migrate deploy --schema=prisma/schema.prisma",
     "db:migrate:platform:prod": "prisma migrate deploy --schema=prisma-platform/schema.prisma",
+    "db:migrate:deploy": "tsx scripts/migrate-deploy.ts",
     "tenant:provision": "tsx scripts/tenant-provision.ts",
     "tenant:repair-access": "tsx scripts/tenant-repair-access.ts",
     "tenant:demo-readiness": "tsx scripts/tenant-demo-readiness.ts",
     "postinstall": "prisma generate --schema=prisma/schema.prisma && prisma generate --schema=prisma-platform/schema.prisma"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1112.0",
+    "@aws-sdk/s3-request-presigner": "^3.1112.0",
     "@erp/config": "workspace:*",
     "@erp/types": "workspace:*",
     "@nestjs/common": "^11.0.1",
@@ -83,7 +86,14 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.ts$": ["ts-jest", { "tsconfig": { "module": "commonjs" } }]
+      "^.+\\.ts$": [
+        "ts-jest",
+        {
+          "tsconfig": {
+            "module": "commonjs"
+          }
+        }
+      ]
     },
     "moduleNameMapper": {
       "^(\\.{1,2}/.*)\\.js$": "$1"

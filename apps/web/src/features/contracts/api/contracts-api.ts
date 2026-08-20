@@ -1,4 +1,4 @@
-import type { AdvanceType, BillingModel, GuaranteeStatus } from '@erp/types';
+import type { AdvanceType, BillingModel, GuaranteeStatus, PaymentTrigger } from '@erp/types';
 
 import { apiClient } from '@/lib/api-client';
 
@@ -28,6 +28,30 @@ export interface CreateContractPayload {
   billingModel?: BillingModel;
   startDate?: string;
   expectedEndDate?: string;
+  /**
+   * ADR-023 payment schedule — only accepted at creation, and only for a MILESTONE contract
+   * (the server 400s a plan on any other billing model). Optional even for MILESTONE; when
+   * present the percentages must reconcile to 100% (CONST-COM-012). There is no PATCH for it,
+   * so this is the one chance to seed the installments.
+   */
+  paymentPlan?: PaymentInstallmentPayload[];
+}
+
+/**
+ * One installment in `POST /contracts` `paymentPlan`, mirroring PaymentInstallmentDto.
+ *
+ * `percentage` is a FRACTION (0..1, ≤4 dp), e.g. 0.4 for 40% — the form collects whole
+ * percents and converts. `dueOffsetDays`/`dueDate` are alternatives; a TIME_BASED installment
+ * needs one of them. Amount is derived server-side (percentage × contract value), never sent.
+ */
+export interface PaymentInstallmentPayload {
+  sortOrder: number;
+  name: string;
+  percentage: number;
+  triggerType: `${PaymentTrigger}`;
+  dueOffsetDays?: number;
+  dueDate?: string;
+  milestoneLabel?: string;
 }
 
 /**
@@ -233,5 +257,25 @@ export function addMilestone(
 export function completeMilestone(contractId: string, milestoneId: string): Promise<unknown> {
   return apiClient(`/contracts/${contractId}/milestones/${milestoneId}/complete`, {
     method: 'POST',
+  });
+}
+
+// ─── Payment-schedule installments (ADR-023 MILESTONE contracts) ───────────────────
+
+/**
+ * `PATCH /contracts/:id/installments/:installmentId/milestone` — link or unlink a programme
+ * milestone as a payment installment's billing evidence (CONST-COM-011).
+ *
+ * Pass a `programmeMilestoneId` to link; pass `null` to unlink. Once linked and unverified, the
+ * server refuses to invoice the installment until the milestone is verified.
+ */
+export function setInstallmentMilestone(
+  contractId: string,
+  installmentId: string,
+  programmeMilestoneId: string | null,
+): Promise<unknown> {
+  return apiClient(`/contracts/${contractId}/installments/${installmentId}/milestone`, {
+    method: 'PATCH',
+    body: JSON.stringify({ programmeMilestoneId }),
   });
 }

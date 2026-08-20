@@ -13,6 +13,7 @@ import { formatDate, formatMoney } from '@/lib/format';
 import { contractStatusTone, guaranteeAttentionTone, guaranteeStatusTone } from '../presentation';
 import { CommercialActivity } from './commercial-activity';
 import { CommercialSummaryStrip } from './commercial-summary-strip';
+import { CurrentPaymentCycle } from './current-payment-cycle';
 import { AttentionList, FactRow, PanelError, PanelLink, SectionCard } from './commercial-ui';
 
 /** ADR-017 contract lifecycle. CANCELLED and TERMINATED are exits, not stages. */
@@ -80,10 +81,14 @@ export function OverviewTab({
             <p className="text-body-sm font-semibold text-foreground">
               {t(`overview.terminal.${contract.status}`)}
             </p>
-            <p className="mt-0.5 text-caption text-muted-foreground">{t('overview.terminalHint')}</p>
+            <p className="mt-0.5 text-caption text-muted-foreground">
+              {t('overview.terminalHint')}
+            </p>
           </div>
         </div>
       ) : null}
+
+      <CurrentPaymentCycle projectId={projectId} />
 
       <CommercialSummaryStrip summary={summary} />
 
@@ -141,7 +146,7 @@ function MainContractPanel({
   return (
     <SectionCard
       title={t('mainContract.title')}
-      action={<PanelLink href={`${base}/main-contract`}>{t('actions.open')}</PanelLink>}
+      action={<PanelLink href={`${base}/contract-security`}>{t('actions.open')}</PanelLink>}
     >
       <dl>
         <FactRow label={t('mainContract.number')}>
@@ -192,7 +197,13 @@ function MainContractPanel({
   );
 }
 
-function CertificationPanel({ base, summary }: { base: string; summary: CommercialSummaryResponse }) {
+function CertificationPanel({
+  base,
+  summary,
+}: {
+  base: string;
+  summary: CommercialSummaryResponse;
+}) {
   const t = useTranslations('commercial');
   const { certification, metrics } = summary;
 
@@ -256,7 +267,7 @@ function RetentionAdvancesPanel({
   return (
     <SectionCard
       title={t('retentionAdvances.title')}
-      action={<PanelLink href={`${base}/retention-advances`}>{t('actions.viewTerms')}</PanelLink>}
+      action={<PanelLink href={`${base}/contract-security`}>{t('actions.viewTerms')}</PanelLink>}
     >
       {/* Terms only. Retention held, released and remaining — and advance recovered and
           outstanding — are deliberately absent: nothing in the system computes them yet, and
@@ -316,7 +327,7 @@ function ReceivablesPanel({
   return (
     <SectionCard
       title={t('receivables.title')}
-      action={<PanelLink href={`${base}/applications`}>{t('actions.view')}</PanelLink>}
+      action={<PanelLink href={`${base}/billing-collection`}>{t('actions.view')}</PanelLink>}
     >
       {metrics.invoiced.state === 'FAILED' ? (
         <PanelError message={t('receivables.unavailable')} />
@@ -410,7 +421,7 @@ function GuaranteesPanel({
   return (
     <SectionCard
       title={t('guarantees.title')}
-      action={<PanelLink href={`${base}/guarantees`}>{t('actions.open')}</PanelLink>}
+      action={<PanelLink href={`${base}/contract-security`}>{t('actions.open')}</PanelLink>}
       bodyClassName="px-0 py-0"
     >
       {summary.guarantees.length === 0 ? (

@@ -1,0 +1,225 @@
+{
+  "title": "Progress",
+  "subtitle": "Daily site records, verified physical progress and performance.",
+  "overview": {
+    "title": "Delivery progress",
+    "link": "Open Progress"
+  },
+  "tabs": {
+    "label": "Progress sections",
+    "reports": "Daily Reports",
+    "verified": "Verified Progress",
+    "milestones": "Milestones",
+    "workPackages": "Work Packages",
+    "performance": "Performance"
+  },
+  "actions": {
+    "newReport": "New daily report",
+    "addMeasurement": "Add measurement",
+    "attachEvidence": "Attach evidence",
+    "submit": "Submit",
+    "approve": "Approve",
+    "return": "Return for revision",
+    "newWorkPackage": "New work package",
+    "allocate": "Allocate BOQ item",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "save": "Save",
+    "download": "Download"
+  },
+  "states": {
+    "loading": "Loading…",
+    "loadFailed": "Could not load progress",
+    "loadFailedHint": "Something went wrong. Try again.",
+    "empty": "Nothing here yet."
+  },
+  "report": {
+    "title": "Daily progress report",
+    "listTitle": "Daily reports",
+    "emptyTitle": "No daily reports yet",
+    "emptyHint": "Record the first daily report to start capturing site progress.",
+    "fields": {
+      "reportDate": "Date",
+      "weather": "Weather",
+      "labourCount": "Labour on site",
+      "equipmentNote": "Equipment",
+      "narrative": "Work performed",
+      "delayReason": "Delay / issues",
+      "preparedBy": "Prepared by",
+      "submittedBy": "Submitted by",
+      "approvedBy": "Approved by"
+    },
+    "status": {
+      "DRAFT": "Draft",
+      "SUBMITTED": "Submitted",
+      "APPROVED": "Approved",
+      "RETURNED": "Returned for revision"
+    },
+    "returnReason": {
+      "label": "Reason for return",
+      "placeholder": "Explain what needs correcting",
+      "required": "Enter a reason for the return"
+    },
+    "draftOnlyHint": "Measurements can only be added while the report is a draft.",
+    "approvedHint": "This report is approved and its measurements are now verified progress.",
+    "statusLabel": "Status",
+    "backToList": "Back to reports",
+    "approveConfirmTitle": "Approve this report?",
+    "approveConfirmBody": "Its measurements become verified progress and the report becomes read-only.",
+    "returnConfirmTitle": "Return for revision?",
+    "returnConfirmBody": "The report goes back to the author to correct."
+  },
+  "measurement": {
+    "title": "Measurements",
+    "add": "Add measurement",
+    "boqNode": "BOQ item",
+    "boqNodePlaceholder": "Choose a BOQ item",
+    "leafOnlyHint": "Measure against a BOQ item (leaf), not a section.",
+    "quantity": "Quantity this report",
+    "notes": "Notes",
+    "empty": "No measurements recorded on this report.",
+    "quantityRequired": "Enter a quantity greater than zero"
+  },
+  "evidence": {
+    "title": "Evidence",
+    "add": "Attach evidence",
+    "hint": "Photos, measurement sheets or delivery tickets. A photo shows work happened, not the exact quantity.",
+    "empty": "No evidence attached.",
+    "notReady": "The file is still uploading. Try again once it finishes.",
+    "item": "Evidence file {n}"
+  },
+  "verified": {
+    "title": "Verified progress",
+    "subtitle": "Physical progress per BOQ item, from approved daily reports only.",
+    "empty": "No verified progress yet. Approve a daily report to see progress here.",
+    "col": {
+      "code": "Code",
+      "description": "Description",
+      "measurable": "Scope quantity",
+      "verified": "Verified to date",
+      "percent": "% complete"
+    }
+  },
+  "workPackage": {
+    "title": "Work packages",
+    "subtitle": "Control units that carry a responsible owner and a progress weight.",
+    "emptyTitle": "No work packages yet",
+    "emptyHint": "Create work packages and allocate BOQ items to roll progress up to a project figure.",
+    "form": {
+      "code": "Code",
+      "codePlaceholder": "e.g. WP-01",
+      "name": "Name",
+      "namePlaceholder": "e.g. Substructure",
+      "responsibleOwner": "Responsible owner",
+      "progressWeight": "Progress weight",
+      "weightHint": "Fraction of the project (0–1). All work-package weights should total 100%.",
+      "submit": "Create work package",
+      "codeRequired": "Enter a code",
+      "nameRequired": "Enter a name"
+    },
+    "col": {
+      "code": "Code",
+      "name": "Name",
+      "owner": "Owner",
+      "weight": "Weight",
+      "percent": "% complete",
+      "items": "BOQ items"
+    },
+    "allocate": {
+      "title": "Allocate BOQ item",
+      "boqNode": "BOQ item",
+      "leafOnly": "Only BOQ items (leaves) can be allocated.",
+      "submit": "Allocate",
+      "workPackage": "Work package",
+      "noBaseline": "Baseline the BOQ before allocating items."
+    }
+  },
+  "rollup": {
+    "title": "Project physical progress",
+    "physicalPercent": "Physical complete",
+    "weightsIncomplete": "Work-package weights total {total} — the project figure is understated until they reach 100%.",
+    "weightsComplete": "Weights complete",
+    "weightsLabel": "Work-package weights",
+    "unavailable": "Add work packages with weights to see a project figure."
+  },
+  "signal": {
+    "title": "Physical vs financial",
+    "physical": "Physical progress",
+    "cost": "Cost consumed",
+    "divergence": "Divergence",
+    "status": {
+      "ALIGNED": "On track",
+      "COST_AHEAD": "Cost ahead of progress",
+      "PROGRESS_AHEAD": "Progress ahead of cost",
+      "INSUFFICIENT_DATA": "Not enough data"
+    },
+    "costAheadHint": "Spending is running ahead of physical progress — investigate the variance.",
+    "progressAheadHint": "Physical progress is ahead of recorded cost.",
+    "alignedHint": "Physical progress and cost are broadly aligned.",
+    "insufficientHint": "There is no forecast cost yet, so no comparison can be made."
+  },
+  "collectionSignal": {
+    "title": "Collection vs progress",
+    "collected": "Collected",
+    "link": "Billing & collection",
+    "status": {
+      "ALIGNED": "On track",
+      "CASH_AHEAD": "Cash ahead of work",
+      "WORK_AHEAD": "Work ahead of cash",
+      "INSUFFICIENT_DATA": "Not enough data"
+    },
+    "alignedHint": "Collection and physical progress are broadly aligned.",
+    "cashAheadHint": "Collection is running ahead of physical progress — the client is financing the work; watch advance exposure.",
+    "workAheadHint": "Physical progress is ahead of collection — ACCO is financing the client; chase certification and billing.",
+    "insufficientHint": "There is no contract value yet, so no comparison can be made."
+  },
+  "programme": {
+    "title": "Milestones",
+    "subtitle": "Programme delivery milestones — construction stages with baseline dates. Verify a stage when it is complete; a verified milestone is the billing evidence for a payment-schedule installment.",
+    "new": "New milestone",
+    "actions": {
+      "verify": "Verify",
+      "cancel": "Cancel",
+      "retry": "Retry"
+    },
+    "states": {
+      "loadFailed": "Could not load milestones",
+      "emptyTitle": "No milestones yet",
+      "emptyHint": "Add the project's programme delivery stages with their baseline dates."
+    },
+    "form": {
+      "code": "Code",
+      "codePlaceholder": "e.g. MS-01",
+      "name": "Name",
+      "namePlaceholder": "e.g. Substructure complete",
+      "baselineDate": "Baseline date",
+      "submit": "Create milestone",
+      "codeRequired": "Enter a code",
+      "nameRequired": "Enter a name",
+      "baselineRequired": "Choose a baseline date"
+    },
+    "col": {
+      "code": "Code",
+      "name": "Name",
+      "baseline": "Baseline",
+      "actual": "Actual",
+      "variance": "Variance",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "status": {
+      "PLANNED": "Planned",
+      "VERIFIED": "Verified"
+    },
+    "variance": {
+      "onTime": "On time",
+      "early": "{n, plural, one {# day early} other {# days early}}",
+      "late": "{n, plural, one {# day late} other {# days late}}"
+    },
+    "verify": {
+      "title": "Verify {name}",
+      "hint": "Confirm the stage is complete and record the date it actually finished. This becomes billing evidence for any linked payment installment.",
+      "actualDate": "Actual completion date"
+    }
+  }
+}

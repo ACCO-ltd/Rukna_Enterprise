@@ -10,7 +10,7 @@ Raised: 2026-08-03 · Last re-verified: 2026-08-11, every open finding individua
 > #25/#28 (RBAC — now enforced, HTTP-403 verified).** Still open by design: **A12** (receipts one
 > ledger vs two — Eng Ahmed) and **#51/#49/#50** frontend-domain items. New backend capability
 > now needs *frontend*: the governance `409` gate + loop-back, and the Project Actual P&L screen —
-> planned in [`frontend-surface-plan.md`](../02-architecture/frontend-surface-plan.md). The
+> planned in [`docs/01-capability-matrix.md`](../01-capability-matrix.md). The
 > per-finding statuses below predate this update and are being reconciled.
 
 Status: **all 37 open findings re-verified at `4a895e7`; all 37 are still open.** Three are
@@ -1323,7 +1323,7 @@ for the rule, not for UI advice.
 
 > *Re-verified at `4a895e7` (2026-08-11) — still open.*
 
-`docs/02-architecture/api-reference.md` is genuinely good and was the fastest way to get
+`docs/reference/api-reference.md` is genuinely good and was the fastest way to get
 oriented. Three corrections:
 
 1. **§5.8 Suspend/Resume, §5.9 move/delete** — response bodies are not documented and are

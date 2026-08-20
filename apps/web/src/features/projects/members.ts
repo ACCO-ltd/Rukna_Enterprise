@@ -24,6 +24,29 @@ export const PROJECT_ROLE_ORDER: ProjectRole[] = [
   ProjectRole.VIEWER,
 ];
 
+/**
+ * Roles the UI offers when adding a member — ACCO's real project team (ADR-022): the Project
+ * Manager (who absorbs the old Project Engineer + Coordinator), the Site Engineer, and a
+ * read-only Viewer.
+ *
+ * The other three `ProjectRole` values are deprecated, not deleted. ADR-022 removed the
+ * Quantity Surveyor (the Construction Director owns BOQ scope + cost), and treats Commercial
+ * Manager / Finance Reviewer as org-level authorities that reach a project through the access
+ * scope resolver (ADR-009), not project membership. The enum keeps all six so existing members
+ * and the commercial `responsibleRole` union still resolve — this only restricts what is
+ * assignable going forward (the same pattern used for BillingModel).
+ */
+export const ASSIGNABLE_PROJECT_ROLES: ProjectRole[] = [
+  ProjectRole.PROJECT_MANAGER,
+  ProjectRole.SITE_ENGINEER,
+  ProjectRole.VIEWER,
+];
+
+/** True for a role still offered when adding a member; false for the ADR-022-deprecated roles. */
+export function isAssignableRole(role: ProjectRole): boolean {
+  return ASSIGNABLE_PROJECT_ROLES.includes(role);
+}
+
 /** `firstName lastName`, falling back to the email when a name is blank. */
 export function memberName(member: Pick<ProjectMember, 'user'>): string {
   const full = `${member.user.firstName} ${member.user.lastName}`.trim();

@@ -4,7 +4,7 @@ The Rukna ERP frontend — Next.js App Router, TanStack Query, Tailwind, `next-i
 (English + Arabic/RTL).
 
 Start with [`CLAUDE.md`](./CLAUDE.md) for the rules this app is built under, and
-[`docs/02-architecture/api-reference.md`](../../docs/02-architecture/api-reference.md) for
+[`docs/reference/api-reference.md`](../../docs/reference/api-reference.md) for
 the API it consumes.
 
 ---

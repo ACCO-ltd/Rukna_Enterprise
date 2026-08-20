@@ -4,7 +4,9 @@ import type { CommercialMetric } from '@erp/types';
 import {
   contractStatusTone,
   guaranteeAttentionTone,
+  isBilledInstallment,
   metricDisplay,
+  paymentInstallmentTone,
   settlementTone,
 } from './presentation';
 
@@ -63,5 +65,23 @@ describe('tone mapping', () => {
     expect(guaranteeAttentionTone('EXPIRED')).toBe('danger');
     expect(guaranteeAttentionTone('EXPIRING_SOON')).toBe('warning');
     expect(guaranteeAttentionTone('NONE')).toBe('live');
+  });
+
+  it('maps payment installment bill status — NEXT is the actionable one', () => {
+    expect(paymentInstallmentTone('NEXT')).toBe('accent');
+    expect(paymentInstallmentTone('UPCOMING')).toBe('neutral');
+    expect(paymentInstallmentTone('BILLED')).toBe('info');
+    expect(paymentInstallmentTone('PARTIALLY_PAID')).toBe('warning');
+    expect(paymentInstallmentTone('PAID')).toBe('live');
+  });
+});
+
+describe('isBilledInstallment', () => {
+  it('is true once an invoice is raised (BILLED/PARTIALLY_PAID/PAID), false before', () => {
+    expect(isBilledInstallment('BILLED')).toBe(true);
+    expect(isBilledInstallment('PARTIALLY_PAID')).toBe(true);
+    expect(isBilledInstallment('PAID')).toBe(true);
+    expect(isBilledInstallment('NEXT')).toBe(false);
+    expect(isBilledInstallment('UPCOMING')).toBe(false);
   });
 });

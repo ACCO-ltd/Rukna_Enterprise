@@ -35,6 +35,7 @@ import { AddGuaranteeDto } from './dto/add-guarantee.dto.js';
 import { UpdateGuaranteeDto } from './dto/update-guarantee.dto.js';
 import { AddMilestoneDto } from './dto/add-milestone.dto.js';
 import { AddRetentionTermsDto } from './dto/add-retention-terms.dto.js';
+import { SetInstallmentMilestoneDto } from './dto/set-installment-milestone.dto.js';
 
 @ApiTags('Contracts')
 @ApiBearerAuth('access-token')
@@ -156,6 +157,24 @@ export class ContractsController {
     @Body() dto: AddRetentionTermsDto,
   ) {
     return this.contractService.setRetentionTerms(identity, id, dto);
+  }
+
+  // ─── Payment-schedule installments ─────────────────────────────────────────────
+
+  @Patch(':id/installments/:installmentId/milestone')
+  @RequirePermissions(PERMISSIONS.contractsManage)
+  @ApiOperation({
+    summary: "Link/unlink a programme milestone as a milestone installment's billing evidence (CONST-COM-011)",
+  })
+  @ApiParam({ name: 'id' })
+  @ApiParam({ name: 'installmentId' })
+  setInstallmentMilestone(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Param('installmentId') installmentId: string,
+    @Body() dto: SetInstallmentMilestoneDto,
+  ) {
+    return this.contractService.setInstallmentMilestone(identity, id, installmentId, dto);
   }
 
   // ─── Advance terms ────────────────────────────────────────────────────────────

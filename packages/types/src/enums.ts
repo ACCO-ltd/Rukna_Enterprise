@@ -137,6 +137,41 @@ export enum AdvanceType {
   OTHER = 'OTHER',
 }
 
+// ADR-023: how a payment-schedule installment becomes billable.
+export enum PaymentTrigger {
+  ADVANCE = 'ADVANCE',
+  TIME_BASED = 'TIME_BASED',
+  MILESTONE = 'MILESTONE',
+}
+
+// ADR-021 Progress: daily-progress-report lifecycle.
+export enum DprStatus {
+  DRAFT = 'DRAFT',
+  SUBMITTED = 'SUBMITTED',
+  APPROVED = 'APPROVED',
+  RETURNED = 'RETURNED',
+}
+
+// ADR-021 phase 2: lifecycle of a programme delivery milestone.
+export enum ProgrammeMilestoneStatus {
+  PLANNED = 'PLANNED',
+  VERIFIED = 'VERIFIED',
+}
+
+// Documents tab (ADR-014): category of a standalone project document.
+export enum DocumentCategory {
+  PERMIT = 'PERMIT',
+  LICENSE = 'LICENSE',
+  DRAWING = 'DRAWING',
+  CONTRACT = 'CONTRACT',
+  CERTIFICATE = 'CERTIFICATE',
+  INSURANCE = 'INSURANCE',
+  GUARANTEE = 'GUARANTEE',
+  CORRESPONDENCE = 'CORRESPONDENCE',
+  PHOTO = 'PHOTO',
+  OTHER = 'OTHER',
+}
+
 export enum GuaranteeStatus {
   ACTIVE = 'ACTIVE',
   DISCHARGED = 'DISCHARGED',

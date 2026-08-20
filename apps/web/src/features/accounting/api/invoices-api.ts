@@ -21,6 +21,7 @@ import { apiClient } from '@/lib/api-client';
 import type {
   ClientInvoice,
   GenerateInvoicePayload,
+  GenerateInvoiceFromInstallmentPayload,
   PostInvoicePayload,
   ReverseInvoicePayload,
 } from '../types';
@@ -73,6 +74,25 @@ export function generateInvoiceFromIpc(
   payload: GenerateInvoicePayload,
 ): Promise<ClientInvoice> {
   return apiClient<ClientInvoice>('/invoices/from-ipc', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * `POST /invoices/from-installment` — raise an invoice from a MILESTONE contract's payment
+ * installment (ADR-023). Mirrors `from-ipc`: the new invoice is DRAFT/NOT_POSTED with a null
+ * `invoiceNumber`, and a second attempt on the same installment answers **409**.
+ *
+ * CONST-COM-011: when the installment is linked to a programme milestone that is not yet
+ * verified, the server answers **400** — the calling screen surfaces `error.message` and also
+ * disables the action pre-emptively when it can see the unverified link.
+ */
+export function generateInvoiceFromInstallment(
+  payload: GenerateInvoiceFromInstallmentPayload,
+): Promise<ClientInvoice> {
+  return apiClient<ClientInvoice>('/invoices/from-installment', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

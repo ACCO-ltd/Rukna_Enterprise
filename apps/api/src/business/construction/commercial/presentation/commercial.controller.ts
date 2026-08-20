@@ -33,10 +33,14 @@ export class CommercialController {
     summary: 'Consolidated IPA → IPC → invoice → settlement chain for a project (ADR-017 §B3)',
   })
   @ApiParam({ name: 'projectId', description: 'Project ID' })
-  getApplications(
-    @CurrentUser() identity: RequestIdentity,
-    @Param('projectId') projectId: string,
-  ) {
+  getApplications(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
     return this.commercialService.getApplications(identity, projectId);
+  }
+
+  @Get('current-cycle')
+  @ApiOperation({ summary: 'Authoritative current commercial cycle and next action' })
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  getCurrentCycle(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
+    return this.commercialService.getCurrentCycle(identity, projectId);
   }
 }

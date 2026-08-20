@@ -8,6 +8,7 @@ export interface CreateClientInvoiceData {
   organizationId: string;
   clientId: string;
   sourceIpcId?: string | null;
+  sourceInstallmentId?: string | null;
   projectId?: string;
   contractId?: string;
   invoiceDate: Date;
@@ -34,6 +35,27 @@ export class ClientInvoiceRepository {
     return prisma.clientInvoice.findFirst({ where: { sourceIpcId: ipcId, organizationId } });
   }
 
+  // ADR-023: one invoice per payment-schedule installment (idempotent milestone billing).
+  findByInstallment(
+    prisma: TenantPrisma,
+    organizationId: string,
+    installmentId: string,
+  ): Promise<ClientInvoice | null> {
+    return prisma.clientInvoice.findFirst({
+      where: { sourceInstallmentId: installmentId, organizationId },
+    });
+  }
+
+  // ADR-023: the installment being billed, with its contract (+ client) and linked programme
+  // milestone — everything generateFromInstallment needs to derive the amount and apply the
+  // CONST-COM-011 gate. Scoped to the org through the contract relation.
+  findInstallmentForBilling(prisma: TenantPrisma, organizationId: string, installmentId: string) {
+    return prisma.contractPaymentInstallment.findFirst({
+      where: { id: installmentId, contract: { organizationId } },
+      include: { contract: { include: { client: true } }, programmeMilestone: true },
+    });
+  }
+
   findAll(prisma: TenantPrisma, organizationId: string, clientId?: string) {
     return prisma.clientInvoice.findMany({
       where: { organizationId, ...(clientId ? { clientId } : {}) },
@@ -53,6 +75,7 @@ export class ClientInvoiceRepository {
         organizationId: data.organizationId,
         clientId: data.clientId,
         sourceIpcId: data.sourceIpcId,
+        sourceInstallmentId: data.sourceInstallmentId ?? null,
         projectId: data.projectId ?? null,
         contractId: data.contractId ?? null,
         invoiceDate: data.invoiceDate,

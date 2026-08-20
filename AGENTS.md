@@ -16,7 +16,7 @@ built to serve construction, retail, manufacturing, logistics, and real estate c
 **Languages:** English + Arabic (RTL) from day one.
 **Platform domain:** rukna.com (TBD) · Local dev: acco.localhost
 
-Read `docs/02-architecture/tenancy.md` to understand how multi-tenancy works before
+Read `docs/reference/tenancy.md` to understand how multi-tenancy works before
 making any change that touches database queries, authentication, or the request pipeline.
 
 ---
@@ -102,21 +102,24 @@ If documentation is unclear, stop and request clarification.
 
 Before making any change, contributors MUST read the following documents in order.
 
-1. docs/02-architecture/architecture.md          ← overall architecture
-2. docs/02-architecture/constraints.md           ← mandatory engineering rules
-3. docs/02-architecture/tenancy.md               ← HOW MULTI-TENANCY WORKS (read this carefully)
-4. docs/02-architecture/adr/ADR-001-platform-architecture.md   ← platform decisions
-5. docs/02-architecture/adr/ADR-002-construction-domain.md     ← construction decisions
-6. docs/02-architecture/adr/ADR-003-sprint1-foundation.md      ← sprint 1 decisions + rule IDs
-7. docs/02-architecture/domain-model.md          ← entity map and glossary
-8. docs/02-architecture/boundaries.md            ← who owns what
-9. docs/02-architecture/sprint1-build-plan.md   ← exact build sequence (Sprint 1)
-10. Module-specific CLAUDE.md (apps/api/CLAUDE.md or apps/web/CLAUDE.md)
+1. docs/README.md                                ← doc map + source-of-truth rule (read first)
+2. docs/00-system-map.md                         ← the mental model of the whole system
+3. docs/01-capability-matrix.md                  ← WHAT IS BUILT (authoritative status)
+4. docs/reference/architecture.md                ← overall architecture (SAD)
+5. docs/reference/constraints.md                 ← mandatory engineering rules
+6. docs/reference/tenancy.md                     ← HOW MULTI-TENANCY WORKS (read carefully)
+7. docs/adr/ADR-001-platform-architecture.md     ← platform decisions
+8. docs/adr/ADR-002-construction-domain.md       ← construction decisions
+9. docs/adr/ADR-003-sprint1-foundation.md        ← sprint 1 decisions + rule IDs
+10. docs/reference/domain-model.md               ← entity map and glossary
+11. docs/02-domain-boundaries.md                 ← who owns what
+12. Module-specific CLAUDE.md (apps/api/CLAUDE.md or apps/web/CLAUDE.md)
 
 Do not make changes without understanding the relevant documentation.
 
-If you are an AI agent: the sprint1-build-plan.md tells you exactly what to build,
-in what order, with what file paths. Follow it precisely.
+If you are an AI agent: `docs/01-capability-matrix.md` tells you exactly what is already
+built (backend vs frontend) and what remains; `docs/reference/roadmap.md` gives the intended
+sequence. Verify status against the code before building — the matrix is the source of truth.
 
 ---
 

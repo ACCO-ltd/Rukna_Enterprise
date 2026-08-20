@@ -1,5 +1,6 @@
 import type {
   CommercialApplicationsResponse,
+  CommercialCurrentCycleResponse,
   CommercialSummaryResponse,
 } from '@erp/types';
 
@@ -16,6 +17,14 @@ import { apiClient } from '@/lib/api-client';
 /** Permission-aware commercial summary for a project. */
 export function getCommercialSummary(projectId: string): Promise<CommercialSummaryResponse> {
   return apiClient<CommercialSummaryResponse>(`/projects/${projectId}/commercial/summary`);
+}
+
+export function getCommercialCurrentCycle(
+  projectId: string,
+): Promise<CommercialCurrentCycleResponse> {
+  return apiClient<CommercialCurrentCycleResponse>(
+    `/projects/${projectId}/commercial/current-cycle`,
+  );
 }
 
 /** The IPA → IPC → invoice → settlement chain for a project. */

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { PrismaClient, Contract, ContractGuarantee, ContractKind } from '@prisma/client';
+import type { PrismaClient, Contract, ContractGuarantee, ContractKind, PaymentTrigger } from '@prisma/client';
 
 export type ContractFull = Contract & {
   retentionTerms: import('@prisma/client').ContractRetentionTerms | null;
@@ -9,8 +9,21 @@ export type ContractFull = Contract & {
   })[];
   milestones: import('@prisma/client').ContractMilestone[];
   attachments: import('@prisma/client').ContractAttachment[];
+  paymentInstallments: import('@prisma/client').ContractPaymentInstallment[];
   client: { id: string; name: string; taxNumber: string | null };
 };
+
+// ADR-023: structural input for a payment installment (mirrors PaymentInstallmentDto without a
+// presentation-layer import). `percentage` is a fraction (0..1).
+export interface PaymentInstallmentInput {
+  sortOrder: number;
+  name: string;
+  percentage: number;
+  triggerType: PaymentTrigger;
+  dueOffsetDays?: number;
+  dueDate?: string;
+  milestoneLabel?: string;
+}
 
 type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
@@ -36,6 +49,7 @@ export class ContractPrismaRepository {
         guarantees: { include: { attachments: true } },
         milestones: { orderBy: { sortOrder: 'asc' } },
         attachments: true,
+        paymentInstallments: { orderBy: { sortOrder: 'asc' } },
         client: { select: { id: true, name: true, taxNumber: true } },
       },
     }) as Promise<ContractFull | null>;
@@ -104,6 +118,51 @@ export class ContractPrismaRepository {
         expectedEndDate: data.expectedEndDate,
         createdBy: data.createdBy,
       },
+    });
+  }
+
+  // ADR-023: write a contract's payment schedule. Called inside the create transaction.
+  createPaymentInstallments(
+    prisma: TenantPrisma,
+    contractId: string,
+    installments: PaymentInstallmentInput[],
+  ) {
+    return prisma.contractPaymentInstallment.createMany({
+      data: installments.map((i) => ({
+        contractId,
+        sortOrder: i.sortOrder,
+        name: i.name,
+        percentage: i.percentage,
+        triggerType: i.triggerType,
+        dueOffsetDays: i.dueOffsetDays ?? null,
+        dueDate: i.dueDate ? new Date(i.dueDate) : null,
+        milestoneLabel: i.milestoneLabel ?? null,
+      })),
+    });
+  }
+
+  findInstallmentInContract(prisma: TenantPrisma, contractId: string, installmentId: string) {
+    return prisma.contractPaymentInstallment.findFirst({
+      where: { id: installmentId, contractId },
+      select: { id: true },
+    });
+  }
+
+  findProjectMilestone(prisma: TenantPrisma, projectId: string, milestoneId: string) {
+    return prisma.programmeMilestone.findFirst({
+      where: { id: milestoneId, projectId },
+      select: { id: true },
+    });
+  }
+
+  setInstallmentMilestone(
+    prisma: TenantPrisma,
+    installmentId: string,
+    programmeMilestoneId: string | null,
+  ) {
+    return prisma.contractPaymentInstallment.update({
+      where: { id: installmentId },
+      data: { programmeMilestoneId },
     });
   }
 

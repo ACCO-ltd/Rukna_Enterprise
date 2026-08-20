@@ -20,16 +20,12 @@ import { formatMoney } from '@/lib/format';
  * instead of guessing, and the gap between them is the deductions — a number a commercial
  * manager wants anyway.
  */
-export function CommercialSummaryStrip({
-  summary,
-}: {
-  summary: CommercialSummaryResponse;
-}) {
+export function CommercialSummaryStrip({ summary }: { summary: CommercialSummaryResponse }) {
   const t = useTranslations('commercial');
   const { metrics } = summary;
 
   return (
-    <dl className="grid rounded-panel border border-border bg-surface sm:grid-cols-2 lg:grid-cols-4">
+    <dl className="grid overflow-hidden rounded-panel border border-border bg-surface shadow-e1 sm:grid-cols-2 lg:grid-cols-5">
       <Cell
         label={t('metric.contractValue')}
         metric={metrics.contractValue}
@@ -49,6 +45,11 @@ export function CommercialSummaryStrip({
         label={t('metric.invoiced')}
         metric={metrics.invoiced}
         supporting={t('metric.postedInvoices', { count: summary.certification.postedInvoices })}
+      />
+      <Cell
+        label={t('metric.received')}
+        metric={metrics.received}
+        supporting={t('metric.receiptsAllocated')}
       />
       <Cell
         label={t('metric.outstanding')}

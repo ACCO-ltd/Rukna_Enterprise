@@ -8,12 +8,14 @@
 Read these documents in order before making any change:
 
 1. `/AGENTS.md` — Engineering operating manual
-2. `/docs/02-architecture/architecture.md` — Architecture
-3. `/docs/02-architecture/constraints.md` — Engineering constraints
-4. `/docs/02-architecture/adr/ADR-001-platform-architecture.md` — Platform decisions
-5. `/docs/02-architecture/adr/ADR-002-construction-domain.md` — Construction domain decisions
-6. `/docs/02-architecture/domain-model.md` — Entity map and glossary
-7. `/docs/02-architecture/boundaries.md` — Team ownership
+2. `/docs/README.md` — Doc map + source-of-truth rule
+3. `/docs/01-capability-matrix.md` — What is actually built (authoritative status)
+4. `/docs/reference/architecture.md` — Architecture
+5. `/docs/reference/constraints.md` — Engineering constraints
+6. `/docs/adr/ADR-001-platform-architecture.md` — Platform decisions
+7. `/docs/adr/ADR-002-construction-domain.md` — Construction domain decisions
+8. `/docs/reference/domain-model.md` — Entity map and glossary
+9. `/docs/02-domain-boundaries.md` — Aggregate ownership
 
 ---
 

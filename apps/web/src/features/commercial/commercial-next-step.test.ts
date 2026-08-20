@@ -11,11 +11,15 @@ const ALL_CAPABILITIES: CommercialCapabilities = {
   canViewFinancials: true,
   canEditContract: true,
   canAdvanceContract: true,
-  canCreateApplication: true,
+      canCreateApplication: true,
+      canManageApplication: true,
   canReviewApplication: true,
   canIssueCertificate: true,
-  canGenerateInvoice: true,
-  canManageGuarantee: true,
+      canGenerateInvoice: true,
+      canPostInvoice: true,
+      canManageGuarantee: true,
+      canRecordReceipt: false,
+      canAllocateReceipt: false,
 };
 
 function metric() {
@@ -108,7 +112,9 @@ describe('resolveCommercialNextStep', () => {
    */
   it('prioritises invoicing certified work over raising the next application', () => {
     const step = resolveCommercialNextStep(
-      summary({ attention: [attention('UNINVOICED_CERTIFICATE'), attention('UNINVOICED_CERTIFICATE')] }),
+      summary({
+        attention: [attention('UNINVOICED_CERTIFICATE'), attention('UNINVOICED_CERTIFICATE')],
+      }),
       'p-1',
     );
 
@@ -148,7 +154,7 @@ describe('resolveCommercialNextStep — contract lifecycle', () => {
 
       expect(step).toEqual({
         kind: 'ADVANCE_CONTRACT',
-        href: '/projects/p-1/commercial/main-contract',
+        href: '/projects/p-1/commercial/contract-security',
       });
     },
   );
@@ -168,7 +174,7 @@ describe('resolveCommercialNextStep — contract lifecycle', () => {
 
       expect(step).toEqual({
         kind: 'VIEW_HISTORY',
-        href: '/projects/p-1/commercial/main-contract',
+        href: '/projects/p-1/commercial/contract-security',
       });
     },
   );

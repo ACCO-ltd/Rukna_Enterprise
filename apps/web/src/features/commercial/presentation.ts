@@ -1,10 +1,9 @@
-import type {
-  BadgeTone,
-} from '@erp/ui';
+import type { BadgeTone } from '@erp/ui';
 import type {
   CommercialMetric,
   CommercialSettlementState,
   GuaranteeAttentionState,
+  PaymentInstallmentBillStatus,
 } from '@erp/types';
 
 /**
@@ -65,6 +64,35 @@ export function settlementTone(state: CommercialSettlementState): BadgeTone {
     case 'UNPAID':
       return 'danger';
     case 'UNINVOICED':
+    default:
+      return 'neutral';
+  }
+}
+
+/**
+ * True once an installment has an invoice raised against it (invoiced or wholly/partly paid),
+ * as opposed to NEXT/UPCOMING which are not yet billed. Shared by the schedule table and the
+ * Overview cockpit's "N of M invoiced" count so the two never drift.
+ */
+export function isBilledInstallment(status: PaymentInstallmentBillStatus): boolean {
+  return status === 'BILLED' || status === 'PARTIALLY_PAID' || status === 'PAID';
+}
+
+/**
+ * ADR-023 payment installment bill status → badge tone. NEXT is the actionable one (accent);
+ * UPCOMING is quiet; the paid states mirror `settlementTone`.
+ */
+export function paymentInstallmentTone(status: PaymentInstallmentBillStatus): BadgeTone {
+  switch (status) {
+    case 'PAID':
+      return 'live';
+    case 'PARTIALLY_PAID':
+      return 'warning';
+    case 'BILLED':
+      return 'info';
+    case 'NEXT':
+      return 'accent';
+    case 'UPCOMING':
     default:
       return 'neutral';
   }

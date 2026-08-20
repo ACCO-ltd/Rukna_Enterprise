@@ -5,9 +5,12 @@ import { ContractsModule } from './contracts/contracts.module.js';
 import { IpaModule } from './ipa/ipa.module.js';
 import { IpcModule } from './ipc/ipc.module.js';
 import { CommercialModule } from './commercial/commercial.module.js';
+import { DocumentsModule } from './documents/documents.module.js';
+import { ProgressModule } from './progress/progress.module.js';
+import { ProgrammeModule } from './programme/programme.module.js';
 
 @Module({
-  imports: [ProjectsModule, BoqModule, ContractsModule, IpaModule, IpcModule, CommercialModule],
-  exports: [ProjectsModule, BoqModule, ContractsModule, IpaModule, IpcModule, CommercialModule],
+  imports: [ProjectsModule, BoqModule, ContractsModule, IpaModule, IpcModule, CommercialModule, DocumentsModule, ProgressModule, ProgrammeModule],
+  exports: [ProjectsModule, BoqModule, ContractsModule, IpaModule, IpcModule, CommercialModule, DocumentsModule, ProgressModule, ProgrammeModule],
 })
 export class ConstructionModule {}

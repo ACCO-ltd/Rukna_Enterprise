@@ -14,7 +14,10 @@ function identityWith(permissions: string[]): RequestIdentity {
   };
 }
 
-const financeIdentity = identityWith([PERMISSIONS.contractsView, PERMISSIONS.financialPositionView]);
+const financeIdentity = identityWith([
+  PERMISSIONS.contractsView,
+  PERMISSIONS.financialPositionView,
+]);
 const noFinanceIdentity = identityWith([PERMISSIONS.contractsView]);
 
 const baseContract = {
@@ -43,11 +46,13 @@ function build(overrides: {
   certRejects?: boolean;
   boqVersionNumber?: number | null;
   applicationCount?: number;
+  installments?: unknown;
 }) {
   const repo = {
     findMainContract: jest
       .fn()
       .mockResolvedValue('contract' in overrides ? overrides.contract : baseContract),
+    findPaymentInstallments: jest.fn().mockResolvedValue(overrides.installments ?? []),
     findEffectiveCertificates: overrides.certRejects
       ? jest.fn().mockRejectedValue(new Error('db down'))
       : jest.fn().mockResolvedValue(overrides.certs ?? []),
@@ -62,6 +67,63 @@ function build(overrides: {
   const service = new CommercialService(tenancy as never, projectAccess as never, repo as never);
   return { repo, service };
 }
+
+describe('ADR-023 — getCurrentCycle for a MILESTONE contract', () => {
+  const milestoneContract = { ...baseContract, billingModel: 'MILESTONE' };
+  const accoPlan = [
+    { id: 'i0', sortOrder: 0, name: 'Advance', percentage: new Decimal('0.4'), triggerType: 'ADVANCE', milestoneLabel: null, dueOffsetDays: null, dueDate: null },
+    { id: 'i1', sortOrder: 1, name: 'Structure', percentage: new Decimal('0.3'), triggerType: 'MILESTONE', milestoneLabel: 'Structure', dueOffsetDays: null, dueDate: null },
+    { id: 'i2', sortOrder: 2, name: 'Partition & Plastering', percentage: new Decimal('0.2'), triggerType: 'MILESTONE', milestoneLabel: 'Partition', dueOffsetDays: null, dueDate: null },
+    { id: 'i3', sortOrder: 3, name: 'Installation & Paint', percentage: new Decimal('0.1'), triggerType: 'MILESTONE', milestoneLabel: 'Install', dueOffsetDays: null, dueDate: null },
+  ];
+  // The advance installment (i0) is invoiced and fully collected (outstanding 0).
+  const advancePaidInvoices = [
+    { id: 'inv-1', sourceInstallmentId: 'i0', postingStatus: 'POSTED', totalAmount: new Decimal('400000'), outstandingAmount: new Decimal('0'), allocations: [{ allocatedAmount: new Decimal('400000') }] },
+  ];
+
+  it('returns MILESTONE_SCHEDULE with the plan, not the IPA chain', async () => {
+    const { service } = build({ contract: milestoneContract, installments: accoPlan, invoices: advancePaidInvoices });
+    const res = await service.getCurrentCycle(financeIdentity, 'p-1');
+    expect(res.stage).toBe('MILESTONE_SCHEDULE');
+    expect(res.application).toBeNull();
+    expect(res.paymentSchedule?.installments).toHaveLength(4);
+  });
+
+  it('derives status per installment from its own invoice: advance PAID, structure NEXT, rest UPCOMING', async () => {
+    const { service } = build({ contract: milestoneContract, installments: accoPlan, invoices: advancePaidInvoices });
+    const res = await service.getCurrentCycle(financeIdentity, 'p-1');
+    const s = res.paymentSchedule!.installments;
+    expect(s.map((i) => i.status)).toEqual(['PAID', 'NEXT', 'UPCOMING', 'UPCOMING']);
+    expect(s[0].amount).toBe('400000.00');
+    expect(s[0].amountPaid).toBe('400000.00');
+    expect(s[1].amount).toBe('300000.00');
+    expect(s[1].amountPaid).toBe('0.00');
+  });
+
+  it('marks an invoiced-but-unpaid installment BILLED (invoice raised, not posted)', async () => {
+    const invoices = [
+      ...advancePaidInvoices,
+      // Structure (i1) invoiced but not yet posted → collected fraction 0 → BILLED.
+      { id: 'inv-2', sourceInstallmentId: 'i1', postingStatus: 'NOT_POSTED', totalAmount: new Decimal('300000'), outstandingAmount: new Decimal('300000'), allocations: [] },
+    ];
+    const { service } = build({ contract: milestoneContract, installments: accoPlan, invoices });
+    const res = await service.getCurrentCycle(financeIdentity, 'p-1');
+    const s = res.paymentSchedule!.installments;
+    // Advance PAID, Structure BILLED, then the first un-invoiced (Partition) is NEXT.
+    expect(s.map((i) => i.status)).toEqual(['PAID', 'BILLED', 'NEXT', 'UPCOMING']);
+  });
+
+  it('hides money but keeps the plan structure without financial permission', async () => {
+    const { service } = build({ contract: milestoneContract, installments: accoPlan, invoices: advancePaidInvoices });
+    const res = await service.getCurrentCycle(noFinanceIdentity, 'p-1');
+    expect(res.stage).toBe('MILESTONE_SCHEDULE');
+    expect(res.paymentSchedule?.contractValue).toBeNull();
+    expect(res.paymentSchedule?.installments[0].amount).toBeNull();
+    // Structure (percentage + status) stays visible.
+    expect(res.paymentSchedule?.installments[0].percentage).toBe('0.4');
+    expect(res.paymentSchedule?.installments[0].status).toBe('PAID');
+  });
+});
 
 describe('CommercialService.getSummary', () => {
   it('reports UNAVAILABLE (not zero) and NO_MAIN_CONTRACT when there is no contract', async () => {
@@ -100,8 +162,16 @@ describe('CommercialService.getSummary', () => {
     });
     const res = await service.getSummary(financeIdentity, 'p-1');
 
-    expect(res.metrics.contractValue).toMatchObject({ state: 'OK', amount: '1000000.00', currency: 'USD' });
-    expect(res.metrics.certifiedGross).toMatchObject({ state: 'OK', amount: '500000.00', sourceCount: 1 });
+    expect(res.metrics.contractValue).toMatchObject({
+      state: 'OK',
+      amount: '1000000.00',
+      currency: 'USD',
+    });
+    expect(res.metrics.certifiedGross).toMatchObject({
+      state: 'OK',
+      amount: '500000.00',
+      sourceCount: 1,
+    });
     expect(res.metrics.certifiedNet.amount).toBe('450000.00');
     expect(res.metrics.invoiced).toMatchObject({ state: 'OK', amount: '525000.00' });
     expect(res.metrics.received).toMatchObject({ state: 'OK', amount: '200000.00' });
@@ -177,7 +247,11 @@ describe('CommercialService.getSummary', () => {
   it('sums certified net on effective certificates with no posted invoice', async () => {
     const { service } = build({
       certs: [
-        { id: 'ipc-1', certifiedTotal: new Decimal('300000'), deductions: [{ amount: new Decimal('30000') }] },
+        {
+          id: 'ipc-1',
+          certifiedTotal: new Decimal('300000'),
+          deductions: [{ amount: new Decimal('30000') }],
+        },
         { id: 'ipc-2', certifiedTotal: new Decimal('200000'), deductions: [] },
       ],
       invoices: [
@@ -199,7 +273,11 @@ describe('CommercialService.getSummary', () => {
     const res = await service.getSummary(financeIdentity, 'p-1');
 
     // ipc-2 only: 200,000 with no deductions and no invoice behind it.
-    expect(res.metrics.uninvoicedCertified).toMatchObject({ state: 'OK', amount: '200000.00', sourceCount: 1 });
+    expect(res.metrics.uninvoicedCertified).toMatchObject({
+      state: 'OK',
+      amount: '200000.00',
+      sourceCount: 1,
+    });
   });
 
   it('counts the certification chain, and keeps the counts readable without financial access', async () => {
@@ -211,11 +289,17 @@ describe('CommercialService.getSummary', () => {
       ],
       invoices: [
         {
-          id: 'inv-1', sourceIpcId: 'ipc-1', invoiceNumber: 'INV-1',
-          documentStatus: 'APPROVED', postingStatus: 'POSTED',
-          totalAmount: new Decimal('1'), outstandingAmount: new Decimal('0'),
-          invoiceDate: new Date('2026-07-01'), dueDate: new Date('2026-07-31'),
-          currencyCode: 'USD', allocations: [],
+          id: 'inv-1',
+          sourceIpcId: 'ipc-1',
+          invoiceNumber: 'INV-1',
+          documentStatus: 'APPROVED',
+          postingStatus: 'POSTED',
+          totalAmount: new Decimal('1'),
+          outstandingAmount: new Decimal('0'),
+          invoiceDate: new Date('2026-07-01'),
+          dueDate: new Date('2026-07-31'),
+          currencyCode: 'USD',
+          allocations: [],
         },
       ],
     });
@@ -243,25 +327,43 @@ describe('CommercialService.getSummary', () => {
     const { service } = build({
       invoices: [
         {
-          id: 'inv-late', sourceIpcId: null, invoiceNumber: 'INV-2026-005',
-          documentStatus: 'APPROVED', postingStatus: 'POSTED',
-          totalAmount: new Decimal('70000'), outstandingAmount: new Decimal('70000'),
-          invoiceDate: new Date('2026-07-10'), dueDate: sixDaysAgo,
-          currencyCode: 'USD', allocations: [],
+          id: 'inv-late',
+          sourceIpcId: null,
+          invoiceNumber: 'INV-2026-005',
+          documentStatus: 'APPROVED',
+          postingStatus: 'POSTED',
+          totalAmount: new Decimal('70000'),
+          outstandingAmount: new Decimal('70000'),
+          invoiceDate: new Date('2026-07-10'),
+          dueDate: sixDaysAgo,
+          currencyCode: 'USD',
+          allocations: [],
         },
         {
-          id: 'inv-soon', sourceIpcId: null, invoiceNumber: 'INV-2026-007',
-          documentStatus: 'APPROVED', postingStatus: 'POSTED',
-          totalAmount: new Decimal('310000'), outstandingAmount: new Decimal('310000'),
-          invoiceDate: new Date('2026-07-28'), dueDate: inTwoWeeks,
-          currencyCode: 'USD', allocations: [],
+          id: 'inv-soon',
+          sourceIpcId: null,
+          invoiceNumber: 'INV-2026-007',
+          documentStatus: 'APPROVED',
+          postingStatus: 'POSTED',
+          totalAmount: new Decimal('310000'),
+          outstandingAmount: new Decimal('310000'),
+          invoiceDate: new Date('2026-07-28'),
+          dueDate: inTwoWeeks,
+          currencyCode: 'USD',
+          allocations: [],
         },
         {
-          id: 'inv-settled', sourceIpcId: null, invoiceNumber: 'INV-2026-004',
-          documentStatus: 'APPROVED', postingStatus: 'POSTED',
-          totalAmount: new Decimal('50000'), outstandingAmount: new Decimal('0'),
-          invoiceDate: new Date('2026-06-01'), dueDate: new Date('2026-06-30'),
-          currencyCode: 'USD', allocations: [{ allocatedAmount: new Decimal('50000') }],
+          id: 'inv-settled',
+          sourceIpcId: null,
+          invoiceNumber: 'INV-2026-004',
+          documentStatus: 'APPROVED',
+          postingStatus: 'POSTED',
+          totalAmount: new Decimal('50000'),
+          outstandingAmount: new Decimal('0'),
+          invoiceDate: new Date('2026-06-01'),
+          dueDate: new Date('2026-06-30'),
+          currencyCode: 'USD',
+          allocations: [{ allocatedAmount: new Decimal('50000') }],
         },
       ],
     });
@@ -282,11 +384,17 @@ describe('CommercialService.getSummary', () => {
     const { service } = build({
       invoices: [
         {
-          id: 'inv-1', sourceIpcId: null, invoiceNumber: 'INV-1',
-          documentStatus: 'APPROVED', postingStatus: 'POSTED',
-          totalAmount: new Decimal('100'), outstandingAmount: new Decimal('100'),
-          invoiceDate: new Date('2026-07-01'), dueDate: new Date('2026-07-31'),
-          currencyCode: 'USD', allocations: [],
+          id: 'inv-1',
+          sourceIpcId: null,
+          invoiceNumber: 'INV-1',
+          documentStatus: 'APPROVED',
+          postingStatus: 'POSTED',
+          totalAmount: new Decimal('100'),
+          outstandingAmount: new Decimal('100'),
+          invoiceDate: new Date('2026-07-01'),
+          dueDate: new Date('2026-07-31'),
+          currencyCode: 'USD',
+          allocations: [],
         },
       ],
     });
@@ -407,5 +515,100 @@ describe('CommercialService.getApplications', () => {
     expect(row.claimedAmount).toBeNull();
     expect(row.settlement).toBe('UNINVOICED');
     expect(row.nextAction).toBe('SUBMIT_APPLICATION');
+  });
+});
+
+describe('CommercialService.getCurrentCycle', () => {
+  it('makes an active contract with no applications actionable', async () => {
+    const { service } = build({ applications: [] });
+    const result = await service.getCurrentCycle(
+      identityWith([PERMISSIONS.contractsView, PERMISSIONS.ipaCreate]),
+      'p-1',
+    );
+
+    expect(result).toMatchObject({
+      stage: 'READY_FOR_APPLICATION',
+      application: null,
+      blockers: [],
+      responsibleRole: 'QUANTITY_SURVEYOR',
+      nextAction: {
+        kind: 'CREATE_APPLICATION',
+        href: '/contracts/c-1/applications/new',
+      },
+    });
+  });
+
+  it('distinguishes approval from submission to the client', async () => {
+    const { service } = build({
+      applications: [
+        {
+          id: 'ipa-1',
+          applicationNumber: 1,
+          applicationRef: 'IPA-001',
+          status: 'APPROVED_FOR_SUBMISSION',
+          periodFrom: null,
+          periodTo: null,
+          items: [],
+          certificates: [],
+        },
+      ],
+    });
+    const result = await service.getCurrentCycle(
+      identityWith([PERMISSIONS.contractsView, PERMISSIONS.ipaManage]),
+      'p-1',
+    );
+
+    expect(result.nextAction).toMatchObject({
+      kind: 'SUBMIT_APPLICATION',
+      href: '/contracts/c-1/applications/ipa-1',
+    });
+  });
+
+  it('does not route settlement into the legacy receipt ledger', async () => {
+    const { service } = build({
+      applications: [
+        {
+          id: 'ipa-1',
+          applicationNumber: 1,
+          applicationRef: 'IPA-001',
+          status: 'SUBMITTED',
+          periodFrom: null,
+          periodTo: null,
+          items: [],
+          certificates: [
+            {
+              id: 'ipc-1',
+              status: 'CERTIFIED',
+              isEffective: true,
+              certifiedTotal: new Decimal('100'),
+              deductions: [],
+            },
+          ],
+        },
+      ],
+      invoices: [
+        {
+          id: 'inv-1',
+          sourceIpcId: 'ipc-1',
+          invoiceNumber: 'INV-1',
+          documentStatus: 'APPROVED',
+          postingStatus: 'POSTED',
+          totalAmount: new Decimal('100'),
+          outstandingAmount: new Decimal('100'),
+          invoiceDate: new Date('2026-08-01'),
+          dueDate: new Date('2026-08-31'),
+          currencyCode: 'USD',
+          allocations: [],
+        },
+      ],
+    });
+    const result = await service.getCurrentCycle(
+      identityWith([PERMISSIONS.contractsView, PERMISSIONS.receiptsCreate]),
+      'p-1',
+    );
+
+    expect(result.stage).toBe('AWAITING_PAYMENT');
+    expect(result.nextAction).toBeNull();
+    expect(result.blockers).toContain('RECEIPT_WORKFLOW_UNAVAILABLE');
   });
 });
