@@ -1,9 +1,9 @@
 'use client';
 
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Input, Select } from '@erp/ui';
+import { Alert, Button, FormField, Input, MoneyInput, Select } from '@erp/ui';
 
 import { useClients } from '@/features/clients/hooks/use-clients';
 import { toDecimalString } from '@/features/contracts/contract-form-payload';
@@ -32,6 +32,7 @@ export function ReceiptForm() {
 
   const {
     register,
+    control,
     handleSubmit,
     formState: { errors },
   } = useForm<ReceiptFormValues>({
@@ -108,11 +109,10 @@ export function ReceiptForm() {
         </FormField>
 
         <FormField htmlFor="receipt-amount" label={t('amount')} error={errors.amount?.message}>
-          <Input
-            id="receipt-amount"
-            inputMode="decimal"
-            aria-invalid={Boolean(errors.amount)}
-            {...register('amount', {
+          <Controller
+            name="amount"
+            control={control}
+            rules={{
               validate: (v) => {
                 if (v.trim() === '') return t('amountRequired');
                 if (!Number.isFinite(Number(v))) return t('amountInvalid');
@@ -120,7 +120,18 @@ export function ReceiptForm() {
                 // A payment of nothing is not a payment.
                 return Number(v) > 0 || t('amountNotPositive');
               },
-            })}
+            }}
+            render={({ field }) => (
+              <MoneyInput
+                id="receipt-amount"
+                aria-invalid={Boolean(errors.amount)}
+                value={field.value}
+                onValueChange={field.onChange}
+                onBlur={field.onBlur}
+                ref={field.ref}
+                name={field.name}
+              />
+            )}
           />
         </FormField>
 

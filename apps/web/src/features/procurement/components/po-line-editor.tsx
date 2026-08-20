@@ -17,7 +17,7 @@
 
 import { useId, useState } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
-import { Button, Input } from '@erp/ui';
+import { Button, Input, MoneyInput } from '@erp/ui';
 
 import { formatMoney } from '@/lib/format';
 import { MONEY_SCALE, QUANTITY_SCALE, fromMinorUnits, parseMinorUnits } from '@/lib/money';
@@ -317,11 +317,10 @@ function PoLineRow({
           <label htmlFor={ids.price} className="mb-1 block text-xs font-medium">
             {tc('unitPrice')}
           </label>
-          <Input
+          <MoneyInput
             id={ids.price}
-            inputMode="decimal"
             value={line.unitPrice}
-            onChange={(e) => onPatch({ unitPrice: e.target.value })}
+            onValueChange={(v) => onPatch({ unitPrice: v })}
             className="text-end tabular-nums"
           />
         </div>

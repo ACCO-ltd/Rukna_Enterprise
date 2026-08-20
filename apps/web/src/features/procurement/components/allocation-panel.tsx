@@ -15,7 +15,7 @@
 
 import { useId, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Input } from '@erp/ui';
+import { Alert, Button, FormField, MoneyInput } from '@erp/ui';
 
 import { useAccounts } from '@/features/accounting/hooks/use-accounting';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
@@ -138,11 +138,10 @@ export function AllocationPanel({ payment }: { payment: SupplierPayment }) {
           </FormField>
 
           <FormField htmlFor={ids.amount} label={t('amount')}>
-            <Input
+            <MoneyInput
               id={ids.amount}
               value={amount}
-              onChange={(event) => setAmount(event.target.value)}
-              inputMode="decimal"
+              onValueChange={setAmount}
               autoComplete="off"
               disabled={!selected}
             />

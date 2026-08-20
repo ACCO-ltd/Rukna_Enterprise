@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { useLocale, useTranslations } from 'next-intl';
 import { GuaranteeStatus } from '@erp/types';
 import {
@@ -14,6 +14,7 @@ import {
   DialogTitle,
   FormField,
   Input,
+  MoneyInput,
   Select,
   type BadgeTone,
 } from '@erp/ui';
@@ -236,6 +237,7 @@ function AddGuaranteeDialog({
   const add = useAddGuarantee(contractId);
 
   const {
+    control,
     register,
     handleSubmit,
     getValues,
@@ -315,15 +317,25 @@ function AddGuaranteeDialog({
 
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField htmlFor="guarantee-amount" label={t('amount')} error={errors.amount?.message}>
-              <Input
-                id="guarantee-amount"
-                inputMode="decimal"
-                dir="ltr"
-                aria-invalid={Boolean(errors.amount)}
-                {...register('amount', {
+              <Controller
+                name="amount"
+                control={control}
+                rules={{
                   validate: (v) =>
                     (v.trim() !== '' && Number.isFinite(Number(v))) || t('required'),
-                })}
+                }}
+                render={({ field }) => (
+                  <MoneyInput
+                    id="guarantee-amount"
+                    dir="ltr"
+                    aria-invalid={Boolean(errors.amount)}
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    onBlur={field.onBlur}
+                    ref={field.ref}
+                    name={field.name}
+                  />
+                )}
               />
             </FormField>
 
