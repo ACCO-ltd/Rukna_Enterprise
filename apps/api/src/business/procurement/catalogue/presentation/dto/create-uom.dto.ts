@@ -1,5 +1,5 @@
-import { IsString, MaxLength, IsOptional } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, MaxLength } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateUomDto {
   @ApiProperty({ example: 'M3' })
