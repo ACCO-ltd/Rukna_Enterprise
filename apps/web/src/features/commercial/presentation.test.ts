@@ -4,6 +4,7 @@ import type { CommercialMetric } from '@erp/types';
 import {
   contractStatusTone,
   guaranteeAttentionTone,
+  isBilledInstallment,
   metricDisplay,
   paymentInstallmentTone,
   settlementTone,
@@ -72,5 +73,15 @@ describe('tone mapping', () => {
     expect(paymentInstallmentTone('BILLED')).toBe('info');
     expect(paymentInstallmentTone('PARTIALLY_PAID')).toBe('warning');
     expect(paymentInstallmentTone('PAID')).toBe('live');
+  });
+});
+
+describe('isBilledInstallment', () => {
+  it('is true once an invoice is raised (BILLED/PARTIALLY_PAID/PAID), false before', () => {
+    expect(isBilledInstallment('BILLED')).toBe(true);
+    expect(isBilledInstallment('PARTIALLY_PAID')).toBe(true);
+    expect(isBilledInstallment('PAID')).toBe(true);
+    expect(isBilledInstallment('NEXT')).toBe(false);
+    expect(isBilledInstallment('UPCOMING')).toBe(false);
   });
 });

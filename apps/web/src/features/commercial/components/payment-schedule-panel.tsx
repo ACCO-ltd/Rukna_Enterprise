@@ -35,13 +35,14 @@ import { usePermissions } from '@/features/auth/permissions/can';
 import { useMilestones } from '@/features/programme/hooks/use-programme';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
+import { useDialogDismissGuard } from '@/lib/use-dialog-dismiss-guard';
 
 import { useCommercialCurrentCycle } from '../hooks/use-commercial';
 import {
   useGenerateInvoiceFromInstallment,
   useSetInstallmentMilestone,
 } from '../hooks/use-payment-schedule';
-import { paymentInstallmentTone } from '../presentation';
+import { isBilledInstallment, paymentInstallmentTone } from '../presentation';
 import { CommercialSummaryStrip } from './commercial-summary-strip';
 import { errorText } from './commercial-workspace';
 
@@ -255,9 +256,7 @@ function InstallmentRow({
               </span>
             ) : null}
           </div>
-        ) : inst.status === 'BILLED' ||
-          inst.status === 'PARTIALLY_PAID' ||
-          inst.status === 'PAID' ? (
+        ) : isBilledInstallment(inst.status) ? (
           <span className="text-caption text-muted-foreground">
             {t('paymentSchedule.status.BILLED')}
           </span>
@@ -330,17 +329,11 @@ function GenerateInvoiceDialog({
   });
   const [paymentTerms, setPaymentTerms] = useState('');
 
-  const preventWhilePending = (event: Event) => {
-    if (generate.isPending) event.preventDefault();
-  };
+  const dismissGuard = useDialogDismissGuard(generate.isPending, onDismiss);
 
   return (
-    <Dialog open onOpenChange={(next) => { if (!next && !generate.isPending) onDismiss(); }}>
-      <DialogContent
-        onEscapeKeyDown={preventWhilePending}
-        onPointerDownOutside={preventWhilePending}
-        onInteractOutside={preventWhilePending}
-      >
+    <Dialog open onOpenChange={dismissGuard.onOpenChange}>
+      <DialogContent {...dismissGuard.contentProps}>
         <DialogTitle>
           {t('paymentSchedule.generateDialog.title', { name: installment.name })}
         </DialogTitle>
@@ -431,17 +424,11 @@ function LinkMilestoneDialog({
   const link = useSetInstallmentMilestone(projectId, contractId);
   const [selected, setSelected] = useState<string>(installment.programmeMilestone?.id ?? '');
 
-  const preventWhilePending = (event: Event) => {
-    if (link.isPending) event.preventDefault();
-  };
+  const dismissGuard = useDialogDismissGuard(link.isPending, onDismiss);
 
   return (
-    <Dialog open onOpenChange={(next) => { if (!next && !link.isPending) onDismiss(); }}>
-      <DialogContent
-        onEscapeKeyDown={preventWhilePending}
-        onPointerDownOutside={preventWhilePending}
-        onInteractOutside={preventWhilePending}
-      >
+    <Dialog open onOpenChange={dismissGuard.onOpenChange}>
+      <DialogContent {...dismissGuard.contentProps}>
         <DialogTitle>{t('paymentSchedule.milestone.dialogTitle')}</DialogTitle>
         <DialogDescription>{t('paymentSchedule.milestone.dialogHint')}</DialogDescription>
 

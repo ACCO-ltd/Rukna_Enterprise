@@ -1116,6 +1116,7 @@
       "startDate": "تاريخ البداية",
       "expectedEnd": "الإنجاز المتوقع",
       "currencyPlaceholder": "اختر العملة",
+      "currencyFixed": "Contracts are billed in USD.",
       "projectRequired": "اختر المشروع",
       "clientRequired": "اختر العميل",
       "boqVersionRequired": "اختر نسخة معتمدة من جدول الكميات",

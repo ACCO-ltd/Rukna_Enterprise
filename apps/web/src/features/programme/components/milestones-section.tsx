@@ -26,6 +26,7 @@ import {
 
 import { ApiError } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
+import { useDialogDismissGuard } from '@/lib/use-dialog-dismiss-guard';
 
 import { useCreateMilestone, useMilestones, useVerifyMilestone } from '../hooks/use-programme';
 
@@ -210,17 +211,11 @@ function VerifyMilestoneDialog({
   const verify = useVerifyMilestone(projectId);
   const [actualDate, setActualDate] = useState(new Date().toISOString().slice(0, 10));
 
-  const preventWhilePending = (event: Event) => {
-    if (verify.isPending) event.preventDefault();
-  };
+  const dismissGuard = useDialogDismissGuard(verify.isPending, onDismiss);
 
   return (
-    <Dialog open onOpenChange={(next) => { if (!next && !verify.isPending) onDismiss(); }}>
-      <DialogContent
-        onEscapeKeyDown={preventWhilePending}
-        onPointerDownOutside={preventWhilePending}
-        onInteractOutside={preventWhilePending}
-      >
+    <Dialog open onOpenChange={dismissGuard.onOpenChange}>
+      <DialogContent {...dismissGuard.contentProps}>
         <DialogTitle>{t('programme.verify.title', { name: milestone.name })}</DialogTitle>
         <DialogDescription>{t('programme.verify.hint')}</DialogDescription>
 

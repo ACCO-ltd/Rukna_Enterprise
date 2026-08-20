@@ -35,7 +35,6 @@ import {
 import { useCreateContract, useUpdateContract } from '../hooks/use-contracts';
 import { BILLING_MODELS, BillingModel, type Contract } from '../types';
 
-const CURRENCIES = ['USD', 'SOS', 'AED'] as const;
 const PAYMENT_TRIGGERS = [
   PaymentTrigger.MILESTONE,
   PaymentTrigger.ADVANCE,
@@ -51,7 +50,6 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
   const t = useTranslations('platform.contracts.create');
   const tContracts = useTranslations('platform.contracts');
   const tCommon = useTranslations('common');
-  const tCurrency = useTranslations('common.currency');
   const isEdit = contract !== undefined;
   const searchParams = useSearchParams();
   const requestedProjectId = searchParams.get('projectId') ?? '';
@@ -303,19 +301,18 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
           />
         </FormField>
 
-        <FormField htmlFor="contract-currency" label={t('currency')} error={errors.currency?.message}>
-          <Select
+        {/* ACCO is USD-only (contract-creation-form-spec §"Fixed USD"): the picker is gone and
+            the value is read-only. It stays registered so the form still submits `currency`. */}
+        <FormField htmlFor="contract-currency" label={t('currency')}>
+          <Input
             id="contract-currency"
-            aria-invalid={Boolean(errors.currency)}
+            readOnly
+            aria-readonly="true"
+            dir="ltr"
+            className="bg-muted/40"
             {...register('currency')}
-          >
-            <option value="">{t('currencyPlaceholder')}</option>
-            {CURRENCIES.map((code) => (
-              <option key={code} value={code}>
-                {tCurrency(code.toLowerCase())}
-              </option>
-            ))}
-          </Select>
+          />
+          <p className="text-xs text-muted-foreground">{t('currencyFixed')}</p>
         </FormField>
       </div>
 

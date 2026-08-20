@@ -1116,6 +1116,7 @@
       "startDate": "Start date",
       "expectedEnd": "Expected completion",
       "currencyPlaceholder": "Select a currency",
+      "currencyFixed": "Contracts are billed in USD.",
       "projectRequired": "Choose a project",
       "clientRequired": "Choose a client",
       "boqVersionRequired": "Choose a baselined BOQ version",

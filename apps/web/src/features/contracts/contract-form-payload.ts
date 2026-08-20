@@ -48,7 +48,9 @@ export const EMPTY_CONTRACT_FORM: ContractFormValues = {
   boqVersionId: '',
   contractNumber: '',
   contractValue: '',
-  currency: '',
+  // ACCO operates in USD only (contract-creation-form-spec §"Fixed USD"); the form no longer
+  // offers a currency picker, so a new contract always starts — and stays — USD.
+  currency: 'USD',
   billingModel: BillingModel.MEASURED_IPC,
   startDate: '',
   expectedEndDate: '',

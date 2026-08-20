@@ -70,6 +70,15 @@ export function settlementTone(state: CommercialSettlementState): BadgeTone {
 }
 
 /**
+ * True once an installment has an invoice raised against it (invoiced or wholly/partly paid),
+ * as opposed to NEXT/UPCOMING which are not yet billed. Shared by the schedule table and the
+ * Overview cockpit's "N of M invoiced" count so the two never drift.
+ */
+export function isBilledInstallment(status: PaymentInstallmentBillStatus): boolean {
+  return status === 'BILLED' || status === 'PARTIALLY_PAID' || status === 'PAID';
+}
+
+/**
  * ADR-023 payment installment bill status → badge tone. NEXT is the actionable one (accent);
  * UPCOMING is quiet; the paid states mirror `settlementTone`.
  */

@@ -7,6 +7,7 @@ import { Alert, Button, Skeleton, cn } from '@erp/ui';
 import type { CommercialCycleStage } from '@erp/types';
 
 import { useCommercialCurrentCycle } from '../hooks/use-commercial';
+import { isBilledInstallment } from '../presentation';
 
 const STAGES = [
   'contract',
@@ -123,9 +124,7 @@ function MilestoneScheduleSummary({ projectId }: { projectId: string }) {
   const query = useCommercialCurrentCycle(projectId);
 
   const installments = query.data?.paymentSchedule?.installments ?? [];
-  const billed = installments.filter(
-    (i) => i.status === 'BILLED' || i.status === 'PARTIALLY_PAID' || i.status === 'PAID',
-  ).length;
+  const billed = installments.filter((i) => isBilledInstallment(i.status)).length;
 
   return (
     <section className="overflow-hidden rounded-panel border border-border bg-surface shadow-e1">
