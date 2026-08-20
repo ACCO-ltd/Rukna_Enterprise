@@ -181,4 +181,27 @@ describe('ADR-023 — generateFromInstallment (milestone billing)', () => {
     );
     expect(repo.create).not.toHaveBeenCalled();
   });
+
+  it('CONST-COM-011: rejects when the linked programme milestone is not verified', async () => {
+    const { repo, service } = buildInstallment({
+      ...structureInstallment,
+      programmeMilestoneId: 'ms-1',
+      programmeMilestone: { id: 'ms-1', status: 'PLANNED' },
+    });
+    await expect(service.generateFromInstallment(identity, instDto)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('CONST-COM-011: bills when the linked programme milestone is verified', async () => {
+    const { repo, service } = buildInstallment({
+      ...structureInstallment,
+      programmeMilestoneId: 'ms-1',
+      programmeMilestone: { id: 'ms-1', status: 'VERIFIED' },
+    });
+    repo.create.mockResolvedValue({ id: 'inv-new' });
+    await service.generateFromInstallment(identity, instDto);
+    expect(repo.create).toHaveBeenCalledTimes(1);
+  });
 });

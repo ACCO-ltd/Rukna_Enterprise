@@ -547,6 +547,7 @@ model Project {
   documents            ProjectDocument[]
   dailyProgressReports DailyProgressReport[]
   workPackages         WorkPackage[]
+  programmeMilestones  ProgrammeMilestone[]
   client               Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, code])
@@ -696,6 +697,42 @@ model WorkPackageBoqNode {
   @@unique([boqNodeId])
   @@index([workPackageId])
   @@map("work_package_boq_nodes")
+}
+
+enum ProgrammeMilestoneStatus {
+  PLANNED // a planned construction stage carrying a baseline date
+  VERIFIED // the stage is confirmed complete (actual date recorded) — billing evidence (CONST-COM-011)
+}
+
+// ADR-021 phase 2: a programme delivery milestone — a named construction stage on the project's
+// programme, with baseline / forecast / actual dates. An authorized member verifies it when the stage
+// is complete; a MILESTONE payment installment may reference a VERIFIED milestone as its billing
+// evidence (ADR-023 CONST-COM-011). Optionally links to a ContractMilestone; the two lifecycles stay
+// separate.
+model ProgrammeMilestone {
+  id                  String                   @id @default(cuid())
+  organizationId      String                   @map("organization_id")
+  projectId           String                   @map("project_id")
+  code                String
+  name                String
+  status              ProgrammeMilestoneStatus @default(PLANNED)
+  baselineDate        DateTime                 @map("baseline_date") @db.Date
+  forecastDate        DateTime?                @map("forecast_date") @db.Date
+  actualDate          DateTime?                @map("actual_date") @db.Date
+  sortOrder           Int                      @default(0) @map("sort_order")
+  contractMilestoneId String?                  @map("contract_milestone_id")
+  verifiedBy          String?                  @map("verified_by")
+  verifiedAt          DateTime?                @map("verified_at")
+  createdBy           String                   @map("created_by")
+  createdAt           DateTime                 @default(now()) @map("created_at")
+
+  project           Project                      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contractMilestone ContractMilestone?           @relation(fields: [contractMilestoneId], references: [id], onDelete: SetNull)
+  installments      ContractPaymentInstallment[]
+
+  @@unique([projectId, code])
+  @@index([projectId])
+  @@map("programme_milestones")
 }
 
 model ProjectCodeSequence {
@@ -940,11 +977,14 @@ model ContractPaymentInstallment {
   // TIME_BASED triggers: due N days after commencement, or on an explicit date.
   dueOffsetDays  Int?           @map("due_offset_days")
   dueDate        DateTime?      @map("due_date") @db.Date
-  // MILESTONE triggers: a label now; will optionally reference a verified programme milestone (ADR-021).
-  milestoneLabel String?        @map("milestone_label")
+  // MILESTONE triggers: a free-text label (interim/fallback) plus an optional link to a verified
+  // programme milestone (ADR-021), which is the billing evidence when present (CONST-COM-011).
+  milestoneLabel      String? @map("milestone_label")
+  programmeMilestoneId String? @map("programme_milestone_id")
 
-  contract      Contract       @relation(fields: [contractId], references: [id], onDelete: Cascade)
-  clientInvoice ClientInvoice? // ADR-023: the invoice generated from this installment, if any
+  contract           Contract            @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  clientInvoice      ClientInvoice? // ADR-023: the invoice generated from this installment, if any
+  programmeMilestone ProgrammeMilestone? @relation(fields: [programmeMilestoneId], references: [id], onDelete: SetNull)
 
   @@index([contractId])
   @@map("contract_payment_installments")
@@ -986,7 +1026,8 @@ model ContractMilestone {
   sortOrder   Int       @default(0) @map("sort_order")
   createdAt   DateTime  @default(now()) @map("created_at")
 
-  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contract            Contract             @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  programmeMilestones ProgrammeMilestone[]
 
   @@index([contractId])
   @@map("contract_milestones")
