@@ -17,6 +17,13 @@ export const metadata: Metadata = {
   description: 'Enterprise Resource Planning Platform',
 };
 
+/**
+ * The app is per-tenant and auth-gated — every route is request-specific, so nothing is
+ * statically prerendered. This used to be implied by the layout reading the language cookie;
+ * with the system now English-only that read is gone, so the intent is made explicit here.
+ */
+export const dynamic = 'force-dynamic';
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const messages = await getMessages();
 
