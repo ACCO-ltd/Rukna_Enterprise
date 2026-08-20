@@ -126,8 +126,12 @@ describe('ADR-023 — generateFromInstallment (milestone billing)', () => {
   };
 
   function buildInstallment(inst: unknown) {
-    const repo = { findByInstallment: jest.fn().mockResolvedValue(null), create: jest.fn() };
-    const prisma = { contractPaymentInstallment: { findFirst: jest.fn().mockResolvedValue(inst) } };
+    const repo = {
+      findByInstallment: jest.fn().mockResolvedValue(null),
+      findInstallmentForBilling: jest.fn().mockResolvedValue(inst),
+      create: jest.fn(),
+    };
+    const prisma = {};
     const tenancy = { getClient: () => prisma };
     const service = new ClientInvoiceService(
       tenancy as never,

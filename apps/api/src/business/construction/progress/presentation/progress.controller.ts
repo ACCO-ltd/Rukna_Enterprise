@@ -2,7 +2,8 @@ import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
-import type { RequestIdentity } from '@erp/types';
+import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { ProgressService } from '../application/progress.service.js';
 import {
@@ -15,14 +16,19 @@ import {
 } from './dto/progress.dto.js';
 
 // ADR-021 Progress MVP: daily progress reports + measurements + evidence, and verified progress.
+// Capability gate mirrors the rest of construction (view:project to read, manage:project to
+// write); project membership is enforced per-call in the service via projectAccess.assertMember.
+// ADR-022 will refine the write chain (Site Engineer submits, PM approves).
 @ApiTags('Progress')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
+@RequirePermissions(PERMISSIONS.projectsView)
 @Controller()
 export class ProgressController {
   constructor(private readonly service: ProgressService) {}
 
   @Post('projects/:projectId/progress/reports')
+  @RequirePermissions(PERMISSIONS.projectsManage)
   @ApiParam({ name: 'projectId' })
   @ApiOperation({ summary: 'Create a daily progress report (DRAFT)' })
   createDpr(
@@ -69,6 +75,7 @@ export class ProgressController {
   }
 
   @Post('projects/:projectId/work-packages')
+  @RequirePermissions(PERMISSIONS.projectsManage)
   @ApiParam({ name: 'projectId' })
   @ApiOperation({ summary: 'Create a work package (control unit with a progress weight)' })
   createWorkPackage(
@@ -87,6 +94,7 @@ export class ProgressController {
   }
 
   @Post('work-packages/:workPackageId/boq-nodes')
+  @RequirePermissions(PERMISSIONS.projectsManage)
   @ApiParam({ name: 'workPackageId' })
   @ApiOperation({ summary: 'Allocate a BOQ leaf to a work package' })
   allocateBoqNode(
@@ -105,6 +113,7 @@ export class ProgressController {
   }
 
   @Post('progress/reports/:dprId/measurements')
+  @RequirePermissions(PERMISSIONS.projectsManage)
   @ApiParam({ name: 'dprId' })
   @ApiOperation({ summary: 'Add a measured quantity against a BOQ leaf (DRAFT report only)' })
   addMeasurement(
@@ -116,6 +125,7 @@ export class ProgressController {
   }
 
   @Post('progress/reports/:dprId/evidence')
+  @RequirePermissions(PERMISSIONS.projectsManage)
   @ApiParam({ name: 'dprId' })
   @ApiOperation({ summary: 'Attach an uploaded evidence file (photo / measurement sheet)' })
   attachEvidence(
@@ -127,6 +137,7 @@ export class ProgressController {
   }
 
   @Post('progress/reports/:dprId/submit')
+  @RequirePermissions(PERMISSIONS.projectsManage)
   @ApiParam({ name: 'dprId' })
   @ApiOperation({ summary: 'Submit the report for approval' })
   submit(@CurrentUser() identity: RequestIdentity, @Param('dprId') dprId: string) {
@@ -134,6 +145,7 @@ export class ProgressController {
   }
 
   @Post('progress/reports/:dprId/approve')
+  @RequirePermissions(PERMISSIONS.projectsManage)
   @ApiParam({ name: 'dprId' })
   @ApiOperation({ summary: 'Approve the report — its measurements become verified progress' })
   approve(@CurrentUser() identity: RequestIdentity, @Param('dprId') dprId: string) {
@@ -141,6 +153,7 @@ export class ProgressController {
   }
 
   @Post('progress/reports/:dprId/return')
+  @RequirePermissions(PERMISSIONS.projectsManage)
   @ApiParam({ name: 'dprId' })
   @ApiOperation({ summary: 'Return a submitted report for revision' })
   returnForRevision(

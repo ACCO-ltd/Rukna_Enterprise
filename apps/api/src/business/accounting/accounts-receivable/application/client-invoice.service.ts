@@ -133,10 +133,7 @@ export class ClientInvoiceService {
     const existing = await this.repo.findByInstallment(prisma, orgId, dto.installmentId);
     if (existing) return existing;
 
-    const installment = await prisma.contractPaymentInstallment.findFirst({
-      where: { id: dto.installmentId, contract: { organizationId: orgId } },
-      include: { contract: { include: { client: true } }, programmeMilestone: true },
-    });
+    const installment = await this.repo.findInstallmentForBilling(prisma, orgId, dto.installmentId);
     if (!installment) {
       throw new NotFoundException(`Payment installment ${dto.installmentId} not found`);
     }

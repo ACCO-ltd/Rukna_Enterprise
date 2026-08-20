@@ -46,6 +46,16 @@ export class ClientInvoiceRepository {
     });
   }
 
+  // ADR-023: the installment being billed, with its contract (+ client) and linked programme
+  // milestone — everything generateFromInstallment needs to derive the amount and apply the
+  // CONST-COM-011 gate. Scoped to the org through the contract relation.
+  findInstallmentForBilling(prisma: TenantPrisma, organizationId: string, installmentId: string) {
+    return prisma.contractPaymentInstallment.findFirst({
+      where: { id: installmentId, contract: { organizationId } },
+      include: { contract: { include: { client: true } }, programmeMilestone: true },
+    });
+  }
+
   findAll(prisma: TenantPrisma, organizationId: string, clientId?: string) {
     return prisma.clientInvoice.findMany({
       where: { organizationId, ...(clientId ? { clientId } : {}) },
