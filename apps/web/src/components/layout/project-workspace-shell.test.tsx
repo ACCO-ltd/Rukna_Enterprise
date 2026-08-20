@@ -115,10 +115,11 @@ describe('ProjectWorkspaceShell', () => {
   });
 
   /**
-   * Five peers, no nesting. Commercial used to be a dropdown holding Contracts, Applications
+   * One flat row, no nesting. Commercial used to be a dropdown holding Contracts, Applications
    * & certificates and Finance — the only nested control in the bar, and a duplicate of the
-   * Commercial workspace's own sub-navigation. Every tab here leads to a workspace that
-   * exists; Programme & Progress, Procurement, Documents and Activity join when theirs do.
+   * Commercial workspace's own sub-navigation. Every tab here leads to a workspace that exists;
+   * Programme & Progress, Procurement and Documents joined once theirs shipped (ADR-021/014).
+   * Activity is deliberately absent — recent activity lives on Overview, not as its own tab.
    */
   it('shows one flat row of implemented destinations', () => {
     renderWithProviders(
@@ -131,9 +132,12 @@ describe('ProjectWorkspaceShell', () => {
     expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
       'Overview',
       'BOQ',
+      'Progress',
       'Commercial',
       'Finance',
+      'Procurement',
       'Team',
+      'Documents',
     ]);
     expect(screen.queryByText('Inventory')).not.toBeInTheDocument();
   });
