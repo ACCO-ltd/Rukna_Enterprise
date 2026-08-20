@@ -34,6 +34,14 @@ export function CurrentPaymentCycle({ projectId }: { projectId: string }) {
     );
 
   const cycle = query.data;
+
+  // ADR-023: a MILESTONE contract's cycle is its payment plan, not the IPA stepper. Render a
+  // compact schedule summary that points at Billing & Collection rather than a stepper that
+  // would sit permanently on "settled".
+  if (cycle.stage === 'MILESTONE_SCHEDULE') {
+    return <MilestoneScheduleSummary projectId={projectId} />;
+  }
+
   const current = stageIndex(cycle.stage);
 
   return (
@@ -100,6 +108,39 @@ export function CurrentPaymentCycle({ projectId }: { projectId: string }) {
             );
           })}
         </ol>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Compact payment-schedule cockpit for a MILESTONE contract. Reuses the already-cached
+ * current-cycle query (so no extra fetch) and links to the Billing & Collection tab where the
+ * full schedule, invoicing and milestone links live.
+ */
+function MilestoneScheduleSummary({ projectId }: { projectId: string }) {
+  const t = useTranslations('commercial.cycle');
+  const query = useCommercialCurrentCycle(projectId);
+
+  const installments = query.data?.paymentSchedule?.installments ?? [];
+  const billed = installments.filter(
+    (i) => i.status === 'BILLED' || i.status === 'PARTIALLY_PAID' || i.status === 'PAID',
+  ).length;
+
+  return (
+    <section className="overflow-hidden rounded-panel border border-border bg-surface shadow-e1">
+      <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <div>
+          <h2 className="text-body-sm font-semibold text-foreground">{t('milestone.title')}</h2>
+          <p className="mt-0.5 text-caption text-muted-foreground">
+            {t('milestone.billed', { billed, total: installments.length })}
+          </p>
+        </div>
+        <Button asChild variant="outline" size="sm" className="min-h-11 sm:min-h-0">
+          <Link href={`/projects/${projectId}/commercial/billing-collection`}>
+            {t('milestone.view')}
+          </Link>
+        </Button>
       </div>
     </section>
   );

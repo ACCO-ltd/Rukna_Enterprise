@@ -116,12 +116,20 @@ is intentional, not drift:
   the commercial `responsibleRole`/workflow seed) for no behavioural gain — the same subtraction-not-rewrite
   principle applied elsewhere. Behaviour matches the ADR; only the labels differ. Reconcile by renaming later
   *or* treat this note as the naming amendment.
-- **CONST-COM-011 milestone evidence — deferred.** The rule wants a `MILESTONE`/`PAYMENT_SCHEDULE`
-  installment to reference a **verified programme milestone (ADR-021)** as its evidence. Programme milestones
-  are ADR-021 *phase 2* (not built), so `ContractPaymentInstallment.milestoneLabel` is a free-text interim
-  seam and `generateFromInstallment` bills on `percentage × contractValue`. The invoice remains a guarded
-  human command (CONST-COM-015), so the cost↔revenue firewall holds; the evidence *link* lands with Programme
-  milestones.
+- **CONST-COM-011 milestone evidence — CLOSED.** The rule wants a `MILESTONE`/`PAYMENT_SCHEDULE`
+  installment to reference a **verified programme milestone (ADR-021)** as its evidence.
+  - *Backend:* `ContractPaymentInstallment.programmeMilestoneId` links an installment to a programme
+    milestone; `PATCH /contracts/:id/installments/:installmentId/milestone` sets/clears the link (guarded
+    by `manage:contract`); and `generateFromInstallment` **soft-gates** — it rejects invoicing with a 400
+    when the linked milestone is not `VERIFIED`. Un-linked installments are unaffected (bill on
+    `percentage × contractValue` as before). The invoice remains a guarded human command (CONST-COM-015).
+  - *UI (this change):* the commercial workspace's Billing & Collection tab renders the payment schedule
+    for a MILESTONE contract, exposes the milestone-link control per installment, disables/blocks
+    "Generate invoice" while a linked milestone is unverified (surfacing the same 400 message), and
+    generates the invoice from the installment. The Overview cockpit shows a compact schedule summary for
+    `MILESTONE_SCHEDULE` instead of the IPA stepper. Browser-verified end-to-end 2026-08-20.
+  - Interim seam retained: `milestoneLabel` free text remains for installments not linked to a programme
+    milestone.
 
 **Tracked tech-debt (not blocking):** `ipa.service.ts::getPrefill` reads `contract`/`certificate` via Prisma
 directly in the application layer (an in-file pattern predating this ADR). It should route through

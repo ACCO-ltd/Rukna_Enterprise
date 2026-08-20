@@ -111,6 +111,14 @@ export class CommercialPrismaRepository {
     return prisma.contractPaymentInstallment.findMany({
       where: { contractId },
       orderBy: { sortOrder: 'asc' },
+      // CONST-COM-011: the linked programme milestone is carried so the read model can show
+      // whether the installment's evidence gate is satisfied, and the UI can block invoicing
+      // when the milestone is not yet verified.
+      include: {
+        programmeMilestone: {
+          select: { id: true, code: true, name: true, status: true },
+        },
+      },
     });
   }
 

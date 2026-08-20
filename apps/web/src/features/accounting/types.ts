@@ -512,6 +512,18 @@ export interface GenerateInvoicePayload {
 }
 
 /**
+ * Body of `POST /invoices/from-installment` (ADR-023 MILESTONE contracts). Dates are
+ * `YYYY-MM-DD`. The server enforces the CONST-COM-011 gate: a 400 when the installment's linked
+ * programme milestone is not yet verified.
+ */
+export interface GenerateInvoiceFromInstallmentPayload {
+  installmentId: string;
+  invoiceDate: string;
+  dueDate: string;
+  paymentTerms?: string;
+}
+
+/**
  * Body of `POST /invoices/:id/post`.
  *
  * Codes, not ids — resolved by `posting-accounts.ts`. `vatAccountCode` is omitted when the

@@ -24,9 +24,32 @@ import { useCommercialApplications } from '../hooks/use-commercial';
 import { settlementTone } from '../presentation';
 import { CommercialSummaryStrip } from './commercial-summary-strip';
 import { errorText } from './commercial-workspace';
+import { PaymentSchedulePanel } from './payment-schedule-panel';
 
-/** AR-owned invoice, receipt allocation and outstanding truth for this project. */
+/**
+ * Billing & Collection dispatcher.
+ *
+ * A MILESTONE (payment-schedule) contract is billed from its plan, not the IPA/certified chain,
+ * so it gets the payment-schedule view (ADR-023). Everything else keeps the AR invoice view.
+ */
 export function BillingCollectionTab({
+  projectId,
+  summary,
+}: {
+  projectId: string;
+  summary: CommercialSummaryResponse;
+}) {
+  const contract = summary.mainContract;
+  if (contract && contract.billingModel === 'MILESTONE') {
+    return (
+      <PaymentSchedulePanel projectId={projectId} contractId={contract.id} summary={summary} />
+    );
+  }
+  return <IpaBillingView projectId={projectId} summary={summary} />;
+}
+
+/** AR-owned invoice, receipt allocation and outstanding truth for a MEASURED_IPC project. */
+function IpaBillingView({
   projectId,
   summary,
 }: {
