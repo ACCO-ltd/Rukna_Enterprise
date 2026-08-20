@@ -287,7 +287,7 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
             />
           </FormField>
 
-      <div className="grid gap-5 sm:grid-cols-2">
+      <div className="grid gap-5">
         <FormField
           htmlFor="contract-value"
           label={t('value')}
@@ -309,20 +309,6 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
               />
             )}
           />
-        </FormField>
-
-        {/* ACCO is USD-only (contract-creation-form-spec §"Fixed USD"): the picker is gone and
-            the value is read-only. It stays registered so the form still submits `currency`. */}
-        <FormField htmlFor="contract-currency" label={t('currency')}>
-          <Input
-            id="contract-currency"
-            readOnly
-            aria-readonly="true"
-            dir="ltr"
-            className="bg-muted/40"
-            {...register('currency')}
-          />
-          <p className="text-xs text-muted-foreground">{t('currencyFixed')}</p>
         </FormField>
       </div>
 

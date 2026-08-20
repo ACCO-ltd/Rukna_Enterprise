@@ -69,7 +69,6 @@ function draft(overrides: Partial<BankAccountDraft> = {}): BankAccountDraft {
     accountName: 'Main Operating',
     bankName: 'Salaam Bank',
     accountNumber: '000123454821',
-    currencyCode: 'USD',
     glAccountCode: '10100',
     ...overrides,
   };
@@ -127,14 +126,8 @@ describe('bankAccountProblems', () => {
       'accountName',
       'bankName',
       'accountNumber',
-      'currencyCode',
       'glAccountCode',
     ]);
-  });
-
-  it('requires exactly three characters of currency', () => {
-    expect(bankAccountProblems(draft({ currencyCode: 'US' }))).toEqual(['currencyCode']);
-    expect(bankAccountProblems(draft({ currencyCode: 'USDD' }))).toEqual(['currencyCode']);
   });
 
   /**
@@ -159,8 +152,8 @@ describe('toConfigureBankAccountBody', () => {
     expect(toConfigureBankAccountBody(emptyBankAccountDraft())).toBeNull();
   });
 
-  it('trims and upper-cases the currency', () => {
-    const body = toConfigureBankAccountBody(draft({ currencyCode: ' usd ' }))!;
+  it('always sets the currency to USD (single-currency platform)', () => {
+    const body = toConfigureBankAccountBody(draft())!;
 
     expect(body.currencyCode).toBe('USD');
   });

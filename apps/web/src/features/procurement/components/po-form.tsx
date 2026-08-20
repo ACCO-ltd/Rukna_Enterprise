@@ -43,7 +43,8 @@ export function PoForm() {
 
   const [step, setStep] = useState<1 | 2>(1);
   const [supplierId, setSupplierId] = useState('');
-  const [currencyCode, setCurrencyCode] = useState('SAR');
+  // Single-currency platform (ADR-024): USD is implicit, never entered.
+  const currencyCode = 'USD';
   const [effectiveFrom, setEffectiveFrom] = useState(today);
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('');
@@ -131,15 +132,6 @@ export function PoForm() {
               value={supplierId}
               onChange={setSupplierId}
               required
-            />
-          </FormField>
-
-          <FormField htmlFor={ids.currency} label={tc('currency')}>
-            <Input
-              id={ids.currency}
-              value={currencyCode}
-              onChange={(e) => setCurrencyCode(e.target.value.toUpperCase())}
-              maxLength={3}
             />
           </FormField>
 

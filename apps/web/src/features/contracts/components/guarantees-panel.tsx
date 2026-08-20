@@ -26,8 +26,6 @@ import { isLapsed, lapsedGuarantees } from '../contract-terms';
 import { useAddGuarantee, useUpdateGuarantee } from '../hooks/use-contract-terms';
 import type { ContractGuarantee } from '../types';
 
-const CURRENCIES = ['USD', 'SOS', 'AED'] as const;
-
 const GUARANTEE_STATUSES: GuaranteeStatus[] = [
   GuaranteeStatus.ACTIVE,
   GuaranteeStatus.DISCHARGED,
@@ -216,7 +214,6 @@ function GuaranteeCard({
 interface GuaranteeFormValues {
   guaranteeType: string;
   amount: string;
-  currency: string;
   issuer: string;
   beneficiary: string;
   issueDate: string;
@@ -233,7 +230,6 @@ function AddGuaranteeDialog({
 }) {
   const t = useTranslations('platform.contracts.terms.guarantees');
   const tCommon = useTranslations('common');
-  const tCurrency = useTranslations('common.currency');
   const add = useAddGuarantee(contractId);
 
   const {
@@ -246,7 +242,6 @@ function AddGuaranteeDialog({
     defaultValues: {
       guaranteeType: 'PERFORMANCE',
       amount: '',
-      currency: 'USD',
       issuer: '',
       beneficiary: '',
       issueDate: '',
@@ -260,7 +255,8 @@ function AddGuaranteeDialog({
       {
         guaranteeType: values.guaranteeType.trim(),
         amount: toDecimalString(values.amount),
-        currency: values.currency,
+        // Single-currency platform (ADR-024): USD is implicit, never entered.
+        currency: 'USD',
         issuer: values.issuer.trim(),
         beneficiary: values.beneficiary.trim(),
         issueDate: values.issueDate,
@@ -315,7 +311,7 @@ function AddGuaranteeDialog({
             </p>
           </FormField>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4">
             <FormField htmlFor="guarantee-amount" label={t('amount')} error={errors.amount?.message}>
               <Controller
                 name="amount"
@@ -337,16 +333,6 @@ function AddGuaranteeDialog({
                   />
                 )}
               />
-            </FormField>
-
-            <FormField htmlFor="guarantee-currency" label={t('currency')}>
-              <Select id="guarantee-currency" {...register('currency')}>
-                {CURRENCIES.map((code) => (
-                  <option key={code} value={code}>
-                    {tCurrency(code.toLowerCase())}
-                  </option>
-                ))}
-              </Select>
             </FormField>
           </div>
 

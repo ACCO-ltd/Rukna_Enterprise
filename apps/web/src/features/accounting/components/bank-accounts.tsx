@@ -253,17 +253,6 @@ function ConfigureBankAccountForm({ onDone }: { onDone: () => void }) {
         />
       </FormField>
 
-      <FormField htmlFor={ids.currency} label={t('currency')}>
-        <Input
-          id={ids.currency}
-          value={draft.currencyCode}
-          onChange={(e) => patch({ currencyCode: e.target.value.toUpperCase() })}
-          maxLength={3}
-          className="uppercase"
-          autoComplete="off"
-        />
-      </FormField>
-
       <FormField htmlFor={ids.gl} label={t('glAccount')}>
         <select
           id={ids.gl}

@@ -57,7 +57,8 @@ export function SupplierPaymentForm() {
   const [bankAccountId, setBankAccountId] = useState('');
   const [paymentDate, setPaymentDate] = useState('');
   const [accountingDate, setAccountingDate] = useState('');
-  const [currencyCode, setCurrencyCode] = useState('USD');
+  // Single-currency platform (ADR-024): USD is implicit, never entered.
+  const currencyCode = 'USD';
   const [totalAmount, setTotalAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<string>('BANK_TRANSFER');
   const [bankReference, setBankReference] = useState('');
@@ -194,16 +195,6 @@ export function SupplierPaymentForm() {
             {showErrors && !amountValid ? (
               <p className="text-xs text-danger">{t('amountError')}</p>
             ) : null}
-          </FormField>
-
-          <FormField htmlFor={ids.currency} label={tc('currency')} className="min-w-32 flex-1">
-            <Input
-              id={ids.currency}
-              value={currencyCode}
-              onChange={(e) => setCurrencyCode(e.target.value.toUpperCase())}
-              maxLength={3}
-              className="uppercase"
-            />
           </FormField>
         </div>
 
