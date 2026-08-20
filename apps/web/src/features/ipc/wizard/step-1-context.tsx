@@ -2,7 +2,7 @@
 
 import { useId } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Input, Label, Select, Textarea } from '@erp/ui';
+import { Alert, Button, FormField, Label, Select, Textarea } from '@erp/ui';
 
 import type { WizardContext } from './draft';
 
@@ -19,10 +19,6 @@ export function Step1Context({ context, currency, onChange, onNext, errors }: St
   const tWiz = useTranslations('platform.ipc.wizard');
 
   const statusId = useId();
-  const exRateCurrId = useId();
-  const exRateBaseId = useId();
-  const exRateValId = useId();
-  const exRateDateId = useId();
   const notesId = useId();
 
   const isRejected = context.status === 'REJECTED';
@@ -53,59 +49,6 @@ export function Step1Context({ context, currency, onChange, onNext, errors }: St
         </p>
         <p className="text-xs text-muted-foreground">{t('currencyNote')}</p>
       </div>
-
-      {/* Exchange rate toggle */}
-      {!isRejected ? (
-        <div className="space-y-4">
-          <button
-            type="button"
-            onClick={() => onChange({ showExchangeRate: !context.showExchangeRate })}
-            className="text-sm font-medium text-brand-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
-          >
-            {context.showExchangeRate ? t('hideExchangeRate') : t('showExchangeRate')}
-          </button>
-
-          {context.showExchangeRate ? (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <FormField htmlFor={exRateCurrId} label={t('exchangeRateCurrencyLabel')}>
-                <Input
-                  id={exRateCurrId}
-                  value={context.exchangeRateCurrency}
-                  onChange={(e) => onChange({ exchangeRateCurrency: e.target.value })}
-                  placeholder="USD"
-                />
-              </FormField>
-              <FormField htmlFor={exRateBaseId} label={t('exchangeRateBaseLabel')}>
-                <Input
-                  id={exRateBaseId}
-                  value={context.exchangeRateBase}
-                  onChange={(e) => onChange({ exchangeRateBase: e.target.value })}
-                  placeholder="SAR"
-                />
-              </FormField>
-              <FormField htmlFor={exRateValId} label={t('exchangeRateValueLabel')}>
-                <Input
-                  id={exRateValId}
-                  type="number"
-                  step="any"
-                  min="0"
-                  value={context.exchangeRateValue}
-                  onChange={(e) => onChange({ exchangeRateValue: e.target.value })}
-                  placeholder="3.75"
-                />
-              </FormField>
-              <FormField htmlFor={exRateDateId} label={t('exchangeRateDateLabel')}>
-                <Input
-                  id={exRateDateId}
-                  type="date"
-                  value={context.exchangeRateDate}
-                  onChange={(e) => onChange({ exchangeRateDate: e.target.value })}
-                />
-              </FormField>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
 
       {/* Notes / rejection reason */}
       <FormField

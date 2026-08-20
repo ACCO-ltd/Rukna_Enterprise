@@ -138,8 +138,6 @@ export class OpeningBalanceService {
           accountId: account.id,
           debitAmount: tbLine.debitBalance ? new Decimal(tbLine.debitBalance) : new Decimal(0),
           creditAmount: tbLine.creditBalance ? new Decimal(tbLine.creditBalance) : new Decimal(0),
-          transactionCurrencyCode: 'USD',
-          baseCurrencyAmount: amount,
           memo: `Opening balance — ${tbLine.accountCode}`,
         });
       }
@@ -179,9 +177,6 @@ export class OpeningBalanceService {
             invoiceDate: new Date(inv.invoiceDate),
             dueDate: new Date(inv.dueDate),
             currencyCode: inv.currencyCode,
-            exchangeRateSnapshot: new Decimal(1),
-            exchangeRateDate: cutoverDate,
-            exchangeRateSource: 'MIGRATION',
             subtotal,
             vatAmount,
             totalAmount,
@@ -213,9 +208,6 @@ export class OpeningBalanceService {
             billDate: new Date(bill.billDate),
             dueDate: new Date(bill.dueDate),
             currencyCode: bill.currencyCode,
-            exchangeRateSnapshot: new Decimal(1),
-            exchangeRateDate: cutoverDate,
-            exchangeRateSource: 'MIGRATION',
             subtotal,
             vatAmount,
             totalAmount,

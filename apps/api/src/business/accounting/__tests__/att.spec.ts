@@ -74,8 +74,8 @@ async function createAndPostJournal(sourceDocId: string) {
         postingOrigin:      'MANUAL',
         createdBy:          env.identity.userId,
         lines: [
-          { accountId: env.accounts.revId, debitAmount: new Decimal('100'), creditAmount: new Decimal(0), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('100') },
-          { accountId: env.accounts.expId, debitAmount: new Decimal(0), creditAmount: new Decimal('100'), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('100') },
+          { accountId: env.accounts.revId, debitAmount: new Decimal('100'), creditAmount: new Decimal(0) },
+          { accountId: env.accounts.expId, debitAmount: new Decimal(0), creditAmount: new Decimal('100') },
         ],
       },
       tx as never,

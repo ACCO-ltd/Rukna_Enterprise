@@ -70,10 +70,6 @@ export class IpcPrismaRepository {
       effectiveAt?: Date;
       certifiedTotal: string;
       currency: string;
-      exchangeRateCurrency?: string;
-      exchangeRateBase?: string;
-      exchangeRateValue?: string;
-      exchangeRateDate?: Date;
       issuedAt?: Date;
       issuedBy?: string;
       notes?: string;

@@ -15,7 +15,6 @@ import { apiClient } from '@/lib/api-client';
 
 import type {
   ApproveExceptionPayload,
-  ApprovePurchaseOrderPayload,
   BillMatchResult,
   CommitmentLedgerEntry,
   CommitmentSummary,
@@ -32,7 +31,6 @@ import type {
   MaterialRequest,
   MaterialRequestScope,
   MaterialRequestStatus,
-  PostGoodsReceiptPayload,
   PurchaseOrder,
   PurchaseOrderStatus,
   RevisePurchaseOrderPayload,
@@ -298,13 +296,9 @@ export function submitPurchaseOrder(id: string): Promise<PurchaseOrder> {
  * superseded revision, `COMMITTED` is reduced twice and goes negative. The approve drawer
  * therefore does not repeat §12.6's promise about the uncommitted balance.
  */
-export function approvePurchaseOrder(
-  id: string,
-  payload: ApprovePurchaseOrderPayload,
-): Promise<PurchaseOrder> {
+export function approvePurchaseOrder(id: string): Promise<PurchaseOrder> {
   return apiClient<PurchaseOrder>(`/procurement/purchase-orders/${id}/approve`, {
     method: 'POST',
-    body: JSON.stringify(payload),
   });
 }
 
@@ -371,13 +365,9 @@ export function createGoodsReceipt(
 }
 
 /** `POST /procurement/goods-receipts/:id/post` — DRAFT only; moves COMMITTED → ACCRUED. */
-export function postGoodsReceipt(
-  id: string,
-  payload: PostGoodsReceiptPayload,
-): Promise<GoodsReceipt> {
+export function postGoodsReceipt(id: string): Promise<GoodsReceipt> {
   return apiClient<GoodsReceipt>(`/procurement/goods-receipts/${id}/post`, {
     method: 'POST',
-    body: JSON.stringify(payload),
   });
 }
 

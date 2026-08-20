@@ -33,7 +33,6 @@ export class FinancePrismaRepository {
       accountingDate: Date;
       totalAmount: string;
       currencyCode: string;
-      exchangeRateSnapshot?: string;
       reference?: string;
       notes?: string;
       createdBy: string;
@@ -53,8 +52,6 @@ export class FinancePrismaRepository {
         allocatedAmount: new Decimal(0),
         unallocatedAmount: new Decimal(data.totalAmount),
         currencyCode: data.currencyCode,
-        exchangeRateSnapshot:
-          data.exchangeRateSnapshot != null ? new Decimal(data.exchangeRateSnapshot) : null,
         reference: data.reference ?? null,
         notes: data.notes ?? null,
         createdBy: data.createdBy,

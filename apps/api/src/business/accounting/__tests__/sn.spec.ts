@@ -45,8 +45,8 @@ function postBalancedJournal(sourceDocId: string, accountingDate: Date, debitId:
         postingOrigin:      'MANUAL',
         createdBy:          env.identity.userId,
         lines: [
-          { accountId: debitId,  debitAmount: amt,            creditAmount: new Decimal(0), transactionCurrencyCode: 'USD', baseCurrencyAmount: amt },
-          { accountId: creditId, debitAmount: new Decimal(0), creditAmount: amt,            transactionCurrencyCode: 'USD', baseCurrencyAmount: amt },
+          { accountId: debitId,  debitAmount: amt,            creditAmount: new Decimal(0) },
+          { accountId: creditId, debitAmount: new Decimal(0), creditAmount: amt },
         ],
       },
       tx as never,
@@ -123,8 +123,8 @@ it('SN-03: posting on a date before any account version exists is rejected', asy
           postingOrigin:      'MANUAL',
           createdBy:          env.identity.userId,
           lines: [
-            { accountId: env.accounts.revId, debitAmount: new Decimal('100'), creditAmount: new Decimal(0), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('100') },
-            { accountId: env.accounts.expId, debitAmount: new Decimal(0), creditAmount: new Decimal('100'), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('100') },
+            { accountId: env.accounts.revId, debitAmount: new Decimal('100'), creditAmount: new Decimal(0) },
+            { accountId: env.accounts.expId, debitAmount: new Decimal(0), creditAmount: new Decimal('100') },
           ],
         },
         tx as never,

@@ -30,7 +30,7 @@ export interface FinancialPosition extends FinancialPositionInputs {
   forecastMargin: Decimal;
 }
 
-/** FP-01 through FP-09. Inputs must already be converted from approved snapshots. */
+/** FP-01 through FP-09. All amounts are USD (single-currency, ADR-024). */
 export function calculateFinancialPosition(input: FinancialPositionInputs): FinancialPosition {
   return {
     ...input,
@@ -40,9 +40,3 @@ export function calculateFinancialPosition(input: FinancialPositionInputs): Fina
   };
 }
 
-export function toReportingAmount(amount: Decimal, approvedExchangeRateSnapshot: Decimal): Decimal {
-  if (approvedExchangeRateSnapshot.lessThanOrEqualTo(0)) {
-    throw new Error('APPROVED_EXCHANGE_RATE_SNAPSHOT_REQUIRED');
-  }
-  return amount.mul(approvedExchangeRateSnapshot);
-}

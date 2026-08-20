@@ -14,9 +14,6 @@ export interface CreateClientInvoiceData {
   invoiceDate: Date;
   dueDate: Date;
   currencyCode: string;
-  exchangeRateSnapshot: Decimal;
-  exchangeRateDate: Date;
-  exchangeRateSource: string;
   subtotal: Decimal;
   vatAmount: Decimal;
   totalAmount: Decimal;
@@ -81,9 +78,6 @@ export class ClientInvoiceRepository {
         invoiceDate: data.invoiceDate,
         dueDate: data.dueDate,
         currencyCode: data.currencyCode,
-        exchangeRateSnapshot: data.exchangeRateSnapshot,
-        exchangeRateDate: data.exchangeRateDate,
-        exchangeRateSource: data.exchangeRateSource,
         subtotal: data.subtotal,
         vatAmount: data.vatAmount,
         totalAmount: data.totalAmount,

@@ -35,7 +35,7 @@ const MODULE_PERMISSIONS: Record<string, PermissionKey[]> = {
   // Keyed on the permission that module will need rather than the one it used to borrow.
   operations:     ['view:inventory'],
   reports:        ['view:report'],
-  administration: ['manage:user', 'manage:role', 'view:audit-log', 'manage:exchange-rate'],
+  administration: ['manage:user', 'manage:role', 'view:audit-log'],
 };
 
 /**
@@ -112,7 +112,7 @@ export const PROCUREMENT_PERMISSIONS = {
    * order needs, which is the one thing that must not happen on the screen this unblocks.
    *
    * Spelled `manage:supplier` to match the live singular convention (`manage:role`,
-   * `manage:user`, `manage:exchange-rate`). Raise it on #28 alongside the `manageConfig`
+   * `manage:user`). Raise it on #28 alongside the `manageConfig`
    * naming question rather than settling it here.
    */
   manageSuppliers: 'manage:supplier',

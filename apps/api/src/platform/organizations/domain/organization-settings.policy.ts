@@ -8,7 +8,6 @@ export const EDITABLE_ORGANIZATION_SETTINGS = [
   'logo',
   'timezone',
   'defaultLocale',
-  'reportingCurrency',
   'fiscalYearStart',
   'defaultPaymentTerms',
   'numberingPrefixes',

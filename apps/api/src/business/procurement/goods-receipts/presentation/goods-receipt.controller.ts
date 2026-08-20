@@ -8,7 +8,7 @@ import { CurrentUser } from '../../../../common/decorators/current-user.decorato
 import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import { GoodsReceiptService } from '../application/goods-receipt.service.js';
-import { CreateGoodsReceiptDto, PostGoodsReceiptDto } from './dto/create-goods-receipt.dto.js';
+import { CreateGoodsReceiptDto } from './dto/create-goods-receipt.dto.js';
 
 @ApiTags('Procurement — Goods Receipts')
 @ApiBearerAuth('access-token')
@@ -47,8 +47,8 @@ export class GoodsReceiptController {
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: 'Post GRN: DRAFT → POSTED. Moves COMMITTED → ACCRUED in commitment ledger.' })
-  post(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: PostGoodsReceiptDto) {
-    return this.service.post(identity, id, dto);
+  post(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.service.post(identity, id);
   }
 
   @Post(':id/cancel')

@@ -40,7 +40,6 @@ export class SnapshotService {
     });
     if (!period) throw new BadRequestException(`Period ${periodId} not found`);
 
-    const baseCurrency = await this.getBaseCurrency(prisma, orgId);
     const prevPeriodSnapshots = await this.getPreviousPeriodSnapshot(prisma, orgId, period);
 
     // Find all accounts with any POSTED journal lines up to and including this period
@@ -94,7 +93,6 @@ export class SnapshotService {
           periodCredit: movement.credit,
           closingDebit,
           closingCredit,
-          baseCurrency,
           snapshotVersion: 1,
           generatedAt: now,
           generatedBy,
@@ -275,11 +273,4 @@ export class SnapshotService {
     return map;
   }
 
-  private async getBaseCurrency(prisma: TenantPrisma, orgId: string): Promise<string> {
-    const policy = await prisma.monetaryPolicy.findFirst({
-      where: { organizationId: orgId },
-      select: { baseCurrencyCode: true },
-    });
-    return policy?.baseCurrencyCode ?? 'USD';
-  }
 }

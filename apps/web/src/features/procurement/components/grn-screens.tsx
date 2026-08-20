@@ -450,12 +450,6 @@ function PostDrawer({ receipt, onClose }: { receipt: GoodsReceipt; onClose: () =
   const tc = useTranslations('procurement.common');
   const post = usePostGoodsReceipt();
 
-  const [reportingCurrencyCode, setReportingCurrencyCode] = useState('SAR');
-  const [exchangeRate, setExchangeRate] = useState('1');
-
-  const rate = Number(exchangeRate);
-  const rateValid = Number.isFinite(rate) && rate > 0;
-
   return (
     <Sheet open onOpenChange={(next) => (next ? undefined : onClose())}>
       <SheetContent className="p-6">
@@ -466,29 +460,6 @@ function PostDrawer({ receipt, onClose }: { receipt: GoodsReceipt; onClose: () =
         <div className="mt-5 space-y-4">
           <Alert variant="info" messages={[t('postBody')]} />
 
-          <FormField htmlFor="post-currency" label={tc('reportingCurrency')}>
-            <Input
-              id="post-currency"
-              value={reportingCurrencyCode}
-              onChange={(e) => setReportingCurrencyCode(e.target.value.toUpperCase())}
-              maxLength={3}
-            />
-          </FormField>
-
-          <FormField
-            htmlFor="post-rate"
-            label={tc('exchangeRate')}
-            error={rateValid ? undefined : tc('required')}
-          >
-            <Input
-              id="post-rate"
-              inputMode="decimal"
-              value={exchangeRate}
-              onChange={(e) => setExchangeRate(e.target.value)}
-              className="text-end tabular-nums"
-            />
-          </FormField>
-
           {post.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
 
           <div className="flex flex-wrap justify-end gap-2 pt-2">
@@ -497,12 +468,9 @@ function PostDrawer({ receipt, onClose }: { receipt: GoodsReceipt; onClose: () =
             </Button>
             <Button
               type="button"
-              disabled={post.isPending || !rateValid}
+              disabled={post.isPending}
               onClick={() =>
-                post.mutate(
-                  { id: receipt.id, payload: { reportingCurrencyCode, exchangeRate: rate } },
-                  { onSuccess: onClose },
-                )
+                post.mutate({ id: receipt.id }, { onSuccess: onClose })
               }
             >
               {t('post')}

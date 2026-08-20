@@ -73,7 +73,6 @@ import {
 } from '../api/procurement-api';
 import type {
   ApproveExceptionPayload,
-  ApprovePurchaseOrderPayload,
   BillMatchResult,
   CommitmentLedgerEntry,
   CommitmentStage,
@@ -90,7 +89,6 @@ import type {
   MaterialRequest,
   MaterialRequestScope,
   MaterialRequestStatus,
-  PostGoodsReceiptPayload,
   PurchaseOrder,
   PurchaseOrderStatus,
   RevisePurchaseOrderPayload,
@@ -393,8 +391,7 @@ export function useSubmitPurchaseOrder() {
 export function useApprovePurchaseOrder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: ApprovePurchaseOrderPayload }) =>
-      approvePurchaseOrder(id, payload),
+    mutationFn: ({ id }: { id: string }) => approvePurchaseOrder(id),
     onSuccess: (po) => {
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrder(po.id) });
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'purchase-orders'] });
@@ -464,8 +461,7 @@ export function useCreateGoodsReceipt() {
 export function usePostGoodsReceipt() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: PostGoodsReceiptPayload }) =>
-      postGoodsReceipt(id, payload),
+    mutationFn: ({ id }: { id: string }) => postGoodsReceipt(id),
     onSuccess: (grn) => {
       qc.invalidateQueries({ queryKey: procurementKeys.goodsReceipt(grn.id) });
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'goods-receipts'] });

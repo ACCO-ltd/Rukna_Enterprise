@@ -84,8 +84,6 @@ function draftLine(overrides: Partial<JournalLine> = {}): JournalLine {
     accountVersionNumber: 0,
     debitAmount: '2500.00',
     creditAmount: '0.00',
-    transactionCurrencyCode: 'USD',
-    baseCurrencyAmount: '2500.00',
     description: 'Rent expense',
     projectId: null,
     departmentId: null,

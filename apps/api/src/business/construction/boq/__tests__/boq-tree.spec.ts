@@ -319,7 +319,6 @@ describe('BOQ tree — ADR-016 correctness', () => {
         amount: '100.00',
         currencyCode: 'USD',
         reportingAmount: '100.00',
-        exchangeRateSnapshot: '1.000000',
         sourceDocumentType: 'PURCHASE_ORDER_REVISION',
         sourceDocumentId: `po-${suffix}`,
         eventType: 'PO_APPROVED',

@@ -37,7 +37,6 @@ export interface CreateSupplierBillDto {
   billDate: string;
   dueDate: string;
   currencyCode: string;
-  exchangeRateSnapshot?: number;
   purchaseOrderId?: string;
   projectId?: string;
   departmentId?: string;
@@ -110,9 +109,6 @@ export class SupplierBillService {
       billDate: new Date(dto.billDate),
       dueDate: new Date(dto.dueDate),
       currencyCode: dto.currencyCode,
-      exchangeRateSnapshot: new Decimal(dto.exchangeRateSnapshot ?? 1),
-      exchangeRateDate: new Date(dto.billDate),
-      exchangeRateSource: 'MANUAL',
       purchaseOrderId: dto.purchaseOrderId,
       purchaseOrderRevisionId,
       projectId: dto.projectId,
@@ -214,8 +210,6 @@ export class SupplierBillService {
             accountId: expenseAccountId,
             debitAmount: gross,
             creditAmount: new Decimal(0),
-            transactionCurrencyCode: bill.currencyCode,
-            baseCurrencyAmount: gross,
             projectId: billLine.projectId ?? bill.projectId ?? undefined,
             departmentId: billLine.departmentId ?? bill.departmentId ?? undefined,
             costCenterId: billLine.costCenterId ?? undefined,
@@ -230,8 +224,6 @@ export class SupplierBillService {
           accountId: apGl.id,
           debitAmount: new Decimal(0),
           creditAmount: totalAmount,
-          transactionCurrencyCode: bill.currencyCode,
-          baseCurrencyAmount: totalAmount,
           sourceSubledgerType: 'ACCOUNTS_PAYABLE' as const,
           supplierId: bill.supplierId,
         });
@@ -262,7 +254,6 @@ export class SupplierBillService {
         // Only for procurement-linked bills (purchaseOrderRevisionId present).
         if (bill.purchaseOrderRevisionId) {
           const billedTotal = new Decimal(bill.totalAmount.toString());
-          const rate = new Decimal(bill.exchangeRateSnapshot.toString());
           const idempKey = `bill-actual-${bill.id}`;
           const existing = await this.commitmentWriter.findByIdempotencyKey(tx, idempKey);
           if (!existing) {
@@ -272,7 +263,6 @@ export class SupplierBillService {
               supplierId: bill.supplierId,
               amount: billedTotal.negated(),
               currencyCode: bill.currencyCode,
-              rate,
               sourceDocumentType: 'SUPPLIER_BILL',
               sourceDocumentId: bill.id,
               eventType: 'BILL_POSTED_ACCRUED_REVERSAL',
@@ -285,7 +275,6 @@ export class SupplierBillService {
               supplierId: bill.supplierId,
               amount: billedTotal,
               currencyCode: bill.currencyCode,
-              rate,
               sourceDocumentType: 'SUPPLIER_BILL',
               sourceDocumentId: bill.id,
               eventType: 'BILL_POSTED_ACTUAL',
@@ -366,8 +355,6 @@ export class SupplierBillService {
             accountId: l.accountId,
             debitAmount: l.creditAmount as unknown as Decimal,
             creditAmount: l.debitAmount as unknown as Decimal,
-            transactionCurrencyCode: l.transactionCurrencyCode,
-            baseCurrencyAmount: l.baseCurrencyAmount as unknown as Decimal,
             sourceSubledgerType: l.sourceSubledgerType ?? undefined,
             supplierId: l.supplierId ?? undefined,
             projectId: l.projectId ?? undefined,

@@ -199,7 +199,7 @@ export class GoodsReceiptService {
     return this.repo.findById(prisma, orgId, grnId);
   }
 
-  async post(identity: RequestIdentity, id: string, dto: { exchangeRate: number; reportingCurrencyCode: string }) {
+  async post(identity: RequestIdentity, id: string) {
     const prisma = this.tenancy.getClient();
     const orgId = identity.activeOrganizationId;
     const grn = await this.repo.findById(prisma, orgId, id);
@@ -209,8 +209,6 @@ export class GoodsReceiptService {
     const po = await this.poRepo.findById(prisma, orgId, grn.purchaseOrderId);
     const activeRev = po?.revisions.find(r => r.status === 'ACTIVE');
     if (!activeRev) throw new ConflictException('Associated PO has no ACTIVE revision');
-
-    const rate = new Decimal(dto.exchangeRate);
 
     await prisma.$transaction(async (tx) => {
       // For each accepted line: record COMMITTED -X and ACCRUED +X (ADR-007, Rule CL-002)
@@ -233,7 +231,6 @@ export class GoodsReceiptService {
           spendCategoryId: line.spendCategoryId ?? undefined,
           amount: accrualAmount.negated(),
           currencyCode: activeRev.currencyCode,
-          rate,
           sourceDocumentType: 'GOODS_RECEIPT',
           sourceDocumentId: grn.id,
           sourceLineId: line.id,
@@ -250,7 +247,6 @@ export class GoodsReceiptService {
           spendCategoryId: line.spendCategoryId ?? undefined,
           amount: accrualAmount,
           currencyCode: activeRev.currencyCode,
-          rate,
           sourceDocumentType: 'GOODS_RECEIPT',
           sourceDocumentId: grn.id,
           sourceLineId: line.id,

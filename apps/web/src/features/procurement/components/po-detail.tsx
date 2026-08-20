@@ -26,8 +26,6 @@ import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
-  FormField,
-  Input,
   Sheet,
   SheetContent,
   SheetTitle,
@@ -401,15 +399,9 @@ function ApproveDrawer({
   const tc = useTranslations('procurement.common');
   const approve = useApprovePurchaseOrder();
 
-  const [reportingCurrencyCode, setReportingCurrencyCode] = useState(revision.currencyCode);
-  const [exchangeRate, setExchangeRate] = useState('1');
-
   const totalMinor = revisionTotalMinor(revision.lines ?? []);
   const amount =
     formatMoney(fromMinorUnits(totalMinor, MONEY_SCALE), revision.currencyCode, locale) ?? '';
-
-  const rate = Number(exchangeRate);
-  const rateValid = Number.isFinite(rate) && rate > 0;
 
   return (
     <Sheet open onOpenChange={(next) => (next ? undefined : onClose())}>
@@ -428,29 +420,6 @@ function ApproveDrawer({
             />
           ) : null}
 
-          <FormField htmlFor="approve-reporting-currency" label={t('reportingCurrency')}>
-            <Input
-              id="approve-reporting-currency"
-              value={reportingCurrencyCode}
-              onChange={(e) => setReportingCurrencyCode(e.target.value.toUpperCase())}
-              maxLength={3}
-            />
-          </FormField>
-
-          <FormField
-            htmlFor="approve-exchange-rate"
-            label={t('exchangeRate')}
-            error={rateValid ? undefined : tc('required')}
-          >
-            <Input
-              id="approve-exchange-rate"
-              inputMode="decimal"
-              value={exchangeRate}
-              onChange={(e) => setExchangeRate(e.target.value)}
-              className="text-end tabular-nums"
-            />
-          </FormField>
-
           {approve.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
 
           <div className="flex flex-wrap justify-end gap-2 pt-2">
@@ -464,12 +433,9 @@ function ApproveDrawer({
             </Button>
             <Button
               type="button"
-              disabled={approve.isPending || !rateValid}
+              disabled={approve.isPending}
               onClick={() =>
-                approve.mutate(
-                  { id: orderId, payload: { reportingCurrencyCode, exchangeRate: rate } },
-                  { onSuccess: onClose },
-                )
+                approve.mutate({ id: orderId }, { onSuccess: onClose })
               }
             >
               {t('approve')}

@@ -35,7 +35,6 @@ async function seedAccoGovernancePolicy(prisma: PrismaClient, organizationId: st
       policyKey,
       version: 1,
       status: 'SCHEDULED',
-      reportingCurrency: 'USD',
       amountBasis: 'UNSPECIFIED',
       notes:
         'CEO-approved ACCO governance. Activation is blocked until the formal policy effective date is recorded. ' +
@@ -83,7 +82,6 @@ async function seedAccoGovernancePolicy(prisma: PrismaClient, organizationId: st
       status: 'PENDING',
       priority: 100,
       configuration: {
-        reportingCurrency: 'USD',
         amountSource: 'REPORTING_AMOUNT_SNAPSHOT_AT_SUBMISSION',
         pending: ['10,000–50,000 USD authority mapping', 'above 50,000 USD authority mapping', 'NET_OR_GROSS_VAT_BASIS'],
       },

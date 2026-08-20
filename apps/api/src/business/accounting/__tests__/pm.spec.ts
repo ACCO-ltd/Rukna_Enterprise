@@ -50,8 +50,8 @@ function postBalanced(id: string, date: Date) {
         postingOrigin:      'MANUAL',
         createdBy:          env.identity.userId,
         lines: [
-          { accountId: env.accounts.bankId, debitAmount: new Decimal('100'), creditAmount: new Decimal(0),   transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('100') },
-          { accountId: env.accounts.revId,  debitAmount: new Decimal(0),   creditAmount: new Decimal('100'), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('100') },
+          { accountId: env.accounts.bankId, debitAmount: new Decimal('100'), creditAmount: new Decimal(0) },
+          { accountId: env.accounts.revId,  debitAmount: new Decimal(0),   creditAmount: new Decimal('100') },
         ],
       },
       tx as never,
@@ -144,8 +144,8 @@ it('PM-03: closePeriod generates PeriodAccountBalance snapshots', async () => {
           postingOrigin:      'MANUAL',
           createdBy:          freshEnv.identity.userId,
           lines: [
-            { accountId: freshEnv.accounts.bankId, debitAmount: new Decimal('250'), creditAmount: new Decimal(0),   transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('250') },
-            { accountId: freshEnv.accounts.revId,  debitAmount: new Decimal(0),   creditAmount: new Decimal('250'), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('250') },
+            { accountId: freshEnv.accounts.bankId, debitAmount: new Decimal('250'), creditAmount: new Decimal(0) },
+            { accountId: freshEnv.accounts.revId,  debitAmount: new Decimal(0),   creditAmount: new Decimal('250') },
           ],
         },
         tx as never,
@@ -203,8 +203,8 @@ it('PM-04: snapshot closing totals are balanced (total closingDebit = total clos
             postingOrigin:      'MANUAL',
             createdBy:          freshEnv.identity.userId,
             lines: [
-              { accountId: freshEnv.accounts.bankId, debitAmount: d(100 * (i + 1)), creditAmount: d(0), transactionCurrencyCode: 'USD', baseCurrencyAmount: d(100 * (i + 1)) },
-              { accountId: freshEnv.accounts.revId,  debitAmount: d(0), creditAmount: d(100 * (i + 1)), transactionCurrencyCode: 'USD', baseCurrencyAmount: d(100 * (i + 1)) },
+              { accountId: freshEnv.accounts.bankId, debitAmount: d(100 * (i + 1)), creditAmount: d(0) },
+              { accountId: freshEnv.accounts.revId,  debitAmount: d(0), creditAmount: d(100 * (i + 1)) },
             ],
           },
           tx as never,
@@ -256,8 +256,8 @@ it('PM-05: reopenPeriod invalidates the reopened period\'s own snapshots', async
           postingOrigin:      'MANUAL',
           createdBy:          freshEnv.identity.userId,
           lines: [
-            { accountId: freshEnv.accounts.bankId, debitAmount: new Decimal('300'), creditAmount: new Decimal(0),   transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('300') },
-            { accountId: freshEnv.accounts.revId,  debitAmount: new Decimal(0),   creditAmount: new Decimal('300'), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('300') },
+            { accountId: freshEnv.accounts.bankId, debitAmount: new Decimal('300'), creditAmount: new Decimal(0) },
+            { accountId: freshEnv.accounts.revId,  debitAmount: new Decimal(0),   creditAmount: new Decimal('300') },
           ],
         },
         tx as never,
@@ -326,8 +326,8 @@ it('PM-06: reopenPeriod invalidates downstream period snapshots', async () => {
             postingOrigin:      'MANUAL',
             createdBy:          freshEnv.identity.userId,
             lines: [
-              { accountId: freshEnv.accounts.bankId, debitAmount: d(100), creditAmount: d(0),   transactionCurrencyCode: 'USD', baseCurrencyAmount: d(100) },
-              { accountId: freshEnv.accounts.revId,  debitAmount: d(0),   creditAmount: d(100), transactionCurrencyCode: 'USD', baseCurrencyAmount: d(100) },
+              { accountId: freshEnv.accounts.bankId, debitAmount: d(100), creditAmount: d(0) },
+              { accountId: freshEnv.accounts.revId,  debitAmount: d(0),   creditAmount: d(100) },
             ],
           },
           tx as never,
@@ -390,8 +390,8 @@ it('PM-07: rebuildFromPeriod regenerates VALID snapshots sequentially after reop
           postingOrigin:      'MANUAL',
           createdBy:          freshEnv.identity.userId,
           lines: [
-            { accountId: freshEnv.accounts.bankId, debitAmount: d(500), creditAmount: d(0), transactionCurrencyCode: 'USD', baseCurrencyAmount: d(500) },
-            { accountId: freshEnv.accounts.revId,  debitAmount: d(0), creditAmount: d(500), transactionCurrencyCode: 'USD', baseCurrencyAmount: d(500) },
+            { accountId: freshEnv.accounts.bankId, debitAmount: d(500), creditAmount: d(0) },
+            { accountId: freshEnv.accounts.revId,  debitAmount: d(0), creditAmount: d(500) },
           ],
         },
         tx as never,
@@ -455,8 +455,8 @@ it('PM-08: closePeriod is blocked when AR reconciliation fails', async () => {
           postingOrigin:      'SYSTEM_AR',  // bypass MANUAL-origin SYSTEM_ONLY guard
           createdBy:          freshEnv.identity.userId,
           lines: [
-            { accountId: freshEnv.accounts.arId,   debitAmount: new Decimal('500'), creditAmount: new Decimal(0),   transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('500') },
-            { accountId: freshEnv.accounts.revId,  debitAmount: new Decimal(0),   creditAmount: new Decimal('500'), transactionCurrencyCode: 'USD', baseCurrencyAmount: new Decimal('500') },
+            { accountId: freshEnv.accounts.arId,   debitAmount: new Decimal('500'), creditAmount: new Decimal(0) },
+            { accountId: freshEnv.accounts.revId,  debitAmount: new Decimal(0),   creditAmount: new Decimal('500') },
           ],
         },
         tx as never,
@@ -544,8 +544,8 @@ it('PM-10: period can traverse OPEN → LOCKED → CLOSED → REOPENED → LOCKE
             postingOrigin:      'MANUAL',
             createdBy:          freshEnv.identity.userId,
             lines: [
-              { accountId: freshEnv.accounts.bankId, debitAmount: d(50), creditAmount: d(0),  transactionCurrencyCode: 'USD', baseCurrencyAmount: d(50) },
-              { accountId: freshEnv.accounts.revId,  debitAmount: d(0),  creditAmount: d(50), transactionCurrencyCode: 'USD', baseCurrencyAmount: d(50) },
+              { accountId: freshEnv.accounts.bankId, debitAmount: d(50), creditAmount: d(0) },
+              { accountId: freshEnv.accounts.revId,  debitAmount: d(0),  creditAmount: d(50) },
             ],
           },
           tx as never,

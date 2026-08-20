@@ -12,7 +12,6 @@ export interface CommitmentWriteInput {
   spendCategoryId?: string;
   currencyCode: string;
   amount: Decimal;
-  rate: Decimal;
   accountingDate: Date;
   sourceDocumentType: CommitmentSourceDocType;
   sourceDocumentId: string;
@@ -53,13 +52,13 @@ export class CommitmentLedgerWriter {
   }
 
   private write(prisma: TenantPrisma, stage: CommitmentStage, input: CommitmentWriteInput) {
-    const { rate, amount, ...rest } = input;
+    const { amount, ...rest } = input;
     return this.repo.create(prisma, {
       ...rest,
       stage,
       amount,
-      reportingAmount: amount.mul(rate),
-      exchangeRateSnapshot: rate,
+      // Single-currency (USD): the reporting amount is the amount (ADR-024).
+      reportingAmount: amount,
       occurredAt: new Date(),
     });
   }

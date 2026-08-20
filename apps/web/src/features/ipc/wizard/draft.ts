@@ -4,11 +4,6 @@ export type CertOutcome = 'CERTIFIED' | 'PARTIALLY_CERTIFIED' | 'REJECTED';
 
 export interface WizardContext {
   status: CertOutcome | '';
-  showExchangeRate: boolean;
-  exchangeRateCurrency: string;
-  exchangeRateBase: string;
-  exchangeRateValue: string;
-  exchangeRateDate: string;
   notes: string;
 }
 
@@ -35,11 +30,6 @@ export interface WizardDraft {
 export function emptyContext(): WizardContext {
   return {
     status: '',
-    showExchangeRate: false,
-    exchangeRateCurrency: '',
-    exchangeRateBase: '',
-    exchangeRateValue: '',
-    exchangeRateDate: '',
     notes: '',
   };
 }

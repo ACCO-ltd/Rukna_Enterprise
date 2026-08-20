@@ -11,9 +11,6 @@ export interface CreateSupplierPaymentData {
   paymentDate: Date;
   accountingDate: Date;
   currencyCode: string;
-  exchangeRateSnapshot: Decimal;
-  exchangeRateDate: Date;
-  exchangeRateSource: string;
   totalAmount: Decimal;
   allocatedAmount: Decimal;
   unallocatedAmount: Decimal;
@@ -48,9 +45,6 @@ export class SupplierPaymentRepository {
         paymentDate: data.paymentDate,
         accountingDate: data.accountingDate,
         currencyCode: data.currencyCode,
-        exchangeRateSnapshot: data.exchangeRateSnapshot,
-        exchangeRateDate: data.exchangeRateDate,
-        exchangeRateSource: data.exchangeRateSource,
         totalAmount: data.totalAmount,
         allocatedAmount: data.allocatedAmount,
         unallocatedAmount: data.unallocatedAmount,

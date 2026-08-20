@@ -115,11 +115,6 @@ describe('IpcWizard — restoring a saved draft', () => {
   const SAVED: WizardDraft = {
     context: {
       status: 'PARTIALLY_CERTIFIED',
-      showExchangeRate: false,
-      exchangeRateCurrency: '',
-      exchangeRateBase: '',
-      exchangeRateValue: '',
-      exchangeRateDate: '',
       notes: 'Partially certified pending site inspection',
     },
     rows: [

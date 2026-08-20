@@ -405,10 +405,6 @@ export interface Ipa {
   periodTo: string | null;
   submittedAt: string | null;
   submittedBy: string | null;
-  exchangeRateCurrency: string | null;
-  exchangeRateBase: string | null;
-  exchangeRateValue: string | null;
-  exchangeRateDate: string | null;
   notes: string | null;
   createdBy: string;
   createdAt: string;
@@ -492,10 +488,6 @@ export interface Ipc {
   /** Gross certified, BEFORE deductions. Client-supplied on issue — see C1. */
   certifiedTotal: string;
   currency: string;
-  exchangeRateCurrency: string | null;
-  exchangeRateBase: string | null;
-  exchangeRateValue: string | null;
-  exchangeRateDate: string | null;
   issuedAt: string | null;
   issuedBy: string | null;
   notes: string | null;
@@ -540,7 +532,6 @@ export interface Receipt {
   receiptDate: string;
   amount: string;
   currency: string;
-  exchangeRate: string | null;
   reference: string | null;
   notes: string | null;
   createdBy: string;

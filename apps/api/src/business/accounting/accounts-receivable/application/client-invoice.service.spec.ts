@@ -19,7 +19,6 @@ const effectiveIpc = {
   isEffective: true,
   certifiedTotal: '1000.00',
   currency: 'USD',
-  exchangeRateValue: '1',
   application: {
     contract: {
       id: 'c-1',

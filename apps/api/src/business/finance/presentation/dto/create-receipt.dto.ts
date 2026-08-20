@@ -20,11 +20,6 @@ export class CreateReceiptDto {
   @MaxLength(3)
   currency!: string;
 
-  @ApiPropertyOptional({ description: 'Exchange rate to reporting currency at receipt date' })
-  @IsDecimal()
-  @IsOptional()
-  exchangeRate?: string;
-
   @ApiPropertyOptional({ description: 'Bank reference or payment advice number' })
   @IsString()
   @MaxLength(100)

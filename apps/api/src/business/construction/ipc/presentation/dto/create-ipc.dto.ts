@@ -3,7 +3,6 @@ import {
   IsString,
   IsEnum,
   IsDecimal,
-  IsDateString,
   IsOptional,
   IsArray,
   ValidateNested,
@@ -69,28 +68,6 @@ export class CreateIpcDto {
   @IsString()
   @MaxLength(3)
   currency!: string;
-
-  @ApiPropertyOptional()
-  @IsString()
-  @MaxLength(3)
-  @IsOptional()
-  exchangeRateCurrency?: string;
-
-  @ApiPropertyOptional()
-  @IsString()
-  @MaxLength(3)
-  @IsOptional()
-  exchangeRateBase?: string;
-
-  @ApiPropertyOptional()
-  @IsDecimal()
-  @IsOptional()
-  exchangeRateValue?: string;
-
-  @ApiPropertyOptional()
-  @IsDateString()
-  @IsOptional()
-  exchangeRateDate?: string;
 
   @ApiPropertyOptional()
   @IsString()

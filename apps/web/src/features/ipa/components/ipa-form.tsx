@@ -19,9 +19,7 @@ interface IpaFormValues {
  * Creates a payment application against a contract.
  *
  * Deliberately minimal: an application starts empty and is built up from claimed lines.
- * The exchange-rate snapshot fields on `CreateIpaDto` are not offered — they are only
- * meaningful when the contract bills in a currency other than the books', and sending a
- * partial set would record a rate with no base to read it against.
+ * The platform is single-currency (USD, ADR-024), so there are no exchange-rate fields.
  */
 export function IpaForm({ contractId }: { contractId: string }) {
   const t = useTranslations('platform.ipa.create');

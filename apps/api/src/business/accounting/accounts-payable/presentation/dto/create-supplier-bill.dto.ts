@@ -68,9 +68,6 @@ export class CreateSupplierBillDto {
   @IsString() @IsNotEmpty() @MaxLength(3)
   currencyCode!: string;
 
-  @ApiPropertyOptional({ example: 1.0 })
-  @IsNumber() @IsOptional()
-  exchangeRateSnapshot?: number;
 
   @ApiPropertyOptional()
   @IsString() @IsOptional()

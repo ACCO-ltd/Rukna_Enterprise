@@ -49,10 +49,6 @@ export class IpaPrismaRepository {
       organizationId: string;
       periodFrom?: Date;
       periodTo?: Date;
-      exchangeRateCurrency?: string;
-      exchangeRateBase?: string;
-      exchangeRateValue?: string;
-      exchangeRateDate?: Date;
       notes?: string;
       createdBy: string;
     },

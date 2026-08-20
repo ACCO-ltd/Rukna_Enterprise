@@ -19,7 +19,6 @@ import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import { PurchaseOrderService } from '../application/purchase-order.service.js';
 import {
   CreatePurchaseOrderDto,
-  ApprovePurchaseOrderDto,
   RevisePurchaseOrderDto,
 } from './dto/create-purchase-order.dto.js';
 
@@ -74,12 +73,8 @@ export class PurchaseOrderController {
   @ApiOperation({
     summary: 'Approve PO revision: SUBMITTED → ACTIVE. Writes CommitmentLedger COMMITTED entries.',
   })
-  approve(
-    @CurrentUser() identity: RequestIdentity,
-    @Param('id') id: string,
-    @Body() dto: ApprovePurchaseOrderDto,
-  ) {
-    return this.service.approve(identity, id, dto);
+  approve(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.service.approve(identity, id);
   }
 
   @Post(':id/revise')

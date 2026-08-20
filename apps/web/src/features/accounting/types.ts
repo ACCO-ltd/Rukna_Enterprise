@@ -172,8 +172,6 @@ export interface JournalLine {
   accountVersionNumber: number;
   debitAmount: string;
   creditAmount: string;
-  transactionCurrencyCode: string;
-  baseCurrencyAmount: string;
   description: string | null;
   projectId: string | null;
   departmentId: string | null;
@@ -227,7 +225,6 @@ export interface CreateJournalPayload {
     accountId: string;
     debitAmount?: number;
     creditAmount?: number;
-    transactionCurrencyCode?: string;
     memo?: string;
     projectId?: string;
   }>;

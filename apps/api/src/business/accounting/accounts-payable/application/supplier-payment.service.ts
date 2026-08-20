@@ -24,7 +24,6 @@ export interface CreateSupplierPaymentDto {
   paymentDate: string;
   accountingDate?: string;
   currencyCode: string;
-  exchangeRateSnapshot?: number;
   totalAmount: number;
   paymentMethod: string;
   bankReference?: string;
@@ -85,9 +84,6 @@ export class SupplierPaymentService {
         paymentDate,
         accountingDate: new Date(dto.accountingDate ?? dto.paymentDate),
         currencyCode: dto.currencyCode,
-        exchangeRateSnapshot: new Decimal(dto.exchangeRateSnapshot ?? 1),
-        exchangeRateDate: paymentDate,
-        exchangeRateSource: 'MANUAL',
         totalAmount,
         allocatedAmount,
         unallocatedAmount: totalAmount.minus(allocatedAmount),
@@ -187,8 +183,6 @@ export class SupplierPaymentService {
             accountId: apGl.id,
             debitAmount: allocatedAmount,
             creditAmount: new Decimal(0),
-            transactionCurrencyCode: payment.currencyCode,
-            baseCurrencyAmount: allocatedAmount,
             sourceSubledgerType: 'ACCOUNTS_PAYABLE' as const,
             supplierId: payment.supplierId,
           });
@@ -199,8 +193,6 @@ export class SupplierPaymentService {
             accountId: advanceGl.id,
             debitAmount: unallocatedAmount,
             creditAmount: new Decimal(0),
-            transactionCurrencyCode: payment.currencyCode,
-            baseCurrencyAmount: unallocatedAmount,
             supplierId: payment.supplierId,
           });
         }
@@ -209,8 +201,6 @@ export class SupplierPaymentService {
           accountId: bankGl.id,
           debitAmount: new Decimal(0),
           creditAmount: totalAmount,
-          transactionCurrencyCode: payment.currencyCode,
-          baseCurrencyAmount: totalAmount,
           sourceSubledgerType: 'BANK' as const,
         });
 
@@ -310,8 +300,6 @@ export class SupplierPaymentService {
               accountId: apGl.id,
               debitAmount: amount,
               creditAmount: new Decimal(0),
-              transactionCurrencyCode: payment.currencyCode,
-              baseCurrencyAmount: amount,
               sourceSubledgerType: 'ACCOUNTS_PAYABLE' as const,
               supplierId: payment.supplierId,
             },
@@ -319,8 +307,6 @@ export class SupplierPaymentService {
               accountId: advanceGl.id,
               debitAmount: new Decimal(0),
               creditAmount: amount,
-              transactionCurrencyCode: payment.currencyCode,
-              baseCurrencyAmount: amount,
               supplierId: payment.supplierId,
             },
           ],
@@ -414,8 +400,6 @@ export class SupplierPaymentService {
             accountId: l.accountId,
             debitAmount: l.creditAmount as unknown as Decimal,
             creditAmount: l.debitAmount as unknown as Decimal,
-            transactionCurrencyCode: l.transactionCurrencyCode,
-            baseCurrencyAmount: l.baseCurrencyAmount as unknown as Decimal,
             sourceSubledgerType: l.sourceSubledgerType ?? undefined,
             supplierId: l.supplierId ?? undefined,
             memo: `Reversal: ${l.description ?? ''}`,
@@ -501,16 +485,12 @@ export class SupplierPaymentService {
               accountId: advanceGl.id,
               debitAmount: amount,
               creditAmount: new Decimal(0),
-              transactionCurrencyCode: payment.currencyCode,
-              baseCurrencyAmount: amount,
               supplierId: payment.supplierId,
             },
             {
               accountId: apGl.id,
               debitAmount: new Decimal(0),
               creditAmount: amount,
-              transactionCurrencyCode: payment.currencyCode,
-              baseCurrencyAmount: amount,
               sourceSubledgerType: 'ACCOUNTS_PAYABLE' as const,
               supplierId: payment.supplierId,
             },

@@ -9,13 +9,6 @@ export class AccountingConfigurationService {
     private readonly repo: AccountingConfigurationRepository,
   ) {}
 
-  async getMonetaryPolicy(organizationId: string) {
-    const prisma = this.tenancyService.getClient();
-    const policy = await this.repo.getMonetaryPolicy(prisma, organizationId);
-    if (!policy) throw new NotFoundException(`Monetary policy not configured for org ${organizationId}`);
-    return policy;
-  }
-
   async getFiscalCalendarPolicy(organizationId: string) {
     const prisma = this.tenancyService.getClient();
     const policy = await this.repo.getFiscalCalendarPolicy(prisma, organizationId);
@@ -50,8 +43,9 @@ export class AccountingConfigurationService {
     return this.repo.getNumberingPolicy(prisma, organizationId);
   }
 
-  async getBaseCurrency(organizationId: string): Promise<string> {
-    return (await this.getMonetaryPolicy(organizationId)).baseCurrencyCode;
+  // ADR-024: single-currency — the base currency is always USD.
+  getBaseCurrency(_organizationId: string): Promise<string> {
+    return Promise.resolve('USD');
   }
 
   async requiresFourEyes(organizationId: string): Promise<boolean> {

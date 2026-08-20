@@ -91,10 +91,7 @@ async function createAndApprovePo(mrLineId: string, qty: number, price = 500) {
     ],
   });
   await svc.poService.submit(identity(env), po!.id);
-  await svc.poService.approve(identity(env), po!.id, {
-    reportingCurrencyCode: 'USD',
-    exchangeRate: 1,
-  });
+  await svc.poService.approve(identity(env), po!.id);
   return prisma.purchaseOrder.findUniqueOrThrow({
     where: { id: po!.id },
     include: { revisions: { include: { lines: true } } },
@@ -121,10 +118,7 @@ async function createAndPostGrn(
       },
     ],
   });
-  await svc.grnService.post(identity(env), grn!.id, {
-    exchangeRate: 1,
-    reportingCurrencyCode: 'USD',
-  });
+  await svc.grnService.post(identity(env), grn!.id);
   return prisma.goodsReceiptNote.findUniqueOrThrow({
     where: { id: grn!.id },
     include: { lines: true },
@@ -138,7 +132,6 @@ async function createDraftBill(poId: string, poRevisionId: string, qty: number, 
     billDate: '2026-08-25',
     dueDate: '2026-09-25',
     currencyCode: 'USD',
-    exchangeRateSnapshot: 1,
     purchaseOrderId: poId,
     lines: [
       {
@@ -210,10 +203,7 @@ test('T02 — Revising a PO creates compensating reversal for old revision and n
   });
 
   await svc.poService.submit(identity(env), po.id);
-  await svc.poService.approve(identity(env), po.id, {
-    reportingCurrencyCode: 'USD',
-    exchangeRate: 1,
-  });
+  await svc.poService.approve(identity(env), po.id);
 
   const allEntries = await prisma.commitmentLedgerEntry.findMany({
     where: { purchaseOrderId: po.id },
@@ -423,9 +413,6 @@ test('T09 — Two-way matching produces correct price and quantity variance', as
       billDate: new Date('2026-08-25'),
       dueDate: new Date('2026-09-25'),
       currencyCode: 'USD',
-      exchangeRateSnapshot: new Decimal('1'),
-      exchangeRateDate: new Date('2026-08-25'),
-      exchangeRateSource: 'MANUAL',
       documentStatus: 'APPROVED',
       postingStatus: 'NOT_POSTED',
       subtotal: new Decimal('51000'),
@@ -486,9 +473,6 @@ test('T10 — Three-way matching records GRN accepted quantity on match lines', 
       billDate: new Date('2026-08-25'),
       dueDate: new Date('2026-09-25'),
       currencyCode: 'USD',
-      exchangeRateSnapshot: new Decimal('1'),
-      exchangeRateDate: new Date('2026-08-25'),
-      exchangeRateSource: 'MANUAL',
       documentStatus: 'APPROVED',
       postingStatus: 'NOT_POSTED',
       subtotal: new Decimal('45000'),
@@ -544,9 +528,6 @@ test('T11 — Bill with EXCEPTION status is blocked from posting', async () => {
       billDate: new Date('2026-08-25'),
       dueDate: new Date('2026-09-25'),
       currencyCode: 'USD',
-      exchangeRateSnapshot: new Decimal('1'),
-      exchangeRateDate: new Date('2026-08-25'),
-      exchangeRateSource: 'MANUAL',
       documentStatus: 'APPROVED',
       postingStatus: 'NOT_POSTED',
       matchStatus: 'EXCEPTION',
@@ -655,7 +636,6 @@ test('T13 — CommitmentLedger rejects a duplicate idempotencyKey', async () => 
     amount: new Decimal('1000'),
     currencyCode: 'USD',
     reportingAmount: new Decimal('1000'),
-    exchangeRateSnapshot: new Decimal('1'),
     sourceDocumentType: 'PURCHASE_ORDER_REVISION' as const,
     sourceDocumentId: 'test-idem',
     eventType: 'TEST',

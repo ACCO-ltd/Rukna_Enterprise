@@ -328,14 +328,6 @@ export function IpcWizard({ contractId, ipaId }: IpcWizardProps) {
       applicationId: ipaId,
       status: context.status as 'CERTIFIED' | 'PARTIALLY_CERTIFIED' | 'REJECTED',
       currency: contract.data!.currency,
-      ...(context.showExchangeRate && context.exchangeRateCurrency
-        ? {
-            exchangeRateCurrency: context.exchangeRateCurrency || undefined,
-            exchangeRateBase: context.exchangeRateBase || undefined,
-            exchangeRateValue: context.exchangeRateValue || undefined,
-            exchangeRateDate: context.exchangeRateDate || undefined,
-          }
-        : {}),
       notes: context.notes || undefined,
       items: isRejected
         ? []

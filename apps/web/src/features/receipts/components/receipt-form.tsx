@@ -51,8 +51,6 @@ export function ReceiptForm() {
       receiptDate: values.receiptDate,
       amount: toDecimalString(values.amount),
       currency: values.currency,
-      // `exchangeRate` is not offered: it is only meaningful against a reporting currency
-      // the platform does not yet define, and a rate with nothing to convert to is noise.
       ...(values.reference.trim() ? { reference: values.reference.trim() } : {}),
       ...(values.notes.trim() ? { notes: values.notes.trim() } : {}),
     });

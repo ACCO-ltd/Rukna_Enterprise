@@ -19,7 +19,6 @@ model Organization {
 
   users                    User[]
   roles                    Role[]
-  exchangeRates            ExchangeRate[]
   workflowDefinitions      WorkflowDefinition[]
   workflowPolicyVersions   WorkflowPolicyVersion[]
   segregationOfDutiesRules SegregationOfDutiesRule[]
@@ -208,22 +207,6 @@ model AuditOutboxEvent {
 
 // ─── Multi-Currency ───────────────────────────────────────────────────────────
 
-model ExchangeRate {
-  id             String   @id @default(cuid())
-  organizationId String   @map("organization_id")
-  fromCurrency   String   @map("from_currency") @db.VarChar(3)
-  toCurrency     String   @map("to_currency") @db.VarChar(3)
-  rate           Decimal  @db.Decimal(18, 6)
-  validFrom      DateTime @map("valid_from") @db.Date
-  createdBy      String   @map("created_by")
-  createdAt      DateTime @default(now()) @map("created_at")
-
-  organization Organization @relation(fields: [organizationId], references: [id])
-
-  @@index([organizationId, fromCurrency, toCurrency, validFrom])
-  @@map("exchange_rates")
-}
-
 // ─── DOA / Workflow Engine ────────────────────────────────────────────────────
 
 model WorkflowDefinition {
@@ -288,7 +271,6 @@ model ApprovalInstance {
   updatedAt             DateTime                 @updatedAt @map("updated_at")
   // Sprint 5: immutable condition snapshot — why this policy was selected (ADR-007, Rule DOA-001)
   evaluatedAmount       Decimal?                 @map("evaluated_amount") @db.Decimal(18, 2)
-  reportingCurrencyCode String?                  @map("reporting_currency_code") @db.VarChar(3)
   matchedPolicyId       String?                  @map("matched_policy_id")
   matchedPolicyVersion  Int?                     @map("matched_policy_version")
   conditionSnapshot     Json?                    @map("condition_snapshot")
@@ -390,7 +372,6 @@ model WorkflowPolicyVersion {
   status            WorkflowPolicyStatus @default(DRAFT)
   effectiveFrom     DateTime?            @map("effective_from")
   effectiveTo       DateTime?            @map("effective_to")
-  reportingCurrency String               @map("reporting_currency") @db.VarChar(3)
   amountBasis       WorkflowAmountBasis  @default(UNSPECIFIED) @map("amount_basis")
   notes             String?
   approvedAt        DateTime?            @map("approved_at")
@@ -1104,10 +1085,6 @@ model InterimPaymentApplication {
   periodTo             DateTime? @map("period_to") @db.Date
   submittedAt          DateTime? @map("submitted_at")
   submittedBy          String?   @map("submitted_by")
-  exchangeRateCurrency String?   @map("exchange_rate_currency") @db.VarChar(3)
-  exchangeRateBase     String?   @map("exchange_rate_base") @db.VarChar(3)
-  exchangeRateValue    Decimal?  @map("exchange_rate_value") @db.Decimal(18, 6)
-  exchangeRateDate     DateTime? @map("exchange_rate_date") @db.Date
   notes                String?
   createdBy            String    @map("created_by")
   createdAt            DateTime  @default(now()) @map("created_at")
@@ -1191,10 +1168,6 @@ model InterimPaymentCertificate {
   supersessionReason   String?   @map("supersession_reason")
   certifiedTotal       Decimal   @map("certified_total") @db.Decimal(18, 2)
   currency             String    @db.VarChar(3)
-  exchangeRateCurrency String?   @map("exchange_rate_currency") @db.VarChar(3)
-  exchangeRateBase     String?   @map("exchange_rate_base") @db.VarChar(3)
-  exchangeRateValue    Decimal?  @map("exchange_rate_value") @db.Decimal(18, 6)
-  exchangeRateDate     DateTime? @map("exchange_rate_date") @db.Date
   issuedAt             DateTime? @map("issued_at")
   issuedBy             String?   @map("issued_by")
   notes                String?
@@ -1753,9 +1726,6 @@ model ClientInvoice {
   projectId              String?          @map("project_id")
   contractId             String?          @map("contract_id")
   currencyCode           String           @map("currency_code") @db.VarChar(3)
-  exchangeRateSnapshot   Decimal          @map("exchange_rate_snapshot") @db.Decimal(18, 6)
-  exchangeRateDate       DateTime         @map("exchange_rate_date") @db.Date
-  exchangeRateSource     String           @map("exchange_rate_source")
   subtotal               Decimal          @db.Decimal(18, 2)
   vatAmount              Decimal          @map("vat_amount") @db.Decimal(18, 2)
   totalAmount            Decimal          @map("total_amount") @db.Decimal(18, 2)
@@ -1847,9 +1817,6 @@ model PaymentReceipt {
   allocatedAmount      Decimal          @default(0) @map("allocated_amount") @db.Decimal(18, 2)
   unallocatedAmount    Decimal          @map("unallocated_amount") @db.Decimal(18, 2)
   currencyCode         String           @map("currency_code") @db.VarChar(3)
-  exchangeRateSnapshot Decimal?         @map("exchange_rate_snapshot") @db.Decimal(18, 6)
-  exchangeRateDate     DateTime?        @map("exchange_rate_date") @db.Date
-  exchangeRateSource   String?          @map("exchange_rate_source")
   paymentMethod        String?          @map("payment_method")
   bankReference        String?          @map("bank_reference")
   reference            String?
@@ -1895,9 +1862,6 @@ model SupplierBill {
   billDate                  DateTime        @map("bill_date") @db.Date
   dueDate                   DateTime        @map("due_date") @db.Date
   currencyCode              String          @map("currency_code") @db.VarChar(3)
-  exchangeRateSnapshot      Decimal         @map("exchange_rate_snapshot") @db.Decimal(18, 6)
-  exchangeRateDate          DateTime        @map("exchange_rate_date") @db.Date
-  exchangeRateSource        String          @map("exchange_rate_source")
   purchaseOrderId           String?         @map("purchase_order_id")
   purchaseOrderRevisionId   String?         @map("purchase_order_revision_id")
   // Sprint 5: bill matching gate — posting blocked unless MATCHED/MATCHED_WITH_TOLERANCE/APPROVED_EXCEPTION
@@ -1992,9 +1956,6 @@ model SupplierPayment {
   paymentDate          DateTime         @map("payment_date") @db.Date
   accountingDate       DateTime         @map("accounting_date") @db.Date
   currencyCode         String           @map("currency_code") @db.VarChar(3)
-  exchangeRateSnapshot Decimal          @map("exchange_rate_snapshot") @db.Decimal(18, 6)
-  exchangeRateDate     DateTime         @map("exchange_rate_date") @db.Date
-  exchangeRateSource   String           @map("exchange_rate_source")
   totalAmount          Decimal          @map("total_amount") @db.Decimal(18, 2)
   allocatedAmount      Decimal          @default(0) @map("allocated_amount") @db.Decimal(18, 2)
   unallocatedAmount    Decimal          @map("unallocated_amount") @db.Decimal(18, 2)
@@ -2081,7 +2042,6 @@ model JournalEntry {
   postedAt                 DateTime?       @map("posted_at")
   description              String
   currencyCode             String          @map("currency_code") @db.VarChar(3)
-  exchangeRateSnapshot     Decimal?        @map("exchange_rate_snapshot") @db.Decimal(18, 6)
   sourceDocumentType       SourceDocType?  @map("source_document_type")
   sourceDocumentId         String?         @map("source_document_id")
   accountingEventId        String?         @map("accounting_event_id")
@@ -2144,10 +2104,6 @@ model JournalLine {
   accountVersionNumber    Int            @map("account_version_number")
   debitAmount             Decimal        @default(0) @map("debit_amount") @db.Decimal(18, 2)
   creditAmount            Decimal        @default(0) @map("credit_amount") @db.Decimal(18, 2)
-  transactionCurrencyCode String         @map("transaction_currency_code") @db.VarChar(3)
-  transactionAmount       Decimal?       @map("transaction_amount") @db.Decimal(18, 2)
-  baseCurrencyAmount      Decimal        @map("base_currency_amount") @db.Decimal(18, 2)
-  exchangeRateSnapshot    Decimal?       @map("exchange_rate_snapshot") @db.Decimal(18, 6)
   description             String?
   postingOrigin           PostingOrigin  @map("posting_origin")
   sourceSubledgerType     SubledgerType? @map("source_subledger_type")
@@ -2230,7 +2186,6 @@ model PeriodAccountBalance {
   periodCredit       Decimal        @default(0) @map("period_credit") @db.Decimal(18, 2)
   closingDebit       Decimal        @default(0) @map("closing_debit") @db.Decimal(18, 2)
   closingCredit      Decimal        @default(0) @map("closing_credit") @db.Decimal(18, 2)
-  baseCurrency       String         @map("base_currency") @db.VarChar(3)
   snapshotVersion    Int            @default(1) @map("snapshot_version")
   generatedAt        DateTime       @map("generated_at")
   generatedBy        String         @map("generated_by")
@@ -2335,16 +2290,6 @@ model PaymentReceiptMigrationException {
 // organizationId @id means 1:1 with Organization — no separate id column.
 
 // baseCurrencyCode is IMMUTABLE after the first JournalEntry is posted.
-model MonetaryPolicy {
-  organizationId        String   @id @map("organization_id")
-  baseCurrencyCode      String   @map("base_currency_code") @db.VarChar(3)
-  reportingCurrencyCode String   @map("reporting_currency_code") @db.VarChar(3)
-  updatedBy             String   @map("updated_by")
-  updatedAt             DateTime @updatedAt @map("updated_at")
-
-  @@map("monetary_policy")
-}
-
 model FiscalCalendarPolicy {
   organizationId       String   @id @map("organization_id")
   fiscalYearStartMonth Int      @map("fiscal_year_start_month")
@@ -3381,7 +3326,6 @@ model CommitmentLedgerEntry {
   amount               Decimal                 @map("amount") @db.Decimal(18, 2)
   currencyCode         String                  @map("currency_code") @db.VarChar(3)
   reportingAmount      Decimal                 @map("reporting_amount") @db.Decimal(18, 2)
-  exchangeRateSnapshot Decimal                 @map("exchange_rate_snapshot") @db.Decimal(18, 6)
   sourceDocumentType   CommitmentSourceDocType @map("source_document_type")
   sourceDocumentId     String                  @map("source_document_id")
   sourceLineId         String?                 @map("source_line_id")

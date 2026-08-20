@@ -144,10 +144,6 @@ export class IpaService {
         organizationId: identity.activeOrganizationId,
         periodFrom: dto.periodFrom ? new Date(dto.periodFrom) : undefined,
         periodTo: dto.periodTo ? new Date(dto.periodTo) : undefined,
-        exchangeRateCurrency: dto.exchangeRateCurrency,
-        exchangeRateBase: dto.exchangeRateBase,
-        exchangeRateValue: dto.exchangeRateValue,
-        exchangeRateDate: dto.exchangeRateDate ? new Date(dto.exchangeRateDate) : undefined,
         notes: dto.notes,
         createdBy: identity.userId,
       });
@@ -349,7 +345,6 @@ export class IpaService {
     return this.repo.addDeduction(prisma, id, {
       deductionType: dto.deductionType,
       sourceTermId: dto.sourceTermId,
-      rate: dto.rate,
       basis: dto.basis,
       amount: dto.amount,
     });
