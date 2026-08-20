@@ -5,7 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Badge, Button } from '@erp/ui';
 import { IpaStatus } from '@erp/types';
 
-import { formatDate } from '@/lib/format';
+import { formatDate, formatMoney } from '@/lib/format';
 import { usePermissions } from '@/features/auth/permissions/can';
 import { isOperationalClientContract } from '@/features/contracts/contract-eligibility';
 import { useContracts } from '@/features/contracts/hooks/use-contracts';
@@ -143,7 +143,7 @@ export function ProjectIpcContent({ projectId }: { projectId: string }) {
                             <IpcEffectiveBadge isEffective={certificate.isEffective} />
                           </div>
                           <span className="text-xs tabular-nums text-muted-foreground">
-                            {certificate.certifiedTotal} {certificate.currency}
+                            {formatMoney(certificate.certifiedTotal, certificate.currency, locale)}
                           </span>
                         </li>
                       ))}

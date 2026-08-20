@@ -117,7 +117,6 @@ export function BankAccounts() {
                 <TableHead>{t('colBank')}</TableHead>
                 <TableHead>{t('colAccount')}</TableHead>
                 <TableHead>{t('colNumber')}</TableHead>
-                <TableHead>{t('colCurrency')}</TableHead>
                 <TableHead>{t('colUse')}</TableHead>
                 <TableHead>{t('colStatus')}</TableHead>
               </TableRow>
@@ -131,9 +130,6 @@ export function BankAccounts() {
                     {/* Masked to the last four. A full account number on a list screen is a
                         detail nobody needs at a glance and everybody can screenshot. */}
                     ****{bank.accountNumber.slice(-4)}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {bank.currencyCode}
                   </TableCell>
                   <TableCell className="space-x-1">
                     {bank.allowsReceipts ? (

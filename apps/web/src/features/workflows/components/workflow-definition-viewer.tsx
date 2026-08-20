@@ -102,12 +102,7 @@ export function WorkflowDefinitionViewer() {
                       <TableRow key={cond.id}>
                         <TableCell className="font-mono text-xs">{cond.field}</TableCell>
                         <TableCell className="font-mono text-xs">{cond.operator}</TableCell>
-                        <TableCell>
-                          {cond.value}
-                          {cond.currencyCode ? (
-                            <span className="ms-1 text-xs text-muted-foreground">{cond.currencyCode}</span>
-                          ) : null}
-                        </TableCell>
+                        <TableCell>{cond.value}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

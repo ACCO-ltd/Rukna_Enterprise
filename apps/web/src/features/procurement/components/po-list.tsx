@@ -98,7 +98,6 @@ export function PoList() {
             <TableRow>
               <TableHead>{t('number')}</TableHead>
               <TableHead>{tc('supplier')}</TableHead>
-              <TableHead>{tc('currency')}</TableHead>
               <TableHead className="text-end">{t('revision')}</TableHead>
               <TableHead>{t('revisionStatus')}</TableHead>
               <TableHead>{t('effectiveFrom')}</TableHead>
@@ -128,9 +127,6 @@ export function PoList() {
                       {po.supplier?.name ?? (
                         <span className="text-muted-foreground">{tc('notAvailable')}</span>
                       )}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {revision?.currencyCode ?? tc('notAvailable')}
                     </TableCell>
                     <TableCell className="text-end tabular-nums">
                       {revision?.revisionNumber ?? tc('notAvailable')}
