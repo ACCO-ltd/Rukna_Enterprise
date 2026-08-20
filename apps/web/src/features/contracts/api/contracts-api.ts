@@ -235,3 +235,23 @@ export function completeMilestone(contractId: string, milestoneId: string): Prom
     method: 'POST',
   });
 }
+
+// ─── Payment-schedule installments (ADR-023 MILESTONE contracts) ───────────────────
+
+/**
+ * `PATCH /contracts/:id/installments/:installmentId/milestone` — link or unlink a programme
+ * milestone as a payment installment's billing evidence (CONST-COM-011).
+ *
+ * Pass a `programmeMilestoneId` to link; pass `null` to unlink. Once linked and unverified, the
+ * server refuses to invoice the installment until the milestone is verified.
+ */
+export function setInstallmentMilestone(
+  contractId: string,
+  installmentId: string,
+  programmeMilestoneId: string | null,
+): Promise<unknown> {
+  return apiClient(`/contracts/${contractId}/installments/${installmentId}/milestone`, {
+    method: 'PATCH',
+    body: JSON.stringify({ programmeMilestoneId }),
+  });
+}

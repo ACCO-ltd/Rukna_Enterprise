@@ -911,6 +911,20 @@ export interface CommercialPaymentScheduleInstallment {
   dueOffsetDays: number | null;
   dueDate: string | null;
   status: PaymentInstallmentBillStatus;
+  /**
+   * CONST-COM-011: the programme milestone this installment's billing is gated on, or null when
+   * unlinked. When present and not `VERIFIED`, "Generate invoice" must be blocked in the UI (the
+   * API enforces the same gate).
+   */
+  programmeMilestone: PaymentInstallmentMilestoneLink | null;
+}
+
+/** A programme milestone linked to a payment installment (CONST-COM-011 evidence gate). */
+export interface PaymentInstallmentMilestoneLink {
+  id: string;
+  code: string;
+  name: string;
+  status: `${ProgrammeMilestoneStatus}`;
 }
 
 export interface CommercialPaymentSchedule {

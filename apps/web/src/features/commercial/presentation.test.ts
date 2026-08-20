@@ -5,6 +5,7 @@ import {
   contractStatusTone,
   guaranteeAttentionTone,
   metricDisplay,
+  paymentInstallmentTone,
   settlementTone,
 } from './presentation';
 
@@ -63,5 +64,13 @@ describe('tone mapping', () => {
     expect(guaranteeAttentionTone('EXPIRED')).toBe('danger');
     expect(guaranteeAttentionTone('EXPIRING_SOON')).toBe('warning');
     expect(guaranteeAttentionTone('NONE')).toBe('live');
+  });
+
+  it('maps payment installment bill status — NEXT is the actionable one', () => {
+    expect(paymentInstallmentTone('NEXT')).toBe('accent');
+    expect(paymentInstallmentTone('UPCOMING')).toBe('neutral');
+    expect(paymentInstallmentTone('BILLED')).toBe('info');
+    expect(paymentInstallmentTone('PARTIALLY_PAID')).toBe('warning');
+    expect(paymentInstallmentTone('PAID')).toBe('live');
   });
 });

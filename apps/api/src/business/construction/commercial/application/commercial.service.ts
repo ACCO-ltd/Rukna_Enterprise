@@ -641,6 +641,16 @@ export class CommercialService {
         dueOffsetDays: inst.dueOffsetDays,
         dueDate: inst.dueDate ? inst.dueDate.toISOString().slice(0, 10) : null,
         status,
+        // CONST-COM-011: the linked programme milestone, so the UI can show the evidence gate
+        // and block "Generate invoice" until the milestone is verified. Null when unlinked.
+        programmeMilestone: inst.programmeMilestone
+          ? {
+              id: inst.programmeMilestone.id,
+              code: inst.programmeMilestone.code,
+              name: inst.programmeMilestone.name,
+              status: inst.programmeMilestone.status,
+            }
+          : null,
       };
     });
 
