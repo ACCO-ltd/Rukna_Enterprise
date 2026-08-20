@@ -47,11 +47,6 @@ export class CreateNodeDto {
   @MaxLength(500)
   description!: string;
 
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  descriptionAr?: string;
 
   @ApiPropertyOptional({
     description: 'True = billable item (carries quantity/rate). False = section.',

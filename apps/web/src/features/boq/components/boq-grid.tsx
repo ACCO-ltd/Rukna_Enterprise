@@ -106,7 +106,7 @@ export function BoqGrid({
     }
     if (!isNavigationKey(event.key)) return;
 
-    const intent = resolveKeyIntent(event.key, activeIndex, rows, locale === 'ar');
+    const intent = resolveKeyIntent(event.key, activeIndex, rows, false);
     if (!intent) return;
 
     event.preventDefault();

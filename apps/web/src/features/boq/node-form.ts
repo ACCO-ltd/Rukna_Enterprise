@@ -22,7 +22,6 @@ export type PricingBasisValue = 'UNIT_RATE' | 'LUMP_SUM';
 export interface NodeFormValues {
   code: string;
   description: string;
-  descriptionAr: string;
   unit: string;
   quantity: string;
   unitRate: string;
@@ -33,7 +32,6 @@ export interface NodeFormValues {
 export const EMPTY_NODE_FORM: NodeFormValues = {
   code: '',
   description: '',
-  descriptionAr: '',
   unit: '',
   quantity: '',
   unitRate: '',
@@ -45,7 +43,6 @@ export function toNodeFormValues(node: BoqTreeNodeResponse): NodeFormValues {
   return {
     code: node.code,
     description: node.description,
-    descriptionAr: node.descriptionAr ?? '',
     unit: node.unit ?? '',
     quantity: node.quantity ?? '',
     unitRate: node.unitRate ?? '',
@@ -81,8 +78,6 @@ export function toCreateNodePayload(
 
   if (options.parentId) payload.parentId = options.parentId;
 
-  const descriptionAr = values.descriptionAr.trim();
-  if (descriptionAr) payload.descriptionAr = descriptionAr;
 
   // Sections carry no measurement or pricing: the server rejects them outright, and a rate
   // on a section would either be ignored or double-counted against its children's total.
@@ -117,7 +112,6 @@ export function toUpdateNodePayload(
   const payload: UpdateNodePayload = {
     code: values.code.trim(),
     description: values.description.trim(),
-    descriptionAr: values.descriptionAr.trim() || undefined,
   };
 
   if (options.kind === 'item') {

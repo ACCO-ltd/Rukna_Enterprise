@@ -31,7 +31,6 @@ const TON: UnitOfMeasure = {
   id: 'uom-1',
   code: 'TON',
   name: 'Metric Ton',
-  nameAr: null,
   symbol: 't',
   status: 'ACTIVE',
 };
@@ -40,7 +39,6 @@ const LOT: UnitOfMeasure = {
   id: 'uom-2',
   code: 'LOT',
   name: 'Lot',
-  nameAr: null,
   symbol: 'lot',
   status: 'ACTIVE',
 };
@@ -49,7 +47,6 @@ const REBAR: Material = {
   id: 'mat-1',
   code: 'REBAR-12MM',
   name: '12mm Deformed Steel Rebar',
-  nameAr: null,
   description: null,
   status: 'ACTIVE',
   materialCategoryId: 'cat-1',
@@ -65,7 +62,6 @@ const SPEND: SpendCategory[] = [
     id: 'spend-1',
     code: 'DIRECT_MATERIAL',
     name: 'Direct Material',
-    nameAr: null,
     status: 'ACTIVE',
     parentId: null,
     children: [],
@@ -256,17 +252,4 @@ describe('MrLineEditor — rows', () => {
     expect(emitted.map((l) => l.key)).toEqual(['line-1']);
   });
 
-  it('renders in Arabic without a missing key', () => {
-    renderWithProviders(
-      <MrLineEditor
-        lines={[emptyMrLine('line-1')]}
-        onChange={vi.fn()}
-        spendCategories={SPEND}
-        showErrors={false}
-      />,
-      { locale: 'ar' },
-    );
-
-    expect(screen.getByRole('button', { name: 'إضافة بند' })).toBeInTheDocument();
-  });
 });

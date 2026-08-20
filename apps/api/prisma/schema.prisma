@@ -71,7 +71,6 @@ model User {
   lastName          String     @map("last_name")
   status            UserStatus @default(ACTIVE)
   organizationId    String     @map("organization_id")
-  preferredLanguage Language   @default(EN) @map("preferred_language")
   createdAt         DateTime   @default(now()) @map("created_at")
   updatedAt         DateTime   @updatedAt @map("updated_at")
 
@@ -232,7 +231,6 @@ model WorkflowDefinition {
   organizationId          String                   @map("organization_id")
   transactionType         WorkflowTransactionType? @map("transaction_type")
   name                    String
-  nameAr                  String                   @map("name_ar")
   isActive                Boolean                  @default(false) @map("is_active")
   requiresCeoConfirmation Boolean                  @default(false) @map("requires_ceo_confirmation")
   createdAt               DateTime                 @default(now()) @map("created_at")
@@ -361,7 +359,6 @@ model Client {
   organizationId  String       @map("organization_id")
   code            String       @map("code") @db.VarChar(30)
   name            String
-  nameAr          String?      @map("name_ar")
   type            ClientType   @default(COMPANY)
   taxNumber       String?      @map("tax_number")
   defaultCurrency String?      @map("default_currency") @db.VarChar(3)
@@ -523,7 +520,6 @@ model Project {
   organizationId     String             @map("organization_id")
   code               String             @map("code") @db.VarChar(30)
   name               String
-  nameAr             String?            @map("name_ar")
   description        String?
   status             ProjectStatus      @default(DRAFT)
   commercialModel    CommercialModel    @default(CLIENT_CONTRACT) @map("commercial_model")
@@ -858,7 +854,6 @@ model BoqNode {
   sortOrder           Int               @default(0) @map("sort_order")
   code                String            @db.VarChar(50)
   description         String
-  descriptionAr       String?           @map("description_ar")
   measurementMethod   MeasurementMethod @default(QUANTITY) @map("measurement_method")
   pricingBasis        PricingBasis      @default(UNIT_RATE) @map("pricing_basis")
   unit                String?           @db.VarChar(20)
@@ -1317,7 +1312,6 @@ model DepartmentVersion {
   departmentId       String    @map("department_id")
   versionNumber      Int       @map("version_number")
   name               String
-  nameAr             String?   @map("name_ar")
   parentDepartmentId String?   @map("parent_department_id")
   // effectiveTo is EXCLUSIVE — [effectiveFrom, effectiveTo)
   effectiveFrom      DateTime  @map("effective_from") @db.Date
@@ -1360,7 +1354,6 @@ model CostCenterVersion {
   costCenterId  String    @map("cost_center_id")
   versionNumber Int       @map("version_number")
   name          String
-  nameAr        String?   @map("name_ar")
   // effectiveTo is EXCLUSIVE — [effectiveFrom, effectiveTo)
   effectiveFrom DateTime  @map("effective_from") @db.Date
   effectiveTo   DateTime? @map("effective_to") @db.Date
@@ -1409,7 +1402,6 @@ model AccountVersion {
   accountId               String               @map("account_id")
   versionNumber           Int                  @map("version_number")
   name                    String
-  nameAr                  String?              @map("name_ar")
   parentAccountId         String?              @map("parent_account_id")
   accountClass            AccountClass         @map("account_class")
   accountSubtype          AccountSubtype       @map("account_subtype")
@@ -1521,7 +1513,6 @@ model BankAccount {
   glAccountId     String            @unique @map("gl_account_id")
   bankName        String            @map("bank_name")
   accountName     String            @map("account_name")
-  accountNameAr   String?           @map("account_name_ar")
   accountNumber   String            @map("account_number") @db.VarChar(50)
   iban            String?           @db.VarChar(34)
   swiftCode       String?           @map("swift_code") @db.VarChar(11)
@@ -1557,7 +1548,6 @@ model TaxCode {
   organizationId     String         @map("organization_id")
   code               String         @db.VarChar(10)
   name               String
-  nameAr             String?        @map("name_ar")
   rate               Decimal        @db.Decimal(7, 4)
   taxType            TaxType        @map("tax_type")
   recoveryMethod     RecoveryMethod @map("recovery_method")
@@ -1583,7 +1573,6 @@ model Supplier {
   organizationId   String         @map("organization_id")
   code             String         @db.VarChar(30)
   name             String
-  nameAr           String?        @map("name_ar")
   taxNumber        String?        @map("tax_number")
   defaultCurrency  String?        @map("default_currency") @db.VarChar(3)
   paymentTermsDays Int?           @map("payment_terms_days")
@@ -2433,10 +2422,6 @@ enum OrganizationStatus {
   SUSPENDED
 }
 
-enum Language {
-  EN
-  AR
-}
 
 enum WorkflowTransactionType {
   MATERIAL_REQUEST
@@ -2938,7 +2923,6 @@ model UnitOfMeasure {
   organizationId String           @map("organization_id")
   code           String           @db.VarChar(20)
   name           String
-  nameAr         String?          @map("name_ar")
   symbol         String           @db.VarChar(10)
   status         MasterDataStatus @default(ACTIVE)
   createdAt      DateTime         @default(now()) @map("created_at")
@@ -2960,7 +2944,6 @@ model MaterialCategory {
   organizationId String           @map("organization_id")
   code           String           @db.VarChar(30)
   name           String
-  nameAr         String?          @map("name_ar")
   parentId       String?          @map("parent_id")
   status         MasterDataStatus @default(ACTIVE)
   createdAt      DateTime         @default(now()) @map("created_at")
@@ -2981,7 +2964,6 @@ model SpendCategory {
   organizationId String           @map("organization_id")
   code           String           @db.VarChar(30)
   name           String
-  nameAr         String?          @map("name_ar")
   parentId       String?          @map("parent_id")
   status         MasterDataStatus @default(ACTIVE)
   createdAt      DateTime         @default(now()) @map("created_at")
@@ -3008,7 +2990,6 @@ model Material {
   organizationId         String         @map("organization_id")
   code                   String         @db.VarChar(50)
   name                   String
-  nameAr                 String?        @map("name_ar")
   description            String?
   materialCategoryId     String         @map("material_category_id")
   defaultSpendCategoryId String?        @map("default_spend_category_id")

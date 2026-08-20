@@ -7,7 +7,6 @@ export interface CreateUomData {
   organizationId: string;
   code: string;
   name: string;
-  nameAr?: string;
   symbol: string;
 }
 

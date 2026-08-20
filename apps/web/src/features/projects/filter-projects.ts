@@ -26,7 +26,7 @@ export function filterProjects(projects: Project[], filters: ProjectFilters): Pr
     if (filters.status !== 'ALL' && project.status !== filters.status) return false;
     if (!needle) return true;
 
-    return [project.code, project.name, project.nameAr, project.clientName].some(
+    return [project.code, project.name, project.clientName].some(
       (field) => field?.toLowerCase().includes(needle),
     );
   });

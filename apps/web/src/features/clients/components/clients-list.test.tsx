@@ -97,11 +97,6 @@ describe('ClientsList', () => {
     expect(await screen.findByRole('link', { name: 'Baraka' })).toBeInTheDocument();
   });
 
-  it('uses the legal display name in Arabic UI', async () => {
-    vi.mocked(listClientSummaries).mockResolvedValue([client({ id: '1', name: 'Baraka Real Estate' })]);
-    renderWithProviders(<ClientsList />, { locale: 'ar' });
-    expect(await screen.findByRole('link', { name: 'Baraka Real Estate' })).toBeInTheDocument();
-  });
 
   it('announces the visible count', async () => {
     vi.mocked(listClientSummaries).mockResolvedValue([client({ id: '1' }), client({ id: '2' })]);

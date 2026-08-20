@@ -9,7 +9,6 @@ function client(overrides: Partial<Client> & { id: string }): Client {
     organizationId: 'org1',
     code: 'CL-001',
     name: 'Baraka Real Estate',
-    nameAr: null,
     taxNumber: null,
     defaultCurrency: null,
     status: ClientStatus.ACTIVE,
@@ -59,10 +58,6 @@ describe('filterClients', () => {
     expect(filterClients([target], { ...ALL, search: '4567' })).toEqual([target]);
   });
 
-  it('matches the Arabic name while the UI is in English', () => {
-    const target = client({ id: 'a', name: 'Baraka', nameAr: 'شركة البركة' });
-    expect(filterClients([target], { ...ALL, search: 'البركة' })).toEqual([target]);
-  });
 
   it('ignores case and surrounding whitespace', () => {
     const target = client({ id: 'a', name: 'Baraka Real Estate' });
@@ -81,7 +76,7 @@ describe('filterClients', () => {
   });
 
   it('does not match a null field', () => {
-    const target = client({ id: 'a', taxNumber: null, nameAr: null });
+    const target = client({ id: 'a', taxNumber: null });
     expect(filterClients([target], { ...ALL, search: 'null' })).toEqual([]);
   });
 });

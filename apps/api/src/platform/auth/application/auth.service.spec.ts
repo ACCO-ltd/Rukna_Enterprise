@@ -24,7 +24,6 @@ describe('AuthService organization membership claims', () => {
       id: 'user-1',
       email: 'admin@acco.test',
       passwordHash: await bcrypt.hash('valid-password', 4),
-      preferredLanguage: 'EN',
       status: 'ACTIVE',
       memberships: [],
     });
@@ -43,7 +42,6 @@ describe('AuthService organization membership claims', () => {
       id: 'user-1',
       email: 'admin@acco.test',
       passwordHash: await bcrypt.hash('valid-password', 4),
-      preferredLanguage: 'AR',
       status: 'ACTIVE',
       memberships: [
         {
@@ -86,7 +84,6 @@ describe('AuthService organization membership claims', () => {
         tenantSlug: 'acco',
         roles: ['ADMIN'],
         permissions: ['view:project', 'manage:project'],
-        lang: 'ar',
       }),
     );
     expect(audit.log).toHaveBeenCalledWith(

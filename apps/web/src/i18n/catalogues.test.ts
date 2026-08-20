@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest';
  * for this.
  */
 
-const LOCALES = ['en', 'ar'] as const;
+const LOCALES = ['en'] as const;
 const NAMESPACES = ['common', 'auth', 'platform', 'accounting', 'procurement', 'commercial', 'documents', 'progress'] as const;
 
 const messagesDir = join(__dirname, '..', '..', 'messages');
@@ -93,23 +93,6 @@ describe('message catalogues', () => {
 
     it.each(NAMESPACES)('%s.json has no duplicate keys', (namespace) => {
       expect(duplicateKeys(read(locale, namespace))).toEqual([]);
-    });
-  });
-
-  /**
-   * A key present in English and missing in Arabic throws at render time rather than falling
-   * back, because `renderWithProviders` and `request.ts` both surface a missing message as an
-   * error. Half-translated is not a soft failure here.
-   */
-  describe.each(NAMESPACES)('%s is translated in both locales', (namespace) => {
-    it('has identical key paths in en and ar', () => {
-      const en = keyPaths(JSON.parse(read('en', namespace))).sort();
-      const ar = keyPaths(JSON.parse(read('ar', namespace))).sort();
-
-      expect({
-        missingFromAr: en.filter((k) => !ar.includes(k)),
-        missingFromEn: ar.filter((k) => !en.includes(k)),
-      }).toEqual({ missingFromAr: [], missingFromEn: [] });
     });
   });
 

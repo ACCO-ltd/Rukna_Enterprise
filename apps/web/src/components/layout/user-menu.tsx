@@ -1,7 +1,6 @@
 'use client';
 
-import { useLocale, useTranslations } from 'next-intl';
-import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Desktop, Moon, Sun } from '@phosphor-icons/react';
 import {
   cn,
@@ -19,8 +18,6 @@ import { useSession } from '@/features/auth/session/use-session';
 import { setThemePreference, useThemePreference } from '@/features/theme/theme-store';
 import type { ThemePreference } from '@/features/theme/theme-preference';
 
-type SupportedLocale = 'en' | 'ar';
-
 /** Derives display initials from an email address. "abdulsalam@acco.com" → "AA". */
 function emailToInitials(email: string): string {
   const local = email.split('@')[0] ?? '';
@@ -32,29 +29,16 @@ function emailToInitials(email: string): string {
 }
 
 /**
- * Avatar button that opens a dropdown containing:
- *  - User email (read-only label)
- *  - Language toggle (EN / AR)
- *  - Sign out
- *
- * The language preference is stored as a browser cookie; the sign-out clears the
- * in-memory access token and redirects to /login.
+ * Avatar button that opens a dropdown containing the user email, theme control, and sign out.
+ * Sign-out clears the in-memory access token and redirects to /login.
  */
 export function UserMenu() {
   const t = useTranslations('platform');
-  const locale = useLocale() as SupportedLocale;
-  const router = useRouter();
   const { user } = useSession();
   const { mutate: logout, isPending } = useLogout();
   const themePreference = useThemePreference();
 
   const initials = user ? emailToInitials(user.email) : '??';
-
-  const changeLocale = (next: SupportedLocale) => {
-    if (next === locale) return;
-    document.cookie = `lang=${next}; path=/; Max-Age=31536000; SameSite=Lax`;
-    router.refresh();
-  };
 
   return (
     <DropdownMenu>
@@ -86,27 +70,6 @@ export function UserMenu() {
             <DropdownMenuSeparator />
           </>
         ) : null}
-
-        {/* Language */}
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>{t('user.switchLanguage')}</DropdownMenuLabel>
-          <DropdownMenuItem
-            onSelect={() => changeLocale('en')}
-            className={cn(locale === 'en' && 'font-semibold text-brand-primary')}
-          >
-            <span aria-label="Switch to English">EN — English</span>
-            {locale === 'en' ? <CheckIcon className="ms-auto" /> : null}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={() => changeLocale('ar')}
-            className={cn(locale === 'ar' && 'font-semibold text-brand-primary')}
-          >
-            <span aria-label="Switch to Arabic">AR — العربية</span>
-            {locale === 'ar' ? <CheckIcon className="ms-auto" /> : null}
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-
-        <DropdownMenuSeparator />
 
         <DropdownMenuGroup>
           <DropdownMenuLabel>{t('user.theme')}</DropdownMenuLabel>

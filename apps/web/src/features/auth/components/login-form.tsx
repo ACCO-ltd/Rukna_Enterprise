@@ -7,8 +7,6 @@ import { z } from 'zod';
 import { useTranslations } from 'next-intl';
 import { Button, FormField, Input } from '@erp/ui';
 
-import { LanguageSwitcher } from '@/components/language-switcher';
-
 import { useLogin } from '../hooks/use-login';
 
 type LoginFormData = { email: string; password: string };
@@ -64,10 +62,6 @@ export function LoginForm() {
       </section>
 
       <section className="flex flex-col px-6 py-7 sm:px-10 sm:py-10 lg:px-16 lg:py-12">
-        <div className="flex justify-end">
-          <LanguageSwitcher />
-        </div>
-
         <div className="my-auto py-10 lg:py-6">
           <div className="mb-8">
             <h1 className="text-3xl font-semibold tracking-tight text-foreground">{t('title')}</h1>

@@ -143,9 +143,4 @@ describe('AllocationPanel', () => {
     expect(screen.getByText(/fully allocated/i)).toBeInTheDocument();
   });
 
-  it('renders in Arabic without a missing translation key', () => {
-    renderWithProviders(<AllocationPanel payment={payment()} />, { locale: 'ar' });
-
-    expect(screen.getByRole('heading', { name: 'تخصيص هذه الدفعة المقدّمة' })).toBeInTheDocument();
-  });
 });

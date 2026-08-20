@@ -34,7 +34,6 @@ function project(overrides: Partial<Project> & { id: string }): Project {
     organizationId: 'org-1',
     code: `PROJ-${overrides.id}`,
     name: `Project ${overrides.id}`,
-    nameAr: null,
     description: null,
     status: ProjectStatus.ACTIVE,
     contractValue: null,
@@ -140,15 +139,6 @@ describe('ProjectsList', () => {
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
   });
 
-  it('prefers the Arabic name when the UI is in Arabic', async () => {
-    vi.mocked(listProjects).mockResolvedValue([
-      project({ id: '1', name: 'Al-Baraka Tower', nameAr: 'برج البركة' }),
-    ]);
-
-    renderWithProviders(<ProjectsList />, { locale: 'ar' });
-
-    expect(await screen.findByRole('link', { name: /برج البركة/ })).toBeInTheDocument();
-  });
 
   it('announces the visible count', async () => {
     vi.mocked(listProjects).mockResolvedValue([project({ id: '1' }), project({ id: '2' })]);

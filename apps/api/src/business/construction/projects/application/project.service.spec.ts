@@ -10,7 +10,6 @@ const identity = (permissions: string[]): RequestIdentity => ({
   activeOrganizationId: 'org-1',
   roles: [],
   permissions,
-  lang: 'en',
 });
 
 const workspaceRecord = {

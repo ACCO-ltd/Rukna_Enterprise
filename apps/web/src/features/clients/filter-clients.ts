@@ -33,7 +33,7 @@ export function filterClients(clients: Client[], filters: ClientFilters): Client
     if (filters.type && filters.type !== 'ALL' && client.type !== filters.type) return false;
     if (!needle) return true;
 
-    return [client.code, client.name, client.nameAr, client.taxNumber].some((field) =>
+    return [client.code, client.name, client.taxNumber].some((field) =>
       field?.toLowerCase().includes(needle),
     );
   });

@@ -63,7 +63,7 @@ export function WorkflowDefinitionViewer() {
               <div>
                 <p className="text-xs text-muted-foreground">{t('viewer.definitionName')}</p>
                 <p className="mt-0.5 text-base font-semibold text-foreground">
-                  {locale === 'ar' && definition.nameAr ? definition.nameAr : definition.name}
+                  {definition.name}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">

@@ -363,10 +363,7 @@ function IpcItemRow({ item, ipaItemMap, nodeMap, locale, currency }: IpcItemRowP
   const ipaItem = ipaItemMap[item.applicationItemId];
   const node = ipaItem ? nodeMap[ipaItem.boqNodeId] : undefined;
 
-  const description =
-    locale === 'ar'
-      ? (node?.descriptionAr ?? node?.description ?? node?.code)
-      : (node?.description ?? node?.code);
+  const description = node?.description ?? node?.code;
 
   // The application or the BOQ may still be loading, or the walk may simply not resolve.
   // The last segment of the id at least tells two rows apart, which is what the branch

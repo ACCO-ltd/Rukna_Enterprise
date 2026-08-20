@@ -218,7 +218,6 @@ async function seedDocumentWorkflows(prisma: PrismaClient, organizationId: strin
         organizationId,
         transactionType: chain.transactionType,
         name: chain.name,
-        nameAr: chain.nameAr,
         isActive: false,
         requiresCeoConfirmation: true,
         conditions: chain.conditions ? { create: chain.conditions } : undefined,
@@ -252,7 +251,6 @@ async function seedProjectLifecycleBindings(
         organizationId,
         transactionType: null,
         name: 'Project Lifecycle Approval',
-        nameAr: 'موافقة دورة حياة المشروع',
         isActive: false,
         requiresCeoConfirmation: true,
         steps: {
@@ -314,7 +312,6 @@ async function seedProjectLifecycleBindings(
 type ChainDef = {
   transactionType: WorkflowTransactionType;
   name: string;
-  nameAr: string;
   conditions?: Array<{ field: string; operator: string; value: string; currencyCode?: string }>;
   steps: Array<{
     stepOrder: number;
@@ -331,7 +328,6 @@ function buildAccoChains(organizationId: string): (ChainDef & { organizationId: 
       organizationId,
       transactionType: WorkflowTransactionType.MATERIAL_REQUEST,
       name: 'Material Request Approval',
-      nameAr: 'موافقة طلب المواد',
       steps: [
         { stepOrder: 1, roleRequired: 'PROJECT_MANAGER', isOptional: false, notifyRoles: ['PROCUREMENT_OFFICER'] },
         { stepOrder: 2, roleRequired: 'PROCUREMENT_OFFICER', isOptional: false, notifyRoles: ['FINANCE_MANAGER'] },
@@ -342,7 +338,6 @@ function buildAccoChains(organizationId: string): (ChainDef & { organizationId: 
       organizationId,
       transactionType: WorkflowTransactionType.PURCHASE_ORDER,
       name: 'Purchase Order Approval',
-      nameAr: 'موافقة أمر الشراء',
       conditions: [
         { field: 'amount', operator: 'gte', value: '0', currencyCode: 'USD' },
       ],
@@ -359,7 +354,6 @@ function buildAccoChains(organizationId: string): (ChainDef & { organizationId: 
       organizationId,
       transactionType: WorkflowTransactionType.SUPPLIER_PAYMENT,
       name: 'Supplier Payment Approval',
-      nameAr: 'موافقة دفع المورد',
       steps: [
         { stepOrder: 1, roleRequired: 'PROCUREMENT_OFFICER', isOptional: false, notifyRoles: [] },
         { stepOrder: 2, roleRequired: 'STOREKEEPER', isOptional: false, notifyRoles: [] },
@@ -373,7 +367,6 @@ function buildAccoChains(organizationId: string): (ChainDef & { organizationId: 
       organizationId,
       transactionType: WorkflowTransactionType.STOCK_TRANSFER,
       name: 'Stock Transfer Approval',
-      nameAr: 'موافقة تحويل المخزون',
       steps: [
         { stepOrder: 1, roleRequired: 'STOREKEEPER', isOptional: false, notifyRoles: [] },
         { stepOrder: 2, roleRequired: 'PROJECT_MANAGER', isOptional: false, notifyRoles: [] },
@@ -383,7 +376,6 @@ function buildAccoChains(organizationId: string): (ChainDef & { organizationId: 
       organizationId,
       transactionType: WorkflowTransactionType.MATERIAL_ISSUE,
       name: 'Material Issue Approval',
-      nameAr: 'موافقة صرف المواد',
       steps: [
         { stepOrder: 1, roleRequired: 'PROJECT_MANAGER', isOptional: false, notifyRoles: [] },
         { stepOrder: 2, roleRequired: 'STOREKEEPER', isOptional: false, notifyRoles: [] },
@@ -393,7 +385,6 @@ function buildAccoChains(organizationId: string): (ChainDef & { organizationId: 
       organizationId,
       transactionType: WorkflowTransactionType.SUBCONTRACT_CERTIFICATE,
       name: 'Subcontract Payment Certificate Approval',
-      nameAr: 'موافقة شهادة دفع المقاول من الباطن',
       steps: [
         { stepOrder: 1, roleRequired: 'SITE_ENGINEER', isOptional: false, notifyRoles: [] },
         { stepOrder: 2, roleRequired: 'QUANTITY_SURVEYOR', isOptional: false, notifyRoles: [] },
@@ -408,7 +399,6 @@ function buildAccoChains(organizationId: string): (ChainDef & { organizationId: 
       organizationId,
       transactionType: WorkflowTransactionType.IPC,
       name: 'Interim Payment Certificate Approval',
-      nameAr: 'موافقة شهادة الدفع المؤقت',
       steps: [
         { stepOrder: 1, roleRequired: 'QUANTITY_SURVEYOR', isOptional: false, notifyRoles: [] },
         { stepOrder: 2, roleRequired: 'PROJECT_MANAGER', isOptional: false, notifyRoles: [] },

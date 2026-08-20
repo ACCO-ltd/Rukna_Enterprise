@@ -15,7 +15,6 @@ import type { Client, ClientContact, ClientDetail, ClientListItem } from '../typ
  */
 export interface CreateClientPayload {
   name: string;
-  nameAr?: string;
   type?: 'COMPANY' | 'GOVERNMENT' | 'NGO' | 'INDIVIDUAL' | 'OTHER';
   taxNumber?: string;
   defaultCurrency?: string;
@@ -43,7 +42,6 @@ export interface ClientDuplicateCandidate {
  */
 export interface UpdateClientPayload {
   name?: string;
-  nameAr?: string | null;
   type?: 'COMPANY' | 'GOVERNMENT' | 'NGO' | 'INDIVIDUAL' | 'OTHER';
   taxNumber?: string | null;
   defaultCurrency?: string | null;

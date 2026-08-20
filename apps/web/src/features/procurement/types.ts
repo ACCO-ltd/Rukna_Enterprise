@@ -95,7 +95,6 @@ export interface UnitOfMeasure {
   id: string;
   code: string;
   name: string;
-  nameAr: string | null;
   symbol: string;
   status: MasterDataStatus;
 }
@@ -108,7 +107,6 @@ export interface MaterialCategory {
   id: string;
   code: string;
   name: string;
-  nameAr: string | null;
   status: MasterDataStatus;
   parentId: string | null;
   children?: MaterialCategory[];
@@ -118,7 +116,6 @@ export interface SpendCategory {
   id: string;
   code: string;
   name: string;
-  nameAr: string | null;
   status: MasterDataStatus;
   parentId: string | null;
   children?: SpendCategory[];
@@ -128,7 +125,6 @@ export interface Material {
   id: string;
   code: string;
   name: string;
-  nameAr: string | null;
   description: string | null;
   status: MaterialStatus;
   materialCategoryId: string;
@@ -196,7 +192,6 @@ export interface Supplier {
   id: string;
   code: string;
   name: string;
-  nameAr: string | null;
   taxNumber: string | null;
   defaultCurrency: string | null;
   paymentTermsDays: number | null;
@@ -214,7 +209,6 @@ export interface Supplier {
 export interface CreateSupplierPayload {
   code: string;
   name: string;
-  nameAr?: string;
   taxNumber?: string;
   defaultCurrency?: string;
   paymentTermsDays?: number;
@@ -234,7 +228,6 @@ export interface CreateSupplierPayload {
 export interface PurchaseOrderSupplier {
   id: string;
   name: string;
-  nameAr?: string | null;
 }
 
 export interface PurchaseOrderLine {
@@ -517,21 +510,18 @@ export interface CommitmentSummary {
 export interface CreateUomPayload {
   code: string;
   name: string;
-  nameAr?: string;
   symbol: string;
 }
 
 export interface CreateCategoryPayload {
   code: string;
   name: string;
-  nameAr?: string;
   parentCode?: string;
 }
 
 export interface CreateMaterialPayload {
   code: string;
   name: string;
-  nameAr?: string;
   description?: string;
   materialCategoryCode: string;
   defaultSpendCategoryCode?: string;

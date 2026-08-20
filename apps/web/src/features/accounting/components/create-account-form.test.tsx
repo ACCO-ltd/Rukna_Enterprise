@@ -113,10 +113,4 @@ describe('CreateAccountForm', () => {
     expect(screen.getByLabelText('Controls which subledger')).toBeInTheDocument();
   });
 
-  it('renders in Arabic without a missing translation key', () => {
-    renderWithProviders(<CreateAccountForm onDone={vi.fn()} />, { locale: 'ar' });
-
-    expect(screen.getByText('التصنيف الفرعي للحساب')).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'مجمّع الإهلاك' })).toBeInTheDocument();
-  });
 });

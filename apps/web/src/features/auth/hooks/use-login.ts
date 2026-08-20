@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 
 import { ApiError } from '@/lib/api-client';
 import { loginRequest, type LoginCredentials } from '../api/auth-api';
-import { setAuthMarker, setLangCookie } from '../session/auth-cookies';
+import { setAuthMarker } from '../session/auth-cookies';
 import { sessionStore } from '../session/session-store';
 
 export function useLogin() {
@@ -24,9 +24,6 @@ export function useLogin() {
       // Routing hint for middleware — not a security boundary. See auth-cookies.ts.
       setAuthMarker();
 
-      // Language follows the user, not the browser: seed the locale from the account's
-      // stored preference so a new device opens in the right language.
-      setLangCookie(user.lang);
 
       // Only same-origin relative paths — never redirect to an attacker-supplied URL.
       const next = searchParams.get('next');

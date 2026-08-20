@@ -15,7 +15,6 @@ function makeUser(overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser
     tenantSlug: 'acco',
     roles: ['site-engineer'],
     permissions: ['view:project'],
-    lang: 'en',
     ...overrides,
   };
 }

@@ -53,10 +53,10 @@ function isGateBlocked(inst: Installment): boolean {
   return inst.programmeMilestone !== null && inst.programmeMilestone.status !== 'VERIFIED';
 }
 
-function formatPercent(fraction: string, locale: 'en' | 'ar'): string {
+function formatPercent(fraction: string): string {
   const n = Number(fraction);
   if (!Number.isFinite(n)) return fraction;
-  return new Intl.NumberFormat(locale === 'ar' ? 'ar' : 'en-US', {
+  return new Intl.NumberFormat('en-US', {
     style: 'percent',
     maximumFractionDigits: 2,
   }).format(n);
@@ -227,7 +227,7 @@ function InstallmentRow({
     <TableRow>
       <TableCell className="font-medium text-foreground">{inst.name}</TableCell>
       <TableCell className="text-end tabular-nums text-muted-foreground">
-        {formatPercent(inst.percentage, locale)}
+        {formatPercent(inst.percentage)}
       </TableCell>
       <TableCell className="text-end tabular-nums">{money(inst.amount)}</TableCell>
       <TableCell className="text-end tabular-nums text-muted-foreground">

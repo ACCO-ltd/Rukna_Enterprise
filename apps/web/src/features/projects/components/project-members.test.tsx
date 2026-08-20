@@ -187,10 +187,4 @@ describe('ProjectMembers', () => {
     expect(screen.getByText(/No members on this project/i)).toBeInTheDocument();
   });
 
-  it('renders in Arabic without a missing translation key', () => {
-    renderWithProviders(<ProjectMembers projectId="p-1" />, { locale: 'ar' });
-
-    expect(screen.getByRole('heading', { name: 'فريق المشروع' })).toBeInTheDocument();
-    expect(screen.getAllByText('مدير المشروع')).toHaveLength(2);
-  });
 });

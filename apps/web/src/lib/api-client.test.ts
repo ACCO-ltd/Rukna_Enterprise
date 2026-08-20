@@ -14,7 +14,6 @@ function fakeJwt(overrides: Record<string, unknown> = {}): string {
     tenantSlug: 'acco',
     roles: ['ADMIN'],
     permissions: [],
-    lang: 'en',
     ...overrides,
   };
   return `header.${btoa(JSON.stringify(payload))}.signature`;
@@ -267,7 +266,6 @@ describe('restoreSession', () => {
     await restoreSession();
 
     expect(sessionStore.getState().isAuthenticated).toBe(true);
-    expect(sessionStore.getState().user?.lang).toBe('ar');
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(`${API}/auth/refresh`);

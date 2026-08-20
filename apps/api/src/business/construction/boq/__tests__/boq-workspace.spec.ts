@@ -47,7 +47,6 @@ describe('BOQ workspace read models', () => {
       tenantSlug: `boqw-${suffix}`,
       roles: ['admin'],
       permissions: [PERMISSIONS.boqView, PERMISSIONS.boqManage, PERMISSIONS.boqBaseline],
-      lang: 'en',
     };
 
     const tenancy = { getClient: () => prisma } as unknown as TenancyService;

@@ -1,9 +1,10 @@
 import { getRequestConfig } from 'next-intl/server';
-import { cookies } from 'next/headers';
+
+// The platform is English-only. The next-intl seam is kept so another locale (e.g. Somali) can
+// be added later, but there is a single active locale today.
+const locale = 'en';
 
 export default getRequestConfig(async () => {
-  const locale = await resolveLocale();
-
   // `accounting` is a namespace of its own rather than another branch of `platform`.
   // `platform.json` is already the file every feature edits, and it is where the last rebase
   // silently produced a duplicate key that dropped 54 lines of translations.
@@ -33,11 +34,3 @@ export default getRequestConfig(async () => {
     },
   };
 });
-
-async function resolveLocale(): Promise<'en' | 'ar'> {
-  const cookieStore = await cookies();
-  const langCookie = cookieStore.get('lang')?.value;
-  if (langCookie === 'ar' || langCookie === 'en') return langCookie;
-
-  return 'en';
-}

@@ -13,7 +13,6 @@ function version(overrides: Partial<AccountVersion> = {}): AccountVersion {
     accountId: 'acc-1',
     versionNumber: 1,
     name: 'Accounts Receivable',
-    nameAr: 'الذمم المدينة',
     parentAccountId: null,
     accountClass: 'ASSET',
     accountSubtype: 'ACCOUNTS_RECEIVABLE',

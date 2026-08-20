@@ -35,7 +35,6 @@ const validPayload = {
   tenantSlug: 'acco',
   roles: ['admin'],
   permissions: ['create:purchase-order'],
-  lang: 'en',
 };
 
 describe('LoginForm', () => {
@@ -48,29 +47,11 @@ describe('LoginForm', () => {
     document.cookie = 'lang=; path=/; Max-Age=0';
   });
 
-  it('renders the enterprise tenant identity and language controls', () => {
+  it('renders the enterprise tenant identity', () => {
     renderWithProviders(<LoginForm />);
 
     expect(screen.getByText('ACCO Ltd')).toBeInTheDocument();
     expect(screen.getByText('Rukna ERP Platform')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Switch language to English' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
-    expect(screen.getByRole('button', { name: 'Switch language to Arabic' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
-  });
-
-  it('updates the preferred language and refreshes the route', async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<LoginForm />);
-
-    await user.click(screen.getByRole('button', { name: 'Switch language to Arabic' }));
-
-    expect(document.cookie).toContain('lang=ar');
-    expect(refresh).toHaveBeenCalledOnce();
   });
 
   it('renders labelled email and password fields', () => {

@@ -26,7 +26,6 @@ function account(
         id: `${id}-v1`,
         versionNumber: 1,
         name,
-        nameAr: null,
         accountClass: 'ASSET',
         accountSubtype,
         normalBalance: 'DEBIT',

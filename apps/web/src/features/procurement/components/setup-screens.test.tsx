@@ -46,7 +46,6 @@ const TON: UnitOfMeasure = {
   id: 'uom-1',
   code: 'TON',
   name: 'Metric Ton',
-  nameAr: 'طن',
   symbol: 't',
   status: 'ACTIVE',
 };
@@ -55,7 +54,6 @@ const STEEL: MaterialCategory = {
   id: 'cat-1',
   code: 'STEEL',
   name: 'Steel & Metal Products',
-  nameAr: null,
   status: 'ACTIVE',
   parentId: null,
   children: [
@@ -63,7 +61,6 @@ const STEEL: MaterialCategory = {
       id: 'cat-2',
       code: 'REBAR',
       name: 'Reinforcing Bar',
-      nameAr: null,
       status: 'ACTIVE',
       parentId: 'cat-1',
     },
@@ -74,7 +71,6 @@ const DIRECT_MATERIAL: SpendCategory = {
   id: 'spend-1',
   code: 'DIRECT_MATERIAL',
   name: 'Direct Material',
-  nameAr: null,
   status: 'ACTIVE',
   parentId: null,
   children: [],
@@ -84,7 +80,6 @@ const REBAR: Material = {
   id: 'mat-1',
   code: 'REBAR-12MM',
   name: '12mm Deformed Steel Rebar',
-  nameAr: null,
   description: null,
   status: 'ACTIVE',
   materialCategoryId: 'cat-2',
@@ -135,10 +130,6 @@ describe('UomList', () => {
     expect(screen.queryByLabelText(/status/i)).not.toBeInTheDocument();
   });
 
-  it('renders in Arabic without a missing key', () => {
-    renderWithProviders(<UomList />, { locale: 'ar' });
-    expect(screen.getByText('وحدات القياس')).toBeInTheDocument();
-  });
 });
 
 describe('MaterialsList', () => {
@@ -157,10 +148,6 @@ describe('MaterialsList', () => {
     expect(screen.getByLabelText('Spend category')).toBeInTheDocument();
   });
 
-  it('renders in Arabic without a missing key', () => {
-    renderWithProviders(<MaterialsList />, { locale: 'ar' });
-    expect(screen.getByText('المواد')).toBeInTheDocument();
-  });
 });
 
 describe('MaterialCategoriesScreen', () => {
@@ -179,10 +166,6 @@ describe('MaterialCategoriesScreen', () => {
     expect(rootRow?.textContent).not.toContain('↳');
   });
 
-  it('renders in Arabic without a missing key', () => {
-    renderWithProviders(<MaterialCategoriesScreen />, { locale: 'ar' });
-    expect(screen.getByText('فئات المواد')).toBeInTheDocument();
-  });
 });
 
 describe('SpendCategoriesScreen', () => {
@@ -198,8 +181,4 @@ describe('SpendCategoriesScreen', () => {
     expect(screen.queryByRole('heading', { name: /material categor/i })).not.toBeInTheDocument();
   });
 
-  it('renders in Arabic without a missing key', () => {
-    renderWithProviders(<SpendCategoriesScreen />, { locale: 'ar' });
-    expect(screen.getByText('فئات الإنفاق')).toBeInTheDocument();
-  });
 });

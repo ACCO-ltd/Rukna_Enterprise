@@ -6,7 +6,6 @@ export class WorkflowDefinitionEntity {
     public readonly organizationId: string,
     public readonly transactionType: WorkflowTransactionType,
     public readonly name: string,
-    public readonly nameAr: string,
     public readonly isActive: boolean,
     public readonly requiresCeoConfirmation: boolean,
     public readonly createdAt: Date,

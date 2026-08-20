@@ -34,7 +34,6 @@ function version(overrides: Partial<AccountVersion> = {}): AccountVersion {
     accountId: 'acc-1',
     versionNumber: 1,
     name: 'Office Expense',
-    nameAr: 'مصروفات المكتب',
     parentAccountId: null,
     accountClass: 'EXPENSE',
     accountSubtype: 'ADMINISTRATIVE_EXPENSE',
@@ -256,10 +255,4 @@ describe('JournalForm', () => {
     expect(screen.getByLabelText('Description')).toHaveValue('January office rent');
   });
 
-  it('renders in Arabic', async () => {
-    renderWithProviders(<JournalForm />, { locale: 'ar' });
-
-    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('قيد جديد');
-    expect(screen.getByLabelText('البيان')).toBeInTheDocument();
-  });
 });

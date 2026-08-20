@@ -11,10 +11,6 @@ export class CreateMaterialCategoryDto {
   @IsString()
   name: string;
 
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  nameAr?: string;
 
   @ApiPropertyOptional({ example: 'CONSTRUCTION_MATERIALS', description: 'Code of parent category' })
   @IsOptional()

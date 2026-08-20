@@ -150,17 +150,4 @@ describe('IpcBillingCard', () => {
     expect(screen.queryByLabelText(/total|amount/i)).not.toBeInTheDocument();
   });
 
-  it('renders in Arabic', async () => {
-    vi.mocked(listInvoices).mockResolvedValue([invoice()]);
-
-    renderWithProviders(<IpcBillingCard ipcId="ipc-1" isEffective currency="SOS" />, {
-      locale: 'ar',
-    });
-
-    // Awaiting the invoice number rather than the heading: the heading renders during the
-    // loading state too, so awaiting it would assert against a skeleton.
-    expect(await screen.findByText('INV-2026-031')).toBeInTheDocument();
-    expect(screen.getByText('الفوترة')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'عرض الفاتورة' })).toBeInTheDocument();
-  });
 });

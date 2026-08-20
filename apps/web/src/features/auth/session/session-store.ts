@@ -7,7 +7,6 @@ export interface AuthenticatedUser {
   tenantSlug: string;
   roles: string[];
   permissions: string[];
-  lang: 'en' | 'ar';
 }
 
 export interface SessionState {
@@ -66,7 +65,6 @@ export const sessionStore = {
       tenantSlug: payload.tenantSlug,
       roles: payload.roles ?? [],
       permissions: payload.permissions ?? [],
-      lang: payload.lang === 'ar' ? 'ar' : 'en',
     };
 
     sessionStore.setSession({ accessToken, user });

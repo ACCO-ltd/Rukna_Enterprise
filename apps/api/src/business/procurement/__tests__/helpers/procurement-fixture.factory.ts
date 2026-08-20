@@ -60,7 +60,6 @@ export class ProcurementFixtureFactory {
       tenantSlug: `proc-${suffix}`,
       roles: ['admin'],
       permissions: ['*'],
-      lang: 'en',
     };
 
     // ── Supplier ──────────────────────────────────────────────────────────────

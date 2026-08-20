@@ -114,7 +114,6 @@ beforeEach(() => {
       tenantSlug: 'acco',
       roles: ['FINANCE_CONTROLLER'],
       permissions: ['approve:matching-exception'],
-      lang: 'en',
     },
   });
   vi.clearAllMocks();
@@ -265,18 +264,4 @@ describe('BillMatchingTab — results', () => {
     );
   });
 
-  it('renders in Arabic without a missing key', () => {
-    mocks.useBillMatch.mockReturnValue({
-      data: makeMatch(),
-      isPending: false,
-      isError: false,
-    });
-
-    renderWithProviders(
-      <BillMatchingTab bill={makeBill({ matchStatus: 'MATCHED_WITH_TOLERANCE' })} />,
-      { locale: 'ar' },
-    );
-
-    expect(screen.getByText('مطابقة الفاتورة')).toBeInTheDocument();
-  });
 });

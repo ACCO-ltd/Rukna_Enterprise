@@ -33,7 +33,6 @@ function account(id: string, code: string, subtype: string): Account {
         id: `${id}-v1`,
         versionNumber: 1,
         name: code,
-        nameAr: null,
         accountClass: 'ASSET',
         accountSubtype: subtype,
         normalBalance: 'DEBIT',
@@ -193,11 +192,6 @@ describe('OpeningBalanceWizard', () => {
     expect(screen.getByRole('button', { name: 'Run migration' })).toBeDisabled();
   });
 
-  it('renders in Arabic without a missing translation key', () => {
-    renderWithProviders(<OpeningBalanceWizard />, { locale: 'ar' });
-
-    expect(screen.getByRole('heading', { name: 'ترحيل الأرصدة الافتتاحية' })).toBeInTheDocument();
-  });
 });
 
 describe('migration report', () => {

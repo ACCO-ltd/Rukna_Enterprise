@@ -1,14 +1,11 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsBoolean, IsOptional, MaxLength } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsString, IsNotEmpty, IsBoolean, MaxLength } from 'class-validator';
 
 export class ConfigureBankAccountDto {
   @ApiProperty({ example: 'Main Operating Account' })
   @IsString() @IsNotEmpty() @MaxLength(255)
   accountName!: string;
 
-  @ApiPropertyOptional()
-  @IsString() @IsOptional() @MaxLength(255)
-  accountNameAr?: string;
 
   @ApiProperty({ example: 'Bank of Arabia' })
   @IsString() @IsNotEmpty() @MaxLength(255)

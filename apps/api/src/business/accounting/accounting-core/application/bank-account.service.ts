@@ -6,7 +6,6 @@ import { AccountRepository } from '../infrastructure/account.repository.js';
 
 export interface ConfigureBankAccountDto {
   accountName: string;
-  accountNameAr?: string;
   bankName: string;
   accountNumber: string;
   currencyCode: string;
@@ -49,7 +48,6 @@ export class BankAccountService {
     return this.repo.create(prisma, {
       organizationId: orgId,
       accountName: dto.accountName,
-      accountNameAr: dto.accountNameAr,
       bankName: dto.bankName,
       accountNumber: dto.accountNumber,
       currencyCode: dto.currencyCode,

@@ -51,9 +51,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
 
   const data = invoice.data;
   const client = (clients.data ?? []).find((c) => c.id === data.clientId);
-  const clientName = client
-    ? (locale === 'ar' ? (client.nameAr ?? client.name) : client.name)
-    : null;
+  const clientName = client ? client.name : null;
 
   const mayManage = can(ACCOUNTING_PERMISSIONS.manageReceivables);
   const errorMessage = action.isError

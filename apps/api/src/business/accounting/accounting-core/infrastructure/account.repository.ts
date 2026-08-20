@@ -62,7 +62,6 @@ export class AccountRepository {
       version: {
         versionNumber: number;
         name: string;
-        nameAr?: string;
         parentAccountId?: string;
         accountClass: AccountClass;
         accountSubtype: AccountSubtype;
@@ -94,7 +93,6 @@ export class AccountRepository {
     version: {
       versionNumber: number;
       name: string;
-      nameAr?: string;
       parentAccountId?: string;
       accountClass: AccountClass;
       accountSubtype: AccountSubtype;

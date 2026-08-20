@@ -59,12 +59,15 @@ export function currentVersion(account: Account): AccountVersion | null {
   );
 }
 
-/** The account's name in the active locale, falling back to English then to the code. */
-export function accountName(account: Account, locale: 'en' | 'ar'): string {
+/**
+ * The account's name, falling back to the code. The trailing parameter is retained for call-site
+ * compatibility since the system went English-only; it is ignored.
+ */
+export function accountName(account: Account, _locale?: string): string {
   const version = currentVersion(account);
   if (!version) return account.code;
 
-  return (locale === 'ar' ? (version.nameAr ?? version.name) : version.name) || account.code;
+  return version.name || account.code;
 }
 
 /** `"10100 — Salaam Bank"`. The code first, because that is how accountants refer to them. */
@@ -136,7 +139,7 @@ export function accountMatches(account: Account, query: string): boolean {
 
   const version = currentVersion(account);
 
-  return [account.code, version?.name, version?.nameAr, version?.accountSubtype]
+  return [account.code, version?.name, version?.accountSubtype]
     .filter((v): v is string => typeof v === 'string' && v.length > 0)
     .some((v) => v.toLowerCase().includes(needle));
 }

@@ -216,7 +216,6 @@ function MaterialCreateForm({ onDone }: { onDone: () => void }) {
   const ids = {
     code: useId(),
     name: useId(),
-    nameAr: useId(),
     description: useId(),
     category: useId(),
     spend: useId(),
@@ -236,7 +235,6 @@ function MaterialCreateForm({ onDone }: { onDone: () => void }) {
     const name = String(form.get('name') ?? '').trim();
     const materialCategoryCode = String(form.get('materialCategoryCode') ?? '').trim();
     const baseUomCode = String(form.get('baseUomCode') ?? '').trim();
-    const nameAr = String(form.get('nameAr') ?? '').trim();
     const description = String(form.get('description') ?? '').trim();
     const defaultSpendCategoryCode = String(form.get('defaultSpendCategoryCode') ?? '').trim();
 
@@ -248,7 +246,6 @@ function MaterialCreateForm({ onDone }: { onDone: () => void }) {
         name,
         materialCategoryCode,
         baseUomCode,
-        ...(nameAr ? { nameAr } : {}),
         ...(description ? { description } : {}),
         ...(defaultSpendCategoryCode ? { defaultSpendCategoryCode } : {}),
       },
@@ -269,10 +266,6 @@ function MaterialCreateForm({ onDone }: { onDone: () => void }) {
 
       <FormField htmlFor={ids.name} label={tc('name')}>
         <Input id={ids.name} name="name" required autoComplete="off" />
-      </FormField>
-
-      <FormField htmlFor={ids.nameAr} label={`${tc('nameAr')} (${tc('optional')})`}>
-        <Input id={ids.nameAr} name="nameAr" dir="rtl" lang="ar" autoComplete="off" />
       </FormField>
 
       <FormField htmlFor={ids.description} label={`${tc('description')} (${tc('optional')})`}>

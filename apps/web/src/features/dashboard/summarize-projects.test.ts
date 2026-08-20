@@ -10,7 +10,6 @@ function project(overrides: Partial<Project> & { id: string }): Project {
     organizationId: 'org-1',
     code: `ACCO-${overrides.id}`,
     name: `Project ${overrides.id}`,
-    nameAr: null,
     description: null,
     status: ProjectStatus.DRAFT,
     contractValue: null,

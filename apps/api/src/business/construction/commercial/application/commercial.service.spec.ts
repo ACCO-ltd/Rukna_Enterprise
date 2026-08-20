@@ -10,7 +10,6 @@ function identityWith(permissions: string[]): RequestIdentity {
     tenantSlug: 'acco',
     roles: [],
     permissions,
-    lang: 'en',
   };
 }
 

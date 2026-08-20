@@ -78,11 +78,6 @@ export function UomList() {
                     <TableCell className="font-mono text-xs">{uom.code}</TableCell>
                     <TableCell>
                       <span className="text-sm text-foreground">{uom.name}</span>
-                      {uom.nameAr ? (
-                        <span className="ms-2 text-xs text-muted-foreground">
-                          <bdi>{uom.nameAr}</bdi>
-                        </span>
-                      ) : null}
                     </TableCell>
                     <TableCell>
                       <bdi className="text-sm">{uom.symbol}</bdi>
@@ -133,7 +128,7 @@ export function UomList() {
 function UomCreateForm({ onDone }: { onDone: () => void }) {
   const t = useTranslations('procurement.uom');
   const tc = useTranslations('procurement.common');
-  const ids = { code: useId(), name: useId(), nameAr: useId(), symbol: useId() };
+  const ids = { code: useId(), name: useId(), symbol: useId() };
 
   const create = useCreateUom();
 
@@ -144,12 +139,11 @@ function UomCreateForm({ onDone }: { onDone: () => void }) {
     const code = String(form.get('code') ?? '').trim();
     const name = String(form.get('name') ?? '').trim();
     const symbol = String(form.get('symbol') ?? '').trim();
-    const nameAr = String(form.get('nameAr') ?? '').trim();
 
     if (!code || !name || !symbol) return;
 
     create.mutate(
-      { code, name, symbol, ...(nameAr ? { nameAr } : {}) },
+      { code, name, symbol },
       { onSuccess: onDone },
     );
   }
@@ -168,10 +162,6 @@ function UomCreateForm({ onDone }: { onDone: () => void }) {
 
       <FormField htmlFor={ids.name} label={tc('name')}>
         <Input id={ids.name} name="name" required autoComplete="off" />
-      </FormField>
-
-      <FormField htmlFor={ids.nameAr} label={`${tc('nameAr')} (${tc('optional')})`}>
-        <Input id={ids.nameAr} name="nameAr" dir="rtl" lang="ar" autoComplete="off" />
       </FormField>
 
       <FormField htmlFor={ids.symbol} label={t('symbol')}>

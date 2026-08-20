@@ -140,7 +140,6 @@ function boqNode(): BoqTreeNode {
     sortOrder: 1,
     code: 'A.1',
     description: 'Excavation to reduced level',
-    descriptionAr: 'الحفر إلى المنسوب المخفض',
     measurementMethod: MeasurementMethod.QUANTITY,
     pricingBasis: PricingBasis.UNIT_RATE,
     unit: 'm3',

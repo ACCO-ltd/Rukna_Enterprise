@@ -19,9 +19,6 @@ export class CreateAccountDto {
   @IsString() @IsNotEmpty() @MaxLength(255)
   name!: string;
 
-  @ApiPropertyOptional({ example: 'المدينون' })
-  @IsString() @IsOptional() @MaxLength(255)
-  nameAr?: string;
 
   @ApiProperty({ enum: ['ASSET','LIABILITY','EQUITY','INCOME','EXPENSE','COST_OF_SALES'] })
   @IsString() @IsNotEmpty()

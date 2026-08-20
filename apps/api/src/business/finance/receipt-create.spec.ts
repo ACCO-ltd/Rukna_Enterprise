@@ -36,7 +36,6 @@ describe('FinanceService.create — records a client payment (POST /receipts)', 
       tenantSlug: `fin-${suffix}`,
       roles: ['admin'],
       permissions: ['*'],
-      lang: 'en',
     };
     const tenancy = { getClient: () => prisma } as unknown as TenancyService;
     service = new FinanceService(tenancy, new FinancePrismaRepository());

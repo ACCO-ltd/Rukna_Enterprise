@@ -90,10 +90,7 @@ function BindingRow({
 }) {
   const t = useTranslations('platform.workflows.bindings');
 
-  const chainName =
-    locale === 'ar' && binding.definition.nameAr
-      ? binding.definition.nameAr
-      : binding.definition.name;
+  const chainName = binding.definition.name;
   const stepCount = binding.definition.steps.length;
 
   return (

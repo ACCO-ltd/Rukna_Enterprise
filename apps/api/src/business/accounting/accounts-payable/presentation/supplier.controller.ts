@@ -19,10 +19,6 @@ class CreateSupplierDto {
   @IsString()
   name: string;
 
-  @ApiPropertyOptional({ example: 'الراشد للتجارة' })
-  @IsOptional()
-  @IsString()
-  nameAr?: string;
 
   @ApiPropertyOptional({ example: '310122445500003' })
   @IsOptional()

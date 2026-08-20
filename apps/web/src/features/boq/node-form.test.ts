@@ -126,10 +126,6 @@ describe('toUpdateNodePayload', () => {
     expect(payload).not.toHaveProperty('currency');
   });
 
-  it('clears an emptied Arabic description rather than omitting it', () => {
-    expect(toUpdateNodePayload(form({ descriptionAr: '' }), { kind: 'section' }).descriptionAr)
-      .toBeUndefined();
-  });
 });
 
 describe('toNodeFormValues', () => {
@@ -139,7 +135,6 @@ describe('toNodeFormValues', () => {
         id: 'n1',
         code: '02.01',
         description: 'Rock excavation',
-        descriptionAr: null,
         isLeaf: true,
         unit: 'm3',
         quantity: '680.000',
@@ -151,7 +146,6 @@ describe('toNodeFormValues', () => {
     expect(values).toMatchObject({
       code: '02.01',
       description: 'Rock excavation',
-      descriptionAr: '',
       unit: 'm3',
       quantity: '680.000',
       unitRate: '',

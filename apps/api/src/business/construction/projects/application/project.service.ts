@@ -287,7 +287,6 @@ export class ProjectService {
         organizationId: identity.activeOrganizationId,
         code,
         name: dto.name,
-        nameAr: dto.nameAr,
         description: dto.description,
         // Preserve the legacy display field while new records reference the client aggregate.
         clientId: dto.clientId,
@@ -359,7 +358,6 @@ export class ProjectService {
 
     return this.repo.update(prisma, id, {
       name: dto.name,
-      nameAr: dto.nameAr,
       description: dto.description,
       clientName: client?.name ?? dto.clientName,
       clientId: dto.clientId,

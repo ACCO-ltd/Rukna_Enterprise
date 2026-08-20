@@ -11,10 +11,6 @@ export class CreateMaterialDto {
   @IsString()
   name: string;
 
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  nameAr?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

@@ -7,7 +7,6 @@ export interface CreateMaterialCategoryData {
   organizationId: string;
   code: string;
   name: string;
-  nameAr?: string;
   parentId?: string;
 }
 

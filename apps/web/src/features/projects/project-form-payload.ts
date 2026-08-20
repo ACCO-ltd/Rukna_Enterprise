@@ -6,7 +6,6 @@ export interface ProjectFormValues {
   code: string;
   name: string;
   /** Legacy fixture compatibility; Arabic business names are no longer captured. */
-  nameAr?: string;
   description: string;
   clientName: string;
   clientId: string;

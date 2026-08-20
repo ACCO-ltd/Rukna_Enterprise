@@ -57,7 +57,6 @@ function account(): Account {
         accountId: 'acc-expense',
         versionNumber: 1,
         name: 'Office Expense',
-        nameAr: 'مصروفات المكتب',
         parentAccountId: null,
         accountClass: 'EXPENSE',
         accountSubtype: 'ADMINISTRATIVE_EXPENSE',
@@ -309,13 +308,4 @@ describe('JournalDetail', () => {
     expect(await screen.findByText('This journal no longer exists.')).toBeInTheDocument();
   });
 
-  it('renders in Arabic', async () => {
-    renderWithProviders(<JournalDetail journalId="jrn-1" />, { locale: 'ar' });
-
-    expect(await screen.findByText('السطور')).toBeInTheDocument();
-    expect(screen.getByText('الإجراءات')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'تقديم للاعتماد' })).toBeInTheDocument();
-    // The account name resolves through the Arabic side of the version, not the English one.
-    expect(screen.getAllByText('60100 — مصروفات المكتب')).toHaveLength(2);
-  });
 });

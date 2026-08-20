@@ -5,7 +5,6 @@ export interface JwtPayload {
   tenantSlug: string;
   roles: string[];
   permissions: string[];
-  lang: 'en' | 'ar';
   jti?: string;
   iat?: number;
   exp?: number;
@@ -27,5 +26,4 @@ export interface RequestIdentity {
   tenantSlug: string;
   roles: string[];
   permissions: string[];
-  lang: 'en' | 'ar';
 }

@@ -88,7 +88,7 @@ function matches(node: BoqTreeNodeResponse, term: string, options: RowOptions): 
   if (options.pinned?.has(node.id)) return true;
 
   if (term) {
-    const haystack = [node.code, node.description, node.descriptionAr ?? '']
+    const haystack = [node.code, node.description]
       .join(' ')
       .toLocaleLowerCase();
     if (!haystack.includes(term)) return false;

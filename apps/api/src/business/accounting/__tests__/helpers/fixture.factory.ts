@@ -68,7 +68,6 @@ export class AccountingFixtureFactory {
       tenantSlug: `test-${suffix}`,
       roles: ['admin'],
       permissions: ['*'],
-      lang: 'en',
     };
 
     // ── 2. COA accounts ───────────────────────────────────────────────────────

@@ -82,7 +82,6 @@ export interface CreateNodePayload {
   sortOrder?: number;
   code: string;
   description: string;
-  descriptionAr?: string;
   isLeaf?: boolean;
   unit?: string;
   quantity?: string;

@@ -303,7 +303,6 @@ export class BoqVersioningService {
         sortOrder: node.sortOrder,
         code: node.code,
         description: node.description,
-        descriptionAr: node.descriptionAr ?? undefined,
         unit: node.unit ?? undefined,
         quantity: node.quantity ?? undefined,
         unitRate: node.unitRate ?? undefined,

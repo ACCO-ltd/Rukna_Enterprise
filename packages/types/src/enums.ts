@@ -5,11 +5,6 @@ export enum TenantStatus {
   TERMINATED = 'TERMINATED',
 }
 
-export enum Language {
-  EN = 'EN',
-  AR = 'AR',
-}
-
 export enum WorkflowTransactionType {
   MATERIAL_REQUEST = 'MATERIAL_REQUEST',
   PURCHASE_ORDER = 'PURCHASE_ORDER',

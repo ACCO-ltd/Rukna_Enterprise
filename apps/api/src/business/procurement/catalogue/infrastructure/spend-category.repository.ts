@@ -7,7 +7,6 @@ export interface CreateSpendCategoryData {
   organizationId: string;
   code: string;
   name: string;
-  nameAr?: string;
   parentId?: string;
 }
 

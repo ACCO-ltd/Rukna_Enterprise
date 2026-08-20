@@ -9,7 +9,6 @@ const identity = (roles: string[] = []): RequestIdentity => ({
   tenantSlug: 'acco',
   roles,
   permissions: [],
-  lang: 'en',
 });
 
 describe('ProjectAccessService authorization policy', () => {

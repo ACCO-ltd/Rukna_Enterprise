@@ -83,7 +83,6 @@ export class ClientPrismaRepository {
   async create(prisma: PrismaClient, data: {
     organizationId: string;
     name: string;
-    nameAr?: string;
     type?: ClientType;
     taxNumber?: string;
     defaultCurrency?: string;
@@ -130,7 +129,6 @@ export class ClientPrismaRepository {
 
   async update(prisma: PrismaClient, id: string, data: {
     name?: string;
-    nameAr?: string;
     type?: ClientType;
     taxNumber?: string;
     defaultCurrency?: string;

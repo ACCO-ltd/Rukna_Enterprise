@@ -27,7 +27,6 @@ function binding(overrides: Partial<WorkflowTriggerBinding> = {}): WorkflowTrigg
       organizationId: 'o1',
       transactionType: 'SUPPLIER_BILL' as never,
       name: 'Supplier Bill Approval',
-      nameAr: 'موافقة فاتورة المورد',
       isActive: true,
       requiresCeoConfirmation: false,
       createdAt: '',

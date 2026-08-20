@@ -9,10 +9,6 @@ export class UpdateClientDto {
   @IsString()
   name?: string;
 
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  nameAr?: string;
 
   @ApiPropertyOptional({ enum: ClientType })
   @IsOptional()
