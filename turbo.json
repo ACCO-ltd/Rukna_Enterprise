@@ -20,7 +20,8 @@
       "dependsOn": ["^build"]
     },
     "test": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build"],
+      "passThroughEnv": ["DATABASE_URL", "PLATFORM_DATABASE_URL"]
     },
     "clean": {
       "cache": false
