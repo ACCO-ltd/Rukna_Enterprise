@@ -84,7 +84,7 @@ function ChevronIcon() {
       strokeWidth="2"
       strokeLinecap="round"
       aria-hidden="true"
-      className="shrink-0 text-border [dir=rtl]:rotate-180"
+      className="shrink-0 text-border"
     >
       <path d="M9 18l6-6-6-6" />
     </svg>

@@ -46,7 +46,6 @@ export interface AccountVersion {
   accountId: string;
   versionNumber: number;
   name: string;
-  nameAr: string | null;
   parentAccountId: string | null;
   accountClass: AccountClass;
   accountSubtype: string;

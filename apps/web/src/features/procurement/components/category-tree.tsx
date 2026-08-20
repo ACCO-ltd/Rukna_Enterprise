@@ -189,11 +189,6 @@ function CategoryRow({
       </TableCell>
       <TableCell>
         <span className="text-sm text-foreground">{category.name}</span>
-        {category.nameAr ? (
-          <span className="ms-2 text-xs text-muted-foreground">
-            <bdi>{category.nameAr}</bdi>
-          </span>
-        ) : null}
       </TableCell>
       <TableCell>
         <ProcurementStatusBadge status={category.status} />
@@ -231,7 +226,7 @@ function CategoryCreateForm({
 }) {
   const t = useTranslations(`procurement.${namespace}`);
   const tc = useTranslations('procurement.common');
-  const ids = { code: useId(), name: useId(), nameAr: useId(), parent: useId() };
+  const ids = { code: useId(), name: useId(), parent: useId() };
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -239,7 +234,6 @@ function CategoryCreateForm({
 
     const code = String(form.get('code') ?? '').trim();
     const name = String(form.get('name') ?? '').trim();
-    const nameAr = String(form.get('nameAr') ?? '').trim();
     const parentCode = String(form.get('parentCode') ?? '').trim();
 
     if (!code || !name) return;
@@ -248,7 +242,6 @@ function CategoryCreateForm({
       {
         code,
         name,
-        ...(nameAr ? { nameAr } : {}),
         ...(parentCode ? { parentCode } : {}),
       },
       { onSuccess: onDone },
@@ -268,10 +261,6 @@ function CategoryCreateForm({
 
       <FormField htmlFor={ids.name} label={tc('name')}>
         <Input id={ids.name} name="name" required autoComplete="off" />
-      </FormField>
-
-      <FormField htmlFor={ids.nameAr} label={`${tc('nameAr')} (${tc('optional')})`}>
-        <Input id={ids.nameAr} name="nameAr" dir="rtl" lang="ar" autoComplete="off" />
       </FormField>
 
       {/* Only root categories are offered as parents — the API returns two levels, so a

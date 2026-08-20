@@ -41,7 +41,6 @@ export interface BoqTreeNodeView {
   sortOrder: number;
   code: string;
   description: string;
-  descriptionAr: string | null;
   isLeaf: boolean;
   measurementMethod: MeasurementMethod;
   pricingBasis: PricingBasis;
@@ -147,7 +146,6 @@ export class BoqTreeService {
         sortOrder: targetOrder,
         code: dto.code,
         description: dto.description,
-        descriptionAr: dto.descriptionAr ?? null,
         isLeaf,
         measurementMethod: dto.measurementMethod ?? MeasurementMethod.QUANTITY,
         pricingBasis: dto.pricingBasis ?? PricingBasis.UNIT_RATE,
@@ -202,7 +200,6 @@ export class BoqTreeService {
     return this.repo.updateNode(prisma, nodeId, {
       code,
       description: dto.description,
-      descriptionAr: dto.descriptionAr,
       isLeaf,
       measurementMethod: dto.measurementMethod,
       pricingBasis: dto.pricingBasis,
@@ -389,7 +386,6 @@ export function buildTree(nodes: BoqNode[], boqCurrency: string): BoqTreeNodeVie
       sortOrder: node.sortOrder,
       code: node.code,
       description: node.description,
-      descriptionAr: node.descriptionAr,
       isLeaf: node.isLeaf,
       measurementMethod: node.measurementMethod,
       pricingBasis: node.pricingBasis,

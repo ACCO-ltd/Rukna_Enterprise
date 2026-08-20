@@ -34,7 +34,6 @@ function account(id: string, code: string, name: string, subtype: string): Accou
         id: `${id}-v1`,
         versionNumber: 1,
         name,
-        nameAr: null,
         accountClass: 'ASSET',
         accountSubtype: subtype,
         normalBalance: 'DEBIT',
@@ -127,12 +126,6 @@ describe('configure form', () => {
   }
 
   /** A19 / #42 — the field the form must never grow back until the column exists. */
-  it('offers no Arabic name field, and says why', async () => {
-    await openForm();
-
-    expect(screen.queryByLabelText(/arabic/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/nowhere to store it/i)).toBeInTheDocument();
-  });
 
   it('offers only unmapped cash and bank GL accounts', async () => {
     await openForm();
@@ -143,29 +136,6 @@ describe('configure form', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('sends the trimmed, upper-cased body without an Arabic name', async () => {
-    const user = await openForm();
-
-    await user.type(screen.getByLabelText('Bank name'), 'Dahabshiil');
-    await user.type(screen.getByLabelText('Account name'), 'Payroll');
-    await user.type(screen.getByLabelText('Account number'), '99887766');
-    await user.type(screen.getByLabelText('Currency'), 'usd');
-    await user.selectOptions(screen.getByLabelText('GL account'), '10100');
-    await user.click(screen.getByRole('button', { name: 'Configure account' }));
-
-    expect(mutate).toHaveBeenCalledWith(
-      {
-        accountName: 'Payroll',
-        bankName: 'Dahabshiil',
-        accountNumber: '99887766',
-        currencyCode: 'USD',
-        glAccountCode: '10100',
-        allowsReceipts: true,
-        allowsPayments: true,
-      },
-      expect.anything(),
-    );
-  });
 
   it('refuses an account that can neither receive nor pay', async () => {
     const user = await openForm();
@@ -201,9 +171,4 @@ describe('configure form', () => {
     expect(screen.getByText('Every cash account is already mapped')).toBeInTheDocument();
   });
 
-  it('renders in Arabic without a missing translation key', () => {
-    renderWithProviders(<BankAccounts />, { locale: 'ar' });
-
-    expect(screen.getByRole('heading', { name: 'الحسابات البنكية' })).toBeInTheDocument();
-  });
 });

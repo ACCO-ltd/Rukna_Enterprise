@@ -21,7 +21,6 @@ export function testNode(
     sortOrder: 1,
     code: '01',
     description: 'Section',
-    descriptionAr: null,
     measurementMethod: 'QUANTITY',
     pricingBasis: 'UNIT_RATE',
     unit: null,

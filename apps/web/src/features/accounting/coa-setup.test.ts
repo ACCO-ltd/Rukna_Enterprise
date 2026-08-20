@@ -159,7 +159,7 @@ describe('toCreateAccountBody', () => {
    * not "absent". Every optional field has to be omitted rather than emptied.
    */
   it('omits empty optional fields instead of sending empty strings', () => {
-    const body = toCreateAccountBody(draft({ nameAr: '  ', parentAccountCode: '' }))!;
+    const body = toCreateAccountBody(draft({ parentAccountCode: '' }))!;
 
     expect(body).not.toHaveProperty('nameAr');
     expect(body).not.toHaveProperty('parentAccountCode');
@@ -168,10 +168,9 @@ describe('toCreateAccountBody', () => {
 
   it('includes optional fields when they carry a value, trimmed', () => {
     const body = toCreateAccountBody(
-      draft({ nameAr: ' النقد ', parentAccountCode: ' 10000 ' }),
+      draft({ parentAccountCode: ' 10000 ' }),
     )!;
 
-    expect(body.nameAr).toBe('النقد');
     expect(body.parentAccountCode).toBe('10000');
   });
 

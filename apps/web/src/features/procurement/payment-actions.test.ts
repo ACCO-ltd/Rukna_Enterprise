@@ -23,7 +23,6 @@ function account(id: string, code: string, name: string, subtype: string): Accou
         id: `${id}-v1`,
         versionNumber: 1,
         name,
-        nameAr: null,
         accountClass: 'ASSET',
         accountSubtype: subtype,
         normalBalance: 'DEBIT',

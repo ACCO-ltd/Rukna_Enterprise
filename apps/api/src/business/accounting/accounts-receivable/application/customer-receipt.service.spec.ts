@@ -9,7 +9,6 @@ const identity: RequestIdentity = {
   tenantSlug: 'acco',
   roles: [],
   permissions: [],
-  lang: 'en',
 };
 
 // A posted receipt with $1,000 unallocated, for client-1, in USD.

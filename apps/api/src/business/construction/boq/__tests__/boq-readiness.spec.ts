@@ -52,7 +52,6 @@ describe('BOQ baseline readiness and governance', () => {
       tenantSlug: `boqr-${suffix}`,
       roles: ['admin'],
       permissions: ['*'],
-      lang: 'en',
     };
 
     const tenancy = { getClient: () => prisma } as unknown as TenancyService;

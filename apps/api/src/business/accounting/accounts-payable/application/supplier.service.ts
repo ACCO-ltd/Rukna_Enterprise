@@ -7,7 +7,6 @@ import { SupplierRepository, CreateSupplierData } from '../infrastructure/suppli
 export interface CreateSupplierDto {
   code: string;
   name: string;
-  nameAr?: string;
   taxNumber?: string;
   defaultCurrency?: string;
   paymentTermsDays?: number;

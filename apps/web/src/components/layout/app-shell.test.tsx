@@ -61,7 +61,6 @@ function fakeJwt(): string {
       'view:procurement',
       'manage:user',
     ],
-    lang: 'en',
   };
   return `header.${btoa(JSON.stringify(payload))}.signature`;
 }

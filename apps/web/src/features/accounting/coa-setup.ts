@@ -139,7 +139,6 @@ export const SUBLEDGER_TYPES = [
 export interface AccountDraft {
   code: string;
   name: string;
-  nameAr: string;
   accountClass: AccountClass | '';
   accountSubtype: string;
   normalBalance: NormalBalance | '';
@@ -155,7 +154,6 @@ export function emptyAccountDraft(): AccountDraft {
   return {
     code: '',
     name: '',
-    nameAr: '',
     accountClass: '',
     accountSubtype: '',
     normalBalance: '',
@@ -207,7 +205,6 @@ export function accountDraftProblems(draft: AccountDraft): AccountDraftProblem[]
 export interface CreateAccountBody {
   code: string;
   name: string;
-  nameAr?: string;
   accountClass: AccountClass;
   accountSubtype: string;
   normalBalance: NormalBalance;
@@ -240,7 +237,6 @@ export function toCreateAccountBody(draft: AccountDraft): CreateAccountBody | nu
     isControlAccount: draft.isControlAccount,
     controlPostingPolicy: draft.controlPostingPolicy,
     effectiveFrom: draft.effectiveFrom,
-    ...(draft.nameAr.trim() ? { nameAr: draft.nameAr.trim() } : {}),
     ...(draft.isControlAccount && draft.controlledSubledgerType
       ? { controlledSubledgerType: draft.controlledSubledgerType }
       : {}),

@@ -62,7 +62,6 @@ beforeEach(() => {
       tenantSlug: 'acco',
       roles: ['FINANCE_CONTROLLER'],
       permissions: ['manage:period', 'manage:fiscal-year'],
-      lang: 'en',
     },
   });
   vi.mocked(listFiscalYears).mockReset();
@@ -225,10 +224,4 @@ describe('FiscalPeriods', () => {
     expect(await screen.findByText('Could not load fiscal years.')).toBeInTheDocument();
   });
 
-  it('renders in Arabic', async () => {
-    renderWithProviders(<FiscalPeriods />, { locale: 'ar' });
-
-    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('الفترات المالية');
-    expect(screen.getByText('تقبل الترحيل.')).toBeInTheDocument();
-  });
 });

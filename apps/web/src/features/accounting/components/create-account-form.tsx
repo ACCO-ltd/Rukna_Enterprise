@@ -57,7 +57,6 @@ export function CreateAccountForm({ onDone }: { onDone: () => void }) {
   const ids = {
     code: useId(),
     name: useId(),
-    nameAr: useId(),
     accountClass: useId(),
     subtype: useId(),
     balance: useId(),
@@ -115,18 +114,6 @@ export function CreateAccountForm({ onDone }: { onDone: () => void }) {
           id={ids.name}
           value={draft.name}
           onChange={(e) => patch({ name: e.target.value })}
-          maxLength={255}
-          autoComplete="off"
-        />
-      </FormField>
-
-      <FormField htmlFor={ids.nameAr} label={`${t('nameAr')} (${tCommon('optional')})`}>
-        <Input
-          id={ids.nameAr}
-          value={draft.nameAr}
-          onChange={(e) => patch({ nameAr: e.target.value })}
-          dir="rtl"
-          lang="ar"
           maxLength={255}
           autoComplete="off"
         />

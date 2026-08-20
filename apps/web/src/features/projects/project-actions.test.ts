@@ -23,7 +23,6 @@ function project(status: ProjectStatus, suspensions: ProjectSuspension[] = []): 
     organizationId: 'org-1',
     code: 'ACCO-1',
     name: 'Tower',
-    nameAr: null,
     description: null,
     status,
     contractValue: null,

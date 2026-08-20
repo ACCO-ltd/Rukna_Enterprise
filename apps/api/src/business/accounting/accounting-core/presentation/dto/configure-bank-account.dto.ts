@@ -6,9 +6,6 @@ export class ConfigureBankAccountDto {
   @IsString() @IsNotEmpty() @MaxLength(255)
   accountName!: string;
 
-  @ApiPropertyOptional()
-  @IsString() @IsOptional() @MaxLength(255)
-  accountNameAr?: string;
 
   @ApiProperty({ example: 'Bank of Arabia' })
   @IsString() @IsNotEmpty() @MaxLength(255)

@@ -19,11 +19,6 @@ export class CreateProjectDto {
   @MaxLength(255)
   name!: string;
 
-  @ApiPropertyOptional({ example: 'مشروع برج البركة' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  nameAr?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

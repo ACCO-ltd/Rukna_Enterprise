@@ -219,7 +219,6 @@ export class AuthService {
     user: {
       id: string;
       email: string;
-      preferredLanguage: string;
     },
     membership: AuthMembership,
     tenantSlug: string,
@@ -238,7 +237,6 @@ export class AuthService {
         ),
       ),
     ];
-    const lang: 'en' | 'ar' = user.preferredLanguage === 'AR' ? 'ar' : 'en';
 
     return {
       sub: user.id,
@@ -247,7 +245,6 @@ export class AuthService {
       tenantSlug,
       roles,
       permissions,
-      lang,
     };
   }
 

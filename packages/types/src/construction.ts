@@ -87,7 +87,6 @@ export interface ClientResponse {
   organizationId: string;
   code: string;
   name: string;
-  nameAr?: string;
   taxNumber?: string;
   defaultCurrency?: string;
   status: ClientStatus;
@@ -525,7 +524,6 @@ export interface BoqTreeNodeResponse {
   sortOrder: number;
   code: string;
   description: string;
-  descriptionAr: string | null;
   isLeaf: boolean;
   measurementMethod: `${MeasurementMethod}`;
   pricingBasis: `${PricingBasis}`;

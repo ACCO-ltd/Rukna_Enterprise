@@ -37,7 +37,6 @@ const TON: UnitOfMeasure = {
   id: 'uom-1',
   code: 'TON',
   name: 'Metric Ton',
-  nameAr: null,
   symbol: 't',
   status: 'ACTIVE',
 };
@@ -46,7 +45,6 @@ const REBAR: Material = {
   id: 'mat-1',
   code: 'REBAR-12MM',
   name: '12mm Deformed Steel Rebar',
-  nameAr: null,
   description: null,
   status: 'ACTIVE',
   materialCategoryId: 'cat-1',
@@ -62,7 +60,6 @@ const SPEND: SpendCategory[] = [
     id: 'spend-1',
     code: 'DIRECT_MATERIAL',
     name: 'Direct Material',
-    nameAr: null,
     status: 'ACTIVE',
     parentId: null,
     children: [],
@@ -226,19 +223,4 @@ describe('PoLineEditor — MR allocations', () => {
     ]);
   });
 
-  it('renders in Arabic without a missing key', () => {
-    renderWithProviders(
-      <PoLineEditor
-        lines={[COMPLETE]}
-        onChange={vi.fn()}
-        spendCategories={SPEND}
-        approvedRequests={[APPROVED_MR]}
-        currencyCode="SAR"
-        showErrors={false}
-      />,
-      { locale: 'ar' },
-    );
-
-    expect(screen.getByRole('button', { name: 'ربط بطلب مواد' })).toBeInTheDocument();
-  });
 });

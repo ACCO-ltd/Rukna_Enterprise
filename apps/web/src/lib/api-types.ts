@@ -85,7 +85,6 @@ export interface Project {
   organizationId: string;
   code: string;
   name: string;
-  nameAr: string | null;
   description: string | null;
   status: ProjectStatus;
   contractValue: string | null;
@@ -184,7 +183,6 @@ export interface Client {
   organizationId: string;
   code: string;
   name: string;
-  nameAr: string | null;
   type?: 'COMPANY' | 'GOVERNMENT' | 'NGO' | 'INDIVIDUAL' | 'OTHER';
   taxNumber: string | null;
   defaultCurrency: string | null;

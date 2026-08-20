@@ -6,7 +6,6 @@ import { MaterialCategoryRepository } from '../infrastructure/material-category.
 export interface CreateMaterialCategoryDto {
   code: string;
   name: string;
-  nameAr?: string;
   parentCode?: string;
 }
 
@@ -43,7 +42,7 @@ export class MaterialCategoryService {
       parentId = parent.id;
     }
 
-    return this.repo.create(prisma, { organizationId: orgId, code: dto.code, name: dto.name, nameAr: dto.nameAr, parentId });
+    return this.repo.create(prisma, { organizationId: orgId, code: dto.code, name: dto.name, parentId });
   }
 
   async deactivate(identity: RequestIdentity, id: string) {

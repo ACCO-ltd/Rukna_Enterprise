@@ -40,7 +40,6 @@ const OFFICE = {
       id: 'v1',
       versionNumber: 1,
       name: 'Office & Admin',
-      nameAr: null,
       accountClass: 'EXPENSE',
       accountSubtype: 'ADMIN_EXPENSE',
       normalBalance: 'DEBIT',
@@ -86,7 +85,6 @@ beforeEach(() => {
         id: 'sup-1',
         code: 'SUP-001',
         name: 'Al-Rashid Trading',
-        nameAr: null,
         taxNumber: null,
         defaultCurrency: null,
         paymentTermsDays: null,
@@ -209,9 +207,4 @@ describe('SupplierBillForm', () => {
     expect(screen.getByRole('button', { name: /create/i })).toBeDisabled();
   });
 
-  it('renders in Arabic without a missing translation key', () => {
-    renderWithProviders(<SupplierBillForm />, { locale: 'ar' });
-
-    expect(screen.getByRole('heading', { name: 'فاتورة مورّد جديدة' })).toBeInTheDocument();
-  });
 });

@@ -141,10 +141,7 @@ function ItemRow({ item, row, node, currency, locale, tStep2, onChange, error }:
   const certInputId = useId();
   const reasonId = useId();
 
-  const description =
-    locale === 'ar'
-      ? (node?.descriptionAr ?? node?.description ?? node?.code ?? item.boqNodeId)
-      : (node?.description ?? node?.code ?? item.boqNodeId);
+  const description = node?.description ?? node?.code ?? item.boqNodeId;
 
   const showVariance = hasVariance(row.certifiedQuantity, item.cumulativeClaimed);
   const estimatedAmt = estimateAmount(row.certifiedQuantity, item.unitRateSnapshot);

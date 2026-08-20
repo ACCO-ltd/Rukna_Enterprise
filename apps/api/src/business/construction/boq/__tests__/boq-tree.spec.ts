@@ -55,7 +55,6 @@ describe('BOQ tree — ADR-016 correctness', () => {
       tenantSlug: `boq-${suffix}`,
       roles: ['admin'],
       permissions: ['*'],
-      lang: 'en',
     };
 
     const tenancy = { getClient: () => prisma } as unknown as TenancyService;

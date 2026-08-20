@@ -45,7 +45,6 @@ function account(
         id: `${id}-v1`,
         versionNumber: 1,
         name,
-        nameAr: null,
         accountClass,
         accountSubtype,
         normalBalance: 'CREDIT',
@@ -198,9 +197,4 @@ describe('CreateFiscalYearForm', () => {
     expect(screen.queryByRole('button', { name: 'Open fiscal year' })).not.toBeInTheDocument();
   });
 
-  it('renders in Arabic without a missing translation key', () => {
-    renderWithProviders(<CreateFiscalYearForm onDone={vi.fn()} />, { locale: 'ar' });
-
-    expect(screen.getByText('حساب الأرباح المُبقاة')).toBeInTheDocument();
-  });
 });

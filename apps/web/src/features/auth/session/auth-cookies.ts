@@ -13,7 +13,6 @@
  */
 
 export const AUTH_MARKER_COOKIE = '__auth';
-export const LANG_COOKIE = 'lang';
 
 /** Matches the refresh token's 7-day lifetime, so the hint expires with the session. */
 const MARKER_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
@@ -24,17 +23,6 @@ export function setAuthMarker(): void {
 
 export function clearAuthMarker(): void {
   writeCookie(AUTH_MARKER_COOKIE, '', 0);
-}
-
-/**
- * Seeds the UI language from the user's stored preference (the JWT `lang` claim).
- *
- * Only applied at login, so a device-local switch made afterwards is not overwritten on
- * every token refresh. Persisting a switch back to the user record needs a backend
- * endpoint that does not exist yet (B9).
- */
-export function setLangCookie(lang: 'en' | 'ar'): void {
-  writeCookie(LANG_COOKIE, lang, MARKER_MAX_AGE_SECONDS);
 }
 
 function writeCookie(name: string, value: string, maxAgeSeconds: number): void {

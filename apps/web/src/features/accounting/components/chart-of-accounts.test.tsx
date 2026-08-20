@@ -16,7 +16,6 @@ function version(overrides: Partial<AccountVersion> = {}): AccountVersion {
     accountId: 'acc-1',
     versionNumber: 1,
     name: 'Salaam Bank',
-    nameAr: 'بنك سلام',
     parentAccountId: null,
     accountClass: 'ASSET',
     accountSubtype: 'CASH_AND_BANK',
@@ -54,7 +53,6 @@ function apControl(): Account {
       version({
         accountId: 'acc-ap',
         name: 'Accounts Payable',
-        nameAr: 'الدائنون',
         accountClass: 'LIABILITY',
         accountSubtype: 'ACCOUNTS_PAYABLE',
         isPostingAllowed: false,
@@ -149,23 +147,7 @@ describe('ChartOfAccounts', () => {
     expect(screen.getByText(/accounting has not been set up/)).toBeInTheDocument();
   });
 
-  it('renders in Arabic', async () => {
-    renderWithProviders(<ChartOfAccounts />, { locale: 'ar' });
 
-    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('دليل الحسابات');
-    // The account's own Arabic name, not the English one.
-    expect(screen.getByText('بنك سلام')).toBeInTheDocument();
-  });
-
-  it('falls back to the English name when an account has no Arabic one', async () => {
-    vi.mocked(listAccounts).mockResolvedValue([
-      account({ versions: [version({ nameAr: null })] }),
-    ]);
-
-    renderWithProviders(<ChartOfAccounts />, { locale: 'ar' });
-
-    expect(await screen.findByText('Salaam Bank')).toBeInTheDocument();
-  });
 
   /**
    * `GET /accounts` returns `versions` with `take: 1` — an account with none is a broken

@@ -47,10 +47,10 @@ export function InvoicesList() {
   const clientNames = useMemo(() => {
     const map = new Map<string, string>();
     for (const client of clients.data ?? []) {
-      map.set(client.id, (locale === 'ar' ? (client.nameAr ?? client.name) : client.name));
+      map.set(client.id, client.name);
     }
     return map;
-  }, [clients.data, locale]);
+  }, [clients.data]);
 
   const visible = useMemo(() => {
     const all = invoices.data ?? [];

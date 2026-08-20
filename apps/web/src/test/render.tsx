@@ -20,14 +20,6 @@ import enProcurement from '../../messages/en/procurement.json';
 import enCommercial from '../../messages/en/commercial.json';
 import enDocuments from '../../messages/en/documents.json';
 import enProgress from '../../messages/en/progress.json';
-import arCommon from '../../messages/ar/common.json';
-import arAuth from '../../messages/ar/auth.json';
-import arPlatform from '../../messages/ar/platform.json';
-import arAccounting from '../../messages/ar/accounting.json';
-import arProcurement from '../../messages/ar/procurement.json';
-import arCommercial from '../../messages/ar/commercial.json';
-import arDocuments from '../../messages/ar/documents.json';
-import arProgress from '../../messages/ar/progress.json';
 
 /**
  * The REAL message catalogues, loaded the same way `src/i18n/request.ts` loads them.
@@ -49,16 +41,6 @@ const MESSAGES = {
     documents: enDocuments,
     progress: enProgress,
   },
-  ar: {
-    common: arCommon,
-    auth: arAuth,
-    platform: arPlatform,
-    accounting: arAccounting,
-    procurement: arProcurement,
-    commercial: arCommercial,
-    documents: arDocuments,
-    progress: arProgress,
-  },
 } as const;
 
 interface WrapperProps {
@@ -68,7 +50,7 @@ interface WrapperProps {
 interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
   /** Overrides the real catalogue. Use only when testing i18n behaviour itself. */
   messages?: AbstractIntlMessages;
-  locale?: 'en' | 'ar';
+  locale?: 'en';
   /**
    * Permission strings to grant for this render. Seeds the session store with a synthetic
    * user holding exactly these permissions; the store is cleared automatically after each
@@ -91,7 +73,6 @@ export function renderWithProviders(
         tenantSlug: 'test',
         roles: [],
         permissions,
-        lang: 'en',
       },
     });
   }

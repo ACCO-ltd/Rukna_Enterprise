@@ -7,7 +7,6 @@ export interface CreateSupplierData {
   organizationId: string;
   code: string;
   name: string;
-  nameAr?: string;
   taxNumber?: string;
   defaultCurrency?: string;
   paymentTermsDays?: number;

@@ -9,7 +9,6 @@ const identity: RequestIdentity = {
   tenantSlug: 'acco',
   roles: [],
   permissions: [],
-  lang: 'en',
 };
 
 describe('IpcService.findAll', () => {

@@ -11,10 +11,6 @@ export class CreateSpendCategoryDto {
   @IsString()
   name: string;
 
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  nameAr?: string;
 
   @ApiPropertyOptional({ example: 'PROJECT_COSTS', description: 'Code of parent spend category' })
   @IsOptional()

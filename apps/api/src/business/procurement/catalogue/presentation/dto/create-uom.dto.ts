@@ -11,10 +11,6 @@ export class CreateUomDto {
   @IsString()
   name: string;
 
-  @ApiPropertyOptional({ example: 'متر مكعب' })
-  @IsOptional()
-  @IsString()
-  nameAr?: string;
 
   @ApiProperty({ example: 'm³' })
   @IsString()

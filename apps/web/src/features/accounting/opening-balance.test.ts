@@ -20,7 +20,6 @@ function account(code: string): Account {
         id: `a-${code}-v1`,
         versionNumber: 1,
         name: code,
-        nameAr: null,
         accountClass: 'ASSET',
         accountSubtype: 'CASH_AND_BANK',
         normalBalance: 'DEBIT',

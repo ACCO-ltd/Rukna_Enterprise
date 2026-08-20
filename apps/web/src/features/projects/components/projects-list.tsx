@@ -48,7 +48,7 @@ function buildColumns(
       plainValue: (project) => [project.name, project.code, project.clientName].filter(Boolean).join(' '),
       render: (project) => (
         <Link href={`/projects/${project.id}`} className="group -my-2 flex min-h-12 flex-col justify-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary">
-          <span className="font-semibold text-foreground transition-colors group-hover:text-brand-primary">{locale === 'ar' && project.nameAr ? project.nameAr : project.name}</span>
+          <span className="font-semibold text-foreground transition-colors group-hover:text-brand-primary">{project.name}</span>
           <span className="mt-0.5 text-xs text-muted-foreground">{project.clientName ?? project.code}</span>
         </Link>
       ),

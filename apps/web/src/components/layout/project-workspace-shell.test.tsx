@@ -41,7 +41,6 @@ const project = {
   organizationId: 'org-1',
   code: 'PRJ-000001',
   name: 'Baraka Tower',
-  nameAr: null,
   description: null,
   status: ProjectStatus.ACTIVE,
   contractValue: '999999.00',

@@ -163,18 +163,6 @@ export function BoqItemDrawer({
                 onChange={(event) => set('description', event.target.value)}
               />
             </FormField>
-
-            <FormField htmlFor="boq-description-ar" label={t('descriptionAr')}>
-              <Textarea
-                id="boq-description-ar"
-                rows={2}
-                dir="rtl"
-                value={values.descriptionAr}
-                maxLength={NODE_LIMITS.descriptionMax}
-                disabled={readOnly || isPending}
-                onChange={(event) => set('descriptionAr', event.target.value)}
-              />
-            </FormField>
           </Section>
 
           {isItem ? (

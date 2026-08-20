@@ -6,7 +6,6 @@ import { UomRepository } from '../infrastructure/uom.repository.js';
 export interface CreateUomDto {
   code: string;
   name: string;
-  nameAr?: string;
   symbol: string;
 }
 

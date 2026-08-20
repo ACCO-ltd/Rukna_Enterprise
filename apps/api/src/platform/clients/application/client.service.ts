@@ -44,7 +44,6 @@ export class ClientService {
     return this.repo.create(prisma, {
       organizationId: identity.activeOrganizationId,
       name: dto.name,
-      nameAr: dto.nameAr,
       type: dto.type,
       taxNumber: dto.taxNumber,
       defaultCurrency: 'USD',

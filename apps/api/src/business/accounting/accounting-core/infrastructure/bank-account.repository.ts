@@ -35,7 +35,6 @@ export class BankAccountRepository {
     data: {
       organizationId: string;
       accountName: string;
-      accountNameAr?: string;
       bankName: string;
       accountNumber: string;
       currencyCode: string;

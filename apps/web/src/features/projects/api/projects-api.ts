@@ -24,7 +24,6 @@ import type {
 export interface CreateProjectPayload {
   code?: string;
   name: string;
-  nameAr?: string;
   description?: string;
   clientName?: string;
   clientId?: string;
@@ -84,7 +83,6 @@ export function getProjectWorkspaceGuidance(id: string): Promise<ProjectWorkspac
  */
 export interface UpdateProjectPayload {
   name?: string;
-  nameAr?: string | null;
   description?: string | null;
   clientName?: string | null;
   clientId?: string | null;

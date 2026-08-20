@@ -62,7 +62,6 @@ function version(overrides: Partial<AccountVersion> = {}): AccountVersion {
     accountId: 'acc-1',
     versionNumber: 1,
     name: 'Accounts Receivable',
-    nameAr: 'الذمم المدينة',
     parentAccountId: null,
     accountClass: 'ASSET',
     accountSubtype: 'ACCOUNTS_RECEIVABLE',
@@ -91,15 +90,13 @@ function account(code: string, ver: Partial<AccountVersion>): Account {
 
 function chart(): Account[] {
   return [
-    account('11000', { name: 'Accounts Receivable', nameAr: 'الذمم المدينة' }),
+    account('11000', { name: 'Accounts Receivable', }),
     account('42600', {
       name: 'Project Income',
-      nameAr: 'إيرادات المشاريع',
       accountSubtype: 'PROJECT_REVENUE',
     }),
     account('20200', {
       name: 'Output VAT Payable',
-      nameAr: 'ضريبة القيمة المضافة',
       accountSubtype: 'VAT_OUTPUT_PAYABLE',
     }),
   ];
@@ -110,7 +107,6 @@ const client = {
   organizationId: 'org-1',
   code: 'CL-001',
   name: 'Al-Noor Development',
-  nameAr: 'النور للتطوير',
   taxNumber: null,
   defaultCurrency: 'SOS',
   status: ClientStatus.ACTIVE,
@@ -181,14 +177,6 @@ describe('InvoicesList', () => {
     expect(screen.getByText(/raised from an effective payment certificate/i)).toBeInTheDocument();
   });
 
-  it('renders in Arabic with the client name in Arabic', async () => {
-    vi.mocked(listInvoices).mockResolvedValue([invoice()]);
-
-    renderWithProviders(<InvoicesList />, { locale: 'ar' });
-
-    expect(await screen.findByText('فواتير العملاء')).toBeInTheDocument();
-    expect(await screen.findByText('النور للتطوير')).toBeInTheDocument();
-  });
 });
 
 describe('PostInvoiceDialog', () => {
@@ -281,20 +269,4 @@ describe('PostInvoiceDialog', () => {
     expect(screen.getByRole('button', { name: 'Post to GL' })).toBeDisabled();
   });
 
-  it('renders the preview in Arabic', () => {
-    renderWithProviders(
-      <PostInvoiceDialog
-        invoice={invoice()}
-        accounts={chart()}
-        isPending={false}
-        onConfirm={noop}
-        onDismiss={noop}
-      />,
-      { locale: 'ar' },
-    );
-
-    expect(screen.getByText('الذمم المدينة')).toBeInTheDocument();
-    // Codes and amounts are locale-independent.
-    expect(screen.getByText('11000')).toBeInTheDocument();
-  });
 });

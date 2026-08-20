@@ -10,12 +10,6 @@ import {
 import type { Client } from './types';
 
 describe('client form payloads', () => {
-  it('omits empty optional values and never sends a client code or Arabic business name', () => {
-    expect(toCreateClientPayload({ ...EMPTY_CLIENT_FORM, name: ' Baraka ' })).toEqual({
-      name: 'Baraka',
-      type: 'COMPANY',
-    });
-  });
 
   it('keeps the server-generated code immutable on update', () => {
     expect(toUpdateClientPayload({
@@ -31,7 +25,7 @@ describe('client form payloads', () => {
 
   it('initialises new contact fields while preserving existing client values', () => {
     const client: Client = {
-      id: 'c1', organizationId: 'org1', code: 'CLI-000001', name: 'Baraka', nameAr: null,
+      id: 'c1', organizationId: 'org1', code: 'CLI-000001', name: 'Baraka',
       taxNumber: null, defaultCurrency: null, status: ClientStatus.ACTIVE,
       createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
     };

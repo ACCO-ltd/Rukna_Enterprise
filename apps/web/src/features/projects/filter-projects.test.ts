@@ -9,7 +9,6 @@ function project(overrides: Partial<Project> & { id: string }): Project {
     organizationId: 'org-1',
     code: `ACCO-${overrides.id}`,
     name: `Project ${overrides.id}`,
-    nameAr: null,
     description: null,
     status: ProjectStatus.DRAFT,
     contractValue: null,
@@ -30,7 +29,6 @@ const projects = [
     id: '2',
     code: 'ACCO-2026-002',
     name: 'Marina Residences',
-    nameAr: 'مساكن المارينا',
     clientName: 'Gulf Estates',
     status: ProjectStatus.DRAFT,
   }),
@@ -67,11 +65,6 @@ describe('filterProjects', () => {
   });
 
   // An Arabic-named project must be findable while the interface is in English.
-  it('matches on the Arabic name regardless of interface language', () => {
-    expect(
-      filterProjects(projects, { search: 'المارينا', status: 'ALL' }).map((p) => p.id),
-    ).toEqual(['2']);
-  });
 
   it('ignores surrounding whitespace in the search term', () => {
     expect(filterProjects(projects, { search: '  baraka  ', status: 'ALL' })).toHaveLength(1);

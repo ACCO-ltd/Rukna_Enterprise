@@ -20,7 +20,6 @@ const payload = (permissions: PermissionKey[]): JwtPayload => ({
   tenantSlug: 'acco',
   roles: ['ADMIN'],
   permissions,
-  lang: 'en',
 });
 
 describe('PermissionsGuard', () => {

@@ -60,7 +60,6 @@ function project(overrides: Partial<ProjectDetailModel> = {}): ProjectDetailMode
     organizationId: 'org-1',
     code: 'ACCO-2026-001',
     name: 'Al-Baraka Tower',
-    nameAr: null,
     description: null,
     status: ProjectStatus.DRAFT,
     contractValue: null,
@@ -169,13 +168,6 @@ describe('ProjectDetail — available actions', () => {
     );
   });
 
-  it('renders the setup workflow with the Arabic catalogue', async () => {
-    vi.mocked(getProject).mockResolvedValue(project());
-
-    renderWithProviders(<ProjectDetail id="p1" />, { locale: 'ar' });
-
-    expect(await screen.findByRole('progressbar')).toHaveAttribute('aria-valuemax', '4');
-  });
 
   it('offers approve, edit, and secondary lifecycle actions for a draft', async () => {
     const user = userEvent.setup();

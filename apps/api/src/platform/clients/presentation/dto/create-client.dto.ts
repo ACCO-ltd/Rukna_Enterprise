@@ -30,10 +30,6 @@ export class CreateClientDto {
   @IsString()
   name!: string;
 
-  @ApiPropertyOptional({ example: 'وزارة المالية' })
-  @IsOptional()
-  @IsString()
-  nameAr?: string;
 
   @ApiPropertyOptional({ enum: ClientType, default: ClientType.COMPANY })
   @IsOptional()

@@ -7,7 +7,6 @@ export interface CreateMaterialData {
   organizationId: string;
   code: string;
   name: string;
-  nameAr?: string;
   description?: string;
   materialCategoryId: string;
   defaultSpendCategoryId?: string;

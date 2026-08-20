@@ -36,7 +36,6 @@ const RASHID: Supplier = {
   id: 'sup-1',
   code: 'SUP-001',
   name: 'Al-Rashid Trading',
-  nameAr: 'الراشد للتجارة',
   taxNumber: '310122445500003',
   defaultCurrency: 'USD',
   paymentTermsDays: 30,
@@ -47,7 +46,6 @@ const BAREBONES: Supplier = {
   id: 'sup-2',
   code: 'SUP-002',
   name: 'Horn Cement',
-  nameAr: null,
   taxNumber: null,
   defaultCurrency: null,
   paymentTermsDays: null,
@@ -83,14 +81,7 @@ describe('filterSuppliers', () => {
     expect(filterSuppliers(all, 'CEMENT')).toEqual([BAREBONES]);
   });
 
-  it('matches on the Arabic name, so an Arabic user can search in Arabic', () => {
-    expect(filterSuppliers(all, 'الراشد')).toEqual([RASHID]);
-  });
 
-  it('does not throw on a supplier with no Arabic name', () => {
-    expect(() => filterSuppliers([BAREBONES], 'x')).not.toThrow();
-    expect(filterSuppliers([BAREBONES], 'x')).toEqual([]);
-  });
 });
 
 describe('SupplierList', () => {
@@ -129,11 +120,6 @@ describe('SupplierList', () => {
     expect(screen.getByText(/cannot be edited or deactivated/i)).toBeInTheDocument();
   });
 
-  it('renders in Arabic without a missing translation key', () => {
-    renderWithProviders(<SupplierList />, { locale: 'ar' });
-
-    expect(screen.getByRole('heading', { name: 'الموردون' })).toBeInTheDocument();
-  });
 
   it('tells the user to create one when the list is empty', () => {
     mocks.useSuppliers.mockReturnValue(loaded([]));
@@ -193,7 +179,7 @@ describe('SupplierPicker', () => {
    * the loading branch is the one state no other test in this file reaches — so without this
    * a missing key would ship and only appear on a slow connection.
    */
-  it.each(['en', 'ar'] as const)('announces loading in %s', (locale) => {
+  it.each(['en'] as const)('announces loading in %s', (locale) => {
     mocks.useSuppliers.mockReturnValue({ data: undefined, isPending: true, isError: false });
     renderWithProviders(<Picker />, { locale });
 

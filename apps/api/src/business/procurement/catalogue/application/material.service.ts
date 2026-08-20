@@ -9,7 +9,6 @@ import { SpendCategoryRepository } from '../infrastructure/spend-category.reposi
 export interface CreateMaterialDto {
   code: string;
   name: string;
-  nameAr?: string;
   description?: string;
   materialCategoryCode: string;
   defaultSpendCategoryCode?: string;
@@ -63,7 +62,6 @@ export class MaterialService {
       organizationId: orgId,
       code: dto.code,
       name: dto.name,
-      nameAr: dto.nameAr,
       description: dto.description,
       materialCategoryId: category.id,
       defaultSpendCategoryId,

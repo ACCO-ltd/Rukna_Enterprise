@@ -18,7 +18,6 @@ function version(overrides: Partial<AccountVersion> = {}): AccountVersion {
     accountId: 'acc-1',
     versionNumber: 1,
     name: 'Salaam Bank',
-    nameAr: 'بنك سلام',
     parentAccountId: null,
     accountClass: 'ASSET',
     accountSubtype: 'CASH_AND_BANK',
@@ -105,15 +104,7 @@ describe('versionEffectiveOn', () => {
 });
 
 describe('accountName', () => {
-  it('uses the Arabic name in Arabic', () => {
-    expect(accountName(account(), 'ar')).toBe('بنك سلام');
-    expect(accountName(account(), 'en')).toBe('Salaam Bank');
-  });
 
-  it('falls back to English when there is no Arabic name', () => {
-    const acc = account({ versions: [version({ nameAr: null })] });
-    expect(accountName(acc, 'ar')).toBe('Salaam Bank');
-  });
 
   it('falls back to the code when there is no version at all', () => {
     expect(accountName(account({ versions: [] }), 'en')).toBe('10100');
@@ -221,9 +212,8 @@ describe('accountMatches', () => {
     expect(accountMatches(account(), '101')).toBe(true);
   });
 
-  it('matches on either language', () => {
+  it('matches on the account name', () => {
     expect(accountMatches(account(), 'salaam')).toBe(true);
-    expect(accountMatches(account(), 'سلام')).toBe(true);
   });
 
   it('matches on subtype, so "cash" finds the bank accounts', () => {

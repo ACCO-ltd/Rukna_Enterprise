@@ -10,7 +10,6 @@ const identity: RequestIdentity = {
   tenantSlug: 'acco',
   roles: [],
   permissions: [],
-  lang: 'en',
 };
 
 const dto = { ipcId: 'ipc-1', invoiceDate: '2026-08-01', dueDate: '2026-09-01' };

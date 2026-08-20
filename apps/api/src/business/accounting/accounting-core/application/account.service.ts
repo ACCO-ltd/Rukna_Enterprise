@@ -13,7 +13,6 @@ import { AccountRepository } from '../infrastructure/account.repository.js';
 export interface CreateAccountDto {
   code: string;
   name: string;
-  nameAr?: string;
   accountClass: AccountClass;
   accountSubtype: AccountSubtype;
   normalBalance: NormalBalance;
@@ -65,7 +64,6 @@ export class AccountService {
       version: {
         versionNumber: 1,
         name: dto.name,
-        nameAr: dto.nameAr,
         parentAccountId,
         accountClass: dto.accountClass,
         accountSubtype: dto.accountSubtype,
@@ -129,7 +127,6 @@ export class AccountService {
             version: {
               versionNumber: 1,
               name: row.name,
-              nameAr: row.nameAr,
               parentAccountId,
               accountClass: row.accountClass,
               accountSubtype: row.accountSubtype,
@@ -144,7 +141,7 @@ export class AccountService {
           result.created++;
         } else {
           const currentVersion = existing.versions[0];
-          const nameChanged = currentVersion?.name !== row.name || currentVersion?.nameAr !== row.nameAr;
+          const nameChanged = currentVersion?.name !== row.name;
 
           if (!nameChanged) {
             result.skipped++;
@@ -152,7 +149,6 @@ export class AccountService {
             await this.repo.addVersion(prisma, existing.id, {
               versionNumber: (currentVersion?.versionNumber ?? 0) + 1,
               name: row.name,
-              nameAr: row.nameAr,
               parentAccountId: currentVersion?.parentAccountId ?? undefined,
               accountClass: row.accountClass,
               accountSubtype: row.accountSubtype,

@@ -51,7 +51,6 @@ const SUPPLIER = {
   id: 'sup-1',
   code: 'SUP-001',
   name: 'Al-Rashid Trading',
-  nameAr: null,
   taxNumber: null,
   defaultCurrency: null,
   paymentTermsDays: null,
@@ -142,11 +141,6 @@ describe('SupplierPaymentForm', () => {
     expect(screen.getByRole('button', { name: /create/i })).toBeDisabled();
   });
 
-  it('renders in Arabic without a missing translation key', () => {
-    renderWithProviders(<SupplierPaymentForm />, { locale: 'ar' });
-
-    expect(screen.getByRole('heading', { name: 'دفعة مورّد جديدة' })).toBeInTheDocument();
-  });
 });
 
 describe('SupplierPaymentsList', () => {

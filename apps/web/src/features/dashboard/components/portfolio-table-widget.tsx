@@ -50,8 +50,7 @@ export function PortfolioTableWidget({ projects }: PortfolioTableWidgetProps) {
         </thead>
         <tbody className="divide-y divide-border">
           {projects.map((project) => {
-            const displayName =
-              locale === 'ar' && project.nameAr ? project.nameAr : project.name;
+            const displayName = project.name;
             const value = formatMoney(project.contractValue, project.currency, locale);
             const created = formatDate(project.createdAt, locale);
 

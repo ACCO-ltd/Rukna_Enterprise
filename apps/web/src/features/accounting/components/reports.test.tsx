@@ -192,15 +192,6 @@ describe('TrialBalanceReport', () => {
     expect(await screen.findByText('Could not generate the trial balance.')).toBeInTheDocument();
   });
 
-  it('renders in Arabic', async () => {
-    renderWithProviders(<TrialBalanceReport />, { locale: 'ar' });
-
-    // Awaiting a string from the loaded branch, not the h1 — the heading renders during
-    // loading too, so asserting on it proves nothing about the report itself.
-    expect(await screen.findByText('الإجماليات')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('ميزان المراجعة');
-    expect(screen.getByText('متوازن')).toBeInTheDocument();
-  });
 });
 
 describe('ProfitLossReport', () => {
@@ -302,12 +293,4 @@ describe('ProfitLossReport', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders in Arabic', async () => {
-    renderWithProviders(<ProfitLossReport />, { locale: 'ar' });
-
-    expect(await screen.findByText('الإيرادات')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('الأرباح والخسائر');
-    expect(screen.getByText('مجمل الربح')).toBeInTheDocument();
-    expect(screen.getByText('صافي الربح')).toBeInTheDocument();
-  });
 });

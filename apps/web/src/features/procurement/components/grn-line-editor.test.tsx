@@ -215,12 +215,4 @@ describe('GrnLineEditor — rendering', () => {
     );
   });
 
-  it('renders in Arabic without a missing key', () => {
-    renderWithProviders(
-      <GrnLineEditor lines={grnLinesFromPo(PO_LINES)} onChange={vi.fn()} showErrors={false} />,
-      { locale: 'ar' },
-    );
-
-    expect(screen.getAllByText('المستلمة').length).toBeGreaterThan(0);
-  });
 });

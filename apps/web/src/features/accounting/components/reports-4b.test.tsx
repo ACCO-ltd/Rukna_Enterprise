@@ -45,7 +45,6 @@ function account(): Account {
         accountId: 'acc-bank',
         versionNumber: 1,
         name: 'Salaam Bank',
-        nameAr: 'بنك سلام',
         parentAccountId: null,
         accountClass: 'ASSET',
         accountSubtype: 'CASH_AND_BANK',
@@ -251,12 +250,6 @@ describe('BalanceSheetReport', () => {
     );
   });
 
-  it('renders in Arabic', async () => {
-    renderWithProviders(<BalanceSheetReport />, { locale: 'ar' });
-
-    expect(await screen.findByText('الأصول')).toBeInTheDocument();
-    expect(screen.getByText('حقوق الملكية')).toBeInTheDocument();
-  });
 });
 
 describe('AccountLedgerReport', () => {
@@ -326,11 +319,6 @@ describe('AccountLedgerReport', () => {
     expect(await screen.findByText('Could not load the ledger.')).toBeInTheDocument();
   });
 
-  it('renders in Arabic', async () => {
-    renderWithProviders(<AccountLedgerReport />, { locale: 'ar' });
-
-    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('دفتر الأستاذ');
-  });
 });
 
 describe('MonthlyComparisonReport', () => {
@@ -403,10 +391,4 @@ describe('MonthlyComparisonReport', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders in Arabic', async () => {
-    renderWithProviders(<MonthlyComparisonReport />, { locale: 'ar' });
-
-    expect(await screen.findByText('منذ بداية السنة')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('المقارنة الشهرية');
-  });
 });

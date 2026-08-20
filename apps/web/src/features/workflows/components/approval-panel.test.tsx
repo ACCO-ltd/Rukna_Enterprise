@@ -144,15 +144,4 @@ describe('ApprovalPanel', () => {
     expect(screen.getByRole('alert')).toBeInTheDocument();
   });
 
-  it('renders in Arabic without a missing translation key', () => {
-    renderWithProviders(
-      <ApprovalPanel
-        instanceId="inst-1"
-        transactionType={WorkflowTransactionType.PURCHASE_ORDER}
-      />,
-      { locale: 'ar' },
-    );
-
-    expect(screen.getByRole('heading', { name: 'الاعتماد' })).toBeInTheDocument();
-  });
 });

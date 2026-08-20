@@ -37,8 +37,7 @@ function matches(material: Material, query: string): boolean {
   if (q.length === 0) return true;
   return (
     material.code.toLowerCase().includes(q) ||
-    material.name.toLowerCase().includes(q) ||
-    (material.nameAr?.toLowerCase().includes(q) ?? false)
+    material.name.toLowerCase().includes(q)
   );
 }
 

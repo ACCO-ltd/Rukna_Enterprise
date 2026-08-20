@@ -9,7 +9,6 @@ function version(overrides: Partial<AccountVersion> = {}): AccountVersion {
     accountId: 'acc-1',
     versionNumber: 1,
     name: 'Accounts Receivable',
-    nameAr: 'الذمم المدينة',
     parentAccountId: null,
     accountClass: 'ASSET',
     accountSubtype: 'ACCOUNTS_RECEIVABLE',
@@ -38,15 +37,13 @@ function account(code: string, ver: Partial<AccountVersion>): Account {
 
 function chart(): Account[] {
   return [
-    account('11000', { name: 'Accounts Receivable', nameAr: 'الذمم المدينة' }),
+    account('11000', { name: 'Accounts Receivable', }),
     account('42600', {
       name: 'Project Income',
-      nameAr: 'إيرادات المشاريع',
       accountSubtype: 'PROJECT_REVENUE',
     }),
     account('20200', {
       name: 'Output VAT Payable',
-      nameAr: 'ضريبة القيمة المضافة',
       accountSubtype: 'VAT_OUTPUT_PAYABLE',
     }),
   ];
@@ -144,15 +141,6 @@ describe('planInvoicePost — the three-line journal', () => {
     expect(result.plan.totalCredit).toBe('6300.00');
   });
 
-  it('renders Arabic names without changing codes or amounts', () => {
-    const en = planInvoicePost(invoice(), chart(), 'en');
-    const ar = planInvoicePost(invoice(), chart(), 'ar');
-    if (!en.ok || !ar.ok) throw new Error('expected plans');
-
-    expect(ar.plan.lines[0]!.accountName).toBe('الذمم المدينة');
-    expect(ar.plan.lines.map((l) => l.accountCode)).toEqual(en.plan.lines.map((l) => l.accountCode));
-    expect(ar.plan.totalDebit).toBe(en.plan.totalDebit);
-  });
 });
 
 describe('planInvoicePost — the payload it will send', () => {

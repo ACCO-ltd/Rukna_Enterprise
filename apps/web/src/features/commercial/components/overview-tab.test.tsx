@@ -179,12 +179,4 @@ describe('OverviewTab', () => {
     expect(screen.getByText('No main contract yet')).toBeInTheDocument();
   });
 
-  it('renders in Arabic without any missing translation key', () => {
-    // renderWithProviders throws on a missing key, so this asserts en/ar parity at runtime.
-    renderWithProviders(<OverviewTab projectId="p-1" summary={summary()} />, {
-      locale: 'ar',
-      permissions: ['view:contract'],
-    });
-    expect(screen.getAllByText('قيمة العقد').length).toBeGreaterThan(0);
-  });
 });

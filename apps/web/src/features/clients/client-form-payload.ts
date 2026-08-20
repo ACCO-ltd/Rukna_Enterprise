@@ -7,7 +7,6 @@ export interface ClientFormValues {
   code?: string;
   name: string;
   /** Legacy fixture compatibility; Arabic business names are no longer captured. */
-  nameAr?: string;
   type?: 'COMPANY' | 'GOVERNMENT' | 'NGO' | 'INDIVIDUAL' | 'OTHER';
   taxNumber: string;
   defaultCurrency: string;

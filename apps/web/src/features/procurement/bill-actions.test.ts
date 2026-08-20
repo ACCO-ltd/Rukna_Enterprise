@@ -30,7 +30,6 @@ function account(
         id: `${id}-v1`,
         versionNumber: 1,
         name,
-        nameAr: null,
         accountClass,
         accountSubtype,
         normalBalance: accountClass === 'INCOME' ? 'CREDIT' : 'DEBIT',

@@ -48,7 +48,6 @@ export interface WorkflowDefinition {
   organizationId: string;
   transactionType: WorkflowTransactionType | null;
   name: string;
-  nameAr: string;
   isActive: boolean;
   requiresCeoConfirmation: boolean;
   createdAt: string;

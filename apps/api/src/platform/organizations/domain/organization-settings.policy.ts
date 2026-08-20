@@ -1,7 +1,6 @@
 export const EDITABLE_ORGANIZATION_SETTINGS = [
   'legalName',
   'tradingName',
-  'nameAr',
   'registrationNumber',
   'taxNumber',
   'address',
