@@ -16,6 +16,7 @@ export const PERMISSIONS = {
   projectsView: 'view:project',
   projectsCreate: 'create:project',
   projectsManage: 'manage:project',
+  districtsManage: 'manage:district',
   projectsApprove: 'approve:project',
   projectMembersManage: 'manage:project-member',
 
@@ -89,6 +90,7 @@ const DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.projectsView]: 'View projects',
   [PERMISSIONS.projectsCreate]: 'Create projects',
   [PERMISSIONS.projectsManage]: 'Update projects and run operational lifecycle commands',
+  [PERMISSIONS.districtsManage]: 'Manage the district registry (project code segments)',
   [PERMISSIONS.projectsApprove]: 'Approve projects and controlled lifecycle transitions',
   [PERMISSIONS.projectMembersManage]: 'Manage project membership and project roles',
   [PERMISSIONS.boqView]: 'View bills of quantities',

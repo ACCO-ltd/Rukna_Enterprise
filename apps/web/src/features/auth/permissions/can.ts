@@ -35,7 +35,7 @@ const MODULE_PERMISSIONS: Record<string, PermissionKey[]> = {
   // Keyed on the permission that module will need rather than the one it used to borrow.
   operations:     ['view:inventory'],
   reports:        ['view:report'],
-  administration: ['manage:user', 'manage:role', 'view:audit-log'],
+  administration: ['manage:user', 'manage:role', 'view:audit-log', 'manage:district'],
 };
 
 /**
