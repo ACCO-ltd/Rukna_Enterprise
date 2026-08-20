@@ -102,7 +102,9 @@ async function main() {
   const tenantPrisma = new PrismaClient({ datasources: { db: { url: tenantDbUrl } } });
 
   const org = await tenantPrisma.organization.create({
-    data: { name: tenantName, slug },
+    // ADR-025: shortCode is the company segment of a project code (e.g. ACCO). Seeded from
+    // the slug; editable later in org settings.
+    data: { name: tenantName, slug, shortCode: slug.toUpperCase().slice(0, 8) },
   });
   console.log(`  ✓ Organization created: ${org.id}`);
 

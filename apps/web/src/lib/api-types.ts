@@ -91,6 +91,8 @@ export interface Project {
   currency: string | null;
   clientName: string | null;
   clientId?: string | null;
+  /** ADR-025: district where the project is built (segment of the code). */
+  districtId?: string | null;
   location?: string | null;
   commercialModel?: 'CLIENT_CONTRACT' | 'INTERNAL_CAPITAL';
   participationModel?: 'SOLE' | 'JOINT_VENTURE';

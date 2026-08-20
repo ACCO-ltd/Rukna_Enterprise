@@ -275,12 +275,35 @@ export class ProjectService {
         throw new BadRequestException('Inactive clients cannot be assigned to new projects');
       }
 
+      // ADR-025: the district is the site segment of the project code. Required,
+      // org-scoped, must be active.
+      const district = await tx.district.findFirst({
+        where: { id: dto.districtId, organizationId: identity.activeOrganizationId },
+      });
+      if (!district) throw new NotFoundException(`District ${dto.districtId} not found`);
+      if (!district.active) {
+        throw new BadRequestException('Cannot create a project in an inactive district');
+      }
+
+      // The company segment (e.g. ACCO) is the org short code, set once in org settings.
+      const org = await tx.organization.findUnique({
+        where: { id: identity.activeOrganizationId },
+        select: { shortCode: true },
+      });
+      if (!org?.shortCode) {
+        throw new BadRequestException(
+          'Organization short code is not configured — set it in settings before creating projects',
+        );
+      }
+
       const code =
         dto.code ??
         (await this.repo.allocateCode(
           tx,
           identity.activeOrganizationId,
           new Date().getUTCFullYear(),
+          org.shortCode,
+          district.code,
         ));
 
       const project = await this.repo.create(tx, {
@@ -290,6 +313,7 @@ export class ProjectService {
         description: dto.description,
         // Preserve the legacy display field while new records reference the client aggregate.
         clientId: dto.clientId,
+        districtId: district.id,
         clientName: client?.name ?? dto.clientName,
         location: dto.location,
         commercialModel,

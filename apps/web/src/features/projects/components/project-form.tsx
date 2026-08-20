@@ -18,6 +18,8 @@ import { ApiError } from '@/lib/api-client';
 import { useCreateProject } from '../hooks/use-create-project';
 import { useUpdateProject } from '../hooks/use-update-project';
 import { useClients } from '@/features/clients/hooks/use-clients';
+import { useDistricts } from '@/features/districts/hooks/use-districts';
+import { useSession } from '@/features/auth/session/use-session';
 import {
   EMPTY_PROJECT_FORM,
   toCreateProjectPayload,
@@ -33,6 +35,7 @@ type WizardStep = 1 | 2 | 3;
 
 const STEP_1_FIELDS: (keyof ProjectFormValues)[] = [
   'name',
+  'districtId',
   'commercialModel',
   'participationModel',
   'clientId',
@@ -46,6 +49,7 @@ function buildSchema(t: ReturnType<typeof useTranslations<'platform.projects.cre
     .object({
       code: z.string(),
       name: z.string().trim().min(1, t('nameRequired')).max(255, t('nameTooLong')),
+      districtId: z.string().trim().min(1, t('districtRequired')),
       description: z.string(),
       clientName: z.string(),
       clientId: z.string(),
@@ -115,6 +119,17 @@ function ProjectCreateWizard() {
   const { register, handleSubmit, trigger, getValues, formState: { errors, isDirty } } = form;
   const commercialModel = useWatch({ control: form.control, name: 'commercialModel' });
 
+  // ADR-025: district drives the project code. Only active districts are offered.
+  const { data: districts = [] } = useDistricts(true);
+  const districtId = useWatch({ control: form.control, name: 'districtId' });
+  const selectedDistrict = districts.find((d) => d.id === districtId);
+  const { user } = useSession();
+  const codePreview = selectedDistrict
+    ? `${(user?.tenantSlug ?? '').toUpperCase()}-${selectedDistrict.code}-${String(
+        new Date().getFullYear(),
+      ).slice(-2)}-####`
+    : '';
+
   // Warn the browser before unloading when the form has unsaved entries that
   // have not yet been submitted successfully.
   useEffect(() => {
@@ -128,6 +143,7 @@ function ProjectCreateWizard() {
     error instanceof ApiError && error.messages.length > 0 ? error.messages : [];
   const fieldErrors = [
     ...(errors.name ? [{ label: t('nameLabel'), fieldId: 'project-name', message: errors.name.message ?? '' }] : []),
+    ...(errors.districtId ? [{ label: t('districtLabel'), fieldId: 'project-district', message: errors.districtId.message ?? '' }] : []),
     ...(errors.clientId ? [{ label: t('clientNameLabel'), fieldId: 'project-clientId', message: errors.clientId.message ?? '' }] : []),
     ...(errors.expectedEndDate ? [{ label: t('expectedEndDateLabel'), fieldId: 'project-expectedEndDate', message: errors.expectedEndDate.message ?? '' }] : []),
   ];
@@ -197,6 +213,27 @@ function ProjectCreateWizard() {
             <div className="grid gap-5 sm:grid-cols-2">
               <FormField htmlFor="project-name" label={t('nameLabel')} error={errors.name?.message} required>
                 <Input id="project-name" placeholder={t('namePlaceholder')} {...register('name')} />
+              </FormField>
+
+              <FormField
+                htmlFor="project-district"
+                label={t('districtLabel')}
+                error={errors.districtId?.message}
+                required
+              >
+                <Select id="project-district" {...register('districtId')}>
+                  <option value="">{t('districtPlaceholder')}</option>
+                  {districts.map((district) => (
+                    <option key={district.id} value={district.id}>
+                      {district.code} — {district.name}
+                    </option>
+                  ))}
+                </Select>
+                {codePreview ? (
+                  <p className="text-xs text-muted-foreground">
+                    {t('codePreview')} <span className="font-mono text-foreground">{codePreview}</span>
+                  </p>
+                ) : null}
               </FormField>
 
               <FormField htmlFor="project-commercial-model" label={t('commercialModelLabel')} required>

@@ -24,6 +24,8 @@ import type {
 export interface CreateProjectPayload {
   code?: string;
   name: string;
+  /** ADR-025: district where the project is built — required, forms the code segment. */
+  districtId: string;
   description?: string;
   clientName?: string;
   clientId?: string;

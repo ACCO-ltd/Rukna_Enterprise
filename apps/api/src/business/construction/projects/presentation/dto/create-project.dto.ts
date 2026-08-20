@@ -19,6 +19,12 @@ export class CreateProjectDto {
   @MaxLength(255)
   name!: string;
 
+  @ApiProperty({
+    description: 'District where the project is built (ADR-025). Forms the code segment, e.g. WBR in ACCO-WBR-26-0065.',
+  })
+  @IsString()
+  districtId!: string;
+
 
   @ApiPropertyOptional()
   @IsOptional()

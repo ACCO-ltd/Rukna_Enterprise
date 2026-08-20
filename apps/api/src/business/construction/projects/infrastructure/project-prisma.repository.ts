@@ -149,25 +149,29 @@ export class ProjectPrismaRepository {
     return prisma.project.create({ data });
   }
 
-  async allocateCode(prisma: TenantPrisma, organizationId: string, year: number): Promise<string> {
-    const prefix = `PRJ-${year}-`;
-    const existing = await prisma.project.findMany({
-      where: { organizationId, code: { startsWith: prefix } },
-      select: { code: true },
-    });
-    const firstValue =
-      existing.reduce((max, project) => {
-        const suffix = Number(project.code.slice(prefix.length));
-        return Number.isInteger(suffix) ? Math.max(max, suffix) : max;
-      }, 0) + 1;
+  /**
+   * ADR-025 — allocate a project code `{shortCode}-{districtCode}-{YY}-{seq4}`
+   * (e.g. `ACCO-WBR-26-0065`). The sequence is scoped per (org, year): the number
+   * counts every project the org started that year, across all districts, and resets
+   * with the year. The increment is atomic (upsert), so a concurrent create cannot
+   * hand out the same number twice.
+   */
+  async allocateCode(
+    prisma: TenantPrisma,
+    organizationId: string,
+    year: number,
+    shortCode: string,
+    districtCode: string,
+  ): Promise<string> {
     const sequence = await prisma.projectCodeSequence.upsert({
       where: { organizationId_year: { organizationId, year } },
-      create: { organizationId, year, nextValue: firstValue + 1 },
+      create: { organizationId, year, nextValue: 2 },
       update: { nextValue: { increment: 1 } },
       select: { nextValue: true },
     });
     const allocated = sequence.nextValue - 1;
-    return `PRJ-${year}-${String(allocated).padStart(4, '0')}`;
+    const yy = String(year).slice(-2);
+    return `${shortCode}-${districtCode}-${yy}-${String(allocated).padStart(4, '0')}`;
   }
 
   async update(

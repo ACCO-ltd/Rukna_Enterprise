@@ -23,6 +23,13 @@ vi.mock('@/features/clients/hooks/use-clients', () => ({
   }),
 }));
 
+vi.mock('@/features/districts/hooks/use-districts', () => ({
+  useDistricts: () => ({
+    data: [{ id: 'd-wbr', organizationId: 'org-1', code: 'WBR', name: 'Waaberi', active: true }],
+    isPending: false,
+  }),
+}));
+
 const push = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push, refresh: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
@@ -59,6 +66,7 @@ async function fillStep1(
   // getByLabelText uses raw textContent which includes the aria-hidden asterisk on
   // required fields; getByRole uses the ARIA accessible-name algorithm which excludes it.
   await user.type(screen.getByRole('textbox', { name: /^project name/i }), name);
+  await user.selectOptions(screen.getByRole('combobox', { name: /^district/i }), 'd-wbr');
   await user.selectOptions(screen.getByRole('combobox', { name: /^client/i }), clientValue);
   if (location) await user.type(screen.getByLabelText('Location'), location);
 }
@@ -153,6 +161,7 @@ describe('ProjectForm — submission', () => {
     await waitFor(() => {
       expect(createProject).toHaveBeenCalledWith({
         name: 'Al-Baraka Tower',
+        districtId: 'd-wbr',
         commercialModel: 'CLIENT_CONTRACT',
         participationModel: 'SOLE',
         clientId: 'client-1',
@@ -178,6 +187,7 @@ describe('ProjectForm — submission', () => {
     await waitFor(() => {
       expect(createProject).toHaveBeenCalledWith({
         name: 'Tower',
+        districtId: 'd-wbr',
         commercialModel: 'CLIENT_CONTRACT',
         participationModel: 'SOLE',
         clientId: 'client-1',
@@ -237,6 +247,7 @@ describe('ProjectForm — client preselection', () => {
 
     // User can advance without selecting a client from a dropdown.
     await user.type(screen.getByRole('textbox', { name: /^project name/i }), 'Tower');
+    await user.selectOptions(screen.getByRole('combobox', { name: /^district/i }), 'd-wbr');
     await user.click(screen.getByRole('button', { name: 'Next' }));
 
     // Step 2 should be shown.

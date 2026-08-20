@@ -7,6 +7,8 @@ export interface ProjectFormValues {
   name: string;
   /** Legacy fixture compatibility; Arabic business names are no longer captured. */
   description: string;
+  /** ADR-025: district where the project is built — the code segment (WBR). Required. */
+  districtId: string;
   clientName: string;
   clientId: string;
   commercialModel: 'CLIENT_CONTRACT' | 'INTERNAL_CAPITAL';
@@ -22,6 +24,7 @@ export const EMPTY_PROJECT_FORM: ProjectFormValues = {
   code: '',
   name: '',
   description: '',
+  districtId: '',
   clientName: '',
   clientId: '',
   commercialModel: 'CLIENT_CONTRACT',
@@ -51,6 +54,7 @@ export const EMPTY_PROJECT_FORM: ProjectFormValues = {
 export function toCreateProjectPayload(values: ProjectFormValues): CreateProjectPayload {
   const payload: CreateProjectPayload = {
     name: values.name.trim(),
+    districtId: values.districtId,
     commercialModel: values.commercialModel,
     participationModel: values.participationModel,
   };
@@ -104,6 +108,7 @@ export function toFormValues(project: Project): ProjectFormValues {
     code: project.code,
     name: project.name,
     description: project.description ?? '',
+    districtId: project.districtId ?? '',
     clientName: project.clientName ?? '',
     clientId: project.clientId ?? '',
     commercialModel: project.commercialModel ?? 'CLIENT_CONTRACT',

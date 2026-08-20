@@ -13,6 +13,9 @@ model Organization {
   id        String             @id @default(cuid())
   name      String
   slug      String             @unique
+  // ADR-025: the company segment of a project code (e.g. "ACCO" in ACCO-WBR-26-0065).
+  // Editable in org settings; required at project-create time.
+  shortCode String?            @map("short_code") @db.VarChar(8)
   status    OrganizationStatus @default(ACTIVE)
   createdAt DateTime           @default(now()) @map("created_at")
   updatedAt DateTime           @updatedAt @map("updated_at")
@@ -25,6 +28,7 @@ model Organization {
   auditOutboxEvents        AuditOutboxEvent[]
   memberships              OrganizationMembership[]
   projects                 Project[]
+  districts                District[]
   projectCodeSequences     ProjectCodeSequence[]
   clients                  Client[]
   clientCodeSequence       ClientCodeSequence?
@@ -509,6 +513,9 @@ model Project {
   currency           String?            @db.VarChar(3)
   clientName         String?            @map("client_name")
   clientId           String?            @map("client_id")
+  // ADR-025: the district segment of the project code. Required in the create DTO;
+  // nullable at the DB so the migration does not need to backfill legacy rows.
+  districtId         String?            @map("district_id")
   location           String?
   startDate          DateTime?          @map("start_date") @db.Date
   expectedEndDate    DateTime?          @map("expected_end_date") @db.Date
@@ -526,11 +533,32 @@ model Project {
   workPackages         WorkPackage[]
   programmeMilestones  ProgrammeMilestone[]
   client               Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  district             District?             @relation(fields: [districtId], references: [id], onDelete: Restrict)
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
   @@index([organizationId, clientId])
   @@map("projects")
+}
+
+// ADR-025: districts are org-scoped construction reference data. The `code` is the
+// immutable 3-letter segment of a project code (WBR); the `name` is editable. Managed
+// in Settings so ACCO can add districts beyond Banaadir.
+model District {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  code           String   @db.VarChar(8)
+  name           String
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  projects     Project[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, active])
+  @@map("districts")
 }
 
 // ADR-014 / Documents tab: a standalone project document (permit, drawing, licence...) linking a

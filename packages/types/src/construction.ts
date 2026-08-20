@@ -15,6 +15,27 @@ import type {
   PricingBasis,
 } from './enums.js';
 
+// ADR-025: district registry — org-scoped reference data, the site segment of a project code.
+export interface DistrictResponse {
+  id: string;
+  organizationId: string;
+  code: string;
+  name: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateDistrictInput {
+  code: string;
+  name: string;
+}
+
+export interface UpdateDistrictInput {
+  name?: string;
+  active?: boolean;
+}
+
 export interface ProjectWorkspaceSummaryResponse {
   projectId: string;
   setup: {
