@@ -91,7 +91,8 @@ export function SupplierBillForm() {
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [billDate, setBillDate] = useState('');
   const [dueDate, setDueDate] = useState('');
-  const [currencyCode, setCurrencyCode] = useState('USD');
+  // Single-currency platform (ADR-024): USD is implicit, never entered.
+  const currencyCode = 'USD';
   const [lines, setLines] = useState<BillLineDraft[]>([emptyBillLine()]);
   const [showErrors, setShowErrors] = useState(false);
 
@@ -211,16 +212,6 @@ export function SupplierBillForm() {
             />
           </FormField>
         </div>
-
-        <FormField htmlFor={ids.currency} label={tc('currency')}>
-          <Input
-            id={ids.currency}
-            value={currencyCode}
-            onChange={(e) => setCurrencyCode(e.target.value.toUpperCase())}
-            maxLength={3}
-            className="uppercase"
-          />
-        </FormField>
       </div>
 
       <section className="space-y-3">

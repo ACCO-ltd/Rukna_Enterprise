@@ -11,13 +11,10 @@ import { ApiError } from '@/lib/api-client';
 
 import { useCreateReceipt } from '../hooks/use-receipts';
 
-const CURRENCIES = ['USD', 'SOS', 'AED'] as const;
-
 interface ReceiptFormValues {
   clientId: string;
   receiptDate: string;
   amount: string;
-  currency: string;
   reference: string;
   notes: string;
 }
@@ -25,7 +22,6 @@ interface ReceiptFormValues {
 export function ReceiptForm() {
   const t = useTranslations('platform.receipts.create');
   const tCommon = useTranslations('common');
-  const tCurrency = useTranslations('common.currency');
 
   const create = useCreateReceipt();
   const clients = useClients();
@@ -40,7 +36,6 @@ export function ReceiptForm() {
       clientId: '',
       receiptDate: '',
       amount: '',
-      currency: 'USD',
       reference: '',
       notes: '',
     },
@@ -51,7 +46,8 @@ export function ReceiptForm() {
       clientId: values.clientId,
       receiptDate: values.receiptDate,
       amount: toDecimalString(values.amount),
-      currency: values.currency,
+      // Single-currency platform (ADR-024): USD is implicit, never entered.
+      currency: 'USD',
       ...(values.reference.trim() ? { reference: values.reference.trim() } : {}),
       ...(values.notes.trim() ? { notes: values.notes.trim() } : {}),
     });
@@ -94,7 +90,7 @@ export function ReceiptForm() {
         </Select>
       </FormField>
 
-      <div className="grid gap-5 sm:grid-cols-3">
+      <div className="grid gap-5 sm:grid-cols-2">
         <FormField
           htmlFor="receipt-date"
           label={t('receiptDate')}
@@ -133,25 +129,6 @@ export function ReceiptForm() {
               />
             )}
           />
-        </FormField>
-
-        <FormField
-          htmlFor="receipt-currency"
-          label={t('currency')}
-          error={errors.currency?.message}
-        >
-          <Select
-            id="receipt-currency"
-            aria-invalid={Boolean(errors.currency)}
-            {...register('currency', { required: t('currencyRequired') })}
-          >
-            <option value="">{t('currencyPlaceholder')}</option>
-            {CURRENCIES.map((code) => (
-              <option key={code} value={code}>
-                {tCurrency(code.toLowerCase())}
-              </option>
-            ))}
-          </Select>
         </FormField>
       </div>
 

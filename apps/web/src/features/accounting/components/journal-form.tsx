@@ -153,23 +153,6 @@ export function JournalForm() {
           />
         </FormField>
 
-        <FormField
-          htmlFor="journal-currency"
-          label={t('currencyLabel')}
-          error={
-            submitted && problems.includes('currency-required')
-              ? t('errors.currencyRequired')
-              : undefined
-          }
-        >
-          <Input
-            id="journal-currency"
-            value={draft.currencyCode}
-            maxLength={3}
-            className="uppercase"
-            onChange={(e) => setDraft((d) => ({ ...d, currencyCode: e.target.value }))}
-          />
-        </FormField>
       </section>
 
       <section className="space-y-4">

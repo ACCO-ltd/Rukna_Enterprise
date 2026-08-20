@@ -71,7 +71,6 @@ export interface BankAccountDraft {
   accountName: string;
   bankName: string;
   accountNumber: string;
-  currencyCode: string;
   glAccountCode: string;
   allowsReceipts: boolean;
   allowsPayments: boolean;
@@ -82,7 +81,6 @@ export function emptyBankAccountDraft(): BankAccountDraft {
     accountName: '',
     bankName: '',
     accountNumber: '',
-    currencyCode: '',
     glAccountCode: '',
     // Both default on: a bank account that can neither receive nor pay is configuration with
     // no purpose, and the seeded accounts allow both.
@@ -95,7 +93,6 @@ export type BankAccountProblem =
   | 'accountName'
   | 'bankName'
   | 'accountNumber'
-  | 'currencyCode'
   | 'glAccountCode'
   | 'no-direction';
 
@@ -105,7 +102,6 @@ export function bankAccountProblems(draft: BankAccountDraft): BankAccountProblem
   if (!draft.accountName.trim()) problems.push('accountName');
   if (!draft.bankName.trim()) problems.push('bankName');
   if (!draft.accountNumber.trim()) problems.push('accountNumber');
-  if (draft.currencyCode.trim().length !== 3) problems.push('currencyCode');
   if (!draft.glAccountCode) problems.push('glAccountCode');
 
   /**
@@ -144,7 +140,8 @@ export function toConfigureBankAccountBody(
     accountName: draft.accountName.trim(),
     bankName: draft.bankName.trim(),
     accountNumber: draft.accountNumber.trim(),
-    currencyCode: draft.currencyCode.trim().toUpperCase(),
+    // Single-currency platform (ADR-024): USD is implicit, never entered.
+    currencyCode: 'USD',
     glAccountCode: draft.glAccountCode,
     allowsReceipts: draft.allowsReceipts,
     allowsPayments: draft.allowsPayments,
