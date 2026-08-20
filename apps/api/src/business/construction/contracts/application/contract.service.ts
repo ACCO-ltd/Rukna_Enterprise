@@ -21,6 +21,7 @@ import type { AddGuaranteeDto } from '../presentation/dto/add-guarantee.dto.js';
 import type { UpdateGuaranteeDto } from '../presentation/dto/update-guarantee.dto.js';
 import type { AddMilestoneDto } from '../presentation/dto/add-milestone.dto.js';
 import type { AddRetentionTermsDto } from '../presentation/dto/add-retention-terms.dto.js';
+import type { SetInstallmentMilestoneDto } from '../presentation/dto/set-installment-milestone.dto.js';
 
 const CANCEL_ALLOWED_FROM = new Set(['DRAFT', 'UNDER_REVIEW', 'PENDING_SIGNATURE']);
 
@@ -57,6 +58,42 @@ export class ContractService {
     const contract = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!contract) throw new NotFoundException(`Contract ${id} not found`);
     return contract;
+  }
+
+  /**
+   * ADR-023 CONST-COM-011: link (or unlink) a programme milestone as a milestone installment's
+   * billing evidence. A verified link then gates invoice generation for that installment.
+   */
+  async setInstallmentMilestone(
+    identity: RequestIdentity,
+    contractId: string,
+    installmentId: string,
+    dto: SetInstallmentMilestoneDto,
+  ) {
+    await this.projectAccess.assertContract(identity, contractId);
+    const prisma = this.tenancyService.getClient();
+    const contract = await this.repo.findById(prisma, identity.activeOrganizationId, contractId);
+    if (!contract) throw new NotFoundException(`Contract ${contractId} not found`);
+    if (contract.billingModel !== 'MILESTONE') {
+      throw new BadRequestException(
+        'Only MILESTONE (payment-schedule) contracts have milestone installments.',
+      );
+    }
+    const installment = await this.repo.findInstallmentInContract(prisma, contractId, installmentId);
+    if (!installment) {
+      throw new NotFoundException(`Installment ${installmentId} not found on this contract`);
+    }
+    if (dto.programmeMilestoneId) {
+      const milestone = await this.repo.findProjectMilestone(
+        prisma,
+        contract.projectId,
+        dto.programmeMilestoneId,
+      );
+      if (!milestone) {
+        throw new BadRequestException("The milestone does not belong to this contract's project.");
+      }
+    }
+    return this.repo.setInstallmentMilestone(prisma, installmentId, dto.programmeMilestoneId ?? null);
   }
 
   async create(identity: RequestIdentity, dto: CreateContractDto) {

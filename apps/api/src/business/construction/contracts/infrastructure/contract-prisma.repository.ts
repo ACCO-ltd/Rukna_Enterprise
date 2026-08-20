@@ -141,6 +141,31 @@ export class ContractPrismaRepository {
     });
   }
 
+  findInstallmentInContract(prisma: TenantPrisma, contractId: string, installmentId: string) {
+    return prisma.contractPaymentInstallment.findFirst({
+      where: { id: installmentId, contractId },
+      select: { id: true },
+    });
+  }
+
+  findProjectMilestone(prisma: TenantPrisma, projectId: string, milestoneId: string) {
+    return prisma.programmeMilestone.findFirst({
+      where: { id: milestoneId, projectId },
+      select: { id: true },
+    });
+  }
+
+  setInstallmentMilestone(
+    prisma: TenantPrisma,
+    installmentId: string,
+    programmeMilestoneId: string | null,
+  ) {
+    return prisma.contractPaymentInstallment.update({
+      where: { id: installmentId },
+      data: { programmeMilestoneId },
+    });
+  }
+
   update(prisma: TenantPrisma, id: string, data: Partial<{
     contractNumber: string;
     contractValue: string;

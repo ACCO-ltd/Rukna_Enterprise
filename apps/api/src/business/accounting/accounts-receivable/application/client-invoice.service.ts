@@ -135,7 +135,7 @@ export class ClientInvoiceService {
 
     const installment = await prisma.contractPaymentInstallment.findFirst({
       where: { id: dto.installmentId, contract: { organizationId: orgId } },
-      include: { contract: { include: { client: true } } },
+      include: { contract: { include: { client: true } }, programmeMilestone: true },
     });
     if (!installment) {
       throw new NotFoundException(`Payment installment ${dto.installmentId} not found`);
@@ -150,6 +150,14 @@ export class ClientInvoiceService {
     if (contract.status !== 'ACTIVE') {
       throw new BadRequestException(
         `Contract ${contract.contractNumber} must be ACTIVE to bill an installment (currently ${contract.status}).`,
+      );
+    }
+    // ADR-023 CONST-COM-011 (soft gate): when an installment is linked to a programme milestone, the
+    // milestone is its billing evidence — it must be VERIFIED before the invoice can be raised.
+    // Unlinked installments bill on their label as before.
+    if (installment.programmeMilestoneId && installment.programmeMilestone?.status !== 'VERIFIED') {
+      throw new BadRequestException(
+        'The linked programme milestone is not yet verified; this installment cannot be billed.',
       );
     }
 

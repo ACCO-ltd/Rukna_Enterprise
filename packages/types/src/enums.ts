@@ -152,6 +152,12 @@ export enum DprStatus {
   RETURNED = 'RETURNED',
 }
 
+// ADR-021 phase 2: lifecycle of a programme delivery milestone.
+export enum ProgrammeMilestoneStatus {
+  PLANNED = 'PLANNED',
+  VERIFIED = 'VERIFIED',
+}
+
 // Documents tab (ADR-014): category of a standalone project document.
 export enum DocumentCategory {
   PERMIT = 'PERMIT',

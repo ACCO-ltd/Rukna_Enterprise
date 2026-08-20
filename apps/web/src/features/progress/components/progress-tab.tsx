@@ -3,6 +3,8 @@
 import { useTranslations } from 'next-intl';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@erp/ui';
 
+import { MilestonesSection } from '@/features/programme/components/milestones-section';
+
 import { DailyReportsSection } from './daily-reports-section';
 import { VerifiedProgressSection } from './verified-progress-section';
 import { WorkPackagesSection } from './work-packages-section';
@@ -29,6 +31,7 @@ export function ProgressTab({ projectId }: { projectId: string }) {
         <TabsList aria-label={t('tabs.label')}>
           <TabsTrigger value="reports">{t('tabs.reports')}</TabsTrigger>
           <TabsTrigger value="verified">{t('tabs.verified')}</TabsTrigger>
+          <TabsTrigger value="milestones">{t('tabs.milestones')}</TabsTrigger>
           <TabsTrigger value="workPackages">{t('tabs.workPackages')}</TabsTrigger>
           <TabsTrigger value="performance">{t('tabs.performance')}</TabsTrigger>
         </TabsList>
@@ -38,6 +41,9 @@ export function ProgressTab({ projectId }: { projectId: string }) {
         </TabsContent>
         <TabsContent value="verified">
           <VerifiedProgressSection projectId={projectId} />
+        </TabsContent>
+        <TabsContent value="milestones">
+          <MilestonesSection projectId={projectId} />
         </TabsContent>
         <TabsContent value="workPackages">
           <WorkPackagesSection projectId={projectId} />

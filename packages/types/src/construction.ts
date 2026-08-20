@@ -5,6 +5,7 @@ import type {
   PaymentTrigger,
   DocumentCategory,
   DprStatus,
+  ProgrammeMilestoneStatus,
   GuaranteeStatus,
   IpaStatus,
   IpcStatus,
@@ -271,6 +272,22 @@ export interface DailyProgressReportResponse {
   preparedBy: string;
   submittedBy?: string;
   approvedBy?: string;
+}
+
+// ADR-021 phase 2: a programme delivery milestone (baseline/forecast/actual dates, PLANNED -> VERIFIED).
+export interface ProgrammeMilestoneResponse {
+  id: string;
+  projectId: string;
+  code: string;
+  name: string;
+  status: `${ProgrammeMilestoneStatus}`;
+  baselineDate: string;
+  forecastDate: string | null;
+  actualDate: string | null;
+  sortOrder: number;
+  contractMilestoneId: string | null;
+  verifiedBy: string | null;
+  verifiedAt: string | null;
 }
 
 // Documents tab (ADR-014): a standalone project document + its stored-file metadata.

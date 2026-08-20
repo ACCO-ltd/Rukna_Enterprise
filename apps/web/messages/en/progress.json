@@ -9,6 +9,7 @@
     "label": "Progress sections",
     "reports": "Daily Reports",
     "verified": "Verified Progress",
+    "milestones": "Milestones",
     "workPackages": "Work Packages",
     "performance": "Performance"
   },
@@ -171,5 +172,54 @@
     "cashAheadHint": "Collection is running ahead of physical progress — the client is financing the work; watch advance exposure.",
     "workAheadHint": "Physical progress is ahead of collection — ACCO is financing the client; chase certification and billing.",
     "insufficientHint": "There is no contract value yet, so no comparison can be made."
+  },
+  "programme": {
+    "title": "Milestones",
+    "subtitle": "Programme delivery milestones — construction stages with baseline dates. Verify a stage when it is complete; a verified milestone is the billing evidence for a payment-schedule installment.",
+    "new": "New milestone",
+    "actions": {
+      "verify": "Verify",
+      "cancel": "Cancel",
+      "retry": "Retry"
+    },
+    "states": {
+      "loadFailed": "Could not load milestones",
+      "emptyTitle": "No milestones yet",
+      "emptyHint": "Add the project's programme delivery stages with their baseline dates."
+    },
+    "form": {
+      "code": "Code",
+      "codePlaceholder": "e.g. MS-01",
+      "name": "Name",
+      "namePlaceholder": "e.g. Substructure complete",
+      "baselineDate": "Baseline date",
+      "submit": "Create milestone",
+      "codeRequired": "Enter a code",
+      "nameRequired": "Enter a name",
+      "baselineRequired": "Choose a baseline date"
+    },
+    "col": {
+      "code": "Code",
+      "name": "Name",
+      "baseline": "Baseline",
+      "actual": "Actual",
+      "variance": "Variance",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "status": {
+      "PLANNED": "Planned",
+      "VERIFIED": "Verified"
+    },
+    "variance": {
+      "onTime": "On time",
+      "early": "{n, plural, one {# day early} other {# days early}}",
+      "late": "{n, plural, one {# day late} other {# days late}}"
+    },
+    "verify": {
+      "title": "Verify {name}",
+      "hint": "Confirm the stage is complete and record the date it actually finished. This becomes billing evidence for any linked payment installment.",
+      "actualDate": "Actual completion date"
+    }
   }
 }
