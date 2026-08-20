@@ -57,7 +57,7 @@ Last verified against code: **2026-08-14** (branch `main`). Verified from the Pr
 | IPA (Interim Payment Application) | ✓ | ✓ | INTEGRATED | Items + deductions, effective-certified resolution. |
 | IPC (Interim Payment Certificate) | ✓ | ✓ | INTEGRATED | Atomic supersession, variance reason. |
 | Commercial workspace (4-section) | ✓ | ✓ | PARTIAL | ADR-017. Guided through AR invoice; posted settlement is read-only. CustomerReceipt create/allocation blocked on A12. en/ar + RTL. |
-| Milestone payment schedule + installment invoicing (ADR-023) | ✓ | ✓ | INTEGRATED | MILESTONE contract billed from its payment plan: per-installment status, generate-invoice-from-installment, and programme-milestone link. CONST-COM-011 evidence gate closed both sides (invoicing blocked until the linked milestone is VERIFIED). en/ar placeholders (Arabic paused). Browser-verified 2026-08-20. |
+| Milestone payment schedule + installment invoicing (ADR-023) | ✓ | ✓ | INTEGRATED | MILESTONE contract billed from its payment plan: the plan is defined on the contract-create form (percentages reconcile to 100%), then per-installment status, generate-invoice-from-installment, and programme-milestone link in the commercial workspace. CONST-COM-011 evidence gate closed both sides (invoicing blocked until the linked milestone is VERIFIED). en/ar placeholders (Arabic paused). Browser-verified 2026-08-20. |
 | Variations / Change Orders | — | — | DESIGNED | `BoqNode.sourceType`/`sourceChangeOrderId` provenance prepared; no ChangeOrder aggregate. BLOCKED on #51 (Eng Ahmed). |
 
 ---

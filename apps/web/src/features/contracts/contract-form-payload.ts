@@ -1,6 +1,31 @@
-import type { CreateContractPayload, UpdateContractPayload } from './api/contracts-api';
+import { PaymentTrigger } from '@erp/types';
+
+import type {
+  CreateContractPayload,
+  PaymentInstallmentPayload,
+  UpdateContractPayload,
+} from './api/contracts-api';
 import type { Contract } from './types';
 import { BillingModel } from './types';
+
+/** One payment-plan row as the form holds it — every field a string, as HTML inputs produce. */
+export interface PaymentPlanRow {
+  name: string;
+  /** Whole percent, e.g. "40" for 40%. Converted to a 0..1 fraction on the wire. */
+  percentage: string;
+  triggerType: string;
+  milestoneLabel: string;
+  /** Days from contract start; only meaningful for a TIME_BASED trigger. */
+  dueOffsetDays: string;
+}
+
+export const EMPTY_PAYMENT_PLAN_ROW: PaymentPlanRow = {
+  name: '',
+  percentage: '',
+  triggerType: PaymentTrigger.MILESTONE,
+  milestoneLabel: '',
+  dueOffsetDays: '',
+};
 
 /** What the form holds — every field a string, as HTML inputs produce. */
 export interface ContractFormValues {
@@ -13,6 +38,8 @@ export interface ContractFormValues {
   billingModel: string;
   startDate: string;
   expectedEndDate: string;
+  /** ADR-023 payment schedule. Only sent for a MILESTONE contract at creation. */
+  paymentPlan: PaymentPlanRow[];
 }
 
 export const EMPTY_CONTRACT_FORM: ContractFormValues = {
@@ -25,7 +52,58 @@ export const EMPTY_CONTRACT_FORM: ContractFormValues = {
   billingModel: BillingModel.MEASURED_IPC,
   startDate: '',
   expectedEndDate: '',
+  paymentPlan: [],
 };
+
+/**
+ * Parses a whole-percent form string to a 0..1 fraction rounded to 4 dp, or `null` when it is
+ * not a usable number. 4 dp because the column and DTO are Decimal(5,4): "40" → 0.4,
+ * "33.33" → 0.3333. Returns null (not 0) on a bad value so a typo cannot silently reconcile.
+ */
+export function percentToFraction(percent: string): number | null {
+  const trimmed = percent.trim();
+  if (!trimmed) return null;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n)) return null;
+  return Math.round((n / 100) * 10_000) / 10_000;
+}
+
+/** Sum of the plan's whole percents, ignoring rows whose percent is not a number. */
+export function paymentPlanTotalPercent(rows: PaymentPlanRow[]): number {
+  return rows.reduce((sum, row) => {
+    const n = Number(row.percentage.trim());
+    return Number.isFinite(n) && row.percentage.trim() ? sum + n : sum;
+  }, 0);
+}
+
+/**
+ * Maps the form's plan rows to `POST /contracts` installment bodies.
+ *
+ * `sortOrder` is the row's position (1-based). `percentage` becomes a 0..1 fraction. Optional
+ * text/number fields are omitted when blank rather than sent empty — `@IsOptional()` on the DTO
+ * treats a missing field and an absent one the same, and an empty `dueDate`/`dueOffsetDays`
+ * would 400. `dueOffsetDays` is only carried for a TIME_BASED trigger.
+ */
+export function buildPaymentPlan(rows: PaymentPlanRow[]): PaymentInstallmentPayload[] {
+  return rows.map((row, index) => {
+    const installment: PaymentInstallmentPayload = {
+      sortOrder: index + 1,
+      name: row.name.trim(),
+      percentage: percentToFraction(row.percentage) ?? 0,
+      triggerType: row.triggerType as PaymentInstallmentPayload['triggerType'],
+    };
+
+    const label = row.milestoneLabel.trim();
+    if (label) installment.milestoneLabel = label;
+
+    if (row.triggerType === PaymentTrigger.TIME_BASED && row.dueOffsetDays.trim()) {
+      const offset = Number(row.dueOffsetDays.trim());
+      if (Number.isFinite(offset)) installment.dueOffsetDays = offset;
+    }
+
+    return installment;
+  });
+}
 
 /**
  * Normalizes a money string for the wire.
@@ -74,6 +152,12 @@ export function toCreateContractPayload(values: ContractFormValues): CreateContr
   if (values.startDate.trim()) payload.startDate = values.startDate.trim();
   if (values.expectedEndDate.trim()) payload.expectedEndDate = values.expectedEndDate.trim();
 
+  // The plan is only meaningful for a MILESTONE contract (the server rejects it on any other
+  // model), so it is carried only then — and only when the user actually added rows.
+  if (values.billingModel === BillingModel.MILESTONE && values.paymentPlan.length > 0) {
+    payload.paymentPlan = buildPaymentPlan(values.paymentPlan);
+  }
+
   return payload;
 }
 
@@ -119,6 +203,8 @@ export function toContractFormValues(contract: Contract): ContractFormValues {
     // Date inputs need `YYYY-MM-DD`; the API sends a full ISO timestamp.
     startDate: toDateInputValue(contract.startDate),
     expectedEndDate: toDateInputValue(contract.expectedEndDate),
+    // The plan is create-only (no PATCH), so an existing contract never repopulates it.
+    paymentPlan: [],
   };
 }
 
