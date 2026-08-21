@@ -517,30 +517,49 @@ export interface IpcDetail extends Ipc {
 
 // ─── Finance ─────────────────────────────────────────────────────────────────────
 
+export type ReceiptPostingStatus = 'NOT_POSTED' | 'PENDING' | 'POSTED' | 'FAILED' | 'REVERSED';
+
+/**
+ * ACC-SET-001: a receipt allocation settles a **ClientInvoice** (not an IPC directly).
+ * Read off `ClientReceiptAllocation` in the schema.
+ */
 export interface ReceiptAllocation {
   id: string;
-  receiptId: string;
-  certificateId: string;
+  paymentReceiptId: string;
+  clientInvoiceId: string;
   allocatedAmount: string;
-  allocatedAt: string;
-  allocatedBy: string;
+  allocationDate: string;
+  postingStatus: ReceiptPostingStatus;
+  reversalJournalEntryId: string | null;
 }
 
-/** `GET /receipts` and `GET /receipts?clientId=` — newest receipt date first. */
+/**
+ * `GET /customer-receipts` and `?clientId=` — the raw PaymentReceipt, newest receipt date first.
+ *
+ * ACC-SET-001 moved the receipt workspace onto `/customer-receipts`, which returns the schema
+ * shape: `totalAmount`/`currencyCode` (not `amount`/`currency`), plus the GL/allocation state
+ * (`postingStatus`, `allocatedAmount`, `unallocatedAmount`) the panel needs.
+ */
 export interface Receipt {
   id: string;
   organizationId: string;
   clientId: string;
+  bankAccountId: string | null;
   receiptDate: string;
-  amount: string;
-  currency: string;
+  accountingDate: string;
+  totalAmount: string;
+  allocatedAmount: string;
+  unallocatedAmount: string;
+  currencyCode: string;
   reference: string | null;
   notes: string | null;
+  documentStatus: string;
+  postingStatus: ReceiptPostingStatus;
   createdBy: string;
   createdAt: string;
 }
 
-/** `GET /receipts/:id`. Allocations arrive newest first. */
+/** `GET /customer-receipts/:id` — the receipt with its invoice allocations. */
 export interface ReceiptDetail extends Receipt {
   allocations: ReceiptAllocation[];
 }

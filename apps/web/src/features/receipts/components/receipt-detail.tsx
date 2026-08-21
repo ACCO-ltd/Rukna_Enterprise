@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Badge, Button } from '@erp/ui';
@@ -10,15 +11,19 @@ import { formatDate, formatMoney } from '@/lib/format';
 
 import { fromMinorUnits, isFullyAllocated, isOverAllocated } from '../allocation';
 import { useReceipt } from '../hooks/use-receipts';
+import type { ReceiptDetail as ReceiptDetailModel } from '../types';
 import { ReceiptAllocationsPanel, receiptTotals } from './receipt-allocations-panel';
+import { PostReceiptDialog } from './post-receipt-dialog';
 
 export function ReceiptDetail({ receiptId }: { receiptId: string }) {
   const t = useTranslations('platform.receipts.detail');
+  const tPost = useTranslations('platform.receipts.post');
   const tReceipts = useTranslations('platform.receipts');
   const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
 
   const { data: receipt, isPending, isError, error } = useReceipt(receiptId);
+  const [posting, setPosting] = useState(false);
 
   if (isPending) {
     return (
@@ -44,16 +49,33 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
     );
   }
 
+  const notPosted = receipt.postingStatus === 'NOT_POSTED';
+
   return (
     <div className="space-y-8">
       <ReceiptHeader receipt={receipt} locale={locale} />
-      <ReceiptAllocationsPanel receipt={receipt} />
+
+      {notPosted ? (
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface p-4 sm:p-6">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">{tPost('title')}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{tPost('intro')}</p>
+          </div>
+          <Button onClick={() => setPosting(true)}>{tPost('action')}</Button>
+        </section>
+      ) : (
+        <ReceiptAllocationsPanel receipt={receipt} />
+      )}
+
       {receipt.notes ? (
         <section className="rounded-lg border border-border bg-surface p-4 sm:p-6">
           <h2 className="text-sm font-semibold text-foreground">{t('notes')}</h2>
           <p className="mt-2 text-sm text-muted-foreground">{receipt.notes}</p>
         </section>
       ) : null}
+
+      {posting ? <PostReceiptDialog receipt={receipt} onClose={() => setPosting(false)} /> : null}
+
       <span className="sr-only">{tReceipts('title')}</span>
     </div>
   );
@@ -63,19 +85,30 @@ function ReceiptHeader({
   receipt,
   locale,
 }: {
-  receipt: Parameters<typeof receiptTotals>[0];
+  receipt: ReceiptDetailModel;
   locale: 'en' | 'ar';
 }) {
   const t = useTranslations('platform.receipts.detail');
   const tReceipts = useTranslations('platform.receipts');
 
-  // The client name is not on the receipt — only `clientId` — so it is fetched. A payment
-  // screen that cannot say whose money it is would be unusable.
   const client = useClient(receipt.clientId);
 
   const { allocated, remaining } = receiptTotals(receipt);
-  const fully = isFullyAllocated(receipt.amount, receipt.allocations);
-  const over = isOverAllocated(receipt.amount, receipt.allocations);
+  const fully = isFullyAllocated(receipt);
+  const over = isOverAllocated(receipt);
+
+  const statusTone =
+    receipt.postingStatus === 'POSTED'
+      ? 'live'
+      : receipt.postingStatus === 'REVERSED'
+        ? 'danger'
+        : 'warning';
+  const statusLabel =
+    receipt.postingStatus === 'POSTED'
+      ? t('statusPosted')
+      : receipt.postingStatus === 'REVERSED'
+        ? t('statusReversed')
+        : t('statusNotPosted');
 
   return (
     <div>
@@ -92,14 +125,12 @@ function ReceiptHeader({
             <span className="font-mono text-xs text-muted-foreground">
               {receipt.reference ?? tReceipts('noReference')}
             </span>
-            {/* Over-allocation must never wear the settled badge. The two states are
-                distinguished at the source (`isFullyAllocated` vs `isOverAllocated`) so
-                one cannot quietly become the other. */}
+            <Badge tone={statusTone}>{statusLabel}</Badge>
             {over ? <Badge tone="danger">{t('overAllocated')}</Badge> : null}
             {fully ? <Badge tone="live">{t('fullyAllocated')}</Badge> : null}
           </div>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
-            <bdi>{formatMoney(receipt.amount, receipt.currency, locale)}</bdi>
+            <bdi>{formatMoney(receipt.totalAmount, receipt.currencyCode, locale)}</bdi>
           </h1>
           <p className="text-sm text-muted-foreground">
             {client.data ? client.data.name : tReceipts('notSet')}
@@ -111,16 +142,12 @@ function ReceiptHeader({
         <Figure label={t('received')} value={formatDate(receipt.receiptDate, locale) ?? ''} />
         <Figure
           label={t('amount')}
-          value={<bdi>{formatMoney(receipt.amount, receipt.currency, locale)}</bdi>}
+          value={<bdi>{formatMoney(receipt.totalAmount, receipt.currencyCode, locale)}</bdi>}
         />
         <Figure
           label={t('allocated')}
-          value={<bdi>{formatMoney(fromMinorUnits(allocated), receipt.currency, locale)}</bdi>}
+          value={<bdi>{formatMoney(fromMinorUnits(allocated), receipt.currencyCode, locale)}</bdi>}
         />
-        {/* The figure the whole screen exists to keep honest: what is left of this payment
-            to apply. Computed in integer cents from the allocations, never in floats.
-            A negative reads as danger, not as a mild warning — it means the books
-            disagree with themselves. */}
         <Figure
           label={t('unallocated')}
           value={
@@ -129,7 +156,7 @@ function ReceiptHeader({
                 remaining < 0 ? 'text-danger' : remaining > 0 ? 'text-warning' : undefined
               }
             >
-              {formatMoney(fromMinorUnits(remaining), receipt.currency, locale)}
+              {formatMoney(fromMinorUnits(remaining), receipt.currencyCode, locale)}
             </bdi>
           }
         />
