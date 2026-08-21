@@ -451,13 +451,33 @@ export interface IpcResponse {
 }
 
 // ─── Payment Status (derived — no status field stored on IPC) ─────────────────
+//
+// ADR-024 ACC-SET-001 (D2): settlement is measured against the VAT-inclusive ClientInvoice
+// total, never the pre-VAT netCertified. Every figure is reported separately so no two tax
+// bases are ever compared. UNINVOICED distinguishes "certified but not yet billed" from
+// "billed and unpaid" (matches CommercialSettlementState).
 
-export type IpcPaymentStatus = 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
+export type IpcPaymentStatus = 'UNINVOICED' | 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
 
 export interface IpcPaymentStatusResponse {
-  totalAllocated: string;
+  /** Pre-VAT: certified items − deductions. */
   netCertified: string;
+  /** VAT on the invoice; '0.00' when not invoiced. */
+  vatAmount: string;
+  /** VAT-inclusive invoice total; null when the IPC has no live invoice. */
+  invoiceTotal: string | null;
+  /** Σ posted receipt allocations against the invoice (VAT-inclusive cash). */
+  totalReceived: string;
+  /** invoiceTotal − totalReceived (≥ 0); null when not invoiced. */
+  outstanding: string | null;
+  /** totalReceived / invoiceTotal × 100; '0' when not invoiced. */
+  paidPercent: string;
   status: IpcPaymentStatus;
+  /**
+   * @deprecated ACC-SET-001 — alias of `totalReceived`, kept for the current settlement panel.
+   * Removed with FE-1.
+   */
+  totalAllocated: string;
 }
 
 // ─── Finance ──────────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import type { PrismaClient, PaymentReceipt } from '@prisma/client';
+import type { IpcPaymentStatus, IpcPaymentStatusResponse } from '@erp/types';
 
 export type ReceiptFull = PaymentReceipt & {
   allocations: import('@prisma/client').ReceiptAllocation[];
@@ -86,25 +87,26 @@ export class FinancePrismaRepository {
     return prisma.receiptAllocation.delete({ where: { id: allocationId } });
   }
 
-  // Derives payment state for a certificate from its allocations.
-  // Compares allocations against net certified (gross minus deductions) not gross total.
+  /**
+   * ADR-024 ACC-SET-001 — IPC payment status derived from the invoice, not the IPC.
+   *
+   * The IPC certifies work (pre-VAT). Billing raises a ClientInvoice from the effective IPC
+   * (`sourceIpcId`), which carries VAT, and receipts settle THAT invoice. So payment status is
+   * measured against the VAT-inclusive invoice total — never against `netCertified` (D2). Every
+   * figure is reported separately so no two tax bases are ever compared. An IPC with no live
+   * (POSTED, non-reversed) invoice is UNINVOICED: certified, but not yet billed.
+   */
   async getCertificatePaymentSummary(
     prisma: TenantPrisma,
     certificateId: string,
-  ): Promise<{ totalAllocated: string; netCertified: string; status: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID' }> {
-    const [cert, alloc] = await Promise.all([
-      prisma.interimPaymentCertificate.findUnique({
-        where: { id: certificateId },
-        select: {
-          items: { select: { certifiedAmount: true } },
-          deductions: { select: { amount: true } },
-        },
-      }),
-      prisma.receiptAllocation.aggregate({
-        where: { certificateId },
-        _sum: { allocatedAmount: true },
-      }),
-    ]);
+  ): Promise<IpcPaymentStatusResponse> {
+    const cert = await prisma.interimPaymentCertificate.findUnique({
+      where: { id: certificateId },
+      select: {
+        items: { select: { certifiedAmount: true } },
+        deductions: { select: { amount: true } },
+      },
+    });
 
     const netCertified = (cert?.items ?? [])
       .reduce((s, i) => s.plus(new Decimal(i.certifiedAmount.toString())), new Decimal(0))
@@ -115,19 +117,54 @@ export class FinancePrismaRepository {
         ),
       );
 
-    const totalAllocated = new Decimal(alloc._sum.allocatedAmount?.toString() ?? '0');
+    const invoice = await prisma.clientInvoice.findFirst({
+      where: { sourceIpcId: certificateId, postingStatus: 'POSTED', reversalJournalEntryId: null },
+      select: { id: true, vatAmount: true, totalAmount: true },
+    });
 
-    let status: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID' = 'UNPAID';
-    if (totalAllocated.greaterThanOrEqualTo(netCertified) && netCertified.greaterThan(0)) {
+    if (!invoice) {
+      return {
+        netCertified: netCertified.toFixed(2),
+        vatAmount: '0.00',
+        invoiceTotal: null,
+        totalReceived: '0.00',
+        outstanding: null,
+        paidPercent: '0',
+        status: 'UNINVOICED',
+        totalAllocated: '0.00',
+      };
+    }
+
+    const invoiceTotal = new Decimal(invoice.totalAmount.toString());
+    const vatAmount = new Decimal(invoice.vatAmount.toString());
+
+    const received = await prisma.clientReceiptAllocation.aggregate({
+      where: { clientInvoiceId: invoice.id, postingStatus: 'POSTED' },
+      _sum: { allocatedAmount: true },
+    });
+    const totalReceived = new Decimal(received._sum.allocatedAmount?.toString() ?? '0');
+    const outstanding = Decimal.max(invoiceTotal.minus(totalReceived), new Decimal(0));
+
+    let status: IpcPaymentStatus = 'UNPAID';
+    if (invoiceTotal.greaterThan(0) && totalReceived.greaterThanOrEqualTo(invoiceTotal)) {
       status = 'PAID';
-    } else if (totalAllocated.greaterThan(0)) {
+    } else if (totalReceived.greaterThan(0)) {
       status = 'PARTIALLY_PAID';
     }
 
+    const paidPercent = invoiceTotal.greaterThan(0)
+      ? totalReceived.dividedBy(invoiceTotal).times(100)
+      : new Decimal(0);
+
     return {
-      totalAllocated: totalAllocated.toFixed(2),
       netCertified: netCertified.toFixed(2),
+      vatAmount: vatAmount.toFixed(2),
+      invoiceTotal: invoiceTotal.toFixed(2),
+      totalReceived: totalReceived.toFixed(2),
+      outstanding: outstanding.toFixed(2),
+      paidPercent: paidPercent.toFixed(1),
       status,
+      totalAllocated: totalReceived.toFixed(2),
     };
   }
 }
