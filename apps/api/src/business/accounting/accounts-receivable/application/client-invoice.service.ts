@@ -14,8 +14,11 @@ import {
   ACCOUNTING_POSTING_PORT,
   type IAccountingPostingPort,
 } from '../../accounting-core/application/ports/accounting-posting.port.js';
-import { AccountRepository } from '../../accounting-core/infrastructure/account.repository.js';
 import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
+import {
+  PostingAccountResolver,
+  type ResolvedAccount,
+} from '../../accounting-core/application/posting-account-resolver.service.js';
 import { ClientInvoiceRepository } from '../infrastructure/client-invoice.repository.js';
 
 export interface GenerateInvoiceFromIpcDto {
@@ -38,11 +41,11 @@ export interface ApproveInvoiceDto {
 
 export interface PostInvoiceDto {
   invoiceId: string;
-  /** Code of the Accounts Receivable GL control account */
-  arAccountCode: string;
-  /** Code of the Revenue GL account */
-  revenueAccountCode: string;
-  /** Code of the Output VAT GL account (if vatAmount > 0) */
+  /** Optional override for the AR control account. Resolved server-side by role when absent (ACC-POST-001). */
+  arAccountCode?: string;
+  /** Optional override for the Revenue account. Resolved server-side by role when absent. */
+  revenueAccountCode?: string;
+  /** Optional override for the Output VAT account. Resolved server-side by role when vatAmount > 0. */
   vatAccountCode?: string;
 }
 
@@ -51,8 +54,8 @@ export class ClientInvoiceService {
   constructor(
     private readonly tenancyService: TenancyService,
     private readonly repo: ClientInvoiceRepository,
-    private readonly accountRepo: AccountRepository,
     private readonly sequenceRepo: DocumentSequenceRepository,
+    private readonly resolver: PostingAccountResolver,
     @Inject(ACCOUNTING_POSTING_PORT)
     private readonly postingPort: IAccountingPostingPort,
   ) {}
@@ -219,16 +222,20 @@ export class ClientInvoiceService {
       throw new ConflictException(`Invoice ${dto.invoiceId} is already posted`);
     }
 
-    const arAccount = await this.accountRepo.findByCode(prisma, orgId, dto.arAccountCode);
-    if (!arAccount) throw new NotFoundException(`AR account ${dto.arAccountCode} not found`);
+    // ADR-024 ACC-POST-001: control accounts are resolved server-side by role. A code in the
+    // DTO still works as an explicit override (backward-compatible) but is no longer required.
+    const arAccount = await this.resolver.resolveByCodeOrRole(
+      prisma, orgId, dto.arAccountCode, 'ACCOUNTS_RECEIVABLE',
+    );
+    const revAccount = await this.resolver.resolveByCodeOrRole(
+      prisma, orgId, dto.revenueAccountCode, 'PROJECT_REVENUE',
+    );
 
-    const revAccount = await this.accountRepo.findByCode(prisma, orgId, dto.revenueAccountCode);
-    if (!revAccount) throw new NotFoundException(`Revenue account ${dto.revenueAccountCode} not found`);
-
-    let vatAccount: AccountWithCurrentVersion | null = null;
-    if (dto.vatAccountCode && new Decimal(invoice.vatAmount.toString()).gt(0)) {
-      vatAccount = await this.accountRepo.findByCode(prisma, orgId, dto.vatAccountCode);
-      if (!vatAccount) throw new NotFoundException(`VAT account ${dto.vatAccountCode} not found`);
+    let vatAccount: ResolvedAccount | null = null;
+    if (new Decimal(invoice.vatAmount.toString()).gt(0)) {
+      vatAccount = await this.resolver.resolveByCodeOrRole(
+        prisma, orgId, dto.vatAccountCode, 'VAT_OUTPUT_PAYABLE',
+      );
     }
 
     await this.sequenceRepo.ensureSequence(

@@ -13,14 +13,17 @@ import {
   type IAccountingPostingPort,
 } from '../../accounting-core/application/ports/accounting-posting.port.js';
 import { AccountRepository } from '../../accounting-core/infrastructure/account.repository.js';
+import { PostingAccountResolver } from '../../accounting-core/application/posting-account-resolver.service.js';
 import { PaymentReceiptArRepository } from '../infrastructure/payment-receipt-ar.repository.js';
 import { ClientInvoiceRepository } from '../infrastructure/client-invoice.repository.js';
 
+// ADR-024 ACC-POST-001: bankAccountCode is an explicit choice (which account received the
+// money); arAccountCode/unappliedAccountCode are optional overrides, resolved by role when absent.
 export interface PostReceiptDto {
   receiptId: string;
   bankAccountCode: string;
-  arAccountCode: string;
-  unappliedAccountCode: string;
+  arAccountCode?: string;
+  unappliedAccountCode?: string;
   /** Invoices to allocate at post time — optional; remaining goes to Unapplied */
   allocations?: { clientInvoiceId: string; amount: number }[];
 }
@@ -29,8 +32,8 @@ export interface AllocateReceiptDto {
   receiptId: string;
   clientInvoiceId: string;
   amount: number;
-  arAccountCode: string;
-  unappliedAccountCode: string;
+  arAccountCode?: string;
+  unappliedAccountCode?: string;
 }
 
 export interface ReverseReceiptDto {
@@ -38,8 +41,8 @@ export interface ReverseReceiptDto {
   reversalDate: string;
   reason: string;
   bankAccountCode: string;
-  arAccountCode: string;
-  unappliedAccountCode: string;
+  arAccountCode?: string;
+  unappliedAccountCode?: string;
 }
 
 @Injectable()
@@ -49,6 +52,7 @@ export class CustomerReceiptService {
     private readonly receiptRepo: PaymentReceiptArRepository,
     private readonly invoiceRepo: ClientInvoiceRepository,
     private readonly accountRepo: AccountRepository,
+    private readonly resolver: PostingAccountResolver,
     @Inject(ACCOUNTING_POSTING_PORT)
     private readonly postingPort: IAccountingPostingPort,
   ) {}
@@ -68,14 +72,17 @@ export class CustomerReceiptService {
       throw new ConflictException(`Receipt ${dto.receiptId} is already posted`);
     }
 
+    // Bank stays an explicit choice (which account received the money); the AR control and
+    // unapplied-cash accounts resolve server-side by role (ACC-POST-001), overridable via DTO.
     const bankGl = await this.accountRepo.findByCode(prisma, orgId, dto.bankAccountCode);
     if (!bankGl) throw new NotFoundException(`Bank GL account ${dto.bankAccountCode} not found`);
 
-    const arGl = await this.accountRepo.findByCode(prisma, orgId, dto.arAccountCode);
-    if (!arGl) throw new NotFoundException(`AR GL account ${dto.arAccountCode} not found`);
-
-    const unappliedGl = await this.accountRepo.findByCode(prisma, orgId, dto.unappliedAccountCode);
-    if (!unappliedGl) throw new NotFoundException(`Unapplied GL account ${dto.unappliedAccountCode} not found`);
+    const arGl = await this.resolver.resolveByCodeOrRole(
+      prisma, orgId, dto.arAccountCode, 'ACCOUNTS_RECEIVABLE',
+    );
+    const unappliedGl = await this.resolver.resolveByCodeOrRole(
+      prisma, orgId, dto.unappliedAccountCode, 'UNAPPLIED_CLIENT_RECEIPTS',
+    );
 
     const totalAmount = new Decimal(receipt.totalAmount.toString());
 
@@ -238,11 +245,12 @@ export class CustomerReceiptService {
     if (!invoice) throw new NotFoundException(`Invoice ${dto.clientInvoiceId} not found`);
     this.assertAllocatable(receipt, invoice, amount);
 
-    const arGl = await this.accountRepo.findByCode(prisma, orgId, dto.arAccountCode);
-    if (!arGl) throw new NotFoundException(`AR GL ${dto.arAccountCode} not found`);
-
-    const unappliedGl = await this.accountRepo.findByCode(prisma, orgId, dto.unappliedAccountCode);
-    if (!unappliedGl) throw new NotFoundException(`Unapplied GL ${dto.unappliedAccountCode} not found`);
+    const arGl = await this.resolver.resolveByCodeOrRole(
+      prisma, orgId, dto.arAccountCode, 'ACCOUNTS_RECEIVABLE',
+    );
+    const unappliedGl = await this.resolver.resolveByCodeOrRole(
+      prisma, orgId, dto.unappliedAccountCode, 'UNAPPLIED_CLIENT_RECEIPTS',
+    );
 
     return prisma.$transaction(async (tx) => {
       const postResult = await this.postingPort.post(
@@ -410,10 +418,11 @@ export class CustomerReceiptService {
    * Reverse a subsequent allocation (EVT-AR-005 → EVT-AR-006).
    * Dr AR / Cr Unapplied — mirror of EVT-AR-005.
    */
+  // ADR-024 ACC-POST-001: arAccountCode/unappliedAccountCode are optional overrides.
   async reverseAllocation(
     identity: RequestIdentity,
     allocationId: string,
-    opts: { arAccountCode: string; unappliedAccountCode: string },
+    opts: { arAccountCode?: string; unappliedAccountCode?: string },
   ) {
     const prisma = this.tenancyService.getClient();
     const { activeOrganizationId: orgId, userId } = identity;
@@ -433,10 +442,12 @@ export class CustomerReceiptService {
       );
     }
 
-    const arGl = await this.accountRepo.findByCode(prisma, orgId, opts.arAccountCode);
-    if (!arGl) throw new NotFoundException(`AR GL ${opts.arAccountCode} not found`);
-    const unappliedGl = await this.accountRepo.findByCode(prisma, orgId, opts.unappliedAccountCode);
-    if (!unappliedGl) throw new NotFoundException(`Unapplied GL ${opts.unappliedAccountCode} not found`);
+    const arGl = await this.resolver.resolveByCodeOrRole(
+      prisma, orgId, opts.arAccountCode, 'ACCOUNTS_RECEIVABLE',
+    );
+    const unappliedGl = await this.resolver.resolveByCodeOrRole(
+      prisma, orgId, opts.unappliedAccountCode, 'UNAPPLIED_CLIENT_RECEIPTS',
+    );
 
     const amount = new Decimal(alloc.allocatedAmount.toString());
 
