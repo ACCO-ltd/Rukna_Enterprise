@@ -518,6 +518,9 @@ export class CustomerReceiptService {
     const prisma = this.tenancyService.getClient();
     const receipt = await this.receiptRepo.findById(prisma, identity.activeOrganizationId, id);
     if (!receipt) throw new NotFoundException(`PaymentReceipt ${id} not found`);
-    return receipt;
+    // The controller documents "with allocations" — include the invoice allocations so the
+    // receipt workspace can render and reverse them (ACC-SET-001 FE-1).
+    const allocations = await this.receiptRepo.findAllocationsByReceipt(prisma, receipt.id);
+    return { ...receipt, allocations };
   }
 }
