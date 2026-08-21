@@ -2276,41 +2276,9 @@ model PostingAttempt {
   @@map("posting_attempts")
 }
 
-// ─── Migration ────────────────────────────────────────────────────────────────
-
-model AccountingMigrationBatch {
-  id             String          @id @default(cuid())
-  organizationId String          @map("organization_id")
-  startedAt      DateTime        @map("started_at")
-  completedAt    DateTime?       @map("completed_at")
-  performedBy    String          @map("performed_by")
-  approvedBy     String?         @map("approved_by")
-  status         MigrationStatus @default(PENDING)
-  checksum       String
-  notes          String?
-  createdAt      DateTime        @default(now()) @map("created_at")
-
-  @@index([organizationId, status])
-  @@map("accounting_migration_batches")
-}
-
-// R-06: PaymentReceipts from Sprint 3 that cannot be auto-assigned to a bank account
-// are placed in this exception queue for Finance to resolve manually.
-model PaymentReceiptMigrationException {
-  id                    String          @id @default(cuid())
-  organizationId        String          @map("organization_id")
-  paymentReceiptId      String          @map("payment_receipt_id")
-  reason                String
-  status                ExceptionStatus @default(OPEN)
-  resolvedBankAccountId String?         @map("resolved_bank_account_id")
-  resolvedBy            String?         @map("resolved_by")
-  resolvedAt            DateTime?       @map("resolved_at")
-  notes                 String?
-  createdAt             DateTime        @default(now()) @map("created_at")
-
-  @@index([organizationId, status])
-  @@map("payment_receipt_migration_exceptions")
-}
+// ADR-024 ACC-DEAD-001: AccountingMigrationBatch and PaymentReceiptMigrationException
+// (Sprint-3 one-off migration scaffolding) were never wired to any code path and are
+// redundant with the built OpeningBalance flow. Dropped.
 
 // ─── Accounting Configuration — 7 Separate Policy Aggregates ─────────────────
 // Each policy is independently updatable by Finance.
@@ -2849,20 +2817,6 @@ enum AttemptOutcome {
   FAILURE_PERIOD_CLOSED
   FAILURE_CONTROL_ACCOUNT
   FAILURE_SYSTEM_ERROR
-}
-
-enum MigrationStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-  FAILED
-  ROLLED_BACK
-}
-
-enum ExceptionStatus {
-  OPEN
-  RESOLVED
-  WAIVED
 }
 
 enum SnapshotStatus {
