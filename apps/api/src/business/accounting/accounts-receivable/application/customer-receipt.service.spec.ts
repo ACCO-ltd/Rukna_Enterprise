@@ -41,6 +41,9 @@ function build(invoice: unknown) {
   const receiptRepo = { findById: jest.fn().mockResolvedValue(receipt) };
   const invoiceRepo = { findById: jest.fn().mockResolvedValue(invoice) };
   const accountRepo = { findByCode: jest.fn() };
+  const resolver = {
+    resolveByCodeOrRole: jest.fn().mockResolvedValue({ id: 'acc-role', code: 'ROLE' }),
+  };
   const postingPort = { post: jest.fn() };
   const tenancy = { getClient: () => ({}) };
   const service = new CustomerReceiptService(
@@ -48,6 +51,7 @@ function build(invoice: unknown) {
     receiptRepo as never,
     invoiceRepo as never,
     accountRepo as never,
+    resolver as never,
     postingPort as never,
   );
   return { service, accountRepo };

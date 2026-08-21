@@ -17,6 +17,7 @@ import { AccountService } from './application/account.service.js';
 import { BankAccountService } from './application/bank-account.service.js';
 import { OpeningBalanceService } from './application/opening-balance.service.js';
 import { ReconciliationService } from './application/reconciliation.service.js';
+import { PostingAccountResolver } from './application/posting-account-resolver.service.js';
 
 import { AccountController } from './presentation/account.controller.js';
 import { FiscalYearController } from './presentation/fiscal-year.controller.js';
@@ -53,6 +54,7 @@ import { ReconciliationController } from './presentation/reconciliation.controll
     BankAccountService,
     OpeningBalanceService,
     ReconciliationService,
+    PostingAccountResolver,
   ],
   exports: [
     ACCOUNTING_POSTING_PORT,
@@ -66,6 +68,7 @@ import { ReconciliationController } from './presentation/reconciliation.controll
     FiscalYearRepository,
     DocumentSequenceRepository,
     JournalRepository,
+    PostingAccountResolver,
   ],
 })
 export class AccountingCoreModule {}

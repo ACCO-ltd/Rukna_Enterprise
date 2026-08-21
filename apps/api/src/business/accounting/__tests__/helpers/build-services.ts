@@ -12,6 +12,7 @@ import { DocumentSequenceRepository } from '../../accounting-core/infrastructure
 import { AccountRepository }          from '../../accounting-core/infrastructure/account.repository.js';
 
 import { OpeningBalanceService }      from '../../accounting-core/application/opening-balance.service.js';
+import { PostingAccountResolver }     from '../../accounting-core/application/posting-account-resolver.service.js';
 import { ReconciliationService }      from '../../accounting-core/application/reconciliation.service.js';
 
 import { ManualJournalService }       from '../../manual-journals/application/manual-journal.service.js';
@@ -87,10 +88,11 @@ export function buildServices(prisma: PrismaClient): AccountingServices {
   const manualJournalService = new ManualJournalService(tenancy, journalRepo, sequenceRepo, postingService);
 
   // AR
+  const postingAccountResolver = new PostingAccountResolver(accountRepo);
   const clientInvoiceRepo = new ClientInvoiceRepository();
   const receiptRepo       = new PaymentReceiptArRepository();
-  const clientInvoiceService   = new ClientInvoiceService(tenancy, clientInvoiceRepo, accountRepo, sequenceRepo, postingService);
-  const customerReceiptService = new CustomerReceiptService(tenancy, receiptRepo, clientInvoiceRepo, accountRepo, postingService);
+  const clientInvoiceService   = new ClientInvoiceService(tenancy, clientInvoiceRepo, sequenceRepo, postingAccountResolver, postingService);
+  const customerReceiptService = new CustomerReceiptService(tenancy, receiptRepo, clientInvoiceRepo, accountRepo, postingAccountResolver, postingService);
 
   // AP
   const supplierBillRepo    = new SupplierBillRepository();

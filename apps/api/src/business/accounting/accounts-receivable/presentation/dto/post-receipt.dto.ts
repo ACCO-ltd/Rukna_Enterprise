@@ -20,13 +20,13 @@ export class PostReceiptDto {
   @IsString() @IsNotEmpty() @MaxLength(30)
   bankAccountCode!: string;
 
-  @ApiProperty({ example: 'AR-001', description: 'AR GL control account code' })
-  @IsString() @IsNotEmpty() @MaxLength(30)
-  arAccountCode!: string;
+  @ApiPropertyOptional({ example: 'AR-001', description: 'Override for the AR control account (resolved by role when omitted)' })
+  @IsString() @IsOptional() @MaxLength(30)
+  arAccountCode?: string;
 
-  @ApiProperty({ example: 'UNP-001', description: 'Unapplied receipts GL account code' })
-  @IsString() @IsNotEmpty() @MaxLength(30)
-  unappliedAccountCode!: string;
+  @ApiPropertyOptional({ example: 'UNP-001', description: 'Override for the unapplied-receipts account (resolved by role when omitted)' })
+  @IsString() @IsOptional() @MaxLength(30)
+  unappliedAccountCode?: string;
 
   @ApiPropertyOptional({ type: [ReceiptAllocationDto], description: 'Allocate at post time — unallocated goes to Unapplied' })
   @IsArray() @IsOptional() @ValidateNested({ each: true }) @Type(() => ReceiptAllocationDto)

@@ -1,12 +1,12 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, MaxLength } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, MaxLength, IsOptional } from 'class-validator';
 
 export class ReverseAllocationDto {
-  @ApiProperty({ example: 'AR-001' })
-  @IsString() @IsNotEmpty() @MaxLength(30)
-  arAccountCode!: string;
+  @ApiPropertyOptional({ example: 'AR-001', description: 'Override for the AR control account (resolved by role when omitted)' })
+  @IsString() @IsOptional() @MaxLength(30)
+  arAccountCode?: string;
 
-  @ApiProperty({ example: 'UNP-001' })
-  @IsString() @IsNotEmpty() @MaxLength(30)
-  unappliedAccountCode!: string;
+  @ApiPropertyOptional({ example: 'UNP-001', description: 'Override for the unapplied-receipts account (resolved by role when omitted)' })
+  @IsString() @IsOptional() @MaxLength(30)
+  unappliedAccountCode?: string;
 }
