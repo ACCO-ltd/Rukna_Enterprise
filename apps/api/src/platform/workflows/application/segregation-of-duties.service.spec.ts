@@ -81,4 +81,45 @@ describe('SegregationOfDutiesService', () => {
       }),
     ).resolves.toBeUndefined();
   });
+
+  // ── Phase 1b rules with non-standard context shapes ──────────────────────────
+
+  describe('VENDOR_MAINTAINER_CANNOT_CREATE_PO_OR_PROCESS_PAYMENT (two actions)', () => {
+    const code = 'VENDOR_MAINTAINER_CANNOT_CREATE_PO_OR_PROCESS_PAYMENT';
+
+    it.each(['CREATE_PURCHASE_ORDER', 'PROCESS_SUPPLIER_PAYMENT'] as const)(
+      'denies when the vendor maintainer performs %s',
+      async (action) => {
+        const { svc } = build([code]);
+        await expect(
+          svc.assertAllowed({ ...base, action, vendorMaintainerUserId: 'alice' }),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+      },
+    );
+
+    it('allows a different actor to create the PO', async () => {
+      const { svc } = build([code]);
+      await expect(
+        svc.assertAllowed({ ...base, action: 'CREATE_PURCHASE_ORDER', vendorMaintainerUserId: 'bob' }),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('SYSTEM_ADMIN_CANNOT_APPROVE_BUSINESS_TRANSACTION (flag-based)', () => {
+    const code = 'SYSTEM_ADMIN_CANNOT_APPROVE_BUSINESS_TRANSACTION';
+
+    it('denies a system administrator approving a business transaction', async () => {
+      const { svc } = build([code]);
+      await expect(
+        svc.assertAllowed({ ...base, action: 'APPROVE_BUSINESS_TRANSACTION', isSystemAdministrator: true }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('allows a non-administrator to approve', async () => {
+      const { svc } = build([code]);
+      await expect(
+        svc.assertAllowed({ ...base, action: 'APPROVE_BUSINESS_TRANSACTION', isSystemAdministrator: false }),
+      ).resolves.toBeUndefined();
+    });
+  });
 });

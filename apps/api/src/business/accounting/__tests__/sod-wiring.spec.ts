@@ -17,6 +17,43 @@ const denyingSod = () => ({
 });
 
 describe('Accounting SoD wiring (ADR-022)', () => {
+  it('supplier payment: the vendor maintainer processing a payment is checked as PROCESS_SUPPLIER_PAYMENT', async () => {
+    const sod = denyingSod();
+    const prisma = {
+      supplier: { findFirst: jest.fn().mockResolvedValue({ createdBy: 'alice' }) },
+    };
+    const svc = new SupplierPaymentService(
+      { getClient: () => prisma } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      sod as never,
+      {} as never,
+    );
+
+    await expect(
+      svc.create(identity('alice'), {
+        supplierId: 's1',
+        bankAccountId: 'bank-1',
+        paymentDate: '2026-09-01',
+        currencyCode: 'USD',
+        totalAmount: 100,
+        paymentMethod: 'BANK_TRANSFER',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(sod.assertAllowed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'PROCESS_SUPPLIER_PAYMENT',
+        actorUserId: 'alice',
+        vendorMaintainerUserId: 'alice',
+      }),
+    );
+  });
+
   it('manual journal: the preparer approving is checked as APPROVE_MANUAL_JOURNAL', async () => {
     const sod = denyingSod();
     const prisma = {

@@ -38,14 +38,16 @@ export async function seedAccoWorkflows(prisma: PrismaClient, organizationId: st
  */
 const ACCO_GOVERNANCE_EFFECTIVE_FROM = new Date('2026-08-17T00:00:00.000Z');
 
-// ADR-022 Phase 1: the SoD rules wired into services and therefore activated. The remaining two
-// (VENDOR_MAINTAINER_*, SYSTEM_ADMIN_*) stay inactive until their enforcement is built (Phase 1b).
+// ADR-022: all seven SoD rules are now wired into services and therefore activated (Phase 1 wired
+// the procure-to-pay + journal five; Phase 1b added vendor-maintainer and system-administrator).
 const ACTIVE_SOD_CODES = new Set<string>([
   'REQUESTER_CANNOT_APPROVE_OWN_REQUEST',
   'PO_CREATOR_CANNOT_RECEIVE_GOODS',
   'GOODS_RECEIVER_CANNOT_APPROVE_BILL',
   'BILL_APPROVER_CANNOT_APPROVE_OR_RELEASE_PAYMENT',
   'JOURNAL_PREPARER_CANNOT_APPROVE_JOURNAL',
+  'VENDOR_MAINTAINER_CANNOT_CREATE_PO_OR_PROCESS_PAYMENT',
+  'SYSTEM_ADMIN_CANNOT_APPROVE_BUSINESS_TRANSACTION',
 ]);
 
 async function seedAccoGovernancePolicy(prisma: PrismaClient, organizationId: string): Promise<void> {

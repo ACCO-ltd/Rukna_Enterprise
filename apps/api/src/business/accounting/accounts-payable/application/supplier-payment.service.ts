@@ -83,6 +83,18 @@ export class SupplierPaymentService {
       throw new BadRequestException(`Total allocations exceed payment amount`);
     }
 
+    // ADR-022 CONST-DOA-003: the vendor maintainer cannot also process a payment to that vendor.
+    const supplier = await prisma.supplier.findFirst({
+      where: { id: dto.supplierId, organizationId: orgId },
+      select: { createdBy: true },
+    });
+    await this.sod.assertAllowed({
+      organizationId: orgId,
+      action: 'PROCESS_SUPPLIER_PAYMENT',
+      actorUserId: userId,
+      vendorMaintainerUserId: supplier?.createdBy ?? undefined,
+    });
+
     const paymentDate = new Date(dto.paymentDate);
 
     return prisma.$transaction(async (tx) => {

@@ -2,12 +2,19 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException 
 import { WorkflowTransactionType } from '@erp/types';
 import { WorkflowsPrismaRepository } from '../infrastructure/workflows-prisma.repository.js';
 import { WorkflowsService } from './workflows.service.js';
+import { SegregationOfDutiesService } from './segregation-of-duties.service.js';
+
+// ADR-022 CONST-DOA-001: the System Administrator role has no business-transaction approval
+// authority. This is the consolidated role name (see ACCO_ROLES); the tenant super-user 'ADMIN'
+// is a different role and is not blocked here.
+const SYSTEM_ADMINISTRATOR_ROLE = 'SYSTEM_ADMINISTRATOR';
 
 @Injectable()
 export class ApprovalService {
   constructor(
     private readonly repo: WorkflowsPrismaRepository,
     private readonly workflowsService: WorkflowsService,
+    private readonly sod: SegregationOfDutiesService,
   ) {}
 
   async initiate(
@@ -40,6 +47,14 @@ export class ApprovalService {
     if (currentStep?.roleRequired && !actorRoles.includes(currentStep.roleRequired)) {
       throw new ForbiddenException(`Step requires role '${currentStep.roleRequired}'`);
     }
+
+    // ADR-022 CONST-DOA-003: a system administrator cannot approve a business transaction.
+    await this.sod.assertAllowed({
+      organizationId,
+      action: 'APPROVE_BUSINESS_TRANSACTION',
+      actorUserId: actorId,
+      isSystemAdministrator: actorRoles.includes(SYSTEM_ADMINISTRATOR_ROLE),
+    });
 
     await this.repo.recordAction({
       instanceId,

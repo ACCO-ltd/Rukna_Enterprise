@@ -19,6 +19,7 @@ import { UomRepository } from '../../catalogue/infrastructure/uom.repository.js'
 import { CommitmentLedgerWriter } from '../../commitment-ledger/application/commitment-ledger-writer.service.js';
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
+import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
 
 export interface CreatePoLineDto {
   lineType: ProcurementLineType;
@@ -69,6 +70,7 @@ export class PurchaseOrderService {
     private readonly commitmentWriter: CommitmentLedgerWriter,
     private readonly auditOutbox: TransactionalAuditOutboxService,
     private readonly commandGovernance: CommandGovernanceService,
+    private readonly sod: SegregationOfDutiesService,
   ) {}
 
   findAll(
@@ -92,6 +94,18 @@ export class PurchaseOrderService {
 
     if (!dto.lines || dto.lines.length === 0)
       throw new BadRequestException('At least one line is required');
+
+    // ADR-022 CONST-DOA-003: the vendor maintainer cannot also create a PO to that vendor.
+    const supplier = await prisma.supplier.findFirst({
+      where: { id: dto.supplierId, organizationId: orgId },
+      select: { createdBy: true },
+    });
+    await this.sod.assertAllowed({
+      organizationId: orgId,
+      action: 'CREATE_PURCHASE_ORDER',
+      actorUserId: identity.userId,
+      vendorMaintainerUserId: supplier?.createdBy ?? undefined,
+    });
 
     const resolvedLines = await this.resolveLines(prisma, orgId, dto.lines);
     const count = await this.repo.countPoNumbers(prisma, orgId);

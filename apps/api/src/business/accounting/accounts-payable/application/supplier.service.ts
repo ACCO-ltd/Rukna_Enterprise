@@ -36,7 +36,8 @@ export class SupplierService {
     const orgId = identity.activeOrganizationId;
     const existing = await this.repo.findByCode(prisma, orgId, dto.code);
     if (existing) throw new ConflictException(`Supplier with code '${dto.code}' already exists`);
-    const data: CreateSupplierData = { organizationId: orgId, ...dto };
+    // ADR-022 CONST-DOA-003: record who set the vendor up (the vendor maintainer).
+    const data: CreateSupplierData = { organizationId: orgId, createdBy: identity.userId, ...dto };
     return this.repo.create(prisma, data);
   }
 }

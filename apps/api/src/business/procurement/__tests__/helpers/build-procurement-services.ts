@@ -116,7 +116,7 @@ export function buildProcurementServices(prisma: PrismaClient): ProcurementServi
     new WorkflowTriggerResolverService(tenancy),
     new WorkflowsPrismaRepository(tenancy),
   );
-  const poService       = new PurchaseOrderService(tenancy, poRepo, materialRepo, uomRepo, commitmentWriter, noOpAuditOutbox, commandGovernance);
+  const poService       = new PurchaseOrderService(tenancy, poRepo, materialRepo, uomRepo, commitmentWriter, noOpAuditOutbox, commandGovernance, sod);
   const grnService      = new GoodsReceiptService(tenancy, grnRepo, poRepo, commitmentWriter, noOpAuditOutbox, sod);
   const billMatchingService = new BillMatchingService(tenancy, billMatchRepo);
 

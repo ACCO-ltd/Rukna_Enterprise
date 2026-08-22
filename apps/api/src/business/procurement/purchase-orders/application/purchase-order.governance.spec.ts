@@ -34,6 +34,7 @@ function build(gateResult: unknown) {
     {} as never,
     auditOutbox as never,
     commandGovernance as never,
+    { assertAllowed: jest.fn() } as never,
   );
   return { svc, repo, commandGovernance };
 }
