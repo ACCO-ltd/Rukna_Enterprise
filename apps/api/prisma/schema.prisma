@@ -1600,6 +1600,9 @@ model Supplier {
   purchaseOrders   PurchaseOrder[]
   grnNotes         GoodsReceiptNote[]
   matchingPolicies MatchingTolerancePolicy[]
+  // ADR-022 CONST-DOA-003: the vendor maintainer. Nullable — suppliers created before this
+  // field have an unknown maintainer, so the VENDOR_MAINTAINER SoD rule cannot fire for them.
+  createdBy        String?                  @map("created_by")
 
   @@unique([organizationId, code])
   @@index([organizationId, status])

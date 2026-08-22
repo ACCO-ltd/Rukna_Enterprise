@@ -22,10 +22,16 @@ tolerances (ADR-018 seed values) and **(E)** the A12 settlement-ledger question.
   (payment approve), **journal preparer ≠ journal approver** (journal approve). Access never grants
   authority (CONST-DOA-002): the Procurement Officer's Store-Keeper access does not exempt the PO-
   creator receipt block.
-- **Deferred to Phase 1b** (need data/plumbing not yet present): **vendor maintainer ≠ PO/payment
-  processor** (needs a `Supplier` ownership field), **system administrator ≠ business-transaction
-  approver** (needs an admin-authority determination), and the **CONST-DOA-004 documented exception**
-  override (supervisor verification + CFO approval).
+- **Phase 1b — remaining SoD rules: DONE.** All seven CONST-DOA-003 rules are now wired and active.
+  **Vendor maintainer ≠ PO/payment processor:** `Supplier.createdBy` records the maintainer
+  (nullable — legacy suppliers have an unknown one), checked at PO create and payment create.
+  **System administrator ≠ business-transaction approver:** enforced in `ApprovalService.approve`,
+  keyed on the consolidated `SYSTEM_ADMINISTRATOR` role (the tenant super-user `ADMIN` is a
+  different role and is not blocked; the rule is dormant until someone holds `SYSTEM_ADMINISTRATOR`).
+- **Still deferred — the CONST-DOA-004 documented exception** override (a PO creator may receive
+  goods only with independent supervisor verification **and** CFO approval): a net-new
+  documented-exception flow, not yet built. The PO-creator-receipt *block* is enforced (Phase 1);
+  this is its sanctioned escape hatch.
 - **Phase 2 — value-threshold routing engine (CONST-DOA-005): DONE (engine, dormant).** A trigger
   binding may now carry an amount band (`minAmount`/`maxAmount`, half-open `[min, max)`; both null =
   catch-all). The resolver filters candidate bindings by the document value, so the same transition

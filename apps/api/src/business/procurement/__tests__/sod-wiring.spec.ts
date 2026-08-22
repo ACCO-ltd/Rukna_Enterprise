@@ -2,6 +2,7 @@ import { ForbiddenException } from '@nestjs/common';
 
 import { GoodsReceiptService } from '../goods-receipts/application/goods-receipt.service.js';
 import { MaterialRequestService } from '../material-requests/application/material-request.service.js';
+import { PurchaseOrderService } from '../purchase-orders/application/purchase-order.service.js';
 
 /**
  * ADR-022 CONST-DOA-003 — proves each procurement command hands the SoD service the right actors.
@@ -17,6 +18,40 @@ const denyingSod = () => ({
 });
 
 describe('Procurement SoD wiring (ADR-022)', () => {
+  it('purchase order: the vendor maintainer creating a PO is checked as CREATE_PURCHASE_ORDER', async () => {
+    const sod = denyingSod();
+    const prisma = {
+      supplier: { findFirst: jest.fn().mockResolvedValue({ createdBy: 'alice' }) },
+    };
+    const svc = new PurchaseOrderService(
+      { getClient: () => prisma } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      sod as never,
+    );
+
+    await expect(
+      svc.create(identity('alice'), {
+        supplierId: 's1',
+        currencyCode: 'USD',
+        effectiveFrom: '2026-09-01',
+        lines: [{ description: 'x', orderedQuantity: 1, unitPrice: 10 }] as never,
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(sod.assertAllowed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'CREATE_PURCHASE_ORDER',
+        actorUserId: 'alice',
+        vendorMaintainerUserId: 'alice',
+      }),
+    );
+  });
+
   it('goods receipt: a PO creator receiving their own order is checked as RECEIVE_GOODS', async () => {
     const sod = denyingSod();
     const poRepo = {

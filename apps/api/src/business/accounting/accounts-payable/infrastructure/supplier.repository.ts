@@ -10,6 +10,7 @@ export interface CreateSupplierData {
   taxNumber?: string;
   defaultCurrency?: string;
   paymentTermsDays?: number;
+  createdBy?: string;
 }
 
 @Injectable()
