@@ -9,6 +9,7 @@ import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { CustomerReceiptService } from '../application/customer-receipt.service.js';
+import { CreateReceiptDto } from './dto/create-receipt.dto.js';
 import { PostReceiptDto } from './dto/post-receipt.dto.js';
 import { AllocateReceiptDto } from './dto/allocate-receipt.dto.js';
 import { ReverseReceiptDto } from './dto/reverse-receipt.dto.js';
@@ -30,6 +31,25 @@ export class CustomerReceiptController {
     @Query('clientId') clientId?: string,
   ) {
     return this.customerReceiptService.findAll(identity, clientId);
+  }
+
+  // ACC-SET-001 BE-2: receipt creation moved here from the retired finance /receipts module.
+  @Post()
+  @RequirePermissions(PERMISSIONS.receiptsCreate)
+  @ApiOperation({ summary: 'Record a new payment receipt (NOT_POSTED until posted to the GL)' })
+  create(@CurrentUser() identity: RequestIdentity, @Body() dto: CreateReceiptDto) {
+    return this.customerReceiptService.create(identity, dto);
+  }
+
+  @Get('certificate/:certificateId/payment-status')
+  @RequirePermissions(PERMISSIONS.receiptsView)
+  @ApiParam({ name: 'certificateId' })
+  @ApiOperation({ summary: "An IPC's settlement status, derived from the invoice raised off it" })
+  getCertificatePaymentStatus(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('certificateId') certificateId: string,
+  ) {
+    return this.customerReceiptService.getCertificatePaymentStatus(identity, certificateId);
   }
 
   @Get(':id')

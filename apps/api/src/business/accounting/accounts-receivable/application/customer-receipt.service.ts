@@ -14,6 +14,7 @@ import {
 } from '../../accounting-core/application/ports/accounting-posting.port.js';
 import { AccountRepository } from '../../accounting-core/infrastructure/account.repository.js';
 import { PostingAccountResolver } from '../../accounting-core/application/posting-account-resolver.service.js';
+import type { CreateReceiptDto } from '../presentation/dto/create-receipt.dto.js';
 import { PaymentReceiptArRepository } from '../infrastructure/payment-receipt-ar.repository.js';
 import { ClientInvoiceRepository } from '../infrastructure/client-invoice.repository.js';
 
@@ -509,9 +510,38 @@ export class CustomerReceiptService {
     });
   }
 
+  // ACC-SET-001 BE-2: receipt creation moved here from the retired finance module. No separate
+  // accounting date is captured on the receipt form, so the receipt date is its accounting date.
+  async create(identity: RequestIdentity, dto: CreateReceiptDto) {
+    const prisma = this.tenancyService.getClient();
+    const receiptDate = new Date(dto.receiptDate);
+    return this.receiptRepo.create(prisma, {
+      organizationId: identity.activeOrganizationId,
+      clientId: dto.clientId,
+      receiptDate,
+      accountingDate: receiptDate,
+      totalAmount: dto.amount,
+      currencyCode: dto.currency,
+      reference: dto.reference,
+      notes: dto.notes,
+      createdBy: identity.userId,
+    });
+  }
+
   async findAll(identity: RequestIdentity, clientId?: string) {
     const prisma = this.tenancyService.getClient();
     return this.receiptRepo.findAll(prisma, identity.activeOrganizationId, clientId);
+  }
+
+  // ACC-SET-001 — IPC payment status derived from the invoice raised off it (moved from finance).
+  async getCertificatePaymentStatus(identity: RequestIdentity, certificateId: string) {
+    const prisma = this.tenancyService.getClient();
+    const cert = await prisma.interimPaymentCertificate.findFirst({
+      where: { id: certificateId, organizationId: identity.activeOrganizationId },
+      select: { id: true },
+    });
+    if (!cert) throw new NotFoundException(`Certificate ${certificateId} not found`);
+    return this.receiptRepo.getCertificatePaymentSummary(prisma, certificateId);
   }
 
   async findById(identity: RequestIdentity, id: string) {

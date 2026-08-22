@@ -65,11 +65,10 @@ export function supersedeIpc(applicationId: string, payload: SupersedeIpcPayload
 }
 
 /**
- * `GET /receipts/certificate/:id/payment-status` is deliberately NOT wrapped here.
+ * `GET /customer-receipts/certificate/:id/payment-status` is deliberately NOT wrapped here.
  *
- * It reads the legacy receipt->IPC allocation ledger, which ADR-017 declares is not the
- * settlement authority (CONST-COM-004) — receipt->invoice is. Consuming it gave the same
- * certificate two different paid balances depending on which screen you were on. The
- * endpoint is still live; removing it is Eng Ahmed's call under A12. Settlement is read
- * from the invoice.
+ * ADR-024 made it invoice-based (measured against the VAT-inclusive ClientInvoice raised off
+ * the IPC), so it is now correct — but this screen already holds the invoice figures and derives
+ * settlement locally from them, so the round-trip is unnecessary. The endpoint remains available
+ * for callers that only have a certificate id.
  */

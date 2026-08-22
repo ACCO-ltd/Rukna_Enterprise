@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { PrismaClient, PaymentReceipt, ClientReceiptAllocation } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
+import type { IpcPaymentStatus, IpcPaymentStatusResponse } from '@erp/types';
 
 type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
@@ -8,6 +9,39 @@ type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$tr
 export class PaymentReceiptArRepository {
   findById(prisma: TenantPrisma, organizationId: string, id: string): Promise<PaymentReceipt | null> {
     return prisma.paymentReceipt.findFirst({ where: { id, organizationId } });
+  }
+
+  // ACC-SET-001 BE-2: receipt creation moved here from the retired finance module. A receipt is
+  // fully unallocated when recorded (unallocatedAmount = totalAmount, allocatedAmount = 0).
+  create(
+    prisma: TenantPrisma,
+    data: {
+      organizationId: string;
+      clientId: string;
+      receiptDate: Date;
+      accountingDate: Date;
+      totalAmount: string;
+      currencyCode: string;
+      reference?: string;
+      notes?: string;
+      createdBy: string;
+    },
+  ) {
+    return prisma.paymentReceipt.create({
+      data: {
+        organizationId: data.organizationId,
+        clientId: data.clientId,
+        receiptDate: data.receiptDate,
+        accountingDate: data.accountingDate,
+        totalAmount: new Decimal(data.totalAmount),
+        allocatedAmount: new Decimal(0),
+        unallocatedAmount: new Decimal(data.totalAmount),
+        currencyCode: data.currencyCode,
+        reference: data.reference ?? null,
+        notes: data.notes ?? null,
+        createdBy: data.createdBy,
+      },
+    });
   }
 
   findAll(prisma: TenantPrisma, organizationId: string, clientId?: string) {
@@ -98,5 +132,84 @@ export class PaymentReceiptArRepository {
         _sum: { allocatedAmount: true },
       })
       .then((r) => new Decimal(r._sum.allocatedAmount?.toString() ?? '0'));
+  }
+
+  /**
+   * ADR-024 ACC-SET-001 — IPC payment status derived from the invoice, not the IPC (moved here
+   * from the retired finance module in BE-2). Settlement is measured against the VAT-inclusive
+   * ClientInvoice raised from the effective IPC (`sourceIpcId`), never against `netCertified`
+   * (D2). Every figure is reported separately so no two tax bases are ever compared. An IPC with
+   * no live (POSTED, non-reversed) invoice is UNINVOICED: certified, but not yet billed.
+   */
+  async getCertificatePaymentSummary(
+    prisma: TenantPrisma,
+    certificateId: string,
+  ): Promise<IpcPaymentStatusResponse> {
+    const cert = await prisma.interimPaymentCertificate.findUnique({
+      where: { id: certificateId },
+      select: {
+        items: { select: { certifiedAmount: true } },
+        deductions: { select: { amount: true } },
+      },
+    });
+
+    const netCertified = (cert?.items ?? [])
+      .reduce((s, i) => s.plus(new Decimal(i.certifiedAmount.toString())), new Decimal(0))
+      .minus(
+        (cert?.deductions ?? []).reduce(
+          (s, d) => s.plus(new Decimal(d.amount.toString())),
+          new Decimal(0),
+        ),
+      );
+
+    const invoice = await prisma.clientInvoice.findFirst({
+      where: { sourceIpcId: certificateId, postingStatus: 'POSTED', reversalJournalEntryId: null },
+      select: { id: true, vatAmount: true, totalAmount: true },
+    });
+
+    if (!invoice) {
+      return {
+        netCertified: netCertified.toFixed(2),
+        vatAmount: '0.00',
+        invoiceTotal: null,
+        totalReceived: '0.00',
+        outstanding: null,
+        paidPercent: '0',
+        status: 'UNINVOICED',
+        totalAllocated: '0.00',
+      };
+    }
+
+    const invoiceTotal = new Decimal(invoice.totalAmount.toString());
+    const vatAmount = new Decimal(invoice.vatAmount.toString());
+
+    const received = await prisma.clientReceiptAllocation.aggregate({
+      where: { clientInvoiceId: invoice.id, postingStatus: 'POSTED' },
+      _sum: { allocatedAmount: true },
+    });
+    const totalReceived = new Decimal(received._sum.allocatedAmount?.toString() ?? '0');
+    const outstanding = Decimal.max(invoiceTotal.minus(totalReceived), new Decimal(0));
+
+    let status: IpcPaymentStatus = 'UNPAID';
+    if (invoiceTotal.greaterThan(0) && totalReceived.greaterThanOrEqualTo(invoiceTotal)) {
+      status = 'PAID';
+    } else if (totalReceived.greaterThan(0)) {
+      status = 'PARTIALLY_PAID';
+    }
+
+    const paidPercent = invoiceTotal.greaterThan(0)
+      ? totalReceived.dividedBy(invoiceTotal).times(100)
+      : new Decimal(0);
+
+    return {
+      netCertified: netCertified.toFixed(2),
+      vatAmount: vatAmount.toFixed(2),
+      invoiceTotal: invoiceTotal.toFixed(2),
+      totalReceived: totalReceived.toFixed(2),
+      outstanding: outstanding.toFixed(2),
+      paidPercent: paidPercent.toFixed(1),
+      status,
+      totalAllocated: totalReceived.toFixed(2),
+    };
   }
 }
