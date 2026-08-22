@@ -82,6 +82,7 @@ describe('AP governance seam (ADR-011)', () => {
         {} as never,
         commandGovernance as never,
         sod as never,
+        {} as never,
       );
       return { svc, paymentRepo, commandGovernance };
     }

@@ -1174,6 +1174,9 @@ Supersede: explicit command swaps isEffective between old and new cert.
 | `GET` | `/bank-accounts` | List bank accounts for the org |
 | `POST` | `/bank-accounts` | Configure a bank account |
 | `GET` | `/bank-accounts/:id` | Get bank account detail |
+| `GET` | `/bank-accounts/:id/signatories` | List active authorized signatories (ADR-022) |
+| `POST` | `/bank-accounts/:id/signatories` | Authorize a signatory `{ userId }`. Accounts with signatories require ≥2 to release a payment |
+| `DELETE` | `/bank-accounts/:id/signatories/:userId` | Remove (deactivate) a signatory |
 
 **Configure bank account — body:**
 ```json
@@ -1442,7 +1445,8 @@ Records cash collected and allocates it to reduce outstanding invoice balances.
 | `POST` | `/payments` | Create a payment record |
 | `GET` | `/payments/:id` | Get payment with allocations |
 | `POST` | `/payments/:id/approve` | Approve or reject |
-| `POST` | `/payments/:id/post` | Post to GL (Dr AP / Cr Bank or Advance) |
+| `POST` | `/payments/:id/release` | Sign to release (ADR-022). Under bank-signatory dual control; ≥2 distinct signatories, 2nd sets `RELEASED` |
+| `POST` | `/payments/:id/post` | Post to GL (Dr AP / Cr Bank or Advance). Under dual control the payment must be `RELEASED` first |
 | `POST` | `/payments/:id/allocations` | Allocate advance payment against a supplier bill |
 | `POST` | `/payments/:id/allocations/:allocationId/reverse` | Reverse an advance allocation |
 | `POST` | `/payments/:id/reverse` | Reverse the entire payment |

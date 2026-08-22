@@ -54,15 +54,28 @@ export class SupplierPaymentController {
     return this.supplierPaymentService.approve(identity, id);
   }
 
+  @Post(':id/release')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({
+    summary: 'Sign to release an APPROVED payment (ADR-022 CONST-DOA-005). ' +
+      'Requires ≥2 distinct authorized bank signatories; the 2nd signature sets RELEASED.',
+  })
+  @ApiResponse({ status: 403, description: 'Not an authorized signatory, or a segregation-of-duties conflict' })
+  @ApiResponse({ status: 409, description: 'You have already signed the release for this payment' })
+  release(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.supplierPaymentService.signRelease(identity, id);
+  }
+
   @Post(':id/post')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })
   @ApiOperation({
-    summary: 'Post approved payment to GL. ' +
+    summary: 'Post payment to GL. Under bank-signatory dual control it must be RELEASED first. ' +
       'If fully allocated to bills: Dr AP / Cr Bank. ' +
       'If advance (unallocated): Dr Supplier Advance / Cr Bank.',
   })
-  @ApiResponse({ status: 400, description: 'Payment must be APPROVED before posting' })
+  @ApiResponse({ status: 400, description: 'Payment must be APPROVED (or RELEASED under dual control) before posting' })
   post(
     @CurrentUser() identity: RequestIdentity,
     @Param('id') id: string,

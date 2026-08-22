@@ -141,6 +141,7 @@ describe('Accounting SoD wiring (ADR-022)', () => {
       {} as never,
       {} as never,
       sod as never,
+      {} as never,
     );
 
     await expect(svc.approve(identity('alice'), 'p1')).rejects.toBeInstanceOf(ForbiddenException);

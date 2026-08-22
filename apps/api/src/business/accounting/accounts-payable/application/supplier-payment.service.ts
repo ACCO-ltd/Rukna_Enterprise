@@ -3,9 +3,11 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
 } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
 import type { RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import {
@@ -18,6 +20,7 @@ import { SupplierPaymentRepository } from '../infrastructure/supplier-payment.re
 import { SupplierBillRepository } from '../infrastructure/supplier-bill.repository.js';
 import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
 import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
+import { BankAccountSignatoryService } from '../../accounting-core/application/bank-account-signatory.service.js';
 
 export interface CreateSupplierPaymentDto {
   supplierId: string;
@@ -60,7 +63,11 @@ export class SupplierPaymentService {
     private readonly postingPort: IAccountingPostingPort,
     private readonly commandGovernance: CommandGovernanceService,
     private readonly sod: SegregationOfDutiesService,
+    private readonly signatoryService: BankAccountSignatoryService,
   ) {}
+
+  /** ADR-022 CONST-DOA-005: the number of distinct bank signatures required to release a payment. */
+  private static readonly RELEASE_SIGNATURES_REQUIRED = 2;
 
   async create(identity: RequestIdentity, dto: CreateSupplierPaymentDto) {
     const prisma = this.tenancyService.getClient();
@@ -167,6 +174,62 @@ export class SupplierPaymentService {
   }
 
   /**
+   * ADR-022 CONST-DOA-005 — one authorized signatory signs to release an APPROVED payment. Release
+   * is a dual control distinct from approval: it needs ≥2 distinct signatories of the payment's bank
+   * account, and the signer may be neither the payment approver nor the approver of a bill it settles
+   * (CONST-DOA-003). The signature that reaches the threshold flips the payment to RELEASED.
+   */
+  async signRelease(identity: RequestIdentity, paymentId: string) {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId, userId } = identity;
+
+    const payment = await this.paymentRepo.findById(prisma, orgId, paymentId);
+    if (!payment) throw new NotFoundException(`SupplierPayment ${paymentId} not found`);
+    if (payment.documentStatus !== 'APPROVED') {
+      throw new BadRequestException('Only an APPROVED payment can be released');
+    }
+
+    // The signer must be an authorized signatory of the account the payment draws on.
+    const isSignatory = await this.signatoryService.isActiveSignatory(prisma, payment.bankAccountId, userId);
+    if (!isSignatory) {
+      throw new ForbiddenException('Only an authorized signatory of this bank account can release the payment');
+    }
+
+    // SoD: the approver cannot also release, and a releaser cannot have approved a settled bill.
+    if (payment.approvedBy === userId) {
+      throw new ForbiddenException('The payment approver cannot also release it');
+    }
+    const allocations = await prisma.supplierPaymentAllocation.findMany({
+      where: { supplierPaymentId: paymentId },
+      select: { bill: { select: { approvedBy: true } } },
+    });
+    const actorApprovedASettledBill = allocations.some((a) => a.bill.approvedBy === userId);
+    await this.sod.assertAllowed({
+      organizationId: orgId,
+      action: 'APPROVE_OR_RELEASE_SUPPLIER_PAYMENT',
+      actorUserId: userId,
+      supplierBillApproverUserId: actorApprovedASettledBill ? userId : undefined,
+    });
+
+    await prisma.$transaction(async (tx) => {
+      try {
+        await this.paymentRepo.addReleaseSignature(tx as never, paymentId, userId);
+      } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+          throw new ConflictException('You have already signed the release for this payment');
+        }
+        throw e;
+      }
+      const signatures = await this.paymentRepo.countReleaseSignatures(tx as never, paymentId);
+      if (signatures >= SupplierPaymentService.RELEASE_SIGNATURES_REQUIRED) {
+        await this.paymentRepo.markReleased(tx as never, paymentId);
+      }
+    });
+
+    return this.paymentRepo.findById(prisma, orgId, paymentId);
+  }
+
+  /**
    * Post supplier payment to GL.
    * EVT-AP-003 Branch A (allocated): Dr AP / Cr Bank
    * EVT-AP-003 Branch B (advance): Dr AP / Dr Supplier Advance / Cr Bank
@@ -177,11 +240,20 @@ export class SupplierPaymentService {
 
     const payment = await this.paymentRepo.findById(prisma, orgId, dto.paymentId);
     if (!payment) throw new NotFoundException(`SupplierPayment ${dto.paymentId} not found`);
-    if (payment.documentStatus !== 'APPROVED') {
-      throw new BadRequestException(`Payment must be APPROVED before posting`);
-    }
     if (payment.postingStatus === 'POSTED') {
       throw new ConflictException(`Payment ${dto.paymentId} is already posted`);
+    }
+    // ADR-022 CONST-DOA-005: an account under bank-signatory dual control must reach RELEASED
+    // (≥2 signatures) before it can be posted; an account without signatories posts from APPROVED.
+    const underDualControl = await this.signatoryService.requiresDualControl(prisma, payment.bankAccountId);
+    if (underDualControl) {
+      if (payment.documentStatus !== 'RELEASED') {
+        throw new BadRequestException(
+          'Payment must be RELEASED by two authorized bank signatories before posting',
+        );
+      }
+    } else if (payment.documentStatus !== 'APPROVED') {
+      throw new BadRequestException(`Payment must be APPROVED before posting`);
     }
 
     const apGl = await this.accountRepo.findByCode(prisma, orgId, dto.apAccountCode);
