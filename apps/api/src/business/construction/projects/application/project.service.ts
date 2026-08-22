@@ -29,13 +29,14 @@ import type { UpdateProjectDto } from '../presentation/dto/update-project.dto.js
 import type { AddMemberDto } from '../presentation/dto/add-member.dto.js';
 import type { SetMemberRolesDto } from '../presentation/dto/set-member-roles.dto.js';
 
-// Transitions allowed from each status
-const CANCEL_ALLOWED_FROM = new Set(['DRAFT', 'APPROVED', 'MOBILIZING', 'ACTIVE']);
+// ADR-019 CONST-PLC-001/004: the canonical lifecycle is six states, each transition a guarded
+// business command. `start` collapses the retired approve → mobilize → activate chain into one
+// DRAFT → ACTIVE command; the DRAFT → ACTIVE governance binding (ADR-022) enforces the approval
+// chain that `APPROVED` used to model. Cancellation is allowed from the two pre-completion states.
+const CANCEL_ALLOWED_FROM = new Set(['DRAFT', 'ACTIVE']);
 
 const LIFECYCLE_TRANSITIONS: Record<string, string> = {
-  approve: 'APPROVED',
-  mobilize: 'MOBILIZING',
-  activate: 'ACTIVE',
+  start: 'ACTIVE',
   'practical-completion': 'PRACTICAL_COMPLETION',
   closeout: 'CLOSEOUT',
   close: 'CLOSED',
@@ -44,9 +45,7 @@ const LIFECYCLE_TRANSITIONS: Record<string, string> = {
 };
 
 const LIFECYCLE_REQUIRED_FROM: Record<string, string> = {
-  approve: 'DRAFT',
-  mobilize: 'APPROVED',
-  activate: 'MOBILIZING',
+  start: 'DRAFT',
   'practical-completion': 'ACTIVE',
   closeout: 'PRACTICAL_COMPLETION',
   close: 'CLOSEOUT',

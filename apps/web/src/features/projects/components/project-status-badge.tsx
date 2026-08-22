@@ -11,8 +11,6 @@ import { Badge, type BadgeTone } from '@erp/ui';
  */
 const STATUS_TONES: Record<ProjectStatus, BadgeTone> = {
   [ProjectStatus.DRAFT]: 'neutral',
-  [ProjectStatus.APPROVED]: 'info',
-  [ProjectStatus.MOBILIZING]: 'accent',
   [ProjectStatus.ACTIVE]: 'live',
   [ProjectStatus.PRACTICAL_COMPLETION]: 'warning',
   [ProjectStatus.CLOSEOUT]: 'warning',

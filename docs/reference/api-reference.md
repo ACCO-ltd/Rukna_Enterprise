@@ -166,7 +166,7 @@ Key enums:
 
 ```typescript
 // Projects
-enum ProjectStatus   { DRAFT, APPROVED, MOBILIZING, ACTIVE, PRACTICAL_COMPLETION, CLOSEOUT, CLOSED, CANCELLED }
+enum ProjectStatus   { DRAFT, ACTIVE, PRACTICAL_COMPLETION, CLOSEOUT, CLOSED, CANCELLED }
 enum CommercialModel { CLIENT_CONTRACT, INTERNAL_CAPITAL }
 enum ParticipationModel { SOLE, JOINT_VENTURE }
 enum ProjectRole     { PROJECT_MANAGER, QUANTITY_SURVEYOR, SITE_ENGINEER, COMMERCIAL_MANAGER, FINANCE_REVIEWER, VIEWER }
@@ -415,9 +415,7 @@ All return the updated project. All return `400` if the transition is invalid fr
 
 | Method | Path | From → To |
 |---|---|---|
-| `POST` | `/projects/:id/approve` | `DRAFT` → `APPROVED` |
-| `POST` | `/projects/:id/mobilize` | `APPROVED` → `MOBILIZING` |
-| `POST` | `/projects/:id/activate` | `MOBILIZING` → `ACTIVE` |
+| `POST` | `/projects/:id/start` | `DRAFT` → `ACTIVE` |
 | `POST` | `/projects/:id/practical-completion` | `ACTIVE` → `PRACTICAL_COMPLETION` ⚠️ |
 | `POST` | `/projects/:id/closeout` | `PRACTICAL_COMPLETION` → `CLOSEOUT` |
 | `POST` | `/projects/:id/close` | `CLOSEOUT` → `CLOSED` |
@@ -431,7 +429,7 @@ All return the updated project. All return `400` if the transition is invalid fr
 POST /projects/:id/cancel
 { "reason": "Client withdrew due to funding issues" }
 ```
-Allowed from: `DRAFT`, `APPROVED`, `MOBILIZING`, `ACTIVE`.
+Allowed from: `DRAFT`, `ACTIVE`.
 
 **Suspend / Resume:**
 ```
@@ -997,20 +995,22 @@ Records cash received from clients and allocates it against certified IPCs.
 ### Project
 
 ```
-DRAFT ──approve──► APPROVED ──mobilize──► MOBILIZING ──activate──► ACTIVE
-                                                                      │
-                                               PRACTICAL_COMPLETION ◄─┘
-                                                │             │
-                                    reopen-to-active    closeout
-                                                │             │
-                                             ACTIVE        CLOSEOUT
-                                                         │        │
-                                             reopen-to-pc    close
-                                                         │        │
-                                             PRACTICAL_COMPLETION  CLOSED
+DRAFT ──start──► ACTIVE
+                   │
+  PRACTICAL_COMPLETION ◄─┘
+   │             │
+reopen-to-active    closeout
+   │             │
+ACTIVE        CLOSEOUT
+            │        │
+reopen-to-pc    close
+            │        │
+PRACTICAL_COMPLETION  CLOSED
 
-CANCELLED ◄── (DRAFT, APPROVED, MOBILIZING, ACTIVE)
+CANCELLED ◄── (DRAFT, ACTIVE)
 ```
+
+(ADR-019 CONST-PLC-001: `APPROVED`/`MOBILIZING` retired — `start` is the single `DRAFT` → `ACTIVE` command.)
 
 Suspend/Resume is a separate overlay — does not change status.
 `PRACTICAL_COMPLETION` triggers all ACTIVE contracts → `FINAL_ACCOUNT_PENDING`.

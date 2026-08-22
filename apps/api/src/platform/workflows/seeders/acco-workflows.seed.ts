@@ -266,9 +266,9 @@ async function seedProjectLifecycleBindings(
   // Project lifecycle transitions — all is_active=false (PLACEHOLDER).
   // Activate via admin configuration once DOA thresholds confirmed by Eng Ahmed Shirie.
   const transitions = [
-    { fromState: 'DRAFT',                toState: 'APPROVED',              priority: 10 },
-    { fromState: 'APPROVED',             toState: 'MOBILIZING',            priority: 10 },
-    { fromState: 'MOBILIZING',           toState: 'ACTIVE',                priority: 10 },
+    // ADR-019 CONST-PLC-001: DRAFT → ACTIVE ("Start Project") is the single governed entry
+    // into execution — it carries the approval that APPROVED/MOBILIZING used to model.
+    { fromState: 'DRAFT',                toState: 'ACTIVE',                priority: 10 },
     { fromState: 'ACTIVE',               toState: 'PRACTICAL_COMPLETION',  priority: 10 },
     { fromState: 'PRACTICAL_COMPLETION', toState: 'CLOSEOUT',              priority: 10 },
     { fromState: 'CLOSEOUT',             toState: 'CLOSED',                priority: 10 },

@@ -41,7 +41,7 @@ export class ClientPrismaRepository {
         _count: {
           select: {
             projects: {
-              where: { status: { in: ['ACTIVE', 'MOBILIZING', 'PRACTICAL_COMPLETION', 'CLOSEOUT'] } },
+              where: { status: { in: ['ACTIVE', 'PRACTICAL_COMPLETION', 'CLOSEOUT'] } },
             },
           },
         },

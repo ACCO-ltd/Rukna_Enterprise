@@ -12,10 +12,17 @@ Two things are deliberately kept apart in this ADR:
 
 - **Domain decision (frozen):** `APPROVED` and `MOBILIZING` are no longer canonical lifecycle
   phases; the canonical lifecycle is six states; every transition is a guarded command.
-- **Implementation status (proposed):** the database still carries the 8-state enum. Removing
-  `APPROVED`/`MOBILIZING` is a migration gated on **Eng Ahmed Shirie's** sign-off
-  (`apps/api/CLAUDE.md`). **Do not read this ADR as if the schema already reflects the new
-  model.**
+- **Implementation status (partial):**
+  - **Phase A — state collapse: DONE** (migration `20260822130000_collapse_project_status_adr019`).
+    `ProjectStatus` is now six states; `APPROVED`/`MOBILIZING` are gone. The retired
+    approve → mobilize → activate chain collapsed into one `POST /projects/:id/start`
+    (`DRAFT → ACTIVE`); the `DRAFT → ACTIVE` governance binding carries the approval `APPROVED`
+    used to model (ADR-022). The UI presents `DRAFT` as **"Preparation"** (CONST-PLC-010).
+  - **Phase B — guarded-command surfaces: NOT built.** The formal `ProjectReadinessPolicy`
+    (CONST-PLC-005), the queryable readiness read-contract (CONST-PLC-009), per-condition
+    `MANDATORY`/`WAIVABLE` waivers (CONST-PLC-006), and evidence-consuming command payloads
+    (CONST-PLC-008) remain to be built. Today's transitions still run through the existing
+    `CommandGovernance` gate + a `getWorkspaceGuidance` proto-readiness surface.
 
 ## Context
 
@@ -114,9 +121,9 @@ The `DRAFT` enum is unchanged in the backend; the UI presents it as **"Preparati
 "Pre-Execution"). The visible ladder is `Preparation → Active → Practical Completion → Closeout
 → Closed`.
 
-## Migration (proposed — gated on sign-off)
+## Migration (DONE — `20260822130000_collapse_project_status_adr019`)
 
-Proposed state mapping:
+State mapping applied:
 ```
 DRAFT      → DRAFT
 APPROVED   → DRAFT

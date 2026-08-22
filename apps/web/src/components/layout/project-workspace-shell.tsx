@@ -37,8 +37,6 @@ interface ProjectWorkspaceShellProps {
 
 const LIFECYCLE_STAGES: ProjectStatus[] = [
   ProjectStatus.DRAFT,
-  ProjectStatus.APPROVED,
-  ProjectStatus.MOBILIZING,
   ProjectStatus.ACTIVE,
   ProjectStatus.PRACTICAL_COMPLETION,
   ProjectStatus.CLOSEOUT,
