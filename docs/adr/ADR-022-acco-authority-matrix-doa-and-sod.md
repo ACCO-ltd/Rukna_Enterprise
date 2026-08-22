@@ -35,9 +35,20 @@ tolerances (ADR-018 seed values) and **(E)** the A12 settlement-ledger question.
   engine is inert until Phase 3 configures ACCO's bands and the approval chains have role-holders, so
   it does not gate any live command yet. Backward-compatible: amount-less callers only ever match
   catch-all bindings.
-- **Phase 3 — approval chains + role consolidation (CONST-DOA-001, 006..009):** not yet built. This
-  is where the ACCO PO/payment bands and Start/Closeout/DPR/BOQ chains get seeded active with real
-  role-holders — the step that switches Phase 2's engine on.
+- **Phase 3 — value-threshold config + role vocabulary (CONST-DOA-005, CONST-DOA-001): DONE
+  (config-ready, dev-proven).** ACCO's PO bands (≤\$100 / \$100.01–\$1k / \$1k.01–\$50k / >\$50k) and
+  payment bands (≤\$1k / \$1k.01–\$10k / >\$10k) are seeded as amount-banded `STATE_TRANSITION`
+  bindings + cumulative role chains, expressed as data in `acco-value-bands.ts` and using the
+  consolidated role vocabulary (`CONSTRUCTION_DIRECTOR`, `FINANCE_OFFICER`, `CFO`, `BOARD_CHAIRMAN`,
+  `GROUP_CEO`, …). Everything is seeded **inactive**: the engine still gates nothing until a
+  deliberate per-org activation (`prisma/seeds/dev-activate-doa-bands.seed.ts` does this for a dev
+  DB — flips the bands active *and* grants the seeded admin the band roles so the loop is walkable).
+  Tests prove the bands partition the amount axis and route through the Phase-2 resolver exactly as
+  CONST-DOA-005 specifies.
+- **Phase 3b — remaining approval chains (CONST-DOA-006..009):** not yet built. The Start / Closeout
+  project chains, the DPR chain, and the BOQ-baseline gate still carry pre-consolidation placeholder
+  steps; the vestigial document-workflow definitions likewise. (These are inactive and off the gated
+  value-matrix path.)
 - **Phase 4 — bank-signatory dual control on payment release (CONST-DOA-005):** not yet built.
 
 ## Context

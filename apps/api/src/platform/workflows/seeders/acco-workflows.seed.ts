@@ -6,6 +6,12 @@ import {
   WorkflowTriggerKind,
 } from '@prisma/client';
 
+import {
+  accoPurchaseOrderBands,
+  accoSupplierPaymentBands,
+  type ValueBand,
+} from './acco-value-bands.js';
+
 /**
  * Seeds all ACCO workflow chains + project lifecycle trigger bindings for a given organization.
  * All chains seeded with is_active=false and requires_ceo_confirmation=true.
@@ -16,6 +22,7 @@ export async function seedAccoWorkflows(prisma: PrismaClient, organizationId: st
   await seedWorkflowRequirementPolicies(prisma);
   await seedDocumentWorkflows(prisma, organizationId);
   await seedProjectLifecycleBindings(prisma, organizationId);
+  await seedProcurementValueBands(prisma, organizationId);
 }
 
 /**
@@ -421,4 +428,104 @@ function buildAccoChains(organizationId: string): (ChainDef & { organizationId: 
       ],
     },
   ] as (ChainDef & { organizationId: string })[];
+}
+
+/**
+ * ADR-022 CONST-DOA-005 — seeds ACCO's value-threshold approval bands for POs and payments.
+ *
+ * Each band is a WorkflowDefinition (its cumulative approver chain) plus a STATE_TRANSITION
+ * binding carrying the band's amount range, so the Phase-2 resolver routes a document to the
+ * band its value falls in. Everything is seeded **inactive** — the engine gates nothing until
+ * a deliberate per-org activation (see scripts/activate-doa-bands.ts), which is gated on the
+ * org actually having holders of the CONSTRUCTION_DIRECTOR / FINANCE_OFFICER / CFO / … roles.
+ */
+async function seedProcurementValueBands(
+  prisma: PrismaClient,
+  organizationId: string,
+): Promise<void> {
+  await seedBandSet(prisma, organizationId, {
+    entityType: 'PurchaseOrder',
+    fromState: 'DRAFT',
+    toState: 'SUBMITTED',
+    transactionType: WorkflowTransactionType.PURCHASE_ORDER,
+    bands: accoPurchaseOrderBands(),
+  });
+  await seedBandSet(prisma, organizationId, {
+    entityType: 'SupplierPayment',
+    fromState: 'DRAFT',
+    toState: 'APPROVED',
+    transactionType: WorkflowTransactionType.SUPPLIER_PAYMENT,
+    bands: accoSupplierPaymentBands(),
+  });
+}
+
+async function seedBandSet(
+  prisma: PrismaClient,
+  organizationId: string,
+  cfg: {
+    entityType: string;
+    fromState: string;
+    toState: string;
+    transactionType: WorkflowTransactionType;
+    bands: ValueBand[];
+  },
+): Promise<void> {
+  for (const band of cfg.bands) {
+    const existingDef = await prisma.workflowDefinition.findFirst({
+      where: { organizationId, name: band.name },
+    });
+    const definition =
+      existingDef ??
+      (await prisma.workflowDefinition.create({
+        data: {
+          organizationId,
+          transactionType: cfg.transactionType,
+          name: band.name,
+          // Not requiresCeoConfirmation: these are real, activatable bands, not legacy placeholders
+          // (the governance-policy seed forces requiresCeoConfirmation definitions permanently off).
+          isActive: false,
+          requiresCeoConfirmation: false,
+          steps: {
+            create: band.steps.map((role, i) => ({
+              stepOrder: i + 1,
+              roleRequired: role,
+              isOptional: false,
+              notifyRoles: [],
+            })),
+          },
+        },
+      }));
+
+    const existingBinding = await prisma.workflowTriggerBinding.findFirst({
+      where: {
+        organizationId,
+        triggerKind: WorkflowTriggerKind.STATE_TRANSITION,
+        entityType: cfg.entityType,
+        fromState: cfg.fromState,
+        toState: cfg.toState,
+        minAmount: band.minAmount,
+        maxAmount: band.maxAmount,
+      },
+    });
+    if (!existingBinding) {
+      await prisma.workflowTriggerBinding.create({
+        data: {
+          organizationId,
+          triggerKind: WorkflowTriggerKind.STATE_TRANSITION,
+          entityType: cfg.entityType,
+          transactionType: cfg.transactionType,
+          fromState: cfg.fromState,
+          toState: cfg.toState,
+          workflowDefinitionId: definition.id,
+          // Above the catch-all/project bindings (priority 10): a matching band wins over a
+          // generic binding. Within a set only one band's range matches an amount anyway.
+          priority: 50,
+          minAmount: band.minAmount,
+          maxAmount: band.maxAmount,
+          isActive: false,
+        },
+      });
+    }
+    console.log(`  ✓ Seeded value band (inactive): ${band.name}`);
+  }
 }
