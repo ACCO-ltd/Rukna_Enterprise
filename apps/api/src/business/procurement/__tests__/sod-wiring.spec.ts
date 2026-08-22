@@ -64,6 +64,7 @@ describe('Procurement SoD wiring (ADR-022)', () => {
       {} as never,
       {} as never,
       sod as never,
+      { isReceiptCleared: async () => false } as never,
     );
 
     await expect(
@@ -76,6 +77,32 @@ describe('Procurement SoD wiring (ADR-022)', () => {
         actorUserId: 'alice',
         purchaseOrderCreatorUserId: 'alice',
       }),
+    );
+  });
+
+  it('goods receipt: an APPROVED CONST-DOA-004 exception clears the PO creator (no block)', async () => {
+    const sod = { assertAllowed: jest.fn() };
+    const poRepo = {
+      findById: jest.fn().mockResolvedValue({ id: 'po1', status: 'OPEN', createdBy: 'alice', revisions: [] }),
+    };
+    const svc = new GoodsReceiptService(
+      { getClient: () => ({}) } as never,
+      {} as never,
+      poRepo as never,
+      {} as never,
+      {} as never,
+      sod as never,
+      { isReceiptCleared: async () => true } as never,
+    );
+
+    // The receiver is the PO creator, but a cleared exception means the block cannot fire — the
+    // service passes no purchaseOrderCreatorUserId. (It then fails later on the empty lines list.)
+    await expect(
+      svc.create(identity('alice'), { purchaseOrderId: 'po1', deliveryDate: '2026-09-01', lines: [] }),
+    ).rejects.not.toBeInstanceOf(ForbiddenException);
+
+    expect(sod.assertAllowed).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'RECEIVE_GOODS', purchaseOrderCreatorUserId: undefined }),
     );
   });
 

@@ -28,10 +28,17 @@ tolerances (ADR-018 seed values) and **(E)** the A12 settlement-ledger question.
   **System administrator ≠ business-transaction approver:** enforced in `ApprovalService.approve`,
   keyed on the consolidated `SYSTEM_ADMINISTRATOR` role (the tenant super-user `ADMIN` is a
   different role and is not blocked; the rule is dormant until someone holds `SYSTEM_ADMINISTRATOR`).
-- **Still deferred — the CONST-DOA-004 documented exception** override (a PO creator may receive
-  goods only with independent supervisor verification **and** CFO approval): a net-new
-  documented-exception flow, not yet built. The PO-creator-receipt *block* is enforced (Phase 1);
-  this is its sanctioned escape hatch.
+- **CONST-DOA-004 documented exception: DONE.** The one sanctioned override to the PO-creator-
+  receipt block. New `PoReceiptException` model + flow: **request** (derives the receiver from the
+  PO creator) → an **independent supervisor verifies** (≠ receiver) → the **CFO approves** (holds
+  the CFO role, distinct from receiver and supervisor). `GoodsReceiptService.create` consults it —
+  an APPROVED exception clears the receiver, so the SoD block does not fire. Endpoints under
+  `/procurement/receipt-exceptions` (distinct from the over-receipt quantity exception on the GRN).
+
+**ADR-022 is now fully implemented** (Phases 1, 1b, 2, 3, 3b, 4). The only follow-ups left are
+config-only and orthogonal: the non-value-matrix chains still carry legacy role names in the
+vestigial `buildAccoChains` document workflows, and go-live activation of the seeded bands/chains
+remains a deliberate per-org step (role-holders + `dev-activate-doa-bands.seed.ts`).
 - **Phase 2 — value-threshold routing engine (CONST-DOA-005): DONE (engine, dormant).** A trigger
   binding may now carry an amount band (`minAmount`/`maxAmount`, half-open `[min, max)`; both null =
   catch-all). The resolver filters candidate bindings by the document value, so the same transition

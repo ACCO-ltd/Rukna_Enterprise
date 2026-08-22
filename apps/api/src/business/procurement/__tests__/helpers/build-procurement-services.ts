@@ -117,7 +117,10 @@ export function buildProcurementServices(prisma: PrismaClient): ProcurementServi
     new WorkflowsPrismaRepository(tenancy),
   );
   const poService       = new PurchaseOrderService(tenancy, poRepo, materialRepo, uomRepo, commitmentWriter, noOpAuditOutbox, commandGovernance, sod);
-  const grnService      = new GoodsReceiptService(tenancy, grnRepo, poRepo, commitmentWriter, noOpAuditOutbox, sod);
+  // ADR-022 CONST-DOA-004: the harness reports no approved receipt exception, so the SoD receipt
+  // block behaves normally. The exception flow is covered in its own spec.
+  const receiptExceptions = { isReceiptCleared: async () => false } as unknown as import('../../goods-receipts/application/receipt-exception.service.js').ReceiptExceptionService;
+  const grnService      = new GoodsReceiptService(tenancy, grnRepo, poRepo, commitmentWriter, noOpAuditOutbox, sod, receiptExceptions);
   const billMatchingService = new BillMatchingService(tenancy, billMatchRepo);
 
   const supplierBillService = new SupplierBillService(
