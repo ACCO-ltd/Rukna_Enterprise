@@ -78,9 +78,16 @@ export class PaymentReceiptArRepository {
     });
   }
 
+  /**
+   * All allocations on a receipt for the receipt workspace (ACC-SET-001 FE-1) — including
+   * REVERSED ones, which the panel renders struck-through as an audit trail rather than
+   * silently dropping. Balances are unaffected: they are tracked on the receipt row, and the
+   * applied total excludes reversed allocations. Newest first.
+   */
   findAllocationsByReceipt(prisma: TenantPrisma, paymentReceiptId: string) {
     return prisma.clientReceiptAllocation.findMany({
-      where: { paymentReceiptId, postingStatus: { in: ['POSTED', 'NOT_POSTED'] } },
+      where: { paymentReceiptId },
+      orderBy: { createdAt: 'desc' },
     });
   }
 

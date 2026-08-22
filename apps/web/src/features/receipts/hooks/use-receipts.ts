@@ -4,13 +4,15 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 import { useRouter } from 'next/navigation';
 
 import {
-  allocateReceipt,
+  allocateToInvoice,
   createReceipt,
   getReceipt,
   listReceipts,
-  removeAllocation,
-  type AllocateReceiptPayload,
+  postReceipt,
+  reverseAllocation,
+  type AllocateToInvoicePayload,
   type CreateReceiptPayload,
+  type PostReceiptPayload,
 } from '../api/receipts-api';
 import type { Receipt, ReceiptDetail } from '../types';
 
@@ -48,32 +50,37 @@ export function useCreateReceipt() {
 }
 
 /**
- * Allocation changes invalidate the receipt's detail.
- *
- * Nothing else needs refreshing: the list rows carry no allocation figures, and the
- * certificate's own settlement status is derived on the receipt screen from the
- * allocations rather than fetched — see the note on `getCertificatePaymentStatus`, which
- * is unusable until C7 is fixed.
+ * Posting and allocation change the receipt's GL/allocation state, so they invalidate the
+ * detail (allocations, unallocated balance, posting status) and the list rows.
  */
-function useAllocationMutation<TArgs>(receiptId: string, run: (args: TArgs) => Promise<unknown>) {
+function useReceiptStateMutation<TArgs>(receiptId: string, run: (args: TArgs) => Promise<unknown>) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: run,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: receiptKeys.detail(receiptId) });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: receiptKeys.detail(receiptId) }),
+        queryClient.invalidateQueries({ queryKey: receiptKeys.all }),
+      ]);
     },
   });
 }
 
-export function useAllocateReceipt(receiptId: string) {
-  return useAllocationMutation(receiptId, (payload: AllocateReceiptPayload) =>
-    allocateReceipt(receiptId, payload),
+export function usePostReceipt(receiptId: string) {
+  return useReceiptStateMutation(receiptId, (payload: PostReceiptPayload) =>
+    postReceipt(receiptId, payload),
   );
 }
 
-export function useRemoveAllocation(receiptId: string) {
-  return useAllocationMutation(receiptId, (allocationId: string) =>
-    removeAllocation(receiptId, allocationId),
+export function useAllocateToInvoice(receiptId: string) {
+  return useReceiptStateMutation(receiptId, (payload: AllocateToInvoicePayload) =>
+    allocateToInvoice(receiptId, payload),
+  );
+}
+
+export function useReverseAllocation(receiptId: string) {
+  return useReceiptStateMutation(receiptId, (allocationId: string) =>
+    reverseAllocation(receiptId, allocationId),
   );
 }

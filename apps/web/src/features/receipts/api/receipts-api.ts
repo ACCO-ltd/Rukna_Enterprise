@@ -2,6 +2,17 @@ import { apiClient } from '@/lib/api-client';
 
 import type { Receipt, ReceiptAllocation, ReceiptDetail } from '../types';
 
+/**
+ * ─── ACC-SET-001 receipt flow ───────────────────────────────────────────────────
+ *
+ * A receipt is recorded (`POST /receipts`), then **posted to the GL** and allocated against
+ * **ClientInvoices** through `/customer-receipts`. There is no direct receipt→IPC allocation
+ * anymore — an IPC's payment status is derived from the invoice raised off it.
+ *
+ * `create` still lives on `POST /receipts` until BE-2 folds it into the AR module; every
+ * other verb is on `/customer-receipts`. Both act on the same PaymentReceipt row.
+ */
+
 /** Body accepted by `POST /receipts`, mirroring CreateReceiptDto. */
 export interface CreateReceiptPayload {
   clientId: string;
@@ -12,32 +23,44 @@ export interface CreateReceiptPayload {
   notes?: string;
 }
 
-/**
- * Body accepted by `POST /receipts/:id/allocations`.
- *
- * The server checks two things: that the certificate belongs to the caller's organization,
- * and that the running total will not exceed the receipt amount
- * (`finance.service.ts:52-70`). It does NOT check that the certificate belongs to the
- * receipt's client, that the currencies match, or that the allocation is positive — see
- * C16. The picker and `allocationProblem` cover all three before the request is sent.
- */
-export interface AllocateReceiptPayload {
-  certificateId: string;
-  allocatedAmount: string;
+/** One invoice allocation line — `amount` is a JS number (server DTO uses `@IsNumber`). */
+export interface ReceiptAllocationInput {
+  clientInvoiceId: string;
+  amount: number;
 }
 
-/** `GET /receipts`, optionally scoped to one client. Newest receipt date first. */
+/**
+ * Body for `POST /customer-receipts/:id/post`.
+ *
+ * The bank account (which account received the cash) is chosen explicitly via its GL code. AR
+ * control and unapplied-cash accounts are resolved server-side by role (ACC-POST-001), so no
+ * other account codes are sent. Optional `allocations` settle invoices at post time; anything
+ * left over lands in Unapplied and can be allocated later.
+ */
+export interface PostReceiptPayload {
+  bankAccountCode: string;
+  allocations?: ReceiptAllocationInput[];
+}
+
+/** Body for `POST /customer-receipts/:id/allocations` — a subsequent allocation. */
+export interface AllocateToInvoicePayload {
+  clientInvoiceId: string;
+  amount: number;
+}
+
+/** `GET /customer-receipts`, optionally scoped to one client. Newest receipt date first. */
 export function listReceipts(clientId?: string): Promise<Receipt[]> {
-  return apiClient<Receipt[]>('/receipts', {
+  return apiClient<Receipt[]>('/customer-receipts', {
     ...(clientId ? { params: { clientId } } : {}),
   });
 }
 
-/** Returns the receipt with its allocations, newest first. */
+/** `GET /customer-receipts/:id` — the receipt with its invoice allocations. */
 export function getReceipt(id: string): Promise<ReceiptDetail> {
-  return apiClient<ReceiptDetail>(`/receipts/${id}`);
+  return apiClient<ReceiptDetail>(`/customer-receipts/${id}`);
 }
 
+/** `POST /receipts` — record a receipt (NOT_POSTED until it is posted to the GL). */
 export function createReceipt(payload: CreateReceiptPayload): Promise<Receipt> {
   return apiClient<Receipt>('/receipts', {
     method: 'POST',
@@ -45,19 +68,29 @@ export function createReceipt(payload: CreateReceiptPayload): Promise<Receipt> {
   });
 }
 
-export function allocateReceipt(
-  receiptId: string,
-  payload: AllocateReceiptPayload,
-): Promise<ReceiptAllocation> {
-  return apiClient<ReceiptAllocation>(`/receipts/${receiptId}/allocations`, {
+/** `POST /customer-receipts/:id/post` — Dr Bank / Cr AR (+ Cr Unapplied), atomic with allocations. */
+export function postReceipt(id: string, payload: PostReceiptPayload): Promise<Receipt> {
+  return apiClient<Receipt>(`/customer-receipts/${id}/post`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 }
 
-/** Answers 200 with an empty body — the service returns void (B6 family). */
-export function removeAllocation(receiptId: string, allocationId: string): Promise<void> {
-  return apiClient<void>(`/receipts/${receiptId}/allocations/${allocationId}`, {
-    method: 'DELETE',
+/** `POST /customer-receipts/:id/allocations` — allocate part of a posted receipt to an invoice. */
+export function allocateToInvoice(
+  receiptId: string,
+  payload: AllocateToInvoicePayload,
+): Promise<ReceiptAllocation> {
+  return apiClient<ReceiptAllocation>(`/customer-receipts/${receiptId}/allocations`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
   });
+}
+
+/** `POST /customer-receipts/:id/allocations/:allocationId/reverse` — reverse one allocation. */
+export function reverseAllocation(receiptId: string, allocationId: string): Promise<void> {
+  return apiClient<void>(
+    `/customer-receipts/${receiptId}/allocations/${allocationId}/reverse`,
+    { method: 'POST', body: JSON.stringify({}) },
+  );
 }

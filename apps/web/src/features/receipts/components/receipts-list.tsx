@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
+  Badge,
   Button,
   Input,
   Label,
@@ -147,12 +148,13 @@ export function ReceiptsList() {
               <TableHead>{t('columns.date')}</TableHead>
               <TableHead>{t('columns.reference')}</TableHead>
               <TableHead>{t('columns.client')}</TableHead>
+              <TableHead>{t('columns.status')}</TableHead>
               <TableHead numeric>{t('columns.amount')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {visible.length === 0 ? (
-              <TableEmpty colSpan={4}>
+              <TableEmpty colSpan={5}>
                 <p>{t('noMatches')}</p>
                 {hasFilters ? (
                   <div className="mt-4">
@@ -217,8 +219,21 @@ function ReceiptRow({
             the clients list. Falls back to nothing rather than showing a cuid. */}
         {clientName ?? <span className="text-muted-foreground">{t('notSet')}</span>}
       </TableCell>
+      <TableCell>
+        <Badge
+          tone={
+            receipt.postingStatus === 'POSTED'
+              ? 'live'
+              : receipt.postingStatus === 'REVERSED'
+                ? 'danger'
+                : 'warning'
+          }
+        >
+          {t(`status.${receipt.postingStatus === 'POSTED' ? 'posted' : receipt.postingStatus === 'REVERSED' ? 'reversed' : 'notPosted'}`)}
+        </Badge>
+      </TableCell>
       <TableCell numeric className="whitespace-nowrap font-medium">
-        <bdi>{formatMoney(receipt.amount, receipt.currency, locale)}</bdi>
+        <bdi>{formatMoney(receipt.totalAmount, receipt.currencyCode, locale)}</bdi>
       </TableCell>
     </TableRow>
   );
