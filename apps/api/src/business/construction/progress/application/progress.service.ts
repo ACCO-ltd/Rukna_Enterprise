@@ -6,6 +6,10 @@ import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js'
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { ProgressRepository } from '../infrastructure/progress.repository.js';
 import { ProjectFinancialPositionService } from '../../../accounting/financial-position/application/project-financial-position.service.js';
+import {
+  CommandGovernanceService,
+  throwIfGated,
+} from '../../../../platform/workflows/application/command-governance.service.js';
 
 const DIVERGENCE_THRESHOLD = 20; // percentage points before the signal flags a divergence (cf. ADR-023 CONST-COM-018)
 
@@ -57,6 +61,7 @@ export class ProgressService {
     private readonly repo: ProgressRepository,
     private readonly projectAccess: ProjectAccessService,
     private readonly financialPosition: ProjectFinancialPositionService,
+    private readonly commandGovernance: CommandGovernanceService,
   ) {}
 
   async createDpr(identity: RequestIdentity, projectId: string, dto: CreateDprDto) {
@@ -138,6 +143,20 @@ export class ProgressService {
     if (dpr.status !== DprStatus.SUBMITTED) {
       throw new BadRequestException(`Only a SUBMITTED report can be approved (is ${dpr.status}).`);
     }
+
+    // ADR-022 CONST-DOA-008 governance seam: a DPR is approved by the Project Manager. With no
+    // active binding this resolves to null and approval proceeds unchanged; an active binding
+    // opens the approval instance and returns 409 for the client to drive (backward-compatible).
+    throwIfGated(
+      await this.commandGovernance.gateStateTransition(
+        identity,
+        'DailyProgressReport',
+        'SUBMITTED',
+        'APPROVED',
+        dprId,
+      ),
+      'Approving this progress report requires workflow approval.',
+    );
 
     const byNode = new Map<string, Decimal>();
     for (const m of dpr.measurements) {

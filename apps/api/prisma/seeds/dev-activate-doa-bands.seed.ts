@@ -21,41 +21,35 @@
 
 import { PrismaClient } from '@prisma/client';
 
-import { ACCO_ROLES } from '../../src/platform/workflows/seeders/acco-value-bands.js';
+import {
+  accoPurchaseOrderBands,
+  accoSupplierPaymentBands,
+} from '../../src/platform/workflows/seeders/acco-value-bands.js';
+import { accoApprovalChains } from '../../src/platform/workflows/seeders/acco-lifecycle-chains.js';
 
 const prisma = new PrismaClient();
 const ORG_SLUG = process.env.ACCO_ORG_SLUG ?? 'acco';
 const DISABLE = process.argv.includes('--off');
 
-// The distinct roles any ACCO band chain can demand (PO + payment).
-const BAND_ROLES = [
-  ACCO_ROLES.CONSTRUCTION_DIRECTOR,
-  ACCO_ROLES.FINANCE_OFFICER,
-  ACCO_ROLES.CFO,
-  ACCO_ROLES.BOARD_CHAIRMAN,
-  ACCO_ROLES.GROUP_CEO,
-];
-
-// The band definitions the seeder created, matched by name (see acco-value-bands.ts).
-const BAND_NAMES = [
-  'PO ≤ $100',
-  'PO $100.01–$1,000',
-  'PO $1,000.01–$50,000',
-  'PO > $50,000',
-  'Payment ≤ $1,000',
-  'Payment $1,000.01–$10,000',
-  'Payment > $10,000',
+// Every ACCO governance definition the seeder created (value bands + fixed lifecycle chains),
+// and every distinct approver role any of them can demand — derived from the specs so this
+// script never drifts from what was seeded.
+const ALL_BANDS = [...accoPurchaseOrderBands(), ...accoSupplierPaymentBands()];
+const ALL_CHAINS = accoApprovalChains();
+const DEF_NAMES = [...ALL_BANDS.map((b) => b.name), ...ALL_CHAINS.map((c) => c.name)];
+const APPROVER_ROLES = [
+  ...new Set([...ALL_BANDS.flatMap((b) => b.steps), ...ALL_CHAINS.flatMap((c) => c.steps)]),
 ];
 
 async function main() {
   const org = await prisma.organization.findFirst({ where: { slug: ORG_SLUG } });
   if (!org) throw new Error(`Organization "${ORG_SLUG}" not found. Provision the tenant first.`);
   const isActive = !DISABLE;
-  console.log(`DOA value bands for org: ${org.name} (${org.id}) → ${isActive ? 'ACTIVE' : 'INACTIVE'}`);
+  console.log(`ACCO DOA config for org: ${org.name} (${org.id}) → ${isActive ? 'ACTIVE' : 'INACTIVE'}`);
 
-  // 1. Activate (or deactivate) the band definitions and their bindings.
+  // 1. Activate (or deactivate) the band + chain definitions and their bindings.
   const defs = await prisma.workflowDefinition.findMany({
-    where: { organizationId: org.id, name: { in: BAND_NAMES } },
+    where: { organizationId: org.id, name: { in: DEF_NAMES } },
     select: { id: true },
   });
   const defIds = defs.map((d) => d.id);
@@ -64,14 +58,14 @@ async function main() {
     where: { workflowDefinitionId: { in: defIds } },
     data: { isActive },
   });
-  console.log(`  ✓ ${defIds.length} band definitions + their bindings set ${isActive ? 'ACTIVE' : 'INACTIVE'}`);
+  console.log(`  ✓ ${defIds.length} definitions + their bindings set ${isActive ? 'ACTIVE' : 'INACTIVE'}`);
 
   if (!isActive) {
-    console.log('\nBands deactivated — PO submit / payment approve proceed ungated again.');
+    console.log('\nDeactivated — PO/payment/project/BOQ/DPR commands proceed ungated again.');
     return;
   }
 
-  // 2. Grant every band role to every active membership (dev: the admin), so one person can
+  // 2. Grant every approver role to every active membership (dev: the admin), so one person can
   //    walk any chain. Roles are org-scoped; assignment is what auth reads into identity.roles.
   const memberships = await prisma.organizationMembership.findMany({
     where: { organizationId: org.id, removedAt: null },
@@ -79,7 +73,7 @@ async function main() {
   });
   const assigner = memberships[0]?.userId ?? 'dev-seed';
 
-  for (const roleName of BAND_ROLES) {
+  for (const roleName of APPROVER_ROLES) {
     const role = await prisma.role.upsert({
       where: { name_organizationId: { name: roleName, organizationId: org.id } },
       create: { name: roleName, description: `ADR-022 authority role (${roleName})`, organizationId: org.id },
@@ -96,7 +90,7 @@ async function main() {
       }
     }
   }
-  console.log(`  ✓ Granted ${BAND_ROLES.length} band roles to ${memberships.length} membership(s)`);
+  console.log(`  ✓ Granted ${APPROVER_ROLES.length} approver roles to ${memberships.length} membership(s)`);
 
   console.log(
     '\nSubmit a PO or approve a payment to see it route to its amount band and gate ' +

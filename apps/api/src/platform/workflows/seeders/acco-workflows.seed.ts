@@ -11,6 +11,7 @@ import {
   accoSupplierPaymentBands,
   type ValueBand,
 } from './acco-value-bands.js';
+import { accoApprovalChains, type ApprovalChain } from './acco-lifecycle-chains.js';
 
 /**
  * Seeds all ACCO workflow chains + project lifecycle trigger bindings for a given organization.
@@ -23,6 +24,7 @@ export async function seedAccoWorkflows(prisma: PrismaClient, organizationId: st
   await seedDocumentWorkflows(prisma, organizationId);
   await seedProjectLifecycleBindings(prisma, organizationId);
   await seedProcurementValueBands(prisma, organizationId);
+  await seedApprovalChains(prisma, organizationId);
 }
 
 /**
@@ -528,4 +530,83 @@ async function seedBandSet(
     }
     console.log(`  ✓ Seeded value band (inactive): ${band.name}`);
   }
+}
+
+/**
+ * ADR-022 CONST-DOA-006..009 — seeds ACCO's fixed lifecycle/control approval chains (Project
+ * Start & Closeout, BOQ baseline, DPR). Each is a definition + a STATE_TRANSITION binding,
+ * seeded inactive. Project Start/Closeout already have generic bindings from
+ * seedProjectLifecycleBindings, so those are repointed to the specific chain here; BOQ and DPR
+ * get fresh bindings.
+ */
+async function seedApprovalChains(prisma: PrismaClient, organizationId: string): Promise<void> {
+  for (const chain of accoApprovalChains()) {
+    const definition = await seedChainDefinition(prisma, organizationId, chain);
+
+    const existing = await prisma.workflowTriggerBinding.findFirst({
+      where: {
+        organizationId,
+        triggerKind: WorkflowTriggerKind.STATE_TRANSITION,
+        entityType: chain.entityType,
+        fromState: chain.fromState,
+        toState: chain.toState,
+        minAmount: null,
+        maxAmount: null,
+      },
+    });
+
+    if (existing) {
+      // A generic project-lifecycle binding already covers this transition — point it at the
+      // specific chain so Start and Closeout route to their own approvers, not the placeholder.
+      if (existing.workflowDefinitionId !== definition.id) {
+        await prisma.workflowTriggerBinding.update({
+          where: { id: existing.id },
+          data: { workflowDefinitionId: definition.id },
+        });
+      }
+    } else {
+      await prisma.workflowTriggerBinding.create({
+        data: {
+          organizationId,
+          triggerKind: WorkflowTriggerKind.STATE_TRANSITION,
+          entityType: chain.entityType,
+          transactionType: chain.transactionType ?? null,
+          fromState: chain.fromState,
+          toState: chain.toState,
+          workflowDefinitionId: definition.id,
+          priority: 20,
+          isActive: false,
+        },
+      });
+    }
+    console.log(`  ✓ Seeded approval chain (inactive): ${chain.name}`);
+  }
+}
+
+async function seedChainDefinition(
+  prisma: PrismaClient,
+  organizationId: string,
+  chain: ApprovalChain,
+) {
+  const existing = await prisma.workflowDefinition.findFirst({
+    where: { organizationId, name: chain.name },
+  });
+  if (existing) return existing;
+  return prisma.workflowDefinition.create({
+    data: {
+      organizationId,
+      transactionType: chain.transactionType ?? null,
+      name: chain.name,
+      isActive: false,
+      requiresCeoConfirmation: false,
+      steps: {
+        create: chain.steps.map((role, i) => ({
+          stepOrder: i + 1,
+          roleRequired: role,
+          isOptional: false,
+          notifyRoles: [],
+        })),
+      },
+    },
+  });
 }
