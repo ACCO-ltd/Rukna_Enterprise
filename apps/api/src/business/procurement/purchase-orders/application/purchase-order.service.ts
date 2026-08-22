@@ -141,6 +141,12 @@ export class PurchaseOrderService {
     const draft = po.revisions.find((r) => r.status === 'DRAFT');
     if (!draft) throw new ConflictException('No DRAFT revision to submit');
 
+    // ADR-022 CONST-DOA-005: the PO's value (the draft revision total) selects the approval band.
+    const draftTotal = draft.lines.reduce(
+      (sum, l) => sum.add((l.orderedQuantity as Decimal).mul(l.unitPrice as Decimal)),
+      new Decimal(0),
+    );
+
     // Governance seam (ADR-011): submitting a PO for approval routes through the same
     // gateStateTransition used by IPA/Project. With no binding configured this resolves
     // to null and submission proceeds unchanged; when a DOA binding exists it creates the
@@ -152,6 +158,7 @@ export class PurchaseOrderService {
         'DRAFT',
         'SUBMITTED',
         id,
+        draftTotal,
       ),
       'Purchase order submission requires workflow approval.',
     );

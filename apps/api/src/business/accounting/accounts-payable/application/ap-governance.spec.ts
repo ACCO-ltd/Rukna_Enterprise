@@ -68,7 +68,7 @@ describe('AP governance seam (ADR-011)', () => {
       };
       const tenancy = { getClient: () => prisma } as never;
       const paymentRepo = {
-        findById: jest.fn().mockResolvedValue({ id: 'p1', documentStatus: 'DRAFT' }),
+        findById: jest.fn().mockResolvedValue({ id: 'p1', documentStatus: 'DRAFT', totalAmount: 500 }),
         approve: jest.fn().mockResolvedValue({ id: 'p1', documentStatus: 'APPROVED' }),
       };
       const commandGovernance = { gateStateTransition: jest.fn().mockResolvedValue(gate) };
@@ -95,6 +95,8 @@ describe('AP governance seam (ADR-011)', () => {
         'DRAFT',
         'APPROVED',
         'p1',
+        // ADR-022 CONST-DOA-005: the payment value is passed for band routing.
+        expect.anything(),
       );
       expect(paymentRepo.approve).not.toHaveBeenCalled();
     });

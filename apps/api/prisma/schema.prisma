@@ -489,6 +489,11 @@ model WorkflowTriggerBinding {
   toState              String?                  @map("to_state")
   workflowDefinitionId String                   @map("workflow_definition_id")
   priority             Int                      @default(0)
+  // ADR-022 CONST-DOA-005 value-threshold routing: a binding may match only within an amount band.
+  // Both null = unbounded (a catch-all binding that matches any amount). Range is half-open
+  // [minAmount, maxAmount): minAmount inclusive, maxAmount exclusive, in the document's currency.
+  minAmount            Decimal?                 @map("min_amount") @db.Decimal(18, 2)
+  maxAmount            Decimal?                 @map("max_amount") @db.Decimal(18, 2)
   isActive             Boolean                  @default(false) @map("is_active")
   createdAt            DateTime                 @default(now()) @map("created_at")
 

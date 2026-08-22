@@ -26,8 +26,19 @@ tolerances (ADR-018 seed values) and **(E)** the A12 settlement-ledger question.
   processor** (needs a `Supplier` ownership field), **system administrator ≠ business-transaction
   approver** (needs an admin-authority determination), and the **CONST-DOA-004 documented exception**
   override (supervisor verification + CFO approval).
-- **Phase 2 — value-threshold routing (CONST-DOA-005), Phase 3 — approval chains (CONST-DOA-006..009),
-  Phase 4 — bank-signatory dual control:** not yet built.
+- **Phase 2 — value-threshold routing engine (CONST-DOA-005): DONE (engine, dormant).** A trigger
+  binding may now carry an amount band (`minAmount`/`maxAmount`, half-open `[min, max)`; both null =
+  catch-all). The resolver filters candidate bindings by the document value, so the same transition
+  routes to different approval chains by amount; the gate threads the value through (wired at PO
+  submit and payment approve) and snapshots `evaluatedAmount` + `matchedPolicyId` + `conditionSnapshot`
+  on the `ApprovalInstance` (immutable evidence, ADR-007). **No bands are seeded/activated** — the
+  engine is inert until Phase 3 configures ACCO's bands and the approval chains have role-holders, so
+  it does not gate any live command yet. Backward-compatible: amount-less callers only ever match
+  catch-all bindings.
+- **Phase 3 — approval chains + role consolidation (CONST-DOA-001, 006..009):** not yet built. This
+  is where the ACCO PO/payment bands and Start/Closeout/DPR/BOQ chains get seeded active with real
+  role-holders — the step that switches Phase 2's engine on.
+- **Phase 4 — bank-signatory dual control on payment release (CONST-DOA-005):** not yet built.
 
 ## Context
 

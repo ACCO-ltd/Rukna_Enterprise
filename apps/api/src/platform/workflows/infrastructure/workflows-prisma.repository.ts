@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 import { TenancyService } from '../../tenancy/tenancy.service.js';
 import { WorkflowTransactionType } from '@erp/types';
 
@@ -41,9 +43,21 @@ export class WorkflowsPrismaRepository {
     transactionType: WorkflowTransactionType | null;
     transactionId: string;
     initiatedBy: string;
+    // ADR-007/022: immutable snapshot of why this chain was selected — the evaluated amount and
+    // the binding whose band matched. Absent for amount-less (unranged) gates.
+    evaluatedAmount?: Decimal | null;
+    matchedPolicyId?: string | null;
+    conditionSnapshot?: Prisma.InputJsonValue;
   }) {
     const prisma = this.tenancyService.getClient();
-    return prisma.approvalInstance.create({ data: { ...data, currentStepOrder: 1 } });
+    const { conditionSnapshot, ...rest } = data;
+    return prisma.approvalInstance.create({
+      data: {
+        ...rest,
+        currentStepOrder: 1,
+        ...(conditionSnapshot !== undefined ? { conditionSnapshot } : {}),
+      },
+    });
   }
 
   /** Most recent approval instance for a given transaction (loop-back lookup, ADR-015). */

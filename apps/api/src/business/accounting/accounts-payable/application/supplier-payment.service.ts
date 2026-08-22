@@ -152,7 +152,15 @@ export class SupplierPaymentService {
     // Governance seam (ADR-011) — the payment has no separate submit, so approval is the
     // request transition. Backward-compatible: null when no binding is configured.
     throwIfGated(
-      await this.commandGovernance.gateStateTransition(identity, 'SupplierPayment', 'DRAFT', 'APPROVED', paymentId),
+      await this.commandGovernance.gateStateTransition(
+        identity,
+        'SupplierPayment',
+        'DRAFT',
+        'APPROVED',
+        paymentId,
+        // ADR-022 CONST-DOA-005: the payment value selects the approval band.
+        payment.totalAmount as Decimal,
+      ),
       'Supplier payment approval requires workflow approval.',
     );
     return this.paymentRepo.approve(prisma, paymentId, identity.userId);
