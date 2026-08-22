@@ -198,4 +198,7 @@ export type GovernedEntity =
   | 'SupplierPayment'
   // ADR-016 CONST-BOQ-018 — baselining fixes the scope a contract is signed against and
   // every certificate is claimed from, so it belongs behind the same gate.
-  | 'BoqVersion';
+  | 'BoqVersion'
+  // ADR-022 CONST-DOA-008 — a daily progress report is approved by the Project Manager; the
+  // Site Engineer only prepares it. The approval routes through the same governance gate.
+  | 'DailyProgressReport';

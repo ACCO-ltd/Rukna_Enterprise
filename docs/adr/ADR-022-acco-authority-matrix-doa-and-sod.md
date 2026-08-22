@@ -45,10 +45,18 @@ tolerances (ADR-018 seed values) and **(E)** the A12 settlement-ledger question.
   DB — flips the bands active *and* grants the seeded admin the band roles so the loop is walkable).
   Tests prove the bands partition the amount axis and route through the Phase-2 resolver exactly as
   CONST-DOA-005 specifies.
-- **Phase 3b — remaining approval chains (CONST-DOA-006..009):** not yet built. The Start / Closeout
-  project chains, the DPR chain, and the BOQ-baseline gate still carry pre-consolidation placeholder
-  steps; the vestigial document-workflow definitions likewise. (These are inactive and off the gated
-  value-matrix path.)
+- **Phase 3b — lifecycle/control approval chains (CONST-DOA-006..009): DONE (config-ready).** The
+  Project **Start** (`DRAFT→ACTIVE`: PM → CFO → Group CEO), Project **Closeout** (`CLOSEOUT→CLOSED`:
+  PM → Finance Officer → Group CEO), **BOQ baseline** (`BoqVersion DRAFT→BASELINED`: Construction
+  Director → CFO → Group CEO), and **DPR** (`DailyProgressReport SUBMITTED→APPROVED`: Project
+  Manager) chains are seeded as data (`acco-lifecycle-chains.ts`), inactive, with the consolidated
+  roles. Start/Closeout repoint their existing generic project bindings to the specific chains. DPR
+  approval — which was not gated — now routes through a backward-compatible governance seam
+  (`DailyProgressReport` added to `GovernedEntity`; null gate → approval proceeds as before). Tests
+  pin each chain to the matrix and confirm it resolves through the gate; the dev-activation seed
+  covers bands *and* chains. **Still deferred:** the vestigial document-workflow definitions
+  (`buildAccoChains`) keep legacy role names, and the ADR-019 leftover `Project DRAFT→APPROVED`
+  requirement-policy row is inert (Start is `DRAFT→ACTIVE`).
 - **Phase 4 — bank-signatory dual control on payment release (CONST-DOA-005):** not yet built.
 
 ## Context

@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import type { RequestIdentity } from '@erp/types';
 
 import { ProgressService } from './progress.service.js';
@@ -47,13 +47,16 @@ function build(over: Over = {}) {
   const financialPosition = {
     getForProject: jest.fn().mockResolvedValue(over.fp ?? { actualCost: '0', forecastCost: '0' }),
   };
+  // ADR-022 DPR governance seam: with no active binding the gate returns null (approval proceeds).
+  const commandGovernance = { gateStateTransition: jest.fn().mockResolvedValue(null) };
   const service = new ProgressService(
     tenancy as never,
     repo as never,
     projectAccess as never,
     financialPosition as never,
+    commandGovernance as never,
   );
-  return { repo, service };
+  return { repo, service, commandGovernance };
 }
 
 describe('ProgressService (ADR-021 MVP)', () => {
@@ -99,6 +102,25 @@ describe('ProgressService (ADR-021 MVP)', () => {
       'dpr-1',
       expect.objectContaining({ status: 'APPROVED' }),
     );
+  });
+
+  it('approve: gates (409) and does not verify when governance resolves a binding (ADR-022 CONST-DOA-008)', async () => {
+    const { repo, service, commandGovernance } = build({
+      dpr: { id: 'dpr-1', status: 'SUBMITTED', projectId: 'p-1', measurements: [{ boqNodeId: 'n1', quantity: 500 }], attachments: [] },
+      node: { id: 'n1', quantity: 1000, isLeaf: true },
+      prior: { _sum: { quantity: '0' } },
+    });
+    commandGovernance.gateStateTransition.mockResolvedValue({ gated: true, approvalInstanceId: 'ai-dpr' });
+
+    await expect(service.approve(identity, 'dpr-1')).rejects.toBeInstanceOf(ConflictException);
+    expect(commandGovernance.gateStateTransition).toHaveBeenCalledWith(
+      identity,
+      'DailyProgressReport',
+      'SUBMITTED',
+      'APPROVED',
+      'dpr-1',
+    );
+    expect(repo.updateDprStatus).not.toHaveBeenCalled();
   });
 
   it('approve: rejects when cumulative would exceed BOQ scope (CONST-PROG-002/009)', async () => {
