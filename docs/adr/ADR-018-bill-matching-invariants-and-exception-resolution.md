@@ -8,6 +8,17 @@ Status: accepted
 
 ## Status note
 
+**Implementation — Phase 1 (control closure): DONE.** The engine now evaluates quantity, price and
+amount **independently** and stores a per-dimension verdict (CONST-MATCH-003); the overall verdict is
+derived and any out-of-tolerance dimension makes the bill an **`EXCEPTION`**, which the existing
+posting gate blocks (CONST-MATCH-004). Three-way quantity is judged against **received** (cumulative
+accepted), and matching is **cumulative** across bills on the same PO line, so a supplier can neither
+bill more than received nor split the full quantity across invoices (CONST-MATCH-005/006). A flat
+platform-default tolerance makes the control hold without waiting on the D4/D5 numbers (tunable per
+org via `MatchingTolerancePolicy`). **Deferred — Phase 2:** the structured reason enum + resolution
+paths, the PO-revision → recommit → rematch loop, and the GRN-correction loop (CONST-MATCH-007..014);
+the existing free-text `approveException` is the interim resolution.
+
 This ADR records the **target** design for supplier bill matching. It extends and **corrects**
 ADR-007's tolerance rules (`MATCH-001`, `MATCH-002`). The engineering shape is owned by
 Abdulsalam; the **business rules** (tolerance meaning, mandatory PO revision, the

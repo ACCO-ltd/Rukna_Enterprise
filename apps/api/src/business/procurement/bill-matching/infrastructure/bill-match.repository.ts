@@ -16,6 +16,10 @@ export interface CreateMatchLineData {
   quantityVariance: Decimal;
   priceVariance: Decimal;
   amountVariance: Decimal;
+  // ADR-018 CONST-MATCH-003: per-dimension verdicts. `withinTolerance` is the derived overall.
+  quantityWithinTolerance: boolean;
+  priceWithinTolerance: boolean;
+  amountWithinTolerance: boolean;
   withinTolerance: boolean;
   exceptionReason?: string;
 }
@@ -105,6 +109,35 @@ export class BillMatchRepository {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  // ADR-018 CONST-MATCH-005: total accepted quantity received against a PO line (all posted GRNs).
+  async sumReceivedForPoLine(prisma: TenantPrisma, poLineId: string): Promise<Decimal | null> {
+    const agg = await prisma.goodsReceiptLine.aggregate({
+      where: { purchaseOrderLineId: poLineId, grn: { status: 'POSTED' } },
+      _sum: { acceptedQuantity: true },
+    });
+    return agg._sum.acceptedQuantity;
+  }
+
+  // ADR-018 CONST-MATCH-006: quantity already billed against a PO line on other accepted matches
+  // (excluding the bill being matched now), so matching is cumulative rather than invoice-isolated.
+  async sumBilledForPoLineExcludingBill(
+    prisma: TenantPrisma,
+    poLineId: string,
+    excludeBillId: string,
+  ): Promise<Decimal | null> {
+    const agg = await prisma.supplierBillMatchLine.aggregate({
+      where: {
+        purchaseOrderLineId: poLineId,
+        billMatch: {
+          supplierBillId: { not: excludeBillId },
+          status: { in: ['MATCHED', 'MATCHED_WITH_TOLERANCE', 'APPROVED_EXCEPTION'] },
+        },
+      },
+      _sum: { billedQuantity: true },
+    });
+    return agg._sum.billedQuantity;
   }
 
   updateBillMatchStatus(prisma: TenantPrisma, billId: string, matchStatus: string) {

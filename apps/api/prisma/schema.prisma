@@ -3289,6 +3289,11 @@ model SupplierBillMatchLine {
   quantityVariance    Decimal  @map("quantity_variance") @db.Decimal(18, 4)
   priceVariance       Decimal  @map("price_variance") @db.Decimal(18, 4)
   amountVariance      Decimal  @map("amount_variance") @db.Decimal(18, 2)
+  // ADR-018 CONST-MATCH-003: each dimension is evaluated against tolerance independently. The
+  // single `withinTolerance` boolean is retained as the derived overall verdict (CONST-MATCH-004).
+  quantityWithinTolerance Boolean @default(true) @map("quantity_within_tolerance")
+  priceWithinTolerance    Boolean @default(true) @map("price_within_tolerance")
+  amountWithinTolerance   Boolean @default(true) @map("amount_within_tolerance")
   withinTolerance     Boolean  @map("within_tolerance")
   exceptionReason     String?  @map("exception_reason")
   createdAt           DateTime @default(now()) @map("created_at")

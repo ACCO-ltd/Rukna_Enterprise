@@ -448,8 +448,10 @@ test('T09 — Two-way matching produces correct price and quantity variance', as
   expect(new Decimal(matchLine.priceVariance!.toString()).equals(new Decimal('10'))).toBe(true);
   // billedQty=100, poQty=100, qtyVariance=0
   expect(new Decimal(matchLine.quantityVariance!.toString()).equals(new Decimal('0'))).toBe(true);
-  // 10/500 = 2% which is <= 2% tolerance → within tolerance → MATCHED (not MATCHED_WITH_TOLERANCE)
-  expect(matchResult!.status).toBe('MATCHED');
+  // ADR-018 CONST-MATCH-002: 10/500 = 2% is within the 2% tolerance, but it is a non-zero tolerated
+  // variance — so MATCHED_WITH_TOLERANCE (auto-absorbed, still posts), not a bare MATCHED.
+  expect(matchLine.priceWithinTolerance).toBe(true);
+  expect(matchResult!.status).toBe('MATCHED_WITH_TOLERANCE');
 });
 
 // ── T10: Three-way matching uses GRN accepted quantity ───────────────────────

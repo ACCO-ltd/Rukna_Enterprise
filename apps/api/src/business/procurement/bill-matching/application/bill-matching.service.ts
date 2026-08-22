@@ -13,6 +13,12 @@ export interface ApproveExceptionDto {
   approvalReason: string;
 }
 
+// ADR-018 (deferred simplification): when no MatchingTolerancePolicy is configured, the control
+// still holds via a flat platform default — mirroring the over-receipt fallback. Tunable per org
+// via a policy; the exact numbers are the open item D (seed flat, review at 6 months).
+const PLATFORM_FALLBACK_PRICE_PCT = new Decimal('5');
+const PLATFORM_FALLBACK_QTY_PCT = new Decimal('5');
+
 @Injectable()
 export class BillMatchingService {
   constructor(
@@ -50,8 +56,14 @@ export class BillMatchingService {
     const orgPolicy = await this.repo.findOrgTolerancePolicy(prisma, orgId);
     const policy = poPolicy ?? orgPolicy;
 
-    const priceTolPct = policy?.priceVariancePercent ? new Decimal(policy.priceVariancePercent) : null;
-    const qtyTolPct = policy?.quantityVariancePercent ? new Decimal(policy.quantityVariancePercent) : null;
+    const priceTolPct = policy?.priceVariancePercent
+      ? new Decimal(policy.priceVariancePercent)
+      : PLATFORM_FALLBACK_PRICE_PCT;
+    const qtyTolPct = policy?.quantityVariancePercent
+      ? new Decimal(policy.quantityVariancePercent)
+      : PLATFORM_FALLBACK_QTY_PCT;
+    const qtyTolAbs = policy?.quantityVarianceAbsolute ? new Decimal(policy.quantityVarianceAbsolute) : null;
+    const amountTolAbs = policy?.amountVarianceAbsolute ? new Decimal(policy.amountVarianceAbsolute) : null;
 
     const matchLines = await Promise.all(
       bill.lines.map(async (billLine, idx) => {
@@ -69,49 +81,71 @@ export class BillMatchingService {
         const billedQty = new Decimal(billLine.quantity ?? 0);
         const billedPrice = new Decimal(billLine.unitPrice ?? 0);
 
-        const qtyVar = billedQty.sub(poQty);
+        const qtyVar = billedQty.sub(poQty); // vs PO order — retained for display
         const priceVar = billedPrice.sub(poPrice);
         const amtVar = billedQty.mul(billedPrice).sub(poQty.mul(poPrice));
 
-        const qtyVarPct = poQty.greaterThan(0) ? qtyVar.abs().div(poQty).mul(100) : new Decimal(0);
+        // ── Price dimension (CONST-MATCH-003) ──────────────────────────────────
         const priceVarPct = poPrice.greaterThan(0) ? priceVar.abs().div(poPrice).mul(100) : new Decimal(0);
+        const priceWithinTolerance = priceVarPct.lessThanOrEqualTo(priceTolPct);
 
-        const qtyOk = !qtyTolPct || qtyVarPct.lessThanOrEqualTo(qtyTolPct);
-        const priceOk = !priceTolPct || priceVarPct.lessThanOrEqualTo(priceTolPct);
-        const withinTolerance = qtyOk && priceOk;
-
+        // ── Quantity dimension: cumulative, bounded by receipts (CONST-MATCH-005/006) ──
+        // Three-way matches the billed quantity against what was actually received; two-way (no
+        // receipt) against the PO order. Cumulative: a supplier cannot split the full quantity
+        // across bills — prior accepted bills on the same PO line count toward the limit.
         let grnLineId: string | undefined;
-        let receivedQty: Decimal | undefined;
+        let cumulativeReceived: Decimal | undefined;
         if (matchType === 'THREE_WAY') {
           const grnLine = await this.repo.findGrnLineForPoLine(prisma, poLine.id, bill.purchaseOrderRevisionId!);
-          if (grnLine) {
-            grnLineId = grnLine.id;
-            receivedQty = grnLine.acceptedQuantity as Decimal;
-          }
+          if (grnLine) grnLineId = grnLine.id;
+          cumulativeReceived = (await this.repo.sumReceivedForPoLine(prisma, poLine.id)) ?? new Decimal(0);
         }
+        const referenceQty = matchType === 'THREE_WAY' ? (cumulativeReceived ?? new Decimal(0)) : poQty;
+        const priorBilled = (await this.repo.sumBilledForPoLineExcludingBill(prisma, poLine.id, billId)) ?? new Decimal(0);
+        const cumulativeBilled = priorBilled.add(billedQty);
+        const overBill = cumulativeBilled.sub(referenceQty); // > 0 = billed beyond received/ordered
+        const qtyAllowance = referenceQty.mul(qtyTolPct).div(100).add(qtyTolAbs ?? new Decimal(0));
+        const quantityWithinTolerance = overBill.lessThanOrEqualTo(qtyAllowance);
+
+        // ── Amount dimension (CONST-MATCH-003) — evaluated when a policy sets an absolute limit ──
+        const amountWithinTolerance = !amountTolAbs || amtVar.abs().lessThanOrEqualTo(amountTolAbs);
+
+        // ── Derived overall verdict (CONST-MATCH-004) ──────────────────────────
+        const withinTolerance = quantityWithinTolerance && priceWithinTolerance && amountWithinTolerance;
+        const failed: string[] = [];
+        if (!quantityWithinTolerance) failed.push(`quantity (cumulative billed ${cumulativeBilled.toFixed(2)} vs received/ordered ${referenceQty.toFixed(2)})`);
+        if (!priceWithinTolerance) failed.push(`price (${priceVarPct.toFixed(2)}% > ${priceTolPct.toFixed(2)}%)`);
+        if (!amountWithinTolerance) failed.push(`amount (variance ${amtVar.toFixed(2)})`);
 
         return {
           supplierBillLineId: billLine.id,
           purchaseOrderLineId: poLine.id,
           goodsReceiptLineId: grnLineId,
           poQuantity: poQty,
-          receivedQuantity: receivedQty,
+          receivedQuantity: cumulativeReceived,
           billedQuantity: billedQty,
           poUnitPrice: poPrice,
           billedUnitPrice: billedPrice,
           quantityVariance: qtyVar,
           priceVariance: priceVar,
           amountVariance: amtVar,
+          quantityWithinTolerance,
+          priceWithinTolerance,
+          amountWithinTolerance,
           withinTolerance,
-          exceptionReason: withinTolerance
-            ? undefined
-            : `Qty variance: ${qtyVarPct.toFixed(2)}%, Price variance: ${priceVarPct.toFixed(2)}%`,
+          exceptionReason: withinTolerance ? undefined : `Out of tolerance: ${failed.join('; ')}`,
         };
       }),
     );
 
-    const allWithinTolerance = matchLines.every(l => l.withinTolerance);
-    const finalStatus = allWithinTolerance ? 'MATCHED' : 'MATCHED_WITH_TOLERANCE';
+    // ADR-018 CONST-MATCH-004/002: any dimension out of tolerance makes the bill an EXCEPTION (the
+    // posting gate blocks it). Otherwise, a tolerated but non-zero variance is MATCHED_WITH_TOLERANCE
+    // (auto-absorbed, posts with the numbers retained); an exact match is MATCHED.
+    const anyException = matchLines.some(l => !l.withinTolerance);
+    const anyVariance = matchLines.some(
+      l => l.withinTolerance && (!l.priceVariance.isZero() || !l.quantityVariance.isZero() || !l.amountVariance.isZero()),
+    );
+    const finalStatus = anyException ? 'EXCEPTION' : anyVariance ? 'MATCHED_WITH_TOLERANCE' : 'MATCHED';
 
     await this.repo.createOrReplace(prisma, billId, matchType, matchLines);
     await this.repo.updateStatus(prisma, billId, finalStatus, {

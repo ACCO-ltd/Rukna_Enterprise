@@ -91,7 +91,7 @@ Last verified against code: **2026-08-14** (branch `main`). Verified from the Pr
 | Material Requests (dual-scope, DOA) | ✓ | ✓ | INTEGRATED | PROJECT \| ORGANIZATION. |
 | Purchase Orders (immutable revisions, MR↔PO allocation) | ✓ | ✓ | INTEGRATED | |
 | Goods Receipts (accept/reject, over-receipt tolerance) | ✓ | ✓ | INTEGRATED | `EXCEPTION_PENDING` above tolerance. |
-| Bill Matching (2-way / 3-way, tolerance policy) | ✓ (gaps) | — | PARTIAL | **Control does not fully hold — see ADR-018.** Verdict is a single boolean (amount dimension unevaluated); "3-way" ignores the GRN in the tolerance decision; matching is invoice-isolated (not cumulative); out-of-tolerance posts as `MATCHED_WITH_TOLERANCE` (gate is toothless). Corrective invariants frozen in ADR-018, gated on Eng Ahmed sign-off. |
+| Bill Matching (2-way / 3-way, tolerance policy) | ✓ | — | PARTIAL | **Control now holds (ADR-018 Phase 1).** Per-dimension verdicts (quantity/price/amount) evaluated independently; three-way quantity judged against received; cumulative across bills; out-of-tolerance → `EXCEPTION`, blocked by the posting gate. Flat platform-default tolerance (tunable). **Deferred (Phase 2):** structured reason enum + resolution paths, PO-revision→recommit→rematch loop, GRN-correction loop (CONST-MATCH-007..014); interim resolution is the free-text `approveException`. |
 | Commitment Ledger (COMMITTED→ACCRUED→ACTUAL) | ✓ | ✓ | INTEGRATED | Immutable signed entries; `CommitmentLedgerWriter`. |
 | Subcontracts (subcontract BOQ, certificate, AP) | — | — | DESIGNED | ADR-012 (reuse certify engine + AP). Not built. |
 | Approved Supplier List / Supplier Return | — | — | NOT_DESIGNED | |
