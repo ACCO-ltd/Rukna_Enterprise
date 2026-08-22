@@ -57,7 +57,16 @@ tolerances (ADR-018 seed values) and **(E)** the A12 settlement-ledger question.
   covers bands *and* chains. **Still deferred:** the vestigial document-workflow definitions
   (`buildAccoChains`) keep legacy role names, and the ADR-019 leftover `Project DRAFT→APPROVED`
   requirement-policy row is inert (Start is `DRAFT→ACTIVE`).
-- **Phase 4 — bank-signatory dual control on payment release (CONST-DOA-005):** not yet built.
+- **Phase 4 — bank-signatory dual control on payment release (CONST-DOA-005): DONE.** New
+  `BankAccountSignatory` (authorized signatories per account) and `PaymentReleaseSignature` models,
+  and a `RELEASED` payment state. Release is a control **distinct from approval**: an APPROVED
+  payment drawn on an account that has signatories must be signed by **≥2 distinct authorized
+  signatories** (`POST /payments/:id/release`) before it can be posted — the 2nd signature sets
+  `RELEASED`. SoD holds (CONST-DOA-003): the signer may be neither the payment approver nor the
+  approver of a bill the payment settles (reuses `APPROVE_OR_RELEASE_SUPPLIER_PAYMENT`). **Non-
+  breaking:** an account with no signatories is not under dual control and keeps the `APPROVED →
+  post` path, so the control engages exactly where it is configured (signatories managed via
+  `/bank-accounts/:id/signatories`).
 
 ## Context
 

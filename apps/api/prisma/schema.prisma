@@ -1518,14 +1518,36 @@ model BankAccount {
   createdAt       DateTime          @default(now()) @map("created_at")
   createdBy       String            @map("created_by")
 
-  glAccount        Account           @relation(fields: [glAccountId], references: [id])
-  treasuryGroup    TreasuryGroup?    @relation(fields: [treasuryGroupId], references: [id])
+  glAccount        Account                @relation(fields: [glAccountId], references: [id])
+  treasuryGroup    TreasuryGroup?         @relation(fields: [treasuryGroupId], references: [id])
   receipts         PaymentReceipt[]
   supplierPayments SupplierPayment[]
+  signatories      BankAccountSignatory[]
 
   @@unique([organizationId, accountNumber])
   @@index([organizationId, status])
   @@map("bank_accounts")
+}
+
+// ADR-022 CONST-DOA-005 — an authorized bank signatory. Releasing a payment drawn on an account
+// that has signatories requires ≥2 distinct signatories to sign; an account with none keeps the
+// pre-Phase-4 behaviour (approve → post). Access ≠ authority (CONST-DOA-002): being a signatory
+// does not exempt the segregation-of-duties checks on release.
+model BankAccountSignatory {
+  id             String    @id @default(cuid())
+  organizationId String    @map("organization_id")
+  bankAccountId  String    @map("bank_account_id")
+  userId         String    @map("user_id")
+  isActive       Boolean   @default(true) @map("is_active")
+  addedBy        String    @map("added_by")
+  addedAt        DateTime  @default(now()) @map("added_at")
+  removedAt      DateTime? @map("removed_at")
+
+  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
+
+  @@unique([bankAccountId, userId])
+  @@index([organizationId, bankAccountId, isActive])
+  @@map("bank_account_signatories")
 }
 
 // ─── Tax ──────────────────────────────────────────────────────────────────────
@@ -1992,14 +2014,30 @@ model SupplierPayment {
   createdAt            DateTime         @default(now()) @map("created_at")
   updatedAt            DateTime         @updatedAt @map("updated_at")
 
-  organization Organization                @relation(fields: [organizationId], references: [id])
-  supplier     Supplier                    @relation(fields: [supplierId], references: [id])
-  bankAccount  BankAccount                 @relation(fields: [bankAccountId], references: [id])
-  allocations  SupplierPaymentAllocation[]
+  organization     Organization                @relation(fields: [organizationId], references: [id])
+  supplier         Supplier                    @relation(fields: [supplierId], references: [id])
+  bankAccount      BankAccount                 @relation(fields: [bankAccountId], references: [id])
+  allocations      SupplierPaymentAllocation[]
+  releaseSignatures PaymentReleaseSignature[]
 
   @@index([organizationId, postingStatus])
   @@index([supplierId])
   @@map("supplier_payments")
+}
+
+// ADR-022 CONST-DOA-005 — one signatory's signature releasing a supplier payment. Two distinct
+// signatures (from active signatories of the payment's bank account) flip it to RELEASED.
+model PaymentReleaseSignature {
+  id                String   @id @default(cuid())
+  supplierPaymentId String   @map("supplier_payment_id")
+  signatoryUserId   String   @map("signatory_user_id")
+  signedAt          DateTime @default(now()) @map("signed_at")
+
+  payment SupplierPayment @relation(fields: [supplierPaymentId], references: [id])
+
+  @@unique([supplierPaymentId, signatoryUserId])
+  @@index([supplierPaymentId])
+  @@map("payment_release_signatures")
 }
 
 // Allocation lifecycle:
@@ -2774,6 +2812,9 @@ enum BillDocStatus {
 enum PaymentDocStatus {
   DRAFT
   APPROVED
+  // ADR-022 CONST-DOA-005: cleared by ≥2 authorized bank signatories (dual control, distinct
+  // from approval). Only reached for bank accounts that have signatories configured.
+  RELEASED
   REJECTED
   CANCELLED
 }

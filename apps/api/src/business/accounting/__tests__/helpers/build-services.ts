@@ -107,8 +107,14 @@ export function buildServices(prisma: PrismaClient): AccountingServices {
     new WorkflowTriggerResolverService(tenancy),
     new WorkflowsPrismaRepository(tenancy),
   );
+  // ADR-022 Phase 4: the shared harness treats accounts as having no signatories (no dual control),
+  // so existing payment tests keep the APPROVED → post path. Release is covered in dedicated specs.
+  const signatoryService = {
+    requiresDualControl: async () => false,
+    isActiveSignatory: async () => false,
+  } as unknown as import('../../accounting-core/application/bank-account-signatory.service.js').BankAccountSignatoryService;
   const supplierBillService    = new SupplierBillService(tenancy, supplierBillRepo, accountRepo, sequenceRepo, postingService, commitmentWriter, commandGovernance, sod);
-  const supplierPaymentService = new SupplierPaymentService(tenancy, supplierPaymentRepo, supplierBillRepo, accountRepo, sequenceRepo, postingService, commandGovernance, sod);
+  const supplierPaymentService = new SupplierPaymentService(tenancy, supplierPaymentRepo, supplierBillRepo, accountRepo, sequenceRepo, postingService, commandGovernance, sod, signatoryService);
 
   // Phase 3 — GL reports and period management
   const snapshotService        = new SnapshotService(tenancy);

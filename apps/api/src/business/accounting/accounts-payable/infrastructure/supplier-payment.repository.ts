@@ -25,8 +25,24 @@ export class SupplierPaymentRepository {
   findById(prisma: TenantPrisma, organizationId: string, id: string) {
     return prisma.supplierPayment.findFirst({
       where: { id, organizationId },
-      include: { allocations: { orderBy: { createdAt: 'asc' } } },
+      include: {
+        allocations: { orderBy: { createdAt: 'asc' } },
+        releaseSignatures: { orderBy: { signedAt: 'asc' } },
+      },
     });
+  }
+
+  // ── ADR-022 CONST-DOA-005: payment release dual control ──────────────────────
+  addReleaseSignature(prisma: TenantPrisma, supplierPaymentId: string, signatoryUserId: string) {
+    return prisma.paymentReleaseSignature.create({ data: { supplierPaymentId, signatoryUserId } });
+  }
+
+  countReleaseSignatures(prisma: TenantPrisma, supplierPaymentId: string): Promise<number> {
+    return prisma.paymentReleaseSignature.count({ where: { supplierPaymentId } });
+  }
+
+  markReleased(prisma: TenantPrisma, id: string) {
+    return prisma.supplierPayment.update({ where: { id }, data: { documentStatus: 'RELEASED' } });
   }
 
   findAll(prisma: TenantPrisma, organizationId: string, supplierId?: string) {

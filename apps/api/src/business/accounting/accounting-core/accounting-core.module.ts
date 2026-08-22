@@ -7,6 +7,7 @@ import { AccountingConfigurationRepository } from './infrastructure/accounting-c
 import { FiscalYearRepository } from './infrastructure/fiscal-year.repository.js';
 import { AccountRepository } from './infrastructure/account.repository.js';
 import { BankAccountRepository } from './infrastructure/bank-account.repository.js';
+import { BankAccountSignatoryRepository } from './infrastructure/bank-account-signatory.repository.js';
 import { DocumentSequenceRepository } from './infrastructure/document-sequence.repository.js';
 import { JournalRepository } from './infrastructure/journal.repository.js';
 import { AccountingPostingService } from './infrastructure/accounting-posting.service.js';
@@ -15,6 +16,7 @@ import { AccountingConfigurationService } from './application/accounting-configu
 import { FiscalYearService } from './application/fiscal-year.service.js';
 import { AccountService } from './application/account.service.js';
 import { BankAccountService } from './application/bank-account.service.js';
+import { BankAccountSignatoryService } from './application/bank-account-signatory.service.js';
 import { OpeningBalanceService } from './application/opening-balance.service.js';
 import { ReconciliationService } from './application/reconciliation.service.js';
 import { PostingAccountResolver } from './application/posting-account-resolver.service.js';
@@ -40,6 +42,7 @@ import { ReconciliationController } from './presentation/reconciliation.controll
     FiscalYearRepository,
     AccountRepository,
     BankAccountRepository,
+    BankAccountSignatoryRepository,
     DocumentSequenceRepository,
     JournalRepository,
     // Phase 2 posting engine
@@ -52,6 +55,7 @@ import { ReconciliationController } from './presentation/reconciliation.controll
     FiscalYearService,
     AccountService,
     BankAccountService,
+    BankAccountSignatoryService,
     OpeningBalanceService,
     ReconciliationService,
     PostingAccountResolver,
@@ -62,6 +66,7 @@ import { ReconciliationController } from './presentation/reconciliation.controll
     FiscalYearService,
     AccountService,
     BankAccountService,
+    BankAccountSignatoryService,
     OpeningBalanceService,
     ReconciliationService,
     AccountRepository,
