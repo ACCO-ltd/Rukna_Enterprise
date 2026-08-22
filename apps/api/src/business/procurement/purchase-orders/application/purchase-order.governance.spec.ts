@@ -18,7 +18,10 @@ function build(gateResult: unknown) {
   const prisma = { $transaction: jest.fn(async (cb: (tx: unknown) => unknown) => cb({})) };
   const tenancy = { getClient: () => prisma } as never;
   const repo = {
-    findById: jest.fn().mockResolvedValue({ id: 'po1', revisions: [{ id: 'rev1', status: 'DRAFT' }] }),
+    findById: jest.fn().mockResolvedValue({
+      id: 'po1',
+      revisions: [{ id: 'rev1', status: 'DRAFT', lines: [] }],
+    }),
     updateRevisionStatus: jest.fn().mockResolvedValue(undefined),
   };
   const auditOutbox = { record: jest.fn().mockResolvedValue(undefined) };
@@ -47,6 +50,8 @@ describe('PurchaseOrderService.submit — governance seam (ADR-011)', () => {
       'DRAFT',
       'SUBMITTED',
       'po1',
+      // ADR-022 CONST-DOA-005: the PO value (draft revision total) is passed for band routing.
+      expect.anything(),
     );
     expect(repo.updateRevisionStatus).not.toHaveBeenCalled();
 

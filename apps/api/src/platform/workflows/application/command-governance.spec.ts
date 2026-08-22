@@ -1,3 +1,5 @@
+import { Decimal } from '@prisma/client/runtime/library';
+
 import { CommandGovernanceService } from './command-governance.service.js';
 
 /**
@@ -74,5 +76,52 @@ describe('CommandGovernanceService.gateStateTransition — loop-back (ADR-015)',
     const r = await svc.gateStateTransition(identity, 'PurchaseOrder', 'DRAFT', 'SUBMITTED', 'po1');
     expect(r).toEqual({ gated: true, approvalInstanceId: 'new-inst' });
     expect(repo.createInstance).toHaveBeenCalled();
+  });
+});
+
+describe('CommandGovernanceService.gateStateTransition — decision snapshot (ADR-022 CONST-DOA-005)', () => {
+  it('passes the document amount through to the resolver for band selection', async () => {
+    const { svc, triggerResolver } = build();
+    triggerResolver.resolveForStateTransition.mockResolvedValue(null);
+    const amount = new Decimal(5000);
+
+    await svc.gateStateTransition(identity, 'PurchaseOrder', 'DRAFT', 'SUBMITTED', 'po1', amount);
+
+    expect(triggerResolver.resolveForStateTransition).toHaveBeenCalledWith(
+      'o1',
+      'PurchaseOrder',
+      'DRAFT',
+      'SUBMITTED',
+      amount,
+    );
+  });
+
+  it('records the evaluated amount and the matched band on the new instance', async () => {
+    const { svc, triggerResolver, repo } = build();
+    triggerResolver.resolveForStateTransition.mockResolvedValue({
+      id: 'bind-mid',
+      workflowDefinitionId: 'wd1',
+      priority: 20,
+      minAmount: new Decimal(1000),
+      maxAmount: new Decimal(50000),
+      definition: { transactionType: 'PURCHASE_ORDER' },
+    });
+    repo.findLatestInstanceForTransaction.mockResolvedValue(null);
+
+    await svc.gateStateTransition(identity, 'PurchaseOrder', 'DRAFT', 'SUBMITTED', 'po1', new Decimal(5000));
+
+    expect(repo.createInstance).toHaveBeenCalledWith(
+      expect.objectContaining({
+        matchedPolicyId: 'bind-mid',
+        evaluatedAmount: expect.anything(),
+        conditionSnapshot: expect.objectContaining({
+          bindingId: 'bind-mid',
+          banded: true,
+          minAmount: '1000',
+          maxAmount: '50000',
+          evaluatedAmount: '5000',
+        }),
+      }),
+    );
   });
 });

@@ -1,9 +1,27 @@
 import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { WorkflowTriggerBinding, WorkflowDefinition } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 
 import { TenancyService } from '../../tenancy/tenancy.service.js';
 
 export type ResolvedBinding = WorkflowTriggerBinding & { definition: WorkflowDefinition };
+
+/**
+ * ADR-022 CONST-DOA-005: does a binding's amount band contain this document's value?
+ * An unranged binding (both bounds null) is a catch-all that matches any amount. A ranged
+ * binding needs an amount to evaluate — without one it cannot match, so amount-less callers
+ * keep the pre-threshold behaviour of only ever resolving catch-all bindings. The band is
+ * half-open: minAmount inclusive, maxAmount exclusive.
+ */
+function bindingMatchesAmount(binding: WorkflowTriggerBinding, amount: Decimal | null): boolean {
+  const min = binding.minAmount as Decimal | null;
+  const max = binding.maxAmount as Decimal | null;
+  if (min === null && max === null) return true;
+  if (amount === null) return false;
+  if (min !== null && amount.lessThan(min)) return false;
+  if (max !== null && amount.greaterThanOrEqualTo(max)) return false;
+  return true;
+}
 
 @Injectable()
 export class WorkflowTriggerResolverService {
@@ -22,10 +40,11 @@ export class WorkflowTriggerResolverService {
   async resolveForDocument(
     organizationId: string,
     transactionType: string,
+    amount: Decimal | null = null,
   ): Promise<ResolvedBinding | null> {
     const prisma = this.tenancyService.getClient();
 
-    const candidates = await prisma.workflowTriggerBinding.findMany({
+    const all = await prisma.workflowTriggerBinding.findMany({
       where: {
         triggerKind: 'DOCUMENT',
         isActive: true,
@@ -34,6 +53,8 @@ export class WorkflowTriggerResolverService {
       include: { definition: true },
       orderBy: { priority: 'desc' },
     });
+    // ADR-022 CONST-DOA-005: keep only the bindings whose amount band contains this document.
+    const candidates = all.filter((b) => bindingMatchesAmount(b, amount));
 
     const s1 = candidates.find(
       (b) => b.organizationId === organizationId && b.transactionType === transactionType,
@@ -75,6 +96,7 @@ export class WorkflowTriggerResolverService {
     entityType: string,
     fromState: string,
     toState: string,
+    amount: Decimal | null = null,
   ): Promise<ResolvedBinding | null> {
     const prisma = this.tenancyService.getClient();
 
@@ -85,7 +107,7 @@ export class WorkflowTriggerResolverService {
       return null;
     }
 
-    const candidates = await prisma.workflowTriggerBinding.findMany({
+    const all = await prisma.workflowTriggerBinding.findMany({
       where: {
         triggerKind: 'STATE_TRANSITION',
         entityType,
@@ -95,6 +117,10 @@ export class WorkflowTriggerResolverService {
       include: { definition: true },
       orderBy: { priority: 'desc' },
     });
+    // ADR-022 CONST-DOA-005: within each precedence tier below, only bindings whose amount band
+    // contains this document's value are eligible. Candidates stay priority-ordered, so the tier
+    // `find`s still return the highest-priority match.
+    const candidates = all.filter((b) => bindingMatchesAmount(b, amount));
 
     const s1 = candidates.find(
       (b) =>

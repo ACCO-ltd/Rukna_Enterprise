@@ -1,4 +1,5 @@
 import { Injectable, ConflictException } from '@nestjs/common';
+import { Decimal } from '@prisma/client/runtime/library';
 import type { RequestIdentity, GovernedEntity, WorkflowTransactionType } from '@erp/types';
 import { WorkflowTriggerResolverService } from './workflow-trigger-resolver.service.js';
 import { WorkflowsPrismaRepository } from '../infrastructure/workflows-prisma.repository.js';
@@ -32,12 +33,16 @@ export class CommandGovernanceService {
     fromState: string,
     toState: string,
     resourceId: string,
+    // ADR-022 CONST-DOA-005: the document's value, so the resolver can pick the amount band's
+    // chain. Omitted by amount-less commands, which then only ever match catch-all bindings.
+    amount: Decimal | null = null,
   ): Promise<null | GovernanceGate> {
     const binding = await this.triggerResolver.resolveForStateTransition(
       identity.activeOrganizationId,
       entityType,
       fromState,
       toState,
+      amount,
     );
 
     if (!binding) return null;
@@ -60,11 +65,27 @@ export class CommandGovernanceService {
     }
 
     // No prior instance, or a terminal (REJECTED/CANCELLED/consumed) one — open a fresh approval.
+    // Snapshot why this chain was selected: the evaluated amount and the band that matched. The
+    // snapshot is immutable evidence even if the binding's band is re-tuned later (ADR-007).
+    const banded = binding.minAmount !== null || binding.maxAmount !== null;
     const instance = await this.repo.createInstance({
       workflowDefinitionId: binding.workflowDefinitionId,
       transactionType,
       transactionId: resourceId,
       initiatedBy: identity.userId,
+      evaluatedAmount: amount,
+      matchedPolicyId: binding.id,
+      conditionSnapshot: {
+        bindingId: binding.id,
+        entityType,
+        fromState,
+        toState,
+        priority: binding.priority,
+        banded,
+        minAmount: binding.minAmount ? (binding.minAmount as Decimal).toString() : null,
+        maxAmount: binding.maxAmount ? (binding.maxAmount as Decimal).toString() : null,
+        evaluatedAmount: amount ? amount.toString() : null,
+      },
     });
 
     return { gated: true, approvalInstanceId: instance.id };
