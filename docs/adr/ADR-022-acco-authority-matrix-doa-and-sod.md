@@ -35,10 +35,24 @@ tolerances (ADR-018 seed values) and **(E)** the A12 settlement-ledger question.
   an APPROVED exception clears the receiver, so the SoD block does not fire. Endpoints under
   `/procurement/receipt-exceptions` (distinct from the over-receipt quantity exception on the GRN).
 
-**ADR-022 is now fully implemented** (Phases 1, 1b, 2, 3, 3b, 4). The only follow-ups left are
-config-only and orthogonal: the non-value-matrix chains still carry legacy role names in the
-vestigial `buildAccoChains` document workflows, and go-live activation of the seeded bands/chains
-remains a deliberate per-org step (role-holders + `dev-activate-doa-bands.seed.ts`).
+**ADR-022 is now fully implemented** (Phases 1, 1b, 2, 3, 3b, 4). Go-live activation of the seeded
+bands/chains remains a deliberate per-org step (role-holders + `dev-activate-doa-bands.seed.ts`).
+
+### Role set correction (ACCO, 2026-08-22)
+
+The CONST-DOA-001 role list below was **revised by ACCO** after implementation. The seeded role
+vocabulary (`acco-value-bands.ts`) and all chains now use:
+
+- **Procurement Manager** — not "Procurement Officer".
+- **No Store Keeper** and **no Quantity Surveyor** roles (procurement covers stores; the
+  Construction Director covers QS scope/measurement).
+- **CEO** — not "Group CEO"; and **no Board Chairman** tier (the > \$50k PO band is CFO + CEO).
+
+Full seeded set: `CONSTRUCTION_DIRECTOR`, `PROJECT_MANAGER`, `SITE_ENGINEER`, `PROCUREMENT_MANAGER`,
+`ACCOUNTANT`, `FINANCE_OFFICER`, `CFO`, `CEO`, `SYSTEM_ADMINISTRATOR`. **This is a starting set, not
+a fixed list** — roles live in the per-org Role registry and more can be added in Settings when an
+org needs them. (The `ProjectRole` enum used for project-membership `responsibleRole` is a separate,
+UI-facing concept and is intentionally not migrated here.)
 - **Phase 2 — value-threshold routing engine (CONST-DOA-005): DONE (engine, dormant).** A trigger
   binding may now carry an amount band (`minAmount`/`maxAmount`, half-open `[min, max)`; both null =
   catch-all). The resolver filters candidate bindings by the document value, so the same transition
@@ -59,9 +73,9 @@ remains a deliberate per-org step (role-holders + `dev-activate-doa-bands.seed.t
   Tests prove the bands partition the amount axis and route through the Phase-2 resolver exactly as
   CONST-DOA-005 specifies.
 - **Phase 3b — lifecycle/control approval chains (CONST-DOA-006..009): DONE (config-ready).** The
-  Project **Start** (`DRAFT→ACTIVE`: PM → CFO → Group CEO), Project **Closeout** (`CLOSEOUT→CLOSED`:
-  PM → Finance Officer → Group CEO), **BOQ baseline** (`BoqVersion DRAFT→BASELINED`: Construction
-  Director → CFO → Group CEO), and **DPR** (`DailyProgressReport SUBMITTED→APPROVED`: Project
+  Project **Start** (`DRAFT→ACTIVE`: PM → CFO → CEO), Project **Closeout** (`CLOSEOUT→CLOSED`:
+  PM → Finance Officer → CEO), **BOQ baseline** (`BoqVersion DRAFT→BASELINED`: Construction
+  Director → CFO → CEO), and **DPR** (`DailyProgressReport SUBMITTED→APPROVED`: Project
   Manager) chains are seeded as data (`acco-lifecycle-chains.ts`), inactive, with the consolidated
   roles. Start/Closeout repoint their existing generic project bindings to the specific chains. DPR
   approval — which was not gated — now routes through a backward-compatible governance seam
@@ -144,14 +158,14 @@ independent supervisor verifies receipt **and** the CFO approves the documented 
 | ≤ $100 | Department Head (= Construction Director) **or** Project Manager |
 | $100.01 – $1,000 | Department Head + Finance confirmation |
 | $1,000.01 – $50,000 | CFO *(merged band — no separate control at $10k for POs)* |
-| > $50,000 | CFO + Board Chairman + Group CEO |
+| > $50,000 | CFO + CEO *(revised 2026-08-22 — was CFO + Board Chairman + Group CEO)* |
 
 **Supplier Payments:**
 | Band | Authority |
 |---|---|
 | ≤ $1,000 | Finance Manager (after operational/AP certification) |
 | $1,000.01 – $10,000 | CFO |
-| > $10,000 | CFO + Group CEO |
+| > $10,000 | CFO + CEO *(revised 2026-08-22 — was CFO + Group CEO)* |
 
 **Payment release** additionally requires **at least two authorized bank signatories** and SoD —
 release is a distinct dual control from payment *approval*.

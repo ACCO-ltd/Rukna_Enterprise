@@ -32,7 +32,7 @@ export function accoApprovalChains(): ApprovalChain[] {
       entityType: 'Project',
       fromState: 'DRAFT',
       toState: 'ACTIVE',
-      steps: [R.PROJECT_MANAGER, R.CFO, R.GROUP_CEO],
+      steps: [R.PROJECT_MANAGER, R.CFO, R.CEO],
     },
     // CONST-DOA-007 — Closeout: PM confirms deliverables/defects → Finance confirms final
     // account, AR/AP, retention → Group CEO final closure approval.
@@ -42,7 +42,7 @@ export function accoApprovalChains(): ApprovalChain[] {
       entityType: 'Project',
       fromState: 'CLOSEOUT',
       toState: 'CLOSED',
-      steps: [R.PROJECT_MANAGER, R.FINANCE_OFFICER, R.GROUP_CEO],
+      steps: [R.PROJECT_MANAGER, R.FINANCE_OFFICER, R.CEO],
     },
     // CONST-DOA-009 — BOQ baseline is preparer ≠ sole approver: the Construction Director
     // prepares scope + cost, so baselining routes technical prep → CFO budget/commercial
@@ -54,7 +54,7 @@ export function accoApprovalChains(): ApprovalChain[] {
       fromState: 'DRAFT',
       toState: 'BASELINED',
       transactionType: WorkflowTransactionType.BOQ_BASELINE,
-      steps: [R.CONSTRUCTION_DIRECTOR, R.CFO, R.GROUP_CEO],
+      steps: [R.CONSTRUCTION_DIRECTOR, R.CFO, R.CEO],
     },
     // CONST-DOA-008 — DPR: Site Engineer prepares (submits), Project Manager approves. The
     // approval chain is the single PM step; preparation is not an approval.

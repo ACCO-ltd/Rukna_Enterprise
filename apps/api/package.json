@@ -27,6 +27,8 @@
     "tenant:provision": "tsx scripts/tenant-provision.ts",
     "tenant:repair-access": "tsx scripts/tenant-repair-access.ts",
     "tenant:demo-readiness": "tsx scripts/tenant-demo-readiness.ts",
+    "governance:seed": "tsx --env-file=.env prisma/seeds/seed-acco-governance.seed.ts",
+    "governance:activate": "tsx --env-file=.env prisma/seeds/dev-activate-doa-bands.seed.ts",
     "postinstall": "prisma generate --schema=prisma/schema.prisma && prisma generate --schema=prisma-platform/schema.prisma"
   },
   "dependencies": {

@@ -51,13 +51,12 @@ describe('ACCO value bands (ADR-022 CONST-DOA-005)', () => {
       ['1000.01', '50000.01'],
       ['50000.01', null],
     ]);
-    // > $50,000 is the only band that pulls in the Board and the Group CEO.
+    // > $50,000 is the only band that pulls in the CEO (ACCO 2026-08-22: no Board Chairman tier).
     expect(bands[3].steps).toEqual([
       ACCO_ROLES.CONSTRUCTION_DIRECTOR,
       ACCO_ROLES.FINANCE_OFFICER,
       ACCO_ROLES.CFO,
-      ACCO_ROLES.BOARD_CHAIRMAN,
-      ACCO_ROLES.GROUP_CEO,
+      ACCO_ROLES.CEO,
     ]);
   });
 
@@ -68,7 +67,7 @@ describe('ACCO value bands (ADR-022 CONST-DOA-005)', () => {
       ['1000.01', '10000.01'],
       ['10000.01', null],
     ]);
-    expect(bands[2].steps).toEqual([ACCO_ROLES.FINANCE_OFFICER, ACCO_ROLES.CFO, ACCO_ROLES.GROUP_CEO]);
+    expect(bands[2].steps).toEqual([ACCO_ROLES.FINANCE_OFFICER, ACCO_ROLES.CFO, ACCO_ROLES.CEO]);
   });
 
   describe('routing the real bands through the Phase-2 resolver', () => {
