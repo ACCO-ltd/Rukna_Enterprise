@@ -12,6 +12,23 @@ completes** the previously-parked DOA + value-threshold + SoD machinery (`Segreg
 items remain open and do **not** block this ADR: **(D)** the numeric bill-match / over-receipt
 tolerances (ADR-018 seed values) and **(E)** the A12 settlement-ledger question.
 
+### Implementation status (staged)
+
+- **Phase 1 — Segregation of Duties (CONST-DOA-003): DONE.** `SegregationOfDutiesService` (built but
+  never called) is now wired into the procure-to-pay + journal chain and its rules activated as of
+  the 2026-08-17 sign-off — that date is the formal policy effective date the seed was waiting for.
+  Enforced pairs: **requester ≠ MR approver** (MR approve), **PO creator ≠ goods receiver** (GRN
+  create), **goods receiver ≠ bill approver** (bill approve), **bill approver ≠ payment approver**
+  (payment approve), **journal preparer ≠ journal approver** (journal approve). Access never grants
+  authority (CONST-DOA-002): the Procurement Officer's Store-Keeper access does not exempt the PO-
+  creator receipt block.
+- **Deferred to Phase 1b** (need data/plumbing not yet present): **vendor maintainer ≠ PO/payment
+  processor** (needs a `Supplier` ownership field), **system administrator ≠ business-transaction
+  approver** (needs an admin-authority determination), and the **CONST-DOA-004 documented exception**
+  override (supervisor verification + CFO approval).
+- **Phase 2 — value-threshold routing (CONST-DOA-005), Phase 3 — approval chains (CONST-DOA-006..009),
+  Phase 4 — bank-signatory dual control:** not yet built.
+
 ## Context
 
 The audit found the DOA/SoD subsystem armed but not wired, and flagged it as possible over-build.

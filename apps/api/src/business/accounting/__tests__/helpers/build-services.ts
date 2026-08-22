@@ -33,6 +33,7 @@ import { CommitmentLedgerWriter }     from '../../../procurement/commitment-ledg
 import { WorkflowTriggerResolverService } from '../../../../platform/workflows/application/workflow-trigger-resolver.service.js';
 import { WorkflowsPrismaRepository }      from '../../../../platform/workflows/infrastructure/workflows-prisma.repository.js';
 import { CommandGovernanceService }       from '../../../../platform/workflows/application/command-governance.service.js';
+import { SegregationOfDutiesService }      from '../../../../platform/workflows/application/segregation-of-duties.service.js';
 
 // Phase 3
 import { SnapshotService }           from '../../general-ledger/application/snapshot.service.js';
@@ -80,12 +81,16 @@ export function buildServices(prisma: PrismaClient): AccountingServices {
   // Core posting engine
   const postingService = new AccountingPostingService(sequenceRepo, journalRepo);
 
+  // ADR-022: SoD is exercised in dedicated specs; the shared harness no-ops it so existing
+  // fixtures (which reuse a single actor id) are not newly blocked by segregation rules.
+  const sod = { assertAllowed: async () => undefined } as unknown as SegregationOfDutiesService;
+
   // Core application services
   const openingBalanceService = new OpeningBalanceService(tenancy, accountRepo, journalRepo, sequenceRepo, postingService);
   const reconciliationService = new ReconciliationService(tenancy, accountRepo, journalRepo);
 
   // Manual journals
-  const manualJournalService = new ManualJournalService(tenancy, journalRepo, sequenceRepo, postingService);
+  const manualJournalService = new ManualJournalService(tenancy, journalRepo, sequenceRepo, postingService, sod);
 
   // AR
   const postingAccountResolver = new PostingAccountResolver(accountRepo);
@@ -102,8 +107,8 @@ export function buildServices(prisma: PrismaClient): AccountingServices {
     new WorkflowTriggerResolverService(tenancy),
     new WorkflowsPrismaRepository(tenancy),
   );
-  const supplierBillService    = new SupplierBillService(tenancy, supplierBillRepo, accountRepo, sequenceRepo, postingService, commitmentWriter, commandGovernance);
-  const supplierPaymentService = new SupplierPaymentService(tenancy, supplierPaymentRepo, supplierBillRepo, accountRepo, sequenceRepo, postingService, commandGovernance);
+  const supplierBillService    = new SupplierBillService(tenancy, supplierBillRepo, accountRepo, sequenceRepo, postingService, commitmentWriter, commandGovernance, sod);
+  const supplierPaymentService = new SupplierPaymentService(tenancy, supplierPaymentRepo, supplierBillRepo, accountRepo, sequenceRepo, postingService, commandGovernance, sod);
 
   // Phase 3 — GL reports and period management
   const snapshotService        = new SnapshotService(tenancy);

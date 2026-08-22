@@ -49,6 +49,7 @@ import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs
 import { WorkflowTriggerResolverService } from '../../../../platform/workflows/application/workflow-trigger-resolver.service.js';
 import { WorkflowsPrismaRepository } from '../../../../platform/workflows/infrastructure/workflows-prisma.repository.js';
 import { CommandGovernanceService } from '../../../../platform/workflows/application/command-governance.service.js';
+import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
 
 // No-op stub: integration tests use real Prisma but skip audit persistence
 // so tests don't require auditLog / auditOutboxEvent tables to be seeded.
@@ -105,15 +106,18 @@ export function buildProcurementServices(prisma: PrismaClient): ProcurementServi
   const supplierBillRepo = new SupplierBillRepository();
 
   // ── Services ──────────────────────────────────────────────────────────────
+  // ADR-022: SoD is exercised in dedicated specs; the shared harness no-ops it so existing
+  // fixtures (which reuse a single actor id) are not newly blocked by segregation rules.
+  const sod = { assertAllowed: async () => undefined } as unknown as SegregationOfDutiesService;
   const materialService = new MaterialService(tenancy, materialRepo, uomRepo, materialCategoryRepo, spendCategoryRepo);
   const projectAccess   = new ProjectAccessService(tenancy);
-  const mrService       = new MaterialRequestService(tenancy, mrRepo, materialRepo, uomRepo, projectAccess, noOpAuditOutbox);
+  const mrService       = new MaterialRequestService(tenancy, mrRepo, materialRepo, uomRepo, projectAccess, noOpAuditOutbox, sod);
   const commandGovernance = new CommandGovernanceService(
     new WorkflowTriggerResolverService(tenancy),
     new WorkflowsPrismaRepository(tenancy),
   );
   const poService       = new PurchaseOrderService(tenancy, poRepo, materialRepo, uomRepo, commitmentWriter, noOpAuditOutbox, commandGovernance);
-  const grnService      = new GoodsReceiptService(tenancy, grnRepo, poRepo, commitmentWriter, noOpAuditOutbox);
+  const grnService      = new GoodsReceiptService(tenancy, grnRepo, poRepo, commitmentWriter, noOpAuditOutbox, sod);
   const billMatchingService = new BillMatchingService(tenancy, billMatchRepo);
 
   const supplierBillService = new SupplierBillService(
@@ -124,6 +128,7 @@ export function buildProcurementServices(prisma: PrismaClient): ProcurementServi
     postingService,
     commitmentWriter,
     commandGovernance,
+    sod,
   );
 
   return {

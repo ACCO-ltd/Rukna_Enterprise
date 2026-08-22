@@ -26,6 +26,7 @@ describe('AP governance seam (ADR-011)', () => {
       };
       const tenancy = { getClient: () => prisma } as never;
       const commandGovernance = { gateStateTransition: jest.fn().mockResolvedValue(gate) };
+      const sod = { assertAllowed: jest.fn() };
       const svc = new SupplierBillService(
         tenancy,
         {} as never,
@@ -34,6 +35,7 @@ describe('AP governance seam (ADR-011)', () => {
         {} as never,
         {} as never,
         commandGovernance as never,
+        sod as never,
       );
       return { svc, prisma, commandGovernance };
     }
@@ -60,12 +62,17 @@ describe('AP governance seam (ADR-011)', () => {
 
   describe('SupplierPaymentService.approve', () => {
     function build(gate: unknown) {
-      const tenancy = { getClient: () => ({}) } as never;
+      // approve() walks the payment's bill allocations for the SoD check (ADR-022) before the gate.
+      const prisma = {
+        supplierPaymentAllocation: { findMany: jest.fn().mockResolvedValue([]) },
+      };
+      const tenancy = { getClient: () => prisma } as never;
       const paymentRepo = {
         findById: jest.fn().mockResolvedValue({ id: 'p1', documentStatus: 'DRAFT' }),
         approve: jest.fn().mockResolvedValue({ id: 'p1', documentStatus: 'APPROVED' }),
       };
       const commandGovernance = { gateStateTransition: jest.fn().mockResolvedValue(gate) };
+      const sod = { assertAllowed: jest.fn() };
       const svc = new SupplierPaymentService(
         tenancy,
         paymentRepo as never,
@@ -74,6 +81,7 @@ describe('AP governance seam (ADR-011)', () => {
         {} as never,
         {} as never,
         commandGovernance as never,
+        sod as never,
       );
       return { svc, paymentRepo, commandGovernance };
     }

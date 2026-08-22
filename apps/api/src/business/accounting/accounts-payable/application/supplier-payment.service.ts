@@ -17,6 +17,7 @@ import { DocumentSequenceRepository } from '../../accounting-core/infrastructure
 import { SupplierPaymentRepository } from '../infrastructure/supplier-payment.repository.js';
 import { SupplierBillRepository } from '../infrastructure/supplier-bill.repository.js';
 import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
+import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
 
 export interface CreateSupplierPaymentDto {
   supplierId: string;
@@ -58,6 +59,7 @@ export class SupplierPaymentService {
     @Inject(ACCOUNTING_POSTING_PORT)
     private readonly postingPort: IAccountingPostingPort,
     private readonly commandGovernance: CommandGovernanceService,
+    private readonly sod: SegregationOfDutiesService,
   ) {}
 
   async create(identity: RequestIdentity, dto: CreateSupplierPaymentDto) {
@@ -132,6 +134,21 @@ export class SupplierPaymentService {
     if (payment.documentStatus !== 'DRAFT') {
       throw new BadRequestException(`Payment is already ${payment.documentStatus}`);
     }
+
+    // ADR-022 CONST-DOA-003: whoever approved a bill this payment settles cannot also approve the
+    // payment. Bill approval and payment approval must be different people.
+    const allocations = await prisma.supplierPaymentAllocation.findMany({
+      where: { supplierPaymentId: paymentId },
+      select: { bill: { select: { approvedBy: true } } },
+    });
+    const actorApprovedASettledBill = allocations.some((a) => a.bill.approvedBy === identity.userId);
+    await this.sod.assertAllowed({
+      organizationId: identity.activeOrganizationId,
+      action: 'APPROVE_OR_RELEASE_SUPPLIER_PAYMENT',
+      actorUserId: identity.userId,
+      supplierBillApproverUserId: actorApprovedASettledBill ? identity.userId : undefined,
+    });
+
     // Governance seam (ADR-011) — the payment has no separate submit, so approval is the
     // request transition. Backward-compatible: null when no binding is configured.
     throwIfGated(

@@ -13,6 +13,7 @@ import { MaterialRepository } from '../../catalogue/infrastructure/material.repo
 import { UomRepository } from '../../catalogue/infrastructure/uom.repository.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
+import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
 
 export interface CreateMrLineDto {
   lineType: ProcurementLineType;
@@ -55,6 +56,7 @@ export class MaterialRequestService {
     private readonly uomRepo: UomRepository,
     private readonly projectAccess: ProjectAccessService,
     private readonly auditOutbox: TransactionalAuditOutboxService,
+    private readonly sod: SegregationOfDutiesService,
   ) {}
 
   async findAll(identity: RequestIdentity, filters?: { status?: MaterialRequestStatus; projectId?: string; scope?: MaterialRequestScope }) {
@@ -198,6 +200,16 @@ export class MaterialRequestService {
     const allowed = NEXT_STATUS[mr.status] ?? [];
     if (!allowed.includes(to)) {
       throw new ConflictException(`Cannot transition MR from ${mr.status} to ${to}`);
+    }
+
+    // ADR-022 CONST-DOA-003: a requester cannot approve their own material request.
+    if (to === 'APPROVED') {
+      await this.sod.assertAllowed({
+        organizationId: identity.activeOrganizationId,
+        action: 'APPROVE_MATERIAL_REQUEST',
+        actorUserId: identity.userId,
+        requesterUserId: mr.requestedBy,
+      });
     }
 
     const fromStatus = mr.status;

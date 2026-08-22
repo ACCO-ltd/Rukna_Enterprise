@@ -14,6 +14,7 @@ import {
 } from '../../accounting-core/application/ports/accounting-posting.port.js';
 import { JournalRepository } from '../../accounting-core/infrastructure/journal.repository.js';
 import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
+import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
 
 export interface ManualJournalLineDto {
   accountId: string;
@@ -61,6 +62,7 @@ export class ManualJournalService {
     private readonly sequenceRepo: DocumentSequenceRepository,
     @Inject(ACCOUNTING_POSTING_PORT)
     private readonly postingPort: IAccountingPostingPort,
+    private readonly sod: SegregationOfDutiesService,
   ) {}
 
   async create(identity: RequestIdentity, dto: CreateManualJournalDto) {
@@ -128,6 +130,16 @@ export class ManualJournalService {
     });
     if (!journal) {
       throw new NotFoundException(`Journal ${dto.journalId} not found in SUBMITTED status`);
+    }
+
+    // ADR-022 CONST-DOA-003: the journal preparer cannot approve the same journal.
+    if (dto.approved) {
+      await this.sod.assertAllowed({
+        organizationId: orgId,
+        action: 'APPROVE_MANUAL_JOURNAL',
+        actorUserId: userId,
+        journalPreparerUserId: journal.createdBy,
+      });
     }
 
     if (!dto.approved) {

@@ -12,6 +12,7 @@ import { GoodsReceiptRepository } from '../infrastructure/goods-receipt.reposito
 import { PurchaseOrderRepository } from '../../purchase-orders/infrastructure/purchase-order.repository.js';
 import { CommitmentLedgerWriter } from '../../commitment-ledger/application/commitment-ledger-writer.service.js';
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
+import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
 
 // Platform fallback when no OverReceiptPolicy is seeded for the org yet.
 // Seed an OverReceiptPolicy record to override this per ADR-007, Decision 11.
@@ -42,6 +43,7 @@ export class GoodsReceiptService {
     private readonly poRepo: PurchaseOrderRepository,
     private readonly commitmentWriter: CommitmentLedgerWriter,
     private readonly auditOutbox: TransactionalAuditOutboxService,
+    private readonly sod: SegregationOfDutiesService,
   ) {}
 
   findAll(identity: RequestIdentity, filters?: { purchaseOrderId?: string }) {
@@ -63,6 +65,16 @@ export class GoodsReceiptService {
     const po = await this.poRepo.findById(prisma, orgId, dto.purchaseOrderId);
     if (!po) throw new NotFoundException(`Purchase order ${dto.purchaseOrderId} not found`);
     if (po.status !== 'OPEN') throw new ConflictException('Can only receive against an OPEN purchase order');
+
+    // ADR-022 CONST-DOA-003: a PO creator cannot receive goods against their own order. The
+    // Procurement Officer's Store-Keeper access (CONST-DOA-002) does not exempt this — access is
+    // not authority. The one sanctioned override (supervisor + CFO, CONST-DOA-004) is not yet built.
+    await this.sod.assertAllowed({
+      organizationId: orgId,
+      action: 'RECEIVE_GOODS',
+      actorUserId: identity.userId,
+      purchaseOrderCreatorUserId: po.createdBy,
+    });
 
     const activeRevision = po.revisions.find(r => r.status === 'ACTIVE');
     if (!activeRevision) throw new ConflictException('Purchase order has no ACTIVE revision to receive against');
