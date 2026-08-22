@@ -2424,10 +2424,10 @@ enum BoqVersionStatus {
   CANCELLED
 }
 
+// ADR-019 CONST-PLC-001: six canonical states. APPROVED retired into a workflow
+// authorization event; MOBILIZING retired into readiness work performed while DRAFT.
 enum ProjectStatus {
   DRAFT
-  APPROVED
-  MOBILIZING
   ACTIVE
   PRACTICAL_COMPLETION
   CLOSEOUT

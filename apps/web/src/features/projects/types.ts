@@ -19,8 +19,6 @@ export type { ProjectWorkspaceGuidanceItemResponse as ProjectWorkspaceGuidanceIt
 /** Lifecycle order, used to present status groupings in a stable, meaningful sequence. */
 export const PROJECT_STATUS_ORDER: ProjectStatus[] = [
   ProjectStatus.DRAFT,
-  ProjectStatus.APPROVED,
-  ProjectStatus.MOBILIZING,
   ProjectStatus.ACTIVE,
   ProjectStatus.PRACTICAL_COMPLETION,
   ProjectStatus.CLOSEOUT,

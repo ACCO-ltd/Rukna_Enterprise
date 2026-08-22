@@ -48,10 +48,11 @@ export enum WorkflowTriggerKind {
   STATE_TRANSITION = 'STATE_TRANSITION',
 }
 
+// ADR-019 CONST-PLC-001: the canonical lifecycle is six states. APPROVED and MOBILIZING
+// retired — APPROVED into a workflow authorization event, MOBILIZING into readiness work
+// performed while DRAFT (presented as "Preparation" in the UI, CONST-PLC-010).
 export enum ProjectStatus {
   DRAFT = 'DRAFT',
-  APPROVED = 'APPROVED',
-  MOBILIZING = 'MOBILIZING',
   ACTIVE = 'ACTIVE',
   PRACTICAL_COMPLETION = 'PRACTICAL_COMPLETION',
   CLOSEOUT = 'CLOSEOUT',

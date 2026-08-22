@@ -414,9 +414,7 @@
       }
     },
     "actions": {
-      "approve": "Approve",
-      "mobilize": "Start mobilization",
-      "activate": "Activate",
+      "start": "Start project",
       "practical-completion": "Record practical completion",
       "closeout": "Begin closeout",
       "close": "Close project",
@@ -426,9 +424,7 @@
       "resume": "Resume",
       "failed": "That action could not be completed.",
       "confirmTitle": "{action}?",
-      "confirmApprove": "The project moves out of draft and can no longer be edited.",
-      "confirmMobilize": "Confirm the project is moving into mobilization.",
-      "confirmActivate": "Confirm the project is now active on site.",
+      "confirmStart": "The project leaves preparation and becomes active on site. It can no longer be edited.",
       "confirmPracticalCompletion": "Confirm the works have reached practical completion.",
       "confirmCloseout": "Confirm the project is entering closeout.",
       "confirmClose": "The project will be closed. This is the final state.",
@@ -443,9 +439,7 @@
       "more": "Actions"
     },
     "status": {
-      "DRAFT": "Draft",
-      "APPROVED": "Approved",
-      "MOBILIZING": "Mobilizing",
+      "DRAFT": "Preparation",
       "ACTIVE": "Active",
       "PRACTICAL_COMPLETION": "Practical completion",
       "CLOSEOUT": "Closeout",

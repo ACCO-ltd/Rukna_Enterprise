@@ -60,9 +60,7 @@ describe('isSuspended', () => {
  */
 describe('getAvailableActions — lifecycle progression', () => {
   it.each([
-    [ProjectStatus.DRAFT, 'approve'],
-    [ProjectStatus.APPROVED, 'mobilize'],
-    [ProjectStatus.MOBILIZING, 'activate'],
+    [ProjectStatus.DRAFT, 'start'],
     [ProjectStatus.ACTIVE, 'practical-completion'],
     [ProjectStatus.PRACTICAL_COMPLETION, 'closeout'],
     [ProjectStatus.CLOSEOUT, 'close'],
@@ -81,20 +79,18 @@ describe('getAvailableActions — lifecycle progression', () => {
 describe('getAvailableActions — editing', () => {
   it('allows editing only in DRAFT', () => {
     expect(getAvailableActions(project(ProjectStatus.DRAFT)).canEdit).toBe(true);
-    expect(getAvailableActions(project(ProjectStatus.APPROVED)).canEdit).toBe(false);
     expect(getAvailableActions(project(ProjectStatus.ACTIVE)).canEdit).toBe(false);
+    expect(getAvailableActions(project(ProjectStatus.PRACTICAL_COMPLETION)).canEdit).toBe(false);
   });
 });
 
 describe('getAvailableActions — cancellation', () => {
-  it.each([
-    ProjectStatus.DRAFT,
-    ProjectStatus.APPROVED,
-    ProjectStatus.MOBILIZING,
-    ProjectStatus.ACTIVE,
-  ])('allows cancelling from %s', (status) => {
-    expect(getAvailableActions(project(status)).canCancel).toBe(true);
-  });
+  it.each([ProjectStatus.DRAFT, ProjectStatus.ACTIVE])(
+    'allows cancelling from %s',
+    (status) => {
+      expect(getAvailableActions(project(status)).canCancel).toBe(true);
+    },
+  );
 
   it.each([
     ProjectStatus.PRACTICAL_COMPLETION,
@@ -135,7 +131,7 @@ describe('getAvailableActions — suspension', () => {
    * Offering the button would produce a guaranteed 400.
    */
   it('withholds the forward step while suspended, and says why', () => {
-    const actions = getAvailableActions(project(ProjectStatus.MOBILIZING, [suspension()]));
+    const actions = getAvailableActions(project(ProjectStatus.ACTIVE, [suspension()]));
 
     expect(actions.advance).toBeNull();
     expect(actions.advanceBlockedBySuspension).toBe(true);

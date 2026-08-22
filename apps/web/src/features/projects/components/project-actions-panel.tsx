@@ -29,9 +29,7 @@ type PendingAction = { kind: 'advance'; command: ProjectCommand } | { kind: 'can
 
 /** Confirmation copy per lifecycle command — each says what the step actually commits to. */
 const CONFIRM_KEY: Record<ProjectCommand, string> = {
-  approve: 'confirmApprove',
-  mobilize: 'confirmMobilize',
-  activate: 'confirmActivate',
+  start: 'confirmStart',
   'practical-completion': 'confirmPracticalCompletion',
   closeout: 'confirmCloseout',
   close: 'confirmClose',

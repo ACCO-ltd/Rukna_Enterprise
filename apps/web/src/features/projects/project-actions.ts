@@ -14,30 +14,19 @@ import type { ProjectDetail } from './types';
  * detail view, means the rules can be tested directly and audited against the backend in
  * one sitting.
  */
-export type ProjectCommand =
-  | 'approve'
-  | 'mobilize'
-  | 'activate'
-  | 'practical-completion'
-  | 'closeout'
-  | 'close';
+// ADR-019 CONST-PLC-001/004: six-state lifecycle. `start` is the single DRAFT → ACTIVE
+// command that replaced the retired approve → mobilize → activate chain.
+export type ProjectCommand = 'start' | 'practical-completion' | 'closeout' | 'close';
 
 /** The single lifecycle command available from each status, if any. */
 const NEXT_COMMAND: Partial<Record<ProjectStatus, ProjectCommand>> = {
-  [ProjectStatus.DRAFT]: 'approve',
-  [ProjectStatus.APPROVED]: 'mobilize',
-  [ProjectStatus.MOBILIZING]: 'activate',
+  [ProjectStatus.DRAFT]: 'start',
   [ProjectStatus.ACTIVE]: 'practical-completion',
   [ProjectStatus.PRACTICAL_COMPLETION]: 'closeout',
   [ProjectStatus.CLOSEOUT]: 'close',
 };
 
-const CANCEL_ALLOWED_FROM: ProjectStatus[] = [
-  ProjectStatus.DRAFT,
-  ProjectStatus.APPROVED,
-  ProjectStatus.MOBILIZING,
-  ProjectStatus.ACTIVE,
-];
+const CANCEL_ALLOWED_FROM: ProjectStatus[] = [ProjectStatus.DRAFT, ProjectStatus.ACTIVE];
 
 const TERMINAL: ProjectStatus[] = [ProjectStatus.CLOSED, ProjectStatus.CANCELLED];
 

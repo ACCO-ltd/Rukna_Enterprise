@@ -15,13 +15,14 @@ import { summarizeProjects } from '../summarize-projects';
 import { PortfolioTableWidget } from './portfolio-table-widget';
 
 const ACTIVE_STATUSES: ProjectStatus[] = [
-  ProjectStatus.MOBILIZING,
   ProjectStatus.ACTIVE,
   ProjectStatus.PRACTICAL_COMPLETION,
   ProjectStatus.CLOSEOUT,
 ];
 
-const PENDING_STATUSES: ProjectStatus[] = [ProjectStatus.DRAFT, ProjectStatus.APPROVED];
+// ADR-019 CONST-PLC-001: APPROVED and MOBILIZING retired into DRAFT ("Preparation") —
+// projects still being prepared count as pending, not active.
+const PENDING_STATUSES: ProjectStatus[] = [ProjectStatus.DRAFT];
 
 const FINISHED_STATUSES: ProjectStatus[] = [
   ProjectStatus.CLOSED,

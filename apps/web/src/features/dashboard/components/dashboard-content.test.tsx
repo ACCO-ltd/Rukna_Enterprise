@@ -70,7 +70,7 @@ describe('DashboardContent', () => {
       project({ id: '1', status: ProjectStatus.ACTIVE }),
       project({ id: '2', status: ProjectStatus.ACTIVE }),
       project({ id: '3', status: ProjectStatus.DRAFT }),
-      project({ id: '4', status: ProjectStatus.MOBILIZING }),
+      project({ id: '4', status: ProjectStatus.DRAFT }),
       project({ id: '5', status: ProjectStatus.CLOSED }),
     ]);
 
@@ -79,11 +79,11 @@ describe('DashboardContent', () => {
     await screen.findByText('All projects');
     expect(screen.getByText('All projects').closest('a, div')).toHaveTextContent('5');
 
-    // "On site" = MOBILIZING(1) + ACTIVE(2) = 3
-    expect(screen.getByText('On site').closest('a, div')).toHaveTextContent('3');
+    // "On site" = ACTIVE(2) = 2
+    expect(screen.getByText('On site').closest('a, div')).toHaveTextContent('2');
 
-    // "Pending" = DRAFT(1)
-    expect(screen.getByText('Pending').closest('a, div')).toHaveTextContent('1');
+    // "Pending" = DRAFT(2)
+    expect(screen.getByText('Pending').closest('a, div')).toHaveTextContent('2');
 
     // "Finished" = CLOSED(1)
     expect(screen.getByText('Finished').closest('a, div')).toHaveTextContent('1');

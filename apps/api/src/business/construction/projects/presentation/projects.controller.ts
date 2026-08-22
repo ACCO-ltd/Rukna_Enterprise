@@ -96,28 +96,15 @@ export class ProjectsController {
 
   // ─── Lifecycle commands ───────────────────────────────────────────────────────
 
-  @Post(':id/approve')
-  @RequirePermissions(PERMISSIONS.projectsApprove)
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Transition project from DRAFT → APPROVED' })
-  approve(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
-    return this.projectService.transition(identity, id, 'approve');
-  }
-
-  @Post(':id/mobilize')
+  // ADR-019 CONST-PLC-004: "Start Project" is the single DRAFT → ACTIVE command. It replaces
+  // the retired approve → mobilize → activate chain; the DRAFT → ACTIVE governance binding
+  // (ADR-022) carries the approval that APPROVED used to model as a state.
+  @Post(':id/start')
   @RequirePermissions(PERMISSIONS.projectsManage)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Transition project from APPROVED → MOBILIZING' })
-  mobilize(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
-    return this.projectService.transition(identity, id, 'mobilize');
-  }
-
-  @Post(':id/activate')
-  @RequirePermissions(PERMISSIONS.projectsManage)
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Transition project from MOBILIZING → ACTIVE' })
-  activate(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
-    return this.projectService.transition(identity, id, 'activate');
+  @ApiOperation({ summary: 'Start project (DRAFT → ACTIVE)' })
+  start(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.projectService.transition(identity, id, 'start');
   }
 
   @Post(':id/practical-completion')
@@ -147,7 +134,7 @@ export class ProjectsController {
   @Post(':id/cancel')
   @RequirePermissions(PERMISSIONS.projectsManage)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Cancel project (allowed from DRAFT, APPROVED, MOBILIZING, ACTIVE)' })
+  @ApiOperation({ summary: 'Cancel project (allowed from DRAFT, ACTIVE)' })
   @ApiResponse({ status: 400, description: 'Project cannot be cancelled from current status' })
   cancel(
     @CurrentUser() identity: RequestIdentity,

@@ -169,13 +169,13 @@ describe('ProjectDetail — available actions', () => {
   });
 
 
-  it('offers approve, edit, and secondary lifecycle actions for a draft', async () => {
+  it('offers start, edit, and secondary lifecycle actions for a draft', async () => {
     const user = userEvent.setup();
     vi.mocked(getProject).mockResolvedValue(project());
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
-    expect(await screen.findByRole('button', { name: 'Approve' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Start project' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Edit' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Actions' })).toBeInTheDocument();
     await chooseOverflowAction(user, 'Suspend');
@@ -189,14 +189,14 @@ describe('ProjectDetail — available actions', () => {
 
     // Overview section heading is a reliable signal that the project loaded.
     await screen.findByText('Overview');
-    expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start project' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Actions' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument();
   });
 
   it('shows the suspension, hides the forward step, and offers resume', async () => {
     vi.mocked(getProject).mockResolvedValue(
-      project({ status: ProjectStatus.MOBILIZING, suspensions: [suspension()] }),
+      project({ status: ProjectStatus.ACTIVE, suspensions: [suspension()] }),
     );
 
     renderWithProviders(<ProjectDetail id="p1" />);
@@ -204,7 +204,7 @@ describe('ProjectDetail — available actions', () => {
     expect(await screen.findByText('This project is suspended')).toBeInTheDocument();
     expect(screen.getByText('Awaiting site access clearance')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Activate' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Record practical completion' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Actions' })).toBeInTheDocument();
   });
 });
@@ -213,22 +213,22 @@ describe('ProjectDetail — running commands', () => {
   it('confirms before advancing the lifecycle', async () => {
     const user = userEvent.setup();
     vi.mocked(getProject).mockResolvedValue(project());
-    vi.mocked(runProjectCommand).mockResolvedValue(project({ status: ProjectStatus.APPROVED }));
+    vi.mocked(runProjectCommand).mockResolvedValue(project({ status: ProjectStatus.ACTIVE }));
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
-    await user.click(await screen.findByRole('button', { name: 'Approve' }));
+    await user.click(await screen.findByRole('button', { name: 'Start project' }));
 
     // Nothing has been sent yet — the dialog is the whole point.
     expect(runProjectCommand).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toHaveTextContent(
-      'The project moves out of draft and can no longer be edited.',
+      'The project leaves preparation and becomes active on site. It can no longer be edited.',
     );
 
     await user.click(screen.getByRole('button', { name: 'Confirm' }));
 
     await waitFor(() => {
-      expect(runProjectCommand).toHaveBeenCalledWith('p1', 'approve');
+      expect(runProjectCommand).toHaveBeenCalledWith('p1', 'start');
     });
   });
 
@@ -238,7 +238,7 @@ describe('ProjectDetail — running commands', () => {
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
-    await user.click(await screen.findByRole('button', { name: 'Approve' }));
+    await user.click(await screen.findByRole('button', { name: 'Start project' }));
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
 
     await waitFor(() => {
@@ -308,7 +308,7 @@ describe('ProjectDetail — running commands', () => {
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
-    await user.click(await screen.findByRole('button', { name: 'Approve' }));
+    await user.click(await screen.findByRole('button', { name: 'Start project' }));
     await user.click(screen.getByRole('button', { name: 'Confirm' }));
 
     expect(await screen.findByText('Project is suspended.')).toBeInTheDocument();
