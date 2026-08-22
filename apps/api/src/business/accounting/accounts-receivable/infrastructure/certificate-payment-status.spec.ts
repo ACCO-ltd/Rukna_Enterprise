@@ -1,9 +1,10 @@
-import { FinancePrismaRepository } from './infrastructure/finance-prisma.repository.js';
+import { PaymentReceiptArRepository } from './payment-receipt-ar.repository.js';
 
 /**
  * ADR-024 ACC-SET-001 (D2) — IPC payment status is measured against the VAT-inclusive
  * ClientInvoice total, never the pre-VAT netCertified. Worked example:
  *   certified 100,000 + VAT 5,000 = invoice 105,000; received 105,000 → PAID, outstanding 0.
+ * (Moved from the retired finance module in BE-2.)
  */
 
 interface MockShape {
@@ -28,7 +29,7 @@ function mockPrisma(shape: MockShape) {
   } as never;
 }
 
-const repo = new FinancePrismaRepository();
+const repo = new PaymentReceiptArRepository();
 const CERTIFIED = { items: [{ certifiedAmount: '100000' }], deductions: [] };
 
 describe('getCertificatePaymentSummary (ADR-024 ACC-SET-001)', () => {

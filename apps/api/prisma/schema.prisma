@@ -1207,8 +1207,6 @@ model InterimPaymentCertificate {
   items         InterimPaymentCertificateItem[]
   deductions    InterimPaymentCertificateDeduction[]
   attachments   IpcAttachment[]
-  // Sprint 3 commercial billing tracking (receipt ↔ IPC)
-  allocations   ReceiptAllocation[]
   supersededBy  InterimPaymentCertificate?           @relation("CertSupersession", fields: [supersededById], references: [id])
   supersedes    InterimPaymentCertificate[]          @relation("CertSupersession")
   // Sprint 4 — ClientInvoice generated when isEffective becomes true (Correction 10)
@@ -1266,23 +1264,9 @@ model IpcAttachment {
   @@map("ipc_attachments")
 }
 
-// Sprint 3 commercial billing tracking — receipt allocated to IPC (NOT accounting subledger).
-// For accounting AR settlement see ClientReceiptAllocation (receipt ↔ ClientInvoice).
-model ReceiptAllocation {
-  id              String   @id @default(cuid())
-  receiptId       String   @map("receipt_id")
-  certificateId   String   @map("certificate_id")
-  allocatedAmount Decimal  @map("allocated_amount") @db.Decimal(18, 2)
-  allocatedAt     DateTime @default(now()) @map("allocated_at")
-  allocatedBy     String   @map("allocated_by")
-
-  receipt     PaymentReceipt            @relation(fields: [receiptId], references: [id])
-  certificate InterimPaymentCertificate @relation(fields: [certificateId], references: [id])
-
-  @@index([receiptId])
-  @@index([certificateId])
-  @@map("receipt_allocations")
-}
+// ADR-024 ACC-SET-001 BE-2: the legacy receipt→IPC allocation ledger (ReceiptAllocation) was
+// retired. Receipts settle ClientInvoices via ClientReceiptAllocation (the sole money-truth);
+// an IPC's payment status is derived from the invoice raised off it.
 
 // ─── Sprint 4: Accounting Foundation ─────────────────────────────────────────
 
@@ -1867,9 +1851,7 @@ model PaymentReceipt {
   organization      Organization              @relation(fields: [organizationId], references: [id])
   client            Client                    @relation(fields: [clientId], references: [id])
   bankAccount       BankAccount?              @relation(fields: [bankAccountId], references: [id])
-  // Sprint 3 commercial billing tracking (receipt ↔ IPC)
-  allocations       ReceiptAllocation[]
-  // Sprint 4 accounting subledger (receipt ↔ ClientInvoice)
+  // Accounting subledger (receipt ↔ ClientInvoice) — the sole allocation ledger (ACC-SET-001).
   clientAllocations ClientReceiptAllocation[]
 
   @@index([organizationId, clientId])

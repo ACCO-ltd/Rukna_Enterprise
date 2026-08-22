@@ -9,8 +9,8 @@ import type { Receipt, ReceiptAllocation, ReceiptDetail } from '../types';
  * **ClientInvoices** through `/customer-receipts`. There is no direct receipt→IPC allocation
  * anymore — an IPC's payment status is derived from the invoice raised off it.
  *
- * `create` still lives on `POST /receipts` until BE-2 folds it into the AR module; every
- * other verb is on `/customer-receipts`. Both act on the same PaymentReceipt row.
+ * Every verb is on `/customer-receipts` — one receipts module (the legacy finance `/receipts`
+ * module was retired in ACC-SET-001 BE-2).
  */
 
 /** Body accepted by `POST /receipts`, mirroring CreateReceiptDto. */
@@ -60,9 +60,9 @@ export function getReceipt(id: string): Promise<ReceiptDetail> {
   return apiClient<ReceiptDetail>(`/customer-receipts/${id}`);
 }
 
-/** `POST /receipts` — record a receipt (NOT_POSTED until it is posted to the GL). */
+/** `POST /customer-receipts` — record a receipt (NOT_POSTED until it is posted to the GL). */
 export function createReceipt(payload: CreateReceiptPayload): Promise<Receipt> {
-  return apiClient<Receipt>('/receipts', {
+  return apiClient<Receipt>('/customer-receipts', {
     method: 'POST',
     body: JSON.stringify(payload),
   });

@@ -19,7 +19,6 @@ import { FilesModule } from './platform/files/files.module.js';
 import { WorkflowsModule } from './platform/workflows/workflows.module.js';
 import { ClientsModule } from './platform/clients/clients.module.js';
 import { ConstructionModule } from './business/construction/construction.module.js';
-import { FinanceModule } from './business/finance/finance.module.js';
 import { AccountingModule } from './business/accounting/accounting.module.js';
 import { ProcurementModule } from './business/procurement/procurement.module.js';
 import { RetailModule } from './business/retail/retail.module.js';
@@ -44,7 +43,6 @@ import { AuditInterceptor } from './platform/audit-logs/application/audit.interc
     ClientsModule,
     ProjectAccessModule,
     ConstructionModule,
-    FinanceModule,
     AccountingModule,
     ProcurementModule,
     RetailModule,
