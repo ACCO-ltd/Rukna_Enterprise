@@ -98,7 +98,7 @@ async function seedAccoGovernancePolicy(prisma: PrismaClient, organizationId: st
       transactionType: WorkflowTransactionType.MATERIAL_REQUEST,
       status: 'ACTIVE',
       priority: 80,
-      configuration: { operator: 'GT', amount: '10000.00', currency: 'USD', additionalApproverRole: 'GROUP_CEO' },
+      configuration: { operator: 'GT', amount: '10000.00', currency: 'USD', additionalApproverRole: 'CEO' },
     },
     {
       ruleKey: 'PO_POLICY_PENDING_MAPPING_AND_VAT_BASIS',
@@ -352,9 +352,9 @@ function buildAccoChains(organizationId: string): (ChainDef & { organizationId: 
       transactionType: WorkflowTransactionType.MATERIAL_REQUEST,
       name: 'Material Request Approval',
       steps: [
-        { stepOrder: 1, roleRequired: 'PROJECT_MANAGER', isOptional: false, notifyRoles: ['PROCUREMENT_OFFICER'] },
-        { stepOrder: 2, roleRequired: 'PROCUREMENT_OFFICER', isOptional: false, notifyRoles: ['FINANCE_MANAGER'] },
-        { stepOrder: 3, roleRequired: 'FINANCE_MANAGER', isOptional: false, notifyRoles: [] },
+        { stepOrder: 1, roleRequired: 'PROJECT_MANAGER', isOptional: false, notifyRoles: ['PROCUREMENT_MANAGER'] },
+        { stepOrder: 2, roleRequired: 'PROCUREMENT_MANAGER', isOptional: false, notifyRoles: ['FINANCE_OFFICER'] },
+        { stepOrder: 3, roleRequired: 'FINANCE_OFFICER', isOptional: false, notifyRoles: [] },
       ],
     },
     {
@@ -367,7 +367,7 @@ function buildAccoChains(organizationId: string): (ChainDef & { organizationId: 
       steps: [
         { stepOrder: 1, roleRequired: 'PROJECT_MANAGER', isOptional: false, notifyRoles: [] },
         { stepOrder: 2, roleRequired: 'PROCUREMENT_MANAGER', isOptional: false, notifyRoles: [] },
-        { stepOrder: 3, roleRequired: 'FINANCE_MANAGER', isOptional: false, notifyRoles: [] },
+        { stepOrder: 3, roleRequired: 'FINANCE_OFFICER', isOptional: false, notifyRoles: [] },
         // PLACEHOLDER: CFO threshold and CEO threshold to be confirmed by Eng Ahmed Shirie
         { stepOrder: 4, roleRequired: 'CFO', isOptional: false, notifyRoles: [] },
         { stepOrder: 5, roleRequired: 'CEO', isOptional: false, notifyRoles: [] },
@@ -378,10 +378,10 @@ function buildAccoChains(organizationId: string): (ChainDef & { organizationId: 
       transactionType: WorkflowTransactionType.SUPPLIER_PAYMENT,
       name: 'Supplier Payment Approval',
       steps: [
-        { stepOrder: 1, roleRequired: 'PROCUREMENT_OFFICER', isOptional: false, notifyRoles: [] },
-        { stepOrder: 2, roleRequired: 'STOREKEEPER', isOptional: false, notifyRoles: [] },
-        { stepOrder: 3, roleRequired: 'AP_ACCOUNTANT', isOptional: false, notifyRoles: [] },
-        { stepOrder: 4, roleRequired: 'FINANCE_MANAGER', isOptional: false, notifyRoles: [] },
+        { stepOrder: 1, roleRequired: 'PROCUREMENT_MANAGER', isOptional: false, notifyRoles: [] },
+        { stepOrder: 2, roleRequired: 'PROCUREMENT_MANAGER', isOptional: false, notifyRoles: [] },
+        { stepOrder: 3, roleRequired: 'ACCOUNTANT', isOptional: false, notifyRoles: [] },
+        { stepOrder: 4, roleRequired: 'FINANCE_OFFICER', isOptional: false, notifyRoles: [] },
         { stepOrder: 5, roleRequired: 'CFO', isOptional: false, notifyRoles: [] },
         { stepOrder: 6, roleRequired: 'CEO', isOptional: false, notifyRoles: [] },
       ],
@@ -391,7 +391,7 @@ function buildAccoChains(organizationId: string): (ChainDef & { organizationId: 
       transactionType: WorkflowTransactionType.STOCK_TRANSFER,
       name: 'Stock Transfer Approval',
       steps: [
-        { stepOrder: 1, roleRequired: 'STOREKEEPER', isOptional: false, notifyRoles: [] },
+        { stepOrder: 1, roleRequired: 'PROCUREMENT_MANAGER', isOptional: false, notifyRoles: [] },
         { stepOrder: 2, roleRequired: 'PROJECT_MANAGER', isOptional: false, notifyRoles: [] },
       ],
     },
@@ -401,7 +401,7 @@ function buildAccoChains(organizationId: string): (ChainDef & { organizationId: 
       name: 'Material Issue Approval',
       steps: [
         { stepOrder: 1, roleRequired: 'PROJECT_MANAGER', isOptional: false, notifyRoles: [] },
-        { stepOrder: 2, roleRequired: 'STOREKEEPER', isOptional: false, notifyRoles: [] },
+        { stepOrder: 2, roleRequired: 'PROCUREMENT_MANAGER', isOptional: false, notifyRoles: [] },
       ],
     },
     {
@@ -410,10 +410,10 @@ function buildAccoChains(organizationId: string): (ChainDef & { organizationId: 
       name: 'Subcontract Payment Certificate Approval',
       steps: [
         { stepOrder: 1, roleRequired: 'SITE_ENGINEER', isOptional: false, notifyRoles: [] },
-        { stepOrder: 2, roleRequired: 'QUANTITY_SURVEYOR', isOptional: false, notifyRoles: [] },
+        { stepOrder: 2, roleRequired: 'CONSTRUCTION_DIRECTOR', isOptional: false, notifyRoles: [] },
         { stepOrder: 3, roleRequired: 'PROJECT_MANAGER', isOptional: false, notifyRoles: [] },
         { stepOrder: 4, roleRequired: 'COMMERCIAL_MANAGER', isOptional: false, notifyRoles: [] },
-        { stepOrder: 5, roleRequired: 'FINANCE_MANAGER', isOptional: false, notifyRoles: [] },
+        { stepOrder: 5, roleRequired: 'FINANCE_OFFICER', isOptional: false, notifyRoles: [] },
         { stepOrder: 6, roleRequired: 'CFO', isOptional: false, notifyRoles: [] },
         { stepOrder: 7, roleRequired: 'CEO', isOptional: false, notifyRoles: [] },
       ],
@@ -423,10 +423,10 @@ function buildAccoChains(organizationId: string): (ChainDef & { organizationId: 
       transactionType: WorkflowTransactionType.IPC,
       name: 'Interim Payment Certificate Approval',
       steps: [
-        { stepOrder: 1, roleRequired: 'QUANTITY_SURVEYOR', isOptional: false, notifyRoles: [] },
+        { stepOrder: 1, roleRequired: 'CONSTRUCTION_DIRECTOR', isOptional: false, notifyRoles: [] },
         { stepOrder: 2, roleRequired: 'PROJECT_MANAGER', isOptional: false, notifyRoles: [] },
         { stepOrder: 3, roleRequired: 'COMMERCIAL_MANAGER', isOptional: false, notifyRoles: [] },
-        { stepOrder: 4, roleRequired: 'FINANCE_MANAGER', isOptional: false, notifyRoles: [] },
+        { stepOrder: 4, roleRequired: 'FINANCE_OFFICER', isOptional: false, notifyRoles: [] },
         { stepOrder: 5, roleRequired: 'CFO', isOptional: false, notifyRoles: [] },
         { stepOrder: 6, roleRequired: 'CEO', isOptional: false, notifyRoles: [] },
       ],

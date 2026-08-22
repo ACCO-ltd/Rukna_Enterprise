@@ -18,19 +18,19 @@ describe('ACCO approval chains (ADR-022 CONST-DOA-006..009)', () => {
     for (const c of chains) expect(c.steps.length).toBeGreaterThan(0);
   });
 
-  it('CONST-DOA-006 Start: DRAFT → ACTIVE, PM → CFO → Group CEO', () => {
+  it('CONST-DOA-006 Start: DRAFT → ACTIVE, PM → CFO → CEO', () => {
     const c = byKey('PROJECT_START');
     expect([c.entityType, c.fromState, c.toState]).toEqual(['Project', 'DRAFT', 'ACTIVE']);
-    expect(c.steps).toEqual([ACCO_ROLES.PROJECT_MANAGER, ACCO_ROLES.CFO, ACCO_ROLES.GROUP_CEO]);
+    expect(c.steps).toEqual([ACCO_ROLES.PROJECT_MANAGER, ACCO_ROLES.CFO, ACCO_ROLES.CEO]);
   });
 
-  it('CONST-DOA-007 Closeout: CLOSEOUT → CLOSED, PM → Finance Officer → Group CEO', () => {
+  it('CONST-DOA-007 Closeout: CLOSEOUT → CLOSED, PM → Finance Officer → CEO', () => {
     const c = byKey('PROJECT_CLOSEOUT');
     expect([c.entityType, c.fromState, c.toState]).toEqual(['Project', 'CLOSEOUT', 'CLOSED']);
     expect(c.steps).toEqual([
       ACCO_ROLES.PROJECT_MANAGER,
       ACCO_ROLES.FINANCE_OFFICER,
-      ACCO_ROLES.GROUP_CEO,
+      ACCO_ROLES.CEO,
     ]);
   });
 
@@ -38,7 +38,7 @@ describe('ACCO approval chains (ADR-022 CONST-DOA-006..009)', () => {
     const c = byKey('BOQ_BASELINE');
     expect([c.entityType, c.fromState, c.toState]).toEqual(['BoqVersion', 'DRAFT', 'BASELINED']);
     // The Construction Director prepares scope+cost, so CFO and CEO must also sign.
-    expect(c.steps).toEqual([ACCO_ROLES.CONSTRUCTION_DIRECTOR, ACCO_ROLES.CFO, ACCO_ROLES.GROUP_CEO]);
+    expect(c.steps).toEqual([ACCO_ROLES.CONSTRUCTION_DIRECTOR, ACCO_ROLES.CFO, ACCO_ROLES.CEO]);
   });
 
   it('CONST-DOA-008 DPR: DailyProgressReport SUBMITTED → APPROVED, PM-only chain', () => {
