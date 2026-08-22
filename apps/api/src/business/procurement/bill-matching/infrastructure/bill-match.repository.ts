@@ -1,5 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import type { PrismaClient, BillMatchType, BillMatchStatus } from '@prisma/client';
+import type {
+  PrismaClient,
+  BillMatchType,
+  BillMatchStatus,
+  MatchExceptionReason,
+  MatchResolutionAction,
+} from '@prisma/client';
 import type { Decimal } from '@prisma/client/runtime/library';
 
 type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
@@ -65,7 +71,16 @@ export class BillMatchRepository {
     prisma: TenantPrisma,
     supplierBillId: string,
     status: BillMatchStatus,
-    extra?: { matchedAt?: Date; matchedBy?: string; approvedBy?: string; approvedAt?: Date; approvalReason?: string },
+    extra?: {
+      matchedAt?: Date;
+      matchedBy?: string;
+      approvedBy?: string;
+      approvedAt?: Date;
+      approvalReason?: string;
+      resolutionReason?: MatchExceptionReason;
+      resolutionAction?: MatchResolutionAction;
+      resolutionNotes?: string;
+    },
   ) {
     return prisma.supplierBillMatch.update({
       where: { supplierBillId },

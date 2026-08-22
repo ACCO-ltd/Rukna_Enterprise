@@ -3267,6 +3267,11 @@ model SupplierBillMatch {
   approvedAt         DateTime?       @map("approved_at")
   approvalReason     String?         @map("approval_reason")
   approvalInstanceId String?         @map("approval_instance_id")
+  // ADR-018 CONST-MATCH-007/008/014 — the structured resolution of an exception (approvedBy/At are
+  // the resolver + time). resolutionAction is derived from the reason.
+  resolutionReason   MatchExceptionReason?  @map("resolution_reason")
+  resolutionAction   MatchResolutionAction? @map("resolution_action")
+  resolutionNotes    String?                @map("resolution_notes")
   createdAt          DateTime        @default(now()) @map("created_at")
   updatedAt          DateTime        @updatedAt @map("updated_at")
 
@@ -3469,6 +3474,28 @@ enum BillMatchStatus {
   MATCHED_WITH_TOLERANCE
   EXCEPTION
   APPROVED_EXCEPTION
+  // ADR-018 CONST-MATCH-009: a supplier-invoice-error dispute. Terminal and never postable —
+  // the disputed excess is not posted; the supplier re-submits a corrected bill.
+  DISPUTED
+}
+
+// ADR-018 CONST-MATCH-007 — exception reasons are a defined enum, never free text.
+enum MatchExceptionReason {
+  ROUNDING_VARIANCE
+  SUPPLIER_INVOICE_ERROR
+  AGREED_PRICE_CHANGE
+  FREIGHT_OR_ADDITIONAL_CHARGE
+  RECEIPT_CORRECTION
+  PO_QUANTITY_CHANGE
+  OTHER
+}
+
+// ADR-018 CONST-MATCH-008 — the reason determines the resolution path.
+enum MatchResolutionAction {
+  APPROVE // absorb / approve additional cost / manual approval → APPROVED_EXCEPTION (postable)
+  DISPUTE // reject; supplier re-submits → DISPUTED (blocked)
+  REQUIRE_PO_REVISION // an approved PO revision + recommit + rematch clears it → stays EXCEPTION
+  REQUIRE_RECEIPT_CORRECTION // correct the GRN + rematch clears it → stays EXCEPTION
 }
 
 enum CommitmentStage {
