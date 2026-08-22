@@ -19,27 +19,40 @@ export async function seedAccoWorkflows(prisma: PrismaClient, organizationId: st
 }
 
 /**
- * Authoritative ACCO governance configuration. This version is intentionally
- * scheduled without an effective date: no rule can affect production until the
- * formal policy effective date is entered and the version is activated.
+ * Authoritative ACCO governance configuration.
+ *
+ * ADR-022 (ACCO Authority Matrix) was domain-approved by Eng Ahmed Shirie on 2026-08-17 — that
+ * sign-off IS the formal policy effective date the version was waiting for. The version is now
+ * ACTIVE as of that date so the mandatory Segregation-of-Duties rules (CONST-DOA-003) take effect.
+ * The value-threshold WorkflowPolicyRules stay `PENDING` until ACCO confirms the numbers (item D),
+ * so activating the version does not switch on threshold routing — only the SoD rules wired below.
  */
+const ACCO_GOVERNANCE_EFFECTIVE_FROM = new Date('2026-08-17T00:00:00.000Z');
+
+// ADR-022 Phase 1: the SoD rules wired into services and therefore activated. The remaining two
+// (VENDOR_MAINTAINER_*, SYSTEM_ADMIN_*) stay inactive until their enforcement is built (Phase 1b).
+const ACTIVE_SOD_CODES = new Set<string>([
+  'REQUESTER_CANNOT_APPROVE_OWN_REQUEST',
+  'PO_CREATOR_CANNOT_RECEIVE_GOODS',
+  'GOODS_RECEIVER_CANNOT_APPROVE_BILL',
+  'BILL_APPROVER_CANNOT_APPROVE_OR_RELEASE_PAYMENT',
+  'JOURNAL_PREPARER_CANNOT_APPROVE_JOURNAL',
+]);
+
 async function seedAccoGovernancePolicy(prisma: PrismaClient, organizationId: string): Promise<void> {
   const policyKey = 'ACCO_GOVERNANCE';
-  const existing = await prisma.workflowPolicyVersion.findUnique({
+  const versionData = {
+    status: 'ACTIVE' as const,
+    effectiveFrom: ACCO_GOVERNANCE_EFFECTIVE_FROM,
+    amountBasis: 'UNSPECIFIED' as const,
+    notes:
+      'CEO-approved ACCO governance (ADR-022, effective 2026-08-17). Segregation-of-Duties rules ' +
+      'are active. Value-threshold rules remain PENDING until ACCO confirms the numbers.',
+  };
+  const policy = await prisma.workflowPolicyVersion.upsert({
     where: { organizationId_policyKey_version: { organizationId, policyKey, version: 1 } },
-  });
-
-  const policy = existing ?? await prisma.workflowPolicyVersion.create({
-    data: {
-      organizationId,
-      policyKey,
-      version: 1,
-      status: 'SCHEDULED',
-      amountBasis: 'UNSPECIFIED',
-      notes:
-        'CEO-approved ACCO governance. Activation is blocked until the formal policy effective date is recorded. ' +
-        'PO authority mapping and VAT basis remain pending.',
-    },
+    create: { organizationId, policyKey, version: 1, ...versionData },
+    update: versionData,
   });
 
   const rules: Array<{
@@ -145,10 +158,11 @@ async function seedAccoGovernancePolicy(prisma: PrismaClient, organizationId: st
   ] as const;
 
   for (const [code, description] of sodRules) {
+    const isActive = ACTIVE_SOD_CODES.has(code);
     await prisma.segregationOfDutiesRule.upsert({
       where: { organizationId_code: { organizationId, code } },
-      create: { organizationId, workflowPolicyVersionId: policy.id, code, description, isActive: false },
-      update: { description, workflowPolicyVersionId: policy.id, isActive: false },
+      create: { organizationId, workflowPolicyVersionId: policy.id, code, description, isActive },
+      update: { description, workflowPolicyVersionId: policy.id, isActive },
     });
   }
 

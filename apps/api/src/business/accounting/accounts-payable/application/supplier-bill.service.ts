@@ -17,6 +17,7 @@ import { DocumentSequenceRepository } from '../../accounting-core/infrastructure
 import { SupplierBillRepository } from '../infrastructure/supplier-bill.repository.js';
 import { CommitmentLedgerWriter } from '../../../../business/procurement/commitment-ledger/application/commitment-ledger-writer.service.js';
 import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
+import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
 
 export interface CreateSupplierBillLineDto {
   description: string;
@@ -59,6 +60,7 @@ export class SupplierBillService {
     private readonly postingPort: IAccountingPostingPort,
     private readonly commitmentWriter: CommitmentLedgerWriter,
     private readonly commandGovernance: CommandGovernanceService,
+    private readonly sod: SegregationOfDutiesService,
   ) {}
 
   async create(identity: RequestIdentity, dto: CreateSupplierBillDto) {
@@ -138,6 +140,23 @@ export class SupplierBillService {
   async approve(identity: RequestIdentity, billId: string) {
     const prisma = this.tenancyService.getClient();
     const bill = await this.requireStatus(prisma, identity.activeOrganizationId, billId, 'SUBMITTED');
+
+    // ADR-022 CONST-DOA-003: whoever received the goods against this bill's PO cannot approve the
+    // bill. A non-PO bill has no goods receipt, so the rule does not apply.
+    if (bill.purchaseOrderId) {
+      const receipts = await prisma.goodsReceiptNote.findMany({
+        where: { organizationId: identity.activeOrganizationId, purchaseOrderId: bill.purchaseOrderId },
+        select: { createdBy: true },
+      });
+      const actorReceivedGoods = receipts.some((r) => r.createdBy === identity.userId);
+      await this.sod.assertAllowed({
+        organizationId: identity.activeOrganizationId,
+        action: 'APPROVE_SUPPLIER_BILL',
+        actorUserId: identity.userId,
+        goodsReceiverUserId: actorReceivedGoods ? identity.userId : undefined,
+      });
+    }
+
     return this.repo.approve(prisma, bill.id, identity.userId);
   }
 
