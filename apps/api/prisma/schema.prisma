@@ -3048,11 +3048,45 @@ model PurchaseOrder {
   matchingPolicies    MatchingTolerancePolicy[]
   overReceiptPolicies OverReceiptPolicy[]
   commitments         CommitmentLedgerEntry[]
+  receiptExceptions   PoReceiptException[]
 
   @@unique([organizationId, poNumber])
   @@index([organizationId, status])
   @@index([organizationId, supplierId])
   @@map("purchase_orders")
+}
+
+// ADR-022 CONST-DOA-004 — the one sanctioned exception to PO_CREATOR_CANNOT_RECEIVE_GOODS: a PO
+// creator may receive goods against their own order only with an independent supervisor's
+// verification AND the CFO's approval. An APPROVED exception lets that receiver's GRN through.
+enum PoReceiptExceptionStatus {
+  PENDING
+  SUPERVISOR_VERIFIED
+  APPROVED
+  REJECTED
+}
+
+model PoReceiptException {
+  id                  String                   @id @default(cuid())
+  organizationId      String                   @map("organization_id")
+  purchaseOrderId     String                   @map("purchase_order_id")
+  // The person authorized to receive despite being the PO creator (= purchaseOrder.createdBy).
+  receiverUserId      String                   @map("receiver_user_id")
+  reason              String
+  status              PoReceiptExceptionStatus @default(PENDING)
+  requestedBy         String                   @map("requested_by")
+  supervisorUserId    String?                  @map("supervisor_user_id")
+  supervisorVerifiedAt DateTime?               @map("supervisor_verified_at")
+  cfoUserId           String?                  @map("cfo_user_id")
+  cfoApprovedAt       DateTime?                @map("cfo_approved_at")
+  rejectionReason     String?                  @map("rejection_reason")
+  createdAt           DateTime                 @default(now()) @map("created_at")
+  updatedAt           DateTime                 @updatedAt @map("updated_at")
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+
+  @@index([organizationId, purchaseOrderId, receiverUserId, status])
+  @@map("po_receipt_exceptions")
 }
 
 // Immutable once status = ACTIVE. Any change creates a new revision. (ADR-007, Rule PO-001)

@@ -2197,6 +2197,16 @@ Records physical delivery against an ACTIVE PO revision. Each line records the f
 | `POST` | `/procurement/goods-receipts/:id/approve-exception` | Supervisor approves over-receipt: EXCEPTION_PENDING → DRAFT |
 | `POST` | `/procurement/goods-receipts/:id/cancel` | Cancel (not allowed after POSTED) |
 
+**Receipt exceptions (ADR-022 CONST-DOA-004 — PO creator receiving own order).** Distinct from the over-receipt (quantity) exception above.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/procurement/receipt-exceptions?purchaseOrderId=` | List receipt exceptions for a PO |
+| `POST` | `/procurement/receipt-exceptions` | Request `{ purchaseOrderId, reason }` (receiver = PO creator) |
+| `POST` | `/procurement/receipt-exceptions/:id/verify` | Independent supervisor verifies (≠ receiver) → SUPERVISOR_VERIFIED |
+| `POST` | `/procurement/receipt-exceptions/:id/approve` | CFO approves (≠ receiver, ≠ supervisor) → APPROVED; clears the receiver's GRN |
+| `POST` | `/procurement/receipt-exceptions/:id/reject` | Reject `{ reason }` |
+
 **Query params for list:**
 - `purchaseOrderId` — filter by PO
 

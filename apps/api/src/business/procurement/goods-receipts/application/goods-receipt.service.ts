@@ -13,6 +13,7 @@ import { PurchaseOrderRepository } from '../../purchase-orders/infrastructure/pu
 import { CommitmentLedgerWriter } from '../../commitment-ledger/application/commitment-ledger-writer.service.js';
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
+import { ReceiptExceptionService } from './receipt-exception.service.js';
 
 // Platform fallback when no OverReceiptPolicy is seeded for the org yet.
 // Seed an OverReceiptPolicy record to override this per ADR-007, Decision 11.
@@ -44,6 +45,7 @@ export class GoodsReceiptService {
     private readonly commitmentWriter: CommitmentLedgerWriter,
     private readonly auditOutbox: TransactionalAuditOutboxService,
     private readonly sod: SegregationOfDutiesService,
+    private readonly receiptExceptions: ReceiptExceptionService,
   ) {}
 
   findAll(identity: RequestIdentity, filters?: { purchaseOrderId?: string }) {
@@ -68,12 +70,14 @@ export class GoodsReceiptService {
 
     // ADR-022 CONST-DOA-003: a PO creator cannot receive goods against their own order. The
     // Procurement Officer's Store-Keeper access (CONST-DOA-002) does not exempt this — access is
-    // not authority. The one sanctioned override (supervisor + CFO, CONST-DOA-004) is not yet built.
+    // not authority. CONST-DOA-004: the one sanctioned override is an APPROVED receipt exception
+    // (independent supervisor verification + CFO approval), which clears this receiver.
+    const cleared = await this.receiptExceptions.isReceiptCleared(prisma, po.id, identity.userId);
     await this.sod.assertAllowed({
       organizationId: orgId,
       action: 'RECEIVE_GOODS',
       actorUserId: identity.userId,
-      purchaseOrderCreatorUserId: po.createdBy,
+      purchaseOrderCreatorUserId: cleared ? undefined : po.createdBy,
     });
 
     const activeRevision = po.revisions.find(r => r.status === 'ACTIVE');
