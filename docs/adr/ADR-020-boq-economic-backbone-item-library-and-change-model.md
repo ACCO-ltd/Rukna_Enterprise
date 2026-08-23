@@ -8,6 +8,17 @@ Status: accepted
 
 ## Status note
 
+**Implementation — BOQ Item Library (CONST-BOQ-020/021): DONE (backend).** An org-level
+`BoqItemLibrary` of reusable work items (`code`, `description`, `defaultUnit`, `measurementMethod`,
+`pricingBasis`, `category`, `active`), distinct from the procurement `Material` catalogue. Endpoints
+under `/boq-item-library`: search (fast entry), create ("save to library & add"), and record-usage.
+No authoritative rate — only a `lastUsedRate` recorded on use, surfaced as assistance
+(CONST-BOQ-021). Self-contained: the disciplined BOQ tree/versioning code is untouched; the frontend
+searches the library, adds a node via the existing flow, and records the used rate.
+**Still to do:** the fast-entry **UI** (Round 2), capability-based BOQ roles (CONST-BOQ-022), and the
+post-baseline change classifier / variation branch (CONST-BOQ-025) — the latter remains Sprint 6,
+blocked on #51.
+
 Extends ADR-016 (BOQ workspace contract). Engineering shape owned by Abdulsalam; the domain
 rules (change classification, variation routing, cost↔revenue firewall) are gated on **Eng Ahmed
 Shirie** — the variation/ChangeOrder work is already roadmapped as Sprint 6 (blocked on #51) and
