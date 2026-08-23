@@ -6,12 +6,36 @@ import {
 } from '@nestjs/common';
 import type { RequestIdentity } from '@erp/types';
 import { Decimal } from '@prisma/client/runtime/library';
+import type { MatchExceptionReason, MatchResolutionAction, BillMatchStatus } from '@prisma/client';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { BillMatchRepository } from '../infrastructure/bill-match.repository.js';
 
 export interface ApproveExceptionDto {
   approvalReason: string;
 }
+
+export interface ResolveExceptionDto {
+  reason: MatchExceptionReason;
+  notes?: string;
+}
+
+// ADR-018 CONST-MATCH-008 — the reason determines the resolution path (and thence the status).
+const REASON_TO_ACTION: Record<MatchExceptionReason, MatchResolutionAction> = {
+  ROUNDING_VARIANCE: 'APPROVE',
+  FREIGHT_OR_ADDITIONAL_CHARGE: 'APPROVE',
+  OTHER: 'APPROVE',
+  SUPPLIER_INVOICE_ERROR: 'DISPUTE',
+  AGREED_PRICE_CHANGE: 'REQUIRE_PO_REVISION',
+  PO_QUANTITY_CHANGE: 'REQUIRE_PO_REVISION',
+  RECEIPT_CORRECTION: 'REQUIRE_RECEIPT_CORRECTION',
+};
+
+const ACTION_TO_STATUS: Record<MatchResolutionAction, BillMatchStatus> = {
+  APPROVE: 'APPROVED_EXCEPTION', // postable
+  DISPUTE: 'DISPUTED', // blocked; supplier re-submits
+  REQUIRE_PO_REVISION: 'EXCEPTION', // stays blocked until a PO revision + rematch clears it
+  REQUIRE_RECEIPT_CORRECTION: 'EXCEPTION', // stays blocked until the GRN is corrected + rematched
+};
 
 // ADR-018 (deferred simplification): when no MatchingTolerancePolicy is configured, the control
 // still holds via a flat platform default — mirroring the over-receipt fallback. Tunable per org
@@ -165,12 +189,46 @@ export class BillMatchingService {
       throw new ConflictException(`Match status is ${match.status} — no exception to approve`);
     }
 
+    // Backward-compatible free-text approval — recorded as a structured OTHER/APPROVE resolution.
     await this.repo.updateStatus(prisma, billId, 'APPROVED_EXCEPTION', {
       approvedBy: identity.userId,
       approvedAt: new Date(),
       approvalReason: dto.approvalReason,
+      resolutionReason: 'OTHER',
+      resolutionAction: 'APPROVE',
+      resolutionNotes: dto.approvalReason,
     });
     await this.repo.updateBillMatchStatus(prisma, billId, 'APPROVED_EXCEPTION');
+
+    return this.repo.findByBillId(prisma, billId);
+  }
+
+  /**
+   * ADR-018 CONST-MATCH-007/008/009/014 — resolve an exception by its structured reason. The reason
+   * fixes the resolution path: APPROVE (absorb / additional cost / manual) → APPROVED_EXCEPTION and
+   * posts; DISPUTE (supplier invoice error) → DISPUTED, never posts; a PO-revision or receipt-
+   * correction reason keeps the bill an EXCEPTION until the correction + a re-match clears it. The
+   * reason, action, resolver and notes are recorded on the match as the audit trail.
+   */
+  async resolveException(identity: RequestIdentity, billId: string, dto: ResolveExceptionDto) {
+    const prisma = this.tenancy.getClient();
+    const match = await this.repo.findByBillId(prisma, billId);
+    if (!match) throw new NotFoundException(`No match result for bill ${billId}`);
+    if (match.status !== 'EXCEPTION') {
+      throw new ConflictException(`Match status is ${match.status} — only an EXCEPTION can be resolved`);
+    }
+
+    const action = REASON_TO_ACTION[dto.reason];
+    const newStatus = ACTION_TO_STATUS[action];
+
+    await this.repo.updateStatus(prisma, billId, newStatus, {
+      approvedBy: identity.userId,
+      approvedAt: new Date(),
+      resolutionReason: dto.reason,
+      resolutionAction: action,
+      resolutionNotes: dto.notes,
+    });
+    await this.repo.updateBillMatchStatus(prisma, billId, newStatus);
 
     return this.repo.findByBillId(prisma, billId);
   }

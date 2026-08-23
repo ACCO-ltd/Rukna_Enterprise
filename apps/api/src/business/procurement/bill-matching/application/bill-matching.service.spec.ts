@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 
 import { BillMatchingService } from './bill-matching.service.js';
@@ -149,5 +150,53 @@ describe('BillMatchingService.runMatching — ADR-018 control', () => {
     expect(status()).toBe('EXCEPTION');
     expect(line().amountWithinTolerance).toBe(false);
     expect(line().priceWithinTolerance).toBe(true);
+  });
+});
+
+describe('BillMatchingService.resolveException — ADR-018 CONST-MATCH-007/008/009', () => {
+  function buildResolve(status = 'EXCEPTION') {
+    let updated: Record<string, unknown> = {};
+    const repo = {
+      findByBillId: jest.fn().mockResolvedValue({ status }),
+      updateStatus: jest.fn().mockImplementation((_p, _b, s, extra) => {
+        updated = { status: s, ...extra };
+        return Promise.resolve({});
+      }),
+      updateBillMatchStatus: jest.fn().mockResolvedValue({}),
+    };
+    const svc = new BillMatchingService({ getClient: () => ({}) } as never, repo as never);
+    return { svc, repo, updated: () => updated };
+  }
+
+  it.each([
+    ['ROUNDING_VARIANCE', 'APPROVE', 'APPROVED_EXCEPTION'],
+    ['FREIGHT_OR_ADDITIONAL_CHARGE', 'APPROVE', 'APPROVED_EXCEPTION'],
+    ['OTHER', 'APPROVE', 'APPROVED_EXCEPTION'],
+    ['SUPPLIER_INVOICE_ERROR', 'DISPUTE', 'DISPUTED'],
+    ['AGREED_PRICE_CHANGE', 'REQUIRE_PO_REVISION', 'EXCEPTION'],
+    ['PO_QUANTITY_CHANGE', 'REQUIRE_PO_REVISION', 'EXCEPTION'],
+    ['RECEIPT_CORRECTION', 'REQUIRE_RECEIPT_CORRECTION', 'EXCEPTION'],
+  ])('reason %s routes to action %s and status %s', async (reason, action, expectedStatus) => {
+    const { svc, repo, updated } = buildResolve();
+    await svc.resolveException(identity, 'bill1', { reason } as never);
+    expect(updated().status).toBe(expectedStatus);
+    expect(updated().resolutionReason).toBe(reason);
+    expect(updated().resolutionAction).toBe(action);
+    expect(repo.updateBillMatchStatus).toHaveBeenCalledWith(expect.anything(), 'bill1', expectedStatus);
+  });
+
+  it('records the resolver and notes as the audit trail (CONST-MATCH-014)', async () => {
+    const { svc, updated } = buildResolve();
+    await svc.resolveException(identity, 'bill1', { reason: 'OTHER', notes: 'CFO agreed' } as never);
+    expect(updated().approvedBy).toBe('u1');
+    expect(updated().approvedAt).toBeInstanceOf(Date);
+    expect(updated().resolutionNotes).toBe('CFO agreed');
+  });
+
+  it('rejects resolving anything that is not an EXCEPTION', async () => {
+    const { svc } = buildResolve('MATCHED_WITH_TOLERANCE');
+    await expect(
+      svc.resolveException(identity, 'bill1', { reason: 'OTHER' } as never),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 });

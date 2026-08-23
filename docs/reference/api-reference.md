@@ -2290,7 +2290,8 @@ Explicit matching of a supplier bill against PO lines (and GRN lines for MATERIA
 |--------|------|-------------|
 | `GET` | `/procurement/bill-matching/:billId` | Get current match result |
 | `POST` | `/procurement/bill-matching/:billId/run` | Run matching (TWO_WAY or THREE_WAY) |
-| `POST` | `/procurement/bill-matching/:billId/approve-exception` | Approve exception |
+| `POST` | `/procurement/bill-matching/:billId/approve-exception` | Approve exception (free-text; legacy) |
+| `POST` | `/procurement/bill-matching/:billId/resolve` | Resolve exception by structured reason (ADR-018). Body `{ reason, notes? }` where `reason` ∈ `ROUNDING_VARIANCE` / `SUPPLIER_INVOICE_ERROR` / `AGREED_PRICE_CHANGE` / `FREIGHT_OR_ADDITIONAL_CHARGE` / `RECEIPT_CORRECTION` / `PO_QUANTITY_CHANGE` / `OTHER`. APPROVE reasons → `APPROVED_EXCEPTION`; `SUPPLIER_INVOICE_ERROR` → `DISPUTED` (never posts); PO-revision / receipt-correction reasons keep it `EXCEPTION` until corrected + rematched. |
 
 > The match type is determined automatically: if any bill line has `lineType: MATERIAL`, the match is `THREE_WAY` (PO ↔ GRN ↔ Bill). Otherwise `TWO_WAY` (PO ↔ Bill only).
 

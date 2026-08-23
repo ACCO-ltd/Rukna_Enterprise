@@ -15,9 +15,23 @@ posting gate blocks (CONST-MATCH-004). Three-way quantity is judged against **re
 accepted), and matching is **cumulative** across bills on the same PO line, so a supplier can neither
 bill more than received nor split the full quantity across invoices (CONST-MATCH-005/006). A flat
 platform-default tolerance makes the control hold without waiting on the D4/D5 numbers (tunable per
-org via `MatchingTolerancePolicy`). **Deferred — Phase 2:** the structured reason enum + resolution
-paths, the PO-revision → recommit → rematch loop, and the GRN-correction loop (CONST-MATCH-007..014);
-the existing free-text `approveException` is the interim resolution.
+org via `MatchingTolerancePolicy`).
+
+**Implementation — Phase 2a (resolution spine): DONE.** Exception reasons are now a defined enum
+(`MatchExceptionReason`, CONST-MATCH-007), and the reason fixes the resolution path
+(CONST-MATCH-008): `POST /procurement/bill-matching/:billId/resolve` routes a structured reason —
+APPROVE reasons (rounding / freight / other) → `APPROVED_EXCEPTION` (posts); a supplier invoice error
+→ the new terminal `DISPUTED` status, which never posts (CONST-MATCH-009); an agreed price change / PO
+quantity change / receipt correction keeps the bill an `EXCEPTION` with the required action recorded,
+until the correction + a re-match clears it. Reason, action, resolver, time and notes are recorded on
+the match as the audit trail (CONST-MATCH-014). The legacy free-text `approve-exception` endpoint is
+retained (records an `OTHER`/`APPROVE` resolution) so the current UI keeps working.
+
+**Deferred — Phase 2b:** *automating* the resolution loops — PO-revision → recommit → rematch
+(CONST-MATCH-010/011) and GRN-correction → rematch (CONST-MATCH-012). Today those reasons record the
+required action; the user performs the PO revision / GRN correction via the existing mechanisms and
+re-runs matching. (CONST-MATCH-013 supplier↔client firewall needs no build — cost changes never
+propagate to client billing.)
 
 This ADR records the **target** design for supplier bill matching. It extends and **corrects**
 ADR-007's tolerance rules (`MATCH-001`, `MATCH-002`). The engineering shape is owned by

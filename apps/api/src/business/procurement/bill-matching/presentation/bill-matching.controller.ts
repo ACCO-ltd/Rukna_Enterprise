@@ -3,8 +3,9 @@ import {
   HttpCode, HttpStatus, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
-import { IsString } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsString, IsOptional, IsEnum, MaxLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { MatchExceptionReason } from '@prisma/client';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
@@ -15,6 +16,19 @@ class ApproveExceptionDto {
   @ApiProperty()
   @IsString()
   approvalReason: string;
+}
+
+class ResolveExceptionDto {
+  // ADR-018 CONST-MATCH-007 — a defined reason, never free text. The reason fixes the path.
+  @ApiProperty({ enum: MatchExceptionReason })
+  @IsEnum(MatchExceptionReason)
+  reason: MatchExceptionReason;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  notes?: string;
 }
 
 @ApiTags('Procurement — Bill Matching')
@@ -45,12 +59,29 @@ export class BillMatchingController {
   @RequirePermissions(PERMISSIONS.matchingExceptionsApprove)
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'billId' })
-  @ApiOperation({ summary: 'Approve a matching exception: EXCEPTION → APPROVED_EXCEPTION' })
+  @ApiOperation({ summary: 'Approve a matching exception: EXCEPTION → APPROVED_EXCEPTION (free-text; legacy)' })
   approveException(
     @CurrentUser() identity: RequestIdentity,
     @Param('billId') billId: string,
     @Body() dto: ApproveExceptionDto,
   ) {
     return this.service.approveException(identity, billId, dto);
+  }
+
+  @Post(':billId/resolve')
+  @RequirePermissions(PERMISSIONS.matchingExceptionsApprove)
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'billId' })
+  @ApiOperation({
+    summary: 'Resolve a matching exception by structured reason (ADR-018 CONST-MATCH-007/008). ' +
+      'APPROVE reasons → APPROVED_EXCEPTION; SUPPLIER_INVOICE_ERROR → DISPUTED (never posts); ' +
+      'PO-revision / receipt-correction reasons keep it an EXCEPTION until corrected + rematched.',
+  })
+  resolveException(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('billId') billId: string,
+    @Body() dto: ResolveExceptionDto,
+  ) {
+    return this.service.resolveException(identity, billId, dto);
   }
 }
