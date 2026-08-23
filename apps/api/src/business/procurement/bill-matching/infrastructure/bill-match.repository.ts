@@ -116,6 +116,40 @@ export class BillMatchRepository {
     });
   }
 
+  // ADR-018 Phase 2b: match against the PO's CURRENT active revision, so a re-match after an approved
+  // PO revision picks up the revised terms (and the recommitted exposure).
+  findActivePoRevisionForPo(prisma: TenantPrisma, purchaseOrderId: string) {
+    return prisma.purchaseOrderRevision.findFirst({
+      where: { purchaseOrderId, status: 'ACTIVE' },
+      include: { lines: { include: { material: true } }, purchaseOrder: true },
+    });
+  }
+
+  repointBillToRevision(prisma: TenantPrisma, billId: string, purchaseOrderRevisionId: string) {
+    return prisma.supplierBill.update({ where: { id: billId }, data: { purchaseOrderRevisionId } });
+  }
+
+  // Received quantity is physical and revision-independent, so it is summed by material across the
+  // whole PO (all posted GRNs, any revision) — otherwise a price-only revision would lose it.
+  async sumReceivedForPoMaterial(
+    prisma: TenantPrisma,
+    purchaseOrderId: string,
+    materialId: string,
+  ): Promise<Decimal | null> {
+    const agg = await prisma.goodsReceiptLine.aggregate({
+      where: { materialId, grn: { purchaseOrderId, status: 'POSTED' } },
+      _sum: { acceptedQuantity: true },
+    });
+    return agg._sum.acceptedQuantity;
+  }
+
+  findGrnLineForPoMaterial(prisma: TenantPrisma, purchaseOrderId: string, materialId: string) {
+    return prisma.goodsReceiptLine.findFirst({
+      where: { materialId, grn: { purchaseOrderId, status: 'POSTED' } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   findGrnLineForPoLine(prisma: TenantPrisma, poLineId: string, poRevisionId: string) {
     return prisma.goodsReceiptLine.findFirst({
       where: {

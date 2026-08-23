@@ -24,6 +24,7 @@ function build(over: {
     findBillForMatching: jest.fn().mockResolvedValue({
       id: 'bill1',
       postingStatus: 'NOT_POSTED',
+      purchaseOrderId: 'po1',
       purchaseOrderRevisionId: 'rev1',
       lines: over.billLines.map((l, i) => ({
         id: l.id,
@@ -34,7 +35,8 @@ function build(over: {
         materialId: l.materialId,
       })),
     }),
-    findPoRevisionForMatching: jest.fn().mockResolvedValue({
+    findActivePoRevisionForPo: jest.fn().mockResolvedValue({
+      id: 'rev1', // same as the bill's revision → no re-point
       purchaseOrderId: 'po1',
       lines: over.poLines.map((l) => ({
         id: l.id,
@@ -43,10 +45,13 @@ function build(over: {
         materialId: l.materialId,
       })),
     }),
+    repointBillToRevision: jest.fn().mockResolvedValue({}),
     findPoTolerancePolicy: jest.fn().mockResolvedValue(null),
     findOrgTolerancePolicy: jest.fn().mockResolvedValue(over.policy ?? null),
     findGrnLineForPoLine: jest.fn().mockResolvedValue(over.received != null ? { id: 'grn-l1' } : null),
+    findGrnLineForPoMaterial: jest.fn().mockResolvedValue(over.received != null ? { id: 'grn-l1' } : null),
     sumReceivedForPoLine: jest.fn().mockResolvedValue(over.received != null ? new Decimal(over.received) : null),
+    sumReceivedForPoMaterial: jest.fn().mockResolvedValue(over.received != null ? new Decimal(over.received) : null),
     sumBilledForPoLineExcludingBill: jest
       .fn()
       .mockResolvedValue(over.priorBilled != null ? new Decimal(over.priorBilled) : null),
@@ -150,6 +155,47 @@ describe('BillMatchingService.runMatching — ADR-018 control', () => {
     expect(status()).toBe('EXCEPTION');
     expect(line().amountWithinTolerance).toBe(false);
     expect(line().priceWithinTolerance).toBe(true);
+  });
+
+  it('Phase 2b: re-matches against the current active revision and re-points the bill (CONST-MATCH-010)', async () => {
+    let captured = '';
+    const repo = {
+      findBillForMatching: jest.fn().mockResolvedValue({
+        id: 'bill1',
+        postingStatus: 'NOT_POSTED',
+        purchaseOrderId: 'po1',
+        purchaseOrderRevisionId: 'rev1', // bill was created against rev1 (old price 500)
+        lines: [{ id: 'bl1', lineNumber: 1, quantity: new Decimal('100'), unitPrice: new Decimal('600'), lineType: 'SERVICE' }],
+      }),
+      // An approved revision rev2 raised the agreed price to 600 — the bill now matches exactly.
+      findActivePoRevisionForPo: jest.fn().mockResolvedValue({
+        id: 'rev2',
+        purchaseOrderId: 'po1',
+        lines: [{ id: 'pl2', orderedQuantity: new Decimal('100'), unitPrice: new Decimal('600') }],
+      }),
+      repointBillToRevision: jest.fn().mockResolvedValue({}),
+      findPoTolerancePolicy: jest.fn().mockResolvedValue(null),
+      findOrgTolerancePolicy: jest.fn().mockResolvedValue({ priceVariancePercent: '5', quantityVariancePercent: '5' }),
+      findGrnLineForPoLine: jest.fn(),
+      findGrnLineForPoMaterial: jest.fn(),
+      sumReceivedForPoLine: jest.fn().mockResolvedValue(null),
+      sumReceivedForPoMaterial: jest.fn().mockResolvedValue(null),
+      sumBilledForPoLineExcludingBill: jest.fn().mockResolvedValue(null),
+      createOrReplace: jest.fn().mockResolvedValue({}),
+      updateStatus: jest.fn().mockResolvedValue({}),
+      updateBillMatchStatus: jest.fn().mockImplementation((_p, _b, s) => {
+        captured = s;
+        return Promise.resolve({});
+      }),
+      findByBillId: jest.fn().mockResolvedValue({}),
+    };
+    const svc = new BillMatchingService({ getClient: () => ({}) } as never, repo as never);
+
+    await svc.runMatching(identity, 'bill1');
+
+    // The bill is re-pointed from rev1 to the active rev2, and now matches (price 600 = 600).
+    expect(repo.repointBillToRevision).toHaveBeenCalledWith(expect.anything(), 'bill1', 'rev2');
+    expect(captured).toBe('MATCHED');
   });
 });
 
