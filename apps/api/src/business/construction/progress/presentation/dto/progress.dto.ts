@@ -132,6 +132,13 @@ export class ReturnDprDto {
   reason!: string;
 }
 
+// ADR-021 CONST-PROG-010 — reopen an APPROVED report for a controlled correction.
+export class ReopenDprDto {
+  @ApiProperty({ example: 'Grid 5 double-counted — reopening to correct the quantity' })
+  @IsString() @IsNotEmpty() @MaxLength(255)
+  reason!: string;
+}
+
 export class CreateWorkPackageDto {
   @ApiProperty({ example: 'WP-01' })
   @IsString() @IsNotEmpty() @MaxLength(50)

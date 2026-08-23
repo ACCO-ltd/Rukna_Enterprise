@@ -23,10 +23,18 @@ Activity control layer. CRUD under `/work-packages/:id/activities` and `/program
 listable per project via `/projects/:id/programme/activities`; dates validated (end ≥ start,
 duration ≥ 0). No dependency network. Membership enforced via the activity's work package's project.
 
-**Deferred:** controlled reopen/correction of approved progress (CONST-PROG-010), and —
-evidence-driven only — dependency networks (FS/SS/FF/SF), Excel/P6 import, recovery programmes.
-Activity-date → planned-% derivation (feeding schedule variance from activities rather than the
-target curve) is a possible later refinement.
+**Phase 3 (controlled reopen/correction, CONST-PROG-010): DONE.** An APPROVED report is reopened
+via `POST /progress/reports/:id/reopen` (requires a reason) → `REOPENED`, which records
+`reopenedBy/reopenedAt/reopenReason` on the DPR as the audit trail. REOPENED is an editable,
+re-submittable state (measurements can be corrected, then submit → SUBMITTED → re-approve). Because
+verified progress counts **only** APPROVED measurements, a reopened report's contribution drops out
+of the roll-up until it is corrected and re-approved — so there is never a silent edit of trusted
+progress. The APPROVED→REOPENED transition is guarded (only APPROVED may reopen); approval itself
+still routes through the ADR-022 governance gate.
+
+**Deferred:** evidence-driven only — dependency networks (FS/SS/FF/SF), Excel/P6 import, recovery
+programmes. Activity-date → planned-% derivation (feeding schedule variance from activities rather
+than the target curve) is a possible later refinement.
 
 Engineering shape owned by Abdulsalam; the domain rules are gated on **Eng Ahmed Shirie**. This
 ADR **extends** ADR-002's `CONST-PROG-001/002/003` (it must not silently change them) and depends
@@ -85,6 +93,9 @@ unplanned non-recoverable work).
 
 ### CONST-PROG-010 — Approved progress is immutable *(extends CONST-PROG-003)*
 Corrections only through a controlled, authorised, audited reopen/correction. No silent edits.
+*Implemented (Phase 3):* `reopen` moves APPROVED→REOPENED, capturing `reopenedBy/reopenedAt/
+reopenReason`; the reopened report is editable + re-submittable and its measurements stop counting as
+verified until re-approval.
 
 ### CONST-PROG-011 — Baseline / Forecast / Actual are distinct
 The baseline programme is never silently overwritten. Baseline (committed), Forecast/Revised

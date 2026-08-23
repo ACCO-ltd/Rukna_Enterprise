@@ -146,6 +146,8 @@ export enum DprStatus {
   SUBMITTED = 'SUBMITTED',
   APPROVED = 'APPROVED',
   RETURNED = 'RETURNED',
+  // ADR-021 CONST-PROG-010 — an APPROVED report reopened for a controlled correction.
+  REOPENED = 'REOPENED',
 }
 
 // ADR-021 phase 2: lifecycle of a programme delivery milestone.
