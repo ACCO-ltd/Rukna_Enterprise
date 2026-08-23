@@ -212,6 +212,21 @@ export class ProgressService {
     if (dpr.status !== DprStatus.APPROVED) {
       throw new BadRequestException(`Only an APPROVED report can be reopened (is ${dpr.status}).`);
     }
+
+    // ADR-022 CONST-DOA-008 governance seam: reopening a trusted APPROVED report is a governed
+    // command. With no active binding this resolves to null and the reopen proceeds unchanged; an
+    // active binding opens the approval instance and returns 409 for the client to drive.
+    throwIfGated(
+      await this.commandGovernance.gateStateTransition(
+        identity,
+        'DailyProgressReport',
+        'APPROVED',
+        'REOPENED',
+        dprId,
+      ),
+      'Reopening this progress report requires workflow approval.',
+    );
+
     return this.repo.updateDprStatus(this.tenancy.getClient(), dprId, {
       status: DprStatus.REOPENED,
       reopenedBy: identity.userId,

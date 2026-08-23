@@ -158,6 +158,23 @@ describe('ProgressService (ADR-021 MVP)', () => {
     expect(repo.updateDprStatus).not.toHaveBeenCalled();
   });
 
+  it('reopen: gates (409) and does not reopen when governance resolves a binding (ADR-022 CONST-DOA-008)', async () => {
+    const { repo, service, commandGovernance } = build({
+      dpr: { id: 'dpr-1', status: 'APPROVED', projectId: 'p-1', measurements: [], attachments: [] },
+    });
+    commandGovernance.gateStateTransition.mockResolvedValue({ gated: true, approvalInstanceId: 'ai-reopen' });
+
+    await expect(service.reopen(identity, 'dpr-1', 'correct grid 5')).rejects.toBeInstanceOf(ConflictException);
+    expect(commandGovernance.gateStateTransition).toHaveBeenCalledWith(
+      identity,
+      'DailyProgressReport',
+      'APPROVED',
+      'REOPENED',
+      'dpr-1',
+    );
+    expect(repo.updateDprStatus).not.toHaveBeenCalled();
+  });
+
   it('addMeasurement: allows editing a REOPENED report (correction path)', async () => {
     const { repo, service } = build({
       dpr: { id: 'dpr-1', status: 'REOPENED', projectId: 'p-1', measurements: [], attachments: [] },

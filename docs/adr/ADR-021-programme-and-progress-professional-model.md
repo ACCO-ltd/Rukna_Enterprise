@@ -29,8 +29,13 @@ via `POST /progress/reports/:id/reopen` (requires a reason) → `REOPENED`, whic
 re-submittable state (measurements can be corrected, then submit → SUBMITTED → re-approve). Because
 verified progress counts **only** APPROVED measurements, a reopened report's contribution drops out
 of the roll-up until it is corrected and re-approved — so there is never a silent edit of trusted
-progress. The APPROVED→REOPENED transition is guarded (only APPROVED may reopen); approval itself
-still routes through the ADR-022 governance gate.
+progress. The APPROVED→REOPENED transition is guarded (only APPROVED may reopen) and — like
+approval — routes through the **ADR-022 command-governance gate** (`gateStateTransition` on
+`DailyProgressReport`, `APPROVED→REOPENED`), so ACCO can place reopen behind a DOA workflow; with no
+active binding it proceeds unchanged (backward-compatible). *Audit design:* the DPR's
+`reopenedBy/At/Reason` columns hold the **latest** reopen for display, while each governed reopen
+opens its own approval instance — the durable per-cycle trail. No separate reopen-history table is
+built by design (the gate's approval instances cover multi-cycle audit).
 
 **Deferred:** evidence-driven only — dependency networks (FS/SS/FF/SF), Excel/P6 import, recovery
 programmes. Activity-date → planned-% derivation (feeding schedule variance from activities rather
@@ -95,7 +100,8 @@ unplanned non-recoverable work).
 Corrections only through a controlled, authorised, audited reopen/correction. No silent edits.
 *Implemented (Phase 3):* `reopen` moves APPROVED→REOPENED, capturing `reopenedBy/reopenedAt/
 reopenReason`; the reopened report is editable + re-submittable and its measurements stop counting as
-verified until re-approval.
+verified until re-approval. *Authorised* via the ADR-022 governance gate (same seam as approval), so
+reopen can be placed behind a DOA workflow.
 
 ### CONST-PROG-011 — Baseline / Forecast / Actual are distinct
 The baseline programme is never silently overwritten. Baseline (committed), Forecast/Revised
