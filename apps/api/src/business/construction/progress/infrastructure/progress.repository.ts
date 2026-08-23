@@ -134,4 +134,38 @@ export class ProgressRepository {
   createTargets(prisma: TenantPrisma, rows: Prisma.ProgressTargetUncheckedCreateInput[]) {
     return prisma.progressTarget.createMany({ data: rows });
   }
+
+  // ── ADR-021 CONST-PROG-005: programme activities (time layer under a work package) ──
+  createActivity(prisma: TenantPrisma, data: Prisma.ProgrammeActivityUncheckedCreateInput) {
+    return prisma.programmeActivity.create({ data });
+  }
+
+  findActivitiesForWorkPackage(prisma: TenantPrisma, workPackageId: string) {
+    return prisma.programmeActivity.findMany({
+      where: { workPackageId },
+      orderBy: [{ sortOrder: 'asc' }, { code: 'asc' }],
+    });
+  }
+
+  findActivitiesForProject(prisma: TenantPrisma, organizationId: string, projectId: string) {
+    return prisma.programmeActivity.findMany({
+      where: { organizationId, workPackage: { projectId } },
+      orderBy: [{ workPackageId: 'asc' }, { sortOrder: 'asc' }, { code: 'asc' }],
+    });
+  }
+
+  findActivityById(prisma: TenantPrisma, organizationId: string, id: string) {
+    return prisma.programmeActivity.findFirst({
+      where: { id, organizationId },
+      include: { workPackage: { select: { projectId: true } } },
+    });
+  }
+
+  updateActivity(prisma: TenantPrisma, id: string, data: Prisma.ProgrammeActivityUncheckedUpdateInput) {
+    return prisma.programmeActivity.update({ where: { id }, data });
+  }
+
+  deleteActivity(prisma: TenantPrisma, id: string) {
+    return prisma.programmeActivity.delete({ where: { id } });
+  }
 }

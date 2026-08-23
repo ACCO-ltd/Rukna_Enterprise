@@ -685,12 +685,39 @@ model WorkPackage {
   createdBy        String   @map("created_by")
   createdAt        DateTime @default(now()) @map("created_at")
 
-  project  Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  boqLinks WorkPackageBoqNode[]
+  project    Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  boqLinks   WorkPackageBoqNode[]
+  activities ProgrammeActivity[]
 
   @@unique([projectId, code])
   @@index([projectId])
   @@map("work_packages")
+}
+
+// ADR-021 CONST-PROG-005 — the time layer of the BOQ → WorkPackage → Activity control model. The
+// BOQ leaf keeps scope + measurement, the WorkPackage carries weight + owner, and a ProgrammeActivity
+// carries *time* (planned dates, duration, whether it is a milestone). No dependency network yet
+// (deferred, evidence-driven).
+model ProgrammeActivity {
+  id             String    @id @default(cuid())
+  organizationId String    @map("organization_id")
+  workPackageId  String    @map("work_package_id")
+  code           String
+  name           String
+  plannedStart   DateTime? @map("planned_start") @db.Date
+  plannedEnd     DateTime? @map("planned_end") @db.Date
+  durationDays   Int?      @map("duration_days")
+  isMilestone    Boolean   @default(false) @map("is_milestone")
+  sortOrder      Int       @default(0) @map("sort_order")
+  createdBy      String    @map("created_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  workPackage WorkPackage @relation(fields: [workPackageId], references: [id], onDelete: Cascade)
+
+  @@unique([workPackageId, code])
+  @@index([workPackageId])
+  @@map("programme_activities")
 }
 
 // BOQ leaf → WorkPackage allocation. A leaf belongs to AT MOST ONE work package (unique on
