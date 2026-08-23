@@ -53,7 +53,8 @@
       "DRAFT": "Draft",
       "SUBMITTED": "Submitted",
       "APPROVED": "Approved",
-      "RETURNED": "Returned for revision"
+      "RETURNED": "Returned for revision",
+      "REOPENED": "Reopened for correction"
     },
     "returnReason": {
       "label": "Reason for return",

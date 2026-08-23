@@ -621,6 +621,11 @@ model DailyProgressReport {
   approvedBy     String?   @map("approved_by")
   approvedAt     DateTime? @map("approved_at")
   returnReason   String?   @map("return_reason")
+  // ADR-021 CONST-PROG-010 — a controlled, authorised, audited reopen of an APPROVED report for
+  // correction (no silent edits). While reopened, its measurements are not counted as verified.
+  reopenedBy     String?   @map("reopened_by")
+  reopenedAt     DateTime? @map("reopened_at")
+  reopenReason   String?   @map("reopen_reason")
   createdAt      DateTime  @default(now()) @map("created_at")
 
   project      Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -669,6 +674,9 @@ enum DprStatus {
   SUBMITTED
   APPROVED
   RETURNED
+  // ADR-021 CONST-PROG-010 — an APPROVED report reopened for a controlled correction. Editable and
+  // re-submittable like DRAFT/RETURNED; its measurements do not count as verified until re-approved.
+  REOPENED
 }
 
 // ADR-021 CONST-PROG-005: the always-explicit control seam between BOQ scope and site execution.

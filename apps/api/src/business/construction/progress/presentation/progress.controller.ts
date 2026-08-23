@@ -11,6 +11,7 @@ import {
   AddMeasurementDto,
   AttachEvidenceDto,
   ReturnDprDto,
+  ReopenDprDto,
   CreateWorkPackageDto,
   AllocateBoqNodeDto,
   SetProgressTargetsDto,
@@ -240,5 +241,20 @@ export class ProgressController {
     @Body() dto: ReturnDprDto,
   ) {
     return this.service.returnForRevision(identity, dprId, dto.reason);
+  }
+
+  @Post('progress/reports/:dprId/reopen')
+  @RequirePermissions(PERMISSIONS.projectsManage)
+  @ApiParam({ name: 'dprId' })
+  @ApiOperation({
+    summary: 'Reopen an APPROVED report for a controlled correction (ADR-021 CONST-PROG-010). ' +
+      'Its verified progress drops out of the roll-up until it is corrected and re-approved.',
+  })
+  reopen(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('dprId') dprId: string,
+    @Body() dto: ReopenDprDto,
+  ) {
+    return this.service.reopen(identity, dprId, dto.reason);
   }
 }

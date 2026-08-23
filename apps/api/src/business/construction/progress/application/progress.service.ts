@@ -15,6 +15,12 @@ const DIVERGENCE_THRESHOLD = 20; // percentage points before the signal flags a 
 
 const ZERO = new Decimal(0);
 
+// ADR-021: the statuses in which a DPR's measurements may be added/edited and it can be submitted —
+// a fresh draft, one returned before approval, or one reopened for correction (CONST-PROG-010).
+function isEditableDprStatus(status: string): boolean {
+  return status === DprStatus.DRAFT || status === DprStatus.RETURNED || status === DprStatus.REOPENED;
+}
+
 /**
  * Classifies a signed percentage-point gap against DIVERGENCE_THRESHOLD, shared by the two cockpit
  * signals (physical-vs-financial, collection-vs-progress). `diff` = primary − secondary (positive =
@@ -90,8 +96,8 @@ export class ProgressService {
   async addMeasurement(identity: RequestIdentity, dprId: string, dto: AddMeasurementDto) {
     const prisma = this.tenancy.getClient();
     const dpr = await this.requireDpr(identity, dprId);
-    if (dpr.status !== DprStatus.DRAFT && dpr.status !== DprStatus.RETURNED) {
-      throw new BadRequestException('Measurements can only be added to a DRAFT report.');
+    if (!isEditableDprStatus(dpr.status)) {
+      throw new BadRequestException('Measurements can only be added to a DRAFT, RETURNED or REOPENED report.');
     }
     if (!(dto.quantity > 0)) throw new BadRequestException('Quantity must be greater than 0.');
 
@@ -126,7 +132,7 @@ export class ProgressService {
 
   async submit(identity: RequestIdentity, dprId: string) {
     const dpr = await this.requireDpr(identity, dprId);
-    if (dpr.status !== DprStatus.DRAFT && dpr.status !== DprStatus.RETURNED) {
+    if (!isEditableDprStatus(dpr.status)) {
       throw new BadRequestException(`Cannot submit a ${dpr.status} report.`);
     }
     return this.repo.updateDprStatus(this.tenancy.getClient(), dprId, {
@@ -191,6 +197,41 @@ export class ProgressService {
     return this.repo.updateDprStatus(this.tenancy.getClient(), dprId, {
       status: DprStatus.RETURNED,
       returnReason: reason,
+    });
+  }
+
+  /**
+   * ADR-021 CONST-PROG-010 — a controlled, authorised, audited reopen of an APPROVED report for
+   * correction. Moves it to REOPENED (editable + re-submittable), records who reopened it and why,
+   * and — because only APPROVED measurements count as verified — its progress contribution drops out
+   * of the roll-up until it is re-approved. No silent edits: an approved report can be corrected only
+   * through this path.
+   */
+  async reopen(identity: RequestIdentity, dprId: string, reason: string) {
+    const dpr = await this.requireDpr(identity, dprId);
+    if (dpr.status !== DprStatus.APPROVED) {
+      throw new BadRequestException(`Only an APPROVED report can be reopened (is ${dpr.status}).`);
+    }
+
+    // ADR-022 CONST-DOA-008 governance seam: reopening a trusted APPROVED report is a governed
+    // command. With no active binding this resolves to null and the reopen proceeds unchanged; an
+    // active binding opens the approval instance and returns 409 for the client to drive.
+    throwIfGated(
+      await this.commandGovernance.gateStateTransition(
+        identity,
+        'DailyProgressReport',
+        'APPROVED',
+        'REOPENED',
+        dprId,
+      ),
+      'Reopening this progress report requires workflow approval.',
+    );
+
+    return this.repo.updateDprStatus(this.tenancy.getClient(), dprId, {
+      status: DprStatus.REOPENED,
+      reopenedBy: identity.userId,
+      reopenedAt: new Date(),
+      reopenReason: reason,
     });
   }
 

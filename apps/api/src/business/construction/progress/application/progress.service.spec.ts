@@ -133,6 +133,68 @@ describe('ProgressService (ADR-021 MVP)', () => {
     expect(repo.updateDprStatus).not.toHaveBeenCalled();
   });
 
+  it('reopen: moves an APPROVED report to REOPENED with the reopen audit trail (CONST-PROG-010)', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'APPROVED', projectId: 'p-1', measurements: [], attachments: [] },
+    });
+    await service.reopen(identity, 'dpr-1', 'Grid 5 double-counted — reopening to correct');
+    expect(repo.updateDprStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      'dpr-1',
+      expect.objectContaining({
+        status: 'REOPENED',
+        reopenedBy: 'user-1',
+        reopenReason: 'Grid 5 double-counted — reopening to correct',
+        reopenedAt: expect.any(Date),
+      }),
+    );
+  });
+
+  it('reopen: rejects a report that is not APPROVED', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'SUBMITTED', projectId: 'p-1', measurements: [], attachments: [] },
+    });
+    await expect(service.reopen(identity, 'dpr-1', 'nope')).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.updateDprStatus).not.toHaveBeenCalled();
+  });
+
+  it('reopen: gates (409) and does not reopen when governance resolves a binding (ADR-022 CONST-DOA-008)', async () => {
+    const { repo, service, commandGovernance } = build({
+      dpr: { id: 'dpr-1', status: 'APPROVED', projectId: 'p-1', measurements: [], attachments: [] },
+    });
+    commandGovernance.gateStateTransition.mockResolvedValue({ gated: true, approvalInstanceId: 'ai-reopen' });
+
+    await expect(service.reopen(identity, 'dpr-1', 'correct grid 5')).rejects.toBeInstanceOf(ConflictException);
+    expect(commandGovernance.gateStateTransition).toHaveBeenCalledWith(
+      identity,
+      'DailyProgressReport',
+      'APPROVED',
+      'REOPENED',
+      'dpr-1',
+    );
+    expect(repo.updateDprStatus).not.toHaveBeenCalled();
+  });
+
+  it('addMeasurement: allows editing a REOPENED report (correction path)', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'REOPENED', projectId: 'p-1', measurements: [], attachments: [] },
+    });
+    await service.addMeasurement(identity, 'dpr-1', { boqNodeId: 'n1', quantity: 50 });
+    expect(repo.addMeasurement).toHaveBeenCalled();
+  });
+
+  it('submit: re-submits a REOPENED report after correction (back to SUBMITTED)', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'REOPENED', projectId: 'p-1', measurements: [], attachments: [] },
+    });
+    await service.submit(identity, 'dpr-1');
+    expect(repo.updateDprStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      'dpr-1',
+      expect.objectContaining({ status: 'SUBMITTED' }),
+    );
+  });
+
   it('attachEvidence: rejects a file that is not READY', async () => {
     const { repo, service } = build({ file: { id: 'f-1', status: 'PENDING' } });
     await expect(service.attachEvidence(identity, 'dpr-1', 'f-1')).rejects.toBeInstanceOf(BadRequestException);
