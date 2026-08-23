@@ -470,6 +470,14 @@ changing anything here. Response contracts live in `@erp/types` (`BoqWorkspaceRe
 | `POST` | `/projects/:id/boq/versions/:vId/nodes/:nId/move` | `manage:boq` | Move node + descendants. **Returns the reindexed tree.** |
 | `DELETE` | `/projects/:id/boq/versions/:vId/nodes/:nId` | `manage:boq` | Delete a node |
 
+**BOQ Item Library (ADR-020 CONST-BOQ-020/021)** — org-level reusable work items, distinct from the Material catalogue.
+
+| Method | Path | Perm | Description |
+|---|---|---|---|
+| `GET` | `/boq-item-library?q=` | `view:boq` | Search reusable work items (code / description) |
+| `POST` | `/boq-item-library` | `manage:boq` | Save a work item `{ code, description, defaultUnit?, measurementMethod?, pricingBasis?, category? }` |
+| `POST` | `/boq-item-library/:id/record-usage` | `manage:boq` | Record the rate an item was used at `{ rate, projectId? }` — assistance only, no authoritative rate |
+
 **Add node — request body:**
 ```json
 {

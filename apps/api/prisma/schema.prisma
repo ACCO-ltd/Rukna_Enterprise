@@ -904,6 +904,32 @@ model BoqNode {
   @@map("boq_nodes")
 }
 
+// ADR-020 CONST-BOQ-020 — an org-level catalogue of reusable BOQ *work items* (scope, e.g. "Supply
+// and cast RC C25 — m³"). Distinct from the procurement Material catalogue (procurable goods). Grows
+// just-in-time as real work is entered. CONST-BOQ-021: it holds no authoritative rate — only a
+// `lastUsedRate` surfaced as assistance ("last used $X on project Y"), never treated as truth.
+model BoqItemLibrary {
+  id                String            @id @default(cuid())
+  organizationId    String            @map("organization_id")
+  code              String
+  description       String
+  defaultUnit       String?           @map("default_unit") @db.VarChar(20)
+  measurementMethod MeasurementMethod @default(QUANTITY) @map("measurement_method")
+  pricingBasis      PricingBasis      @default(UNIT_RATE) @map("pricing_basis")
+  category          String?
+  lastUsedRate      Decimal?          @map("last_used_rate") @db.Decimal(18, 2)
+  lastUsedAt        DateTime?         @map("last_used_at")
+  lastUsedProjectId String?           @map("last_used_project_id")
+  active            Boolean           @default(true)
+  createdBy         String            @map("created_by")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  @@unique([organizationId, code])
+  @@index([organizationId, active])
+  @@map("boq_item_library")
+}
+
 // ─── Contract Domain ──────────────────────────────────────────────────────────
 
 model Contract {

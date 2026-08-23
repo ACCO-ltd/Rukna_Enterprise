@@ -44,6 +44,7 @@ Last verified against code: **2026-08-14** (branch `main`). Verified from the Pr
 |---|---|---|---|---|
 | Projects (lifecycle, suspend/resume, members) | ✓ | ✓ | INTEGRATED | 8-state lifecycle. `construction/projects` |
 | BOQ (versioning, tree, baseline) | ✓ | ✓ | INTEGRATED | DRAFT→BASELINED→SUPERSEDED, materialized path. ADR-016 workspace. |
+| BOQ Item Library (reusable work items) | ✓ | (UI: Round-2) | BACKEND | ADR-020 CONST-BOQ-020/021: org-level `BoqItemLibrary` (search / save-to-library / record-usage), distinct from the Material catalogue. No authoritative rate — `lastUsedRate` as assistance only. Fast-entry UI + capability roles (CONST-BOQ-022) + variation router (CONST-BOQ-025, blocked #51) remain. |
 | Programme / Schedule / Activities | — | — | NOT_DESIGNED | **Biggest construction gap.** No time/schedule domain. |
 | Physical Progress / Measurement | ✓ | ✓ | PARTIAL | ADR-021 MVP: DPR lifecycle → verified progress (approved-DPR provenance, cumulative ≤ BOQ scope), work-package weighted roll-up (one-leaf-one-package, CONST-PROG-012), physical-vs-financial + collection-vs-progress signals, IPA pre-fill. Programme/schedule + dependency network are phase 2 (row above). `construction/progress` |
 
