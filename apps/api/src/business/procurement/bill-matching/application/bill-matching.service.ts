@@ -65,16 +65,23 @@ export class BillMatchingService {
     if (!bill) throw new NotFoundException(`Supplier bill ${billId} not found`);
     if (bill.postingStatus === 'POSTED') throw new ConflictException('Cannot re-match a posted bill');
 
-    if (!bill.purchaseOrderRevisionId) {
-      throw new BadRequestException('Bill is not linked to a PO revision — cannot run matching');
+    if (!bill.purchaseOrderId || !bill.purchaseOrderRevisionId) {
+      throw new BadRequestException('Bill is not linked to a PO — cannot run matching');
     }
 
     // Determine match type: THREE_WAY if any MATERIAL line, else TWO_WAY (ADR-007, Rule MATCH-001)
     const hasMaterialLine = bill.lines.some(l => l.lineType === 'MATERIAL');
     const matchType = hasMaterialLine ? 'THREE_WAY' : 'TWO_WAY';
 
-    const poRevision = await this.repo.findPoRevisionForMatching(prisma, bill.purchaseOrderRevisionId);
-    if (!poRevision) throw new NotFoundException('Associated PO revision not found');
+    // ADR-018 CONST-MATCH-010/011 (Phase 2b): match against the PO's CURRENT active revision, not the
+    // revision the bill was created against. When an agreed price/quantity change is resolved via a PO
+    // revision (which recommits the ledger on approval), re-running matching here picks up the revised
+    // terms and re-points the bill — so the exception clears against the new, committed exposure.
+    const poRevision = await this.repo.findActivePoRevisionForPo(prisma, bill.purchaseOrderId);
+    if (!poRevision) throw new NotFoundException('Purchase order has no active revision to match against');
+    if (poRevision.id !== bill.purchaseOrderRevisionId) {
+      await this.repo.repointBillToRevision(prisma, billId, poRevision.id);
+    }
 
     const poPolicy = await this.repo.findPoTolerancePolicy(prisma, orgId, poRevision.purchaseOrderId);
     const orgPolicy = await this.repo.findOrgTolerancePolicy(prisma, orgId);
@@ -120,9 +127,18 @@ export class BillMatchingService {
         let grnLineId: string | undefined;
         let cumulativeReceived: Decimal | undefined;
         if (matchType === 'THREE_WAY') {
-          const grnLine = await this.repo.findGrnLineForPoLine(prisma, poLine.id, bill.purchaseOrderRevisionId!);
-          if (grnLine) grnLineId = grnLine.id;
-          cumulativeReceived = (await this.repo.sumReceivedForPoLine(prisma, poLine.id)) ?? new Decimal(0);
+          if (poLine.materialId) {
+            // Received summed by material across the PO — carries across revisions (CONST-MATCH-012).
+            cumulativeReceived =
+              (await this.repo.sumReceivedForPoMaterial(prisma, bill.purchaseOrderId!, poLine.materialId)) ??
+              new Decimal(0);
+            const grnLine = await this.repo.findGrnLineForPoMaterial(prisma, bill.purchaseOrderId!, poLine.materialId);
+            if (grnLine) grnLineId = grnLine.id;
+          } else {
+            const grnLine = await this.repo.findGrnLineForPoLine(prisma, poLine.id, poRevision.id);
+            if (grnLine) grnLineId = grnLine.id;
+            cumulativeReceived = (await this.repo.sumReceivedForPoLine(prisma, poLine.id)) ?? new Decimal(0);
+          }
         }
         const referenceQty = matchType === 'THREE_WAY' ? (cumulativeReceived ?? new Decimal(0)) : poQty;
         const priorBilled = (await this.repo.sumBilledForPoLineExcludingBill(prisma, poLine.id, billId)) ?? new Decimal(0);

@@ -27,11 +27,21 @@ until the correction + a re-match clears it. Reason, action, resolver, time and 
 the match as the audit trail (CONST-MATCH-014). The legacy free-text `approve-exception` endpoint is
 retained (records an `OTHER`/`APPROVE` resolution) so the current UI keeps working.
 
-**Deferred — Phase 2b:** *automating* the resolution loops — PO-revision → recommit → rematch
-(CONST-MATCH-010/011) and GRN-correction → rematch (CONST-MATCH-012). Today those reasons record the
-required action; the user performs the PO revision / GRN correction via the existing mechanisms and
-re-runs matching. (CONST-MATCH-013 supplier↔client firewall needs no build — cost changes never
-propagate to client billing.)
+**Implementation — Phase 2b (rematch loops): DONE. ADR-018 is now fully implemented.** Matching now
+runs against the PO's **current active revision** (not the revision the bill was created against) and
+re-points the bill to it. So the resolution loops close:
+- **AGREED_PRICE_CHANGE / PO_QUANTITY_CHANGE** (CONST-MATCH-010/011): the user creates + approves a PO
+  revision — which recommits the ledger to the new exposure on approval (existing PO-approve flow) —
+  then re-runs matching, which picks up the revised terms against the recommitted exposure and clears
+  the exception.
+- **RECEIPT_CORRECTION** (CONST-MATCH-012): received quantity is summed **by material across the whole
+  PO** (all posted GRNs, any revision), so a corrected/additional GRN is reflected on re-match and a
+  price-only revision never loses the received quantity.
+- **CONST-MATCH-013** (supplier↔client firewall): no build — a supplier-side cost change never touches
+  client billing.
+
+Remaining follow-on (not part of ADR-018): the Round-2 matching **UI** surfaces these controlled
+decisions; the current tab already reads the backend result.
 
 This ADR records the **target** design for supplier bill matching. It extends and **corrects**
 ADR-007's tolerance rules (`MATCH-001`, `MATCH-002`). The engineering shape is owned by
