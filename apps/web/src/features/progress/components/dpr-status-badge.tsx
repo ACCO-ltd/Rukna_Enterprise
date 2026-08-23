@@ -7,6 +7,7 @@ const TONES: Record<DprStatus, BadgeTone> = {
   [DprStatus.SUBMITTED]: 'info',
   [DprStatus.APPROVED]: 'live',
   [DprStatus.RETURNED]: 'warning',
+  [DprStatus.REOPENED]: 'warning',
 };
 
 export function DprStatusBadge({ status }: { status: `${DprStatus}` }) {
