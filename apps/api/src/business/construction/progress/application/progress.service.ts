@@ -485,6 +485,95 @@ export class ProgressService {
       weightsComplete: rollup.weightsComplete,
     };
   }
+
+  // ── ADR-021 CONST-PROG-005: programme activities (time layer under a work package) ──
+
+  async createActivity(identity: RequestIdentity, workPackageId: string, dto: CreateActivityDto) {
+    const prisma = this.tenancy.getClient();
+    const wp = await this.repo.findWorkPackageById(prisma, identity.activeOrganizationId, workPackageId);
+    if (!wp) throw new NotFoundException(`Work package ${workPackageId} not found`);
+    await this.projectAccess.assertMember(identity, wp.projectId);
+    this.validateActivityDates(dto.plannedStart, dto.plannedEnd, dto.durationDays);
+    return this.repo.createActivity(prisma, {
+      organizationId: identity.activeOrganizationId,
+      workPackageId,
+      code: dto.code,
+      name: dto.name,
+      plannedStart: dto.plannedStart ? new Date(dto.plannedStart) : null,
+      plannedEnd: dto.plannedEnd ? new Date(dto.plannedEnd) : null,
+      durationDays: dto.durationDays ?? null,
+      isMilestone: dto.isMilestone ?? false,
+      sortOrder: dto.sortOrder ?? 0,
+      createdBy: identity.userId,
+    });
+  }
+
+  async listActivities(identity: RequestIdentity, projectId: string) {
+    await this.projectAccess.assertMember(identity, projectId);
+    return this.repo.findActivitiesForProject(this.tenancy.getClient(), identity.activeOrganizationId, projectId);
+  }
+
+  async updateActivity(identity: RequestIdentity, activityId: string, dto: UpdateActivityDto) {
+    const prisma = this.tenancy.getClient();
+    const activity = await this.repo.findActivityById(prisma, identity.activeOrganizationId, activityId);
+    if (!activity) throw new NotFoundException(`Activity ${activityId} not found`);
+    await this.projectAccess.assertMember(identity, activity.workPackage.projectId);
+
+    // Validate the effective (post-update) dates.
+    const start =
+      dto.plannedStart !== undefined ? dto.plannedStart : activity.plannedStart?.toISOString();
+    const end = dto.plannedEnd !== undefined ? dto.plannedEnd : activity.plannedEnd?.toISOString();
+    this.validateActivityDates(start ?? undefined, end ?? undefined, dto.durationDays ?? undefined);
+
+    return this.repo.updateActivity(prisma, activityId, {
+      ...(dto.name !== undefined ? { name: dto.name } : {}),
+      ...(dto.plannedStart !== undefined
+        ? { plannedStart: dto.plannedStart ? new Date(dto.plannedStart) : null }
+        : {}),
+      ...(dto.plannedEnd !== undefined
+        ? { plannedEnd: dto.plannedEnd ? new Date(dto.plannedEnd) : null }
+        : {}),
+      ...(dto.durationDays !== undefined ? { durationDays: dto.durationDays } : {}),
+      ...(dto.isMilestone !== undefined ? { isMilestone: dto.isMilestone } : {}),
+      ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
+    });
+  }
+
+  async deleteActivity(identity: RequestIdentity, activityId: string) {
+    const prisma = this.tenancy.getClient();
+    const activity = await this.repo.findActivityById(prisma, identity.activeOrganizationId, activityId);
+    if (!activity) throw new NotFoundException(`Activity ${activityId} not found`);
+    await this.projectAccess.assertMember(identity, activity.workPackage.projectId);
+    await this.repo.deleteActivity(prisma, activityId);
+  }
+
+  private validateActivityDates(start?: string | null, end?: string | null, durationDays?: number | null) {
+    if (durationDays !== undefined && durationDays !== null && durationDays < 0) {
+      throw new BadRequestException('durationDays must be >= 0');
+    }
+    if (start && end && new Date(end).getTime() < new Date(start).getTime()) {
+      throw new BadRequestException('plannedEnd cannot be before plannedStart');
+    }
+  }
+}
+
+export interface CreateActivityDto {
+  code: string;
+  name: string;
+  plannedStart?: string;
+  plannedEnd?: string;
+  durationDays?: number;
+  isMilestone?: boolean;
+  sortOrder?: number;
+}
+
+export interface UpdateActivityDto {
+  name?: string;
+  plannedStart?: string | null;
+  plannedEnd?: string | null;
+  durationDays?: number | null;
+  isMilestone?: boolean;
+  sortOrder?: number;
 }
 
 export interface ProgressTargetInput {

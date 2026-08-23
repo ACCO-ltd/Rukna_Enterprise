@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
@@ -14,6 +14,8 @@ import {
   CreateWorkPackageDto,
   AllocateBoqNodeDto,
   SetProgressTargetsDto,
+  CreateProgrammeActivityDto,
+  UpdateProgrammeActivityDto,
 } from './dto/progress.dto.js';
 
 // ADR-021 Progress MVP: daily progress reports + measurements + evidence, and verified progress.
@@ -106,6 +108,48 @@ export class ProgressController {
     @Query('asOf') asOf?: string,
   ) {
     return this.service.getScheduleVariance(identity, projectId, asOf);
+  }
+
+  // ── ADR-021 CONST-PROG-005: programme activities ──────────────────────────────
+
+  @Get('projects/:projectId/programme/activities')
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({ summary: 'List programme activities for a project (across its work packages)' })
+  activities(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
+    return this.service.listActivities(identity, projectId);
+  }
+
+  @Post('work-packages/:workPackageId/activities')
+  @RequirePermissions(PERMISSIONS.projectsManage)
+  @ApiParam({ name: 'workPackageId' })
+  @ApiOperation({ summary: 'Add a programme activity (dates / duration / milestone) under a work package' })
+  createActivity(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('workPackageId') workPackageId: string,
+    @Body() dto: CreateProgrammeActivityDto,
+  ) {
+    return this.service.createActivity(identity, workPackageId, dto);
+  }
+
+  @Patch('programme/activities/:activityId')
+  @RequirePermissions(PERMISSIONS.projectsManage)
+  @ApiParam({ name: 'activityId' })
+  @ApiOperation({ summary: 'Update a programme activity' })
+  updateActivity(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('activityId') activityId: string,
+    @Body() dto: UpdateProgrammeActivityDto,
+  ) {
+    return this.service.updateActivity(identity, activityId, dto);
+  }
+
+  @Delete('programme/activities/:activityId')
+  @RequirePermissions(PERMISSIONS.projectsManage)
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'activityId' })
+  @ApiOperation({ summary: 'Delete a programme activity' })
+  deleteActivity(@CurrentUser() identity: RequestIdentity, @Param('activityId') activityId: string) {
+    return this.service.deleteActivity(identity, activityId);
   }
 
   @Post('projects/:projectId/work-packages')

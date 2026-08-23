@@ -1,6 +1,63 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsInt, IsNumber, Min, Max, IsDateString, MaxLength, ValidateNested, ArrayMaxSize } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsInt, IsNumber, IsBoolean, Min, Max, IsDateString, MaxLength, ValidateNested, ArrayMaxSize } from 'class-validator';
 import { Type } from 'class-transformer';
+
+// ADR-021 CONST-PROG-005 — programme activity (time layer under a work package).
+export class CreateProgrammeActivityDto {
+  @ApiProperty()
+  @IsString() @IsNotEmpty() @MaxLength(50)
+  code!: string;
+
+  @ApiProperty()
+  @IsString() @IsNotEmpty() @MaxLength(200)
+  name!: string;
+
+  @ApiPropertyOptional({ example: '2026-09-01' })
+  @IsOptional() @IsDateString()
+  plannedStart?: string;
+
+  @ApiPropertyOptional({ example: '2026-09-30' })
+  @IsOptional() @IsDateString()
+  plannedEnd?: string;
+
+  @ApiPropertyOptional({ minimum: 0 })
+  @IsOptional() @IsInt() @Min(0)
+  durationDays?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsBoolean()
+  isMilestone?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsInt()
+  sortOrder?: number;
+}
+
+export class UpdateProgrammeActivityDto {
+  @ApiPropertyOptional()
+  @IsOptional() @IsString() @MaxLength(200)
+  name?: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional() @IsDateString()
+  plannedStart?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional() @IsDateString()
+  plannedEnd?: string | null;
+
+  @ApiPropertyOptional({ minimum: 0, nullable: true })
+  @IsOptional() @IsInt() @Min(0)
+  durationDays?: number | null;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsBoolean()
+  isMilestone?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsInt()
+  sortOrder?: number;
+}
 
 // ADR-021 CONST-PROG-011 — the approved planned-progress curve (monthly milestones).
 export class ProgressTargetItemDto {

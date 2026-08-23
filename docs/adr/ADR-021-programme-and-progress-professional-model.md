@@ -15,10 +15,18 @@ curve (ACCO's monthly milestones) on the baseline drives a "planned today %" (li
 the curve; 0 before the first target, clamped to the last after), and `GET
 /projects/:id/programme/schedule-variance` compares it to the verified physical roll-up →
 BEHIND/AHEAD_OF_SCHEDULE. Curve managed via `GET`/`PUT /projects/:id/programme/targets` (validated:
-0–100, unique dates, non-decreasing). **Deferred:** programme **activities** (CONST-PROG-005 —
-`ProgrammeActivity` under WorkPackage with dates/duration/milestone), controlled reopen/correction
-(CONST-PROG-010), and — evidence-driven only — dependency networks, Excel/P6 import, recovery
-programmes.
+0–100, unique dates, non-decreasing).
+
+**Time domain — Phase 2 (programme activities, CONST-PROG-005): DONE.** A `ProgrammeActivity` under
+WorkPackage carries *time* (planned start/end, duration, milestone flag) — the BOQ → WorkPackage →
+Activity control layer. CRUD under `/work-packages/:id/activities` and `/programme/activities/:id`,
+listable per project via `/projects/:id/programme/activities`; dates validated (end ≥ start,
+duration ≥ 0). No dependency network. Membership enforced via the activity's work package's project.
+
+**Deferred:** controlled reopen/correction of approved progress (CONST-PROG-010), and —
+evidence-driven only — dependency networks (FS/SS/FF/SF), Excel/P6 import, recovery programmes.
+Activity-date → planned-% derivation (feeding schedule variance from activities rather than the
+target curve) is a possible later refinement.
 
 Engineering shape owned by Abdulsalam; the domain rules are gated on **Eng Ahmed Shirie**. This
 ADR **extends** ADR-002's `CONST-PROG-001/002/003` (it must not silently change them) and depends
