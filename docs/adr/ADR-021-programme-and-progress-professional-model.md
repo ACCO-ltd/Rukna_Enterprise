@@ -8,6 +8,18 @@ Status: accepted
 
 ## Status note
 
+**Implementation status.** MVP built (DPR lifecycle → verified progress, WorkPackage weighted
+roll-up, physical-vs-financial + collection-vs-progress signals, IPA pre-fill). **Time domain — Phase
+1 (planned baseline + schedule variance, CONST-PROG-011): DONE.** An approved `ProgressTarget[]`
+curve (ACCO's monthly milestones) on the baseline drives a "planned today %" (linear interpolation of
+the curve; 0 before the first target, clamped to the last after), and `GET
+/projects/:id/programme/schedule-variance` compares it to the verified physical roll-up →
+BEHIND/AHEAD_OF_SCHEDULE. Curve managed via `GET`/`PUT /projects/:id/programme/targets` (validated:
+0–100, unique dates, non-decreasing). **Deferred:** programme **activities** (CONST-PROG-005 —
+`ProgrammeActivity` under WorkPackage with dates/duration/milestone), controlled reopen/correction
+(CONST-PROG-010), and — evidence-driven only — dependency networks, Excel/P6 import, recovery
+programmes.
+
 Engineering shape owned by Abdulsalam; the domain rules are gated on **Eng Ahmed Shirie**. This
 ADR **extends** ADR-002's `CONST-PROG-001/002/003` (it must not silently change them) and depends
 on **PlatformFile (ADR-014)**, which is unbuilt and is a hard prerequisite. It refines the

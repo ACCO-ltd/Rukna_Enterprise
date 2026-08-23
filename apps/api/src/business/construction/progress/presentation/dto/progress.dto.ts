@@ -1,5 +1,27 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsInt, IsNumber, Min, IsDateString, MaxLength } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsInt, IsNumber, Min, Max, IsDateString, MaxLength, ValidateNested, ArrayMaxSize } from 'class-validator';
+import { Type } from 'class-transformer';
+
+// ADR-021 CONST-PROG-011 — the approved planned-progress curve (monthly milestones).
+export class ProgressTargetItemDto {
+  @ApiProperty({ example: '2026-09-30' })
+  @IsDateString()
+  targetDate!: string;
+
+  @ApiProperty({ example: 25, description: 'Planned cumulative % by this date (0–100)' })
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  cumulativePercent!: number;
+}
+
+export class SetProgressTargetsDto {
+  @ApiProperty({ type: [ProgressTargetItemDto] })
+  @ValidateNested({ each: true })
+  @Type(() => ProgressTargetItemDto)
+  @ArrayMaxSize(240)
+  targets!: ProgressTargetItemDto[];
+}
 
 export class CreateDprDto {
   @ApiProperty({ example: '2026-08-18' })

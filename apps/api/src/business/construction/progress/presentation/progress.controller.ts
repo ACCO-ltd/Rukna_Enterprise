@@ -1,5 +1,5 @@
-import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam } from '@nestjs/swagger';
+import { Controller, Get, Post, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
@@ -13,6 +13,7 @@ import {
   ReturnDprDto,
   CreateWorkPackageDto,
   AllocateBoqNodeDto,
+  SetProgressTargetsDto,
 } from './dto/progress.dto.js';
 
 // ADR-021 Progress MVP: daily progress reports + measurements + evidence, and verified progress.
@@ -72,6 +73,39 @@ export class ProgressController {
   @ApiOperation({ summary: 'Collection-vs-progress early warning (collected % vs built %)' })
   collectionSignal(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
     return this.service.getCollectionProgressSignal(identity, projectId);
+  }
+
+  // ── ADR-021 CONST-PROG-011: planned baseline + schedule variance ──────────────
+
+  @Get('projects/:projectId/programme/targets')
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({ summary: 'The approved planned-progress target curve (monthly milestones)' })
+  targets(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
+    return this.service.getTargets(identity, projectId);
+  }
+
+  @Put('projects/:projectId/programme/targets')
+  @RequirePermissions(PERMISSIONS.projectsManage)
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({ summary: 'Set/replace the planned-progress target curve (non-decreasing, 0–100)' })
+  setTargets(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Body() dto: SetProgressTargetsDto,
+  ) {
+    return this.service.setTargets(identity, projectId, dto.targets);
+  }
+
+  @Get('projects/:projectId/programme/schedule-variance')
+  @ApiParam({ name: 'projectId' })
+  @ApiQuery({ name: 'asOf', required: false, description: 'Evaluate planned-vs-verified as of this date (default today)' })
+  @ApiOperation({ summary: 'Planned-vs-verified schedule variance (behind/ahead of schedule)' })
+  scheduleVariance(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Query('asOf') asOf?: string,
+  ) {
+    return this.service.getScheduleVariance(identity, projectId, asOf);
   }
 
   @Post('projects/:projectId/work-packages')

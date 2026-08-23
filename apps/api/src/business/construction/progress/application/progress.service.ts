@@ -395,6 +395,131 @@ export class ProgressService {
       weightsComplete: rollup.weightsComplete,
     };
   }
+
+  // ── ADR-021 CONST-PROG-011: planned baseline + schedule variance ──────────────
+
+  /**
+   * Replaces the project's approved planned-progress curve (ACCO's monthly milestones). Validates
+   * that the cumulative percentages are in [0, 100], the dates are unique, and the curve is
+   * non-decreasing over time (cumulative progress cannot go backwards).
+   */
+  async setTargets(identity: RequestIdentity, projectId: string, targets: ProgressTargetInput[]) {
+    await this.projectAccess.assertMember(identity, projectId);
+    const sorted = [...targets].sort(
+      (a, b) => new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime(),
+    );
+    let prevPct = -1;
+    let prevDate = Number.NEGATIVE_INFINITY;
+    for (const t of sorted) {
+      const d = new Date(t.targetDate).getTime();
+      if (Number.isNaN(d)) throw new BadRequestException(`Invalid target date '${t.targetDate}'`);
+      if (t.cumulativePercent < 0 || t.cumulativePercent > 100) {
+        throw new BadRequestException('cumulativePercent must be between 0 and 100');
+      }
+      if (d === prevDate) throw new BadRequestException('Duplicate target date');
+      if (t.cumulativePercent < prevPct) {
+        throw new BadRequestException('Cumulative percent must be non-decreasing over time');
+      }
+      prevPct = t.cumulativePercent;
+      prevDate = d;
+    }
+
+    const prisma = this.tenancy.getClient();
+    const orgId = identity.activeOrganizationId;
+    await prisma.$transaction(async (tx) => {
+      await this.repo.deleteTargetsForProject(tx as never, projectId);
+      if (sorted.length) {
+        await this.repo.createTargets(
+          tx as never,
+          sorted.map((t) => ({
+            organizationId: orgId,
+            projectId,
+            targetDate: new Date(t.targetDate),
+            cumulativePercent: new Decimal(t.cumulativePercent),
+            createdBy: identity.userId,
+          })),
+        );
+      }
+    });
+    return this.getTargets(identity, projectId);
+  }
+
+  async getTargets(identity: RequestIdentity, projectId: string) {
+    await this.projectAccess.assertMember(identity, projectId);
+    const prisma = this.tenancy.getClient();
+    const rows = await this.repo.findTargets(prisma, projectId);
+    return rows.map((r) => ({
+      targetDate: r.targetDate.toISOString().slice(0, 10),
+      cumulativePercent: Number(r.cumulativePercent),
+    }));
+  }
+
+  /**
+   * Planned-vs-verified schedule variance: the planned cumulative % due today (interpolated from the
+   * target curve) against the verified physical % (the weighted roll-up). A large negative gap means
+   * the project is behind schedule; positive means ahead. Null when no baseline curve is set.
+   */
+  async getScheduleVariance(identity: RequestIdentity, projectId: string, asOf?: string) {
+    await this.projectAccess.assertMember(identity, projectId);
+    const prisma = this.tenancy.getClient();
+    const targets = await this.repo.findTargets(prisma, projectId);
+    const at = asOf ? new Date(asOf) : new Date();
+
+    const plannedPercent = plannedPercentAt(targets, at);
+    const rollup = await this.getRollup(identity, projectId);
+    const physicalPercent = rollup.physicalPercent;
+
+    const { divergence, status } = classifyDivergence(
+      plannedPercent === null ? null : physicalPercent - plannedPercent,
+      'AHEAD_OF_SCHEDULE',
+      'BEHIND_SCHEDULE',
+    );
+
+    return {
+      projectId,
+      asOf: at.toISOString().slice(0, 10),
+      plannedPercent,
+      physicalPercent,
+      variance: divergence,
+      status,
+      weightsComplete: rollup.weightsComplete,
+    };
+  }
+}
+
+export interface ProgressTargetInput {
+  targetDate: string;
+  cumulativePercent: number;
+}
+
+/**
+ * The planned cumulative % due at a date, interpolated from the target curve. Before the first
+ * target it is 0 (nothing due yet — conservative, never falsely "behind"); after the last it is the
+ * last cumulative %; between two targets it is a linear interpolation (the classic planned S-curve).
+ */
+function plannedPercentAt(
+  targets: { targetDate: Date; cumulativePercent: unknown }[],
+  at: Date,
+): number | null {
+  if (targets.length === 0) return null;
+  const t = at.getTime();
+  const first = targets[0];
+  const last = targets[targets.length - 1];
+  if (t < first.targetDate.getTime()) return 0;
+  if (t >= last.targetDate.getTime()) return Number(last.cumulativePercent);
+  for (let i = 0; i < targets.length - 1; i++) {
+    const a = targets[i];
+    const b = targets[i + 1];
+    const ta = a.targetDate.getTime();
+    const tb = b.targetDate.getTime();
+    if (t >= ta && t < tb) {
+      const pa = Number(a.cumulativePercent);
+      const pb = Number(b.cumulativePercent);
+      const frac = (t - ta) / (tb - ta);
+      return Math.round((pa + (pb - pa) * frac) * 100) / 100;
+    }
+  }
+  return Number(last.cumulativePercent);
 }
 
 export interface CreateWorkPackageDto {
