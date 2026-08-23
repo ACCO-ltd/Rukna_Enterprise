@@ -121,4 +121,17 @@ export class ProgressRepository {
   allocateBoqNode(prisma: TenantPrisma, workPackageId: string, boqNodeId: string) {
     return prisma.workPackageBoqNode.create({ data: { workPackageId, boqNodeId } });
   }
+
+  // ── ADR-021 CONST-PROG-011: planned-progress target curve ────────────────────
+  findTargets(prisma: TenantPrisma, projectId: string) {
+    return prisma.progressTarget.findMany({ where: { projectId }, orderBy: { targetDate: 'asc' } });
+  }
+
+  deleteTargetsForProject(prisma: TenantPrisma, projectId: string) {
+    return prisma.progressTarget.deleteMany({ where: { projectId } });
+  }
+
+  createTargets(prisma: TenantPrisma, rows: Prisma.ProgressTargetUncheckedCreateInput[]) {
+    return prisma.progressTarget.createMany({ data: rows });
+  }
 }

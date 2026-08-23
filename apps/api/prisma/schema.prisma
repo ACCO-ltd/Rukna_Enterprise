@@ -537,6 +537,7 @@ model Project {
   dailyProgressReports DailyProgressReport[]
   workPackages         WorkPackage[]
   programmeMilestones  ProgrammeMilestone[]
+  progressTargets      ProgressTarget[]
   client               Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull)
   district             District?             @relation(fields: [districtId], references: [id], onDelete: Restrict)
 
@@ -902,6 +903,26 @@ model BoqNode {
   @@index([versionId, parentId])
   @@index([versionId, path])
   @@map("boq_nodes")
+}
+
+// ADR-021 CONST-PROG-011 — the approved planned-progress curve (ACCO's monthly milestones): the
+// cumulative % expected by each target date on the baseline programme. Drives "planned today" and
+// the planned-vs-verified schedule-variance signal. A curve = one row per target date per project.
+model ProgressTarget {
+  id                String   @id @default(cuid())
+  organizationId    String   @map("organization_id")
+  projectId         String   @map("project_id")
+  targetDate        DateTime @map("target_date") @db.Date
+  cumulativePercent Decimal  @map("cumulative_percent") @db.Decimal(6, 3)
+  createdBy         String   @map("created_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@unique([projectId, targetDate])
+  @@index([projectId, targetDate])
+  @@map("progress_targets")
 }
 
 // ADR-020 CONST-BOQ-020 — an org-level catalogue of reusable BOQ *work items* (scope, e.g. "Supply
