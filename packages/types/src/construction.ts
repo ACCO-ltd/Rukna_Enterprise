@@ -91,6 +91,38 @@ export interface ProjectWorkspaceGuidanceItemResponse {
   responsibleRole: 'PROJECT_MANAGER' | 'QUANTITY_SURVEYOR' | 'CONTRACT_ADMINISTRATOR' | null;
 }
 
+// ── ADR-019 Phase B (CONST-PLC-005/009): queryable project-lifecycle readiness ──
+// The forward guarded commands (+ cancel) a project can be evaluated for readiness against.
+export type ProjectLifecycleCommand =
+  | 'start'
+  | 'practical-completion'
+  | 'closeout'
+  | 'close'
+  | 'cancel';
+
+// CONST-PLC-006 — a condition is MANDATORY (transition impossible until satisfied) or WAIVABLE
+// (blocked by default; an authorized, audited override unblocks the specific condition). B1
+// reports both truthfully; B2 acts on the severity.
+export type ReadinessConditionSeverity = 'MANDATORY' | 'WAIVABLE';
+
+export interface ProjectReadinessConditionResponse {
+  code: string;
+  severity: ReadinessConditionSeverity;
+  satisfied: boolean;
+  detail: string;
+}
+
+export interface ProjectReadinessResponse {
+  command: ProjectLifecycleCommand;
+  targetStatus: string;
+  ready: boolean;
+  conditions: ProjectReadinessConditionResponse[];
+  // Conditions the ADR names for this command whose source domain is not yet queryable from the
+  // project (e.g. final-account / commitments / inventory / retention on close). Listed by code
+  // so the contract is self-documenting rather than silently omitting them.
+  deferred: string[];
+}
+
 // ─── Client ───────────────────────────────────────────────────────────────────
 
 export interface ClientContactResponse {

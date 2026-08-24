@@ -75,6 +75,24 @@ export class ProjectsController {
     return this.projectService.getWorkspaceGuidance(identity, id);
   }
 
+  @Get(':id/readiness')
+  @ApiOperation({
+    summary: 'Query why a project is (not) ready for a lifecycle command (ADR-019 CONST-PLC-009)',
+  })
+  @ApiParam({ name: 'id', description: 'Project ID' })
+  @ApiQuery({
+    name: 'command',
+    required: false,
+    description: 'Lifecycle command: start | practical-completion | closeout | close | cancel (default start)',
+  })
+  readiness(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Query('command') command = 'start',
+  ) {
+    return this.projectService.getReadiness(identity, id, command);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get project details including active members and suspension' })
   @ApiParam({ name: 'id', description: 'Project ID' })

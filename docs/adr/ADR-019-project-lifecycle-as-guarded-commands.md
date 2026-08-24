@@ -18,11 +18,23 @@ Two things are deliberately kept apart in this ADR:
     approve → mobilize → activate chain collapsed into one `POST /projects/:id/start`
     (`DRAFT → ACTIVE`); the `DRAFT → ACTIVE` governance binding carries the approval `APPROVED`
     used to model (ADR-022). The UI presents `DRAFT` as **"Preparation"** (CONST-PLC-010).
-  - **Phase B — guarded-command surfaces: NOT built.** The formal `ProjectReadinessPolicy`
-    (CONST-PLC-005), the queryable readiness read-contract (CONST-PLC-009), per-condition
-    `MANDATORY`/`WAIVABLE` waivers (CONST-PLC-006), and evidence-consuming command payloads
-    (CONST-PLC-008) remain to be built. Today's transitions still run through the existing
-    `CommandGovernance` gate + a `getWorkspaceGuidance` proto-readiness surface.
+  - **Phase B1 — readiness policy + read contract: DONE.** `ProjectReadinessPolicy`
+    (CONST-PLC-005) is fixed domain code (`projects/domain/project-readiness.policy.ts`) branching
+    on `commercialModel`; the queryable read contract (CONST-PLC-009) is
+    `GET /projects/:id/readiness?command=start` → `{ command, targetStatus, ready, conditions[],
+    deferred[] }`, each condition carrying `MANDATORY`/`WAIVABLE` severity. **Pure read — it does
+    not yet block or mutate a command.** `start` carries the full queryable condition set
+    (CLIENT_ACTIVE / ACTIVE_MAIN_CONTRACT / CONTRACT_START_DATE / BOQ_BASELINED are MANDATORY;
+    PROGRAMME_DATES / DELIVERY_TEAM are WAIVABLE; INTERNAL_CAPITAL swaps the contract conditions
+    for a deferred `INTERNAL_AUTHORIZATION`). practical-completion / closeout / close have **no
+    queryable gate yet** — their source facts (PC certificate, final account, commitments,
+    inventory, retention) don't expose project-scoped state, so they return `ready` with those
+    named in `deferred[]` rather than faking a check.
+  - **Phase B2 — guarded-command teeth: NOT built.** Enforcing readiness inside the commands,
+    the per-condition `MANDATORY`/`WAIVABLE` waiver command shape (CONST-PLC-006, `override:
+    { condition, reason, approvedBy }` — never `force: true`), and the evidence-consuming payloads
+    (CONST-PLC-008: Start `actualStartDate`, Close `closureDate` + `closureSummary`) remain. Today's
+    transitions still run through the existing `CommandGovernance` gate + `getWorkspaceGuidance`.
 
 ## Context
 
