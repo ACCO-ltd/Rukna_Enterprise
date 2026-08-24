@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ContractStatus, ProjectStatus } from '@prisma/client';
 import { PERMISSIONS, ProjectRole, type RequestIdentity } from '@erp/types';
 
@@ -177,6 +177,70 @@ describe('ProjectService workspace summary', () => {
     });
 
     await expect(service.getWorkspaceGuidance(identity([]), 'project-1')).resolves.toEqual([]);
+  });
+});
+
+describe('ProjectService.getReadiness (ADR-019 CONST-PLC-009)', () => {
+  const readinessRecord = {
+    status: 'DRAFT',
+    commercialModel: 'CLIENT_CONTRACT',
+    startDate: new Date('2026-02-01'),
+    expectedEndDate: new Date('2027-08-31'),
+    clientId: 'client-1',
+    client: { status: 'ACTIVE' },
+    contracts: [{ status: 'ACTIVE', startDate: new Date('2026-02-01') }],
+    boq: { versions: [{ status: 'BASELINED' }] },
+    members: [{ id: 'm-1' }, { id: 'm-2' }],
+  };
+
+  function build(record: unknown = readinessRecord) {
+    const repo = { findReadinessSnapshot: jest.fn().mockResolvedValue(record) };
+    const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
+    const tenancy = { getClient: () => ({ marker: 'tenant-client' }) };
+    const service = new ProjectService(
+      tenancy as never,
+      {} as never,
+      repo as never,
+      {} as never,
+      projectAccess as never,
+      {} as never,
+    );
+    return { service, repo, projectAccess };
+  }
+
+  it('asserts membership, loads the snapshot, and maps it to a ready start contract', async () => {
+    const { service, repo, projectAccess } = build();
+    const result = await service.getReadiness(identity([]), 'project-1', 'start');
+
+    expect(projectAccess.assertMember).toHaveBeenCalledWith(expect.any(Object), 'project-1');
+    expect(repo.findReadinessSnapshot).toHaveBeenCalledWith(
+      { marker: 'tenant-client' },
+      'org-1',
+      'project-1',
+    );
+    expect(result).toMatchObject({ command: 'start', targetStatus: 'ACTIVE', ready: true });
+  });
+
+  it('reports a specific unmet MANDATORY condition rather than a bare boolean', async () => {
+    const { service } = build({ ...readinessRecord, client: { status: 'INACTIVE' } });
+    const result = await service.getReadiness(identity([]), 'project-1', 'start');
+    expect(result.ready).toBe(false);
+    expect(result.conditions.find((c) => c.code === 'CLIENT_ACTIVE')).toMatchObject({ satisfied: false });
+  });
+
+  it('rejects an unknown lifecycle command', async () => {
+    const { service, repo } = build();
+    await expect(service.getReadiness(identity([]), 'project-1', 'teleport')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(repo.findReadinessSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('404s when the project is not found', async () => {
+    const { service } = build(null);
+    await expect(service.getReadiness(identity([]), 'missing', 'start')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });
 

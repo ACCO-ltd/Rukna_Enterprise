@@ -7,6 +7,8 @@ import {
 import { CommercialModel, ParticipationModel, Project } from '@prisma/client';
 import {
   PERMISSIONS,
+  type ProjectLifecycleCommand,
+  type ProjectReadinessResponse,
   type ProjectWorkspaceGuidanceItemResponse,
   type ProjectWorkspaceSummaryResponse,
   type RequestIdentity,
@@ -24,6 +26,7 @@ import {
 import { ContractPrismaRepository } from '../../contracts/infrastructure/contract-prisma.repository.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
+import { evaluateReadiness } from '../domain/project-readiness.policy.js';
 import type { CreateProjectDto } from '../presentation/dto/create-project.dto.js';
 import type { UpdateProjectDto } from '../presentation/dto/update-project.dto.js';
 import type { AddMemberDto } from '../presentation/dto/add-member.dto.js';
@@ -52,6 +55,16 @@ const LIFECYCLE_REQUIRED_FROM: Record<string, string> = {
   'reopen-to-active': 'PRACTICAL_COMPLETION',
   'reopen-to-pc': 'CLOSEOUT',
 };
+
+// ADR-019 CONST-PLC-009 — the forward guarded commands (+ cancel) a project's readiness can be
+// queried against. The `reopen-*` commands are corrective and carry no readiness contract.
+const READINESS_COMMANDS = new Set<ProjectLifecycleCommand>([
+  'start',
+  'practical-completion',
+  'closeout',
+  'close',
+  'cancel',
+]);
 
 @Injectable()
 export class ProjectService {
@@ -242,6 +255,47 @@ export class ProjectService {
 
     const order = { URGENT: 0, WARNING: 1, INFO: 2 } as const;
     return items.sort((a, b) => order[a.severity] - order[b.severity]);
+  }
+
+  /**
+   * ADR-019 CONST-PLC-009 — the queryable readiness read contract. Returns *why* a project is (not)
+   * ready for a lifecycle command BEFORE the command is attempted, so the UI renders a readiness
+   * dashboard instead of discovering blockers through repeated failed commands. Pure read: it never
+   * mutates state and (in Phase B1) never blocks the command — the ProjectReadinessPolicy holds the
+   * branching logic (CONST-PLC-005).
+   */
+  async getReadiness(
+    identity: RequestIdentity,
+    id: string,
+    command: string,
+  ): Promise<ProjectReadinessResponse> {
+    if (!READINESS_COMMANDS.has(command as ProjectLifecycleCommand)) {
+      throw new BadRequestException(
+        `Unknown lifecycle command '${command}'. Expected one of: ${[...READINESS_COMMANDS].join(', ')}.`,
+      );
+    }
+    await this.projectAccess.assertMember(identity, id);
+    const prisma = this.tenancyService.getClient();
+    const project = await this.repo.findReadinessSnapshot(prisma, identity.activeOrganizationId, id);
+    if (!project) throw new NotFoundException(`Project ${id} not found`);
+
+    const activeContract = project.contracts[0] ?? null;
+    return evaluateReadiness(
+      {
+        status: project.status,
+        commercialModel: project.commercialModel,
+        startDate: project.startDate,
+        expectedEndDate: project.expectedEndDate,
+        clientId: project.clientId,
+        clientStatus: project.client?.status ?? null,
+        activeContract: activeContract
+          ? { status: activeContract.status, startDate: activeContract.startDate }
+          : null,
+        hasBaselinedBoq: project.boq?.versions.some((version) => version.status === 'BASELINED') ?? false,
+        activeMemberCount: project.members.length,
+      },
+      command as ProjectLifecycleCommand,
+    );
   }
 
   // ─── Create ──────────────────────────────────────────────────────────────────

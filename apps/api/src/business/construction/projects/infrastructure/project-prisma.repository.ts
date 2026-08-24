@@ -77,6 +77,29 @@ export type ProjectWorkspaceSummaryRecord = Prisma.ProjectGetPayload<{
   include: typeof PROJECT_WORKSPACE_SUMMARY_INCLUDE;
 }>;
 
+// ADR-019 CONST-PLC-005/009 — exactly the facts the readiness policy reads: the assigned client's
+// status, the effective (non-terminal) client contract's status + start date, whether a BOQ version
+// is baselined, and the active member count. Scalars (status, commercialModel, dates, clientId)
+// come with the include.
+const PROJECT_READINESS_INCLUDE = {
+  client: { select: { status: true } },
+  boq: { select: { versions: { select: { status: true } } } },
+  contracts: {
+    where: {
+      contractKind: 'CLIENT_CONTRACT',
+      status: { notIn: ['CLOSED', 'CANCELLED', 'TERMINATED'] },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 1,
+    select: { status: true, startDate: true },
+  },
+  members: { where: { removedAt: null }, select: { id: true } },
+} satisfies Prisma.ProjectInclude;
+
+export type ProjectReadinessRecord = Prisma.ProjectGetPayload<{
+  include: typeof PROJECT_READINESS_INCLUDE;
+}>;
+
 @Injectable()
 export class ProjectPrismaRepository {
   // ─── Queries ─────────────────────────────────────────────────────────────────
@@ -117,6 +140,17 @@ export class ProjectPrismaRepository {
     return prisma.project.findFirst({
       where: { id, organizationId },
       include: PROJECT_WORKSPACE_SUMMARY_INCLUDE,
+    });
+  }
+
+  async findReadinessSnapshot(
+    prisma: TenantPrisma,
+    organizationId: string,
+    id: string,
+  ): Promise<ProjectReadinessRecord | null> {
+    return prisma.project.findFirst({
+      where: { id, organizationId },
+      include: PROJECT_READINESS_INCLUDE,
     });
   }
 
