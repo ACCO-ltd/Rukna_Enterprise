@@ -1,4 +1,8 @@
-import { evaluateReadiness, type ReadinessSnapshot } from './project-readiness.policy.js';
+import {
+  evaluateReadiness,
+  planEnforcement,
+  type ReadinessSnapshot,
+} from './project-readiness.policy.js';
 
 // A CLIENT_CONTRACT project that is fully ready to start.
 const readyClientContract: ReadinessSnapshot = {
@@ -120,5 +124,58 @@ describe('ProjectReadinessPolicy (ADR-019 CONST-PLC-005/009)', () => {
   it('cancel: is an exit — ready with no conditions and nothing deferred', () => {
     const result = evaluateReadiness(readyClientContract, 'cancel');
     expect(result).toMatchObject({ targetStatus: 'CANCELLED', ready: true, conditions: [], deferred: [] });
+  });
+});
+
+describe('planEnforcement (ADR-019 CONST-PLC-006)', () => {
+  it('allows the transition when every condition is satisfied', () => {
+    const readiness = evaluateReadiness(readyClientContract, 'start');
+    const plan = planEnforcement(readiness, []);
+    expect(plan).toMatchObject({
+      allowed: true,
+      mandatoryBlockers: [],
+      requiresWaiver: [],
+      appliedWaivers: [],
+      invalidOverrides: [],
+    });
+  });
+
+  it('hard-blocks on an unsatisfied MANDATORY condition — no override can rescue it', () => {
+    const readiness = evaluateReadiness({ ...readyClientContract, hasBaselinedBoq: false }, 'start');
+    const plan = planEnforcement(readiness, [{ condition: 'BOQ_BASELINED', reason: 'trust me' }]);
+    expect(plan.allowed).toBe(false);
+    expect(plan.mandatoryBlockers).toContain('BOQ_BASELINED');
+    // the override targeted a MANDATORY condition → invalid, never applied
+    expect(plan.invalidOverrides).toContain('BOQ_BASELINED');
+    expect(plan.appliedWaivers).toEqual([]);
+  });
+
+  it('blocks an unsatisfied WAIVABLE condition when no override is supplied', () => {
+    const readiness = evaluateReadiness({ ...readyClientContract, activeMemberCount: 1 }, 'start');
+    const plan = planEnforcement(readiness, []);
+    expect(plan.allowed).toBe(false);
+    expect(plan.requiresWaiver).toEqual(['DELIVERY_TEAM']);
+  });
+
+  it('applies a valid override to an unsatisfied WAIVABLE condition and allows the transition', () => {
+    const readiness = evaluateReadiness({ ...readyClientContract, activeMemberCount: 1 }, 'start');
+    const plan = planEnforcement(readiness, [{ condition: 'DELIVERY_TEAM', reason: 'Solo PM for a small job' }]);
+    expect(plan.allowed).toBe(true);
+    expect(plan.appliedWaivers).toEqual([{ condition: 'DELIVERY_TEAM', reason: 'Solo PM for a small job' }]);
+    expect(plan.requiresWaiver).toEqual([]);
+  });
+
+  it('treats an empty-reason override as absent (still requires a waiver)', () => {
+    const readiness = evaluateReadiness({ ...readyClientContract, activeMemberCount: 1 }, 'start');
+    const plan = planEnforcement(readiness, [{ condition: 'DELIVERY_TEAM', reason: '   ' }]);
+    expect(plan.allowed).toBe(false);
+    expect(plan.requiresWaiver).toEqual(['DELIVERY_TEAM']);
+  });
+
+  it('flags an override that targets a satisfied condition as invalid', () => {
+    const readiness = evaluateReadiness(readyClientContract, 'start'); // all satisfied
+    const plan = planEnforcement(readiness, [{ condition: 'DELIVERY_TEAM', reason: 'unnecessary' }]);
+    expect(plan.allowed).toBe(false);
+    expect(plan.invalidOverrides).toEqual(['DELIVERY_TEAM']);
   });
 });

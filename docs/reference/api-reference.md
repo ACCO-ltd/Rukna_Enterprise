@@ -424,6 +424,28 @@ All return the updated project. All return `400` if the transition is invalid fr
 
 > ⚠️ **`practical-completion`** automatically moves all `ACTIVE` contracts for this project to `FINAL_ACCOUNT_PENDING`. The UI should warn the user before calling this endpoint.
 
+**Readiness (ADR-019 Phase B — query before you command):**
+```
+GET /projects/:id/readiness?command=start
+→ { command, targetStatus, ready, conditions: [{ code, severity: MANDATORY|WAIVABLE, satisfied, detail }], deferred: [] }
+```
+Call this to render a readiness dashboard **before** `start`/`close`. `ready` is false while any condition is unsatisfied.
+
+**Start (now takes a body — ADR-019 Phase B2):**
+```
+POST /projects/:id/start
+{ "actualStartDate": "2026-09-01", "commencementNote": "…?",
+  "overrides": [{ "condition": "PROGRAMME_DATES", "reason": "…" }]? }
+```
+`actualStartDate` is **required**. Readiness is **enforced**: a `400` lists unmet MANDATORY conditions, WAIVABLE conditions that need an override, and invalid overrides. A WAIVABLE condition is only unblocked by an `override` targeting that specific `condition` code with a reason (there is no whole-command `force`). Each waiver is audited.
+
+**Close (now takes a body — ADR-019 Phase B2):**
+```
+POST /projects/:id/close
+{ "closureDate": "2027-09-30", "closureSummary": "Final account agreed, retention released." }
+```
+Both fields **required**. (Close currently has no queryable readiness conditions — those grow as final-account / commitments / inventory / retention become queryable.)
+
 **Cancel:**
 ```
 POST /projects/:id/cancel

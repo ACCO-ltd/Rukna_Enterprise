@@ -149,3 +149,75 @@ export function evaluateReadiness(
     deferred,
   };
 }
+
+// ── ADR-019 Phase B2 (CONST-PLC-004/006): turning readiness into enforcement ──────
+
+/** A per-condition override: an authorized waiver of ONE specific failed WAIVABLE condition. */
+export interface WaiverInput {
+  condition: string;
+  reason: string;
+}
+
+/**
+ * The decision a command must act on: which unsatisfied conditions hard-block, which need a waiver,
+ * which waivers were validly applied, and which overrides were invalid. Pure — the service turns a
+ * `!allowed` plan into a 400 and records `appliedWaivers` as audit events.
+ */
+export interface EnforcementPlan {
+  mandatoryBlockers: string[]; // unsatisfied MANDATORY → transition impossible
+  requiresWaiver: string[]; // unsatisfied WAIVABLE with no valid override → blocked
+  appliedWaivers: WaiverInput[]; // unsatisfied WAIVABLE with a valid override → proceed + record
+  invalidOverrides: string[]; // override that does not target an unsatisfied WAIVABLE condition
+  allowed: boolean;
+}
+
+/**
+ * CONST-PLC-006 — MANDATORY conditions can never be waived; WAIVABLE ones are blocked by default
+ * and unblocked only by an override that targets that *specific* failed condition with a non-empty
+ * reason. An override that names a satisfied, MANDATORY, or unknown condition is invalid (you cannot
+ * waive what is not a failed WAIVABLE condition) — surfaced rather than silently ignored. There is
+ * no whole-transition `force`.
+ */
+export function planEnforcement(
+  readiness: ProjectReadinessResponse,
+  overrides: WaiverInput[],
+): EnforcementPlan {
+  const overrideFor = (code: string) =>
+    overrides.find((o) => o.condition === code && o.reason.trim().length > 0);
+
+  const mandatoryBlockers: string[] = [];
+  const requiresWaiver: string[] = [];
+  const appliedWaivers: WaiverInput[] = [];
+
+  for (const condition of readiness.conditions) {
+    if (condition.satisfied) continue;
+    if (condition.severity === 'MANDATORY') {
+      mandatoryBlockers.push(condition.code);
+      continue;
+    }
+    const override = overrideFor(condition.code);
+    if (override) appliedWaivers.push({ condition: condition.code, reason: override.reason.trim() });
+    else requiresWaiver.push(condition.code);
+  }
+
+  // An override only makes sense against a condition that is unsatisfied AND waivable.
+  const waivableUnsatisfied = new Set(
+    readiness.conditions
+      .filter((c) => !c.satisfied && c.severity === 'WAIVABLE')
+      .map((c) => c.code),
+  );
+  const invalidOverrides = overrides
+    .filter((o) => o.reason.trim().length > 0 && !waivableUnsatisfied.has(o.condition))
+    .map((o) => o.condition);
+
+  return {
+    mandatoryBlockers,
+    requiresWaiver,
+    appliedWaivers,
+    invalidOverrides,
+    allowed:
+      mandatoryBlockers.length === 0 &&
+      requiresWaiver.length === 0 &&
+      invalidOverrides.length === 0,
+  };
+}
