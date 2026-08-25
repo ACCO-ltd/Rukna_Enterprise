@@ -30,11 +30,21 @@ Two things are deliberately kept apart in this ADR:
     queryable gate yet** — their source facts (PC certificate, final account, commitments,
     inventory, retention) don't expose project-scoped state, so they return `ready` with those
     named in `deferred[]` rather than faking a check.
-  - **Phase B2 — guarded-command teeth: NOT built.** Enforcing readiness inside the commands,
-    the per-condition `MANDATORY`/`WAIVABLE` waiver command shape (CONST-PLC-006, `override:
-    { condition, reason, approvedBy }` — never `force: true`), and the evidence-consuming payloads
-    (CONST-PLC-008: Start `actualStartDate`, Close `closureDate` + `closureSummary`) remain. Today's
-    transitions still run through the existing `CommandGovernance` gate + `getWorkspaceGuidance`.
+  - **Phase B2 — guarded-command teeth: DONE.** `start` and `close` are now dedicated guarded
+    commands (split out of the generic `transition()`). **Enforcement (CONST-PLC-004/006):** `start`
+    evaluates readiness *before* the governance gate (an un-ready project never opens an approval
+    instance) — an unsatisfied MANDATORY condition is a 400; an unsatisfied WAIVABLE condition is a
+    400 unless the command carries a per-condition `override: { condition, reason }` that targets
+    that specific failed condition (no whole-command `force`; a MANDATORY/satisfied/unknown target
+    is rejected as an invalid override). Each applied waiver is recorded as a `PROJECT_CONDITION_WAIVED`
+    audit event (condition + reason + actor + time) — no separate waiver table by design.
+    **Evidence payloads (CONST-PLC-008):** `POST /start` requires `actualStartDate` (+ optional
+    `commencementNote`); `POST /close` requires `closureDate` + `closureSummary` — persisted on the
+    project. The enforce/waiver decision logic is a pure `planEnforcement()` beside
+    `evaluateReadiness()`. `close`/`closeout` still have no queryable readiness conditions (their
+    source facts — final account / commitments / inventory / retention — don't expose project-scoped
+    state yet), so they route through the same shape as a structural no-op until those domains grow.
+    **ADR-019 is now fully implemented (Phase A + B1 + B2).**
 
 ## Context
 

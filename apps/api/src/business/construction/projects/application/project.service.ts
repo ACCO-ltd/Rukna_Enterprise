@@ -4,7 +4,7 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
-import { CommercialModel, ParticipationModel, Project } from '@prisma/client';
+import { CommercialModel, ParticipationModel, Prisma, Project } from '@prisma/client';
 import {
   PERMISSIONS,
   type ProjectLifecycleCommand,
@@ -22,11 +22,20 @@ import {
 import {
   ProjectPrismaRepository,
   ProjectFull,
+  ProjectReadinessRecord,
 } from '../infrastructure/project-prisma.repository.js';
 import { ContractPrismaRepository } from '../../contracts/infrastructure/contract-prisma.repository.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
-import { evaluateReadiness } from '../domain/project-readiness.policy.js';
+import {
+  evaluateReadiness,
+  planEnforcement,
+  type EnforcementPlan,
+  type ReadinessSnapshot,
+  type WaiverInput,
+} from '../domain/project-readiness.policy.js';
+import type { StartProjectDto } from '../presentation/dto/start-project.dto.js';
+import type { CloseProjectDto } from '../presentation/dto/close-project.dto.js';
 import type { CreateProjectDto } from '../presentation/dto/create-project.dto.js';
 import type { UpdateProjectDto } from '../presentation/dto/update-project.dto.js';
 import type { AddMemberDto } from '../presentation/dto/add-member.dto.js';
@@ -279,23 +288,39 @@ export class ProjectService {
     const project = await this.repo.findReadinessSnapshot(prisma, identity.activeOrganizationId, id);
     if (!project) throw new NotFoundException(`Project ${id} not found`);
 
+    return evaluateReadiness(this.toReadinessSnapshot(project), command as ProjectLifecycleCommand);
+  }
+
+  /** Map the loaded readiness record to the pure policy's snapshot shape. */
+  private toReadinessSnapshot(project: ProjectReadinessRecord): ReadinessSnapshot {
     const activeContract = project.contracts[0] ?? null;
-    return evaluateReadiness(
-      {
-        status: project.status,
-        commercialModel: project.commercialModel,
-        startDate: project.startDate,
-        expectedEndDate: project.expectedEndDate,
-        clientId: project.clientId,
-        clientStatus: project.client?.status ?? null,
-        activeContract: activeContract
-          ? { status: activeContract.status, startDate: activeContract.startDate }
-          : null,
-        hasBaselinedBoq: project.boq?.versions.some((version) => version.status === 'BASELINED') ?? false,
-        activeMemberCount: project.members.length,
-      },
-      command as ProjectLifecycleCommand,
-    );
+    return {
+      status: project.status,
+      commercialModel: project.commercialModel,
+      startDate: project.startDate,
+      expectedEndDate: project.expectedEndDate,
+      clientId: project.clientId,
+      clientStatus: project.client?.status ?? null,
+      activeContract: activeContract
+        ? { status: activeContract.status, startDate: activeContract.startDate }
+        : null,
+      hasBaselinedBoq: project.boq?.versions.some((version) => version.status === 'BASELINED') ?? false,
+      activeMemberCount: project.members.length,
+    };
+  }
+
+  private readinessError(command: string, plan: EnforcementPlan): string {
+    const parts: string[] = [];
+    if (plan.mandatoryBlockers.length) {
+      parts.push(`unmet mandatory conditions: ${plan.mandatoryBlockers.join(', ')}`);
+    }
+    if (plan.requiresWaiver.length) {
+      parts.push(`conditions requiring an authorized waiver: ${plan.requiresWaiver.join(', ')}`);
+    }
+    if (plan.invalidOverrides.length) {
+      parts.push(`overrides that do not target an unmet waivable condition: ${plan.invalidOverrides.join(', ')}`);
+    }
+    return `Cannot ${command} the project — ${parts.join('; ')}.`;
   }
 
   // ─── Create ──────────────────────────────────────────────────────────────────
@@ -448,11 +473,165 @@ export class ProjectService {
 
   // ─── Lifecycle commands ───────────────────────────────────────────────────────
 
+  /**
+   * ADR-019 CONST-PLC-004/006/008 — Start is a guarded command: it evaluates readiness (with any
+   * per-condition waivers) BEFORE governance so an un-ready project never opens an approval instance,
+   * then records the decision it introduces (`actualStartDate`, optional commencement note). An
+   * unsatisfied MANDATORY condition is impossible; an unsatisfied WAIVABLE one needs an audited
+   * override targeting that specific condition.
+   */
+  async start(identity: RequestIdentity, id: string, dto: StartProjectDto): Promise<Project> {
+    await this.projectAccess.assertMember(identity, id);
+    const prisma = this.tenancyService.getClient();
+    const project = await this.requireProject(prisma, identity.activeOrganizationId, id);
+    const fromStatus = project.status;
+
+    if (fromStatus !== LIFECYCLE_REQUIRED_FROM.start) {
+      throw new BadRequestException(
+        `Cannot start a project with status '${fromStatus}'. Expected '${LIFECYCLE_REQUIRED_FROM.start}'.`,
+      );
+    }
+    await this.assertNotSuspended(prisma, id);
+
+    const plan = await this.enforceReadiness(identity, id, 'start', dto.overrides);
+
+    throwIfGated(
+      await this.commandGovernance.gateStateTransition(identity, 'Project', fromStatus, 'ACTIVE', id),
+      'Starting this project requires workflow approval.',
+    );
+
+    return prisma.$transaction(async (tx) => {
+      const updated = await this.repo.update(tx, id, {
+        status: 'ACTIVE' as never,
+        actualStartDate: new Date(dto.actualStartDate),
+        commencementNote: dto.commencementNote ?? null,
+      });
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'TRANSITION',
+        resourceType: 'Project',
+        resourceId: id,
+        sourceCommand: 'project.start',
+        eventType: 'PROJECT_START',
+        idempotencyKey: `project-transition-${id}-${fromStatus}-to-ACTIVE`,
+        before: { status: fromStatus },
+        after: { status: 'ACTIVE' },
+      });
+      await this.recordWaivers(tx, identity, 'start', id, fromStatus, plan.appliedWaivers);
+      return updated;
+    });
+  }
+
+  /**
+   * ADR-019 CONST-PLC-004/008 — Close is the strongest gate. It records the closure decision
+   * (`closureDate` + `closureSummary`). Its readiness conditions (final account / commitments /
+   * inventory / retention) are not yet queryable, so enforcement is a structural no-op today, but
+   * the command routes through the same readiness → governance → mutation shape.
+   */
+  async close(identity: RequestIdentity, id: string, dto: CloseProjectDto): Promise<Project> {
+    await this.projectAccess.assertMember(identity, id);
+    const prisma = this.tenancyService.getClient();
+    const project = await this.requireProject(prisma, identity.activeOrganizationId, id);
+    const fromStatus = project.status;
+
+    if (fromStatus !== LIFECYCLE_REQUIRED_FROM.close) {
+      throw new BadRequestException(
+        `Cannot close a project with status '${fromStatus}'. Expected '${LIFECYCLE_REQUIRED_FROM.close}'.`,
+      );
+    }
+    await this.assertNotSuspended(prisma, id);
+
+    const plan = await this.enforceReadiness(identity, id, 'close', dto.overrides);
+
+    throwIfGated(
+      await this.commandGovernance.gateStateTransition(identity, 'Project', fromStatus, 'CLOSED', id),
+      'Closing this project requires workflow approval.',
+    );
+
+    return prisma.$transaction(async (tx) => {
+      const updated = await this.repo.update(tx, id, {
+        status: 'CLOSED' as never,
+        closureDate: new Date(dto.closureDate),
+        closureSummary: dto.closureSummary,
+      });
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'TRANSITION',
+        resourceType: 'Project',
+        resourceId: id,
+        sourceCommand: 'project.close',
+        eventType: 'PROJECT_CLOSE',
+        idempotencyKey: `project-transition-${id}-${fromStatus}-to-CLOSED`,
+        before: { status: fromStatus },
+        after: { status: 'CLOSED' },
+      });
+      await this.recordWaivers(tx, identity, 'close', id, fromStatus, plan.appliedWaivers);
+      return updated;
+    });
+  }
+
+  private async assertNotSuspended(prisma: ReturnType<TenancyService['getClient']>, id: string) {
+    const activeSuspension = await this.repo.findActiveSuspension(prisma, id);
+    if (activeSuspension) {
+      throw new BadRequestException('Project is suspended. Resume it before changing status.');
+    }
+  }
+
+  /** Evaluate readiness + resolve waivers for a command; throw 400 with the blockers if not allowed. */
+  private async enforceReadiness(
+    identity: RequestIdentity,
+    id: string,
+    command: ProjectLifecycleCommand,
+    overrides: WaiverInput[] | undefined,
+  ): Promise<EnforcementPlan> {
+    const prisma = this.tenancyService.getClient();
+    const snapshot = await this.repo.findReadinessSnapshot(prisma, identity.activeOrganizationId, id);
+    if (!snapshot) throw new NotFoundException(`Project ${id} not found`);
+    const readiness = evaluateReadiness(this.toReadinessSnapshot(snapshot), command);
+    const plan = planEnforcement(readiness, overrides ?? []);
+    if (!plan.allowed) {
+      throw new BadRequestException(this.readinessError(command, plan));
+    }
+    return plan;
+  }
+
+  /** CONST-PLC-006 — each applied waiver is its own audit event (condition + reason + actor + time). */
+  private async recordWaivers(
+    tx: Prisma.TransactionClient,
+    identity: RequestIdentity,
+    command: string,
+    id: string,
+    fromStatus: string,
+    waivers: WaiverInput[],
+  ) {
+    for (const waiver of waivers) {
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'WAIVE',
+        resourceType: 'Project',
+        resourceId: id,
+        sourceCommand: `project.${command}`,
+        eventType: 'PROJECT_CONDITION_WAIVED',
+        idempotencyKey: `project-waiver-${id}-${command}-${waiver.condition}-${fromStatus}`,
+        reason: waiver.reason,
+        before: { condition: waiver.condition },
+        after: { condition: waiver.condition, waived: true },
+      });
+    }
+  }
+
   async transition(
     identity: RequestIdentity,
     id: string,
     command: keyof typeof LIFECYCLE_TRANSITIONS,
   ): Promise<Project> {
+    // Start and Close are guarded commands with evidence payloads — routed through start()/close().
+    if (command === 'start' || command === 'close') {
+      throw new BadRequestException(`Use the dedicated '${command}' command.`);
+    }
     await this.projectAccess.assertMember(identity, id);
     const prisma = this.tenancyService.getClient();
     const project = await this.requireProject(prisma, identity.activeOrganizationId, id);

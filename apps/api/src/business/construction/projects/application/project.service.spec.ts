@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { ContractStatus, ProjectStatus } from '@prisma/client';
 import { PERMISSIONS, ProjectRole, type RequestIdentity } from '@erp/types';
 
@@ -240,6 +240,133 @@ describe('ProjectService.getReadiness (ADR-019 CONST-PLC-009)', () => {
     const { service } = build(null);
     await expect(service.getReadiness(identity([]), 'missing', 'start')).rejects.toBeInstanceOf(
       NotFoundException,
+    );
+  });
+});
+
+describe('ProjectService.start / close (ADR-019 Phase B2)', () => {
+  const readyStartSnapshot = {
+    status: 'DRAFT',
+    commercialModel: 'CLIENT_CONTRACT',
+    startDate: new Date('2026-02-01'),
+    expectedEndDate: new Date('2027-08-31'),
+    clientId: 'client-1',
+    client: { status: 'ACTIVE' },
+    contracts: [{ status: 'ACTIVE', startDate: new Date('2026-02-01') }],
+    boq: { versions: [{ status: 'BASELINED' }] },
+    members: [{ id: 'm-1' }, { id: 'm-2' }],
+  };
+
+  function build(over: { project?: unknown; snapshot?: unknown; gated?: boolean } = {}) {
+    const audit: unknown[] = [];
+    const repo = {
+      findById: jest.fn().mockResolvedValue(over.project ?? { id: 'project-1', status: 'DRAFT' }),
+      findActiveSuspension: jest.fn().mockResolvedValue(null),
+      findReadinessSnapshot: jest.fn().mockResolvedValue(over.snapshot ?? readyStartSnapshot),
+      update: jest.fn().mockImplementation((_tx, _id, data) => ({ id: 'project-1', ...data })),
+    };
+    const commandGovernance = {
+      gateStateTransition: jest
+        .fn()
+        .mockResolvedValue(over.gated ? { gated: true, approvalInstanceId: 'ai-1' } : null),
+    };
+    const auditOutbox = {
+      record: jest.fn().mockImplementation((_tx, cmd) => {
+        audit.push(cmd);
+      }),
+    };
+    const prisma = { $transaction: (fn: (tx: unknown) => unknown) => fn({}) };
+    const tenancy = { getClient: () => prisma };
+    const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
+    const service = new ProjectService(
+      tenancy as never,
+      commandGovernance as never,
+      repo as never,
+      {} as never,
+      projectAccess as never,
+      auditOutbox as never,
+    );
+    return { service, repo, commandGovernance, auditOutbox, audit };
+  }
+
+  it('start: a ready project → ACTIVE, records actualStartDate, writes a TRANSITION audit', async () => {
+    const { service, repo, audit } = build();
+    const result = await service.start(identity([]), 'project-1', { actualStartDate: '2026-09-01' });
+
+    expect(repo.update).toHaveBeenCalledWith(
+      expect.anything(),
+      'project-1',
+      expect.objectContaining({ status: 'ACTIVE', actualStartDate: new Date('2026-09-01') }),
+    );
+    expect((result as { status: string }).status).toBe('ACTIVE');
+    expect(audit.some((c) => (c as { eventType: string }).eventType === 'PROJECT_START')).toBe(true);
+  });
+
+  it('start: an unmet MANDATORY condition is a 400 and nothing is written', async () => {
+    const { service, repo } = build({
+      snapshot: { ...readyStartSnapshot, boq: { versions: [{ status: 'DRAFT' }] } },
+    });
+    await expect(
+      service.start(identity([]), 'project-1', { actualStartDate: '2026-09-01' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('start: an unsatisfied WAIVABLE condition without an override is a 400', async () => {
+    const { service, repo } = build({
+      snapshot: { ...readyStartSnapshot, members: [{ id: 'm-1' }] },
+    });
+    await expect(
+      service.start(identity([]), 'project-1', { actualStartDate: '2026-09-01' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('start: a valid per-condition waiver proceeds and records a PROJECT_CONDITION_WAIVED event', async () => {
+    const { service, repo, audit } = build({
+      snapshot: { ...readyStartSnapshot, members: [{ id: 'm-1' }] },
+    });
+    await service.start(identity([]), 'project-1', {
+      actualStartDate: '2026-09-01',
+      overrides: [{ condition: 'DELIVERY_TEAM', reason: 'Solo PM for a small job' }],
+    });
+    expect(repo.update).toHaveBeenCalled();
+    const waiver = audit.find((c) => (c as { eventType: string }).eventType === 'PROJECT_CONDITION_WAIVED');
+    expect(waiver).toMatchObject({ action: 'WAIVE', reason: 'Solo PM for a small job' });
+  });
+
+  it('start: the governance gate still fires after readiness passes (409)', async () => {
+    const { service, repo } = build({ gated: true });
+    await expect(
+      service.start(identity([]), 'project-1', { actualStartDate: '2026-09-01' }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('start: rejects when the project is not DRAFT', async () => {
+    const { service } = build({ project: { id: 'project-1', status: 'ACTIVE' } });
+    await expect(
+      service.start(identity([]), 'project-1', { actualStartDate: '2026-09-01' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('close: from CLOSEOUT records closureDate + closureSummary → CLOSED', async () => {
+    const { service, repo } = build({
+      project: { id: 'project-1', status: 'CLOSEOUT' },
+      snapshot: { ...readyStartSnapshot, status: 'CLOSEOUT' },
+    });
+    await service.close(identity([]), 'project-1', {
+      closureDate: '2027-09-30',
+      closureSummary: 'Final account agreed; retention released.',
+    });
+    expect(repo.update).toHaveBeenCalledWith(
+      expect.anything(),
+      'project-1',
+      expect.objectContaining({
+        status: 'CLOSED',
+        closureDate: new Date('2027-09-30'),
+        closureSummary: 'Final account agreed; retention released.',
+      }),
     );
   });
 });

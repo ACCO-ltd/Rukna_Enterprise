@@ -524,6 +524,12 @@ model Project {
   location           String?
   startDate          DateTime?          @map("start_date") @db.Date
   expectedEndDate    DateTime?          @map("expected_end_date") @db.Date
+  // ADR-019 CONST-PLC-008 — evidence a lifecycle command records (the decision it introduces),
+  // never re-collected: Start records the actual commencement, Close records the closure decision.
+  actualStartDate    DateTime?          @map("actual_start_date") @db.Date
+  commencementNote   String?            @map("commencement_note")
+  closureDate        DateTime?          @map("closure_date") @db.Date
+  closureSummary     String?            @map("closure_summary")
   createdBy          String             @map("created_by")
   createdAt          DateTime           @default(now()) @map("created_at")
   updatedAt          DateTime           @updatedAt @map("updated_at")

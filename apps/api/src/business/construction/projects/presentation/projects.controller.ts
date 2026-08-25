@@ -31,6 +31,8 @@ import { ProjectService } from '../application/project.service.js';
 import { CreateProjectDto } from './dto/create-project.dto.js';
 import { UpdateProjectDto } from './dto/update-project.dto.js';
 import { CancelProjectDto } from './dto/cancel-project.dto.js';
+import { StartProjectDto } from './dto/start-project.dto.js';
+import { CloseProjectDto } from './dto/close-project.dto.js';
 import { SuspendProjectDto } from './dto/suspend-project.dto.js';
 import { AddMemberDto } from './dto/add-member.dto.js';
 import { SetMemberRolesDto } from './dto/set-member-roles.dto.js';
@@ -120,9 +122,17 @@ export class ProjectsController {
   @Post(':id/start')
   @RequirePermissions(PERMISSIONS.projectsManage)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Start project (DRAFT → ACTIVE)' })
-  start(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
-    return this.projectService.transition(identity, id, 'start');
+  @ApiOperation({
+    summary: 'Start project (DRAFT → ACTIVE) — enforces readiness (ADR-019 Phase B2); ' +
+      'records actualStartDate; 400 lists unmet/unwaived conditions',
+  })
+  @ApiResponse({ status: 400, description: 'Readiness not met or an unsatisfied condition needs a waiver' })
+  start(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: StartProjectDto,
+  ) {
+    return this.projectService.start(identity, id, dto);
   }
 
   @Post(':id/practical-completion')
@@ -144,9 +154,13 @@ export class ProjectsController {
   @Post(':id/close')
   @RequirePermissions(PERMISSIONS.projectsManage)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Transition project from CLOSEOUT → CLOSED' })
-  close(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
-    return this.projectService.transition(identity, id, 'close');
+  @ApiOperation({ summary: 'Close project (CLOSEOUT → CLOSED) — records closureDate + closureSummary' })
+  close(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: CloseProjectDto,
+  ) {
+    return this.projectService.close(identity, id, dto);
   }
 
   @Post(':id/cancel')
