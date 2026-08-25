@@ -19,6 +19,13 @@ posted **invoice**, never a certificate directly; (3) GL postings follow the sta
 shape is owned by Abdulsalam. Numeric tolerance seeds (item D) remain open — see the CEO memo
 `docs/backend-requests/ceo-memo-bill-matching-tolerances.md`.
 
+**Implementation status — all four decisions built + merged.** ACC-CUR-001 (USD-only, FX
+removal) #74; ACC-DEAD-001 (drop migration scaffolding) #80; ACC-POST-001 (posting-profile
+engine extended to AR) #81; ACC-SET-001 (one invoice-based settlement ledger — `ReceiptAllocation`
+removed, receipt-create folded into AR, customer-receipts frontend shipped) BE-1 #82 / FE-1 #84 /
+BE-2 #85. The only ADR-024 item still open is the numeric tolerance seed values (item D), which is
+a domain decision, not a build.
+
 ## Context
 
 ACCO's accounting module is a full double-entry system (chart of accounts with effective-dated
@@ -86,11 +93,12 @@ Grep-proven dead (0 callers): `SubledgerControlReconciliation`, `AccountingMigra
   taking raw control-account codes and resolve through a profile version instead.
 - **Firewall preserved.** None of this changes the cost↔revenue firewall or the guarded-command
   posture; it removes weight and unifies two half-systems.
-- Build order is decided separately; ACC-CUR-001 (single-currency) is the largest, highest-value
-  slice and the natural first, mirroring the Arabic removal.
+- Build order ran ACC-CUR-001 (single-currency, largest/highest-value) first, mirroring the Arabic
+  removal, then ACC-DEAD-001 → ACC-POST-001 → ACC-SET-001 (all merged — see the status note).
 
 ## Out of scope / still open
 - Numeric over-receipt / matching **tolerance seed values** (audit item D, ADR-018) — flat global,
-  values pending Eng Ahmed.
-- Customer-receipts **frontend** (create + allocate-to-invoice screen) — unblocked by ACC-SET-001.
+  values pending Eng Ahmed. *(The only remaining ADR-024 open item.)*
+- Customer-receipts **frontend** — ~~unblocked by ACC-SET-001~~ **shipped (FE-1 #84)**: create +
+  post-to-GL + allocate-to-invoice, browser-QA'd end-to-end.
 - Somali or any second currency — explicitly not seamed; a future project if ever needed.
