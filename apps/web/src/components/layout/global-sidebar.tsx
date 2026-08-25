@@ -19,7 +19,6 @@ import {
   GearIcon,
   GitBranchIcon,
   KeyIcon,
-  LifebuoyIcon,
   ListBulletsIcon,
   PackageIcon,
   PencilSimpleIcon,
@@ -114,7 +113,7 @@ export function GlobalSidebar({
 
       {/* ── Brand header ──────────────────────────────────────────────── */}
       <div className={cn(
-        'relative flex h-[68px] shrink-0 items-center border-b border-border transition-[padding,gap] duration-300',
+        'relative flex h-14 shrink-0 items-center border-b border-border transition-[padding,gap] duration-300',
         sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-4',
       )}>
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-primary text-brand-on-primary shadow-[var(--shadow-control)]">
@@ -303,22 +302,6 @@ export function GlobalSidebar({
         </div>
       </nav>
 
-      {!sidebarCollapsed ? (
-        <div className="mx-3 mb-3 rounded-xl border border-brand-primary/15 bg-brand-accent/55 p-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface text-brand-primary shadow-sm ring-1 ring-border">
-              <LifebuoyIcon size={20} weight="duotone" aria-hidden="true" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[12px] font-semibold text-brand-ink">{t('shell.helpTitle')}</p>
-              <p className="mt-0.5 truncate text-[10.5px] text-muted-foreground">
-                {t('shell.helpDescription')}
-              </p>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       {/* ── User footer ───────────────────────────────────────────────── */}
       {user ? (
         <div className={cn(
@@ -365,10 +348,10 @@ function StandaloneLink({ item, pathname, t, onNavigate, collapsed }: Standalone
         aria-current={isActive ? 'page' : undefined}
         title={collapsed ? t(`nav.${item.labelKey}`) : undefined}
         className={cn(
-          'flex min-h-10 items-center rounded-lg border border-transparent text-[13px] font-semibold transition-all duration-200',
+          'relative flex min-h-10 items-center rounded-lg text-[13px] font-semibold transition-all duration-200',
           collapsed ? 'justify-center px-0' : 'gap-2.5 px-2.5',
           isActive
-            ? 'border-brand-primary bg-brand-primary text-brand-on-primary shadow-[var(--shadow-control)]'
+            ? 'bg-brand-accent font-semibold text-brand-primary before:absolute before:inset-y-1.5 before:-start-px before:w-0.5 before:rounded-full before:bg-brand-primary'
             : 'text-brand-ink/82 hover:bg-muted/70 hover:text-brand-ink',
         )}
       >
@@ -430,7 +413,7 @@ function NavLink({ item, pathname, t, onNavigate, flyout = false }: NavLinkProps
           'relative flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 text-[12.5px] transition-[background-color,color,box-shadow] duration-150 before:absolute before:-start-[0.85rem] before:top-1/2 before:h-px before:w-[0.85rem] before:bg-border-strong/70',
           flyout && 'before:hidden',
           isActive
-            ? 'bg-brand-accent font-semibold text-brand-primary shadow-[inset_0_0_0_1px_rgb(47_102_208/0.08)]'
+            ? 'bg-brand-accent font-semibold text-brand-primary after:absolute after:inset-y-1.5 after:-start-px after:w-0.5 after:rounded-full after:bg-brand-primary'
             : 'font-medium text-muted-foreground hover:bg-muted/70 hover:text-foreground',
         )}
       >
@@ -480,151 +463,7 @@ function NavIcon({ iconKey, className }: { iconKey: NavIconKey; className?: stri
     key: KeyIcon,
   };
   const ProfessionalIcon = icons[iconKey];
-  const useProfessionalIcons = true;
-  if (useProfessionalIcons) {
-    return <ProfessionalIcon size={17} weight="regular" aria-hidden="true" className={className} />;
-  }
-
-  const base = (children: React.ReactNode) => (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      className={className}
-    >
-      {children}
-    </svg>
-  );
-
-  switch (iconKey) {
-    case 'grid':
-      return base(
-        <>
-          <rect x="3" y="3" width="7" height="7" rx="1" />
-          <rect x="14" y="3" width="7" height="7" rx="1" />
-          <rect x="3" y="14" width="7" height="7" rx="1" />
-          <rect x="14" y="14" width="7" height="7" rx="1" />
-        </>,
-      );
-    case 'building':
-      return base(
-        <>
-          <path d="M3 21h18" />
-          <path d="M5 21V5a1 1 0 011-1h12a1 1 0 011 1v16" />
-          <path d="M9 21v-5h6v5" />
-          <path d="M9 8h1M13 8h1M9 12h1M13 12h1" />
-        </>,
-      );
-    case 'folder':
-      return base(
-        <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />,
-      );
-    case 'receipt':
-      return base(
-        <>
-          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-          <polyline points="14,2 14,8 20,8" />
-          <line x1="8" y1="13" x2="16" y2="13" />
-          <line x1="8" y1="17" x2="13" y2="17" />
-        </>,
-      );
-    case 'cog':
-      return base(
-        <>
-          <circle cx="12" cy="12" r="3" />
-          <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
-        </>,
-      );
-    case 'pencil':
-      return base(
-        <>
-          <path d="M12 20h9" />
-          <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
-        </>,
-      );
-    case 'chart-bar':
-      return base(
-        <>
-          <line x1="18" y1="20" x2="18" y2="10" />
-          <line x1="12" y1="20" x2="12" y2="4" />
-          <line x1="6" y1="20" x2="6" y2="14" />
-        </>,
-      );
-    case 'users':
-      return base(
-        <>
-          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-          <circle cx="9" cy="7" r="4" />
-          <path d="M23 21v-2a4 4 0 00-3-3.87" />
-          <path d="M16 3.13a4 4 0 010 7.75" />
-        </>,
-      );
-    case 'clipboard':
-      return base(
-        <>
-          <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" />
-          <rect x="9" y="3" width="6" height="4" rx="1" />
-          <line x1="9" y1="12" x2="15" y2="12" />
-          <line x1="9" y1="16" x2="13" y2="16" />
-        </>,
-      );
-    case 'shopping-cart':
-      return base(
-        <>
-          <circle cx="9" cy="21" r="1" />
-          <circle cx="20" cy="21" r="1" />
-          <path d="M1 1h4l2.68 13.39a2 2 0 001.95 1.61h9.72a2 2 0 001.95-1.57l1.65-7.43H6" />
-        </>,
-      );
-    case 'truck':
-      return base(
-        <>
-          <rect x="1" y="3" width="15" height="13" />
-          <polygon points="16,8 20,8 23,11 23,16 16,16 16,8" />
-          <circle cx="5.5" cy="18.5" r="2.5" />
-          <circle cx="18.5" cy="18.5" r="2.5" />
-        </>,
-      );
-    case 'trending-up':
-      return base(
-        <>
-          <polyline points="23,6 13.5,15.5 8.5,10.5 1,18" />
-          <polyline points="17,6 23,6 23,12" />
-        </>,
-      );
-    case 'shield':
-      return base(
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />,
-      );
-    case 'git-branch':
-      return base(
-        <>
-          <line x1="6" y1="3" x2="6" y2="15" />
-          <circle cx="18" cy="6" r="3" />
-          <circle cx="6" cy="18" r="3" />
-          <path d="M18 9a9 9 0 01-9 9" />
-        </>,
-      );
-    case 'list':
-      return base(
-        <>
-          <line x1="8" y1="6" x2="21" y2="6" />
-          <line x1="8" y1="12" x2="21" y2="12" />
-          <line x1="8" y1="18" x2="21" y2="18" />
-          <line x1="3" y1="6" x2="3.01" y2="6" />
-          <line x1="3" y1="12" x2="3.01" y2="12" />
-          <line x1="3" y1="18" x2="3.01" y2="18" />
-        </>,
-      );
-    default:
-      return null;
-  }
+  return <ProfessionalIcon size={17} weight="regular" aria-hidden="true" className={className} />;
 }
 
 // ─── Logo mark ────────────────────────────────────────────────────────────────
