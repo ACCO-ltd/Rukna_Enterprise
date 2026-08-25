@@ -4,7 +4,16 @@ Version: 2.0.0
 Last Updated: 2026-08-06
 Owner: Frontend Engineer (Abdimalik)
 Reviewed by: Abdulsalam (Backend Engineer)
-Status: **CANONICAL — implement against this document**
+Status: **SUPERSEDED (2026-08-25) by [`ux-doctrine.md`](./ux-doctrine.md).**
+
+> ⚠️ **This document predates the Round-1 subtraction and describes features that were removed.**
+> Do **not** treat it as canonical. It still prescribes Exchange Rates management, the 8-state
+> project lifecycle, IPC exchange-rate fields, and mandatory en/ar bilingual RTL — all of which no
+> longer exist (FX removed ADR-024; lifecycle collapsed to six guarded commands ADR-019; Arabic
+> removed PR #73). For principles, navigation model, interaction patterns, and content rules, read
+> **`ux-doctrine.md`** instead. This file is retained only for its still-accurate *screen-level build
+> notes* (accounting/procurement field lists in §11–§12), which map to endpoints that still exist —
+> verify each against the controllers before relying on it (see the sweep note in `CLAUDE.md`).
 
 ---
 
