@@ -8,8 +8,11 @@ import {
   FormField,
   Input,
   Label,
+  SectionHeader,
   Select,
-  StatTile,
+  Sheet,
+  SheetContent,
+  SheetTitle,
   Table,
   TableBody,
   TableCell,
@@ -19,16 +22,25 @@ import {
   TableScroll,
 } from '@erp/ui';
 
+import { MetricStrip } from '@/components/widget/metric-strip';
 import { ApiError } from '@/lib/api-client';
 
 import { useAllocateBoqNode, useCreateWorkPackage, useProjectRollup } from '../hooks/use-progress';
 import { lineLabel, useBoqLeaves } from '../hooks/use-boq-leaves';
 
-/** Work-package control layer: create packages, allocate BOQ leaves, and see the weighted roll-up. */
+/**
+ * Work-package control layer: an index that leads with the weighted roll-up and the packages
+ * table. The two forms (create a package, allocate a BOQ leaf) used to sit always-on above the
+ * table; they now live behind primaries (`+ New work package`, `Allocate item`) in `Sheet`s, so
+ * the view opens on the data — the project figure and the packages behind it — not two forms.
+ */
 export function WorkPackagesSection({ projectId }: { projectId: string }) {
   const t = useTranslations('progress');
   const tCommon = useTranslations('common');
   const { data, isPending, isError, refetch, isFetching } = useProjectRollup(projectId);
+
+  const [creating, setCreating] = useState(false);
+  const [allocating, setAllocating] = useState(false);
 
   if (isPending) {
     return (
@@ -51,69 +63,138 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
     );
   }
 
+  const packages = data.packages.map((p) => ({ id: p.id, code: p.code, name: p.name }));
+
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <StatTile label={t('rollup.physicalPercent')} value={`${data.physicalPercent}%`} />
-        <StatTile
-          label={t('rollup.weightsLabel')}
-          value={`${Math.round(Number(data.weightsTotal) * 100)}%`}
-          note={data.weightsComplete ? undefined : t('rollup.weightsIncomplete', { total: data.weightsTotal })}
-        />
-      </div>
+    <div className="space-y-5">
+      <MetricStrip
+        aria-label={t('rollup.title')}
+        metrics={[
+          { label: t('rollup.physicalPercent'), value: `${data.physicalPercent}%` },
+          {
+            label: t('rollup.weightsLabel'),
+            value: `${Math.round(Number(data.weightsTotal) * 100)}%`,
+            sublabel: data.weightsComplete
+              ? t('rollup.weightsComplete')
+              : t('rollup.weightsIncomplete', { total: data.weightsTotal }),
+          },
+        ]}
+      />
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <CreateWorkPackageForm projectId={projectId} />
-        <AllocateForm
-          projectId={projectId}
-          packages={data.packages.map((p) => ({ id: p.id, code: p.code, name: p.name }))}
-        />
-      </div>
+      <div className="space-y-4">
+        <SectionHeader title={t('workPackage.title')}>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAllocating(true)}
+              disabled={data.packages.length === 0}
+            >
+              {t('actions.allocate')}
+            </Button>
+            <Button size="sm" onClick={() => setCreating(true)}>
+              {t('actions.newWorkPackage')}
+            </Button>
+          </div>
+        </SectionHeader>
 
-      {data.packages.length === 0 ? (
-        <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
-          <p className="text-sm font-medium text-foreground">{t('workPackage.emptyTitle')}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{t('workPackage.emptyHint')}</p>
-        </div>
-      ) : (
-        <TableScroll aria-label={t('workPackage.title')}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('workPackage.col.code')}</TableHead>
-                <TableHead>{t('workPackage.col.name')}</TableHead>
-                <TableHead>{t('workPackage.col.owner')}</TableHead>
-                <TableHead numeric>{t('workPackage.col.weight')}</TableHead>
-                <TableHead numeric>{t('workPackage.col.items')}</TableHead>
-                <TableHead numeric>{t('workPackage.col.percent')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.packages.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell className="whitespace-nowrap font-mono text-xs">{p.code}</TableCell>
-                  <TableCell>{p.name}</TableCell>
-                  <TableCell>
-                    {p.responsibleOwner ?? <span className="text-muted-foreground">—</span>}
-                  </TableCell>
-                  <TableCell numeric className="whitespace-nowrap tabular-nums">
-                    {`${Math.round(Number(p.weight) * 100)}%`}
-                  </TableCell>
-                  <TableCell numeric className="tabular-nums">{p.leafCount}</TableCell>
-                  <TableCell numeric className="whitespace-nowrap font-medium tabular-nums">
-                    {`${p.percentComplete}%`}
-                  </TableCell>
+        {data.packages.length === 0 ? (
+          <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
+            <p className="text-sm font-medium text-foreground">{t('workPackage.emptyTitle')}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{t('workPackage.emptyHint')}</p>
+          </div>
+        ) : (
+          <TableScroll aria-label={t('workPackage.title')}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('workPackage.col.code')}</TableHead>
+                  <TableHead>{t('workPackage.col.name')}</TableHead>
+                  <TableHead>{t('workPackage.col.owner')}</TableHead>
+                  <TableHead numeric>{t('workPackage.col.weight')}</TableHead>
+                  <TableHead numeric>{t('workPackage.col.items')}</TableHead>
+                  <TableHead>{t('workPackage.col.percent')}</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableScroll>
-      )}
+              </TableHeader>
+              <TableBody>
+                {data.packages.map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell className="whitespace-nowrap font-mono text-xs">{p.code}</TableCell>
+                    <TableCell>{p.name}</TableCell>
+                    <TableCell>
+                      {p.responsibleOwner ?? <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell numeric className="whitespace-nowrap tabular-nums">
+                      {`${Math.round(Number(p.weight) * 100)}%`}
+                    </TableCell>
+                    <TableCell numeric className="tabular-nums">{p.leafCount}</TableCell>
+                    <TableCell>
+                      <PercentCompleteBar percent={p.percentComplete} label={t('workPackage.col.percent')} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableScroll>
+        )}
+      </div>
+
+      <Sheet open={creating} onOpenChange={setCreating}>
+        <SheetContent className="p-5 sm:p-6">
+          <SheetTitle>{t('actions.newWorkPackage')}</SheetTitle>
+          <div className="mt-5">
+            <CreateWorkPackageForm projectId={projectId} onCreated={() => setCreating(false)} />
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={allocating} onOpenChange={setAllocating}>
+        <SheetContent className="p-5 sm:p-6">
+          <SheetTitle>{t('workPackage.allocate.title')}</SheetTitle>
+          <div className="mt-5">
+            <AllocateForm projectId={projectId} packages={packages} onAllocated={() => setAllocating(false)} />
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
 
-function CreateWorkPackageForm({ projectId }: { projectId: string }) {
+/**
+ * A status-carrying progress bar (ux-doctrine §1): `warning` below 100%, `success` at 100% —
+ * never the accent, which carries interactivity. The percentage reads alongside it for the exact
+ * figure; the bar is the glanceable status.
+ */
+function PercentCompleteBar({ percent, label }: { percent: number; label: string }) {
+  const clamped = Math.min(100, Math.max(0, percent));
+  const complete = percent >= 100;
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        className="block h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-muted"
+        role="progressbar"
+        aria-valuenow={percent}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={label}
+      >
+        <span
+          className={`block h-full rounded-full ${complete ? 'bg-success' : 'bg-warning'}`}
+          style={{ width: `${clamped}%` }}
+        />
+      </span>
+      <span className="whitespace-nowrap font-medium tabular-nums text-foreground">{`${percent}%`}</span>
+    </div>
+  );
+}
+
+function CreateWorkPackageForm({
+  projectId,
+  onCreated,
+}: {
+  projectId: string;
+  onCreated: () => void;
+}) {
   const t = useTranslations('progress');
   const create = useCreateWorkPackage(projectId);
 
@@ -141,27 +222,20 @@ function CreateWorkPackageForm({ projectId }: { projectId: string }) {
         progressWeight: weight ? Number(weight) : undefined,
       },
       {
-        onSuccess: () => {
-          setCode('');
-          setName('');
-          setOwner('');
-          setWeight('');
-          setTouched(false);
-        },
+        onSuccess: () => onCreated(),
         onError: (e) => setError(e instanceof ApiError ? e.message : t('states.loadFailed')),
       },
     );
   }
 
   return (
-    <form onSubmit={onSubmit} className="rounded-panel border border-border bg-surface p-4" aria-label={t('actions.newWorkPackage')}>
-      <h3 className="text-sm font-semibold text-foreground">{t('actions.newWorkPackage')}</h3>
+    <form onSubmit={onSubmit} aria-label={t('actions.newWorkPackage')}>
       {error ? (
-        <div className="mt-3">
+        <div className="mb-3">
           <Alert variant="error" messages={[error]} />
         </div>
       ) : null}
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2">
         <FormField htmlFor="wp-code" label={t('workPackage.form.code')} error={codeError}>
           <Input id="wp-code" value={code} placeholder={t('workPackage.form.codePlaceholder')} onChange={(e) => setCode(e.target.value)} />
         </FormField>
@@ -175,7 +249,7 @@ function CreateWorkPackageForm({ projectId }: { projectId: string }) {
           <Input id="wp-weight" type="number" min="0" max="1" step="0.01" value={weight} onChange={(e) => setWeight(e.target.value)} />
         </FormField>
       </div>
-      <div className="mt-3">
+      <div className="mt-4">
         <Button type="submit" disabled={create.isPending}>
           {t('workPackage.form.submit')}
         </Button>
@@ -187,9 +261,11 @@ function CreateWorkPackageForm({ projectId }: { projectId: string }) {
 function AllocateForm({
   projectId,
   packages,
+  onAllocated,
 }: {
   projectId: string;
   packages: Array<{ id: string; code: string; name: string }>;
+  onAllocated: () => void;
 }) {
   const t = useTranslations('progress');
   const { leaves, hasBaseline } = useBoqLeaves(projectId);
@@ -205,7 +281,10 @@ function AllocateForm({
     setError(null);
     if (!workPackageId || !boqNodeId) return;
     allocate.mutate(boqNodeId, {
-      onSuccess: () => setBoqNodeId(''),
+      onSuccess: () => {
+        setBoqNodeId('');
+        onAllocated();
+      },
       onError: (e) => setError(e instanceof ApiError ? e.message : t('states.loadFailed')),
     });
   }
@@ -213,17 +292,16 @@ function AllocateForm({
   const disabled = packages.length === 0 || !hasBaseline;
 
   return (
-    <form onSubmit={onSubmit} className="rounded-panel border border-border bg-surface p-4" aria-label={t('workPackage.allocate.title')}>
-      <h3 className="text-sm font-semibold text-foreground">{t('workPackage.allocate.title')}</h3>
+    <form onSubmit={onSubmit} aria-label={t('workPackage.allocate.title')}>
       {!hasBaseline ? (
-        <p className="mt-2 text-sm text-muted-foreground">{t('workPackage.allocate.noBaseline')}</p>
+        <p className="mb-3 text-sm text-muted-foreground">{t('workPackage.allocate.noBaseline')}</p>
       ) : null}
       {error ? (
-        <div className="mt-3">
+        <div className="mb-3">
           <Alert variant="error" messages={[error]} />
         </div>
       ) : null}
-      <div className="mt-3 space-y-3">
+      <div className="space-y-3">
         <div>
           <Label htmlFor="alloc-wp">{t('workPackage.allocate.workPackage')}</Label>
           <Select id="alloc-wp" value={workPackageId} onChange={(e) => setWorkPackageId(e.target.value)} disabled={disabled}>

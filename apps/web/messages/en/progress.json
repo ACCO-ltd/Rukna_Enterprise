@@ -21,7 +21,7 @@
     "approve": "Approve",
     "return": "Return for revision",
     "newWorkPackage": "New work package",
-    "allocate": "Allocate BOQ item",
+    "allocate": "Allocate item",
     "retry": "Retry",
     "cancel": "Cancel",
     "save": "Save",
@@ -36,6 +36,7 @@
   "report": {
     "title": "Daily progress report",
     "listTitle": "Daily reports",
+    "newTitle": "New daily report",
     "emptyTitle": "No daily reports yet",
     "emptyHint": "Record the first daily report to start capturing site progress.",
     "fields": {

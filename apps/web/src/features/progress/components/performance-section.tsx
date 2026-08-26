@@ -1,8 +1,10 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { Alert, Button, Skeleton, StatTile, type AlertProps } from '@erp/ui';
+import { Alert, Button, Skeleton, type AlertProps } from '@erp/ui';
 import type { PhysicalFinancialSignalResponse } from '@erp/types';
+
+import { MetricStrip } from '@/components/widget/metric-strip';
 
 import { usePhysicalFinancialSignal, useProjectRollup } from '../hooks/use-progress';
 
@@ -65,19 +67,14 @@ export function PerformanceSection({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <StatTile label={t('signal.physical')} value={`${s.physicalPercent}%`} />
-        <StatTile
-          label={t('signal.cost')}
-          value={pct(s.costConsumedPercent)}
-          unavailableReason={t('signal.insufficientHint')}
-        />
-        <StatTile
-          label={t('signal.divergence')}
-          value={divergence}
-          unavailableReason={t('signal.insufficientHint')}
-        />
-      </div>
+      <MetricStrip
+        aria-label={t('signal.title')}
+        metrics={[
+          { label: t('signal.physical'), value: `${s.physicalPercent}%` },
+          { label: t('signal.cost'), value: pct(s.costConsumedPercent) },
+          { label: t('signal.divergence'), value: divergence },
+        ]}
+      />
 
       <Alert variant={STATUS_VARIANT[s.status]} title={t(`signal.status.${s.status}`)} messages={[t(STATUS_HINT[s.status])]} />
 
