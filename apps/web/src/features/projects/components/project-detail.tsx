@@ -1,11 +1,11 @@
 'use client';
 
-import { type ReactNode, useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, DefinitionList, DefinitionRow } from '@erp/ui';
+import { Alert, Button, DefinitionList, DefinitionRow, SectionHeader } from '@erp/ui';
 import {
   ArrowRight,
   AlertTriangle,
@@ -327,30 +327,6 @@ function Overview({
           </div>
         </section>
       ) : null}
-    </div>
-  );
-}
-
-/**
- * A section title + hairline rule — the doctrine's default structural unit (§2.1). Used instead
- * of a bordered card so a group of facts reads as a section, not a box. The optional `children`
- * slot holds a right-aligned control (an edit link).
- */
-function SectionHeader({
-  id,
-  title,
-  children,
-}: {
-  id?: string;
-  title: string;
-  children?: ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 border-b border-border pb-2">
-      <h2 id={id} className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-        {title}
-      </h2>
-      {children}
     </div>
   );
 }

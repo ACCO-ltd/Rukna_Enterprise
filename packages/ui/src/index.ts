@@ -44,6 +44,7 @@ export {
 export { OverflowGlyph, RowActions } from './components/row-actions';
 export { SavedViews } from './components/saved-views';
 export type { SavedView, SavedViewsProps } from './components/saved-views';
+export { SectionHeader } from './components/section-header';
 export {
   Skeleton,
   SkeletonForm,

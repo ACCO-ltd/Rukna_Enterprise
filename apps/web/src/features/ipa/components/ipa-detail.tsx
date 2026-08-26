@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button } from '@erp/ui';
+import { Alert, Button, DefinitionList, DefinitionRow, SectionHeader } from '@erp/ui';
+import { CaretLeftIcon } from '@phosphor-icons/react';
 
 import { useContract } from '@/features/contracts/hooks/use-contracts';
 import { IpcListPanel } from '@/features/ipc/components/ipc-list-panel';
@@ -62,7 +63,7 @@ export function IpaDetail({ contractId, ipaId }: { contractId: string; ipaId: st
           href={`/contracts/${contractId}`}
           className="inline-flex min-h-9 items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary focus-visible:rounded"
         >
-          <ChevronStartIcon />
+          <CaretLeftIcon size={14} aria-hidden="true" />
           {t('back')}
         </Link>
       </div>
@@ -92,38 +93,33 @@ export function IpaDetail({ contractId, ipaId }: { contractId: string; ipaId: st
 
       <IpaActionsPanel ipa={ipa.data} contractId={contractId} />
 
-      {/* ── Summary stats ───────────────────────────────────────────────── */}
-      <dl className="grid gap-px overflow-hidden rounded-container border border-border bg-border shadow-e1 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="bg-surface px-5 py-4">
-          <dt className="text-xs font-medium text-muted-foreground">{t('period')}</dt>
-          <dd className="mt-1.5 text-sm font-semibold text-foreground">
+      {/* ── Summary ─────────────────────────────────────────────────────────
+          Mixed key-value facts on a hairline definition list, not headline
+          numbers on tiles. The net payable is the header figure and is not
+          restated here. */}
+      <section aria-labelledby="ipa-summary-heading">
+        <SectionHeader id="ipa-summary-heading" title={t('summary')} />
+        <DefinitionList className="mt-3">
+          <DefinitionRow label={t('grossHeading')} numeric>
+            <bdi className="tabular-nums">
+              {formatMoney(ipa.data.totalPeriodAmount, currency, locale)}
+            </bdi>
+          </DefinitionRow>
+          <DefinitionRow label={t('deductionsHeading')} numeric>
+            <bdi className="tabular-nums">
+              {formatMoney(ipa.data.totalDeductions, currency, locale)}
+            </bdi>
+          </DefinitionRow>
+          <DefinitionRow label={t('period')}>
             {from && to ? `${from} – ${to}` : (from ?? to ?? t('noPeriod'))}
-          </dd>
-        </div>
-        <div className="bg-surface px-5 py-4">
-          <dt className="text-xs font-medium text-muted-foreground">{t('grossHeading')}</dt>
-          <dd className="mt-1.5 text-sm font-semibold tabular-nums text-foreground">
-            <bdi>{formatMoney(ipa.data.totalPeriodAmount, currency, locale)}</bdi>
-          </dd>
-        </div>
-        <div className="bg-surface px-5 py-4">
-          <dt className="text-xs font-medium text-muted-foreground">{t('deductionsHeading')}</dt>
-          <dd className="mt-1.5 text-sm font-semibold tabular-nums text-foreground">
-            <bdi>{formatMoney(ipa.data.totalDeductions, currency, locale)}</bdi>
-          </dd>
-        </div>
-        <div className="bg-surface px-5 py-4">
-          <dt className="text-xs font-medium text-muted-foreground">{t('contract')}</dt>
-          <dd className="mt-1.5 text-sm font-semibold text-foreground">
-            <Link
-              href={`/contracts/${contractId}`}
-              className="underline-offset-4 hover:underline"
-            >
+          </DefinitionRow>
+          <DefinitionRow label={t('contract')}>
+            <Link href={`/contracts/${contractId}`} className="underline-offset-4 hover:underline">
               {contract.data.contractNumber}
             </Link>
-          </dd>
-        </div>
-      </dl>
+          </DefinitionRow>
+        </DefinitionList>
+      </section>
 
       <IpaItemsPanel
         ipaId={ipa.data.id}
@@ -144,25 +140,5 @@ export function IpaDetail({ contractId, ipaId }: { contractId: string; ipaId: st
 
       <IpcListPanel applicationId={ipa.data.id} contractId={contractId} currency={currency} />
     </div>
-  );
-}
-
-// ─── Icons ────────────────────────────────────────────────────────────────────
-
-function ChevronStartIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M15 18l-6-6 6-6" />
-    </svg>
   );
 }
