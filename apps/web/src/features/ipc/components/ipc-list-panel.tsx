@@ -53,9 +53,9 @@ export function IpcListPanel({ applicationId, contractId, currency }: IpcListPan
       {isError ? <Alert variant="error" messages={[tList('loadFailed')]} /> : null}
 
       {isPending ? (
-        <div className="h-24 animate-pulse rounded-lg border border-border bg-muted" />
+        <div className="h-24 animate-pulse rounded-panel border border-border bg-muted" />
       ) : (certs ?? []).length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-8 text-center">
+        <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-8 text-center">
           <p className="text-sm text-muted-foreground">{tList('none')}</p>
         </div>
       ) : (

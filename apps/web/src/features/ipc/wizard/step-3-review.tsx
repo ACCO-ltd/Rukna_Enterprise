@@ -87,7 +87,7 @@ export function Step3Review({
 
       {/* Summary card */}
       {!isRejected ? (
-        <div className="rounded-lg border border-border bg-surface-subtle p-4 space-y-3">
+        <div className="rounded-panel border border-border bg-surface-subtle p-4 space-y-3">
           {/* Gross */}
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-foreground">{t('grossLabel')}</span>
@@ -211,7 +211,7 @@ function AdHocRow({ deduction, t, onChange, onRemove }: AdHocRowProps) {
   const amountId = useId();
 
   return (
-    <div className="flex flex-wrap items-start gap-3 rounded-lg border border-border p-3">
+    <div className="flex flex-wrap items-start gap-3 rounded-panel border border-border p-3">
       <FormField htmlFor={typeId} label={t('adHocTypeLabel')} className="min-w-[140px] flex-1">
         <Select
           id={typeId}

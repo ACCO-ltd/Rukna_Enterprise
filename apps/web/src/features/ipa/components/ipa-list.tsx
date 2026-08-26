@@ -40,19 +40,19 @@ export function IpaList({ contractId }: { contractId: string }) {
         <div role="status" aria-live="polite">
           <span className="sr-only">{tCommon('loading')}</span>
           <div
-            className="h-24 animate-pulse rounded-lg border border-border bg-muted"
+            className="h-24 animate-pulse rounded-panel border border-border bg-muted"
             aria-hidden="true"
           />
         </div>
       ) : isError ? (
         <Alert variant="error" messages={[t('loadFailed')]} />
       ) : data.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-8 text-center">
+        <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-8 text-center">
           <p className="text-sm font-medium text-foreground">{t('empty')}</p>
           <p className="mt-1 text-sm text-muted-foreground">{t('emptyHint')}</p>
         </div>
       ) : (
-        <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
+        <ul className="divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface">
           {data.map((application) => {
             const from = formatDate(application.periodFrom, locale);
             const to = formatDate(application.periodTo, locale);
