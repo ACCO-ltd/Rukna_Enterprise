@@ -14,6 +14,14 @@ import { cn } from '../lib/utils';
  * `Table` must be wrapped in `TableScroll`. A BOQ or certificate table has more columns
  * than a 375px viewport can hold, and the rule is that wide content scrolls inside its own
  * container — the page body must never scroll sideways.
+ *
+ * `contain-layout` (CSS `contain: layout`) makes this an independent layout root. Without
+ * it, an auto-layout `<table>`'s min-content intrinsic width leaks past `overflow-x: auto`
+ * and inflates `documentElement.scrollWidth` in Chromium — the page scrolls sideways even
+ * though the table is visually clipped inside the box. No ancestor `min-w-0`, `overflow`,
+ * `max-width` or `contain: inline-size` suppresses it; only isolating this container's
+ * layout does. This was measured on the IPA detail page at 375px (scrollWidth 428 → 375),
+ * with the table still scrolling inside its own box.
  */
 export function TableScroll({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
@@ -23,7 +31,7 @@ export function TableScroll({ className, ...props }: React.HTMLAttributes<HTMLDi
       tabIndex={0}
       role="region"
       className={cn(
-        'w-full overflow-x-auto rounded-lg border border-border',
+        'w-full overflow-x-auto rounded-lg border border-border contain-layout',
         'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
         className,
       )}
