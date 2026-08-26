@@ -11,6 +11,9 @@ import type {
   CollectionProgressSignalResponse,
   DailyProgressReportResponse,
   PhysicalFinancialSignalResponse,
+  ProgressCurveResponse,
+  ProgressPeriodComparisonResponse,
+  ProgressSnapshotResponse,
   ProjectProgressLine,
   ProjectRollupResponse,
 } from '@erp/types';
@@ -20,11 +23,14 @@ import {
   allocateBoqNode,
   approveDpr,
   attachEvidence,
+  captureProgressSnapshot,
   createDpr,
   createWorkPackage,
   getCollectionProgressSignal,
   getDpr,
   getPhysicalFinancialSignal,
+  getProgressCurve,
+  getProgressPeriodComparison,
   getProjectProgress,
   getProjectRollup,
   listDprs,
@@ -32,6 +38,7 @@ import {
   returnDpr,
   submitDpr,
   type AddMeasurementBody,
+  type CaptureProgressSnapshotBody,
   type CreateDprBody,
   type CreateWorkPackageBody,
   type DailyProgressReportDetail,
@@ -46,6 +53,9 @@ export const progressKeys = {
   signal: (projectId: string) => [...progressKeys.all(projectId), 'signal'] as const,
   collectionSignal: (projectId: string) =>
     [...progressKeys.all(projectId), 'collection-signal'] as const,
+  curve: (projectId: string) => [...progressKeys.all(projectId), 'curve'] as const,
+  periodComparison: (projectId: string) =>
+    [...progressKeys.all(projectId), 'period-comparison'] as const,
   workPackages: (projectId: string) => [...progressKeys.all(projectId), 'work-packages'] as const,
   /** A DPR detail is keyed by its own id, not the project. */
   report: (dprId: string) => ['progress-report', dprId] as const,
@@ -130,6 +140,28 @@ export function useWorkPackages(
   });
 }
 
+/** Planned-vs-actual S-curve + schedule status (Performance view). */
+export function useProgressCurve(
+  projectId: string,
+): UseQueryResult<ProgressCurveResponse, Error> {
+  return useQuery({
+    queryKey: progressKeys.curve(projectId),
+    queryFn: () => getProgressCurve(projectId),
+    enabled: Boolean(projectId),
+  });
+}
+
+/** Overall period-over-period comparison from the two most-recent snapshots (Verified view). */
+export function useProgressPeriodComparison(
+  projectId: string,
+): UseQueryResult<ProgressPeriodComparisonResponse, Error> {
+  return useQuery({
+    queryKey: progressKeys.periodComparison(projectId),
+    queryFn: () => getProgressPeriodComparison(projectId),
+    enabled: Boolean(projectId),
+  });
+}
+
 // ─── DPR mutations ────────────────────────────────────────────────────────────────────────
 // Navigation is left to the caller (these return the created/updated report) so no UX/route
 // decision is baked into the data layer.
@@ -200,6 +232,29 @@ export function useReturnDpr(projectId: string, dprId: string) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) }),
         queryClient.invalidateQueries({ queryKey: progressKeys.reports(projectId) }),
+      ]);
+    },
+  });
+}
+
+// ─── Progress snapshot capture (BE-1) ────────────────────────────────────────────────────
+/**
+ * Capture a manual progress snapshot. Freezing today's numbers changes the S-curve and the
+ * period comparison (and the roll-up/signal are the live figures the snapshot froze), so all
+ * four are invalidated on success. A `409` (a snapshot already exists for the period) is left
+ * for the caller to surface as a friendly message via `ApiError.status` — it is a normal
+ * outcome ("already recorded"), not a failure to swallow here.
+ */
+export function useCaptureProgressSnapshot(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<ProgressSnapshotResponse, Error, CaptureProgressSnapshotBody>({
+    mutationFn: (body: CaptureProgressSnapshotBody) => captureProgressSnapshot(projectId, body),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: progressKeys.curve(projectId) }),
+        queryClient.invalidateQueries({ queryKey: progressKeys.periodComparison(projectId) }),
+        queryClient.invalidateQueries({ queryKey: progressKeys.rollup(projectId) }),
+        queryClient.invalidateQueries({ queryKey: progressKeys.signal(projectId) }),
       ]);
     },
   });

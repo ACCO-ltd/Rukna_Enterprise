@@ -25,7 +25,9 @@ export function SectionHeader({
   return (
     <div
       className={cn(
-        'flex items-center justify-between gap-3 border-b border-border pb-2',
+        // flex-wrap so a wide action (e.g. a status badge + a button) drops below the title at
+        // narrow widths instead of forcing horizontal page scroll (measured on Performance @375).
+        'flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border pb-2',
         className,
       )}
     >
