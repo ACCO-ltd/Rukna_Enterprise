@@ -66,12 +66,12 @@ export function IpaDeductionsPanel({
       </div>
 
       {deductions.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-8 text-center">
+        <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-8 text-center">
           <p className="text-sm font-medium text-foreground">{t('none')}</p>
           <p className="mt-1 text-sm text-muted-foreground">{t('noneHint')}</p>
         </div>
       ) : (
-        <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
+        <ul className="divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface">
           {deductions.map((deduction) => (
             <li
               key={deduction.id}

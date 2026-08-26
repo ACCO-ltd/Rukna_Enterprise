@@ -82,12 +82,12 @@ export function IpcBillingCard({
         <div role="status" aria-live="polite">
           <span className="sr-only">{tCommon('loading')}</span>
           <div
-            className="h-24 animate-pulse rounded-lg border border-border bg-muted"
+            className="h-24 animate-pulse rounded-panel border border-border bg-muted"
             aria-hidden="true"
           />
         </div>
       ) : existing ? (
-        <div className="space-y-3 rounded-lg border border-border bg-surface p-6">
+        <div className="space-y-3 rounded-panel border border-border bg-surface p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="space-y-1">
               <p className="font-mono text-sm font-medium text-foreground">
@@ -112,7 +112,7 @@ export function IpcBillingCard({
           </Button>
         </div>
       ) : (
-        <div className="space-y-4 rounded-lg border border-dashed border-border bg-surface p-6">
+        <div className="space-y-4 rounded-panel border border-dashed border-border bg-surface p-6">
           <p className="text-sm text-foreground">{t('none')}</p>
 
           {!mayRaise ? (

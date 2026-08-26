@@ -234,7 +234,7 @@ export function IpcWizard({ contractId, ipaId }: IpcWizardProps) {
     return (
       <div role="status" aria-live="polite">
         <span className="sr-only">{tCommon('loading')}</span>
-        <div className="h-64 animate-pulse rounded-lg border border-border bg-muted" aria-hidden="true" />
+        <div className="h-64 animate-pulse rounded-panel border border-border bg-muted" aria-hidden="true" />
       </div>
     );
   }
@@ -366,8 +366,8 @@ export function IpcWizard({ contractId, ipaId }: IpcWizardProps) {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6">
-      <div className="rounded-lg border border-border bg-surface p-5 shadow-sm sm:p-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
+      <div className="rounded-panel border border-border bg-surface p-5 shadow-e1 sm:p-6">
+        <h1 className="text-h1 font-semibold tracking-tight text-foreground">{t('title')}</h1>
       </div>
 
       {hasEffectiveCert ? (
@@ -381,7 +381,7 @@ export function IpcWizard({ contractId, ipaId }: IpcWizardProps) {
       <ProgressBar step={step} isRejected={isRejected} />
 
       {/* Step heading */}
-      <div className="rounded-lg border border-border bg-surface px-5 py-4 shadow-sm">
+      <div className="rounded-panel border border-border bg-surface px-5 py-4 shadow-e1">
         <h2 className="text-lg font-medium text-foreground">
           {step === 1
             ? t('step1.title')
@@ -392,7 +392,7 @@ export function IpcWizard({ contractId, ipaId }: IpcWizardProps) {
       </div>
 
       {/* Step content */}
-      <div className="rounded-lg border border-border bg-surface p-5 shadow-sm sm:p-6">
+      <div className="rounded-panel border border-border bg-surface p-5 shadow-e1 sm:p-6">
       {step === 1 ? (
         <Step1Context
           context={context}

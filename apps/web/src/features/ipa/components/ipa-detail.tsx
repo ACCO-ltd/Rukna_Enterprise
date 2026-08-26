@@ -30,7 +30,7 @@ export function IpaDetail({ contractId, ipaId }: { contractId: string; ipaId: st
       <div role="status" aria-live="polite">
         <span className="sr-only">{tCommon('loading')}</span>
         <div
-          className="h-64 animate-pulse rounded-xl border border-border bg-muted"
+          className="h-64 animate-pulse rounded-container border border-border bg-muted"
           aria-hidden="true"
         />
       </div>
@@ -68,7 +68,7 @@ export function IpaDetail({ contractId, ipaId }: { contractId: string; ipaId: st
       </div>
 
       {/* ── Header card ─────────────────────────────────────────────────── */}
-      <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
+      <div className="overflow-hidden rounded-container border border-border bg-surface shadow-e1">
         <div className="px-5 pt-5 sm:px-6 sm:pt-6 pb-5 sm:pb-6">
           {/* Reference + status */}
           <div className="flex flex-wrap items-center gap-2">
@@ -79,7 +79,7 @@ export function IpaDetail({ contractId, ipaId }: { contractId: string; ipaId: st
           </div>
 
           {/* Net payable as primary figure */}
-          <h1 className="mt-2 text-[26px] font-bold leading-tight tracking-[-0.025em] text-foreground sm:text-[28px]">
+          <h1 className="mt-2 text-h1 font-bold leading-tight text-foreground">
             <bdi>{formatMoney(ipa.data.netPayable, currency, locale)}</bdi>
           </h1>
           <p className="mt-0.5 text-sm text-muted-foreground">{t('netHeading')}</p>
@@ -93,7 +93,7 @@ export function IpaDetail({ contractId, ipaId }: { contractId: string; ipaId: st
       <IpaActionsPanel ipa={ipa.data} contractId={contractId} />
 
       {/* ── Summary stats ───────────────────────────────────────────────── */}
-      <dl className="grid gap-px overflow-hidden rounded-xl border border-border bg-border shadow-[var(--shadow-panel)] sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="grid gap-px overflow-hidden rounded-container border border-border bg-border shadow-e1 sm:grid-cols-2 lg:grid-cols-4">
         <div className="bg-surface px-5 py-4">
           <dt className="text-xs font-medium text-muted-foreground">{t('period')}</dt>
           <dd className="mt-1.5 text-sm font-semibold text-foreground">

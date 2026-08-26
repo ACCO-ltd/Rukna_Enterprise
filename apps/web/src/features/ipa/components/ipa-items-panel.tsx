@@ -84,7 +84,7 @@ export function IpaItemsPanel({
       </div>
 
       {items.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-8 text-center">
+        <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-8 text-center">
           <p className="text-sm font-medium text-foreground">{t('none')}</p>
           <p className="mt-1 text-sm text-muted-foreground">{t('noneHint')}</p>
         </div>
@@ -302,7 +302,7 @@ function ClaimLineDialog({
           </FormField>
 
           {selected ? (
-            <dl className="grid gap-3 rounded-md border border-border bg-surface-subtle p-3 text-xs sm:grid-cols-3">
+            <dl className="grid gap-3 rounded-control border border-border bg-surface-subtle p-3 text-xs sm:grid-cols-3">
               <div>
                 <dt className="text-muted-foreground">{t('unitRate')}</dt>
                 <dd className="mt-0.5 font-medium text-foreground">

@@ -101,7 +101,7 @@ export function IpaForm({ contractId }: { contractId: string }) {
         </FormField>
       </FormSection>
 
-      <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4 shadow-sm sm:flex-row-reverse sm:justify-start">
+      <div className="flex flex-col gap-3 rounded-panel border border-border bg-surface p-4 shadow-e1 sm:flex-row-reverse sm:justify-start">
         <Button type="submit" disabled={create.isPending}>
           {create.isPending ? tCommon('loading') : t('submit')}
         </Button>

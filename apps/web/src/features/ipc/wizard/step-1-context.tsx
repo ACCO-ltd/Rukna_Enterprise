@@ -44,7 +44,7 @@ export function Step1Context({ context, currency, onChange, onNext, errors }: St
       {/* Currency — read-only from contract */}
       <div className="space-y-1.5">
         <Label>{t('currencyLabel')}</Label>
-        <p className="flex h-11 items-center rounded-md border border-border bg-muted px-3 text-sm text-foreground">
+        <p className="flex h-11 items-center rounded-control border border-border bg-muted px-3 text-sm text-foreground">
           {currency}
         </p>
         <p className="text-xs text-muted-foreground">{t('currencyNote')}</p>
