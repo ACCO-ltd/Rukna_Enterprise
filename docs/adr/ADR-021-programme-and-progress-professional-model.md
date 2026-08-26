@@ -37,6 +37,34 @@ active binding it proceeds unchanged (backward-compatible). *Audit design:* the 
 opens its own approval instance — the durable per-cycle trail. No separate reopen-history table is
 built by design (the gate's approval instances cover multi-cycle audit).
 
+**Round-2 — Progress over time (BE-1): DONE.** A `ProgressSnapshot` (immutable) per project per
+period freezes what this ADR already computes — the weighted physical roll-up (`getRollup`),
+overall verified-to-date, and the cost-consumed % from the physical-vs-financial signal
+(`getPhysicalFinancialSignal`) — nothing is recomputed on read. **Immutability rationale:** because
+progress can be restated via a DPR reopen (CONST-PROG-010), a snapshot is the auditable *as reported*
+record and is never mutated once written (`@@unique(projectId, periodEndDate)`; a duplicate capture
+is a 409). Captured on-demand via `POST /projects/:id/progress/snapshots` (source=`MANUAL`,
+`capturedById` = the caller), gated by `manage:project` like the rest of the module; the stored
+`periodEndDate` is the supplied "as of" date, defaulting to today — never the server clock (the
+accounting-date rule). Two read models feed the frontend: `GET /projects/:id/progress/curve`
+(planned-vs-actual S-curve + `status ∈ AHEAD|ON_TRACK|BEHIND|INSUFFICIENT_DATA` + variance) and
+`GET /projects/:id/progress/period-comparison` (overall physical/verified previous·current·delta from
+the two most-recent snapshots). Curve/status/variance math lives in a pure module
+(`domain/progress-curve.ts`), unit-tested directly.
+
+**Provisional baseline (Option-C, BE-1):** the planned line is computed on read as a linear ramp
+0→100% from `Project.startDate → expectedEndDate` (sampled at the snapshot dates so it aligns with the
+actual line); empty when the project has no usable dates → `INSUFFICIENT_DATA`. `baselineProvisional:
+true` flags it. **BE-2 seam:** the real baseline source (Option-A: work-package planned dates+weights,
+frozen; or Option-B: entered points) — pending Eng Ahmed's memo — replaces only
+`computeProvisionalBaseline` in the pure module; the read contract and the UI are unchanged.
+
+**Deferred to BE-2:** the confirmed Option-A/B baseline (+ `WorkPackage.plannedStart/End` if A);
+the **period-close capture hook** (extend `POST /periods/:id/close` to write a
+`source=PERIOD_CLOSE` snapshot per active project — the `accountingPeriodId` column is present for
+this); and **per-BOQ-leaf period comparison** (BE-1 is overall-only — per-leaf needs per-leaf
+snapshot lines or a verified-as-of derivation this scope does not store).
+
 **Deferred:** evidence-driven only — dependency networks (FS/SS/FF/SF), Excel/P6 import, recovery
 programmes. Activity-date → planned-% derivation (feeding schedule variance from activities rather
 than the target curve) is a possible later refinement.

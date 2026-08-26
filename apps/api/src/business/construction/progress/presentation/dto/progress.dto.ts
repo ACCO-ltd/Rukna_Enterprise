@@ -80,6 +80,18 @@ export class SetProgressTargetsDto {
   targets!: ProgressTargetItemDto[];
 }
 
+// Round-2 Progress-over-time (BE-1) — manual capture of an immutable progress snapshot.
+export class CaptureProgressSnapshotDto {
+  @ApiPropertyOptional({
+    example: '2026-08-31',
+    description:
+      'The "as of" period-end date (accounting-date style). Defaults to today. The stored date is ' +
+      'this value, never the server clock.',
+  })
+  @IsOptional() @IsDateString()
+  periodEndDate?: string;
+}
+
 export class CreateDprDto {
   @ApiProperty({ example: '2026-08-18' })
   @IsDateString()

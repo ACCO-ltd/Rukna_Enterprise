@@ -1,6 +1,19 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
-import { DprStatus, type RequestIdentity } from '@erp/types';
+import {
+  DprStatus,
+  type RequestIdentity,
+  type ProgressActualPoint,
+  type ProgressCurveResponse,
+  type ProgressPeriodComparisonResponse,
+  type ProgressSnapshotResponse,
+} from '@erp/types';
+
+import {
+  assessSchedule,
+  computeProvisionalBaseline,
+  isoDate,
+} from '../domain/progress-curve.js';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
@@ -527,6 +540,163 @@ export class ProgressService {
     };
   }
 
+  // ── Round-2 Progress-over-time (BE-1): immutable snapshots + curve + comparison ──
+
+  /**
+   * Overall verified % (verified-to-date ÷ measurable, across all leaves) — distinct from the
+   * weighted physical roll-up. Reuses getProjectProgress (verified-per-leaf from APPROVED DPRs) so
+   * no verification logic is reimplemented here.
+   */
+  private async computeVerifiedPercent(identity: RequestIdentity, projectId: string): Promise<number> {
+    const lines = await this.getProjectProgress(identity, projectId);
+    let measurable = ZERO;
+    let verified = ZERO;
+    for (const l of lines) {
+      measurable = measurable.plus(new Decimal(l.measurableQuantity));
+      verified = verified.plus(new Decimal(l.verifiedToDate));
+    }
+    if (!measurable.greaterThan(ZERO)) return 0;
+    return Math.min(100, Math.round(verified.div(measurable).mul(100).toNumber() * 100) / 100);
+  }
+
+  /**
+   * Capture an immutable ProgressSnapshot (source=MANUAL) freezing what ADR-021 already computes:
+   * the weighted physical roll-up (getRollup), overall verified-to-date, and the cost-consumed % from
+   * the physical-vs-financial signal. `periodEndDate` defaults to today but is otherwise the supplied
+   * "as of" date — never new Date() for the stored date (the accounting-date rule). Rejects a second
+   * capture for the same period (409) to honour @@unique(projectId, periodEndDate).
+   */
+  async captureSnapshot(
+    identity: RequestIdentity,
+    projectId: string,
+    periodEndDate?: string,
+  ): Promise<ProgressSnapshotResponse> {
+    await this.projectAccess.assertMember(identity, projectId);
+    const prisma = this.tenancy.getClient();
+
+    // The stored period-end is the supplied "as of" (accounting-date rule). Default = today, but the
+    // captured *reading* is the live computation regardless; only the label date defaults to today.
+    const asOf = periodEndDate ? new Date(periodEndDate) : new Date();
+    if (Number.isNaN(asOf.getTime())) {
+      throw new BadRequestException(`Invalid periodEndDate '${periodEndDate}'`);
+    }
+    // Normalise to a calendar date (the column is @db.Date); avoids a same-day duplicate slipping past
+    // the unique index on a timestamp difference.
+    const periodDate = new Date(`${isoDate(asOf)}T00:00:00.000Z`);
+
+    const existing = await this.repo.findSnapshotForPeriod(prisma, projectId, periodDate);
+    if (existing) {
+      throw new ConflictException(
+        `A progress snapshot already exists for ${isoDate(periodDate)}. Snapshots are immutable per period.`,
+      );
+    }
+
+    const signal = await this.getPhysicalFinancialSignal(identity, projectId);
+    const verifiedPercent = await this.computeVerifiedPercent(identity, projectId);
+
+    const row = await this.repo.createSnapshot(prisma, {
+      organizationId: identity.activeOrganizationId,
+      projectId,
+      periodEndDate: periodDate,
+      accountingPeriodId: null,
+      physicalPercent: new Decimal(signal.physicalPercent),
+      verifiedPercent: new Decimal(verifiedPercent),
+      costConsumedPercent:
+        signal.costConsumedPercent === null ? null : new Decimal(signal.costConsumedPercent),
+      source: 'MANUAL',
+      capturedById: identity.userId,
+    });
+    return toSnapshotResponse(row);
+  }
+
+  private async loadActualSeries(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<{ snapshots: ProgressSnapshotResponse[]; actual: ProgressActualPoint[] }> {
+    const prisma = this.tenancy.getClient();
+    const rows = await this.repo.findSnapshotsForProject(prisma, identity.activeOrganizationId, projectId);
+    const snapshots = rows.map(toSnapshotResponse);
+    const actual: ProgressActualPoint[] = snapshots.map((s) => ({
+      periodEndDate: s.periodEndDate,
+      physicalPercent: s.physicalPercent,
+      verifiedPercent: s.verifiedPercent,
+      costPercent: s.costConsumedPercent,
+    }));
+    return { snapshots, actual };
+  }
+
+  /**
+   * The planned-vs-actual S-curve. Actual = the snapshot series ordered by period. Baseline = the
+   * provisional Option-C linear ramp from Project.startDate → expectedEndDate, sampled at the actual
+   * period dates (empty when the project has no usable dates). Status/variance compare the latest
+   * actual physical % to the planned % at that date. All math lives in the pure progress-curve module.
+   */
+  async getCurve(identity: RequestIdentity, projectId: string): Promise<ProgressCurveResponse> {
+    await this.projectAccess.assertMember(identity, projectId);
+    const prisma = this.tenancy.getClient();
+
+    const { actual } = await this.loadActualSeries(identity, projectId);
+    const dates = await this.repo.findProjectDates(prisma, identity.activeOrganizationId, projectId);
+    const startDate = dates?.startDate ?? null;
+    const expectedEndDate = dates?.expectedEndDate ?? null;
+
+    const baseline = computeProvisionalBaseline(
+      startDate,
+      expectedEndDate,
+      actual.map((a) => new Date(a.periodEndDate)),
+    );
+    const { scheduleVariancePercent, status } = assessSchedule(actual, startDate, expectedEndDate);
+
+    return {
+      projectId,
+      baseline,
+      actual,
+      scheduleVariancePercent: baseline.length === 0 ? null : scheduleVariancePercent,
+      status: baseline.length === 0 ? 'INSUFFICIENT_DATA' : status,
+      baselineProvisional: true,
+    };
+  }
+
+  /**
+   * Overall (project-level) period-over-period comparison from the two most-recent snapshots — the
+   * physical and verified % of the current vs the previous period, and their deltas. Nulls when fewer
+   * than two snapshots exist. BE-2 SEAM: per-BOQ-leaf comparison is deferred — it needs per-leaf
+   * snapshot lines (or a verified-as-of derivation) that BE-1 deliberately does not store.
+   */
+  async getPeriodComparison(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<ProgressPeriodComparisonResponse> {
+    const { snapshots } = await this.loadActualSeries(identity, projectId);
+    if (snapshots.length < 2) {
+      return {
+        projectId,
+        previousPeriodEndDate: snapshots.length === 1 ? snapshots[0].periodEndDate : null,
+        currentPeriodEndDate: null,
+        physical: null,
+        verified: null,
+      };
+    }
+    const previous = snapshots[snapshots.length - 2];
+    const current = snapshots[snapshots.length - 1];
+    const delta = (a: number, b: number) => Math.round((b - a) * 100) / 100;
+    return {
+      projectId,
+      previousPeriodEndDate: previous.periodEndDate,
+      currentPeriodEndDate: current.periodEndDate,
+      physical: {
+        previous: previous.physicalPercent,
+        current: current.physicalPercent,
+        delta: delta(previous.physicalPercent, current.physicalPercent),
+      },
+      verified: {
+        previous: previous.verifiedPercent,
+        current: current.verifiedPercent,
+        delta: delta(previous.verifiedPercent, current.verifiedPercent),
+      },
+    };
+  }
+
   // ── ADR-021 CONST-PROG-005: programme activities (time layer under a work package) ──
 
   async createActivity(identity: RequestIdentity, workPackageId: string, dto: CreateActivityDto) {
@@ -657,4 +827,31 @@ export interface CreateWorkPackageDto {
   name: string;
   responsibleOwner?: string;
   progressWeight?: number;
+}
+
+/** Maps a stored ProgressSnapshot row to its wire DTO (Decimals → numbers, Dates → ISO). */
+function toSnapshotResponse(row: {
+  id: string;
+  projectId: string;
+  periodEndDate: Date;
+  accountingPeriodId: string | null;
+  physicalPercent: unknown;
+  verifiedPercent: unknown;
+  costConsumedPercent: unknown;
+  source: string;
+  capturedAt: Date;
+  capturedById: string;
+}): ProgressSnapshotResponse {
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    periodEndDate: isoDate(row.periodEndDate),
+    accountingPeriodId: row.accountingPeriodId,
+    physicalPercent: Number(row.physicalPercent),
+    verifiedPercent: Number(row.verifiedPercent),
+    costConsumedPercent: row.costConsumedPercent === null ? null : Number(row.costConsumedPercent),
+    source: row.source as ProgressSnapshotResponse['source'],
+    capturedAt: row.capturedAt.toISOString(),
+    capturedById: row.capturedById,
+  };
 }
