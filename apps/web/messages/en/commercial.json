@@ -193,6 +193,11 @@
     "create": "Create application",
     "draftInvoice": "Draft",
     "superseded": "{count} superseded",
+    "certificate": {
+      "CERTIFIED": "Certified",
+      "PARTIALLY_CERTIFIED": "Part certified",
+      "REJECTED": "Rejected"
+    },
     "col": {
       "certificate": "Certificate",
       "application": "Application",

@@ -187,8 +187,8 @@ describe('ProjectDetail — available actions', () => {
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
-    // Overview section heading is a reliable signal that the project loaded.
-    await screen.findByText('Overview');
+    // The Project details section heading is a reliable signal that the project loaded.
+    await screen.findByRole('heading', { name: 'Project details' });
     expect(screen.queryByRole('button', { name: 'Start project' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Actions' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument();
@@ -206,6 +206,85 @@ describe('ProjectDetail — available actions', () => {
     expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Record practical completion' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Actions' })).toBeInTheDocument();
+  });
+});
+
+describe('ProjectDetail — Overview reshape (P1/P2)', () => {
+  it('leads the body with the guidance panel, above the project details section', async () => {
+    vi.mocked(getProject).mockResolvedValue(project({ status: ProjectStatus.ACTIVE }));
+    vi.mocked(getProjectWorkspaceGuidance).mockResolvedValue([
+      {
+        id: 'team',
+        severity: 'WARNING',
+        kind: 'DELIVERY_TEAM_INCOMPLETE',
+        actionUrl: '/projects/p1/members',
+        responsibleRole: 'PROJECT_MANAGER',
+      },
+    ]);
+
+    renderWithProviders(<ProjectDetail id="p1" />);
+
+    const guidanceHeading = await screen.findByRole('heading', {
+      name: 'Setup and control guidance',
+    });
+    const detailsHeading = await screen.findByRole('heading', { name: 'Project details' });
+
+    // The guidance queue must appear before the identity facts in document order (P1).
+    expect(guidanceHeading.compareDocumentPosition(detailsHeading)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it('renders identity facts as one definition list, not three separate cards', async () => {
+    vi.mocked(getProject).mockResolvedValue(
+      project({
+        status: ProjectStatus.ACTIVE,
+        clientName: 'Baraka Real Estate LLC',
+        commercialModel: 'CLIENT_CONTRACT',
+        participationModel: 'SOLE',
+      }),
+    );
+
+    renderWithProviders(<ProjectDetail id="p1" />);
+
+    await screen.findByRole('heading', { name: 'Project details' });
+    // The three old identity card headings are gone.
+    expect(screen.queryByText('Client information')).not.toBeInTheDocument();
+    expect(screen.queryByText('Responsibility')).not.toBeInTheDocument();
+    // Facts the strip does not carry render in the list.
+    expect(screen.getByText('Baraka Real Estate LLC')).toBeInTheDocument();
+    expect(screen.getByText('Sole delivery')).toBeInTheDocument();
+    expect(screen.getByText('Client contract')).toBeInTheDocument();
+  });
+
+  it('does not restate strip facts (programme, current stage, project manager) in the body', async () => {
+    vi.mocked(getProject).mockResolvedValue(
+      project({
+        status: ProjectStatus.ACTIVE,
+        startDate: '2026-02-01T00:00:00.000Z',
+        expectedEndDate: '2026-08-31T00:00:00.000Z',
+      }),
+    );
+    vi.mocked(getProjectWorkspaceSummary).mockResolvedValue({
+      ...workspaceSummary(),
+      responsibility: { projectManager: { id: 'u1', name: 'System Admin' }, teamCount: 3 },
+      programme: {
+        startDate: '2026-02-01T00:00:00.000Z',
+        expectedEndDate: '2026-08-31T00:00:00.000Z',
+        daysRemaining: 30,
+      },
+      financialsVisible: true,
+    });
+
+    renderWithProviders(<ProjectDetail id="p1" />);
+
+    await screen.findByRole('heading', { name: 'Project details' });
+    // These labels belong to the shell strip / lifecycle, not the Overview body (P2).
+    expect(screen.queryByText('Programme')).not.toBeInTheDocument();
+    expect(screen.queryByText('Current stage')).not.toBeInTheDocument();
+    expect(screen.queryByText('Project manager')).not.toBeInTheDocument();
+    // Main contract appears once here (Commercial snapshot no longer restates it).
+    expect(screen.queryAllByText('Main contract')).toHaveLength(1);
   });
 });
 

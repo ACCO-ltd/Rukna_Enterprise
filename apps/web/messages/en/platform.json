@@ -261,6 +261,7 @@
       "loadFailed": "Could not load this project.",
       "createdTitle": "Project created",
       "overview": "Overview",
+      "projectDetails": "Project details",
       "client": "Client",
       "contractValue": "Contract value",
       "startDate": "Start date",
