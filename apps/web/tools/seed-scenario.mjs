@@ -173,7 +173,10 @@ async function main() {
     // this script at step 2. Unlike a project, whose code the caller chooses, a client's is
     // assigned. Read it off the response instead.
     name: 'Baraka Real Estate LLC',
-    nameAr: 'شركة البركة للعقارات',
+    // NOTE: no `nameAr` / `descriptionAr` anywhere in this file. Arabic was removed end-to-end
+    // (English-only, PR #73); the DTOs no longer declare those fields and forbidNonWhitelisted
+    // makes sending them a 400 (`property nameAr should not exist`) that broke globalSetup at
+    // step 2 and left the whole Playwright suite unable to seed.
     taxNumber: `SO-${RUN}`,
     defaultCurrency: 'USD',
     // NOTE: no `status` field. api-reference.md documents one, but CreateClientDto does
@@ -193,12 +196,22 @@ async function main() {
   ok();
 
   // ── Project ───────────────────────────────────────────────────────────────────
+  // A project now requires a `districtId` (ADR-025 meaningful project codes + district
+  // registry, PR #78). The Banaadir districts are seeded per tenant; resolve the first
+  // active one the same way the project-create picker does.
+  step('resolve district');
+  const districts = await get('/districts?activeOnly=true');
+  const districtList = Array.isArray(districts) ? districts : (districts?.items ?? []);
+  const districtId = districtList[0]?.id;
+  if (!districtId) throw new Error('No active district seeded for this tenant.');
+  ok(districtList[0]?.name ?? districtId);
+
   step('create project');
   const project = await post('/projects', {
     code: `PRJ-${RUN}`,
     name: 'Hodan District Office Tower',
-    nameAr: 'برج مكاتب حي هودان',
     description: 'Eight-storey commercial tower, Mogadishu.',
+    districtId,
     // A CLIENT_CONTRACT project (the default) requires the client aggregate id, not just the
     // legacy display name (ADR-005). Without it the API rejects the create with 400
     // "A client is required for a client contract project". The seed predates that rule.
@@ -211,8 +224,22 @@ async function main() {
   });
   ok(project.code);
 
-  // A contract can be created against a DRAFT project, but a project that never leaves
-  // DRAFT is not a realistic backdrop for the billing screens.
+  // ⚠️ SEEDER INCOMPLETE — this step is stale and the repair is non-trivial (2026-08-26).
+  //
+  // This loop drives the retired 8-state lifecycle. **ADR-019** collapsed it to six guarded
+  // commands: `approve → mobilize → activate` is now a single `POST /projects/:id/start`
+  // (DRAFT → ACTIVE) that (a) takes a body — `actualStartDate` (+ optional `commencementNote`,
+  // see start-project.dto.ts), and (b) **enforces readiness**: a CLIENT_CONTRACT project can
+  // only start once CLIENT_ACTIVE + ACTIVE_MAIN_CONTRACT + CONTRACT_START_DATE + BOQ_BASELINED
+  // are all true (project-readiness.policy.ts). A DRAFT→ACTIVE governance binding may also be
+  // active (ADR-022) — activate it via `pnpm --filter @erp/api governance:activate` if so.
+  //
+  // Fixing it means REORDERING this file: create project (DRAFT) → build+baseline BOQ →
+  // create+activate contract (a contract can be created against a DRAFT project) → THEN
+  // `POST /projects/:id/start { actualStartDate }`. The final receipt step also needs the
+  // **ADR-024** rework (ReceiptAllocation→IPC removed; settlement is receipt→ClientInvoice from
+  // the effective IPC). Until then the Playwright globalSetup cannot seed — for browser QA,
+  // bypass globalSetup and point a throwaway config at an existing seeded scenario instead.
   step('advance project to ACTIVE');
   for (const command of ['approve', 'mobilize', 'activate']) {
     await post(`/projects/${project.id}/${command}`);
@@ -454,7 +481,6 @@ async function buildBoqTree(projectId, versionId) {
     {
       code: '01',
       description: 'Substructure Works',
-      descriptionAr: 'أعمال الأساسات',
       items: [
         {
           code: '01.01',
@@ -475,7 +501,6 @@ async function buildBoqTree(projectId, versionId) {
     {
       code: '02',
       description: 'Superstructure Works',
-      descriptionAr: 'أعمال الهيكل',
       items: [
         {
           code: '02.01',
@@ -500,7 +525,6 @@ async function buildBoqTree(projectId, versionId) {
       sortOrder: sectionIndex + 1,
       code: section.code,
       description: section.description,
-      descriptionAr: section.descriptionAr,
       isLeaf: false,
     });
 
