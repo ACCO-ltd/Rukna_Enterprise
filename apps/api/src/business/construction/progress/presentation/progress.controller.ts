@@ -17,6 +17,7 @@ import {
   SetProgressTargetsDto,
   CreateProgrammeActivityDto,
   UpdateProgrammeActivityDto,
+  CaptureProgressSnapshotDto,
 } from './dto/progress.dto.js';
 
 // ADR-021 Progress MVP: daily progress reports + measurements + evidence, and verified progress.
@@ -109,6 +110,42 @@ export class ProgressController {
     @Query('asOf') asOf?: string,
   ) {
     return this.service.getScheduleVariance(identity, projectId, asOf);
+  }
+
+  // ── Round-2 Progress-over-time (BE-1): snapshots + curve + period comparison ───
+
+  @Post('projects/:projectId/progress/snapshots')
+  @RequirePermissions(PERMISSIONS.projectsManage)
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({
+    summary:
+      'Capture an immutable progress snapshot (source=MANUAL) freezing the live physical/verified/' +
+      'cost readings for a period-end date (defaults to today). 409 if the period already has one.',
+  })
+  captureSnapshot(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Body() dto: CaptureProgressSnapshotDto,
+  ) {
+    return this.service.captureSnapshot(identity, projectId, dto.periodEndDate);
+  }
+
+  @Get('projects/:projectId/progress/curve')
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({
+    summary: 'Planned-vs-actual progress S-curve + schedule status (provisional Option-C baseline)',
+  })
+  curve(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
+    return this.service.getCurve(identity, projectId);
+  }
+
+  @Get('projects/:projectId/progress/period-comparison')
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({
+    summary: 'Overall period-over-period progress comparison from the two most-recent snapshots',
+  })
+  periodComparison(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
+    return this.service.getPeriodComparison(identity, projectId);
   }
 
   // ── ADR-021 CONST-PROG-005: programme activities ──────────────────────────────

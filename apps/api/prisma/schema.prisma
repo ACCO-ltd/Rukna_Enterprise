@@ -544,6 +544,7 @@ model Project {
   workPackages         WorkPackage[]
   programmeMilestones  ProgrammeMilestone[]
   progressTargets      ProgressTarget[]
+  progressSnapshots    ProgressSnapshot[]
   client               Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull)
   district             District?             @relation(fields: [districtId], references: [id], onDelete: Restrict)
 
@@ -964,6 +965,39 @@ model ProgressTarget {
   @@unique([projectId, targetDate])
   @@index([projectId, targetDate])
   @@map("progress_targets")
+}
+
+// Round-2 Progress-over-time (BE-1) — an immutable, frozen progress reading for a project at a
+// period-end date. Freezes what ADR-021 already computes (weighted physical roll-up, verified-to-
+// date, cost-consumed from the physical-vs-financial signal). Immutable once written: progress may
+// be restated via a DPR reopen (ADR-021 CONST-PROG-010), so a snapshot is the auditable "as
+// reported" record and is never recomputed. One snapshot per project per period.
+model ProgressSnapshot {
+  id                  String                 @id @default(cuid())
+  organizationId      String                 @map("organization_id")
+  projectId           String                 @map("project_id")
+  // The "as of" date this reading is reported against (accounting-date style; never new Date()).
+  periodEndDate       DateTime               @map("period_end_date") @db.Date
+  // Set when captured at accounting period close (BE-2 seam); null for a manual capture.
+  accountingPeriodId  String?                @map("accounting_period_id")
+  physicalPercent     Decimal                @map("physical_percent") @db.Decimal(6, 3)
+  verifiedPercent     Decimal                @map("verified_percent") @db.Decimal(6, 3)
+  // Null when there is no cost data (no forecast cost yet).
+  costConsumedPercent Decimal?               @map("cost_consumed_percent") @db.Decimal(6, 3)
+  source              ProgressSnapshotSource
+  capturedAt          DateTime               @default(now()) @map("captured_at")
+  capturedById        String                 @map("captured_by_id")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, periodEndDate])
+  @@index([projectId, periodEndDate])
+  @@map("progress_snapshots")
+}
+
+enum ProgressSnapshotSource {
+  MANUAL
+  PERIOD_CLOSE
 }
 
 // ADR-020 CONST-BOQ-020 — an org-level catalogue of reusable BOQ *work items* (scope, e.g. "Supply

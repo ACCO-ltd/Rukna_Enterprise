@@ -292,6 +292,77 @@ export interface ProjectRollupResponse {
   packages: WorkPackageRollupLine[];
 }
 
+// ─── Progress over time (Round-2 BE-1): snapshots + provisional planned baseline ──
+//
+// A ProgressSnapshot freezes what ADR-021 already computes (weighted physical roll-up,
+// verified-to-date, cost-consumed from the physical-vs-financial signal) at a point in time.
+// It is immutable once written (progress may be restated via a DPR reopen — ADR-021
+// CONST-PROG-010 — so the snapshot is the auditable "as reported" record, never recomputed).
+
+/** How a snapshot was captured. MANUAL = on-demand; PERIOD_CLOSE = month-end hook (BE-2 seam). */
+export type ProgressSnapshotSourceType = 'MANUAL' | 'PERIOD_CLOSE';
+
+/** An immutable frozen progress reading for one project at one period-end date. */
+export interface ProgressSnapshotResponse {
+  id: string;
+  projectId: string;
+  /** The "as of" date this reading is reported against (accounting-date style). */
+  periodEndDate: string;
+  accountingPeriodId: string | null;
+  physicalPercent: number;
+  verifiedPercent: number;
+  /** From the physical-vs-financial signal; null when there is no cost data. */
+  costConsumedPercent: number | null;
+  source: ProgressSnapshotSourceType;
+  capturedAt: string;
+  capturedById: string;
+}
+
+/** Schedule status derived from the latest actual vs the planned baseline at that date. */
+export type ProgressScheduleStatus = 'AHEAD' | 'ON_TRACK' | 'BEHIND' | 'INSUFFICIENT_DATA';
+
+/** One point on the planned baseline curve. */
+export interface ProgressCurvePoint {
+  periodEndDate: string;
+  plannedPercent: number;
+}
+
+/** One actual reading (from a snapshot) on the progress curve. */
+export interface ProgressActualPoint {
+  periodEndDate: string;
+  physicalPercent: number;
+  verifiedPercent: number;
+  /** Null when the snapshot had no cost data. */
+  costPercent: number | null;
+}
+
+/**
+ * The planned-vs-actual S-curve read model. `baseline` is provisional (Option-C: a linear ramp
+ * from Project.startDate → expectedEndDate) for BE-1; the real Option-A/B baseline lands in BE-2
+ * without changing this contract. `status`/`scheduleVariancePercent` compare the latest actual
+ * physical % to the planned % at that date.
+ */
+export interface ProgressCurveResponse {
+  projectId: string;
+  baseline: ProgressCurvePoint[];
+  actual: ProgressActualPoint[];
+  /** latest actual physical − planned at that date; null when there is insufficient data. */
+  scheduleVariancePercent: number | null;
+  status: ProgressScheduleStatus;
+  /** True while the baseline is the Option-C provisional placeholder (BE-1). */
+  baselineProvisional: boolean;
+}
+
+/** Overall (project-level) period-over-period comparison from the two most-recent snapshots. */
+export interface ProgressPeriodComparisonResponse {
+  projectId: string;
+  previousPeriodEndDate: string | null;
+  currentPeriodEndDate: string | null;
+  /** Null when fewer than two snapshots exist. */
+  physical: { previous: number; current: number; delta: number } | null;
+  verified: { previous: number; current: number; delta: number } | null;
+}
+
 // ADR-021 Progress: a verified-progress line per BOQ leaf (from approved DPRs).
 export interface ProjectProgressLine {
   boqNodeId: string;

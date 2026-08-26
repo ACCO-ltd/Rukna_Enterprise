@@ -135,6 +135,35 @@ export class ProgressRepository {
     return prisma.progressTarget.createMany({ data: rows });
   }
 
+  // ── Round-2 Progress-over-time (BE-1): immutable progress snapshots ───────────
+  createSnapshot(prisma: TenantPrisma, data: Prisma.ProgressSnapshotUncheckedCreateInput) {
+    return prisma.progressSnapshot.create({ data });
+  }
+
+  /** The one snapshot for a project at a period-end date, or null (drives the unique-per-period check). */
+  findSnapshotForPeriod(prisma: TenantPrisma, projectId: string, periodEndDate: Date) {
+    return prisma.progressSnapshot.findUnique({
+      where: { projectId_periodEndDate: { projectId, periodEndDate } },
+      select: { id: true },
+    });
+  }
+
+  /** A project's snapshot series, oldest first (the actual line + period-comparison source). */
+  findSnapshotsForProject(prisma: TenantPrisma, organizationId: string, projectId: string) {
+    return prisma.progressSnapshot.findMany({
+      where: { organizationId, projectId },
+      orderBy: { periodEndDate: 'asc' },
+    });
+  }
+
+  /** The project's baseline dates (Option-C provisional planned curve). Org-scoped for tenancy. */
+  findProjectDates(prisma: TenantPrisma, organizationId: string, projectId: string) {
+    return prisma.project.findFirst({
+      where: { id: projectId, organizationId },
+      select: { startDate: true, expectedEndDate: true },
+    });
+  }
+
   // ── ADR-021 CONST-PROG-005: programme activities (time layer under a work package) ──
   createActivity(prisma: TenantPrisma, data: Prisma.ProgrammeActivityUncheckedCreateInput) {
     return prisma.programmeActivity.create({ data });
