@@ -2,7 +2,10 @@ import type {
   CollectionProgressSignalResponse,
   DailyProgressReportResponse,
   PhysicalFinancialSignalResponse,
+  ProgressCurveResponse,
   ProgressMeasurementResponse,
+  ProgressPeriodComparisonResponse,
+  ProgressSnapshotResponse,
   ProjectProgressLine,
   ProjectRollupResponse,
 } from '@erp/types';
@@ -147,6 +150,42 @@ export function getCollectionProgressSignal(
 ): Promise<CollectionProgressSignalResponse> {
   return apiClient<CollectionProgressSignalResponse>(
     `/projects/${projectId}/progress/collection-signal`,
+  );
+}
+
+// ─── Progress over time — snapshots + curve + period comparison (BE-1) ────────────────────
+/** Optional capture body. `periodEndDate` defaults to today (server-side) when omitted. */
+export interface CaptureProgressSnapshotBody {
+  /** ISO date, YYYY-MM-DD. The "as of" period this reading is reported against. */
+  periodEndDate?: string;
+}
+
+/**
+ * Capture an immutable MANUAL progress snapshot, freezing the live physical/verified/cost
+ * numbers at `periodEndDate`. Returns `409` when a snapshot already exists for that period
+ * (one per project per period) — the caller surfaces that as a friendly message, not a crash.
+ */
+export function captureProgressSnapshot(
+  projectId: string,
+  body: CaptureProgressSnapshotBody,
+): Promise<ProgressSnapshotResponse> {
+  return apiClient<ProgressSnapshotResponse>(`/projects/${projectId}/progress/snapshots`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/** Planned-vs-actual S-curve + schedule status. Baseline is provisional (Option-C) for BE-1. */
+export function getProgressCurve(projectId: string): Promise<ProgressCurveResponse> {
+  return apiClient<ProgressCurveResponse>(`/projects/${projectId}/progress/curve`);
+}
+
+/** Overall period-over-period comparison from the two most-recent snapshots. */
+export function getProgressPeriodComparison(
+  projectId: string,
+): Promise<ProgressPeriodComparisonResponse> {
+  return apiClient<ProgressPeriodComparisonResponse>(
+    `/projects/${projectId}/progress/period-comparison`,
   );
 }
 

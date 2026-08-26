@@ -5,6 +5,7 @@ import { NextIntlClientProvider, type AbstractIntlMessages } from 'next-intl';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { sessionStore } from '@/features/auth/session/session-store';
+import { ToastProvider } from '@/providers/toast-provider';
 
 // Clear any session seeded via renderWithProviders after each test so permission
 // state never leaks between tests.
@@ -57,11 +58,17 @@ interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
    * test. Omit when the test is verifying the no-permission path.
    */
   permissions?: string[];
+  /**
+   * Mount the app toast provider around the tree. Needed only for components that raise a
+   * toast (a mutation). Off by default because the toast region is a permanent `role="status"`
+   * element that collides with loading-state assertions.
+   */
+  withToast?: boolean;
 }
 
 export function renderWithProviders(
   ui: ReactElement,
-  { messages, locale = 'en', permissions, ...options }: RenderWithProvidersOptions = {},
+  { messages, locale = 'en', permissions, withToast = false, ...options }: RenderWithProvidersOptions = {},
 ): RenderResult {
   if (permissions) {
     sessionStore.setSession({
@@ -94,7 +101,11 @@ export function renderWithProviders(
             throw error;
           }}
         >
-          {children}
+          {/* Opt-in: a component that raises toasts (a mutation) needs the provider mounted
+              above it, as `layout.tsx`/`app-shell.tsx` mount it in the app. It is opt-in
+              because the toast region is a permanent `role="status"` element, which would
+              otherwise collide with the many tests that assert on a loading `role="status"`. */}
+          {withToast ? <ToastProvider>{children}</ToastProvider> : children}
         </NextIntlClientProvider>
       </QueryClientProvider>
     );

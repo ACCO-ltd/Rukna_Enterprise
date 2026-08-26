@@ -102,6 +102,37 @@
       "percent": "% complete"
     }
   },
+  "curve": {
+    "title": "Progress curve",
+    "planned": "Planned",
+    "actual": "Actual physical",
+    "verified": "Verified",
+    "percentComplete": "% complete",
+    "ariaSummary": "Progress curve over {points, plural, one {# period} other {# periods}}. Latest planned {planned}, latest actual physical {physical}.",
+    "insufficient": "The progress curve begins once progress is recorded.",
+    "provisionalNote": "Planned line is provisional (a baseline programme isn't set yet).",
+    "status": {
+      "AHEAD": "Ahead of schedule",
+      "ON_TRACK": "On track",
+      "BEHIND": "Behind schedule",
+      "INSUFFICIENT_DATA": "Not enough data"
+    },
+    "capture": {
+      "action": "Record progress snapshot",
+      "periodEndDate": "Period-end date",
+      "recorded": "Progress snapshot recorded.",
+      "alreadyRecorded": "A snapshot is already recorded for this date.",
+      "failed": "Could not record the snapshot. Try again."
+    }
+  },
+  "comparison": {
+    "title": "Period comparison",
+    "physical": "Physical progress",
+    "verified": "Verified progress",
+    "range": "{previous} to {current}",
+    "previousToCurrent": "{previous} → {current}",
+    "insufficient": "Comparison appears once two periods have been recorded."
+  },
   "workPackage": {
     "title": "Work packages",
     "subtitle": "Control units that carry a responsible owner and a progress weight.",

@@ -142,6 +142,21 @@
   --historical-subtle: #f3f0ff;
   --overlay: rgb(16 24 40 / 0.46);
 
+  /* ── Data-visualisation ramp ───────────────────────────────────────────
+     Chart series are their OWN colour family, deliberately separate from the
+     status tokens (success/warning/danger) and from brand-primary. A line on a
+     chart is data, not a status and not an interactive affordance — colouring
+     it `success` would tell a red-green-blind reader nothing and would collide
+     with the meaning those tokens carry elsewhere (ux-doctrine §7: no rainbow
+     charts, no second colour competing with the accent).
+       chart-1 — the primary measured series (actual physical %)
+       chart-2 — a secondary measured series (verified %), quieter than chart-1
+     The planned/baseline reference line intentionally uses `--muted-foreground`
+     (a dashed hairline), so "planned" reads as a backdrop the actuals move
+     against, never as a third competing hue. */
+  --chart-1: #2b6fd6;
+  --chart-2: #5b8ff9;
+
   /* ── Density ───────────────────────────────────────────────────────────
      Comfortable is the default: most screens are read and approved, not
      typed into. Compact is opt-in per user and exists for the screens where
@@ -204,6 +219,9 @@
   --historical: #b7a0ff;
   --historical-subtle: #342a52;
   --overlay: rgb(0 0 0 / 0.66);
+  /* Data-viz ramp, lifted for a dark surface (see the light-theme note above). */
+  --chart-1: #6d96ff;
+  --chart-2: #93b4ff;
   --shadow-control: 0 1px 2px rgb(0 0 0 / 0.3);
   --shadow-panel: 0 1px 3px rgb(0 0 0 / 0.28), 0 12px 32px rgb(0 0 0 / 0.18);
   --shadow-overlay: 0 24px 56px rgb(0 0 0 / 0.42);
@@ -273,6 +291,8 @@
   --color-historical: var(--historical);
   --color-historical-subtle: var(--historical-subtle);
   --color-overlay: var(--overlay);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
   --font-sans: var(--font-inter);
 }
 
