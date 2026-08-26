@@ -7,6 +7,10 @@ import {
   Button,
   FormField,
   Input,
+  SectionHeader,
+  Sheet,
+  SheetContent,
+  SheetTitle,
   Table,
   TableBody,
   TableCell,
@@ -24,13 +28,21 @@ import { useCreateDpr, useDprs } from '../hooks/use-progress';
 import { DprStatusBadge } from './dpr-status-badge';
 import { DprDetail } from './dpr-detail';
 
-/** Daily progress reports: list + create, and the selected report's detail. */
+/**
+ * Daily progress reports: an operational index that leads with the list, not a form.
+ *
+ * The create form used to sit always-on above the table (audit PR2); it now lives behind the
+ * one primary action (`+ New daily report`) in a `Sheet`, so the view opens on the record of
+ * what has already happened. On a successful create the sheet closes and the new report's detail
+ * opens — the same flow, one step less noise on arrival.
+ */
 export function DailyReportsSection({ projectId }: { projectId: string }) {
   const t = useTranslations('progress');
   const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
 
   const [selectedDprId, setSelectedDprId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const { data, isPending, isError, refetch, isFetching } = useDprs(projectId);
 
   if (selectedDprId) {
@@ -45,7 +57,26 @@ export function DailyReportsSection({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-4">
-      <CreateReportForm projectId={projectId} onCreated={(id) => setSelectedDprId(id)} />
+      <SectionHeader title={t('report.listTitle')}>
+        <Button size="sm" onClick={() => setCreating(true)}>
+          {t('actions.newReport')}
+        </Button>
+      </SectionHeader>
+
+      <Sheet open={creating} onOpenChange={setCreating}>
+        <SheetContent className="p-5 sm:p-6">
+          <SheetTitle>{t('report.newTitle')}</SheetTitle>
+          <div className="mt-5">
+            <CreateReportForm
+              projectId={projectId}
+              onCreated={(id) => {
+                setCreating(false);
+                setSelectedDprId(id);
+              }}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {isPending ? (
         <div role="status" aria-live="polite">
@@ -143,14 +174,13 @@ function CreateReportForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="rounded-panel border border-border bg-surface p-4 sm:p-5" aria-label={t('actions.newReport')}>
-      <h3 className="text-sm font-semibold text-foreground">{t('actions.newReport')}</h3>
+    <form onSubmit={onSubmit} aria-label={t('actions.newReport')}>
       {error ? (
-        <div className="mt-3">
+        <div className="mb-3">
           <Alert variant="error" messages={[error]} />
         </div>
       ) : null}
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2">
         <FormField htmlFor="dpr-date" label={t('report.fields.reportDate')}>
           <Input id="dpr-date" type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} />
         </FormField>
@@ -169,7 +199,7 @@ function CreateReportForm({
           </FormField>
         </div>
       </div>
-      <div className="mt-3">
+      <div className="mt-4">
         <Button type="submit" disabled={create.isPending}>
           {t('actions.newReport')}
         </Button>

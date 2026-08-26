@@ -120,14 +120,32 @@ level. Keep the source of truth honest as the system changes.
 
 ## 5. Navigation model (confirmed, Round 2)
 
-Two levels, no deeper: **Domain → destination** in the global sidebar; **project workspace tabs**
-inside a project. Domain-specific configuration lives inside its domain. This is already built and
-correct — Round 2 refines its *presentation* (one consistent active-state treatment; collapse-to-rail
-with flyouts; a command menu on top), not its structure.
+**Domain → destination** in the global sidebar; **project workspace tabs** inside a project.
+Domain-specific configuration lives inside its domain.
 
-Standing anti-patterns for nav: no third nesting level; no generic "Change status" control anywhere
-(lifecycle is business-action commands — see ADR-019); no decorative sidebar cards that don't do a
-job.
+**Navigation-depth rule (revised 2026-08-26 — supersedes the crude "no third nesting level").**
+The real enemy is *unclear hierarchy*, not depth per se. An information-dense ERP workspace legitimately
+needs local view-switching:
+
+> **Avoid more than two _persistent_ navigation layers within one entity workspace. Contextual
+> view-switching is permitted when the views are peer workflows in one domain. Go deeper only by
+> transitioning to an entity/detail screen — never by stacking another persistent tab bar.**
+
+- **Allowed:** module tabs (level 2) → a *local view switcher* inside a module (Progress: Daily Reports /
+  Work Packages / Verified / Milestones / Performance; Commercial: Overview / Contract / Applications /
+  Billing). One route, in-place swap.
+- **Allowed:** Progress → Work Package **WP-014 detail** (a real entity/detail screen, which may carry its
+  own local nav — that's navigation, not a nested tab-in-tab).
+- **Avoid:** stacking 3+ persistent tab bars (Progress → Work Packages → Active → Labour → Attendance).
+
+**Make the level visually distinct.** Level-2 module tabs use the underline-tab treatment; a **level-3
+local view switcher uses a quiet segmented control** (selected = subtle fill), so the eye reads "still
+inside this module, switching views" rather than "a second global tab bar." Use the shared `ViewSwitcher`,
+not another underline `Tabs`.
+
+Standing anti-patterns for nav: no generic "Change status" control anywhere (lifecycle is business-action
+commands — see ADR-019); no decorative sidebar cards that don't do a job; a level-3 switcher must never
+*look* like the level-2 module tabs.
 
 ---
 
