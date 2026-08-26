@@ -65,7 +65,7 @@ describe('DashboardContent', () => {
     expect(await screen.findByText('No projects yet.')).toBeInTheDocument();
   });
 
-  it('renders KPI cards with correct counts', async () => {
+  it('renders the metric strip with correct counts', async () => {
     vi.mocked(listProjects).mockResolvedValue([
       project({ id: '1', status: ProjectStatus.ACTIVE }),
       project({ id: '2', status: ProjectStatus.ACTIVE }),
