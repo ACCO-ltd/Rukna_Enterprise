@@ -6,7 +6,7 @@ import {
   MeasurementMethod,
   PricingBasis,
 } from '@erp/types';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
@@ -230,6 +230,48 @@ describe('IpcDetail', () => {
 
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('$47,500.00');
     expect(screen.getByText('Net certified')).toBeInTheDocument();
+  });
+
+  describe('summary', () => {
+    it('lists gross, deductions, issued and application as definition rows', async () => {
+      vi.mocked(getIpc).mockResolvedValue(certificate());
+
+      renderDetail();
+
+      const summary = await screen.findByRole('region', { name: 'Summary' });
+      expect(within(summary).getByText('Gross certified')).toBeInTheDocument();
+      expect(within(summary).getByText('$50,000.00')).toBeInTheDocument();
+      expect(within(summary).getByText('Deductions')).toBeInTheDocument();
+      expect(within(summary).getByText('$2,500.00')).toBeInTheDocument();
+      expect(within(summary).getByText('Open application')).toBeInTheDocument();
+    });
+
+    it('does not restate the net certified in the summary — it lives in the header only', async () => {
+      vi.mocked(getIpc).mockResolvedValue(certificate());
+
+      renderDetail();
+
+      const summary = await screen.findByRole('region', { name: 'Summary' });
+      expect(within(summary).queryByText('$47,500.00')).not.toBeInTheDocument();
+    });
+
+    it('renders the notes row only when the certificate carries notes', async () => {
+      vi.mocked(getIpc).mockResolvedValue(certificate({ notes: 'Held pending re-measurement' }));
+
+      renderDetail();
+
+      const summary = await screen.findByRole('region', { name: 'Summary' });
+      expect(within(summary).getByText('Held pending re-measurement')).toBeInTheDocument();
+    });
+
+    it('omits the notes row when there are no notes', async () => {
+      vi.mocked(getIpc).mockResolvedValue(certificate({ notes: null }));
+
+      renderDetail();
+
+      const summary = await screen.findByRole('region', { name: 'Summary' });
+      expect(within(summary).queryByText('Notes')).not.toBeInTheDocument();
+    });
   });
 
   /**

@@ -6,6 +6,9 @@ import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
+  DefinitionList,
+  DefinitionRow,
+  SectionHeader,
   Table,
   TableBody,
   TableCell,
@@ -14,6 +17,7 @@ import {
   TableRow,
   TableScroll,
 } from '@erp/ui';
+import { CaretLeftIcon } from '@phosphor-icons/react';
 
 import { useBoqTree } from '@/features/boq/hooks/use-boq';
 import { fractionToPercent } from '@/features/contracts/contract-terms';
@@ -133,7 +137,7 @@ export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
           href={backHref}
           className="inline-flex min-h-9 items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary focus-visible:rounded"
         >
-          <ChevronStartIcon />
+          <CaretLeftIcon size={14} aria-hidden="true" />
           {t('back')}
         </Link>
       </div>
@@ -195,42 +199,34 @@ export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
         />
       ) : null}
 
-      {/* ── Summary stats ───────────────────────────────────────────────── */}
-      <dl className="grid gap-px overflow-hidden rounded-container border border-border bg-border shadow-e1 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="bg-surface px-5 py-4">
-          <dt className="text-xs font-medium text-muted-foreground">{t('grossHeading')}</dt>
-          <dd className="mt-1.5 text-sm font-semibold tabular-nums text-foreground">
-            <bdi>{formatMoney(ipc.totalCertifiedAmount, currency, locale)}</bdi>
-          </dd>
-        </div>
-        <div className="bg-surface px-5 py-4">
-          <dt className="text-xs font-medium text-muted-foreground">{t('deductionsLabel')}</dt>
-          <dd className="mt-1.5 text-sm font-semibold tabular-nums text-foreground">
-            <bdi>{formatMoney(ipc.totalDeductions, currency, locale)}</bdi>
-          </dd>
-        </div>
-        <div className="bg-surface px-5 py-4">
-          <dt className="text-xs font-medium text-muted-foreground">{t('issued')}</dt>
-          <dd className="mt-1.5 text-sm font-semibold text-foreground">
+      {/* ── Summary ─────────────────────────────────────────────────────────
+          Mixed key-value facts on a hairline definition list, not headline
+          numbers on tiles. The net certified is the header figure and is not
+          restated here. */}
+      <section aria-labelledby="ipc-summary-heading">
+        <SectionHeader id="ipc-summary-heading" title={t('summary')} />
+        <DefinitionList className="mt-3">
+          <DefinitionRow label={t('grossHeading')} numeric>
+            <bdi className="tabular-nums">
+              {formatMoney(ipc.totalCertifiedAmount, currency, locale)}
+            </bdi>
+          </DefinitionRow>
+          <DefinitionRow label={t('deductionsLabel')} numeric>
+            <bdi className="tabular-nums">
+              {formatMoney(ipc.totalDeductions, currency, locale)}
+            </bdi>
+          </DefinitionRow>
+          <DefinitionRow label={t('issued')}>
             {formatDate(ipc.issuedAt, locale) ?? t('notIssued')}
-          </dd>
-        </div>
-        <div className="bg-surface px-5 py-4">
-          <dt className="text-xs font-medium text-muted-foreground">{t('application')}</dt>
-          <dd className="mt-1.5 text-sm font-semibold text-foreground">
+          </DefinitionRow>
+          <DefinitionRow label={t('application')}>
             <Link href={backHref} className="underline-offset-4 hover:underline">
               {t('openApplication')}
             </Link>
-          </dd>
-        </div>
-
-        {ipc.notes ? (
-          <div className="bg-surface px-5 py-4 sm:col-span-2">
-            <dt className="text-xs font-medium text-muted-foreground">{t('notesLabel')}</dt>
-            <dd className="mt-1.5 text-sm text-foreground">{ipc.notes}</dd>
-          </div>
-        ) : null}
-      </dl>
+          </DefinitionRow>
+          {ipc.notes ? <DefinitionRow label={t('notesLabel')}>{ipc.notes}</DefinitionRow> : null}
+        </DefinitionList>
+      </section>
 
       {/* Sprint 4 AR. Renders nothing unless the certificate is effective, which is the only
           state `POST /invoices/from-ipc` accepts. */}
@@ -390,25 +386,5 @@ function IpcItemRow({ item, ipaItemMap, nodeMap, locale, currency }: IpcItemRowP
         )}
       </TableCell>
     </TableRow>
-  );
-}
-
-// ─── Icons ────────────────────────────────────────────────────────────────────
-
-function ChevronStartIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M15 18l-6-6 6-6" />
-    </svg>
   );
 }
