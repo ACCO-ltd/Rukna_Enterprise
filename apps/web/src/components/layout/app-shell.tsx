@@ -4,12 +4,29 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ToastProvider } from '@/providers/toast-provider';
 
+import { CommandMenu } from '@/features/command-menu/command-menu';
+import { toggleCommandMenu } from '@/features/command-menu/command-menu-store';
+
 import { GlobalSidebar } from './global-sidebar';
 import { TopBar } from './top-bar';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const t = useTranslations('platform.shell');
   const [isMenuOpen, setMenuOpen] = useState(false);
+
+  // Global Cmd/Ctrl+K opens the command menu from anywhere in the app. Cmd+K is not a
+  // browser default we need to protect elsewhere, so preventDefault here is enough; the
+  // Radix Dialog handles Esc/overlay dismissal once it is open.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        toggleCommandMenu();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   useEffect(() => {
     if (!isMenuOpen) return;
@@ -84,6 +101,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="mx-auto w-full max-w-[1440px]">{children}</div>
         </main>
       </div>
+
+      {/* Command menu — mounted once, opened by the top-bar chip or Cmd/Ctrl+K */}
+      <CommandMenu />
     </div>
     </ToastProvider>
   );

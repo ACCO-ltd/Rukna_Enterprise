@@ -7,15 +7,29 @@
     "collapseSidebar": "Collapse sidebar",
     "expandSection": "Expand {section}",
     "collapseSection": "Collapse {section}",
-    "helpTitle": "Need help?",
-    "helpDescription": "Contact your administrator",
-    "skipToContent": "Skip to main content",
-    "searchLabel": "Global search",
-    "searchPlaceholder": "Search… (coming soon)",
-    "attentionLabel": "Attention required",
-    "attentionNone": "No items require your attention",
-    "themeSwitchToLight": "Switch to light mode",
-    "themeSwitchToDark": "Switch to dark mode"
+    "skipToContent": "Skip to main content"
+  },
+  "commandMenu": {
+    "title": "Command menu",
+    "triggerLabel": "Search or jump to…",
+    "placeholder": "Search or jump to…",
+    "hintKey": "⌘K",
+    "goTo": "Go to",
+    "actions": "Actions",
+    "empty": "No matches.",
+    "hint": "↑↓ to navigate · Enter to open · Esc to close",
+    "action": {
+      "createProject": "Create project",
+      "newClient": "New client",
+      "newContract": "New contract",
+      "newMaterialRequest": "New material request",
+      "newPurchaseOrder": "New purchase order",
+      "newGoodsReceipt": "New goods receipt",
+      "newReceipt": "New receipt",
+      "newJournal": "New journal",
+      "newBill": "New bill",
+      "newPayment": "New payment"
+    }
   },
   "nav": {
     "dashboard": "Dashboard",
