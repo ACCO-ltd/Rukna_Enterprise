@@ -9,7 +9,8 @@ Read these documents **in order** before making any change or answering any ques
 
 1. `/docs/reference/api-reference.md` — **Every live endpoint, request/response shapes, auth flow, error format. Read this first.**
 2. `/docs/01-capability-matrix.md` — What is actually built, backend vs frontend (authoritative status)
-3. `/docs/reference/frontend-design.md` — **Canonical frontend design plan: navigation, components, build sequence, interaction patterns.**
+3. `/docs/reference/ux-doctrine.md` — **CANONICAL UX doctrine (Round 2): principles, navigation model, composition patterns, content rules, anti-patterns, definition-of-done.** Read this for how the UI should feel and behave.
+   - `/docs/reference/frontend-design.md` — **SUPERSEDED.** Predates the Round-1 subtraction (still describes Exchange Rates, 8-state lifecycle, IPC FX, en/ar). Use only for still-accurate screen-level field lists, verified against controllers.
 4. `/docs/reference/domain-model.md` — Entity definitions, enums, business rules
 5. `/docs/reference/architecture.md` — Stack, module map, Clean Architecture rules
 6. `/docs/reference/tenancy.md` — Multi-tenancy (subdomain), TenantContext
@@ -346,12 +347,13 @@ it into all API client calls. During local development:
 
 ## i18n Rules (MANDATORY)
 
-The platform is bilingual: English + Arabic (RTL).
+The platform is **English only.** Arabic was removed end-to-end (PR #73, 2026-08-20). The `next-intl`
+seam is deliberately kept so strings are never hardcoded — there is one catalogue (`en`) and no RTL.
 
 - Every user-visible string must use `next-intl` — no hardcoded English strings in JSX
-- Arabic is right-to-left — components must not assume left-to-right layout
-- Test every new screen in both `en` and `ar` modes before marking complete
-- The HTML `dir` attribute must reflect the active language
+- Do **not** build a second (`ar`) catalogue or RTL-specific layout
+- Existing `rtl:` / `dir` handling is now dead weight — remove it when you touch a component (as its
+  own pass, not blind inline edits), do not add more
 
 ---
 
