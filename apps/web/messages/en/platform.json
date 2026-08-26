@@ -106,17 +106,13 @@
     "noContractValue": "Not set",
     "viewAll": "View all projects",
     "kpiActive": "On site",
-    "kpiActiveHint": "Mobilizing, active and in closeout",
     "kpiPending": "Pending",
-    "kpiPendingHint": "Draft and awaiting approval",
     "kpiFinished": "Finished",
-    "kpiFinishedHint": "Closed and cancelled",
     "colProject": "Project",
     "colClient": "Client",
     "colStatus": "Status",
     "colValue": "Contract value",
-    "kpiClients": "Clients",
-    "kpiClientsHint": "All registered clients"
+    "kpiClients": "Clients"
   },
   "projects": {
     "title": "Projects",
