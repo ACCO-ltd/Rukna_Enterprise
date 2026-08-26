@@ -1,22 +1,19 @@
 'use client';
 
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { type ReactNode, useEffect, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button } from '@erp/ui';
+import { Alert, Button, DefinitionList, DefinitionRow } from '@erp/ui';
 import {
   ArrowRight,
   AlertTriangle,
-  Building2,
-  CalendarDays,
   Check,
   CircleCheck,
   History,
   Lock,
   LockKeyhole,
-  Users,
 } from 'lucide-react';
 
 import { ApiError } from '@/lib/api-client';
@@ -170,65 +167,34 @@ function Overview({
     locale,
   );
 
-  const groups: Array<{
-    title: string;
-    icon: typeof Building2;
-    rows: Array<{ label: string; value: string | null }>;
-  }> = [
+  // Identity facts the shell metric strip does NOT already carry. Programme, current stage,
+  // contract value and project manager live in the strip and lifecycle above (P2), so they are
+  // deliberately absent here — one summary, not two competing ones. A single hairline section,
+  // no per-fact cards (P1).
+  const mainContractRef =
+    summary?.mainContract?.contractNumber ??
+    (project.commercialModel === 'INTERNAL_CAPITAL' ? t('notApplicable') : null);
+
+  const details: Array<{ label: string; value: string | null }> = [
+    { label: t('client'), value: project.clientName },
+    { label: t('mainContract'), value: mainContractRef },
     {
-      title: t('overviewClient'),
-      icon: Building2,
-      rows: [
-        { label: t('location'), value: project.location ?? null },
-        { label: t('description'), value: project.description },
-        {
-          label: t('commercialModel'),
-          value: tProjects(
-            `create.commercialModel.${project.commercialModel === 'INTERNAL_CAPITAL' ? 'internalCapital' : 'clientContract'}`,
-          ),
-        },
-        { label: t('projectCode'), value: project.code },
-        { label: t('client'), value: project.clientName },
-      ],
+      label: t('commercialModel'),
+      value: tProjects(
+        `create.commercialModel.${project.commercialModel === 'INTERNAL_CAPITAL' ? 'internalCapital' : 'clientContract'}`,
+      ),
     },
     {
-      title: t('overviewSchedule'),
-      icon: CalendarDays,
-      rows: [
-        {
-          label: t('startDate'),
-          value: formatDate(summary?.programme.startDate ?? project.startDate, locale),
-        },
-        {
-          label: t('expectedEnd'),
-          value: formatDate(summary?.programme.expectedEndDate ?? project.expectedEndDate, locale),
-        },
-        summary?.programme.daysRemaining == null
-          ? { label: t('daysRemaining'), value: null }
-          : summary.programme.daysRemaining >= 0
-            ? {
-                label: t('daysRemaining'),
-                value: t('daysCount', { count: summary.programme.daysRemaining }),
-              }
-            : {
-                label: t('daysOverdue'),
-                value: t('daysCount', { count: Math.abs(summary.programme.daysRemaining) }),
-              },
-        { label: t('currentStage'), value: tProjects(`status.${project.status}`) },
-      ],
+      label: tProjects('create.participationModelLabel'),
+      value: project.participationModel
+        ? tProjects(
+            `create.participationModel.${project.participationModel === 'JOINT_VENTURE' ? 'jointVenture' : 'sole'}`,
+          )
+        : null,
     },
-    {
-      title: t('overviewResponsibility'),
-      icon: Users,
-      rows: [
-        { label: t('projectManager'), value: summary?.responsibility.projectManager?.name ?? null },
-        { label: t('teamCount'), value: summary ? String(summary.responsibility.teamCount) : null },
-        {
-          label: t('teamReadiness'),
-          value: summary?.setup.teamReady ? t('teamReady') : t('teamIncomplete'),
-        },
-      ],
-    },
+    { label: t('location'), value: project.location ?? null },
+    { label: t('projectCode'), value: project.code },
+    { label: t('description'), value: project.description },
   ];
 
   return (
@@ -250,64 +216,25 @@ function Overview({
       {summaryError ? <Alert variant="warning" messages={[t('summaryUnavailable')]} /> : null}
 
       <section aria-labelledby="overview-heading">
-        <h2 id="overview-heading" className="sr-only">
-          {t('overview')}
-        </h2>
-        <dl className="grid gap-4 lg:grid-cols-3">
-          {groups.map((group) => {
-            const GroupIcon = group.icon;
-            return (
-              <div
-                key={group.title}
-                className="overflow-hidden rounded-panel border border-border bg-surface"
-              >
-                <div className="flex min-h-12 items-center justify-between border-b border-border px-5">
-                  <div className="flex items-center gap-2 text-body-sm font-semibold text-foreground">
-                    <GroupIcon
-                      size={16}
-                      className="text-muted-foreground"
-                      strokeWidth={1.8}
-                      aria-hidden="true"
-                    />
-                    {group.title}
-                  </div>
-                  {group.title === t('overviewClient') && project.status === 'DRAFT' ? (
-                    <Link
-                      href={`/projects/${project.id}/edit`}
-                      className="text-caption font-medium text-brand-primary hover:underline"
-                    >
-                      {t('editInformation')}
-                    </Link>
-                  ) : group.title === t('overviewResponsibility') ? (
-                    <Link
-                      href={`/projects/${project.id}/members`}
-                      className="text-caption font-medium text-brand-primary hover:underline"
-                    >
-                      {t('viewTeam')}
-                    </Link>
-                  ) : null}
-                </div>
-                <div className="px-5 py-3">
-                  {group.rows.map((row) => (
-                    <div
-                      key={row.label}
-                      className="grid grid-cols-[minmax(7rem,0.8fr)_minmax(0,1.2fr)] gap-4 border-b border-border/70 py-2.5 last:border-b-0"
-                    >
-                      <dt className="text-caption text-muted-foreground">{row.label}</dt>
-                      <dd className="text-end text-body-sm font-medium text-foreground">
-                        {row.value ?? (
-                          <span className="font-normal italic text-muted-foreground/60">
-                            {t('notSet')}
-                          </span>
-                        )}
-                      </dd>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </dl>
+        <SectionHeader id="overview-heading" title={t('projectDetails')}>
+          {project.status === 'DRAFT' ? (
+            <Link
+              href={`/projects/${project.id}/edit`}
+              className="text-caption font-medium text-brand-primary hover:underline"
+            >
+              {t('editInformation')}
+            </Link>
+          ) : null}
+        </SectionHeader>
+        {/* One hairline definition list, two columns on desktop, single-column at 375px — not a
+            card per fact (P1/P2). DefinitionRow renders `—` for a missing value on its own. */}
+        <DefinitionList className="mt-3 grid gap-x-8 sm:grid-cols-2">
+          {details.map((row) => (
+            <DefinitionRow key={row.label} label={row.label}>
+              {row.value}
+            </DefinitionRow>
+          ))}
+        </DefinitionList>
       </section>
 
       <section
@@ -315,6 +242,9 @@ function Overview({
         aria-label={t('commercialCostPosition')}
       >
         {project.status === 'DRAFT' ? null : <ProjectProgressCard projectId={project.id} />}
+        {/* Commercial snapshot keeps its card: it owns a link and a figure the strip does not
+            carry (contract value). Main contract is dropped here — the shell strip and the
+            Project details list already show it, this must not be a third copy (P2). */}
         <div className="overflow-hidden rounded-panel border border-border bg-surface">
           <div className="flex min-h-12 items-center justify-between border-b border-border px-5">
             <h2 className="text-body-sm font-semibold text-foreground">
@@ -331,15 +261,6 @@ function Overview({
           </div>
           <div className="px-5 py-3">
             <dl>
-              <div className="flex items-center justify-between gap-4 border-b border-border/70 py-2.5">
-                <dt className="text-caption text-muted-foreground">{t('mainContract')}</dt>
-                <dd className="text-body-sm font-semibold text-foreground">
-                  {summary?.mainContract?.contractNumber ??
-                    (project.commercialModel === 'INTERNAL_CAPITAL'
-                      ? t('notApplicable')
-                      : t('notSet'))}
-                </dd>
-              </div>
               <div className="flex items-center justify-between gap-4 py-2.5">
                 <dt className="text-caption text-muted-foreground">{t('contractValue')}</dt>
                 <dd className="text-body-sm font-semibold tabular-nums text-foreground">
@@ -406,6 +327,30 @@ function Overview({
           </div>
         </section>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * A section title + hairline rule — the doctrine's default structural unit (§2.1). Used instead
+ * of a bordered card so a group of facts reads as a section, not a box. The optional `children`
+ * slot holds a right-aligned control (an edit link).
+ */
+function SectionHeader({
+  id,
+  title,
+  children,
+}: {
+  id?: string;
+  title: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-border pb-2">
+      <h2 id={id} className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        {title}
+      </h2>
+      {children}
     </div>
   );
 }

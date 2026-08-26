@@ -169,7 +169,17 @@ function ApplicationRow({
         {row.periodTo ? ` - ${formatDate(row.periodTo, locale)}` : ''}
       </TableCell>
       <TableCell className="text-end tabular-nums">{money(row.claimedAmount)}</TableCell>
-      <TableCell>{row.ipcId ?? '-'}</TableCell>
+      {/*
+        A1: the read model returns the effective certificate's raw cuid (`ipcId`) and no human
+        reference — the applications read model carries no `certificateRef`/`certificateNumber`
+        (unlike the per-contract IPC list, which does). Rendering `ipcId` leaked a database id
+        into the CERTIFICATE column. Until the read model exposes a human ref, show the
+        certificate's lifecycle state as its human value when one exists, and `—` when none does
+        — never the cuid (ux-doctrine §3).
+      */}
+      <TableCell>
+        {row.ipcId && row.ipcStatus ? t(`applications.certificate.${row.ipcStatus}`) : '—'}
+      </TableCell>
       <TableCell className="text-end tabular-nums">{money(row.certifiedGross)}</TableCell>
       <TableCell className="text-end tabular-nums">{money(row.deductions)}</TableCell>
       <TableCell className="text-end font-medium tabular-nums">{money(row.certifiedNet)}</TableCell>

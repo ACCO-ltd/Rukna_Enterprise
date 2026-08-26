@@ -94,8 +94,10 @@ search across data waits for a backend search endpoint; navigation does not.)
   micro-label style. Never Title Case.
 - **Buttons are verb-first and specific:** "Approve certificate", "Add BOQ item", "Return for
   changes" — never "OK" / "Submit" / "Yes".
-- **Numbers:** thousands separators, two decimals for money, explicit currency suffix on totals
-  (`184,200.00 USD`), real minus sign (−) for negatives, tabular numerals, right-aligned in tables.
+- **Numbers:** thousands separators, two decimals for money, **currency symbol prefix**
+  (`$4,500,000.00` — decided 2026-08-26). ACCO is USD-only (ADR-024), so `$` is unambiguous and
+  reads lighter than a code suffix; `formatMoney` already does this. Real minus sign (−) for
+  negatives, tabular numerals, right-aligned in tables. Money stays **neutral** — never coloured.
 - **Empty values** render `—`, never blank. IDs/codes in mono (`PO-2214`, `IPC-0088`).
 - **English only.** Arabic was removed end-to-end (PR #73). The `next-intl` seam stays so strings are
   never hardcoded in JSX, but there is one catalogue (`en`) and no RTL requirement. Do not build
