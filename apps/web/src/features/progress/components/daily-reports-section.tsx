@@ -109,12 +109,15 @@ export function DailyReportsSection({ projectId }: { projectId: string }) {
             </TableHeader>
             <TableBody>
               {data.map((dpr) => (
-                <TableRow key={dpr.id}>
+                <TableRow key={dpr.id} className="relative cursor-pointer hover:bg-surface-subtle">
                   <TableCell className="whitespace-nowrap">
+                    {/* Stretched-link pattern: one keyboard-focusable control (this button) with an
+                        absolute overlay, so a click anywhere on the row opens the detail while the
+                        row stays a plain <tr> (not a button) for a11y. */}
                     <button
                       type="button"
                       onClick={() => setSelectedDprId(dpr.id)}
-                      className="-my-3 flex min-h-11 items-center font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+                      className="-my-3 flex min-h-11 items-center font-medium text-foreground underline-offset-4 after:absolute after:inset-0 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
                     >
                       {formatDate(dpr.reportDate, locale)}
                     </button>
@@ -125,7 +128,9 @@ export function DailyReportsSection({ projectId }: { projectId: string }) {
                   <TableCell numeric className="tabular-nums">
                     {dpr.labourCount ?? <span className="text-muted-foreground">—</span>}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">{dpr.preparedBy}</TableCell>
+                  <TableCell className="whitespace-nowrap text-muted-foreground">
+                    {dpr.preparedByName ?? dpr.preparedBy}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

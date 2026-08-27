@@ -20,6 +20,8 @@ type Over = {
   measurements?: unknown[];
   fp?: unknown;
   leafAllocation?: unknown;
+  dprs?: unknown[];
+  users?: unknown[];
 };
 
 function build(over: Over = {}) {
@@ -28,7 +30,8 @@ function build(over: Over = {}) {
     findDpr: jest.fn().mockResolvedValue(
       over.dpr ?? { id: 'dpr-1', status: 'DRAFT', projectId: 'p-1', measurements: [], attachments: [] },
     ),
-    findDprsByProject: jest.fn().mockResolvedValue([]),
+    findDprsByProject: jest.fn().mockResolvedValue(over.dprs ?? []),
+    findUserNamesByIds: jest.fn().mockResolvedValue(over.users ?? []),
     updateDprStatus: jest.fn().mockResolvedValue({ id: 'dpr-1' }),
     addMeasurement: jest.fn().mockResolvedValue({ id: 'm-1' }),
     createAttachment: jest.fn().mockResolvedValue({ id: 'att-1' }),
@@ -301,5 +304,34 @@ describe('ProgressService (ADR-021 MVP)', () => {
     const res = await service.getCollectionProgressSignal(identity, 'p-1');
     expect(res.collectedPercent).toBeNull();
     expect(res.status).toBe('INSUFFICIENT_DATA');
+  });
+
+  it('listDprs: resolves preparedByName for a known preparer and leaves unknown ids undefined', async () => {
+    const { repo, service } = build({
+      dprs: [
+        { id: 'dpr-1', projectId: 'p-1', status: 'DRAFT', preparedBy: 'user-1' },
+        { id: 'dpr-2', projectId: 'p-1', status: 'DRAFT', preparedBy: 'ghost-user' },
+      ],
+      users: [{ id: 'user-1', firstName: 'Ahmed', lastName: 'Shirie' }],
+    });
+    const res = await service.listDprs(identity, 'p-1');
+    expect(res[0].preparedByName).toBe('Ahmed Shirie');
+    expect(res[1].preparedByName).toBeUndefined();
+    // One users query for the whole list (batched), scoped to the tenant.
+    expect(repo.findUserNamesByIds).toHaveBeenCalledTimes(1);
+    expect(repo.findUserNamesByIds).toHaveBeenCalledWith(
+      expect.anything(),
+      'org-1',
+      expect.arrayContaining(['user-1', 'ghost-user']),
+    );
+  });
+
+  it('getDpr: resolves the single report preparedByName', async () => {
+    const { service } = build({
+      dpr: { id: 'dpr-1', status: 'DRAFT', projectId: 'p-1', preparedBy: 'user-1', measurements: [], attachments: [] },
+      users: [{ id: 'user-1', firstName: 'Ahmed', lastName: 'Shirie' }],
+    });
+    const res = await service.getDpr(identity, 'dpr-1');
+    expect(res.preparedByName).toBe('Ahmed Shirie');
   });
 });

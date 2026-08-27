@@ -33,6 +33,23 @@ export class ProgressRepository {
     });
   }
 
+  /**
+   * Batch-resolve users by id, tenant-scoped. Read-side only: the DPR's preparedBy/submittedBy/
+   * approvedBy are plain string columns (not Prisma relations), so the service resolves the id→name
+   * map from these rows. Empty input short-circuits to avoid a needless query.
+   */
+  findUserNamesByIds(
+    prisma: TenantPrisma,
+    organizationId: string,
+    ids: string[],
+  ): Promise<{ id: string; firstName: string; lastName: string }[]> {
+    if (ids.length === 0) return Promise.resolve([]);
+    return prisma.user.findMany({
+      where: { organizationId, id: { in: ids } },
+      select: { id: true, firstName: true, lastName: true },
+    });
+  }
+
   updateDprStatus(
     prisma: TenantPrisma,
     id: string,
