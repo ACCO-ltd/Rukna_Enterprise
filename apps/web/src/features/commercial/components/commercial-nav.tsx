@@ -1,9 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Select, cn } from '@erp/ui';
+import { ViewSwitcher } from '@erp/ui';
 
 export type CommercialTab =
   'overview' | 'contract-security' | 'applications' | 'billing-collection';
@@ -21,50 +20,35 @@ function href(projectId: string, tab: CommercialTab): string {
 }
 
 /**
- * Commercial internal navigation. Desktop shows a compact tab row; on a narrow viewport it
- * collapses to a single stable selector (44px target) so five tabs never wrap or overflow.
- * Variations and Subcontracts are deliberately absent — not "coming soon".
+ * Commercial internal navigation. The four views are a *level-3 local view switch* inside the
+ * Commercial module tab (ux-doctrine §5), so they use the quiet segmented `ViewSwitcher` — NOT
+ * the underline treatment, which is reserved for the level-2 module tabs and would read as a
+ * second global tab bar.
+ *
+ * Unlike Progress (client-side state), Commercial's views are real routes and stay deep-linkable:
+ * we drive `ViewSwitcher` in **link mode** via `renderLink` (next/link), setting
+ * `aria-current="page"` on the active view. The switcher scrolls within itself at 375px, so it
+ * serves mobile too — no separate `<Select>`. Variations and Subcontracts are deliberately
+ * absent — not "coming soon".
  */
 export function CommercialNav({ projectId, active }: { projectId: string; active: CommercialTab }) {
   const t = useTranslations('commercial.tabs');
-  const router = useRouter();
 
   return (
-    <nav aria-label={t('label')} className="border-b border-border">
-      {/* Desktop tabs */}
-      <ul className="hidden gap-1 sm:flex">
-        {TABS.map((tab) => (
-          <li key={tab}>
-            <Link
-              href={href(projectId, tab)}
-              aria-current={tab === active ? 'page' : undefined}
-              className={cn(
-                'inline-flex min-h-[40px] items-center border-b-2 px-3 text-body-sm font-medium transition-colors',
-                tab === active
-                  ? 'border-brand-primary text-brand-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {t(tab)}
-            </Link>
-          </li>
-        ))}
-      </ul>
-
-      {/* Mobile selector */}
-      <div className="py-2 sm:hidden">
-        <Select
-          aria-label={t('label')}
-          value={active}
-          onChange={(e) => router.push(href(projectId, e.target.value as CommercialTab))}
+    <ViewSwitcher
+      aria-label={t('label')}
+      value={active}
+      items={TABS.map((tab) => ({ value: tab, label: t(tab), href: href(projectId, tab) }))}
+      renderLink={({ href: linkHref, active: isActive, className, children, key }) => (
+        <Link
+          key={key}
+          href={linkHref}
+          aria-current={isActive ? 'page' : undefined}
+          className={className}
         >
-          {TABS.map((tab) => (
-            <option key={tab} value={tab}>
-              {t(tab)}
-            </option>
-          ))}
-        </Select>
-      </div>
-    </nav>
+          {children}
+        </Link>
+      )}
+    />
   );
 }

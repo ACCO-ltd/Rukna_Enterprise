@@ -95,3 +95,70 @@ describe('ViewSwitcher', () => {
     expect(onValueChange).toHaveBeenLastCalledWith('reports');
   });
 });
+
+/**
+ * Link mode — when `renderLink` is provided, the switcher is a route nav (deep-linkable), not a
+ * tablist. The ARIA changes with the mode: a `<nav>` of anchors, not `tab` buttons, with the
+ * consumer marking the active link `aria-current="page"`. Commercial relies on this contract.
+ */
+const LINK_ITEMS = [
+  { value: 'overview', label: 'Overview', href: '/projects/p1/commercial' },
+  {
+    value: 'contract-security',
+    label: 'Contract & Security',
+    href: '/projects/p1/commercial/contract-security',
+  },
+  { value: 'applications', label: 'Applications', href: '/projects/p1/commercial/applications' },
+];
+
+function renderLinkSwitcher(value: string) {
+  return render(
+    <ViewSwitcher
+      items={LINK_ITEMS}
+      value={value}
+      aria-label="Commercial views"
+      renderLink={({ href, active, className, children, key }) => (
+        <a
+          key={key}
+          href={href}
+          aria-current={active ? 'page' : undefined}
+          className={className}
+        >
+          {children}
+        </a>
+      )}
+    />,
+  );
+}
+
+describe('ViewSwitcher — link mode', () => {
+  it('renders a labelled nav of links (not a tablist) with the right hrefs', () => {
+    renderLinkSwitcher('overview');
+
+    expect(screen.getByRole('navigation', { name: 'Commercial views' })).toBeInTheDocument();
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('tab')).toHaveLength(0);
+
+    const links = screen.getAllByRole('link');
+    expect(links).toHaveLength(3);
+    expect(screen.getByRole('link', { name: 'Overview' })).toHaveAttribute(
+      'href',
+      '/projects/p1/commercial',
+    );
+    expect(screen.getByRole('link', { name: 'Applications' })).toHaveAttribute(
+      'href',
+      '/projects/p1/commercial/applications',
+    );
+  });
+
+  it('marks only the active link with aria-current="page"', () => {
+    renderLinkSwitcher('contract-security');
+
+    expect(screen.getByRole('link', { name: 'Contract & Security' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(screen.getByRole('link', { name: 'Overview' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: 'Applications' })).not.toHaveAttribute('aria-current');
+  });
+});
