@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 import type { RequestIdentity } from '@erp/types';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -37,11 +38,34 @@ const ACTION_TO_STATUS: Record<MatchResolutionAction, BillMatchStatus> = {
   REQUIRE_RECEIPT_CORRECTION: 'EXCEPTION', // stays blocked until the GRN is corrected + rematched
 };
 
-// ADR-018 (deferred simplification): when no MatchingTolerancePolicy is configured, the control
-// still holds via a flat platform default — mirroring the over-receipt fallback. Tunable per org
-// via a policy; the exact numbers are the open item D (seed flat, review at 6 months).
-const PLATFORM_FALLBACK_PRICE_PCT = new Decimal('5');
-const PLATFORM_FALLBACK_QTY_PCT = new Decimal('5');
+// ADR-018/ADR-024 item D — RESOLVED (Eng Ahmed memorandum, 2026-08-27). When no
+// MatchingTolerancePolicy is configured the control holds via a flat platform default:
+//   price 2%  — a unit-price difference up to 2% auto-clears.
+//   qty   0%  — pay against the accepted/received quantity ONLY; no over-bill beyond the
+//               reference quantity is tolerated (the cumulative-billed-vs-received mechanism below
+//               already enforces this — the 0% simply removes any slack).
+// A MatchingTolerancePolicy (org/PO scope) still overrides these; only the fallback changed
+// (was 5%/5%). Over-receipt tolerance (5%) is a SEPARATE OverReceiptPolicy on goods receipts and
+// is unaffected.
+const PLATFORM_FALLBACK_PRICE_PCT = new Decimal('2');
+const PLATFORM_FALLBACK_QTY_PCT = new Decimal('0');
+
+// ADR-018/ADR-024 item D — the USD-5 tolerance is applied PER INVOICE (whole bill), not per line.
+// After per-line verdicts are derived, a would-be EXCEPTION caused ONLY by price/amount rounding is
+// absorbed into MATCHED_WITH_TOLERANCE when the bill's TOTAL amount variance is within this band.
+// A quantity over-bill is NEVER absorbed by the $5 (accepted-quantity only). Platform constant,
+// overridable later via policy if such a field is added; the per-line figures are always retained
+// for display — the $5 changes the verdict, not the recorded numbers.
+const PER_INVOICE_ROUNDING_ABS = new Decimal('5');
+
+// ADR-018/ADR-024 item D (Q6) — matching-exception approval authority by bill amount. Reuses ACCO's
+// existing finance threshold (the same $1,000 boundary as the DOA value bands, acco-value-bands.ts):
+// the Finance ladder's middle tier ("Finance Manager" in the memo = FINANCE_OFFICER in the ACCO role
+// registry) may approve an exception when the bill total ≤ USD 1,000; above that requires CFO. No new
+// approval-chain binding is introduced — the rule is enforced directly against the approver's roles.
+const EXCEPTION_APPROVAL_CFO_THRESHOLD = new Decimal('1000');
+const ROLE_CFO = 'CFO';
+const ROLE_CEO = 'CEO'; // apex approver — above CFO, so also authorised
 
 @Injectable()
 export class BillMatchingService {
@@ -185,7 +209,26 @@ export class BillMatchingService {
     const anyVariance = matchLines.some(
       l => l.withinTolerance && (!l.priceVariance.isZero() || !l.quantityVariance.isZero() || !l.amountVariance.isZero()),
     );
-    const finalStatus = anyException ? 'EXCEPTION' : anyVariance ? 'MATCHED_WITH_TOLERANCE' : 'MATCHED';
+
+    // ADR-018/ADR-024 item D — per-invoice USD-5 rounding absorb (Q4). Applied to the WHOLE bill, not
+    // per line: sum the line amount variances; if a would-be exception is caused ONLY by price/amount
+    // rounding (every line's quantity is within tolerance — no over-bill on the accepted quantity) and
+    // the bill's total amount variance is within USD 5, absorb it into MATCHED_WITH_TOLERANCE. A
+    // quantity over-bill is NEVER absorbed by the $5 (Q2: accepted-quantity only), regardless of the
+    // dollar size. The per-line variance figures are retained unchanged — only the verdict moves.
+    const totalAmountVariance = matchLines.reduce((s, l) => s.add(l.amountVariance), new Decimal(0));
+    const allQuantitiesWithinTolerance = matchLines.every(l => l.quantityWithinTolerance);
+    const roundingAbsorb =
+      anyException &&
+      allQuantitiesWithinTolerance &&
+      totalAmountVariance.abs().lessThanOrEqualTo(PER_INVOICE_ROUNDING_ABS);
+
+    const finalStatus =
+      anyException && !roundingAbsorb
+        ? 'EXCEPTION'
+        : anyVariance || roundingAbsorb
+          ? 'MATCHED_WITH_TOLERANCE'
+          : 'MATCHED';
 
     await this.repo.createOrReplace(prisma, billId, matchType, matchLines);
     await this.repo.updateStatus(prisma, billId, finalStatus, {
@@ -197,6 +240,24 @@ export class BillMatchingService {
     return this.repo.findByBillId(prisma, billId);
   }
 
+  // ADR-018/ADR-024 item D (Q6) — exception-approval authority by bill amount. The Finance ladder's
+  // middle tier ("Finance Manager" per the memo = FINANCE_OFFICER in ACCO's role registry) may
+  // approve a matching exception only when the bill total is within EXCEPTION_APPROVAL_CFO_THRESHOLD;
+  // above that requires CFO (the CEO apex is also authorised). Enforced directly against the
+  // approver's roles — the same $1,000 boundary ACCO's DOA value bands already use — rather than a
+  // new governance binding. Throws 403 with a clear message when a sub-CFO approver exceeds the band.
+  private assertApprovalAuthority(identity: RequestIdentity, billTotal: Decimal): void {
+    if (billTotal.lessThanOrEqualTo(EXCEPTION_APPROVAL_CFO_THRESHOLD)) return;
+    const hasCfoAuthority = identity.roles.includes(ROLE_CFO) || identity.roles.includes(ROLE_CEO);
+    if (!hasCfoAuthority) {
+      throw new ForbiddenException(
+        `Matching exceptions above USD ${EXCEPTION_APPROVAL_CFO_THRESHOLD.toFixed(0)} require CFO approval — ` +
+          `this bill total is USD ${billTotal.toFixed(2)}. A Finance Manager can approve only up to ` +
+          `USD ${EXCEPTION_APPROVAL_CFO_THRESHOLD.toFixed(0)}.`,
+      );
+    }
+  }
+
   async approveException(identity: RequestIdentity, billId: string, dto: ApproveExceptionDto) {
     const prisma = this.tenancy.getClient();
     const match = await this.repo.findByBillId(prisma, billId);
@@ -204,6 +265,11 @@ export class BillMatchingService {
     if (match.status !== 'EXCEPTION' && match.status !== 'MATCHED_WITH_TOLERANCE') {
       throw new ConflictException(`Match status is ${match.status} — no exception to approve`);
     }
+
+    // ADR-018/ADR-024 item D — authority by amount: FM ≤ USD 1,000, CFO above.
+    const billTotal = await this.repo.findBillTotal(prisma, billId);
+    if (!billTotal) throw new NotFoundException(`Supplier bill ${billId} not found`);
+    this.assertApprovalAuthority(identity, new Decimal(billTotal));
 
     // Backward-compatible free-text approval — recorded as a structured OTHER/APPROVE resolution.
     await this.repo.updateStatus(prisma, billId, 'APPROVED_EXCEPTION', {
@@ -236,6 +302,15 @@ export class BillMatchingService {
 
     const action = REASON_TO_ACTION[dto.reason];
     const newStatus = ACTION_TO_STATUS[action];
+
+    // ADR-018/ADR-024 item D — authority by amount applies to a resolution that CLEARS the bill toward
+    // posting (APPROVE → APPROVED_EXCEPTION). DISPUTE and the REQUIRE_* paths keep the bill blocked and
+    // are not an authorization to pay, so they carry no amount band.
+    if (action === 'APPROVE') {
+      const billTotal = await this.repo.findBillTotal(prisma, billId);
+      if (!billTotal) throw new NotFoundException(`Supplier bill ${billId} not found`);
+      this.assertApprovalAuthority(identity, new Decimal(billTotal));
+    }
 
     await this.repo.updateStatus(prisma, billId, newStatus, {
       approvedBy: identity.userId,

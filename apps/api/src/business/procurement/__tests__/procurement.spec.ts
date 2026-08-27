@@ -573,10 +573,14 @@ test('T11 — Bill with EXCEPTION status is blocked from posting', async () => {
     svc.supplierBillService.post(identity(env), { billId: bill.id, apAccountCode: 'AP-PROC' }),
   ).rejects.toThrow(/posting blocked/i);
 
-  // After approving exception the matchStatus should update
-  await svc.billMatchingService.approveException(identity(env), bill.id, {
-    approvalReason: 'CEO approved variance',
-  });
+  // After approving exception the matchStatus should update. This USD 50,000 bill is above the
+  // USD 1,000 Finance-Manager ceiling (ADR-018/024 item D, Q6), so the approver needs CFO/CEO
+  // authority — which the test's own "CEO approved variance" intent already reflects.
+  await svc.billMatchingService.approveException(
+    { ...identity(env), roles: [...identity(env).roles, 'CEO'] },
+    bill.id,
+    { approvalReason: 'CEO approved variance' },
+  );
 
   const updated = await prisma.supplierBill.findUniqueOrThrow({ where: { id: bill.id } });
   expect(updated.matchStatus).toBe('APPROVED_EXCEPTION');

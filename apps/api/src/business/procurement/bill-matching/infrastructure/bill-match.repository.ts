@@ -189,6 +189,16 @@ export class BillMatchRepository {
     return agg._sum.billedQuantity;
   }
 
+  // ADR-018/ADR-024 item D — the bill's total, used to route exception-approval authority (FM ≤ USD
+  // 1,000, CFO above). The same figure the posting gate and the DOA bands use.
+  async findBillTotal(prisma: TenantPrisma, billId: string): Promise<Decimal | null> {
+    const bill = await prisma.supplierBill.findUnique({
+      where: { id: billId },
+      select: { totalAmount: true },
+    });
+    return bill?.totalAmount ?? null;
+  }
+
   updateBillMatchStatus(prisma: TenantPrisma, billId: string, matchStatus: string) {
     return prisma.supplierBill.update({
       where: { id: billId },
