@@ -12,6 +12,20 @@ is built. -->
 
 # Variations and Change Orders: the VariationOrder aggregate, pending-vs-approved contract value, and separately-identifiable scope through the certify→invoice chain
 
+> **Phase 1 implemented (2026-08-27).** The `VariationOrder` aggregate + guarded-command lifecycle
+> (DRAFT → PENDING_INTERNAL → INTERNAL_APPROVED → CLIENT_APPROVED, + REJECTED/WITHDRAWN) and the
+> derived Original/Approved/Governing/Pending contract value are built in `apps/api`
+> (`business/construction/variations/`) + `@erp/types`, per
+> `docs/reference/variations-implementation-plan.md` Phase 1. Delivered:
+> CONST-VAR-001/-002/-003/-004/-005/-006/-006a/-010/-012. Internal approval routes through
+> `CommandGovernanceService.gateStateTransition` on entityType `VariationOrder`, amount-banded on
+> `|net price|`, with the band set seeded **inactive** (`acco-value-bands.ts` → `accoVariationOrderBands`).
+> `Contract.contractValue` is **unchanged** (derived, never mutated). Client-approval evidence is a
+> **provisional** payload (`clientApprovalReference` + optional note) pending **OQ-4** — see the
+> `TODO(OQ-4)` in `variation-order.service.ts`. Downstream (CONST-VAR-007/-008/-009/-011: BOQ
+> scope-in, IPA/IPC/invoice tagging, Extension-of-Time, at-risk routes) is **not** built — Phases 2–5.
+> Status remains **proposed** (the ADR is design-only; this note records the build progress).
+
 ## Context
 
 Almost no ACCO project is built exactly as the original signed contract. Part-way through, the

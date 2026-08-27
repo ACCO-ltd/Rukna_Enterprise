@@ -9,6 +9,7 @@ import {
 import {
   accoPurchaseOrderBands,
   accoSupplierPaymentBands,
+  accoVariationOrderBands,
   type ValueBand,
 } from './acco-value-bands.js';
 import { accoApprovalChains, type ApprovalChain } from './acco-lifecycle-chains.js';
@@ -460,6 +461,16 @@ async function seedProcurementValueBands(
     toState: 'APPROVED',
     transactionType: WorkflowTransactionType.SUPPLIER_PAYMENT,
     bands: accoSupplierPaymentBands(),
+  });
+  // ADR-026 CONST-VAR-010 — VariationOrder internal approval, banded on |net price|. Seeded
+  // INACTIVE (no active binding = the gate proceeds; backward-compatible). entityType is the
+  // free-form 'VariationOrder' string — no enum migration.
+  await seedBandSet(prisma, organizationId, {
+    entityType: 'VariationOrder',
+    fromState: 'PENDING_INTERNAL',
+    toState: 'INTERNAL_APPROVED',
+    transactionType: WorkflowTransactionType.VARIATION,
+    bands: accoVariationOrderBands(),
   });
 }
 

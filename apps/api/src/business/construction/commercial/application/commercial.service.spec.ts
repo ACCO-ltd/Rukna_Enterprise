@@ -46,6 +46,7 @@ function build(overrides: {
   boqVersionNumber?: number | null;
   applicationCount?: number;
   installments?: unknown;
+  variationInputs?: unknown;
 }) {
   const repo = {
     findMainContract: jest
@@ -63,7 +64,16 @@ function build(overrides: {
   };
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
   const tenancy = { getClient: () => ({}) };
-  const service = new CommercialService(tenancy as never, projectAccess as never, repo as never);
+  // ADR-026: the commercial summary now derives contract value from the VO set. Default to none.
+  const variationRepo = {
+    findValuationInputs: jest.fn().mockResolvedValue(overrides.variationInputs ?? []),
+  };
+  const service = new CommercialService(
+    tenancy as never,
+    projectAccess as never,
+    repo as never,
+    variationRepo as never,
+  );
   return { repo, service };
 }
 
@@ -129,9 +139,53 @@ describe('CommercialService.getSummary', () => {
     const { service } = build({ contract: null });
     const res = await service.getSummary(financeIdentity, 'p-1');
     expect(res.mainContract).toBeNull();
+    expect(res.contractValue).toBeNull();
     expect(res.metrics.contractValue.state).toBe('UNAVAILABLE');
     expect(res.metrics.certifiedGross.state).toBe('UNAVAILABLE');
     expect(res.attention.map((a) => a.kind)).toContain('NO_MAIN_CONTRACT');
+  });
+
+  describe('ADR-026 — derived Original/Approved/Governing/Pending contract value', () => {
+    // Each VO is (status, lines[amount]); net price is Σ amount.
+    const variationInputs = [
+      { id: 'v1', status: 'CLIENT_APPROVED', lines: [{ amount: new Decimal('50000') }] },
+      { id: 'v2', status: 'CLIENT_APPROVED', lines: [{ amount: new Decimal('-20000') }] }, // omission
+      { id: 'v3', status: 'INTERNAL_APPROVED', lines: [{ amount: new Decimal('30000') }] },
+      { id: 'v4', status: 'PENDING_INTERNAL', lines: [{ amount: new Decimal('10000') }] },
+      { id: 'v5', status: 'DRAFT', lines: [{ amount: new Decimal('99999') }] },
+      { id: 'v6', status: 'REJECTED', lines: [{ amount: new Decimal('99999') }] },
+    ];
+
+    it('governing = original + Σ client-approved; pending sums PENDING+INTERNAL only; original untouched', async () => {
+      const { service } = build({ variationInputs });
+      const res = await service.getSummary(financeIdentity, 'p-1');
+      expect(res.contractValue).toEqual({
+        originalContractValue: '1000000.00',
+        approvedVariationsTotal: '30000.00', // 50000 - 20000
+        governingContractValue: '1030000.00',
+        pendingVariations: '40000.00', // 30000 + 10000
+      });
+      // The immutable original metric card is unchanged by variations.
+      expect(res.mainContract?.contractValue).toBe('1000000');
+    });
+
+    it('withholds the derived figures without financial visibility', async () => {
+      const { service } = build({ variationInputs });
+      const res = await service.getSummary(noFinanceIdentity, 'p-1');
+      expect(res.contractValue).toEqual({
+        originalContractValue: null,
+        approvedVariationsTotal: null,
+        governingContractValue: null,
+        pendingVariations: null,
+      });
+    });
+
+    it('with no variations, governing = original and pending = 0', async () => {
+      const { service } = build({ variationInputs: [] });
+      const res = await service.getSummary(financeIdentity, 'p-1');
+      expect(res.contractValue?.governingContractValue).toBe('1000000.00');
+      expect(res.contractValue?.pendingVariations).toBe('0.00');
+    });
   });
 
   it('computes certified, invoiced, received and outstanding from posted AR (CONST-COM-004)', async () => {

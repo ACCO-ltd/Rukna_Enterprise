@@ -18,6 +18,7 @@ function summary(overrides: Partial<CommercialSummaryResponse> = {}): Commercial
     projectId: 'p-1',
     currency: 'USD',
     financialsVisible: true,
+    contractValue: null,
     mainContract: {
       id: 'c-1',
       contractNumber: 'CN-2026-001',
