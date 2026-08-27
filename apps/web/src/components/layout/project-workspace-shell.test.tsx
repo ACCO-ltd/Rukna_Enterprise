@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { ProjectStatus } from '@erp/types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -187,5 +187,59 @@ describe('ProjectWorkspaceShell', () => {
     expect(screen.queryByText('Programme')).not.toBeInTheDocument();
     // Identity and lifecycle stay: losing those would be losing context, not decluttering.
     expect(screen.getByRole('heading', { name: 'Baraka Tower' })).toBeInTheDocument();
+  });
+
+  /**
+   * The lifecycle is a compact inline stepper: every stage renders on one row as a dot +
+   * label, and the semantics are carried by colour — completed (success), current (brand),
+   * upcoming (muted). The project here is ACTIVE, so Preparation is complete, Active is the
+   * current step, and the remaining stages are upcoming.
+   */
+  it('renders the lifecycle stepper with every stage and marks the current one', () => {
+    renderWithProviders(
+      <ProjectWorkspaceShell id="project-1">
+        <p>Workspace content</p>
+      </ProjectWorkspaceShell>,
+    );
+
+    const stepper = screen.getByRole('list', { name: 'Current stage' });
+    const steps = within(stepper).getAllByRole('listitem');
+    expect(steps.map((step) => step.textContent)).toEqual([
+      'Preparation',
+      'Active',
+      'Practical completion',
+      'Closeout',
+      'Closed',
+    ]);
+
+    // The current stage (ACTIVE) is announced as the current step and coloured with the brand.
+    const active = within(stepper).getByText('Active');
+    expect(active).toHaveClass('text-brand-primary');
+    expect(active.closest('[aria-current="step"]')).not.toBeNull();
+
+    // A passed stage carries the success colour, not the brand.
+    const preparation = within(stepper).getByText('Preparation');
+    expect(preparation).toHaveClass('text-success');
+
+    // An upcoming stage is muted.
+    const closed = within(stepper).getByText('Closed');
+    expect(closed).toHaveClass('text-muted-foreground');
+  });
+
+  it('drops the lifecycle stepper for a cancelled project', () => {
+    useProject.mockReturnValue({
+      data: { ...project, status: ProjectStatus.CANCELLED },
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    renderWithProviders(
+      <ProjectWorkspaceShell id="project-1">
+        <p>Workspace content</p>
+      </ProjectWorkspaceShell>,
+    );
+
+    expect(screen.queryByRole('list', { name: 'Current stage' })).not.toBeInTheDocument();
   });
 });

@@ -136,7 +136,7 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
     <div>
       <nav
         aria-label={t('workspace.breadcrumbLabel')}
-        className="mb-4 flex min-h-8 items-center gap-2 text-body-sm text-muted-foreground"
+        className="mb-3 flex min-h-8 items-center gap-2 text-body-sm text-muted-foreground"
       >
         <Link href="/projects" className="hover:text-foreground">
           {t('title')}
@@ -155,8 +155,8 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
         <span className="font-medium text-foreground">{activeCrumb}</span>
       </nav>
 
-      <section className="mb-5 overflow-hidden border-y border-border bg-surface">
-        <div className="px-1 py-4 sm:px-4 sm:py-5">
+      <section className="mb-4 overflow-hidden border-y border-border bg-surface">
+        <div className="px-1 py-3 sm:px-4 sm:py-4">
           {projectQuery.isPending ? (
             <div className="space-y-3" role="status" aria-label={t('workspace.loadingProject')}>
               <div className="h-12 w-12 animate-pulse rounded-panel bg-muted" />
@@ -166,9 +166,9 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
           ) : project ? (
             <>
               <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="flex min-w-0 items-start gap-3.5">
-                  <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-panel border border-border bg-surface-subtle text-foreground">
-                    <Building2 size={25} strokeWidth={1.8} aria-hidden="true" />
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-panel border border-border bg-surface-subtle text-foreground">
+                    <Building2 size={20} strokeWidth={1.8} aria-hidden="true" />
                   </span>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
@@ -177,35 +177,43 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
                       </h1>
                       <ProjectStatusBadge status={project.status} />
                     </div>
-                    <p className="mt-1 text-body-sm text-muted-foreground">
-                      {project.code} {' / '}{' '}
-                      {t(
-                        `create.commercialModel.${project.commercialModel === 'INTERNAL_CAPITAL' ? 'internalCapital' : 'clientContract'}`,
-                      )}
-                    </p>
-                    {project.clientName || project.location ? (
-                      <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-caption text-muted-foreground">
-                        {project.location ? (
-                          <span className="inline-flex items-center gap-1.5">
-                            <MapPin size={15} aria-hidden="true" />
-                            {project.location}
-                          </span>
-                        ) : null}
-                        {project.clientName ? (
-                          <span className="inline-flex items-center gap-1.5">
-                            <UserRound size={15} aria-hidden="true" />
+                    {/* One meta line: CODE · model · client · location, `·`-separated, empties
+                        dropped. Previously a `code / model` line plus a separate location·client
+                        caption row — two rows collapsed to one to reclaim vertical space. */}
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-body-sm text-muted-foreground">
+                      <span>{project.code}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>
+                        {t(
+                          `create.commercialModel.${project.commercialModel === 'INTERNAL_CAPITAL' ? 'internalCapital' : 'clientContract'}`,
+                        )}
+                      </span>
+                      {project.clientName ? (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span className="inline-flex items-center gap-1">
+                            <UserRound size={14} aria-hidden="true" />
                             {project.clientName}
                           </span>
-                        ) : null}
-                      </div>
-                    ) : null}
+                        </>
+                      ) : null}
+                      {project.location ? (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span className="inline-flex items-center gap-1">
+                            <MapPin size={14} aria-hidden="true" />
+                            {project.location}
+                          </span>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
                 <div id="project-header-actions" className="flex items-center" />
               </div>
 
               {project.status !== ProjectStatus.CANCELLED && stageIndex >= 0 ? (
-                <div className="mt-5 overflow-x-auto border-t border-border px-1 pt-4 [-webkit-overflow-scrolling:touch] sm:px-3">
+                <div className="mt-3 overflow-x-auto [-webkit-overflow-scrolling:touch]">
                   <LifecycleStrip stages={LIFECYCLE_STAGES} current={stageIndex} t={t} />
                 </div>
               ) : null}
@@ -395,7 +403,7 @@ function WorkspaceLink({
       href={href}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'inline-flex min-h-12 items-center gap-2 border-b-2 px-4 text-body-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
+        'inline-flex min-h-11 items-center gap-2 border-b-2 px-4 text-body-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
         active
           ? 'border-brand-primary text-brand-primary'
           : 'border-transparent text-muted-foreground hover:text-foreground',
@@ -414,74 +422,68 @@ interface LifecycleStripProps {
 }
 
 function LifecycleStrip({ stages, current, t }: LifecycleStripProps) {
+  // A single-line inline stepper: dot + label on the same line, thin connectors between
+  // stages. The parent scrolls this row on narrow screens (overflow-x-auto) so it never
+  // wraps and never pushes the page — this one row serves mobile too, replacing the old
+  // stacked w-24 columns and the separate sm:hidden current/prev/next summary.
+  //
+  // Green for stages already passed, blue for the one in progress, grey for the rest.
+  // The whole strip used to be brand blue up to the current stage, which meant the
+  // colour said "brand" rather than "done" — and blue is the interactive colour
+  // everywhere else in the product. See the semantics table in frontend-theme.md.
   return (
-    <>
-      <div className="grid gap-3 sm:hidden">
-        <div>
-          <p className="text-micro font-semibold uppercase text-muted-foreground">
-            {t('workspace.currentStage')}
-          </p>
-          <p className="mt-1 text-body-sm font-semibold text-brand-primary">
-            {t(`status.${stages[current]}`)}
-          </p>
-        </div>
-        <div className="flex justify-between gap-4 text-caption text-muted-foreground">
-          <span>{current > 0 ? t(`status.${stages[current - 1]}`) : ''}</span>
-          <span>{current < stages.length - 1 ? t(`status.${stages[current + 1]}`) : ''}</span>
-        </div>
-      </div>
-      {/* Green for stages already passed, blue for the one in progress, grey for the rest.
-          The whole strip used to be brand blue up to the current stage, which meant the
-          colour said "brand" rather than "done" — and blue is the interactive colour
-          everywhere else in the product. See the semantics table in frontend-theme.md. */}
-      <div className="hidden min-w-max items-start sm:flex">
-        {stages.map((stage, index) => {
-          const complete = index < current;
-          const active = index === current;
+    <ol
+      aria-label={t('workspace.currentStage')}
+      className="flex min-w-max items-center gap-2"
+    >
+      {stages.map((stage, index) => {
+        const complete = index < current;
+        const active = index === current;
+        const label = t(`status.${stage}`);
 
-          return (
-            <div key={stage} className="flex items-start">
-              <div className="flex w-24 flex-col items-center gap-1.5 lg:w-28">
-                <div
-                  title={t(`status.${stage}`)}
-                  className={cn(
-                    'flex h-5 w-5 items-center justify-center rounded-full',
-                    active && 'bg-brand-primary ring-4 ring-brand-primary/15',
-                    complete && 'bg-success',
-                    !complete && !active && 'border border-border bg-surface',
-                  )}
-                >
-                  {complete ? (
-                    <Check size={11} strokeWidth={3} className="text-white" aria-hidden="true" />
-                  ) : null}
-                  {active ? (
-                    <span className="h-1.5 w-1.5 rounded-full bg-white" aria-hidden="true" />
-                  ) : null}
-                </div>
-                <span
-                  className={cn(
-                    'text-center text-micro font-medium leading-4',
-                    active && 'text-brand-primary',
-                    complete && 'text-success',
-                    !complete && !active && 'text-muted-foreground',
-                  )}
-                >
-                  {t(`status.${stage}`)}
-                </span>
-              </div>
-              {index < stages.length - 1 ? (
-                <div
-                  className={cn(
-                    'mt-2.5 h-px w-4 lg:w-6',
-                    // The connector belongs to the stage behind it: green once passed.
-                    complete ? 'bg-success' : 'bg-border',
-                  )}
-                />
-              ) : null}
+        return (
+          <li key={stage} className="flex shrink-0 items-center gap-2">
+            <div className="flex items-center gap-1.5" aria-current={active ? 'step' : undefined}>
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'flex h-4 w-4 shrink-0 items-center justify-center rounded-full',
+                  active && 'bg-brand-primary ring-4 ring-brand-primary/15',
+                  complete && 'bg-success',
+                  !complete && !active && 'border border-border bg-surface',
+                )}
+              >
+                {complete ? (
+                  <Check size={10} strokeWidth={3} className="text-white" aria-hidden="true" />
+                ) : null}
+                {active ? (
+                  <span className="h-1 w-1 rounded-full bg-white" aria-hidden="true" />
+                ) : null}
+              </span>
+              <span
+                className={cn(
+                  'whitespace-nowrap text-caption font-medium leading-none',
+                  active && 'font-semibold text-brand-primary',
+                  complete && 'text-success',
+                  !complete && !active && 'text-muted-foreground',
+                )}
+              >
+                {label}
+              </span>
             </div>
-          );
-        })}
-      </div>
-    </>
+            {index < stages.length - 1 ? (
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'h-px w-5 shrink-0 lg:w-8',
+                  // The connector belongs to the stage behind it: green once passed.
+                  complete ? 'bg-success' : 'bg-border',
+                )}
+              />
+            ) : null}
+          </li>
+        );
+      })}
+    </ol>
   );
 }
