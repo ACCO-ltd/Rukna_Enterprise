@@ -5,6 +5,8 @@ import { WorkflowsModule } from '../../../platform/workflows/workflows.module.js
 import { AuditLogsModule } from '../../../platform/audit-logs/audit-logs.module.js';
 import { VariationOrderPrismaRepository } from './infrastructure/variation-order-prisma.repository.js';
 import { VariationOrderService } from './application/variation-order.service.js';
+import { ExtensionOfTimePrismaRepository } from './infrastructure/extension-of-time-prisma.repository.js';
+import { ExtensionOfTimeService } from './application/extension-of-time.service.js';
 import { VariationsController } from './presentation/variations.controller.js';
 
 /**
@@ -14,7 +16,12 @@ import { VariationsController } from './presentation/variations.controller.js';
  */
 @Module({
   imports: [TenancyModule, WorkflowsModule, AuditLogsModule],
-  providers: [VariationOrderPrismaRepository, VariationOrderService],
+  providers: [
+    VariationOrderPrismaRepository,
+    VariationOrderService,
+    ExtensionOfTimePrismaRepository,
+    ExtensionOfTimeService,
+  ],
   controllers: [VariationsController],
   exports: [VariationOrderPrismaRepository],
 })

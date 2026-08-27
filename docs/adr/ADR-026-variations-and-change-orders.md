@@ -26,6 +26,27 @@ is built. -->
 > scope-in, IPA/IPC/invoice tagging, Extension-of-Time, at-risk routes) is **not** built — Phases 2–5.
 > Status remains **proposed** (the ADR is design-only; this note records the build progress).
 
+> **Phase 4 implemented (2026-08-27).** The **Extension-of-Time** command (CONST-VAR-009) is built in
+> `apps/api` (`business/construction/variations/` — beside the VO work) + `@erp/types`, per
+> `docs/reference/variations-implementation-plan.md` Phase 4. A new **`ExtensionOfTime`** aggregate
+> records the audited history of changes to a Contract's `expectedEndDate`: `previousEndDate` /
+> `newEndDate` / derived `grantedDays` (day-diff previous→new; **null** when there was no previous
+> date) / `reason` / `grantedBy` / `grantedAt`, plus an implicit many-to-many to `VariationOrder`
+> (cited VOs are **justification, not effect**). `POST /contracts/:id/extension-of-time` is a guarded
+> command (reuses `contractsManage` — no new permission): it asserts membership + tenancy, **guards
+> the contract state** (live only — ACTIVE / FINAL_ACCOUNT_PENDING; a terminal or not-yet-executed
+> contract is rejected), **validates every cited VO belongs to the contract** (400 otherwise), and in
+> one `$transaction` captures the previous date, **updates `Contract.expectedEndDate` to the supplied
+> `newEndDate`** (accounting-date rule — the supplied date, not `new Date()`), writes the immutable
+> `ExtensionOfTime` row, and records a `CONTRACT_EXPECTED_END_DATE_EXTENDED` business audit event
+> (old→new + reason + actor). `GET /contracts/:id/extension-of-time` returns the history newest-first.
+> The command is **explicit and NEVER triggered by VO approval**: a VO's `proposedTimeImpactDays` is
+> only justification the user reads and is **never auto-applied** — the date moves only by the
+> supplied `newEndDate`. This is a guarded command via permission + audit only; there is deliberately
+> **no DOA governance binding** (ADR-026 governs only VO internal approval) — governing the EoT is a
+> possible later refinement if Eng Ahmed requires it. `Contract.contractValue` and every downstream
+> table are **untouched**. Phases 2/3/5 remain unbuilt. Status remains **proposed**.
+
 ## Context
 
 Almost no ACCO project is built exactly as the original signed contract. Part-way through, the

@@ -1283,3 +1283,52 @@ export interface VariationOrderListResponse {
   contractId: string;
   variations: VariationOrderListItem[];
 }
+
+// ─── Extension of Time (ADR-026 CONST-VAR-009, Variations Phase 4) ───────────────
+
+/** A cited VariationOrder reference on an Extension of Time — justification, not effect. */
+export interface ExtensionOfTimeCitedVariationOrder {
+  id: string;
+  reference: string;
+  status: `${VariationOrderStatus}`;
+}
+
+/**
+ * ADR-026 CONST-VAR-009 — one Extension-of-Time act: an audited change to the Contract's contractual
+ * completion date. The date only ever moves through this explicit human command, never automatically
+ * on VariationOrder approval. `previousEndDate` is the date before the act (null if the contract had
+ * none); `newEndDate` is the new contractual date it set (the effective "as of" date). `grantedDays`
+ * is the derived day-diff previous→new, null when there was no previous date to diff against. Cited
+ * VOs are the justification the actor referenced, not the cause of the change.
+ */
+export interface ExtensionOfTimeResponse {
+  id: string;
+  contractId: string;
+  previousEndDate: string | null;
+  newEndDate: string;
+  grantedDays: number | null;
+  reason: string;
+  citedVariationOrders: ExtensionOfTimeCitedVariationOrder[];
+  grantedBy: string;
+  grantedAt: string;
+  createdAt: string;
+}
+
+/** The Extension-of-Time history for a contract, newest first. */
+export interface ExtensionOfTimeListResponse {
+  contractId: string;
+  /** The contract's current contractual completion date (reflects the latest EoT), for convenience. */
+  currentEndDate: string | null;
+  extensions: ExtensionOfTimeResponse[];
+}
+
+/**
+ * The POST /contracts/:id/extension-of-time command payload. `newEndDate` is the supplied effective
+ * date (accounting-date rule — not `new Date()`); `reason` is required; `variationOrderIds` optionally
+ * cites VOs on this contract as justification.
+ */
+export interface GrantExtensionOfTimeRequest {
+  newEndDate: string;
+  reason: string;
+  variationOrderIds?: string[];
+}

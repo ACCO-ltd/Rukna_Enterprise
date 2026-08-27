@@ -18,6 +18,8 @@ import { RequirePermissions } from '../../../../common/decorators/require-permis
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { VariationOrderService } from '../application/variation-order.service.js';
+import { ExtensionOfTimeService } from '../application/extension-of-time.service.js';
+import { GrantExtensionOfTimeDto } from './dto/grant-extension-of-time.dto.js';
 import { CreateVariationDto } from './dto/create-variation.dto.js';
 import { UpdateVariationDto } from './dto/update-variation.dto.js';
 import { AddVariationLineDto, UpdateVariationLineDto } from './dto/variation-line.dto.js';
@@ -41,7 +43,10 @@ import {
 @RequirePermissions(PERMISSIONS.contractsView)
 @Controller()
 export class VariationsController {
-  constructor(private readonly service: VariationOrderService) {}
+  constructor(
+    private readonly service: VariationOrderService,
+    private readonly extensionOfTime: ExtensionOfTimeService,
+  ) {}
 
   // ─── Contract-scoped ──────────────────────────────────────────────────────────
 
@@ -63,6 +68,40 @@ export class VariationsController {
     @Body() dto: CreateVariationDto,
   ) {
     return this.service.create(identity, contractId, dto);
+  }
+
+  // ─── Extension of Time (ADR-026 CONST-VAR-009, Phase 4) ──────────────────────
+  //
+  // A distinct, explicit, audited command on the Contract that moves the contractual completion date.
+  // It NEVER fires automatically on VO approval; citing VOs is justification, not effect. RBAC reuses
+  // the same commercial scheme: view to read the history, manage to grant.
+
+  @Get('contracts/:contractId/extension-of-time')
+  @ApiOperation({ summary: 'List the extension-of-time history for a contract (newest first)' })
+  @ApiParam({ name: 'contractId' })
+  listExtensions(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('contractId') contractId: string,
+  ) {
+    return this.extensionOfTime.listForContract(identity, contractId);
+  }
+
+  @Post('contracts/:contractId/extension-of-time')
+  @RequirePermissions(PERMISSIONS.contractsManage)
+  @ApiOperation({
+    summary:
+      'Grant an extension of time: explicitly move the contract completion date (may cite VOs as justification)',
+  })
+  @ApiParam({ name: 'contractId' })
+  @ApiResponse({ status: 201, description: 'Extension recorded; contract expectedEndDate updated' })
+  @ApiResponse({ status: 400, description: 'A cited VO does not belong to this contract' })
+  @ApiResponse({ status: 409, description: 'Contract is not live (terminal or not yet executed)' })
+  grantExtension(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('contractId') contractId: string,
+    @Body() dto: GrantExtensionOfTimeDto,
+  ) {
+    return this.extensionOfTime.grant(identity, contractId, dto);
   }
 
   // ─── Single variation ───────────────────────────────────────────────────────

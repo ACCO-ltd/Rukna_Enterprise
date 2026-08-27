@@ -1060,6 +1060,10 @@ model Contract {
   paymentInstallments ContractPaymentInstallment[]
   // ADR-026 CONST-VAR-001: variation orders that change (but never mutate) this contract's baseline.
   variationOrders     VariationOrder[]
+  // ADR-026 CONST-VAR-009 (Phase 4): the audited history of Extension-of-Time acts that moved this
+  // contract's expectedEndDate. The date only ever moves through one of these explicit commands —
+  // never automatically on VariationOrder approval.
+  extensionsOfTime    ExtensionOfTime[]
 
   @@unique([organizationId, contractNumber])
   @@index([projectId, status])
@@ -1205,6 +1209,9 @@ model VariationOrder {
 
   contract Contract             @relation(fields: [contractId], references: [id], onDelete: Cascade)
   lines    VariationOrderLine[]
+  // ADR-026 CONST-VAR-009 (Phase 4): the Extension-of-Time acts that cite this VO as justification.
+  // Citation is justification, not effect — a cited VO never moves the date by itself.
+  extensionsOfTime ExtensionOfTime[] @relation("ExtensionOfTimeVariationOrders")
 
   // A VO reference is unique within its contract (CONST-VAR-001, per-parent numbering).
   @@unique([contractId, reference])
@@ -1233,6 +1240,45 @@ model VariationOrderLine {
 
   @@index([variationOrderId])
   @@map("variation_order_lines")
+}
+
+// ADR-026 CONST-VAR-009 (Variations Phase 4) — an Extension of Time: the audited history of every
+// change to a Contract's contractual completion date (Contract.expectedEndDate). Moving the date is
+// a DISTINCT, EXPLICIT, human-invoked command — NEVER automatic on VariationOrder approval. A VO's
+// proposedTimeImpactDays is justification the user reads, not an effect. Each row captures the date
+// before and after, the actor/reason/time, and the VOs cited as justification. Rows are an immutable
+// history (created, never edited); the Contract's current expectedEndDate reflects the latest row.
+// NOTE: this is a guarded command via permission + audit (no DOA governance binding — ADR-026 governs
+// only VO internal approval). Governing the EoT through a DOA chain is a possible later refinement if
+// Eng Ahmed requires it.
+model ExtensionOfTime {
+  id             String @id @default(cuid())
+  organizationId String @map("organization_id")
+  contractId     String @map("contract_id")
+
+  // The contractual completion date before this act (may be null if the contract had none set).
+  previousEndDate DateTime? @map("previous_end_date") @db.Date
+  // The new contractual completion date this act sets on the Contract. This IS the effective
+  // "as of" date (accounting-date rule: supplied, not new Date()).
+  newEndDate      DateTime  @map("new_end_date") @db.Date
+  // Derived day-diff previous→new; null when previousEndDate is null (no baseline to diff against).
+  grantedDays     Int?      @map("granted_days")
+  reason          String
+
+  // Action metadata: who granted it and when the command ran (the audit timestamp, distinct from the
+  // supplied newEndDate which is the effective/contractual date).
+  grantedBy String   @map("granted_by")
+  grantedAt DateTime @map("granted_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  // Cited VariationOrders — justification, not effect (CONST-VAR-009). Implicit many-to-many.
+  citedVariationOrders VariationOrder[] @relation("ExtensionOfTimeVariationOrders")
+
+  @@index([organizationId])
+  @@index([contractId])
+  @@map("extensions_of_time")
 }
 
 // ADR-014: shared, immutable file-metadata entity. Bytes live in S3-compatible object storage
