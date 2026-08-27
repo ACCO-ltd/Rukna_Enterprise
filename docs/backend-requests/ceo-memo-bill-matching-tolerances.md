@@ -67,3 +67,24 @@ Finance Officer up to $1,000, CFO above).*
 1. The four tolerance numbers in the table above.
 2. Confirm out-of-tolerance bills are **blocked** until approved (yes/no).
 3. Who approves an exception, and the cash cut-off between Finance Officer and CFO.
+
+---
+
+## DECISION — Eng Ahmed (memorandum, 2026-08-27). ADR-018/ADR-024 item D now closed.
+
+| # | Question | ACCO decision |
+|---|---|---|
+| 1 | Unit-price difference | **2%** — confirmed |
+| 2 | Quantity difference | **No — 0%.** Payment against **accepted quantity only** |
+| 3 | Over-delivery / over-receipt | **5%** — confirmed, unchanged |
+| 4 | Small monetary tolerance | **USD 5 — applied per invoice, not per line** |
+| 5 | Out-of-tolerance treatment | **Yes — blocked, visible, never auto-rejected** until an exception is approved |
+| 6 | Exception approval authority | **Finance Manager up to USD 1,000; CFO above USD 1,000** |
+
+Build implications (see `bill-matching.service.ts`):
+- Platform fallback becomes **price 2% / qty 0%** (was 5% / 5%). Over-receipt (5%) is a separate
+  `OverReceiptPolicy` and stays as-is.
+- The USD-5 tolerance moves from a **per-line** `amountVarianceAbsolute` check to a **per-invoice**
+  (whole-bill) rounding absorb.
+- Enforcement already holds (`POSTABLE_MATCH_STATUSES` blocks `EXCEPTION`); confirm it.
+- New: exception-approval **authority by amount** — FM ≤ USD 1,000, CFO above.

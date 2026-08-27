@@ -2,9 +2,42 @@
 Status: accepted
 ---
 
-<!-- Domain-approved by Eng Ahmed Shirie 2026-08-17 (see ADR-022). Open config: numeric tolerance seed values (audit item D). -->
+<!-- Domain-approved by Eng Ahmed Shirie 2026-08-17 (see ADR-022). Item D (numeric tolerances +
+     exception-approval authority) RESOLVED by Eng Ahmed memorandum 2026-08-27 — see the "Item D
+     resolved" note below. -->
 
 # Bill matching: control invariants, per-dimension verdict, and exception resolution
+
+## Item D resolved — tolerances + exception-approval authority (Eng Ahmed, 2026-08-27)
+
+ADR-018/ADR-024 **item D** (the previously flat/wrong-defaults tolerance seed) is closed. The engine
+(`bill-matching.service.ts`) now enforces:
+
+- **Platform fallback: price 2% / quantity 0%** (was 5%/5%). Quantity 0% means *pay against the
+  accepted/received quantity only* — no over-bill beyond the reference quantity is tolerated (the
+  existing cumulative-billed-vs-received mechanism; only the % changed). A `MatchingTolerancePolicy`
+  (org/PO scope) still overrides the fallback.
+- **Over-receipt stays 5%** — a *separate* `OverReceiptPolicy` on goods receipts, untouched.
+- **USD-5 tolerance is per invoice, not per line.** After per-line verdicts are derived, a would-be
+  EXCEPTION caused **only** by price/amount rounding is absorbed into `MATCHED_WITH_TOLERANCE` when
+  the bill's **total** amount variance is ≤ USD 5 (`PER_INVOICE_ROUNDING_ABS`). A **quantity
+  over-bill is never absorbed** by the $5 (accepted-quantity only), regardless of dollar size. The
+  per-line variance figures are retained for display; the $5 changes the verdict, not the numbers.
+- **Enforcement holds:** `POSTABLE_MATCH_STATUSES` still blocks `EXCEPTION` from posting
+  ("Approve the exception before posting"). Blocked, visible, **never auto-rejected** (Q5).
+- **Exception-approval authority by amount (Q6):** Finance Manager (ACCO role `FINANCE_OFFICER`) may
+  approve a matching exception when the bill total ≤ **USD 1,000**; above that requires **CFO** (CEO
+  apex also authorised). Enforced in the application layer (`approveException` / `resolveException`
+  APPROVE path) against the approver's `roles`, reusing ACCO's existing $1,000 DOA boundary — **no**
+  new governance binding was introduced (see follow-up below). A sub-CFO approver over the band gets
+  a 403.
+
+**Governance follow-up (non-blocking):** the authority is enforced directly against roles rather than
+routed through `CommandGovernanceService` amount bands, because matching-exception approval is not a
+`GovernedEntity` state transition and wiring one would need a new binding + amount-band seed. If a
+future need arises to make this a full approval *chain* (multi-step / delegated), add a
+`WorkflowBinding` for the matching-exception command and route it through the DOA engine like POs and
+payments.
 
 ## Status note
 

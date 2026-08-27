@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 
 import { BillMatchingService } from './bill-matching.service.js';
@@ -9,7 +9,7 @@ import { BillMatchingService } from './bill-matching.service.js';
  * EXCEPTION status for out-of-tolerance (CONST-MATCH-004), three-way quantity judged against
  * received (CONST-MATCH-005), and cumulative matching across bills (CONST-MATCH-006).
  */
-const identity = { userId: 'u1', activeOrganizationId: 'o1' } as never;
+const identity = { userId: 'u1', activeOrganizationId: 'o1', roles: ['CFO'], permissions: [] } as never;
 
 function build(over: {
   billLines: Array<{ id: string; quantity: string; unitPrice: string; lineType: string; materialId?: string }>;
@@ -199,11 +199,127 @@ describe('BillMatchingService.runMatching — ADR-018 control', () => {
   });
 });
 
+describe('BillMatchingService.runMatching — ADR-018/ADR-024 item D tolerances', () => {
+  // No policy → runs on the platform fallback (price 2% / qty 0%). These assert the fallback numbers
+  // and the per-invoice USD-5 rounding absorb, including the interaction with a quantity over-bill.
+
+  it('2a — small price rounding, bill total ≤ $5, qty exact → MATCHED_WITH_TOLERANCE (absorbed)', async () => {
+    // 3 units, PO $100, billed $101 → price 1% (within 2% fallback → not even a line exception).
+    // To exercise the ABSORB, push price just over 2% but keep total variance ≤ $5:
+    // 1 unit, PO $100, billed $103 → price 3% > 2% (line exception), total amount variance $3 ≤ $5.
+    const { svc, line, status } = build({
+      billLines: [{ id: 'bl1', quantity: '1', unitPrice: '103', lineType: 'SERVICE' }],
+      poLines: [{ id: 'pl1', orderedQuantity: '1', unitPrice: '100' }],
+      // no policy → fallback 2% / 0%
+    });
+    await svc.runMatching(identity, 'bill1');
+    expect(line().priceWithinTolerance).toBe(false); // 3% > 2% — line is out of tolerance
+    expect(line().quantityWithinTolerance).toBe(true); // no over-bill
+    expect(status()).toBe('MATCHED_WITH_TOLERANCE'); // absorbed by the per-invoice $5
+  });
+
+  it('2b — price > 2% and total amount variance > $5 → EXCEPTION (not absorbed)', async () => {
+    // 10 units, PO $100, billed $110 → price 10% > 2%, total amount variance $100 > $5.
+    const { svc, line, status } = build({
+      billLines: [{ id: 'bl1', quantity: '10', unitPrice: '110', lineType: 'SERVICE' }],
+      poLines: [{ id: 'pl1', orderedQuantity: '10', unitPrice: '100' }],
+    });
+    await svc.runMatching(identity, 'bill1');
+    expect(line().priceWithinTolerance).toBe(false);
+    expect(status()).toBe('EXCEPTION');
+  });
+
+  it('2c — quantity over-bill is NEVER absorbed by the $5, even for a tiny dollar amount → EXCEPTION', async () => {
+    // Three-way: received 5, billed 6 at PO price $1 → qty over-bill (0% fallback tolerates none),
+    // total amount variance only $1 (≤ $5) — must still be an EXCEPTION (accepted-quantity only).
+    const { svc, line, status } = build({
+      billLines: [{ id: 'bl1', quantity: '6', unitPrice: '1', lineType: 'MATERIAL', materialId: 'm1' }],
+      poLines: [{ id: 'pl1', orderedQuantity: '10', unitPrice: '1', materialId: 'm1' }],
+      received: '5',
+    });
+    await svc.runMatching(identity, 'bill1');
+    expect(line().quantityWithinTolerance).toBe(false);
+    expect(status()).toBe('EXCEPTION'); // $1 ≤ $5 but a qty over-bill is never absorbed
+  });
+
+  it('2d — exact match on the fallback → MATCHED', async () => {
+    const { svc, line, status } = build({
+      billLines: [{ id: 'bl1', quantity: '10', unitPrice: '100', lineType: 'SERVICE' }],
+      poLines: [{ id: 'pl1', orderedQuantity: '10', unitPrice: '100' }],
+    });
+    await svc.runMatching(identity, 'bill1');
+    expect(line().withinTolerance).toBe(true);
+    expect(status()).toBe('MATCHED');
+  });
+
+  it('fallback price 2% exactly clears; 0% qty tolerates no over-bill', async () => {
+    // Price exactly 2% (billed $102 vs $100) → within; three-way received == billed → qty exact.
+    const { svc, line, status } = build({
+      billLines: [{ id: 'bl1', quantity: '5', unitPrice: '102', lineType: 'MATERIAL', materialId: 'm1' }],
+      poLines: [{ id: 'pl1', orderedQuantity: '5', unitPrice: '100', materialId: 'm1' }],
+      received: '5',
+    });
+    await svc.runMatching(identity, 'bill1');
+    expect(line().priceWithinTolerance).toBe(true); // 2% == 2% fallback
+    expect(line().quantityWithinTolerance).toBe(true);
+    expect(status()).toBe('MATCHED_WITH_TOLERANCE'); // tolerated non-zero price variance
+  });
+});
+
+describe('BillMatchingService exception-approval authority — ADR-018/ADR-024 item D (FM ≤ $1,000, CFO above)', () => {
+  function buildApprove(over: { status?: string; billTotal: string }) {
+    const repo = {
+      findByBillId: jest.fn().mockResolvedValue({ status: over.status ?? 'EXCEPTION' }),
+      findBillTotal: jest.fn().mockResolvedValue(new Decimal(over.billTotal)),
+      updateStatus: jest.fn().mockResolvedValue({}),
+      updateBillMatchStatus: jest.fn().mockResolvedValue({}),
+    };
+    const svc = new BillMatchingService({ getClient: () => ({}) } as never, repo as never);
+    return { svc, repo };
+  }
+  const fmIdentity = { userId: 'u1', activeOrganizationId: 'o1', roles: ['FINANCE_OFFICER'], permissions: [] } as never;
+  const cfoIdentity = { userId: 'u2', activeOrganizationId: 'o1', roles: ['CFO'], permissions: [] } as never;
+
+  it('FM approves an exception ≤ $1,000 → allowed', async () => {
+    const { svc, repo } = buildApprove({ billTotal: '1000' });
+    await svc.approveException(fmIdentity, 'bill1', { approvalReason: 'rounding' });
+    expect(repo.updateBillMatchStatus).toHaveBeenCalledWith(expect.anything(), 'bill1', 'APPROVED_EXCEPTION');
+  });
+
+  it('FM approving an exception > $1,000 → ForbiddenException (requires CFO)', async () => {
+    const { svc, repo } = buildApprove({ billTotal: '1000.01' });
+    await expect(
+      svc.approveException(fmIdentity, 'bill1', { approvalReason: 'rounding' }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(repo.updateBillMatchStatus).not.toHaveBeenCalled();
+  });
+
+  it('CFO approves an exception > $1,000 → allowed', async () => {
+    const { svc, repo } = buildApprove({ billTotal: '25000' });
+    await svc.approveException(cfoIdentity, 'bill1', { approvalReason: 'CFO signed off' });
+    expect(repo.updateBillMatchStatus).toHaveBeenCalledWith(expect.anything(), 'bill1', 'APPROVED_EXCEPTION');
+  });
+
+  it('authority also gates resolveException on an APPROVE reason (FM > $1,000 → Forbidden)', async () => {
+    const { svc } = buildApprove({ billTotal: '5000' });
+    await expect(
+      svc.resolveException(fmIdentity, 'bill1', { reason: 'ROUNDING_VARIANCE' } as never),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('a DISPUTE reason carries no amount band — FM may dispute a > $1,000 bill', async () => {
+    const { svc, repo } = buildApprove({ billTotal: '5000' });
+    await svc.resolveException(fmIdentity, 'bill1', { reason: 'SUPPLIER_INVOICE_ERROR' } as never);
+    expect(repo.updateBillMatchStatus).toHaveBeenCalledWith(expect.anything(), 'bill1', 'DISPUTED');
+  });
+});
+
 describe('BillMatchingService.resolveException — ADR-018 CONST-MATCH-007/008/009', () => {
   function buildResolve(status = 'EXCEPTION') {
     let updated: Record<string, unknown> = {};
     const repo = {
       findByBillId: jest.fn().mockResolvedValue({ status }),
+      findBillTotal: jest.fn().mockResolvedValue(new Decimal('500')), // ≤ $1,000, CFO identity → authorised
       updateStatus: jest.fn().mockImplementation((_p, _b, s, extra) => {
         updated = { status: s, ...extra };
         return Promise.resolve({});
