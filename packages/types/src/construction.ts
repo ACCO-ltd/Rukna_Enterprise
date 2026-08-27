@@ -13,6 +13,7 @@ import type {
   BoqVersionStatus,
   MeasurementMethod,
   PricingBasis,
+  VariationOrderStatus,
 } from './enums.js';
 
 // ADR-025: district registry — org-scoped reference data, the site segment of a project code.
@@ -920,11 +921,31 @@ export interface CommercialActivityItem {
   actor: { id: string; name: string };
 }
 
+/**
+ * ADR-026 CONST-VAR-005/-006/-006a — the derived contract-value figures. `Contract.contractValue`
+ * (the executed baseline) is NEVER mutated; these are all computed from the VariationOrder set.
+ *
+ *   governing = original + Σ (net of CLIENT_APPROVED variations)
+ *   pending   = Σ (net of PENDING_INTERNAL + INTERNAL_APPROVED variations)   — reported, never folded in
+ *
+ * Values are money strings, or null without financial visibility (same posture as the metrics).
+ * `pending` is management information (CONST-VAR-006a) — never added into `governing`.
+ */
+export interface CommercialContractValue {
+  originalContractValue: string | null;
+  approvedVariationsTotal: string | null;
+  governingContractValue: string | null;
+  pendingVariations: string | null;
+}
+
 export interface CommercialSummaryResponse {
   projectId: string;
   currency: string | null;
   financialsVisible: boolean;
   mainContract: CommercialContractSummary | null;
+  // ADR-026: derived Original / Approved / Governing / Pending contract value. Null when there is
+  // no main contract.
+  contractValue: CommercialContractValue | null;
   metrics: {
     contractValue: CommercialMetric;
     certifiedGross: CommercialMetric;
@@ -1202,4 +1223,63 @@ export interface BoqCompareResponse {
   removedCount: number;
   changedCount: number;
   changes: BoqNodeChange[];
+}
+
+// ─── Variations & Change Orders (ADR-026, Phase 1) ──────────────────────────────
+
+/**
+ * ADR-026 CONST-VAR-002 — a signed line of changed scope. A negative `amount` (from a negative
+ * quantity) is an OMISSION. Free-text for Phase 1 (no BOQ node link yet — that is Phase 2).
+ */
+export interface VariationOrderLineResponse {
+  id: string;
+  description: string;
+  /** May be negative to express an omission. */
+  quantity: string;
+  unitRate: string;
+  /** Signed line amount = quantity × unitRate. Negative for an omission. */
+  amount: string;
+  sortOrder: number;
+}
+
+/**
+ * ADR-026 CONST-VAR-001 — a VariationOrder: a first-class change document owned by one Contract.
+ * `netPrice` is derived from the lines (Σ amount) and may be negative; it is the proposed net
+ * (CONST-VAR-003) until CLIENT_APPROVED, at which point the figures freeze (CONST-VAR-010).
+ */
+export interface VariationOrderResponse {
+  id: string;
+  contractId: string;
+  reference: string;
+  status: `${VariationOrderStatus}`;
+  title: string;
+  description: string | null;
+  /** Proposed only (CONST-VAR-003) — never moves the completion date automatically. */
+  proposedTimeImpactDays: number | null;
+  /** Σ of the line amounts. Signed; negative for a net omission. */
+  netPrice: string;
+  lines: VariationOrderLineResponse[];
+  createdBy: string;
+  submittedBy: string | null;
+  submittedAt: string | null;
+  internalApprovedBy: string | null;
+  internalApprovedAt: string | null;
+  clientApprovedBy: string | null;
+  clientApprovedAt: string | null;
+  clientApprovalReference: string | null;
+  rejectedBy: string | null;
+  rejectedAt: string | null;
+  reason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A single VariationOrder without its lines — for the per-contract list read. */
+export type VariationOrderListItem = Omit<VariationOrderResponse, 'lines'> & {
+  lineCount: number;
+};
+
+export interface VariationOrderListResponse {
+  contractId: string;
+  variations: VariationOrderListItem[];
 }

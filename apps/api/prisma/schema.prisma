@@ -1058,6 +1058,8 @@ model Contract {
   attachments         ContractAttachment[]
   applications        InterimPaymentApplication[]
   paymentInstallments ContractPaymentInstallment[]
+  // ADR-026 CONST-VAR-001: variation orders that change (but never mutate) this contract's baseline.
+  variationOrders     VariationOrder[]
 
   @@unique([organizationId, contractNumber])
   @@index([projectId, status])
@@ -1162,6 +1164,75 @@ model ContractMilestone {
 
   @@index([contractId])
   @@map("contract_milestones")
+}
+
+// ADR-026 (Variations Phase 1) — CONST-VAR-001/-002/-003/-004/-010.
+// A VariationOrder is a first-class aggregate owned by exactly one Contract. It is the sanctioned
+// mechanism for changing the commercial baseline (ADR-017 CONST-COM-001), NOT a nested contract term:
+// Contract.contractValue is never mutated (CONST-VAR-005/006). Its net price is derived from the
+// lines (the source of truth) — no mutable stored copy. Figures freeze at INTERNAL_APPROVED
+// (CONST-VAR-010) and field editing closes at PENDING_INTERNAL (CONST-VAR-004).
+model VariationOrder {
+  id             String               @id @default(cuid())
+  organizationId String               @map("organization_id")
+  contractId     String               @map("contract_id")
+  // Per-contract sequential human reference, e.g. "VO-001" (mirrors contractNumber / applicationNumber).
+  reference      String               @map("reference") @db.VarChar(50)
+  status         VariationOrderStatus @default(DRAFT)
+  title          String
+  description    String?
+  // CONST-VAR-003: proposed only — an optional number of days. It NEVER moves the contractual
+  // completion date automatically (that is the Phase-4 Extension-of-Time command, CONST-VAR-009).
+  proposedTimeImpactDays Int?         @map("proposed_time_impact_days")
+
+  // Approval / audit trail. Dates use the actor-supplied or command-time instant, recorded explicitly.
+  createdBy              String       @map("created_by")
+  submittedBy            String?      @map("submitted_by")
+  submittedAt            DateTime?    @map("submitted_at")
+  internalApprovedBy     String?      @map("internal_approved_by")
+  internalApprovedAt     DateTime?    @map("internal_approved_at")
+  clientApprovedBy       String?      @map("client_approved_by")
+  clientApprovedAt       DateTime?    @map("client_approved_at")
+  // OQ-4 (provisional): the client's contractual approval reference (signed VO no. / letter ref).
+  clientApprovalReference String?     @map("client_approval_reference")
+  rejectedBy             String?      @map("rejected_by")
+  rejectedAt             DateTime?    @map("rejected_at")
+  // Reason for a REJECTED or WITHDRAWN terminal transition.
+  reason                 String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  contract Contract             @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  lines    VariationOrderLine[]
+
+  // A VO reference is unique within its contract (CONST-VAR-001, per-parent numbering).
+  @@unique([contractId, reference])
+  @@index([organizationId, status])
+  @@index([contractId, status])
+  @@map("variation_orders")
+}
+
+// ADR-026 CONST-VAR-002 — a signed line of changed scope. A negative amount expresses an OMISSION
+// (client removes scope); there is no separate omission document type. Free-text for Phase 1
+// (no BOQ node link yet — that is Phase 2, CONST-VAR-007). Same decimal-money rules as the BOQ.
+model VariationOrderLine {
+  id               String  @id @default(cuid())
+  variationOrderId String  @map("variation_order_id")
+  description      String
+  quantity         Decimal @db.Decimal(18, 4)
+  unitRate         Decimal @map("unit_rate") @db.Decimal(18, 2)
+  // Signed line amount = quantity × unitRate; negative for an omission. The VO net price is Σ amount.
+  amount           Decimal @db.Decimal(18, 2)
+  sortOrder        Int     @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  variationOrder VariationOrder @relation(fields: [variationOrderId], references: [id], onDelete: Cascade)
+
+  @@index([variationOrderId])
+  @@map("variation_order_lines")
 }
 
 // ADR-014: shared, immutable file-metadata entity. Bytes live in S3-compatible object storage
@@ -2665,6 +2736,18 @@ enum AdvanceType {
   MATERIAL_ON_SITE
   EQUIPMENT
   OTHER
+}
+
+// ADR-026 CONST-VAR-004 — the VariationOrder lifecycle (guarded-command state machine).
+// DRAFT → PENDING_INTERNAL → INTERNAL_APPROVED → CLIENT_APPROVED, with REJECTED / WITHDRAWN terminals.
+// Only CLIENT_APPROVED counts toward the governing contract value (CONST-VAR-005).
+enum VariationOrderStatus {
+  DRAFT
+  PENDING_INTERNAL
+  INTERNAL_APPROVED
+  CLIENT_APPROVED
+  REJECTED
+  WITHDRAWN
 }
 
 // ADR-023: how a payment-schedule installment becomes billable.

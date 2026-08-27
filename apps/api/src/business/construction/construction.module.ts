@@ -9,9 +9,10 @@ import { DocumentsModule } from './documents/documents.module.js';
 import { ProgressModule } from './progress/progress.module.js';
 import { ProgrammeModule } from './programme/programme.module.js';
 import { DistrictsModule } from './districts/districts.module.js';
+import { VariationsModule } from './variations/variations.module.js';
 
 @Module({
-  imports: [ProjectsModule, BoqModule, ContractsModule, IpaModule, IpcModule, CommercialModule, DocumentsModule, ProgressModule, ProgrammeModule, DistrictsModule],
-  exports: [ProjectsModule, BoqModule, ContractsModule, IpaModule, IpcModule, CommercialModule, DocumentsModule, ProgressModule, ProgrammeModule, DistrictsModule],
+  imports: [ProjectsModule, BoqModule, ContractsModule, IpaModule, IpcModule, CommercialModule, DocumentsModule, ProgressModule, ProgrammeModule, DistrictsModule, VariationsModule],
+  exports: [ProjectsModule, BoqModule, ContractsModule, IpaModule, IpcModule, CommercialModule, DocumentsModule, ProgressModule, ProgrammeModule, DistrictsModule, VariationsModule],
 })
 export class ConstructionModule {}

@@ -38,6 +38,8 @@ function summary(overrides: Partial<CommercialSummaryResponse> = {}): Commercial
     projectId: 'p-1',
     currency: 'USD',
     financialsVisible: true,
+    // ADR-026: derived contract-value figures (not exercised by these next-step tests).
+    contractValue: null,
     mainContract: {
       id: 'c-1',
       contractNumber: 'CN-2026-014',

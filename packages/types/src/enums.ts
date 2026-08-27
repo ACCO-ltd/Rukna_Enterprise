@@ -192,6 +192,18 @@ export enum IpcStatus {
   REJECTED = 'REJECTED',
 }
 
+// ADR-026 CONST-VAR-004 — the VariationOrder lifecycle. Only CLIENT_APPROVED counts toward the
+// governing contract value (CONST-VAR-005); PENDING_INTERNAL + INTERNAL_APPROVED are Pending
+// (CONST-VAR-006); REJECTED / WITHDRAWN are commercially inert terminals.
+export enum VariationOrderStatus {
+  DRAFT = 'DRAFT',
+  PENDING_INTERNAL = 'PENDING_INTERNAL',
+  INTERNAL_APPROVED = 'INTERNAL_APPROVED',
+  CLIENT_APPROVED = 'CLIENT_APPROVED',
+  REJECTED = 'REJECTED',
+  WITHDRAWN = 'WITHDRAWN',
+}
+
 export type GovernedEntity =
   | 'Project'
   | 'InterimPaymentApplication'
@@ -203,4 +215,7 @@ export type GovernedEntity =
   | 'BoqVersion'
   // ADR-022 CONST-DOA-008 — a daily progress report is approved by the Project Manager; the
   // Site Engineer only prepares it. The approval routes through the same governance gate.
-  | 'DailyProgressReport';
+  | 'DailyProgressReport'
+  // ADR-026 CONST-VAR-010 — a VariationOrder's internal approval (PENDING_INTERNAL →
+  // INTERNAL_APPROVED) is amount-banded on |net price| through the same governance gate.
+  | 'VariationOrder';

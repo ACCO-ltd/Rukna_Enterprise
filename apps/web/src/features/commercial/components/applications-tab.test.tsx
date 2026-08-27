@@ -86,6 +86,7 @@ function summary(): CommercialSummaryResponse {
     projectId: 'p-1',
     currency: 'USD',
     financialsVisible: true,
+    contractValue: null,
     mainContract: null,
     metrics: {} as CommercialSummaryResponse['metrics'],
     certification: { applicationsSubmitted: 1, effectiveCertificates: 1, postedInvoices: 0 },

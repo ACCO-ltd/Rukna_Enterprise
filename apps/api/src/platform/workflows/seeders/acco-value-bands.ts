@@ -73,6 +73,22 @@ export function accoPurchaseOrderBands(): ValueBand[] {
 }
 
 /**
+ * ADR-026 CONST-VAR-010 — VariationOrder internal approval (PENDING_INTERNAL → INTERNAL_APPROVED).
+ *
+ * Memo Q6: **no new authority matrix** — the VO reuses ACCO's existing thresholds. So this REUSES
+ * the PO bands verbatim (same roles, same cut-offs), banded on the VO's `|net price|` so a large
+ * omission is governed like a large addition. Seeded INACTIVE like every ADR-022 chain: with no
+ * active binding the gate resolves to null and internal approval proceeds unchanged.
+ */
+export function accoVariationOrderBands(): ValueBand[] {
+  return accoPurchaseOrderBands().map((b) => ({
+    ...b,
+    // Rename so the seeded WorkflowDefinition is distinguishable from the PO band it mirrors.
+    name: b.name.replace(/^PO /, 'VO '),
+  }));
+}
+
+/**
  * CONST-DOA-005 — Supplier Payments. (Payment *release* additionally needs two bank signatories —
  * a separate dual control, Phase 4.)
  *   ≤ $1,000            Finance Officer (after AP certification)

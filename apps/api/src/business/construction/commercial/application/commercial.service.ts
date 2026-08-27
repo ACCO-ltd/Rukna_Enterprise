@@ -25,6 +25,12 @@ import { ProjectAccessService } from '../../../../platform/project-access/projec
 import { CommercialTermPolicy } from '../../contracts/domain/commercial-term-policy.js';
 import { deriveGuaranteeAttention } from '../../contracts/domain/guarantee-attention-policy.js';
 import { CommercialPrismaRepository } from '../infrastructure/commercial-prisma.repository.js';
+import { VariationOrderPrismaRepository } from '../../variations/infrastructure/variation-order-prisma.repository.js';
+import {
+  deriveContractValue,
+  netPrice as computeVoNetPrice,
+} from '../../variations/domain/variation-order.policy.js';
+import type { CommercialContractValue } from '@erp/types';
 
 const ZERO = new Decimal(0);
 
@@ -39,6 +45,8 @@ export class CommercialService {
     private readonly tenancyService: TenancyService,
     private readonly projectAccess: ProjectAccessService,
     private readonly repo: CommercialPrismaRepository,
+    // ADR-026: the VO set the four derived contract-value figures are computed from.
+    private readonly variationRepo: VariationOrderPrismaRepository,
   ) {}
 
   // ─── B2 — Project commercial summary ───────────────────────────────────────────
@@ -71,6 +79,8 @@ export class CommercialService {
         currency: null,
         financialsVisible: mayViewFinancials,
         mainContract: null,
+        // ADR-026: no main contract → no derived contract value.
+        contractValue: null,
         metrics: {
           contractValue: unavailable(),
           certifiedGross: unavailable(),
@@ -219,11 +229,19 @@ export class CommercialService {
       ...certs.map((c) => c.id),
       ...invoices.map((i) => i.id),
     ];
-    const [activity, boqVersionNumber, applicationCount] = await Promise.all([
+    const [activity, boqVersionNumber, applicationCount, variationInputs] = await Promise.all([
       this.repo.findRecentActivity(prisma, orgId, resourceIds).catch(() => []),
       this.repo.findBoqVersionNumber(prisma, contract.boqVersionId).catch(() => null),
       this.repo.countSubmittedApplications(prisma, orgId, contract.id).catch(() => 0),
+      // ADR-026 CONST-VAR-005/006: the VO set for the derived contract-value figures.
+      this.variationRepo.findValuationInputs(prisma, orgId, contract.id).catch(() => []),
     ]);
+
+    const contractValueFigures = this.deriveContractValueFigures(
+      new Decimal(contract.contractValue.toString()),
+      variationInputs,
+      mayViewFinancials,
+    );
 
     return {
       projectId,
@@ -244,6 +262,9 @@ export class CommercialService {
         billingModel: contract.billingModel,
         boqVersionNumber,
       },
+      // ADR-026 CONST-VAR-005/006/006a: Original / Approved / Governing / Pending. Derived from the
+      // VO set; `Contract.contractValue` (the metric card below) is the immutable original.
+      contractValue: contractValueFigures,
       metrics: {
         contractValue: metric({
           failed: false,
@@ -663,6 +684,40 @@ export class CommercialService {
       },
       // Focus = there is a first un-invoiced installment (where "Generate invoice" points).
       hasFocus: !nextAssigned ? false : lines.some((l) => l.status === 'NEXT'),
+    };
+  }
+
+  /**
+   * ADR-026 CONST-VAR-005/-006/-006a — derive Original / Approved / Governing / Pending from the
+   * VO set. Pure math delegated to the variations domain; only CLIENT_APPROVED counts toward the
+   * governing value, PENDING_INTERNAL + INTERNAL_APPROVED are the Pending total (never folded in).
+   * Withheld (null) without financial visibility, exactly as the metric cards are.
+   */
+  private deriveContractValueFigures(
+    original: Decimal,
+    variations: Array<{ status: string; lines: Array<{ amount: unknown }> }>,
+    mayViewFinancials: boolean,
+  ): CommercialContractValue {
+    if (!mayViewFinancials) {
+      return {
+        originalContractValue: null,
+        approvedVariationsTotal: null,
+        governingContractValue: null,
+        pendingVariations: null,
+      };
+    }
+    const figures = deriveContractValue(
+      original,
+      variations.map((v) => ({
+        status: v.status as never,
+        netPrice: computeVoNetPrice(v.lines.map((l) => ({ amount: new Decimal(String(l.amount)) }))),
+      })),
+    );
+    return {
+      originalContractValue: figures.original.toFixed(2),
+      approvedVariationsTotal: figures.approvedVariationsTotal.toFixed(2),
+      governingContractValue: figures.governing.toFixed(2),
+      pendingVariations: figures.pending.toFixed(2),
     };
   }
 
