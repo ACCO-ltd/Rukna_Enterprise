@@ -67,3 +67,31 @@ captured some other way?
 
 With these answers we can design the Variation feature so scope, price, and time stay correct and
 auditable over the whole project life.
+
+---
+
+## DECISION — Eng Ahmed (memorandum, 2026-08-27). Unblocks issue #51.
+
+| Q | Decision |
+|---|---|
+| 1 | **Yes** — a formal Variation Order, approved before the work, **except** the single controlled route in Q7. |
+| 2 | Contract value changes **only when the VO has the required client + contractual approval.** Until then the amount is reported as **Pending** and **must not be absorbed into contract value.** |
+| 3 | **Yes** — omissions (negative variations) supported. |
+| 4 | **Normal** Progress / IPA / IPC / Invoice / Payment cycle — **each variation separately identifiable throughout** (no separate variation invoice). |
+| 5 | **Yes, as a *proposed* time impact only.** The contractual completion date does **not** move automatically. |
+| 6 | **Existing** financial approval thresholds apply. **No separate variation authority matrix** at this stage. |
+| 7A | Project begins **before** the main contract is executed — **permitted through a controlled route only.** |
+| 7B | Urgent variation work **before** the VO is finalized — **at-risk route only, never on informal verbal instruction.** Authorized by the **Construction Director + CFO jointly**, escalating to the **CEO above the exposure cap.** |
+
+**Design implications (for the scoping ADR):**
+- A `VariationOrder` is a first-class, separately-identifiable entity with its own lifecycle
+  (proposed → internally approved → client-approved). Contract value = original + **approved**
+  variations; a **Pending** total is reported alongside but never folded into the governing value.
+- Omissions are signed-negative VOs.
+- Approved variation scope enters the project as separately-tagged priced work that flows through the
+  existing Progress→IPA→IPC→Invoice chain, tagged to its VO throughout (traceable on every certificate/
+  invoice line).
+- Time impact is a **proposed** field on the VO; applying it to the contractual completion date is a
+  **separate, explicit** action — never automatic.
+- Governance reuses the existing DOA thresholds (ADR-022) — no new authority matrix. The two at-risk
+  commencement routes (7A/7B) are **controlled, audited exceptions**, not the default path.
