@@ -393,6 +393,8 @@ export interface DailyProgressReportResponse {
   narrative?: string;
   delayReason?: string;
   preparedBy: string;
+  /** The preparer's "firstName lastName", resolved read-side from preparedBy; undefined if the user is not found. */
+  preparedByName?: string;
   submittedBy?: string;
   approvedBy?: string;
 }

@@ -250,11 +250,45 @@ export class ProgressService {
 
   async listDprs(identity: RequestIdentity, projectId: string) {
     await this.projectAccess.assertMember(identity, projectId);
-    return this.repo.findDprsByProject(this.tenancy.getClient(), identity.activeOrganizationId, projectId);
+    const prisma = this.tenancy.getClient();
+    const dprs = await this.repo.findDprsByProject(prisma, identity.activeOrganizationId, projectId);
+    // Resolve the preparer id → name once for the whole list (one users query, not N).
+    // TODO: submittedBy / approvedBy resolve the same way — add them to the id set here if surfaced.
+    const names = await this.resolveUserNames(
+      prisma,
+      identity.activeOrganizationId,
+      dprs.map((d) => d.preparedBy),
+    );
+    return dprs.map((d) => ({ ...d, preparedByName: names.get(d.preparedBy) }));
   }
 
-  getDpr(identity: RequestIdentity, dprId: string) {
-    return this.requireDpr(identity, dprId);
+  async getDpr(identity: RequestIdentity, dprId: string) {
+    const dpr = await this.requireDpr(identity, dprId);
+    // Resolve this one DPR's preparer id → name (read-side, tenant-scoped). Undefined if not found.
+    // TODO: submittedBy / approvedBy resolve the same way — add them to the id set here if surfaced.
+    const names = await this.resolveUserNames(
+      this.tenancy.getClient(),
+      identity.activeOrganizationId,
+      [dpr.preparedBy],
+    );
+    return { ...dpr, preparedByName: names.get(dpr.preparedBy) };
+  }
+
+  /**
+   * Batch id→"firstName lastName" resolution for the DPR read models. Collects distinct ids, does a
+   * single tenant-scoped users lookup (Prisma stays in the repo), and returns a Map. An unresolved id
+   * is simply absent from the map (the caller leaves preparedByName undefined) — never throws.
+   */
+  private async resolveUserNames(
+    prisma: ReturnType<TenancyService['getClient']>,
+    organizationId: string,
+    ids: string[],
+  ): Promise<Map<string, string>> {
+    const distinct = [...new Set(ids.filter((id): id is string => Boolean(id)))];
+    const users = await this.repo.findUserNamesByIds(prisma, organizationId, distinct);
+    return new Map<string, string>(
+      users.map((u) => [u.id, `${u.firstName} ${u.lastName}`.trim()] as const),
+    );
   }
 
   /** Verified physical progress per BOQ leaf (from APPROVED DPRs only). */

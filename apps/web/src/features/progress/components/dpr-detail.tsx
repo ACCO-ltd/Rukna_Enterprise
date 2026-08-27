@@ -128,7 +128,7 @@ export function DprDetail({
           <p className="mt-2 text-sm text-success">{t('report.approvedHint')}</p>
         ) : null}
         <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-          <Meta label={t('report.fields.preparedBy')} value={dpr.preparedBy} />
+          <Meta label={t('report.fields.preparedBy')} value={dpr.preparedByName ?? dpr.preparedBy} />
           {dpr.weather ? <Meta label={t('report.fields.weather')} value={dpr.weather} /> : null}
           {dpr.labourCount != null ? (
             <Meta label={t('report.fields.labourCount')} value={String(dpr.labourCount)} />
