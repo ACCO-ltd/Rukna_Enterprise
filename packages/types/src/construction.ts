@@ -1270,6 +1270,16 @@ export interface VariationOrderResponse {
   rejectedBy: string | null;
   rejectedAt: string | null;
   reason: string | null;
+  /**
+   * ADR-026 CONST-VAR-007 (Phase 2): whether this client-approved VO's scope has been materialised
+   * into the BOQ as VARIATION-tagged nodes on a revision. `boqNodeCount` is how many such nodes
+   * (leaves + the group section) carry its provenance; `boqAppliedVersionId` is the revision they
+   * landed on. All null/false/0 until the apply-to-BOQ command runs.
+   */
+  appliedToBoq: boolean;
+  boqNodeCount: number;
+  boqAppliedAt: string | null;
+  boqAppliedVersionId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1282,6 +1292,35 @@ export type VariationOrderListItem = Omit<VariationOrderResponse, 'lines'> & {
 export interface VariationOrderListResponse {
   contractId: string;
   variations: VariationOrderListItem[];
+}
+
+/**
+ * ADR-026 CONST-VAR-007 (Phase 2) — the result of scoping a client-approved VO into the BOQ. The
+ * revision the nodes landed on still follows the normal governed baseline command; this response
+ * does NOT imply the Contract Baseline moved (that is the separate adopt-baseline act, OQ-2).
+ */
+export interface ApplyVariationToBoqResponse {
+  variationId: string;
+  reference: string;
+  projectId: string;
+  /** The DRAFT BOQ revision the VARIATION nodes were appended to. */
+  boqVersionId: string;
+  /** How many VARIATION leaf nodes were created (one per VO line). */
+  nodeCount: number;
+  appliedAt: string;
+}
+
+/**
+ * ADR-026 CONST-VAR-007 / OQ-2 (Phase 2) — the result of the deliberate Contract-Baseline repoint.
+ * This is what lets certification claims reach the enlarged scope; it is never automatic.
+ */
+export interface AdoptBaselineResponse {
+  contractId: string;
+  previousBoqVersionId: string;
+  boqVersionId: string;
+  boqVersionNumber: number;
+  adoptedBy: string;
+  adoptedAt: string;
 }
 
 // ─── Extension of Time (ADR-026 CONST-VAR-009, Variations Phase 4) ───────────────

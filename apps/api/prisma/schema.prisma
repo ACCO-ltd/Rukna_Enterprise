@@ -920,8 +920,9 @@ model BoqNode {
   totalAmount         Decimal?          @map("total_amount") @db.Decimal(18, 2)
   isLeaf              Boolean           @default(false) @map("is_leaf")
   originNodeId        String?           @map("origin_node_id")
-  // Sprint 5: variation-readiness — BASELINE nodes are original scope; VARIATION nodes
-  // come from a ChangeOrder (Sprint 6). sourceChangeOrderId is null until Sprint 6 adds ChangeOrder.
+  // ADR-026 CONST-VAR-007 (Variations Phase 2) — provenance. BASELINE nodes are original scope;
+  // VARIATION nodes are scoped in from a client-approved VariationOrder (P2). sourceChangeOrderId
+  // is now a REAL FK to VariationOrder (was a bare string, Sprint 5) — see `sourceChangeOrder`.
   sourceType          BoqSourceType     @default(BASELINE) @map("source_type")
   sourceChangeOrderId String?           @map("source_change_order_id")
   // CONST-BOQ-003 — a node referenced by a downstream record is deactivated, never deleted.
@@ -932,6 +933,10 @@ model BoqNode {
   version              BoqVersion            @relation(fields: [versionId], references: [id])
   parent               BoqNode?              @relation("BoqNodeChildren", fields: [parentId], references: [id], onDelete: Restrict)
   children             BoqNode[]             @relation("BoqNodeChildren")
+  // ADR-026 CONST-VAR-007 — the VariationOrder that introduced this node (null for BASELINE scope).
+  // SetNull, not Restrict: a baselined node is immutable and outlives its source; if a VO were ever
+  // removed (only via contract cascade), the historical node keeps its scope and loses only the link.
+  sourceChangeOrder    VariationOrder?       @relation("VariationOrderBoqNodes", fields: [sourceChangeOrderId], references: [id], onDelete: SetNull)
   progressMeasurements ProgressMeasurement[]
   workPackageLinks     WorkPackageBoqNode[]
 
@@ -1204,11 +1209,22 @@ model VariationOrder {
   // Reason for a REJECTED or WITHDRAWN terminal transition.
   reason                 String?
 
+  // ADR-026 CONST-VAR-007 (Phase 2): set when this client-approved VO's scope has been materialised
+  // into the BOQ as VARIATION-tagged nodes on a revision. The idempotency guard for the apply-to-BOQ
+  // command — a VO whose boqAppliedAt is set cannot be applied twice. Records who/when applied it and
+  // the DRAFT revision the nodes landed on (the revision then follows the normal governed baseline).
+  boqAppliedAt           DateTime?    @map("boq_applied_at")
+  boqAppliedBy           String?      @map("boq_applied_by")
+  boqAppliedVersionId    String?      @map("boq_applied_version_id")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   contract Contract             @relation(fields: [contractId], references: [id], onDelete: Cascade)
   lines    VariationOrderLine[]
+  // ADR-026 CONST-VAR-007 (Phase 2): the BOQ nodes this VO scoped into the project (its provenance
+  // fields). Every such node carries sourceType = VARIATION + sourceChangeOrderId = this VO's id.
+  boqNodes BoqNode[]            @relation("VariationOrderBoqNodes")
   // ADR-026 CONST-VAR-009 (Phase 4): the Extension-of-Time acts that cite this VO as justification.
   // Citation is justification, not effect — a cited VO never moves the date by itself.
   extensionsOfTime ExtensionOfTime[] @relation("ExtensionOfTimeVariationOrders")
