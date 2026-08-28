@@ -95,7 +95,12 @@ services:
     command: ['pnpm', 'db:migrate:deploy']
     restart: 'no'
 
-  api:
+  # Service name is deliberately UNIQUE (not "api"): the container joins the shared
+  # deploy_internal network, where Compose would otherwise register the service name
+  # as a network alias — and SIMAD already owns the alias "api" there, so a generic
+  # name would hijack SIMAD's `reverse_proxy api:3000`. As `rukna_api` the only alias
+  # it adds on the shared network is `rukna_api`.
+  rukna_api:
     image: rukna-api:latest
     container_name: rukna_api
     restart: unless-stopped
