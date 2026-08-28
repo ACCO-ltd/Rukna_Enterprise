@@ -70,23 +70,41 @@ export class AuthController {
 
   // ─── Cookie helpers ───────────────────────────────────────────────────────────
 
-  private setRefreshCookie(res: Response, token: string): void {
-    res.cookie(COOKIE_NAME, token, {
+  /**
+   * Base attributes for the refresh cookie, shared by set and clear so the browser
+   * matches the two (a mismatched attribute leaves a stale cookie behind).
+   *
+   * `COOKIE_DOMAIN` / `COOKIE_SAMESITE` are read from the environment so the same build
+   * serves both the local single-host setup and a split deployment where the web app and
+   * the API sit on different subdomains of one registrable domain (e.g. `app.runka.site`
+   * calling `api.runka.site`). Unset ⇒ the previous host-only, `SameSite=Lax` behaviour,
+   * so existing environments are unaffected. `SameSite=None` forces `Secure` (browsers
+   * reject `None` without it).
+   */
+  private refreshCookieBaseOptions(): {
+    httpOnly: true;
+    secure: boolean;
+    sameSite: 'lax' | 'strict' | 'none';
+    path: string;
+    domain?: string;
+  } {
+    const sameSite = (process.env['COOKIE_SAMESITE']?.trim() as 'lax' | 'strict' | 'none') || 'lax';
+    const domain = process.env['COOKIE_DOMAIN']?.trim() || undefined;
+    return {
       httpOnly: true,
-      secure: process.env['NODE_ENV'] === 'production',
-      sameSite: 'lax',
+      secure: process.env['NODE_ENV'] === 'production' || sameSite === 'none',
+      sameSite,
       path: '/api/v1/auth',
-      maxAge: COOKIE_TTL_MS,
-    });
+      ...(domain ? { domain } : {}),
+    };
+  }
+
+  private setRefreshCookie(res: Response, token: string): void {
+    res.cookie(COOKIE_NAME, token, { ...this.refreshCookieBaseOptions(), maxAge: COOKIE_TTL_MS });
   }
 
   private clearRefreshCookie(res: Response): void {
-    res.clearCookie(COOKIE_NAME, {
-      httpOnly: true,
-      secure: process.env['NODE_ENV'] === 'production',
-      sameSite: 'lax',
-      path: '/api/v1/auth',
-    });
+    res.clearCookie(COOKIE_NAME, this.refreshCookieBaseOptions());
   }
 
   private extractRefreshCookie(req: Request): string | undefined {

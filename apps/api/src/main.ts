@@ -27,8 +27,15 @@ async function bootstrap(): Promise<void> {
 
   app.setGlobalPrefix('api/v1');
 
+  // FRONTEND_URL is a comma-separated allow-list of browser origins permitted to send
+  // credentialed requests (the web app plus any preview deployments). A single value keeps
+  // the previous behaviour; multiple values are reflected per-request by the cors middleware.
+  const allowedOrigins = (process.env['FRONTEND_URL'] ?? 'http://localhost:3000')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
   app.enableCors({
-    origin: process.env['FRONTEND_URL'] ?? 'http://localhost:3000',
+    origin: allowedOrigins.length === 1 ? allowedOrigins[0] : allowedOrigins,
     credentials: true,
   });
 
