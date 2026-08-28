@@ -1,17 +1,22 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Rukna — site blocks to APPEND to the shared Caddy on this box.
+# Rukna — the site block for the OPERATOR to add to the shared Caddy on this box.
 #
-# This box already runs a shared Caddy (deploy-caddy-1) whose config lives at
-# /opt/simad/deploy/Caddyfile and which fronts the other products. Rukna does NOT
-# run its own Caddy — instead these two blocks are appended to that shared file,
-# then Caddy is reloaded:
+# The agent does NOT edit Caddy. You add this block yourself. The box already runs
+# a shared Caddy (deploy-caddy-1, config /opt/simad/deploy/Caddyfile) that owns
+# 80/443; Rukna's api container attaches to its network (deploy_internal) so Caddy
+# can reach it by name — exactly how tconnect-* is wired.
 #
-#   cat deploy/Caddyfile >> /opt/simad/deploy/Caddyfile
-#   docker exec deploy-caddy-1 caddy reload --config /etc/caddy/Caddyfile
+#   # back up first
+#   cp /opt/simad/deploy/Caddyfile /opt/simad/deploy/Caddyfile.bak.$(date +%s)
+#   # append this block
+#   cat deploy/Caddyfile >> /opt/simad/deploy/Caddyfile   # (strip these comments if you prefer)
+#   # validate, then reload (reload refuses an invalid config, so other sites stay up)
+#   docker exec deploy-caddy-1 caddy validate --config /etc/caddy/Caddyfile
+#   docker exec deploy-caddy-1 caddy reload   --config /etc/caddy/Caddyfile
 #
-# Reaches Rukna's containers by name because api + minio join the deploy_internal
-# network (see docker-compose.prod.yml) — exactly how tconnect-* is wired. Caddy
-# auto-provisions Let's Encrypt certs for both hosts (DNS must point here, DNS-only).
+# Only api.rukna.site is here. storage.rukna.site is intentionally omitted: MinIO is
+# kept internal (not on deploy_internal), so browser file uploads are deferred until
+# you deliberately expose MinIO. Everything except the Documents/file feature works.
 # ─────────────────────────────────────────────────────────────────────────────
 
 api.rukna.site {
@@ -20,11 +25,4 @@ api.rukna.site {
 		max_size 512MB
 	}
 	reverse_proxy rukna_api:3001
-}
-
-storage.rukna.site {
-	request_body {
-		max_size 512MB
-	}
-	reverse_proxy rukna_minio:9000
 }
