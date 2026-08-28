@@ -1,16 +1,42 @@
 'use client';
 
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseQueryResult,
+} from '@tanstack/react-query';
 import type {
   CommercialApplicationsResponse,
   CommercialCurrentCycleResponse,
   CommercialSummaryResponse,
+  ExtensionOfTimeListResponse,
+  GrantExtensionOfTimeRequest,
+  VariationOrderListResponse,
+  VariationOrderResponse,
 } from '@erp/types';
 
 import {
+  addVariationLine,
+  clientApproveVariation,
+  createVariation,
   getCommercialApplications,
   getCommercialCurrentCycle,
   getCommercialSummary,
+  getVariation,
+  grantExtensionOfTime,
+  internalApproveVariation,
+  listExtensionsOfTime,
+  listVariations,
+  rejectVariation,
+  removeVariationLine,
+  submitVariation,
+  updateVariationLine,
+  withdrawVariation,
+  type ClientApproveVariationPayload,
+  type CreateVariationPayload,
+  type UpdateVariationLinePayload,
+  type VariationLinePayload,
 } from '../api/commercial-api';
 
 export const commercialKeys = {
@@ -18,6 +44,14 @@ export const commercialKeys = {
   summary: (projectId: string) => [...commercialKeys.all(projectId), 'summary'] as const,
   applications: (projectId: string) => [...commercialKeys.all(projectId), 'applications'] as const,
   currentCycle: (projectId: string) => [...commercialKeys.all(projectId), 'current-cycle'] as const,
+};
+
+/** Variations are contract-scoped, so their cache is keyed by contract, not project. */
+export const variationKeys = {
+  all: ['variations'] as const,
+  list: (contractId: string) => [...variationKeys.all, 'list', contractId] as const,
+  detail: (id: string) => [...variationKeys.all, 'detail', id] as const,
+  extensions: (contractId: string) => [...variationKeys.all, 'eot', contractId] as const,
 };
 
 /**
@@ -50,4 +84,130 @@ export function useCommercialApplications(
     queryKey: commercialKeys.applications(projectId),
     queryFn: () => getCommercialApplications(projectId),
   });
+}
+
+// ─── Variations (ADR-026 Phase 1) ───────────────────────────────────────────────
+
+export function useVariations(
+  contractId: string | null | undefined,
+): UseQueryResult<VariationOrderListResponse, Error> {
+  return useQuery({
+    queryKey: variationKeys.list(contractId ?? 'none'),
+    queryFn: () => listVariations(contractId as string),
+    enabled: Boolean(contractId),
+  });
+}
+
+export function useVariation(
+  id: string | null | undefined,
+): UseQueryResult<VariationOrderResponse, Error> {
+  return useQuery({
+    queryKey: variationKeys.detail(id ?? 'none'),
+    queryFn: () => getVariation(id as string),
+    enabled: Boolean(id),
+  });
+}
+
+export function useExtensionsOfTime(
+  contractId: string | null | undefined,
+): UseQueryResult<ExtensionOfTimeListResponse, Error> {
+  return useQuery({
+    queryKey: variationKeys.extensions(contractId ?? 'none'),
+    queryFn: () => listExtensionsOfTime(contractId as string),
+    enabled: Boolean(contractId),
+  });
+}
+
+/**
+ * Every variation mutation moves at least one derived figure the user can see: the VO's own net
+ * price/status and the contract's Original/Approved/Governing/Pending value on the commercial
+ * summary. So each one invalidates the variations cache (list + detail) AND the project's
+ * commercial summary — the header refreshes without a manual reload. Contract-scoped list and
+ * project-scoped summary are separate cache trees, which is why both ids are threaded through.
+ */
+function useVariationMutation<TArgs, TResult>(
+  contractId: string,
+  projectId: string,
+  run: (args: TArgs) => Promise<TResult>,
+) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: run,
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: variationKeys.all }),
+        qc.invalidateQueries({ queryKey: commercialKeys.summary(projectId) }),
+      ]);
+    },
+  });
+}
+
+export function useCreateVariation(contractId: string, projectId: string) {
+  return useVariationMutation(contractId, projectId, (payload: CreateVariationPayload) =>
+    createVariation(contractId, payload),
+  );
+}
+
+export function useAddVariationLine(variationId: string, contractId: string, projectId: string) {
+  return useVariationMutation(
+    contractId,
+    projectId,
+    (payload: VariationLinePayload & { sortOrder?: number }) =>
+      addVariationLine(variationId, payload),
+  );
+}
+
+export function useUpdateVariationLine(variationId: string, contractId: string, projectId: string) {
+  return useVariationMutation(
+    contractId,
+    projectId,
+    ({ lineId, payload }: { lineId: string; payload: UpdateVariationLinePayload }) =>
+      updateVariationLine(variationId, lineId, payload),
+  );
+}
+
+export function useRemoveVariationLine(variationId: string, contractId: string, projectId: string) {
+  return useVariationMutation(contractId, projectId, (lineId: string) =>
+    removeVariationLine(variationId, lineId),
+  );
+}
+
+export function useSubmitVariation(variationId: string, contractId: string, projectId: string) {
+  return useVariationMutation(contractId, projectId, () => submitVariation(variationId));
+}
+
+export function useInternalApproveVariation(
+  variationId: string,
+  contractId: string,
+  projectId: string,
+) {
+  return useVariationMutation(contractId, projectId, () => internalApproveVariation(variationId));
+}
+
+export function useClientApproveVariation(
+  variationId: string,
+  contractId: string,
+  projectId: string,
+) {
+  return useVariationMutation(contractId, projectId, (payload: ClientApproveVariationPayload) =>
+    clientApproveVariation(variationId, payload),
+  );
+}
+
+export function useRejectVariation(variationId: string, contractId: string, projectId: string) {
+  return useVariationMutation(contractId, projectId, (reason: string) =>
+    rejectVariation(variationId, reason),
+  );
+}
+
+export function useWithdrawVariation(variationId: string, contractId: string, projectId: string) {
+  return useVariationMutation(contractId, projectId, (reason?: string) =>
+    withdrawVariation(variationId, reason),
+  );
+}
+
+export function useGrantExtensionOfTime(contractId: string, projectId: string) {
+  return useVariationMutation(contractId, projectId, (payload: GrantExtensionOfTimeRequest) =>
+    grantExtensionOfTime(contractId, payload),
+  );
 }

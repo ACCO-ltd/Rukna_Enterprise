@@ -5,12 +5,13 @@ import { useTranslations } from 'next-intl';
 import { ViewSwitcher } from '@erp/ui';
 
 export type CommercialTab =
-  'overview' | 'contract-security' | 'applications' | 'billing-collection';
+  'overview' | 'contract-security' | 'applications' | 'variations' | 'billing-collection';
 
 const TABS: readonly CommercialTab[] = [
   'overview',
   'contract-security',
   'applications',
+  'variations',
   'billing-collection',
 ];
 
@@ -28,8 +29,8 @@ function href(projectId: string, tab: CommercialTab): string {
  * Unlike Progress (client-side state), Commercial's views are real routes and stay deep-linkable:
  * we drive `ViewSwitcher` in **link mode** via `renderLink` (next/link), setting
  * `aria-current="page"` on the active view. The switcher scrolls within itself at 375px, so it
- * serves mobile too — no separate `<Select>`. Variations and Subcontracts are deliberately
- * absent — not "coming soon".
+ * serves mobile too — no separate `<Select>`. Variations is live (ADR-026 Phases 1+4);
+ * Subcontracts is deliberately absent — not "coming soon".
  */
 export function CommercialNav({ projectId, active }: { projectId: string; active: CommercialTab }) {
   const t = useTranslations('commercial.tabs');

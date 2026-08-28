@@ -8,6 +8,7 @@ import {
   metricDisplay,
   paymentInstallmentTone,
   settlementTone,
+  variationStatusTone,
 } from './presentation';
 
 function metric(partial: Partial<CommercialMetric>): CommercialMetric {
@@ -73,6 +74,17 @@ describe('tone mapping', () => {
     expect(paymentInstallmentTone('BILLED')).toBe('info');
     expect(paymentInstallmentTone('PARTIALLY_PAID')).toBe('warning');
     expect(paymentInstallmentTone('PAID')).toBe('live');
+  });
+
+  it('maps variation lifecycle — only CLIENT_APPROVED reads as live, terminals as historical', () => {
+    expect(variationStatusTone('DRAFT')).toBe('neutral');
+    expect(variationStatusTone('PENDING_INTERNAL')).toBe('info');
+    expect(variationStatusTone('INTERNAL_APPROVED')).toBe('accent');
+    // The one status that actually moves the governing contract value.
+    expect(variationStatusTone('CLIENT_APPROVED')).toBe('live');
+    // Commercially inert terminals — historical, not alarming red.
+    expect(variationStatusTone('REJECTED')).toBe('historical');
+    expect(variationStatusTone('WITHDRAWN')).toBe('historical');
   });
 });
 
