@@ -2,16 +2,16 @@
 
 This is the single-tenant (**ACCO only**) production runbook. Web runs on **Vercel**, the
 API + PostgreSQL + MinIO run on **one Contabo VPS**, and everything hangs off the domain
-**`runka.site`**:
+**`rukna.site`**:
 
 | Host | Runs on | Serves |
 |---|---|---|
-| `app.runka.site` | Vercel | the Next.js web app |
-| `api.runka.site` | Contabo (Caddy → api) | the NestJS API |
-| `storage.runka.site` | Contabo (Caddy → MinIO) | file uploads/downloads (presigned) |
+| `app.rukna.site` | Vercel | the Next.js web app |
+| `api.rukna.site` | Contabo (Caddy → api) | the NestJS API |
+| `storage.rukna.site` | Contabo (Caddy → MinIO) | file uploads/downloads (presigned) |
 
 **Why one registrable domain:** the refresh-token is an HttpOnly cookie set by
-`api.runka.site`. Because `app.` and `api.` share the registrable domain `runka.site`, the
+`api.rukna.site`. Because `app.` and `api.` share the registrable domain `rukna.site`, the
 browser treats web→api calls as *same-site* and sends the cookie with `SameSite=Lax`. Put the
 web on a raw `*.vercel.app` domain instead and login will silently fail.
 
@@ -23,7 +23,7 @@ web on a raw `*.vercel.app` domain instead and login will silently fail.
 ## 0. Prerequisites
 
 - A Contabo VPS (Ubuntu 22.04+), root/sudo SSH access, ports **80** and **443** open.
-- The `runka.site` domain with access to its DNS.
+- The `rukna.site` domain with access to its DNS.
 - A Vercel account with the GitHub repo connected.
 - Docker + Docker Compose plugin on the VPS:
   ```bash
@@ -43,8 +43,8 @@ Point the three hosts at the VPS (and the web at Vercel). Replace `<VPS_IP>`.
 | A | `storage` | `<VPS_IP>` |
 | CNAME | `app` | `cname.vercel-dns.com` (Vercel shows the exact target) |
 
-Wait for `api.runka.site` and `storage.runka.site` to resolve to the VPS before step 4
-(Caddy needs them live to issue TLS certs). Check: `dig +short api.runka.site`.
+Wait for `api.rukna.site` and `storage.rukna.site` to resolve to the VPS before step 4
+(Caddy needs them live to issue TLS certs). Check: `dig +short api.rukna.site`.
 
 ---
 
@@ -76,10 +76,10 @@ keys must match:
 - `apps/api/.env`: put the same `DB_PASSWORD` inside `PLATFORM_DATABASE_URL` **and**
   `DATABASE_URL` (both use host `postgres`, the compose service name), the same MinIO keys in
   `MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY`, both `JWT_*` secrets, and confirm:
-  - `FRONTEND_URL=https://app.runka.site`
-  - `COOKIE_DOMAIN=.runka.site`
+  - `FRONTEND_URL=https://app.rukna.site`
+  - `COOKIE_DOMAIN=.rukna.site`
   - `DEFAULT_TENANT_SLUG=acco`
-  - `MINIO_ENDPOINT=https://storage.runka.site`
+  - `MINIO_ENDPOINT=https://storage.rukna.site`
 
 Edit `deploy/Caddyfile`: set the `email` to a real inbox (Let's Encrypt expiry notices).
 
@@ -126,11 +126,11 @@ Record the admin password in your password manager — it is not printed back.
 docker compose -f deploy/docker-compose.prod.yml up -d --build
 ```
 
-Caddy will fetch Let's Encrypt certs for `api.runka.site` and `storage.runka.site` (needs
+Caddy will fetch Let's Encrypt certs for `api.rukna.site` and `storage.rukna.site` (needs
 step-1 DNS live + 80/443 open). Verify:
 
 ```bash
-curl -s https://api.runka.site/api/v1/health      # expect a 200 JSON health payload
+curl -s https://api.rukna.site/api/v1/health      # expect a 200 JSON health payload
 docker compose -f deploy/docker-compose.prod.yml ps   # api + caddy + postgres + minio healthy
 ```
 
@@ -145,9 +145,9 @@ If the health check resolves the tenant, the API is serving ACCO.
    build needs the workspace). The repo's `apps/web/vercel.json` already sets the install/build
    commands to build the workspace via turbo.
 3. **Environment Variables (Production):**
-   - `NEXT_PUBLIC_API_URL = https://api.runka.site/api/v1`
+   - `NEXT_PUBLIC_API_URL = https://api.rukna.site/api/v1`
    - Do **not** set `NEXT_PUBLIC_API_URL_TEMPLATE` (single-tenant uses the fallback for all calls).
-4. **Domains:** add `app.runka.site` (Vercel gives you the CNAME target for step 1 if you
+4. **Domains:** add `app.rukna.site` (Vercel gives you the CNAME target for step 1 if you
    didn't add it yet).
 5. Deploy.
 
@@ -157,11 +157,11 @@ If the health check resolves the tenant, the API is serving ACCO.
 
 ## 7. Smoke test
 
-1. Open `https://app.runka.site` → login with `admin@acco.com` + the password from step 4.
+1. Open `https://app.rukna.site` → login with `admin@acco.com` + the password from step 4.
 2. Confirm the dashboard loads (the access token came back and the refresh cookie stuck —
    reload the page; if you stay logged in, cross-subdomain cookies work).
 3. Create a project / open the Commercial workspace to confirm reads.
-4. Upload a document (exercises the `storage.runka.site` presigned path). If upload fails,
+4. Upload a document (exercises the `storage.rukna.site` presigned path). If upload fails,
    see MinIO CORS below.
 
 ---
@@ -189,7 +189,7 @@ bucket, e.g. via `mc`:
 ```bash
 docker compose -f deploy/docker-compose.prod.yml run --rm minio-init \
   /bin/sh -c "mc alias set local http://minio:9000 \$MINIO_ACCESS_KEY \$MINIO_SECRET_KEY && \
-  mc admin config set local api cors_allow_origin='https://app.runka.site' && mc admin service restart local"
+  mc admin config set local api cors_allow_origin='https://app.rukna.site' && mc admin service restart local"
 ```
 
 **Logs:**
@@ -202,14 +202,14 @@ docker compose -f deploy/docker-compose.prod.yml logs -f caddy
 
 ## Going multi-tenant later (not now)
 
-The code already supports it. To add tenants under `*.runka.site`:
-1. Set `TENANT_ROOT_DOMAIN=api.runka.site` and drop `DEFAULT_TENANT_SLUG` on the API.
-2. Front the API with a wildcard `*.api.runka.site` (Caddy `*.api.runka.site` block + wildcard
+The code already supports it. To add tenants under `*.rukna.site`:
+1. Set `TENANT_ROOT_DOMAIN=api.rukna.site` and drop `DEFAULT_TENANT_SLUG` on the API.
+2. Front the API with a wildcard `*.api.rukna.site` (Caddy `*.api.rukna.site` block + wildcard
    TLS via a DNS-01 challenge).
-3. Web: set `NEXT_PUBLIC_API_URL_TEMPLATE=https://{slug}.api.runka.site/api/v1`, host the web on
-   `*.runka.site` (Vercel wildcard domain — needs a Pro plan).
+3. Web: set `NEXT_PUBLIC_API_URL_TEMPLATE=https://{slug}.api.rukna.site/api/v1`, host the web on
+   `*.rukna.site` (Vercel wildcard domain — needs a Pro plan).
 4. Provision each tenant with `pnpm tenant:provision --slug=<tenant> ...`.
-The `COOKIE_DOMAIN=.runka.site` already set means the refresh cookie spans every subdomain.
+The `COOKIE_DOMAIN=.rukna.site` already set means the refresh cookie spans every subdomain.
 
 ---
 

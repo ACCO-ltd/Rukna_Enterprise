@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Rukna — PRODUCTION stack for a single Contabo VPS (single-tenant: ACCO).
 #
-#   caddy      → TLS termination + reverse proxy (api.runka.site, storage.runka.site)
+#   caddy      → TLS termination + reverse proxy (api.rukna.site, storage.rukna.site)
 #   api        → NestJS backend (internal :3001, fronted by Caddy)
 #   migrate    → one-shot: applies platform + tenant migrations before api starts
 #   postgres   → platform registry DB + the ACCO tenant DB (internal only)
