@@ -6,17 +6,24 @@ API + PostgreSQL + MinIO run on **one Contabo VPS**, and everything hangs off th
 
 | Host | Runs on | Serves |
 |---|---|---|
-| `app.rukna.site` | Vercel | the Next.js web app |
+| `acco.rukna.site` | Vercel | the Next.js web app |
 | `api.rukna.site` | Contabo (Caddy → api) | the NestJS API |
 | `storage.rukna.site` | Contabo (Caddy → MinIO) | file uploads/downloads (presigned) |
 
 **Why one registrable domain:** the refresh-token is an HttpOnly cookie set by
-`api.rukna.site`. Because `app.` and `api.` share the registrable domain `rukna.site`, the
+`api.rukna.site`. Because `acco.` and `api.` share the registrable domain `rukna.site`, the
 browser treats web→api calls as *same-site* and sends the cookie with `SameSite=Lax`. Put the
 web on a raw `*.vercel.app` domain instead and login will silently fail.
 
-> You (the operator) do the account/DNS/secret steps — they need your credentials. Every
-> command below is copy-pasteable. Nothing here is run by the agent.
+> **Shared VPS (this deployment).** The target Contabo box already runs other products behind
+> a single shared Caddy (`deploy-caddy-1`, config `/opt/simad/deploy/Caddyfile`, network
+> `deploy_internal`) that owns ports 80/443. So Rukna does **not** run its own Caddy:
+> `deploy/docker-compose.prod.yml` attaches `rukna_api` + `rukna_minio` to `deploy_internal`,
+> and the two blocks in `deploy/Caddyfile` are **appended** to the shared Caddyfile (then
+> `caddy reload`), exactly how the `tconnect-*` sites are wired. On a *clean* box you would
+> instead add a Caddy service that publishes 80/443 — see the git history of this file.
+
+> You (the operator) do the account/DNS/secret steps — they need your credentials.
 
 ---
 
@@ -39,9 +46,9 @@ Point the three hosts at the VPS (and the web at Vercel). Replace `<VPS_IP>`.
 
 | Type | Name | Value |
 |---|---|---|
-| A | `api` | `<VPS_IP>` |
-| A | `storage` | `<VPS_IP>` |
-| CNAME | `app` | `cname.vercel-dns.com` (Vercel shows the exact target) |
+| A | `api` | `<VPS_IP>` (DNS only / not proxied) |
+| A | `storage` | `<VPS_IP>` (DNS only / not proxied) |
+| CNAME | `acco` | `cname.vercel-dns.com` (Vercel shows the exact target) |
 
 Wait for `api.rukna.site` and `storage.rukna.site` to resolve to the VPS before step 4
 (Caddy needs them live to issue TLS certs). Check: `dig +short api.rukna.site`.
@@ -76,7 +83,7 @@ keys must match:
 - `apps/api/.env`: put the same `DB_PASSWORD` inside `PLATFORM_DATABASE_URL` **and**
   `DATABASE_URL` (both use host `postgres`, the compose service name), the same MinIO keys in
   `MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY`, both `JWT_*` secrets, and confirm:
-  - `FRONTEND_URL=https://app.rukna.site`
+  - `FRONTEND_URL=https://acco.rukna.site`
   - `COOKIE_DOMAIN=.rukna.site`
   - `DEFAULT_TENANT_SLUG=acco`
   - `MINIO_ENDPOINT=https://storage.rukna.site`
@@ -120,21 +127,33 @@ Record the admin password in your password manager — it is not printed back.
 
 ---
 
-## 5. Start the API + Caddy (TLS)
+## 5. Start the API, then wire it into the shared Caddy
 
 ```bash
 docker compose -f deploy/docker-compose.prod.yml up -d --build
 ```
 
-Caddy will fetch Let's Encrypt certs for `api.rukna.site` and `storage.rukna.site` (needs
-step-1 DNS live + 80/443 open). Verify:
+This starts `rukna_api` + `rukna_minio` on the shared `deploy_internal` network (no Caddy of
+its own). Now add Rukna's two sites to the existing Caddy and reload it gracefully:
 
 ```bash
-curl -s https://api.rukna.site/api/v1/health      # expect a 200 JSON health payload
-docker compose -f deploy/docker-compose.prod.yml ps   # api + caddy + postgres + minio healthy
+# Back up the shared Caddyfile first
+cp /opt/simad/deploy/Caddyfile /opt/simad/deploy/Caddyfile.bak.$(date +%s)
+# Append Rukna's blocks and reload (Caddy validates before applying — a bad config is refused)
+cat deploy/Caddyfile >> /opt/simad/deploy/Caddyfile
+docker exec deploy-caddy-1 caddy reload --config /etc/caddy/Caddyfile
 ```
 
-If the health check resolves the tenant, the API is serving ACCO.
+Caddy fetches Let's Encrypt certs for `api.rukna.site` + `storage.rukna.site` (needs the
+step-1 DNS live, DNS-only). Verify:
+
+```bash
+curl -s https://api.rukna.site/api/v1/health          # expect a 200 JSON health payload
+docker compose -f deploy/docker-compose.prod.yml ps   # rukna_api + rukna_minio + rukna_postgres healthy
+```
+
+If the health check resolves the tenant, the API is serving ACCO. (The other products behind
+the shared Caddy are untouched — the append only adds new site blocks.)
 
 ---
 
@@ -147,7 +166,7 @@ If the health check resolves the tenant, the API is serving ACCO.
 3. **Environment Variables (Production):**
    - `NEXT_PUBLIC_API_URL = https://api.rukna.site/api/v1`
    - Do **not** set `NEXT_PUBLIC_API_URL_TEMPLATE` (single-tenant uses the fallback for all calls).
-4. **Domains:** add `app.rukna.site` (Vercel gives you the CNAME target for step 1 if you
+4. **Domains:** add `acco.rukna.site` (Vercel gives you the CNAME target for step 1 if you
    didn't add it yet).
 5. Deploy.
 
@@ -157,7 +176,7 @@ If the health check resolves the tenant, the API is serving ACCO.
 
 ## 7. Smoke test
 
-1. Open `https://app.rukna.site` → login with `admin@acco.com` + the password from step 4.
+1. Open `https://acco.rukna.site` → login with `admin@acco.com` + the password from step 4.
 2. Confirm the dashboard loads (the access token came back and the refresh cookie stuck —
    reload the page; if you stay logged in, cross-subdomain cookies work).
 3. Create a project / open the Commercial workspace to confirm reads.
@@ -189,7 +208,7 @@ bucket, e.g. via `mc`:
 ```bash
 docker compose -f deploy/docker-compose.prod.yml run --rm minio-init \
   /bin/sh -c "mc alias set local http://minio:9000 \$MINIO_ACCESS_KEY \$MINIO_SECRET_KEY && \
-  mc admin config set local api cors_allow_origin='https://app.rukna.site' && mc admin service restart local"
+  mc admin config set local api cors_allow_origin='https://acco.rukna.site' && mc admin service restart local"
 ```
 
 **Logs:**
