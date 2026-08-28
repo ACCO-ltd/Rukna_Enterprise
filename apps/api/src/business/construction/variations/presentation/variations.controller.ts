@@ -21,7 +21,9 @@ import { VariationOrderService } from '../application/variation-order.service.js
 import { ApplyVariationToBoqService } from '../application/apply-variation-to-boq.service.js';
 import { AdoptBaselineService } from '../application/adopt-baseline.service.js';
 import { ExtensionOfTimeService } from '../application/extension-of-time.service.js';
+import { AtRiskCommencementService } from '../application/at-risk-commencement.service.js';
 import { GrantExtensionOfTimeDto } from './dto/grant-extension-of-time.dto.js';
+import { RecordAtRiskCommencementDto } from './dto/at-risk-commencement.dto.js';
 import { AdoptBaselineDto } from './dto/adopt-baseline.dto.js';
 import { CreateVariationDto } from './dto/create-variation.dto.js';
 import { UpdateVariationDto } from './dto/update-variation.dto.js';
@@ -51,6 +53,7 @@ export class VariationsController {
     private readonly applyToBoq: ApplyVariationToBoqService,
     private readonly adoptBaseline: AdoptBaselineService,
     private readonly extensionOfTime: ExtensionOfTimeService,
+    private readonly atRiskCommencement: AtRiskCommencementService,
   ) {}
 
   // ─── Contract-scoped ──────────────────────────────────────────────────────────
@@ -225,6 +228,39 @@ export class VariationsController {
     @Body() dto: ClientApproveVariationDto,
   ) {
     return this.service.clientApprove(identity, id, dto);
+  }
+
+  // ─── At-risk commencement (ADR-026 CONST-VAR-011, Phase 5, Route 7B) ─────────
+  //
+  // Record the audited authorisation to start urgent variation work BEFORE the VO is CLIENT_APPROVED
+  // (never an informal verbal instruction — memo Q7B). CD + CFO jointly; the CEO additionally above the
+  // config-driven exposure cap (default USD 25,000). Changes NEITHER contract value NOR the BOQ, and
+  // does NOT move the VO's status/lifecycle (CONST-VAR-011). RBAC: contractsApprove (an authority act).
+
+  @Get('variations/:id/at-risk-commencement')
+  @ApiOperation({ summary: 'List the at-risk commencement authorisations recorded on a VO (newest first)' })
+  @ApiParam({ name: 'id' })
+  listAtRiskCommencement(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.atRiskCommencement.listForVariation(identity, id);
+  }
+
+  @Post('variations/:id/at-risk-commencement')
+  @RequirePermissions(PERMISSIONS.contractsApprove)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Record an at-risk commencement authorisation (CD+CFO; +CEO above the config cap). Never informal; no contract-value or BOQ change (CONST-VAR-011)',
+  })
+  @ApiParam({ name: 'id' })
+  @ApiResponse({ status: 200, description: 'Authorisation recorded' })
+  @ApiResponse({ status: 400, description: 'VO already client-approved/terminal, or CEO required/forbidden by the cap' })
+  @ApiResponse({ status: 403, description: 'Caller is not CD/CFO/CEO' })
+  recordAtRiskCommencement(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: RecordAtRiskCommencementDto,
+  ) {
+    return this.atRiskCommencement.record(identity, id, dto);
   }
 
   // ─── Scope-in (ADR-026 CONST-VAR-007, Phase 2) ──────────────────────────────

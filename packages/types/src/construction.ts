@@ -1429,3 +1429,53 @@ export interface CertifiedInvoicedByVariationResponse {
   /** Whole-contract invoiced gross = baseScope + Σ byVariation (ex-VAT). Null without the capability. */
   totalInvoicedToDate: string | null;
 }
+
+// ─── At-risk commencement (ADR-026 CONST-VAR-011, Variations Phase 5, Route 7B) ──────
+
+/**
+ * ADR-026 CONST-VAR-011 (Phase 5, Route 7B) — the POST /variations/:id/at-risk-commencement payload.
+ * Records the audited authorisation to start urgent variation work BEFORE the VO is CLIENT_APPROVED
+ * (never an informal verbal instruction — memo Q7B). CD + CFO always; the CEO additionally when the
+ * exposure exceeds the config-driven cap (default USD 25,000). Changes NEITHER contract value NOR BOQ.
+ */
+export interface RecordAtRiskCommencementRequest {
+  /** The exposure ACCO accepts by starting early (contract currency). Non-negative. */
+  exposureAmount: number;
+  /** ISO currency of the exposure. Defaults to the contract currency when omitted. */
+  currency?: string;
+  /** Why the work must start before the VO is finalised (required). */
+  reason: string;
+  /** The Construction Director authorising (user id). */
+  constructionDirectorUserId: string;
+  /** The CFO authorising (user id). */
+  cfoUserId: string;
+  /** The CEO authorising (user id). REQUIRED above the cap; rejected at or below it. */
+  ceoUserId?: string;
+}
+
+/**
+ * ADR-026 CONST-VAR-011 (Phase 5, Route 7B) — a recorded at-risk commencement authorisation. Money
+ * fields are strings (exact decimal). The `capAmount` / `ceoRequired` are the rule outcome snapshotted
+ * at authorisation time, so a later cap change never rewrites why the CEO was (or was not) required.
+ */
+export interface AtRiskCommencementResponse {
+  id: string;
+  variationOrderId: string;
+  /** The VO reference, for display convenience. */
+  variationReference: string;
+  exposureAmount: string;
+  currency: string;
+  /** The cap in force when this authorisation was recorded (config-driven, snapshotted). */
+  capAmount: string;
+  /** Whether the exposure exceeded the cap, i.e. whether the CEO step was required. */
+  ceoRequired: boolean;
+  constructionDirectorUserId: string;
+  cfoUserId: string;
+  ceoUserId: string | null;
+  reason: string;
+  /** The VO status at the moment of authorisation (a pre-CLIENT_APPROVED state). */
+  voStatusAtAuthorisation: string;
+  authorisedBy: string;
+  authorisedAt: string;
+  createdAt: string;
+}

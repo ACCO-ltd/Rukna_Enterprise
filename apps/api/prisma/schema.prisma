@@ -1228,6 +1228,10 @@ model VariationOrder {
   // ADR-026 CONST-VAR-009 (Phase 4): the Extension-of-Time acts that cite this VO as justification.
   // Citation is justification, not effect — a cited VO never moves the date by itself.
   extensionsOfTime ExtensionOfTime[] @relation("ExtensionOfTimeVariationOrders")
+  // ADR-026 CONST-VAR-011 (Phase 5, Route 7B): the at-risk commencement authorisations recorded on
+  // this VO — audited records that CD+CFO (+CEO above the cap) sanctioned starting the work before
+  // CLIENT_APPROVED. They change NEITHER contract value NOR the BOQ.
+  atRiskAuthorisations VariationOrderAtRiskAuthorisation[]
 
   // A VO reference is unique within its contract (CONST-VAR-001, per-parent numbering).
   @@unique([contractId, reference])
@@ -1295,6 +1299,55 @@ model ExtensionOfTime {
   @@index([organizationId])
   @@index([contractId])
   @@map("extensions_of_time")
+}
+
+// ADR-026 CONST-VAR-011 (Variations Phase 5, Route 7B) — an at-risk commencement authorisation on a
+// VariationOrder: the audited record that ACCO sanctioned starting urgent variation work BEFORE the
+// VO is CLIENT_APPROVED. It is NEVER an informal verbal instruction (memo Q7B) — the authorisation is
+// this governed, audited record or the work is not sanctioned. Authorised by the Construction Director
+// and the CFO jointly, escalating to the CEO when the recorded exposure exceeds a config-driven cap
+// (OQ-1, provisional USD 25,000). It records who accepted the exposure and how much — and changes
+// NEITHER Contract.contractValue NOR the BOQ. Contract value still waits for CLIENT_APPROVED
+// (CONST-VAR-005). Rows are an immutable history (created, never edited).
+model VariationOrderAtRiskAuthorisation {
+  id               String @id @default(cuid())
+  organizationId   String @map("organization_id")
+  variationOrderId String @map("variation_order_id")
+
+  // The exposure ACCO accepts by starting early, in the contract currency. Drives whether the CEO
+  // step is required (above the cap). Non-negative; independent of the VO's signed net price.
+  exposureAmount   Decimal @map("exposure_amount") @db.Decimal(18, 2)
+  currency         String  @db.VarChar(3)
+  // The cap in force when this authorisation was recorded (config-driven; snapshotted as evidence so
+  // a later cap change never rewrites why the CEO was — or was not — required at the time).
+  capAmount        Decimal @map("cap_amount") @db.Decimal(18, 2)
+  // Whether the exposure exceeded the cap, i.e. whether the CEO step was required. Snapshot of the
+  // rule outcome at authorisation time.
+  ceoRequired      Boolean @map("ceo_required")
+
+  // The authorising identities (the fixed chain CONST-VAR-011): the Construction Director and the CFO
+  // always; the CEO additionally when ceoRequired. Recorded explicitly so the audit shows exactly who
+  // accepted the exposure — no informal path.
+  constructionDirectorUserId String  @map("construction_director_user_id")
+  cfoUserId                  String  @map("cfo_user_id")
+  ceoUserId                  String? @map("ceo_user_id")
+
+  reason         String
+  // The VO status at the moment of authorisation (must be a pre-CLIENT_APPROVED state). Evidence that
+  // this really was a before-finalisation, at-risk act.
+  voStatusAtAuth String  @map("vo_status_at_auth")
+
+  // Action metadata: who recorded the authorisation and when the command ran.
+  authorisedBy String   @map("authorised_by")
+  authorisedAt DateTime @map("authorised_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  variationOrder VariationOrder @relation(fields: [variationOrderId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([variationOrderId])
+  @@map("variation_order_at_risk_authorisations")
 }
 
 // ADR-014: shared, immutable file-metadata entity. Bytes live in S3-compatible object storage

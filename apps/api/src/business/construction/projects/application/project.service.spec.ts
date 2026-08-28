@@ -371,6 +371,102 @@ describe('ProjectService.start / close (ADR-019 Phase B2)', () => {
   });
 });
 
+// ADR-026 CONST-VAR-011 (Route 7A) — project-before-contract: apex authority (CFO/CEO) may waive the
+// two MANDATORY Start conditions, recorded as PROJECT_CONDITION_WAIVED; a non-apex caller may not.
+describe('ProjectService.start — Route 7A apex waiver of MANDATORY Start conditions (CONST-VAR-011)', () => {
+  const identityWithRoles = (roles: string[]): RequestIdentity => ({
+    userId: 'user-1',
+    tenantSlug: 'acco',
+    activeOrganizationId: 'org-1',
+    roles,
+    permissions: [PERMISSIONS.projectsManage],
+  });
+
+  // A DRAFT project with NO active main contract → ACTIVE_MAIN_CONTRACT + CONTRACT_START_DATE unmet.
+  const noContractSnapshot = {
+    status: 'DRAFT',
+    commercialModel: 'CLIENT_CONTRACT',
+    startDate: new Date('2026-02-01'),
+    expectedEndDate: new Date('2027-08-31'),
+    clientId: 'client-1',
+    client: { status: 'ACTIVE' },
+    contracts: [],
+    boq: { versions: [{ status: 'BASELINED' }] },
+    members: [{ id: 'm-1' }, { id: 'm-2' }],
+  };
+
+  function build() {
+    const audit: unknown[] = [];
+    const repo = {
+      findById: jest.fn().mockResolvedValue({ id: 'project-1', status: 'DRAFT' }),
+      findActiveSuspension: jest.fn().mockResolvedValue(null),
+      findReadinessSnapshot: jest.fn().mockResolvedValue(noContractSnapshot),
+      update: jest.fn().mockImplementation((_tx, _id, data) => ({ id: 'project-1', ...data })),
+    };
+    const commandGovernance = { gateStateTransition: jest.fn().mockResolvedValue(null) };
+    const auditOutbox = { record: jest.fn().mockImplementation((_tx, cmd) => audit.push(cmd)) };
+    const prisma = { $transaction: (fn: (tx: unknown) => unknown) => fn({}) };
+    const tenancy = { getClient: () => prisma };
+    const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
+    const service = new ProjectService(
+      tenancy as never,
+      commandGovernance as never,
+      repo as never,
+      {} as never,
+      projectAccess as never,
+      auditOutbox as never,
+    );
+    return { service, repo, audit };
+  }
+
+  const waivers = [
+    { condition: 'ACTIVE_MAIN_CONTRACT', reason: 'CEO-approved at-risk start; contract in signature' },
+    { condition: 'CONTRACT_START_DATE', reason: 'Commencement letter to follow' },
+  ];
+
+  it('apex (CEO) may waive both MANDATORY Start conditions → ACTIVE, audited with apexAuthorised=true', async () => {
+    const { service, repo, audit } = build();
+    const result = await service.start(identityWithRoles(['CEO']), 'project-1', {
+      actualStartDate: '2026-09-01',
+      overrides: waivers,
+    });
+    expect((result as { status: string }).status).toBe('ACTIVE');
+
+    const waiverEvents = audit.filter(
+      (c) => (c as { eventType: string }).eventType === 'PROJECT_CONDITION_WAIVED',
+    );
+    expect(waiverEvents).toHaveLength(2);
+    for (const e of waiverEvents) {
+      expect((e as { after: { apexAuthorised: boolean } }).after.apexAuthorised).toBe(true);
+    }
+    expect(repo.update).toHaveBeenCalledWith(
+      expect.anything(),
+      'project-1',
+      expect.objectContaining({ status: 'ACTIVE' }),
+    );
+  });
+
+  it('CFO also carries Start-chain apex authority for the waiver', async () => {
+    const { service, repo } = build();
+    await service.start(identityWithRoles(['CFO']), 'project-1', {
+      actualStartDate: '2026-09-01',
+      overrides: waivers,
+    });
+    expect(repo.update).toHaveBeenCalled();
+  });
+
+  it('a NON-apex caller (no CFO/CEO role) is a 400 — MANDATORY conditions stay hard blockers', async () => {
+    const { service, repo } = build();
+    await expect(
+      service.start(identityWithRoles(['PROJECT_MANAGER']), 'project-1', {
+        actualStartDate: '2026-09-01',
+        overrides: waivers,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+});
+
 describe('ProjectService.setMemberRoles', () => {
   function buildRoleEdit(member: unknown) {
     const repo = {

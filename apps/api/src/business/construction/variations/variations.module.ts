@@ -11,6 +11,7 @@ import { AdoptBaselinePrismaRepository } from './infrastructure/adopt-baseline-p
 import { AdoptBaselineService } from './application/adopt-baseline.service.js';
 import { ExtensionOfTimePrismaRepository } from './infrastructure/extension-of-time-prisma.repository.js';
 import { ExtensionOfTimeService } from './application/extension-of-time.service.js';
+import { AtRiskCommencementService } from './application/at-risk-commencement.service.js';
 import { VariationsController } from './presentation/variations.controller.js';
 
 /**
@@ -30,6 +31,7 @@ import { VariationsController } from './presentation/variations.controller.js';
     AdoptBaselineService,
     ExtensionOfTimePrismaRepository,
     ExtensionOfTimeService,
+    AtRiskCommencementService,
   ],
   controllers: [VariationsController],
   exports: [VariationOrderPrismaRepository],

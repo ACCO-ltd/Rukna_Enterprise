@@ -159,6 +159,18 @@ export interface WaiverInput {
 }
 
 /**
+ * ADR-026 CONST-VAR-011 (Route 7A) — the two MANDATORY Start conditions a project-before-contract
+ * commencement may waive. They stay MANDATORY (a normal caller can NEVER waive them — CONST-PLC-006),
+ * but are *apex-waivable*: an override targeting one of these succeeds ONLY when the waiver carries
+ * Start-chain apex authority (CFO→CEO per CONST-DOA-006). This is a named, audited exception on the
+ * existing gate — still per-condition, still `PROJECT_CONDITION_WAIVED`, still no whole-command force.
+ */
+export const APEX_WAIVABLE_START_CONDITIONS: ReadonlySet<string> = new Set([
+  'ACTIVE_MAIN_CONTRACT',
+  'CONTRACT_START_DATE',
+]);
+
+/**
  * The decision a command must act on: which unsatisfied conditions hard-block, which need a waiver,
  * which waivers were validly applied, and which overrides were invalid. Pure — the service turns a
  * `!allowed` plan into a 400 and records `appliedWaivers` as audit events.
@@ -172,18 +184,39 @@ export interface EnforcementPlan {
 }
 
 /**
+ * Options that unlock the ADR-026 Route 7A exception. Absent/false ⇒ pre-7A behaviour exactly
+ * (MANDATORY is never waivable). `apexAuthority` is set by the service ONLY when the caller carries
+ * Start-chain apex authority; it lets a waiver of the two `APEX_WAIVABLE_START_CONDITIONS` succeed.
+ */
+export interface EnforcementOptions {
+  apexAuthority?: boolean;
+}
+
+/**
  * CONST-PLC-006 — MANDATORY conditions can never be waived; WAIVABLE ones are blocked by default
  * and unblocked only by an override that targets that *specific* failed condition with a non-empty
  * reason. An override that names a satisfied, MANDATORY, or unknown condition is invalid (you cannot
  * waive what is not a failed WAIVABLE condition) — surfaced rather than silently ignored. There is
  * no whole-transition `force`.
+ *
+ * ADR-026 CONST-VAR-011 (Route 7A) — the ONLY exception: the two `APEX_WAIVABLE_START_CONDITIONS`
+ * (`ACTIVE_MAIN_CONTRACT` / `CONTRACT_START_DATE`) may be waived when — and only when — the caller
+ * carries Start-chain apex authority (`options.apexAuthority`). Such a waiver is still per-condition,
+ * still needs a non-empty reason, and is still recorded as a `PROJECT_CONDITION_WAIVED` audit event.
+ * Without apex authority these conditions remain hard MANDATORY blockers, exactly as before.
  */
 export function planEnforcement(
   readiness: ProjectReadinessResponse,
   overrides: WaiverInput[],
+  options: EnforcementOptions = {},
 ): EnforcementPlan {
   const overrideFor = (code: string) =>
     overrides.find((o) => o.condition === code && o.reason.trim().length > 0);
+
+  // A MANDATORY condition is apex-waivable only for the two named Start conditions AND only when the
+  // caller holds apex authority. Everything else stays a hard blocker.
+  const apexWaivable = (code: string) =>
+    options.apexAuthority === true && APEX_WAIVABLE_START_CONDITIONS.has(code);
 
   const mandatoryBlockers: string[] = [];
   const requiresWaiver: string[] = [];
@@ -191,7 +224,7 @@ export function planEnforcement(
 
   for (const condition of readiness.conditions) {
     if (condition.satisfied) continue;
-    if (condition.severity === 'MANDATORY') {
+    if (condition.severity === 'MANDATORY' && !apexWaivable(condition.code)) {
       mandatoryBlockers.push(condition.code);
       continue;
     }
@@ -200,10 +233,13 @@ export function planEnforcement(
     else requiresWaiver.push(condition.code);
   }
 
-  // An override only makes sense against a condition that is unsatisfied AND waivable.
+  // An override only makes sense against a condition that is unsatisfied AND waivable — either a
+  // WAIVABLE condition, or (Route 7A) a named MANDATORY condition the caller is apex-authorised to waive.
   const waivableUnsatisfied = new Set(
     readiness.conditions
-      .filter((c) => !c.satisfied && c.severity === 'WAIVABLE')
+      .filter(
+        (c) => !c.satisfied && (c.severity === 'WAIVABLE' || apexWaivable(c.code)),
+      )
       .map((c) => c.code),
   );
   const invalidOverrides = overrides

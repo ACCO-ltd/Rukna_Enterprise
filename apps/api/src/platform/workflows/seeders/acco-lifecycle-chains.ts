@@ -68,3 +68,24 @@ export function accoApprovalChains(): ApprovalChain[] {
     },
   ];
 }
+
+/**
+ * ADR-026 CONST-VAR-011 (Variations Phase 5, Route 7B) — the named fixed chain that sanctions urgent
+ * variation work BEFORE the VO is finalised (at-risk commencement). It is authority-only (routes on
+ * the decision, not a value band): Construction Director + CFO jointly below the exposure cap, adding
+ * the CEO above it. Unlike the ADR-022 state-transition chains this does not map to a VO status change
+ * (the VO lifecycle is untouched — CONST-VAR-011) — it is the authority declaration for the dedicated
+ * `POST /variations/:id/at-risk-commencement` command, whose config-driven cap decides the CEO step.
+ *
+ * Exposed as data (mirrors accoApprovalChains) so the two-tier chain lives in ONE place with the rest
+ * of ACCO's authority matrix rather than being hard-coded in the service.
+ */
+export const AT_RISK_COMMENCEMENT_CHAIN = {
+  key: 'VARIATION_AT_RISK_COMMENCEMENT',
+  name: 'Variation At-Risk Commencement Authorisation',
+  entityType: 'VariationOrder' as const,
+  /** Below the exposure cap (CD + CFO jointly). */
+  belowCap: [R.CONSTRUCTION_DIRECTOR, R.CFO] as AccoRole[],
+  /** Above the exposure cap (adds the CEO). */
+  aboveCap: [R.CONSTRUCTION_DIRECTOR, R.CFO, R.CEO] as AccoRole[],
+} as const;
