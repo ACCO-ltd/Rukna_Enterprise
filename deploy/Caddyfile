@@ -1,23 +1,30 @@
-# Caddy — automatic HTTPS (Let's Encrypt) + reverse proxy for the Rukna VPS.
+# ─────────────────────────────────────────────────────────────────────────────
+# Rukna — site blocks to APPEND to the shared Caddy on this box.
 #
-# Requires: api.rukna.site and storage.rukna.site both resolve (A record) to this
-# VPS, and ports 80 + 443 are open. Caddy provisions and renews certs on its own.
+# This box already runs a shared Caddy (deploy-caddy-1) whose config lives at
+# /opt/simad/deploy/Caddyfile and which fronts the other products. Rukna does NOT
+# run its own Caddy — instead these two blocks are appended to that shared file,
+# then Caddy is reloaded:
 #
-# Set your email for Let's Encrypt expiry notices (replace the placeholder).
+#   cat deploy/Caddyfile >> /opt/simad/deploy/Caddyfile
+#   docker exec deploy-caddy-1 caddy reload --config /etc/caddy/Caddyfile
+#
+# Reaches Rukna's containers by name because api + minio join the deploy_internal
+# network (see docker-compose.prod.yml) — exactly how tconnect-* is wired. Caddy
+# auto-provisions Let's Encrypt certs for both hosts (DNS must point here, DNS-only).
+# ─────────────────────────────────────────────────────────────────────────────
 
-{
-	email admin@rukna.site
-}
-
-# ── API ──────────────────────────────────────────────────────────────────────
 api.rukna.site {
-	reverse_proxy api:3001
+	encode zstd gzip
+	request_body {
+		max_size 512MB
+	}
+	reverse_proxy rukna_api:3001
 }
 
-# ── Object storage (S3 API) ──────────────────────────────────────────────────
-# The web app uploads/downloads directly here via presigned URLs, so it must be
-# public. Caddy preserves the Host header (needed for presigned signatures).
-# Large uploads: raise the body limit if you serve big attachments.
 storage.rukna.site {
-	reverse_proxy minio:9000
+	request_body {
+		max_size 512MB
+	}
+	reverse_proxy rukna_minio:9000
 }

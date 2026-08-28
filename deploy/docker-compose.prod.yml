@@ -1,16 +1,21 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Rukna — PRODUCTION stack for a single Contabo VPS (single-tenant: ACCO).
+# Rukna — PRODUCTION stack for a SHARED Contabo VPS.
 #
-#   caddy      → TLS termination + reverse proxy (api.rukna.site, storage.rukna.site)
-#   api        → NestJS backend (internal :3001, fronted by Caddy)
+# This box already runs other products behind a single shared Caddy
+# (deploy-caddy-1, config /opt/simad/deploy/Caddyfile, network deploy_internal)
+# that owns ports 80/443. So Rukna does NOT run its own Caddy — it attaches its
+# api + minio to that shared network, and two site blocks are added to the shared
+# Caddyfile (api.rukna.site → rukna_api:3001, storage.rukna.site → rukna_minio:9000),
+# exactly how the tconnect-* containers are wired.
+#
+#   caddy      → the EXISTING shared deploy-caddy-1 (NOT started here)
+#   api        → NestJS backend (internal :3001, reached by the shared Caddy)
 #   migrate    → one-shot: applies platform + tenant migrations before api starts
-#   postgres   → platform registry DB + the ACCO tenant DB (internal only)
-#   minio      → S3-compatible object storage (internal, fronted by Caddy)
+#   postgres   → platform + ACCO tenant DBs (internal only)
+#   minio      → S3 storage (reached by api and by the shared Caddy)
 #   minio-init → one-shot: creates the file bucket
 #
-# Compose-level secrets are read from `deploy/.env` (see deploy/.env.example).
-# App config is read from `apps/api/.env` (see apps/api/.env.production.example).
-# The DB password in both files MUST match.
+# Secrets: deploy/.env (compose) + apps/api/.env (app). The DB password must match.
 #
 #   docker compose -f deploy/docker-compose.prod.yml up -d --build
 # ─────────────────────────────────────────────────────────────────────────────
@@ -26,12 +31,13 @@ services:
       POSTGRES_DB: rukna_platform
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - rukna_internal
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U erp_user -d rukna_platform']
       interval: 10s
       timeout: 5s
       retries: 5
-    # Deliberately NOT published to the host — reachable only inside the compose network.
 
   minio:
     image: minio/minio:latest
@@ -43,6 +49,9 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY in deploy/.env}
     volumes:
       - minio_data:/data
+    networks:
+      - rukna_internal # reached by api + minio-init
+      - deploy_internal # reached by the shared Caddy (storage.rukna.site)
     healthcheck:
       test: ['CMD', 'mc', 'ready', 'local']
       interval: 10s
@@ -54,6 +63,8 @@ services:
     depends_on:
       minio:
         condition: service_healthy
+    networks:
+      - rukna_internal
     environment:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
@@ -75,6 +86,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - rukna_internal
     command: ['pnpm', 'db:migrate:deploy']
     restart: 'no'
 
@@ -90,6 +103,9 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    networks:
+      - rukna_internal # reaches postgres + minio
+      - deploy_internal # reached by the shared Caddy (api.rukna.site)
     healthcheck:
       test:
         - CMD
@@ -100,29 +116,16 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
-    # Internal only — Caddy fronts it.
 
-  caddy:
-    image: caddy:2-alpine
-    container_name: rukna_caddy
-    restart: unless-stopped
-    depends_on:
-      - api
-      - minio
-    ports:
-      - '80:80'
-      - '443:443'
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
+networks:
+  rukna_internal:
+    driver: bridge
+  # The shared reverse-proxy network created by /opt/simad/deploy (deploy-caddy-1).
+  deploy_internal:
+    external: true
 
 volumes:
   postgres_data:
     driver: local
   minio_data:
-    driver: local
-  caddy_data:
-    driver: local
-  caddy_config:
     driver: local
