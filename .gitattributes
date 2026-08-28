@@ -1,0 +1,4 @@
+# Files that run on the Linux server must stay LF, regardless of the OS they're
+# edited on — CRLF breaks bash (`\r' not found) and can confuse Caddy.
+*.sh text eol=lf
+deploy/Caddyfile text eol=lf
