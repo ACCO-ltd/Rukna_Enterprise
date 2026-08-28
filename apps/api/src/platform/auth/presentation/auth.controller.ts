@@ -76,8 +76,8 @@ export class AuthController {
    *
    * `COOKIE_DOMAIN` / `COOKIE_SAMESITE` are read from the environment so the same build
    * serves both the local single-host setup and a split deployment where the web app and
-   * the API sit on different subdomains of one registrable domain (e.g. `app.runka.site`
-   * calling `api.runka.site`). Unset ⇒ the previous host-only, `SameSite=Lax` behaviour,
+   * the API sit on different subdomains of one registrable domain (e.g. `app.rukna.site`
+   * calling `api.rukna.site`). Unset ⇒ the previous host-only, `SameSite=Lax` behaviour,
    * so existing environments are unaffected. `SameSite=None` forces `Secure` (browsers
    * reject `None` without it).
    */
