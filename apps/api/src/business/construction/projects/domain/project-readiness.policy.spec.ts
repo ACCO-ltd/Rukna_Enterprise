@@ -179,3 +179,79 @@ describe('planEnforcement (ADR-019 CONST-PLC-006)', () => {
     expect(plan.invalidOverrides).toEqual(['DELIVERY_TEAM']);
   });
 });
+
+// ADR-026 CONST-VAR-011 (Route 7A) — project-before-contract: the two named MANDATORY Start
+// conditions are apex-waivable, but ONLY under apex authority. Without it they stay hard blockers.
+describe('planEnforcement — Route 7A apex waiver of MANDATORY Start conditions (CONST-VAR-011)', () => {
+  const noContract: ReadinessSnapshot = { ...readyClientContract, activeContract: null };
+
+  it('non-apex caller CANNOT waive ACTIVE_MAIN_CONTRACT / CONTRACT_START_DATE (stay hard blockers)', () => {
+    const readiness = evaluateReadiness(noContract, 'start');
+    const plan = planEnforcement(
+      readiness,
+      [
+        { condition: 'ACTIVE_MAIN_CONTRACT', reason: 'client verbally instructed early start' },
+        { condition: 'CONTRACT_START_DATE', reason: 'commencement letter pending' },
+      ],
+      { apexAuthority: false },
+    );
+    expect(plan.allowed).toBe(false);
+    expect(plan.mandatoryBlockers).toEqual(
+      expect.arrayContaining(['ACTIVE_MAIN_CONTRACT', 'CONTRACT_START_DATE']),
+    );
+    // The overrides are rejected as invalid (they target still-MANDATORY conditions), never applied.
+    expect(plan.invalidOverrides).toEqual(
+      expect.arrayContaining(['ACTIVE_MAIN_CONTRACT', 'CONTRACT_START_DATE']),
+    );
+    expect(plan.appliedWaivers).toEqual([]);
+  });
+
+  it('apex caller MAY waive both named MANDATORY conditions with a reason — transition allowed + audited', () => {
+    const readiness = evaluateReadiness(noContract, 'start');
+    const plan = planEnforcement(
+      readiness,
+      [
+        { condition: 'ACTIVE_MAIN_CONTRACT', reason: 'CEO-approved at-risk start; contract in signature' },
+        { condition: 'CONTRACT_START_DATE', reason: 'CEO-approved at-risk start; commencement letter to follow' },
+      ],
+      { apexAuthority: true },
+    );
+    expect(plan.allowed).toBe(true);
+    expect(plan.mandatoryBlockers).toEqual([]);
+    expect(plan.appliedWaivers).toEqual([
+      { condition: 'ACTIVE_MAIN_CONTRACT', reason: 'CEO-approved at-risk start; contract in signature' },
+      { condition: 'CONTRACT_START_DATE', reason: 'CEO-approved at-risk start; commencement letter to follow' },
+    ]);
+    expect(plan.invalidOverrides).toEqual([]);
+  });
+
+  it('apex authority does NOT unlock other MANDATORY conditions (e.g. BOQ_BASELINED stays a blocker)', () => {
+    const readiness = evaluateReadiness({ ...noContract, hasBaselinedBoq: false }, 'start');
+    const plan = planEnforcement(
+      readiness,
+      [
+        { condition: 'ACTIVE_MAIN_CONTRACT', reason: 'apex ok' },
+        { condition: 'CONTRACT_START_DATE', reason: 'apex ok' },
+        { condition: 'BOQ_BASELINED', reason: 'try to sneak this through' },
+      ],
+      { apexAuthority: true },
+    );
+    expect(plan.allowed).toBe(false);
+    expect(plan.mandatoryBlockers).toEqual(['BOQ_BASELINED']);
+    expect(plan.invalidOverrides).toContain('BOQ_BASELINED');
+  });
+
+  it('apex waiver still requires a non-empty reason (no blanket force)', () => {
+    const readiness = evaluateReadiness(noContract, 'start');
+    const plan = planEnforcement(
+      readiness,
+      [
+        { condition: 'ACTIVE_MAIN_CONTRACT', reason: '   ' },
+        { condition: 'CONTRACT_START_DATE', reason: 'ok' },
+      ],
+      { apexAuthority: true },
+    );
+    expect(plan.allowed).toBe(false);
+    expect(plan.requiresWaiver).toContain('ACTIVE_MAIN_CONTRACT');
+  });
+});

@@ -30,6 +30,7 @@ import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs
 import {
   evaluateReadiness,
   planEnforcement,
+  APEX_WAIVABLE_START_CONDITIONS,
   type EnforcementPlan,
   type ReadinessSnapshot,
   type WaiverInput,
@@ -46,6 +47,11 @@ import type { SetMemberRolesDto } from '../presentation/dto/set-member-roles.dto
 // DRAFT → ACTIVE command; the DRAFT → ACTIVE governance binding (ADR-022) enforces the approval
 // chain that `APPROVED` used to model. Cancellation is allowed from the two pre-completion states.
 const CANCEL_ALLOWED_FROM = new Set(['DRAFT', 'ACTIVE']);
+
+// ADR-026 CONST-VAR-011 (Route 7A) — the Start chain's apex (CONST-DOA-006: PM → CFO → CEO). The
+// authority to waive the two MANDATORY Start conditions (project-before-contract) is that apex tier:
+// CFO or CEO. A normal manager (projectsManage permission alone) can never waive them.
+const START_CHAIN_APEX_ROLES: ReadonlySet<string> = new Set(['CFO', 'CEO']);
 
 const LIFECYCLE_TRANSITIONS: Record<string, string> = {
   start: 'ACTIVE',
@@ -579,7 +585,15 @@ export class ProjectService {
     }
   }
 
-  /** Evaluate readiness + resolve waivers for a command; throw 400 with the blockers if not allowed. */
+  /**
+   * Evaluate readiness + resolve waivers for a command; throw 400 with the blockers if not allowed.
+   *
+   * ADR-026 CONST-VAR-011 (Route 7A) — for `start`, a caller holding Start-chain apex authority
+   * (CFO/CEO) may waive the two named MANDATORY conditions (`ACTIVE_MAIN_CONTRACT` /
+   * `CONTRACT_START_DATE`) to begin a project before its main contract is executed. The apex flag is
+   * derived from the caller's org roles and passed to the pure policy; without it those conditions
+   * stay hard MANDATORY blockers for everyone.
+   */
   private async enforceReadiness(
     identity: RequestIdentity,
     id: string,
@@ -590,7 +604,9 @@ export class ProjectService {
     const snapshot = await this.repo.findReadinessSnapshot(prisma, identity.activeOrganizationId, id);
     if (!snapshot) throw new NotFoundException(`Project ${id} not found`);
     const readiness = evaluateReadiness(this.toReadinessSnapshot(snapshot), command);
-    const plan = planEnforcement(readiness, overrides ?? []);
+    const apexAuthority =
+      command === 'start' && identity.roles.some((r) => START_CHAIN_APEX_ROLES.has(r));
+    const plan = planEnforcement(readiness, overrides ?? [], { apexAuthority });
     if (!plan.allowed) {
       throw new BadRequestException(this.readinessError(command, plan));
     }
@@ -607,6 +623,9 @@ export class ProjectService {
     waivers: WaiverInput[],
   ) {
     for (const waiver of waivers) {
+      // CONST-VAR-011 (Route 7A): a waiver of a MANDATORY Start condition is the apex-authorised
+      // at-risk-commencement exception — mark it so on the audit event.
+      const apexAuthorised = APEX_WAIVABLE_START_CONDITIONS.has(waiver.condition);
       await this.auditOutbox.record(tx, {
         organizationId: identity.activeOrganizationId,
         actorUserId: identity.userId,
@@ -618,7 +637,7 @@ export class ProjectService {
         idempotencyKey: `project-waiver-${id}-${command}-${waiver.condition}-${fromStatus}`,
         reason: waiver.reason,
         before: { condition: waiver.condition },
-        after: { condition: waiver.condition, waived: true },
+        after: { condition: waiver.condition, waived: true, apexAuthorised },
       });
     }
   }
