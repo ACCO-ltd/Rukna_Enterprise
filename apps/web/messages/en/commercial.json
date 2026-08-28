@@ -537,6 +537,53 @@
       "rejectFailed": "Could not reject the variation",
       "withdrawn": "Variation withdrawn",
       "withdrawFailed": "Could not withdraw the variation"
+    },
+    "trace": {
+      "title": "Certified & invoiced by variation",
+      "explainer": "Where certified and invoiced value to date traces back to — the original scope and each variation. The rows reconcile to the total.",
+      "baseScope": "Original scope",
+      "baseScopeHint": "Baseline contract, before any variation",
+      "total": "Total",
+      "restricted": "Restricted",
+      "exVatNote": "Figures are gross of VAT and certificate deductions (ex-VAT). They are not the invoice or VAT-inclusive total.",
+      "loadFailed": "Could not load the certified & invoiced trace",
+      "loadFailedHint": "Something went wrong loading it. Try again.",
+      "retry": "Retry",
+      "col": {
+        "scope": "Scope",
+        "certified": "Certified to date",
+        "invoiced": "Invoiced to date"
+      }
+    },
+    "atRisk": {
+      "title": "At-risk commencement",
+      "explainer": "An audited authorisation to start urgent work before the variation is client-approved. It changes neither the contract value nor the BOQ — it is an exception, not the normal path.",
+      "record": "Record at-risk commencement",
+      "none": "No at-risk commencement recorded on this variation.",
+      "loadFailed": "Could not load at-risk authorisations.",
+      "retry": "Retry",
+      "cap": "Cap in force",
+      "cd": "Construction Director",
+      "cfo": "CFO",
+      "ceo": "CEO",
+      "ceoOptional": "CEO (required above the cap)",
+      "ceoRequired": "CEO required",
+      "ceoNotRequired": "Within cap",
+      "voStatusAt": "Variation status at authorisation",
+      "authorisedBy": "Authorised",
+      "authorisedMeta": "by {by} · {date}",
+      "formWarning": "This records an exception, not the normal approval path. It changes neither the contract value nor the BOQ.",
+      "exposure": "Exposure amount",
+      "exposureHint": "The value ACCO accepts by starting early, in the contract currency.",
+      "reason": "Reason",
+      "ceoHint": "Leave empty unless the exposure exceeds the cap. The server decides whether the CEO is required and rejects a mismatch.",
+      "userIdPlaceholder": "User ID",
+      "useMe": "Use my ID",
+      "confirm": "Record authorisation",
+      "toast": {
+        "recorded": "At-risk commencement recorded",
+        "recordFailed": "Could not record the at-risk commencement"
+      }
     }
   },
   "eot": {

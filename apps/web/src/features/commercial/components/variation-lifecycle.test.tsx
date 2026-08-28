@@ -12,11 +12,13 @@ import { ExtensionOfTimeSection } from './extension-of-time-section';
 vi.mock('../hooks/use-commercial', () => ({
   useVariation: vi.fn(),
   useExtensionsOfTime: vi.fn(),
+  useAtRiskCommencements: vi.fn(),
   useSubmitVariation: vi.fn(),
   useInternalApproveVariation: vi.fn(),
   useClientApproveVariation: vi.fn(),
   useRejectVariation: vi.fn(),
   useWithdrawVariation: vi.fn(),
+  useRecordAtRiskCommencement: vi.fn(),
   useGrantExtensionOfTime: vi.fn(),
 }));
 
@@ -75,6 +77,16 @@ function stubMutations() {
   vi.mocked(hooks.useWithdrawVariation).mockReturnValue(
     idleMutation() as unknown as ReturnType<typeof hooks.useWithdrawVariation>,
   );
+  vi.mocked(hooks.useRecordAtRiskCommencement).mockReturnValue(
+    idleMutation() as unknown as ReturnType<typeof hooks.useRecordAtRiskCommencement>,
+  );
+  // The detail sheet mounts the at-risk section, which reads the (empty) authorisation list.
+  vi.mocked(hooks.useAtRiskCommencements).mockReturnValue({
+    isPending: false,
+    isError: false,
+    data: [],
+    refetch: vi.fn(),
+  } as unknown as ReturnType<typeof hooks.useAtRiskCommencements>);
 }
 
 function stubVariation(data: VariationOrderResponse) {

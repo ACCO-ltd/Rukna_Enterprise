@@ -1,10 +1,13 @@
 import type {
+  AtRiskCommencementResponse,
+  CertifiedInvoicedByVariationResponse,
   CommercialApplicationsResponse,
   CommercialCurrentCycleResponse,
   CommercialSummaryResponse,
   ExtensionOfTimeListResponse,
   ExtensionOfTimeResponse,
   GrantExtensionOfTimeRequest,
+  RecordAtRiskCommencementRequest,
   VariationOrderListResponse,
   VariationOrderResponse,
 } from '@erp/types';
@@ -82,6 +85,20 @@ export function getVariation(id: string): Promise<VariationOrderResponse> {
   return apiClient<VariationOrderResponse>(`/variations/${id}`);
 }
 
+/**
+ * Certified & invoiced value to date, decomposed base-scope + per-VO (ADR-026 CONST-VAR-008,
+ * Phase 3). Money fields are `string | null`: null exactly when the caller lacks
+ * `financialPositionView` (`canViewFinancials === false`). Reconciliation (base + Σ byVariation =
+ * total) holds by construction on the server; the UI renders it, never recomputes it.
+ */
+export function getCertifiedInvoicedByVariation(
+  contractId: string,
+): Promise<CertifiedInvoicedByVariationResponse> {
+  return apiClient<CertifiedInvoicedByVariationResponse>(
+    `/contracts/${contractId}/variations/certified-invoiced`,
+  );
+}
+
 export function createVariation(
   contractId: string,
   payload: CreateVariationPayload,
@@ -154,6 +171,32 @@ export function withdrawVariation(id: string, reason?: string): Promise<Variatio
     method: 'POST',
     body: JSON.stringify(reason ? { reason } : {}),
   });
+}
+
+// ─── At-risk commencement (ADR-026 CONST-VAR-011, Phase 5, Route 7B) ────────────
+//
+// The audited authorisation to start urgent variation work BEFORE the VO is CLIENT_APPROVED. The
+// server is the sole authority for the cap rule (CD+CFO always; +CEO above the config cap): the
+// UI collects the fields and surfaces the server's 400/403 verbatim — it re-implements no rule.
+
+/** Existing at-risk authorisations recorded on a VO, newest first (bare array from the controller). */
+export function listAtRiskCommencements(
+  variationId: string,
+): Promise<AtRiskCommencementResponse[]> {
+  return apiClient<AtRiskCommencementResponse[]>(`/variations/${variationId}/at-risk-commencement`);
+}
+
+export function recordAtRiskCommencement(
+  variationId: string,
+  payload: RecordAtRiskCommencementRequest,
+): Promise<AtRiskCommencementResponse> {
+  return apiClient<AtRiskCommencementResponse>(
+    `/variations/${variationId}/at-risk-commencement`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 // ─── Extension of Time (ADR-026 Phase 4) ────────────────────────────────────────

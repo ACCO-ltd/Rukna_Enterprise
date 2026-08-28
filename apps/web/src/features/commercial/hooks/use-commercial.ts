@@ -7,11 +7,14 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query';
 import type {
+  AtRiskCommencementResponse,
+  CertifiedInvoicedByVariationResponse,
   CommercialApplicationsResponse,
   CommercialCurrentCycleResponse,
   CommercialSummaryResponse,
   ExtensionOfTimeListResponse,
   GrantExtensionOfTimeRequest,
+  RecordAtRiskCommencementRequest,
   VariationOrderListResponse,
   VariationOrderResponse,
 } from '@erp/types';
@@ -20,14 +23,17 @@ import {
   addVariationLine,
   clientApproveVariation,
   createVariation,
+  getCertifiedInvoicedByVariation,
   getCommercialApplications,
   getCommercialCurrentCycle,
   getCommercialSummary,
   getVariation,
   grantExtensionOfTime,
   internalApproveVariation,
+  listAtRiskCommencements,
   listExtensionsOfTime,
   listVariations,
+  recordAtRiskCommencement,
   rejectVariation,
   removeVariationLine,
   submitVariation,
@@ -52,6 +58,11 @@ export const variationKeys = {
   list: (contractId: string) => [...variationKeys.all, 'list', contractId] as const,
   detail: (id: string) => [...variationKeys.all, 'detail', id] as const,
   extensions: (contractId: string) => [...variationKeys.all, 'eot', contractId] as const,
+  /** Certified/invoiced trace is contract-scoped (base + per-VO). */
+  certifiedInvoiced: (contractId: string) =>
+    [...variationKeys.all, 'certified-invoiced', contractId] as const,
+  /** At-risk authorisations are VO-scoped (list per variation). */
+  atRisk: (variationId: string) => [...variationKeys.all, 'at-risk', variationId] as const,
 };
 
 /**
@@ -105,6 +116,34 @@ export function useVariation(
     queryKey: variationKeys.detail(id ?? 'none'),
     queryFn: () => getVariation(id as string),
     enabled: Boolean(id),
+  });
+}
+
+/**
+ * The certified/invoiced-by-variation read model (Phase 3, CONST-VAR-008). Contract-scoped, and
+ * `enabled` only when there is a contract. The server nulls every money field when the caller lacks
+ * `financialPositionView` (`canViewFinancials === false`) — the UI renders that as RESTRICTED, never
+ * as `$0`. It re-reads whenever a VO mutation invalidates `variationKeys.all`, so the trace moves
+ * with the lifecycle without a manual reload.
+ */
+export function useCertifiedInvoicedByVariation(
+  contractId: string | null | undefined,
+): UseQueryResult<CertifiedInvoicedByVariationResponse, Error> {
+  return useQuery({
+    queryKey: variationKeys.certifiedInvoiced(contractId ?? 'none'),
+    queryFn: () => getCertifiedInvoicedByVariation(contractId as string),
+    enabled: Boolean(contractId),
+  });
+}
+
+/** At-risk commencement authorisations recorded on a VO (newest first). */
+export function useAtRiskCommencements(
+  variationId: string | null | undefined,
+): UseQueryResult<AtRiskCommencementResponse[], Error> {
+  return useQuery({
+    queryKey: variationKeys.atRisk(variationId ?? 'none'),
+    queryFn: () => listAtRiskCommencements(variationId as string),
+    enabled: Boolean(variationId),
   });
 }
 
@@ -203,6 +242,22 @@ export function useRejectVariation(variationId: string, contractId: string, proj
 export function useWithdrawVariation(variationId: string, contractId: string, projectId: string) {
   return useVariationMutation(contractId, projectId, (reason?: string) =>
     withdrawVariation(variationId, reason),
+  );
+}
+
+/**
+ * Records an at-risk commencement (Phase 5, Route 7B). Reuses `useVariationMutation` so it
+ * invalidates `variationKeys.all` (which covers the VO-scoped at-risk list key) AND the project
+ * commercial summary. The cap rule is enforced server-side: this hook carries the payload and
+ * surfaces the server's 400/403 to the caller's `onError` — it re-implements no rule.
+ */
+export function useRecordAtRiskCommencement(
+  variationId: string,
+  contractId: string,
+  projectId: string,
+) {
+  return useVariationMutation(contractId, projectId, (payload: RecordAtRiskCommencementRequest) =>
+    recordAtRiskCommencement(variationId, payload),
   );
 }
 

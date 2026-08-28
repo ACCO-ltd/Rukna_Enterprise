@@ -33,6 +33,7 @@ import {
   useWithdrawVariation,
 } from '../hooks/use-commercial';
 import { variationStatusTone } from '../presentation';
+import { AtRiskCommencementSection } from './at-risk-commencement-section';
 
 /**
  * VariationOrder detail, in a drawer so the list stays behind it (the commercial pattern for a
@@ -278,6 +279,15 @@ function DetailBody({
             <DefinitionRow label={t('detail.reason')}>{variation.reason}</DefinitionRow>
           ) : null}
         </DefinitionList>
+
+        {/* At-risk commencement (Phase 5) — the audited early-start exception. Lists any recorded
+            authorisations always, and offers the record action only in pre-CLIENT_APPROVED states. */}
+        <AtRiskCommencementSection
+          variation={variation}
+          contractId={contractId}
+          projectId={projectId}
+          canManage={canManage}
+        />
 
         {/* Inline decision forms */}
         {mode === 'client-approve' ? (

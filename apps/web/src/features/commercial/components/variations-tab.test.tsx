@@ -17,12 +17,15 @@ vi.mock('../hooks/use-commercial', () => ({
   useVariations: vi.fn(),
   useVariation: vi.fn(),
   useExtensionsOfTime: vi.fn(),
+  useCertifiedInvoicedByVariation: vi.fn(),
+  useAtRiskCommencements: vi.fn(),
   useCreateVariation: vi.fn(),
   useSubmitVariation: vi.fn(),
   useInternalApproveVariation: vi.fn(),
   useClientApproveVariation: vi.fn(),
   useRejectVariation: vi.fn(),
   useWithdrawVariation: vi.fn(),
+  useRecordAtRiskCommencement: vi.fn(),
   useGrantExtensionOfTime: vi.fn(),
 }));
 
@@ -140,6 +143,29 @@ function stubHooks(options: {
     refetch: vi.fn(),
   } as unknown as ReturnType<typeof hooks.useVariation>);
 
+  // P3 trace section — a benign populated read so the tab renders without hitting the network.
+  vi.mocked(hooks.useCertifiedInvoicedByVariation).mockReturnValue({
+    isPending: false,
+    isError: false,
+    data: {
+      contractId: 'c-1',
+      canViewFinancials: true,
+      baseScope: { certifiedToDate: '0.00', invoicedToDate: '0.00' },
+      byVariation: [],
+      totalCertifiedToDate: '0.00',
+      totalInvoicedToDate: '0.00',
+    },
+    refetch: vi.fn(),
+  } as unknown as ReturnType<typeof hooks.useCertifiedInvoicedByVariation>);
+
+  // At-risk list — only reached via the detail sheet (never opened in these tests), stubbed empty.
+  vi.mocked(hooks.useAtRiskCommencements).mockReturnValue({
+    isPending: false,
+    isError: false,
+    data: [],
+    refetch: vi.fn(),
+  } as unknown as ReturnType<typeof hooks.useAtRiskCommencements>);
+
   // A bare idle mutation; each mock casts it to its own hook's exact return type.
   const idle = () => ({ mutate: vi.fn(), isPending: false });
 
@@ -161,6 +187,9 @@ function stubHooks(options: {
   );
   vi.mocked(hooks.useWithdrawVariation).mockReturnValue(
     idle() as unknown as ReturnType<typeof hooks.useWithdrawVariation>,
+  );
+  vi.mocked(hooks.useRecordAtRiskCommencement).mockReturnValue(
+    idle() as unknown as ReturnType<typeof hooks.useRecordAtRiskCommencement>,
   );
   vi.mocked(hooks.useGrantExtensionOfTime).mockReturnValue(
     idle() as unknown as ReturnType<typeof hooks.useGrantExtensionOfTime>,
