@@ -55,8 +55,7 @@ services:
     volumes:
       - minio_data:/data
     networks:
-      - rukna_internal # reached by api + minio-init
-      - deploy_internal # reached by the shared Caddy (storage.rukna.site)
+      - rukna_internal # ONLY internal — not exposed to the shared proxy or the host
     healthcheck:
       test: ['CMD', 'mc', 'ready', 'local']
       interval: 10s
@@ -110,7 +109,7 @@ services:
         condition: service_completed_successfully
     networks:
       - rukna_internal # reaches postgres + minio
-      - deploy_internal # reached by the shared Caddy (api.rukna.site)
+      - deploy_internal # secondary attachment so the existing shared Caddy can reach api.rukna.site
     healthcheck:
       test:
         - CMD
@@ -124,13 +123,19 @@ services:
 
 networks:
   rukna_internal:
+    name: rukna_internal # explicit, so it is not prefixed to rukna_rukna_internal
     driver: bridge
   # The shared reverse-proxy network created by /opt/simad/deploy (deploy-caddy-1).
+  # Only the api service attaches here (secondary), so the existing Caddy can reach it.
+  # NOTE: minio is intentionally NOT on this network, so storage.rukna.site is not proxied
+  # and browser file uploads are deferred until MinIO is deliberately exposed later.
   deploy_internal:
     external: true
 
 volumes:
   postgres_data:
+    name: rukna_postgres_data
     driver: local
   minio_data:
+    name: rukna_minio_data
     driver: local
