@@ -56,8 +56,7 @@ is built. -->
 > - **Reads.** `VariationOrderResponse` now carries `appliedToBoq` / `boqNodeCount` / `boqAppliedVersionId`;
 >   the commercial summary already surfaces the contract's current baseline version.
 >
-> The firewall and immutability are preserved; the certify→invoice chain is unchanged (P3 — reads only —
-> and P5 are **not** built). Status remains **proposed**.
+> The firewall and immutability are preserved; the certify→invoice chain is unchanged. Status remains **proposed**.
 >
 > **Phase 4 implemented (2026-08-27).** The **Extension-of-Time** command (CONST-VAR-009) is built in
 > `apps/api` (`business/construction/variations/` — beside the VO work) + `@erp/types`, per
@@ -78,7 +77,45 @@ is built. -->
 > supplied `newEndDate`. This is a guarded command via permission + audit only; there is deliberately
 > **no DOA governance binding** (ADR-026 governs only VO internal approval) — governing the EoT is a
 > possible later refinement if Eng Ahmed requires it. `Contract.contractValue` and every downstream
-> table are **untouched**. Phases 2/3/5 remain unbuilt. Status remains **proposed**.
+> table are **untouched**. Status remains **proposed**.
+>
+> **Phase 3 implemented (2026-08-28).** Certified & invoiced value **traced by VariationOrder**
+> (CONST-VAR-008) — **reads only, no write-path or schema change**, per
+> `docs/reference/variations-implementation-plan.md` Phase 3. `GET
+> contracts/:contractId/variations/certified-invoiced` (contract-scoped, `projectAccess.assertContract`,
+> money gated on `financialPositionView`) groups certified value (items of **effective** IPCs) and
+> invoiced value (items of IPCs behind **POSTED** invoices), both **gross/ex-VAT**, **by
+> VariationOrder**, plus a first-class **base-scope** bucket for lines whose BOQ node carries no
+> `sourceChangeOrderId`. It rides the existing join `IpcItem.certifiedAmount →
+> applicationItem(IpaItem).boqNodeId → BoqNode.sourceChangeOrderId → VariationOrder` — **no new column**
+> (Option A). VAT and certificate-level deductions are **not** VO-attributable, so ADR-024 settlement
+> truth stays AR-owned and untouched; `baseScope + Σ(byVariation) = total` by construction. Additive
+> `@erp/types`. Status remains **proposed**.
+>
+> **Phase 5 implemented (2026-08-28).** The two **at-risk commencement** routes (CONST-VAR-011, memo
+> Q7A/Q7B) — controlled, fully-audited records on existing gates, never an informal verbal path, per
+> `docs/reference/variations-implementation-plan.md` Phase 5.
+> - **7A (project-before-contract).** No new endpoint/schema: reuses the ADR-019 project-Start
+>   condition-override path. The two **MANDATORY** Start conditions `ACTIVE_MAIN_CONTRACT` /
+>   `CONTRACT_START_DATE` become **apex-waivable — and only apex-waivable**: `planEnforcement` gains an
+>   `apexAuthority` option gated to exactly those two named codes (`APEX_WAIVABLE_START_CONDITIONS`),
+>   derived **server-side** from the Start-chain apex roles (`CFO`/`CEO`). A bare `projectsManage`
+>   holder can never waive them; no other MANDATORY condition is unlocked. Still per-condition, still
+>   needs a non-empty reason, still recorded as `PROJECT_CONDITION_WAIVED` (stamped `apexAuthorised`).
+>   No `force`, no new bypass.
+> - **7B (urgent-variation-before-VO).** `POST /variations/:id/at-risk-commencement` records an
+>   **immutable** `VariationOrderAtRiskAuthorisation` (hand-authored migration
+>   `20260828140000_variations_phase5_at_risk_commencement_adr026`). Fixed chain
+>   `[CONSTRUCTION_DIRECTOR, CFO]`, escalating to add **`CEO`** above a **config-driven** exposure cap
+>   (`VARIATION_AT_RISK_EXPOSURE_CAP_USD`, default **USD 25,000** — Eng Ahmed's provisional figure per
+>   `ceo-memo-variations-followup.md` Q1, a one-line env change to his final number). Requires a reason
+>   + authorising identities; forbids any caller not holding CD/CFO/CEO.
+> - Changes **neither `Contract.contractValue` nor the BOQ** (CONST-VAR-011); value still waits for
+>   `CLIENT_APPROVED` (CONST-VAR-005). Additive `@erp/types`. Status remains **proposed**.
+>
+> **All five backend phases (P1–P5) of the Variations feature are now implemented and merged.** Only
+> the Phase 6 UI enrichments remain (surface the P3 trace + the P5 at-risk route in the Commercial
+> workspace — the P6 tab shipped earlier covers raise/approve/EoT + the four value figures).
 
 ## Context
 
