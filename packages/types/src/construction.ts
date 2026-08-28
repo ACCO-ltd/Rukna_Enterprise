@@ -1371,3 +1371,61 @@ export interface GrantExtensionOfTimeRequest {
   reason: string;
   variationOrderIds?: string[];
 }
+
+// ─── Certified & invoiced by variation (ADR-026 CONST-VAR-008, Variations Phase 3) ──
+
+/**
+ * ADR-026 CONST-VAR-008 (Phase 3) — the certified & invoiced value of a contract's work-to-date,
+ * decomposed by the VariationOrder that introduced the scope. This is a pure READ model: it rides
+ * the existing `IpcItem.certifiedAmount → applicationItem(IpaItem).boqNodeId → BoqNode.sourceChangeOrderId
+ * → VariationOrder` join and threads NO new column onto IPA/IPC/Invoice.
+ *
+ * Basis (approved decision): the gross / ex-VAT (subtotal) composition of the certified item lines.
+ * `certifiedToDate` sums `certifiedAmount` across items of EFFECTIVE IPCs; `invoicedToDate` sums the
+ * same across items of IPCs whose ClientInvoice is POSTED. VAT and certificate-level deductions are
+ * NOT VO-attributable — ADR-024 settlement truth (the invoice header total/outstanding) stays
+ * AR-owned and untouched (CONST-VAR-012).
+ *
+ * Money fields are `string | null`: null when the caller lacks `financialPositionView`.
+ */
+export interface CertifiedInvoicedByVariation {
+  /** The VariationOrder's id. */
+  variationId: string;
+  /** Its `VO-00n` reference. */
+  reference: string;
+  /** Its header title (for display). */
+  title: string;
+  /** Σ certifiedAmount of effective-IPC item lines tracing to this VO's BOQ nodes (ex-VAT). */
+  certifiedToDate: string | null;
+  /** Σ certifiedAmount of POSTED-invoice item lines tracing to this VO's BOQ nodes (ex-VAT). */
+  invoicedToDate: string | null;
+}
+
+/**
+ * The base-scope bucket: certified/invoiced value tracing to BASELINE BOQ nodes
+ * (`sourceChangeOrderId === null`). First-class and normal — original contract scope is never
+ * forced under a VO. Same gross/ex-VAT basis as the per-VO rows.
+ */
+export interface CertifiedInvoicedBaseScope {
+  certifiedToDate: string | null;
+  invoicedToDate: string | null;
+}
+
+/**
+ * ADR-026 CONST-VAR-008 (Phase 3) — the whole certified & invoiced picture for a contract, split
+ * base-scope + per-VO. Reconciliation holds by construction: base + Σ(byVariation) equals the whole
+ * certified gross / invoiced gross (`totalCertifiedToDate` / `totalInvoicedToDate`).
+ */
+export interface CertifiedInvoicedByVariationResponse {
+  contractId: string;
+  /** True when the caller has `financialPositionView`; false ⇒ every money field is null. */
+  canViewFinancials: boolean;
+  /** Original-scope value (BASELINE nodes). */
+  baseScope: CertifiedInvoicedBaseScope;
+  /** Per-VO breakdown, ordered by reference. Includes VOs with zero certified/invoiced to date. */
+  byVariation: CertifiedInvoicedByVariation[];
+  /** Whole-contract certified gross = baseScope + Σ byVariation (ex-VAT). Null without the capability. */
+  totalCertifiedToDate: string | null;
+  /** Whole-contract invoiced gross = baseScope + Σ byVariation (ex-VAT). Null without the capability. */
+  totalInvoicedToDate: string | null;
+}

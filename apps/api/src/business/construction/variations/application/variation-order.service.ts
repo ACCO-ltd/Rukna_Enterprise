@@ -1,11 +1,14 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import type { Prisma, VariationOrderStatus } from '@prisma/client';
-import type {
-  RequestIdentity,
-  VariationOrderResponse,
-  VariationOrderLineResponse,
-  VariationOrderListResponse,
+import {
+  PERMISSIONS,
+  type RequestIdentity,
+  type VariationOrderResponse,
+  type VariationOrderLineResponse,
+  type VariationOrderListResponse,
+  type CertifiedInvoicedByVariationResponse,
+  type CertifiedInvoicedByVariation,
 } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
@@ -81,6 +84,104 @@ export class VariationOrderService {
     // ADR-026 CONST-VAR-007: how many BOQ nodes carry this VO's provenance (the applied indicator).
     const boqNodeCount = await this.repo.countBoqNodes(prisma, id);
     return this.toResponse(vo, boqNodeCount);
+  }
+
+  /**
+   * ADR-026 CONST-VAR-008 (Variations Phase 3) — certified & invoiced value of the contract's
+   * work-to-date, decomposed by the VariationOrder that introduced the scope, plus a first-class
+   * base-scope bucket for original (BASELINE) scope.
+   *
+   * Pure read. It rides the existing join `IpcItem.certifiedAmount → applicationItem(IpaItem).boqNodeId
+   * → BoqNode.sourceChangeOrderId → VariationOrder` — no column is threaded onto IPA/IPC/Invoice. The
+   * basis is gross / ex-VAT: certified = Σ certifiedAmount over EFFECTIVE-IPC item lines; invoiced =
+   * the same over item lines of IPCs whose ClientInvoice is POSTED. VAT + certificate-level deductions
+   * are not VO-attributable and are excluded by construction (they never appear on the item line), so
+   * ADR-024 settlement truth stays AR-owned and untouched (CONST-VAR-012).
+   *
+   * Reconciliation holds by construction: baseScope + Σ(byVariation) = the whole certified/invoiced
+   * gross, because every certified item line lands in exactly one bucket keyed on its node's
+   * `sourceChangeOrderId` (null ⇒ base). Money is nulled unless the caller has `financialPositionView`.
+   */
+  async certifiedInvoicedByVariation(
+    identity: RequestIdentity,
+    contractId: string,
+  ): Promise<CertifiedInvoicedByVariationResponse> {
+    await this.projectAccess.assertContract(identity, contractId);
+    const prisma = this.tenancy.getClient();
+    const orgId = identity.activeOrganizationId;
+    const canViewFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
+
+    const [headers, lines] = await Promise.all([
+      this.repo.findHeadersByContract(prisma, orgId, contractId),
+      this.repo.findCertifiedInvoicedLines(prisma, orgId, contractId),
+    ]);
+
+    const zero = new Decimal(0);
+    // Per-VO accumulators (seed every VO so zero-activity VOs still appear), plus the base bucket.
+    const certifiedByVo = new Map<string, Decimal>();
+    const invoicedByVo = new Map<string, Decimal>();
+    for (const h of headers) {
+      certifiedByVo.set(h.id, zero);
+      invoicedByVo.set(h.id, zero);
+    }
+    let baseCertified = zero;
+    let baseInvoiced = zero;
+
+    for (const line of lines) {
+      // Certified counts EFFECTIVE IPCs only; invoiced counts POSTED-invoice IPCs only.
+      if (!line.isEffective && !line.invoicePosted) continue;
+      const key = line.sourceChangeOrderId;
+      if (key === null) {
+        if (line.isEffective) baseCertified = baseCertified.plus(line.certifiedAmount);
+        if (line.invoicePosted) baseInvoiced = baseInvoiced.plus(line.certifiedAmount);
+        continue;
+      }
+      // A node may point at a VO that (defensively) is not in the header set — fold it in anyway so
+      // the reconciliation total never silently drops value.
+      if (line.isEffective) {
+        certifiedByVo.set(key, (certifiedByVo.get(key) ?? zero).plus(line.certifiedAmount));
+      }
+      if (line.invoicePosted) {
+        invoicedByVo.set(key, (invoicedByVo.get(key) ?? zero).plus(line.certifiedAmount));
+      }
+    }
+
+    const money = (d: Decimal): string | null => (canViewFinancials ? d.toFixed(2) : null);
+
+    const titleById = new Map(headers.map((h) => [h.id, h.title]));
+    const refById = new Map(headers.map((h) => [h.id, h.reference]));
+    // Union of seeded VOs and any VO ids discovered on the lines, ordered by reference for stability.
+    const voIds = Array.from(
+      new Set<string>([...certifiedByVo.keys(), ...invoicedByVo.keys()]),
+    ).sort((a, b) => (refById.get(a) ?? a).localeCompare(refById.get(b) ?? b));
+
+    let totalCertified = baseCertified;
+    let totalInvoiced = baseInvoiced;
+    const byVariation: CertifiedInvoicedByVariation[] = voIds.map((id) => {
+      const certified = certifiedByVo.get(id) ?? zero;
+      const invoiced = invoicedByVo.get(id) ?? zero;
+      totalCertified = totalCertified.plus(certified);
+      totalInvoiced = totalInvoiced.plus(invoiced);
+      return {
+        variationId: id,
+        reference: refById.get(id) ?? id,
+        title: titleById.get(id) ?? '',
+        certifiedToDate: money(certified),
+        invoicedToDate: money(invoiced),
+      };
+    });
+
+    return {
+      contractId,
+      canViewFinancials,
+      baseScope: {
+        certifiedToDate: money(baseCertified),
+        invoicedToDate: money(baseInvoiced),
+      },
+      byVariation,
+      totalCertifiedToDate: money(totalCertified),
+      totalInvoicedToDate: money(totalInvoiced),
+    };
   }
 
   // ─── Create + line CRUD (DRAFT only) ──────────────────────────────────────────

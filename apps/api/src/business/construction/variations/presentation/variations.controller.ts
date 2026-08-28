@@ -62,6 +62,24 @@ export class VariationsController {
     return this.service.listForContract(identity, contractId);
   }
 
+  @Get('contracts/:contractId/variations/certified-invoiced')
+  @ApiOperation({
+    summary:
+      'Certified & invoiced value to date, decomposed by variation + base scope (ADR-026 CONST-VAR-008, Phase 3)',
+  })
+  @ApiParam({ name: 'contractId' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Per-VO and base-scope certified/invoiced gross (ex-VAT); money nulled without financialPositionView',
+  })
+  certifiedInvoicedByVariation(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('contractId') contractId: string,
+  ) {
+    return this.service.certifiedInvoicedByVariation(identity, contractId);
+  }
+
   @Post('contracts/:contractId/variations')
   @RequirePermissions(PERMISSIONS.contractsManage)
   @ApiOperation({ summary: 'Create a variation order in DRAFT (assigns the next VO-00n reference)' })
