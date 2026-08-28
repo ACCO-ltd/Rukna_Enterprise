@@ -32,6 +32,7 @@ import { errorText } from './commercial-workspace';
 import { VariationCreateSheet } from './variation-create-sheet';
 import { VariationDetailSheet } from './variation-detail-sheet';
 import { ExtensionOfTimeSection } from './extension-of-time-section';
+import { CertifiedInvoicedByVariationSection } from './certified-invoiced-by-variation-section';
 
 /**
  * The Variations view (ADR-026 Phases 1 + 4). Variations are contract-scoped, so this tab reads
@@ -43,8 +44,9 @@ import { ExtensionOfTimeSection } from './extension-of-time-section';
  * `contractValue` (Original / Approved / Governing / Pending), and the VO list shows each VO's
  * server-derived net price and status. Nothing here re-implements a rule (ADR-017).
  *
- * P3 (per-VO certified/invoiced trace column) and P5 (at-risk authorisation) are deliberately
- * absent — their backends do not exist yet.
+ * P3 (certified/invoiced traced by variation) is surfaced below the list as its own section;
+ * P5 (at-risk commencement authorisation) lives on the VO detail sheet. Both consume backend read
+ * models/commands and re-implement no rule.
  */
 export function VariationsTab({
   projectId,
@@ -160,6 +162,8 @@ export function VariationsTab({
           </div>
         )}
       </section>
+
+      <CertifiedInvoicedByVariationSection contractId={contract.id} />
 
       <ExtensionOfTimeSection
         contractId={contract.id}
