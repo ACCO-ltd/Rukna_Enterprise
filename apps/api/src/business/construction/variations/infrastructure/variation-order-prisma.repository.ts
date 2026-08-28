@@ -58,6 +58,18 @@ export class VariationOrderPrismaRepository {
   }
 
   /**
+   * Lean VO headers for a contract (id/reference/title), org-scoped, ordered by reference. Used by the
+   * certified-invoiced-by-VO read to name every VO — including those with zero certified/invoiced.
+   */
+  findHeadersByContract(prisma: TenantPrisma, organizationId: string, contractId: string) {
+    return prisma.variationOrder.findMany({
+      where: { organizationId, contractId },
+      orderBy: { reference: 'asc' },
+      select: { id: true, reference: true, title: true },
+    });
+  }
+
+  /**
    * CONST-VAR-005/-006: the VO figures the commercial summary derives contract value from. Only
    * status + the line amounts are needed (net price is Σ amount), so this stays a narrow read.
    */
@@ -174,5 +186,67 @@ export class VariationOrderPrismaRepository {
   /** How many BOQ nodes across all versions carry this VO's provenance — the read indicator. */
   countBoqNodes(prisma: TenantPrisma, variationOrderId: string): Promise<number> {
     return prisma.boqNode.count({ where: { sourceChangeOrderId: variationOrderId } });
+  }
+
+  /**
+   * ADR-026 CONST-VAR-008 (Variations Phase 3) — the certified certificate-item lines for a contract,
+   * each carrying the `sourceChangeOrderId` of the BOQ node it traces to (null ⇒ base scope) and
+   * whether the certificate is EFFECTIVE / its ClientInvoice is POSTED.
+   *
+   * Pure read across the existing join `IpcItem.certifiedAmount → applicationItem(IpaItem).boqNodeId →
+   * BoqNode.sourceChangeOrderId`. `InterimPaymentApplicationItem` carries `boqNodeId` as a scalar (no
+   * relation object), so the node's `sourceChangeOrderId` is resolved in a second batched read keyed on
+   * the distinct node ids. Org-scoped via the certificate's `organizationId`, contract-scoped via the
+   * application's `contractId`. NO new column, NO write-path touched. `certifiedAmount` is the ex-VAT
+   * line composition; VAT and certificate-level deductions live on headers and never reach this read.
+   */
+  async findCertifiedInvoicedLines(
+    prisma: TenantPrisma,
+    organizationId: string,
+    contractId: string,
+  ): Promise<
+    Array<{
+      sourceChangeOrderId: string | null;
+      certifiedAmount: Decimal;
+      isEffective: boolean;
+      invoicePosted: boolean;
+    }>
+  > {
+    const items = await prisma.interimPaymentCertificateItem.findMany({
+      where: {
+        certificate: {
+          organizationId,
+          application: { contractId },
+        },
+      },
+      select: {
+        certifiedAmount: true,
+        applicationItem: { select: { boqNodeId: true } },
+        certificate: {
+          select: {
+            isEffective: true,
+            clientInvoice: { select: { postingStatus: true } },
+          },
+        },
+      },
+    });
+
+    // Resolve each referenced BOQ node's provenance in one batched read (node → sourceChangeOrderId).
+    const nodeIds = Array.from(new Set(items.map((it) => it.applicationItem.boqNodeId)));
+    const nodes =
+      nodeIds.length === 0
+        ? []
+        : await prisma.boqNode.findMany({
+            where: { id: { in: nodeIds } },
+            select: { id: true, sourceChangeOrderId: true },
+          });
+    const sourceByNode = new Map(nodes.map((n) => [n.id, n.sourceChangeOrderId]));
+
+    return items.map((it) => ({
+      sourceChangeOrderId: sourceByNode.get(it.applicationItem.boqNodeId) ?? null,
+      certifiedAmount: it.certifiedAmount as Decimal,
+      isEffective: it.certificate.isEffective,
+      invoicePosted: it.certificate.clientInvoice?.postingStatus === 'POSTED',
+    }));
   }
 }
