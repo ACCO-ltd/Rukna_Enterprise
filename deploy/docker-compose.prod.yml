@@ -1,0 +1,128 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Rukna — PRODUCTION stack for a single Contabo VPS (single-tenant: ACCO).
+#
+#   caddy      → TLS termination + reverse proxy (api.runka.site, storage.runka.site)
+#   api        → NestJS backend (internal :3001, fronted by Caddy)
+#   migrate    → one-shot: applies platform + tenant migrations before api starts
+#   postgres   → platform registry DB + the ACCO tenant DB (internal only)
+#   minio      → S3-compatible object storage (internal, fronted by Caddy)
+#   minio-init → one-shot: creates the file bucket
+#
+# Compose-level secrets are read from `deploy/.env` (see deploy/.env.example).
+# App config is read from `apps/api/.env` (see apps/api/.env.production.example).
+# The DB password in both files MUST match.
+#
+#   docker compose -f deploy/docker-compose.prod.yml up -d --build
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rukna_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: erp_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in deploy/.env}
+      POSTGRES_DB: rukna_platform
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U erp_user -d rukna_platform']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Deliberately NOT published to the host — reachable only inside the compose network.
+
+  minio:
+    image: minio/minio:latest
+    container_name: rukna_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY in deploy/.env}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY in deploy/.env}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      FILE_STORAGE_BUCKET: ${FILE_STORAGE_BUCKET:-rukna-files}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $${MINIO_ACCESS_KEY} $${MINIO_SECRET_KEY} &&
+      mc mb --ignore-existing local/$${FILE_STORAGE_BUCKET} &&
+      echo 'bucket ready: '$${FILE_STORAGE_BUCKET}
+      "
+    restart: 'no'
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: rukna-api:latest
+    env_file: ../apps/api/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ['pnpm', 'db:migrate:deploy']
+    restart: 'no'
+
+  api:
+    image: rukna-api:latest
+    container_name: rukna_api
+    restart: unless-stopped
+    env_file: ../apps/api/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3001/api/v1/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    # Internal only — Caddy fronts it.
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: rukna_caddy
+    restart: unless-stopped
+    depends_on:
+      - api
+      - minio
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  postgres_data:
+    driver: local
+  minio_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local

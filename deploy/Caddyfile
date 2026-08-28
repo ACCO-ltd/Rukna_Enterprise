@@ -1,0 +1,23 @@
+# Caddy — automatic HTTPS (Let's Encrypt) + reverse proxy for the Rukna VPS.
+#
+# Requires: api.runka.site and storage.runka.site both resolve (A record) to this
+# VPS, and ports 80 + 443 are open. Caddy provisions and renews certs on its own.
+#
+# Set your email for Let's Encrypt expiry notices (replace the placeholder).
+
+{
+	email admin@runka.site
+}
+
+# ── API ──────────────────────────────────────────────────────────────────────
+api.runka.site {
+	reverse_proxy api:3001
+}
+
+# ── Object storage (S3 API) ──────────────────────────────────────────────────
+# The web app uploads/downloads directly here via presigned URLs, so it must be
+# public. Caddy preserves the Host header (needed for presigned signatures).
+# Large uploads: raise the body limit if you serve big attachments.
+storage.runka.site {
+	reverse_proxy minio:9000
+}
