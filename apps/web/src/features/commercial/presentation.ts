@@ -124,6 +124,31 @@ export function guaranteeStatusTone(status: string): BadgeTone {
   }
 }
 
+/**
+ * VariationOrder lifecycle → badge tone (ADR-026 CONST-VAR-004). DRAFT is inert grey;
+ * PENDING_INTERNAL is progressing; INTERNAL_APPROVED is an in-force interim step; only
+ * CLIENT_APPROVED reads as "live" (the one status that moves the governing contract value);
+ * REJECTED/WITHDRAWN are commercially inert terminals shown as historical, not alarming red —
+ * a withdrawn variation is a closed matter, not a failure the reader must act on.
+ */
+export function variationStatusTone(status: string): BadgeTone {
+  switch (status) {
+    case 'DRAFT':
+      return 'neutral';
+    case 'PENDING_INTERNAL':
+      return 'info';
+    case 'INTERNAL_APPROVED':
+      return 'accent';
+    case 'CLIENT_APPROVED':
+      return 'live';
+    case 'REJECTED':
+    case 'WITHDRAWN':
+      return 'historical';
+    default:
+      return 'neutral';
+  }
+}
+
 export function attentionSeverityTone(severity: 'URGENT' | 'WARNING' | 'INFO'): BadgeTone {
   switch (severity) {
     case 'URGENT':

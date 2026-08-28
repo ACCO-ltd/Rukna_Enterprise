@@ -25,6 +25,7 @@ import { CommercialNav, type CommercialTab } from './commercial-nav';
 import { OverviewTab } from './overview-tab';
 import { ContractSecurityTab } from './contract-security-tab';
 import { ApplicationsTab } from './applications-tab';
+import { VariationsTab } from './variations-tab';
 import { BillingCollectionTab } from './billing-collection-tab';
 
 /**
@@ -78,6 +79,9 @@ export function CommercialWorkspace({
         {active === 'contract-security' ? <ContractSecurityTab summary={summary} /> : null}
         {active === 'applications' ? (
           <ApplicationsTab projectId={projectId} summary={summary} />
+        ) : null}
+        {active === 'variations' ? (
+          <VariationsTab projectId={projectId} summary={summary} />
         ) : null}
         {active === 'billing-collection' ? (
           <BillingCollectionTab projectId={projectId} summary={summary} />
