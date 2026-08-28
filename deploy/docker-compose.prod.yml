@@ -20,6 +20,11 @@
 #   docker compose -f deploy/docker-compose.prod.yml up -d --build
 # ─────────────────────────────────────────────────────────────────────────────
 
+# CRITICAL on a shared box: pin the project name. Without this, Compose derives it
+# from the parent directory ("deploy"), which collides with the SIMAD stack at
+# /opt/simad/deploy (also project "deploy") and would adopt/replace its containers.
+name: rukna
+
 services:
   postgres:
     image: postgres:16-alpine
