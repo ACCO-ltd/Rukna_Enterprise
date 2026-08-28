@@ -63,3 +63,18 @@ by the commercial lead alone).*
 The core build (raise → approve a variation; contract value changes only on client approval) is
 proceeding now with sensible defaults for Q4; your answers let us finish the scope-into-BOQ, the
 contract-baseline step, and the at-risk route without guessing.
+
+---
+
+## DECISION — Eng Ahmed (2026-08-28): all recommendations accepted.
+
+| Q | Decision | Resolves | Unblocks |
+|---|---|---|---|
+| **Q1** | At-risk exposure cap accepted as our judgement — **proposed default USD 25,000** (CD + CFO ≤ 25k; CEO above), pending Eng Ahmed's final figure. | OQ-1 (*provisional*) | P5 |
+| **Q2** | The contract baseline moves by a **deliberate, recorded step** ("adopt this variation into the contract") — **never automatic** on approval. | OQ-2 | P2, P3 |
+| **Q3** | **One variation = one contract** for V1 (a cross-contract change is raised as two linked VOs). Confirms the P1 aggregate root. | OQ-3 | model |
+| **Q4** | Client-approval evidence = an **approval reference (required) + optional attached signed document**; **recorded by the commercial lead** (the internal DOA sign-off already occurred at PENDING_INTERNAL → INTERNAL_APPROVED). | OQ-4 | P3, finalises P1 clientApprove |
+
+**Q1 note:** the USD 25,000 cap is an engineering placeholder we chose so P5 isn't blocked; it is
+flagged for Eng Ahmed's explicit confirmation and is a one-line config change if he sets a different
+figure.

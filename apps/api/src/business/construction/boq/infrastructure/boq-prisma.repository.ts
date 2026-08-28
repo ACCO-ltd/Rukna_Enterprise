@@ -140,6 +140,19 @@ export class BoqPrismaRepository {
     await prisma.boqNode.createMany({ data: data as Prisma.BoqNodeCreateManyInput[] });
   }
 
+  /** How many nodes in this version already carry the given VO's provenance — CONST-VAR-007
+   * idempotency guard. A VO whose nodes already exist on the (draft or approved) revision has
+   * been applied and must not be applied again. */
+  async countNodesForVariation(
+    prisma: PrismaClient,
+    versionId: string,
+    variationOrderId: string,
+  ): Promise<number> {
+    return prisma.boqNode.count({
+      where: { versionId, sourceChangeOrderId: variationOrderId },
+    });
+  }
+
   /** Every code already used in the version, optionally excluding one node (its own). */
   async findCodesInVersion(
     prisma: PrismaClient,

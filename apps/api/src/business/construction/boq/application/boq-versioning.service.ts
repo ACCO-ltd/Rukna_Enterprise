@@ -228,6 +228,132 @@ export class BoqVersioningService {
   }
 
   /**
+   * ADR-026 CONST-VAR-007 (Variations Phase 2) — materialise a client-approved VariationOrder's
+   * scope into the BOQ as VARIATION-tagged nodes, on the EXISTING revision mechanism.
+   *
+   * Opens (or reuses) an open DRAFT revision — the ADR-016 deep-copy of the current Approved
+   * Baseline — and appends the VO's lines as new leaf nodes under a generated "Variation <ref>"
+   * section, each written with `sourceType = VARIATION` + `sourceChangeOrderId = <vo id>` (the real
+   * provenance FK). Omissions are signed-negative VARIATION leaves (Option (a)): the VO line's own
+   * signed quantity/rate/amount are carried through verbatim, so a credit line lands as a negative
+   * `totalAmount`. The BOQ's single-currency rule is preserved (every leaf carries the BOQ currency);
+   * `Contract.contractValue` and the certify→invoice chain are untouched.
+   *
+   * This does NOT baseline the revision — the caller runs the normal governed baseline command
+   * (`baseline`) separately, so scope-in follows the standard flow and is never auto-approved.
+   *
+   * Runs inside the caller's transaction (`tx`) so the VO's applied-marker write and these node
+   * writes commit together. Returns the draft version id the nodes landed on + the leaf count.
+   */
+  async appendVariationNodes(
+    tx: Prisma.TransactionClient,
+    identity: RequestIdentity,
+    projectId: string,
+    variation: {
+      id: string;
+      reference: string;
+      lines: Array<{ description: string; quantity: Prisma.Decimal; unitRate: Prisma.Decimal; amount: Prisma.Decimal; sortOrder: number }>;
+    },
+  ): Promise<{ versionId: string; nodeCount: number }> {
+    const boq = await this.requireBoq(tx as never, projectId, identity.activeOrganizationId);
+    if (!boq.currentApprovedVersionId) {
+      throw new BadRequestException(
+        'This project has no approved BOQ baseline to revise; baseline the original BOQ first.',
+      );
+    }
+
+    // Open or reuse an open DRAFT revision (deep copy of the current Approved Baseline).
+    let draftVersionId = boq.currentDraftVersionId ?? null;
+    if (!draftVersionId) {
+      const approvedNodes = await this.repo.findNodesByVersion(
+        tx as never,
+        boq.currentApprovedVersionId,
+      );
+      const nextVersionNumber = (await this.repo.maxVersionNumber(tx as never, boq.id)) + 1;
+      const newVersion = await this.repo.createVersion(tx as never, {
+        boqId: boq.id,
+        versionNumber: nextVersionNumber,
+        status: 'DRAFT',
+        notes: `Variation ${variation.reference} scoped in (ADR-026 CONST-VAR-007)`,
+        createdBy: identity.userId,
+        preparedBy: identity.userId,
+        derivedFromVersionId: boq.currentApprovedVersionId,
+      });
+      if (approvedNodes.length > 0) {
+        await this.copyNodes(tx as never, boq.id, newVersion.id, approvedNodes);
+      }
+      await this.repo.updateBoq(tx as never, boq.id, { currentDraftVersionId: newVersion.id });
+      draftVersionId = newVersion.id;
+    }
+
+    // Idempotency (belt-and-braces beside the VO marker): the VO's nodes must not already exist on
+    // this draft. The caller also guards on the VO's boqAppliedAt.
+    const existing = await this.repo.countNodesForVariation(
+      tx as never,
+      draftVersionId,
+      variation.id,
+    );
+    if (existing > 0) {
+      throw new ConflictException(
+        `Variation ${variation.reference} is already present on this BOQ revision.`,
+      );
+    }
+
+    // Generate a section code that does not collide with any code already in the version.
+    const usedCodes = await this.repo.findCodesInVersion(tx as never, draftVersionId);
+    const sectionCode = this.nextFreeCode(`VO-${variation.reference}`, usedCodes);
+    usedCodes.add(sectionCode);
+
+    const rootSiblingCount = await this.repo.countSiblings(tx as never, draftVersionId, null);
+    const sectionId = randomUUID();
+    await this.repo.createNode(tx as never, {
+      id: sectionId,
+      boqId: boq.id,
+      versionId: draftVersionId,
+      parentId: null,
+      path: sectionId,
+      depth: 0,
+      sortOrder: rootSiblingCount,
+      code: sectionCode,
+      description: `Variation ${variation.reference}`,
+      isLeaf: false,
+      // The section itself carries the VO provenance too, so the whole group traces to the VO.
+      sourceType: 'VARIATION',
+      sourceChangeOrderId: variation.id,
+    });
+
+    let order = 0;
+    for (const line of variation.lines) {
+      const leafId = randomUUID();
+      const leafCode = this.nextFreeCode(`${sectionCode}.${String(order + 1).padStart(3, '0')}`, usedCodes);
+      usedCodes.add(leafCode);
+      await this.repo.createNode(tx as never, {
+        id: leafId,
+        boqId: boq.id,
+        versionId: draftVersionId,
+        parentId: sectionId,
+        path: `${sectionId}/${leafId}`,
+        depth: 1,
+        sortOrder: order,
+        code: leafCode,
+        description: line.description,
+        isLeaf: true,
+        unit: null,
+        // Signed VO line values carried verbatim — an omission is a negative amount (Option (a)).
+        quantity: line.quantity,
+        unitRate: line.unitRate,
+        currency: boq.currency,
+        totalAmount: line.amount,
+        sourceType: 'VARIATION',
+        sourceChangeOrderId: variation.id,
+      });
+      order += 1;
+    }
+
+    return { versionId: draftVersionId, nodeCount: variation.lines.length };
+  }
+
+  /**
    * Cancels the current draft version without affecting the approved version.
    */
   async cancelDraft(
@@ -254,6 +380,14 @@ export class BoqVersioningService {
   }
 
   // ─── Private helpers ──────────────────────────────────────────────────────────
+
+  /** A code derived from `base` that is not already present in `used` (CONST-BOQ-015 uniqueness). */
+  private nextFreeCode(base: string, used: ReadonlySet<string>): string {
+    if (!used.has(base)) return base;
+    let suffix = 2;
+    while (used.has(`${base}-${suffix}`)) suffix += 1;
+    return `${base}-${suffix}`;
+  }
 
   private async requireBoq(
     prisma: ReturnType<TenancyService['getClient']>,

@@ -18,8 +18,11 @@ import { RequirePermissions } from '../../../../common/decorators/require-permis
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { VariationOrderService } from '../application/variation-order.service.js';
+import { ApplyVariationToBoqService } from '../application/apply-variation-to-boq.service.js';
+import { AdoptBaselineService } from '../application/adopt-baseline.service.js';
 import { ExtensionOfTimeService } from '../application/extension-of-time.service.js';
 import { GrantExtensionOfTimeDto } from './dto/grant-extension-of-time.dto.js';
+import { AdoptBaselineDto } from './dto/adopt-baseline.dto.js';
 import { CreateVariationDto } from './dto/create-variation.dto.js';
 import { UpdateVariationDto } from './dto/update-variation.dto.js';
 import { AddVariationLineDto, UpdateVariationLineDto } from './dto/variation-line.dto.js';
@@ -45,6 +48,8 @@ import {
 export class VariationsController {
   constructor(
     private readonly service: VariationOrderService,
+    private readonly applyToBoq: ApplyVariationToBoqService,
+    private readonly adoptBaseline: AdoptBaselineService,
     private readonly extensionOfTime: ExtensionOfTimeService,
   ) {}
 
@@ -202,6 +207,50 @@ export class VariationsController {
     @Body() dto: ClientApproveVariationDto,
   ) {
     return this.service.clientApprove(identity, id, dto);
+  }
+
+  // ─── Scope-in (ADR-026 CONST-VAR-007, Phase 2) ──────────────────────────────
+  //
+  // Materialise a CLIENT_APPROVED VO's scope into the project's BOQ as VARIATION-tagged nodes on a
+  // revision (the existing ADR-016 deep-copy + governed baseline). Writes BOQ draft nodes, so it
+  // requires boqManage. It does NOT baseline the revision and NEVER repoints the Contract Baseline.
+
+  @Post('variations/:id/apply-to-boq')
+  @RequirePermissions(PERMISSIONS.boqManage)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Scope a client-approved variation into the BOQ as VARIATION-tagged nodes on a revision (CONST-VAR-007)',
+  })
+  @ApiResponse({ status: 200, description: 'Scope materialised onto a BOQ revision' })
+  @ApiResponse({ status: 409, description: 'VO is not CLIENT_APPROVED, or already applied' })
+  applyVariationToBoq(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.applyToBoq.apply(identity, id);
+  }
+
+  // ─── Adopt baseline (ADR-026 CONST-VAR-007 / OQ-2, Phase 2) ──────────────────
+  //
+  // The DELIBERATE, RECORDED, AUDITED Contract-Baseline repoint (OQ-2, Eng Ahmed 2026-08-28). Moves
+  // Contract.boqVersionId to a BASELINED revision — never automatic on VO approval or the apply step.
+  // This is what lets certification claims reach the enlarged scope. Contract-level act → approve.
+
+  @Post('contracts/:contractId/adopt-baseline')
+  @RequirePermissions(PERMISSIONS.contractsApprove)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Adopt a baselined BOQ revision as the Contract Baseline (deliberate, audited; never automatic — OQ-2)',
+  })
+  @ApiParam({ name: 'contractId' })
+  @ApiResponse({ status: 200, description: 'Contract Baseline repointed; audit recorded' })
+  @ApiResponse({ status: 400, description: 'Target version is not BASELINED' })
+  @ApiResponse({ status: 409, description: 'Contract is not live, or already adopts that version' })
+  adoptBaselineIntoContract(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('contractId') contractId: string,
+    @Body() dto: AdoptBaselineDto,
+  ) {
+    return this.adoptBaseline.adopt(identity, contractId, dto);
   }
 
   @Post('variations/:id/reject')

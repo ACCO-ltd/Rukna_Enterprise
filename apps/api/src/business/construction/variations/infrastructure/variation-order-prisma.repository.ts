@@ -139,4 +139,40 @@ export class VariationOrderPrismaRepository {
   ) {
     return prisma.variationOrder.update({ where: { id }, data: { status, ...metadata } });
   }
+
+  /**
+   * ADR-026 CONST-VAR-007 (Phase 2): the VO + its lines + the owning contract's projectId — what the
+   * apply-to-BOQ command needs to open the project's BOQ revision. Org-scoped. `boqAppliedAt` is the
+   * idempotency marker the service guards on.
+   */
+  findForApply(prisma: TenantPrisma, organizationId: string, id: string) {
+    return prisma.variationOrder.findFirst({
+      where: { id, organizationId },
+      select: {
+        id: true,
+        organizationId: true,
+        contractId: true,
+        reference: true,
+        status: true,
+        boqAppliedAt: true,
+        boqAppliedVersionId: true,
+        contract: { select: { projectId: true } },
+        lines: { orderBy: { sortOrder: 'asc' } },
+      },
+    });
+  }
+
+  /** CONST-VAR-007: stamp the VO as applied to the BOQ (idempotency record + read indicator). */
+  markBoqApplied(
+    prisma: Prisma.TransactionClient,
+    id: string,
+    data: { boqAppliedBy: string; boqAppliedAt: Date; boqAppliedVersionId: string },
+  ) {
+    return prisma.variationOrder.update({ where: { id }, data });
+  }
+
+  /** How many BOQ nodes across all versions carry this VO's provenance — the read indicator. */
+  countBoqNodes(prisma: TenantPrisma, variationOrderId: string): Promise<number> {
+    return prisma.boqNode.count({ where: { sourceChangeOrderId: variationOrderId } });
+  }
 }

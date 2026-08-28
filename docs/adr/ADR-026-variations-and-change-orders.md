@@ -26,6 +26,39 @@ is built. -->
 > scope-in, IPA/IPC/invoice tagging, Extension-of-Time, at-risk routes) is **not** built — Phases 2–5.
 > Status remains **proposed** (the ADR is design-only; this note records the build progress).
 
+> **Phase 2 implemented (2026-08-28).** Scoping a **CLIENT_APPROVED** VariationOrder into the BOQ
+> (CONST-VAR-007) is built in `apps/api` (`business/construction/variations/` orchestrating the BOQ
+> module) + `@erp/types`, per `docs/reference/variations-implementation-plan.md` Phase 2, and the OQ-2
+> decision (`ceo-memo-variations-followup.md`, Eng Ahmed 2026-08-28). Delivered:
+> - **Schema.** `BoqNode.sourceChangeOrderId` is now a **real FK** to `VariationOrder`
+>   (`VariationOrder.boqNodes`, `onDelete: SetNull` to preserve baselined-node immutability); the VO
+>   gains a `boqAppliedAt/By/VersionId` apply-marker. Hand-authored migration
+>   `20260828120000_variations_phase2_boq_scope_adr026` (applied). No change to `Contract.contractValue`,
+>   `IpaItem`, `IpcItem`, or `ClientInvoice` (Option A — the chain is untouched).
+> - **Apply command** (`ApplyVariationToBoqService`, `POST /variations/:id/apply-to-boq`, `boqManage`).
+>   Guards CLIENT_APPROVED + idempotency (the VO's `boqAppliedAt`). In one transaction it opens (or
+>   reuses) an open DRAFT revision via the **existing ADR-016 deep-copy** (`BoqVersioningService`) and
+>   appends the VO's lines as leaf nodes under a generated "Variation VO-00n" section, each written
+>   `sourceType = VARIATION` + `sourceChangeOrderId = <vo id>`, then stamps the VO applied and records a
+>   `VARIATION_ORDER_APPLIED_TO_BOQ` audit event. The revision then follows the **normal governed
+>   baseline command** — it is **not** forked and **not** auto-approved.
+> - **Omission mapping — Option (a) chosen.** A signed-negative VO line lands as a **negative/credit
+>   VARIATION leaf node** (its signed quantity/rate/amount carried through verbatim), not by mutating a
+>   specific existing baseline node. Reason: the P1 VO line is free-text with **no `boqNodeId`**, so
+>   there is no specific node to zero; (a) keeps every VO-introduced node uniform (VARIATION + the FK),
+>   preserves baseline immutability (nothing is edited in place), and needs no VO-line schema change.
+> - **Contract-Baseline repoint — separate, explicit, audited (OQ-2).** `AdoptBaselineService`
+>   (`POST /contracts/:id/adopt-baseline`, `contractsApprove`) repoints `Contract.boqVersionId` to a
+>   **BASELINED** revision of the contract's project, guarded to a live contract, recording a
+>   `CONTRACT_BASELINE_REPOINTED` audit event (old→new + reason). It is **never** triggered by VO
+>   approval or by the apply step — the deliberate act Eng Ahmed specified, and what lets certification
+>   claims reach the enlarged scope.
+> - **Reads.** `VariationOrderResponse` now carries `appliedToBoq` / `boqNodeCount` / `boqAppliedVersionId`;
+>   the commercial summary already surfaces the contract's current baseline version.
+>
+> The firewall and immutability are preserved; the certify→invoice chain is unchanged (P3 — reads only —
+> and P5 are **not** built). Status remains **proposed**.
+>
 > **Phase 4 implemented (2026-08-27).** The **Extension-of-Time** command (CONST-VAR-009) is built in
 > `apps/api` (`business/construction/variations/` — beside the VO work) + `@erp/types`, per
 > `docs/reference/variations-implementation-plan.md` Phase 4. A new **`ExtensionOfTime`** aggregate

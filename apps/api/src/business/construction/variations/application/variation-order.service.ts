@@ -78,7 +78,9 @@ export class VariationOrderService {
   async findOne(identity: RequestIdentity, id: string): Promise<VariationOrderResponse> {
     const prisma = this.tenancy.getClient();
     const vo = await this.requireVo(prisma, identity, id);
-    return this.toResponse(vo);
+    // ADR-026 CONST-VAR-007: how many BOQ nodes carry this VO's provenance (the applied indicator).
+    const boqNodeCount = await this.repo.countBoqNodes(prisma, id);
+    return this.toResponse(vo, boqNodeCount);
   }
 
   // ─── Create + line CRUD (DRAFT only) ──────────────────────────────────────────
@@ -448,7 +450,7 @@ export class VariationOrderService {
     return vo;
   }
 
-  private toResponse(vo: VariationOrderWithLines): VariationOrderResponse {
+  private toResponse(vo: VariationOrderWithLines, boqNodeCount = 0): VariationOrderResponse {
     const lines: VariationOrderLineResponse[] = vo.lines.map((l) => ({
       id: l.id,
       description: l.description,
@@ -478,6 +480,12 @@ export class VariationOrderService {
       rejectedBy: vo.rejectedBy,
       rejectedAt: vo.rejectedAt?.toISOString() ?? null,
       reason: vo.reason,
+      // ADR-026 CONST-VAR-007: applied-to-BOQ indicator. `appliedToBoq` reads off the marker column
+      // (set only by the apply command); `boqNodeCount` is the provenance-node count (0 in list rows).
+      appliedToBoq: vo.boqAppliedAt !== null,
+      boqNodeCount,
+      boqAppliedAt: vo.boqAppliedAt?.toISOString() ?? null,
+      boqAppliedVersionId: vo.boqAppliedVersionId ?? null,
       createdAt: vo.createdAt.toISOString(),
       updatedAt: vo.updatedAt.toISOString(),
     };
