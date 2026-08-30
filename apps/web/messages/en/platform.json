@@ -756,7 +756,7 @@
   },
   "users": {
     "title": "Users",
-    "addUser": "Add User",
+    "addUser": "Add user",
     "editUser": "Edit User",
     "empty": "No users found.",
     "emptyHint": "Users appear here once they have been added to the organisation.",
@@ -764,11 +764,61 @@
     "retry": "Retry",
     "colName": "Name",
     "colEmail": "Email",
+    "colRoles": "Roles",
     "colStatus": "Status",
+    "colActions": "Actions",
+    "you": "(you)",
+    "noRoles": "No roles",
+    "rowMenuLabel": "Actions for {name}",
     "status": {
       "ACTIVE": "Active",
       "INACTIVE": "Inactive",
       "SUSPENDED": "Suspended"
+    },
+    "actions": {
+      "edit": "Edit",
+      "setPassword": "Set password",
+      "manageRoles": "Manage roles",
+      "deactivate": "Deactivate",
+      "reactivate": "Reactivate"
+    },
+    "toast": {
+      "deactivated": "{name} deactivated",
+      "reactivated": "{name} reactivated",
+      "statusFailed": "Could not change the user's status.",
+      "passwordSet": "Password updated"
+    },
+    "roles": {
+      "legend": "Roles",
+      "loadFailed": "Could not load roles.",
+      "none": "No roles have been created yet."
+    },
+    "form": {
+      "createTitle": "Add user",
+      "createSubtitle": "Create a user, set a temporary password, and assign roles.",
+      "createSubmit": "Create user",
+      "createFailed": "Could not create the user.",
+      "createdTitle": "User created",
+      "createdHint": "Share these credentials with the user directly — no email is sent. The password is shown only once.",
+      "copyCredentials": "Copy credentials",
+      "copied": "Copied",
+      "addAnother": "Add another",
+      "done": "Done",
+      "email": "Email",
+      "firstName": "First name",
+      "lastName": "Last name",
+      "roles": "Roles",
+      "tempPassword": "Temporary password",
+      "newPassword": "New password",
+      "passwordHint": "Minimum 12 characters. The admin shares it directly; no email is sent.",
+      "passwordTooShort": "Password must be at least {min} characters.",
+      "editTitle": "Edit user",
+      "editFailed": "Could not update the user.",
+      "setPasswordTitle": "Set password",
+      "setPasswordSubmit": "Update password",
+      "setPasswordFailed": "Could not update the password.",
+      "manageRolesTitle": "Manage roles",
+      "manageRolesFailed": "Could not update the user's roles."
     },
     "fields": {
       "firstName": "First Name",
@@ -781,15 +831,52 @@
   },
   "roles": {
     "title": "Roles & Permissions",
-    "addRole": "Add Role",
+    "addRole": "Add role",
     "editRole": "Edit Role",
     "empty": "No roles defined.",
-    "emptyHint": "Roles are created and assigned by the system administrator.",
+    "emptyHint": "Create a role to group permissions and assign them to users.",
     "loadFailed": "Could not load roles.",
     "retry": "Retry",
     "colName": "Role name",
     "colDescription": "Description",
-    "noDescription": "No description"
+    "colPermissions": "Permissions",
+    "colMembers": "Members",
+    "colActions": "Actions",
+    "noDescription": "No description",
+    "rowMenuLabel": "Actions for {name}",
+    "deleteTitle": "Delete {name}?",
+    "deleteBody": "This permanently removes the role. Users lose the permissions it granted. This cannot be undone.",
+    "deleteFailed": "Could not delete the role.",
+    "actions": {
+      "edit": "Edit",
+      "managePermissions": "Manage permissions",
+      "delete": "Delete"
+    },
+    "toast": {
+      "deleted": "{name} deleted"
+    },
+    "form": {
+      "createTitle": "Add role",
+      "createSubtitle": "Name the role and choose the permissions it grants.",
+      "createSubmit": "Create role",
+      "createFailed": "Could not create the role.",
+      "name": "Name",
+      "description": "Description",
+      "editTitle": "Edit role",
+      "editFailed": "Could not update the role.",
+      "managePermissionsTitle": "Manage permissions",
+      "managePermissionsFailed": "Could not update the role's permissions.",
+      "loadRoleFailed": "Could not load this role's permissions."
+    },
+    "permissions": {
+      "label": "Permissions",
+      "searchPlaceholder": "Search permissions",
+      "selectedCount": "{count} selected",
+      "noMatches": "No permissions match your search.",
+      "loadFailed": "Could not load the permission catalogue.",
+      "selectGroup": "Select all",
+      "clearGroup": "Clear all"
+    }
   },
   "auditLogs": {
     "title": "Audit Logs",

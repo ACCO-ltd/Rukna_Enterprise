@@ -1,0 +1,551 @@
+'use client';
+
+import { useId, useState, type FormEvent } from 'react';
+import { useTranslations } from 'next-intl';
+import {
+  Alert,
+  Button,
+  FormField,
+  Input,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+} from '@erp/ui';
+
+import type { UserWithRolesResponse } from '@erp/types';
+import { ApiError } from '@/lib/api-client';
+
+import {
+  useCreateUser,
+  useSetUserPassword,
+  useSetUserRoles,
+  useUpdateUser,
+} from '../hooks/use-users';
+import { RoleMultiSelect } from './role-multi-select';
+
+const MIN_PASSWORD_LENGTH = 12;
+
+// ─── Shell ─────────────────────────────────────────────────────────────────────
+
+function FormSheet({
+  open,
+  onOpenChange,
+  title,
+  description,
+  children,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="p-6">
+        <SheetTitle className="text-lg font-semibold text-foreground">{title}</SheetTitle>
+        {description ? <SheetDescription className="mt-1">{description}</SheetDescription> : null}
+        <div className="mt-5">{children}</div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function apiMessage(error: unknown, fallback: string): string | undefined {
+  if (error instanceof ApiError) return error.message;
+  if (error) return fallback;
+  return undefined;
+}
+
+// ─── Create ──────────────────────────────────────────────────────────────────────
+
+interface CreatedCredentials {
+  email: string;
+  password: string;
+}
+
+export function CreateUserSheet({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const t = useTranslations('platform.users.form');
+  const tc = useTranslations('common');
+  const create = useCreateUser();
+
+  const ids = {
+    email: useId(),
+    firstName: useId(),
+    lastName: useId(),
+    password: useId(),
+  };
+
+  const [roleIds, setRoleIds] = useState<string[]>([]);
+  const [password, setPassword] = useState('');
+  const [created, setCreated] = useState<CreatedCredentials | null>(null);
+
+  const passwordTooShort = password.length > 0 && password.length < MIN_PASSWORD_LENGTH;
+
+  function reset() {
+    setRoleIds([]);
+    setPassword('');
+    setCreated(null);
+    create.reset();
+  }
+
+  function handleOpenChange(next: boolean) {
+    if (!next) reset();
+    onOpenChange(next);
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const email = String(form.get('email') ?? '').trim();
+    const firstName = String(form.get('firstName') ?? '').trim();
+    const lastName = String(form.get('lastName') ?? '').trim();
+
+    if (!email || !firstName || !lastName || password.length < MIN_PASSWORD_LENGTH) return;
+
+    create.mutate(
+      { email, firstName, lastName, password, roleIds },
+      {
+        onSuccess: () => {
+          setCreated({ email, password });
+        },
+      },
+    );
+  }
+
+  const title = created ? t('createdTitle') : t('createTitle');
+
+  return (
+    <FormSheet
+      open={open}
+      onOpenChange={handleOpenChange}
+      title={title}
+      description={created ? undefined : t('createSubtitle')}
+    >
+      {created ? (
+        <CredentialsSummary
+          credentials={created}
+          onDone={() => handleOpenChange(false)}
+          onAddAnother={reset}
+        />
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <FormField htmlFor={ids.email} label={t('email')} required>
+            <Input
+              id={ids.email}
+              name="email"
+              type="email"
+              required
+              autoComplete="off"
+              disabled={create.isPending}
+            />
+          </FormField>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField htmlFor={ids.firstName} label={t('firstName')} required>
+              <Input
+                id={ids.firstName}
+                name="firstName"
+                required
+                autoComplete="off"
+                disabled={create.isPending}
+              />
+            </FormField>
+            <FormField htmlFor={ids.lastName} label={t('lastName')} required>
+              <Input
+                id={ids.lastName}
+                name="lastName"
+                required
+                autoComplete="off"
+                disabled={create.isPending}
+              />
+            </FormField>
+          </div>
+
+          <FormField
+            htmlFor={ids.password}
+            label={t('tempPassword')}
+            hint={t('passwordHint')}
+            error={passwordTooShort ? t('passwordTooShort', { min: MIN_PASSWORD_LENGTH }) : undefined}
+            required
+          >
+            <Input
+              id={ids.password}
+              name="password"
+              type="text"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="off"
+              disabled={create.isPending}
+            />
+          </FormField>
+
+          <div>
+            <p className="mb-1.5 text-sm font-medium text-foreground">{t('roles')}</p>
+            <RoleMultiSelect
+              selectedIds={roleIds}
+              onChange={setRoleIds}
+              disabled={create.isPending}
+            />
+          </div>
+
+          {create.error ? (
+            <Alert variant="error" messages={[apiMessage(create.error, t('createFailed'))!]} />
+          ) : null}
+
+          <div className="flex flex-wrap justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleOpenChange(false)}
+              disabled={create.isPending}
+            >
+              {tc('cancel')}
+            </Button>
+            <Button
+              type="submit"
+              disabled={
+                create.isPending || password.length < MIN_PASSWORD_LENGTH
+              }
+            >
+              {create.isPending ? tc('saving') : t('createSubmit')}
+            </Button>
+          </div>
+        </form>
+      )}
+    </FormSheet>
+  );
+}
+
+/** Shown after a user is created so the admin can copy the credentials to share. */
+function CredentialsSummary({
+  credentials,
+  onDone,
+  onAddAnother,
+}: {
+  credentials: CreatedCredentials;
+  onDone: () => void;
+  onAddAnother: () => void;
+}) {
+  const t = useTranslations('platform.users.form');
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    const text = `${t('email')}: ${credentials.email}\n${t('tempPassword')}: ${credentials.password}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard can be unavailable (insecure context / denied permission). The values are
+      // shown on screen regardless, so failing to copy is not a dead end.
+      setCopied(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <Alert variant="success" messages={[t('createdHint')]} />
+
+      <dl className="space-y-3 rounded-panel border border-border bg-surface p-4">
+        <div>
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('email')}
+          </dt>
+          <dd className="mt-0.5 break-all font-mono text-sm text-foreground">
+            {credentials.email}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('tempPassword')}
+          </dt>
+          <dd className="mt-0.5 break-all font-mono text-sm text-foreground">
+            {credentials.password}
+          </dd>
+        </div>
+      </dl>
+
+      <Button type="button" variant="outline" onClick={() => void copy()} className="w-full">
+        {copied ? t('copied') : t('copyCredentials')}
+      </Button>
+
+      <div className="flex flex-wrap justify-end gap-2 pt-2">
+        <Button type="button" variant="ghost" onClick={onAddAnother}>
+          {t('addAnother')}
+        </Button>
+        <Button type="button" onClick={onDone}>
+          {t('done')}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Edit profile ──────────────────────────────────────────────────────────────
+
+export function EditUserSheet({
+  user,
+  onOpenChange,
+}: {
+  user: UserWithRolesResponse | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const t = useTranslations('platform.users.form');
+  const tc = useTranslations('common');
+  const update = useUpdateUser();
+  const ids = { firstName: useId(), lastName: useId() };
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!user) return;
+    const form = new FormData(event.currentTarget);
+    const firstName = String(form.get('firstName') ?? '').trim();
+    const lastName = String(form.get('lastName') ?? '').trim();
+    if (!firstName || !lastName) return;
+
+    update.mutate(
+      { id: user.id, payload: { firstName, lastName } },
+      { onSuccess: () => onOpenChange(false) },
+    );
+  }
+
+  return (
+    <FormSheet
+      open={Boolean(user)}
+      onOpenChange={(next) => {
+        if (!next) update.reset();
+        onOpenChange(next);
+      }}
+      title={t('editTitle')}
+      description={user?.email}
+    >
+      {user ? (
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField htmlFor={ids.firstName} label={t('firstName')} required>
+              <Input
+                id={ids.firstName}
+                name="firstName"
+                defaultValue={user.firstName}
+                required
+                autoComplete="off"
+                disabled={update.isPending}
+              />
+            </FormField>
+            <FormField htmlFor={ids.lastName} label={t('lastName')} required>
+              <Input
+                id={ids.lastName}
+                name="lastName"
+                defaultValue={user.lastName}
+                required
+                autoComplete="off"
+                disabled={update.isPending}
+              />
+            </FormField>
+          </div>
+
+          {update.error ? (
+            <Alert variant="error" messages={[apiMessage(update.error, t('editFailed'))!]} />
+          ) : null}
+
+          <div className="flex flex-wrap justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={update.isPending}
+            >
+              {tc('cancel')}
+            </Button>
+            <Button type="submit" disabled={update.isPending}>
+              {update.isPending ? tc('saving') : tc('save')}
+            </Button>
+          </div>
+        </form>
+      ) : null}
+    </FormSheet>
+  );
+}
+
+// ─── Set password ────────────────────────────────────────────────────────────────
+
+export function SetPasswordSheet({
+  user,
+  onOpenChange,
+  onSuccess,
+}: {
+  user: UserWithRolesResponse | null;
+  onOpenChange: (open: boolean) => void;
+  onSuccess: () => void;
+}) {
+  const t = useTranslations('platform.users.form');
+  const tc = useTranslations('common');
+  const setPassword = useSetUserPassword();
+  const id = useId();
+  const [password, setPasswordValue] = useState('');
+
+  const tooShort = password.length > 0 && password.length < MIN_PASSWORD_LENGTH;
+
+  function close(next: boolean) {
+    if (!next) {
+      setPasswordValue('');
+      setPassword.reset();
+    }
+    onOpenChange(next);
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!user || password.length < MIN_PASSWORD_LENGTH) return;
+    setPassword.mutate(
+      { id: user.id, payload: { password } },
+      {
+        onSuccess: () => {
+          setPasswordValue('');
+          onSuccess();
+          close(false);
+        },
+      },
+    );
+  }
+
+  return (
+    <FormSheet
+      open={Boolean(user)}
+      onOpenChange={close}
+      title={t('setPasswordTitle')}
+      description={user ? `${user.firstName} ${user.lastName} · ${user.email}` : undefined}
+    >
+      {user ? (
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <FormField
+            htmlFor={id}
+            label={t('newPassword')}
+            hint={t('passwordHint')}
+            error={tooShort ? t('passwordTooShort', { min: MIN_PASSWORD_LENGTH }) : undefined}
+            required
+          >
+            <Input
+              id={id}
+              name="password"
+              type="text"
+              value={password}
+              onChange={(e) => setPasswordValue(e.target.value)}
+              autoComplete="off"
+              disabled={setPassword.isPending}
+            />
+          </FormField>
+
+          {setPassword.error ? (
+            <Alert
+              variant="error"
+              messages={[apiMessage(setPassword.error, t('setPasswordFailed'))!]}
+            />
+          ) : null}
+
+          <div className="flex flex-wrap justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => close(false)}
+              disabled={setPassword.isPending}
+            >
+              {tc('cancel')}
+            </Button>
+            <Button
+              type="submit"
+              disabled={setPassword.isPending || password.length < MIN_PASSWORD_LENGTH}
+            >
+              {setPassword.isPending ? tc('saving') : t('setPasswordSubmit')}
+            </Button>
+          </div>
+        </form>
+      ) : null}
+    </FormSheet>
+  );
+}
+
+// ─── Manage roles ────────────────────────────────────────────────────────────────
+
+export function ManageRolesSheet({
+  user,
+  onOpenChange,
+}: {
+  user: UserWithRolesResponse | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const t = useTranslations('platform.users.form');
+  const tc = useTranslations('common');
+  const setRoles = useSetUserRoles();
+
+  // Seed from the user's current roles each time a different user opens.
+  const [roleIds, setRoleIds] = useState<string[]>([]);
+  const [seededFor, setSeededFor] = useState<string | null>(null);
+
+  if (user && seededFor !== user.id) {
+    setSeededFor(user.id);
+    setRoleIds(user.roles.map((r) => r.id));
+  }
+
+  function close(next: boolean) {
+    if (!next) {
+      setSeededFor(null);
+      setRoles.reset();
+    }
+    onOpenChange(next);
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!user) return;
+    setRoles.mutate(
+      { id: user.id, payload: { roleIds } },
+      { onSuccess: () => close(false) },
+    );
+  }
+
+  return (
+    <FormSheet
+      open={Boolean(user)}
+      onOpenChange={close}
+      title={t('manageRolesTitle')}
+      description={user ? `${user.firstName} ${user.lastName} · ${user.email}` : undefined}
+    >
+      {user ? (
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <RoleMultiSelect
+            selectedIds={roleIds}
+            onChange={setRoleIds}
+            disabled={setRoles.isPending}
+          />
+
+          {setRoles.error ? (
+            <Alert variant="error" messages={[apiMessage(setRoles.error, t('manageRolesFailed'))!]} />
+          ) : null}
+
+          <div className="flex flex-wrap justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => close(false)}
+              disabled={setRoles.isPending}
+            >
+              {tc('cancel')}
+            </Button>
+            <Button type="submit" disabled={setRoles.isPending}>
+              {setRoles.isPending ? tc('saving') : tc('save')}
+            </Button>
+          </div>
+        </form>
+      ) : null}
+    </FormSheet>
+  );
+}
