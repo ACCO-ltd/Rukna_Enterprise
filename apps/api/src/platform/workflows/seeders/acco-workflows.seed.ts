@@ -199,9 +199,15 @@ async function seedWorkflowRequirementPolicies(prisma: PrismaClient): Promise<vo
     { entityType: 'Project', fromState: 'CLOSEOUT',             toState: 'CLOSED' },
     { entityType: 'Project', fromState: 'PRACTICAL_COMPLETION', toState: 'ACTIVE' },    // reopen
     { entityType: 'Project', fromState: 'CLOSEOUT',             toState: 'PRACTICAL_COMPLETION' }, // reopen
-    // IPA — all paths into PENDING_INTERNAL_APPROVAL
-    { entityType: 'InterimPaymentApplication', fromState: 'DRAFT',                toState: 'PENDING_INTERNAL_APPROVAL' },
-    { entityType: 'InterimPaymentApplication', fromState: 'RETURNED_FOR_REVISION', toState: 'PENDING_INTERNAL_APPROVAL' },
+    // IPA internal-approval (DRAFT / RETURNED_FOR_REVISION → PENDING_INTERNAL_APPROVAL) is
+    // intentionally NOT seeded here. Seeding it REQUIRED with no active binding hard-blocks IPA
+    // submission on a fresh single-admin tenant (422 workflow not configured), and the ACTIVE SoD
+    // rule SYSTEM_ADMIN_CANNOT_APPROVE_BUSINESS_TRANSACTION means the admin cannot self-approve —
+    // dead-ending the whole IPA→IPC→invoice chain. Absence of a policy resolves to OPTIONAL
+    // (see WorkflowTriggerResolverService.getRequirement `?? 'OPTIONAL'`), so IPA submit proceeds
+    // by default. Turn the real control on at governance go-live: seed an active binding + approval
+    // chain for these transitions and add a REQUIRED WorkflowRequirementPolicy then (mirrors how
+    // ADR-022 value bands ship INACTIVE→proceed and are activated deliberately).
   ];
 
   for (const policy of required) {
