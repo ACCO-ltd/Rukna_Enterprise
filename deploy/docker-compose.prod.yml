@@ -126,6 +126,35 @@ services:
       retries: 3
       start_period: 20s
 
+  # Next.js web app. Unique service name (not "web") for the same shared-network
+  # alias reason as rukna_api. Only on deploy_internal so the shared Caddy can reach
+  # it (acco.rukna.site → rukna_web:3000); it calls the API over the public URL baked
+  # at build time (NEXT_PUBLIC_API_URL), so it needs no DB/MinIO network.
+  rukna_web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://api.rukna.site/api/v1
+    image: rukna-web:latest
+    container_name: rukna_web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    networks:
+      - deploy_internal
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
 networks:
   rukna_internal:
     name: rukna_internal # explicit, so it is not prefixed to rukna_rukna_internal

@@ -157,20 +157,30 @@ the shared Caddy are untouched — the append only adds new site blocks.)
 
 ---
 
-## 6. Deploy the web app to Vercel
+## 6. Deploy the web app on the same VPS (no Vercel)
 
-1. **New Project** → import the GitHub repo.
-2. **Root Directory:** `apps/web` (keep "Include files outside the root directory" on — the
-   build needs the workspace). The repo's `apps/web/vercel.json` already sets the install/build
-   commands to build the workspace via turbo.
-3. **Environment Variables (Production):**
-   - `NEXT_PUBLIC_API_URL = https://api.rukna.site/api/v1`
-   - Do **not** set `NEXT_PUBLIC_API_URL_TEMPLATE` (single-tenant uses the fallback for all calls).
-4. **Domains:** add `acco.rukna.site` (Vercel gives you the CNAME target for step 1 if you
-   didn't add it yet).
-5. Deploy.
+The web runs as a container (`rukna_web`) behind the shared Caddy, alongside the API — so
+there's no external host and no public-repo requirement.
 
-`NEXT_PUBLIC_*` vars are baked at build time — changing one needs a redeploy.
+1. **DNS:** `acco.rukna.site` → **A record** to the VPS (DNS-only), same as `api`/`storage`.
+2. **Build + start the web** (the API URL is baked at build time via the compose build arg):
+   ```bash
+   docker compose -f deploy/docker-compose.prod.yml up -d --build rukna_web
+   ```
+3. **Add the web site to the shared Caddy** (append the `acco.rukna.site` block from
+   `deploy/Caddyfile`), then reload:
+   ```bash
+   docker exec deploy-caddy-1 caddy validate --config /etc/caddy/Caddyfile
+   docker exec deploy-caddy-1 caddy reload   --config /etc/caddy/Caddyfile
+   ```
+4. Open `https://acco.rukna.site` and log in.
+
+`NEXT_PUBLIC_API_URL` is inlined at build time (compose `build.args`); to change the API host,
+edit the arg and rebuild (`up -d --build rukna_web`).
+
+> The earlier Vercel path (`apps/web/vercel.json`) still works if you prefer it — set Root
+> Directory `apps/web`, env `NEXT_PUBLIC_API_URL=https://api.rukna.site/api/v1`, and point
+> `acco.rukna.site` at Vercel instead. The VPS path above avoids needing a public repo.
 
 ---
 

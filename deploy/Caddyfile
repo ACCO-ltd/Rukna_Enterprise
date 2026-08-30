@@ -14,9 +14,12 @@
 #   docker exec deploy-caddy-1 caddy validate --config /etc/caddy/Caddyfile
 #   docker exec deploy-caddy-1 caddy reload   --config /etc/caddy/Caddyfile
 #
-# Only api.rukna.site is here. storage.rukna.site is intentionally omitted: MinIO is
-# kept internal (not on deploy_internal), so browser file uploads are deferred until
-# you deliberately expose MinIO. Everything except the Documents/file feature works.
+# api.rukna.site (backend) + acco.rukna.site (web) are here. storage.rukna.site is
+# intentionally omitted: MinIO is kept internal (not on deploy_internal), so browser
+# file uploads are deferred until you deliberately expose MinIO. Everything except the
+# Documents/file feature works.
+#
+# DNS: both api.rukna.site and acco.rukna.site are A records → this VPS (DNS-only).
 # ─────────────────────────────────────────────────────────────────────────────
 
 api.rukna.site {
@@ -25,4 +28,9 @@ api.rukna.site {
 		max_size 512MB
 	}
 	reverse_proxy rukna_api:3001
+}
+
+acco.rukna.site {
+	encode zstd gzip
+	reverse_proxy rukna_web:3000
 }
