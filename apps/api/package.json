@@ -25,6 +25,7 @@
     "db:migrate:platform:prod": "prisma migrate deploy --schema=prisma-platform/schema.prisma",
     "db:migrate:deploy": "tsx scripts/migrate-deploy.ts",
     "tenant:provision": "tsx scripts/tenant-provision.ts",
+    "admin:reset-password": "tsx scripts/reset-admin-password.ts",
     "tenant:repair-access": "tsx scripts/tenant-repair-access.ts",
     "tenant:demo-readiness": "tsx scripts/tenant-demo-readiness.ts",
     "governance:seed": "tsx --env-file=.env prisma/seeds/seed-acco-governance.seed.ts",
