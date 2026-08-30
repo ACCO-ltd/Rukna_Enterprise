@@ -1,8 +1,20 @@
 import { ProjectRole } from '@erp/types';
 
-import type { OrgUser } from '@/features/users/types';
-
 import type { ProjectMember } from './types';
+
+/**
+ * The user fields the member picker reads — id, name, email.
+ *
+ * Narrower than the `GET /users` row on purpose: this file never needed the membership status
+ * or role list the admin screen consumes, so it depends only on the identity fields. That
+ * keeps it decoupled from the exact `/users` response shape.
+ */
+export interface PickableUser {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+}
 
 /**
  * ─── Project membership rules the UI has to hold ────────────────────────────────
@@ -53,7 +65,7 @@ export function memberName(member: Pick<ProjectMember, 'user'>): string {
   return full || member.user.email;
 }
 
-export function userName(user: OrgUser): string {
+export function userName(user: PickableUser): string {
   const full = `${user.firstName} ${user.lastName}`.trim();
   return full || user.email;
 }
@@ -64,7 +76,10 @@ export function userName(user: OrgUser): string {
  * Adding an existing member answers 409, so they are filtered out rather than offered and
  * refused. Sorted by display name so the picker is stable.
  */
-export function addableUsers(users: readonly OrgUser[], members: readonly ProjectMember[]): OrgUser[] {
+export function addableUsers<T extends PickableUser>(
+  users: readonly T[],
+  members: readonly ProjectMember[],
+): T[] {
   const taken = new Set(members.map((member) => member.userId));
   return users
     .filter((user) => !taken.has(user.id))

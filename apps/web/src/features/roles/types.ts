@@ -1,9 +1,7 @@
-/** `GET /roles` — list of roles for the caller's organisation. */
-export interface OrgRole {
-  id: string;
-  name: string;
-  description: string | null;
-  organizationId: string;
-  createdAt: string;
-  updatedAt: string;
-}
+import type {
+  PermissionRef,
+  RoleSummary,
+  RoleWithPermissionsResponse,
+} from '@erp/types';
+
+export type { PermissionRef, RoleSummary, RoleWithPermissionsResponse };
