@@ -11,7 +11,7 @@ fail=0
 echo "Pre-flight: inspecting for collisions before creating the Rukna stack..."
 
 echo "── container names (must be free) ──"
-for c in rukna_postgres rukna_minio rukna_api; do
+for c in rukna_postgres rukna_minio rukna_api rukna_web; do
   if docker ps -a --format '{{.Names}}' | grep -qx "$c"; then
     echo "  ✗ in use: $c"; fail=1
   else
