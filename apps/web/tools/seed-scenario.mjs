@@ -2,8 +2,22 @@
 /**
  * Builds a complete ACCO billing scenario over the public HTTP API.
  *
- *   client → project → BOQ (baselined) → contract (ACTIVE, with terms)
- *          → payment application (SUBMITTED) → certificate → receipt (allocated)
+ *   client → project (DRAFT) → BOQ (baselined) → contract (ACTIVE, with terms)
+ *          → project start (DRAFT → ACTIVE) → payment application (SUBMITTED)
+ *          → certificate (effective IPC) → invoice (from IPC, posted) → receipt (allocated)
+ *
+ * ─── Ordering (ADR-019) ──────────────────────────────────────────────────────────
+ *
+ * Starting a project is a single guarded `POST /projects/:id/start` (DRAFT → ACTIVE) that only
+ * succeeds once its readiness conditions hold: an ACTIVE main contract with a start date, and a
+ * baselined BOQ. So the scenario builds and baselines the BOQ and creates + activates the contract
+ * FIRST, then starts the project — the reverse of the retired approve→mobilize→activate chain.
+ *
+ * ─── Settlement (ADR-024) ────────────────────────────────────────────────────────
+ *
+ * AR truth is a ClientInvoice raised from the effective IPC, posted to the GL, then settled by a
+ * customer receipt allocated to that INVOICE (ClientReceiptAllocation) — not the old
+ * receipt→certificate (ReceiptAllocation→IPC) path, which was removed.
  *
  * ─── Why this exists ─────────────────────────────────────────────────────────────
  *
@@ -29,8 +43,24 @@
  * Every record is suffixed with a run id, so repeat runs add a fresh scenario rather than
  * colliding on the unique constraints over client code, project code and contract number.
  *
- * Plain Node with global `fetch` — no dependencies and no build step, so it runs from a
- * clean checkout.
+ * Plain Node with `node:http` — no dependencies and no build step, so it runs from a clean
+ * checkout. (It uses `node:http`, not `fetch`, to send the tenant Host header — see below.)
+ *
+ * ─── ENVIRONMENT PREREQUISITES ─────────────────────────────────────────────────────
+ *
+ * `tenant:provision` alone is NOT enough. The scenario needs, in the target tenant:
+ *   • the accounting chart + fiscal periods (prisma/seeds/accounting-phase1.seed.ts) — the
+ *     invoice/receipt posting resolves AR/revenue/VAT/bank/unapplied accounts by role, and posts
+ *     into an OPEN period;
+ *   • the district registry (prisma/seeds/districts.seed.ts) — a project code needs a district;
+ *   • an ACTIVE workflow binding for the IPA submit transition. `InterimPaymentApplication`
+ *     DRAFT → PENDING_INTERNAL_APPROVAL is a REQUIRED governed transition (acco-workflows.seed.ts);
+ *     provisioning seeds that requirement policy but NO matching binding, so the transition 422s
+ *     ("Workflow configuration required") until the IPA approval chain is wired and activated for
+ *     the tenant. A lone admin cannot self-approve it (SoD blocks a system admin from approving a
+ *     business transaction), so activation with a real approver role is the intended path.
+ *
+ * Point at a tenant where all three are in place (e.g. via the documented dev bring-up), then run.
  */
 
 import http from 'node:http';
@@ -173,12 +203,14 @@ async function main() {
     // this script at step 2. Unlike a project, whose code the caller chooses, a client's is
     // assigned. Read it off the response instead.
     name: 'Baraka Real Estate LLC',
-    nameAr: 'شركة البركة للعقارات',
+    // NOTE: no `nameAr`. Arabic was removed end-to-end (English-only, PR #73); CreateClientDto
+    // no longer declares it and forbidNonWhitelisted makes sending it a 400.
     taxNumber: `SO-${RUN}`,
     defaultCurrency: 'USD',
     // NOTE: no `status` field. api-reference.md documents one, but CreateClientDto does
     // not declare it and the ValidationPipe runs with forbidNonWhitelisted — sending it
-    // is a 400. See D3.
+    // is a 400. See D3. The client is created ACTIVE by schema default, which the project's
+    // CLIENT_ACTIVE start-readiness condition requires.
   });
   ok(client.code);
 
@@ -193,12 +225,22 @@ async function main() {
   ok();
 
   // ── Project ───────────────────────────────────────────────────────────────────
-  step('create project');
+  // A project now requires a `districtId` (ADR-025 meaningful project codes + district
+  // registry). The Banaadir districts are seeded per tenant; resolve the first active one the
+  // same way the project-create picker does. `GET /districts` returns a plain array.
+  step('resolve district');
+  const districts = await get('/districts?activeOnly=true');
+  const districtList = Array.isArray(districts) ? districts : (districts?.items ?? []);
+  const district = districtList[0];
+  if (!district) throw new Error('No active district seeded for this tenant.');
+  ok(district.name ?? district.id);
+
+  step('create project (DRAFT)');
   const project = await post('/projects', {
     code: `PRJ-${RUN}`,
     name: 'Hodan District Office Tower',
-    nameAr: 'برج مكاتب حي هودان',
     description: 'Eight-storey commercial tower, Mogadishu.',
+    districtId: district.id,
     // A CLIENT_CONTRACT project (the default) requires the client aggregate id, not just the
     // legacy display name (ADR-005). Without it the API rejects the create with 400
     // "A client is required for a client contract project". The seed predates that rule.
@@ -206,18 +248,15 @@ async function main() {
     clientName: client.name,
     contractValue: 4_500_000,
     currency: 'USD',
+    // startDate + expectedEndDate satisfy the WAIVABLE PROGRAMME_DATES start condition naturally.
     startDate: '2026-02-01',
     expectedEndDate: '2027-08-31',
   });
   ok(project.code);
 
-  // A contract can be created against a DRAFT project, but a project that never leaves
-  // DRAFT is not a realistic backdrop for the billing screens.
-  step('advance project to ACTIVE');
-  for (const command of ['approve', 'mobilize', 'activate']) {
-    await post(`/projects/${project.id}/${command}`);
-  }
-  ok('DRAFT → APPROVED → MOBILIZING → ACTIVE');
+  // ADR-019: the project stays DRAFT here. `POST /projects/:id/start` (DRAFT → ACTIVE) is guarded
+  // by readiness — a baselined BOQ and an ACTIVE main contract with a start date. So the BOQ and
+  // contract are built FIRST (below), and the project is started AFTER them.
 
   // ── BOQ ───────────────────────────────────────────────────────────────────────
   step('initialize BOQ');
@@ -295,6 +334,35 @@ async function main() {
   }
   ok('client details now frozen onto the contract');
 
+  // ── Start the project (ADR-019) ────────────────────────────────────────────────
+  //
+  // With a baselined BOQ and an ACTIVE main contract carrying a start date, the guarded
+  // `POST /projects/:id/start` (DRAFT → ACTIVE) can run. Its readiness conditions:
+  //   CLIENT_ACTIVE / ACTIVE_MAIN_CONTRACT / CONTRACT_START_DATE / BOQ_BASELINED  (MANDATORY)
+  //   PROGRAMME_DATES / DELIVERY_TEAM                                             (WAIVABLE)
+  // The four mandatory ones are satisfied naturally (active client + active contract with a
+  // start date + baselined BOQ). PROGRAMME_DATES is satisfied by the project's planned dates.
+  // DELIVERY_TEAM wants a second team member beyond the auto-enrolled PM; the seed has no other
+  // user, so it carries a per-condition waiver (CONST-PLC-006) rather than inventing one. The
+  // command records the actual commencement (`actualStartDate`) — the one decision Start owns.
+  step('read start readiness');
+  const readiness = await get(`/projects/${project.id}/readiness?command=start`);
+  const unmetWaivable = readiness.conditions
+    .filter((c) => !c.satisfied && c.severity === 'WAIVABLE')
+    .map((c) => c.code);
+  ok(`ready=${readiness.ready}${unmetWaivable.length ? ` (waive ${unmetWaivable.join(', ')})` : ''}`);
+
+  step('start project (DRAFT → ACTIVE)');
+  await post(`/projects/${project.id}/start`, {
+    actualStartDate: '2026-02-01',
+    commencementNote: `Seeded scenario ${RUN}: site handover complete, mobilization underway.`,
+    overrides: unmetWaivable.map((condition) => ({
+      condition,
+      reason: 'Seed scenario: single-user tenant has no delivery team beyond the project manager.',
+    })),
+  });
+  ok('project is ACTIVE');
+
   // ── Payment application ───────────────────────────────────────────────────────
   step('create payment application');
   const ipa = await post('/ipa', {
@@ -328,10 +396,14 @@ async function main() {
   });
   ok(`${retention.toFixed(2)} USD on a ${gross.toFixed(2)} basis`);
 
+  // The first IPA transition (DRAFT → PENDING_INTERNAL_APPROVAL) is governed by a REQUIRED
+  // WorkflowRequirementPolicy (acco-workflows.seed.ts): with no ACTIVE trigger binding for it, the
+  // API returns 422 "Workflow configuration required". A freshly-provisioned tenant seeds this
+  // policy but no matching IPA binding, and a lone admin cannot self-approve (SoD blocks it), so
+  // the IPA chain must be wired + activated in the tenant before this seeder can submit an IPA.
+  // See the ENVIRONMENT note in the file header.
   step('advance application to SUBMITTED');
-  for (const command of ['submit-for-approval', 'approve-for-submission', 'submit']) {
-    await post(`/ipa/${ipa.id}/${command}`);
-  }
+  await submitIpa(ipa.id);
   const submitted = await get(`/ipa/${ipa.id}`);
   ok(submitted.applicationRef ?? 'submitted');
 
@@ -382,30 +454,56 @@ async function main() {
       cumulativeClaimed: (leaf.quantity * 0.5).toFixed(3),
     });
   }
-  for (const command of ['submit-for-approval', 'approve-for-submission', 'submit']) {
-    await post(`/ipa/${certificationIpa.id}/${command}`);
-  }
+  await submitIpa(certificationIpa.id);
   const submittedCertificationIpa = await get(`/ipa/${certificationIpa.id}`);
   ok(submittedCertificationIpa.applicationRef ?? 'submitted');
 
-  // ── Receipt ───────────────────────────────────────────────────────────────────
-  step('record receipt for the net certified');
-  const receipt = await post('/receipts', {
+  // ── Invoice from the effective IPC (ADR-024) ───────────────────────────────────
+  //
+  // AR truth is a ClientInvoice raised from the effective certificate, posted to the GL, then
+  // settled by a customer receipt allocated to that INVOICE. The old receipt→certificate
+  // (ReceiptAllocation→IPC) path was removed. `generateFromIpc` is idempotent (one invoice per
+  // effective IPC) and adds 5% output VAT, so the receivable is certifiedTotal × 1.05.
+  step('generate invoice from IPC');
+  const invoice = await post('/invoices/from-ipc', {
+    ipcId: certificate.id,
+    invoiceDate: '2026-06-15',
+    dueDate: '2026-07-15',
+    paymentTerms: 'Net 30',
+  });
+  const invoiceTotal = Number(invoice.totalAmount);
+  ok(`${invoiceTotal.toFixed(2)} USD (incl. 5% VAT)`);
+
+  // DRAFT → APPROVED → POSTED. Only a POSTED invoice can be allocated against (it books the AR
+  // receivable and draws the INV- number). Control accounts resolve server-side by role
+  // (ACC-POST-001), so post carries an empty body.
+  step('approve and post invoice');
+  await post(`/invoices/${invoice.id}/approve`);
+  await post(`/invoices/${invoice.id}/post`, {});
+  const postedInvoice = await get(`/invoices/${invoice.id}`);
+  ok(postedInvoice.invoiceNumber ?? 'POSTED');
+
+  // ── Receipt (ADR-024) ──────────────────────────────────────────────────────────
+  // Receipts moved to /customer-receipts (ACC-SET-001). Create records it NOT_POSTED; posting to
+  // the GL with an inline allocation to the invoice settles it in one call. `bankAccountCode` is
+  // the Salaam Bank cash GL (10100, seeded); AR/unapplied resolve by role.
+  step('record customer receipt');
+  const receipt = await post('/customer-receipts', {
     clientId: client.id,
     receiptDate: '2026-06-20',
-    amount: netCertified.toFixed(2),
+    amount: invoiceTotal.toFixed(2),
     currency: 'USD',
     reference: `TT-${RUN}`,
     notes: 'Bank transfer, Salaam Bank',
   });
-  ok(`${netCertified.toFixed(2)} USD`);
+  ok(`${invoiceTotal.toFixed(2)} USD`);
 
-  step('allocate receipt to the certificate');
-  await post(`/receipts/${receipt.id}/allocations`, {
-    certificateId: certificate.id,
-    allocatedAmount: netCertified.toFixed(2),
+  step('post receipt and allocate to invoice');
+  await post(`/customer-receipts/${receipt.id}/post`, {
+    bankAccountCode: '10100', // Salaam Bank cash GL (seeded chart of accounts)
+    allocations: [{ clientInvoiceId: invoice.id, amount: invoiceTotal }],
   });
-  const payment = await get(`/receipts/certificate/${certificate.id}/payment-status`);
+  const payment = await get(`/customer-receipts/certificate/${certificate.id}/payment-status`);
   ok(payment.status);
 
   const scenario = {
@@ -415,9 +513,11 @@ async function main() {
     ipa: submitted,
     certificationIpa: submittedCertificationIpa,
     certificate: issued,
+    invoice: postedInvoice,
     receipt,
     payment,
     netCertified,
+    invoiceTotal,
   };
 
   summarize(scenario);
@@ -454,7 +554,6 @@ async function buildBoqTree(projectId, versionId) {
     {
       code: '01',
       description: 'Substructure Works',
-      descriptionAr: 'أعمال الأساسات',
       items: [
         {
           code: '01.01',
@@ -475,7 +574,6 @@ async function buildBoqTree(projectId, versionId) {
     {
       code: '02',
       description: 'Superstructure Works',
-      descriptionAr: 'أعمال الهيكل',
       items: [
         {
           code: '02.01',
@@ -500,7 +598,6 @@ async function buildBoqTree(projectId, versionId) {
       sortOrder: sectionIndex + 1,
       code: section.code,
       description: section.description,
-      descriptionAr: section.descriptionAr,
       isLeaf: false,
     });
 
@@ -525,6 +622,29 @@ async function buildBoqTree(projectId, versionId) {
   return { leaves };
 }
 
+/**
+ * Walk an IPA DRAFT → SUBMITTED. The first hop is governed (ADR-022): a REQUIRED requirement
+ * policy with no active binding answers 422, which no HTTP client can satisfy on its own. Rethrow
+ * it with the concrete remediation rather than the bare envelope, so the failure names the fix.
+ */
+async function submitIpa(ipaId) {
+  for (const command of ['submit-for-approval', 'approve-for-submission', 'submit']) {
+    try {
+      await post(`/ipa/${ipaId}/${command}`);
+    } catch (error) {
+      if (command === 'submit-for-approval' && /→ 422/.test(error.message)) {
+        throw new Error(
+          `${error.message}\n` +
+            '    The IPA submit transition is a REQUIRED governed transition with no active workflow\n' +
+            '    binding in this tenant. Wire + activate the InterimPaymentApplication approval chain\n' +
+            '    (governance config) before seeding, or run against a tenant where it is already active.',
+        );
+      }
+      throw error;
+    }
+  }
+}
+
 function summarize(s) {
   if (config.quiet) return;
   const line = '─'.repeat(74);
@@ -537,22 +657,35 @@ function summarize(s) {
   console.log(
     `  Certificate  ${s.certificate.certificateRef ?? s.certificate.id}  (${s.certificate.status})`,
   );
-  console.log(`  Receipt      ${s.receipt.reference}  ${s.receipt.amount} ${s.receipt.currency}\n`);
+  console.log(
+    `  Invoice      ${s.invoice.invoiceNumber ?? s.invoice.id}  (${s.invoice.postingStatus})`,
+  );
+  console.log(`  Receipt      ${s.receipt.reference}  ${s.invoiceTotal.toFixed(2)} USD\n`);
   console.log(`  Gross certified   ${s.certificate.totalCertifiedAmount} USD`);
   console.log(`  Deductions        ${s.certificate.totalDeductions} USD`);
   console.log(`  Net certified     ${s.certificate.netCertified} USD`);
-  console.log(`  Allocated         ${s.payment.totalAllocated} USD  →  ${s.payment.status}`);
+  console.log(`  Invoice total     ${s.payment.invoiceTotal} USD  (incl. ${s.payment.vatAmount} VAT)`);
+  console.log(`  Received          ${s.payment.totalReceived} USD  →  ${s.payment.status}`);
 
   if (s.payment.status !== 'PAID') {
     console.log(
-      `\n  ⚠  The receipt settles the certificate in full, yet the API reports\n` +
-        `     ${s.payment.status}. Payment status is measured against GROSS certifiedTotal\n` +
-        `     rather than net (C7, issue #11). Expected until that is fixed.`,
+      `\n  ⚠  The receipt should settle the invoice in full, yet the API reports\n` +
+        `     ${s.payment.status} (outstanding ${s.payment.outstanding} USD).`,
     );
   }
 
-  console.log(`\n  Open:  http://acco.localhost:3000/projects/${s.project.id}`);
+  console.log(`\n  Open:  ${webBase()}/projects/${s.project.id}`);
   console.log(`${line}\n`);
+}
+
+/**
+ * The web app runs on the same tenant subdomain as the API, on port 3000. Derive it from the
+ * configured API target so the "Open" link points at the tenant the scenario was seeded into,
+ * not a hardcoded `acco.`.
+ */
+function webBase() {
+  const url = new URL(config.api);
+  return `${url.protocol}//${url.hostname}:3000`;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────────
