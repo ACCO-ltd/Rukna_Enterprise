@@ -1,54 +1,45 @@
 'use client';
 
 /**
- * Purchase order detail (§12.6).
+ * Purchase order detail (Round 2).
  *
- * Revisions are tabs. The ACTIVE one is preselected; superseded ones stay reachable
- * because the commitment ledger references them by revision and a reader tracing a
- * committed figure needs to see the lines it came from.
+ * ─── D4: current revision by default, history behind a disclosure ────────────────────
  *
- * Two pieces of copy deliberately depart from §12.6, because §12.6 describes behaviour
- * the server does not have:
+ * The revision tabs are gone. The current (ACTIVE) revision is shown directly. Prior
+ * revisions sit in a collapsed "Revision history" disclosure, read-only, each expandable
+ * in place to inspect its lines — the immutable-revision data model is untouched (the
+ * commitment ledger references revisions by number, and a reader tracing a committed
+ * figure still needs to see the lines it came from).
  *
- *  - The approve drawer does **not** say the superseded revision's "uncommitted balance
- *    will be reversed". It reverses the full original value, so if goods were already
- *    received against it, COMMITTED is reduced twice and goes negative (P11).
- *  - The cancel dialog says the order's commitment entries will remain, because `cancel`
- *    writes no reversal at all and no endpoint can correct it afterwards (P12).
+ * ─── D3: no ceremonial approve ───────────────────────────────────────────────────────
  *
- * Saying the reassuring thing would be easy and wrong. These figures are what a project
- * manager reads to decide whether there is budget left.
+ * There is no approve drawer and no standalone approve button. A first issue happens on
+ * the create form. Amending writes a new DRAFT revision (the only revision-creating
+ * action); issuing that draft is a single "Issue revision" action here that orchestrates
+ * submit → approve, preserving the real governed gate: with a DoA binding, submit returns
+ * 409 and the {@link ApprovalPanel} renders until approvers act. Nothing fabricates an
+ * approval.
+ *
+ * One piece of copy deliberately departs from §12.6, because the server does not have the
+ * behaviour §12.6 describes: the cancel dialog says the order's commitment entries will
+ * remain — `cancel`'s reversal covers only the uncommitted balance, so anything already
+ * committed and received against is not reversed (P12). Saying the reassuring thing would
+ * be easy and wrong; these figures are what a project manager reads to decide whether
+ * there is budget left.
  */
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import {
-  Alert,
-  Button,
-  Sheet,
-  SheetContent,
-  SheetTitle,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@erp/ui';
+import { Alert, Badge, Button } from '@erp/ui';
 import { WorkflowTransactionType } from '@erp/types';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney, formatNumber } from '@/lib/format';
 import { MONEY_SCALE, fromMinorUnits } from '@/lib/money';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { ApprovalPanel } from '@/features/workflows/components/approval-panel';
-import { GatedActionButton } from '@/features/workflows/components/gated-action-button';
 
 import {
   useApprovePurchaseOrder,
@@ -58,21 +49,55 @@ import {
 } from '../hooks/use-procurement';
 import { activeRevision, revisionTotalMinor } from '../quantities';
 import type { PurchaseOrder, PurchaseOrderRevision } from '../types';
+import { PoAmendSheet } from './po-amend-sheet';
 import { ProcurementStatusBadge } from './procurement-badges';
 
 export function PoDetail({ id }: { id: string }) {
   const t = useTranslations('procurement.po');
   const tc = useTranslations('procurement.common');
   const tCommon = useTranslations('common');
-  const locale = useLocale() as 'en' | 'ar';
+  const locale = useLocale() as 'en';
   const { can } = usePermissions();
 
   const po = usePurchaseOrder(id);
-  const [approving, setApproving] = useState(false);
+  const [amending, setAmending] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
   const submit = useSubmitPurchaseOrder();
+  const approve = useApprovePurchaseOrder();
   const cancel = useCancelPurchaseOrder();
+
+  // "Issue revision" orchestration for a DRAFT (submit → approve), with the gate seam.
+  const [approvalInstanceId, setApprovalInstanceId] = useState<string | null>(null);
+  const [issuing, setIssuing] = useState(false);
+  const [issueError, setIssueError] = useState<string | null>(null);
+
+  const runIssue = useCallback(async () => {
+    setIssueError(null);
+    setIssuing(true);
+    try {
+      try {
+        await submit.mutateAsync(id);
+      } catch (e) {
+        const instanceId =
+          e instanceof ApiError && e.status === 409
+            ? (e.details?.approvalInstanceId as string | undefined)
+            : undefined;
+        if (instanceId) {
+          setApprovalInstanceId(instanceId);
+          return; // pending approval — nothing faked
+        }
+        throw e;
+      }
+      setApprovalInstanceId(null);
+      await approve.mutateAsync({ id });
+    } catch (e) {
+      setIssueError(e instanceof ApiError ? e.message : tc('loadFailed'));
+    } finally {
+      setIssuing(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, submit, approve]);
 
   if (po.isPending) {
     return (
@@ -99,11 +124,19 @@ export function PoDetail({ id }: { id: string }) {
 
   const order: PurchaseOrder = po.data;
   const active = activeRevision(order.revisions);
-  const draft = order.revisions.find((r) => r.status === 'DRAFT');
-  const submitted = order.revisions.find((r) => r.status === 'SUBMITTED');
-  const defaultTab = String((active ?? draft ?? order.revisions[0])?.revisionNumber ?? 1);
+  const draft = order.revisions.find((r) => r.status === 'DRAFT') ?? null;
+  // The revision shown as "current": the ACTIVE one, or the draft/newest if none is active yet.
+  const current =
+    active ??
+    draft ??
+    [...order.revisions].sort((a, b) => b.revisionNumber - a.revisionNumber)[0] ??
+    null;
+  const history = order.revisions
+    .filter((r) => r.id !== current?.id)
+    .sort((a, b) => b.revisionNumber - a.revisionNumber);
 
   const isOpen = order.status === 'OPEN';
+  const canAmend = isOpen && !draft && Boolean(active);
 
   return (
     <div className="space-y-6">
@@ -121,7 +154,6 @@ export function PoDetail({ id }: { id: string }) {
       {/* ── Header card ───────────────────────────────────────────────────── */}
       <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
         <div className="px-5 pt-5 sm:px-6 sm:pt-6">
-          {/* Top row: PO number + status */}
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-xs font-medium text-muted-foreground">
               {order.poNumber}
@@ -129,96 +161,99 @@ export function PoDetail({ id }: { id: string }) {
             <ProcurementStatusBadge status={order.status} />
           </div>
 
-          {/* Primary heading: supplier name */}
           <h1 className="mt-2 text-[26px] font-bold leading-tight tracking-[-0.025em] text-foreground sm:text-[28px]">
             {order.supplier?.name ?? t('detailTitle', { number: order.poNumber })}
           </h1>
 
-          {/* Subtitle: revision count */}
           <p className="mt-1 text-sm text-muted-foreground">
             {t('revisionOf', {
-              number: active?.revisionNumber ?? order.revisions.length,
+              number: current?.revisionNumber ?? order.revisions.length,
               total: order.revisions.length,
             })}
           </p>
         </div>
 
-        {/* Footer: lifecycle actions */}
+        {/* Footer: the one revision-creating action, plus cancel. No ceremonial approve. */}
         {isOpen ? (
           <div className="mt-4 flex flex-wrap gap-2 border-t border-border px-5 py-3 sm:px-6">
-            {submitted && can(PROCUREMENT_PERMISSIONS.approveOrder) ? (
-              <Button type="button" size="sm" onClick={() => setApproving(true)}>
-                {t('approve')}
+            {canAmend ? (
+              <Button type="button" size="sm" onClick={() => setAmending(true)}>
+                {t('amend')}
               </Button>
             ) : null}
-
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => setCancelling(true)}
-            >
+            <Button type="button" size="sm" variant="outline" onClick={() => setCancelling(true)}>
               {t('cancelOrder')}
             </Button>
           </div>
         ) : null}
       </div>
 
-      {/* ── Approval workflow actions ──────────────────────────────────────── */}
-      {/* Submitting a DRAFT revision is the governed transition (ADR-011): with a DoA binding
-          configured the server opens an approval instead of moving to SUBMITTED, and the panel
-          + "Complete" re-drive carry it through. Once submitted (or when no draft remains) the
-          static panel shows whatever the order's own persisted instance is. */}
+      {/* ── Issue a DRAFT revision (submit → approve), gated seam preserved ──── */}
       {isOpen && draft ? (
-        <GatedActionButton
-          command={() => submit.mutateAsync(order.id)}
-          transactionType={WorkflowTransactionType.PURCHASE_ORDER}
-          label={t('submit')}
-        />
-      ) : (
+        <div className="space-y-3 rounded-xl border border-border bg-surface p-4 shadow-[var(--shadow-panel)] sm:p-6">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">{t('draftRevisionTitle')}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{t('draftRevisionBody')}</p>
+          </div>
+
+          {issueError ? <Alert variant="error" messages={[issueError]} /> : null}
+
+          {approvalInstanceId ? (
+            <>
+              <Alert variant="info" messages={[t('issueAwaitingApproval')]} />
+              <ApprovalPanel
+                instanceId={approvalInstanceId}
+                transactionType={WorkflowTransactionType.PURCHASE_ORDER}
+              />
+              <div className="border-t border-border pt-3">
+                <Button type="button" disabled={issuing} onClick={() => void runIssue()}>
+                  {t('completeIssue')}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <Button
+              type="button"
+              disabled={issuing || !can(PROCUREMENT_PERMISSIONS.approveOrder)}
+              onClick={() => void runIssue()}
+            >
+              {t('issueRevision')}
+            </Button>
+          )}
+        </div>
+      ) : order.approvalInstanceId ? (
+        // A persisted instance from a prior gated submit, when no draft is in hand.
         <ApprovalPanel
           instanceId={order.approvalInstanceId}
           transactionType={WorkflowTransactionType.PURCHASE_ORDER}
         />
-      )}
+      ) : null}
 
-      {/* ── Revision tabs ─────────────────────────────────────────────────── */}
-      {order.revisions.length === 0 ? (
-        <Alert variant="info" messages={[tc('noResults')]} />
+      {/* ── Current revision ──────────────────────────────────────────────── */}
+      {current ? (
+        <RevisionPanel revision={current} locale={locale} isCurrent />
       ) : (
-        <Tabs
-          defaultValue={defaultTab}
-          className="rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]"
-        >
-          <TabsList className="w-full justify-start rounded-none border-b border-border bg-transparent px-4 pt-2">
-            {order.revisions.map((revision) => (
-              <TabsTrigger key={revision.id} value={String(revision.revisionNumber)}>
-                {t('revisionTab', { number: revision.revisionNumber })}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          {order.revisions.map((revision) => (
-            <TabsContent
-              key={revision.id}
-              value={String(revision.revisionNumber)}
-              className="p-4 sm:p-6"
-            >
-              <RevisionPanel revision={revision} locale={locale} />
-            </TabsContent>
-          ))}
-        </Tabs>
+        <Alert variant="info" messages={[tc('noResults')]} />
       )}
 
-      {/* ── Approve drawer ────────────────────────────────────────────────── */}
-      {approving && submitted ? (
-        <ApproveDrawer
-          revision={submitted}
-          hasSupersededTarget={Boolean(active)}
-          onClose={() => setApproving(false)}
-          orderId={order.id}
-          locale={locale}
-        />
+      {/* ── Revision history (collapsed) ──────────────────────────────────── */}
+      {history.length > 0 ? (
+        <details className="group overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-5 py-3 text-sm font-medium text-foreground marker:hidden sm:px-6 [&::-webkit-details-marker]:hidden">
+            <span>{t('revisionHistory', { count: history.length })}</span>
+            <ChevronDownIcon />
+          </summary>
+          <div className="space-y-3 border-t border-border p-4 sm:p-6">
+            {history.map((revision) => (
+              <RevisionHistoryItem key={revision.id} revision={revision} locale={locale} />
+            ))}
+          </div>
+        </details>
+      ) : null}
+
+      {/* ── Amend sheet ───────────────────────────────────────────────────── */}
+      {amending ? (
+        <PoAmendSheet order={order} source={active} onClose={() => setAmending(false)} />
       ) : null}
 
       {/* ── Cancel confirm ────────────────────────────────────────────────── */}
@@ -229,11 +264,52 @@ export function PoDetail({ id }: { id: string }) {
           confirmLabel={t('cancelOrder')}
           isPending={cancel.isPending}
           errorMessage={cancel.isError ? tc('loadFailed') : undefined}
-          onConfirm={() =>
-            cancel.mutate(order.id, { onSuccess: () => setCancelling(false) })
-          }
+          onConfirm={() => cancel.mutate(order.id, { onSuccess: () => setCancelling(false) })}
           onDismiss={() => setCancelling(false)}
         />
+      ) : null}
+    </div>
+  );
+}
+
+// ─── Revision history item (collapsed row → inline line view) ──────────────────────
+
+function RevisionHistoryItem({
+  revision,
+  locale,
+}: {
+  revision: PurchaseOrderRevision;
+  locale: 'en';
+}) {
+  const t = useTranslations('procurement.po');
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="rounded-lg border border-border">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex min-h-11 w-full items-center justify-between gap-3 px-4 py-3 text-start"
+      >
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-foreground">
+            {t('revisionTab', { number: revision.revisionNumber })}
+          </span>
+          <ProcurementStatusBadge status={revision.status} />
+          <span className="text-xs text-muted-foreground">
+            {formatDate(revision.effectiveFrom, locale) ?? ''}
+          </span>
+        </span>
+        <span className="text-xs font-medium text-brand-primary">
+          {open ? t('hide') : t('view')}
+        </span>
+      </button>
+
+      {open ? (
+        <div className="border-t border-border p-4">
+          <RevisionPanel revision={revision} locale={locale} isCurrent={false} />
+        </div>
       ) : null}
     </div>
   );
@@ -244,9 +320,11 @@ export function PoDetail({ id }: { id: string }) {
 function RevisionPanel({
   revision,
   locale,
+  isCurrent,
 }: {
   revision: PurchaseOrderRevision;
-  locale: 'en' | 'ar';
+  locale: 'en';
+  isCurrent: boolean;
 }) {
   const t = useTranslations('procurement.po');
   const tc = useTranslations('procurement.common');
@@ -257,16 +335,14 @@ function RevisionPanel({
 
   return (
     <div className="space-y-5">
-      {/* Revision status + label */}
-      <div className="flex flex-wrap items-center gap-2">
-        <ProcurementStatusBadge status={revision.status} />
-        <span className="text-xs text-muted-foreground">
-          {t('revisionOf', {
-            number: revision.revisionNumber,
-            total: revision.revisionNumber,
-          })}
-        </span>
-      </div>
+      {isCurrent ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <ProcurementStatusBadge status={revision.status} />
+          <span className="text-xs text-muted-foreground">
+            {t('revisionTab', { number: revision.revisionNumber })}
+          </span>
+        </div>
+      ) : null}
 
       {/* Revision metadata — gap-px tile grid */}
       <dl className="grid gap-px overflow-hidden rounded-xl border border-border bg-border shadow-[var(--shadow-panel)] sm:grid-cols-2 lg:grid-cols-4">
@@ -294,70 +370,52 @@ function RevisionPanel({
             <dd className="mt-1.5 text-sm font-semibold text-foreground">{revision.reason}</dd>
           </div>
         ) : null}
-        {revision.approvedAt ? (
-          <div className="bg-surface px-5 py-4">
-            <dt className="text-xs font-medium text-muted-foreground">{t('approve')}</dt>
-            <dd className="mt-1.5 text-sm font-semibold text-foreground">
-              {formatDate(revision.approvedAt, locale) ?? tc('notAvailable')}
-            </dd>
-          </div>
-        ) : null}
       </dl>
 
-      {/* Lines table */}
+      {/* Lines — read-only, with classification chips (D7 consistency). Rendered as
+          stacked cards rather than a table so a line's classification chips read cleanly
+          at 375px without horizontal scroll. */}
       <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
         <div className="border-b border-border px-5 py-3 sm:px-6">
           <h3 className="text-[13px] font-semibold text-foreground">{tc('lines')}</h3>
         </div>
-        <TableScroll aria-label={tc('lines')}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="text-end">{tc('lineNumber')}</TableHead>
-                <TableHead>{tc('type')}</TableHead>
-                <TableHead>{tc('description')}</TableHead>
-                <TableHead>{tc('uom')}</TableHead>
-                <TableHead className="text-end">{t('orderedQuantity')}</TableHead>
-                <TableHead className="text-end">{tc('unitPrice')}</TableHead>
-                <TableHead className="text-end">{t('extendedAmount')}</TableHead>
-                <TableHead>{tc('spendCategory')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {lines.map((line) => (
-                <TableRow key={line.id}>
-                  <TableCell className="text-end tabular-nums">{line.lineNumber}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {tType(line.lineType)}
-                  </TableCell>
-                  <TableCell className="text-sm">
+        <ul className="divide-y divide-border">
+          {lines.map((line) => (
+            <li key={line.id} className="px-5 py-3 sm:px-6">
+              <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+                <div className="min-w-0">
+                  <p className="text-sm text-foreground">
+                    <span className="me-2 tabular-nums text-muted-foreground">{line.lineNumber}.</span>
                     {line.material ? (
                       <span className="me-2 font-mono text-xs text-muted-foreground">
                         {line.material.code}
                       </span>
                     ) : null}
                     {line.description}
-                  </TableCell>
-                  <TableCell>
-                    <bdi className="text-sm">{line.uom?.symbol ?? line.uom?.code ?? '—'}</bdi>
-                  </TableCell>
-                  <TableCell className="text-end tabular-nums">
-                    {formatNumber(line.orderedQuantity, locale)}
-                  </TableCell>
-                  <TableCell className="text-end tabular-nums">
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+                    {formatNumber(line.orderedQuantity, locale)} {line.uom?.symbol ?? line.uom?.code ?? ''}
+                    {' × '}
                     {formatMoney(line.unitPrice, revision.currencyCode, locale)}
-                  </TableCell>
-                  <TableCell className="text-end font-medium tabular-nums">
-                    {formatMoney(line.extendedAmount, revision.currencyCode, locale)}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {line.spendCategory?.name ?? tc('notAvailable')}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableScroll>
+                  </p>
+                  {/* Read-only classification chips */}
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <Badge tone="neutral">{tType(line.lineType)}</Badge>
+                    <Badge tone="neutral">
+                      {tc('spendCategory')}: {line.spendCategory?.name ?? t('derivedOnIssue')}
+                    </Badge>
+                    <Badge tone="neutral">
+                      {tc('boqNode')}: {t('costTargetNotCaptured')}
+                    </Badge>
+                  </div>
+                </div>
+                <p className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
+                  {formatMoney(line.extendedAmount, revision.currencyCode, locale)}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
 
         <div className="border-t border-border px-5 py-3 text-end sm:px-6">
           <span className="text-sm text-muted-foreground">{tc('total')}: </span>
@@ -367,77 +425,6 @@ function RevisionPanel({
         </div>
       </section>
     </div>
-  );
-}
-
-// ─── Approve drawer ───────────────────────────────────────────────────────────
-
-/**
- * Shows what approving will commit, and — when a revision is being superseded — what the
- * reversal actually does, which is not what §12.6 says it does (P11).
- */
-function ApproveDrawer({
-  revision,
-  hasSupersededTarget,
-  orderId,
-  onClose,
-  locale,
-}: {
-  revision: PurchaseOrderRevision;
-  hasSupersededTarget: boolean;
-  orderId: string;
-  onClose: () => void;
-  locale: 'en' | 'ar';
-}) {
-  const t = useTranslations('procurement.po');
-  const tc = useTranslations('procurement.common');
-  const approve = useApprovePurchaseOrder();
-
-  const totalMinor = revisionTotalMinor(revision.lines ?? []);
-  const amount =
-    formatMoney(fromMinorUnits(totalMinor, MONEY_SCALE), revision.currencyCode, locale) ?? '';
-
-  return (
-    <Sheet open onOpenChange={(next) => (next ? undefined : onClose())}>
-      <SheetContent className="p-6">
-        <SheetTitle className="text-lg font-semibold text-foreground">
-          {t('approveTitle', { number: revision.revisionNumber })}
-        </SheetTitle>
-
-        <div className="mt-5 space-y-4">
-          <Alert variant="info" messages={[t('approveCommitmentNotice', { amount })]} />
-
-          {hasSupersededTarget ? (
-            <Alert
-              variant="warning"
-              messages={[t('approveSupersedeNotice'), t('approveSupersedeWarning')]}
-            />
-          ) : null}
-
-          {approve.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
-
-          <div className="flex flex-wrap justify-end gap-2 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              disabled={approve.isPending}
-            >
-              {tc('cancel')}
-            </Button>
-            <Button
-              type="button"
-              disabled={approve.isPending}
-              onClick={() =>
-                approve.mutate({ id: orderId }, { onSuccess: onClose })
-              }
-            >
-              {t('approve')}
-            </Button>
-          </div>
-        </div>
-      </SheetContent>
-    </Sheet>
   );
 }
 
@@ -457,6 +444,25 @@ function ChevronStartIcon() {
       aria-hidden="true"
     >
       <path d="M15 18l-6-6 6-6" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="shrink-0 transition-transform group-open:rotate-180"
+    >
+      <path d="M6 9l6 6 6-6" />
     </svg>
   );
 }

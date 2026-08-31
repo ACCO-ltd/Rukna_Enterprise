@@ -1,35 +1,53 @@
 'use client';
 
 /**
- * Purchase order line editor (§12.6, step 2).
+ * Purchase order line editor (Round 2, single-form).
  *
- * The MR line editor plus a price, an extended amount, and allocations back to approved
- * material request lines.
+ * One card per line: type, material (on MATERIAL lines), description, unit, ordered
+ * quantity, unit price, and the live extended amount. Two former line inputs are gone:
+ *
+ *  - **MR-link allocation picker (D2).** PO lines no longer reference material-request
+ *    lines. A PO is fully valid with zero material requests, so the `AllocationPicker`,
+ *    the `mrLineAllocations` payload, and the `approvedRequests` feed are all removed.
+ *  - **Spend-category select (D7).** Spend category is no longer chosen on the line. It is
+ *    shown as a quiet read-only chip ("Derived on issue"); the real derivation is backend
+ *    work, not in this slice. `spendCategoryId` is OPTIONAL on the PO-line API, so it is
+ *    simply omitted from the payload rather than sent as a typed value.
  *
  * `extendedAmount` is computed here in integer minor units and shown live. Quantity is
  * 3dp and price is 2dp, so their product is 5dp and has to come back to 2 — that scale
  * change is the one piece of arithmetic on this screen that is easy to get silently
- * wrong, and it lives in `extendedAmountMinor` with its own tests rather than inline.
+ * wrong, and it lives in `extendedAmountMinor` (in `quantities.ts`) with its own tests
+ * rather than inline.
  *
  * The value shown is a **preview**. The server recomputes it, and its answer is the one
  * that reaches the commitment ledger.
+ *
+ * ─── A3: cost target (BOQ node) is not captured on a PO line today ──────────────────
+ *
+ * A purchase order has no project association in the current model: neither
+ * `CreatePurchaseOrderPayload` nor `CreatePoLinePayload` carries `projectId` or
+ * `boqNodeId`, and the `POST /procurement/purchase-orders` DTO has no cost-target field.
+ * Project-cost attribution previously flowed only *indirectly* through the MR allocations
+ * D2 removes. So there is nothing to send a chosen cost target to, and a picker whose
+ * value went nowhere would be a control that does nothing (doctrine §4 — honesty rule).
+ *
+ * The line therefore shows a read-only note that cost attribution is not captured here
+ * yet, instead of inventing a project/BOQ field. The authoritative
+ * "project-cost-relevant → cost target required per line, with a Not-chargeable opt-out"
+ * invariant belongs on the backend: it needs a `projectId`/`boqNodeId` on the PO-line
+ * contract before the frontend can enforce it. Tracked as an A3 backend request.
  */
 
-import { useId, useState } from 'react';
+import { useId } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
-import { Button, Input, MoneyInput } from '@erp/ui';
+import { Badge, Input, MoneyInput } from '@erp/ui';
 
 import { formatMoney } from '@/lib/format';
 import { MONEY_SCALE, QUANTITY_SCALE, fromMinorUnits, parseMinorUnits } from '@/lib/money';
 
 import { extendedAmountMinor, sumExtendedAmountMinor } from '../quantities';
-import type {
-  Material,
-  MaterialRequest,
-  MrLineAllocationPayload,
-  ProcurementLineType,
-  SpendCategory,
-} from '../types';
+import type { Material, ProcurementLineType } from '../types';
 import { MaterialPicker, UomDisplay } from './material-picker';
 
 export interface PoLineDraft {
@@ -40,8 +58,6 @@ export interface PoLineDraft {
   uomCode: string;
   quantity: string;
   unitPrice: string;
-  spendCategoryId: string;
-  allocations: MrLineAllocationPayload[];
 }
 
 export function emptyPoLine(key: string): PoLineDraft {
@@ -53,8 +69,6 @@ export function emptyPoLine(key: string): PoLineDraft {
     uomCode: '',
     quantity: '',
     unitPrice: '',
-    spendCategoryId: '',
-    allocations: [],
   };
 }
 
@@ -109,29 +123,16 @@ export function orderTotalMinor(lines: readonly PoLineDraft[]): number | null {
 interface PoLineEditorProps {
   lines: PoLineDraft[];
   onChange: (lines: PoLineDraft[]) => void;
-  spendCategories: SpendCategory[];
-  /** Approved requests whose lines can be allocated against. */
-  approvedRequests: MaterialRequest[];
   currencyCode: string;
   showErrors: boolean;
 }
 
-export function PoLineEditor({
-  lines,
-  onChange,
-  spendCategories,
-  approvedRequests,
-  currencyCode,
-  showErrors,
-}: PoLineEditorProps) {
+export function PoLineEditor({ lines, onChange, currencyCode, showErrors }: PoLineEditorProps) {
   const t = useTranslations('procurement.po');
   const tc = useTranslations('procurement.common');
-  const locale = useLocale() as 'en' | 'ar';
 
   const update = (key: string, patch: Partial<PoLineDraft>) =>
     onChange(lines.map((l) => (l.key === key ? { ...l, ...patch } : l)));
-
-  const total = orderTotalMinor(lines);
 
   return (
     <div className="space-y-3">
@@ -140,8 +141,6 @@ export function PoLineEditor({
           key={line.key}
           line={line}
           index={index}
-          spendCategories={spendCategories}
-          approvedRequests={approvedRequests}
           currencyCode={currencyCode}
           error={showErrors ? poLineError(line) : null}
           canRemove={lines.length > 1}
@@ -167,27 +166,17 @@ export function PoLineEditor({
         />
       ))}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => onChange([...lines, emptyPoLine(`line-${Date.now()}-${lines.length}`)])}
-        >
-          {tc('addLine')}
-        </Button>
-
-        <p className="text-sm" aria-live="polite">
-          <span className="text-muted-foreground">{tc('total')}: </span>
-          <span className="font-semibold tabular-nums">
-            {total === null
-              ? tc('notAvailable')
-              : formatMoney(fromMinorUnits(total, MONEY_SCALE), currencyCode, locale)}
-          </span>
-        </p>
-      </div>
+      <button
+        type="button"
+        onClick={() => onChange([...lines, emptyPoLine(`line-${Date.now()}-${lines.length}`)])}
+        className="min-h-11 text-sm font-medium text-brand-primary underline-offset-2 hover:underline"
+      >
+        {tc('addLine')}
+      </button>
 
       {/* The running total is a preview computed here; the server recomputes every
-          extendedAmount on save and its figures are what reach the commitment ledger. */}
+          extendedAmount on save and its figures are what reach the commitment ledger.
+          The value itself lives in the form's sticky footer (single primary action). */}
       <p className="text-xs text-muted-foreground">{t('totalIsPreview')}</p>
     </div>
   );
@@ -196,8 +185,6 @@ export function PoLineEditor({
 function PoLineRow({
   line,
   index,
-  spendCategories,
-  approvedRequests,
   currencyCode,
   error,
   canRemove,
@@ -208,8 +195,6 @@ function PoLineRow({
 }: {
   line: PoLineDraft;
   index: number;
-  spendCategories: SpendCategory[];
-  approvedRequests: MaterialRequest[];
   currencyCode: string;
   error: PoLineError | null;
   canRemove: boolean;
@@ -221,37 +206,37 @@ function PoLineRow({
   const t = useTranslations('procurement.po');
   const tc = useTranslations('procurement.common');
   const tType = useTranslations('procurement.lineType');
-  const tMr = useTranslations('procurement.mr');
-  const locale = useLocale() as 'en' | 'ar';
-  const [linking, setLinking] = useState(false);
+  const locale = useLocale() as 'en';
 
   const ids = {
     type: useId(),
     description: useId(),
     quantity: useId(),
     price: useId(),
-    spend: useId(),
   };
 
   const isMaterial = line.lineType === 'MATERIAL';
   const { extendedMinor } = lineAmounts(line);
 
-  /** Flattened approved MR lines, labelled so the picker can be a plain select. */
-  const allocatable = approvedRequests.flatMap((mr) =>
-    mr.lines.map((mrLine) => ({
-      id: mrLine.id,
-      label: `${mr.mrNumber} · ${tc('lineNumber')}${mrLine.lineNumber} · ${mrLine.description}`,
-    })),
-  );
-
   return (
     <fieldset className="rounded-lg border border-border p-4">
-      <legend className="px-1 text-xs font-semibold text-muted-foreground">
-        {tc('lineNumber')}
-        {index + 1}
-      </legend>
+      <div className="flex items-center justify-between gap-2">
+        <legend className="px-1 text-xs font-semibold text-muted-foreground">
+          {tc('lineNumber')}
+          {index + 1}
+        </legend>
+        {canRemove ? (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="min-h-11 shrink-0 text-xs font-medium text-danger underline-offset-2 hover:underline"
+          >
+            {tc('removeLine')}
+          </button>
+        ) : null}
+      </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mt-1 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div>
           <label htmlFor={ids.type} className="mb-1 block text-xs font-medium">
             {tc('type')}
@@ -333,178 +318,24 @@ function PoLineRow({
               : formatMoney(fromMinorUnits(extendedMinor, MONEY_SCALE), currencyCode, locale)}
           </p>
         </div>
-
-        <div className="sm:col-span-2">
-          <label htmlFor={ids.spend} className="mb-1 block text-xs font-medium">
-            {tc('spendCategory')} ({tc('optional')})
-          </label>
-          <select
-            id={ids.spend}
-            value={line.spendCategoryId}
-            onChange={(e) => onPatch({ spendCategoryId: e.target.value })}
-            className="min-h-11 w-full rounded-md border border-border bg-surface px-2 text-sm"
-          >
-            <option value="">—</option>
-            {spendCategories.flatMap((root) => [
-              <option key={root.id} value={root.id}>
-                {root.code} · {root.name}
-              </option>,
-              ...(root.children ?? []).map((child) => (
-                <option key={child.id} value={child.id}>
-                  {'  ↳ '}
-                  {child.code} · {child.name}
-                </option>
-              )),
-            ])}
-          </select>
-        </div>
       </div>
 
-      {/* MR allocations. Optional, and strongly recommended by §6.29 — they are what
-          attributes the commitment to a project and a BOQ node. */}
-      <div className="mt-3 border-t border-border pt-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium">{t('allocations')}</span>
-          {line.allocations.map((alloc) => {
-            const label = allocatable.find((a) => a.id === alloc.materialRequestLineId)?.label;
-            return (
-              <span
-                key={alloc.materialRequestLineId}
-                className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs"
-              >
-                {label ?? alloc.materialRequestLineId}
-                <button
-                  type="button"
-                  aria-label={tc('removeLine')}
-                  onClick={() =>
-                    onPatch({
-                      allocations: line.allocations.filter(
-                        (a) => a.materialRequestLineId !== alloc.materialRequestLineId,
-                      ),
-                    })
-                  }
-                  className="text-danger"
-                >
-                  ×
-                </button>
-              </span>
-            );
-          })}
-
-          {allocatable.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => setLinking((v) => !v)}
-              className="min-h-11 text-xs font-medium text-brand-primary underline-offset-2 hover:underline"
-            >
-              {t('linkToMr')}
-            </button>
-          ) : (
-            <span className="text-xs text-muted-foreground">{tMr('empty')}</span>
-          )}
-        </div>
-
-        {linking ? (
-          <AllocationPicker
-            allocatable={allocatable}
-            onAdd={(materialRequestLineId, allocatedQuantity) => {
-              onPatch({
-                allocations: [
-                  ...line.allocations.filter(
-                    (a) => a.materialRequestLineId !== materialRequestLineId,
-                  ),
-                  { materialRequestLineId, allocatedQuantity },
-                ],
-              });
-              setLinking(false);
-            }}
-          />
-        ) : null}
+      {/* Line classification — read-only, toward D7 consistency.
+          Spend category is derived at issue, not chosen here; cost target is not captured
+          on a PO line in the current model (see the A3 note at the top of this file). */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3">
+        <span className="inline-flex items-center gap-1.5 text-xs">
+          <span className="text-muted-foreground">{tc('spendCategory')}:</span>
+          <Badge tone="neutral">{t('derivedOnIssue')}</Badge>
+        </span>
+        <span className="text-xs text-muted-foreground">{t('costTargetNotCaptured')}</span>
       </div>
 
-      <div className="mt-3 flex items-center justify-between gap-3">
-        {error ? (
-          <p className="text-xs font-medium text-danger" role="alert">
-            {t(`lineError.${error}`)}
-          </p>
-        ) : (
-          <span />
-        )}
-
-        {canRemove ? (
-          <button
-            type="button"
-            onClick={onRemove}
-            className="min-h-11 shrink-0 text-xs font-medium text-danger underline-offset-2 hover:underline"
-          >
-            {tc('removeLine')}
-          </button>
-        ) : null}
-      </div>
+      {error ? (
+        <p className="mt-3 text-xs font-medium text-danger" role="alert">
+          {t(`lineError.${error}`)}
+        </p>
+      ) : null}
     </fieldset>
-  );
-}
-
-function AllocationPicker({
-  allocatable,
-  onAdd,
-}: {
-  allocatable: { id: string; label: string }[];
-  onAdd: (materialRequestLineId: string, allocatedQuantity: number) => void;
-}) {
-  const t = useTranslations('procurement.po');
-  const tc = useTranslations('procurement.common');
-  const ids = { line: useId(), qty: useId() };
-  const [lineId, setLineId] = useState('');
-  const [qty, setQty] = useState('');
-
-  const minor = parseMinorUnits(qty, QUANTITY_SCALE);
-  const valid = lineId !== '' && minor !== null && minor > 0;
-
-  return (
-    <div className="mt-3 grid gap-3 rounded-md bg-surface-subtle p-3 sm:grid-cols-[2fr_1fr_auto]">
-      <div>
-        <label htmlFor={ids.line} className="mb-1 block text-xs font-medium">
-          {t('allocations')}
-        </label>
-        <select
-          id={ids.line}
-          value={lineId}
-          onChange={(e) => setLineId(e.target.value)}
-          className="min-h-11 w-full rounded-md border border-border bg-surface px-2 text-sm"
-        >
-          <option value="">—</option>
-          {allocatable.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div>
-        <label htmlFor={ids.qty} className="mb-1 block text-xs font-medium">
-          {t('allocatedQuantity')}
-        </label>
-        <Input
-          id={ids.qty}
-          inputMode="decimal"
-          value={qty}
-          onChange={(e) => setQty(e.target.value)}
-          className="text-end tabular-nums"
-        />
-      </div>
-
-      <div className="flex items-end">
-        <Button
-          type="button"
-          size="sm"
-          disabled={!valid}
-          onClick={() => onAdd(lineId, Number(fromMinorUnits(minor!, QUANTITY_SCALE)))}
-        >
-          {tc('save')}
-        </Button>
-      </div>
-    </div>
   );
 }
