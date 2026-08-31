@@ -12,6 +12,7 @@ import {
   latestRevision,
   moneyToApi,
   overReceiptPercent,
+  overReceiptState,
   quantityToApi,
   revisionTotalMinor,
   sumExtendedAmountMinor,
@@ -245,6 +246,38 @@ describe('exceedsOverReceiptTolerance', () => {
 
   it('uses the documented fallback, which is only an assumption (P9)', () => {
     expect(ASSUMED_OVER_RECEIPT_PERCENT).toBe(5);
+  });
+});
+
+describe('overReceiptState', () => {
+  it('is within when received does not exceed the remaining balance', () => {
+    // 25 ordered, 20 already received, 5 now = exactly the remaining balance.
+    expect(overReceiptState(qty('25'), qty('20'), qty('5'))).toEqual({
+      state: 'within',
+      overByMinor: 0,
+    });
+  });
+
+  it('is tolerated when it exceeds remaining but stays within the assumed tolerance', () => {
+    // 25 ordered, none received, 26 now = 1 over remaining, 4% — under the 5% fallback.
+    const result = overReceiptState(qty('25'), 0, qty('26'));
+    expect(result.state).toBe('tolerated');
+    expect(result.overByMinor).toBe(qty('1'));
+  });
+
+  it('is exception when it exceeds the assumed tolerance', () => {
+    // 25 ordered, none received, 27 now = 2 over remaining, 8% — over the 5% fallback.
+    const result = overReceiptState(qty('25'), 0, qty('27'));
+    expect(result.state).toBe('exception');
+    expect(result.overByMinor).toBe(qty('2'));
+  });
+
+  it('measures the overage against the remaining balance, not the order', () => {
+    // 25 ordered, 24 already received: only 1 remains, and 3 now is 2 over that remaining
+    // balance — even though 3 alone is well under 25.
+    const result = overReceiptState(qty('25'), qty('24'), qty('3'));
+    expect(result.overByMinor).toBe(qty('2'));
+    expect(result.state).toBe('exception');
   });
 });
 

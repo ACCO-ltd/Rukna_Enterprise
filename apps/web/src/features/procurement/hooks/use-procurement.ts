@@ -19,6 +19,7 @@ import {
 
 import {
   allocateAdvance,
+  approveGoodsReceiptException,
   approveMatchException,
   approveMaterialRequest,
   approveSupplierBill,
@@ -474,6 +475,22 @@ export function useCancelGoodsReceipt() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => cancelGoodsReceipt(id),
+    onSuccess: (grn) => {
+      qc.invalidateQueries({ queryKey: procurementKeys.goodsReceipt(grn.id) });
+      qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'goods-receipts'] });
+    },
+  });
+}
+
+/**
+ * Clears an over-receipt hold: EXCEPTION_PENDING → DRAFT. It does not touch the commitment
+ * ledger — that moves on Post — so only the receipt and the list are invalidated, matching
+ * cancel rather than post.
+ */
+export function useApproveGoodsReceiptException() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => approveGoodsReceiptException(id),
     onSuccess: (grn) => {
       qc.invalidateQueries({ queryKey: procurementKeys.goodsReceipt(grn.id) });
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'goods-receipts'] });

@@ -180,6 +180,43 @@ export function exceedsOverReceiptTolerance(
   return percent !== null && percent > ASSUMED_OVER_RECEIPT_PERCENT;
 }
 
+/**
+ * How this line's received quantity sits against the remaining balance, for the A1
+ * over-receipt display. Three outcomes, one per D5/A1 case:
+ *
+ *  - `within`   — received ≤ remaining, the normal path, nothing to flag.
+ *  - `tolerated`— received > remaining but within the assumed tolerance, so the server
+ *                 will likely still accept and post it: show an inline over-receipt flag.
+ *  - `exception`— received exceeds the assumed tolerance, so the server will route the
+ *                 whole receipt to EXCEPTION_PENDING: warn that it will be held for review.
+ *
+ * `overByMinor` is the amount the delivery exceeds the remaining balance by — used to say
+ * "exceeds remaining by N" without asserting a percentage the client cannot know (P9). It
+ * is `0` in the `within` case.
+ *
+ * The client never caps the value (A1): the true received quantity is always what gets
+ * sent, and the server is the authority on whether it becomes an exception.
+ */
+export type OverReceiptState = 'within' | 'tolerated' | 'exception';
+
+export function overReceiptState(
+  orderedMinor: number,
+  previouslyReceivedMinor: number,
+  receivedMinor: number,
+): { state: OverReceiptState; overByMinor: number } {
+  const remainingMinor = Math.max(orderedMinor - previouslyReceivedMinor, 0);
+  const overByMinor = Math.max(receivedMinor - remainingMinor, 0);
+
+  if (overByMinor === 0) return { state: 'within', overByMinor: 0 };
+
+  return {
+    state: exceedsOverReceiptTolerance(orderedMinor, previouslyReceivedMinor, receivedMinor)
+      ? 'exception'
+      : 'tolerated',
+    overByMinor,
+  };
+}
+
 // ─── Purchase order revision selection ───────────────────────────────────────────
 
 /**

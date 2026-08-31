@@ -126,6 +126,15 @@ export const PROCUREMENT_PERMISSIONS = {
   approveOrder: 'approve:purchase-order',
   /** Create and post a goods receipt. */
   createReceipt: 'create:goods-receipt',
+  /**
+   * Clear an over-receipt hold on a goods receipt (EXCEPTION_PENDING → DRAFT).
+   *
+   * A separate, stronger permission than `createReceipt` — the person who records a delivery
+   * is not necessarily the one who may accept an over-receipt beyond the org's tolerance. The
+   * live catalogue names it `approve:goods-receipt-exception` (`packages/types` PERMISSIONS),
+   * enforced on `POST /goods-receipts/:id/approve-exception`.
+   */
+  approveReceiptException: 'approve:goods-receipt-exception',
   /** Approve a bill matching exception, releasing the posting block. */
   approveMatchException: 'approve:matching-exception',
   /** The commitment ledger and the project summary card. */

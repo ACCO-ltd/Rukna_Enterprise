@@ -377,6 +377,19 @@ export function cancelGoodsReceipt(id: string): Promise<GoodsReceipt> {
   });
 }
 
+/**
+ * `POST /procurement/goods-receipts/:id/approve-exception` — EXCEPTION_PENDING → DRAFT.
+ *
+ * A supervisor clearing an over-receipt hold (Rule OVREC-001 / ADR-007 Decision 11). It does
+ * **not** post: it returns the receipt to DRAFT, from which the normal Post path applies. Gated
+ * server-side on `approve:goods-receipt-exception`, a stronger permission than `create:goods-receipt`.
+ */
+export function approveGoodsReceiptException(id: string): Promise<GoodsReceipt> {
+  return apiClient<GoodsReceipt>(`/procurement/goods-receipts/${id}/approve-exception`, {
+    method: 'POST',
+  });
+}
+
 // ─── Bill matching ───────────────────────────────────────────────────────────────
 
 /**
