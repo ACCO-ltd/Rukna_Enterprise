@@ -197,10 +197,26 @@ edit the arg and rebuild (`up -d --build rukna_web`).
 
 ## Operations
 
-**Deploy a new version** (after `git pull` on the VPS):
-```bash
-docker compose -f deploy/docker-compose.prod.yml up -d --build
-```
+**Deploy a new version.** Two ways:
+
+- **Automatic (default).** `.github/workflows/deploy.yml` deploys after the **CI** workflow passes
+  on `main` — the self-hosted equivalent of Vercel's git auto-deploy. Merge a PR → CI green →
+  the box pulls `main` and rebuilds. There's also a manual **Run workflow** button (Actions →
+  Deploy) for on-demand deploys. One-time setup — add three repo secrets (Settings → Secrets and
+  variables → Actions):
+  - `DEPLOY_SSH_KEY` — private half of a key whose public half is in the VPS deploy user's
+    `~/.ssh/authorized_keys` (generate: `ssh-keygen -t ed25519 -f deploy_key -N "" -C gha-deploy`;
+    add the `.pub` on the VPS; paste the private file into the secret).
+  - `DEPLOY_HOST` = the VPS IP · `DEPLOY_USER` = `deploy`.
+  The job SSHes in and runs `git fetch && git reset --hard origin/main && docker compose … up -d
+  --build` (env files are git-ignored, so the reset never touches secrets). The box's `git fetch`
+  uses the credential stored on it (a PAT) — keep that valid or the fetch fails.
+
+- **Manual (from the VPS):**
+  ```bash
+  cd ~/Rukna_Enterprise && git pull
+  docker compose -f deploy/docker-compose.prod.yml up -d --build
+  ```
 The `migrate` one-shot re-applies platform + every tenant's pending migrations before the API
 starts (idempotent — `prisma migrate deploy` only applies existing migrations).
 
