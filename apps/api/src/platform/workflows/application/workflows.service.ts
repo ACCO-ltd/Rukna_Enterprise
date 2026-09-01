@@ -11,6 +11,7 @@ import type {
 import { WorkflowTransactionType } from '@erp/types';
 import { WorkflowsPrismaRepository } from '../infrastructure/workflows-prisma.repository.js';
 import { isApprovedPolicyTransaction, isSupportedPolicyTransition } from './policy-transition-registry.js';
+import { GovernanceAuthoringConfig } from './governance-authoring.config.js';
 
 type PolicyRuleConfiguration = { requiredRole?: unknown; minAmount?: unknown; maxAmount?: unknown; fromState?: unknown; toState?: unknown };
 type DraftValidationIssue = { code: string; message: string; ruleId?: string; severity: 'ERROR' | 'WARNING' };
@@ -40,7 +41,12 @@ function sortByRuleKey<T extends { ruleKey: string }>(rules: T[]): T[] {
 
 @Injectable()
 export class WorkflowsService {
-  constructor(private readonly repo: WorkflowsPrismaRepository) {}
+  constructor(
+    private readonly repo: WorkflowsPrismaRepository,
+    // ADR-027 rollout: the authoring surface ships behind a platform feature flag (default OFF).
+    // Every write path below asserts it; reads do not.
+    private readonly authoring: GovernanceAuthoringConfig,
+  ) {}
 
   async getDefinitionForTransaction(organizationId: string, transactionType: WorkflowTransactionType) {
     const definition = await this.repo.findDefinitionByType(organizationId, transactionType);
@@ -198,6 +204,7 @@ export class WorkflowsService {
   }
 
   async createPolicyDraft(organizationId: string, dto: { policyKey: string; notes?: string }) {
+    this.authoring.assertEnabled();
     try {
       return await this.repo.createPolicyDraft(
         organizationId,
@@ -218,6 +225,7 @@ export class WorkflowsService {
     policyId: string,
     dto: { ruleKey: string; transactionType: WorkflowTransactionType; requiredRole: string; priority?: number; minAmount?: string; maxAmount?: string; fromState?: string; toState?: string },
   ) {
+    this.authoring.assertEnabled();
     if (!isApprovedPolicyTransaction(dto.transactionType) || !isSupportedPolicyTransition(dto.transactionType, dto.fromState, dto.toState)) {
       throw new BadRequestException('This transaction and lifecycle transition are not approved for ACCO policy authoring');
     }
@@ -232,6 +240,7 @@ export class WorkflowsService {
   }
 
   async updateDraftRule(organizationId: string, policyId: string, ruleId: string, actorUserId: string, dto: { requiredRole: string; priority: number; minAmount?: string; maxAmount?: string; fromState?: string; toState?: string }) {
+    this.authoring.assertEnabled();
     const draft = await this.repo.findDraftWithRules(organizationId, policyId);
     const rule = draft?.rules.find((candidate) => candidate.id === ruleId);
     if (!rule?.transactionType || !isApprovedPolicyTransaction(rule.transactionType as WorkflowTransactionType) || !isSupportedPolicyTransition(rule.transactionType as WorkflowTransactionType, dto.fromState, dto.toState)) {
@@ -243,10 +252,12 @@ export class WorkflowsService {
   }
 
   async deleteDraftRule(organizationId: string, policyId: string, ruleId: string, actorUserId: string) {
+    this.authoring.assertEnabled();
     if (!await this.repo.deleteDraftRule(organizationId, policyId, ruleId, actorUserId)) throw new ConflictException('Rules can only be deleted from the current draft');
   }
 
   async reorderDraftRules(organizationId: string, policyId: string, actorUserId: string, ruleIds: string[]) {
+    this.authoring.assertEnabled();
     if (!await this.repo.reorderDraftRules(organizationId, policyId, ruleIds, actorUserId)) throw new ConflictException('The order must contain every rule in the current draft exactly once');
   }
 
@@ -306,6 +317,7 @@ export class WorkflowsService {
   }
 
   async submitForReview(organizationId: string, policyId: string, actorUserId: string, reason: string) {
+    this.authoring.assertEnabled();
     const validation = await this.validateDraft(organizationId, policyId);
     if (!validation.valid) throw new BadRequestException({ message: 'Draft validation failed', issues: validation.issues });
     const policy = await this.repo.transitionPolicy(organizationId, policyId, actorUserId, 'DRAFT', 'IN_REVIEW', reason);
@@ -314,6 +326,7 @@ export class WorkflowsService {
   }
 
   async schedulePolicy(organizationId: string, policyId: string, actorUserId: string, reason: string, effectiveFrom: Date) {
+    this.authoring.assertEnabled();
     const current = await this.repo.findPolicyWithRules(organizationId, policyId);
     if (!current) throw new NotFoundException('Policy not found');
     if (current.submittedByUserId === actorUserId) throw new ConflictException('The policy submitter cannot publish the same version');
@@ -324,6 +337,7 @@ export class WorkflowsService {
   }
 
   async activatePolicy(organizationId: string, policyId: string, actorUserId: string, reason: string, effectiveFrom?: Date) {
+    this.authoring.assertEnabled();
     const current = await this.repo.findPolicyWithRules(organizationId, policyId);
     if (!current) throw new NotFoundException('Policy not found');
     const date = effectiveFrom ?? current.effectiveFrom;
@@ -334,6 +348,7 @@ export class WorkflowsService {
   }
 
   async retirePolicy(organizationId: string, policyId: string, actorUserId: string, reason: string) {
+    this.authoring.assertEnabled();
     const policy = await this.repo.transitionPolicy(organizationId, policyId, actorUserId, 'ACTIVE', 'RETIRED', reason);
     if (!policy) throw new ConflictException('Only an active policy can be retired');
     return policy;
@@ -348,9 +363,10 @@ export class WorkflowsService {
   async getPolicyHistory(organizationId: string, policyId: string) { return this.repo.findPolicyHistory(organizationId, policyId); }
 
   async listPolicySodRules(organizationId: string, policyId: string) { if (!await this.repo.findPolicyWithRules(organizationId, policyId)) throw new NotFoundException('Policy not found'); return this.repo.listPolicySodRules(organizationId, policyId); }
-  async upsertDraftPolicySodRule(organizationId: string, policyId: string, actorUserId: string, dto: { code: string; description: string; isActive: boolean }) { const rule = await this.repo.upsertDraftPolicySodRule(organizationId, policyId, actorUserId, dto); if (!rule) throw new ConflictException('SoD rules can only be changed in a draft policy'); return rule; }
+  async upsertDraftPolicySodRule(organizationId: string, policyId: string, actorUserId: string, dto: { code: string; description: string; isActive: boolean }) { this.authoring.assertEnabled(); const rule = await this.repo.upsertDraftPolicySodRule(organizationId, policyId, actorUserId, dto); if (!rule) throw new ConflictException('SoD rules can only be changed in a draft policy'); return rule; }
 
   async clonePolicyToDraft(organizationId: string, policyId: string, actorUserId: string, reason: string) {
+    this.authoring.assertEnabled();
     const policy = await this.repo.clonePolicyToDraft(organizationId, policyId, actorUserId, reason);
     if (!policy) throw new NotFoundException('Policy not found');
     return policy;

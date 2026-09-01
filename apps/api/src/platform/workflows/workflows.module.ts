@@ -7,6 +7,7 @@ import { WorkflowsPrismaRepository } from './infrastructure/workflows-prisma.rep
 import { WorkflowPolicyService } from './application/workflow-policy.service.js';
 import { SegregationOfDutiesService } from './application/segregation-of-duties.service.js';
 import { CommandGovernanceService } from './application/command-governance.service.js';
+import { GovernanceAuthoringConfig } from './application/governance-authoring.config.js';
 
 @Module({
   controllers: [WorkflowsController],
@@ -18,6 +19,7 @@ import { CommandGovernanceService } from './application/command-governance.servi
     SegregationOfDutiesService,
     WorkflowsPrismaRepository,
     CommandGovernanceService,
+    GovernanceAuthoringConfig,
   ],
   exports: [
     WorkflowsService,
@@ -26,6 +28,7 @@ import { CommandGovernanceService } from './application/command-governance.servi
     WorkflowPolicyService,
     SegregationOfDutiesService,
     CommandGovernanceService,
+    GovernanceAuthoringConfig,
   ],
 })
 export class WorkflowsModule {}

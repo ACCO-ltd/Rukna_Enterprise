@@ -19,8 +19,12 @@ function build() {
     transitionPolicy: jest.fn(),
     clonePolicyToDraft: jest.fn(),
   };
-  const svc = new WorkflowsService(repo as never);
-  return { svc, repo };
+  // ADR-027 authoring flag: default ON in this unit harness so the existing write-path tests
+  // (schedule four-eyes, clone) exercise the logic under test rather than the flag gate. The flag
+  // gate itself is covered by governance-authoring.config.spec.ts and the acceptance test.
+  const authoring = { isEnabled: () => true, assertEnabled: () => undefined };
+  const svc = new WorkflowsService(repo as never, authoring as never);
+  return { svc, repo, authoring };
 }
 
 function versionRow(over: Record<string, unknown> = {}) {
