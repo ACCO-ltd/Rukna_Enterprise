@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, Patch, Post, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Delete, Get, Patch, Post, Param, Query, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiBody } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
@@ -43,6 +43,27 @@ export class WorkflowsController {
   @ApiResponse({ status: 200, description: 'Policy versions with status, effective dates, and rule counts' })
   listPolicies(@CurrentUser() identity: RequestIdentity) {
     return this.workflowsService.listPolicyVersions(identity.activeOrganizationId);
+  }
+
+  // Static/specific policy segments are declared BEFORE `policies/:id` so `compare` and `by-key`
+  // are not captured as an :id.
+  @Get('policies/compare')
+  @ApiOperation({ summary: 'Diff two versions of the same policy (backs comparison + rollback preview)' })
+  @ApiResponse({ status: 200, description: 'Rule- and SoD-level differences between the base and target versions' })
+  comparePolicyVersions(
+    @CurrentUser() identity: RequestIdentity,
+    @Query('base') base: string,
+    @Query('target') target: string,
+  ) {
+    return this.workflowsService.comparePolicyVersions(identity.activeOrganizationId, base, target);
+  }
+
+  @Get('policies/by-key/:policyKey/versions')
+  @ApiOperation({ summary: 'List every version of a single policy key (version-history view)' })
+  @ApiParam({ name: 'policyKey', description: 'The stable policy key' })
+  @ApiResponse({ status: 200, description: 'All versions, newest first, with status, effective dates, and rule counts' })
+  policyVersionsByKey(@CurrentUser() identity: RequestIdentity, @Param('policyKey') policyKey: string) {
+    return this.workflowsService.listPolicyVersionsByKey(identity.activeOrganizationId, policyKey);
   }
 
   @Get('policies/:id')

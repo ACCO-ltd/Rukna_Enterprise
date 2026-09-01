@@ -3,6 +3,7 @@ export const PERMISSIONS = {
   usersManage: 'manage:user',
   rolesView: 'view:role',
   rolesManage: 'manage:role',
+  governanceImpactView: 'view:governance-impact',
   permissionsView: 'view:permission',
   organizationsView: 'view:organization',
   workflowsView: 'view:workflow',
@@ -81,6 +82,7 @@ export interface PermissionDefinition {
 
 const DOMAIN_BY_RESOURCE: Record<string, string> = {
   user: 'People', role: 'Access governance', permission: 'Access governance',
+  'governance-impact': 'Access governance',
   organization: 'Organization', workflow: 'Approval policies', 'audit-log': 'Audit',
   client: 'Commercial', project: 'Projects', district: 'Organization', 'project-member': 'Projects',
   boq: 'Projects', contract: 'Commercial', ipa: 'Commercial', ipc: 'Commercial', receipt: 'Commercial',
@@ -104,6 +106,8 @@ const DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.usersManage]: 'Create and manage users in the active organization',
   [PERMISSIONS.rolesView]: 'View roles in the active organization',
   [PERMISSIONS.rolesManage]: 'Create roles and assign permissions',
+  [PERMISSIONS.governanceImpactView]:
+    'Read role and policy impact previews, including affected-member counts and SoD findings',
   [PERMISSIONS.permissionsView]: 'View the permission catalogue',
   [PERMISSIONS.organizationsView]: 'View the active organization',
   [PERMISSIONS.workflowsView]: 'View workflow definitions and approval state',

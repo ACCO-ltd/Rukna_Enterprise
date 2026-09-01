@@ -79,10 +79,15 @@ overlapping bindings, invalid value bands, unavailable roles, empty chains, and 
 
 ### GOV-ADM-007 — Publication is controlled and auditable
 
-A policy follows `DRAFT → IN_REVIEW → PUBLISHED → RETIRED`. Publishing requires `manage:workflow`
-and a publisher distinct from the last editor (four-eyes). The system records editor, publisher,
-reason, effective time, validation result, and before/after routing impact. A published policy is
-retired rather than edited or deleted.
+A policy follows the effective-dated lifecycle `DRAFT → IN_REVIEW → SCHEDULED → ACTIVE → RETIRED`
+(`SUPERSEDED` is reserved for a version replaced by a later active one). "Publish" is the act of
+scheduling a reviewed version for a future effective date and then activating it once that date is
+due — it is not a single `PUBLISHED` state. Scheduling/activation requires `publish:workflow` and a
+publisher distinct from the version's submitter (four-eyes, enforced in
+`WorkflowsService.schedulePolicy`). The system records submitter, reviewer/publisher, reason,
+effective time, validation result, and before/after routing impact. An active policy is retired
+(effective-dated) rather than edited or deleted. Rollback is a clone-of-an-old-version into a new
+DRAFT, never an in-place edit of a past version.
 
 ### GOV-ADM-008 — Every governance write is evidence
 

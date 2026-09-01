@@ -59,6 +59,8 @@ export class RolesController {
   }
 
   @Get(':id/impact')
+  @RequirePermissions(PERMISSIONS.governanceImpactView)
+  @ApiOperation({ summary: 'Preview affected members, permission delta, and SoD findings for a role' })
   impact(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) { return this.rolesService.impact(identity.activeOrganizationId, id); }
 
   @Get(':id/access-reviews')

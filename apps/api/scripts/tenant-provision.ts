@@ -7,6 +7,7 @@ import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { seedAccoWorkflows } from '../src/platform/workflows/seeders/acco-workflows.seed.js';
 import { seedUserAccess } from './tenant-access.js';
+import { seedGovernedSystemRoles } from './governed-roles.js';
 
 const { values } = parseArgs({
   options: {
@@ -136,6 +137,14 @@ async function main() {
     isDefault: true,
   });
   console.log(`  Assigned active organization membership and ${access.permissionsAssigned} permissions`);
+
+  // ADR-027 GOV-ADM-003: seed the governed CFO + Governance Publisher SYSTEM roles so publish
+  // authority (publish:workflow) is available to real holders, not only ADMIN. Assignment (who
+  // holds CFO) is org data, granted later in Settings.
+  const governed = await seedGovernedSystemRoles(tenantPrisma, org.id);
+  for (const role of governed) {
+    console.log(`  ✓ Governed role ${role.roleName}: ${role.permissionsLinked} permissions linked`);
+  }
 
   console.log(`  Seeding ACCO workflow chains...`);
   await seedAccoWorkflows(tenantPrisma, org.id);

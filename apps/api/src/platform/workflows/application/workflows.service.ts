@@ -1,4 +1,13 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import type {
+  ApprovalPolicyComparison,
+  ApprovalPolicyRuleChange,
+  ApprovalPolicyRuleFieldChange,
+  ApprovalPolicyRuleSnapshot,
+  ApprovalPolicySodDiff,
+  ApprovalPolicyVersionHistory,
+  ApprovalPolicyVersionSummary,
+} from '@erp/types';
 import { WorkflowTransactionType } from '@erp/types';
 import { WorkflowsPrismaRepository } from '../infrastructure/workflows-prisma.repository.js';
 import { isApprovedPolicyTransaction, isSupportedPolicyTransition } from './policy-transition-registry.js';
@@ -12,6 +21,21 @@ function configurationOf(value: unknown): PolicyRuleConfiguration {
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function nullableString(value: unknown): string | null {
+  return optionalString(value) ?? null;
+}
+
+// SoD-rule codes are suffixed `_V<n>` when a version is cloned (see repository.clonePolicyToDraft),
+// so the same control carries a different code per version. Strip the suffix to compare the same
+// control across two versions.
+function canonicalSodCode(code: string): string {
+  return code.replace(/_V\d+$/, '');
+}
+
+function sortByRuleKey<T extends { ruleKey: string }>(rules: T[]): T[] {
+  return [...rules].sort((a, b) => a.ruleKey.localeCompare(b.ruleKey));
 }
 
 @Injectable()
@@ -57,6 +81,120 @@ export class WorkflowsService {
       ruleCount: policy._count.rules,
       updatedAt: policy.updatedAt,
     }));
+  }
+
+  /**
+   * Every version of a single policyKey for the org (item 3 read model backing the version-history
+   * view). Ordered newest version first by the repository.
+   */
+  async listPolicyVersionsByKey(organizationId: string, policyKey: string): Promise<ApprovalPolicyVersionHistory> {
+    const key = policyKey.trim();
+    const versions = await this.repo.findPolicyVersionsByKey(organizationId, key);
+    if (versions.length === 0) throw new NotFoundException(`No policy versions found for key "${key}"`);
+    return { policyKey: key, versions: versions.map((version) => this.toVersionSummary(version)) };
+  }
+
+  /**
+   * Rule- and SoD-level diff of two versions of the SAME policyKey (item 3). Backs the
+   * version-comparison view and the rollback preview: to preview a rollback, compare the current
+   * active version as `base` against the version being rolled back to as `target`.
+   */
+  async comparePolicyVersions(organizationId: string, baseId: string, targetId: string): Promise<ApprovalPolicyComparison> {
+    if (baseId === targetId) throw new BadRequestException('Provide two different policy versions to compare');
+    const loaded = await this.repo.findPolicyVersionsForComparison(organizationId, [baseId, targetId]);
+    const base = loaded.find((version) => version.id === baseId);
+    const target = loaded.find((version) => version.id === targetId);
+    if (!base || !target) throw new NotFoundException('One or both policy versions were not found');
+    if (base.policyKey !== target.policyKey) {
+      throw new BadRequestException('Only versions of the same policy can be compared');
+    }
+
+    const baseRules = new Map(base.rules.map((rule) => [rule.ruleKey, this.toRuleSnapshot(rule)]));
+    const targetRules = new Map(target.rules.map((rule) => [rule.ruleKey, this.toRuleSnapshot(rule)]));
+
+    const added: ApprovalPolicyRuleSnapshot[] = [];
+    const removed: ApprovalPolicyRuleSnapshot[] = [];
+    const changed: ApprovalPolicyRuleChange[] = [];
+
+    for (const [ruleKey, targetSnapshot] of targetRules) {
+      const baseSnapshot = baseRules.get(ruleKey);
+      if (!baseSnapshot) { added.push(targetSnapshot); continue; }
+      const changes = this.diffRuleSnapshots(baseSnapshot, targetSnapshot);
+      if (changes.length > 0) changed.push({ ruleKey, changes });
+    }
+    for (const [ruleKey, baseSnapshot] of baseRules) {
+      if (!targetRules.has(ruleKey)) removed.push(baseSnapshot);
+    }
+
+    return {
+      policyKey: base.policyKey,
+      base: this.toVersionSummary(base),
+      target: this.toVersionSummary(target),
+      rules: {
+        added: sortByRuleKey(added),
+        removed: sortByRuleKey(removed),
+        changed: [...changed].sort((a, b) => a.ruleKey.localeCompare(b.ruleKey)),
+      },
+      sodRules: this.diffSodRules(base.segregationDutiesRules, target.segregationDutiesRules),
+    };
+  }
+
+  private toVersionSummary(version: {
+    id: string; policyKey: string; version: number; status: string;
+    effectiveFrom: Date | null; effectiveTo: Date | null; createdAt: Date; updatedAt: Date;
+    _count: { rules: number };
+  }): ApprovalPolicyVersionSummary {
+    return {
+      id: version.id,
+      policyKey: version.policyKey,
+      version: version.version,
+      status: version.status as ApprovalPolicyVersionSummary['status'],
+      ruleCount: version._count.rules,
+      effectiveFrom: version.effectiveFrom?.toISOString() ?? null,
+      effectiveTo: version.effectiveTo?.toISOString() ?? null,
+      createdAt: version.createdAt.toISOString(),
+      updatedAt: version.updatedAt.toISOString(),
+    };
+  }
+
+  private toRuleSnapshot(rule: { ruleKey: string; transactionType: string | null; priority: number; configuration: unknown }): ApprovalPolicyRuleSnapshot {
+    const config = configurationOf(rule.configuration);
+    return {
+      ruleKey: rule.ruleKey,
+      transactionType: rule.transactionType ?? null,
+      priority: rule.priority,
+      requiredRole: nullableString(config.requiredRole),
+      minAmount: nullableString(config.minAmount),
+      maxAmount: nullableString(config.maxAmount),
+      fromState: nullableString(config.fromState),
+      toState: nullableString(config.toState),
+    };
+  }
+
+  private diffRuleSnapshots(base: ApprovalPolicyRuleSnapshot, target: ApprovalPolicyRuleSnapshot): ApprovalPolicyRuleFieldChange[] {
+    const fields: ApprovalPolicyRuleFieldChange['field'][] = ['transactionType', 'priority', 'requiredRole', 'minAmount', 'maxAmount', 'fromState', 'toState'];
+    const changes: ApprovalPolicyRuleFieldChange[] = [];
+    for (const field of fields) {
+      if (base[field] !== target[field]) changes.push({ field, base: base[field], target: target[field] });
+    }
+    return changes;
+  }
+
+  private diffSodRules(
+    baseRules: { code: string; description: string; isActive: boolean }[],
+    targetRules: { code: string; description: string; isActive: boolean }[],
+  ): ApprovalPolicySodDiff[] {
+    const baseByCode = new Map(baseRules.map((rule) => [canonicalSodCode(rule.code), { description: rule.description, isActive: rule.isActive }]));
+    const targetByCode = new Map(targetRules.map((rule) => [canonicalSodCode(rule.code), { description: rule.description, isActive: rule.isActive }]));
+    const codes = [...new Set([...baseByCode.keys(), ...targetByCode.keys()])].sort();
+    const diffs: ApprovalPolicySodDiff[] = [];
+    for (const code of codes) {
+      const base = baseByCode.get(code) ?? null;
+      const target = targetByCode.get(code) ?? null;
+      if (base && target && base.description === target.description && base.isActive === target.isActive) continue;
+      diffs.push({ code, base, target });
+    }
+    return diffs;
   }
 
   async createPolicyDraft(organizationId: string, dto: { policyKey: string; notes?: string }) {

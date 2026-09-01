@@ -93,30 +93,45 @@ that is assigned cannot be deleted and returns `409 ROLE_IN_USE` with its member
 
 ## 4. Approval-policy authoring
 
-`ApprovalPolicy` is the stable identity. `ApprovalPolicyVersion` contains trigger binding,
-conditions, ordered role-based steps, editor, reviewer/publisher, effective time, validation
-result, and state. Published versions are immutable.
+A `policyKey` is the stable identity. `WorkflowPolicyVersion` contains trigger binding, conditions,
+ordered role-based rules, submitter, reviewer/publisher, effective time, validation result, and
+state. An `ACTIVE` or `RETIRED` version is immutable — changes are made by cloning it into a new
+`DRAFT` (rollback) or by authoring a new draft.
+
+The implemented lifecycle is effective-dated: `DRAFT → IN_REVIEW → SCHEDULED → ACTIVE → RETIRED`
+(`SUPERSEDED` reserved). "Publishing" is scheduling a reviewed version for a future effective date
+and then activating it once due — not a single `PUBLISHED` state.
 
 Only conditions in the transaction-type registry may be persisted. Monetary bands are inclusive at
 the lower bound and exclusive at the upper bound; overlapping active bindings with equal priority
 are rejected.
 
+Endpoints are served under `/workflows/policies` (the workflows module owns the authoring surface).
+
 | Method | Path | Permission | Purpose |
 |---|---|---|---|
-| `GET` | `/approval-policies` | `view:workflow` | Paginated policy list with active-version summary. |
-| `POST` | `/approval-policies` | `manage:workflow` | Create draft policy. |
-| `GET` | `/approval-policies/:id` | `view:workflow` | Detail with version history. |
-| `PATCH` | `/approval-policies/:id/draft` | `manage:workflow` | Edit current draft only. |
-| `POST` | `/approval-policies/:id/validate` | `manage:workflow` | Return structural, overlap, role, and SoD results. |
-| `POST` | `/approval-policies/:id/simulate` | `view:workflow` | Resolve sample trigger input without creating an approval instance. |
-| `POST` | `/approval-policies/:id/submit-review` | `manage:workflow` | Move valid draft to `IN_REVIEW`. |
-| `POST` | `/approval-policies/:id/publish` | `publish:workflow` | Publish after four-eyes validation. |
-| `POST` | `/approval-policies/:id/retire` | `publish:workflow` | Retire active version with reason and effective time. |
+| `GET` | `/workflows/policies` | `view:workflow` | List all policy versions for the org (status, effective dates, rule counts). |
+| `GET` | `/workflows/policies/by-key/:policyKey/versions` | `view:workflow` | List every version of one policy key, newest first (version-history view). |
+| `GET` | `/workflows/policies/compare?base=<id>&target=<id>` | `view:workflow` | Diff two versions of the same key: rules added/removed/changed + SoD differences. Backs comparison and rollback preview. |
+| `GET` | `/workflows/policies/:id` | `view:workflow` | Version detail with rules. |
+| `GET` | `/workflows/policies/:id/history` | `view:workflow` | Audit history for the version. |
+| `POST` | `/workflows/policies` | `manage:workflow` | Create draft version. |
+| `POST` | `/workflows/policies/:id/rules` | `manage:workflow` | Add a closed-schema PENDING rule to a draft. |
+| `PATCH` | `/workflows/policies/:id/rules/:ruleId` | `manage:workflow` | Edit a draft rule. |
+| `DELETE` | `/workflows/policies/:id/rules/:ruleId` | `manage:workflow` | Remove a draft rule. |
+| `POST` | `/workflows/policies/:id/rules/reorder` | `manage:workflow` | Reorder draft rules. |
+| `POST` | `/workflows/policies/:id/validate` | `manage:workflow` | Return structural, overlap, role, and SoD results. |
+| `POST` | `/workflows/policies/:id/simulate` | `manage:workflow` | Resolve sample trigger input without creating an approval instance. |
+| `POST` | `/workflows/policies/:id/submit-review` | `manage:workflow` | Move a valid draft to `IN_REVIEW`. |
+| `POST` | `/workflows/policies/:id/schedule` | `publish:workflow` | Schedule an in-review version for a future effective date (four-eyes). |
+| `POST` | `/workflows/policies/:id/activate` | `publish:workflow` | Activate a due scheduled version. |
+| `POST` | `/workflows/policies/:id/retire` | `publish:workflow` | Retire an active version with reason and effective time. |
+| `POST` | `/workflows/policies/:id/clone` | `manage:workflow` | Clone any version into a new draft (rollback). |
 
-Publication and retirement require a non-empty `reason`. Publish rejects the last editor as
-publisher (`409 WORKFLOW_FOUR_EYES_VIOLATION`), validation failures (`400`), and active-binding
-collisions (`409`). The service compiles a published version into the existing workflow definition
-and trigger-binding read model transactionally. In-flight approvals keep their original version.
+Scheduling, activation, and retirement require a non-empty `reason`. Scheduling rejects the version
+submitter as publisher (four-eyes, `409`), a non-future effective date (`400`), and validation
+failures (`400`). In-flight approvals keep their original version. `publish:workflow` is held by the
+`ADMIN`, `CFO`, and `GOVERNANCE_PUBLISHER` roles.
 
 ## 5. Audit contract
 
@@ -125,9 +140,10 @@ Upgrade existing `GET /audit-logs` to platform pagination and filters: `from`, `
 redacted before/after summaries.
 
 New actions include `USER_INVITED`, `USER_INVITATION_RESENT`, `USER_INVITATION_REVOKED`,
-`USER_INVITATION_ACCEPTED`, `USER_SESSIONS_REVOKED`, `ROLE_TEMPLATE_CLONED`,
-`ROLE_IMPACT_REVIEWED`, `APPROVAL_POLICY_DRAFTED`, `APPROVAL_POLICY_VALIDATED`,
-`APPROVAL_POLICY_SUBMITTED_FOR_REVIEW`, `APPROVAL_POLICY_PUBLISHED`, and
+`USER_INVITATION_ACCEPTED`, `USER_SESSIONS_REVOKED`, `ROLE_TEMPLATE_CLONED`, `ROLE_ACCESS_REVIEWED`,
+`APPROVAL_POLICY_RULE_UPDATED`, `APPROVAL_POLICY_RULE_DELETED`, `APPROVAL_POLICY_RULES_REORDERED`,
+`APPROVAL_POLICY_SOD_CONFIGURED`, `APPROVAL_POLICY_ROLLBACK_CLONED`, and the lifecycle-transition
+actions `APPROVAL_POLICY_IN_REVIEW`, `APPROVAL_POLICY_SCHEDULED`, `APPROVAL_POLICY_ACTIVE`, and
 `APPROVAL_POLICY_RETIRED`.
 
 ## 6. Required tests and rollout

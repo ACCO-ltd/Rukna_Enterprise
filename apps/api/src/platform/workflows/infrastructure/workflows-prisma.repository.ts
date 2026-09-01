@@ -49,6 +49,32 @@ export class WorkflowsPrismaRepository {
     });
   }
 
+  /** Every version of a single policyKey for the org, newest version first. */
+  async findPolicyVersionsByKey(organizationId: string, policyKey: string) {
+    const prisma = this.tenancyService.getClient();
+    return prisma.workflowPolicyVersion.findMany({
+      where: { organizationId, policyKey },
+      include: { _count: { select: { rules: true } } },
+      orderBy: { version: 'desc' },
+    });
+  }
+
+  /**
+   * Two policy versions (by id, org-scoped) with the rule and SoD-rule detail needed to diff them.
+   * Returns null for either id that is not found so the caller can distinguish and 404.
+   */
+  async findPolicyVersionsForComparison(organizationId: string, ids: string[]) {
+    const prisma = this.tenancyService.getClient();
+    return prisma.workflowPolicyVersion.findMany({
+      where: { organizationId, id: { in: ids } },
+      include: {
+        _count: { select: { rules: true } },
+        rules: true,
+        segregationDutiesRules: true,
+      },
+    });
+  }
+
   async createPolicyDraft(organizationId: string, policyKey: string, notes?: string) {
     const prisma = this.tenancyService.getClient();
     return prisma.$transaction(async (tx) => {

@@ -117,3 +117,84 @@ export interface RoleSummary {
   /** Count of ACTIVE membership-role assignments (removedAt null) referencing this role. */
   memberCount: number;
 }
+
+// ─── Approval-policy versions (ADR-027 GOV-ADM-005) ───────────────────────────
+// Read side for the policy version-history, comparison, and rollback-preview views.
+// The API is the source of truth for the lifecycle: DRAFT → IN_REVIEW → SCHEDULED
+// → ACTIVE → RETIRED (effective-dated). SUPERSEDED is reserved.
+
+export type ApprovalPolicyStatus =
+  | 'DRAFT'
+  | 'IN_REVIEW'
+  | 'SCHEDULED'
+  | 'ACTIVE'
+  | 'SUPERSEDED'
+  | 'RETIRED';
+
+/** One version of a policyKey, as listed in the version-history view. */
+export interface ApprovalPolicyVersionSummary {
+  id: string;
+  policyKey: string;
+  version: number;
+  status: ApprovalPolicyStatus;
+  ruleCount: number;
+  effectiveFrom: string | null;
+  effectiveTo: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** All versions of a single policyKey, newest first. */
+export interface ApprovalPolicyVersionHistory {
+  policyKey: string;
+  versions: ApprovalPolicyVersionSummary[];
+}
+
+/** The comparable, rule-level shape of one policy rule (order-independent, keyed by ruleKey). */
+export interface ApprovalPolicyRuleSnapshot {
+  ruleKey: string;
+  transactionType: string | null;
+  priority: number;
+  requiredRole: string | null;
+  minAmount: string | null;
+  maxAmount: string | null;
+  fromState: string | null;
+  toState: string | null;
+}
+
+/** A field that differs between the base and target snapshot of a changed rule. */
+export interface ApprovalPolicyRuleFieldChange {
+  field: keyof Omit<ApprovalPolicyRuleSnapshot, 'ruleKey'>;
+  base: string | number | null;
+  target: string | number | null;
+}
+
+/** A rule that exists in both versions but whose configuration changed. */
+export interface ApprovalPolicyRuleChange {
+  ruleKey: string;
+  changes: ApprovalPolicyRuleFieldChange[];
+}
+
+/** An SoD rule difference between the two versions, keyed by (unversioned) code. */
+export interface ApprovalPolicySodDiff {
+  code: string;
+  base: { description: string; isActive: boolean } | null;
+  target: { description: string; isActive: boolean } | null;
+}
+
+/**
+ * Diff of two versions of the same policyKey. Backs both the version-comparison view and the
+ * rollback preview (compare an old version as `target` against the current active version as
+ * `base` to see what activating the clone would change).
+ */
+export interface ApprovalPolicyComparison {
+  policyKey: string;
+  base: ApprovalPolicyVersionSummary;
+  target: ApprovalPolicyVersionSummary;
+  rules: {
+    added: ApprovalPolicyRuleSnapshot[];
+    removed: ApprovalPolicyRuleSnapshot[];
+    changed: ApprovalPolicyRuleChange[];
+  };
+  sodRules: ApprovalPolicySodDiff[];
+}
