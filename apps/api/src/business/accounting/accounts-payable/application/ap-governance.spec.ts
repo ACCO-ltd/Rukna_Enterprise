@@ -33,7 +33,8 @@ describe('AP governance seam (ADR-011)', () => {
         {} as never,
         {} as never,
         {} as never,
-        {} as never,
+        {} as never, // commitmentWriter
+        {} as never, // billMatching (non-PO bill → not invoked on submit)
         commandGovernance as never,
         sod as never,
       );

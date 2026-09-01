@@ -16,6 +16,7 @@ import { AccountRepository } from '../../accounting-core/infrastructure/account.
 import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
 import { SupplierBillRepository } from '../infrastructure/supplier-bill.repository.js';
 import { CommitmentLedgerWriter } from '../../../../business/procurement/commitment-ledger/application/commitment-ledger-writer.service.js';
+import { BillMatchingService } from '../../../../business/procurement/bill-matching/application/bill-matching.service.js';
 import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
 import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
 
@@ -59,6 +60,7 @@ export class SupplierBillService {
     @Inject(ACCOUNTING_POSTING_PORT)
     private readonly postingPort: IAccountingPostingPort,
     private readonly commitmentWriter: CommitmentLedgerWriter,
+    private readonly billMatching: BillMatchingService,
     private readonly commandGovernance: CommandGovernanceService,
     private readonly sod: SegregationOfDutiesService,
   ) {}
@@ -131,10 +133,23 @@ export class SupplierBillService {
       await this.commandGovernance.gateStateTransition(identity, 'SupplierBill', 'DRAFT', 'SUBMITTED', bill.id),
       'Supplier bill submission requires workflow approval.',
     );
-    return prisma.supplierBill.update({
+
+    const updated = await prisma.supplierBill.update({
       where: { id: bill.id },
       data: { documentStatus: 'SUBMITTED' },
     });
+
+    // D6 — auto-match on submit (no manual "run matching"). A PO-backed bill has its 3-way match
+    // run automatically as a silent control: the verdict lands on matchStatus and the bill proceeds.
+    // A clean bill (MATCHED / MATCHED_WITH_TOLERANCE) is silently ready toward posting; an EXCEPTION
+    // is NOT thrown here — it lands as matchStatus=EXCEPTION and is held by the posting gate until the
+    // existing exception-approval path (approveException / resolveException) clears it. Genuine non-PO
+    // bills have no PO revision and are left untouched (separate controlled path, D6).
+    if (bill.purchaseOrderId && bill.purchaseOrderRevisionId) {
+      await this.billMatching.runMatching(identity, bill.id);
+    }
+
+    return updated;
   }
 
   async approve(identity: RequestIdentity, billId: string) {
@@ -269,37 +284,63 @@ export class SupplierBillService {
         const billNum = await this.sequenceRepo.claimNext(tx as never, orgId, 'SUPPLIER_BILL');
         await this.repo.markPosted(prisma, bill.id, postResult.journalEntryId, billNum.formattedNumber, userId);
 
-        // ACCRUED → ACTUAL commitment movement (ADR-007, Rule CL-003)
+        // ACCRUED → ACTUAL commitment movement (ADR-007, Rule CL-003; A14/D7).
         // Only for procurement-linked bills (purchaseOrderRevisionId present).
+        //
+        // D7 (capture-once, inherit downstream): attribute the ACTUAL to the SAME cost-target the PO
+        // COMMITTED and the GRN ACCRUED used, so the ledger nets fully per project/node. We do this
+        // PER BILL LINE, inheriting each line's matched PO line projectId/boqNodeId (org lines → null).
+        // The posting gate above guarantees a completed match for a PO-backed bill, so every bill line
+        // resolves a PO line here. If, defensively, a line has no match row, it falls back to the
+        // bill-level attribution (supplier only) — the total still nets, only the dimension is coarser.
         if (bill.purchaseOrderRevisionId) {
-          const billedTotal = new Decimal(bill.totalAmount.toString());
-          const idempKey = `bill-actual-${bill.id}`;
-          const existing = await this.commitmentWriter.findByIdempotencyKey(tx, idempKey);
-          if (!existing) {
-            // Reverse ACCRUED
-            await this.commitmentWriter.accrued(tx, {
-              organizationId: orgId,
-              supplierId: bill.supplierId,
-              amount: billedTotal.negated(),
-              currencyCode: bill.currencyCode,
-              sourceDocumentType: 'SUPPLIER_BILL',
-              sourceDocumentId: bill.id,
-              eventType: 'BILL_POSTED_ACCRUED_REVERSAL',
-              idempotencyKey: idempKey + '-accrued',
-              accountingDate: bill.billDate,
-            });
-            // Record ACTUAL
-            await this.commitmentWriter.actual(tx, {
-              organizationId: orgId,
-              supplierId: bill.supplierId,
-              amount: billedTotal,
-              currencyCode: bill.currencyCode,
-              sourceDocumentType: 'SUPPLIER_BILL',
-              sourceDocumentId: bill.id,
-              eventType: 'BILL_POSTED_ACTUAL',
-              idempotencyKey: idempKey,
-              accountingDate: bill.billDate,
-            });
+          // Idempotency — the whole movement runs once. All per-line writes share this transaction, so
+          // this guard (any ACTUAL already recorded for the bill) makes a retry a clean no-op.
+          const alreadyPosted = await this.commitmentWriter.existsForSourceAndStage(
+            tx as never,
+            'SUPPLIER_BILL',
+            bill.id,
+            'ACTUAL',
+          );
+          if (!alreadyPosted) {
+            const costTargets = await this.repo.findBillLineCostTargets(tx as never, bill.id);
+            const targetByLine = new Map(costTargets.map((t) => [t.supplierBillLineId, t]));
+
+            for (const billLine of bill.lines) {
+              const target = targetByLine.get(billLine.id);
+              const lineAmount = new Decimal(billLine.grossAmount.toString());
+              if (lineAmount.isZero()) continue;
+
+              const common = {
+                organizationId: orgId,
+                supplierId: bill.supplierId,
+                purchaseOrderId: bill.purchaseOrderId ?? undefined,
+                projectId: target?.projectId ?? undefined,
+                boqNodeId: target?.boqNodeId ?? undefined,
+                spendCategoryId: target?.spendCategoryId ?? undefined,
+                currencyCode: bill.currencyCode,
+                sourceDocumentType: 'SUPPLIER_BILL' as const,
+                sourceDocumentId: bill.id,
+                sourceLineId: target?.purchaseOrderLineId,
+                // Accounting-date rule: use the bill's date, never new Date().
+                accountingDate: bill.billDate,
+              };
+
+              // Reverse the ACCRUED raised at goods receipt for this line's cost-target.
+              await this.commitmentWriter.accrued(tx, {
+                ...common,
+                amount: lineAmount.negated(),
+                eventType: 'BILL_POSTED_ACCRUED_REVERSAL',
+                idempotencyKey: `bill-accrued-rev-${bill.id}-${billLine.id}`,
+              });
+              // Record the ACTUAL for this line's cost-target.
+              await this.commitmentWriter.actual(tx, {
+                ...common,
+                amount: lineAmount,
+                eventType: 'BILL_POSTED_ACTUAL',
+                idempotencyKey: `bill-actual-${bill.id}-${billLine.id}`,
+              });
+            }
           }
         }
 

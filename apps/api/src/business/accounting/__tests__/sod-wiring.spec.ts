@@ -119,6 +119,7 @@ describe('Accounting SoD wiring (ADR-022)', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never, // billMatching
       {} as never,
       sod as never,
     );
@@ -150,6 +151,7 @@ describe('Accounting SoD wiring (ADR-022)', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never, // billMatching
       {} as never,
       sod as never,
     );

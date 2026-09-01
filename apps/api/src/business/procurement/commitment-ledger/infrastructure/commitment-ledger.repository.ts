@@ -38,6 +38,21 @@ export class CommitmentLedgerRepository {
     return prisma.commitmentLedgerEntry.findUnique({ where: { idempotencyKey: key } });
   }
 
+  // Idempotency guard for a multi-row movement (e.g. a bill's per-line ACTUAL, A14/D7): true once any
+  // entry for this source document at this stage exists, so a retry short-circuits the whole movement.
+  async existsForSourceAndStage(
+    prisma: TenantPrisma,
+    sourceDocumentType: CommitmentSourceDocType,
+    sourceDocumentId: string,
+    stage: CommitmentStage,
+  ): Promise<boolean> {
+    const row = await prisma.commitmentLedgerEntry.findFirst({
+      where: { sourceDocumentType, sourceDocumentId, stage },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
   queryByProject(
     prisma: TenantPrisma,
     organizationId: string,
