@@ -64,6 +64,19 @@
     "costTargetSet": "Set",
     "costTargetNone": "Not captured on the order line"
   },
+  "costTarget": {
+    "notChargeableLabel": "Not chargeable to a project cost line",
+    "notChargeableHint": "For org or overhead lines that belong to no project — rent, shared plant, head-office supplies. No cost target is recorded.",
+    "selectProject": "Select a project",
+    "boqNodeLabel": "BOQ cost node",
+    "selectNode": "Select a cost node",
+    "selectProjectFirst": "Choose a project first",
+    "loadingNodes": "Loading cost nodes…",
+    "noBaseline": "This project has no baselined BOQ yet, so it has no cost nodes to charge to.",
+    "noLeafNodes": "This project's baselined BOQ has no active cost items to charge to.",
+    "nodesLoadFailed": "The BOQ cost nodes could not be loaded.",
+    "incompleteError": "Choose both a project and a BOQ cost node, or mark this line not chargeable to a project."
+  },
   "status": {
     "DRAFT": "Draft",
     "SUBMITTED": "Submitted",
@@ -253,7 +266,6 @@
     "extendedAmount": "Extended",
     "orderedQuantity": "Ordered Qty",
     "derivedOnIssue": "Derived on issue",
-    "costTargetNotCaptured": "Cost target not captured on the order line yet",
     "supplierRequired": "Choose a supplier.",
     "saveDraft": "Save draft",
     "issueOrder": "Issue purchase order",

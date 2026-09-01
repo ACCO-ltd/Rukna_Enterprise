@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /**
  * Purchase order detail (Round 2).
@@ -399,13 +399,18 @@ function RevisionPanel({
                     {formatMoney(line.unitPrice, revision.currencyCode, locale)}
                   </p>
                   {/* Read-only classification chips (D7). Spend category shows the value
-                      when the line carries one, or "Derived on issue" until then. A PO line
-                      has no BOQ node (A3), so no cost-target chip renders — omitted, not
-                      faked. */}
+                      when the line carries one, or "Derived on issue" until then. The
+                      cost-target chip names the project + BOQ node when the line carries one
+                      (A3/D7, no. 148); an org/overhead line has none, so no chip renders. */}
                   <ClassificationChips
                     className="mt-2 flex flex-wrap items-center gap-1.5"
                     lineType={line.lineType}
                     spendCategoryName={line.spendCategory?.name ?? t('derivedOnIssue')}
+                    costTargetLabel={
+                      line.project && line.boqNode
+                        ? `${line.project.code} · ${line.boqNode.code} ${line.boqNode.description}`
+                        : null
+                    }
                   />
                 </div>
                 <p className="shrink-0 text-sm font-semibold tabular-nums text-foreground">

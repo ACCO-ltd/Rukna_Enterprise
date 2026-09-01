@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /**
  * Read-only cost-classification chips (Round 2, D7 consistency).
@@ -14,12 +14,17 @@
  * These are display-only. Nothing here writes, and no payload or contract changes. The chips
  * report what the read model already carries; they never derive or fabricate a value.
  *
- * The cost target is the honest edge (A3, Slice ①). A PO line has no `boqNodeId` — the
- * PO/PO-line contract does not carry one — so there is no cost target to show, and the slot
- * is **omitted, not faked**. A bill line and a commitment entry *do* carry `boqNodeId`, but
- * only the id (no embedded BOQ path), so where one is present the chip states that a target
- * is set without inventing a label the API did not send. When neither a spend category nor a
- * cost target is present, no cost-target chip renders at all — an empty chip is noise.
+ * The cost target has two honesty levels (A3/D7, no. 148/no. 150):
+ *
+ *  - A **PO line** now carries a real cost-target and its read model embeds the labels —
+ *    project `code` and BOQ node `code`/`description`. Pass `costTargetLabel` and the chip
+ *    names it: "Cost target: WBR-26-0065 · 03.10 Concrete".
+ *  - A **bill line** and a **commitment entry** carry a bare `boqNodeId` (no embedded path),
+ *    so pass `hasCostTarget` and the chip states a target is set without inventing a label.
+ *
+ * Where a line has NO cost target (an org/overhead line, or a surface that never carries one
+ * such as a goods-receipt line), pass neither and no cost-target chip renders — an empty or
+ * faked chip is noise. `costTargetLabel` wins over `hasCostTarget` when both are given.
  */
 
 import { useTranslations } from 'next-intl';
@@ -33,11 +38,16 @@ export interface ClassificationChipsProps {
   /** Spend category name, when the read model embeds one (PO lines do; bills/commitments do not). */
   spendCategoryName?: string | null;
   /**
-   * True when a cost target (BOQ node) is recorded on the line. Bill lines and commitment
-   * entries carry a `boqNodeId`; PO/GR lines never do. Only the presence is known — the API
-   * does not send a BOQ path — so the chip states a target is set without naming it.
+   * True when a cost target (BOQ node) is recorded on the line but no label is available.
+   * Bill lines and commitment entries carry a bare `boqNodeId` — only the presence is known,
+   * so the chip states a target is set without naming it. Ignored when `costTargetLabel` is set.
    */
   hasCostTarget?: boolean;
+  /**
+   * A labelled cost target — used where the read model embeds the project and BOQ node
+   * (a PO detail line, no. 148). Takes precedence over `hasCostTarget`.
+   */
+  costTargetLabel?: string | null;
   className?: string;
 }
 
@@ -51,13 +61,15 @@ export function ClassificationChips({
   lineType,
   spendCategoryName,
   hasCostTarget,
+  costTargetLabel,
   className,
 }: ClassificationChipsProps) {
   const t = useTranslations('procurement.classification');
   const tType = useTranslations('procurement.lineType');
 
   const showSpend = Boolean(spendCategoryName);
-  const showTarget = Boolean(hasCostTarget);
+  const labelled = Boolean(costTargetLabel);
+  const showTarget = labelled || Boolean(hasCostTarget);
 
   // Nothing to classify — render nothing rather than an empty chip row.
   if (!lineType && !showSpend && !showTarget) return null;
@@ -72,11 +84,11 @@ export function ClassificationChips({
         </Badge>
       ) : null}
 
-      {/* Cost target: only when the line actually carries a BOQ node. The label is
-          intentionally unnamed — the read model sends an id, not a path (A3). */}
+      {/* Cost target: only when the line carries a BOQ node. Named where the read model
+          embeds the project/node (PO line, no. 148); otherwise "Set" — a bare id, not a path. */}
       {showTarget ? (
         <Badge tone="neutral">
-          {t('costTarget')}: {t('costTargetSet')}
+          {t('costTarget')}: {labelled ? costTargetLabel : t('costTargetSet')}
         </Badge>
       ) : null}
     </div>

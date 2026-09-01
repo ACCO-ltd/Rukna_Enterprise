@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /**
  * Purchase order line editor (Round 2, single-form).
@@ -23,20 +23,14 @@
  * The value shown is a **preview**. The server recomputes it, and its answer is the one
  * that reaches the commitment ledger.
  *
- * ─── A3: cost target (BOQ node) is not captured on a PO line today ──────────────────
+ * ─── A3 / D7: the cost target is captured on the line (no. 148) ─────────────────────────
  *
- * A purchase order has no project association in the current model: neither
- * `CreatePurchaseOrderPayload` nor `CreatePoLinePayload` carries `projectId` or
- * `boqNodeId`, and the `POST /procurement/purchase-orders` DTO has no cost-target field.
- * Project-cost attribution previously flowed only *indirectly* through the MR allocations
- * D2 removes. So there is nothing to send a chosen cost target to, and a picker whose
- * value went nowhere would be a control that does nothing (doctrine §4 — honesty rule).
- *
- * The line therefore shows a read-only note that cost attribution is not captured here
- * yet, instead of inventing a project/BOQ field. The authoritative
- * "project-cost-relevant → cost target required per line, with a Not-chargeable opt-out"
- * invariant belongs on the backend: it needs a `projectId`/`boqNodeId` on the PO-line
- * contract before the frontend can enforce it. Tracked as an A3 backend request.
+ * The PO-line contract now carries `projectId` + `boqNodeId`, so the placeholder note is
+ * replaced by a real {@link PoCostTargetPicker}. A line is project-cost-relevant by default —
+ * project + BOQ node required — with a per-line "Not chargeable to a project cost line"
+ * opt-out for org/overhead lines. `poLineCostTargetIncomplete` guards a half-specified line
+ * (one id without the other), the exact state the server refuses with a 400; the create
+ * payload sends both ids or neither. See `po-cost-target-picker.tsx` for the data sources.
  */
 
 import { useId } from 'react';
@@ -49,6 +43,12 @@ import { MONEY_SCALE, QUANTITY_SCALE, fromMinorUnits, parseMinorUnits } from '@/
 import { extendedAmountMinor, sumExtendedAmountMinor } from '../quantities';
 import type { Material, ProcurementLineType } from '../types';
 import { MaterialPicker, UomDisplay } from './material-picker';
+import {
+  PoCostTargetPicker,
+  emptyCostTarget,
+  isCostTargetComplete,
+  type CostTargetValue,
+} from './po-cost-target-picker';
 
 export interface PoLineDraft {
   key: string;
@@ -58,6 +58,7 @@ export interface PoLineDraft {
   uomCode: string;
   quantity: string;
   unitPrice: string;
+  costTarget: CostTargetValue;
 }
 
 export function emptyPoLine(key: string): PoLineDraft {
@@ -69,6 +70,7 @@ export function emptyPoLine(key: string): PoLineDraft {
     uomCode: '',
     quantity: '',
     unitPrice: '',
+    costTarget: emptyCostTarget(),
   };
 }
 
@@ -94,6 +96,16 @@ export function poLineError(line: PoLineDraft): PoLineError | null {
   if (price === null || price <= 0) return 'priceMustBePositive';
 
   return null;
+}
+
+/**
+ * True when the line's cost-target is half-specified (a project without a node, or the
+ * reverse) — the A3 both-or-neither invariant, mirrored from `validateCostTarget` on the
+ * server. It is kept separate from `poLineError` so the field errors and the cost-target
+ * error can render in their own places, but both block submit.
+ */
+export function poLineCostTargetIncomplete(line: PoLineDraft): boolean {
+  return !isCostTargetComplete(line.costTarget);
 }
 
 /** Minor units for a line, or nulls when the user has not finished typing. */
@@ -143,6 +155,7 @@ export function PoLineEditor({ lines, onChange, currencyCode, showErrors }: PoLi
           index={index}
           currencyCode={currencyCode}
           error={showErrors ? poLineError(line) : null}
+          showCostTargetError={showErrors}
           canRemove={lines.length > 1}
           onPatch={(patch) => update(line.key, patch)}
           onSelectMaterial={(material) =>
@@ -187,6 +200,7 @@ function PoLineRow({
   index,
   currencyCode,
   error,
+  showCostTargetError,
   canRemove,
   onPatch,
   onSelectMaterial,
@@ -197,6 +211,7 @@ function PoLineRow({
   index: number;
   currencyCode: string;
   error: PoLineError | null;
+  showCostTargetError: boolean;
   canRemove: boolean;
   onPatch: (patch: Partial<PoLineDraft>) => void;
   onSelectMaterial: (m: Material | null) => void;
@@ -320,16 +335,20 @@ function PoLineRow({
         </div>
       </div>
 
-      {/* Line classification — read-only, toward D7 consistency.
-          Spend category is derived at issue, not chosen here; cost target is not captured
-          on a PO line in the current model (see the A3 note at the top of this file). */}
+      {/* Spend category — read-only, derived at issue (D7). It is not chosen here. */}
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3">
         <span className="inline-flex items-center gap-1.5 text-xs">
           <span className="text-muted-foreground">{tc('spendCategory')}:</span>
           <Badge tone="neutral">{t('derivedOnIssue')}</Badge>
         </span>
-        <span className="text-xs text-muted-foreground">{t('costTargetNotCaptured')}</span>
       </div>
+
+      {/* Cost target (A3/D7, no. 148): project + BOQ cost node, or the org/overhead opt-out. */}
+      <PoCostTargetPicker
+        value={line.costTarget}
+        onChange={(costTarget) => onPatch({ costTarget })}
+        showError={showCostTargetError}
+      />
 
       {error ? (
         <p className="mt-3 text-xs font-medium text-danger" role="alert">

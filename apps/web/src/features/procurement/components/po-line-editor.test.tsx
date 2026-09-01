@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+﻿import { screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
@@ -23,18 +23,33 @@ import type { Material, UnitOfMeasure } from '../types';
 const mocks = vi.hoisted(() => ({
   useMaterials: vi.fn(),
   useUoms: vi.fn(),
+  useProjects: vi.fn(),
+  useBoqWorkspace: vi.fn(),
+  useBoqTree: vi.fn(),
 }));
 
-vi.mock('../hooks/use-procurement', () => mocks);
+vi.mock('../hooks/use-procurement', () => ({
+  useMaterials: mocks.useMaterials,
+  useUoms: mocks.useUoms,
+}));
+vi.mock('@/features/projects/hooks/use-projects', () => ({
+  useProjects: mocks.useProjects,
+}));
+vi.mock('@/features/boq/hooks/use-boq', () => ({
+  useBoqWorkspace: mocks.useBoqWorkspace,
+  useBoqTree: mocks.useBoqTree,
+}));
 
 import {
   PoLineEditor,
   emptyPoLine,
   lineAmounts,
   orderTotalMinor,
+  poLineCostTargetIncomplete,
   poLineError,
   type PoLineDraft,
 } from './po-line-editor';
+import type { CostTargetValue } from './po-cost-target-picker';
 
 const TON: UnitOfMeasure = {
   id: 'uom-1',
@@ -72,7 +87,22 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.useMaterials.mockReturnValue({ data: [REBAR], isLoading: false, isError: false });
   mocks.useUoms.mockReturnValue({ data: [TON], isLoading: false, isError: false });
+  mocks.useProjects.mockReturnValue({ data: [], isLoading: false, isError: false });
+  mocks.useBoqWorkspace.mockReturnValue({ data: undefined, isLoading: false, isError: false });
+  mocks.useBoqTree.mockReturnValue({ data: undefined, isLoading: false, isError: false });
 });
+
+const CHARGEABLE: CostTargetValue = {
+  notChargeable: false,
+  projectId: 'proj-1',
+  boqNodeId: 'node-1',
+};
+const NOT_CHARGEABLE: CostTargetValue = {
+  notChargeable: true,
+  projectId: null,
+  boqNodeId: null,
+};
+const HALF: CostTargetValue = { notChargeable: false, projectId: 'proj-1', boqNodeId: null };
 
 function setup(lines: PoLineDraft[], showErrors = false) {
   const onChange = vi.fn();
@@ -143,7 +173,8 @@ describe('PoLineEditor — validation', () => {
   });
 
   it('surfaces the price error in the DOM once submit has been attempted', () => {
-    setup([{ ...COMPLETE, unitPrice: '0' }], true);
+    // A complete cost target keeps the A3 error off, so the price error is the only alert.
+    setup([{ ...COMPLETE, unitPrice: '0', costTarget: CHARGEABLE }], true);
 
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Enter a unit price greater than zero.',
@@ -156,5 +187,62 @@ describe('PoLineEditor — D7 derived spend category', () => {
     setup([COMPLETE]);
     expect(screen.getByText('Derived on issue')).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: /spend category/i })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * A3 (no. 148): a line is project-cost-relevant by default → project + BOQ node required, with a
+ * per-line not-chargeable opt-out. `poLineCostTargetIncomplete` mirrors the server's
+ * `validateCostTarget` both-or-neither rule and blocks submit on a half-specified line.
+ */
+describe('PoLineEditor — A3 cost target', () => {
+  it('treats a fresh line (neither project nor node, not opted out) as incomplete', () => {
+    // emptyPoLine defaults to a decision-pending cost target; it must not be submittable.
+    expect(poLineCostTargetIncomplete(COMPLETE)).toBe(true);
+  });
+
+  it('accepts a fully-specified cost target (both project and node)', () => {
+    expect(poLineCostTargetIncomplete({ ...COMPLETE, costTarget: CHARGEABLE })).toBe(false);
+  });
+
+  it('accepts the not-chargeable opt-out (neither id, explicitly org/overhead)', () => {
+    expect(poLineCostTargetIncomplete({ ...COMPLETE, costTarget: NOT_CHARGEABLE })).toBe(false);
+  });
+
+  it('rejects a half-specified target — a project without a node', () => {
+    expect(poLineCostTargetIncomplete({ ...COMPLETE, costTarget: HALF })).toBe(true);
+  });
+
+  it('rejects a half-specified target — a node without a project', () => {
+    const nodeOnly: CostTargetValue = {
+      notChargeable: false,
+      projectId: null,
+      boqNodeId: 'node-1',
+    };
+    expect(poLineCostTargetIncomplete({ ...COMPLETE, costTarget: nodeOnly })).toBe(true);
+  });
+
+  it('offers the not-chargeable toggle and, when off, the project selector', () => {
+    setup([{ ...COMPLETE, costTarget: emptyPoLine('x').costTarget }]);
+    expect(
+      screen.getByText('Not chargeable to a project cost line'),
+    ).toBeInTheDocument();
+    // With the opt-out off, the project selector is present.
+    expect(screen.getByText('Select a project')).toBeInTheDocument();
+  });
+
+  it('hides the cost-target selectors when the line is marked not chargeable', () => {
+    setup([{ ...COMPLETE, costTarget: NOT_CHARGEABLE }]);
+    expect(screen.queryByText('Select a project')).not.toBeInTheDocument();
+    expect(screen.queryByText('Select a cost node')).not.toBeInTheDocument();
+  });
+
+  it('surfaces the incomplete error once submit is attempted on a half-specified line', () => {
+    setup([{ ...COMPLETE, costTarget: HALF }], true);
+    expect(
+      screen.getByText(
+        'Choose both a project and a BOQ cost node, or mark this line not chargeable to a project.',
+      ),
+    ).toBeInTheDocument();
   });
 });
