@@ -82,7 +82,10 @@
     "suppliers": "Suppliers",
     "bankAccounts": "Bank Accounts",
     "openingBalance": "Opening Balance",
-    "accountingReports": "Accounting Reports"
+    "accountingReports": "Accounting Reports",
+    "group": {
+      "setup": "Setup"
+    }
   },
   "user": {
     "menuLabel": "Account menu",

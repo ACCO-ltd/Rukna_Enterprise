@@ -1,10 +1,9 @@
 import { screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
 
-import type { Material, MaterialRequest, SpendCategory, UnitOfMeasure } from '../types';
+import type { Material, UnitOfMeasure } from '../types';
 
 /**
  * The PO line editor is the one screen where a scale change happens in front of the user:
@@ -15,6 +14,10 @@ import type { Material, MaterialRequest, SpendCategory, UnitOfMeasure } from '..
  * `quantities.test.ts` proves `extendedAmountMinor` computes correctly in isolation. These
  * tests prove the editor feeds it the right things and renders the result, including the
  * cases where it must show nothing rather than a wrong number.
+ *
+ * Round 2 (D2/D7): PO lines no longer link to material-request lines, and spend category is
+ * no longer chosen on the line — it is a read-only "Derived on issue" chip. The tests that
+ * exercised the MR allocation picker and the spend-category select are gone with them.
  */
 
 const mocks = vi.hoisted(() => ({
@@ -55,46 +58,6 @@ const REBAR: Material = {
   baseUom: TON,
 };
 
-const SPEND: SpendCategory[] = [
-  {
-    id: 'spend-1',
-    code: 'DIRECT_MATERIAL',
-    name: 'Direct Material',
-    status: 'ACTIVE',
-    parentId: null,
-    children: [],
-  },
-];
-
-const APPROVED_MR: MaterialRequest = {
-  id: 'mr-1',
-  mrNumber: 'MR-00001',
-  requestScope: 'PROJECT',
-  projectId: 'proj-1',
-  approvalInstanceId: null,
-  status: 'APPROVED',
-  requestedDate: '2026-08-10T00:00:00.000Z',
-  requiredByDate: null,
-  description: null,
-  notes: null,
-  lines: [
-    {
-      id: 'mrl-1',
-      lineNumber: 1,
-      lineType: 'MATERIAL',
-      materialId: 'mat-1',
-      description: '12mm rebar for pile caps',
-      requestedQuantity: '25',
-      approvedQuantity: '25',
-      boqNodeId: null,
-      spendCategoryId: null,
-      notes: null,
-      material: { code: 'REBAR-12MM', name: '12mm Deformed Steel Rebar' },
-      uom: { code: 'TON', symbol: 't' },
-    },
-  ],
-};
-
 /** A complete line matching the §12.9 worked example: 25 t at 850 = 21,250. */
 const COMPLETE: PoLineDraft = {
   ...emptyPoLine('line-1'),
@@ -117,8 +80,6 @@ function setup(lines: PoLineDraft[], showErrors = false) {
     <PoLineEditor
       lines={lines}
       onChange={onChange}
-      spendCategories={SPEND}
-      approvedRequests={[APPROVED_MR]}
       currencyCode="SAR"
       showErrors={showErrors}
     />,
@@ -129,8 +90,6 @@ function setup(lines: PoLineDraft[], showErrors = false) {
 describe('PoLineEditor — extended amount', () => {
   it('renders the §12.9 worked example: 25 t at 850 shows as 21,250', () => {
     setup([COMPLETE]);
-
-    // Once on the line, once as the order total.
     expect(screen.getAllByText(/21,250\.00/).length).toBeGreaterThanOrEqual(1);
   });
 
@@ -149,7 +108,6 @@ describe('PoLineEditor — extended amount', () => {
 
     expect(extendedMinor).toBeNull();
     setup([line]);
-    // Two em-dashes: the line amount and the order total.
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(1);
   });
 
@@ -193,34 +151,10 @@ describe('PoLineEditor — validation', () => {
   });
 });
 
-describe('PoLineEditor — MR allocations', () => {
-  it('offers approved MR lines to link against', async () => {
-    const user = userEvent.setup();
+describe('PoLineEditor — D7 derived spend category', () => {
+  it('shows spend category as a read-only "Derived on issue" chip, not a select', () => {
     setup([COMPLETE]);
-
-    await user.click(screen.getByRole('button', { name: 'Link to MR' }));
-
-    expect(
-      screen.getByRole('option', { name: /MR-00001.*12mm rebar for pile caps/ }),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Derived on issue')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /spend category/i })).not.toBeInTheDocument();
   });
-
-  it('records the allocation with its quantity', async () => {
-    const user = userEvent.setup();
-    const { onChange } = setup([COMPLETE]);
-
-    await user.click(screen.getByRole('button', { name: 'Link to MR' }));
-    await user.selectOptions(
-      screen.getByLabelText('MR Allocations'),
-      'mrl-1',
-    );
-    await user.type(screen.getByLabelText('Allocated Qty'), '25');
-    await user.click(screen.getByRole('button', { name: 'Save' }));
-
-    const emitted = onChange.mock.calls.at(-1)![0] as PoLineDraft[];
-    expect(emitted[0]!.allocations).toEqual([
-      { materialRequestLineId: 'mrl-1', allocatedQuantity: 25 },
-    ]);
-  });
-
 });

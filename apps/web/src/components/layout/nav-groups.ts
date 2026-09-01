@@ -2,7 +2,13 @@
  * Domain navigation. Each domain is a major product area with its own
  * collapsible section and a stable entry route.
  *
- * Two levels only: Domain → direct destination. No sub-groups.
+ * Domain → direct destination is the default. A domain's items may additionally carry a
+ * `groupKey` to collect one-time configuration under a single labelled sub-section (a quiet
+ * micro-label divider, not a second collapsible level) — used by Procurement's "Setup" group
+ * so master data reads as configuration set aside from the operational spine, rather than as
+ * flat siblings of the daily workflow items. This is a visual grouping only: every item keeps
+ * its own route and its own permission gate.
+ *
  * Domain-specific configuration lives inside its domain.
  * Global Settings (org profile, integrations) is a separate future section.
  */
@@ -42,6 +48,20 @@ export interface NavItem {
   iconKey?: NavIconKey;
   /** Permission required to see this item. */
   permissionKey?: string;
+  /**
+   * Collects the item under a labelled sub-section inside its domain (e.g. Procurement's
+   * `setup`). Items sharing a `groupKey` render together under a `nav.group.<key>` micro-label.
+   * Ungrouped items render first, in their declared order; grouped items follow. Purely visual
+   * — it changes neither the route nor the permission gate.
+   */
+  groupKey?: string;
+  /**
+   * A cross-domain pointer: this item lives in one domain's nav but links to a route that is
+   * canonically owned by another domain (e.g. Supplier bills surfaced under Procurement, whose
+   * route stays `/finance/accounting/bills` under Accounting). Marks intent for readers; the
+   * link resolves to the same single destination either way.
+   */
+  crossLink?: boolean;
   /** Retained for test helpers; hidden in production navigation. */
   disabled?: boolean;
 }
@@ -100,16 +120,24 @@ export const NAV_DOMAINS: NavDomain[] = [
     href: '/procurement',
     moduleKey: 'procurement',
     iconKey: 'shopping-cart',
+    // Round-2 spine (decision A4): the purchase order is the primary entry, with material
+    // requests demoted below it to an optional "needs list". Supplier bills is a cross-link
+    // into Procurement — the route stays canonical under Accounting. Payments are NOT here;
+    // treasury stays in Accounting. Master data groups under "Setup".
     items: [
-      { href: '/procurement/suppliers', labelKey: 'suppliers', iconKey: 'storefront' },
-      { href: '/procurement/requests', labelKey: 'materialRequests', iconKey: 'clipboard' },
       { href: '/procurement/orders', labelKey: 'purchaseOrders', iconKey: 'shopping-cart' },
+      { href: '/procurement/requests', labelKey: 'materialRequests', iconKey: 'clipboard' },
       { href: '/procurement/grn', labelKey: 'goodsReceipts', iconKey: 'truck' },
+      { href: '/finance/accounting/bills', labelKey: 'supplierBills', iconKey: 'credit-card', crossLink: true },
       { href: '/procurement/commitments', labelKey: 'commitments', iconKey: 'chart-bar' },
-      { href: '/procurement/setup/materials', labelKey: 'materials', iconKey: 'package', permissionKey: 'manage:procurement-config' },
-      { href: '/procurement/setup/material-categories', labelKey: 'materialCategories', iconKey: 'tag', permissionKey: 'manage:procurement-config' },
-      { href: '/procurement/setup/uom', labelKey: 'unitsOfMeasure', iconKey: 'ruler', permissionKey: 'manage:procurement-config' },
-      { href: '/procurement/setup/spend-categories', labelKey: 'spendCategories', iconKey: 'credit-card', permissionKey: 'manage:procurement-config' },
+      // Setup — one-time configuration. Suppliers is master data added as purchasing widens,
+      // so it stays ungated (a buyer must be able to add the supplier their own PO needs); the
+      // four catalogue screens keep their manage:procurement-config gate.
+      { href: '/procurement/suppliers', labelKey: 'suppliers', iconKey: 'storefront', groupKey: 'setup' },
+      { href: '/procurement/setup/materials', labelKey: 'materials', iconKey: 'package', permissionKey: 'manage:procurement-config', groupKey: 'setup' },
+      { href: '/procurement/setup/material-categories', labelKey: 'materialCategories', iconKey: 'tag', permissionKey: 'manage:procurement-config', groupKey: 'setup' },
+      { href: '/procurement/setup/uom', labelKey: 'unitsOfMeasure', iconKey: 'ruler', permissionKey: 'manage:procurement-config', groupKey: 'setup' },
+      { href: '/procurement/setup/spend-categories', labelKey: 'spendCategories', iconKey: 'credit-card', permissionKey: 'manage:procurement-config', groupKey: 'setup' },
     ],
   },
   {
@@ -132,4 +160,33 @@ export const NAV_DOMAINS: NavDomain[] = [
 export function isActiveNavItem(pathname: string, href: string): boolean {
   if (href === '/dashboard') return pathname === '/dashboard';
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/** One labelled sub-section of a domain's items, in declared order. */
+export interface NavItemGroup {
+  /** `undefined` for the ungrouped items that lead the list; otherwise a `groupKey`. */
+  key: string | undefined;
+  items: NavItem[];
+}
+
+/**
+ * Splits a domain's items into the leading ungrouped run followed by each labelled group,
+ * preserving declared order within and across groups. Ungrouped items always come first —
+ * the operational spine reads before configuration is set aside under a label.
+ *
+ * The renderer walks this instead of the flat list so the grouping lives in one place and can
+ * be asserted without a DOM.
+ */
+export function groupNavItems(items: NavItem[]): NavItemGroup[] {
+  const groups: NavItemGroup[] = [];
+  for (const item of items) {
+    const key = item.groupKey;
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) {
+      last.items.push(item);
+    } else {
+      groups.push({ key, items: [item] });
+    }
+  }
+  return groups;
 }

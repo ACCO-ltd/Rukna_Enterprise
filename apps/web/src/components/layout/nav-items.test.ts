@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isActiveNavItem, NAV_DOMAINS, STANDALONE_NAV } from './nav-groups';
+import { groupNavItems, isActiveNavItem, NAV_DOMAINS, STANDALONE_NAV } from './nav-groups';
 
 describe('STANDALONE_NAV', () => {
   it('contains only Dashboard as a standalone item', () => {
@@ -69,7 +69,7 @@ describe('NAV_DOMAINS', () => {
   describe('procurement domain', () => {
     const procurement = () => NAV_DOMAINS.find((d) => d.moduleKey === 'procurement')!;
 
-    it('exposes the five live workflow screens', () => {
+    it('exposes the live workflow screens', () => {
       const workflowHrefs = [
         '/procurement/suppliers',
         '/procurement/requests',
@@ -83,6 +83,44 @@ describe('NAV_DOMAINS', () => {
       }
     });
 
+    it('leads the operational spine with Purchase orders, then Material requests (A4)', () => {
+      const operationalHrefs = procurement()
+        .items.filter((i) => !i.groupKey)
+        .map((i) => i.href);
+      // Purchase orders is the primary entry — first, and ahead of Material requests.
+      expect(operationalHrefs[0]).toBe('/procurement/orders');
+      expect(operationalHrefs.indexOf('/procurement/orders')).toBeLessThan(
+        operationalHrefs.indexOf('/procurement/requests'),
+      );
+    });
+
+    it('cross-links Supplier bills to the canonical Accounting route, not a duplicate', () => {
+      const bills = procurement().items.find((i) => i.labelKey === 'supplierBills');
+      expect(bills).toBeDefined();
+      expect(bills!.href).toBe('/finance/accounting/bills');
+      expect(bills!.crossLink).toBe(true);
+      // The route is not migrated: no procurement-owned bills path exists.
+      expect(procurement().items.map((i) => i.href)).not.toContain('/procurement/bills');
+    });
+
+    it('keeps Payments out of Procurement — treasury stays in Accounting', () => {
+      const hrefs = procurement().items.map((i) => i.href);
+      expect(hrefs).not.toContain('/finance/accounting/payments');
+      expect(hrefs.some((h) => h.includes('payment'))).toBe(false);
+    });
+
+    it('groups suppliers and the four catalogue screens under Setup', () => {
+      const setup = procurement().items.filter((i) => i.groupKey === 'setup');
+      const setupHrefs = setup.map((i) => i.href);
+      expect(setupHrefs).toEqual([
+        '/procurement/suppliers',
+        '/procurement/setup/materials',
+        '/procurement/setup/material-categories',
+        '/procurement/setup/uom',
+        '/procurement/setup/spend-categories',
+      ]);
+    });
+
     it('gates the four catalog setup items behind manage:procurement-config', () => {
       const configItems = procurement().items.filter((i) => i.permissionKey);
       expect(configItems.every((i) => i.permissionKey === 'manage:procurement-config')).toBe(true);
@@ -93,10 +131,9 @@ describe('NAV_DOMAINS', () => {
       expect(configHrefs).toContain('/procurement/setup/spend-categories');
     });
 
-    it('keeps workflow screens ungated (no permissionKey)', () => {
-      const workflowItems = procurement().items.filter((i) => !i.permissionKey);
-      const hrefs = workflowItems.map((i) => i.href);
-      expect(hrefs).toContain('/procurement/suppliers');
+    it('keeps Suppliers ungated so a buyer can add the supplier their PO needs', () => {
+      const suppliers = procurement().items.find((i) => i.href === '/procurement/suppliers');
+      expect(suppliers?.permissionKey).toBeUndefined();
     });
 
     it('routes goods receipts to /procurement/grn, not /receipts', () => {
@@ -108,6 +145,35 @@ describe('NAV_DOMAINS', () => {
     it('has no standalone bill-matching entry', () => {
       const hrefs = procurement().items.map((i) => i.href);
       expect(hrefs).not.toContain('/procurement/bill-matching');
+    });
+  });
+
+  describe('groupNavItems', () => {
+    it('leads with the ungrouped run, then each labelled group in order', () => {
+      const groups = groupNavItems([
+        { href: '/a', labelKey: 'a' },
+        { href: '/b', labelKey: 'b' },
+        { href: '/c', labelKey: 'c', groupKey: 'setup' },
+        { href: '/d', labelKey: 'd', groupKey: 'setup' },
+      ]);
+      expect(groups).toHaveLength(2);
+      expect(groups[0]!.key).toBeUndefined();
+      expect(groups[0]!.items.map((i) => i.href)).toEqual(['/a', '/b']);
+      expect(groups[1]!.key).toBe('setup');
+      expect(groups[1]!.items.map((i) => i.href)).toEqual(['/c', '/d']);
+    });
+
+    it('groups the real procurement Setup section as one block', () => {
+      const procurement = NAV_DOMAINS.find((d) => d.moduleKey === 'procurement')!;
+      const groups = groupNavItems(procurement.items);
+      const setup = groups.find((g) => g.key === 'setup');
+      expect(setup?.items.map((i) => i.labelKey)).toEqual([
+        'suppliers',
+        'materials',
+        'materialCategories',
+        'unitsOfMeasure',
+        'spendCategories',
+      ]);
     });
   });
 

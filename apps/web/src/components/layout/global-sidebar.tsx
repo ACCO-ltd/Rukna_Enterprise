@@ -1,6 +1,6 @@
 'use client';
 
-import { useSyncExternalStore } from 'react';
+import { Fragment, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -41,6 +41,7 @@ import { usePermissions } from '@/features/auth/permissions/can';
 import { useSession } from '@/features/auth/session/use-session';
 
 import {
+  groupNavItems,
   isActiveNavItem,
   NAV_DOMAINS,
   STANDALONE_NAV,
@@ -249,23 +250,14 @@ export function GlobalSidebar({
                         {t(`nav.${domain.labelKey}`)}
                       </Link>
                       <div className="my-1 h-px bg-border" />
-                      <ul className="space-y-0.5">
-                        {domain.items.map((item) => {
-                          if (item.permissionKey && !can(item.permissionKey as `${string}:${string}`)) {
-                            return null;
-                          }
-                          return (
-                            <NavLink
-                              key={item.href}
-                              item={item}
-                              pathname={pathname}
-                              t={t}
-                              onNavigate={onNavigate}
-                              flyout
-                            />
-                          );
-                        })}
-                      </ul>
+                      <NavItemList
+                        items={domain.items}
+                        pathname={pathname}
+                        t={t}
+                        can={can}
+                        onNavigate={onNavigate}
+                        flyout
+                      />
                     </div>
                   </div>
                 ) : null}
@@ -276,25 +268,14 @@ export function GlobalSidebar({
                     ? 'grid-rows-[0fr] opacity-0'
                     : 'grid-rows-[1fr] opacity-100',
                 )}>
-                  <ul id={panelId} className="relative mb-2 min-h-0 overflow-hidden space-y-0.5 ps-8 pe-1 before:absolute before:bottom-3 before:start-[1.15rem] before:top-0 before:w-px before:bg-border-strong/70">
-                    {domain.items.map((item) => {
-                      if (
-                        item.permissionKey &&
-                        !can(item.permissionKey as `${string}:${string}`)
-                      ) {
-                        return null;
-                      }
-                      return (
-                        <NavLink
-                          key={item.href}
-                          item={item}
-                          pathname={pathname}
-                          t={t}
-                          onNavigate={onNavigate}
-                        />
-                      );
-                    })}
-                  </ul>
+                  <NavItemList
+                    id={panelId}
+                    items={domain.items}
+                    pathname={pathname}
+                    t={t}
+                    can={can}
+                    onNavigate={onNavigate}
+                  />
                 </div>
               </div>
             );
@@ -369,6 +350,75 @@ function StandaloneLink({ item, pathname, t, onNavigate, collapsed }: Standalone
         </span>
       ) : null}
     </li>
+  );
+}
+
+// ─── Domain item list (with labelled groups) ──────────────────────────────────
+
+interface NavItemListProps {
+  items: NavItem[];
+  pathname: string;
+  t: ReturnType<typeof useTranslations>;
+  can: (permission: `${string}:${string}`) => boolean;
+  onNavigate?: () => void;
+  /** Flyout (collapsed-sidebar hover panel): no connector line, plain list. */
+  flyout?: boolean;
+  id?: string;
+}
+
+/**
+ * Renders a domain's items, inserting a quiet micro-label before each labelled group
+ * (e.g. Procurement's "Setup"). Permission-hidden items are dropped first, so a group whose
+ * every item is gated away renders neither its label nor an empty gap. The leading ungrouped
+ * run carries no label — it is the domain's operational spine.
+ *
+ * The expanded sidebar keeps its vertical connector line on the list; the flyout does not.
+ */
+function NavItemList({ items, pathname, t, can, onNavigate, flyout = false, id }: NavItemListProps) {
+  const visibleGroups = groupNavItems(items)
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) => !item.permissionKey || can(item.permissionKey as `${string}:${string}`),
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
+
+  return (
+    <ul
+      id={id}
+      className={cn(
+        'space-y-0.5',
+        flyout
+          ? ''
+          : 'relative mb-2 min-h-0 overflow-hidden ps-8 pe-1 before:absolute before:bottom-3 before:start-[1.15rem] before:top-0 before:w-px before:bg-border-strong/70',
+      )}
+    >
+      {visibleGroups.map((group) => (
+        <Fragment key={group.key ?? '__ungrouped'}>
+          {group.key ? (
+            <li
+              className={cn(
+                'mb-0.5 mt-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70',
+                flyout ? 'px-2.5' : 'relative bg-surface ps-0.5',
+              )}
+            >
+              {t(`nav.group.${group.key}`)}
+            </li>
+          ) : null}
+          {group.items.map((item) => (
+            <NavLink
+              key={item.href}
+              item={item}
+              pathname={pathname}
+              t={t}
+              onNavigate={onNavigate}
+              flyout={flyout}
+            />
+          ))}
+        </Fragment>
+      ))}
+    </ul>
   );
 }
 
