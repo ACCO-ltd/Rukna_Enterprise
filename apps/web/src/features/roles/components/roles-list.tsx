@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
+  Badge,
   Button,
   DropdownMenu,
   DropdownMenuContent,
@@ -14,6 +15,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableEmpty,
   TableHead,
   TableHeader,
   TableRow,
@@ -27,8 +29,10 @@ import { usePermissions } from '@/features/auth/permissions/can';
 import { useUsers } from '@/features/users/hooks/use-users';
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { ApiError } from '@/lib/api-client';
+import { FilterSelect, TableToolbar } from '@/features/admin/components/table-toolbar';
 
 import { useDeleteRole, useRoles } from '../hooks/use-roles';
+import { filterRoles, type RoleKindFilter } from '../filter-roles';
 import {
   CreateRoleSheet,
   EditRoleSheet,
@@ -44,6 +48,7 @@ export function RolesList() {
   const { toast } = useToast();
   const { can } = usePermissions();
   const canManage = can(PERMISSIONS.rolesManage);
+  const searchId = useId();
 
   const { data, isPending, isError, refetch, isFetching } = useRoles();
   const users = useUsers();
@@ -53,7 +58,15 @@ export function RolesList() {
   const [sheet, setSheet] = useState<ActiveSheet | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<RoleSummary | null>(null);
 
+  const [query, setQuery] = useState('');
+  const [kindFilter, setKindFilter] = useState<RoleKindFilter>('ALL');
+
   const remove = useDeleteRole();
+
+  const rows = useMemo(
+    () => filterRoles(data ?? [], query, kindFilter),
+    [data, query, kindFilter],
+  );
 
   function openSheet(next: ActiveSheet, role: RoleSummary) {
     setTarget(role);
@@ -115,8 +128,10 @@ export function RolesList() {
     );
   }
 
+  const columnCount = 4 + (canManage ? 1 : 0);
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {canManage ? (
         <div className="flex justify-end">
           <Button type="button" onClick={() => setCreateOpen(true)}>
@@ -131,81 +146,131 @@ export function RolesList() {
           <p className="mt-1 text-sm text-muted-foreground">{t('emptyHint')}</p>
         </div>
       ) : (
-        <TableScroll aria-label={t('title')}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('colName')}</TableHead>
-                <TableHead>{t('colGovernance')}</TableHead>
-                <TableHead className="text-end">{t('colPermissions')}</TableHead>
-                <TableHead className="text-end">{t('colMembers')}</TableHead>
-                {canManage ? (
-                  <TableHead className="text-end">{t('colActions')}</TableHead>
-                ) : null}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.map((role) => (
-                <TableRow key={role.id}>
-                  <TableCell className="font-medium">
-                    {role.name}
-                    <span className="ml-2 text-xs font-normal text-muted-foreground">
-                      {role.kind === 'SYSTEM' ? t('systemRole') : t('customRole')}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    <div>{role.purpose ?? role.description ?? t('noDescription')}</div>
-                    <div className="mt-1 text-xs">{t('ownerLabel')}: {users.data?.find(u => u.id === role.ownerUserId)?.email ?? t('unassigned')}</div>
-                    {role.templateRoleId ? <div className="text-xs">{t('templateLabel')}: {role.templateRoleId}</div> : null}
-                  </TableCell>
-                  <TableCell className="text-end tabular-nums text-muted-foreground">
-                    {role.permissionCount}
-                  </TableCell>
-                  <TableCell className="text-end tabular-nums text-muted-foreground">
-                    {role.memberCount}
-                  </TableCell>
+        <>
+          <TableToolbar
+            searchId={searchId}
+            searchValue={query}
+            onSearchChange={setQuery}
+            searchLabel={t('searchLabel')}
+            searchPlaceholder={t('searchPlaceholder')}
+          >
+            <FilterSelect
+              label={t('filterKind')}
+              value={kindFilter}
+              onChange={(next) => setKindFilter(next as RoleKindFilter)}
+              options={[
+                { value: 'ALL', label: t('filterAll') },
+                { value: 'SYSTEM', label: t('filterSystem') },
+                { value: 'CUSTOM', label: t('filterCustom') },
+              ]}
+            />
+          </TableToolbar>
+
+          <TableScroll aria-label={t('title')}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('colName')}</TableHead>
+                  <TableHead>{t('colGovernance')}</TableHead>
+                  <TableHead numeric>{t('colPermissions')}</TableHead>
+                  <TableHead numeric>{t('colMembers')}</TableHead>
                   {canManage ? (
-                    <TableCell className="text-end">
-                      {role.kind === 'CUSTOM' ? <RowActions
-                        overflow={
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                aria-label={t('rowMenuLabel', { name: role.name })}
-                              >
-                                <OverflowGlyph />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onSelect={() => openSheet('governance', role)}>{t('actions.viewImpact')}</DropdownMenuItem>
-                              <DropdownMenuItem onSelect={() => openSheet('edit', role)}>
-                                {t('actions.edit')}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onSelect={() => openSheet('permissions', role)}>
-                                {t('actions.managePermissions')}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                destructive
-                                onSelect={() => {
-                                  remove.reset();
-                                  setDeleteTarget(role);
-                                }}
-                              >
-                                {t('actions.delete')}
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        }
-                      /> : <Button variant="ghost" size="sm" onClick={() => openSheet('governance', role)}>{t('protected')}</Button>}
-                    </TableCell>
+                    <TableHead className="text-end">{t('colActions')}</TableHead>
                   ) : null}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableScroll>
+              </TableHeader>
+              <TableBody>
+                {rows.length === 0 ? (
+                  <TableEmpty colSpan={columnCount}>{t('noMatches')}</TableEmpty>
+                ) : (
+                  rows.map((role) => (
+                    <TableRow key={role.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-foreground">{role.name}</span>
+                          <Badge tone={role.kind === 'SYSTEM' ? 'info' : 'neutral'}>
+                            {role.kind === 'SYSTEM' ? t('systemRole') : t('customRole')}
+                          </Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        <div>{role.purpose ?? role.description ?? t('noDescription')}</div>
+                        <div className="mt-1 text-xs">
+                          {t('ownerLabel')}:{' '}
+                          {users.data?.find((u) => u.id === role.ownerUserId)?.email ??
+                            t('unassigned')}
+                        </div>
+                        {role.templateRoleId ? (
+                          <div className="text-xs">
+                            {t('templateLabel')}: {role.templateRoleId}
+                          </div>
+                        ) : null}
+                      </TableCell>
+                      <TableCell numeric className="text-muted-foreground">
+                        {role.permissionCount}
+                      </TableCell>
+                      <TableCell numeric className="text-muted-foreground">
+                        {role.memberCount}
+                      </TableCell>
+                      {canManage ? (
+                        <TableCell className="text-end">
+                          {role.kind === 'CUSTOM' ? (
+                            <RowActions
+                              overflow={
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      aria-label={t('rowMenuLabel', { name: role.name })}
+                                    >
+                                      <OverflowGlyph />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onSelect={() => openSheet('governance', role)}>
+                                      {t('actions.viewImpact')}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onSelect={() => openSheet('edit', role)}>
+                                      {t('actions.edit')}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onSelect={() => openSheet('permissions', role)}
+                                    >
+                                      {t('actions.managePermissions')}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      destructive
+                                      onSelect={() => {
+                                        remove.reset();
+                                        setDeleteTarget(role);
+                                      }}
+                                    >
+                                      {t('actions.delete')}
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              }
+                            />
+                          ) : (
+                            // SYSTEM roles are protected: review only, no edit/delete.
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openSheet('governance', role)}
+                            >
+                              {t('protected')}
+                            </Button>
+                          )}
+                        </TableCell>
+                      ) : null}
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableScroll>
+        </>
       )}
 
       {canManage ? (
@@ -223,7 +288,12 @@ export function RolesList() {
               if (!open) closeSheet();
             }}
           />
-          <RoleGovernanceSheet role={sheet === 'governance' ? target : null} onOpenChange={(open) => { if (!open) closeSheet(); }} />
+          <RoleGovernanceSheet
+            role={sheet === 'governance' ? target : null}
+            onOpenChange={(open) => {
+              if (!open) closeSheet();
+            }}
+          />
           {deleteTarget ? (
             <ConfirmActionDialog
               title={t('deleteTitle', { name: deleteTarget.name })}

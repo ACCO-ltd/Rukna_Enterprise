@@ -2,54 +2,24 @@
 
 import { useId, useState, type FormEvent } from 'react';
 import { useTranslations } from 'next-intl';
-import {
-  Alert,
-  Button,
-  FormField,
-  Input,
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetTitle,
-  Select,
-  Textarea,
-} from '@erp/ui';
+import { Alert, FormField, Input, Select, Textarea } from '@erp/ui';
 
 import type { RoleSummary } from '@erp/types';
 import { PermissionPicker } from '@/features/permissions/components/permission-picker';
-import { ApiError } from '@/lib/api-client';
+import {
+  FormBody,
+  FormFooter,
+  FormSheetShell,
+  apiMessage,
+} from '@/features/admin/components/form-sheet-shell';
 
-import { useCreateRole, useRole, useRoles, useSetRolePermissions, useUpdateRole } from '../hooks/use-roles';
-
-function FormSheet({
-  open,
-  onOpenChange,
-  title,
-  description,
-  children,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="p-6">
-        <SheetTitle className="text-lg font-semibold text-foreground">{title}</SheetTitle>
-        {description ? <SheetDescription className="mt-1">{description}</SheetDescription> : null}
-        <div className="mt-5">{children}</div>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-function apiMessage(error: unknown, fallback: string): string | undefined {
-  if (error instanceof ApiError) return error.message;
-  if (error) return fallback;
-  return undefined;
-}
+import {
+  useCreateRole,
+  useRole,
+  useRoles,
+  useSetRolePermissions,
+  useUpdateRole,
+} from '../hooks/use-roles';
 
 // ─── Create ──────────────────────────────────────────────────────────────────────
 
@@ -64,7 +34,7 @@ export function CreateRoleSheet({
   const tc = useTranslations('common');
   const create = useCreateRole();
   const templates = useRoles();
-  const ids = { name: useId(), purpose: useId(), description: useId() };
+  const ids = { name: useId(), purpose: useId(), template: useId(), description: useId() };
   const [permissionIds, setPermissionIds] = useState<string[]>([]);
 
   function close(next: boolean) {
@@ -102,13 +72,13 @@ export function CreateRoleSheet({
   }
 
   return (
-    <FormSheet
+    <FormSheetShell
       open={open}
       onOpenChange={close}
       title={t('createTitle')}
       description={t('createSubtitle')}
     >
-      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+      <FormBody onSubmit={handleSubmit}>
         <FormField htmlFor={ids.name} label={t('name')} required>
           <Input
             id={ids.name}
@@ -121,20 +91,32 @@ export function CreateRoleSheet({
         </FormField>
 
         <FormField htmlFor={ids.purpose} label={t('purpose')} required>
-          <Textarea id={ids.purpose} name="purpose" rows={2} required maxLength={500} disabled={create.isPending} />
+          <Textarea
+            id={ids.purpose}
+            name="purpose"
+            rows={2}
+            required
+            maxLength={500}
+            disabled={create.isPending}
+          />
         </FormField>
 
-        <FormField htmlFor="templateRoleId" label={t('template')}>
-          <Select id="templateRoleId" name="templateRoleId" disabled={create.isPending || templates.isPending}>
+        <FormField htmlFor={ids.template} label={t('template')}>
+          <Select
+            id={ids.template}
+            name="templateRoleId"
+            disabled={create.isPending || templates.isPending}
+          >
             <option value="">{t('noTemplate')}</option>
-            {(templates.data ?? []).map((role) => <option key={role.id} value={role.id}>{role.name} ({role.kind})</option>)}
+            {(templates.data ?? []).map((role) => (
+              <option key={role.id} value={role.id}>
+                {role.name} ({role.kind})
+              </option>
+            ))}
           </Select>
         </FormField>
 
-        <FormField
-          htmlFor={ids.description}
-          label={`${t('description')} (${tc('optional')})`}
-        >
+        <FormField htmlFor={ids.description} label={`${t('description')} (${tc('optional')})`}>
           <Textarea
             id={ids.description}
             name="description"
@@ -154,21 +136,15 @@ export function CreateRoleSheet({
           <Alert variant="error" messages={[apiMessage(create.error, t('createFailed'))!]} />
         ) : null}
 
-        <div className="flex flex-wrap justify-end gap-2 pt-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => close(false)}
-            disabled={create.isPending}
-          >
-            {tc('cancel')}
-          </Button>
-          <Button type="submit" disabled={create.isPending}>
-            {create.isPending ? tc('saving') : t('createSubmit')}
-          </Button>
-        </div>
-      </form>
-    </FormSheet>
+        <FormFooter
+          onCancel={() => close(false)}
+          cancelLabel={tc('cancel')}
+          submitLabel={t('createSubmit')}
+          pendingLabel={t('createPending')}
+          pending={create.isPending}
+        />
+      </FormBody>
+    </FormSheetShell>
   );
 }
 
@@ -202,17 +178,17 @@ export function EditRoleSheet({
   }
 
   return (
-    <FormSheet
+    <FormSheetShell
       open={Boolean(role)}
       onOpenChange={(next) => {
         if (!next) update.reset();
         onOpenChange(next);
       }}
       title={t('editTitle')}
-      description={role?.name}
+      description={role ? `${t('editSubtitle')} · ${role.name}` : t('editSubtitle')}
     >
       {role ? (
-        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <FormBody onSubmit={handleSubmit}>
           <FormField htmlFor={ids.name} label={t('name')} required>
             <Input
               id={ids.name}
@@ -237,10 +213,7 @@ export function EditRoleSheet({
             />
           </FormField>
 
-          <FormField
-            htmlFor={ids.description}
-            label={`${t('description')} (${tc('optional')})`}
-          >
+          <FormField htmlFor={ids.description} label={`${t('description')} (${tc('optional')})`}>
             <Textarea
               id={ids.description}
               name="description"
@@ -255,22 +228,16 @@ export function EditRoleSheet({
             <Alert variant="error" messages={[apiMessage(update.error, t('editFailed'))!]} />
           ) : null}
 
-          <div className="flex flex-wrap justify-end gap-2 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={update.isPending}
-            >
-              {tc('cancel')}
-            </Button>
-            <Button type="submit" disabled={update.isPending}>
-              {update.isPending ? tc('saving') : tc('save')}
-            </Button>
-          </div>
-        </form>
+          <FormFooter
+            onCancel={() => onOpenChange(false)}
+            cancelLabel={tc('cancel')}
+            submitLabel={tc('save')}
+            pendingLabel={t('savePending')}
+            pending={update.isPending}
+          />
+        </FormBody>
       ) : null}
-    </FormSheet>
+    </FormSheetShell>
   );
 }
 
@@ -318,11 +285,11 @@ export function ManagePermissionsSheet({
   const loading = Boolean(role) && detail.isPending;
 
   return (
-    <FormSheet
+    <FormSheetShell
       open={Boolean(role)}
       onOpenChange={close}
       title={t('managePermissionsTitle')}
-      description={role?.name}
+      description={role ? `${t('managePermissionsSubtitle')} · ${role.name}` : t('managePermissionsSubtitle')}
     >
       {role ? (
         loading ? (
@@ -336,7 +303,7 @@ export function ManagePermissionsSheet({
         ) : detail.isError ? (
           <Alert variant="error" messages={[t('loadRoleFailed')]} />
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+          <FormBody onSubmit={handleSubmit}>
             <PermissionPicker
               selectedIds={permissionIds}
               onChange={setPermissionIds}
@@ -350,22 +317,16 @@ export function ManagePermissionsSheet({
               />
             ) : null}
 
-            <div className="flex flex-wrap justify-end gap-2 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => close(false)}
-                disabled={setPermissions.isPending}
-              >
-                {tc('cancel')}
-              </Button>
-              <Button type="submit" disabled={setPermissions.isPending}>
-                {setPermissions.isPending ? tc('saving') : tc('save')}
-              </Button>
-            </div>
-          </form>
+            <FormFooter
+              onCancel={() => close(false)}
+              cancelLabel={tc('cancel')}
+              submitLabel={tc('save')}
+              pendingLabel={t('savePending')}
+              pending={setPermissions.isPending}
+            />
+          </FormBody>
         )
       ) : null}
-    </FormSheet>
+    </FormSheetShell>
   );
 }

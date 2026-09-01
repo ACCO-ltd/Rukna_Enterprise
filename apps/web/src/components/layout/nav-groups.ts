@@ -145,12 +145,19 @@ export const NAV_DOMAINS: NavDomain[] = [
     href: '/admin',
     moduleKey: 'administration',
     iconKey: 'shield',
+    // The flat admin column mixed four different jobs — people, org data, approval
+    // governance, and evidence. They are grouped with the same `groupKey` mechanism
+    // Procurement's "Setup" uses: quiet micro-label dividers, not a second collapsible
+    // level. Every admin item carries a group so no ungrouped run leads (the sections
+    // read People → Organization → Approval governance → Evidence). Access reviews and a
+    // standalone SoD registry are DEFERRED (no backend) and deliberately absent — an item
+    // that 404s is worse than one documented in the design's deferred list.
     items: [
-      { href: '/admin/users', labelKey: 'users', iconKey: 'users' },
-      { href: '/admin/roles', labelKey: 'roles', iconKey: 'user-gear' },
-      { href: '/admin/districts', labelKey: 'districts', iconKey: 'building', permissionKey: 'manage:district' },
-      { href: '/admin/workflows', labelKey: 'workflows', iconKey: 'git-branch' },
-      { href: '/admin/audit-logs', labelKey: 'auditLogs', iconKey: 'key' },
+      { href: '/admin/users', labelKey: 'users', iconKey: 'users', groupKey: 'people' },
+      { href: '/admin/roles', labelKey: 'roles', iconKey: 'user-gear', groupKey: 'people' },
+      { href: '/admin/districts', labelKey: 'districts', iconKey: 'building', permissionKey: 'manage:district', groupKey: 'organization' },
+      { href: '/admin/workflows', labelKey: 'workflows', iconKey: 'git-branch', groupKey: 'governance' },
+      { href: '/admin/audit-logs', labelKey: 'auditLogs', iconKey: 'key', groupKey: 'evidence' },
     ],
   },
 ];

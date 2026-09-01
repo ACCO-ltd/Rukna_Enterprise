@@ -90,3 +90,34 @@ export function useSetUserRoles() {
     onSuccess: () => qc.invalidateQueries({ queryKey: userKeys.all }),
   });
 }
+
+export interface BulkStatusResult {
+  succeeded: number;
+  failed: number;
+}
+
+/**
+ * Bulk (de)activate over a set of ids. There is no bulk endpoint, so each id is a per-user
+ * call fired in parallel; `allSettled` means one rejection does not abandon the rest. The list
+ * is invalidated once, after the whole batch, so the table reflects whatever actually applied
+ * — including partial success. Self-exclusion is enforced by the caller (`bulkTargets`), not
+ * here, because it is a selection rule, not a request rule.
+ */
+export function useBulkUserStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      ids,
+      intent,
+    }: {
+      ids: string[];
+      intent: 'deactivate' | 'reactivate';
+    }): Promise<BulkStatusResult> => {
+      const run = intent === 'deactivate' ? deactivateUser : reactivateUser;
+      const results = await Promise.allSettled(ids.map((id) => run(id)));
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+      return { succeeded, failed: results.length - succeeded };
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: userKeys.all }),
+  });
+}
