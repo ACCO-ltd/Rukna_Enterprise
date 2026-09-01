@@ -447,7 +447,9 @@ export function getSupplierBill(id: string): Promise<SupplierBill> {
  * was filed and fixed for on material requests. The picker only ever offers org-scoped
  * suppliers, so this is not exploitable from the UI — recorded because it is not a UI control.
  *
- * `purchaseOrderId` is not sent. See `CreateSupplierBillPayload` and A14.
+ * `purchaseOrderId` IS sent now when the caller chose the PO-backed path (A14, merged #151):
+ * the server records the PO's ACTIVE revision and auto-matches on submit (D6). Omit it for a
+ * genuine non-PO bill. See `CreateSupplierBillPayload`.
  */
 export function createSupplierBill(
   payload: CreateSupplierBillPayload,
