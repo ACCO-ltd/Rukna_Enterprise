@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /**
  * Purchase order creation (Round 2, single-form).
@@ -51,6 +51,7 @@ import {
   PoLineEditor,
   emptyPoLine,
   orderTotalMinor,
+  poLineCostTargetIncomplete,
   poLineError,
   type PoLineDraft,
 } from './po-line-editor';
@@ -94,7 +95,9 @@ export function PoForm() {
   const submit = useSubmitPurchaseOrder();
   const approve = useApprovePurchaseOrder();
 
-  const hasLineError = lines.some((l) => poLineError(l) !== null);
+  const hasLineError = lines.some(
+    (l) => poLineError(l) !== null || poLineCostTargetIncomplete(l),
+  );
   const totalMinor = orderTotalMinor(lines);
   const totalLabel =
     totalMinor === null
@@ -111,6 +114,13 @@ export function PoForm() {
       lines: lines.map((line): CreatePoLinePayload => {
         const qty = parseMinorUnits(line.quantity, QUANTITY_SCALE) ?? 0;
         const price = parseMinorUnits(line.unitPrice, MONEY_SCALE) ?? 0;
+        // A3 (no. 148): a chargeable line sends BOTH cost-target ids; a not-chargeable
+        // (org/overhead) line sends NEITHER. The picker never yields a half-specified
+        // target, and `hasLineError` blocks submit if one somehow exists.
+        const costTarget =
+          !line.costTarget.notChargeable && line.costTarget.projectId && line.costTarget.boqNodeId
+            ? { projectId: line.costTarget.projectId, boqNodeId: line.costTarget.boqNodeId }
+            : {};
         return {
           lineType: line.lineType,
           description: line.description.trim(),
@@ -118,6 +128,7 @@ export function PoForm() {
           orderedQuantity: quantityToApi(qty),
           unitPrice: moneyToApi(price),
           ...(line.material ? { materialCode: line.material.code } : {}),
+          ...costTarget,
           // D7: spendCategoryId is derived at issue, so it is omitted (it is optional on
           // the PO-line API). D2: no mrLineAllocations — PO lines don't reference MR lines.
         };

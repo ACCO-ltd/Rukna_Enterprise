@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /**
  * Goods receipts (§12.7) — list, create and detail.
@@ -482,8 +482,12 @@ export function GrnDetail({ id }: { id: string }) {
                   ) : null}
                   {line.material?.name ?? ''}
                   {/* Read-only classification chip (D7). A GR line inherits its type from the
-                      PO line and carries no spend category or BOQ node, so only the type
-                      chip renders. */}
+                      PO line. The cost-target is inherited from the PO line too (no. 150), but the
+                      GR read model does not embed it — the GR line has no projectId/boqNodeId
+                      and the repository does not join the PO line — so no cost-target chip is
+                      shown here rather than a faked one. Tracked as a backend follow-up (see
+                      the report / no. 150): the GR line read model needs the PO line's
+                      project/boqNode for this chip to light up. Only the type chip renders. */}
                   <ClassificationChips className="mt-1.5 flex flex-wrap items-center gap-1.5" lineType={line.lineType} />
                 </TableCell>
                 <TableCell className="text-end tabular-nums">

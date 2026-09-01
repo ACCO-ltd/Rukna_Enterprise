@@ -40,6 +40,10 @@ const PO_LINES: PurchaseOrderLine[] = [
     material: { code: 'REBAR-12MM', name: '12mm Deformed Steel Rebar' },
     uom: { code: 'TON', symbol: 't' },
     spendCategory: null,
+    projectId: null,
+    boqNodeId: null,
+    project: null,
+    boqNode: null,
   },
   {
     id: 'pol-2',
@@ -54,6 +58,10 @@ const PO_LINES: PurchaseOrderLine[] = [
     material: { code: 'REBAR-16MM', name: '16mm Deformed Steel Rebar' },
     uom: { code: 'TON', symbol: 't' },
     spendCategory: null,
+    projectId: null,
+    boqNodeId: null,
+    project: null,
+    boqNode: null,
   },
 ];
 

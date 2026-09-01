@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ─── Procurement API types ──────────────────────────────────────────────────────
  *
  * Hand-written against the controllers and DTOs in
@@ -230,6 +230,25 @@ export interface PurchaseOrderSupplier {
   name: string;
 }
 
+/**
+ * The cost-target as embedded on a PO line read model (A3/D7, no. 148). Both are present
+ * together for a project-cost line, or both null for an org/overhead line. The PO detail
+ * repository (`PO_INCLUDE`) selects the project's `code`/`name` and the BOQ node's
+ * `code`/`description`, so — unlike the bill line, which sends bare ids — a PO line can be
+ * labelled without a second request.
+ */
+export interface PoLineCostTargetProject {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface PoLineCostTargetBoqNode {
+  id: string;
+  code: string;
+  description: string;
+}
+
 export interface PurchaseOrderLine {
   id: string;
   lineNumber: number;
@@ -243,6 +262,14 @@ export interface PurchaseOrderLine {
   material: Pick<Material, 'code' | 'name'> | null;
   uom: Pick<UnitOfMeasure, 'code' | 'symbol'> | null;
   spendCategory: Pick<SpendCategory, 'code' | 'name'> | null;
+  /**
+   * Cost-target (A3/D7, no. 148). Both non-null = a project-cost line; both null = org/overhead.
+   * `PO_INCLUDE` embeds the labels, so the cost-target chip can name the project and node.
+   */
+  projectId: string | null;
+  boqNodeId: string | null;
+  project: PoLineCostTargetProject | null;
+  boqNode: PoLineCostTargetBoqNode | null;
 }
 
 export interface PurchaseOrderRevision {
@@ -563,6 +590,13 @@ export interface CreatePoLinePayload {
   orderedQuantity: number;
   unitPrice: number;
   spendCategoryId?: string;
+  /**
+   * Cost-target (A3/D7, no. 148). Send BOTH for a project-cost line (the `boqNodeId` must be a
+   * leaf, active node on `projectId`'s baselined BOQ — the server validates), or OMIT both
+   * for an org/overhead line. Half-specified is a 400: `CostTargetViolationCode`.
+   */
+  projectId?: string;
+  boqNodeId?: string;
   notes?: string;
   mrLineAllocations?: MrLineAllocationPayload[];
 }

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /**
  * Amend a purchase order — the only revision-creating action (D3/B3).
@@ -41,6 +41,7 @@ import {
   PoLineEditor,
   emptyPoLine,
   orderTotalMinor,
+  poLineCostTargetIncomplete,
   poLineError,
   type PoLineDraft,
 } from './po-line-editor';
@@ -49,7 +50,14 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** Pre-fill draft lines from a revision. Material is left null — the picker resolves it. */
+/**
+ * Pre-fill draft lines from a revision. Material is left null — the picker resolves it.
+ *
+ * The cost-target is carried forward from the source line (A3/D7, no. 148): a line that pointed
+ * at a project/BOQ node keeps it, and an org/overhead line stays marked not-chargeable, so
+ * an amendment does not silently drop the cost attribution. Both ids are present together on
+ * the read model or both null, mirroring the invariant.
+ */
 function linesFromRevision(revision: PurchaseOrderRevision | null): PoLineDraft[] {
   const source = revision?.lines ?? [];
   if (source.length === 0) return [emptyPoLine('line-1')];
@@ -61,6 +69,10 @@ function linesFromRevision(revision: PurchaseOrderRevision | null): PoLineDraft[
     uomCode: line.uom?.code ?? '',
     quantity: line.orderedQuantity,
     unitPrice: line.unitPrice,
+    costTarget:
+      line.projectId && line.boqNodeId
+        ? { notChargeable: false, projectId: line.projectId, boqNodeId: line.boqNodeId }
+        : { notChargeable: true, projectId: null, boqNodeId: null },
   }));
 }
 
@@ -93,7 +105,9 @@ export function PoAmendSheet({
   const ids = { effective: useId(), address: useId(), expected: useId(), reason: useId() };
 
   const currencyCode = source?.currencyCode ?? 'USD';
-  const hasLineError = lines.some((l) => poLineError(l) !== null);
+  const hasLineError = lines.some(
+    (l) => poLineError(l) !== null || poLineCostTargetIncomplete(l),
+  );
   const reasonMissing = reason.trim().length === 0;
 
   const totalMinor = orderTotalMinor(lines);
@@ -117,6 +131,12 @@ export function PoAmendSheet({
       lines: lines.map((line): CreatePoLinePayload => {
         const qty = parseMinorUnits(line.quantity, QUANTITY_SCALE) ?? 0;
         const price = parseMinorUnits(line.unitPrice, MONEY_SCALE) ?? 0;
+        // A3 (no. 148): a chargeable line sends both cost-target ids; a not-chargeable line sends
+        // neither. The revise DTO validates the target the same way create does.
+        const costTarget =
+          !line.costTarget.notChargeable && line.costTarget.projectId && line.costTarget.boqNodeId
+            ? { projectId: line.costTarget.projectId, boqNodeId: line.costTarget.boqNodeId }
+            : {};
         return {
           lineType: line.lineType,
           description: line.description.trim(),
@@ -124,6 +144,7 @@ export function PoAmendSheet({
           orderedQuantity: quantityToApi(qty),
           unitPrice: moneyToApi(price),
           ...(line.material ? { materialCode: line.material.code } : {}),
+          ...costTarget,
         };
       }),
     };
