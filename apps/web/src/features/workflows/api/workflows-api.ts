@@ -26,7 +26,21 @@ export interface ApprovalPolicySummary {
 }
 export interface ApprovalPolicyDetail extends ApprovalPolicySummary { rules: { id: string; ruleKey: string; transactionType: string | null; priority: number; status: string; configuration: { requiredRole?: string; minAmount?: string | null; maxAmount?: string | null; fromState?: string | null; toState?: string | null } }[]; }
 export interface DraftValidation { valid: boolean; ruleCount: number; issues: { code: string; message: string; ruleId?: string; severity: 'ERROR' | 'WARNING' }[]; }
-export interface DraftSimulation { policy: { id: string; policyKey: string; version: number }; input: { transactionType: string; amount?: string; fromState?: string; toState?: string }; matched: boolean; roleChain: { ruleId: string; ruleKey: string; priority: number; requiredRole: string | null }[]; notice: string; }
+/** One rule that fired, in the resolved approval chain. Ordered by `priority` then `ruleKey`. */
+export interface DraftSimulationMatch { ruleId: string; ruleKey: string; priority: number; requiredRole: string | null; }
+/** A rule that did NOT fire, with the human reasons it was excluded (e.g. "Amount is below 10000"). */
+export interface DraftSimulationRejectedRule { ruleId: string; ruleKey: string; reasons: string[]; }
+/**
+ * The result of `POST /workflows/policies/:id/simulate` — a read-only dry-run of which rules a
+ * draft would fire for one transaction, computed by `WorkflowsService.simulateDraft`. Mirrors that
+ * return shape field-for-field, including the previously-dropped `ambiguous` flag and
+ * `rejectedRules[].reasons`, so an author can see *why* a draft behaves as it does before
+ * scheduling it. No approval instance or transaction is created.
+ *
+ * `ambiguous` is true when two firing rules share the same `priority` — the chain order between
+ * them is then undefined, which is an authoring defect the author must resolve.
+ */
+export interface DraftSimulation { policy: { id: string; policyKey: string; version: number }; input: { transactionType: string; amount?: string; fromState?: string; toState?: string }; matched: boolean; ambiguous: boolean; roleChain: DraftSimulationMatch[]; rejectedRules: DraftSimulationRejectedRule[]; notice: string; }
 export interface PolicyActivity { id: string; action: string; reason: string | null; createdAt: string; userId: string; }
 export interface PolicySodRule { id: string; code: string; description: string; isActive: boolean; }
 

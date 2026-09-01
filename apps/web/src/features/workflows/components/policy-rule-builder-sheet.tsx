@@ -42,6 +42,7 @@ import {
 } from '../hooks/use-approval-policies';
 import { policyMatrixFor } from '../policy-matrix';
 import { PolicyAddRuleForm } from './policy-add-rule-form';
+import { PolicySimulationPanel } from './policy-simulation-panel';
 import { PolicySodEditor } from './policy-sod-editor';
 import { PolicyHistoryTimeline } from './policy-history-timeline';
 
@@ -77,7 +78,7 @@ const LIFECYCLE_COPY: Record<
   },
 };
 
-type PolicyView = 'rules' | 'sod' | 'history';
+type PolicyView = 'rules' | 'sod' | 'simulate' | 'history';
 
 /**
  * The policy authoring workspace opened from the inventory.
@@ -184,6 +185,9 @@ export function PolicyRuleBuilderSheet({
   const views: { value: PolicyView; label: string }[] = [
     { value: 'rules', label: t('viewRules') },
     { value: 'sod', label: t('viewSod') },
+    // Simulation is authoring feedback on a draft — offered only to an author who can change it,
+    // and only while the version is still a DRAFT (the simulate endpoint reads the draft's rules).
+    ...(editable ? [{ value: 'simulate' as const, label: t('viewSimulate') }] : []),
     { value: 'history', label: t('viewHistory') },
   ];
 
@@ -350,6 +354,15 @@ export function PolicyRuleBuilderSheet({
               {view === 'sod' && policy ? (
                 <section className="mt-5" aria-label={t('viewSod')}>
                   <PolicySodEditor policyId={policy.id} editable={editable} />
+                </section>
+              ) : null}
+
+              {view === 'simulate' && policy && editable ? (
+                <section className="mt-5" aria-label={t('viewSimulate')}>
+                  <PolicySimulationPanel
+                    policyId={policy.id}
+                    hasRules={detail.data.rules.length > 0}
+                  />
                 </section>
               ) : null}
 
