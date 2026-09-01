@@ -178,25 +178,36 @@ export class BoqPrismaRepository {
   /**
    * Counts downstream records that reference this node — CONST-BOQ-003.
    *
-   * Only `InterimPaymentApplicationItem.boqNodeId` is a hard FK. The cost-side four are
-   * plain string columns, so the database will not stop a delete and the row would be
-   * orphaned silently. This is the check that does stop it.
+   * `InterimPaymentApplicationItem.boqNodeId` is a hard FK. The cost-side columns
+   * (`MaterialRequestLine`, `SupplierBillLine`, `JournalLine`, `CommitmentLedgerEntry`,
+   * `PurchaseOrderLine`) are nullable FKs with `ON DELETE SET NULL`, so the database will not
+   * stop a delete — it would silently null the attribution and orphan the reference. This is
+   * the check that does stop it.
    *
-   * `PurchaseOrderLine` is absent deliberately — it carries no `boqNodeId`. PO attribution
-   * to a BOQ node reaches the ledger through `CommitmentLedgerEntry`, which is counted here.
+   * `PurchaseOrderLine` is now counted (D7 / #148): a PO line carries the node directly through
+   * its cost-target `boqNodeId`, and PO approval books COMMITTED against that node. A node a
+   * cost-targeted PO line points at must be protected from deletion, or the SET-NULL would
+   * silently strip the cost attribution off the line.
    */
   async countNodeReferences(
     prisma: PrismaClient,
     nodeId: string,
   ): Promise<{ source: string; count: number }[]> {
-    const [ipaItems, materialRequestLines, supplierBillLines, journalLines, commitments] =
-      await Promise.all([
-        prisma.interimPaymentApplicationItem.count({ where: { boqNodeId: nodeId } }),
-        prisma.materialRequestLine.count({ where: { boqNodeId: nodeId } }),
-        prisma.supplierBillLine.count({ where: { boqNodeId: nodeId } }),
-        prisma.journalLine.count({ where: { boqNodeId: nodeId } }),
-        prisma.commitmentLedgerEntry.count({ where: { boqNodeId: nodeId } }),
-      ]);
+    const [
+      ipaItems,
+      materialRequestLines,
+      supplierBillLines,
+      journalLines,
+      commitments,
+      purchaseOrderLines,
+    ] = await Promise.all([
+      prisma.interimPaymentApplicationItem.count({ where: { boqNodeId: nodeId } }),
+      prisma.materialRequestLine.count({ where: { boqNodeId: nodeId } }),
+      prisma.supplierBillLine.count({ where: { boqNodeId: nodeId } }),
+      prisma.journalLine.count({ where: { boqNodeId: nodeId } }),
+      prisma.commitmentLedgerEntry.count({ where: { boqNodeId: nodeId } }),
+      prisma.purchaseOrderLine.count({ where: { boqNodeId: nodeId } }),
+    ]);
 
     return [
       { source: 'paymentApplicationItems', count: ipaItems },
@@ -204,6 +215,7 @@ export class BoqPrismaRepository {
       { source: 'supplierBillLines', count: supplierBillLines },
       { source: 'journalLines', count: journalLines },
       { source: 'commitmentLedgerEntries', count: commitments },
+      { source: 'purchaseOrderLines', count: purchaseOrderLines },
     ].filter((entry) => entry.count > 0);
   }
 

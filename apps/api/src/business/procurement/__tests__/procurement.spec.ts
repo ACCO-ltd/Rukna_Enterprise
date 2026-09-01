@@ -32,6 +32,7 @@ import {
   buildProcurementServices,
   type ProcurementServices,
 } from './helpers/build-procurement-services.js';
+import { BoqPrismaRepository } from '../../construction/boq/infrastructure/boq-prisma.repository.js';
 
 const prisma = new PrismaClient();
 let env: ProcurementTestEnv;
@@ -891,4 +892,150 @@ test('T21 — PO approval writes a COMMITTED entry carrying the line projectId/b
   });
   expect(orgEntry.projectId).toBeNull();
   expect(orgEntry.boqNodeId).toBeNull();
+});
+
+// ── D7 Goods-Receipt cost-target inheritance ──────────────────────────────────
+// A GR does not re-pick or validate a cost-target — it copies the originating PO line's
+// authoritative projectId/boqNodeId onto its commitment writes (the ACCRUED movement and the
+// COMMITTED reduction). This is what makes per-project commitment net out (COMMITTED − ACCRUED).
+
+/** Create + approve a PO whose single line carries a project cost-target, and return the active revision. */
+async function createApprovedCostTargetedPo(qty = 10, price = 100) {
+  const po = await svc.poService.create(identity(env), {
+    supplierId: env.supplierId,
+    currencyCode: 'USD',
+    effectiveFrom: '2026-08-15',
+    lines: [costTargetLine(qty, price)],
+  });
+  await svc.poService.submit(identity(env), po!.id);
+  await svc.poService.approve(identity(env), po!.id);
+  const activeRev = await prisma.purchaseOrderRevision.findFirstOrThrow({
+    where: { purchaseOrderId: po!.id, status: 'ACTIVE' },
+    include: { lines: { orderBy: { lineNumber: 'asc' } } },
+  });
+  return { poId: po!.id, activeRev };
+}
+
+// ── T22: GR against a project-attributed PO line inherits the target on both writes ──
+test('T22 — GRN post against a cost-targeted PO line writes ACCRUED and COMMITTED-reduction carrying the PO line projectId/boqNodeId', async () => {
+  const { poId, activeRev } = await createApprovedCostTargetedPo(10, 100);
+  const poLine = activeRev.lines[0];
+
+  // Receive and accept all 10.
+  const grn = await createAndPostGrn(poId, poLine.id, 10, 10);
+  const grnLine = grn.lines[0];
+
+  const accrued = await prisma.commitmentLedgerEntry.findUniqueOrThrow({
+    where: { idempotencyKey: `grn-accrued-${grn.id}-${grnLine.id}` },
+  });
+  const committedReduction = await prisma.commitmentLedgerEntry.findUniqueOrThrow({
+    where: { idempotencyKey: `grn-committed-${grn.id}-${grnLine.id}` },
+  });
+
+  // Both movements inherit the PO line's cost-target — same project/node the PO booked COMMITTED to.
+  expect(accrued.stage).toBe('ACCRUED');
+  expect(accrued.projectId).toBe(env.projectId);
+  expect(accrued.boqNodeId).toBe(env.boqNodeId);
+
+  expect(committedReduction.stage).toBe('COMMITTED');
+  expect(committedReduction.projectId).toBe(env.projectId);
+  expect(committedReduction.boqNodeId).toBe(env.boqNodeId);
+});
+
+// ── T23: GR against an org line stays null (unchanged) ────────────────────────
+test('T23 — GRN post against an org/overhead PO line writes commitment entries with null cost-target', async () => {
+  const po = await svc.poService.create(identity(env), {
+    supplierId: env.supplierId,
+    currencyCode: 'USD',
+    effectiveFrom: '2026-08-15',
+    lines: [
+      // MATERIAL org line: no projectId/boqNodeId. MATERIAL is required so a GRN line can be received.
+      {
+        lineType: 'MATERIAL',
+        materialCode: 'REBAR-12',
+        description: 'Warehouse restock — no project',
+        uomCode: 'TON',
+        orderedQuantity: 10,
+        unitPrice: 100,
+        spendCategoryId: env.spendCategoryId,
+      },
+    ],
+  });
+  await svc.poService.submit(identity(env), po!.id);
+  await svc.poService.approve(identity(env), po!.id);
+  const activeRev = await prisma.purchaseOrderRevision.findFirstOrThrow({
+    where: { purchaseOrderId: po!.id, status: 'ACTIVE' },
+    include: { lines: { orderBy: { lineNumber: 'asc' } } },
+  });
+  const poLine = activeRev.lines[0];
+  expect(poLine.projectId).toBeNull();
+  expect(poLine.boqNodeId).toBeNull();
+
+  const grn = await createAndPostGrn(po!.id, poLine.id, 10, 10);
+  const grnLine = grn.lines[0];
+
+  const accrued = await prisma.commitmentLedgerEntry.findUniqueOrThrow({
+    where: { idempotencyKey: `grn-accrued-${grn.id}-${grnLine.id}` },
+  });
+  const committedReduction = await prisma.commitmentLedgerEntry.findUniqueOrThrow({
+    where: { idempotencyKey: `grn-committed-${grn.id}-${grnLine.id}` },
+  });
+
+  expect(accrued.projectId).toBeNull();
+  expect(accrued.boqNodeId).toBeNull();
+  expect(committedReduction.projectId).toBeNull();
+  expect(committedReduction.boqNodeId).toBeNull();
+});
+
+// ── T24: per-project commitment nets out (COMMITTED − ACCRUED) ────────────────
+test('T24 — after GR, per-project commitment nets out: COMMITTED − ACCRUED equals the unreceived balance', async () => {
+  // Order 10 @ 100 = 1000 COMMITTED to the project/node. Receive+accept 6 = 600 ACCRUED,
+  // and a −600 COMMITTED reduction, both attributed to the same project/node. So the net
+  // remaining COMMITTED for this PO's node is 1000 − 600 = 400 (the 4 units not yet received).
+  //
+  // The netting is scoped to this PO (env.projectId/boqNodeId are shared across the suite, so
+  // other tests leave entries on the same node). What this proves is the D7 point: because the
+  // GR inherited the PO line's projectId/boqNodeId, the PO's COMMITTED and the GR's ACCRUED /
+  // COMMITTED-reduction all carry the SAME cost-target and therefore net against each other —
+  // before this task the GR wrote null, so they could not net.
+  const { poId, activeRev } = await createApprovedCostTargetedPo(10, 100);
+  const poLine = activeRev.lines[0];
+
+  await createAndPostGrn(poId, poLine.id, 6, 6);
+
+  const rows = await prisma.commitmentLedgerEntry.findMany({
+    where: { organizationId: env.orgId, purchaseOrderId: poId },
+  });
+
+  // Every entry for this PO carries the inherited cost-target — the precondition for netting.
+  expect(rows.length).toBeGreaterThan(0);
+  expect(rows.every((r) => r.projectId === env.projectId && r.boqNodeId === env.boqNodeId)).toBe(
+    true,
+  );
+
+  const sumStage = (stage: string) =>
+    rows
+      .filter((r) => r.stage === stage)
+      .reduce((sum, r) => sum.add(r.amount as Decimal), new Decimal(0));
+
+  const netCommitted = sumStage('COMMITTED'); // +1000 (PO approve) − 600 (GR reduction) = 400
+  const accrued = sumStage('ACCRUED'); // +600 (GR)
+
+  expect(netCommitted.equals(new Decimal('400'))).toBe(true);
+  expect(accrued.equals(new Decimal('600'))).toBe(true);
+});
+
+// ── T25: soft-delete guard now counts a cost-targeted PO line (follow-up from #148) ──
+test('T25 — countNodeReferences counts a PO line referencing the node, protecting it from deletion', async () => {
+  const boqRepo = new BoqPrismaRepository();
+
+  // Baseline: the fixture node has no references from a fresh state check other than what prior
+  // tests may have added; assert the PO-line source specifically after we create one.
+  await createApprovedCostTargetedPo(5, 100); // its single line carries boqNodeId = env.boqNodeId
+
+  const references = await boqRepo.countNodeReferences(prisma, env.boqNodeId);
+  const poLineRef = references.find((r) => r.source === 'purchaseOrderLines');
+
+  expect(poLineRef).toBeTruthy();
+  expect(poLineRef!.count).toBeGreaterThan(0);
 });
