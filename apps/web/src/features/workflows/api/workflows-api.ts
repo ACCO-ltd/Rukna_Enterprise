@@ -1,6 +1,11 @@
 import { ApiError, apiClient } from '@/lib/api-client';
 
 import type {
+  ApprovalPolicyComparison,
+  ApprovalPolicyVersionHistory,
+} from '@erp/types';
+
+import type {
   WorkflowDefinition,
   WorkflowStep,
   WorkflowTransactionType,
@@ -47,6 +52,26 @@ export function getApprovalPolicyHistory(id: string): Promise<PolicyActivity[]> 
 export function cloneApprovalPolicy(id: string, reason: string): Promise<ApprovalPolicySummary> { return apiClient<ApprovalPolicySummary>(`/workflows/policies/${id}/clone`, { method: 'POST', body: JSON.stringify({ reason }) }); }
 export function getApprovalPolicySodRules(id: string): Promise<PolicySodRule[]> { return apiClient<PolicySodRule[]>(`/workflows/policies/${id}/sod-rules`); }
 export function upsertApprovalPolicySodRule(id: string, payload: Omit<PolicySodRule, 'id'>): Promise<PolicySodRule> { return apiClient<PolicySodRule>(`/workflows/policies/${id}/sod-rules`, { method: 'POST', body: JSON.stringify(payload) }); }
+
+/**
+ * `GET /workflows/policies/by-key/:policyKey/versions` — every version of one policyKey, newest
+ * first (ADR-027 GOV-ADM-005). Backs the version-history list and the two version pickers in the
+ * comparison view. Read-only.
+ */
+export function getApprovalPolicyVersionsByKey(policyKey: string): Promise<ApprovalPolicyVersionHistory> {
+  return apiClient<ApprovalPolicyVersionHistory>(`/workflows/policies/by-key/${encodeURIComponent(policyKey)}/versions`);
+}
+
+/**
+ * `GET /workflows/policies/compare?base=<id>&target=<id>` — the rule- and SoD-level diff between two
+ * versions of the same policyKey. Used both by the free comparison view and by the rollback preview,
+ * where `base` is the currently ACTIVE version and `target` is the older version being rolled back to,
+ * so the diff reads as "what activating this rollback would change". Read-only.
+ */
+export function compareApprovalPolicyVersions(baseId: string, targetId: string): Promise<ApprovalPolicyComparison> {
+  const query = new URLSearchParams({ base: baseId, target: targetId }).toString();
+  return apiClient<ApprovalPolicyComparison>(`/workflows/policies/compare?${query}`);
+}
 
 /**
  * `GET /workflows/bindings` — the governance configuration the organization is subject to: every

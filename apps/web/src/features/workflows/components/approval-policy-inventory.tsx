@@ -27,17 +27,21 @@ import type { ApprovalPolicySummary } from '../api/workflows-api';
 import { useApprovalPolicies, useCreateApprovalPolicyDraft } from '../hooks/use-approval-policies';
 import { PolicyRuleBuilderSheet } from './policy-rule-builder-sheet';
 import { ClonePolicyDialog } from './clone-policy-dialog';
+import { PolicyVersionComparisonSheet } from './policy-version-comparison-sheet';
 
 export function ApprovalPolicyInventory() {
   const t = useTranslations('platform.workflows.policies');
   const { can } = usePermissions();
   const canManage = can('manage:workflow');
+  // Comparison and version history are reads — gated by the view permission, not the manage one.
+  const canView = can('view:workflow');
 
   const { data = [], isPending, isError } = useApprovalPolicies();
   const create = useCreateApprovalPolicyDraft();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<ApprovalPolicySummary | null>(null);
   const [cloneTarget, setCloneTarget] = useState<ApprovalPolicySummary | null>(null);
+  const [compareKey, setCompareKey] = useState<string | null>(null);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -76,6 +80,7 @@ export function ApprovalPolicyInventory() {
                 <TableHead>{t('colStatus')}</TableHead>
                 <TableHead className="text-end">{t('colVersion')}</TableHead>
                 <TableHead className="text-end">{t('colRules')}</TableHead>
+                {canView ? <TableHead className="text-end">{t('colActions')}</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -94,6 +99,19 @@ export function ApprovalPolicyInventory() {
                   </TableCell>
                   <TableCell className="text-end tabular-nums">v{policy.version}</TableCell>
                   <TableCell className="text-end tabular-nums">{policy.ruleCount}</TableCell>
+                  {canView ? (
+                    <TableCell className="text-end whitespace-nowrap">
+                      <Button
+                        variant="ghost"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setCompareKey(policy.policyKey);
+                        }}
+                      >
+                        {t('compareVersions')}
+                      </Button>
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               ))}
             </TableBody>
@@ -120,6 +138,15 @@ export function ApprovalPolicyInventory() {
           setSelected(draft);
         }}
       />
+
+      {canView ? (
+        <PolicyVersionComparisonSheet
+          policyKey={compareKey}
+          onOpenChange={(value) => {
+            if (!value) setCompareKey(null);
+          }}
+        />
+      ) : null}
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent className="p-6">
