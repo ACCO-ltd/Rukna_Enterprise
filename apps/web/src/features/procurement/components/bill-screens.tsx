@@ -47,6 +47,7 @@ import { useSupplierBill, useSupplierBills } from '../hooks/use-procurement';
 import { canPostBill } from '../quantities';
 import type { SupplierBill } from '../types';
 import { BillActionBar } from './bill-actions-bar';
+import { ClassificationChips } from './classification-chips';
 import { BillMatchingTab } from './bill-matching';
 import { BillMatchStatusBadge, PostingStatusBadge, ProcurementStatusBadge } from './procurement-badges';
 
@@ -248,7 +249,17 @@ export function SupplierBillDetail({ id }: { id: string }) {
                     {bill.lines.map((line) => (
                       <TableRow key={line.id}>
                         <TableCell className="text-end tabular-nums">{line.lineNumber}</TableCell>
-                        <TableCell className="text-sm">{line.description}</TableCell>
+                        <TableCell className="text-sm">
+                          {line.description}
+                          {/* Read-only classification chip (D7). A bill line carries a
+                              boqNodeId when it is booked to a cost target; the chip states
+                              that a target is set without naming the BOQ path the read model
+                              does not send. */}
+                          <ClassificationChips
+                            className="mt-1.5 flex flex-wrap items-center gap-1.5"
+                            hasCostTarget={Boolean(line.boqNodeId)}
+                          />
+                        </TableCell>
                         <TableCell className="text-end tabular-nums">
                           {line.quantity ?? tc('notAvailable')}
                         </TableCell>

@@ -58,6 +58,12 @@
     "SERVICE": "Service",
     "OTHER": "Other"
   },
+  "classification": {
+    "spendCategory": "Spend category",
+    "costTarget": "Cost target",
+    "costTargetSet": "Set",
+    "costTargetNone": "Not captured on the order line"
+  },
   "status": {
     "DRAFT": "Draft",
     "SUBMITTED": "Submitted",

@@ -39,6 +39,7 @@ import { useProjects } from '@/features/projects/hooks/use-projects';
 
 import { useProjectCommitmentSummary, useProjectCommitments } from '../hooks/use-procurement';
 import type { CommitmentStage } from '../types';
+import { ClassificationChips } from './classification-chips';
 import { CommitmentStageTag } from './procurement-badges';
 
 const STAGES: CommitmentStage[] = ['COMMITTED', 'ACCRUED', 'ACTUAL'];
@@ -325,6 +326,15 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
                               {tSource(entry.sourceDocumentType)}
                             </span>
                           )}
+                          {/* Read-only cost-target chip (D7). A commitment entry carries a
+                              boqNodeId when it is attributed to a cost target; only the id is
+                              sent, so the chip states a target is set without naming it. The
+                              spendCategoryId is likewise id-only, so no spend-category chip is
+                              faked here. */}
+                          <ClassificationChips
+                            className="mt-1.5 flex flex-wrap items-center gap-1.5"
+                            hasCostTarget={Boolean(entry.boqNodeId)}
+                          />
                         </TableCell>
                       </TableRow>
                     ))

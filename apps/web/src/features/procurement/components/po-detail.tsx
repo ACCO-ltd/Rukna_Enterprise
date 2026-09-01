@@ -31,7 +31,7 @@
 import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Badge, Button } from '@erp/ui';
+import { Alert, Button } from '@erp/ui';
 import { WorkflowTransactionType } from '@erp/types';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
@@ -49,6 +49,7 @@ import {
 } from '../hooks/use-procurement';
 import { activeRevision, revisionTotalMinor } from '../quantities';
 import type { PurchaseOrder, PurchaseOrderRevision } from '../types';
+import { ClassificationChips } from './classification-chips';
 import { PoAmendSheet } from './po-amend-sheet';
 import { ProcurementStatusBadge } from './procurement-badges';
 
@@ -328,7 +329,6 @@ function RevisionPanel({
 }) {
   const t = useTranslations('procurement.po');
   const tc = useTranslations('procurement.common');
-  const tType = useTranslations('procurement.lineType');
 
   const lines = revision.lines ?? [];
   const totalMinor = revisionTotalMinor(lines);
@@ -398,16 +398,15 @@ function RevisionPanel({
                     {' × '}
                     {formatMoney(line.unitPrice, revision.currencyCode, locale)}
                   </p>
-                  {/* Read-only classification chips */}
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    <Badge tone="neutral">{tType(line.lineType)}</Badge>
-                    <Badge tone="neutral">
-                      {tc('spendCategory')}: {line.spendCategory?.name ?? t('derivedOnIssue')}
-                    </Badge>
-                    <Badge tone="neutral">
-                      {tc('boqNode')}: {t('costTargetNotCaptured')}
-                    </Badge>
-                  </div>
+                  {/* Read-only classification chips (D7). Spend category shows the value
+                      when the line carries one, or "Derived on issue" until then. A PO line
+                      has no BOQ node (A3), so no cost-target chip renders — omitted, not
+                      faked. */}
+                  <ClassificationChips
+                    className="mt-2 flex flex-wrap items-center gap-1.5"
+                    lineType={line.lineType}
+                    spendCategoryName={line.spendCategory?.name ?? t('derivedOnIssue')}
+                  />
                 </div>
                 <p className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
                   {formatMoney(line.extendedAmount, revision.currencyCode, locale)}

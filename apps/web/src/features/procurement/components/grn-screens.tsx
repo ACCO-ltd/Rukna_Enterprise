@@ -53,6 +53,7 @@ import {
   submittableGrnLines,
   type GrnLineDraft,
 } from './grn-line-editor';
+import { ClassificationChips } from './classification-chips';
 import { ProcurementStatusBadge } from './procurement-badges';
 import { QuantitySplit } from './material-picker';
 
@@ -480,6 +481,10 @@ export function GrnDetail({ id }: { id: string }) {
                     </span>
                   ) : null}
                   {line.material?.name ?? ''}
+                  {/* Read-only classification chip (D7). A GR line inherits its type from the
+                      PO line and carries no spend category or BOQ node, so only the type
+                      chip renders. */}
+                  <ClassificationChips className="mt-1.5 flex flex-wrap items-center gap-1.5" lineType={line.lineType} />
                 </TableCell>
                 <TableCell className="text-end tabular-nums">
                   {formatNumber(line.orderedQuantity, locale)}
