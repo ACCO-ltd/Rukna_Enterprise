@@ -66,6 +66,7 @@ describe('Accounting SoD wiring (ADR-022)', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never, // commandGovernance — approve() does not consult the seam
       sod as never,
     );
 
@@ -95,6 +96,7 @@ describe('Accounting SoD wiring (ADR-022)', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never, // commandGovernance — approve() does not consult the seam
       sod as never,
     );
 
