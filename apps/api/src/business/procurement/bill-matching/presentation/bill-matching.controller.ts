@@ -46,11 +46,19 @@ export class BillMatchingController {
     return this.service.findByBillId(identity, billId);
   }
 
+  // D6 — matching is auto-run on bill submit (SupplierBillService.submit), so this is NOT a routine
+  // step. It is retained (not deprecated) for the re-match after an exception is resolved by a PO
+  // revision or a receipt correction (ADR-018 CONST-MATCH-010/011: recommit + rematch clears the
+  // EXCEPTION). It is idempotent — re-running a clean bill produces the same verdict.
   @Post(':billId/run')
   @RequirePermissions(PERMISSIONS.payablesManage)
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'billId' })
-  @ApiOperation({ summary: 'Run two-way or three-way matching for a supplier bill' })
+  @ApiOperation({
+    summary:
+      'Re-run matching for a supplier bill. Not required in the normal flow (matching auto-runs on ' +
+      'submit); used to re-match after a PO revision or receipt correction clears an exception.',
+  })
   runMatching(@CurrentUser() identity: RequestIdentity, @Param('billId') billId: string) {
     return this.service.runMatching(identity, billId);
   }

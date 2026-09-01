@@ -35,6 +35,19 @@ export interface CreateSupplierBillData {
   }[];
 }
 
+// D7 (capture-once, inherit downstream): the cost-target a PO-backed bill line inherits from its
+// matched PO line. Both set = a project-cost line; both null = an org/overhead line. Resolved from the
+// SupplierBillMatch (guaranteed present for a PO-backed bill by the posting gate) so the ACTUAL/ACCRUED
+// commitment attributes to the SAME project/node the PO COMMITTED and the GRN ACCRUED used — and the
+// ledger nets per project/node.
+export interface BillLineCostTarget {
+  supplierBillLineId: string;
+  purchaseOrderLineId: string;
+  projectId: string | null;
+  boqNodeId: string | null;
+  spendCategoryId: string | null;
+}
+
 @Injectable()
 export class SupplierBillRepository {
   findById(prisma: TenantPrisma, organizationId: string, id: string) {
@@ -118,5 +131,24 @@ export class SupplierBillRepository {
 
   updateOutstandingAmount(prisma: TenantPrisma, id: string, outstandingAmount: Decimal) {
     return prisma.supplierBill.update({ where: { id }, data: { outstandingAmount } });
+  }
+
+  // D7 — resolve each bill line's inherited cost-target from the bill's match. The match links every
+  // bill line to its PO line; the PO line carries the authoritative projectId/boqNodeId (A3/D7, #148).
+  // Org/overhead PO lines carry null → the ACTUAL entry attributes to no project, exactly as the PO
+  // COMMITTED did. Returns [] when there is no match (a non-PO bill never reaches the ACTUAL path).
+  async findBillLineCostTargets(prisma: TenantPrisma, billId: string): Promise<BillLineCostTarget[]> {
+    const match = await prisma.supplierBillMatch.findUnique({
+      where: { supplierBillId: billId },
+      include: { lines: { include: { purchaseOrderLine: true } } },
+    });
+    if (!match) return [];
+    return match.lines.map((l) => ({
+      supplierBillLineId: l.supplierBillLineId,
+      purchaseOrderLineId: l.purchaseOrderLineId,
+      projectId: l.purchaseOrderLine.projectId,
+      boqNodeId: l.purchaseOrderLine.boqNodeId,
+      spendCategoryId: l.purchaseOrderLine.spendCategoryId,
+    }));
   }
 }

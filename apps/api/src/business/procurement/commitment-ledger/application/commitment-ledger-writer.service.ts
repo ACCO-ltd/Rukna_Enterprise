@@ -45,6 +45,15 @@ export class CommitmentLedgerWriter {
     return this.repo.findByIdempotencyKey(prisma, key);
   }
 
+  existsForSourceAndStage(
+    prisma: TenantPrisma,
+    sourceDocumentType: CommitmentSourceDocType,
+    sourceDocumentId: string,
+    stage: CommitmentStage,
+  ) {
+    return this.repo.existsForSourceAndStage(prisma, sourceDocumentType, sourceDocumentId, stage);
+  }
+
   queryByPoLineAndStage(
     prisma: TenantPrisma,
     organizationId: string,

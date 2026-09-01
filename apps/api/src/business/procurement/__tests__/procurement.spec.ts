@@ -629,9 +629,19 @@ test('T12 — SupplierBill post writes ACCRUED reversal + ACTUAL entry exactly o
   expect(accruedReversal).toBeTruthy();
   expect(new Decimal(actualEntry!.amount.toString()).equals(new Decimal('50000'))).toBe(true);
   expect(new Decimal(accruedReversal!.amount.toString()).equals(new Decimal('-50000'))).toBe(true);
-  // Verify idempotency keys are unique
-  expect(actualEntry!.idempotencyKey).toBe(`bill-actual-${bill.id}`);
-  expect(accruedReversal!.idempotencyKey).toBe(`bill-actual-${bill.id}-accrued`);
+  // A14/D7: the movement is now written PER BILL LINE so each entry can carry its own cost-target.
+  // Keys are per line (this bill has a single line). Idempotency is guarded by any ACTUAL already
+  // existing for the bill's source document, so a re-post is a clean no-op (proven below).
+  expect(actualEntry!.idempotencyKey).toMatch(new RegExp(`^bill-actual-${bill.id}-`));
+  expect(accruedReversal!.idempotencyKey).toMatch(new RegExp(`^bill-accrued-rev-${bill.id}-`));
+
+  // Exactly one ACTUAL and one ACCRUED reversal for this single-line bill (no phantom sentinel rows).
+  const actuals = entries.filter((e) => e.stage === 'ACTUAL');
+  const accruedRevs = entries.filter(
+    (e) => e.stage === 'ACCRUED' && new Decimal(e.amount.toString()).lessThan(0),
+  );
+  expect(actuals).toHaveLength(1);
+  expect(accruedRevs).toHaveLength(1);
 });
 
 // ── T13: CommitmentLedger idempotency ────────────────────────────────────────

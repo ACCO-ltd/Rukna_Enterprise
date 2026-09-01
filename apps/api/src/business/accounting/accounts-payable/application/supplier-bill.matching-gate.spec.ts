@@ -43,9 +43,10 @@ function build(matchStatus: string) {
     accountRepo as never,
     {} as never,
     {} as never,
-    {} as never,
-    {} as never,
-    {} as never,
+    {} as never, // commitmentWriter
+    {} as never, // billMatching (unused by the post gate)
+    {} as never, // commandGovernance
+    {} as never, // sod
   );
   return { svc, accountRepo };
 }

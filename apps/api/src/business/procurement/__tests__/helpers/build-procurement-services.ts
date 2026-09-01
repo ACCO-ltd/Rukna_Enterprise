@@ -130,6 +130,7 @@ export function buildProcurementServices(prisma: PrismaClient): ProcurementServi
     sequenceRepo,
     postingService,
     commitmentWriter,
+    billMatchingService,
     commandGovernance,
     sod,
   );

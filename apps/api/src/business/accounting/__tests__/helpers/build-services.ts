@@ -28,6 +28,8 @@ import { SupplierBillService }       from '../../accounts-payable/application/su
 import { SupplierPaymentService }    from '../../accounts-payable/application/supplier-payment.service.js';
 import { CommitmentLedgerRepository } from '../../../procurement/commitment-ledger/infrastructure/commitment-ledger.repository.js';
 import { CommitmentLedgerWriter }     from '../../../procurement/commitment-ledger/application/commitment-ledger-writer.service.js';
+import { BillMatchRepository }        from '../../../procurement/bill-matching/infrastructure/bill-match.repository.js';
+import { BillMatchingService }        from '../../../procurement/bill-matching/application/bill-matching.service.js';
 
 // Workflows / governance seam (ADR-011)
 import { WorkflowTriggerResolverService } from '../../../../platform/workflows/application/workflow-trigger-resolver.service.js';
@@ -115,7 +117,8 @@ export function buildServices(prisma: PrismaClient): AccountingServices {
     requiresDualControl: async () => false,
     isActiveSignatory: async () => false,
   } as unknown as import('../../accounting-core/application/bank-account-signatory.service.js').BankAccountSignatoryService;
-  const supplierBillService    = new SupplierBillService(tenancy, supplierBillRepo, accountRepo, sequenceRepo, postingService, commitmentWriter, commandGovernance, sod);
+  const billMatchingService    = new BillMatchingService(tenancy, new BillMatchRepository());
+  const supplierBillService    = new SupplierBillService(tenancy, supplierBillRepo, accountRepo, sequenceRepo, postingService, commitmentWriter, billMatchingService, commandGovernance, sod);
   const supplierPaymentService = new SupplierPaymentService(tenancy, supplierPaymentRepo, supplierBillRepo, accountRepo, sequenceRepo, postingService, commandGovernance, sod, signatoryService);
 
   // Phase 3 — GL reports and period management

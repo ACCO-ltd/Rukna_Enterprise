@@ -239,21 +239,22 @@ export class GoodsReceiptService {
 
         const accrualAmount = acceptedQty.mul(unitPrice);
 
-        // Cost attribution (A3/D7). Inherit the originating PO line's cost-target read-only — the
-        // GR never re-picks or re-validates it. Both the ACCRUED movement and the COMMITTED
-        // reduction must carry the SAME project/node the PO approval booked its COMMITTED against,
-        // so per-project commitment nets out (COMMITTED − ACCRUED). Org lines → null, unchanged.
-        const projectId = poLine.projectId ?? undefined;
-        const boqNodeId = poLine.boqNodeId ?? undefined;
+        // Cost attribution (A3/D7): inherit the PO line's cost-target so COMMITTED→ACCRUED nets per
+        // project/node, and the downstream bill ACTUAL nets against the SAME dimension. Org/overhead
+        // PO lines carry null — the movement then attributes to no project, exactly as the PO
+        // COMMITTED did. sourceLineId stays the GRN line id (its own identity for idempotency).
+        const costTarget = {
+          projectId: poLine.projectId ?? undefined,
+          boqNodeId: poLine.boqNodeId ?? undefined,
+        };
 
         // COMMITTED reduction
         await this.commitmentWriter.committed(tx, {
           organizationId: orgId,
-          projectId,
-          boqNodeId,
           supplierId: grn.supplierId,
           purchaseOrderId: grn.purchaseOrderId,
           spendCategoryId: line.spendCategoryId ?? undefined,
+          ...costTarget,
           amount: accrualAmount.negated(),
           currencyCode: activeRev.currencyCode,
           sourceDocumentType: 'GOODS_RECEIPT',
@@ -267,11 +268,10 @@ export class GoodsReceiptService {
         // ACCRUED increase
         await this.commitmentWriter.accrued(tx, {
           organizationId: orgId,
-          projectId,
-          boqNodeId,
           supplierId: grn.supplierId,
           purchaseOrderId: grn.purchaseOrderId,
           spendCategoryId: line.spendCategoryId ?? undefined,
+          ...costTarget,
           amount: accrualAmount,
           currencyCode: activeRev.currencyCode,
           sourceDocumentType: 'GOODS_RECEIPT',
