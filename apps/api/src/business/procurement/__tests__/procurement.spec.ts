@@ -722,3 +722,173 @@ test('T15 — Organisation isolation: org2 cannot see org1 POs, MRs, or commitme
     await ProcurementFixtureFactory.cleanup(prisma, env2.orgId);
   }
 });
+
+// ── PO line cost-target (A3/D7) ───────────────────────────────────────────────
+// The fixture's env.boqNodeId is a baselined leaf node on env.projectId's BOQ, so it is a
+// valid cost-target out of the box. These tests need the 20260901120000_po_line_cost_target
+// migration applied (adds project_id / boq_node_id to purchase_order_lines).
+
+/** A minimal, valid project-cost-relevant PO line pointing at the fixture's leaf node. */
+function costTargetLine(qty = 10, price = 100) {
+  return {
+    lineType: 'MATERIAL' as const,
+    materialCode: 'REBAR-12',
+    description: '12mm Rebar',
+    uomCode: 'TON',
+    orderedQuantity: qty,
+    unitPrice: price,
+    spendCategoryId: env.spendCategoryId,
+    projectId: env.projectId,
+    boqNodeId: env.boqNodeId,
+  };
+}
+
+// ── T16: create persists a valid cost-target on the line ─────────────────────
+test('T16 — PO create with a project-cost-relevant line persists projectId + boqNodeId', async () => {
+  const po = await svc.poService.create(identity(env), {
+    supplierId: env.supplierId,
+    currencyCode: 'USD',
+    effectiveFrom: '2026-08-15',
+    lines: [costTargetLine()],
+  });
+
+  const line = po!.revisions[0].lines[0];
+  expect(line.projectId).toBe(env.projectId);
+  expect(line.boqNodeId).toBe(env.boqNodeId);
+  // Read model carries label info for the chip.
+  expect(line.boqNode?.code).toBe('BN-001');
+  expect(line.project?.code).toBe('PRJ-001');
+});
+
+// ── T17: an org line with no cost-target is allowed (A3 exception) ───────────
+test('T17 — PO create with an org/overhead line (no cost-target) is allowed and stores null', async () => {
+  const po = await svc.poService.create(identity(env), {
+    supplierId: env.supplierId,
+    currencyCode: 'USD',
+    effectiveFrom: '2026-08-15',
+    lines: [
+      {
+        lineType: 'OTHER',
+        description: 'Central office printer',
+        uomCode: 'TON',
+        orderedQuantity: 1,
+        unitPrice: 300,
+      },
+    ],
+  });
+
+  const line = po!.revisions[0].lines[0];
+  expect(line.projectId).toBeNull();
+  expect(line.boqNodeId).toBeNull();
+});
+
+// ── T18: half-specified cost-targets are rejected ─────────────────────────────
+test('T18 — a project without a node (and a node without a project) is rejected with 400', async () => {
+  await expect(
+    svc.poService.create(identity(env), {
+      supplierId: env.supplierId,
+      currencyCode: 'USD',
+      effectiveFrom: '2026-08-15',
+      lines: [{ ...costTargetLine(), boqNodeId: undefined }],
+    }),
+  ).rejects.toThrow(/both a project and a BOQ node/i);
+
+  await expect(
+    svc.poService.create(identity(env), {
+      supplierId: env.supplierId,
+      currencyCode: 'USD',
+      effectiveFrom: '2026-08-15',
+      lines: [{ ...costTargetLine(), projectId: undefined }],
+    }),
+  ).rejects.toThrow(/both a project and a BOQ node/i);
+});
+
+// ── T19: a boqNode not belonging to the given project → 400 ──────────────────
+test('T19 — a boqNode on a different project than projectId is rejected with 400', async () => {
+  // Stand up a second project + BOQ + leaf node in the same org.
+  const project2 = await prisma.project.create({
+    data: {
+      organizationId: env.orgId, code: 'PRJ-002', name: 'Second Site',
+      status: 'ACTIVE', commercialModel: 'CLIENT_CONTRACT', participationModel: 'SOLE',
+      createdBy: env.identity.userId,
+    },
+  });
+  const boq2 = await prisma.boq.create({ data: { projectId: project2.id, organizationId: env.orgId } });
+  const ver2 = await prisma.boqVersion.create({
+    data: { boqId: boq2.id, versionNumber: 1, status: 'BASELINED', createdBy: env.identity.userId },
+  });
+  const node2 = await prisma.boqNode.create({
+    data: {
+      boqId: boq2.id, versionId: ver2.id, parentId: null,
+      code: 'BN-P2-001', path: 'BN-P2-001', description: 'Other project item',
+      quantity: new Decimal('10'), unit: 'M3', unitRate: new Decimal('50'),
+      sortOrder: 1, isLeaf: true, sourceType: 'BASELINE',
+    },
+  });
+
+  // node2 belongs to project2, but the line names env.projectId → mismatch.
+  await expect(
+    svc.poService.create(identity(env), {
+      supplierId: env.supplierId,
+      currencyCode: 'USD',
+      effectiveFrom: '2026-08-15',
+      lines: [{ ...costTargetLine(), boqNodeId: node2.id }],
+    }),
+  ).rejects.toThrow(/does not belong to the given project/i);
+});
+
+// ── T20: a section (non-leaf) node is rejected ───────────────────────────────
+test('T20 — a section (non-leaf) node cannot be a cost-target (400)', async () => {
+  const boq = await prisma.boq.findUniqueOrThrow({ where: { projectId: env.projectId } });
+  const node = await prisma.boqNode.findUniqueOrThrow({ where: { id: env.boqNodeId } });
+  const section = await prisma.boqNode.create({
+    data: {
+      boqId: boq.id, versionId: node.versionId, parentId: null,
+      code: `SEC-${Date.now()}`, path: `SEC-${Date.now()}`, description: 'Structural section',
+      sortOrder: 99, isLeaf: false, sourceType: 'BASELINE',
+    },
+  });
+
+  await expect(
+    svc.poService.create(identity(env), {
+      supplierId: env.supplierId,
+      currencyCode: 'USD',
+      effectiveFrom: '2026-08-15',
+      lines: [{ ...costTargetLine(), boqNodeId: section.id }],
+    }),
+  ).rejects.toThrow(/section, not a billable cost item/i);
+});
+
+// ── T21: approval attributes the commitment to the line's project + node ─────
+test('T21 — PO approval writes a COMMITTED entry carrying the line projectId/boqNodeId; org line → null', async () => {
+  const po = await svc.poService.create(identity(env), {
+    supplierId: env.supplierId,
+    currencyCode: 'USD',
+    effectiveFrom: '2026-08-15',
+    lines: [
+      costTargetLine(10, 100), // project-cost-relevant
+      { lineType: 'OTHER', description: 'Org overhead', uomCode: 'TON', orderedQuantity: 1, unitPrice: 50 },
+    ],
+  });
+  await svc.poService.submit(identity(env), po!.id);
+  await svc.poService.approve(identity(env), po!.id);
+
+  const activeRev = await prisma.purchaseOrderRevision.findFirstOrThrow({
+    where: { purchaseOrderId: po!.id, status: 'ACTIVE' },
+    include: { lines: { orderBy: { lineNumber: 'asc' } } },
+  });
+  const projectLine = activeRev.lines[0];
+  const orgLine = activeRev.lines[1];
+
+  const projectEntry = await prisma.commitmentLedgerEntry.findUniqueOrThrow({
+    where: { idempotencyKey: `po-commit-${activeRev.id}-${projectLine.id}` },
+  });
+  expect(projectEntry.projectId).toBe(env.projectId);
+  expect(projectEntry.boqNodeId).toBe(env.boqNodeId);
+
+  const orgEntry = await prisma.commitmentLedgerEntry.findUniqueOrThrow({
+    where: { idempotencyKey: `po-commit-${activeRev.id}-${orgLine.id}` },
+  });
+  expect(orgEntry.projectId).toBeNull();
+  expect(orgEntry.boqNodeId).toBeNull();
+});

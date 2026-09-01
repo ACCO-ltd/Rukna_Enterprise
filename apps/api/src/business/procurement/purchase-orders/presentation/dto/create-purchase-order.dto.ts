@@ -51,6 +51,19 @@ export class CreatePoLineDto {
   @IsString()
   taxCodeId?: string;
 
+  // Cost-target (A3/D7). A project-cost-relevant line supplies BOTH projectId and boqNodeId
+  // (the boqNode must be a leaf cost node on that project's BOQ). A non-project/org/overhead
+  // line supplies NEITHER. The service rejects a half-specified target (one without the other).
+  @ApiPropertyOptional({ description: 'Cost-target project. Set together with boqNodeId, or omit both for an org/overhead line.' })
+  @IsOptional()
+  @IsString()
+  projectId?: string;
+
+  @ApiPropertyOptional({ description: 'Cost-target BOQ leaf node. Set together with projectId, or omit both for an org/overhead line.' })
+  @IsOptional()
+  @IsString()
+  boqNodeId?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

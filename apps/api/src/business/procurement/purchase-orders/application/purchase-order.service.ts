@@ -20,6 +20,7 @@ import { CommitmentLedgerWriter } from '../../commitment-ledger/application/comm
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
 import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
+import { validateCostTarget, costTargetViolationMessage } from '../domain/cost-target.policy.js';
 
 export interface CreatePoLineDto {
   lineType: ProcurementLineType;
@@ -30,6 +31,9 @@ export interface CreatePoLineDto {
   unitPrice: number;
   spendCategoryId?: string;
   taxCodeId?: string;
+  // Cost-target (A3/D7): both set for a project-cost-relevant line, both omitted for org lines.
+  projectId?: string;
+  boqNodeId?: string;
   notes?: string;
   mrLineAllocations?: Array<{ materialRequestLineId: string; allocatedQuantity: number }>;
 }
@@ -228,6 +232,8 @@ export class PurchaseOrderService {
           if (netCommitted.lessThanOrEqualTo(0)) continue;
           await this.commitmentWriter.committed(tx, {
             organizationId: po.organizationId,
+            projectId: line.projectId ?? undefined,
+            boqNodeId: line.boqNodeId ?? undefined,
             supplierId: po.supplierId,
             purchaseOrderId: po.id,
             spendCategoryId: line.spendCategoryId ?? undefined,
@@ -258,6 +264,9 @@ export class PurchaseOrderService {
         const amount = unitPrice.mul(qty);
         await this.commitmentWriter.committed(tx, {
           organizationId: po.organizationId,
+          // Cost attribution (A3/D7): inherit the line's cost-target. Org lines → null, as before.
+          projectId: line.projectId ?? undefined,
+          boqNodeId: line.boqNodeId ?? undefined,
           supplierId: po.supplierId,
           purchaseOrderId: po.id,
           spendCategoryId: line.spendCategoryId ?? undefined,
@@ -361,6 +370,8 @@ export class PurchaseOrderService {
           if (netCommitted.lessThanOrEqualTo(0)) continue;
           await this.commitmentWriter.committed(tx, {
             organizationId: po.organizationId,
+            projectId: line.projectId ?? undefined,
+            boqNodeId: line.boqNodeId ?? undefined,
             supplierId: po.supplierId,
             purchaseOrderId: po.id,
             spendCategoryId: line.spendCategoryId ?? undefined,
@@ -423,6 +434,19 @@ export class PurchaseOrderService {
           resolvedUomId = uom.id;
         }
 
+        // Cost-target (A3/D7). Resolve the node only when one was supplied; the policy decides
+        // whether the pair is valid, half-specified, or a legitimate org/overhead line (neither).
+        const resolvedNode = line.boqNodeId
+          ? await this.repo.resolveCostNode(prisma, orgId, line.boqNodeId)
+          : null;
+        const violation = validateCostTarget(
+          { projectId: line.projectId, boqNodeId: line.boqNodeId },
+          resolvedNode,
+        );
+        if (violation) {
+          throw new BadRequestException(`Line ${i + 1}: ${costTargetViolationMessage(violation)}`);
+        }
+
         const qty = new Decimal(line.orderedQuantity);
         const price = new Decimal(line.unitPrice);
 
@@ -437,6 +461,8 @@ export class PurchaseOrderService {
           extendedAmount: qty.mul(price),
           spendCategoryId: line.spendCategoryId,
           taxCodeId: line.taxCodeId,
+          projectId: line.projectId,
+          boqNodeId: line.boqNodeId,
           notes: line.notes,
         };
       }),
