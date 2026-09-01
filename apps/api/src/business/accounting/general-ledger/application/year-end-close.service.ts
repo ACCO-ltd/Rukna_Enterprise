@@ -134,7 +134,14 @@ export class YearEndCloseService {
       memo: string;
     }> = [];
 
-    let netPL = new Decimal(0); // positive = income, negative = loss
+    // netIncome is computed ONCE from natural balances and carries its own sign:
+    //   netIncome > 0  → profit  (credit-heavy P&L overall)
+    //   netIncome < 0  → loss    (debit-heavy P&L overall)
+    //   netIncome == 0 → break-even
+    // For any P&L account, its contribution to net income is (credit − debit): revenue is
+    // credit-heavy so it adds, expense/COGS is debit-heavy so it subtracts. The sign is
+    // encoded here once and never re-derived per branch below.
+    let netIncome = new Decimal(0);
 
     for (const account of plAccounts) {
       // Sum all POSTED journal lines for this account in the FY, excluding CLOSING entries
@@ -159,32 +166,24 @@ export class YearEndCloseService {
 
       const accountClass = account.versions[0]?.accountClass;
 
+      // Post the exact opposite of the account's residual balance to zero it. The account's
+      // contribution to net income is (credit − debit) = −netBalance, accumulated once.
       if (netBalance.gt(0)) {
-        // Debit-heavy (normal for EXPENSE/COST_OF_SALES): Cr to zero
+        // Debit-heavy residual: credit it to zero.
         closingLines.push({
           accountId: account.id,
           creditAmount: netBalance,
           memo: `Year-end close — ${accountClass}`,
         });
-        if (accountClass === 'INCOME') {
-          netPL = netPL.minus(netBalance); // debit-heavy income is a loss on that account
-        } else {
-          netPL = netPL.minus(netBalance); // expenses reduce net income
-        }
       } else {
-        // Credit-heavy (normal for INCOME): Dr to zero
-        const absBalance = netBalance.abs();
+        // Credit-heavy residual: debit it to zero.
         closingLines.push({
           accountId: account.id,
-          debitAmount: absBalance,
+          debitAmount: netBalance.abs(),
           memo: `Year-end close — ${accountClass}`,
         });
-        if (accountClass === 'INCOME') {
-          netPL = netPL.plus(absBalance); // credit-heavy income increases net income
-        } else {
-          netPL = netPL.plus(absBalance); // this would be unusual (credit-heavy expense)
-        }
       }
+      netIncome = netIncome.minus(netBalance);
     }
 
     if (closingLines.length === 0) {
@@ -193,22 +192,19 @@ export class YearEndCloseService {
       );
     }
 
-    // Add Retained Earnings entry
+    // Retained-earnings transfer: amount is |net income|, direction derived ONCE from the sign.
+    //   profit (netIncome > 0) ⇒ credit RE  (retained earnings increases)
+    //   loss   (netIncome < 0) ⇒ debit RE   (retained earnings decreases)
+    // Break-even (netIncome == 0) adds no RE line; the P&L-zeroing lines already balance.
     const baseCurrency = 'USD';
-    if (netPL.gt(0)) {
-      // Net income → Cr Retained Earnings
+    if (!netIncome.isZero()) {
+      const transferAmount = netIncome.abs();
+      const isProfit = netIncome.gt(0);
       closingLines.push({
         accountId: fy.retainedEarningsAccountId,
-        creditAmount: netPL,
-        memo: `Net income for ${fy.name}`,
-      });
-    } else if (netPL.lt(0)) {
-      // Net loss → Dr Retained Earnings
-      const lossAmount = netPL.abs();
-      closingLines.push({
-        accountId: fy.retainedEarningsAccountId,
-        debitAmount: lossAmount,
-        memo: `Net loss for ${fy.name}`,
+        creditAmount: isProfit ? transferAmount : undefined,
+        debitAmount: isProfit ? undefined : transferAmount,
+        memo: isProfit ? `Net income for ${fy.name}` : `Net loss for ${fy.name}`,
       });
     }
 
@@ -258,7 +254,7 @@ export class YearEndCloseService {
       fiscalYearId,
       closingJournalId: result.journalEntryId,
       closingJournalNumber: result.journalNumber,
-      netIncome: netPL.toFixed(2),
+      netIncome: netIncome.toFixed(2),
       period12SnapshotAccounts: snapshot.accountsSnapshotted,
     };
   }
