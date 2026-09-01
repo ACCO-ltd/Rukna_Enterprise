@@ -1953,6 +1953,7 @@ model Supplier {
   taxNumber        String?        @map("tax_number")
   defaultCurrency  String?        @map("default_currency") @db.VarChar(3)
   paymentTermsDays Int?           @map("payment_terms_days")
+  address          String?
   status           SupplierStatus @default(ACTIVE)
   createdAt        DateTime       @default(now()) @map("created_at")
   updatedAt        DateTime       @updatedAt @map("updated_at")
