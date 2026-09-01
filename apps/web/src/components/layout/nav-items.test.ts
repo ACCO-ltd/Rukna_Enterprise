@@ -187,6 +187,53 @@ describe('NAV_DOMAINS', () => {
       expect(hrefs).toContain('/admin/workflows');
       expect(hrefs).toContain('/admin/audit-logs');
     });
+
+    it('groups every item into the four IA sections (no ungrouped run leads)', () => {
+      const groups = groupNavItems(admin().items);
+      // People → Organization → Approval governance → Evidence, in that order.
+      expect(groups.map((g) => g.key)).toEqual([
+        'people',
+        'organization',
+        'governance',
+        'evidence',
+      ]);
+      // No undefined-keyed (ungrouped) run — the admin column is fully sectioned.
+      expect(groups.some((g) => g.key === undefined)).toBe(false);
+    });
+
+    it('puts Users and Roles under People', () => {
+      const groups = groupNavItems(admin().items);
+      const people = groups.find((g) => g.key === 'people');
+      expect(people?.items.map((i) => i.href)).toEqual(['/admin/users', '/admin/roles']);
+    });
+
+    it('puts Districts alone under Organization, keeping its manage:district gate', () => {
+      const groups = groupNavItems(admin().items);
+      const organization = groups.find((g) => g.key === 'organization');
+      expect(organization?.items.map((i) => i.href)).toEqual(['/admin/districts']);
+      expect(organization?.items[0]?.permissionKey).toBe('manage:district');
+    });
+
+    it('puts Policies/Workflows under Approval governance as a single entry (no duplicate deep route)', () => {
+      const groups = groupNavItems(admin().items);
+      const governance = groups.find((g) => g.key === 'governance');
+      expect(governance?.items.map((i) => i.href)).toEqual(['/admin/workflows']);
+      // The /admin/workflows/[policyId] builder is a row click, not a second nav row —
+      // a duplicate would break isActiveNavItem's prefix match and highlight two rows.
+      expect(admin().items.filter((i) => i.href.startsWith('/admin/workflows'))).toHaveLength(1);
+    });
+
+    it('puts Audit logs under Evidence', () => {
+      const groups = groupNavItems(admin().items);
+      const evidence = groups.find((g) => g.key === 'evidence');
+      expect(evidence?.items.map((i) => i.href)).toEqual(['/admin/audit-logs']);
+    });
+
+    it('omits the DEFERRED Access reviews and standalone SoD rules items (no backend)', () => {
+      const hrefs = admin().items.map((i) => i.href);
+      expect(hrefs.some((h) => h.includes('access-review'))).toBe(false);
+      expect(hrefs.some((h) => h.includes('sod'))).toBe(false);
+    });
   });
 });
 

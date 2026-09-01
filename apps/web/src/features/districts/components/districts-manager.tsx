@@ -59,7 +59,7 @@ export function DistrictsManager() {
     return (
       <div role="status" aria-live="polite">
         <span className="sr-only">{tCommon('loading')}</span>
-        <div className="h-64 animate-pulse rounded-lg border border-border bg-muted" aria-hidden="true" />
+        <div className="h-64 animate-pulse rounded-panel border border-border bg-muted" aria-hidden="true" />
       </div>
     );
   }
@@ -81,8 +81,8 @@ export function DistrictsManager() {
       <p className="text-sm text-muted-foreground">{t('intro')}</p>
 
       {canManage ? (
-        <div className="rounded-lg border border-border bg-surface p-4">
-          <h2 className="text-sm font-semibold text-foreground">{t('addTitle')}</h2>
+        <div className="rounded-panel border border-border bg-surface p-4">
+          <h2 className="text-base font-semibold leading-6 text-foreground">{t('addTitle')}</h2>
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <FormField htmlFor="district-code" label={t('codeLabel')} className="w-28">
               <Input
@@ -131,7 +131,7 @@ export function DistrictsManager() {
                   <TableCell className="font-mono text-xs">{district.code}</TableCell>
                   <TableCell className="text-sm text-foreground">{district.name}</TableCell>
                   <TableCell>
-                    <Badge tone={district.active ? 'info' : 'warning'}>
+                    <Badge tone={district.active ? 'live' : 'neutral'}>
                       {district.active ? t('active') : t('inactive')}
                     </Badge>
                   </TableCell>

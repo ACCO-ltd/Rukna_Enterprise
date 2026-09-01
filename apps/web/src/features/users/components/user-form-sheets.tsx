@@ -2,22 +2,19 @@
 
 import { useId, useState, type FormEvent } from 'react';
 import { useTranslations } from 'next-intl';
-import {
-  Alert,
-  Button,
-  FormField,
-  Input,
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetTitle,
-} from '@erp/ui';
+import { Alert, Button, FormField, Input } from '@erp/ui';
 
 import type { UserWithRolesResponse } from '@erp/types';
-import { ApiError } from '@/lib/api-client';
 
 import {
+  FormBody,
+  FormFooter,
+  FormSheetShell,
+  apiMessage,
+} from '@/features/admin/components/form-sheet-shell';
+import {
   useProvisionTemporaryUser,
+  useRegenerateTemporaryPassword,
   useSetUserPassword,
   useSetUserRoles,
   useUpdateUser,
@@ -25,38 +22,6 @@ import {
 import { RoleMultiSelect } from './role-multi-select';
 
 const MIN_PASSWORD_LENGTH = 12;
-
-// ─── Shell ─────────────────────────────────────────────────────────────────────
-
-function FormSheet({
-  open,
-  onOpenChange,
-  title,
-  description,
-  children,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="p-6">
-        <SheetTitle className="text-lg font-semibold text-foreground">{title}</SheetTitle>
-        {description ? <SheetDescription className="mt-1">{description}</SheetDescription> : null}
-        <div className="mt-5">{children}</div>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-function apiMessage(error: unknown, fallback: string): string | undefined {
-  if (error instanceof ApiError) return error.message;
-  if (error) return fallback;
-  return undefined;
-}
 
 // ─── Create ──────────────────────────────────────────────────────────────────────
 
@@ -86,7 +51,6 @@ export function CreateUserSheet({
   const [roleIds, setRoleIds] = useState<string[]>([]);
   const [created, setCreated] = useState<CreatedCredentials | null>(null);
 
-
   function reset() {
     setRoleIds([]);
     setCreated(null);
@@ -111,7 +75,11 @@ export function CreateUserSheet({
       { email, firstName, lastName, roleIds },
       {
         onSuccess: (result) => {
-          setCreated({ email: result.user.email, password: result.temporaryPassword, expiresAt: result.expiresAt });
+          setCreated({
+            email: result.user.email,
+            password: result.temporaryPassword,
+            expiresAt: result.expiresAt,
+          });
         },
       },
     );
@@ -120,7 +88,7 @@ export function CreateUserSheet({
   const title = created ? t('createdTitle') : t('createTitle');
 
   return (
-    <FormSheet
+    <FormSheetShell
       open={open}
       onOpenChange={handleOpenChange}
       title={title}
@@ -133,7 +101,7 @@ export function CreateUserSheet({
           onAddAnother={reset}
         />
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <FormBody onSubmit={handleSubmit}>
           <FormField htmlFor={ids.email} label={t('email')} required>
             <Input
               id={ids.email}
@@ -145,7 +113,7 @@ export function CreateUserSheet({
             />
           </FormField>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-5 sm:grid-cols-2">
             <FormField htmlFor={ids.firstName} label={t('firstName')} required>
               <Input
                 id={ids.firstName}
@@ -179,27 +147,16 @@ export function CreateUserSheet({
             <Alert variant="error" messages={[apiMessage(create.error, t('createFailed'))!]} />
           ) : null}
 
-          <div className="flex flex-wrap justify-end gap-2 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleOpenChange(false)}
-              disabled={create.isPending}
-            >
-              {tc('cancel')}
-            </Button>
-            <Button
-              type="submit"
-              disabled={
-                create.isPending
-              }
-            >
-              {create.isPending ? tc('saving') : t('createSubmit')}
-            </Button>
-          </div>
-        </form>
+          <FormFooter
+            onCancel={() => handleOpenChange(false)}
+            cancelLabel={tc('cancel')}
+            submitLabel={t('createSubmit')}
+            pendingLabel={t('createPending')}
+            pending={create.isPending}
+          />
+        </FormBody>
       )}
-    </FormSheet>
+    </FormSheetShell>
   );
 }
 
@@ -235,7 +192,7 @@ function CredentialsSummary({
 
       <dl className="space-y-3 rounded-panel border border-border bg-surface p-4">
         <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <dt className="text-micro font-semibold uppercase text-muted-foreground">
             {t('email')}
           </dt>
           <dd className="mt-0.5 break-all font-mono text-sm text-foreground">
@@ -243,11 +200,15 @@ function CredentialsSummary({
           </dd>
         </div>
         <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('expiresAt')}</dt>
-          <dd className="mt-0.5 text-sm text-foreground">{new Date(credentials.expiresAt).toLocaleString()}</dd>
+          <dt className="text-micro font-semibold uppercase text-muted-foreground">
+            {t('expiresAt')}
+          </dt>
+          <dd className="mt-0.5 text-sm text-foreground">
+            {new Date(credentials.expiresAt).toLocaleString()}
+          </dd>
         </div>
         <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <dt className="text-micro font-semibold uppercase text-muted-foreground">
             {t('tempPassword')}
           </dt>
           <dd className="mt-0.5 break-all font-mono text-sm text-foreground">
@@ -260,7 +221,7 @@ function CredentialsSummary({
         {copied ? t('copied') : t('copyCredentials')}
       </Button>
 
-      <div className="flex flex-wrap justify-end gap-2 pt-2">
+      <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-border pt-4">
         <Button type="button" variant="ghost" onClick={onAddAnother}>
           {t('addAnother')}
         </Button>
@@ -301,18 +262,18 @@ export function EditUserSheet({
   }
 
   return (
-    <FormSheet
+    <FormSheetShell
       open={Boolean(user)}
       onOpenChange={(next) => {
         if (!next) update.reset();
         onOpenChange(next);
       }}
       title={t('editTitle')}
-      description={user?.email}
+      description={user ? `${t('editSubtitle')} · ${user.email}` : t('editSubtitle')}
     >
       {user ? (
-        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-          <div className="grid gap-4 sm:grid-cols-2">
+        <FormBody onSubmit={handleSubmit}>
+          <div className="grid gap-5 sm:grid-cols-2">
             <FormField htmlFor={ids.firstName} label={t('firstName')} required>
               <Input
                 id={ids.firstName}
@@ -339,22 +300,16 @@ export function EditUserSheet({
             <Alert variant="error" messages={[apiMessage(update.error, t('editFailed'))!]} />
           ) : null}
 
-          <div className="flex flex-wrap justify-end gap-2 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={update.isPending}
-            >
-              {tc('cancel')}
-            </Button>
-            <Button type="submit" disabled={update.isPending}>
-              {update.isPending ? tc('saving') : tc('save')}
-            </Button>
-          </div>
-        </form>
+          <FormFooter
+            onCancel={() => onOpenChange(false)}
+            cancelLabel={tc('cancel')}
+            submitLabel={tc('save')}
+            pendingLabel={t('savePending')}
+            pending={update.isPending}
+          />
+        </FormBody>
       ) : null}
-    </FormSheet>
+    </FormSheetShell>
   );
 }
 
@@ -401,14 +356,16 @@ export function SetPasswordSheet({
   }
 
   return (
-    <FormSheet
+    <FormSheetShell
       open={Boolean(user)}
       onOpenChange={close}
       title={t('setPasswordTitle')}
-      description={user ? `${user.firstName} ${user.lastName} · ${user.email}` : undefined}
+      description={
+        user ? `${t('setPasswordSubtitle')} · ${user.firstName} ${user.lastName}` : t('setPasswordSubtitle')
+      }
     >
       {user ? (
-        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <FormBody onSubmit={handleSubmit}>
           <FormField
             htmlFor={id}
             label={t('newPassword')}
@@ -434,25 +391,107 @@ export function SetPasswordSheet({
             />
           ) : null}
 
-          <div className="flex flex-wrap justify-end gap-2 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => close(false)}
-              disabled={setPassword.isPending}
-            >
-              {tc('cancel')}
-            </Button>
-            <Button
-              type="submit"
-              disabled={setPassword.isPending || password.length < MIN_PASSWORD_LENGTH}
-            >
-              {setPassword.isPending ? tc('saving') : t('setPasswordSubmit')}
-            </Button>
-          </div>
-        </form>
+          <FormFooter
+            onCancel={() => close(false)}
+            cancelLabel={tc('cancel')}
+            submitLabel={t('setPasswordSubmit')}
+            pendingLabel={t('setPasswordPending')}
+            pending={setPassword.isPending}
+            disabled={password.length < MIN_PASSWORD_LENGTH}
+          />
+        </FormBody>
       ) : null}
-    </FormSheet>
+    </FormSheetShell>
+  );
+}
+
+// ─── Regenerate temporary password ────────────────────────────────────────────────
+
+export function RegenerateTemporarySheet({
+  user,
+  onOpenChange,
+}: {
+  user: UserWithRolesResponse | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const t = useTranslations('platform.users.form');
+  const tc = useTranslations('common');
+  const regenerate = useRegenerateTemporaryPassword();
+
+  function close(next: boolean) {
+    if (!next) regenerate.reset();
+    onOpenChange(next);
+  }
+
+  return (
+    <FormSheetShell
+      open={Boolean(user)}
+      onOpenChange={close}
+      title={t('regenerateTitle')}
+      description={
+        user ? `${t('regenerateHint')} · ${user.firstName} ${user.lastName}` : t('regenerateHint')
+      }
+    >
+      {user ? (
+        regenerate.data ? (
+          <div className="space-y-4">
+            <Alert variant="success" messages={[t('regenerateDone')]} />
+            <dl className="space-y-3 rounded-panel border border-border bg-surface p-4">
+              <div>
+                <dt className="text-micro font-semibold uppercase text-muted-foreground">
+                  {t('tempPassword')}
+                </dt>
+                <dd className="mt-0.5 break-all font-mono text-sm text-foreground">
+                  {regenerate.data.temporaryPassword}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-micro font-semibold uppercase text-muted-foreground">
+                  {t('expiresAt')}
+                </dt>
+                <dd className="mt-0.5 text-sm text-foreground">
+                  {new Date(regenerate.data.expiresAt).toLocaleString()}
+                </dd>
+              </div>
+            </dl>
+            <div className="mt-6 flex justify-end border-t border-border pt-4">
+              <Button type="button" onClick={() => close(false)}>
+                {t('done')}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            <Alert variant="warning" messages={[t('regenerateWarning')]} />
+
+            {regenerate.error ? (
+              <Alert
+                variant="error"
+                messages={[apiMessage(regenerate.error, t('regenerateWarning'))!]}
+              />
+            ) : null}
+
+            <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => close(false)}
+                disabled={regenerate.isPending}
+              >
+                {tc('cancel')}
+              </Button>
+              <Button
+                type="button"
+                onClick={() => regenerate.mutate(user.id)}
+                disabled={regenerate.isPending}
+              >
+                {regenerate.isPending ? t('regenerating') : t('regenerateSubmit')}
+              </Button>
+            </div>
+          </div>
+        )
+      ) : null}
+    </FormSheetShell>
   );
 }
 
@@ -489,21 +528,20 @@ export function ManageRolesSheet({
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!user) return;
-    setRoles.mutate(
-      { id: user.id, payload: { roleIds } },
-      { onSuccess: () => close(false) },
-    );
+    setRoles.mutate({ id: user.id, payload: { roleIds } }, { onSuccess: () => close(false) });
   }
 
   return (
-    <FormSheet
+    <FormSheetShell
       open={Boolean(user)}
       onOpenChange={close}
       title={t('manageRolesTitle')}
-      description={user ? `${user.firstName} ${user.lastName} · ${user.email}` : undefined}
+      description={
+        user ? `${t('manageRolesSubtitle')} · ${user.firstName} ${user.lastName}` : t('manageRolesSubtitle')
+      }
     >
       {user ? (
-        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <FormBody onSubmit={handleSubmit}>
           <RoleMultiSelect
             selectedIds={roleIds}
             onChange={setRoleIds}
@@ -514,21 +552,15 @@ export function ManageRolesSheet({
             <Alert variant="error" messages={[apiMessage(setRoles.error, t('manageRolesFailed'))!]} />
           ) : null}
 
-          <div className="flex flex-wrap justify-end gap-2 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => close(false)}
-              disabled={setRoles.isPending}
-            >
-              {tc('cancel')}
-            </Button>
-            <Button type="submit" disabled={setRoles.isPending}>
-              {setRoles.isPending ? tc('saving') : tc('save')}
-            </Button>
-          </div>
-        </form>
+          <FormFooter
+            onCancel={() => close(false)}
+            cancelLabel={tc('cancel')}
+            submitLabel={tc('save')}
+            pendingLabel={t('savePending')}
+            pending={setRoles.isPending}
+          />
+        </FormBody>
       ) : null}
-    </FormSheet>
+    </FormSheetShell>
   );
 }
