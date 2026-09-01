@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { IsString, IsOptional, IsInt, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -9,6 +9,7 @@ import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { SupplierService } from '../application/supplier.service.js';
+import { UpdateSupplierDto } from './dto/update-supplier.dto.js';
 
 class CreateSupplierDto {
   @ApiProperty({ example: 'SUP-001' })
@@ -67,5 +68,22 @@ export class SupplierController {
   @ApiOperation({ summary: 'Create a supplier' })
   create(@CurrentUser() identity: RequestIdentity, @Body() dto: CreateSupplierDto) {
     return this.supplierService.create(identity, dto);
+  }
+
+  @Patch(':id')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({
+    summary: 'Correct supplier master data (A15, D8)',
+    description:
+      'Edits master-data fields (name, tax number, default currency, payment terms, address) for ' +
+      'legitimate corrections. Audited. Does not change the supplier code/identity or status, and ' +
+      'does not rewrite historical facts on issued POs/bills (which reference the supplier by FK).',
+  })
+  update(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: UpdateSupplierDto,
+  ) {
+    return this.supplierService.update(identity, id, dto);
   }
 }

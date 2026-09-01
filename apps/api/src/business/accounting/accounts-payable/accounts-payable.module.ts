@@ -4,6 +4,7 @@ import { AccountingCoreModule } from '../accounting-core/accounting-core.module.
 import { CommitmentLedgerModule } from '../../procurement/commitment-ledger/commitment-ledger.module.js';
 import { BillMatchingModule } from '../../procurement/bill-matching/bill-matching.module.js';
 import { WorkflowsModule } from '../../../platform/workflows/workflows.module.js';
+import { AuditLogsModule } from '../../../platform/audit-logs/audit-logs.module.js';
 import { SupplierBillRepository } from './infrastructure/supplier-bill.repository.js';
 import { SupplierPaymentRepository } from './infrastructure/supplier-payment.repository.js';
 import { SupplierRepository } from './infrastructure/supplier.repository.js';
@@ -16,7 +17,14 @@ import { SupplierController } from './presentation/supplier.controller.js';
 import { PostingProfileController } from './presentation/posting-profile.controller.js';
 
 @Module({
-  imports: [TenancyModule, AccountingCoreModule, CommitmentLedgerModule, BillMatchingModule, WorkflowsModule],
+  imports: [
+    TenancyModule,
+    AccountingCoreModule,
+    CommitmentLedgerModule,
+    BillMatchingModule,
+    WorkflowsModule,
+    AuditLogsModule,
+  ],
   controllers: [SupplierBillController, SupplierPaymentController, SupplierController, PostingProfileController],
   providers: [
     SupplierBillRepository,
