@@ -123,6 +123,15 @@ export class SupplierPaymentService {
         if (bill.currencyCode !== dto.currencyCode) {
           throw new BadRequestException(`Bill ${alloc.supplierBillId} currency does not match payment currency`);
         }
+        // A bill is only a live AP liability once POSTED (AP is credited at EVT-AP-001). Settling a
+        // DRAFT/SUBMITTED/REJECTED/CANCELLED or REVERSED bill would debit AP with no matching balance,
+        // so only a POSTED bill is a valid direct-settlement target (mirrors allocateAdvance). This also
+        // rejects an already-settled bill defensively — its outstanding is 0, caught below either way.
+        if (bill.postingStatus !== 'POSTED') {
+          throw new BadRequestException(
+            `Bill ${alloc.supplierBillId} is not POSTED (status: ${bill.postingStatus}) and cannot be settled by a payment`,
+          );
+        }
         const allocAmt = new Decimal(alloc.amount);
         const outstanding = new Decimal(bill.outstandingAmount.toString());
         if (allocAmt.gt(outstanding)) {
