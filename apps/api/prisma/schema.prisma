@@ -600,6 +600,7 @@ model Project {
   programmeMilestones  ProgrammeMilestone[]
   progressTargets      ProgressTarget[]
   progressSnapshots    ProgressSnapshot[]
+  purchaseOrderLines   PurchaseOrderLine[]
   client               Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull)
   district             District?             @relation(fields: [districtId], references: [id], onDelete: Restrict)
 
@@ -994,6 +995,7 @@ model BoqNode {
   sourceChangeOrder    VariationOrder?       @relation("VariationOrderBoqNodes", fields: [sourceChangeOrderId], references: [id], onDelete: SetNull)
   progressMeasurements ProgressMeasurement[]
   workPackageLinks     WorkPackageBoqNode[]
+  purchaseOrderLines   PurchaseOrderLine[]
 
   // CONST-BOQ-015 — codes address lines in a contract; two nodes answering to "02.01.002"
   // makes every downstream reference ambiguous.
@@ -3506,6 +3508,12 @@ model PurchaseOrderLine {
   extendedAmount          Decimal             @map("extended_amount") @db.Decimal(18, 2)
   spendCategoryId         String?             @map("spend_category_id")
   taxCodeId               String?             @map("tax_code_id")
+  // Cost-target (A3/D7) — the authoritative project cost attribution, captured once here.
+  // Both set = a project-cost-relevant line (boqNode is a leaf cost node on projectId's BOQ);
+  // both null = a non-project/org/overhead line. Half-specified is rejected by the service.
+  // Downstream (Goods Receipt, PO-backed bill, commitment ledger) inherit this read-only.
+  projectId               String?             @map("project_id")
+  boqNodeId               String?             @map("boq_node_id")
   notes                   String?
   createdAt               DateTime            @default(now()) @map("created_at")
 
@@ -3513,12 +3521,16 @@ model PurchaseOrderLine {
   material      Material?                            @relation(fields: [materialId], references: [id])
   uom           UnitOfMeasure                        @relation(fields: [unitOfMeasureId], references: [id])
   spendCategory SpendCategory?                       @relation(fields: [spendCategoryId], references: [id])
+  project       Project?                             @relation(fields: [projectId], references: [id])
+  boqNode       BoqNode?                             @relation(fields: [boqNodeId], references: [id])
   mrAllocations PurchaseOrderLineRequestAllocation[]
   grnLines      GoodsReceiptLine[]
   matchLines    SupplierBillMatchLine[]
 
   @@unique([purchaseOrderRevisionId, lineNumber])
   @@index([purchaseOrderRevisionId])
+  @@index([projectId])
+  @@index([boqNodeId])
   @@map("purchase_order_lines")
 }
 

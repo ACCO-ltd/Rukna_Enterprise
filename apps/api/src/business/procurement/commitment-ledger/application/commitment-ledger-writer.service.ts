@@ -7,6 +7,10 @@ type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$tr
 
 export interface CommitmentWriteInput {
   organizationId: string;
+  // Cost attribution (A3/D7). Inherited from the originating PO line's cost-target; null for
+  // org/overhead lines, exactly as before this task for lines that carry no target.
+  projectId?: string;
+  boqNodeId?: string;
   supplierId?: string;
   purchaseOrderId?: string;
   spendCategoryId?: string;

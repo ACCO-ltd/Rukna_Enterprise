@@ -17,7 +17,17 @@ export interface CreatePoLineData {
   extendedAmount: Decimal;
   spendCategoryId?: string;
   taxCodeId?: string;
+  // Cost-target (A3/D7): both set for a project-cost-relevant line, both undefined for org lines.
+  projectId?: string;
+  boqNodeId?: string;
   notes?: string;
+}
+
+/** Facts a cost-target validity check needs, resolved from a boqNodeId within one org. */
+export interface ResolvedCostNode {
+  projectId: string;
+  isLeaf: boolean;
+  isActive: boolean;
 }
 
 export interface CreatePoRevisionData {
@@ -40,11 +50,19 @@ export interface CreatePoLineAllocationData {
   allocatedQuantity: Decimal;
 }
 
+// Read model. Each line carries enough label info for the cost-target chip (project code/name,
+// BOQ node code/description) and for GR / PO-backed bill to inherit the target (D7).
 const PO_INCLUDE = {
   revisions: {
     include: {
       lines: {
-        include: { material: true, uom: true, spendCategory: true },
+        include: {
+          material: true,
+          uom: true,
+          spendCategory: true,
+          project: { select: { id: true, code: true, name: true } },
+          boqNode: { select: { id: true, code: true, description: true } },
+        },
         orderBy: { lineNumber: 'asc' as const },
       },
     },
@@ -136,6 +154,31 @@ export class PurchaseOrderRepository {
 
   createLineAllocation(prisma: TenantPrisma, data: CreatePoLineAllocationData) {
     return prisma.purchaseOrderLineRequestAllocation.create({ data });
+  }
+
+  /**
+   * Resolves a BOQ node (org-scoped) into the facts a cost-target check needs: which project's
+   * BOQ owns it, whether it is a billable leaf item, and whether it is still active. Returns null
+   * when the id resolves to no node in this org — the service treats that as BOQ_NODE_NOT_FOUND.
+   *
+   * Org isolation is enforced through the node's BOQ (`boq.organizationId`), so a node from
+   * another tenant is invisible here.
+   */
+  async resolveCostNode(
+    prisma: TenantPrisma,
+    organizationId: string,
+    boqNodeId: string,
+  ): Promise<ResolvedCostNode | null> {
+    const node = await prisma.boqNode.findFirst({
+      where: { id: boqNodeId, version: { boq: { organizationId } } },
+      select: { isLeaf: true, isActive: true, version: { select: { boq: { select: { projectId: true } } } } },
+    });
+    if (!node) return null;
+    return {
+      projectId: node.version.boq.projectId,
+      isLeaf: node.isLeaf,
+      isActive: node.isActive,
+    };
   }
 
   countPoNumbers(prisma: TenantPrisma, organizationId: string): Promise<number> {
