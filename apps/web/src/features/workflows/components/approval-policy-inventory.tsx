@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
@@ -23,14 +24,18 @@ import {
 } from '@erp/ui';
 
 import { usePermissions } from '@/features/auth/permissions/can';
-import type { ApprovalPolicySummary } from '../api/workflows-api';
 import { useApprovalPolicies, useCreateApprovalPolicyDraft } from '../hooks/use-approval-policies';
-import { PolicyRuleBuilderSheet } from './policy-rule-builder-sheet';
-import { ClonePolicyDialog } from './clone-policy-dialog';
 import { PolicyVersionComparisonSheet } from './policy-version-comparison-sheet';
 
+/**
+ * Approval policy inventory (S2) — the list stays the inventory; a row now **navigates** to the
+ * governance workspace at `/admin/workflows/[policyId]` instead of opening the retired builder
+ * sheet, so the builder is deep-linkable, back-button-correct and shareable. Clone and the full
+ * lifecycle moved onto the workspace; only Compare stays here as a quick row action.
+ */
 export function ApprovalPolicyInventory() {
   const t = useTranslations('platform.workflows.policies');
+  const router = useRouter();
   const { can } = usePermissions();
   const canManage = can('manage:workflow');
   // Comparison and version history are reads — gated by the view permission, not the manage one.
@@ -39,8 +44,6 @@ export function ApprovalPolicyInventory() {
   const { data = [], isPending, isError } = useApprovalPolicies();
   const create = useCreateApprovalPolicyDraft();
   const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState<ApprovalPolicySummary | null>(null);
-  const [cloneTarget, setCloneTarget] = useState<ApprovalPolicySummary | null>(null);
   const [compareKey, setCompareKey] = useState<string | null>(null);
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -88,7 +91,7 @@ export function ApprovalPolicyInventory() {
                 <TableRow
                   key={policy.id}
                   className="cursor-pointer"
-                  onClick={() => setSelected(policy)}
+                  onClick={() => router.push(`/admin/workflows/${policy.id}`)}
                 >
                   <TableCell>
                     <div className="font-medium">{policy.policyKey}</div>
@@ -118,26 +121,6 @@ export function ApprovalPolicyInventory() {
           </Table>
         </TableScroll>
       )}
-
-      <PolicyRuleBuilderSheet
-        policy={selected}
-        onOpenChange={(value) => {
-          if (!value) setSelected(null);
-        }}
-        onRequestClone={(policy) => setCloneTarget(policy)}
-      />
-
-      <ClonePolicyDialog
-        policy={cloneTarget}
-        open={Boolean(cloneTarget)}
-        onOpenChange={(value) => {
-          if (!value) setCloneTarget(null);
-        }}
-        onCloned={(draft) => {
-          setCloneTarget(null);
-          setSelected(draft);
-        }}
-      />
 
       {canView ? (
         <PolicyVersionComparisonSheet
