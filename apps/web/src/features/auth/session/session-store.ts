@@ -7,6 +7,7 @@ export interface AuthenticatedUser {
   tenantSlug: string;
   roles: string[];
   permissions: string[];
+  mustChangePassword?: boolean;
 }
 
 export interface SessionState {
@@ -65,6 +66,7 @@ export const sessionStore = {
       tenantSlug: payload.tenantSlug,
       roles: payload.roles ?? [],
       permissions: payload.permissions ?? [],
+      mustChangePassword: payload.mustChangePassword === true,
     };
 
     sessionStore.setSession({ accessToken, user });

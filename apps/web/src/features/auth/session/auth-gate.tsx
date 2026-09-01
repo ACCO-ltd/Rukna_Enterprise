@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
 import { endSession, restoreSession } from '@/lib/api-client';
@@ -21,6 +22,7 @@ type GateStatus = 'checking' | 'ready';
  * but the marker can be stale or forged; this gate is what actually decides.
  */
 export function AuthGate({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const [status, setStatus] = useState<GateStatus>(() =>
     // Server render always reports 'checking' so hydration matches a cold client load.
     // On a soft navigation from /login the session is already in memory — no splash.
@@ -30,6 +32,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   );
 
   useEffect(() => {
+    if (status === 'ready' && sessionStore.getState().user?.mustChangePassword) {
+      router.replace('/change-password');
+      return;
+    }
     if (status === 'ready') return;
 
     let active = true;
@@ -47,7 +53,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     return () => {
       active = false;
     };
-  }, [status]);
+  }, [router, status]);
 
   if (status === 'checking') return <SessionSplash />;
 

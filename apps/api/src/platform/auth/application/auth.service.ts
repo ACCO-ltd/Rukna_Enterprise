@@ -68,6 +68,9 @@ export class AuthService {
     if (!passwordValid) {
       throw new UnauthorizedException('Invalid email or password');
     }
+    if (user.mustChangePassword && user.temporaryPasswordExpiresAt && user.temporaryPasswordExpiresAt <= new Date()) {
+      throw new UnauthorizedException('Temporary password has expired; contact an administrator');
+    }
 
     const payload = this.buildPayload(user, membership, ctx.tenantSlug);
     const accessToken = this.jwtService.sign(payload);
@@ -151,6 +154,16 @@ export class AuthService {
     if (!membership) {
       throw new UnauthorizedException('User or organization membership is inactive');
     }
+    if (payload.sessionVersion !== membership.user.sessionVersion) {
+      throw new UnauthorizedException('Session has been invalidated');
+    }
+    if (
+      membership.user.mustChangePassword &&
+      membership.user.temporaryPasswordExpiresAt &&
+      membership.user.temporaryPasswordExpiresAt <= new Date()
+    ) {
+      throw new UnauthorizedException('Temporary password has expired; contact an administrator');
+    }
 
     const newPayload = this.buildPayload(membership.user, membership, ctx.tenantSlug);
     const accessToken = this.jwtService.sign(newPayload);
@@ -219,6 +232,8 @@ export class AuthService {
     user: {
       id: string;
       email: string;
+      mustChangePassword?: boolean;
+      sessionVersion: number;
     },
     membership: AuthMembership,
     tenantSlug: string,
@@ -245,6 +260,8 @@ export class AuthService {
       tenantSlug,
       roles,
       permissions,
+      mustChangePassword: user.mustChangePassword === true,
+      sessionVersion: user.sessionVersion,
     };
   }
 

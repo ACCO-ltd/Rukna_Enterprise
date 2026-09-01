@@ -34,8 +34,10 @@ export class PermissionsPrismaRepository implements IPermissionsRepository {
     action: string;
     resource: string;
     description: string | null;
+    domain: string;
+    riskClass: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
     createdAt: Date;
   }): PermissionEntity {
-    return new PermissionEntity(raw.id, raw.action, raw.resource, raw.description, raw.createdAt);
+    return new PermissionEntity(raw.id, raw.action, raw.resource, raw.description, raw.domain, raw.riskClass, raw.createdAt);
   }
 }

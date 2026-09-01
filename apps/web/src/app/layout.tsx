@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import { DirectionProvider } from '@erp/ui';
@@ -10,7 +9,6 @@ import { ToastProvider } from '@/providers/toast-provider';
 import { themeInitializationScript } from '@/features/theme/theme-script';
 import { ThemeRuntime } from '@/features/theme/theme-runtime';
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 export const metadata: Metadata = {
   title: 'Rukna ERP',
@@ -32,7 +30,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       lang="en"
       dir="ltr"
       suppressHydrationWarning
-      className={`${inter.variable} h-full antialiased`}
+      className="h-full antialiased"
     >
       <head>
         <meta name="theme-color" content="#f4f6f8" />

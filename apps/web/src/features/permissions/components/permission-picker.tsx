@@ -155,7 +155,12 @@ export function PermissionPicker({ selectedIds, onChange, disabled }: Permission
                         className="mt-0.5 h-4 w-4 shrink-0 rounded border-border-strong text-brand-primary focus-visible:shadow-ring"
                       />
                       <span className="min-w-0">
-                        <span className="block font-mono text-xs text-foreground">{key}</span>
+                        <span className="flex flex-wrap items-center gap-2 font-mono text-xs text-foreground">
+                          {key}
+                          <span className="font-sans text-[11px] uppercase tracking-wide text-muted-foreground">
+                            {item.domain} · {item.riskClass}
+                          </span>
+                        </span>
                         {item.description ? (
                           <span className="mt-0.5 block text-xs text-muted-foreground">
                             {item.description}

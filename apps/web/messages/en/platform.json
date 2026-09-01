@@ -770,6 +770,9 @@
     "colRoles": "Roles",
     "colStatus": "Status",
     "colActions": "Actions",
+    "systemRole": "System",
+    "customRole": "Custom",
+    "protected": "Protected",
     "you": "(you)",
     "noRoles": "No roles",
     "rowMenuLabel": "Actions for {name}",
@@ -782,6 +785,7 @@
       "edit": "Edit",
       "setPassword": "Set password",
       "manageRoles": "Manage roles",
+      "regenerateTemporary": "Regenerate temporary password",
       "deactivate": "Deactivate",
       "reactivate": "Reactivate"
     },
@@ -812,6 +816,10 @@
       "lastName": "Last name",
       "roles": "Roles",
       "tempPassword": "Temporary password",
+      "expiresAt": "Expires at",
+      "regenerateTitle": "Regenerate temporary password",
+      "regenerateHint": "This immediately signs the user out everywhere and invalidates their previous temporary password.",
+      "regenerating": "Regenerating password",
       "newPassword": "New password",
       "passwordHint": "Minimum 12 characters. The admin shares it directly; no email is sent.",
       "passwordTooShort": "Password must be at least {min} characters.",
@@ -842,6 +850,10 @@
     "retry": "Retry",
     "colName": "Role name",
     "colDescription": "Description",
+    "colGovernance": "Governance",
+    "ownerLabel": "Owner",
+    "templateLabel": "Template",
+    "unassigned": "Unassigned",
     "colPermissions": "Permissions",
     "colMembers": "Members",
     "colActions": "Actions",
@@ -853,6 +865,7 @@
     "actions": {
       "edit": "Edit",
       "managePermissions": "Manage permissions",
+      "viewImpact": "View impact & review",
       "delete": "Delete"
     },
     "toast": {
@@ -864,6 +877,9 @@
       "createSubmit": "Create role",
       "createFailed": "Could not create the role.",
       "name": "Name",
+      "purpose": "Business purpose",
+      "template": "Copy permissions from role",
+      "noTemplate": "Start without a template",
       "description": "Description",
       "editTitle": "Edit role",
       "editFailed": "Could not update the role.",
@@ -879,6 +895,22 @@
       "loadFailed": "Could not load the permission catalogue.",
       "selectGroup": "Select all",
       "clearGroup": "Clear all"
+    },
+    "governance": {
+      "impact": "Access impact",
+      "memberCount": "{count, plural, =0 {No members are assigned} one {# member is assigned} other {# members are assigned}}",
+      "noWarnings": "No elevated-risk permissions are assigned.",
+      "owner": "Role owner",
+      "selectOwner": "Select active owner",
+      "saveOwner": "Save owner",
+      "review": "Access review",
+      "confirmed": "Confirmed",
+      "changesRequired": "Changes required",
+      "notes": "Review notes",
+      "submitReview": "Record review",
+      "systemHint": "This is a protected system role. Its access can be reviewed but not altered here.",
+      "customHint": "Review access impact and maintain accountable ownership.",
+      "loadFailed": "Could not load role governance details."
     }
   },
   "auditLogs": {
@@ -911,6 +943,24 @@
       "steps": "{count, plural, =0 {no steps} one {# step} other {# steps}}",
       "stateTransition": "State transition",
       "document": "Document"
+    },
+    "policies": {
+      "heading": "Approval policy versions",
+      "subheading": "The controlled policy versions held by this organization. Draft editing and publication are introduced separately.",
+      "loadFailed": "Could not load approval policy versions.",
+      "empty": "No approval policy versions have been created.",
+      "colPolicy": "Policy",
+      "colStatus": "Status",
+      "colVersion": "Version",
+      "colRules": "Rules"
+      ,"newDraft": "New policy draft",
+      "draftHint": "This creates an inactive draft. It cannot route approvals until validation and publication are complete.",
+      "policyKey": "Policy key",
+      "notes": "Notes",
+      "create": "Create draft",
+      "creating": "Creating draft",
+      "cancel": "Cancel",
+      "createFailed": "Could not create the policy draft."
     },
     "pending": "Pending Approvals",
     "approve": "Approve",

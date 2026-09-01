@@ -7,6 +7,13 @@ import type {
   UpdateRoleRequest,
 } from '@erp/types';
 
+export interface RoleImpact {
+  id: string; name: string; kind: 'SYSTEM' | 'CUSTOM'; memberCount: number;
+  permissions: { id: string; action: string; resource: string; domain: string; riskClass: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' }[];
+  warnings: { code: string; permissionId: string; riskClass: 'HIGH' | 'CRITICAL'; message: string }[];
+}
+export interface RoleAccessReview { id: string; reviewerUserId: string; decision: 'CONFIRMED' | 'CHANGES_REQUIRED'; notes: string | null; createdAt: string; }
+
 /** `GET /roles` — role summaries with permission and member counts. */
 export async function listRoles(): Promise<RoleSummary[]> {
   return apiClient<RoleSummary[]>('/roles');
@@ -53,3 +60,8 @@ export async function setRolePermissions(
 export async function deleteRole(id: string): Promise<void> {
   return apiClient<void>(`/roles/${id}`, { method: 'DELETE' });
 }
+
+export function getRoleImpact(id: string): Promise<RoleImpact> { return apiClient<RoleImpact>(`/roles/${id}/impact`); }
+export function getRoleAccessReviews(id: string): Promise<RoleAccessReview[]> { return apiClient<RoleAccessReview[]>(`/roles/${id}/access-reviews`); }
+export function reassignRoleOwner(id: string, ownerUserId: string): Promise<void> { return apiClient<void>(`/roles/${id}/owner`, { method: 'POST', body: JSON.stringify({ ownerUserId }) }); }
+export function createRoleAccessReview(id: string, payload: { decision: 'CONFIRMED' | 'CHANGES_REQUIRED'; notes?: string }): Promise<void> { return apiClient<void>(`/roles/${id}/access-reviews`, { method: 'POST', body: JSON.stringify(payload) }); }

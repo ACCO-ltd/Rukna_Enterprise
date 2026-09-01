@@ -42,6 +42,8 @@ function build(
     deactivate: jest.fn().mockResolvedValue(undefined),
     reactivate: jest.fn().mockResolvedValue(undefined),
     replaceMembershipRoles: jest.fn().mockResolvedValue(undefined),
+    completeTemporaryPasswordChange: jest.fn().mockResolvedValue(undefined),
+    regenerateTemporaryPassword: jest.fn().mockResolvedValue(true),
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
   const service = new UsersService(repo as never, audit as never);
@@ -152,5 +154,32 @@ describe('UsersService', () => {
     expect(id).toBe('u-2');
     expect(orgId).toBe('org-1');
     expect(await bcrypt.compare('another-secret-1', hash)).toBe(true);
+  });
+
+  it('provisionTemporary: generates a password stored only as a hash and requires a change', async () => {
+    const { repo, service } = build();
+    const result = await service.provisionTemporary(identity, {
+      email: 'new@acco.com', firstName: 'New', lastName: 'User', roleIds: ['r-1'],
+    });
+    const arg = repo.createWithMembership.mock.calls[0][0];
+    expect(arg.mustChangePassword).toBe(true);
+    expect(arg.temporaryPasswordExpiresAt).toEqual(result.expiresAt);
+    expect(await bcrypt.compare(result.temporaryPassword, arg.passwordHash)).toBe(true);
+  });
+
+  it('changeTemporaryPassword: clears the temporary-password requirement', async () => {
+    const { repo, service } = build();
+    await service.changeTemporaryPassword({ ...identity, mustChangePassword: true }, { password: 'replacement-secret-1' });
+    const [id, orgId, hash] = repo.completeTemporaryPasswordChange.mock.calls[0];
+    expect([id, orgId]).toEqual(['actor-1', 'org-1']);
+    expect(await bcrypt.compare('replacement-secret-1', hash)).toBe(true);
+  });
+
+  it('regenerateTemporaryPassword: invalidates sessions and returns a new expiring credential', async () => {
+    const { repo, service } = build();
+    const result = await service.regenerateTemporaryPassword(identity, 'u-2');
+    const [, , hash, expiresAt] = repo.regenerateTemporaryPassword.mock.calls[0];
+    expect(await bcrypt.compare(result.temporaryPassword, hash)).toBe(true);
+    expect(expiresAt).toEqual(result.expiresAt);
   });
 });

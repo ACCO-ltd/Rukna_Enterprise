@@ -21,6 +21,9 @@ import { CreateUserDto } from './dto/create-user.dto.js';
 import { UpdateUserDto } from './dto/update-user.dto.js';
 import { SetUserPasswordDto } from './dto/set-user-password.dto.js';
 import { SetUserRolesDto } from './dto/set-user-roles.dto.js';
+import { ProvisionTemporaryUserDto } from './dto/provision-temporary-user.dto.js';
+import { ChangeTemporaryPasswordDto } from './dto/change-temporary-password.dto.js';
+import { AllowPasswordChange } from '../../../common/decorators/allow-password-change.decorator.js';
 
 @ApiTags('Users')
 @ApiBearerAuth('access-token')
@@ -45,6 +48,26 @@ export class UsersController {
   @ApiResponse({ status: 409, description: 'Email already in use' })
   create(@CurrentUser() identity: RequestIdentity, @Body() dto: CreateUserDto) {
     return this.usersService.create(identity, dto);
+  }
+
+  @Post('provision-temporary')
+  @RequirePermissions(PERMISSIONS.usersManage)
+  provisionTemporary(@CurrentUser() identity: RequestIdentity, @Body() dto: ProvisionTemporaryUserDto) {
+    return this.usersService.provisionTemporary(identity, dto);
+  }
+
+  @Post(':id/regenerate-temporary-password')
+  @RequirePermissions(PERMISSIONS.usersManage)
+  regenerateTemporaryPassword(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.usersService.regenerateTemporaryPassword(identity, id);
+  }
+
+  @Post('change-temporary-password')
+  @AllowPasswordChange()
+  @RequirePermissions()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  changeTemporaryPassword(@CurrentUser() identity: RequestIdentity, @Body() dto: ChangeTemporaryPasswordDto) {
+    return this.usersService.changeTemporaryPassword(identity, dto);
   }
 
   @Get(':id')

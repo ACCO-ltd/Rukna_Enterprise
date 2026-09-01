@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Delete, Get, Patch, Post, Param, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiBody } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
@@ -8,6 +8,12 @@ import { ApprovalService } from '../application/approval.service.js';
 import { WorkflowTransactionType } from '@erp/types';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator.js';
 import { RequirePermissions } from '../../../common/decorators/require-permissions.decorator.js';
+import { CreatePolicyDraftDto } from './dto/create-policy-draft.dto.js';
+import { AddPolicyRuleDto } from './dto/add-policy-rule.dto.js';
+import { SimulatePolicyDto } from './dto/simulate-policy.dto.js';
+import { ActivatePolicyDto, PolicyReasonDto, SchedulePolicyDto } from './dto/policy-lifecycle.dto.js';
+import { ReorderPolicyRulesDto } from './dto/reorder-policy-rules.dto.js';
+import { ManagePolicySodDto } from './dto/manage-policy-sod.dto.js';
 
 @ApiTags('Workflows')
 @ApiBearerAuth('access-token')
@@ -32,6 +38,95 @@ export class WorkflowsController {
     return this.workflowsService.listBindings(identity.activeOrganizationId);
   }
 
+  @Get('policies')
+  @ApiOperation({ summary: 'List governed approval-policy versions for the active organization' })
+  @ApiResponse({ status: 200, description: 'Policy versions with status, effective dates, and rule counts' })
+  listPolicies(@CurrentUser() identity: RequestIdentity) {
+    return this.workflowsService.listPolicyVersions(identity.activeOrganizationId);
+  }
+
+  @Get('policies/:id')
+  policyDetail(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) { return this.workflowsService.getPolicyWithRules(identity.activeOrganizationId, id); }
+
+  @Get('policies/:id/history')
+  policyHistory(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) { return this.workflowsService.getPolicyHistory(identity.activeOrganizationId, id); }
+
+  @Post('policies/:id/clone')
+  @RequirePermissions(PERMISSIONS.workflowsManage)
+  clonePolicy(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: PolicyReasonDto) { return this.workflowsService.clonePolicyToDraft(identity.activeOrganizationId, id, identity.userId, dto.reason); }
+
+  @Get('policies/:id/sod-rules')
+  policySodRules(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) { return this.workflowsService.listPolicySodRules(identity.activeOrganizationId, id); }
+
+  @Post('policies/:id/sod-rules')
+  @RequirePermissions(PERMISSIONS.workflowsManage)
+  upsertDraftPolicySodRule(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: ManagePolicySodDto) { return this.workflowsService.upsertDraftPolicySodRule(identity.activeOrganizationId, id, identity.userId, dto); }
+
+  @Post('policies')
+  @RequirePermissions(PERMISSIONS.workflowsManage)
+  @ApiOperation({ summary: 'Create an inactive approval-policy draft version' })
+  @ApiResponse({ status: 201, description: 'Draft created; it cannot route transactions until separately validated and published' })
+  createPolicyDraft(@CurrentUser() identity: RequestIdentity, @Body() dto: CreatePolicyDraftDto) {
+    return this.workflowsService.createPolicyDraft(identity.activeOrganizationId, dto);
+  }
+
+  @Post('policies/:id/rules')
+  @RequirePermissions(PERMISSIONS.workflowsManage)
+  @ApiOperation({ summary: 'Add a closed-schema, pending rule to a policy draft' })
+  addRuleToDraft(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: AddPolicyRuleDto) {
+    return this.workflowsService.addRuleToDraft(identity.activeOrganizationId, id, dto);
+  }
+
+  @Patch('policies/:id/rules/:ruleId')
+  @RequirePermissions(PERMISSIONS.workflowsManage)
+  updateDraftRule(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Param('ruleId') ruleId: string, @Body() dto: AddPolicyRuleDto) { return this.workflowsService.updateDraftRule(identity.activeOrganizationId, id, ruleId, identity.userId, { requiredRole: dto.requiredRole, priority: dto.priority ?? 0, minAmount: dto.minAmount, maxAmount: dto.maxAmount, fromState: dto.fromState, toState: dto.toState }); }
+
+  @Delete('policies/:id/rules/:ruleId')
+  @RequirePermissions(PERMISSIONS.workflowsManage)
+  deleteDraftRule(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Param('ruleId') ruleId: string) { return this.workflowsService.deleteDraftRule(identity.activeOrganizationId, id, ruleId, identity.userId); }
+
+  @Post('policies/:id/rules/reorder')
+  @RequirePermissions(PERMISSIONS.workflowsManage)
+  reorderDraftRules(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: ReorderPolicyRulesDto) { return this.workflowsService.reorderDraftRules(identity.activeOrganizationId, id, identity.userId, dto.ruleIds); }
+
+  @Post('policies/:id/validate')
+  @RequirePermissions(PERMISSIONS.workflowsManage)
+  @ApiOperation({ summary: 'Validate a draft policy without changing its state' })
+  validateDraft(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.workflowsService.validateDraft(identity.activeOrganizationId, id);
+  }
+
+  @Post('policies/:id/simulate')
+  @RequirePermissions(PERMISSIONS.workflowsManage)
+  @ApiOperation({ summary: 'Preview a draft policy decision without creating an approval instance' })
+  simulateDraft(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: SimulatePolicyDto) {
+    return this.workflowsService.simulateDraft(identity.activeOrganizationId, id, dto);
+  }
+
+  @Post('policies/:id/submit-review')
+  @RequirePermissions(PERMISSIONS.workflowsManage)
+  submitForReview(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: PolicyReasonDto) {
+    return this.workflowsService.submitForReview(identity.activeOrganizationId, id, identity.userId, dto.reason);
+  }
+
+  @Post('policies/:id/schedule')
+  @RequirePermissions(PERMISSIONS.workflowsPublish)
+  schedulePolicy(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: SchedulePolicyDto) {
+    return this.workflowsService.schedulePolicy(identity.activeOrganizationId, id, identity.userId, dto.reason, new Date(dto.effectiveFrom));
+  }
+
+  @Post('policies/:id/activate')
+  @RequirePermissions(PERMISSIONS.workflowsPublish)
+  activatePolicy(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: ActivatePolicyDto) {
+    return this.workflowsService.activatePolicy(identity.activeOrganizationId, id, identity.userId, dto.reason, dto.effectiveFrom ? new Date(dto.effectiveFrom) : undefined);
+  }
+
+  @Post('policies/:id/retire')
+  @RequirePermissions(PERMISSIONS.workflowsPublish)
+  retirePolicy(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: PolicyReasonDto) {
+    return this.workflowsService.retirePolicy(identity.activeOrganizationId, id, identity.userId, dto.reason);
+  }
+
   @Get('definition/:transactionType')
   @ApiOperation({ summary: 'Get the workflow definition for a transaction type' })
   @ApiParam({
@@ -52,8 +147,11 @@ export class WorkflowsController {
   @ApiParam({ name: 'instanceId', description: 'Workflow instance CUID' })
   @ApiResponse({ status: 200, description: 'Current approval step' })
   @ApiResponse({ status: 404, description: 'Instance not found' })
-  getCurrentStep(@Param('instanceId') instanceId: string) {
-    return this.approvalService.getCurrentStep(instanceId);
+  getCurrentStep(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('instanceId') instanceId: string,
+  ) {
+    return this.approvalService.getCurrentStep(instanceId, identity.activeOrganizationId);
   }
 
   @Post('instance/:instanceId/approve')

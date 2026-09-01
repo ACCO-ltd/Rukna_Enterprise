@@ -11,6 +11,7 @@ import {
   SheetContent,
   SheetDescription,
   SheetTitle,
+  Select,
   Textarea,
 } from '@erp/ui';
 
@@ -18,7 +19,7 @@ import type { RoleSummary } from '@erp/types';
 import { PermissionPicker } from '@/features/permissions/components/permission-picker';
 import { ApiError } from '@/lib/api-client';
 
-import { useCreateRole, useRole, useSetRolePermissions, useUpdateRole } from '../hooks/use-roles';
+import { useCreateRole, useRole, useRoles, useSetRolePermissions, useUpdateRole } from '../hooks/use-roles';
 
 function FormSheet({
   open,
@@ -62,7 +63,8 @@ export function CreateRoleSheet({
   const t = useTranslations('platform.roles.form');
   const tc = useTranslations('common');
   const create = useCreateRole();
-  const ids = { name: useId(), description: useId() };
+  const templates = useRoles();
+  const ids = { name: useId(), purpose: useId(), description: useId() };
   const [permissionIds, setPermissionIds] = useState<string[]>([]);
 
   function close(next: boolean) {
@@ -77,12 +79,16 @@ export function CreateRoleSheet({
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const name = String(form.get('name') ?? '').trim();
+    const purpose = String(form.get('purpose') ?? '').trim();
+    const templateRoleId = String(form.get('templateRoleId') ?? '');
     const description = String(form.get('description') ?? '').trim();
-    if (!name) return;
+    if (!name || !purpose) return;
 
     create.mutate(
       {
         name,
+        purpose,
+        ...(templateRoleId ? { templateRoleId } : {}),
         ...(description ? { description } : {}),
         ...(permissionIds.length > 0 ? { permissionIds } : {}),
       },
@@ -112,6 +118,17 @@ export function CreateRoleSheet({
             autoComplete="off"
             disabled={create.isPending}
           />
+        </FormField>
+
+        <FormField htmlFor={ids.purpose} label={t('purpose')} required>
+          <Textarea id={ids.purpose} name="purpose" rows={2} required maxLength={500} disabled={create.isPending} />
+        </FormField>
+
+        <FormField htmlFor="templateRoleId" label={t('template')}>
+          <Select id="templateRoleId" name="templateRoleId" disabled={create.isPending || templates.isPending}>
+            <option value="">{t('noTemplate')}</option>
+            {(templates.data ?? []).map((role) => <option key={role.id} value={role.id}>{role.name} ({role.kind})</option>)}
+          </Select>
         </FormField>
 
         <FormField
@@ -167,18 +184,19 @@ export function EditRoleSheet({
   const t = useTranslations('platform.roles.form');
   const tc = useTranslations('common');
   const update = useUpdateRole();
-  const ids = { name: useId(), description: useId() };
+  const ids = { name: useId(), purpose: useId(), description: useId() };
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!role) return;
     const form = new FormData(event.currentTarget);
     const name = String(form.get('name') ?? '').trim();
+    const purpose = String(form.get('purpose') ?? '').trim();
     const description = String(form.get('description') ?? '').trim();
-    if (!name) return;
+    if (!name || !purpose) return;
 
     update.mutate(
-      { id: role.id, payload: { name, description } },
+      { id: role.id, payload: { name, purpose, description } },
       { onSuccess: () => onOpenChange(false) },
     );
   }
@@ -203,6 +221,18 @@ export function EditRoleSheet({
               required
               maxLength={100}
               autoComplete="off"
+              disabled={update.isPending}
+            />
+          </FormField>
+
+          <FormField htmlFor={ids.purpose} label={t('purpose')} required>
+            <Textarea
+              id={ids.purpose}
+              name="purpose"
+              rows={2}
+              required
+              maxLength={500}
+              defaultValue={role.purpose ?? ''}
               disabled={update.isPending}
             />
           </FormField>

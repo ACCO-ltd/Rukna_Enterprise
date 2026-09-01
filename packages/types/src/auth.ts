@@ -5,6 +5,8 @@ export interface JwtPayload {
   tenantSlug: string;
   roles: string[];
   permissions: string[];
+  mustChangePassword?: boolean;
+  sessionVersion?: number;
   jti?: string;
   iat?: number;
   exp?: number;
@@ -26,4 +28,5 @@ export interface RequestIdentity {
   tenantSlug: string;
   roles: string[];
   permissions: string[];
+  mustChangePassword?: boolean;
 }

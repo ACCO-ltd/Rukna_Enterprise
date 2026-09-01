@@ -40,6 +40,8 @@ export interface IUsersRepository {
 
   /** Count roleIds (from the given set) that exist in the organization. */
   countRolesInOrg(orgId: string, roleIds: string[]): Promise<number>;
+  completeTemporaryPasswordChange(id: string, orgId: string, passwordHash: string, actorUserId: string): Promise<void>;
+  regenerateTemporaryPassword(id: string, orgId: string, passwordHash: string, expiresAt: Date, actorUserId: string): Promise<boolean>;
 }
 
 export interface CreateUserData {
@@ -64,6 +66,9 @@ export interface CreateUserWithMembershipData {
   organizationId: string;
   roleIds: string[];
   actorUserId: string;
+  mustChangePassword?: boolean;
+  temporaryPasswordExpiresAt?: Date;
+  auditAction?: string;
 }
 
 export interface UserWithRolesRecord {

@@ -18,6 +18,20 @@ export interface CreateUserRequest {
   roleIds: string[];
 }
 
+export interface ProvisionTemporaryUserRequest {
+  email: string;
+  firstName: string;
+  lastName: string;
+  roleIds: string[];
+}
+
+export interface ProvisionTemporaryUserResponse {
+  user: UserWithRolesResponse;
+  /** Returned once for authorized delivery to the user; never persisted by the client. */
+  temporaryPassword: string;
+  expiresAt: string;
+}
+
 export interface UpdateUserRequest {
   firstName?: string;
   lastName?: string;
@@ -53,6 +67,9 @@ export interface UserWithRolesResponse {
 export interface CreateRoleRequest {
   name: string;
   description?: string;
+  /** Why this custom role exists; displayed in access reviews. */
+  purpose?: string;
+  templateRoleId?: string;
   /** Permission catalogue ids to grant. May be omitted/empty. */
   permissionIds?: string[];
 }
@@ -60,6 +77,7 @@ export interface CreateRoleRequest {
 export interface UpdateRoleRequest {
   name?: string;
   description?: string;
+  purpose?: string;
 }
 
 export interface SetRolePermissionsRequest {
@@ -79,6 +97,10 @@ export interface RoleWithPermissionsResponse {
   id: string;
   name: string;
   description: string | null;
+  kind: 'SYSTEM' | 'CUSTOM';
+  purpose: string | null;
+  ownerUserId: string | null;
+  templateRoleId: string | null;
   permissions: PermissionRef[];
 }
 
@@ -87,6 +109,10 @@ export interface RoleSummary {
   id: string;
   name: string;
   description: string | null;
+  kind: 'SYSTEM' | 'CUSTOM';
+  purpose: string | null;
+  ownerUserId: string | null;
+  templateRoleId: string | null;
   permissionCount: number;
   /** Count of ACTIVE membership-role assignments (removedAt null) referencing this role. */
   memberCount: number;

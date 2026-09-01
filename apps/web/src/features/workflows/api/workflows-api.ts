@@ -7,6 +7,47 @@ import type {
   WorkflowTriggerBinding,
 } from '../types';
 
+export interface ApprovalPolicySummary {
+  id: string;
+  policyKey: string;
+  version: number;
+  status: 'DRAFT' | 'IN_REVIEW' | 'SCHEDULED' | 'ACTIVE' | 'SUPERSEDED' | 'RETIRED';
+  effectiveFrom: string | null;
+  effectiveTo: string | null;
+  amountBasis: string;
+  notes: string | null;
+  ruleCount: number;
+  updatedAt: string;
+}
+export interface ApprovalPolicyDetail extends ApprovalPolicySummary { rules: { id: string; ruleKey: string; transactionType: string | null; priority: number; status: string; configuration: { requiredRole?: string; minAmount?: string | null; maxAmount?: string | null; fromState?: string | null; toState?: string | null } }[]; }
+export interface DraftValidation { valid: boolean; ruleCount: number; issues: { code: string; message: string; ruleId?: string; severity: 'ERROR' | 'WARNING' }[]; }
+export interface DraftSimulation { policy: { id: string; policyKey: string; version: number }; input: { transactionType: string; amount?: string; fromState?: string; toState?: string }; matched: boolean; roleChain: { ruleId: string; ruleKey: string; priority: number; requiredRole: string | null }[]; notice: string; }
+export interface PolicyActivity { id: string; action: string; reason: string | null; createdAt: string; userId: string; }
+export interface PolicySodRule { id: string; code: string; description: string; isActive: boolean; }
+
+/** `GET /workflows/policies` — governed policy-version inventory for administration. */
+export function getApprovalPolicies(): Promise<ApprovalPolicySummary[]> {
+  return apiClient<ApprovalPolicySummary[]>('/workflows/policies');
+}
+
+export function createApprovalPolicyDraft(payload: { policyKey: string; notes?: string }): Promise<ApprovalPolicySummary> {
+  return apiClient<ApprovalPolicySummary>('/workflows/policies', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  });
+}
+export function getApprovalPolicy(id: string): Promise<ApprovalPolicyDetail> { return apiClient<ApprovalPolicyDetail>(`/workflows/policies/${id}`); }
+export function addApprovalPolicyRule(id: string, payload: { ruleKey: string; transactionType: string; requiredRole: string; priority?: number; minAmount?: string; maxAmount?: string; fromState?: string; toState?: string }): Promise<void> { return apiClient<void>(`/workflows/policies/${id}/rules`, { method: 'POST', body: JSON.stringify(payload) }); }
+export function validateApprovalPolicyDraft(id: string): Promise<DraftValidation> { return apiClient<DraftValidation>(`/workflows/policies/${id}/validate`, { method: 'POST' }); }
+export function simulateApprovalPolicyDraft(id: string, payload: { transactionType: string; amount?: string; fromState?: string; toState?: string }): Promise<DraftSimulation> { return apiClient<DraftSimulation>(`/workflows/policies/${id}/simulate`, { method: 'POST', body: JSON.stringify(payload) }); }
+export function deleteApprovalPolicyRule(policyId: string, ruleId: string): Promise<void> { return apiClient<void>(`/workflows/policies/${policyId}/rules/${ruleId}`, { method: 'DELETE' }); }
+export function updateApprovalPolicyRule(policyId: string, ruleId: string, payload: { ruleKey: string; transactionType: string; requiredRole: string; priority: number; minAmount?: string; maxAmount?: string; fromState?: string; toState?: string }): Promise<void> { return apiClient<void>(`/workflows/policies/${policyId}/rules/${ruleId}`, { method: 'PATCH', body: JSON.stringify(payload) }); }
+export function reorderApprovalPolicyRules(id: string, ruleIds: string[]): Promise<void> { return apiClient<void>(`/workflows/policies/${id}/rules/reorder`, { method: 'POST', body: JSON.stringify({ ruleIds }) }); }
+export function transitionApprovalPolicy(id: string, action: 'submit-review' | 'schedule' | 'activate' | 'retire', payload: { reason: string; effectiveFrom?: string }): Promise<void> { return apiClient<void>(`/workflows/policies/${id}/${action}`, { method: 'POST', body: JSON.stringify(payload) }); }
+export function getApprovalPolicyHistory(id: string): Promise<PolicyActivity[]> { return apiClient<PolicyActivity[]>(`/workflows/policies/${id}/history`); }
+export function cloneApprovalPolicy(id: string, reason: string): Promise<ApprovalPolicySummary> { return apiClient<ApprovalPolicySummary>(`/workflows/policies/${id}/clone`, { method: 'POST', body: JSON.stringify({ reason }) }); }
+export function getApprovalPolicySodRules(id: string): Promise<PolicySodRule[]> { return apiClient<PolicySodRule[]>(`/workflows/policies/${id}/sod-rules`); }
+export function upsertApprovalPolicySodRule(id: string, payload: Omit<PolicySodRule, 'id'>): Promise<PolicySodRule> { return apiClient<PolicySodRule>(`/workflows/policies/${id}/sod-rules`, { method: 'POST', body: JSON.stringify(payload) }); }
+
 /**
  * `GET /workflows/bindings` — the governance configuration the organization is subject to: every
  * trigger binding (its own plus tenant defaults) with the definition it routes to. Read-only.

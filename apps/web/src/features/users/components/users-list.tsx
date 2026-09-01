@@ -19,6 +19,10 @@ import {
   TableRow,
   TableScroll,
   useToast,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
 } from '@erp/ui';
 
 import type { UserWithRolesResponse } from '@erp/types';
@@ -27,7 +31,7 @@ import { usePermissions } from '@/features/auth/permissions/can';
 import { useSession } from '@/features/auth/session/use-session';
 import { ApiError } from '@/lib/api-client';
 
-import { useDeactivateUser, useReactivateUser, useUsers } from '../hooks/use-users';
+import { useDeactivateUser, useReactivateUser, useRegenerateTemporaryPassword, useUsers } from '../hooks/use-users';
 import { UserStatusBadge } from './user-status-badge';
 import { UserRolesCell } from './user-roles-cell';
 import {
@@ -52,10 +56,12 @@ export function UsersList() {
   const [createOpen, setCreateOpen] = useState(false);
   const [target, setTarget] = useState<UserWithRolesResponse | null>(null);
   const [sheet, setSheet] = useState<ActiveSheet | null>(null);
+  const [credentialTarget, setCredentialTarget] = useState<UserWithRolesResponse | null>(null);
 
   const deactivate = useDeactivateUser();
   const reactivate = useReactivateUser();
   const statusPending = deactivate.isPending || reactivate.isPending;
+  const regenerate = useRegenerateTemporaryPassword();
 
   function openSheet(next: ActiveSheet, user: UserWithRolesResponse) {
     setTarget(user);
@@ -193,6 +199,9 @@ export function UsersList() {
                                 <DropdownMenuItem onSelect={() => openSheet('password', user)}>
                                   {t('actions.setPassword')}
                                 </DropdownMenuItem>
+                                {isActive ? <DropdownMenuItem onSelect={() => { regenerate.reset(); setCredentialTarget(user); }}>
+                                  {t('actions.regenerateTemporary')}
+                                </DropdownMenuItem> : null}
                                 <DropdownMenuItem onSelect={() => openSheet('roles', user)}>
                                   {t('actions.manageRoles')}
                                 </DropdownMenuItem>
@@ -248,6 +257,11 @@ export function UsersList() {
               toast({ tone: 'success', title: t('toast.passwordSet') });
             }}
           />
+          <Sheet open={Boolean(credentialTarget)} onOpenChange={(open) => { if (!open) { setCredentialTarget(null); regenerate.reset(); } }}>
+            <SheetContent className="p-6"><SheetTitle>{t('form.regenerateTitle')}</SheetTitle><SheetDescription className="mt-1">{t('form.regenerateHint')}</SheetDescription>
+              {regenerate.data ? <div className="mt-5 space-y-3 rounded-panel border border-border bg-surface p-4"><p className="font-mono text-sm break-all">{regenerate.data.temporaryPassword}</p><p className="text-sm text-muted-foreground">{t('form.expiresAt')}: {new Date(regenerate.data.expiresAt).toLocaleString()}</p></div> : <div className="mt-5 flex justify-end gap-2"><Button variant="outline" onClick={() => setCredentialTarget(null)}>{tCommon('cancel')}</Button><Button disabled={regenerate.isPending} onClick={() => credentialTarget && regenerate.mutate(credentialTarget.id)}>{regenerate.isPending ? t('form.regenerating') : t('actions.regenerateTemporary')}</Button></div>}
+            </SheetContent>
+          </Sheet>
           <ManageRolesSheet
             user={sheet === 'roles' ? target : null}
             onOpenChange={(open) => {

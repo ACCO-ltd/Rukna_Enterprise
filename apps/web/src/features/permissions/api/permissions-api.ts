@@ -12,6 +12,8 @@ export interface PermissionCatalogueItem {
   action: string;
   resource: string;
   description: string | null;
+  domain: string;
+  riskClass: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 }
 
 /** The `action:resource` key for a catalogue item — the platform's permission identifier. */

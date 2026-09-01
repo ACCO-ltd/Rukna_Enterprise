@@ -97,8 +97,8 @@ export class ApprovalService {
     await this.repo.updateInstanceStep(instanceId, instance.currentStepOrder, 'REJECTED');
   }
 
-  async getCurrentStep(instanceId: string) {
-    const instance = await this.repo.findInstanceById(instanceId);
+  async getCurrentStep(instanceId: string, organizationId: string) {
+    const instance = await this.repo.findInstanceById(instanceId, organizationId);
     if (!instance) throw new NotFoundException(`Approval instance not found: ${instanceId}`);
     return instance.definition.steps.find((s) => s.stepOrder === instance.currentStepOrder) ?? null;
   }

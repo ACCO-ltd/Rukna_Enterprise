@@ -27,6 +27,7 @@ model Organization {
   segregationOfDutiesRules SegregationOfDutiesRule[]
   auditOutboxEvents        AuditOutboxEvent[]
   memberships              OrganizationMembership[]
+  roleAccessReviews        RoleAccessReview[]
   projects                 Project[]
   districts                District[]
   projectCodeSequences     ProjectCodeSequence[]
@@ -70,6 +71,9 @@ model User {
   id                String     @id @default(cuid())
   email             String     @unique
   passwordHash      String     @map("password_hash")
+  mustChangePassword Boolean   @default(false) @map("must_change_password")
+  temporaryPasswordExpiresAt DateTime? @map("temporary_password_expires_at")
+  sessionVersion    Int        @default(0) @map("session_version")
   firstName         String     @map("first_name")
   lastName          String     @map("last_name")
   status            UserStatus @default(ACTIVE)
@@ -83,6 +87,7 @@ model User {
   auditLogs      AuditLog[]
   memberships    OrganizationMembership[]
   projectMembers ProjectMember[]
+  ownedRoles     Role[]                   @relation("RoleOwner")
 
   @@index([organizationId])
   @@map("users")
@@ -92,17 +97,27 @@ model Role {
   id             String   @id @default(cuid())
   name           String
   description    String?
+  kind           RoleKind @default(CUSTOM)
+  purpose        String?
+  ownerUserId    String?  @map("owner_user_id")
+  templateRoleId String?  @map("template_role_id")
   organizationId String   @map("organization_id")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
   organization    Organization                 @relation(fields: [organizationId], references: [id])
+  owner           User?                        @relation("RoleOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  templateRole    Role?                        @relation("RoleTemplate", fields: [templateRoleId], references: [id])
+  derivedRoles    Role[]                       @relation("RoleTemplate")
   userRoles       UserRole[]
   rolePermissions RolePermission[]
   membershipRoles OrganizationMembershipRole[]
+  accessReviews   RoleAccessReview[]
 
   @@unique([name, organizationId])
   @@index([organizationId])
+  @@index([ownerUserId])
+  @@index([templateRoleId])
   @@map("roles")
 }
 
@@ -111,12 +126,47 @@ model Permission {
   action      String
   resource    String
   description String?
+  domain      String   @default("Platform")
+  riskClass   PermissionRiskClass @default(HIGH) @map("risk_class")
   createdAt   DateTime @default(now()) @map("created_at")
 
   rolePermissions RolePermission[]
 
   @@unique([action, resource])
   @@map("permissions")
+}
+
+model RoleAccessReview {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  roleId         String   @map("role_id")
+  reviewerUserId String   @map("reviewer_user_id")
+  decision       RoleAccessReviewDecision
+  notes          String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role         Role         @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, roleId, createdAt])
+  @@map("role_access_reviews")
+}
+
+enum RoleKind {
+  SYSTEM
+  CUSTOM
+}
+
+enum PermissionRiskClass {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RoleAccessReviewDecision {
+  CONFIRMED
+  CHANGES_REQUIRED
 }
 
 model UserRole {
@@ -378,6 +428,11 @@ model WorkflowPolicyVersion {
   effectiveTo       DateTime?            @map("effective_to")
   amountBasis       WorkflowAmountBasis  @default(UNSPECIFIED) @map("amount_basis")
   notes             String?
+  submittedByUserId String?              @map("submitted_by_user_id")
+  submittedAt       DateTime?            @map("submitted_at")
+  reviewedByUserId  String?              @map("reviewed_by_user_id")
+  reviewedAt        DateTime?            @map("reviewed_at")
+  reviewNotes       String?              @map("review_notes")
   approvedAt        DateTime?            @map("approved_at")
   createdAt         DateTime             @default(now()) @map("created_at")
   updatedAt         DateTime             @updatedAt @map("updated_at")
@@ -2751,6 +2806,7 @@ enum WorkflowRequirement {
 
 enum WorkflowPolicyStatus {
   DRAFT
+  IN_REVIEW
   SCHEDULED
   ACTIVE
   SUPERSEDED

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import type { Prisma } from '@prisma/client';
 
 import { UserStatus, MembershipStatus } from '@erp/types';
@@ -100,6 +101,8 @@ export class UsersPrismaRepository implements IUsersRepository {
         data: {
           email: data.email,
           passwordHash: data.passwordHash,
+          mustChangePassword: data.mustChangePassword ?? false,
+          temporaryPasswordExpiresAt: data.temporaryPasswordExpiresAt,
           firstName: data.firstName,
           lastName: data.lastName,
           status: UserStatus.ACTIVE,
@@ -123,6 +126,14 @@ export class UsersPrismaRepository implements IUsersRepository {
           })),
         });
       }
+      if (data.auditAction) {
+        const audit = await tx.auditLog.create({
+          data: { userId: data.actorUserId, orgId: data.organizationId, action: data.auditAction, resource: 'user', resourceId: user.id, after: { expiresAt: data.temporaryPasswordExpiresAt?.toISOString() } },
+        });
+        await tx.auditOutboxEvent.create({
+          data: { organizationId: data.organizationId, auditLogId: audit.id, aggregateType: 'user', aggregateId: user.id, eventType: data.auditAction, idempotencyKey: randomUUID(), payload: { action: data.auditAction, userId: user.id } },
+        });
+      }
       return user.id;
     });
 
@@ -143,20 +154,26 @@ export class UsersPrismaRepository implements IUsersRepository {
 
   async deactivate(id: string, orgId: string, actorUserId: string): Promise<void> {
     const prisma = this.tenancyService.getClient();
-    await prisma.$transaction([
-      prisma.user.updateMany({
+    await prisma.$transaction(async (tx) => {
+      await tx.user.updateMany({
         where: { id, organizationId: orgId },
         data: { status: UserStatus.INACTIVE },
-      }),
-      prisma.organizationMembership.updateMany({
+      });
+      await tx.organizationMembership.updateMany({
         where: { userId: id, organizationId: orgId },
         data: {
           status: MembershipStatus.SUSPENDED,
           removedAt: new Date(),
           removedBy: actorUserId,
         },
-      }),
-    ]);
+      });
+      await tx.refreshToken.updateMany({
+        where: { userId: id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      const audit = await tx.auditLog.create({ data: { userId: actorUserId, orgId, action: 'USER_DEACTIVATED', resource: 'user', resourceId: id } });
+      await tx.auditOutboxEvent.create({ data: { organizationId: orgId, auditLogId: audit.id, aggregateType: 'user', aggregateId: id, eventType: 'USER_DEACTIVATED', idempotencyKey: randomUUID(), payload: { action: 'USER_DEACTIVATED', userId: id, sessionsRevoked: true } } });
+    });
   }
 
   async reactivate(id: string, orgId: string): Promise<void> {
@@ -231,6 +248,49 @@ export class UsersPrismaRepository implements IUsersRepository {
     if (roleIds.length === 0) return 0;
     const prisma = this.tenancyService.getClient();
     return prisma.role.count({ where: { organizationId: orgId, id: { in: roleIds } } });
+  }
+
+  async completeTemporaryPasswordChange(id: string, orgId: string, passwordHash: string, actorUserId: string): Promise<void> {
+    const prisma = this.tenancyService.getClient();
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.user.updateMany({
+        where: { id, organizationId: orgId, mustChangePassword: true },
+        data: {
+          passwordHash,
+          mustChangePassword: false,
+          temporaryPasswordExpiresAt: null,
+          sessionVersion: { increment: 1 },
+        },
+      });
+      if (updated.count > 0) {
+        await tx.refreshToken.updateMany({
+          where: { userId: id, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+        const audit = await tx.auditLog.create({ data: { userId: actorUserId, orgId, action: 'USER_TEMPORARY_PASSWORD_CHANGED', resource: 'user', resourceId: id } });
+        await tx.auditOutboxEvent.create({ data: { organizationId: orgId, auditLogId: audit.id, aggregateType: 'user', aggregateId: id, eventType: 'USER_TEMPORARY_PASSWORD_CHANGED', idempotencyKey: randomUUID(), payload: { action: 'USER_TEMPORARY_PASSWORD_CHANGED', userId: id } } });
+      }
+    });
+  }
+
+  async regenerateTemporaryPassword(id: string, orgId: string, passwordHash: string, expiresAt: Date, actorUserId: string): Promise<boolean> {
+    const prisma = this.tenancyService.getClient();
+    return prisma.$transaction(async (tx) => {
+      const updated = await tx.user.updateMany({
+        where: { id, organizationId: orgId, status: UserStatus.ACTIVE },
+        data: { passwordHash, mustChangePassword: true, temporaryPasswordExpiresAt: expiresAt, sessionVersion: { increment: 1 } },
+      });
+      if (updated.count > 0) {
+        await tx.refreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } });
+        const audit = await tx.auditLog.create({
+          data: { userId: actorUserId, orgId, action: 'USER_TEMPORARY_CREDENTIAL_REGENERATED', resource: 'user', resourceId: id, after: { expiresAt: expiresAt.toISOString() } },
+        });
+        await tx.auditOutboxEvent.create({
+          data: { organizationId: orgId, auditLogId: audit.id, aggregateType: 'user', aggregateId: id, eventType: 'USER_TEMPORARY_CREDENTIAL_REGENERATED', idempotencyKey: randomUUID(), payload: { action: 'USER_TEMPORARY_CREDENTIAL_REGENERATED', userId: id } },
+        });
+      }
+      return updated.count > 0;
+    });
   }
 
   private toDomain(raw: {

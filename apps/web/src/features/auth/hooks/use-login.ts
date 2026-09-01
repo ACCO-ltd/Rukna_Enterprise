@@ -26,6 +26,10 @@ export function useLogin() {
 
 
       // Only same-origin relative paths — never redirect to an attacker-supplied URL.
+      if (user.mustChangePassword) {
+        router.push('/change-password');
+        return;
+      }
       const next = searchParams.get('next');
       router.push(isSafeRedirect(next) ? next : '/dashboard');
     },

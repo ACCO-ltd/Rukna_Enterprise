@@ -24,6 +24,7 @@ import {
 import type { RoleSummary } from '@erp/types';
 import { PERMISSIONS } from '@erp/types';
 import { usePermissions } from '@/features/auth/permissions/can';
+import { useUsers } from '@/features/users/hooks/use-users';
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { ApiError } from '@/lib/api-client';
 
@@ -33,8 +34,9 @@ import {
   EditRoleSheet,
   ManagePermissionsSheet,
 } from './role-form-sheets';
+import { RoleGovernanceSheet } from './role-governance-sheet';
 
-type ActiveSheet = 'edit' | 'permissions';
+type ActiveSheet = 'edit' | 'permissions' | 'governance';
 
 export function RolesList() {
   const t = useTranslations('platform.roles');
@@ -44,6 +46,7 @@ export function RolesList() {
   const canManage = can(PERMISSIONS.rolesManage);
 
   const { data, isPending, isError, refetch, isFetching } = useRoles();
+  const users = useUsers();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [target, setTarget] = useState<RoleSummary | null>(null);
@@ -133,7 +136,7 @@ export function RolesList() {
             <TableHeader>
               <TableRow>
                 <TableHead>{t('colName')}</TableHead>
-                <TableHead>{t('colDescription')}</TableHead>
+                <TableHead>{t('colGovernance')}</TableHead>
                 <TableHead className="text-end">{t('colPermissions')}</TableHead>
                 <TableHead className="text-end">{t('colMembers')}</TableHead>
                 {canManage ? (
@@ -144,11 +147,16 @@ export function RolesList() {
             <TableBody>
               {data.map((role) => (
                 <TableRow key={role.id}>
-                  <TableCell className="font-medium">{role.name}</TableCell>
+                  <TableCell className="font-medium">
+                    {role.name}
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                      {role.kind === 'SYSTEM' ? t('systemRole') : t('customRole')}
+                    </span>
+                  </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {role.description ?? (
-                      <span className="text-muted-foreground/60">{t('noDescription')}</span>
-                    )}
+                    <div>{role.purpose ?? role.description ?? t('noDescription')}</div>
+                    <div className="mt-1 text-xs">{t('ownerLabel')}: {users.data?.find(u => u.id === role.ownerUserId)?.email ?? t('unassigned')}</div>
+                    {role.templateRoleId ? <div className="text-xs">{t('templateLabel')}: {role.templateRoleId}</div> : null}
                   </TableCell>
                   <TableCell className="text-end tabular-nums text-muted-foreground">
                     {role.permissionCount}
@@ -158,7 +166,7 @@ export function RolesList() {
                   </TableCell>
                   {canManage ? (
                     <TableCell className="text-end">
-                      <RowActions
+                      {role.kind === 'CUSTOM' ? <RowActions
                         overflow={
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -171,6 +179,7 @@ export function RolesList() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              <DropdownMenuItem onSelect={() => openSheet('governance', role)}>{t('actions.viewImpact')}</DropdownMenuItem>
                               <DropdownMenuItem onSelect={() => openSheet('edit', role)}>
                                 {t('actions.edit')}
                               </DropdownMenuItem>
@@ -189,7 +198,7 @@ export function RolesList() {
                             </DropdownMenuContent>
                           </DropdownMenu>
                         }
-                      />
+                      /> : <Button variant="ghost" size="sm" onClick={() => openSheet('governance', role)}>{t('protected')}</Button>}
                     </TableCell>
                   ) : null}
                 </TableRow>
@@ -214,6 +223,7 @@ export function RolesList() {
               if (!open) closeSheet();
             }}
           />
+          <RoleGovernanceSheet role={sheet === 'governance' ? target : null} onOpenChange={(open) => { if (!open) closeSheet(); }} />
           {deleteTarget ? (
             <ConfirmActionDialog
               title={t('deleteTitle', { name: deleteTarget.name })}
