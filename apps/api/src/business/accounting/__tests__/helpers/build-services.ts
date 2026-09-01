@@ -89,8 +89,14 @@ export function buildServices(prisma: PrismaClient): AccountingServices {
   const openingBalanceService = new OpeningBalanceService(tenancy, accountRepo, journalRepo, sequenceRepo, postingService);
   const reconciliationService = new ReconciliationService(tenancy, accountRepo, journalRepo);
 
+  // Governance seam (ADR-011) — shared by manual journals and AP.
+  const commandGovernance = new CommandGovernanceService(
+    new WorkflowTriggerResolverService(tenancy),
+    new WorkflowsPrismaRepository(tenancy),
+  );
+
   // Manual journals
-  const manualJournalService = new ManualJournalService(tenancy, journalRepo, sequenceRepo, postingService, sod);
+  const manualJournalService = new ManualJournalService(tenancy, journalRepo, sequenceRepo, postingService, commandGovernance, sod);
 
   // AR
   const postingAccountResolver = new PostingAccountResolver(accountRepo);
@@ -103,10 +109,6 @@ export function buildServices(prisma: PrismaClient): AccountingServices {
   const supplierBillRepo    = new SupplierBillRepository();
   const supplierPaymentRepo = new SupplierPaymentRepository();
   const commitmentWriter    = new CommitmentLedgerWriter(new CommitmentLedgerRepository());
-  const commandGovernance   = new CommandGovernanceService(
-    new WorkflowTriggerResolverService(tenancy),
-    new WorkflowsPrismaRepository(tenancy),
-  );
   // ADR-022 Phase 4: the shared harness treats accounts as having no signatories (no dual control),
   // so existing payment tests keep the APPROVED → post path. Release is covered in dedicated specs.
   const signatoryService = {

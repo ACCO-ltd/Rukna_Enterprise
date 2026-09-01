@@ -15,6 +15,17 @@ import {
 import { JournalRepository } from '../../accounting-core/infrastructure/journal.repository.js';
 import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
 import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
+import {
+  CommandGovernanceService,
+  throwIfGated,
+} from '../../../../platform/workflows/application/command-governance.service.js';
+import type { GovernedEntity } from '@erp/types';
+
+// The manual-journal governed entity name. Registering it in the shared `GovernedEntity`
+// union lives in `packages/types` (owned by the parallel access-governance effort), so we
+// consume the governance seam read-only with a localized cast rather than editing that file.
+// At runtime the resolver takes `entityType: string`; the cast only satisfies the compiler.
+const MANUAL_JOURNAL_ENTITY = 'ManualJournal' as GovernedEntity;
 
 export interface ManualJournalLineDto {
   accountId: string;
@@ -62,6 +73,7 @@ export class ManualJournalService {
     private readonly sequenceRepo: DocumentSequenceRepository,
     @Inject(ACCOUNTING_POSTING_PORT)
     private readonly postingPort: IAccountingPostingPort,
+    private readonly commandGovernance: CommandGovernanceService,
     private readonly sod: SegregationOfDutiesService,
   ) {}
 
@@ -110,6 +122,24 @@ export class ManualJournalService {
   async submit(identity: RequestIdentity, journalId: string) {
     const prisma = this.tenancyService.getClient();
     const journal = await this.requireDraft(prisma, identity.activeOrganizationId, journalId);
+
+    // Governance seam (ADR-011). When an active binding exists for this manual-journal
+    // transition, the seam opens an approval instance and this throws 409 with the
+    // approvalInstanceId — the journal stays DRAFT until a REAL authorized approval
+    // completes. When no binding is configured the gate is null and we proceed, WITHOUT
+    // writing any approval metadata (approvedBy/approvedAt stay null — see post()).
+    const amount = await this.journalAmount(prisma, journal.id);
+    throwIfGated(
+      await this.commandGovernance.gateStateTransition(
+        identity,
+        MANUAL_JOURNAL_ENTITY,
+        'DRAFT',
+        'SUBMITTED',
+        journal.id,
+        amount,
+      ),
+      'Manual journal submission requires workflow approval.',
+    );
 
     return prisma.journalEntry.update({
       where: { id: journal.id },
@@ -160,12 +190,24 @@ export class ManualJournalService {
     const prisma = this.tenancyService.getClient();
     const { activeOrganizationId: orgId, userId } = identity;
 
+    // A journal is post-eligible from SUBMITTED or APPROVED. Reaching SUBMITTED already
+    // cleared the ADR-011 governance gate (see submit()): either no binding was configured
+    // (ungoverned — approvedBy stays null), or a binding was configured and the workflow
+    // approval completed and was consumed by the seam before the transition proceeded. An
+    // APPROVED status carries a real approver recorded by approve(). Either way, approvedBy
+    // below is only ever a genuine value — never fabricated.
     const journal = await prisma.journalEntry.findFirst({
-      where: { id: journalId, organizationId: orgId, status: 'APPROVED' },
+      where: {
+        id: journalId,
+        organizationId: orgId,
+        status: { in: ['SUBMITTED', 'APPROVED'] },
+      },
       include: { lines: true },
     });
     if (!journal) {
-      throw new NotFoundException(`Journal ${journalId} not found in APPROVED status`);
+      throw new NotFoundException(
+        `Journal ${journalId} not found in a postable status (SUBMITTED or APPROVED)`,
+      );
     }
 
     return prisma.$transaction(async (tx) => {
@@ -302,5 +344,22 @@ export class ManualJournalService {
     });
     if (!journal) throw new NotFoundException(`Journal ${journalId} not found in DRAFT status`);
     return journal;
+  }
+
+  /**
+   * The journal's monetary size for ADR-022 amount-band routing: the total debit side
+   * (equal to the total credit side for a balanced journal). Returns null when there are
+   * no lines, so amount-less bindings still resolve via catch-all.
+   */
+  private async journalAmount(
+    prisma: ReturnType<TenancyService['getClient']>,
+    journalId: string,
+  ): Promise<Decimal | null> {
+    const agg = await prisma.journalLine.aggregate({
+      where: { journalEntryId: journalId },
+      _sum: { debitAmount: true },
+    });
+    const total = agg._sum.debitAmount;
+    return total === null || total === undefined ? null : new Decimal(total.toString());
   }
 }
