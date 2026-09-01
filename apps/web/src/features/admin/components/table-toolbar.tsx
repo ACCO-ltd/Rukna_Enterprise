@@ -60,7 +60,7 @@ export function FilterSelect({
 }) {
   const id = useId();
   return (
-    <div className="w-40">
+    <div className="w-full sm:w-40">
       <label
         htmlFor={id}
         className="mb-1.5 block text-micro font-semibold uppercase text-muted-foreground"

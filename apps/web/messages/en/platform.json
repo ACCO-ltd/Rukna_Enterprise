@@ -971,6 +971,8 @@
   },
   "workflows": {
     "title": "Approval Workflows",
+    "governanceReference": "Governance reference",
+    "governanceReferenceHint": "Read-only reference: which transitions require approval, and the workflow definitions behind them.",
     "bindings": {
       "heading": "Governance configuration",
       "subheading": "Which transitions require approval, and which are switched on. Read-only — activation is a deliberate act, pending policy confirmation.",
@@ -1001,6 +1003,16 @@
       "colRules": "Rules",
       "colActions": "Actions",
       "compareVersions": "Compare versions",
+      "searchLabel": "Search policies",
+      "searchPlaceholder": "Search by policy key",
+      "filterStatus": "Status",
+      "filterAll": "All",
+      "statusDraft": "Draft",
+      "statusInReview": "In review",
+      "statusScheduled": "Scheduled",
+      "statusActive": "Active",
+      "statusRetired": "Retired",
+      "noMatches": "No policies match the current search and filter.",
       "newDraft": "New policy draft",
       "draftHint": "This creates an inactive draft. It cannot route approvals until validation and publication are complete.",
       "policyKey": "Policy key",
@@ -1036,6 +1048,9 @@
         "down": "Down",
         "delete": "Delete",
         "confirmDelete": "Delete rule {ruleKey}?",
+        "deleteTitle": "Delete rule {ruleKey}",
+        "deleteBody": "This removes the rule from the draft. It can be added again while the policy remains a draft.",
+        "deleteFailed": "Could not delete this draft rule.",
         "addRuleHeading": "Add rule",
         "addRuleHint": "A rule reserves an approver for a transaction band on the approved transition.",
         "validate": "Validate draft",
@@ -1052,7 +1067,21 @@
         "cancel": "Cancel",
         "decisionReason": "Decision reason",
         "effectiveDate": "Effective date",
-        "transitionFailed": "This action was rejected. Check the policy status, reason, effective date, and that a different administrator is scheduling than the one who submitted."
+        "transitionFailed": "This action was rejected. Check the policy status, reason, effective date, and that a different administrator is scheduling than the one who submitted.",
+        "lifecycle": {
+          "submitReviewTitle": "Submit policy for review",
+          "submitReviewDescription": "The draft becomes read-only and must pass validation.",
+          "submitReviewButton": "Submit for review",
+          "scheduleTitle": "Schedule policy",
+          "scheduleDescription": "A second administrator is required — the submitter cannot schedule their own draft. Select a future effective date.",
+          "scheduleButton": "Schedule policy",
+          "activateTitle": "Activate policy",
+          "activateDescription": "Confirm the policy is due and ready to govern transactions.",
+          "activateButton": "Activate policy",
+          "retireTitle": "Retire policy",
+          "retireDescription": "This policy will stop applying to new evaluations.",
+          "retireButton": "Retire policy"
+        }
       },
       "workspace": {
         "breadcrumbAdmin": "Administration",

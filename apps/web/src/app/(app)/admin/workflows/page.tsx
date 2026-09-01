@@ -1,4 +1,5 @@
 import { getTranslations } from 'next-intl/server';
+import { SectionHeader } from '@erp/ui';
 
 import { PageHeader } from '@/components/layout/page-header';
 import { GovernanceBindingsPanel } from '@/features/workflows/components/governance-bindings-panel';
@@ -12,9 +13,16 @@ export default async function WorkflowsPage() {
     <>
       <PageHeader title={t('title')} />
       <div className="space-y-10">
-        <GovernanceBindingsPanel />
+        {/* The policy inventory is the spine of this page — it leads. */}
         <ApprovalPolicyInventory />
-        <WorkflowDefinitionViewer />
+
+        {/* Everything below is read-only reference, grouped under one section header. */}
+        <section aria-labelledby="governance-reference-heading" className="space-y-6">
+          <SectionHeader id="governance-reference-heading" title={t('governanceReference')} />
+          <p className="-mt-2 text-sm text-muted-foreground">{t('governanceReferenceHint')}</p>
+          <GovernanceBindingsPanel />
+          <WorkflowDefinitionViewer />
+        </section>
       </div>
     </>
   );

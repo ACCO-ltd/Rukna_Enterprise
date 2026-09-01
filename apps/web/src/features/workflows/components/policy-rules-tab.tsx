@@ -31,6 +31,7 @@ import {
 } from '@erp/ui';
 
 import { useRoles } from '@/features/roles/hooks/use-roles';
+import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { ApiError } from '@/lib/api-client';
 import type { ApprovalPolicyDetail } from '../api/workflows-api';
 import {
@@ -72,6 +73,7 @@ export function PolicyRulesTab({
   const reorder = useReorderApprovalPolicyRules();
 
   const [editing, setEditing] = useState<PolicyRule | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<PolicyRule | null>(null);
 
   function move(id: string, offset: -1 | 1) {
     const ids = rules.map((rule) => rule.id);
@@ -103,6 +105,27 @@ export function PolicyRulesTab({
       { onSuccess: () => setEditing(null) },
     );
   }
+
+  function confirmDelete() {
+    if (!deleteTarget) return;
+    remove.mutate(
+      { policyId, ruleId: deleteTarget.id },
+      {
+        onSuccess: () => {
+          setDeleteTarget(null);
+          remove.reset();
+        },
+        // Error stays on the dialog via deleteError below.
+      },
+    );
+  }
+
+  const deleteError =
+    remove.error instanceof ApiError && remove.error.messages.length > 0
+      ? remove.error.messages[0]
+      : remove.error
+        ? t('deleteFailed')
+        : undefined;
 
   const editingMatrix = policyMatrixFor(editing?.transactionType);
 
@@ -177,11 +200,11 @@ export function PolicyRulesTab({
                                   {t('down')}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
-                                  onSelect={() =>
-                                    window.confirm(
-                                      t('confirmDelete', { ruleKey: rule.ruleKey }),
-                                    ) && remove.mutate({ policyId, ruleId: rule.id })
-                                  }
+                                  destructive
+                                  onSelect={() => {
+                                    remove.reset();
+                                    setDeleteTarget(rule);
+                                  }}
                                 >
                                   {t('delete')}
                                 </DropdownMenuItem>
@@ -290,6 +313,22 @@ export function PolicyRulesTab({
           ) : null}
         </DialogContent>
       </Dialog>
+
+      {/* Delete draft rule — DS confirm dialog, surfacing ApiError.messages on failure. */}
+      {deleteTarget ? (
+        <ConfirmActionDialog
+          title={t('deleteTitle', { ruleKey: deleteTarget.ruleKey })}
+          description={t('deleteBody')}
+          confirmLabel={t('delete')}
+          isPending={remove.isPending}
+          errorMessage={deleteError}
+          onConfirm={confirmDelete}
+          onDismiss={() => {
+            setDeleteTarget(null);
+            remove.reset();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

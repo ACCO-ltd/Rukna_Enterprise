@@ -113,7 +113,7 @@ export function PolicyOverviewTab({
       {/* Quick stats — a divider-separated metric strip, mirroring the rail. */}
       <section aria-labelledby="overview-stats-heading" className="space-y-3">
         <SectionHeader id="overview-stats-heading" title={t('quickStatsHeading')} />
-        <dl className="flex flex-wrap divide-x divide-border overflow-hidden rounded-panel border border-border">
+        <dl className="flex flex-wrap divide-x divide-border border-y border-border">
           <Metric label={t('statRules')} value={<span className="tabular-nums">{ruleCount}</span>} />
           <Metric
             label={t('statSod')}

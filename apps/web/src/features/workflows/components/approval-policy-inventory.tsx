@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useId, useMemo, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {
@@ -16,6 +16,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableEmpty,
   TableHead,
   TableHeader,
   TableRow,
@@ -24,14 +25,21 @@ import {
 } from '@erp/ui';
 
 import { usePermissions } from '@/features/auth/permissions/can';
+import { FilterSelect, TableToolbar } from '@/features/admin/components/table-toolbar';
 import { useApprovalPolicies, useCreateApprovalPolicyDraft } from '../hooks/use-approval-policies';
+import { filterPolicies, type PolicyStatusFilter } from '../filter-policies';
 import { PolicyVersionComparisonSheet } from './policy-version-comparison-sheet';
 
 /**
- * Approval policy inventory (S2) — the list stays the inventory; a row now **navigates** to the
- * governance workspace at `/admin/workflows/[policyId]` instead of opening the retired builder
- * sheet, so the builder is deep-linkable, back-button-correct and shareable. Clone and the full
- * lifecycle moved onto the workspace; only Compare stays here as a quick row action.
+ * Approval policy inventory (S2) — the spine of the workflows page. The list is the primary
+ * surface: a row **navigates** to the governance workspace at `/admin/workflows/[policyId]`
+ * instead of opening the retired builder sheet, so the builder is deep-linkable,
+ * back-button-correct and shareable. Clone and the full lifecycle moved onto the workspace;
+ * only Compare stays here as a quick row action.
+ *
+ * Client-side search (by `policyKey`) and a status filter narrow the fetched list in memory,
+ * matching the fetch-everything read model — mirroring Users and Roles. A no-match `TableEmpty`
+ * is distinct from the dashed "no policies yet" empty so the two states never read the same.
  */
 export function ApprovalPolicyInventory() {
   const t = useTranslations('platform.workflows.policies');
@@ -40,11 +48,20 @@ export function ApprovalPolicyInventory() {
   const canManage = can('manage:workflow');
   // Comparison and version history are reads — gated by the view permission, not the manage one.
   const canView = can('view:workflow');
+  const searchId = useId();
 
   const { data = [], isPending, isError } = useApprovalPolicies();
   const create = useCreateApprovalPolicyDraft();
   const [open, setOpen] = useState(false);
   const [compareKey, setCompareKey] = useState<string | null>(null);
+
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<PolicyStatusFilter>('ALL');
+
+  const rows = useMemo(
+    () => filterPolicies(data, query, statusFilter),
+    [data, query, statusFilter],
+  );
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -57,14 +74,19 @@ export function ApprovalPolicyInventory() {
 
   return (
     <section aria-labelledby="approval-policies-heading" className="space-y-4">
-      <div>
-        <h2 id="approval-policies-heading" className="text-base font-semibold text-foreground">
-          {t('heading')}
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">{t('subheading')}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 id="approval-policies-heading" className="text-base font-semibold text-foreground">
+            {t('heading')}
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t('subheading')}</p>
+        </div>
+        {canManage ? (
+          <Button className="shrink-0" onClick={() => setOpen(true)}>
+            {t('newDraft')}
+          </Button>
+        ) : null}
       </div>
-
-      {canManage ? <Button onClick={() => setOpen(true)}>{t('newDraft')}</Button> : null}
 
       {isPending ? (
         <div className="h-32 animate-pulse rounded-panel border border-border bg-muted" />
@@ -75,51 +97,81 @@ export function ApprovalPolicyInventory() {
           {t('empty')}
         </div>
       ) : (
-        <TableScroll aria-label={t('heading')}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('colPolicy')}</TableHead>
-                <TableHead>{t('colStatus')}</TableHead>
-                <TableHead className="text-end">{t('colVersion')}</TableHead>
-                <TableHead className="text-end">{t('colRules')}</TableHead>
-                {canView ? <TableHead className="text-end">{t('colActions')}</TableHead> : null}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.map((policy) => (
-                <TableRow
-                  key={policy.id}
-                  className="cursor-pointer"
-                  onClick={() => router.push(`/admin/workflows/${policy.id}`)}
-                >
-                  <TableCell>
-                    <div className="font-medium">{policy.policyKey}</div>
-                    <div className="text-xs text-muted-foreground">{policy.amountBasis}</div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge tone={policy.status === 'ACTIVE' ? 'live' : 'neutral'}>{policy.status}</Badge>
-                  </TableCell>
-                  <TableCell className="text-end tabular-nums">v{policy.version}</TableCell>
-                  <TableCell className="text-end tabular-nums">{policy.ruleCount}</TableCell>
-                  {canView ? (
-                    <TableCell className="text-end whitespace-nowrap">
-                      <Button
-                        variant="ghost"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setCompareKey(policy.policyKey);
-                        }}
-                      >
-                        {t('compareVersions')}
-                      </Button>
-                    </TableCell>
-                  ) : null}
+        <>
+          <TableToolbar
+            searchId={searchId}
+            searchValue={query}
+            onSearchChange={setQuery}
+            searchLabel={t('searchLabel')}
+            searchPlaceholder={t('searchPlaceholder')}
+          >
+            <FilterSelect
+              label={t('filterStatus')}
+              value={statusFilter}
+              onChange={(next) => setStatusFilter(next as PolicyStatusFilter)}
+              options={[
+                { value: 'ALL', label: t('filterAll') },
+                { value: 'DRAFT', label: t('statusDraft') },
+                { value: 'IN_REVIEW', label: t('statusInReview') },
+                { value: 'SCHEDULED', label: t('statusScheduled') },
+                { value: 'ACTIVE', label: t('statusActive') },
+                { value: 'RETIRED', label: t('statusRetired') },
+              ]}
+            />
+          </TableToolbar>
+
+          <TableScroll aria-label={t('heading')}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('colPolicy')}</TableHead>
+                  <TableHead>{t('colStatus')}</TableHead>
+                  <TableHead className="text-end">{t('colVersion')}</TableHead>
+                  <TableHead className="text-end">{t('colRules')}</TableHead>
+                  {canView ? <TableHead className="text-end">{t('colActions')}</TableHead> : null}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableScroll>
+              </TableHeader>
+              <TableBody>
+                {rows.length === 0 ? (
+                  <TableEmpty colSpan={canView ? 5 : 4}>{t('noMatches')}</TableEmpty>
+                ) : (
+                  rows.map((policy) => (
+                    <TableRow
+                      key={policy.id}
+                      className="cursor-pointer"
+                      onClick={() => router.push(`/admin/workflows/${policy.id}`)}
+                    >
+                      <TableCell>
+                        <div className="font-medium">{policy.policyKey}</div>
+                        <div className="text-xs text-muted-foreground">{policy.amountBasis}</div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge tone={policy.status === 'ACTIVE' ? 'live' : 'neutral'}>
+                          {policy.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-end tabular-nums">v{policy.version}</TableCell>
+                      <TableCell className="text-end tabular-nums">{policy.ruleCount}</TableCell>
+                      {canView ? (
+                        <TableCell className="text-end whitespace-nowrap">
+                          <Button
+                            variant="ghost"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setCompareKey(policy.policyKey);
+                            }}
+                          >
+                            {t('compareVersions')}
+                          </Button>
+                        </TableCell>
+                      ) : null}
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableScroll>
+        </>
       )}
 
       {canView ? (

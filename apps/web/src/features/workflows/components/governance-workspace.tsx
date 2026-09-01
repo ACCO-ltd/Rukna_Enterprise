@@ -24,6 +24,7 @@ import {
 
 import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { usePermissions } from '@/features/auth/permissions/can';
+import { ApiError } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
 import type { ApprovalPolicySummary } from '../api/workflows-api';
 import {
@@ -101,10 +102,12 @@ export function GovernanceWorkspace({ policyId }: { policyId: string }) {
   }
 
   if (detail.isError || !detail.data) {
+    // A deep-linked or stale policy id is now a real case — a 404 is "gone", not "broken".
+    const notFound = detail.error instanceof ApiError && detail.error.status === 404;
     return (
       <div className="space-y-5">
         {breadcrumb}
-        <Alert variant="error" messages={[t('loadFailed')]} />
+        <Alert variant="error" messages={[notFound ? t('notFound') : t('loadFailed')]} />
         <Button variant="outline" onClick={() => router.push('/admin/workflows')}>
           {t('backToPolicies')}
         </Button>

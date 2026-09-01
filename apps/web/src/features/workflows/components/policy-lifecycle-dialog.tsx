@@ -26,36 +26,19 @@ export type LifecycleAction = 'submit-review' | 'schedule' | 'activate' | 'retir
  * RETIRED). Each requires a decision reason; `needsDate` transitions also require an effective
  * date. The four-eyes rule (the submitter cannot schedule their own draft) is enforced by the
  * API, which answers 409 — surfaced here verbatim via `ApiError.messages`.
+ *
+ * Copy is not stored here — every title/description/button routes through the i18n catalogue
+ * (`platform.workflows.policies.builder.lifecycle`). This map carries only structural config:
+ * which transition needs an effective date, and its key prefix.
  */
-export const LIFECYCLE_COPY: Record<
+const LIFECYCLE_CONFIG: Record<
   LifecycleAction,
-  { title: string; description: string; button: string; needsDate: boolean }
+  { keyPrefix: 'submitReview' | 'schedule' | 'activate' | 'retire'; needsDate: boolean }
 > = {
-  'submit-review': {
-    title: 'Submit policy for review',
-    description: 'The draft becomes read-only and must pass validation.',
-    button: 'Submit for review',
-    needsDate: false,
-  },
-  schedule: {
-    title: 'Schedule policy',
-    description:
-      'A second administrator is required — the submitter cannot schedule their own draft. Select a future effective date.',
-    button: 'Schedule policy',
-    needsDate: true,
-  },
-  activate: {
-    title: 'Activate policy',
-    description: 'Confirm the policy is due and ready to govern transactions.',
-    button: 'Activate policy',
-    needsDate: true,
-  },
-  retire: {
-    title: 'Retire policy',
-    description: 'This policy will stop applying to new evaluations.',
-    button: 'Retire policy',
-    needsDate: false,
-  },
+  'submit-review': { keyPrefix: 'submitReview', needsDate: false },
+  schedule: { keyPrefix: 'schedule', needsDate: true },
+  activate: { keyPrefix: 'activate', needsDate: true },
+  retire: { keyPrefix: 'retire', needsDate: false },
 };
 
 export function PolicyLifecycleDialog({
@@ -72,6 +55,8 @@ export function PolicyLifecycleDialog({
   const transition = useTransitionApprovalPolicy();
   const [reason, setReason] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState('');
+
+  const config = action ? LIFECYCLE_CONFIG[action] : null;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -100,10 +85,10 @@ export function PolicyLifecycleDialog({
       }}
     >
       <DialogContent>
-        {action ? (
+        {action && config ? (
           <form onSubmit={submit}>
-            <DialogTitle>{LIFECYCLE_COPY[action].title}</DialogTitle>
-            <DialogDescription>{LIFECYCLE_COPY[action].description}</DialogDescription>
+            <DialogTitle>{t(`lifecycle.${config.keyPrefix}Title`)}</DialogTitle>
+            <DialogDescription>{t(`lifecycle.${config.keyPrefix}Description`)}</DialogDescription>
             <div className="mt-4 space-y-3">
               <FormField htmlFor="lifecycle-reason" label={t('decisionReason')} required>
                 <Input
@@ -114,7 +99,7 @@ export function PolicyLifecycleDialog({
                   minLength={3}
                 />
               </FormField>
-              {LIFECYCLE_COPY[action].needsDate ? (
+              {config.needsDate ? (
                 <FormField htmlFor="lifecycle-effective" label={t('effectiveDate')} required>
                   <Input
                     id="lifecycle-effective"
@@ -141,7 +126,7 @@ export function PolicyLifecycleDialog({
                 {t('cancel')}
               </Button>
               <Button type="submit" disabled={transition.isPending}>
-                {LIFECYCLE_COPY[action].button}
+                {t(`lifecycle.${config.keyPrefix}Button`)}
               </Button>
             </DialogFooter>
           </form>
