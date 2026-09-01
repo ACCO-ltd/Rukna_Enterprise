@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { UserStatus } from '@erp/types';
 
 import { TenancyService } from '../../tenancy/tenancy.service.js';
 import type {
@@ -67,6 +68,10 @@ export class RolesPrismaRepository implements IRolesRepository {
       id: role.id,
       name: role.name,
       description: role.description,
+      kind: role.kind,
+      purpose: role.purpose,
+      ownerUserId: role.ownerUserId,
+      templateRoleId: role.templateRoleId,
       permissions: role.rolePermissions.map((rp) => ({
         id: rp.permission.id,
         action: rp.permission.action,
@@ -89,6 +94,10 @@ export class RolesPrismaRepository implements IRolesRepository {
       id: r.id,
       name: r.name,
       description: r.description,
+      kind: r.kind,
+      purpose: r.purpose,
+      ownerUserId: r.ownerUserId,
+      templateRoleId: r.templateRoleId,
       permissionCount: r._count.rolePermissions,
       memberCount: r.membershipRoles.length,
     }));
@@ -103,6 +112,10 @@ export class RolesPrismaRepository implements IRolesRepository {
         data: {
           name: data.name,
           description: data.description,
+          kind: 'CUSTOM',
+          purpose: data.purpose,
+          ownerUserId: data.ownerUserId,
+          templateRoleId: data.templateRoleId,
           organizationId: data.organizationId,
         },
       });
@@ -168,6 +181,31 @@ export class RolesPrismaRepository implements IRolesRepository {
     if (permissionIds.length === 0) return 0;
     const prisma = this.tenancyService.getClient();
     return prisma.permission.count({ where: { id: { in: permissionIds } } });
+  }
+
+  async findImpact(id: string, orgId: string) {
+    const prisma = this.tenancyService.getClient();
+    const role = await prisma.role.findFirst({ where: { id, organizationId: orgId }, include: { membershipRoles: { where: { removedAt: null }, select: { id: true } }, rolePermissions: { include: { permission: true } } } });
+    if (!role) return null;
+    return { id: role.id, name: role.name, kind: role.kind, memberCount: role.membershipRoles.length, permissions: role.rolePermissions.map(({ permission }) => ({ id: permission.id, action: permission.action, resource: permission.resource, domain: permission.domain, riskClass: permission.riskClass })) };
+  }
+
+  async reassignOwner(id: string, orgId: string, ownerUserId: string): Promise<boolean> {
+    const prisma = this.tenancyService.getClient();
+    const owner = await prisma.user.findFirst({ where: { id: ownerUserId, organizationId: orgId, status: UserStatus.ACTIVE }, select: { id: true } });
+    if (!owner) return false;
+    const updated = await prisma.role.updateMany({ where: { id, organizationId: orgId, kind: 'CUSTOM' }, data: { ownerUserId } });
+    return updated.count > 0;
+  }
+
+  async addAccessReview(data: { orgId: string; roleId: string; reviewerUserId: string; decision: 'CONFIRMED' | 'CHANGES_REQUIRED'; notes?: string }): Promise<void> {
+    const prisma = this.tenancyService.getClient();
+    await prisma.roleAccessReview.create({ data: { organizationId: data.orgId, roleId: data.roleId, reviewerUserId: data.reviewerUserId, decision: data.decision, notes: data.notes } });
+  }
+
+  async listAccessReviews(id: string, orgId: string) {
+    const prisma = this.tenancyService.getClient();
+    return prisma.roleAccessReview.findMany({ where: { roleId: id, organizationId: orgId }, orderBy: { createdAt: 'desc' }, take: 50 });
   }
 
   private toDomain(raw: {

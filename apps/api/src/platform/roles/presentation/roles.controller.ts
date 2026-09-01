@@ -21,6 +21,8 @@ import { RolesService } from '../application/roles.service.js';
 import { CreateRoleDto } from './dto/create-role.dto.js';
 import { UpdateRoleDto } from './dto/update-role.dto.js';
 import { SetRolePermissionsDto } from './dto/set-role-permissions.dto.js';
+import { ReassignRoleOwnerDto } from './dto/reassign-role-owner.dto.js';
+import { CreateRoleAccessReviewDto } from './dto/create-role-access-review.dto.js';
 
 @ApiTags('Roles')
 @ApiBearerAuth('access-token')
@@ -55,6 +57,23 @@ export class RolesController {
   findOne(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
     return this.rolesService.findOne(identity.activeOrganizationId, id);
   }
+
+  @Get(':id/impact')
+  @RequirePermissions(PERMISSIONS.governanceImpactView)
+  @ApiOperation({ summary: 'Preview affected members, permission delta, and SoD findings for a role' })
+  impact(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) { return this.rolesService.impact(identity.activeOrganizationId, id); }
+
+  @Get(':id/access-reviews')
+  reviews(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) { return this.rolesService.reviewHistory(identity.activeOrganizationId, id); }
+
+  @Post(':id/access-reviews')
+  @RequirePermissions(PERMISSIONS.rolesManage)
+  review(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: CreateRoleAccessReviewDto) { return this.rolesService.review(identity, id, dto); }
+
+  @Post(':id/owner')
+  @RequirePermissions(PERMISSIONS.rolesManage)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  reassignOwner(@CurrentUser() identity: RequestIdentity, @Param('id') id: string, @Body() dto: ReassignRoleOwnerDto) { return this.rolesService.reassignOwner(identity, id, dto.ownerUserId); }
 
   @Patch(':id')
   @RequirePermissions(PERMISSIONS.rolesManage)

@@ -7,6 +7,7 @@ import type {
   SetUserPasswordRequest,
   SetUserRolesRequest,
   UpdateUserRequest,
+  ProvisionTemporaryUserRequest,
 } from '@erp/types';
 
 import {
@@ -17,6 +18,8 @@ import {
   setUserPassword,
   setUserRoles,
   updateUser,
+  provisionTemporaryUser,
+  regenerateTemporaryPassword,
 } from '../api/users-api';
 
 const userKeys = {
@@ -25,6 +28,18 @@ const userKeys = {
 
 export function useUsers() {
   return useQuery({ queryKey: userKeys.all, queryFn: listUsers });
+}
+
+export function useRegenerateTemporaryPassword() {
+  return useMutation({ mutationFn: regenerateTemporaryPassword });
+}
+
+export function useProvisionTemporaryUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ProvisionTemporaryUserRequest) => provisionTemporaryUser(payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: userKeys.all }),
+  });
 }
 
 export function useCreateUser() {

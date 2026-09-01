@@ -19,6 +19,10 @@ const roleRecord: RoleWithPermissionsRecord = {
   id: 'role-1',
   name: 'QS',
   description: null,
+  kind: 'CUSTOM',
+  purpose: null,
+  ownerUserId: 'actor-1',
+  templateRoleId: null,
   permissions: [{ id: 'p-1', action: 'view', resource: 'boq' }],
 };
 
@@ -26,6 +30,10 @@ const summary: RoleSummaryRecord = {
   id: 'role-1',
   name: 'QS',
   description: null,
+  kind: 'CUSTOM',
+  purpose: null,
+  ownerUserId: 'actor-1',
+  templateRoleId: null,
   permissionCount: 1,
   memberCount: 0,
 };
@@ -54,6 +62,10 @@ function build(
     replacePermissions: jest.fn().mockResolvedValue(undefined),
     countActiveAssignments: jest.fn().mockResolvedValue(over.activeAssignments ?? 0),
     delete: jest.fn().mockResolvedValue(undefined),
+    findImpact: jest.fn().mockResolvedValue({ id: 'role-1', name: 'QS', kind: 'CUSTOM', memberCount: 2, permissions: [{ id: 'p-1', action: 'manage', resource: 'project', domain: 'Projects', riskClass: 'HIGH' }] }),
+    reassignOwner: jest.fn().mockResolvedValue(true),
+    addAccessReview: jest.fn().mockResolvedValue(undefined),
+    listAccessReviews: jest.fn().mockResolvedValue([]),
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
   const service = new RolesService(repo as never, audit as never);
@@ -63,7 +75,7 @@ function build(
 describe('RolesService', () => {
   it('create: creates a role with its permission set', async () => {
     const { repo, service } = build({ permsInCatalogue: 1 });
-    const result = await service.create(identity, { name: '  QS ', permissionIds: ['p-1'] });
+    const result = await service.create(identity, { name: '  QS ', purpose: 'Prepare valuations', permissionIds: ['p-1'] });
     const arg = repo.createWithPermissions.mock.calls[0][0];
     expect(arg.name).toBe('QS'); // trimmed
     expect(arg.organizationId).toBe('org-1');
@@ -74,13 +86,13 @@ describe('RolesService', () => {
 
   it('create: rejects a duplicate role name with 409', async () => {
     const { service } = build({ nameExists: true });
-    await expect(service.create(identity, { name: 'QS' })).rejects.toBeInstanceOf(ConflictException);
+    await expect(service.create(identity, { name: 'QS', purpose: 'Prepare valuations' })).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('create: rejects permissionIds not in the catalogue with 400', async () => {
     const { service } = build({ permsInCatalogue: 0 });
     await expect(
-      service.create(identity, { name: 'QS', permissionIds: ['not-a-perm'] }),
+      service.create(identity, { name: 'QS', purpose: 'Prepare valuations', permissionIds: ['not-a-perm'] }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -95,6 +107,25 @@ describe('RolesService', () => {
     await expect(
       service.setPermissions(identity, 'role-1', { permissionIds: ['p-1', 'bogus'] }),
     ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.replacePermissions).not.toHaveBeenCalled();
+  });
+
+  it('create: requires a business purpose for a custom role', async () => {
+    const { service } = build();
+    await expect(service.create(identity, { name: 'QS', purpose: ' ' })).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('create: clones permissions from an in-organization template', async () => {
+    const { repo, service } = build();
+    await service.create(identity, { name: 'QS Copy', purpose: 'Delegated valuation', templateRoleId: 'role-1', permissionIds: [] });
+    expect(repo.createWithPermissions).toHaveBeenCalledWith(expect.objectContaining({ templateRoleId: 'role-1', permissionIds: ['p-1'] }));
+  });
+
+  it('setPermissions: rejects changes to the ADMIN system role', async () => {
+    const { repo, service } = build({ roleName: 'ADMIN', permsInCatalogue: 1 });
+    await expect(
+      service.setPermissions(identity, 'role-1', { permissionIds: ['p-1'] }),
+    ).rejects.toBeInstanceOf(ConflictException);
     expect(repo.replacePermissions).not.toHaveBeenCalled();
   });
 
@@ -134,5 +165,40 @@ describe('RolesService', () => {
     await expect(
       service.update(identity, 'nope', { name: 'X' }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('update: persists an edited business purpose', async () => {
+    const { repo, service } = build();
+    await service.update(identity, 'role-1', { purpose: 'Review supplier payments' });
+    expect(repo.update).toHaveBeenCalledWith('role-1', 'org-1', {
+      purpose: 'Review supplier payments',
+    });
+  });
+
+  it('impact: reports members and elevated-permission warnings', async () => {
+    const { service } = build();
+    const impact = await service.impact('org-1', 'role-1');
+    expect(impact.memberCount).toBe(2);
+    expect(impact.warnings[0].riskClass).toBe('HIGH');
+  });
+
+  it('reassignOwner: records a valid active owner change', async () => {
+    const { repo, service } = build();
+    await service.reassignOwner(identity, 'role-1', 'owner-2');
+    expect(repo.reassignOwner).toHaveBeenCalledWith('role-1', 'org-1', 'owner-2');
+  });
+
+  it('review: persists an access-review decision', async () => {
+    const { repo, service } = build();
+    await service.review(identity, 'role-1', { decision: 'CHANGES_REQUIRED', notes: 'Separate payment duties' });
+    expect(repo.addAccessReview).toHaveBeenCalledWith(expect.objectContaining({ decision: 'CHANGES_REQUIRED' }));
+  });
+
+  it('update: rejects changes to the ADMIN system role', async () => {
+    const { repo, service } = build({ roleName: 'ADMIN' });
+    await expect(service.update(identity, 'role-1', { name: 'Renamed' })).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(repo.update).not.toHaveBeenCalled();
   });
 });

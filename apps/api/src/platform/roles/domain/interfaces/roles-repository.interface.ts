@@ -29,6 +29,10 @@ export interface IRolesRepository {
 
   /** Count permissionIds (from the given set) that exist in the catalogue. */
   countPermissionsInCatalogue(permissionIds: string[]): Promise<number>;
+  findImpact(id: string, orgId: string): Promise<RoleImpactRecord | null>;
+  reassignOwner(id: string, orgId: string, ownerUserId: string): Promise<boolean>;
+  addAccessReview(data: { orgId: string; roleId: string; reviewerUserId: string; decision: 'CONFIRMED' | 'CHANGES_REQUIRED'; notes?: string }): Promise<void>;
+  listAccessReviews(id: string, orgId: string): Promise<RoleAccessReviewRecord[]>;
 }
 
 export interface CreateRoleData {
@@ -40,6 +44,7 @@ export interface CreateRoleData {
 export interface UpdateRoleData {
   name?: string;
   description?: string;
+  purpose?: string;
 }
 
 export interface CreateRoleWithPermissionsData {
@@ -47,6 +52,9 @@ export interface CreateRoleWithPermissionsData {
   description?: string;
   organizationId: string;
   permissionIds: string[];
+  purpose?: string;
+  ownerUserId: string;
+  templateRoleId?: string;
 }
 
 export interface RolePermissionRecord {
@@ -59,6 +67,10 @@ export interface RoleWithPermissionsRecord {
   id: string;
   name: string;
   description: string | null;
+  kind: 'SYSTEM' | 'CUSTOM';
+  purpose: string | null;
+  ownerUserId: string | null;
+  templateRoleId: string | null;
   permissions: RolePermissionRecord[];
 }
 
@@ -66,6 +78,16 @@ export interface RoleSummaryRecord {
   id: string;
   name: string;
   description: string | null;
+  kind: 'SYSTEM' | 'CUSTOM';
+  purpose: string | null;
+  ownerUserId: string | null;
+  templateRoleId: string | null;
   permissionCount: number;
   memberCount: number;
 }
+
+export interface RoleImpactRecord {
+  id: string; name: string; kind: 'SYSTEM' | 'CUSTOM'; memberCount: number;
+  permissions: { id: string; action: string; resource: string; domain: string; riskClass: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' }[];
+}
+export interface RoleAccessReviewRecord { id: string; reviewerUserId: string; decision: 'CONFIRMED' | 'CHANGES_REQUIRED'; notes: string | null; createdAt: Date; }

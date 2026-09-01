@@ -3,10 +3,12 @@ export const PERMISSIONS = {
   usersManage: 'manage:user',
   rolesView: 'view:role',
   rolesManage: 'manage:role',
+  governanceImpactView: 'view:governance-impact',
   permissionsView: 'view:permission',
   organizationsView: 'view:organization',
   workflowsView: 'view:workflow',
   workflowsManage: 'manage:workflow',
+  workflowsPublish: 'publish:workflow',
   auditLogsView: 'view:audit-log',
 
   clientsView: 'view:client',
@@ -72,6 +74,31 @@ export interface PermissionDefinition {
   action: string;
   resource: string;
   description: string;
+  /** Business-facing administration grouping; never inferred by the browser. */
+  domain: string;
+  /** Access-review signal, not an authorization decision. */
+  riskClass: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+}
+
+const DOMAIN_BY_RESOURCE: Record<string, string> = {
+  user: 'People', role: 'Access governance', permission: 'Access governance',
+  'governance-impact': 'Access governance',
+  organization: 'Organization', workflow: 'Approval policies', 'audit-log': 'Audit',
+  client: 'Commercial', project: 'Projects', district: 'Organization', 'project-member': 'Projects',
+  boq: 'Projects', contract: 'Commercial', ipa: 'Commercial', ipc: 'Commercial', receipt: 'Commercial',
+  accounting: 'Accounting', 'financial-position': 'Accounting', journal: 'Accounting',
+  receivable: 'Accounting', payable: 'Accounting', period: 'Accounting', 'fiscal-year': 'Accounting',
+  procurement: 'Procurement', 'procurement-config': 'Procurement', 'material-request': 'Procurement',
+  'purchase-order': 'Procurement', 'goods-receipt': 'Procurement',
+  'goods-receipt-exception': 'Procurement', 'matching-exception': 'Procurement',
+  'commitment-ledger': 'Procurement',
+};
+
+function riskFor(action: string): PermissionDefinition['riskClass'] {
+  if (['approve', 'issue', 'post', 'baseline', 'supersede'].includes(action)) return 'CRITICAL';
+  if (['manage', 'allocate', 'submit'].includes(action)) return 'HIGH';
+  if (['create'].includes(action)) return 'MEDIUM';
+  return 'LOW';
 }
 
 const DESCRIPTIONS: Record<PermissionKey, string> = {
@@ -79,10 +106,13 @@ const DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.usersManage]: 'Create and manage users in the active organization',
   [PERMISSIONS.rolesView]: 'View roles in the active organization',
   [PERMISSIONS.rolesManage]: 'Create roles and assign permissions',
+  [PERMISSIONS.governanceImpactView]:
+    'Read role and policy impact previews, including affected-member counts and SoD findings',
   [PERMISSIONS.permissionsView]: 'View the permission catalogue',
   [PERMISSIONS.organizationsView]: 'View the active organization',
   [PERMISSIONS.workflowsView]: 'View workflow definitions and approval state',
   [PERMISSIONS.workflowsManage]: 'Configure workflows and act on approvals',
+  [PERMISSIONS.workflowsPublish]: 'Publish, activate, and retire approval policies',
   [PERMISSIONS.auditLogsView]: 'View the organization audit log',
   [PERMISSIONS.clientsView]: 'View clients',
   [PERMISSIONS.clientsCreate]: 'Create clients',
@@ -141,5 +171,7 @@ export const PERMISSION_DEFINITIONS: readonly PermissionDefinition[] = Object.va
     action: key.slice(0, separator),
     resource: key.slice(separator + 1),
     description: DESCRIPTIONS[key],
+    domain: DOMAIN_BY_RESOURCE[key.slice(separator + 1)] ?? 'Platform',
+    riskClass: riskFor(key.slice(0, separator)),
   };
 });

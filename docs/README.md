@@ -43,9 +43,11 @@ Programme & Progress continuation spec:
 `architecture.md` (SAD), `roadmap.md`, `boundaries.md`, `tenancy.md`, `constraints.md`,
 `frontend-design.md`, `frontend-theme.md`, `sprint6-ux-refactor-spec.md` (LOCKED).
 
+Access-governance implementation contract: [`reference/access-governance-api-contract.md`](reference/access-governance-api-contract.md).
+
 ## Decisions
 
-[`adr/`](adr/) — ADR-001 … ADR-017. Immutable; supersede, don't edit.
+[`adr/`](adr/) — ADR-001 … ADR-027. Immutable; supersede, don't edit.
 
 ## Other
 

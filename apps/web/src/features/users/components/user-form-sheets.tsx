@@ -17,7 +17,7 @@ import type { UserWithRolesResponse } from '@erp/types';
 import { ApiError } from '@/lib/api-client';
 
 import {
-  useCreateUser,
+  useProvisionTemporaryUser,
   useSetUserPassword,
   useSetUserRoles,
   useUpdateUser,
@@ -63,6 +63,7 @@ function apiMessage(error: unknown, fallback: string): string | undefined {
 interface CreatedCredentials {
   email: string;
   password: string;
+  expiresAt: string;
 }
 
 export function CreateUserSheet({
@@ -74,24 +75,20 @@ export function CreateUserSheet({
 }) {
   const t = useTranslations('platform.users.form');
   const tc = useTranslations('common');
-  const create = useCreateUser();
+  const create = useProvisionTemporaryUser();
 
   const ids = {
     email: useId(),
     firstName: useId(),
     lastName: useId(),
-    password: useId(),
   };
 
   const [roleIds, setRoleIds] = useState<string[]>([]);
-  const [password, setPassword] = useState('');
   const [created, setCreated] = useState<CreatedCredentials | null>(null);
 
-  const passwordTooShort = password.length > 0 && password.length < MIN_PASSWORD_LENGTH;
 
   function reset() {
     setRoleIds([]);
-    setPassword('');
     setCreated(null);
     create.reset();
   }
@@ -108,13 +105,13 @@ export function CreateUserSheet({
     const firstName = String(form.get('firstName') ?? '').trim();
     const lastName = String(form.get('lastName') ?? '').trim();
 
-    if (!email || !firstName || !lastName || password.length < MIN_PASSWORD_LENGTH) return;
+    if (!email || !firstName || !lastName) return;
 
     create.mutate(
-      { email, firstName, lastName, password, roleIds },
+      { email, firstName, lastName, roleIds },
       {
-        onSuccess: () => {
-          setCreated({ email, password });
+        onSuccess: (result) => {
+          setCreated({ email: result.user.email, password: result.temporaryPassword, expiresAt: result.expiresAt });
         },
       },
     );
@@ -169,24 +166,6 @@ export function CreateUserSheet({
             </FormField>
           </div>
 
-          <FormField
-            htmlFor={ids.password}
-            label={t('tempPassword')}
-            hint={t('passwordHint')}
-            error={passwordTooShort ? t('passwordTooShort', { min: MIN_PASSWORD_LENGTH }) : undefined}
-            required
-          >
-            <Input
-              id={ids.password}
-              name="password"
-              type="text"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="off"
-              disabled={create.isPending}
-            />
-          </FormField>
-
           <div>
             <p className="mb-1.5 text-sm font-medium text-foreground">{t('roles')}</p>
             <RoleMultiSelect
@@ -212,7 +191,7 @@ export function CreateUserSheet({
             <Button
               type="submit"
               disabled={
-                create.isPending || password.length < MIN_PASSWORD_LENGTH
+                create.isPending
               }
             >
               {create.isPending ? tc('saving') : t('createSubmit')}
@@ -238,7 +217,7 @@ function CredentialsSummary({
   const [copied, setCopied] = useState(false);
 
   async function copy() {
-    const text = `${t('email')}: ${credentials.email}\n${t('tempPassword')}: ${credentials.password}`;
+    const text = `${t('email')}: ${credentials.email}\n${t('tempPassword')}: ${credentials.password}\n${t('expiresAt')}: ${new Date(credentials.expiresAt).toLocaleString()}`;
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -262,6 +241,10 @@ function CredentialsSummary({
           <dd className="mt-0.5 break-all font-mono text-sm text-foreground">
             {credentials.email}
           </dd>
+        </div>
+        <div>
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('expiresAt')}</dt>
+          <dd className="mt-0.5 text-sm text-foreground">{new Date(credentials.expiresAt).toLocaleString()}</dd>
         </div>
         <div>
           <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

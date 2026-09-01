@@ -33,11 +33,35 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     // ARCH-ORG-004: every authenticated request validates active org membership
     const prisma = this.tenancyService.getClient();
     const membership = await prisma.organizationMembership.findFirst({
-      where: { userId: payload.sub, organizationId: payload.orgId, status: 'ACTIVE' },
-      select: { id: true },
+      where: {
+        userId: payload.sub,
+        organizationId: payload.orgId,
+        status: 'ACTIVE',
+        user: { status: 'ACTIVE' },
+      },
+      select: {
+        id: true,
+        user: {
+          select: {
+            mustChangePassword: true,
+            temporaryPasswordExpiresAt: true,
+            sessionVersion: true,
+          },
+        },
+      },
     });
     if (!membership) {
       throw new UnauthorizedException('No active organization membership');
+    }
+    if (
+      membership.user.mustChangePassword &&
+      membership.user.temporaryPasswordExpiresAt &&
+      membership.user.temporaryPasswordExpiresAt <= new Date()
+    ) {
+      throw new UnauthorizedException('Temporary password has expired; contact an administrator');
+    }
+    if (payload.sessionVersion !== membership.user.sessionVersion) {
+      throw new UnauthorizedException('Session has been invalidated');
     }
 
     return {
@@ -46,6 +70,8 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       tenantSlug: payload.tenantSlug,
       roles: payload.roles,
       permissions: payload.permissions,
+      // Server state, rather than a potentially stale JWT claim, controls this gate.
+      mustChangePassword: membership.user.mustChangePassword,
     };
   }
 }

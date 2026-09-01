@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import { randomBytes } from 'crypto';
 import type { RequestIdentity } from '@erp/types';
 
 import { AuditLogsService } from '../../audit-logs/application/audit-logs.service.js';
@@ -18,6 +19,8 @@ import type { CreateUserDto } from '../presentation/dto/create-user.dto.js';
 import type { UpdateUserDto } from '../presentation/dto/update-user.dto.js';
 import type { SetUserPasswordDto } from '../presentation/dto/set-user-password.dto.js';
 import type { SetUserRolesDto } from '../presentation/dto/set-user-roles.dto.js';
+import type { ProvisionTemporaryUserDto } from '../presentation/dto/provision-temporary-user.dto.js';
+import type { ChangeTemporaryPasswordDto } from '../presentation/dto/change-temporary-password.dto.js';
 
 const BCRYPT_COST = 12;
 const MIN_PASSWORD_LENGTH = 12;
@@ -71,6 +74,45 @@ export class UsersService {
     return created;
   }
 
+  async provisionTemporary(identity: RequestIdentity, dto: ProvisionTemporaryUserDto) {
+    if (await this.usersRepository.findByEmail(dto.email)) throw new ConflictException(`Email '${dto.email}' is already in use`);
+    await this.assertRolesInOrg(identity.activeOrganizationId, dto.roleIds);
+    const temporaryPassword = randomBytes(18).toString('base64url');
+    const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+    const user = await this.usersRepository.createWithMembership({
+      email: dto.email, firstName: dto.firstName, lastName: dto.lastName, roleIds: dto.roleIds,
+      organizationId: identity.activeOrganizationId, actorUserId: identity.userId,
+      passwordHash: await bcrypt.hash(temporaryPassword, BCRYPT_COST),
+      mustChangePassword: true, temporaryPasswordExpiresAt: expiresAt,
+      auditAction: 'USER_TEMPORARY_CREDENTIAL_CREATED',
+    });
+    return { user, temporaryPassword, expiresAt };
+  }
+
+  async changeTemporaryPassword(identity: RequestIdentity, dto: ChangeTemporaryPasswordDto): Promise<void> {
+    if (!identity.mustChangePassword) throw new BadRequestException('A temporary password change is not required');
+    if (dto.password.length < MIN_PASSWORD_LENGTH) {
+      throw new BadRequestException(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+    }
+    await this.usersRepository.completeTemporaryPasswordChange(identity.userId, identity.activeOrganizationId, await bcrypt.hash(dto.password, BCRYPT_COST), identity.userId);
+  }
+
+  async regenerateTemporaryPassword(identity: RequestIdentity, id: string) {
+    await this.requireUser(id, identity.activeOrganizationId);
+    const temporaryPassword = randomBytes(18).toString('base64url');
+    const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+    const updated = await this.usersRepository.regenerateTemporaryPassword(
+      id,
+      identity.activeOrganizationId,
+      await bcrypt.hash(temporaryPassword, BCRYPT_COST),
+      expiresAt,
+      identity.userId,
+    );
+    if (!updated) throw new BadRequestException('Only active users can receive a temporary password');
+    await this.audit(identity, 'USER_SESSIONS_REVOKED', id);
+    return { temporaryPassword, expiresAt };
+  }
+
   async update(identity: RequestIdentity, id: string, dto: UpdateUserDto): Promise<UserWithRolesRecord> {
     const orgId = identity.activeOrganizationId;
     await this.requireUser(id, orgId);
@@ -88,7 +130,6 @@ export class UsersService {
     }
     await this.requireUser(id, orgId);
     await this.usersRepository.deactivate(id, orgId, identity.userId);
-    await this.audit(identity, 'USER_DEACTIVATED', id);
     return this.findByIdWithRoles(id, orgId);
   }
 

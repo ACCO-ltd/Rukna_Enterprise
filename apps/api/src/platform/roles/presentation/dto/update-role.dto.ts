@@ -15,4 +15,11 @@ export class UpdateRoleDto implements UpdateRoleRequest {
   @IsString()
   @MaxLength(500)
   description?: string;
+
+  @ApiPropertyOptional({ example: 'Prepare and review supplier-payment documentation' })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  purpose?: string;
 }

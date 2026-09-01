@@ -4,12 +4,20 @@ import type {
   SetUserPasswordRequest,
   SetUserRolesRequest,
   UpdateUserRequest,
+  ProvisionTemporaryUserRequest,
+  ProvisionTemporaryUserResponse,
   UserWithRolesResponse,
 } from '@erp/types';
 
 /** `GET /users` — org users with their roles and membership status. */
 export async function listUsers(): Promise<UserWithRolesResponse[]> {
   return apiClient<UserWithRolesResponse[]>('/users');
+}
+
+export async function provisionTemporaryUser(payload: ProvisionTemporaryUserRequest): Promise<ProvisionTemporaryUserResponse> {
+  return apiClient<ProvisionTemporaryUserResponse>('/users/provision-temporary', {
+    method: 'POST', body: JSON.stringify(payload),
+  });
 }
 
 /** `POST /users` — provisions a user, membership and roles in one transaction. */
@@ -39,6 +47,11 @@ export async function deactivateUser(id: string): Promise<UserWithRolesResponse>
 /** `POST /users/:id/reactivate` — restores the user's membership. */
 export async function reactivateUser(id: string): Promise<UserWithRolesResponse> {
   return apiClient<UserWithRolesResponse>(`/users/${id}/reactivate`, { method: 'POST' });
+}
+
+export interface RegeneratedTemporaryCredential { temporaryPassword: string; expiresAt: string; }
+export function regenerateTemporaryPassword(id: string): Promise<RegeneratedTemporaryCredential> {
+  return apiClient<RegeneratedTemporaryCredential>(`/users/${id}/regenerate-temporary-password`, { method: 'POST' });
 }
 
 /** `POST /users/:id/set-password` — admin-set a new password. Returns 204. */
