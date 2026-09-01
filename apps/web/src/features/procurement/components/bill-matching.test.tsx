@@ -5,67 +5,50 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 import { sessionStore } from '@/features/auth/session/session-store';
 
-import type { BillMatchResult, BillMatchStatus, SupplierBill } from '../types';
+import type { BillMatchResult, SupplierBill } from '../types';
 import { canPostBill } from '../quantities';
 
 /**
- * The Matching tab carries a financial control, so the tests are about what a user is
- * allowed to conclude from it.
+ * The matching OUTCOME surface (Slice ④, D6). Matching is a silent control that auto-runs on
+ * submit, so these tests are about what the user is shown *after* the verdict, and what they
+ * are allowed to conclude and do:
  *
- * The most important assertion in this file is the one about `NOT_RUN`: the UI blocks it
- * and the server does not (P15). If someone later "fixes" the frontend to agree with the
- * server, an unmatched bill becomes postable with no warning anywhere — so the divergence
- * is pinned by a test that names it.
+ *  - a healthy bill shows a quiet "Matched — ready" line and the PO / receipts / bill
+ *    reconciliation, with NO run button anywhere;
+ *  - an exception shows a ⚠ banner and a "Review differences" reveal, gated resolution;
+ *  - the posting gate (canPostBill) still blocks EXCEPTION and NOT_RUN.
  */
 
 const mocks = vi.hoisted(() => ({
   useBillMatch: vi.fn(),
-  useRunBillMatch: vi.fn(),
   useApproveMatchException: vi.fn(),
 }));
 
 vi.mock('../hooks/use-procurement', () => mocks);
 
-import { BillMatchingTab } from './bill-matching';
+import { BillMatchSummary } from './bill-matching';
 
 function makeBill(overrides: Partial<SupplierBill> = {}): SupplierBill {
   return {
     id: 'bill-1',
     billNumber: 'BILL-000001',
     supplierId: 'sup-1',
-    supplier: { id: 'sup-1', code: 'SUP-001', name: 'Al-Rashid Trading' },
-    supplierInvoiceNumber: 'INV-2026-0042',
-    billDate: '2026-08-19T00:00:00.000Z',
-    dueDate: '2026-09-19T00:00:00.000Z',
-    currencyCode: 'SAR',
-    // The two real status axes. This fixture carried a single `status: 'DRAFT'` until Tier B,
-    // and `SupplierBill` has no such column — so the type and the fixture agreed with each
-    // other while both disagreed with the API, and the badge rendered blank in production.
-    documentStatus: 'DRAFT',
+    supplier: { id: 'sup-1', code: 'SUP-001', name: 'ABC Trading' },
+    supplierInvoiceNumber: 'INV-9044',
+    billDate: '2026-08-31T00:00:00.000Z',
+    dueDate: '2026-09-30T00:00:00.000Z',
+    currencyCode: 'USD',
+    documentStatus: 'SUBMITTED',
     postingStatus: 'NOT_POSTED',
-    matchStatus: 'NOT_RUN',
+    matchStatus: 'MATCHED',
     purchaseOrderId: 'po-1',
     purchaseOrderRevisionId: 'rev-1',
     projectId: null,
-    subtotal: '19550.00',
-    vatAmount: '2932.50',
-    totalAmount: '22482.50',
-    outstandingAmount: '22482.50',
-    lines: [
-      {
-        id: 'bl-1',
-        lineNumber: 1,
-        description: '12mm rebar',
-        quantity: '23',
-        unitPrice: '855.00',
-        netAmount: '19665.00',
-        vatAmount: '2949.75',
-        grossAmount: '22614.75',
-        expenseProfileCode: 'MATERIAL_PURCHASE',
-        projectId: null,
-        boqNodeId: null,
-      },
-    ],
+    subtotal: '2850.00',
+    vatAmount: '0.00',
+    totalAmount: '2850.00',
+    outstandingAmount: '2850.00',
+    lines: [],
     ...overrides,
   };
 }
@@ -75,8 +58,8 @@ function makeMatch(overrides: Partial<BillMatchResult> = {}): BillMatchResult {
     id: 'match-1',
     supplierBillId: 'bill-1',
     matchType: 'THREE_WAY',
-    status: 'MATCHED_WITH_TOLERANCE',
-    matchedAt: '2026-08-19T10:00:00.000Z',
+    status: 'MATCHED',
+    matchedAt: '2026-08-31T10:00:00.000Z',
     matchedBy: 'user-1',
     approvalReason: null,
     approvedBy: null,
@@ -86,16 +69,21 @@ function makeMatch(overrides: Partial<BillMatchResult> = {}): BillMatchResult {
         id: 'ml-1',
         purchaseOrderLineId: 'pol-1',
         goodsReceiptLineId: 'grl-1',
-        description: '12mm Rebar',
-        poQuantity: '25',
-        receivedQuantity: '23',
-        billedQuantity: '23',
-        poUnitPrice: '850.00',
-        billedUnitPrice: '855.00',
+        description: null,
+        poQuantity: '285',
+        receivedQuantity: '285',
+        billedQuantity: '285',
+        poUnitPrice: '10.00',
+        billedUnitPrice: '10.00',
         quantityVariance: '0',
-        priceVariance: '5.00',
-        amountVariance: '115.00',
+        priceVariance: '0.00',
+        amountVariance: '0.00',
+        quantityWithinTolerance: true,
+        priceWithinTolerance: true,
+        amountWithinTolerance: true,
         withinTolerance: true,
+        exceptionReason: null,
+        purchaseOrderLine: { lineNumber: 1, description: '50kg cement bags' },
       },
     ],
     ...overrides,
@@ -117,22 +105,21 @@ beforeEach(() => {
     },
   });
   vi.clearAllMocks();
-  mocks.useRunBillMatch.mockReturnValue(idleMutation);
   mocks.useApproveMatchException.mockReturnValue(idleMutation);
   mocks.useBillMatch.mockReturnValue({ data: null, isPending: false, isError: false });
 });
 
-describe('canPostBill — matching gate', () => {
-  it('blocks NOT_RUN', () => {
+describe('canPostBill — matching gate (unchanged by D6)', () => {
+  it('blocks NOT_RUN and EXCEPTION on a PO-backed bill', () => {
     expect(canPostBill('NOT_RUN', true)).toBe(false);
+    expect(canPostBill('EXCEPTION', true)).toBe(false);
   });
 
-  it.each<[BillMatchStatus, boolean]>([
+  it.each([
     ['MATCHED', true],
     ['MATCHED_WITH_TOLERANCE', true],
     ['APPROVED_EXCEPTION', true],
-    ['EXCEPTION', false],
-  ])('%s → postable: %s', (status, expected) => {
+  ] as const)('%s → postable: %s', (status, expected) => {
     expect(canPostBill(status, true)).toBe(expected);
   });
 
@@ -141,95 +128,144 @@ describe('canPostBill — matching gate', () => {
   });
 });
 
-describe('BillMatchingTab — not yet run', () => {
-  it('offers to run matching and names the match type from the bill lines', () => {
-    renderWithProviders(<BillMatchingTab bill={makeBill()} />);
-
-    expect(screen.getByText('Matching has not been run')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Run Matching' })).toBeInTheDocument();
-    expect(screen.getByText(/three-way matching/i)).toBeInTheDocument();
-  });
-
-  it('runs matching for the bill when asked', async () => {
-    const user = userEvent.setup();
-    const run = { ...idleMutation, mutate: vi.fn() };
-    mocks.useRunBillMatch.mockReturnValue(run);
-
-    renderWithProviders(<BillMatchingTab bill={makeBill()} />);
-    await user.click(screen.getByRole('button', { name: 'Run Matching' }));
-
-    expect(run.mutate).toHaveBeenCalledWith('bill-1');
-  });
-
-  it('does not offer to run when the bill has no purchase order link', () => {
+describe('BillMatchSummary — non-PO bill', () => {
+  it('says matching is not applicable and shows no run control', () => {
     renderWithProviders(
-      <BillMatchingTab
+      <BillMatchSummary
         bill={makeBill({ purchaseOrderId: null, purchaseOrderRevisionId: null })}
       />,
     );
 
-    expect(screen.queryByRole('button', { name: 'Run Matching' })).not.toBeInTheDocument();
-    expect(screen.getByText(/not linked to a purchase order/i)).toBeInTheDocument();
+    expect(screen.getByText(/not matched/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 });
 
-describe('BillMatchingTab — results', () => {
-  it('renders the variance row with both prices and the tolerance verdict', () => {
-    mocks.useBillMatch.mockReturnValue({
-      data: makeMatch(),
-      isPending: false,
-      isError: false,
-    });
+describe('BillMatchSummary — healthy (D6, silent)', () => {
+  it('shows a quiet Matched-ready line and the PO / receipts / bill reconciliation, no run button', () => {
+    mocks.useBillMatch.mockReturnValue({ data: makeMatch(), isPending: false, isError: false });
 
-    renderWithProviders(
-      <BillMatchingTab bill={makeBill({ matchStatus: 'MATCHED_WITH_TOLERANCE' })} />,
-    );
+    renderWithProviders(<BillMatchSummary bill={makeBill({ matchStatus: 'MATCHED' })} />);
 
-    expect(screen.getByText('12mm Rebar')).toBeInTheDocument();
-    expect(screen.getByText(/850\.00/)).toBeInTheDocument();
-    expect(screen.getByText(/855\.00/)).toBeInTheDocument();
-    expect(screen.getByText('Within tolerance')).toBeInTheDocument();
+    expect(screen.getByText(/ready for payment/i)).toBeInTheDocument();
+    expect(screen.getByText('PO applicable')).toBeInTheDocument();
+    expect(screen.getByText('Accepted receipts')).toBeInTheDocument();
+    // 285 × $10.00 = $2,850.00, agreeing across all three figures.
+    expect(screen.getAllByText(/2,850\.00/).length).toBeGreaterThanOrEqual(2);
+    // The D6 rule: no "Run matching" anywhere.
+    expect(screen.queryByRole('button', { name: /run/i })).not.toBeInTheDocument();
+    // Nothing to review on a healthy bill.
+    expect(
+      screen.queryByRole('button', { name: /review differences/i }),
+    ).not.toBeInTheDocument();
   });
 
-  it('states tolerance in words, not only as a symbol', () => {
+  it('names who cleared an approved exception, still ready', () => {
     mocks.useBillMatch.mockReturnValue({
       data: makeMatch({
-        lines: [{ ...makeMatch().lines[0]!, withinTolerance: false }],
+        status: 'APPROVED_EXCEPTION',
+        approvedBy: 'jane.controller',
+        approvedAt: '2026-09-01T00:00:00.000Z',
       }),
       isPending: false,
       isError: false,
     });
 
-    renderWithProviders(<BillMatchingTab bill={makeBill({ matchStatus: 'EXCEPTION' })} />);
+    renderWithProviders(
+      <BillMatchSummary bill={makeBill({ matchStatus: 'APPROVED_EXCEPTION' })} />,
+    );
 
-    // Someone who cannot see the glyph still gets the verdict.
+    expect(screen.getByText(/jane\.controller/)).toBeInTheDocument();
+    expect(screen.getByText(/ready for payment/i)).toBeInTheDocument();
+  });
+});
+
+describe('BillMatchSummary — exception (D6, Review differences)', () => {
+  function exceptionMatch(): BillMatchResult {
+    return makeMatch({
+      status: 'EXCEPTION',
+      lines: [
+        {
+          ...makeMatch().lines[0]!,
+          billedQuantity: '300',
+          quantityVariance: '15',
+          quantityWithinTolerance: false,
+          withinTolerance: false,
+          exceptionReason: 'Bill exceeds accepted quantity by 15 bags',
+        },
+      ],
+    });
+  }
+
+  it('shows the variance banner and hides the comparison until Review differences is opened', () => {
+    mocks.useBillMatch.mockReturnValue({
+      data: exceptionMatch(),
+      isPending: false,
+      isError: false,
+    });
+
+    renderWithProviders(<BillMatchSummary bill={makeBill({ matchStatus: 'EXCEPTION' })} />);
+
+    // The ⚠ line names the variance from the server's reason.
+    expect(
+      screen.getByText(/exceeds accepted quantity by 15 bags/i),
+    ).toBeInTheDocument();
+    // The comparison table is not shown yet.
+    expect(screen.queryByText('50kg cement bags')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Review differences' })).toBeInTheDocument();
+  });
+
+  it('reveals the per-line comparison when Review differences is clicked', async () => {
+    const user = userEvent.setup();
+    mocks.useBillMatch.mockReturnValue({
+      data: exceptionMatch(),
+      isPending: false,
+      isError: false,
+    });
+
+    renderWithProviders(<BillMatchSummary bill={makeBill({ matchStatus: 'EXCEPTION' })} />);
+    await user.click(screen.getByRole('button', { name: 'Review differences' }));
+
+    expect(screen.getByText('50kg cement bags')).toBeInTheDocument();
+    // Word-first verdict for the failing line.
     expect(screen.getByText('Outside tolerance')).toBeInTheDocument();
   });
 
-  it('shows the blocking banner on EXCEPTION', () => {
+  it('offers the real exception approval only to a holder of the permission', () => {
     mocks.useBillMatch.mockReturnValue({
-      data: makeMatch({ status: 'EXCEPTION' }),
+      data: exceptionMatch(),
       isPending: false,
       isError: false,
     });
 
-    renderWithProviders(<BillMatchingTab bill={makeBill({ matchStatus: 'EXCEPTION' })} />);
-
-    expect(screen.getByText(/posting is blocked/i)).toBeInTheDocument();
+    renderWithProviders(<BillMatchSummary bill={makeBill({ matchStatus: 'EXCEPTION' })} />);
+    expect(screen.getByRole('button', { name: 'Approve exception' })).toBeInTheDocument();
   });
 
-  it('offers exception approval only on EXCEPTION', () => {
+  it('does not offer exception approval without the permission', () => {
+    sessionStore.setSession({
+      accessToken: 'test-token',
+      user: {
+        id: 'user-2',
+        email: 'clerk@acco.test',
+        orgId: 'org-1',
+        tenantSlug: 'acco',
+        roles: ['AP_CLERK'],
+        permissions: ['manage:payable'],
+      },
+    });
     mocks.useBillMatch.mockReturnValue({
-      data: makeMatch({ status: 'MATCHED' }),
+      data: exceptionMatch(),
       isPending: false,
       isError: false,
     });
 
-    renderWithProviders(<BillMatchingTab bill={makeBill({ matchStatus: 'MATCHED' })} />);
-
+    renderWithProviders(<BillMatchSummary bill={makeBill({ matchStatus: 'EXCEPTION' })} />);
     expect(
-      screen.queryByRole('button', { name: 'Approve Exception' }),
+      screen.queryByRole('button', { name: 'Approve exception' }),
     ).not.toBeInTheDocument();
+    // But anyone may still review the differences.
+    expect(screen.getByRole('button', { name: 'Review differences' })).toBeInTheDocument();
   });
 
   it('requires a reason before an exception can be approved', async () => {
@@ -237,31 +273,27 @@ describe('BillMatchingTab — results', () => {
     const approve = { ...idleMutation, mutate: vi.fn() };
     mocks.useApproveMatchException.mockReturnValue(approve);
     mocks.useBillMatch.mockReturnValue({
-      data: makeMatch({ status: 'EXCEPTION' }),
+      data: exceptionMatch(),
       isPending: false,
       isError: false,
     });
 
-    renderWithProviders(<BillMatchingTab bill={makeBill({ matchStatus: 'EXCEPTION' })} />);
-    await user.click(screen.getByRole('button', { name: 'Approve Exception' }));
+    renderWithProviders(<BillMatchSummary bill={makeBill({ matchStatus: 'EXCEPTION' })} />);
+    await user.click(screen.getByRole('button', { name: 'Approve exception' }));
 
-    const confirm = screen.getAllByRole('button', { name: 'Approve Exception' }).at(-1)!;
+    const confirm = screen.getAllByRole('button', { name: 'Approve exception' }).at(-1)!;
     expect(confirm).toBeDisabled();
 
     await user.type(
       screen.getByLabelText('Approval Reason'),
-      'Price variance within CFO approved limit',
+      'Agreed short delivery with supplier',
     );
     expect(confirm).toBeEnabled();
 
     await user.click(confirm);
     expect(approve.mutate).toHaveBeenCalledWith(
-      {
-        billId: 'bill-1',
-        payload: { approvalReason: 'Price variance within CFO approved limit' },
-      },
+      { billId: 'bill-1', payload: { approvalReason: 'Agreed short delivery with supplier' } },
       expect.anything(),
     );
   });
-
 });

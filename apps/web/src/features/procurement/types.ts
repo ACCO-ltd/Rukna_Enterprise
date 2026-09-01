@@ -357,7 +357,24 @@ export interface BillMatchLine {
   quantityVariance: Quantity;
   priceVariance: Money;
   amountVariance: Money;
+  /**
+   * Per-dimension verdicts (ADR-018 CONST-MATCH-003). The match line row carries all three
+   * plus the derived overall `withinTolerance` (CONST-MATCH-004); `findByBillId` returns the
+   * whole row, so they are on the wire. Shown in the "Review differences" comparison so a
+   * reader can see *which* dimension a line failed on, not only that it failed.
+   */
+  quantityWithinTolerance: boolean;
+  priceWithinTolerance: boolean;
+  amountWithinTolerance: boolean;
   withinTolerance: boolean;
+  /** Set on an out-of-tolerance line — the server's plain-language reason. `null` when matched. */
+  exceptionReason: string | null;
+  /**
+   * The matched PO line, embedded by `findByBillId` (`include: { purchaseOrderLine: true }`).
+   * Its `description` labels the comparison row; the bare `description` field above is not
+   * populated by the read model, so this is the reliable source.
+   */
+  purchaseOrderLine?: Pick<PurchaseOrderLine, 'lineNumber' | 'description'> | null;
 }
 
 export interface BillMatchResult {
@@ -467,9 +484,18 @@ export interface SupplierBill {
  * Money is a JSON number on the way in and a decimal string on the way out (A9/P17) — build
  * these with `moneyToApi` from `quantities.ts` rather than by hand.
  *
- * `purchaseOrderId` is accepted by the DTO and deliberately **not** exposed here: a bill never
- * records the PO revision behind it (A14), so a PO-linked bill can never be matched and its
- * commitment never converts to actual. Tier B creates non-PO bills only.
+ * `purchaseOrderId` is now the switch between the two controlled paths (A14, merged #151):
+ *
+ *  - **omitted** → a non-PO bill (utilities, rent, one-off purchases). No matching runs; the
+ *    commitment ledger is right to stay silent because none was raised.
+ *  - **present** → a PO-backed bill. `SupplierBillService.create` resolves the PO's ACTIVE
+ *    revision and records `purchaseOrderRevisionId`, and `submit` auto-runs the 3-way match
+ *    (D6). The bill line's `quantity`/`unitPrice` are what the match compares against the PO
+ *    line and the accepted receipts, so a material line must carry both.
+ *
+ * `boqNodeId` is NOT sent from the UI for a PO-backed line: the server inherits the
+ * cost-target from the matched PO line at post time (D7, `findBillLineCostTargets`), so the
+ * chip on the bill line is read-only inheritance, not an input.
  */
 export interface CreateSupplierBillLinePayload {
   description: string;
@@ -487,6 +513,12 @@ export interface CreateSupplierBillPayload {
   billDate: string;
   dueDate: string;
   currencyCode: string;
+  /**
+   * When set, the bill is PO-backed: the server records the PO's ACTIVE revision and
+   * auto-matches on submit (D6/A14). When omitted, this is a genuine non-PO bill — a
+   * separate controlled path.
+   */
+  purchaseOrderId?: string;
   projectId?: string;
   lines: CreateSupplierBillLinePayload[];
 }
