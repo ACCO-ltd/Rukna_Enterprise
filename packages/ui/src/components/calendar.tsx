@@ -36,11 +36,26 @@ export function Calendar({ className, classNames, showOutsideDays = true, ...pro
       classNames={{
         months: 'flex flex-col gap-4 sm:flex-row',
         month: 'flex flex-col gap-4',
-        month_caption: 'flex h-8 items-center justify-center px-9',
-        caption_label: 'text-body-sm font-semibold text-foreground',
+        month_caption: 'flex h-8 items-center justify-center gap-1.5 px-9',
 
-        // The nav sits across the caption rather than beside it, so the month name stays
-        // centred however long it is.
+        // In dropdown layout react-day-picker renders TWO elements per control: a real
+        // `<select>` and, beside it, an aria-hidden span holding the selected label and a
+        // caret. The span is what is meant to be seen and the select is meant to lie
+        // invisibly on top of it as the hit target. Styling both as visible — which is what
+        // this did — renders the month twice ("August August"), the year twice, and leaves
+        // the caret orphaned on its own line.
+        dropdown_root: 'group relative inline-flex items-center',
+        dropdown: 'absolute inset-0 h-full w-full cursor-pointer opacity-0',
+        caption_label: cn(
+          'inline-flex items-center gap-1 rounded-control px-2 py-1 text-body-sm font-semibold text-foreground',
+          'transition-colors duration-(--motion-enter) ease-brand',
+          // Hover and focus belong to the label: the select sitting over it is transparent,
+          // so it can never show them itself.
+          'group-hover:bg-surface-hover group-focus-within:shadow-ring',
+        ),
+
+        // The nav sits across the caption rather than beside it, so the month stays centred
+        // however long its name is.
         nav: 'flex items-center justify-between absolute inset-x-0 top-0 h-8 px-1',
         button_previous: navButton,
         button_next: navButton,
@@ -63,7 +78,13 @@ export function Calendar({ className, classNames, showOutsideDays = true, ...pro
         // Selection wins over today, which wins over outside — declared in that order because
         // react-day-picker concatenates every matching flag onto one element.
         today: '[&>button]:font-semibold [&>button]:text-brand-primary',
-        outside: '[&>button]:text-muted-foreground [&>button]:opacity-60',
+        // Dimmed only when it is not also the selected day. Both flags land on the same cell,
+        // so an unscoped opacity here washed the selection out to a pale blue whenever the
+        // chosen date fell in a neighbouring month's trailing row.
+        outside: cn(
+          '[&:not([data-selected])>button]:text-muted-foreground',
+          '[&:not([data-selected])>button]:opacity-60',
+        ),
         disabled: '[&>button]:text-disabled-foreground [&>button]:opacity-40',
         hidden: 'invisible',
         selected: cn(
@@ -74,10 +95,7 @@ export function Calendar({ className, classNames, showOutsideDays = true, ...pro
         range_end: '[&>button]:rounded-s-none',
         range_middle: '[&>button]:rounded-none [&>button]:bg-brand-accent [&>button]:text-foreground',
 
-        dropdowns: 'flex items-center gap-2',
-        dropdown_root: 'relative',
-        dropdown:
-          'h-8 rounded-control border border-border-strong bg-surface px-2 text-body-sm text-foreground focus:outline-none focus:shadow-ring',
+        dropdowns: 'flex items-center gap-1',
 
         week_number: 'w-9 text-caption text-muted-foreground',
         week_number_header: 'w-9',

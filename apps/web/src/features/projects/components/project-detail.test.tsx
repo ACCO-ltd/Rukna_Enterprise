@@ -8,7 +8,6 @@ import { ApiError } from '@/lib/api-client';
 import {
   cancelProject,
   getProject,
-  getProjectWorkspaceGuidance,
   getProjectWorkspaceSummary,
   resumeProject,
   runProjectCommand,
@@ -20,7 +19,6 @@ import { ProjectDetail } from './project-detail';
 
 vi.mock('@/features/projects/api/projects-api', () => ({
   getProject: vi.fn(),
-  getProjectWorkspaceGuidance: vi.fn(),
   getProjectWorkspaceSummary: vi.fn(),
   runProjectCommand: vi.fn(),
   cancelProject: vi.fn(),
@@ -101,7 +99,6 @@ beforeEach(() => {
   vi.mocked(getProject).mockReset();
   vi.mocked(getProjectWorkspaceSummary).mockReset();
   vi.mocked(getProjectWorkspaceSummary).mockResolvedValue(workspaceSummary());
-  vi.mocked(getProjectWorkspaceGuidance).mockResolvedValue([]);
   vi.mocked(runProjectCommand).mockReset();
   vi.mocked(cancelProject).mockReset();
   vi.mocked(suspendProject).mockReset();
@@ -147,28 +144,6 @@ describe('ProjectDetail — loading and failure', () => {
 });
 
 describe('ProjectDetail — available actions', () => {
-  it('presents backend attention items with a direct next action', async () => {
-    vi.mocked(getProject).mockResolvedValue(project());
-    vi.mocked(getProjectWorkspaceGuidance).mockResolvedValue([
-      {
-        id: 'team',
-        severity: 'WARNING',
-        kind: 'DELIVERY_TEAM_INCOMPLETE',
-        actionUrl: '/projects/p1/members',
-        responsibleRole: 'PROJECT_MANAGER',
-      },
-    ]);
-
-    renderWithProviders(<ProjectDetail id="p1" />);
-
-    expect(await screen.findByText('Delivery team is incomplete')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Manage team' })).toHaveAttribute(
-      'href',
-      '/projects/p1/members',
-    );
-  });
-
-
   it('offers start, edit, and secondary lifecycle actions for a draft', async () => {
     const user = userEvent.setup();
     vi.mocked(getProject).mockResolvedValue(project());
@@ -210,27 +185,18 @@ describe('ProjectDetail — available actions', () => {
 });
 
 describe('ProjectDetail — Overview reshape (P1/P2)', () => {
-  it('leads the body with the guidance panel, above the project details section', async () => {
-    vi.mocked(getProject).mockResolvedValue(project({ status: ProjectStatus.ACTIVE }));
-    vi.mocked(getProjectWorkspaceGuidance).mockResolvedValue([
-      {
-        id: 'team',
-        severity: 'WARNING',
-        kind: 'DELIVERY_TEAM_INCOMPLETE',
-        actionUrl: '/projects/p1/members',
-        responsibleRole: 'PROJECT_MANAGER',
-      },
-    ]);
+  it('leads a draft with what is left to set up, above the identity facts', async () => {
+    vi.mocked(getProject).mockResolvedValue(project());
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
-    const guidanceHeading = await screen.findByRole('heading', {
-      name: 'Setup and control guidance',
-    });
+    const setupHeading = await screen.findByRole('heading', { name: 'Project setup' });
     const detailsHeading = await screen.findByRole('heading', { name: 'Project details' });
 
-    // The guidance queue must appear before the identity facts in document order (P1).
-    expect(guidanceHeading.compareDocumentPosition(detailsHeading)).toBe(
+    // What needs doing comes before what the project is (P1). This used to be asserted against
+    // a separate guidance queue that restated the same four steps; the stepper is now the only
+    // thing saying them.
+    expect(setupHeading.compareDocumentPosition(detailsHeading)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
   });

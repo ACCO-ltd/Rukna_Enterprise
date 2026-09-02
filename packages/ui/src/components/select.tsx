@@ -4,6 +4,7 @@ import * as React from 'react';
 import * as SelectPrimitive from '@radix-ui/react-select';
 
 import { cn } from '../lib/utils';
+import { Combobox } from './combobox';
 import { FormFieldContext } from './form-field';
 
 /**
@@ -35,6 +36,13 @@ import { FormFieldContext } from './form-field';
  * private sentinel, translated back to `''` on the way out. Callers keep writing `''` and never
  * see the sentinel.
  *
+ * ─── Long lists filter themselves ────────────────────────────────────────────────
+ *
+ * Past a threshold the list becomes a `Combobox` — the same control, plus a search box. That
+ * is a decision about the list rather than about the screen, so it is made here rather than
+ * asked of fifty call sites: nobody scans thirty accounts, and a search box over three
+ * payment terms is furniture. Pass `searchable` to overrule it in either direction.
+ *
  * ─── Groups ──────────────────────────────────────────────────────────────────────
  *
  * `<optgroup>` is honoured because the chart-of-accounts form depends on it: thirty account
@@ -42,6 +50,17 @@ import { FormFieldContext } from './form-field';
  * and Label, so the grouping survives to assistive technology rather than becoming a styled
  * row that only looks like a heading.
  */
+
+/**
+ * Where a list stops being scannable and starts needing a filter.
+ *
+ * Ten, not eight: the project workspace has exactly eight tabs, and putting a search box over
+ * eight destinations someone is *browsing* gets the distinction wrong. Search helps when you
+ * already know the answer and typing beats scanning — thirty accounts, twenty districts. Below
+ * that a filter is furniture. Count is a proxy for that, not the thing itself, which is why
+ * `searchable` can overrule it.
+ */
+const SEARCHABLE_FROM = 10;
 
 /** Private stand-in for the empty value. Never leaves this module. */
 const EMPTY = '__erp_empty__';
@@ -60,6 +79,15 @@ export interface SelectProps {
   required?: boolean;
   /** Overrides the text taken from the `value=""` option. */
   placeholder?: string;
+  /**
+   * Force the filtering list on or off. Left unset, it turns on past `SEARCHABLE_FROM`
+   * options — which is what almost every caller wants.
+   */
+  searchable?: boolean;
+  /** Placeholder for the filter box. Defaults to the browser-agnostic "Search". */
+  searchPlaceholder?: string;
+  /** Shown when the filter matches nothing. */
+  noMatchLabel?: string;
   /**
    * A row pinned to the foot of the list — "Add a district", "Add a supplier".
    *
@@ -132,6 +160,24 @@ function parseOptions(children: React.ReactNode): { entries: ParsedEntry[]; plac
   return { entries, placeholder };
 }
 
+/**
+ * An option's text, flattened.
+ *
+ * Options are written as JSX — `<option>{code} — {name}</option>` arrives as an array of
+ * nodes, not a string. Filtering needs something to match against, so the tree is walked for
+ * its strings and numbers. Anything else (an icon, a badge) is dropped rather than guessed at,
+ * which is the honest failure: the row still reads, it just cannot be matched on that part.
+ */
+function toText(node: React.ReactNode): string {
+  if (node === null || node === undefined || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(toText).join('');
+  if (React.isValidElement(node)) {
+    return toText((node.props as { children?: React.ReactNode }).children);
+  }
+  return '';
+}
+
 export function Select({
   id,
   name,
@@ -141,6 +187,9 @@ export function Select({
   disabled,
   required,
   placeholder,
+  searchable,
+  searchPlaceholder = 'Search',
+  noMatchLabel = 'No match',
   createAction,
   children,
   className,
@@ -184,6 +233,32 @@ export function Select({
 
   const toRadix = (v: string | undefined) => (v === '' ? EMPTY : v);
   const fromRadix = (v: string) => (v === EMPTY ? '' : v);
+
+  // A long list gets the filtering control instead. Same value contract, same create row —
+  // only the rendering differs, so no call site has to know which one it got.
+  const useFilter = searchable ?? entries.length >= SEARCHABLE_FROM;
+  if (useFilter) {
+    const flat = entries.flatMap((entry) => (isGroup(entry) ? entry.options : [entry]));
+    return (
+      <Combobox
+        id={id ?? ''}
+        value={value ?? ''}
+        onChange={(next) => onChange?.(next)}
+        options={flat
+          .filter((option) => option.value !== EMPTY)
+          .map((option) => ({ value: option.value, label: toText(option.label) }))}
+        placeholder={placeholder ?? fromOption ?? ''}
+        searchPlaceholder={searchPlaceholder}
+        emptyLabel={noMatchLabel}
+        footerAction={createAction}
+        disabled={disabled}
+        invalid={field?.hasError}
+        aria-describedby={describedBy}
+        aria-required={isRequired}
+        className={className}
+      />
+    );
+  }
 
   return (
     <SelectPrimitive.Root

@@ -46,7 +46,7 @@ export interface CreateField {
   narrow?: boolean;
 }
 
-export function CreateInPickerDialog<TCreated>({
+export function CreateInPickerDialog({
   title,
   description,
   fields,

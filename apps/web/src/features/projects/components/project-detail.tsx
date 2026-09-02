@@ -8,20 +8,17 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Button, DefinitionList, DefinitionRow, SectionHeader } from '@erp/ui';
 import {
   ArrowRight,
-  AlertTriangle,
   Check,
   CircleCheck,
   History,
   Lock,
-  LockKeyhole,
 } from 'lucide-react';
 
 import { ApiError } from '@/lib/api-client';
-import { formatDate, formatMoney } from '@/lib/format';
+import { formatDate } from '@/lib/format';
 
 import {
   useProject,
-  useProjectWorkspaceGuidance,
   useProjectWorkspaceSummary,
 } from '../hooks/use-project';
 import { ProjectCommitmentsCard } from '@/features/procurement/components/commitments';
@@ -31,6 +28,8 @@ import { getAvailableActions } from '../project-actions';
 import type { ProjectDetail as ProjectDetailModel } from '../types';
 import type { ProjectWorkspaceSummary } from '../types';
 import { ProjectActionsPanel } from './project-actions-panel';
+import { CommercialSummaryStrip } from '@/features/commercial/components/commercial-summary-strip';
+import { useCommercialSummary } from '@/features/commercial/hooks/use-commercial';
 
 export function ProjectDetail({ id }: { id: string }) {
   const t = useTranslations('platform.projects.detail');
@@ -40,7 +39,6 @@ export function ProjectDetail({ id }: { id: string }) {
   const [showCreated, setShowCreated] = useState(searchParams?.get('created') === '1');
   const { data: project, isPending, isError, error } = useProject(id);
   const summary = useProjectWorkspaceSummary(id);
-  const guidance = useProjectWorkspaceGuidance(id);
 
   useEffect(() => {
     if (!showCreated) return;
@@ -110,9 +108,6 @@ export function ProjectDetail({ id }: { id: string }) {
         summary={summary.data}
         summaryPending={summary.isPending}
         summaryError={summary.isError}
-        guidance={guidance.data}
-        guidancePending={guidance.isPending}
-        guidanceError={guidance.isError}
       />
     </div>
   );
@@ -146,27 +141,19 @@ function Overview({
   summary,
   summaryPending,
   summaryError,
-  guidance,
-  guidancePending,
-  guidanceError,
 }: {
   project: ProjectDetailModel;
   locale: 'en' | 'ar';
   summary: ProjectWorkspaceSummary | undefined;
   summaryPending: boolean;
   summaryError: boolean;
-  guidance: import('../types').ProjectWorkspaceGuidanceItem[] | undefined;
-  guidancePending: boolean;
-  guidanceError: boolean;
 }) {
   const t = useTranslations('platform.projects.detail');
   const tProjects = useTranslations('platform.projects');
   const tTypes = useTranslations('projectTypes');
-  const contractValueDisplay = formatMoney(
-    summary?.mainContract?.contractValue ?? null,
-    summary?.mainContract?.currency ?? null,
-    locale,
-  );
+  // The Commercial tab's own summary, so the Overview band and that tab can never
+  // disagree about the same five figures.
+  const commercial = useCommercialSummary(project.id);
 
   // Identity facts the shell metric strip does NOT already carry. Programme, current stage,
   // contract value and project manager live in the strip and lifecycle above (P2), so they are
@@ -210,12 +197,12 @@ function Overview({
 
   return (
     <div className="space-y-5">
-      <WorkspaceGuidancePanel
-        items={guidance}
-        isPending={guidancePending}
-        isError={guidanceError}
-      />
-
+      {/* The guidance queue that used to sit here is gone. SetupStepper below states the same
+          four conditions with the two things the queue could not: which step is locked behind
+          which, and which are already done. The queue rendered "Main contract is blocked" as a
+          peer of "BOQ baseline is required" with the same Open BOQ button — two rows, one piece
+          of work — and counted them as two of "3 items". A queue across many projects is worth
+          having; on one project, where all four steps fit on screen, the stepper is it. */}
       {project.status === 'DRAFT' ? (
         summaryPending ? (
           <div className="h-40 animate-pulse rounded-panel border border-border bg-muted" />
@@ -248,46 +235,20 @@ function Overview({
         </DefinitionList>
       </section>
 
+      {/* The revenue chain — value → certified → invoiced → received → outstanding — replacing
+          a card that carried only contract value. That single figure was already in the shell
+          strip and in the details list, so the card spent a third of the row restating it while
+          the money picture stayed a tab away. This is the same band the Commercial tab uses, on
+          the same project-scoped summary, so the two can never disagree. */}
+      {project.status !== 'DRAFT' && commercial.data ? (
+        <CommercialSummaryStrip summary={commercial.data} />
+      ) : null}
+
       <section
-        className={cn('grid gap-4', project.status === 'DRAFT' ? 'lg:grid-cols-2' : 'lg:grid-cols-3')}
+        className={cn('grid gap-4', project.status === 'DRAFT' ? '' : 'lg:grid-cols-2')}
         aria-label={t('commercialCostPosition')}
       >
         {project.status === 'DRAFT' ? null : <ProjectProgressCard projectId={project.id} />}
-        {/* Commercial snapshot keeps its card: it owns a link and a figure the strip does not
-            carry (contract value). Main contract is dropped here — the shell strip and the
-            Project details list already show it, this must not be a third copy (P2). */}
-        <div className="overflow-hidden rounded-panel border border-border bg-surface">
-          <div className="flex min-h-12 items-center justify-between border-b border-border px-5">
-            <h2 className="text-body-sm font-semibold text-foreground">
-              {t('commercialSnapshot')}
-            </h2>
-            {summary?.mainContract ? (
-              <Link
-                href={`/projects/${project.id}/commercial`}
-                className="text-caption font-medium text-brand-primary hover:underline"
-              >
-                {t('openCommercial')}
-              </Link>
-            ) : null}
-          </div>
-          <div className="px-5 py-3">
-            <dl>
-              <div className="flex items-center justify-between gap-4 py-2.5">
-                <dt className="text-caption text-muted-foreground">{t('contractValue')}</dt>
-                <dd className="text-body-sm font-semibold tabular-nums text-foreground">
-                  {summary?.financialsVisible ? (
-                    (contractValueDisplay ?? t('notSet'))
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 font-medium text-muted-foreground">
-                      <LockKeyhole size={14} aria-hidden="true" />
-                      {t('valueRestricted')}
-                    </span>
-                  )}
-                </dd>
-              </div>
-            </dl>
-          </div>
-        </div>
         <ProjectCommitmentsCard
           projectId={project.id}
           currencyCode={summary?.mainContract?.currency ?? null}
@@ -339,80 +300,6 @@ function Overview({
         </section>
       ) : null}
     </div>
-  );
-}
-
-function WorkspaceGuidancePanel({
-  items,
-  isPending,
-  isError,
-}: {
-  items: import('../types').ProjectWorkspaceGuidanceItem[] | undefined;
-  isPending: boolean;
-  isError: boolean;
-}) {
-  const t = useTranslations('platform.projects.detail');
-  if (isPending)
-    return <div className="h-24 animate-pulse rounded-panel border border-border bg-muted" />;
-  if (isError) return <Alert variant="warning" messages={[t('attentionUnavailable')]} />;
-  const visible = items ?? [];
-  return (
-    <section aria-labelledby="workspace-guidance-heading">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <AlertTriangle
-            size={17}
-            className={visible.length ? 'text-warning' : 'text-success'}
-            aria-hidden="true"
-          />
-          <h2
-            id="workspace-guidance-heading"
-            className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground"
-          >
-            {t('workspaceGuidance')}
-          </h2>
-        </div>
-        {visible.length ? (
-          <span className="text-caption text-muted-foreground">
-            {t('attentionCount', { count: items?.length ?? 0 })}
-          </span>
-        ) : null}
-      </div>
-      {visible.length ? (
-        <div className="divide-y divide-border rounded-panel border border-border bg-surface shadow-e1">
-          {visible.map((item) => (
-            <div
-              key={item.id}
-              className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"
-            >
-              <div>
-                <p className="text-body-sm font-semibold text-foreground">
-                  {t(`attention.${item.kind}.title`)}
-                </p>
-                <p className="mt-1 text-caption text-muted-foreground">
-                  {t(`attention.${item.kind}.description`)}
-                </p>
-                {item.responsibleRole ? (
-                  <p className="mt-1 text-micro font-medium text-muted-foreground">
-                    {t('responsibleRole', { role: t(`roles.${item.responsibleRole}`) })}
-                  </p>
-                ) : null}
-              </div>
-              {item.actionUrl ? (
-                <Button variant="outline" size="sm" asChild>
-                  <Link href={item.actionUrl}>{t(`attention.${item.kind}.action`)}</Link>
-                </Button>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="rounded-panel border border-success/20 bg-success/5 px-5 py-4">
-          <p className="text-body-sm font-semibold text-foreground">{t('attentionClear')}</p>
-          <p className="mt-1 text-caption text-muted-foreground">{t('attentionClearHint')}</p>
-        </div>
-      )}
-    </section>
   );
 }
 

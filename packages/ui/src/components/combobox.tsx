@@ -232,7 +232,9 @@ export function Combobox({
                     className={cn(
                       'flex min-h-control w-full items-center gap-2 px-3 py-2 text-start text-body-sm',
                       index === activeIndex ? 'bg-surface-selected' : 'bg-transparent',
-                      option.value === value ? 'font-semibold text-foreground' : 'text-foreground',
+                      option.value === value
+                        ? 'font-semibold text-brand-primary'
+                        : 'text-foreground',
                     )}
                   >
                     {option.hint ? (
@@ -241,6 +243,12 @@ export function Combobox({
                       </span>
                     ) : null}
                     <span className="min-w-0 truncate">{option.label}</span>
+                    {option.value === value ? (
+                      // The chosen row is marked, not merely bolded: in a filtered list the
+                      // selection is often scrolled out of the first screen, and weight alone
+                      // is not something you can scan for.
+                      <CheckGlyph />
+                    ) : null}
                   </button>
                 </li>
               ))
@@ -290,6 +298,27 @@ function CaretGlyph({ open }: { open: boolean }) {
       className={cn('shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')}
     >
       <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+function CheckGlyph() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 12 12"
+      fill="none"
+      aria-hidden="true"
+      className="ms-auto shrink-0 text-brand-primary"
+    >
+      <path
+        d="M2 6.4l2.6 2.6L10 3.4"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

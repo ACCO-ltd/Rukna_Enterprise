@@ -7,7 +7,6 @@ import { useLifecycleCommand } from '@/features/lifecycle/use-lifecycle-command'
 import {
   cancelProject,
   getProject,
-  getProjectWorkspaceGuidance,
   getProjectWorkspaceSummary,
   resumeProject,
   runProjectCommand,
@@ -33,12 +32,6 @@ export function useProjectWorkspaceSummary(
   });
 }
 
-export function useProjectWorkspaceGuidance(id: string) {
-  return useQuery({
-    queryKey: [...projectKeys.detail(id), 'workspace-guidance'],
-    queryFn: () => getProjectWorkspaceGuidance(id),
-  });
-}
 
 /**
  * Project commands run through the shared lifecycle hook, which contracts and payment

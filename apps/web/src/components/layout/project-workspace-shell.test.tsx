@@ -122,6 +122,24 @@ describe('ProjectWorkspaceShell', () => {
    * Programme & Progress, Procurement and Documents joined once theirs shipped (ADR-021/014).
    * Activity is deliberately absent — recent activity lives on Overview, not as its own tab.
    */
+  it('keeps the menu and the tab row on opposite sides of the md breakpoint', () => {
+    renderWithProviders(
+      <ProjectWorkspaceShell id="project-1">
+        <p>Workspace content</p>
+      </ProjectWorkspaceShell>,
+    );
+
+    // Asserted on the class because the failure is invisible to the DOM: both navigations
+    // render either way, and only the breakpoint decides which one a viewport sees. Moving
+    // this control off a native <select> once dropped its `md:hidden` and stacked the menu on
+    // top of the tabs on every desktop.
+    expect(screen.getByRole('combobox')).toHaveClass('md:hidden');
+
+    const nav = screen.getByRole('navigation', { name: 'Project navigation' });
+    const tabRow = within(nav).getByRole('link', { name: 'Overview' }).closest('div');
+    expect(tabRow).toHaveClass('hidden', 'md:flex');
+  });
+
   it('shows one flat row of implemented destinations', async () => {
     const user = userEvent.setup();
     renderWithProviders(

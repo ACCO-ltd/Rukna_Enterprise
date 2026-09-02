@@ -3,7 +3,7 @@
 import type { BoqVersionSummary } from '@erp/types';
 import { GitCompare, History } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Badge, Button, cn, LtrValue, Select, type BadgeTone } from '@erp/ui';
+import { Badge, Button, cn, LtrValue, type BadgeTone } from '@erp/ui';
 
 import { formatDate, formatMoney } from '@/lib/format';
 

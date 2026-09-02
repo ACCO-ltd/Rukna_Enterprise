@@ -5,7 +5,6 @@ import { apiClient } from '@/lib/api-client';
 import type { ProjectCommand } from '../project-actions';
 import type {
   Project,
-  ProjectWorkspaceGuidanceItem,
   ProjectDetail,
   ProjectMember,
   ProjectWorkspaceSummary,
@@ -74,10 +73,6 @@ export function getProject(id: string): Promise<ProjectDetail> {
 
 export function getProjectWorkspaceSummary(id: string): Promise<ProjectWorkspaceSummary> {
   return apiClient<ProjectWorkspaceSummary>(`/projects/${id}/workspace-summary`);
-}
-
-export function getProjectWorkspaceGuidance(id: string): Promise<ProjectWorkspaceGuidanceItem[]> {
-  return apiClient<ProjectWorkspaceGuidanceItem[]>(`/projects/${id}/workspace-guidance`);
 }
 
 /**

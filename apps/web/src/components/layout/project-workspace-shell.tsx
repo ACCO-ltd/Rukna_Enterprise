@@ -28,6 +28,8 @@ import {
 } from 'lucide-react';
 
 import { ProjectStatusBadge } from '@/features/projects/components/project-status-badge';
+import { useDistricts } from '@/features/districts/hooks/use-districts';
+import { useProjectRollup } from '@/features/progress/hooks/use-progress';
 import { useProject, useProjectWorkspaceSummary } from '@/features/projects/hooks/use-project';
 import { formatDate } from '@/lib/format';
 
@@ -52,6 +54,15 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
   const projectQuery = useProject(id);
   const summaryQuery = useProjectWorkspaceSummary(id);
   const project = projectQuery.data;
+
+  // The project carries `districtId`, not the district's name, so the site line is composed
+  // here from the registry the picker has already fetched and cached. All districts rather than
+  // only active ones: a project built in a district since retired still has to read.
+  const { data: districts = [] } = useDistricts(false);
+  const districtName = districts.find((d) => d.id === project?.districtId)?.name ?? null;
+  // "Hodan, Hotel Sahafi" — the administrative area, then the address inside it, which is the
+  // order a site gets given to a driver. Either half stands alone when the other is absent.
+  const siteLabel = [districtName, project?.location].filter(Boolean).join(', ');
 
   const primaryTabs = [
     {
@@ -115,7 +126,10 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
           .filter(Boolean)
           .join(' - ')
       : null;
-  const projectManagerName = summaryQuery.data?.responsibility.projectManager?.name ?? null;
+  // Physical progress is the first thing a manager wants from a running project, and it was
+  // the one vital sign the strip did not carry. It comes from the work-package roll-up, not the
+  // workspace summary — which has no progress in it at all.
+  const rollupQuery = useProjectRollup(id);
   const stageIndex = project?.status ? LIFECYCLE_STAGES.indexOf(project.status) : -1;
 
   if (projectQuery.isError) {
@@ -198,12 +212,12 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
                           </span>
                         </>
                       ) : null}
-                      {project.location ? (
+                      {siteLabel ? (
                         <>
                           <span aria-hidden="true">·</span>
                           <span className="inline-flex items-center gap-1">
                             <MapPin size={14} aria-hidden="true" />
-                            {project.location}
+                            {siteLabel}
                           </span>
                         </>
                       ) : null}
@@ -226,8 +240,15 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
           <label className="sr-only" htmlFor="project-workspace-menu">
             {t('workspace.navLabel')}
           </label>
+          {/* The narrow-screen form of the tab row. `md:hidden` is the whole point of it and
+              was lost when this moved off a native select — the two navigations were then
+              stacked on top of each other on every desktop. */}
           <Select
             id="project-workspace-menu"
+            // Navigation, not a picker: these are destinations someone browses, so no filter
+            // however many tabs the workspace grows.
+            searchable={false}
+            className="mx-5 my-3 w-[calc(100%-2.5rem)] md:hidden"
             value={primaryTabs.find((tab) => isActive(tab.href))?.href ?? `/projects/${id}`}
             onChange={(value) => router.push(value)}
           >
@@ -259,27 +280,26 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
             one the feature brought — on BOQ that meant eight visually identical boxes and no
             complete BOQ row above the fold at 1440x900. The context is one tab away, and the
             lifecycle strip and header above still say which project this is and where it is
-            in its life. */}
-        {project && isOverview ? (
+            in its life.
+            Not on a DRAFT. There the four tiles are BOQ / contract / team / stage — the setup
+            steps — and the Overview already renders them as a stepper with a percentage, the
+            order they unlock in, and an action on each. The tiles restated all four one screen
+            above, ending on "1 of 4 steps complete" directly over a panel headed "1 of 4 steps
+            complete". A draft is a project being set up, so the stepper is the vital sign; the
+            tiles start earning their place once it is running and they carry the contract, the
+            programme and the manager instead. */}
+        {project && isOverview && project.status !== ProjectStatus.DRAFT ? (
           <dl className="grid border-t border-border bg-surface-subtle sm:grid-cols-2 lg:grid-cols-4">
             <SummaryItem
               icon={BriefcaseBusiness}
-              label={
-                project.status === ProjectStatus.DRAFT
-                  ? t('workspace.boqBaseline')
-                  : t('workspace.mainContract')
-              }
+              label={t('workspace.mainContract')}
               value={
                 summaryQuery.isPending
                   ? t('workspace.loadingValue')
-                  : project.status === ProjectStatus.DRAFT
-                    ? summaryQuery.data?.setup.boqBaselined
-                      ? t('workspace.complete')
-                      : t('workspace.required')
-                    : (mainContract?.contractNumber ??
-                      (project.commercialModel === 'INTERNAL_CAPITAL'
-                        ? t('workspace.notApplicable')
-                        : t('workspace.notCreated')))
+                  : (mainContract?.contractNumber ??
+                    (project.commercialModel === 'INTERNAL_CAPITAL'
+                      ? t('workspace.notApplicable')
+                      : t('workspace.notCreated')))
               }
               supporting={
                 project.commercialModel === 'INTERNAL_CAPITAL'
@@ -289,20 +309,8 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
             />
             <SummaryItem
               icon={CalendarDays}
-              label={
-                project.status === ProjectStatus.DRAFT
-                  ? t('workspace.mainContract')
-                  : t('workspace.programme')
-              }
-              value={
-                project.status === ProjectStatus.DRAFT
-                  ? summaryQuery.data?.setup.mainContractExists
-                    ? (mainContract?.contractNumber ?? t('workspace.complete'))
-                    : summaryQuery.data?.setup.boqBaselined
-                      ? t('workspace.required')
-                      : t('workspace.blocked')
-                  : (programme ?? t('detail.notSet'))
-              }
+              label={t('workspace.programme')}
+              value={programme ?? t('detail.notSet')}
               supporting={
                 summaryQuery.data?.programme.daysRemaining == null
                   ? undefined
@@ -313,38 +321,32 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
                       })
               }
             />
+            {/* The project manager used to sit here. It is already two lines up in the header,
+                beside the client, so the tile spent a quarter of the strip repeating it. A
+                vital sign is what belongs in a vital-signs row. */}
             <SummaryItem
-              icon={UserRound}
-              label={
-                project.status === ProjectStatus.DRAFT
-                  ? t('workspace.team')
-                  : t('workspace.projectManager')
-              }
+              icon={Activity}
+              label={t('workspace.physicalProgress')}
               value={
-                project.status === ProjectStatus.DRAFT
-                  ? t('detail.teamMembers', {
-                      count: summaryQuery.data?.responsibility.teamCount ?? project.members.length,
-                    })
-                  : (projectManagerName ?? t('detail.notSet'))
+                rollupQuery.isPending
+                  ? t('workspace.loadingValue')
+                  : rollupQuery.data
+                    ? `${Math.round(rollupQuery.data.physicalPercent)}%`
+                    : t('detail.notSet')
               }
               supporting={
-                project.status === ProjectStatus.DRAFT
-                  ? t('workspace.setup')
-                  : t('workspace.projectManager')
+                rollupQuery.data && !rollupQuery.data.weightsComplete
+                  ? // Said plainly rather than shown as a clean number: with weights below
+                    // 100% the roll-up can only understate, and a percentage that looks exact
+                    // when it is not is worse than no percentage.
+                    t('workspace.progressWeightsIncomplete')
+                  : undefined
               }
             />
             <SummaryItem
               icon={Building2}
               label={t('workspace.currentStage')}
               value={t(`status.${project.status}`)}
-              supporting={
-                project.status === ProjectStatus.DRAFT && summaryQuery.data
-                  ? t('detail.setupProgress', {
-                      done: summaryQuery.data.setup.completedSteps,
-                      total: summaryQuery.data.setup.totalSteps,
-                    })
-                  : undefined
-              }
             />
           </dl>
         ) : null}
