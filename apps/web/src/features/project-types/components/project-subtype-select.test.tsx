@@ -50,8 +50,7 @@ describe('ProjectSubtypeSelect', () => {
     expect(screen.getByRole('combobox')).toBeDisabled();
   });
 
-  it('lists only the chosen category’s active subtypes', async () => {
-    const user = userEvent.setup();
+  it('lists only the chosen category’s active subtypes', () => {
     renderWithProviders(
       <ProjectSubtypeSelect
         id="subtype"
@@ -61,12 +60,12 @@ describe('ProjectSubtypeSelect', () => {
       />,
     );
 
-    await user.click(screen.getByRole('combobox'));
-    expect(await screen.findByRole('option', { name: /office buildings/i })).toBeInTheDocument();
+    expect(screen.getByRole('combobox')).toBeEnabled();
+    expect(screen.getByRole('option', { name: /office buildings/i })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /retail centres/i })).toBeInTheDocument();
   });
 
-  it('selects a subtype and closes the panel', async () => {
+  it('selects a subtype', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     renderWithProviders(
@@ -78,14 +77,12 @@ describe('ProjectSubtypeSelect', () => {
       />,
     );
 
-    await user.click(screen.getByRole('combobox'));
-    await user.click(await screen.findByRole('option', { name: /office buildings/i }));
+    await user.selectOptions(screen.getByRole('combobox'), 's-office');
 
     expect(onChange).toHaveBeenCalledWith('s-office');
-    await waitFor(() => expect(screen.queryByRole('listbox')).not.toBeInTheDocument());
   });
 
-  it('adds a subtype from the last row, scoped to the current category, and selects it', async () => {
+  it('opens the add dialog from a button, creates scoped to the current category, and selects it', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     createMutate.mockImplementation((_payload, options) =>
@@ -109,11 +106,11 @@ describe('ProjectSubtypeSelect', () => {
       />,
     );
 
-    await user.click(screen.getByRole('combobox'));
-    await user.click(await screen.findByRole('option', { name: /add a subtype/i }));
+    // The add affordance is a button below the select, not an option inside it.
+    await user.click(screen.getByRole('button', { name: /add a subtype/i }));
 
     await user.type(screen.getByLabelText(/subtype name/i), 'Mixed-use');
-    await user.click(screen.getByRole('button', { name: /add subtype/i }));
+    await user.click(screen.getByRole('button', { name: /^add subtype$/i }));
 
     // The create payload carries the current category, not free text.
     expect(createMutate).toHaveBeenCalledWith(
@@ -124,8 +121,7 @@ describe('ProjectSubtypeSelect', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
-  it('offers no add row to someone who cannot manage the registry, and says who can', async () => {
-    const user = userEvent.setup();
+  it('offers no add button to someone who cannot manage the registry, and says who can', () => {
     permitted = false;
     listedFor = () => [];
 
@@ -138,9 +134,7 @@ describe('ProjectSubtypeSelect', () => {
       />,
     );
 
-    await user.click(screen.getByRole('combobox'));
-
-    expect(screen.queryByRole('option', { name: /add a subtype/i })).not.toBeInTheDocument();
-    expect(await screen.findByText(/an administrator can add them/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /add a subtype/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/an administrator can add them/i)).toBeInTheDocument();
   });
 });

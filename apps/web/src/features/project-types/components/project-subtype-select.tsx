@@ -6,7 +6,6 @@ import type { ProjectCategory } from '@erp/types';
 import {
   Alert,
   Button,
-  Combobox,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -14,7 +13,9 @@ import {
   DialogTitle,
   FormField,
   Input,
+  Select,
 } from '@erp/ui';
+import { Plus } from 'lucide-react';
 
 import { usePermissions } from '@/features/auth/permissions/can';
 import { ApiError } from '@/lib/api-client';
@@ -26,19 +27,23 @@ import {
 } from '../hooks/use-project-subtypes';
 
 /**
- * The subtype picker, mirroring `DistrictSelect`: a searchable combobox of the chosen
- * category's ACTIVE subtypes with an "Add a subtype" escape hatch pinned to the last row.
+ * The subtype picker: a native `Select` of the chosen category's ACTIVE subtypes, plus a
+ * separate "Add a subtype" affordance rendered below it for a `manage:project-type` holder.
  *
- * ─── How it differs from the district picker ─────────────────────────────────────
+ * ─── Shape ───────────────────────────────────────────────────────────────────────
  *
  *  - **Scoped to a category.** A subtype only exists within one `ProjectCategory`, so the
- *    picker is disabled until a category is chosen and it lists only that category's subtypes.
+ *    select is disabled until a category is chosen and it lists only that category's subtypes.
  *    The parent form clears the selected subtype when the category changes (see project-form).
- *  - **Optional.** Leaving it blank is a valid answer, so the placeholder says "(optional)"
- *    and there is no required marker — unlike district, which forms the project code.
- *  - **Curated, no free text.** As with districts, a value cannot be typed into the combobox;
- *    a new subtype is added only through the dialog, and only by a `manage:project-type`
- *    holder — which is what `POST /project-subtypes` enforces anyway.
+ *  - **Optional.** Leaving it blank is a valid answer, so the first row is a blank "— none —"
+ *    option and there is no required marker — unlike district, which forms the project code.
+ *  - **Curated, no free text.** A subtype cannot be typed into the select; a new one is added
+ *    only through the dialog behind the "Add a subtype" button, and only by a
+ *    `manage:project-type` holder — which is what `POST /project-subtypes` enforces anyway.
+ *
+ * This uses only `@erp/ui`'s native `Select` (no custom combobox), so it compiles against the
+ * shared UI package as shipped: a native `<select>` is keyboard- and screen-reader-correct and
+ * renders the platform picker on mobile without reimplementing a listbox.
  */
 export function ProjectSubtypeSelect({
   id,
@@ -48,7 +53,7 @@ export function ProjectSubtypeSelect({
   describedBy,
 }: {
   id: string;
-  /** The chosen category. The picker is disabled and lists nothing until this is set. */
+  /** The chosen category. The select is disabled and lists nothing until this is set. */
   category: ProjectCategory | undefined;
   value: string;
   onChange: (subtypeId: string) => void;
@@ -56,66 +61,76 @@ export function ProjectSubtypeSelect({
 }) {
   const t = useTranslations('projectTypes.select');
   const tForm = useTranslations('projectTypes.form');
-  const tCommon = useTranslations('common');
   const { can } = usePermissions();
   const canManage = can('manage:project-type');
 
   const { data: subtypes = [] } = useProjectSubtypes(category, true);
   const [creating, setCreating] = useState(false);
 
-  const options = subtypes.map((subtype) => ({
-    value: subtype.id,
-    label: subtype.name,
-  }));
+  const disabled = category === undefined;
+  // An empty registry (nothing set up for this category yet) is not the same as a select the
+  // user simply has not opened, and someone who cannot fix it needs to be told who can.
+  const showEmptyRestricted = !disabled && subtypes.length === 0 && !canManage;
 
   return (
-    <>
-      <Combobox
+    <div className="space-y-2">
+      <Select
         id={id}
         value={value}
-        onChange={onChange}
-        options={options}
-        disabled={category === undefined}
-        placeholder={
-          category === undefined ? tForm('subtypePickCategoryFirst') : t('placeholder')
-        }
-        searchPlaceholder={tCommon('search')}
-        // An empty registry (nothing set up for this category yet) is not the same as a filter
-        // that matched nothing, and someone who cannot fix it needs to be told who can.
-        emptyLabel={
-          subtypes.length === 0 && !canManage ? t('emptyRestricted') : t('noMatch')
-        }
-        footerAction={
-          canManage && category !== undefined
-            ? { label: t('addTitle'), onSelect: () => setCreating(true) }
-            : undefined
-        }
+        onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
         aria-describedby={describedBy}
-      />
+      >
+        <option value="">
+          {disabled ? tForm('subtypePickCategoryFirst') : t('placeholder')}
+        </option>
+        {subtypes.map((subtype) => (
+          <option key={subtype.id} value={subtype.id}>
+            {subtype.name}
+          </option>
+        ))}
+      </Select>
+
+      {showEmptyRestricted ? (
+        <p className="text-xs text-muted-foreground">{t('emptyRestricted')}</p>
+      ) : null}
+
+      {canManage && !disabled ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="px-2"
+          onClick={() => setCreating(true)}
+        >
+          <Plus className="me-1.5 h-4 w-4" aria-hidden="true" />
+          {t('addTitle')}
+        </Button>
+      ) : null}
 
       {creating && category !== undefined ? (
         <CreateSubtypeDialog
           category={category}
           existing={subtypes}
           onCreated={(subtype) => {
-            // Selecting it is the confirmation, the same as the district picker — creating a
-            // subtype and leaving the picker empty would make the user answer twice.
+            // Selecting it is the confirmation — creating a subtype and leaving the picker
+            // empty would make the user answer twice.
             onChange(subtype.id);
             setCreating(false);
           }}
           onDismiss={() => setCreating(false)}
         />
       ) : null}
-    </>
+    </div>
   );
 }
 
 // ─── Create dialog ────────────────────────────────────────────────────────────
 
 /**
- * A single name field, scoped to the current category. Simpler than the district dialog: a
- * subtype has no code (it is not part of the project code), so there is no derived-code step —
- * just the name, validated for a duplicate within the category the picker is showing.
+ * A single name field, scoped to the current category. A subtype has no code (it is not part
+ * of the project code), so there is no derived-code step — just the name, validated for a
+ * duplicate within the category the picker is showing.
  */
 function CreateSubtypeDialog({
   category,
@@ -160,7 +175,6 @@ function CreateSubtypeDialog({
       }}
     >
       <DialogContent
-        closeLabel={tCommon('close')}
         className="sm:max-w-lg"
         onEscapeKeyDown={(event) => {
           if (create.isPending) event.preventDefault();
@@ -169,7 +183,7 @@ function CreateSubtypeDialog({
           if (create.isPending) event.preventDefault();
         }}
         onOpenAutoFocus={(event) => {
-          // Radix focuses the close control first; the point of this dialog is the name field.
+          // Radix focuses the first tabbable control; the point of this dialog is the name field.
           event.preventDefault();
           nameRef.current?.focus();
         }}
