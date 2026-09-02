@@ -19,6 +19,7 @@ export const PERMISSIONS = {
   projectsCreate: 'create:project',
   projectsManage: 'manage:project',
   districtsManage: 'manage:district',
+  projectTypeManage: 'manage:project-type',
   projectsApprove: 'approve:project',
   projectMembersManage: 'manage:project-member',
 
@@ -85,6 +86,7 @@ const DOMAIN_BY_RESOURCE: Record<string, string> = {
   'governance-impact': 'Access governance',
   organization: 'Organization', workflow: 'Approval policies', 'audit-log': 'Audit',
   client: 'Commercial', project: 'Projects', district: 'Organization', 'project-member': 'Projects',
+  'project-type': 'Organization',
   boq: 'Projects', contract: 'Commercial', ipa: 'Commercial', ipc: 'Commercial', receipt: 'Commercial',
   accounting: 'Accounting', 'financial-position': 'Accounting', journal: 'Accounting',
   receivable: 'Accounting', payable: 'Accounting', period: 'Accounting', 'fiscal-year': 'Accounting',
@@ -121,6 +123,7 @@ const DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.projectsCreate]: 'Create projects',
   [PERMISSIONS.projectsManage]: 'Update projects and run operational lifecycle commands',
   [PERMISSIONS.districtsManage]: 'Manage the district registry (project code segments)',
+  [PERMISSIONS.projectTypeManage]: 'Manage the project subtype registry (project type classification)',
   [PERMISSIONS.projectsApprove]: 'Approve projects and controlled lifecycle transitions',
   [PERMISSIONS.projectMembersManage]: 'Manage project membership and project roles',
   [PERMISSIONS.boqView]: 'View bills of quantities',

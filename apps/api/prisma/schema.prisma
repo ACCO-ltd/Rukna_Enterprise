@@ -30,6 +30,7 @@ model Organization {
   roleAccessReviews        RoleAccessReview[]
   projects                 Project[]
   districts                District[]
+  projectSubtypes          ProjectSubtype[]
   projectCodeSequences     ProjectCodeSequence[]
   clients                  Client[]
   clientCodeSequence       ClientCodeSequence?
@@ -576,6 +577,12 @@ model Project {
   // ADR-025: the district segment of the project code. Required in the create DTO;
   // nullable at the DB so the migration does not need to backfill legacy rows.
   districtId         String?            @map("district_id")
+  // Project type (PTD1-PTD5): a classification/reporting attribute only — it drives no
+  // workflow/template/approval and is NOT part of the project code. `category` is a fixed
+  // enum required in the create DTO; nullable at the DB so legacy rows stay "Untyped" with no
+  // backfill. `subtypeId` is an optional admin-configurable classification within the category.
+  category           ProjectCategory?   @map("category")
+  subtypeId          String?            @map("subtype_id")
   location           String?
   startDate          DateTime?          @map("start_date") @db.Date
   expectedEndDate    DateTime?          @map("expected_end_date") @db.Date
@@ -603,10 +610,12 @@ model Project {
   purchaseOrderLines   PurchaseOrderLine[]
   client               Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull)
   district             District?             @relation(fields: [districtId], references: [id], onDelete: Restrict)
+  subtype              ProjectSubtype?       @relation(fields: [subtypeId], references: [id], onDelete: Restrict)
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
   @@index([organizationId, clientId])
+  @@index([organizationId, subtypeId])
   @@map("projects")
 }
 
@@ -628,6 +637,28 @@ model District {
   @@unique([organizationId, code])
   @@index([organizationId, active])
   @@map("districts")
+}
+
+// Project type (PTD1-PTD5): the admin-configurable subtype registry, org-scoped, one row per
+// (category, name). Mirrors the District registry pattern — seeded, editable in Settings and inline
+// from the project form, (de)activatable via `status` so a retired subtype hides from new-project
+// pickers without deleting the projects already classified under it. A pure classification/reporting
+// attribute: it drives no workflow, template or approval, and is not part of the project code.
+model ProjectSubtype {
+  id             String           @id @default(cuid())
+  organizationId String           @map("organization_id")
+  category       ProjectCategory
+  name           String
+  status         MasterDataStatus @default(ACTIVE)
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  projects     Project[]
+
+  @@unique([organizationId, category, name])
+  @@index([organizationId, category, status])
+  @@map("project_subtypes")
 }
 
 // ADR-014 / Documents tab: a standalone project document (permit, drawing, licence...) linking a
@@ -2851,6 +2882,18 @@ enum ProjectStatus {
 enum CommercialModel {
   CLIENT_CONTRACT
   INTERNAL_CAPITAL
+}
+
+// Project type (PTD1-PTD5): the fixed set of project categories. A required-on-create
+// classification/reporting attribute; it drives no workflow/template/approval and is not part of
+// the project code. Each value carries an admin-configurable ProjectSubtype registry.
+enum ProjectCategory {
+  COMMERCIAL
+  RESIDENTIAL
+  INFRASTRUCTURE_CIVIL
+  INSTITUTIONAL_PUBLIC
+  INDUSTRIAL
+  RENOVATION_FITOUT
 }
 
 enum ParticipationModel {

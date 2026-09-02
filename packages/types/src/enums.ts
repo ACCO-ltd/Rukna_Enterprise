@@ -81,6 +81,29 @@ export enum CommercialModel {
   INTERNAL_CAPITAL = 'INTERNAL_CAPITAL',
 }
 
+// Project type (PTD1-PTD5): the fixed set of project categories. A required-on-create
+// classification/reporting attribute that drives no workflow/template/approval and is not part of
+// the project code. The value is the enum key; the parenthesised label is the intended UI display.
+export enum ProjectCategory {
+  COMMERCIAL = 'COMMERCIAL', // Commercial
+  RESIDENTIAL = 'RESIDENTIAL', // Residential
+  INFRASTRUCTURE_CIVIL = 'INFRASTRUCTURE_CIVIL', // Infrastructure & Civil
+  INSTITUTIONAL_PUBLIC = 'INSTITUTIONAL_PUBLIC', // Institutional & Public
+  INDUSTRIAL = 'INDUSTRIAL', // Industrial
+  RENOVATION_FITOUT = 'RENOVATION_FITOUT', // Renovation & Fit-Out
+}
+
+// The UI labels for each ProjectCategory, kept beside the enum so web and API agree on the display
+// text without either side hard-coding a second copy.
+export const PROJECT_CATEGORY_LABELS: Record<ProjectCategory, string> = {
+  [ProjectCategory.COMMERCIAL]: 'Commercial',
+  [ProjectCategory.RESIDENTIAL]: 'Residential',
+  [ProjectCategory.INFRASTRUCTURE_CIVIL]: 'Infrastructure & Civil',
+  [ProjectCategory.INSTITUTIONAL_PUBLIC]: 'Institutional & Public',
+  [ProjectCategory.INDUSTRIAL]: 'Industrial',
+  [ProjectCategory.RENOVATION_FITOUT]: 'Renovation & Fit-Out',
+};
+
 export enum ParticipationModel {
   SOLE = 'SOLE',
   JOINT_VENTURE = 'JOINT_VENTURE',

@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { ContractStatus, ProjectStatus } from '@prisma/client';
+import { ContractStatus, ProjectCategory, ProjectStatus } from '@prisma/client';
 import { PERMISSIONS, ProjectRole, type RequestIdentity } from '@erp/types';
 
 import { ProjectService } from './project.service';
@@ -462,6 +462,173 @@ describe('ProjectService.start — Route 7A apex waiver of MANDATORY Start condi
         actualStartDate: '2026-09-01',
         overrides: waivers,
       }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+});
+
+// Project type (PTD1-PTD5) — category is required on create and persisted; a supplied subtype must
+// be an ACTIVE ProjectSubtype in the caller's org whose category matches the project's category.
+describe('ProjectService.create — project type (category + subtype)', () => {
+  const ACTIVE_COMMERCIAL = {
+    id: 'sub-1',
+    organizationId: 'org-1',
+    category: ProjectCategory.COMMERCIAL,
+    name: 'Office buildings',
+    status: 'ACTIVE',
+  };
+
+  function build(subtypeRow: unknown = ACTIVE_COMMERCIAL) {
+    const audit: unknown[] = [];
+    const repo = {
+      findByCode: jest.fn().mockResolvedValue(null),
+      allocateCode: jest.fn().mockResolvedValue('ACCO-WBR-26-0001'),
+      create: jest.fn().mockImplementation((_tx, data) => ({ id: 'project-1', ...data })),
+      createMember: jest.fn().mockResolvedValue({ id: 'member-1' }),
+      addMemberRoles: jest.fn().mockResolvedValue({ count: 1 }),
+    };
+    const tx = {
+      client: { findFirst: jest.fn().mockResolvedValue({ id: 'client-1', name: 'Acme', status: 'ACTIVE' }) },
+      district: { findFirst: jest.fn().mockResolvedValue({ id: 'dist-1', code: 'WBR', active: true }) },
+      projectSubtype: { findFirst: jest.fn().mockResolvedValue(subtypeRow) },
+      organization: { findUnique: jest.fn().mockResolvedValue({ shortCode: 'ACCO' }) },
+    };
+    const prisma = { $transaction: (fn: (t: unknown) => unknown) => fn(tx) };
+    const tenancy = { getClient: () => prisma };
+    const auditOutbox = { record: jest.fn().mockImplementation((_tx, cmd) => audit.push(cmd)) };
+    const service = new ProjectService(
+      tenancy as never,
+      {} as never,
+      repo as never,
+      {} as never,
+      { assertMember: jest.fn() } as never,
+      auditOutbox as never,
+    );
+    return { service, repo, tx };
+  }
+
+  const baseDto = {
+    name: 'Al-Baraka Tower',
+    districtId: 'dist-1',
+    clientId: 'client-1',
+    category: ProjectCategory.COMMERCIAL,
+  };
+
+  it('persists the category, and the matching ACTIVE subtype', async () => {
+    const { service, repo } = build();
+    await service.create(identity([]), { ...baseDto, subtypeId: 'sub-1' } as never);
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ category: ProjectCategory.COMMERCIAL, subtypeId: 'sub-1' }),
+    );
+  });
+
+  it('creates with a category and no subtype', async () => {
+    const { service, repo, tx } = build();
+    await service.create(identity([]), { ...baseDto, subtypeId: undefined } as never);
+    expect(tx.projectSubtype.findFirst).not.toHaveBeenCalled();
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ category: ProjectCategory.COMMERCIAL, subtypeId: undefined }),
+    );
+  });
+
+  it('rejects a subtype whose category does not match the project category (400)', async () => {
+    const { service, repo } = build({ ...ACTIVE_COMMERCIAL, category: ProjectCategory.INDUSTRIAL });
+    await expect(
+      service.create(identity([]), { ...baseDto, subtypeId: 'sub-1' } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects an inactive subtype (400)', async () => {
+    const { service, repo } = build({ ...ACTIVE_COMMERCIAL, status: 'INACTIVE' });
+    await expect(
+      service.create(identity([]), { ...baseDto, subtypeId: 'sub-1' } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a subtype from another org / not found (404)', async () => {
+    const { service, repo } = build(null);
+    await expect(
+      service.create(identity([]), { ...baseDto, subtypeId: 'sub-x' } as never),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProjectService.update — project type (category + subtype)', () => {
+  const draftProject = {
+    id: 'project-1',
+    organizationId: 'org-1',
+    status: 'DRAFT',
+    commercialModel: 'CLIENT_CONTRACT',
+    category: ProjectCategory.COMMERCIAL,
+    subtypeId: null,
+  };
+
+  function build(over: { project?: unknown; subtypeRow?: unknown } = {}) {
+    const repo = {
+      findById: jest.fn().mockResolvedValue(over.project ?? draftProject),
+      update: jest.fn().mockImplementation((_p, id, data) => ({ id, ...data })),
+    };
+    const prisma = {
+      client: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectSubtype: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue(
+            'subtypeRow' in over
+              ? over.subtypeRow
+              : { id: 'sub-1', category: ProjectCategory.COMMERCIAL, status: 'ACTIVE', name: 'Hotels' },
+          ),
+      },
+    };
+    const tenancy = { getClient: () => prisma };
+    const service = new ProjectService(
+      tenancy as never,
+      {} as never,
+      repo as never,
+      {} as never,
+      { assertMember: jest.fn().mockResolvedValue(undefined) } as never,
+      {} as never,
+    );
+    return { service, repo, prisma };
+  }
+
+  it('persists a category change and a matching subtype', async () => {
+    const { service, repo } = build();
+    await service.update(identity([]), 'project-1', {
+      category: ProjectCategory.COMMERCIAL,
+      subtypeId: 'sub-1',
+    } as never);
+    expect(repo.update).toHaveBeenCalledWith(
+      expect.anything(),
+      'project-1',
+      expect.objectContaining({ category: ProjectCategory.COMMERCIAL, subtypeId: 'sub-1' }),
+    );
+  });
+
+  it('rejects a new subtype whose category mismatches the effective category (400)', async () => {
+    const { service, repo } = build({
+      subtypeRow: { id: 'sub-2', category: ProjectCategory.INDUSTRIAL, status: 'ACTIVE', name: 'Warehouses' },
+    });
+    await expect(
+      service.update(identity([]), 'project-1', { subtypeId: 'sub-2' } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects when a category change strands the existing subtype in the wrong category (400)', async () => {
+    // Project already has a COMMERCIAL subtype; caller switches the category to INDUSTRIAL without
+    // clearing the subtype — the effective (existing) subtype no longer matches.
+    const { service, repo } = build({
+      project: { ...draftProject, subtypeId: 'sub-1' },
+      subtypeRow: { id: 'sub-1', category: ProjectCategory.COMMERCIAL, status: 'ACTIVE', name: 'Hotels' },
+    });
+    await expect(
+      service.update(identity([]), 'project-1', { category: ProjectCategory.INDUSTRIAL } as never),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(repo.update).not.toHaveBeenCalled();
   });
