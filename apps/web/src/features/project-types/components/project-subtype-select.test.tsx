@@ -125,7 +125,7 @@ describe('ProjectSubtypeSelect', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
-  it('offers no add button to someone who cannot manage the registry, and says who can', () => {
+  it('offers no add row to someone who cannot manage the registry, and says the list is empty', () => {
     permitted = false;
     listedFor = () => [];
 
@@ -139,6 +139,6 @@ describe('ProjectSubtypeSelect', () => {
     );
 
     expect(screen.queryByRole('button', { name: /add a subtype/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/an administrator can add them/i)).toBeInTheDocument();
+    expect(screen.getByText(/no subtypes yet/i)).toBeInTheDocument();
   });
 });

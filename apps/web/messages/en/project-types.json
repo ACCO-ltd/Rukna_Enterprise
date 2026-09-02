@@ -11,15 +11,13 @@
     "categoryLabel": "Category",
     "categoryPlaceholder": "Choose a category…",
     "categoryRequired": "Select a category",
-    "categoryHint": "How this project is classified for reporting. It does not change any workflow.",
     "subtypeLabel": "Subtype",
-    "subtypeHint": "An optional refinement of the category. Leave blank if none applies.",
     "subtypePickCategoryFirst": "Choose a category first"
   },
   "select": {
     "placeholder": "Select a subtype (optional)",
     "noMatch": "No subtype matches that search.",
-    "emptyRestricted": "No subtypes have been set up for this category yet. An administrator can add them under Administration › Project subtypes.",
+    "emptyRestricted": "No subtypes yet.",
     "empty": "No subtypes yet for this category.",
     "addTitle": "Add a subtype",
     "nameLabel": "Subtype name",

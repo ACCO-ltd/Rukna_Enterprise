@@ -122,7 +122,7 @@ describe('DistrictSelect', () => {
     expect(screen.getByRole('button', { name: /add district/i })).toBeDisabled();
   });
 
-  it('offers no create row to someone who cannot manage the registry, and says who can', async () => {
+  it('offers no create row to someone who cannot manage the registry, and says the list is empty', async () => {
     const user = userEvent.setup();
     permitted = false;
     listed = [];
@@ -131,6 +131,6 @@ describe('DistrictSelect', () => {
     await user.click(screen.getByRole('combobox'));
 
     expect(screen.queryByRole('option', { name: /add a district/i })).not.toBeInTheDocument();
-    expect(await screen.findByText(/an administrator can add them/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no districts yet/i)).toBeInTheDocument();
   });
 });

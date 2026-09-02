@@ -252,9 +252,7 @@ function ProjectCreateWizard() {
                       {t('codePreview')}{' '}
                       <span className="font-mono text-foreground">{codePreview}</span>
                     </>
-                  ) : (
-                    t('districtHint')
-                  )
+                  ) : undefined
                 }
                 required
               >
@@ -283,7 +281,6 @@ function ProjectCreateWizard() {
                 htmlFor="project-category"
                 label={tTypes('form.categoryLabel')}
                 error={errors.category?.message}
-                hint={tTypes('form.categoryHint')}
                 required
               >
                 <Controller
@@ -312,7 +309,6 @@ function ProjectCreateWizard() {
               <FormField
                 htmlFor="project-subtype"
                 label={tTypes('form.subtypeLabel')}
-                hint={tTypes('form.subtypeHint')}
               >
                 <Controller
                   control={form.control}
@@ -683,7 +679,6 @@ function ProjectEditForm({ project }: { project: ProjectDetail }) {
             htmlFor="project-category"
             label={tTypes('form.categoryLabel')}
             error={errors.category?.message}
-            hint={tTypes('form.categoryHint')}
             required
           >
             <Controller
@@ -712,7 +707,6 @@ function ProjectEditForm({ project }: { project: ProjectDetail }) {
           <FormField
             htmlFor="project-subtype"
             label={tTypes('form.subtypeLabel')}
-            hint={tTypes('form.subtypeHint')}
           >
             <Controller
               control={control}
