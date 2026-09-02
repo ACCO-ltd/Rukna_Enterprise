@@ -500,12 +500,16 @@ export function useApproveGoodsReceiptException() {
 
 // ─── Supplier bills and matching ─────────────────────────────────────────────────
 
-export function useSupplierBills(filters?: {
-  supplierId?: string;
-}): UseQueryResult<SupplierBill[]> {
+export function useSupplierBills(
+  filters?: { supplierId?: string },
+  options?: { enabled?: boolean },
+): UseQueryResult<SupplierBill[]> {
   return useQuery({
     queryKey: procurementKeys.bills(filters?.supplierId),
     queryFn: () => listSupplierBills(filters),
+    // The payment form gates this on a chosen supplier — there is nothing to fetch, and no
+    // "Apply to bills" list to build, before one is picked. Defaults to on for every other caller.
+    enabled: options?.enabled ?? true,
   });
 }
 

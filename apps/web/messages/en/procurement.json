@@ -446,7 +446,8 @@
     "subtitle": "Money paid to suppliers, and how it settles against their bills.",
     "new": "New Payment",
     "createTitle": "New supplier payment",
-    "createSubtitle": "Records a payment to a supplier and the bank account it was drawn on.",
+    "createSubtitle": "Records a payment to a supplier, the bank account it was drawn on, and the bills it settles.",
+    "record": "Record payment",
     "number": "Payment",
     "unnumbered": "Not yet numbered",
     "paymentDate": "Payment date",
@@ -462,7 +463,26 @@
     "postingStatus": "Posting",
     "empty": "No payments yet.",
     "amountError": "Enter an amount greater than zero.",
-    "advanceOnlyNotice": "A payment is raised here as an unallocated advance and settled against bills afterwards. Allocating at creation is accepted by the API but never recorded, which would debit Accounts Payable while the bill stayed outstanding (issue #34).",
+    "apply": {
+      "title": "Apply to bills",
+      "hint": "Tick a bill to settle it from this payment. Ticking prefills the full outstanding amount; edit it to pay part. Anything left over is kept as a supplier advance.",
+      "enterAmountFirst": "Enter the payment amount above to start applying it to bills.",
+      "loading": "Loading this supplier's bills…",
+      "selectSupplierFirst": "Choose a supplier to see its outstanding bills.",
+      "none": "This supplier has no posted bills with an outstanding balance. The whole payment will be recorded as a supplier advance.",
+      "loadFailed": "This supplier's bills could not be loaded, so bills cannot be applied here. The payment can still be recorded as an advance and settled later.",
+      "outstanding": "outstanding {amount}",
+      "applyLabel": "Apply to {invoice}",
+      "applied": "Applied {amount}",
+      "unapplied": "Unapplied {amount}",
+      "unappliedHint": "Kept as a supplier advance.",
+      "rowProblem": {
+        "empty": "Enter an amount to apply, or untick this bill.",
+        "not-positive": "Enter an amount greater than zero, or untick this bill.",
+        "exceeds-bill": "That is more than this bill still owes."
+      },
+      "exceedsAmount": "The bills you have ticked add up to more than the payment amount. Reduce an amount or increase the payment."
+    },
     "noBanksTitle": "No bank account is available for payments",
     "noBanksBody": "A payment has to name an active bank account that allows payments. None is configured. An administrator has to add one before a payment can be raised.",
     "methods": {

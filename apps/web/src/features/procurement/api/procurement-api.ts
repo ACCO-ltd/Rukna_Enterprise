@@ -620,8 +620,11 @@ export function getSupplierPayment(id: string): Promise<SupplierPayment> {
 /**
  * `POST /payments` — creates a DRAFT.
  *
- * `CreateSupplierPaymentPayload` has no `allocations` field, deliberately: the DTO accepts one
- * and never writes the rows (A16 / #34). Nothing here can send it.
+ * `CreateSupplierPaymentPayload` carries the optional `allocations[]` array. Since A16 was
+ * completed (commit eb826bb) the server writes a real allocation row per entry, reduces
+ * each target bill's `outstandingAmount`, and stores the remainder as a supplier advance — all
+ * in the create transaction. Omit it for a pure advance. See `payment-allocations.ts` for the
+ * select-bills / prefill / validation that builds it.
  *
  * Neither `supplierId` nor `bankAccountId` is validated server-side — no existence check and
  * no organisation check, the same gap P8 was filed for. Both pickers are org-scoped, so this
