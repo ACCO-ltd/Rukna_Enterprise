@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import {
   Button,
-  DateInput,
+  DatePicker,
   FormField,
   FormSection,
   Input,
@@ -232,22 +232,25 @@ export function ControlsSection() {
                 required
                 hint="Must fall inside an open period — pass min/max so the picker cannot offer one that is closed."
               >
-                <DateInput id="ds-date2" defaultValue="2026-08-13" min="2026-08-01" max="2026-08-31" />
+                <DatePickerSpecimen id="ds-date2" initial="2026-08-13" min="2026-08-01" max="2026-08-31" />
               </FormField>
             </div>
           </div>
         </Specimen>
 
         <Rule>
-          <code className="font-mono text-caption">DateInput</code> is a styled native{' '}
-          <code className="font-mono text-caption">&lt;input type=&quot;date&quot;&gt;</code>, for
-          the same reason <code className="font-mono text-caption">Select</code> is a native{' '}
-          <code className="font-mono text-caption">&lt;select&gt;</code> — and a stronger one. A
-          custom calendar has to decide what a week looks like, which calendar system to show,
-          and how to lay a month grid out right-to-left. This product is bilingual Arabic and
-          runs on site phones. What was actually broken was never the input, it was that every
-          date field was an <em>unstyled</em> one sitting next to inputs that honoured every
-          token.
+          <code className="font-mono text-caption">DatePicker</code> is a trigger and a calendar
+          in a popover, replacing the styled native{' '}
+          <code className="font-mono text-caption">&lt;input type=&quot;date&quot;&gt;</code> that
+          stood here before. The native control was typeable and gave a phone its own picker, and
+          both were real losses — but the calendar it opened was the browser&apos;s: unstyled,
+          blind to the dark theme, different in every browser, and unable to express a constraint
+          finer than <code className="font-mono text-caption">min</code>/
+          <code className="font-mono text-caption">max</code>. That last one is what decided it. A
+          posting date has to fall in a period that is still open, and closed periods are not a
+          range — they have holes. Pass{' '}
+          <code className="font-mono text-caption">isDateDisabled</code> and the calendar refuses
+          those days outright, instead of the server rejecting the form afterwards.
         </Rule>
       </Section>
 
@@ -407,4 +410,26 @@ function ToastSpecimen() {
       </p>
     </Specimen>
   );
+}
+
+/**
+ * The gallery's date specimen.
+ *
+ * `DatePicker` is controlled — it has no `defaultValue`, because a date the user picks has to
+ * round-trip through the caller's own state to be submitted. The gallery therefore has to hold
+ * that state like any real screen does, which is itself the thing worth demonstrating.
+ */
+function DatePickerSpecimen({
+  id,
+  initial,
+  min,
+  max,
+}: {
+  id: string;
+  initial: string;
+  min?: string;
+  max?: string;
+}) {
+  const [value, setValue] = useState(initial);
+  return <DatePicker id={id} value={value} onChange={setValue} min={min} max={max} />;
 }

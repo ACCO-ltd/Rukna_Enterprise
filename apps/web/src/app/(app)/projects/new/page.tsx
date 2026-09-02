@@ -7,7 +7,7 @@ export default async function NewProjectPage() {
   const t = await getTranslations('platform.projects.create');
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div className="w-full max-w-4xl">
       <PageHeader
         breadcrumbs={[{ label: t('breadcrumb'), href: '/projects' }]}
         title={t('title')}

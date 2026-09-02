@@ -35,6 +35,7 @@ vi.mock('../hooks/use-procurement', () => mocks);
 
 import { SupplierList, filterSuppliers } from './supplier-list';
 import { SupplierPicker, supplierOptionLabel } from './supplier-picker';
+import { openSelect } from '@/test/choose-option';
 
 const RASHID: Supplier = {
   id: 'sup-1',
@@ -241,9 +242,11 @@ describe('SupplierPicker', () => {
     return <SupplierPicker id="supplier" value="" onChange={() => {}} />;
   }
 
-  it('lists every supplier as an option', () => {
+  it('lists every supplier as an option', async () => {
+    const user = userEvent.setup();
     renderWithProviders(<Picker />);
 
+    await openSelect(user, screen.getByRole('combobox'));
     expect(
       screen.getByRole('option', { name: 'SUP-001 · Al-Rashid Trading' }),
     ).toBeInTheDocument();

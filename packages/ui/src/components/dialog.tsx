@@ -39,24 +39,40 @@ export const DialogClose = DialogPrimitive.Close;
 
 export const DialogContent = React.forwardRef<
   React.ComponentRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+    /** Accessible name for the close control. */
+    closeLabel?: string;
+  }
+>(({ className, children, closeLabel = 'Close', ...props }, ref) => (
   <DialogPrimitive.Portal>
-    <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-overlay" />
+    {/* Blurred as well as dimmed. A flat scrim separates the dialog from the page; blurring
+        what is behind it also stops a dense table competing for attention through the tint. */}
+    <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-overlay backdrop-blur-sm" />
     <DialogPrimitive.Content
       ref={ref}
       // Anchored to the bottom on narrow screens and centred from `sm` up: a sheet within
       // thumb reach beats a box in the middle of a phone. `max-h` with an internal scroll
       // keeps a long dialog usable at 375px rather than pushing its buttons off-screen.
       className={cn(
-        'fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] overflow-y-auto border border-border bg-surface-elevated p-5 shadow-[var(--shadow-overlay)]',
-        'rounded-t-lg sm:rounded-lg',
-        'sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2 sm:p-6',
+        'fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] overflow-y-auto border border-border bg-surface-elevated p-6 shadow-e3',
+        'rounded-t-container sm:rounded-container',
+        'sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2 sm:p-8',
         className,
       )}
       {...props}
     >
       {children}
+
+      {/* Routed through onOpenChange like every other dismissal, so a dialog that blocks
+          closing while a request is in flight blocks this too, without knowing it exists. */}
+      <DialogPrimitive.Close
+        aria-label={closeLabel}
+        className="absolute end-4 top-4 flex h-8 w-8 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:shadow-ring"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+          <path d="M18 6L6 18M6 6l12 12" />
+        </svg>
+      </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </DialogPrimitive.Portal>
 ));
@@ -68,7 +84,7 @@ export const DialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn('text-lg font-semibold text-foreground', className)}
+    className={cn('pe-8 text-h2 font-semibold text-foreground', className)}
     {...props}
   />
 ));

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
+import { chooseOption } from '@/test/choose-option';
 
 import type { GoodsReceipt, PurchaseOrder } from '../types';
 
@@ -15,6 +16,8 @@ import type { GoodsReceipt, PurchaseOrder } from '../types';
 const mocks = vi.hoisted(() => ({
   useCreateSupplierBill: vi.fn(),
   useSuppliers: vi.fn(),
+  // SupplierPicker offers "New supplier" from the picker itself.
+  useCreateSupplier: () => ({ mutate: vi.fn(), isPending: false, isError: false, error: null, reset: vi.fn() }),
   usePurchaseOrder: vi.fn(),
   usePurchaseOrders: vi.fn(),
   useGoodsReceipts: vi.fn(),
@@ -255,8 +258,8 @@ describe('PoSupplierBillForm', () => {
 
     renderWithProviders(<PoSupplierBillForm />);
 
-    await user.selectOptions(screen.getByLabelText('Supplier'), 'sup-1');
-    await user.selectOptions(screen.getByLabelText('Purchase order'), 'po-1');
+    await chooseOption(user, screen.getByLabelText('Supplier'), 'sup-1');
+    await chooseOption(user, screen.getByLabelText('Purchase order'), 'po-1');
 
     await waitFor(() => {
       expect(screen.getByText('System finds')).toBeInTheDocument();

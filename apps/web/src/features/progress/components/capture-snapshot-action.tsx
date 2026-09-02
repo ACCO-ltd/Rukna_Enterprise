@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Button, DateInput, useToast } from '@erp/ui';
+import { Button, DatePicker, useToast } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
 import { usePermissions } from '@/features/auth/permissions/can';
@@ -68,11 +68,11 @@ export function CaptureSnapshotAction({
       {allowDateChoice ? (
         <label className="flex flex-col gap-1 text-caption text-muted-foreground">
           <span>{t('curve.capture.periodEndDate')}</span>
-          <DateInput
+          <DatePicker
+            id="snapshot-period-end"
             value={periodEndDate}
             max={todayIso()}
-            onChange={(event) => setPeriodEndDate(event.target.value)}
-            aria-label={t('curve.capture.periodEndDate')}
+            onChange={(value) => setPeriodEndDate(value)}
           />
         </label>
       ) : null}

@@ -129,7 +129,7 @@ export function ChartOfAccounts() {
               <Select
                 id="coa-class"
                 value={accountClass}
-                onChange={(e) => setAccountClass(e.target.value as AccountClass | '')}
+                onChange={(value) => setAccountClass(value as AccountClass | '')}
               >
                 <option value="">{t('allClasses')}</option>
                 {ACCOUNT_CLASSES.map((c) => (

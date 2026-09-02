@@ -7,6 +7,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
+  DatePicker,
   FormField,
   Input,
   MoneyInput,
@@ -24,7 +25,8 @@ import { formatMoney } from '@/lib/format';
 import { MONEY_SCALE, fromMinorUnits } from '@/lib/money';
 
 import { accountLabel, postableAccounts } from '../account-display';
-import { useAccounts, useCreateJournal } from '../hooks/use-accounting';
+import { useAccounts, useCreateJournal, useFiscalYears } from '../hooks/use-accounting';
+import { makeClosedPeriodPredicate } from '../open-period';
 import {
   canSaveDraft,
   draftProblems,
@@ -59,6 +61,12 @@ export function JournalForm() {
 
   const accounts = useAccounts();
   const create = useCreateJournal();
+
+  // A posting must land in a period that is still OPEN or REOPENED. The calendar refuses
+  // the rest outright, so a closed month is never a value the user has to have rejected
+  // back to them after filling in the whole journal.
+  const { data: fiscalYears } = useFiscalYears();
+  const isClosedPeriod = useMemo(() => makeClosedPeriodPredicate(fiscalYears), [fiscalYears]);
 
   const [draft, setDraft] = useState<JournalDraft>(() => emptyDraft(today(), 'USD'));
   // Faults are computed from the first keystroke but only shown once the user has tried to
@@ -116,21 +124,20 @@ export function JournalForm() {
               : undefined
           }
         >
-          <Input
+          <DatePicker
             id="journal-date"
-            type="date"
             value={draft.accountingDate}
-            onChange={(e) => setDraft((d) => ({ ...d, accountingDate: e.target.value }))}
+            onChange={(value) => setDraft((d) => ({ ...d, accountingDate: value }))}
+            isDateDisabled={isClosedPeriod}
           />
           <p className="mt-1 text-xs text-muted-foreground">{t('accountingDateHint')}</p>
         </FormField>
 
         <FormField htmlFor="journal-doc-date" label={t('documentDateLabel')}>
-          <Input
+          <DatePicker
             id="journal-doc-date"
-            type="date"
             value={draft.documentDate}
-            onChange={(e) => setDraft((d) => ({ ...d, documentDate: e.target.value }))}
+            onChange={(value) => setDraft((d) => ({ ...d, documentDate: value }))}
           />
           <p className="mt-1 text-xs text-muted-foreground">{t('documentDateHint')}</p>
         </FormField>
@@ -198,7 +205,7 @@ export function JournalForm() {
                         <Select
                           aria-label={`${t('colAccount')} ${index + 1}`}
                           value={line.accountId}
-                          onChange={(e) => updateLine(index, { accountId: e.target.value })}
+                          onChange={(value) => updateLine(index, { accountId: value })}
                         >
                           <option value="">{t('selectAccount')}</option>
                           {selectable.map((account) => (

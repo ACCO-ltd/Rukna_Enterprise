@@ -118,8 +118,8 @@ export function ContractsList({ projectId }: ContractsListProps = {}) {
           <Select
             id="contract-status"
             value={status}
-            onChange={(e) => {
-              setStatus(e.target.value as ContractStatus | 'ALL');
+            onChange={(value) => {
+              setStatus(value as ContractStatus | 'ALL');
             }}
           >
             <option value="ALL">{t('allStatuses')}</option>

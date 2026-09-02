@@ -7,7 +7,7 @@
  * supplier payments (Tier C) — and all three send the same `supplierId` to the same kind
  * of DTO, so the control lives here once.
  *
- * It is a native `<select>` rather than a combobox, matching `MaterialPicker` and the
+ * It is a native `<Select>` rather than a combobox, matching `MaterialPicker` and the
  * category selects on the setup screens. A supplier master is bounded in a way a material
  * catalogue is not, and a native select is what works at 375px and with a screen reader
  * without re-implementing either.
@@ -18,11 +18,15 @@
  * empty dropdown that looks broken.
  */
 
+import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
-import { Alert } from '@erp/ui';
+import { Alert, Select } from '@erp/ui';
 
-import { useSuppliers } from '../hooks/use-procurement';
+import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+
+import { useCreateSupplier, useSuppliers } from '../hooks/use-procurement';
+import { CreateInPickerDialog } from './create-in-picker-dialog';
 import type { Supplier } from '../types';
 
 /** How a supplier reads in a list of options: `SUP-001 · Al-Rashid Trading`. */
@@ -53,6 +57,10 @@ export function SupplierPicker({
   const tCommon = useTranslations('common');
 
   const suppliers = useSuppliers();
+  const { can } = usePermissions();
+  const canManage = can(PROCUREMENT_PERMISSIONS.manageSuppliers);
+  const create = useCreateSupplier();
+  const [creating, setCreating] = useState(false);
 
   if (suppliers.isPending) {
     return (
@@ -69,36 +77,87 @@ export function SupplierPicker({
 
   const rows = suppliers.data ?? [];
 
+  // Selecting the new supplier is the confirmation. Creating one and leaving the picker empty
+  // would make the buyer answer the same question twice, mid-order.
+  const renderCreateDialog = () => (
+    <CreateInPickerDialog
+      title={t('createTitle')}
+      fields={[
+        { name: 'code', label: tc('code'), hint: t('codeHint'), uppercase: true, maxLength: 30, required: true, narrow: true },
+        { name: 'name', label: tc('name'), required: true },
+        { name: 'taxNumber', label: t('taxNumber'), hint: t('taxNumberHint') },
+      ]}
+      submitLabel={t('new')}
+      isPending={create.isPending}
+      error={create.error}
+      onDismiss={() => {
+        setCreating(false);
+        create.reset();
+      }}
+      onSubmit={(values) =>
+        create.mutate(
+          {
+            code: values.code ?? '',
+            name: values.name ?? '',
+            ...(values.taxNumber ? { taxNumber: values.taxNumber } : {}),
+          },
+          {
+            onSuccess: (supplier) => {
+              onChange(supplier.id);
+              setCreating(false);
+            },
+          },
+        )
+      }
+    />
+  );
+
   if (rows.length === 0) {
     return (
-      <Alert variant="info" title={t('noneYetTitle')} messages={[t('noneYetBody')]}>
-        <Link
-          href="/procurement/suppliers"
-          className="text-sm font-medium underline underline-offset-2"
-        >
-          {t('goToSuppliers')}
-        </Link>
-      </Alert>
+      <>
+        <Alert variant="info" title={t('noneYetTitle')} messages={[t('noneYetBody')]}>
+          {canManage ? (
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className="text-sm font-medium underline underline-offset-2"
+            >
+              {t('new')}
+            </button>
+          ) : (
+            <Link
+              href="/procurement/suppliers"
+              className="text-sm font-medium underline underline-offset-2"
+            >
+              {t('goToSuppliers')}
+            </Link>
+          )}
+        </Alert>
+        {creating ? renderCreateDialog() : null}
+      </>
     );
   }
 
   return (
-    <select
-      id={id}
-      value={value}
-      required={required}
-      disabled={disabled}
-      onChange={(event) => onChange(event.target.value)}
-      className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm disabled:opacity-50"
-    >
-      <option value="" disabled>
-        —
-      </option>
-      {rows.map((supplier) => (
-        <option key={supplier.id} value={supplier.id}>
-          {supplierOptionLabel(supplier)}
+    <>
+      {creating ? renderCreateDialog() : null}
+      <Select
+        id={id}
+        value={value}
+        required={required}
+        disabled={disabled}
+        onChange={(value) => onChange(value)}
+        createAction={canManage ? { label: t('new'), onSelect: () => setCreating(true) } : undefined}
+      >
+        <option value="" disabled>
+          —
         </option>
-      ))}
-    </select>
+        {rows.map((supplier) => (
+          <option key={supplier.id} value={supplier.id}>
+            {supplierOptionLabel(supplier)}
+          </option>
+        ))}
+      </Select>
+    </>
   );
 }

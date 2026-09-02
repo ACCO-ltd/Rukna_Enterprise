@@ -246,13 +246,19 @@ function AddAdvanceTermDialog({
           {add.isError ? <Alert variant="error" messages={[t('failed')]} /> : null}
 
           <FormField htmlFor="advance-type" label={t('type')}>
-            <Select id="advance-type" {...register('advanceType')}>
-              {ADVANCE_TYPES.map((type) => (
-                <option key={type} value={type}>
-                  {t(`types.${type}`)}
-                </option>
-              ))}
-            </Select>
+            <Controller
+              control={control}
+              name="advanceType"
+              render={({ field }) => (
+                <Select id="advance-type" value={field.value} onChange={field.onChange}>
+                  {ADVANCE_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {t(`types.${type}`)}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            />
           </FormField>
 
           <FormField htmlFor="advance-description" label={t('description')}>
@@ -260,10 +266,16 @@ function AddAdvanceTermDialog({
           </FormField>
 
           <FormField htmlFor="advance-basis" label={t('basis')}>
-            <Select id="advance-basis" {...register('basis')}>
-              <option value="amount">{t('basisAmount')}</option>
-              <option value="percentage">{t('basisPercentage')}</option>
-            </Select>
+            <Controller
+              control={control}
+              name="basis"
+              render={({ field }) => (
+                <Select id="advance-basis" value={field.value} onChange={field.onChange}>
+                  <option value="amount">{t('basisAmount')}</option>
+                  <option value="percentage">{t('basisPercentage')}</option>
+                </Select>
+              )}
+            />
           </FormField>
 
           {basis === 'amount' ? (

@@ -205,8 +205,8 @@ export function BoqItemDrawer({
                     id="boq-measurement-method"
                     value={values.measurementMethod}
                     disabled={readOnly || isPending}
-                    onChange={(event) =>
-                      set('measurementMethod', event.target.value as MeasurementMethodValue)
+                    onChange={(value) =>
+                      set('measurementMethod', value as MeasurementMethodValue)
                     }
                   >
                     <option value="QUANTITY">{t('method.QUANTITY')}</option>
@@ -237,8 +237,8 @@ export function BoqItemDrawer({
                     id="boq-pricing-basis"
                     value={values.pricingBasis}
                     disabled={readOnly || isPending}
-                    onChange={(event) =>
-                      set('pricingBasis', event.target.value as PricingBasisValue)
+                    onChange={(value) =>
+                      set('pricingBasis', value as PricingBasisValue)
                     }
                   >
                     <option value="UNIT_RATE">{t('basis.UNIT_RATE')}</option>

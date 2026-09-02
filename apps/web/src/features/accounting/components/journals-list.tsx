@@ -89,7 +89,7 @@ export function JournalsList() {
               <Select
                 id="journal-status"
                 value={status}
-                onChange={(e) => setStatus(e.target.value as JournalStatus | '')}
+                onChange={(value) => setStatus(value as JournalStatus | '')}
               >
                 <option value="">{t('allStatuses')}</option>
                 {STATUSES.map((s) => (

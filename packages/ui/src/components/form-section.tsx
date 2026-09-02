@@ -26,14 +26,17 @@ export function FormSection({
 }: FormSectionProps) {
   if (variant === 'plain') {
     return (
-      <div className={cn('space-y-4', className)} {...(props as React.HTMLAttributes<HTMLDivElement>)}>
+      <div className={cn('space-y-5', className)} {...(props as React.HTMLAttributes<HTMLDivElement>)}>
+        {/* Title, optional description, then one hairline spanning the full column. The rule sits
+            below the description rather than between it and the title, so the two lines read as one
+            heading block — the section label and what the section is for. */}
         <div className="border-b border-border pb-3">
-          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          <h3 className="text-h3 font-semibold text-foreground">{title}</h3>
           {description ? (
-            <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{description}</p>
+            <p className="mt-1 text-caption leading-5 text-muted-foreground">{description}</p>
           ) : null}
         </div>
-        <div className="space-y-4">{children}</div>
+        <div className="space-y-5">{children}</div>
       </div>
     );
   }

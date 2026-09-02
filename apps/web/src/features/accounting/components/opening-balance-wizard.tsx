@@ -28,7 +28,7 @@
 
 import { useId, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Input, Textarea } from '@erp/ui';
+import { Alert, Button, DatePicker, FormField, Input, Select, Textarea } from '@erp/ui';
 
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { ApiError } from '@/lib/api-client';
@@ -47,8 +47,6 @@ import {
   zeroLines,
 } from '../opening-balance';
 import type { MigrationReport } from '../types';
-
-const SELECT_CLASS = 'min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm';
 
 export function OpeningBalanceWizard() {
   const t = useTranslations('accounting.openingBalance');
@@ -131,11 +129,10 @@ export function OpeningBalanceWizard() {
 
         <div className="grid gap-4 sm:grid-cols-2">
           <FormField htmlFor={ids.cutover} label={t('cutoverDate')}>
-            <Input
+            <DatePicker
               id={ids.cutover}
-              type="date"
               value={cutoverDate}
-              onChange={(e) => setCutoverDate(e.target.value)}
+              onChange={(value) => setCutoverDate(value)}
             />
             <p className="text-xs text-muted-foreground">{t('cutoverDateHint')}</p>
           </FormField>
@@ -152,11 +149,10 @@ export function OpeningBalanceWizard() {
           </FormField>
 
           <FormField htmlFor={ids.ar} label={t('arAccount')}>
-            <select
+            <Select
               id={ids.ar}
               value={arAccountCode}
-              onChange={(e) => setArAccountCode(e.target.value)}
-              className={SELECT_CLASS}
+              onChange={(value) => setArAccountCode(value)}
             >
               <option value="" disabled>
                 —
@@ -166,15 +162,14 @@ export function OpeningBalanceWizard() {
                   {account.code} · {accountName(account, locale)}
                 </option>
               ))}
-            </select>
+            </Select>
           </FormField>
 
           <FormField htmlFor={ids.ap} label={t('apAccount')}>
-            <select
+            <Select
               id={ids.ap}
               value={apAccountCode}
-              onChange={(e) => setApAccountCode(e.target.value)}
-              className={SELECT_CLASS}
+              onChange={(value) => setApAccountCode(value)}
             >
               <option value="" disabled>
                 —
@@ -184,7 +179,7 @@ export function OpeningBalanceWizard() {
                   {account.code} · {accountName(account, locale)}
                 </option>
               ))}
-            </select>
+            </Select>
           </FormField>
         </div>
       </section>

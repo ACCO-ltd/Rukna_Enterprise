@@ -20,6 +20,7 @@ import {
   Button,
   FormField,
   Input,
+  Select,
   Sheet,
   SheetContent,
   SheetTitle,
@@ -250,11 +251,10 @@ function ConfigureBankAccountForm({ onDone }: { onDone: () => void }) {
       </FormField>
 
       <FormField htmlFor={ids.gl} label={t('glAccount')}>
-        <select
+        <Select
           id={ids.gl}
           value={draft.glAccountCode}
-          onChange={(e) => patch({ glAccountCode: e.target.value })}
-          className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"
+          onChange={(value) => patch({ glAccountCode: value })}
         >
           <option value="" disabled>
             —
@@ -264,7 +264,7 @@ function ConfigureBankAccountForm({ onDone }: { onDone: () => void }) {
               {account.code} · {accountName(account, locale)}
             </option>
           ))}
-        </select>
+        </Select>
         <p className="text-xs text-muted-foreground">{t('glAccountHint')}</p>
       </FormField>
 

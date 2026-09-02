@@ -23,6 +23,8 @@ import type { Material, UnitOfMeasure } from '../types';
 const mocks = vi.hoisted(() => ({
   useMaterials: vi.fn(),
   useUoms: vi.fn(),
+  // UomDisplay offers "Add a unit" from the picker itself, so the hook it uses must exist.
+  useCreateUom: () => ({ mutate: vi.fn(), isPending: false, isError: false, error: null, reset: vi.fn() }),
   useProjects: vi.fn(),
   useBoqWorkspace: vi.fn(),
   useBoqTree: vi.fn(),
@@ -31,6 +33,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../hooks/use-procurement', () => ({
   useMaterials: mocks.useMaterials,
   useUoms: mocks.useUoms,
+  useCreateUom: mocks.useCreateUom,
 }));
 vi.mock('@/features/projects/hooks/use-projects', () => ({
   useProjects: mocks.useProjects,

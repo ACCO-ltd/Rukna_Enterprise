@@ -42,7 +42,7 @@ const TRACK_CLASS =
 
 // The per-segment shape, shared by both the `<button>` and the `renderLink` anchor.
 const SEGMENT_BASE_CLASS = cn(
-  'min-h-11 whitespace-nowrap rounded-control px-3 py-1.5 text-sm font-medium',
+  'min-h-control whitespace-nowrap rounded-control px-3 py-1.5 text-sm font-medium',
   'transition-colors duration-(--motion-enter) ease-brand',
   'focus-visible:outline-none focus-visible:shadow-ring',
 );

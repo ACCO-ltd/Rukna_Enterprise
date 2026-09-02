@@ -7,6 +7,7 @@ import {
   Alert,
   Badge,
   Button,
+  DatePicker,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -186,7 +187,7 @@ function CreateMilestoneForm({ projectId }: { projectId: string }) {
           <Input id="ms-name" value={name} placeholder={t('programme.form.namePlaceholder')} onChange={(e) => setName(e.target.value)} />
         </FormField>
         <FormField htmlFor="ms-baseline" label={t('programme.form.baselineDate')} error={dateError}>
-          <Input id="ms-baseline" type="date" value={baselineDate} onChange={(e) => setBaselineDate(e.target.value)} />
+          <DatePicker id="ms-baseline" value={baselineDate} onChange={(value) => setBaselineDate(value)} />
         </FormField>
       </div>
       <div className="mt-3">
@@ -230,7 +231,7 @@ function VerifyMilestoneDialog({
 
         <div className="mt-4">
           <FormField htmlFor="ms-actual" label={t('programme.verify.actualDate')}>
-            <Input id="ms-actual" type="date" value={actualDate} onChange={(e) => setActualDate(e.target.value)} />
+            <DatePicker id="ms-actual" value={actualDate} onChange={(value) => setActualDate(value)} />
           </FormField>
         </div>
 

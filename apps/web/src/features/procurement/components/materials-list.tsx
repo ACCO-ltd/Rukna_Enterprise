@@ -6,6 +6,7 @@ import {
   Alert,
   FormField,
   Input,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -95,11 +96,10 @@ export function MaterialsList() {
             >
               {t('filterByCategory')}
             </label>
-            <select
+            <Select
               id={filterIds.category}
               value={materialCategoryId}
-              onChange={(e) => setMaterialCategoryId(e.target.value)}
-              className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"
+              onChange={(value) => setMaterialCategoryId(value)}
             >
               <option value="">{tc('all')}</option>
               {flatten<MaterialCategory>(categories.data).map((c) => (
@@ -107,7 +107,7 @@ export function MaterialsList() {
                   {c.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           <div className="min-w-48 flex-1">
@@ -117,11 +117,10 @@ export function MaterialsList() {
             >
               {t('filterBySpendCategory')}
             </label>
-            <select
+            <Select
               id={filterIds.spend}
               value={spendCategoryId}
-              onChange={(e) => setSpendCategoryId(e.target.value)}
-              className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"
+              onChange={(value) => setSpendCategoryId(value)}
             >
               <option value="">{tc('all')}</option>
               {flatten<SpendCategory>(spendCategories.data).map((c) => (
@@ -129,7 +128,7 @@ export function MaterialsList() {
                   {c.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         </div>
 
@@ -273,12 +272,11 @@ function MaterialCreateForm({ onDone }: { onDone: () => void }) {
       </FormField>
 
       <FormField htmlFor={ids.category} label={t('materialCategory')}>
-        <select
+        <Select
           id={ids.category}
           name="materialCategoryCode"
           required
           defaultValue=""
-          className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"
         >
           <option value="" disabled>
             —
@@ -288,18 +286,17 @@ function MaterialCreateForm({ onDone }: { onDone: () => void }) {
               {c.label}
             </option>
           ))}
-        </select>
+        </Select>
       </FormField>
 
       <FormField
         htmlFor={ids.spend}
         label={`${t('defaultSpendCategory')} (${tc('optional')})`}
       >
-        <select
+        <Select
           id={ids.spend}
           name="defaultSpendCategoryCode"
           defaultValue=""
-          className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"
         >
           <option value="">—</option>
           {flatten<SpendCategory>(spendCategories.data).map((c) => (
@@ -307,16 +304,15 @@ function MaterialCreateForm({ onDone }: { onDone: () => void }) {
               {c.label}
             </option>
           ))}
-        </select>
+        </Select>
       </FormField>
 
       <FormField htmlFor={ids.uom} label={t('baseUom')}>
-        <select
+        <Select
           id={ids.uom}
           name="baseUomCode"
           required
           defaultValue=""
-          className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"
         >
           <option value="" disabled>
             —
@@ -326,7 +322,7 @@ function MaterialCreateForm({ onDone }: { onDone: () => void }) {
               {u.code} · {u.name}
             </option>
           ))}
-        </select>
+        </Select>
         {/* §12.4 asks for this to be said out loud on the field. It is the only decision on
             this form that cannot be undone — there is no edit endpoint, and every future
             order and receipt for the material inherits it. */}

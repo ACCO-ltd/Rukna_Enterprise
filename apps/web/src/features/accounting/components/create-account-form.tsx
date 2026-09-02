@@ -21,7 +21,7 @@
 
 import { useId, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Input } from '@erp/ui';
+import { Alert, Button, CheckboxField, DatePicker, FormField, Input, Select } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
 
@@ -39,9 +39,6 @@ import {
 } from '../coa-setup';
 import { useCreateAccount } from '../hooks/use-accounting';
 import type { AccountClass, NormalBalance } from '../types';
-
-const SELECT_CLASS =
-  'min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm';
 
 export function CreateAccountForm({ onDone }: { onDone: () => void }) {
   const t = useTranslations('accounting.chartOfAccounts.create');
@@ -62,6 +59,8 @@ export function CreateAccountForm({ onDone }: { onDone: () => void }) {
     balance: useId(),
     policy: useId(),
     subledger: useId(),
+    postingAllowed: useId(),
+    controlAccount: useId(),
     parent: useId(),
     effectiveFrom: useId(),
   };
@@ -120,11 +119,10 @@ export function CreateAccountForm({ onDone }: { onDone: () => void }) {
       </FormField>
 
       <FormField htmlFor={ids.accountClass} label={t('accountClass')}>
-        <select
+        <Select
           id={ids.accountClass}
           value={draft.accountClass}
-          onChange={(e) => chooseClass(e.target.value as AccountClass | '')}
-          className={SELECT_CLASS}
+          onChange={(value) => chooseClass(value as AccountClass | '')}
         >
           <option value="" disabled>
             —
@@ -134,15 +132,14 @@ export function CreateAccountForm({ onDone }: { onDone: () => void }) {
               {tClass(accountClass)}
             </option>
           ))}
-        </select>
+        </Select>
       </FormField>
 
       <FormField htmlFor={ids.subtype} label={t('subtype')}>
-        <select
+        <Select
           id={ids.subtype}
           value={draft.accountSubtype}
-          onChange={(e) => patch({ accountSubtype: e.target.value })}
-          className={SELECT_CLASS}
+          onChange={(value) => patch({ accountSubtype: value })}
         >
           <option value="" disabled>
             —
@@ -156,23 +153,22 @@ export function CreateAccountForm({ onDone }: { onDone: () => void }) {
               ))}
             </optgroup>
           ))}
-        </select>
+        </Select>
         <p className="text-xs text-muted-foreground">{t('subtypeHint')}</p>
       </FormField>
 
       <FormField htmlFor={ids.balance} label={t('normalBalance')}>
-        <select
+        <Select
           id={ids.balance}
           value={draft.normalBalance}
-          onChange={(e) => patch({ normalBalance: e.target.value as NormalBalance | '' })}
-          className={SELECT_CLASS}
+          onChange={(value) => patch({ normalBalance: value as NormalBalance | '' })}
         >
           <option value="" disabled>
             —
           </option>
           <option value="DEBIT">{tAcc('debit')}</option>
           <option value="CREDIT">{tAcc('credit')}</option>
-        </select>
+        </Select>
         {contra ? (
           <Alert variant="warning" messages={[t('contraWarning')]} />
         ) : (
@@ -181,65 +177,57 @@ export function CreateAccountForm({ onDone }: { onDone: () => void }) {
       </FormField>
 
       <FormField htmlFor={ids.policy} label={t('postingPolicy')}>
-        <select
+        <Select
           id={ids.policy}
           value={draft.controlPostingPolicy}
-          onChange={(e) =>
-            patch({ controlPostingPolicy: e.target.value as AccountDraft['controlPostingPolicy'] })
+          onChange={(value) =>
+            patch({ controlPostingPolicy: value as AccountDraft['controlPostingPolicy'] })
           }
-          className={SELECT_CLASS}
         >
           {CONTROL_POSTING_POLICIES.map((policy) => (
             <option key={policy} value={policy}>
               {t(`policy.${policy}`)}
             </option>
           ))}
-        </select>
+        </Select>
         {/* A6. The third policy exists in the schema and the seed uses it for bank and VAT
             accounts; the DTO's @IsEnum omits it. Said here rather than left to be discovered
             by comparing a new account against a seeded one months later. */}
         <p className="text-xs text-muted-foreground">{t('postingPolicyHint')}</p>
       </FormField>
 
-      <fieldset className="space-y-2 rounded-md border border-border p-3">
+      <fieldset className="space-y-1 rounded-panel border border-border p-3">
         <legend className="px-1 text-xs font-medium text-muted-foreground">
           {t('flagsLegend')}
         </legend>
 
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={draft.isPostingAllowed}
-            onChange={(e) => patch({ isPostingAllowed: e.target.checked })}
-            className="size-4"
-          />
-          {t('isPostingAllowed')}
-        </label>
-        <p className="text-xs text-muted-foreground">{t('isPostingAllowedHint')}</p>
+        <CheckboxField
+          id={ids.postingAllowed}
+          label={t('isPostingAllowed')}
+          description={t('isPostingAllowedHint')}
+          checked={draft.isPostingAllowed}
+          onChange={(e) => patch({ isPostingAllowed: e.target.checked })}
+        />
 
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={draft.isControlAccount}
-            onChange={(e) =>
-              patch({
-                isControlAccount: e.target.checked,
-                ...(e.target.checked ? {} : { controlledSubledgerType: '' }),
-              })
-            }
-            className="size-4"
-          />
-          {t('isControlAccount')}
-        </label>
-        <p className="text-xs text-muted-foreground">{t('isControlAccountHint')}</p>
+        <CheckboxField
+          id={ids.controlAccount}
+          label={t('isControlAccount')}
+          description={t('isControlAccountHint')}
+          checked={draft.isControlAccount}
+          onChange={(e) =>
+            patch({
+              isControlAccount: e.target.checked,
+              ...(e.target.checked ? {} : { controlledSubledgerType: '' }),
+            })
+          }
+        />
 
         {draft.isControlAccount ? (
           <FormField htmlFor={ids.subledger} label={t('subledgerType')}>
-            <select
+            <Select
               id={ids.subledger}
               value={draft.controlledSubledgerType}
-              onChange={(e) => patch({ controlledSubledgerType: e.target.value })}
-              className={SELECT_CLASS}
+              onChange={(value) => patch({ controlledSubledgerType: value })}
             >
               <option value="" disabled>
                 —
@@ -249,7 +237,7 @@ export function CreateAccountForm({ onDone }: { onDone: () => void }) {
                   {t(`subledger.${type}`)}
                 </option>
               ))}
-            </select>
+            </Select>
           </FormField>
         ) : null}
       </fieldset>
@@ -269,11 +257,10 @@ export function CreateAccountForm({ onDone }: { onDone: () => void }) {
       </FormField>
 
       <FormField htmlFor={ids.effectiveFrom} label={t('effectiveFrom')}>
-        <Input
+        <DatePicker
           id={ids.effectiveFrom}
-          type="date"
           value={draft.effectiveFrom}
-          onChange={(e) => patch({ effectiveFrom: e.target.value })}
+          onChange={(value) => patch({ effectiveFrom: value })}
         />
         <p className="text-xs text-muted-foreground">{t('effectiveFromHint')}</p>
       </FormField>

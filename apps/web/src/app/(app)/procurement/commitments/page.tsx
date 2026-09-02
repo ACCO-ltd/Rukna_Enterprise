@@ -8,7 +8,7 @@ export default async function CommitmentLedgerPage({
   const { projectId } = await searchParams;
 
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    <div className="w-full max-w-6xl">
       <CommitmentLedger initialProjectId={projectId} />
     </div>
   );

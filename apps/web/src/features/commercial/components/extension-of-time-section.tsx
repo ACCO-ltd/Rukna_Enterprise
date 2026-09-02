@@ -6,7 +6,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import {
   Badge,
   Button,
-  DateInput,
+  DatePicker,
   Label,
   SectionHeader,
   Sheet,
@@ -222,11 +222,10 @@ function GrantExtensionSheet({
           <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
             <div className="space-y-1.5">
               <Label htmlFor="eot-date">{t('newEndDate')}</Label>
-              <DateInput
+              <DatePicker
                 id="eot-date"
                 value={newEndDate}
-                onChange={(e) => setNewEndDate(e.target.value)}
-                required
+                onChange={(value) => setNewEndDate(value)}
               />
             </div>
 

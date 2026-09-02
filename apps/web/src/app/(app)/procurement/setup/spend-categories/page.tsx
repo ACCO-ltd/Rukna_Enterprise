@@ -2,7 +2,7 @@ import { SpendCategoriesScreen } from '@/features/procurement/components/categor
 
 export default function SpendCategoriesPage() {
   return (
-    <div className="mx-auto w-full max-w-5xl">
+    <div className="w-full max-w-5xl">
       <SpendCategoriesScreen />
     </div>
   );

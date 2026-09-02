@@ -78,7 +78,7 @@ export function TableHead({
     <th
       scope="col"
       className={cn(
-        'h-11 px-3 text-start align-middle text-xs font-semibold uppercase text-muted-foreground whitespace-nowrap',
+        'h-row px-3 text-start align-middle text-xs font-semibold uppercase text-muted-foreground whitespace-nowrap',
         numeric && 'text-end',
         className,
       )}

@@ -8,7 +8,7 @@ export default async function MaterialRequestDetailPage({
   const { id } = await params;
 
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    <div className="w-full max-w-6xl">
       <MrDetail id={id} />
     </div>
   );

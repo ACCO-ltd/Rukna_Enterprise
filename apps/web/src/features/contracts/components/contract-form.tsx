@@ -17,7 +17,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { BoqVersionStatus, PaymentTrigger } from '@erp/types';
-import { Alert, Button, FormField, FormSection, Input, MoneyInput, Select } from '@erp/ui';
+import { Alert, Button, DatePicker, FormField, FormSection, Input, MoneyInput, Select } from '@erp/ui';
 
 import { useBoqWorkspace } from '@/features/boq/hooks/use-boq';
 import { useClients } from '@/features/clients/hooks/use-clients';
@@ -150,6 +150,7 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
 
   // The payment-plan builder is a MILESTONE-only, create-only affordance (there is no PATCH
   // for the plan). The running total drives a live indicator and the reconciliation guard.
+  const startDate = useWatch({ control, name: 'startDate' });
   const billingModel = useWatch({ control, name: 'billingModel' });
   const planRows = useWatch({ control, name: 'paymentPlan' }) ?? [];
   const showPaymentPlan = !isEdit && billingModel === BillingModel.MILESTONE;
@@ -207,37 +208,41 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
         ) : (
           <div className="grid gap-5 lg:grid-cols-2">
           <FormField htmlFor="contract-project" label={t('project')} error={errors.projectId?.message}>
-            <Select
-              id="contract-project"
-              aria-describedby="contract-project-hint"
-              aria-invalid={Boolean(errors.projectId)}
-              {...register('projectId')}
-            >
-              <option value="">{tCommon('required')}</option>
-              {(projects.data ?? []).map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.code} — {project.name}
-                </option>
-              ))}
-            </Select>
+            <Controller
+              control={control}
+              name="projectId"
+              render={({ field }) => (
+                <Select id="contract-project"
+              aria-describedby="contract-project-hint" value={field.value} onChange={field.onChange}>
+                  <option value="">{tCommon('required')}</option>
+                  {(projects.data ?? []).map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.code} — {project.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            />
             <p id="contract-project-hint" className="text-xs text-muted-foreground">
               {t('projectHint')}
             </p>
           </FormField>
 
           <FormField htmlFor="contract-client" label={t('client')} error={errors.clientId?.message}>
-            <Select
-              id="contract-client"
-              aria-invalid={Boolean(errors.clientId)}
-              {...register('clientId')}
-            >
-              <option value="">{tCommon('required')}</option>
-              {(clients.data ?? []).map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.code} — {client.name}
-                </option>
-              ))}
-            </Select>
+            <Controller
+              control={control}
+              name="clientId"
+              render={({ field }) => (
+                <Select id="contract-client" value={field.value} onChange={field.onChange}>
+                  <option value="">{tCommon('required')}</option>
+                  {(clients.data ?? []).map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.code} — {client.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            />
           </FormField>
 
           <FormField
@@ -245,20 +250,22 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
             label={t('boqVersion')}
             error={errors.boqVersionId?.message}
           >
-            <Select
-              id="contract-boq-version"
+            <Controller
+              control={control}
+              name="boqVersionId"
+              render={({ field }) => (
+                <Select id="contract-boq-version"
               aria-describedby="contract-boq-hint"
-              aria-invalid={Boolean(errors.boqVersionId)}
-              disabled={!selectedProjectId || boq.isPending}
-              {...register('boqVersionId')}
-            >
-              <option value="">{tCommon('required')}</option>
-              {baselinedVersions.map((version) => (
-                <option key={version.id} value={version.id}>
-                  v{version.versionNumber}
-                </option>
-              ))}
-            </Select>
+              disabled={!selectedProjectId || boq.isPending} value={field.value} onChange={field.onChange}>
+                  <option value="">{tCommon('required')}</option>
+                  {baselinedVersions.map((version) => (
+                    <option key={version.id} value={version.id}>
+                      v{version.versionNumber}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            />
             <p id="contract-boq-hint" className="text-xs text-muted-foreground">
               {!selectedProjectId
                 ? t('boqVersionNoProject')
@@ -313,13 +320,19 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
       </div>
 
       <FormField htmlFor="contract-billing" label={t('billingModel')}>
-        <Select id="contract-billing" {...register('billingModel')}>
-          {BILLING_MODELS.map((model) => (
-            <option key={model} value={model}>
-              {tContracts(`billingModel.${model}`)}
-            </option>
-          ))}
-        </Select>
+        <Controller
+          control={control}
+          name="billingModel"
+          render={({ field }) => (
+            <Select id="contract-billing" value={field.value} onChange={field.onChange}>
+              {BILLING_MODELS.map((model) => (
+                <option key={model} value={model}>
+                  {tContracts(`billingModel.${model}`)}
+                </option>
+              ))}
+            </Select>
+          )}
+        />
       </FormField>
         </div>
       </FormSection>
@@ -372,7 +385,13 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
       <FormSection title={t('startDate')}>
         <div className="grid gap-5 sm:grid-cols-2">
         <FormField htmlFor="contract-start" label={t('startDate')}>
-          <Input id="contract-start" type="date" {...register('startDate')} />
+          <Controller
+            control={control}
+            name="startDate"
+            render={({ field }) => (
+              <DatePicker id="contract-start" value={field.value} onChange={field.onChange} />
+            )}
+          />
         </FormField>
 
         <FormField
@@ -380,11 +399,19 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
           label={t('expectedEnd')}
           error={errors.expectedEndDate?.message}
         >
-          <Input
-            id="contract-end"
-            type="date"
-            aria-invalid={Boolean(errors.expectedEndDate)}
-            {...register('expectedEndDate')}
+          <Controller
+            control={control}
+            name="expectedEndDate"
+            render={({ field }) => (
+              // The end of a contract cannot precede its start; constraining the calendar stops
+              // the wrong value before validation has to explain it.
+              <DatePicker
+                id="contract-end"
+                value={field.value}
+                onChange={field.onChange}
+                min={startDate || undefined}
+              />
+            )}
           />
         </FormField>
         </div>
@@ -452,13 +479,23 @@ function PlanRowFields({
         </FormField>
 
         <FormField htmlFor={`plan-${index}-trigger`} label={t('plan.trigger')}>
-          <Select id={`plan-${index}-trigger`} {...register(`paymentPlan.${index}.triggerType`)}>
-            {PAYMENT_TRIGGERS.map((tr) => (
-              <option key={tr} value={tr}>
-                {t(`plan.triggerType.${tr}`)}
-              </option>
-            ))}
-          </Select>
+          <Controller
+            control={control}
+            name={`paymentPlan.${index}.triggerType`}
+            render={({ field }) => (
+              <Select
+                id={`plan-${index}-trigger`}
+                value={field.value}
+                onChange={field.onChange}
+              >
+                {PAYMENT_TRIGGERS.map((tr) => (
+                  <option key={tr} value={tr}>
+                    {t(`plan.triggerType.${tr}`)}
+                  </option>
+                ))}
+              </Select>
+            )}
+          />
         </FormField>
 
         {trigger === PaymentTrigger.TIME_BASED ? (

@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -87,11 +88,10 @@ export function MrList() {
           >
             {tc('status')}
           </label>
-          <select
+          <Select
             id={ids.status}
             value={status}
-            onChange={(e) => setStatus(e.target.value as MaterialRequestStatus | '')}
-            className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
+            onChange={(value) => setStatus(value as MaterialRequestStatus | '')}
           >
             <option value="">{tc('all')}</option>
             {STATUSES.map((s) => (
@@ -99,7 +99,7 @@ export function MrList() {
                 {tStatus(s)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div className="min-w-44 flex-1">
@@ -109,16 +109,15 @@ export function MrList() {
           >
             {t('scope')}
           </label>
-          <select
+          <Select
             id={ids.scope}
             value={scope}
-            onChange={(e) => setScope(e.target.value as MaterialRequestScope | '')}
-            className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
+            onChange={(value) => setScope(value as MaterialRequestScope | '')}
           >
             <option value="">{tc('all')}</option>
             <option value="PROJECT">{t('scopeProject')}</option>
             <option value="ORGANIZATION">{t('scopeOrganization')}</option>
-          </select>
+          </Select>
         </div>
 
         <div className="min-w-44 flex-1">
@@ -128,11 +127,10 @@ export function MrList() {
           >
             {tc('project')}
           </label>
-          <select
+          <Select
             id={ids.project}
             value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
-            className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
+            onChange={(value) => setProjectId(value)}
           >
             <option value="">{tc('all')}</option>
             {(projects.data ?? []).map((p) => (
@@ -140,7 +138,7 @@ export function MrList() {
                 {p.code} · {p.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
 

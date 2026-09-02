@@ -10,6 +10,7 @@ import {
 import type { ClientInvoice } from '@/features/accounting/types';
 
 import { IpcBillingCard } from './ipc-billing-card';
+import { findDayCell } from '@/test/pick-date';
 
 vi.mock('@/features/accounting/api/invoices-api', () => ({
   listInvoices: vi.fn(),
@@ -121,13 +122,13 @@ describe('IpcBillingCard', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Generate invoice' }));
 
-    const invoiceDate = screen.getByLabelText('Invoice date') as HTMLInputElement;
-    const dueDate = screen.getByLabelText('Due date') as HTMLInputElement;
+    // The controls are triggers now, not inputs with a `.value`. The date each one holds is
+    // read back the way a user would see it: open the calendar and look at which cell is
+    // selected. `data-day` carries the ISO date, so no formatted string has to be re-parsed.
+    const invoice = await selectedDay(user, 'Invoice date');
+    const due = await selectedDay(user, 'Due date');
 
-    const expected = new Date(`${invoiceDate.value}T00:00:00.000Z`);
-    expected.setUTCDate(expected.getUTCDate() + 30);
-
-    expect(dueDate.value).toBe(expected.toISOString().slice(0, 10));
+    expect(daysBetween(invoice, due)).toBe(30);
   });
 
   it('will not let the due date fall before the invoice date', async () => {
@@ -136,8 +137,14 @@ describe('IpcBillingCard', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Generate invoice' }));
 
-    const invoiceDate = screen.getByLabelText('Invoice date') as HTMLInputElement;
-    expect(screen.getByLabelText('Due date')).toHaveAttribute('min', invoiceDate.value);
+    // `min` used to be an attribute on a native date input. It is now a constraint the
+    // calendar enforces, so the assertion is that the day before the invoice date cannot be
+    // chosen — which is the behaviour the attribute was standing in for.
+    const invoice = await selectedDay(user, 'Invoice date');
+    const dayBefore = addDays(invoice, -1);
+
+    const cell = await findDayCell(user, screen.getByLabelText('Due date'), dayBefore);
+    expect(cell).toHaveAttribute('data-disabled');
   });
 
   it('says the amount comes from the certificate rather than offering a field', async () => {
@@ -151,3 +158,25 @@ describe('IpcBillingCard', () => {
   });
 
 });
+
+/** The ISO date a picker currently holds, read from the selected cell in its calendar. */
+async function selectedDay(user: ReturnType<typeof userEvent.setup>, label: string): Promise<string> {
+  await user.click(screen.getByLabelText(label));
+  const cell = document.querySelector('[data-day][data-selected]');
+  const iso = cell?.getAttribute('data-day');
+  await user.keyboard('{Escape}');
+  if (!iso) throw new Error(`no day selected in "${label}"`);
+  return iso;
+}
+
+/** UTC arithmetic on `yyyy-MM-dd`, so neither helper can drift across a timezone boundary. */
+function addDays(iso: string, days: number): string {
+  const date = new Date(`${iso}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function daysBetween(fromIso: string, toIso: string): number {
+  const day = 24 * 60 * 60 * 1000;
+  return (Date.parse(`${toIso}T00:00:00.000Z`) - Date.parse(`${fromIso}T00:00:00.000Z`)) / day;
+}

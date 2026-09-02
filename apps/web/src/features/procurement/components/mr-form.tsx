@@ -15,7 +15,7 @@
 import { useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Input, Textarea } from '@erp/ui';
+import { Alert, Button, DatePicker, FormField, RadioGroup, Select, Textarea } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
 import { QUANTITY_SCALE, parseMinorUnits } from '@/lib/money';
@@ -125,26 +125,19 @@ export function MrForm() {
 
       {step === 1 ? (
         <div className="max-w-xl space-y-4">
-          <fieldset>
-            <legend className="mb-2 text-sm font-medium">{t('scope')}</legend>
-            <div className="flex flex-wrap gap-4">
-              {(['PROJECT', 'ORGANIZATION'] as const).map((value) => (
-                <label key={value} className="flex min-h-11 items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="scope"
-                    value={value}
-                    checked={scope === value}
-                    onChange={() => {
-                      setScope(value);
-                      if (value === 'ORGANIZATION') setProjectId('');
-                    }}
-                  />
-                  {value === 'PROJECT' ? t('scopeProject') : t('scopeOrganization')}
-                </label>
-              ))}
-            </div>
-          </fieldset>
+          <RadioGroup
+            label={t('scope')}
+            name="scope"
+            value={scope}
+            options={[
+              { value: 'PROJECT', label: t('scopeProject') },
+              { value: 'ORGANIZATION', label: t('scopeOrganization') },
+            ]}
+            onChange={(value) => {
+              setScope(value);
+              if (value === 'ORGANIZATION') setProjectId('');
+            }}
+          />
 
           {scope === 'PROJECT' ? (
             <FormField
@@ -152,11 +145,10 @@ export function MrForm() {
               label={tc('project')}
               error={showErrors && scopeError ? t(`scopeError.${scopeError}`) : undefined}
             >
-              <select
+              <Select
                 id={ids.project}
                 value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-                className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"
+                onChange={(value) => setProjectId(value)}
               >
                 <option value="">{t('selectProject')}</option>
                 {(projects.data ?? []).map((p) => (
@@ -164,25 +156,23 @@ export function MrForm() {
                     {p.code} · {p.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </FormField>
           ) : null}
 
           <FormField htmlFor={ids.requested} label={t('requestedDate')}>
-            <Input
+            <DatePicker
               id={ids.requested}
-              type="date"
               value={requestedDate}
-              onChange={(e) => setRequestedDate(e.target.value)}
+              onChange={(value) => setRequestedDate(value)}
             />
           </FormField>
 
           <FormField htmlFor={ids.required} label={`${t('requiredBy')} (${tc('optional')})`}>
-            <Input
+            <DatePicker
               id={ids.required}
-              type="date"
               value={requiredByDate}
-              onChange={(e) => setRequiredByDate(e.target.value)}
+              onChange={(value) => setRequiredByDate(value)}
             />
           </FormField>
 

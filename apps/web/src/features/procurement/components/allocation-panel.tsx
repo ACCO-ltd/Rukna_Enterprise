@@ -15,7 +15,7 @@
 
 import { useId, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, FormField, MoneyInput } from '@erp/ui';
+import { Alert, Button, FormField, MoneyInput, Select } from '@erp/ui';
 
 import { useAccounts } from '@/features/accounting/hooks/use-accounting';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
@@ -109,11 +109,11 @@ export function AllocationPanel({ payment }: { payment: SupplierPayment }) {
       ) : canManage ? (
         <div className="space-y-4">
           <FormField htmlFor={ids.bill} label={t('bill')}>
-            <select
+            <Select
               id={ids.bill}
               value={billId}
-              onChange={(event) => {
-                const next = event.target.value;
+              onChange={(value) => {
+                const next = value;
                 setBillId(next);
                 // Prefill with whichever ceiling binds — the common case is settling a bill
                 // outright, and the alternative is making the user retype a figure already
@@ -121,7 +121,6 @@ export function AllocationPanel({ payment }: { payment: SupplierPayment }) {
                 const bill = eligible.find((b) => b.id === next);
                 setAmount(bill ? fromMinorUnits(maxAllocatable(payment, bill), MONEY_SCALE) : '');
               }}
-              className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"
             >
               <option value="" disabled>
                 —
@@ -133,7 +132,7 @@ export function AllocationPanel({ payment }: { payment: SupplierPayment }) {
                   {formatMoney(bill.outstandingAmount, bill.currencyCode, locale)}
                 </option>
               ))}
-            </select>
+            </Select>
             <p className="text-xs text-muted-foreground">{t('billHint')}</p>
           </FormField>
 

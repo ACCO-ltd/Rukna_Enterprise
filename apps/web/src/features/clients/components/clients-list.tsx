@@ -64,7 +64,7 @@ export function ClientsList() {
       toolbarLeft={(
         <div className="relative">
           <Label htmlFor="client-status" className="sr-only">{t('filterByStatus')}</Label>
-          <Select id="client-status" value={status} className="ps-10" onChange={(event) => setStatus(event.target.value as ClientStatus | 'ALL')}>
+          <Select id="client-status" value={status} className="ps-10" onChange={(value) => setStatus(value as ClientStatus | 'ALL')}>
             <option value="ALL">{t('allStatuses')}</option>
             {CLIENT_STATUS_ORDER.map((value) => <option key={value} value={value}>{t(`status.${value}`)}</option>)}
           </Select>

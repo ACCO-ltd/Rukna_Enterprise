@@ -4,7 +4,7 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
   const { id } = await params;
 
   return (
-    <div className="mx-auto w-full max-w-5xl">
+    <div className="w-full max-w-5xl">
       <ReceiptDetail receiptId={id} />
     </div>
   );

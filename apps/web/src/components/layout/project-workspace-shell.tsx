@@ -8,6 +8,7 @@ import {
   Alert,
   Button,
   cn,
+  Select,
 } from '@erp/ui';
 import {
   Activity,
@@ -225,18 +226,17 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
           <label className="sr-only" htmlFor="project-workspace-menu">
             {t('workspace.navLabel')}
           </label>
-          <select
+          <Select
             id="project-workspace-menu"
-            className="mx-5 my-3 min-h-11 w-[calc(100%-2.5rem)] rounded-control border border-border bg-surface px-3 text-sm font-medium text-foreground md:hidden"
             value={primaryTabs.find((tab) => isActive(tab.href))?.href ?? `/projects/${id}`}
-            onChange={(event) => router.push(event.target.value)}
+            onChange={(value) => router.push(value)}
           >
             {primaryTabs.map((tab) => (
               <option key={tab.href} value={tab.href}>
                 {tab.label}
               </option>
             ))}
-          </select>
+          </Select>
 
           {/* Eight peers, no nesting. Every tab leads to a workspace that exists. */}
           <div className="hidden items-center md:flex">

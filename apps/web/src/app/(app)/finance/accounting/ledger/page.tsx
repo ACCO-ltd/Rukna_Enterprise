@@ -2,7 +2,7 @@ import { AccountLedgerReport } from '@/features/accounting/components/account-le
 
 export default function AccountLedgerPage() {
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    <div className="w-full max-w-6xl">
       <AccountLedgerReport />
     </div>
   );

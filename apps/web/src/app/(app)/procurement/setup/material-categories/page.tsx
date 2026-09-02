@@ -2,7 +2,7 @@ import { MaterialCategoriesScreen } from '@/features/procurement/components/cate
 
 export default function MaterialCategoriesPage() {
   return (
-    <div className="mx-auto w-full max-w-5xl">
+    <div className="w-full max-w-5xl">
       <MaterialCategoriesScreen />
     </div>
   );

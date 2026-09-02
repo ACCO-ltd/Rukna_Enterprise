@@ -308,7 +308,7 @@ function GrnLineRow({
               <Select
                 id={ids.quality}
                 value={line.qualityStatus}
-                onChange={(e) => onPatch({ qualityStatus: e.target.value as QualityStatus })}
+                onChange={(value) => onPatch({ qualityStatus: value as QualityStatus })}
               >
                 {SELECTABLE_QUALITY.map((status) => (
                   <option key={status} value={status}>

@@ -203,6 +203,7 @@
     "pickerHint": "The full catalogue is loaded and filtered here — the API has no search parameter."
   },
   "uomDisplay": {
+    "label": "Unit",
     "locked": "Locked to material base unit",
     "lockedShort": "Locked"
   },

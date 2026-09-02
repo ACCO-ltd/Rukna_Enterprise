@@ -29,6 +29,7 @@ import { useTranslations } from 'next-intl';
 import { flattenTree } from '@/features/boq/boq-rows';
 import { useBoqTree, useBoqWorkspace } from '@/features/boq/hooks/use-boq';
 import { useProjects } from '@/features/projects/hooks/use-projects';
+import { Select } from '@erp/ui';
 
 /** The cost-target a line carries, or the explicit org/overhead opt-out. */
 export interface CostTargetValue {
@@ -94,19 +95,18 @@ export function PoCostTargetPicker({ value, onChange, showError }: PoCostTargetP
             <label htmlFor={ids.project} className="mb-1 block text-xs font-medium">
               {tc('project')}
             </label>
-            <select
+            <Select
               id={ids.project}
               value={value.projectId ?? ''}
               disabled={projectsLoading || projectsError}
-              onChange={(e) =>
+              onChange={(value) =>
                 // Changing the project invalidates any node chosen under the old one.
                 onChange({
                   notChargeable: false,
-                  projectId: e.target.value || null,
+                  projectId: value || null,
                   boqNodeId: null,
                 })
               }
-              className="min-h-11 w-full rounded-md border border-border bg-surface px-2 text-sm"
             >
               <option value="">{t('selectProject')}</option>
               {(projects ?? []).map((project) => (
@@ -114,7 +114,7 @@ export function PoCostTargetPicker({ value, onChange, showError }: PoCostTargetP
                   {project.code} · {project.name}
                 </option>
               ))}
-            </select>
+            </Select>
             {projectsError ? (
               <p className="mt-1 text-xs text-danger">{tc('loadFailed')}</p>
             ) : null}
@@ -179,12 +179,11 @@ function BoqNodeSelect({ id, projectId, value, onChange }: BoqNodeSelectProps) {
       <label htmlFor={id} className="mb-1 block text-xs font-medium">
         {t('boqNodeLabel')}
       </label>
-      <select
+      <Select
         id={id}
         value={value ?? ''}
         disabled={!projectId || loading || noBaseline || empty}
-        onChange={(e) => onChange(e.target.value || null)}
-        className="min-h-11 w-full rounded-md border border-border bg-surface px-2 text-sm disabled:opacity-60"
+        onChange={(value) => onChange(value || null)}
       >
         <option value="">
           {!projectId
@@ -198,7 +197,7 @@ function BoqNodeSelect({ id, projectId, value, onChange }: BoqNodeSelectProps) {
             {node.code} · {node.description}
           </option>
         ))}
-      </select>
+      </Select>
 
       {noBaseline ? <p className="mt-1 text-xs text-muted-foreground">{t('noBaseline')}</p> : null}
       {empty ? <p className="mt-1 text-xs text-muted-foreground">{t('noLeafNodes')}</p> : null}

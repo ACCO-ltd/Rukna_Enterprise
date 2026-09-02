@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
-import { createJournal, listAccounts } from '@/features/accounting/api/accounting-api';
+import { chooseOption, openSelect } from '@/test/choose-option';
+import { createJournal, listAccounts, listFiscalYears } from '@/features/accounting/api/accounting-api';
 import type { Account, AccountVersion } from '@/features/accounting/types';
 
 import { JournalForm } from './journal-form';
@@ -11,6 +12,9 @@ import { JournalForm } from './journal-form';
 vi.mock('@/features/accounting/api/accounting-api', () => ({
   listAccounts: vi.fn(),
   createJournal: vi.fn(),
+  // The accounting-date picker refuses days outside an open period, and reads the periods
+  // through useFiscalYears -> listFiscalYears.
+  listFiscalYears: vi.fn(),
 }));
 
 const push = vi.fn();
@@ -73,16 +77,18 @@ beforeEach(() => {
   vi.mocked(createJournal).mockReset();
   push.mockReset();
   vi.mocked(listAccounts).mockResolvedValue([EXPENSE, ACCRUAL, AR_CONTROL]);
+  // No periods loaded means the calendar constrains nothing, which is what these tests want.
+  vi.mocked(listFiscalYears).mockResolvedValue([]);
 });
 
 /** Fills the header and both opening lines with a balanced 2,500 entry. */
 async function fillBalancedJournal(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Description'), 'January office rent');
 
-  await user.selectOptions(screen.getByLabelText('Account 1'), 'acc-expense');
+  await chooseOption(user, screen.getByLabelText('Account 1'), 'acc-expense');
   await user.type(screen.getByLabelText('Debit 1'), '2500.00');
 
-  await user.selectOptions(screen.getByLabelText('Account 2'), 'acc-accrual');
+  await chooseOption(user, screen.getByLabelText('Account 2'), 'acc-accrual');
   await user.type(screen.getByLabelText('Credit 2'), '2500.00');
 }
 
@@ -101,11 +107,14 @@ describe('JournalForm', () => {
    * the most expensive moment to find out.
    */
   it('does not offer control accounts, which the posting engine owns', async () => {
+    const user = userEvent.setup();
     renderWithProviders(<JournalForm />);
 
-    const picker = await screen.findByLabelText('Account 1');
-    expect(picker).toHaveTextContent('60100 — Office Expense');
-    expect(picker).not.toHaveTextContent('Accounts Receivable');
+    // The trigger only shows what is chosen now, so what is *offered* has to be read from the
+    // open list rather than from the control's own text.
+    await openSelect(user, await screen.findByLabelText('Account 1'));
+    expect(screen.getByRole('option', { name: '60100 — Office Expense' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Accounts Receivable/ })).not.toBeInTheDocument();
   });
 
   it('shows the running totals as lines are entered', async () => {
@@ -163,9 +172,9 @@ describe('JournalForm', () => {
 
     await screen.findByLabelText('Account 1');
     await user.type(screen.getByLabelText('Description'), 'Unbalanced');
-    await user.selectOptions(screen.getByLabelText('Account 1'), 'acc-expense');
+    await chooseOption(user, screen.getByLabelText('Account 1'), 'acc-expense');
     await user.type(screen.getByLabelText('Debit 1'), '2500.00');
-    await user.selectOptions(screen.getByLabelText('Account 2'), 'acc-accrual');
+    await chooseOption(user, screen.getByLabelText('Account 2'), 'acc-accrual');
     await user.type(screen.getByLabelText('Credit 2'), '2400.00');
 
     await user.click(screen.getByRole('button', { name: 'Save draft' }));
@@ -185,10 +194,10 @@ describe('JournalForm', () => {
 
     await screen.findByLabelText('Account 1');
     await user.type(screen.getByLabelText('Description'), 'Typo');
-    await user.selectOptions(screen.getByLabelText('Account 1'), 'acc-expense');
+    await chooseOption(user, screen.getByLabelText('Account 1'), 'acc-expense');
     // A lone decimal point is non-blank but has no value — it must not read as zero.
     await user.type(screen.getByLabelText('Debit 1'), '.');
-    await user.selectOptions(screen.getByLabelText('Account 2'), 'acc-accrual');
+    await chooseOption(user, screen.getByLabelText('Account 2'), 'acc-accrual');
     await user.type(screen.getByLabelText('Credit 2'), '1000.00');
 
     await user.click(screen.getByRole('button', { name: 'Save draft' }));
@@ -204,12 +213,12 @@ describe('JournalForm', () => {
     renderWithProviders(<JournalForm />);
     await screen.findByLabelText('Account 1');
     await user.type(screen.getByLabelText('Description'), 'Grouped');
-    await user.selectOptions(screen.getByLabelText('Account 1'), 'acc-expense');
+    await chooseOption(user, screen.getByLabelText('Account 1'), 'acc-expense');
     const debit = screen.getByLabelText('Debit 1') as HTMLInputElement;
     await user.type(debit, '1000000');
     // The field groups as you type; the raw value sent stays comma-free.
     expect(debit.value).toBe('1,000,000');
-    await user.selectOptions(screen.getByLabelText('Account 2'), 'acc-accrual');
+    await chooseOption(user, screen.getByLabelText('Account 2'), 'acc-accrual');
     await user.type(screen.getByLabelText('Credit 2'), '1000000');
 
     await user.click(screen.getByRole('button', { name: 'Save draft' }));
@@ -230,10 +239,10 @@ describe('JournalForm', () => {
 
     await screen.findByLabelText('Account 1');
     await user.type(screen.getByLabelText('Description'), 'Both sides');
-    await user.selectOptions(screen.getByLabelText('Account 1'), 'acc-expense');
+    await chooseOption(user, screen.getByLabelText('Account 1'), 'acc-expense');
     await user.type(screen.getByLabelText('Debit 1'), '100.00');
     await user.type(screen.getByLabelText('Credit 1'), '100.00');
-    await user.selectOptions(screen.getByLabelText('Account 2'), 'acc-accrual');
+    await chooseOption(user, screen.getByLabelText('Account 2'), 'acc-accrual');
     await user.type(screen.getByLabelText('Credit 2'), '100.00');
 
     await user.click(screen.getByRole('button', { name: 'Save draft' }));

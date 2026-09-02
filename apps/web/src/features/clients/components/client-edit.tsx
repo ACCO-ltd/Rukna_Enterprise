@@ -26,7 +26,7 @@ export function ClientEdit({ id }: { id: string }) {
       <div role="status" aria-live="polite">
         <span className="sr-only">{tCommon('loading')}</span>
         <div
-          className="h-96 animate-pulse rounded-lg border border-border bg-muted"
+          className="h-96 animate-pulse rounded-panel border border-border bg-muted"
           aria-hidden="true"
         />
       </div>

@@ -30,7 +30,7 @@ export function Step1Context({ context, currency, onChange, onNext, errors }: St
         <Select
           id={statusId}
           value={context.status}
-          onChange={(e) => onChange({ status: e.target.value as WizardContext['status'] })}
+          onChange={(value) => onChange({ status: value as WizardContext['status'] })}
         >
           <option value="" disabled>
             {t('statusPlaceholder')}

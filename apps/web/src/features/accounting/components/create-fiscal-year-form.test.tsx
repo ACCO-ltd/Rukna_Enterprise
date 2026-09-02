@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
+import { chooseOption, openSelect } from '@/test/choose-option';
 
 import type { Account } from '../types';
 
@@ -149,9 +150,11 @@ describe('CreateFiscalYearForm', () => {
     expect(screen.queryByText(/January/i)).not.toBeInTheDocument();
   });
 
-  it('offers the retained earnings account by code and name', () => {
+  it('offers the retained earnings account by code and name', async () => {
+    const user = userEvent.setup();
     renderWithProviders(<CreateFiscalYearForm onDone={vi.fn()} />);
 
+    await openSelect(user, screen.getByLabelText('Retained earnings account'));
     expect(
       screen.getByRole('option', { name: '31000 · Retained Earnings' }),
     ).toBeInTheDocument();
@@ -168,7 +171,7 @@ describe('CreateFiscalYearForm', () => {
     renderWithProviders(<CreateFiscalYearForm onDone={vi.fn()} />);
 
     await user.type(screen.getByLabelText('Year'), '2026');
-    await user.selectOptions(screen.getByLabelText('Retained earnings account'), '31000');
+    await chooseOption(user, screen.getByLabelText('Retained earnings account'), '31000');
     await user.click(screen.getByRole('button', { name: 'Open fiscal year' }));
 
     expect(screen.getByText('That fiscal year is already open.')).toBeInTheDocument();
@@ -180,7 +183,7 @@ describe('CreateFiscalYearForm', () => {
     renderWithProviders(<CreateFiscalYearForm onDone={vi.fn()} />);
 
     await user.type(screen.getByLabelText('Year'), '2027');
-    await user.selectOptions(screen.getByLabelText('Retained earnings account'), '31000');
+    await chooseOption(user, screen.getByLabelText('Retained earnings account'), '31000');
     await user.click(screen.getByRole('button', { name: 'Open fiscal year' }));
 
     expect(mutate).toHaveBeenCalledWith(

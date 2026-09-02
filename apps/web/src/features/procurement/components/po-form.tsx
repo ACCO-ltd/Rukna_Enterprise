@@ -32,7 +32,7 @@
 import { useCallback, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Input } from '@erp/ui';
+import { Alert, Button, DatePicker, FormField, Input } from '@erp/ui';
 import { WorkflowTransactionType } from '@erp/types';
 
 import { ApiError } from '@/lib/api-client';
@@ -230,11 +230,10 @@ export function PoForm() {
         </FormField>
 
         <FormField htmlFor={ids.effective} label={t('effectiveFrom')}>
-          <Input
+          <DatePicker
             id={ids.effective}
-            type="date"
             value={effectiveFrom}
-            onChange={(e) => setEffectiveFrom(e.target.value)}
+            onChange={(value) => setEffectiveFrom(value)}
           />
         </FormField>
 
@@ -247,11 +246,10 @@ export function PoForm() {
         </FormField>
 
         <FormField htmlFor={ids.expected} label={`${t('expectedDelivery')} (${tc('optional')})`}>
-          <Input
+          <DatePicker
             id={ids.expected}
-            type="date"
             value={expectedDeliveryDate}
-            onChange={(e) => setExpectedDeliveryDate(e.target.value)}
+            onChange={(value) => setExpectedDeliveryDate(value)}
           />
         </FormField>
       </div>
@@ -298,8 +296,8 @@ export function PoForm() {
 
       {/* ── Sticky footer: running total + the single primary action ──────────────── */}
       {approvalInstanceId ? null : (
-        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
-          <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80 lg:start-[var(--sidebar-width)]">
+          <div className="flex w-full max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
             <p className="text-sm" aria-live="polite">
               <span className="text-muted-foreground">{tc('total')}: </span>
               <span className="font-semibold tabular-nums">{totalLabel}</span>

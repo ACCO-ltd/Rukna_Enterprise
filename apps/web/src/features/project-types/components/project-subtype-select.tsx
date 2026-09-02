@@ -15,7 +15,6 @@ import {
   Input,
   Select,
 } from '@erp/ui';
-import { Plus } from 'lucide-react';
 
 import { usePermissions } from '@/features/auth/permissions/can';
 import { ApiError } from '@/lib/api-client';
@@ -27,8 +26,8 @@ import {
 } from '../hooks/use-project-subtypes';
 
 /**
- * The subtype picker: a native `Select` of the chosen category's ACTIVE subtypes, plus a
- * separate "Add a subtype" affordance rendered below it for a `manage:project-type` holder.
+ * The subtype picker: the chosen category's ACTIVE subtypes, with "Add a subtype" as the
+ * last row of the list for a `manage:project-type` holder.
  *
  * ─── Shape ───────────────────────────────────────────────────────────────────────
  *
@@ -41,9 +40,9 @@ import {
  *    only through the dialog behind the "Add a subtype" button, and only by a
  *    `manage:project-type` holder — which is what `POST /project-subtypes` enforces anyway.
  *
- * This uses only `@erp/ui`'s native `Select` (no custom combobox), so it compiles against the
- * shared UI package as shipped: a native `<select>` is keyboard- and screen-reader-correct and
- * renders the platform picker on mobile without reimplementing a listbox.
+ * `Select` rather than `Combobox`: a category rarely has more than a handful of subtypes, so
+ * a search box above the list would be furniture. District goes the other way — twenty of
+ * them, and worth filtering.
  */
 export function ProjectSubtypeSelect({
   id,
@@ -77,9 +76,14 @@ export function ProjectSubtypeSelect({
       <Select
         id={id}
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(value) => onChange(value)}
         disabled={disabled}
         aria-describedby={describedBy}
+        // The add lives in the list rather than as a button beside the field: it is wanted at
+        // the moment someone has scanned the options and found theirs missing, and nowhere else.
+        createAction={
+          canManage && !disabled ? { label: t('addTitle'), onSelect: () => setCreating(true) } : undefined
+        }
       >
         <option value="">
           {disabled ? tForm('subtypePickCategoryFirst') : t('placeholder')}
@@ -93,19 +97,6 @@ export function ProjectSubtypeSelect({
 
       {showEmptyRestricted ? (
         <p className="text-xs text-muted-foreground">{t('emptyRestricted')}</p>
-      ) : null}
-
-      {canManage && !disabled ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="px-2"
-          onClick={() => setCreating(true)}
-        >
-          <Plus className="me-1.5 h-4 w-4" aria-hidden="true" />
-          {t('addTitle')}
-        </Button>
       ) : null}
 
       {creating && category !== undefined ? (
@@ -175,6 +166,7 @@ function CreateSubtypeDialog({
       }}
     >
       <DialogContent
+        closeLabel={tCommon('close')}
         className="sm:max-w-lg"
         onEscapeKeyDown={(event) => {
           if (create.isPending) event.preventDefault();
@@ -183,7 +175,7 @@ function CreateSubtypeDialog({
           if (create.isPending) event.preventDefault();
         }}
         onOpenAutoFocus={(event) => {
-          // Radix focuses the first tabbable control; the point of this dialog is the name field.
+          // Radix focuses the close control first; the point of this dialog is the name field.
           event.preventDefault();
           nameRef.current?.focus();
         }}

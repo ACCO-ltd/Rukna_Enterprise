@@ -101,7 +101,7 @@ export function PolicySimulationPanel({
           <Select
             id="sim-tx"
             value={transactionType}
-            onChange={(event) => setTransactionType(event.target.value)}
+            onChange={(value) => setTransactionType(value)}
           >
             {AUTHORABLE_TRANSACTION_TYPES.map((type) => (
               <option key={type} value={type}>

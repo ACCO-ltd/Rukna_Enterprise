@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
+  DatePicker,
   FormField,
   Input,
   SectionHeader,
@@ -187,7 +188,7 @@ function CreateReportForm({
       ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
         <FormField htmlFor="dpr-date" label={t('report.fields.reportDate')}>
-          <Input id="dpr-date" type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} />
+          <DatePicker id="dpr-date" value={reportDate} onChange={(value) => setReportDate(value)} />
         </FormField>
         <FormField htmlFor="dpr-weather" label={t('report.fields.weather')}>
           <Input id="dpr-weather" value={weather} onChange={(e) => setWeather(e.target.value)} />

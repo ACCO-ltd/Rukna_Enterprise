@@ -65,7 +65,7 @@ export function MonthlyComparisonReport() {
             <Select
               id="mpl-year"
               value={fiscalYearId}
-              onChange={(e) => setChosenId(e.target.value)}
+              onChange={(value) => setChosenId(value)}
             >
               <option value="">{t('selectFiscalYear')}</option>
               {(years.data ?? []).map((year) => (

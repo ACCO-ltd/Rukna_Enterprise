@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Input } from '@erp/ui';
+import { Alert, Button, DatePicker, FormField, Input } from '@erp/ui';
 
 import { fractionToPercent, isValidPercent, percentToFraction } from '../contract-terms';
 import { useSetRetentionTerms } from '../hooks/use-contract-terms';
@@ -111,6 +111,7 @@ function RetentionForm({
 
   const {
     register,
+    control,
     handleSubmit,
     formState: { errors },
   } = useForm<RetentionFormValues>({
@@ -200,11 +201,17 @@ function RetentionForm({
       </div>
 
       <FormField htmlFor="retention-released" label={t('releasedAt')}>
-        <Input
-          id="retention-released"
-          type="date"
-          aria-describedby="retention-released-hint"
-          {...register('retentionReleasedAt')}
+        <Controller
+          control={control}
+          name="retentionReleasedAt"
+          render={({ field }) => (
+            <DatePicker
+              id="retention-released"
+              value={field.value}
+              onChange={field.onChange}
+              aria-describedby="retention-released-hint"
+            />
+          )}
         />
         <p id="retention-released-hint" className="text-xs text-muted-foreground">
           {t('releasedAtHint')}

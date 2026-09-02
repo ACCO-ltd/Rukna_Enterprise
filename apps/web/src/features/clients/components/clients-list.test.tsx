@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { listClientSummaries } from '@/features/clients/api/clients-api';
 import type { ClientListItem } from '@/features/clients/types';
 import { renderWithProviders } from '@/test/render';
+import { chooseOption } from '@/test/choose-option';
 
 import { ClientsList } from './clients-list';
 
@@ -72,7 +73,7 @@ describe('ClientsList', () => {
     renderWithProviders(<ClientsList />);
 
     await screen.findByRole('link', { name: 'Active One' });
-    await user.selectOptions(screen.getByLabelText('Filter by status'), ClientStatus.INACTIVE);
+    await chooseOption(user, screen.getByLabelText('Filter by status'), ClientStatus.INACTIVE);
     await waitFor(() => expect(screen.queryByRole('link', { name: 'Active One' })).not.toBeInTheDocument());
     expect(screen.getByRole('link', { name: 'Retired One' })).toBeInTheDocument();
   });

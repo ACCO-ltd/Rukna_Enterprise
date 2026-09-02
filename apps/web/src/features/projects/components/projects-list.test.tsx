@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
+import { chooseOption } from '@/test/choose-option';
 import { listProjects } from '@/features/projects/api/projects-api';
 import type { Project } from '@/features/projects/types';
 
@@ -94,7 +95,7 @@ describe('ProjectsList', () => {
     renderWithProviders(<ProjectsList />);
 
     await screen.findByRole('link', { name: /Active Project/ });
-    await user.selectOptions(screen.getByLabelText('Filter by status'), ProjectStatus.DRAFT);
+    await chooseOption(user, screen.getByLabelText('Filter by status'), ProjectStatus.DRAFT);
 
     await waitFor(() => {
       expect(screen.queryByRole('link', { name: /Active Project/ })).not.toBeInTheDocument();
@@ -117,10 +118,7 @@ describe('ProjectsList', () => {
     const untyped = screen.getAllByText('Untyped').filter((el) => el.tagName === 'SPAN');
     expect(untyped.length).toBeGreaterThan(0);
 
-    await user.selectOptions(
-      screen.getByLabelText('Filter by category'),
-      ProjectCategory.COMMERCIAL,
-    );
+    await chooseOption(user, screen.getByLabelText('Filter by category'), ProjectCategory.COMMERCIAL);
 
     await waitFor(() => {
       expect(screen.queryByRole('link', { name: /Legacy Project/ })).not.toBeInTheDocument();

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
+import { chooseOption, openSelect } from '@/test/choose-option';
 
 /**
  * The create-account form (tenant bootstrap, tier 1).
@@ -47,12 +48,14 @@ describe('CreateAccountForm', () => {
     expect(screen.getByLabelText('Effective from')).toBeInTheDocument();
   });
 
-  it('offers all thirty subtypes, grouped, regardless of the class chosen', () => {
+  it('offers all thirty subtypes, grouped, regardless of the class chosen', async () => {
+    const user = userEvent.setup();
     renderWithProviders(<CreateAccountForm onDone={vi.fn()} />);
 
-    const subtype = screen.getByLabelText('Account subtype') as HTMLSelectElement;
+    // The list only exists while the select is open — that is what makes it stylable.
+    await openSelect(user, screen.getByLabelText('Account subtype'));
     // 30 subtypes plus the placeholder.
-    expect(subtype.options).toHaveLength(31);
+    expect(screen.getAllByRole('option')).toHaveLength(31);
     expect(screen.getByRole('option', { name: 'Accumulated depreciation' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Unapplied client receipts' })).toBeInTheDocument();
   });
@@ -61,9 +64,10 @@ describe('CreateAccountForm', () => {
     const user = userEvent.setup();
     renderWithProviders(<CreateAccountForm onDone={vi.fn()} />);
 
-    await user.selectOptions(screen.getByLabelText('Class'), 'LIABILITY');
+    await chooseOption(user, screen.getByLabelText('Class'), 'LIABILITY');
 
-    expect((screen.getByLabelText('Normal balance') as HTMLSelectElement).value).toBe('CREDIT');
+    // The control is a trigger now, so the chosen value is what it displays.
+    expect(screen.getByLabelText('Normal balance')).toHaveTextContent('Credit');
   });
 
   /**
@@ -74,8 +78,8 @@ describe('CreateAccountForm', () => {
     const user = userEvent.setup();
     renderWithProviders(<CreateAccountForm onDone={vi.fn()} />);
 
-    await user.selectOptions(screen.getByLabelText('Class'), 'ASSET');
-    await user.selectOptions(screen.getByLabelText('Normal balance'), 'CREDIT');
+    await chooseOption(user, screen.getByLabelText('Class'), 'ASSET');
+    await chooseOption(user, screen.getByLabelText('Normal balance'), 'CREDIT');
 
     expect(screen.getByText(/opposite side/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create account' })).toBeEnabled();
@@ -94,11 +98,12 @@ describe('CreateAccountForm', () => {
   });
 
   /** A6 — the third policy exists in the schema and the DTO rejects it. */
-  it('offers only the two posting policies the API accepts, and says why', () => {
+  it('offers only the two posting policies the API accepts, and says why', async () => {
+    const user = userEvent.setup();
     renderWithProviders(<CreateAccountForm onDone={vi.fn()} />);
 
-    const policy = screen.getByLabelText('Posting policy') as HTMLSelectElement;
-    expect(policy.options).toHaveLength(2);
+    await openSelect(user, screen.getByLabelText('Posting policy'));
+    expect(screen.getAllByRole('option')).toHaveLength(2);
     expect(screen.getByText(/does not accept it/i)).toBeInTheDocument();
   });
 

@@ -97,7 +97,7 @@ export function PolicyAddRuleForm({ policyId }: { policyId: string }) {
         <Select
           id="add-rule-tx"
           value={transactionType}
-          onChange={(event) => setTransactionType(event.target.value)}
+          onChange={(value) => setTransactionType(value)}
         >
           {AUTHORABLE_TRANSACTION_TYPES.map((type) => (
             <option key={type} value={type}>
@@ -138,7 +138,7 @@ export function PolicyAddRuleForm({ policyId }: { policyId: string }) {
         <Select
           id="add-rule-role"
           value={requiredRole}
-          onChange={(event) => setRequiredRole(event.target.value)}
+          onChange={(value) => setRequiredRole(value)}
           disabled={roles.isPending}
         >
           <option value="" disabled>

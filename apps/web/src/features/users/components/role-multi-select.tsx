@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert } from '@erp/ui';
+import { Alert, CheckboxField } from '@erp/ui';
 
 import { useRoles } from '@/features/roles/hooks/use-roles';
 
@@ -64,26 +64,16 @@ export function RoleMultiSelect({ selectedIds, onChange, disabled }: RoleMultiSe
       <legend className="sr-only">{t('legend')}</legend>
       <div className="max-h-56 space-y-1 overflow-y-auto rounded-panel border border-border bg-surface p-2">
         {data.map((role) => (
-          <label
+          <CheckboxField
             key={role.id}
-            className="flex min-h-11 cursor-pointer items-start gap-3 rounded-control px-2 py-1.5 hover:bg-surface-hover"
-          >
-            <input
-              type="checkbox"
-              checked={selected.has(role.id)}
-              onChange={() => toggle(role.id)}
-              disabled={disabled}
-              className="mt-0.5 h-4 w-4 shrink-0 rounded border-border-strong text-brand-primary focus-visible:shadow-ring"
-            />
-            <span className="min-w-0">
-              <span className="block text-sm font-medium text-foreground">{role.name}</span>
-              {role.description ? (
-                <span className="mt-0.5 block text-xs text-muted-foreground">
-                  {role.description}
-                </span>
-              ) : null}
-            </span>
-          </label>
+            id={`role-${role.id}`}
+            label={role.name}
+            description={role.description}
+            checked={selected.has(role.id)}
+            onChange={() => toggle(role.id)}
+            disabled={disabled}
+            className="rounded-control px-2 hover:bg-surface-hover"
+          />
         ))}
       </div>
     </fieldset>

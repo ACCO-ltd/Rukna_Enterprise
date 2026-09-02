@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, FormField, Input } from '@erp/ui';
+import { Alert, DatePicker, FormField } from '@erp/ui';
 
 import { formatDate, formatMoney } from '@/lib/format';
 import { MONEY_SCALE, toMinorUnits } from '@/lib/money';
@@ -42,20 +42,18 @@ export function ProfitLossReport() {
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
         <FormField htmlFor="pl-from" label={tCommon('fromDate')} className="sm:w-56">
-          <Input
+          <DatePicker
             id="pl-from"
-            type="date"
             value={range.from}
-            onChange={(e) => setRange((r) => ({ ...r, from: e.target.value }))}
+            onChange={(value) => setRange((r) => ({ ...r, from: value }))}
           />
         </FormField>
 
         <FormField htmlFor="pl-to" label={tCommon('toDate')} className="sm:w-56">
-          <Input
+          <DatePicker
             id="pl-to"
-            type="date"
             value={range.to}
-            onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))}
+            onChange={(value) => setRange((r) => ({ ...r, to: value }))}
           />
         </FormField>
       </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useForm, useWatch } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -283,22 +283,29 @@ function ClaimLineDialog({
           ) : null}
 
           <FormField htmlFor="claim-line" label={t('line')} error={errors.boqNodeId?.message}>
-            <Select
-              id="claim-line"
-              disabled={tree.isPending || hasNoLines}
-              aria-invalid={Boolean(errors.boqNodeId)}
-              {...register('boqNodeId', { required: t('linePlaceholder') })}
-            >
-              <option value="">{tree.isPending ? tCommon('loading') : t('linePlaceholder')}</option>
-              {available.map((line) => (
-                // An unpriced leaf stays in the list, disabled. Dropping it silently from
-                // a BOQ the surveyor is reading alongside would look like missing data.
-                <option key={line.id} value={line.id} disabled={!isClaimable(line)}>
-                  {lineLabel(line)}
-                  {isClaimable(line) ? '' : ` — ${t('unpriced')}`}
-                </option>
-              ))}
-            </Select>
+            <Controller
+              control={control}
+              name="boqNodeId"
+              rules={{ required: t('linePlaceholder') }}
+              render={({ field }) => (
+                <Select
+                  id="claim-line"
+                  disabled={tree.isPending || hasNoLines}
+                  value={field.value}
+                  onChange={field.onChange}
+                >
+                  <option value="">{tree.isPending ? tCommon('loading') : t('linePlaceholder')}</option>
+                  {available.map((line) => (
+                    // An unpriced leaf stays in the list, disabled. Dropping it silently from
+                    // a BOQ the surveyor is reading alongside would look like missing data.
+                    <option key={line.id} value={line.id} disabled={!isClaimable(line)}>
+                      {lineLabel(line)}
+                      {isClaimable(line) ? '' : ` — ${t('unpriced')}`}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            />
           </FormField>
 
           {selected ? (

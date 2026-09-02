@@ -280,7 +280,7 @@ function AddMeasurementForm({
       ) : null}
       <div className="sm:col-span-2">
         <Label htmlFor="m-leaf">{t('measurement.boqNode')}</Label>
-        <Select id="m-leaf" value={boqNodeId} onChange={(e) => setBoqNodeId(e.target.value)}>
+        <Select id="m-leaf" value={boqNodeId} onChange={(value) => setBoqNodeId(value)}>
           <option value="">{t('measurement.boqNodePlaceholder')}</option>
           {leaves.map((leaf) => (
             <option key={leaf.id} value={leaf.id}>

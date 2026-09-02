@@ -2,7 +2,7 @@ import { BalanceSheetReport } from '@/features/accounting/components/balance-she
 
 export default function BalanceSheetPage() {
   return (
-    <div className="mx-auto w-full max-w-4xl">
+    <div className="w-full max-w-4xl">
       <BalanceSheetReport />
     </div>
   );

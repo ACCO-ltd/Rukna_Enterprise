@@ -63,7 +63,7 @@ export function BoqToolbar({
         <Select
           value={pricing}
           aria-label={t('filterLabel')}
-          onChange={(event) => onPricingChange(event.target.value as PricingFilter)}
+          onChange={(value) => onPricingChange(value as PricingFilter)}
           className="w-auto"
         >
           <option value="all">{t('filter.all')}</option>

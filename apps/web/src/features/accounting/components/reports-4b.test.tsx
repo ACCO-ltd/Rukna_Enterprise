@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
+import { chooseOption } from '@/test/choose-option';
+import { pickDate } from '@/test/pick-date';
 import {
   getAccountLedger,
   getBalanceSheet,
@@ -243,7 +245,7 @@ describe('BalanceSheetReport', () => {
     renderWithProviders(<BalanceSheetReport />);
 
     await screen.findByText('Assets');
-    await user.type(screen.getByLabelText('Compare with'), '2025-12-31');
+    await pickDate(user, screen.getByLabelText('Compare with'), '2025-12-31');
 
     expect(vi.mocked(getBalanceSheet)).toHaveBeenLastCalledWith(
       expect.objectContaining({ comparativeDate: '2025-12-31' }),
@@ -264,8 +266,7 @@ describe('AccountLedgerReport', () => {
     const user = userEvent.setup();
     renderWithProviders(<AccountLedgerReport />);
 
-    await screen.findByRole('option', { name: '10100 — Salaam Bank' });
-    await user.selectOptions(screen.getByLabelText('Account'), 'acc-bank');
+    await chooseOption(user, screen.getByLabelText('Account'), 'acc-bank');
 
     expect(await screen.findByText('Client receipt')).toBeInTheDocument();
     expect(screen.getByText('Opening balance')).toBeInTheDocument();
@@ -276,8 +277,7 @@ describe('AccountLedgerReport', () => {
     const user = userEvent.setup();
     renderWithProviders(<AccountLedgerReport />);
 
-    await screen.findByRole('option', { name: '10100 — Salaam Bank' });
-    await user.selectOptions(screen.getByLabelText('Account'), 'acc-bank');
+    await chooseOption(user, screen.getByLabelText('Account'), 'acc-bank');
 
     // Plain decimal, not "$15,000.00": the ledger response carries no currency code, and
     // `formatMoney` shows an unlabelled figure rather than inventing a symbol.
@@ -289,8 +289,7 @@ describe('AccountLedgerReport', () => {
     const user = userEvent.setup();
     renderWithProviders(<AccountLedgerReport />);
 
-    await screen.findByRole('option', { name: '10100 — Salaam Bank' });
-    await user.selectOptions(screen.getByLabelText('Account'), 'acc-bank');
+    await chooseOption(user, screen.getByLabelText('Account'), 'acc-bank');
 
     expect(await screen.findByText(/Posted entries only/)).toBeInTheDocument();
   });
@@ -300,8 +299,7 @@ describe('AccountLedgerReport', () => {
     vi.mocked(getAccountLedger).mockResolvedValue(ledger({ lines: [] }));
 
     renderWithProviders(<AccountLedgerReport />);
-    await screen.findByRole('option', { name: '10100 — Salaam Bank' });
-    await user.selectOptions(screen.getByLabelText('Account'), 'acc-bank');
+    await chooseOption(user, screen.getByLabelText('Account'), 'acc-bank');
 
     expect(
       await screen.findByText('Nothing was posted against this account in this range.'),
@@ -313,8 +311,7 @@ describe('AccountLedgerReport', () => {
     vi.mocked(getAccountLedger).mockRejectedValue(new Error('network'));
 
     renderWithProviders(<AccountLedgerReport />);
-    await screen.findByRole('option', { name: '10100 — Salaam Bank' });
-    await user.selectOptions(screen.getByLabelText('Account'), 'acc-bank');
+    await chooseOption(user, screen.getByLabelText('Account'), 'acc-bank');
 
     expect(await screen.findByText('Could not load the ledger.')).toBeInTheDocument();
   });

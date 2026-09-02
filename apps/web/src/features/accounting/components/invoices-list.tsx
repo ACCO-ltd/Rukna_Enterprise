@@ -94,7 +94,7 @@ export function InvoicesList() {
               <Select
                 id="invoice-status"
                 value={status}
-                onChange={(e) => setStatus(e.target.value as InvoiceDocStatus | '')}
+                onChange={(value) => setStatus(value as InvoiceDocStatus | '')}
               >
                 <option value="">{t('allStatuses')}</option>
                 {DOC_STATUSES.map((s) => (

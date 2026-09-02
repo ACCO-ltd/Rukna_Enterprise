@@ -15,6 +15,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
+  DatePicker,
   FormField,
   Input,
   Select,
@@ -280,7 +281,7 @@ export function GrnForm() {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField htmlFor="grn-po" label={t('purchaseOrder')}>
-          <Select id="grn-po" value={purchaseOrderId} onChange={(e) => selectPo(e.target.value)}>
+          <Select id="grn-po" value={purchaseOrderId} onChange={(value) => selectPo(value)}>
             <option value="">{t('selectPo')}</option>
             {receivable.map((po) => (
               <option key={po.id} value={po.id}>
@@ -292,11 +293,10 @@ export function GrnForm() {
         </FormField>
 
         <FormField htmlFor="grn-date" label={t('deliveryDate')}>
-          <Input
+          <DatePicker
             id="grn-date"
-            type="date"
             value={deliveryDate}
-            onChange={(e) => setDeliveryDate(e.target.value)}
+            onChange={(value) => setDeliveryDate(value)}
           />
         </FormField>
 
@@ -334,8 +334,8 @@ export function GrnForm() {
       {receiveError ? <Alert variant="error" messages={[receiveError]} /> : null}
 
       {/* ── Sticky footer: the single primary action ──────────────────────────────── */}
-      <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
-        <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-end gap-2 px-4 py-3 sm:px-6">
+      <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80 lg:start-[var(--sidebar-width)]">
+        <div className="flex w-full max-w-5xl flex-wrap items-center justify-end gap-2 px-4 py-3 sm:px-6 lg:px-8">
           <Button type="button" variant="outline" disabled={busy} onClick={() => router.back()}>
             {tc('cancel')}
           </Button>

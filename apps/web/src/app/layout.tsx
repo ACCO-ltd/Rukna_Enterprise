@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import { DirectionProvider } from '@erp/ui';
@@ -8,6 +9,17 @@ import { QueryProvider } from '@/providers/query-provider';
 import { ToastProvider } from '@/providers/toast-provider';
 import { themeInitializationScript } from '@/features/theme/theme-script';
 import { ThemeRuntime } from '@/features/theme/theme-runtime';
+
+/**
+ * The product's only typeface.
+ *
+ * The type scale in `globals.css` is authored for Inter — its comments say so, and the
+ * negative tracking on `display`/`h1`/`h2` is tuned to Inter's metrics. The face was lost in
+ * 4ea90fb and every screen has been rendering in Arial since, at tracking meant for a
+ * different font. Loaded variable through `next/font` so it is self-hosted, preloaded, and
+ * never causes a layout shift.
+ */
+const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' });
 
 
 export const metadata: Metadata = {
@@ -30,7 +42,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       lang="en"
       dir="ltr"
       suppressHydrationWarning
-      className="h-full antialiased"
+      className={`${inter.variable} h-full antialiased`}
     >
       <head>
         <meta name="theme-color" content="#f4f6f8" />

@@ -1,4 +1,5 @@
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
@@ -18,6 +19,8 @@ import { renderWithProviders } from '@/test/render';
 const mocks = vi.hoisted(() => ({
   useCreateSupplierBill: vi.fn(),
   useSuppliers: vi.fn(),
+  // SupplierPicker offers "New supplier" from the picker itself.
+  useCreateSupplier: () => ({ mutate: vi.fn(), isPending: false, isError: false, error: null, reset: vi.fn() }),
 }));
 
 const accountingMocks = vi.hoisted(() => ({
@@ -30,6 +33,7 @@ vi.mock('@/features/accounting/hooks/use-accounting', () => accountingMocks);
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), back: vi.fn() }) }));
 
 import { SupplierBillForm, billLineError, billTotalMinor, emptyBillLine } from './bill-form';
+import { openSelect } from '@/test/choose-option';
 
 const OFFICE = {
   id: 'a-office',
@@ -182,9 +186,11 @@ describe('SupplierBillForm', () => {
     expect(screen.getByLabelText('Due Date')).toBeInTheDocument();
   });
 
-  it('offers only expense profiles in the line picker', () => {
+  it('offers only expense profiles in the line picker', async () => {
+    const user = userEvent.setup();
     renderWithProviders(<SupplierBillForm />);
 
+    await openSelect(user, screen.getByLabelText('Expense posting profile'));
     expect(
       screen.getByRole('option', { name: /Office & Admin Expense/ }),
     ).toBeInTheDocument();

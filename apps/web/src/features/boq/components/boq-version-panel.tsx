@@ -3,7 +3,7 @@
 import type { BoqVersionSummary } from '@erp/types';
 import { GitCompare, History } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Badge, Button, LtrValue, cn, type BadgeTone } from '@erp/ui';
+import { Badge, Button, cn, LtrValue, Select, type BadgeTone } from '@erp/ui';
 
 import { formatDate, formatMoney } from '@/lib/format';
 
@@ -18,7 +18,7 @@ const STATUS_TONE: Record<string, BadgeTone> = {
 /**
  * Version history, and the way to switch between versions.
  *
- * The old screen offered a `<select>` of "Version 3 — BASELINED" strings, which could tell
+ * The old screen offered a `<Select>` of "Version 3 — BASELINED" strings, which could tell
  * you a version existed but not what it was worth, what it derived from, or which one the
  * contract actually references. Those three facts are why someone opens version history.
  *

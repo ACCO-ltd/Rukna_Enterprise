@@ -8,7 +8,7 @@ export default async function IpaDetailPage({
   const { id, ipaId } = await params;
 
   return (
-    <div className="mx-auto w-full max-w-5xl">
+    <div className="w-full max-w-5xl">
       <IpaDetail contractId={id} ipaId={ipaId} />
     </div>
   );

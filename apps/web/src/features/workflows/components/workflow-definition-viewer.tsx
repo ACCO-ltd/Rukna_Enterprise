@@ -26,7 +26,7 @@ export function WorkflowDefinitionViewer() {
           id="wf-type"
           className="mt-1"
           value={selected}
-          onChange={(e) => setSelected(e.target.value as WorkflowTransactionType)}
+          onChange={(value) => setSelected(value as WorkflowTransactionType)}
         >
           {TRANSACTION_TYPES.map((type) => (
             <option key={type} value={type}>

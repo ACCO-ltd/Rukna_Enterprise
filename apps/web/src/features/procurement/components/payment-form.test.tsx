@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
+import { chooseOption, openSelect } from '@/test/choose-option';
+import { pickDate } from '@/test/pick-date';
 
 /**
  * Tier C + D9 — the payment form and list.
@@ -19,6 +21,8 @@ const mocks = vi.hoisted(() => ({
   useCreateSupplierPayment: vi.fn(),
   useSupplierPayments: vi.fn(),
   useSuppliers: vi.fn(),
+  // SupplierPicker offers "New supplier" from the picker itself.
+  useCreateSupplier: () => ({ mutate: vi.fn(), isPending: false, isError: false, error: null, reset: vi.fn() }),
   useSupplierBills: vi.fn(),
 }));
 
@@ -26,6 +30,8 @@ const accountingMocks = vi.hoisted(() => ({
   useBankAccounts: vi.fn(),
   useAccounts: vi.fn(),
   usePostingProfiles: vi.fn(),
+  // The accounting-date picker refuses days in a closed period, which it learns from here.
+  useFiscalYears: vi.fn(),
 }));
 
 vi.mock('../hooks/use-procurement', () => mocks);
@@ -107,6 +113,8 @@ beforeEach(() => {
     isError: false,
   });
   accountingMocks.useAccounts.mockReturnValue({ data: [], isPending: false, isError: false });
+  // No periods loaded means the calendar constrains nothing, which is what these tests want.
+  accountingMocks.useFiscalYears.mockReturnValue({ data: [], isPending: false, isError: false });
   accountingMocks.usePostingProfiles.mockReturnValue({
     data: [],
     isPending: false,
@@ -116,10 +124,10 @@ beforeEach(() => {
 
 /** Fills supplier, bank, date and amount — the fields every submit needs. */
 async function fillHeader(user: ReturnType<typeof userEvent.setup>, amount = '5700') {
-  await user.selectOptions(screen.getByLabelText('Supplier'), 'sup-1');
-  await user.selectOptions(screen.getByLabelText('Bank account'), 'bank-1');
+  await chooseOption(user, screen.getByLabelText('Supplier'), 'sup-1');
+  await chooseOption(user, screen.getByLabelText('Bank account'), 'bank-1');
   const date = screen.getByLabelText('Payment date') as HTMLInputElement;
-  await user.type(date, '2026-08-31');
+  await pickDate(user, date, '2026-08-31');
   await user.type(screen.getByLabelText('Amount'), amount);
 }
 
@@ -248,19 +256,22 @@ describe('SupplierPaymentForm — apply to bills', () => {
     expect(mutate).toHaveBeenCalledTimes(1);
   });
 
-  it('lists the bank account with its number masked', () => {
+  it('lists the bank account with its number masked', async () => {
+    const user = userEvent.setup();
     renderWithProviders(<SupplierPaymentForm />, { permissions: MANAGE });
 
+    await openSelect(user, screen.getByLabelText('Bank account'));
     expect(
       screen.getByRole('option', { name: 'Salaam Bank · Main Operating — ****4821' }),
     ).toBeInTheDocument();
   });
 
-  it('offers every payment method with a translated label, not a raw code', () => {
+  it('offers every payment method with a translated label, not a raw code', async () => {
+    const user = userEvent.setup();
     renderWithProviders(<SupplierPaymentForm />, { permissions: MANAGE });
 
-    const method = screen.getByLabelText('Method') as HTMLSelectElement;
-    const labels = [...method.options].map((option) => option.textContent);
+    await openSelect(user, screen.getByLabelText('Method'));
+    const labels = screen.getAllByRole('option').map((option) => option.textContent);
 
     expect(labels).toEqual(['Bank transfer', 'Cheque', 'Cash', 'Card', 'Mobile money']);
     expect(labels).toHaveLength(PAYMENT_METHODS.length);

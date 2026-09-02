@@ -22,9 +22,10 @@
 import { useId, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Input, MoneyInput, Textarea } from '@erp/ui';
+import { Alert, Button, DatePicker, FormField, Input, MoneyInput, Select, Textarea } from '@erp/ui';
 
-import { useBankAccounts } from '@/features/accounting/hooks/use-accounting';
+import { useBankAccounts, useFiscalYears } from '@/features/accounting/hooks/use-accounting';
+import { makeClosedPeriodPredicate } from '@/features/accounting/open-period';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
@@ -82,6 +83,11 @@ export function SupplierPaymentForm() {
   const [paymentMethod, setPaymentMethod] = useState<string>('BANK_TRANSFER');
   const [bankReference, setBankReference] = useState('');
   const [notes, setNotes] = useState('');
+
+  // This date is what lands in the ledger, so it carries the same period rule a manual
+  // journal does. The payment date itself is a bank fact and is deliberately unconstrained.
+  const { data: fiscalYears } = useFiscalYears();
+  const isClosedPeriod = useMemo(() => makeClosedPeriodPredicate(fiscalYears), [fiscalYears]);
   const [showErrors, setShowErrors] = useState(false);
 
   // Keyed by bill id. A bill with no entry is unchecked with no amount.
@@ -223,11 +229,10 @@ export function SupplierPaymentForm() {
         </FormField>
 
         <FormField htmlFor={ids.bank} label={t('bankAccount')}>
-          <select
+          <Select
             id={ids.bank}
             value={bankAccountId}
-            onChange={(e) => setBankAccountId(e.target.value)}
-            className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"
+            onChange={(value) => setBankAccountId(value)}
           >
             <option value="" disabled>
               —
@@ -237,7 +242,7 @@ export function SupplierPaymentForm() {
                 {bankAccountLabel(account)}
               </option>
             ))}
-          </select>
+          </Select>
           <p className="text-xs text-muted-foreground">{t('bankAccountHint')}</p>
         </FormField>
 
@@ -247,11 +252,10 @@ export function SupplierPaymentForm() {
             label={t('paymentDate')}
             className="min-w-44 flex-1"
           >
-            <Input
+            <DatePicker
               id={ids.paymentDate}
-              type="date"
               value={paymentDate}
-              onChange={(e) => setPaymentDate(e.target.value)}
+              onChange={(value) => setPaymentDate(value)}
             />
           </FormField>
 
@@ -260,11 +264,11 @@ export function SupplierPaymentForm() {
             label={`${t('accountingDate')} (${tc('optional')})`}
             className="min-w-44 flex-1"
           >
-            <Input
+            <DatePicker
               id={ids.accountingDate}
-              type="date"
               value={accountingDate}
-              onChange={(e) => setAccountingDate(e.target.value)}
+              onChange={(value) => setAccountingDate(value)}
+              isDateDisabled={isClosedPeriod}
             />
             <p className="text-xs text-muted-foreground">{t('accountingDateHint')}</p>
           </FormField>
@@ -285,18 +289,17 @@ export function SupplierPaymentForm() {
         </div>
 
         <FormField htmlFor={ids.method} label={t('method')}>
-          <select
+          <Select
             id={ids.method}
             value={paymentMethod}
-            onChange={(e) => setPaymentMethod(e.target.value)}
-            className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"
+            onChange={(value) => setPaymentMethod(value)}
           >
             {PAYMENT_METHODS.map((method) => (
               <option key={method} value={method}>
                 {t(`methods.${method}`)}
               </option>
             ))}
-          </select>
+          </Select>
         </FormField>
 
         <FormField

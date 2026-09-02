@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, FormField, Input } from '@erp/ui';
+import { Alert, DatePicker, FormField } from '@erp/ui';
 
 import { formatDate, formatMoney } from '@/lib/format';
 
@@ -34,20 +34,18 @@ export function BalanceSheetReport() {
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
         <FormField htmlFor="bs-date" label={tCommon('asOfDate')} className="sm:w-56">
-          <Input
+          <DatePicker
             id="bs-date"
-            type="date"
             value={asOfDate}
-            onChange={(e) => setAsOfDate(e.target.value)}
+            onChange={(value) => setAsOfDate(value)}
           />
         </FormField>
 
         <FormField htmlFor="bs-comparative" label={t('comparativeLabel')} className="sm:w-56">
-          <Input
+          <DatePicker
             id="bs-comparative"
-            type="date"
             value={comparativeDate}
-            onChange={(e) => setComparativeDate(e.target.value)}
+            onChange={(value) => setComparativeDate(value)}
           />
         </FormField>
       </div>

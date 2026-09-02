@@ -1,9 +1,9 @@
 'use client';
 
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, FormField, FormSection, Input } from '@erp/ui';
+import { Alert, Button, DatePicker, FormField, FormSection, Input } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
 
@@ -28,6 +28,7 @@ export function IpaForm({ contractId }: { contractId: string }) {
 
   const {
     register,
+    control,
     handleSubmit,
     getValues,
     formState: { errors },
@@ -65,27 +66,40 @@ export function IpaForm({ contractId }: { contractId: string }) {
       <FormSection title={t('periodFrom')}>
         <div className="grid gap-5 sm:grid-cols-2">
         <FormField htmlFor="ipa-from" label={t('periodFrom')}>
-          <Input
-            id="ipa-from"
-            type="date"
-            aria-describedby="ipa-period-hint"
-            {...register('periodFrom')}
+          <Controller
+            control={control}
+            name="periodFrom"
+            render={({ field }) => (
+              <DatePicker
+                id="ipa-from"
+                value={field.value}
+                onChange={field.onChange}
+                aria-describedby="ipa-period-hint"
+              />
+            )}
           />
         </FormField>
 
         <FormField htmlFor="ipa-to" label={t('periodTo')} error={errors.periodTo?.message}>
-          <Input
-            id="ipa-to"
-            type="date"
-            aria-invalid={Boolean(errors.periodTo)}
-            {...register('periodTo', {
+          <Controller
+            control={control}
+            name="periodTo"
+            rules={{
               validate: (v) => {
                 // A period that ends before it starts is a data-entry error the API does
                 // not catch — both fields are only @IsDateString().
                 const from = getValues('periodFrom');
                 return !v || !from || v >= from || t('endBeforeStart');
               },
-            })}
+            }}
+            render={({ field }) => (
+              <DatePicker
+                id="ipa-to"
+                value={field.value}
+                onChange={field.onChange}
+                min={getValues('periodFrom') || undefined}
+              />
+            )}
           />
         </FormField>
         </div>

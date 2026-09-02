@@ -3,13 +3,12 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { useForm, useWatch } from 'react-hook-form';
+import { Controller, useForm, useWatch, type Control } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { Alert, Button, FormField, FormSection, Input, Select, Textarea, useToast } from '@erp/ui';
-import { ArrowLeft, ArrowRight, Check, Info, CaretDown } from '@phosphor-icons/react';
 
 import { ApiError } from '@/lib/api-client';
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
@@ -22,15 +21,31 @@ import type { Client } from '../types';
 
 interface ClientFormProps { client?: Client }
 
+/**
+ * Create and edit a client.
+ *
+ * ─── Why this is one page and not a wizard ───────────────────────────────────────
+ *
+ * It used to be a two-step wizard: step one held two fields, step two held four. A wizard
+ * earns its cost when a later step depends on an earlier answer, or when the flow is long
+ * enough that one page would be daunting — neither is true of six fields, and the doctrine's
+ * own blacklist (ux-doctrine §7) rejects "a wizard where a form works". Stepping it also meant
+ * a step-one panel holding two inputs in a column sized for a whole document, which is what
+ * made the screen read as empty.
+ *
+ * ─── The shape ───────────────────────────────────────────────────────────────────
+ *
+ * One panel, sections separated by hairlines (§2.1: structure by rules and background steps,
+ * not by a box around every group), and one action bar joined to the panel's foot. The
+ * identity of the record comes first, then who we talk to, then anything optional.
+ */
 export function ClientForm({ client }: ClientFormProps = {}) {
   const t = useTranslations('platform.clients.create');
   const tCommon = useTranslations('common');
   const router = useRouter();
   const { toast } = useToast();
   const isEdit = Boolean(client);
-  const [step, setStep] = useState<1 | 2>(1);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
-  const [showNotes, setShowNotes] = useState(Boolean(client?.notes));
   const [allowDuplicate, setAllowDuplicate] = useState(false);
 
   const schema = z.object({
@@ -51,7 +66,7 @@ export function ClientForm({ client }: ClientFormProps = {}) {
   const update = useUpdateClient(client?.id ?? '');
   const mutation = isEdit ? update : create;
   const form = useForm<ClientFormValues>({ resolver: zodResolver(schema), defaultValues: client ? toClientFormValues(client) : EMPTY_CLIENT_FORM });
-  const { register, handleSubmit, trigger, control, formState: { errors, isDirty } } = form;
+  const { register, handleSubmit, control, formState: { errors, isDirty } } = form;
   const name = useWatch({ control, name: 'name' });
   const duplicateQuery = useQuery({
     queryKey: ['clients', 'duplicate-candidates', name.trim()],
@@ -76,13 +91,14 @@ export function ClientForm({ client }: ClientFormProps = {}) {
     errors.contactEmail ? { label: t('contactEmail'), fieldId: 'client-contact-email', message: errors.contactEmail.message! } : null,
   ].filter(Boolean) as FormFieldError[];
   const apiErrors = mutation.error ? [mutation.error instanceof ApiError ? mutation.error.message : t('failed')] : [];
+  const hasSummary = fieldErrors.length > 0 || apiErrors.length > 0;
 
   const submit = (values: ClientFormValues) => {
     if (isEdit && client) return update.mutate(toUpdateClientPayload(values));
     create.mutate(toCreateClientPayload(values), {
       onSuccess: (created) => {
         toast({
-          tone: 'success', title: t('createdToast'), description: `${created.name} \u00b7 ${created.code}`, duration: 9000,
+          tone: 'success', title: t('createdToast'), description: `${created.name} · ${created.code}`, duration: 9000,
           action: { label: t('createProject'), onClick: () => router.push(`/projects/new?clientId=${created.id}`) },
         });
         router.push(`/clients/${created.id}`);
@@ -90,66 +106,100 @@ export function ClientForm({ client }: ClientFormProps = {}) {
     });
   };
 
-  if (isEdit) {
-    return (
-      <form className="space-y-6 pb-24" onSubmit={(event) => void handleSubmit(submit)(event)} noValidate>
-        <FormErrorSummary errors={fieldErrors} formErrors={apiErrors} />
-        <FormSection title={t('identityStep')} variant="plain">
-          <div className="grid gap-5 sm:grid-cols-2">
-            <FormField htmlFor="client-name" label={t('name')} error={errors.name?.message} required><Input id="client-name" placeholder={t('namePlaceholder')} {...register('name')} /></FormField>
-            <FormField htmlFor="client-type" label={t('clientType')}><ClientTypeSelect register={register} t={t} /></FormField>
-          </div>
-          <FormField htmlFor="client-notes" label={t('notes')}><Textarea id="client-notes" placeholder={t('notesPlaceholder')} {...register('notes')} /></FormField>
-        </FormSection>
-        <FormActions submitLabel={t('saveChanges')} isPending={mutation.isPending} cancelHref={`/clients/${client!.id}`} />
-      </form>
-    );
-  }
-
   return (
-    <div className="space-y-6">
-      <StepIndicator step={step} labels={[t('identityStep'), t('contactStep')]} ariaLabel={t('progress')} />
-      <form onSubmit={(event) => void handleSubmit(submit)(event)} className="space-y-6 pb-24" noValidate>
-        {(fieldErrors.length || apiErrors.length) ? <FormErrorSummary errors={fieldErrors} formErrors={apiErrors} /> : null}
-        {step === 1 ? (
+    <>
+      <form onSubmit={(event) => void handleSubmit(submit)(event)} noValidate>
+        <FormPanel>
+          {hasSummary ? <FormErrorSummary errors={fieldErrors} formErrors={apiErrors} /> : null}
+
           <FormSection title={t('identityStep')} description={t('identityDescription')} variant="plain">
-            <div className="flex gap-2 rounded-control border border-border bg-surface-subtle px-3 py-2.5 text-sm text-muted-foreground"><Info size={18} className="mt-0.5 shrink-0" aria-hidden="true" /><span>{t('automaticCode')}</span></div>
+            {/* Full width, alone on its row: the name is what the record *is*, and pairing it with
+                a dropdown would give a secondary attribute equal weight. */}
+            <FormField htmlFor="client-name" label={t('name')} hint={t('nameHint')} error={errors.name?.message} required>
+              <Input id="client-name" placeholder={t('namePlaceholder')} autoFocus={!isEdit} {...register('name', { onChange: () => setAllowDuplicate(false) })} />
+            </FormField>
+
             <div className="grid gap-5 sm:grid-cols-2">
-              <FormField htmlFor="client-name" label={t('name')} hint={t('nameHint')} error={errors.name?.message} required><Input id="client-name" placeholder={t('namePlaceholder')} autoFocus {...register('name', { onChange: () => setAllowDuplicate(false) })} /></FormField>
-              <FormField htmlFor="client-type" label={t('clientType')} required><ClientTypeSelect register={register} t={t} /></FormField>
+              <FormField htmlFor="client-type" label={t('clientType')} required>
+                <ClientTypeSelect control={control} t={t} />
+              </FormField>
+
+              {/* The code is a read-only field rather than a notice above the form: a value the
+                  system assigns still has a place in the record, and giving it one shows the user
+                  where it will appear instead of only telling them that it exists. */}
+              <FormField htmlFor="client-code" label={t('code')} hint={isEdit ? undefined : t('codeAutoHint')}>
+                <Input id="client-code" readOnly value={client?.code ?? t('codeAuto')} />
+              </FormField>
             </div>
+
             {candidates.length > 0 ? <DuplicateWarning candidates={candidates} onContinue={() => setAllowDuplicate(true)} t={t} /> : null}
-            <div className="flex items-center justify-between gap-3"><Button type="button" variant="ghost" onClick={() => isDirty ? setShowLeaveConfirm(true) : router.push('/clients')}>{t('cancel')}</Button><Button type="button" onClick={() => void trigger(['name', 'type']).then((valid) => valid && setStep(2))}>{t('next')}<ArrowRight size={16} className="ms-1.5 rtl:rotate-180" aria-hidden="true" /></Button></div>
           </FormSection>
-        ) : (
-          <FormSection title={t('contactStep')} description={t('contactDescription')} variant="plain">
-            <div className="grid gap-5 sm:grid-cols-2">
-              <FormField htmlFor="client-contact-name" label={t('contactName')} error={errors.contactName?.message} required><Input id="client-contact-name" placeholder={t('contactNamePlaceholder')} {...register('contactName')} /></FormField>
-              <FormField htmlFor="client-contact-role" label={t('contactRole')} error={errors.contactRole?.message}><Input id="client-contact-role" placeholder={t('contactRolePlaceholder')} {...register('contactRole')} /></FormField>
-              <FormField htmlFor="client-contact-phone" label={t('contactPhone')} error={errors.contactPhone?.message}><Input id="client-contact-phone" type="tel" dir="ltr" placeholder={t('contactPhonePlaceholder')} {...register('contactPhone')} /></FormField>
-              <FormField htmlFor="client-contact-email" label={t('contactEmail')} error={errors.contactEmail?.message}><Input id="client-contact-email" type="email" dir="ltr" placeholder={t('contactEmailPlaceholder')} {...register('contactEmail')} /></FormField>
-            </div>
-            <button type="button" className="flex min-h-11 items-center gap-2 text-sm font-medium text-foreground" aria-expanded={showNotes} onClick={() => setShowNotes((value) => !value)}><CaretDown size={16} className={showNotes ? '' : '-rotate-90 rtl:rotate-90'} aria-hidden="true" />{t('additionalInformation')}</button>
-            {showNotes ? <FormField htmlFor="client-notes" label={t('notes')} hint={t('notesHint')}><Textarea id="client-notes" placeholder={t('notesPlaceholder')} {...register('notes')} /></FormField> : null}
-            <div className="flex items-center justify-between gap-3"><Button type="button" variant="outline" onClick={() => setStep(1)}><ArrowLeft size={16} className="me-1.5 rtl:rotate-180" aria-hidden="true" />{t('back')}</Button><Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? t('creating') : t('submit')}</Button></div>
+
+          {/* Contact capture belongs to creation only. On an existing client the contact list is
+              its own aggregate with its own add/remove affordances (ClientContacts), and offering
+              a second, single-contact editor here would be two ways to change one thing. */}
+          {isEdit ? null : (
+            <FormSection title={t('contactStep')} description={t('contactDescription')} variant="plain">
+              <div className="grid gap-5 sm:grid-cols-2">
+                <FormField htmlFor="client-contact-name" label={t('contactName')} error={errors.contactName?.message} required><Input id="client-contact-name" placeholder={t('contactNamePlaceholder')} {...register('contactName')} /></FormField>
+                <FormField htmlFor="client-contact-role" label={t('contactRole')} error={errors.contactRole?.message}><Input id="client-contact-role" placeholder={t('contactRolePlaceholder')} {...register('contactRole')} /></FormField>
+                <FormField htmlFor="client-contact-phone" label={t('contactPhone')} error={errors.contactPhone?.message}><Input id="client-contact-phone" type="tel" placeholder={t('contactPhonePlaceholder')} {...register('contactPhone')} /></FormField>
+                <FormField htmlFor="client-contact-email" label={t('contactEmail')} error={errors.contactEmail?.message}><Input id="client-contact-email" type="email" placeholder={t('contactEmailPlaceholder')} {...register('contactEmail')} /></FormField>
+              </div>
+            </FormSection>
+          )}
+
+          <FormSection title={t('notesSection')} description={t('notesDescription')} variant="plain">
+            <FormField htmlFor="client-notes" label={t('notes')} hint={t('notesHint')}>
+              <Textarea id="client-notes" placeholder={t('notesPlaceholder')} {...register('notes')} />
+            </FormField>
           </FormSection>
-        )}
+        </FormPanel>
+
+        <FormActionBar
+          submitLabel={isEdit ? t('saveChanges') : t('submit')}
+          pendingLabel={isEdit ? undefined : t('creating')}
+          isPending={mutation.isPending}
+          cancelHref={isEdit ? `/clients/${client!.id}` : undefined}
+          onCancel={isEdit ? undefined : () => (isDirty ? setShowLeaveConfirm(true) : router.push('/clients'))}
+          cancelLabel={t('cancel')}
+        />
       </form>
+
       {showLeaveConfirm ? <ConfirmActionDialog title={tCommon('unsavedChanges.title')} description={tCommon('unsavedChanges.body')} confirmLabel={tCommon('unsavedChanges.leave')} isPending={false} onConfirm={() => router.push('/clients')} onDismiss={() => setShowLeaveConfirm(false)} /> : null}
+    </>
+  );
+}
+
+// ─── Panel ────────────────────────────────────────────────────────────────────
+// One surface for the whole document, with the action bar joined to its foot. The panel drops
+// its bottom border and the bar carries the matching bottom rounding, so the two read as a
+// single object rather than as a card with something parked underneath it.
+
+function FormPanel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-t-panel border border-b-0 border-border bg-surface px-5 py-6 shadow-e1 sm:px-8">
+      <div className="space-y-8">{children}</div>
     </div>
   );
 }
 
-function ClientTypeSelect({ register, t }: { register: ReturnType<typeof useForm<ClientFormValues>>['register']; t: ReturnType<typeof useTranslations<'platform.clients.create'>> }) {
-  return <Select id="client-type" {...register('type')}><option value="COMPANY">{t('clientTypes.COMPANY')}</option><option value="GOVERNMENT">{t('clientTypes.GOVERNMENT')}</option><option value="NGO">{t('clientTypes.NGO')}</option><option value="INDIVIDUAL">{t('clientTypes.INDIVIDUAL')}</option><option value="OTHER">{t('clientTypes.OTHER')}</option></Select>;
+function FormActionBar(props: React.ComponentProps<typeof FormActions>) {
+  return <FormActions {...props} className="rounded-b-panel border border-border shadow-e1 sm:px-8" />;
 }
 
-function StepIndicator({ step, labels, ariaLabel }: { step: 1 | 2; labels: [string, string]; ariaLabel: string }) {
-  return <nav aria-label={ariaLabel} className="flex items-center"><StepCircle n={1} label={labels[0]} state={step === 1 ? 'current' : 'done'} /><div className="mx-3 h-px flex-1 bg-border" /><StepCircle n={2} label={labels[1]} state={step === 2 ? 'current' : 'upcoming'} /></nav>;
+// ─── Fields ───────────────────────────────────────────────────────────────────
+
+function ClientTypeSelect({ control, t }: { control: Control<ClientFormValues>; t: ReturnType<typeof useTranslations<'platform.clients.create'>> }) {
+  return <Controller
+           control={control}
+           name="type"
+           render={({ field }) => (
+             <Select id="client-type" value={field.value} onChange={field.onChange}><option value="COMPANY">{t('clientTypes.COMPANY')}</option><option value="GOVERNMENT">{t('clientTypes.GOVERNMENT')}</option><option value="NGO">{t('clientTypes.NGO')}</option><option value="INDIVIDUAL">{t('clientTypes.INDIVIDUAL')}</option><option value="OTHER">{t('clientTypes.OTHER')}</option></Select>
+           )}
+         />;
 }
-function StepCircle({ n, label, state }: { n: number; label: string; state: 'current' | 'done' | 'upcoming' }) {
-  return <div className="flex items-center gap-2" aria-current={state === 'current' ? 'step' : undefined}><span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${state === 'done' ? 'bg-success text-white' : state === 'current' ? 'bg-brand-primary text-white' : 'bg-muted text-muted-foreground'}`}>{state === 'done' ? <Check size={14} weight="bold" aria-hidden="true" /> : n}</span><span className={`hidden text-sm font-medium sm:block ${state === 'upcoming' ? 'text-muted-foreground' : 'text-foreground'}`}>{label}</span></div>;
-}
+
 function DuplicateWarning({ candidates, onContinue, t }: { candidates: Awaited<ReturnType<typeof findClientDuplicateCandidates>>; onContinue: () => void; t: ReturnType<typeof useTranslations<'platform.clients.create'>> }) {
   return <Alert variant="warning" messages={[t('possibleDuplicate')]}><div className="mt-3 space-y-2">{candidates.map((candidate) => <div key={candidate.id} className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-2"><span className="text-sm font-medium text-foreground">{candidate.name}</span><Button asChild size="sm" variant="outline"><Link href={`/clients/${candidate.id}`} target="_blank">{t('openClient')}</Link></Button></div>)}<Button type="button" size="sm" variant="ghost" onClick={onContinue}>{t('continueAnyway')}</Button></div></Alert>;
 }

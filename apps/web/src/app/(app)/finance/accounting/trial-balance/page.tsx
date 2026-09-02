@@ -2,7 +2,7 @@ import { TrialBalanceReport } from '@/features/accounting/components/trial-balan
 
 export default function TrialBalancePage() {
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    <div className="w-full max-w-6xl">
       <TrialBalanceReport />
     </div>
   );

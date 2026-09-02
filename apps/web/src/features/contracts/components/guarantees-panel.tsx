@@ -8,6 +8,7 @@ import {
   Alert,
   Badge,
   Button,
+  DatePicker,
   Dialog,
   DialogContent,
   DialogFooter,
@@ -159,10 +160,10 @@ function GuaranteeCard({
             id={`guarantee-status-${guarantee.id}`}
             value={guarantee.status}
             disabled={update.isPending}
-            onChange={(e) => {
+            onChange={(value) => {
               update.mutate({
                 guaranteeId: guarantee.id,
-                status: e.target.value as GuaranteeStatus,
+                status: value as GuaranteeStatus,
               });
             }}
           >
@@ -362,11 +363,13 @@ function AddGuaranteeDialog({
               label={t('issueDate')}
               error={errors.issueDate?.message}
             >
-              <Input
-                id="guarantee-issue"
-                type="date"
-                aria-invalid={Boolean(errors.issueDate)}
-                {...register('issueDate', required)}
+              <Controller
+                control={control}
+                name="issueDate"
+                rules={required}
+                render={({ field }) => (
+                  <DatePicker id="guarantee-issue" value={field.value} onChange={field.onChange} />
+                )}
               />
             </FormField>
 
@@ -375,11 +378,10 @@ function AddGuaranteeDialog({
               label={t('expiryDate')}
               error={errors.expiryDate?.message}
             >
-              <Input
-                id="guarantee-expiry"
-                type="date"
-                aria-invalid={Boolean(errors.expiryDate)}
-                {...register('expiryDate', {
+              <Controller
+                control={control}
+                name="expiryDate"
+                rules={{
                   validate: (v) => {
                     if (v.trim() === '') return t('required');
                     const issue = getValues('issueDate');
@@ -387,7 +389,15 @@ function AddGuaranteeDialog({
                     // the API does not catch — both dates are only @IsDateString().
                     return !issue || v >= issue || t('expiryBeforeIssue');
                   },
-                })}
+                }}
+                render={({ field }) => (
+                  <DatePicker
+                    id="guarantee-expiry"
+                    value={field.value}
+                    onChange={field.onChange}
+                    min={getValues('issueDate') || undefined}
+                  />
+                )}
               />
             </FormField>
           </div>

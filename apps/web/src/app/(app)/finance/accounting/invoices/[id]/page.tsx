@@ -8,7 +8,7 @@ export default async function InvoiceDetailPage({
   const { id } = await params;
 
   return (
-    <div className="mx-auto w-full max-w-5xl">
+    <div className="w-full max-w-5xl">
       <InvoiceDetail invoiceId={id} />
     </div>
   );

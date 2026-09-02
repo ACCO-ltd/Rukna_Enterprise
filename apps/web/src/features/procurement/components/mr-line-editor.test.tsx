@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
+import { chooseOption, openSelect } from '@/test/choose-option';
 
 import type { Material, SpendCategory, UnitOfMeasure } from '../types';
 
@@ -21,6 +22,8 @@ import type { Material, SpendCategory, UnitOfMeasure } from '../types';
 const mocks = vi.hoisted(() => ({
   useMaterials: vi.fn(),
   useUoms: vi.fn(),
+  // UomDisplay offers "Add a unit" from the picker itself, so the hook it uses must exist.
+  useCreateUom: () => ({ mutate: vi.fn(), isPending: false, isError: false, error: null, reset: vi.fn() }),
 }));
 
 vi.mock('../hooks/use-procurement', () => mocks);
@@ -146,7 +149,9 @@ describe('MrLineEditor — line type', () => {
 
     // A SERVICE line has no material picker and does have a unit to choose.
     expect(screen.queryByPlaceholderText('Search by code or name')).not.toBeInTheDocument();
+    await openSelect(user, screen.getByRole('combobox', { name: 'Unit' }));
     expect(screen.getByRole('option', { name: /LOT/ })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
 
     await user.click(screen.getByRole('combobox', { name: 'Type' }));
   });
@@ -160,7 +165,7 @@ describe('MrLineEditor — line type', () => {
     };
     const { onChange } = setup([withMaterial]);
 
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Type' }), 'SERVICE');
+    await chooseOption(user, screen.getByRole('combobox', { name: 'Type' }), 'SERVICE');
 
     const emitted = onChange.mock.calls.at(-1)![0] as MrLineDraft[];
     expect(emitted[0]!.lineType).toBe('SERVICE');

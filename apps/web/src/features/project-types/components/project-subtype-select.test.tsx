@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProjectCategory } from '@erp/types';
 
 import { renderWithProviders } from '@/test/render';
+import { chooseOption, openSelect } from '@/test/choose-option';
 
 import { ProjectSubtypeSelect } from './project-subtype-select';
 
@@ -50,7 +51,8 @@ describe('ProjectSubtypeSelect', () => {
     expect(screen.getByRole('combobox')).toBeDisabled();
   });
 
-  it('lists only the chosen category’s active subtypes', () => {
+  it('lists only the chosen category’s active subtypes', async () => {
+    const user = userEvent.setup();
     renderWithProviders(
       <ProjectSubtypeSelect
         id="subtype"
@@ -61,6 +63,7 @@ describe('ProjectSubtypeSelect', () => {
     );
 
     expect(screen.getByRole('combobox')).toBeEnabled();
+    await openSelect(user, screen.getByRole('combobox'));
     expect(screen.getByRole('option', { name: /office buildings/i })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /retail centres/i })).toBeInTheDocument();
   });
@@ -77,7 +80,7 @@ describe('ProjectSubtypeSelect', () => {
       />,
     );
 
-    await user.selectOptions(screen.getByRole('combobox'), 's-office');
+    await chooseOption(user, screen.getByRole('combobox'), 's-office');
 
     expect(onChange).toHaveBeenCalledWith('s-office');
   });
@@ -106,8 +109,9 @@ describe('ProjectSubtypeSelect', () => {
       />,
     );
 
-    // The add affordance is a button below the select, not an option inside it.
-    await user.click(screen.getByRole('button', { name: /add a subtype/i }));
+    // The add affordance is the last row of the list now, not a button beside the field.
+    await openSelect(user, screen.getByRole('combobox'));
+    await user.click(screen.getByRole('option', { name: /add a subtype/i }));
 
     await user.type(screen.getByLabelText(/subtype name/i), 'Mixed-use');
     await user.click(screen.getByRole('button', { name: /^add subtype$/i }));

@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
+import { chooseOption, openSelect } from '@/test/choose-option';
+import { pickDate } from '@/test/pick-date';
 
 import type { Account, MigrationReport } from '../types';
 
@@ -68,13 +70,10 @@ beforeEach(() => {
 });
 
 async function fillHeader(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(screen.getByLabelText('Cutover date'), '2026-01-01');
+  await pickDate(user, screen.getByLabelText('Cutover date'), '2026-01-01');
   await user.type(screen.getByLabelText('Batch reference'), 'OB-2026-01');
-  await user.selectOptions(
-    screen.getByLabelText('Accounts receivable control account'),
-    '11000',
-  );
-  await user.selectOptions(screen.getByLabelText('Accounts payable control account'), '20000');
+  await chooseOption(user, screen.getByLabelText('Accounts receivable control account'), '11000');
+  await chooseOption(user, screen.getByLabelText('Accounts payable control account'), '20000');
 }
 
 describe('OpeningBalanceWizard', () => {
@@ -96,11 +95,15 @@ describe('OpeningBalanceWizard', () => {
     expect(screen.getByText(/cannot be added later without reversing it/i)).toBeInTheDocument();
   });
 
-  it('offers only AR-subtype accounts for the AR control account', () => {
+  it('offers only AR-subtype accounts for the AR control account', async () => {
+    const user = userEvent.setup();
     renderWithProviders(<OpeningBalanceWizard />);
 
-    const ar = screen.getByLabelText('Accounts receivable control account') as HTMLSelectElement;
-    const codes = [...ar.options].map((o) => o.value).filter(Boolean);
+    await openSelect(user, screen.getByLabelText('Accounts receivable control account'));
+    const codes = screen
+      .getAllByRole('option')
+      .map((option) => option.getAttribute('data-value'))
+      .filter((value): value is string => value !== null && !value.startsWith('__erp_'));
 
     expect(codes).toEqual(['11000']);
   });

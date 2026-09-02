@@ -19,6 +19,7 @@ import { useTranslations } from 'next-intl';
 import {
   FormField,
   Input,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -266,11 +267,10 @@ function CategoryCreateForm({
       {/* Only root categories are offered as parents — the API returns two levels, so a
           third would be created and then never displayed. */}
       <FormField htmlFor={ids.parent} label={t('parent')}>
-        <select
+        <Select
           id={ids.parent}
           name="parentCode"
           defaultValue=""
-          className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"
         >
           <option value="">{t('noParent')}</option>
           {roots.map((root) => (
@@ -278,7 +278,7 @@ function CategoryCreateForm({
               {root.code} · {root.name}
             </option>
           ))}
-        </select>
+        </Select>
         <p className="text-xs text-muted-foreground">{t('parentHint')}</p>
       </FormField>
     </CreateForm>

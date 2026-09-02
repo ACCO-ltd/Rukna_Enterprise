@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
+import { chooseOption, openSelect } from '@/test/choose-option';
 
 /**
  * The cost-target picker is the A3 control (no. 148): a line points at a project + a leaf, active
@@ -149,9 +150,11 @@ describe('PoCostTargetPicker — not-chargeable toggle', () => {
 });
 
 describe('PoCostTargetPicker — BOQ node select', () => {
-  it('offers only leaf, active nodes and hides sections and inactive nodes', () => {
+  it('offers only leaf, active nodes and hides sections and inactive nodes', async () => {
+    const user = userEvent.setup();
     setup({ notChargeable: false, projectId: 'proj-1', boqNodeId: null });
     // The active leaf is offered.
+    await openSelect(user, screen.getByLabelText(/BOQ cost node/i));
     expect(screen.getByRole('option', { name: /01\.01 · Excavation/ })).toBeInTheDocument();
     // The section and the inactive leaf are not.
     expect(screen.queryByRole('option', { name: /Earthworks/ })).not.toBeInTheDocument();
@@ -161,10 +164,7 @@ describe('PoCostTargetPicker — BOQ node select', () => {
   it('emits both ids when a node is chosen under a project', async () => {
     const user = userEvent.setup();
     const { onChange } = setup({ notChargeable: false, projectId: 'proj-1', boqNodeId: null });
-    await user.selectOptions(
-      screen.getByLabelText(/BOQ cost node/i),
-      screen.getByRole('option', { name: /01\.01 · Excavation/ }),
-    );
+    await chooseOption(user, screen.getByLabelText(/BOQ cost node/i), /01\.01 · Excavation/);
     expect(onChange).toHaveBeenCalledWith({
       notChargeable: false,
       projectId: 'proj-1',
@@ -175,10 +175,7 @@ describe('PoCostTargetPicker — BOQ node select', () => {
   it('clears the node when the project changes', async () => {
     const user = userEvent.setup();
     const { onChange } = setup({ notChargeable: false, projectId: null, boqNodeId: null });
-    await user.selectOptions(
-      screen.getByLabelText('Project'),
-      screen.getByRole('option', { name: /Waberi Roadworks/ }),
-    );
+    await chooseOption(user, screen.getByLabelText('Project'), /Waberi Roadworks/);
     expect(onChange).toHaveBeenCalledWith({
       notChargeable: false,
       projectId: 'proj-1',

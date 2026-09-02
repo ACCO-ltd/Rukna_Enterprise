@@ -71,7 +71,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
         aria-invalid={isInvalid}
         aria-required={isRequired}
         className={cn(
-          'flex h-11 w-full rounded-md border border-border-strong bg-surface px-3.5 py-2 text-sm text-foreground shadow-e1 placeholder:text-muted-foreground',
+          'flex h-control w-full rounded-control border border-border-strong bg-surface px-3.5 py-2 text-body-sm text-foreground shadow-e1 placeholder:text-muted-foreground',
           'transition-[border-color,box-shadow] duration-150 hover:border-border-interactive focus:border-brand-primary focus:outline-none focus:shadow-ring',
           'disabled:cursor-not-allowed disabled:opacity-50',
           'read-only:cursor-default read-only:bg-muted read-only:text-muted-foreground',

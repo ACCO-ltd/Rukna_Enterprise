@@ -35,7 +35,7 @@
 
 import { useId } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
-import { Badge, Input, MoneyInput } from '@erp/ui';
+import { Badge, Input, MoneyInput, Select } from '@erp/ui';
 
 import { formatMoney } from '@/lib/format';
 import { MONEY_SCALE, QUANTITY_SCALE, fromMinorUnits, parseMinorUnits } from '@/lib/money';
@@ -256,18 +256,17 @@ function PoLineRow({
           <label htmlFor={ids.type} className="mb-1 block text-xs font-medium">
             {tc('type')}
           </label>
-          <select
+          <Select
             id={ids.type}
             value={line.lineType}
-            onChange={(e) => onChangeType(e.target.value as ProcurementLineType)}
-            className="min-h-11 w-full rounded-md border border-border bg-surface px-2 text-sm"
+            onChange={(value) => onChangeType(value as ProcurementLineType)}
           >
             {(['MATERIAL', 'SERVICE', 'OTHER'] as const).map((type) => (
               <option key={type} value={type}>
                 {tType(type)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         {isMaterial ? (

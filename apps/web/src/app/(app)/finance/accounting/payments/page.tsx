@@ -2,7 +2,7 @@ import { SupplierPaymentsList } from '@/features/procurement/components/payment-
 
 export default function SupplierPaymentsPage() {
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    <div className="w-full max-w-6xl">
       <SupplierPaymentsList />
     </div>
   );

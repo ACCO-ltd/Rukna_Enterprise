@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
+import { chooseOption } from '@/test/choose-option';
 import { listAccounts } from '@/features/accounting/api/accounting-api';
 import type { Account, AccountVersion } from '@/features/accounting/types';
 
@@ -121,7 +122,7 @@ describe('ChartOfAccounts', () => {
     renderWithProviders(<ChartOfAccounts />);
 
     await screen.findByText('10100');
-    await user.selectOptions(screen.getByLabelText('Account class'), 'LIABILITY');
+    await chooseOption(user, screen.getByLabelText('Account class'), 'LIABILITY');
 
     expect(screen.getByText('Accounts Payable')).toBeInTheDocument();
     expect(screen.queryByText('Salaam Bank')).not.toBeInTheDocument();

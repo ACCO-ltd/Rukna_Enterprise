@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -74,11 +75,10 @@ export function PoList() {
           <label htmlFor={statusId} className="mb-1 block text-xs font-medium text-muted-foreground">
             {tc('status')}
           </label>
-          <select
+          <Select
             id={statusId}
             value={status}
-            onChange={(e) => setStatus(e.target.value as PurchaseOrderStatus | '')}
-            className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"
+            onChange={(value) => setStatus(value as PurchaseOrderStatus | '')}
           >
             <option value="">{tc('all')}</option>
             {STATUSES.map((s) => (
@@ -86,7 +86,7 @@ export function PoList() {
                 {tStatus(s)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
 

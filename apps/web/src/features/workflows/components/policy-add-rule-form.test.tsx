@@ -3,6 +3,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { renderWithProviders } from '@/test/render';
+import { chooseOption } from '@/test/choose-option';
 
 /**
  * The add-rule form.
@@ -43,7 +44,7 @@ describe('PolicyAddRuleForm', () => {
 
     // Default transaction type is the first authorable one (Material request → DRAFT/SUBMITTED).
     await userEvent.type(screen.getByLabelText(/Rule key/), 'MR_DEFAULT');
-    await userEvent.selectOptions(screen.getByLabelText(/Required role/), 'PROCUREMENT_MANAGER');
+    await chooseOption(userEvent.setup(), screen.getByLabelText(/Required role/), 'PROCUREMENT_MANAGER');
     await userEvent.click(screen.getByRole('button', { name: 'Add rule' }));
 
     expect(state.mutate).toHaveBeenCalledTimes(1);
@@ -67,7 +68,7 @@ describe('PolicyAddRuleForm', () => {
     await userEvent.type(screen.getByLabelText(/Rule key/), 'MR_DEFAULT');
     expect(screen.getByRole('button', { name: 'Add rule' })).toBeDisabled();
 
-    await userEvent.selectOptions(screen.getByLabelText(/Required role/), 'CFO');
+    await chooseOption(userEvent.setup(), screen.getByLabelText(/Required role/), 'CFO');
     expect(screen.getByRole('button', { name: 'Add rule' })).toBeEnabled();
   });
 
@@ -77,7 +78,7 @@ describe('PolicyAddRuleForm', () => {
     renderWithProviders(<PolicyAddRuleForm policyId="p1" />);
 
     await userEvent.type(screen.getByLabelText(/Rule key/), 'MR_BAND');
-    await userEvent.selectOptions(screen.getByLabelText(/Required role/), 'CFO');
+    await chooseOption(userEvent.setup(), screen.getByLabelText(/Required role/), 'CFO');
     await userEvent.type(screen.getByLabelText('Minimum amount'), '10000');
     await userEvent.type(screen.getByLabelText('Maximum amount'), '500');
 

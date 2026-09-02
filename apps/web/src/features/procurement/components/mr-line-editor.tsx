@@ -22,7 +22,7 @@
 
 import { useId } from 'react';
 import { useTranslations } from 'next-intl';
-import { Button, Input } from '@erp/ui';
+import { Button, Input, Select } from '@erp/ui';
 
 import { QUANTITY_SCALE, parseMinorUnits } from '@/lib/money';
 
@@ -193,18 +193,17 @@ function MrLineRow({
           <label htmlFor={ids.type} className="mb-1 block text-xs font-medium">
             {tc('type')}
           </label>
-          <select
+          <Select
             id={ids.type}
             value={line.lineType}
-            onChange={(e) => onChangeType(e.target.value as ProcurementLineType)}
-            className="min-h-11 w-full rounded-md border border-border bg-surface px-2 text-sm"
+            onChange={(value) => onChangeType(value as ProcurementLineType)}
           >
             {(['MATERIAL', 'SERVICE', 'OTHER'] as const).map((type) => (
               <option key={type} value={type}>
                 {tType(type)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         {isMaterial ? (
@@ -254,11 +253,10 @@ function MrLineRow({
           <label htmlFor={ids.spend} className="mb-1 block text-xs font-medium">
             {tc('spendCategory')} ({tc('optional')})
           </label>
-          <select
+          <Select
             id={ids.spend}
             value={line.spendCategoryId}
-            onChange={(e) => onPatch({ spendCategoryId: e.target.value })}
-            className="min-h-11 w-full rounded-md border border-border bg-surface px-2 text-sm"
+            onChange={(value) => onPatch({ spendCategoryId: value })}
           >
             <option value="">—</option>
             {spendCategories.flatMap((root) => [
@@ -272,7 +270,7 @@ function MrLineRow({
                 </option>
               )),
             ])}
-          </select>
+          </Select>
         </div>
       </div>
 

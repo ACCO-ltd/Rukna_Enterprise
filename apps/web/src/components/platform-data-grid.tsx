@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
+  Checkbox,
   cn,
   DropdownMenu,
   DropdownMenuContent,
@@ -12,6 +13,7 @@ import {
   DropdownMenuTrigger,
   Input,
   Label,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -237,16 +239,15 @@ function PaginationBar({
           <label htmlFor={pageLabelId} className="whitespace-nowrap text-xs text-muted-foreground">
             {t('perPage')}
           </label>
-          <select
+          <Select
             id={pageLabelId}
-            value={pageSize}
-            onChange={(e) => onPageSizeChange(Number(e.target.value))}
-            className="h-8 rounded border border-border bg-surface px-2 text-xs text-foreground focus:border-brand-primary focus:outline-none"
+            value={String(pageSize)}
+            onChange={(value) => onPageSizeChange(Number(value))}
           >
             {pageSizeOptions.map((opt) => (
-              <option key={opt} value={opt}>{opt}</option>
+              <option key={opt} value={String(opt)}>{opt}</option>
             ))}
-          </select>
+          </Select>
         </div>
 
         {/* Page navigation */}
@@ -721,15 +722,19 @@ export function PlatformDataGrid<T>({
               {/* Selection checkbox header */}
               {hasSelection && selection ? (
                 <TableHead className="w-10">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     aria-label="Select all"
                     checked={
                       visible.length > 0 &&
                       visible.every((row) => selection.selected.has(rowKey(row)))
                     }
+                    // Some but not all: without this the header reads "nothing selected"
+                    // while rows below it are ticked.
+                    indeterminate={
+                      visible.some((row) => selection.selected.has(rowKey(row))) &&
+                      !visible.every((row) => selection.selected.has(rowKey(row)))
+                    }
                     onChange={(e) => selection.onSelectAll(e.target.checked)}
-                    className="h-4 w-4 rounded border-border accent-brand-primary"
                   />
                 </TableHead>
               ) : null}
@@ -794,12 +799,10 @@ export function PlatformDataGrid<T>({
                   {/* Selection checkbox cell */}
                   {hasSelection && selection ? (
                     <TableCell className="w-10">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         aria-label={`Select ${rowKey(row)}`}
                         checked={selection.selected.has(rowKey(row))}
                         onChange={(e) => selection.onSelect(rowKey(row), e.target.checked)}
-                        className="h-4 w-4 rounded border-border accent-brand-primary"
                       />
                     </TableCell>
                   ) : null}

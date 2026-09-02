@@ -4,8 +4,8 @@ import { useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
+  DatePicker,
   FormField,
-  Input,
   Select,
   Table,
   TableBody,
@@ -58,7 +58,7 @@ export function AccountLedgerReport() {
           <Select
             id="ledger-account"
             value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
+            onChange={(value) => setAccountId(value)}
           >
             <option value="">{t('selectAccount')}</option>
             {selectable.map((account) => (
@@ -70,20 +70,18 @@ export function AccountLedgerReport() {
         </FormField>
 
         <FormField htmlFor="ledger-from" label={tCommon('fromDate')} className="sm:w-44">
-          <Input
+          <DatePicker
             id="ledger-from"
-            type="date"
             value={range.from}
-            onChange={(e) => setRange((r) => ({ ...r, from: e.target.value }))}
+            onChange={(value) => setRange((r) => ({ ...r, from: value }))}
           />
         </FormField>
 
         <FormField htmlFor="ledger-to" label={tCommon('toDate')} className="sm:w-44">
-          <Input
+          <DatePicker
             id="ledger-to"
-            type="date"
             value={range.to}
-            onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))}
+            onChange={(value) => setRange((r) => ({ ...r, to: value }))}
           />
         </FormField>
       </div>

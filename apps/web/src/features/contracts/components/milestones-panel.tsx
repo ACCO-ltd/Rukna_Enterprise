@@ -1,12 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Badge,
   Button,
+  DatePicker,
   Dialog,
   DialogContent,
   DialogFooter,
@@ -168,6 +169,7 @@ function AddMilestoneDialog({
 
   const {
     register,
+    control,
     handleSubmit,
     formState: { errors },
   } = useForm<MilestoneFormValues>({
@@ -229,7 +231,13 @@ function AddMilestoneDialog({
           </FormField>
 
           <FormField htmlFor="milestone-due" label={t('dueDate')}>
-            <Input id="milestone-due" type="date" {...register('dueDate')} />
+            <Controller
+              control={control}
+              name="dueDate"
+              render={({ field }) => (
+                <DatePicker id="milestone-due" value={field.value} onChange={field.onChange} />
+              )}
+            />
           </FormField>
 
           <DialogFooter>

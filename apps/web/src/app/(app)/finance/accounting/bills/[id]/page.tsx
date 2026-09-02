@@ -8,7 +8,7 @@ export default async function SupplierBillDetailPage({
   const { id } = await params;
 
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    <div className="w-full max-w-6xl">
       <SupplierBillDetail id={id} />
     </div>
   );

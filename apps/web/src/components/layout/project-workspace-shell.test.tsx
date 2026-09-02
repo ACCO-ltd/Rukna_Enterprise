@@ -1,10 +1,12 @@
 import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ProjectStatus } from '@erp/types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
 
 import { ProjectWorkspaceShell } from './project-workspace-shell';
+import { openSelect } from '@/test/choose-option';
 
 const push = vi.fn();
 const useProject = vi.fn();
@@ -120,7 +122,8 @@ describe('ProjectWorkspaceShell', () => {
    * Programme & Progress, Procurement and Documents joined once theirs shipped (ADR-021/014).
    * Activity is deliberately absent — recent activity lives on Overview, not as its own tab.
    */
-  it('shows one flat row of implemented destinations', () => {
+  it('shows one flat row of implemented destinations', async () => {
+    const user = userEvent.setup();
     renderWithProviders(
       <ProjectWorkspaceShell id="project-1">
         <p>Workspace content</p>
@@ -128,6 +131,7 @@ describe('ProjectWorkspaceShell', () => {
     );
 
     expect(screen.getByRole('navigation', { name: 'Project navigation' })).toBeInTheDocument();
+    await openSelect(user, screen.getByRole('combobox'));
     expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
       'Overview',
       'BOQ',

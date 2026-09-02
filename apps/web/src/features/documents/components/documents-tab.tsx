@@ -292,8 +292,8 @@ function UploadForm({ projectId }: { projectId: string }) {
           <Select
             id="doc-category"
             value={category}
-            onChange={(e) => {
-              setCategory(e.target.value as DocumentCategory);
+            onChange={(value) => {
+              setCategory(value as DocumentCategory);
             }}
           >
             {CATEGORIES.map((c) => (

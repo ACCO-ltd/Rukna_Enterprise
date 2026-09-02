@@ -20,7 +20,7 @@
 
 import { useId, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Input } from '@erp/ui';
+import { Alert, Button, FormField, Input, Select } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
 
@@ -137,11 +137,10 @@ export function CreateFiscalYearForm({ onDone }: { onDone: () => void }) {
       </FormField>
 
       <FormField htmlFor={ids.retained} label={t('retainedEarnings')}>
-        <select
+        <Select
           id={ids.retained}
           value={retainedCode}
-          onChange={(e) => setRetainedCode(e.target.value)}
-          className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"
+          onChange={(value) => setRetainedCode(value)}
         >
           <option value="" disabled>
             —
@@ -151,7 +150,7 @@ export function CreateFiscalYearForm({ onDone }: { onDone: () => void }) {
               {account.code} · {accountName(account, locale)}
             </option>
           ))}
-        </select>
+        </Select>
         <p className="text-xs text-muted-foreground">{t('retainedEarningsHint')}</p>
       </FormField>
 

@@ -7,7 +7,7 @@ export default async function NewIpaPage({ params }: { params: Promise<{ id: str
   const t = await getTranslations('platform.ipa.create');
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div className="w-full max-w-4xl">
       <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
 
       <div className="mt-6 rounded-lg border border-border bg-surface p-5 sm:p-6">

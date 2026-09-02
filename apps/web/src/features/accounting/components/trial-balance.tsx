@@ -4,8 +4,8 @@ import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
+  DatePicker,
   FormField,
-  Input,
   Table,
   TableBody,
   TableCell,
@@ -44,11 +44,10 @@ export function TrialBalanceReport() {
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
         <FormField htmlFor="tb-date" label={tCommon('asOfDate')} className="sm:w-56">
-          <Input
+          <DatePicker
             id="tb-date"
-            type="date"
             value={asOfDate}
-            onChange={(e) => setAsOfDate(e.target.value)}
+            onChange={(value) => setAsOfDate(value)}
           />
         </FormField>
 

@@ -4,7 +4,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
   const { id } = await params;
 
   return (
-    <div className="mx-auto w-full max-w-5xl">
+    <div className="w-full max-w-5xl">
       <ClientDetail clientId={id} />
     </div>
   );

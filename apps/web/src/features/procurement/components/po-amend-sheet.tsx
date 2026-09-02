@@ -17,6 +17,7 @@ import { useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
+  DatePicker,
   FormField,
   Input,
   Sheet,
@@ -171,20 +172,18 @@ export function PoAmendSheet({
         <div className="space-y-5 px-5 py-5 sm:px-6">
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField htmlFor={ids.effective} label={t('effectiveFrom')}>
-              <Input
+              <DatePicker
                 id={ids.effective}
-                type="date"
                 value={effectiveFrom}
-                onChange={(e) => setEffectiveFrom(e.target.value)}
+                onChange={(value) => setEffectiveFrom(value)}
               />
             </FormField>
 
             <FormField htmlFor={ids.expected} label={`${t('expectedDelivery')} (${tc('optional')})`}>
-              <Input
+              <DatePicker
                 id={ids.expected}
-                type="date"
                 value={expectedDeliveryDate}
-                onChange={(e) => setExpectedDeliveryDate(e.target.value)}
+                onChange={(value) => setExpectedDeliveryDate(value)}
               />
             </FormField>
 

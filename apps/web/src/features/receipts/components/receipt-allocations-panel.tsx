@@ -218,22 +218,29 @@ function AllocateDialog({ receipt, onClose }: { receipt: ReceiptDetail; onClose:
             label={t('invoice')}
             error={errors.clientInvoiceId?.message}
           >
-            <Select
-              id="allocation-invoice"
-              disabled={isLoading || options.length === 0}
-              aria-invalid={Boolean(errors.clientInvoiceId)}
-              {...register('clientInvoiceId', { required: t('invoiceRequired') })}
-            >
-              <option value="">
-                {isLoading ? tCommon('loading') : t('invoicePlaceholder')}
-              </option>
-              {options.map(({ invoice, outstandingMinor }) => (
-                <option key={invoice.id} value={invoice.id}>
-                  {invoice.invoiceNumber ?? invoice.id.slice(-8)} —{' '}
-                  {formatMoney(fromMinorUnits(outstandingMinor), receipt.currencyCode, locale)}
-                </option>
-              ))}
-            </Select>
+            <Controller
+              control={control}
+              name="clientInvoiceId"
+              rules={{ required: t('invoiceRequired') }}
+              render={({ field }) => (
+                <Select
+                  id="allocation-invoice"
+                  disabled={isLoading || options.length === 0}
+                  value={field.value}
+                  onChange={field.onChange}
+                >
+                  <option value="">
+                    {isLoading ? tCommon('loading') : t('invoicePlaceholder')}
+                  </option>
+                  {options.map(({ invoice, outstandingMinor }) => (
+                    <option key={invoice.id} value={invoice.id}>
+                      {invoice.invoiceNumber ?? invoice.id.slice(-8)} —{' '}
+                      {formatMoney(fromMinorUnits(outstandingMinor), receipt.currencyCode, locale)}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            />
           </FormField>
 
           <FormField htmlFor="allocation-amount" label={t('amount')} error={errors.amount?.message}>

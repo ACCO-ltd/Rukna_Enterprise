@@ -3,7 +3,7 @@
 import { Controller, useForm } from 'react-hook-form';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Input, MoneyInput, Select } from '@erp/ui';
+import { Alert, Button, DatePicker, FormField, Input, MoneyInput, Select } from '@erp/ui';
 
 import { useClients } from '@/features/clients/hooks/use-clients';
 import { toDecimalString } from '@/features/contracts/contract-form-payload';
@@ -73,21 +73,28 @@ export function ReceiptForm() {
       {clients.isError ? <Alert variant="error" messages={[t('loadFailed')]} /> : null}
 
       <FormField htmlFor="receipt-client" label={t('client')} error={errors.clientId?.message}>
-        <Select
-          id="receipt-client"
-          disabled={clients.isPending}
-          aria-invalid={Boolean(errors.clientId)}
-          {...register('clientId', { required: t('clientRequired') })}
-        >
-          <option value="">
-            {clients.isPending ? tCommon('loading') : t('clientPlaceholder')}
-          </option>
-          {(clients.data ?? []).map((client) => (
-            <option key={client.id} value={client.id}>
-              {client.code} — {client.name}
-            </option>
-          ))}
-        </Select>
+        <Controller
+          control={control}
+          name="clientId"
+          rules={{ required: t('clientRequired') }}
+          render={({ field }) => (
+            <Select
+              id="receipt-client"
+              disabled={clients.isPending}
+              value={field.value}
+              onChange={field.onChange}
+            >
+              <option value="">
+                {clients.isPending ? tCommon('loading') : t('clientPlaceholder')}
+              </option>
+              {(clients.data ?? []).map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.code} — {client.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        />
       </FormField>
 
       <div className="grid gap-5 sm:grid-cols-2">
@@ -96,11 +103,13 @@ export function ReceiptForm() {
           label={t('receiptDate')}
           error={errors.receiptDate?.message}
         >
-          <Input
-            id="receipt-date"
-            type="date"
-            aria-invalid={Boolean(errors.receiptDate)}
-            {...register('receiptDate', { required: t('dateRequired') })}
+          <Controller
+            control={control}
+            name="receiptDate"
+            rules={{ required: t('dateRequired') }}
+            render={({ field }) => (
+              <DatePicker id="receipt-date" value={field.value} onChange={field.onChange} />
+            )}
           />
         </FormField>
 

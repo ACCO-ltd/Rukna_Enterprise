@@ -23,6 +23,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { HandCoins, Receipt, TrendUp, WarningCircle } from '@phosphor-icons/react';
 import {
   Alert,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -179,11 +180,10 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
           >
             {tc('project')}
           </label>
-          <select
+          <Select
             id="ledger-project"
             value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
-            className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
+            onChange={(value) => setProjectId(value)}
           >
             <option value="">{t('selectProject')}</option>
             {(projects.data ?? []).map((p) => (
@@ -191,7 +191,7 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
                 {p.code} · {p.name}
               </option>
             ))}
-          </select>
+          </Select>
           <p className="mt-1 text-xs text-muted-foreground">{t('selectProjectHint')}</p>
         </div>
       </div>

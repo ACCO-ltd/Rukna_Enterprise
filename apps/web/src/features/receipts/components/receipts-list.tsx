@@ -123,8 +123,8 @@ export function ReceiptsList() {
           <Select
             id="receipt-client"
             value={clientId}
-            onChange={(e) => {
-              setClientId(e.target.value);
+            onChange={(value) => {
+              setClientId(value);
             }}
           >
             <option value="">{t('allClients')}</option>

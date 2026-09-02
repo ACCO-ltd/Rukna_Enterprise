@@ -118,7 +118,7 @@ export function PostReceiptDialog({
               <Select
                 id="post-bank"
                 value={bankAccountId}
-                onChange={(e) => setBankAccountId(e.target.value)}
+                onChange={(value) => setBankAccountId(value)}
               >
                 <option value="">{t('bankPlaceholder')}</option>
                 {receiptBanks.map((bank) => (
@@ -150,10 +150,10 @@ export function PostReceiptDialog({
                   <Select
                     id={`inv-${row.key}`}
                     value={row.clientInvoiceId}
-                    onChange={(e) =>
+                    onChange={(value) =>
                       setRows((prev) =>
                         prev.map((r) =>
-                          r.key === row.key ? { ...r, clientInvoiceId: e.target.value } : r,
+                          r.key === row.key ? { ...r, clientInvoiceId: value } : r,
                         ),
                       )
                     }

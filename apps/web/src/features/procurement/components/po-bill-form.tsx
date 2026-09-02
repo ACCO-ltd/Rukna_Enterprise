@@ -36,7 +36,7 @@
 import { useId, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Input, MoneyInput } from '@erp/ui';
+import { Alert, Button, DatePicker, FormField, Input, MoneyInput, Select } from '@erp/ui';
 
 import { accountName } from '@/features/accounting/account-display';
 import { useAccounts, usePostingProfiles } from '@/features/accounting/hooks/use-accounting';
@@ -265,20 +265,18 @@ export function PoSupplierBillForm() {
 
         <div className="flex flex-wrap gap-4">
           <FormField htmlFor={ids.billDate} label={t('billDate')} className="min-w-44 flex-1">
-            <Input
+            <DatePicker
               id={ids.billDate}
-              type="date"
               value={billDate}
-              onChange={(e) => setBillDate(e.target.value)}
+              onChange={(value) => setBillDate(value)}
             />
           </FormField>
 
           <FormField htmlFor={ids.dueDate} label={t('dueDate')} className="min-w-44 flex-1">
-            <Input
+            <DatePicker
               id={ids.dueDate}
-              type="date"
               value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
+              onChange={(value) => setDueDate(value)}
             />
           </FormField>
         </div>
@@ -493,11 +491,10 @@ function PoBillLineRow({ index, line, options, error, locale, onChange }: PoBill
       </div>
 
       <FormField htmlFor={ids.profile} label={t('expenseProfile')}>
-        <select
+        <Select
           id={ids.profile}
           value={line.expenseProfileCode}
-          onChange={(e) => onChange({ expenseProfileCode: e.target.value })}
-          className="min-h-11 w-full rounded-control border border-border bg-surface px-3 text-sm"
+          onChange={(value) => onChange({ expenseProfileCode: value })}
         >
           <option value="" disabled>
             —
@@ -507,7 +504,7 @@ function PoBillLineRow({ index, line, options, error, locale, onChange }: PoBill
               {profile.name} · {profile.account.code} {accountName(profile.account, locale)}
             </option>
           ))}
-        </select>
+        </Select>
         <p className="text-xs text-muted-foreground">{t('expenseProfileHint')}</p>
       </FormField>
 

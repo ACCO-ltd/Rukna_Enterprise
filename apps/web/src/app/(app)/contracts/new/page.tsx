@@ -7,7 +7,7 @@ export default async function NewContractPage() {
   const t = await getTranslations('platform.contracts');
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div className="w-full max-w-4xl">
       <PageHeader
         breadcrumbs={[{ label: t('title'), href: '/contracts' }]}
         title={t('create.title')}

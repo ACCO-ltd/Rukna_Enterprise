@@ -365,7 +365,7 @@ export function IpcWizard({ contractId, ipaId }: IpcWizardProps) {
   const isRejected = context.status === 'REJECTED';
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6">
+    <div className="max-w-5xl space-y-6 px-4 py-6 sm:px-6">
       <div className="rounded-panel border border-border bg-surface p-5 shadow-e1 sm:p-6">
         <h1 className="text-h1 font-semibold tracking-tight text-foreground">{t('title')}</h1>
       </div>

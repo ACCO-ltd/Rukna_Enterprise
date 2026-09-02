@@ -2,7 +2,7 @@ import { MonthlyComparisonReport } from '@/features/accounting/components/monthl
 
 export default function MonthlyComparisonPage() {
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    <div className="w-full max-w-6xl">
       <MonthlyComparisonReport />
     </div>
   );

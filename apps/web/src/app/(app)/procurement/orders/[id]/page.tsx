@@ -8,7 +8,7 @@ export default async function PurchaseOrderDetailPage({
   const { id } = await params;
 
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    <div className="w-full max-w-6xl">
       <PoDetail id={id} />
     </div>
   );

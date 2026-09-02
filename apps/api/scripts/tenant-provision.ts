@@ -5,6 +5,7 @@ import { parseArgs } from 'util';
 import { PrismaClient as PlatformPrismaClient } from '../src/generated/platform-client/index.js';
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { seedDistricts } from '../prisma/seeds/districts.js';
 import { seedAccoWorkflows } from '../src/platform/workflows/seeders/acco-workflows.seed.js';
 import { seedUserAccess } from './tenant-access.js';
 import { seedGovernedSystemRoles } from './governed-roles.js';
@@ -108,6 +109,12 @@ async function main() {
     data: { name: tenantName, slug, shortCode: slug.toUpperCase().slice(0, 8) },
   });
   console.log(`  ✓ Organization created: ${org.id}`);
+
+  // ADR-025: the District registry is the site segment of every project code, and the New
+  // Project form requires one. Without this a freshly provisioned tenant opens that form to an
+  // empty, required picker — which is exactly what happened before this line existed.
+  const districts = await seedDistricts(tenantPrisma, org.id);
+  console.log(`  ✓ Districts seeded: ${districts.created}`);
 
   const adminRole = await tenantPrisma.role.create({
     data: { name: 'ADMIN', description: 'System administrator', organizationId: org.id },

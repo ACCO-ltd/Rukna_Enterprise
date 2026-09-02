@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, FormField, Input } from '@erp/ui';
+import { Alert, Button, DatePicker, FormField } from '@erp/ui';
 
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { InvoiceStatusBadges } from '@/features/accounting/components/invoice-status-badges';
@@ -135,30 +135,26 @@ export function IpcBillingCard({
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <FormField htmlFor="invoice-date" label={t('invoiceDate')}>
-                  <Input
+                  <DatePicker
                     id="invoice-date"
-                    type="date"
                     value={invoiceDate}
-                    onChange={(e) => {
-                      setInvoiceDate(e.target.value);
+                    onChange={(value) => {
+                      setInvoiceDate(value);
                       // Keeping the 30-day relationship as the user edits the issue date. They
                       // can still override the due date afterwards; this only stops it silently
                       // falling before the invoice date.
-                      setDueDate(defaultDueDate(e.target.value));
+                      setDueDate(defaultDueDate(value));
                     }}
-                    required
                   />
                 </FormField>
 
                 <FormField htmlFor="due-date" label={t('dueDate')}>
-                  <Input
+                  <DatePicker
                     id="due-date"
-                    type="date"
                     value={dueDate}
                     min={invoiceDate}
                     aria-describedby="due-date-hint"
-                    onChange={(e) => setDueDate(e.target.value)}
-                    required
+                    onChange={(value) => setDueDate(value)}
                   />
                   <p id="due-date-hint" className="text-xs text-muted-foreground">
                     {t('dueDateHint')}

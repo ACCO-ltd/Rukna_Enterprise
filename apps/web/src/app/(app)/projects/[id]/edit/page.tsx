@@ -12,7 +12,7 @@ export default async function EditProjectPage({
   const t = await getTranslations('platform.projects.detail');
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div className="w-full max-w-4xl">
       <PageHeader
         breadcrumbs={[{ label: t('backToProject'), href: `/projects/${id}` }]}
         title={t('editTitle')}

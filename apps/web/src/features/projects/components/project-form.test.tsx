@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
+import { findDayCell, pickDate } from '@/test/pick-date';
+import { chooseOption } from '@/test/choose-option';
 import { ApiError } from '@/lib/api-client';
 import { createProject } from '@/features/projects/api/projects-api';
 
@@ -75,11 +77,11 @@ async function fillStep1(
   // getByLabelText uses raw textContent which includes the aria-hidden asterisk on
   // required fields; getByRole uses the ARIA accessible-name algorithm which excludes it.
   await user.type(screen.getByRole('textbox', { name: /^project name/i }), name);
-  await user.selectOptions(screen.getByRole('combobox', { name: /^district/i }), 'd-wbr');
+  await chooseOption(user, screen.getByRole('combobox', { name: /^district/i }), 'd-wbr');
   // Category is required (PTD1-PTD5) — pick one so step 1 can advance.
-  await user.selectOptions(screen.getByRole('combobox', { name: /^category/i }), 'COMMERCIAL');
-  await user.selectOptions(screen.getByRole('combobox', { name: /^client/i }), clientValue);
-  if (location) await user.type(screen.getByLabelText('Location'), location);
+  await chooseOption(user, screen.getByRole('combobox', { name: /^category/i }), 'COMMERCIAL');
+  await chooseOption(user, screen.getByRole('combobox', { name: /^client/i }), clientValue);
+  if (location) await user.type(screen.getByRole('textbox', { name: /^site address/i }), location);
 }
 
 async function goToStep2(user: ReturnType<typeof userEvent.setup>) {
@@ -94,8 +96,8 @@ async function fillStep2(
     description,
   }: { startDate?: string; endDate?: string; description?: string } = {},
 ) {
-  if (startDate) await user.type(screen.getByLabelText('Start date'), startDate);
-  if (endDate) await user.type(screen.getByLabelText('Expected completion'), endDate);
+  if (startDate) await pickDate(user, screen.getByLabelText('Start date'), startDate);
+  if (endDate) await pickDate(user, screen.getByLabelText('Expected completion'), endDate);
   if (description) await user.type(screen.getByLabelText('Description'), description);
 }
 
@@ -143,8 +145,8 @@ describe('ProjectForm — validation', () => {
     renderForm();
 
     await user.type(screen.getByRole('textbox', { name: /^project name/i }), 'Tower');
-    await user.selectOptions(screen.getByRole('combobox', { name: /^district/i }), 'd-wbr');
-    await user.selectOptions(screen.getByRole('combobox', { name: /^client/i }), 'client-1');
+    await chooseOption(user, screen.getByRole('combobox', { name: /^district/i }), 'd-wbr');
+    await chooseOption(user, screen.getByRole('combobox', { name: /^client/i }), 'client-1');
     await user.click(screen.getByRole('button', { name: 'Next' }));
 
     // The category field surfaces its required error (a role="alert"); the wizard stays on step 1.
@@ -152,19 +154,20 @@ describe('ProjectForm — validation', () => {
     expect(createProject).not.toHaveBeenCalled();
   });
 
-  it('rejects a completion date before the start date', async () => {
+  it('will not offer a completion date before the start date', async () => {
     const user = userEvent.setup();
     renderForm();
 
     await fillStep1(user);
     await goToStep2(user);
+    await fillStep2(user, { startDate: '2028-03-31' });
 
-    await fillStep2(user, { startDate: '2028-03-31', endDate: '2026-09-01' });
-    await goToStep3(user);
-
-    expect(
-      await screen.findByText('Expected completion cannot be before the start date'),
-    ).toBeInTheDocument();
+    // The rule used to be caught on submit, by the schema. The completion picker is now floored
+    // at the start date, so the wrong value cannot be entered at all — the day before it is
+    // disabled, and the calendar does not even offer an earlier year. The schema check stays as
+    // the backstop for the edit form and for anything posting to the API directly.
+    const cell = await findDayCell(user, screen.getByLabelText('Expected completion'), '2028-03-30');
+    expect(cell).toHaveAttribute('data-disabled');
     expect(createProject).not.toHaveBeenCalled();
   });
 });
@@ -274,8 +277,8 @@ describe('ProjectForm — client preselection', () => {
 
     // User can advance without selecting a client from a dropdown.
     await user.type(screen.getByRole('textbox', { name: /^project name/i }), 'Tower');
-    await user.selectOptions(screen.getByRole('combobox', { name: /^district/i }), 'd-wbr');
-    await user.selectOptions(screen.getByRole('combobox', { name: /^category/i }), 'COMMERCIAL');
+    await chooseOption(user, screen.getByRole('combobox', { name: /^district/i }), 'd-wbr');
+    await chooseOption(user, screen.getByRole('combobox', { name: /^category/i }), 'COMMERCIAL');
     await user.click(screen.getByRole('button', { name: 'Next' }));
 
     // Step 2 should be shown.

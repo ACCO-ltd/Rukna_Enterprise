@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { DateInput, FormField, Input, Select, Textarea } from '@erp/ui';
+import { DatePicker, FormField, Input, Select, Textarea } from '@erp/ui';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -95,11 +95,11 @@ describe('the whole field set honours the context', () => {
     ['Input', (id: string) => <Input id={id} />],
     ['Select', (id: string) => <Select id={id}><option>a</option></Select>],
     ['Textarea', (id: string) => <Textarea id={id} />],
-    ['DateInput', (id: string) => <DateInput id={id} />],
+    ['DatePicker', (id: string) => <DatePicker id={id} value="" onChange={() => {}} />],
   ] as const;
 
   for (const [name, renderControl] of controls) {
-    it(`${name} takes the success border and describedby from context`, () => {
+  it(`${name} takes the success border and describedby from context`, () => {
       render(
         <FormField htmlFor="f" label={name} success="Verified">
           {renderControl('f')}

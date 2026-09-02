@@ -304,7 +304,7 @@ function AllocateForm({
       <div className="space-y-3">
         <div>
           <Label htmlFor="alloc-wp">{t('workPackage.allocate.workPackage')}</Label>
-          <Select id="alloc-wp" value={workPackageId} onChange={(e) => setWorkPackageId(e.target.value)} disabled={disabled}>
+          <Select id="alloc-wp" value={workPackageId} onChange={(value) => setWorkPackageId(value)} disabled={disabled}>
             <option value="">—</option>
             {packages.map((p) => (
               <option key={p.id} value={p.id}>
@@ -315,7 +315,7 @@ function AllocateForm({
         </div>
         <div>
           <Label htmlFor="alloc-leaf">{t('workPackage.allocate.boqNode')}</Label>
-          <Select id="alloc-leaf" value={boqNodeId} onChange={(e) => setBoqNodeId(e.target.value)} disabled={disabled}>
+          <Select id="alloc-leaf" value={boqNodeId} onChange={(value) => setBoqNodeId(value)} disabled={disabled}>
             <option value="">—</option>
             {leaves.map((leaf) => (
               <option key={leaf.id} value={leaf.id}>

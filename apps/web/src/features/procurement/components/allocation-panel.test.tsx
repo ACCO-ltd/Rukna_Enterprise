@@ -1,4 +1,5 @@
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
@@ -27,6 +28,7 @@ vi.mock('../hooks/use-procurement', () => mocks);
 vi.mock('@/features/accounting/hooks/use-accounting', () => accountingMocks);
 
 import { AllocationPanel } from './allocation-panel';
+import { openSelect } from '@/test/choose-option';
 
 function payment(overrides: Partial<SupplierPayment> = {}): SupplierPayment {
   return {
@@ -87,9 +89,11 @@ beforeEach(() => {
 });
 
 describe('AllocationPanel', () => {
-  it('offers an eligible bill in the picker', () => {
+  it('offers an eligible bill in the picker', async () => {
+    const user = userEvent.setup();
     renderWithProviders(<AllocationPanel payment={payment()} />, { permissions: ['manage:payable'] });
 
+    await openSelect(user, screen.getByLabelText('Bill to settle'));
     expect(screen.getByRole('option', { name: /INV-100/ })).toBeInTheDocument();
   });
 
@@ -112,10 +116,14 @@ describe('AllocationPanel', () => {
       isPending: false,
       isError: false,
     });
-    renderWithProviders(<AllocationPanel payment={payment()} />);
+    renderWithProviders(<AllocationPanel payment={payment()} />, { permissions: ['manage:payable'] });
 
-    expect(screen.queryByRole('option', { name: /INV-999/ })).not.toBeInTheDocument();
+    // Filtering the only candidate out leaves nothing to allocate against, so the panel
+    // replaces the picker with the blocked notice. Asserting the notice is what proves the
+    // filter ran; the old `queryByRole('option')` passed whether it ran or not, because there
+    // was no picker either way.
     expect(screen.getByText(/No posted bill for this supplier/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Bill to settle')).not.toBeInTheDocument();
   });
 
   it('hides a bill in another currency', () => {
@@ -124,9 +132,10 @@ describe('AllocationPanel', () => {
       isPending: false,
       isError: false,
     });
-    renderWithProviders(<AllocationPanel payment={payment()} />);
+    renderWithProviders(<AllocationPanel payment={payment()} />, { permissions: ['manage:payable'] });
 
-    expect(screen.queryByRole('option', { name: /INV-SAR/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/No posted bill for this supplier/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Bill to settle')).not.toBeInTheDocument();
   });
 
   it('explains why an unposted payment cannot allocate, instead of showing a dead form', () => {

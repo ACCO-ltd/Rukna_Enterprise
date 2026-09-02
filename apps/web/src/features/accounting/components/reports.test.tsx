@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
+import { pickDate } from '@/test/pick-date';
 import { getProfitLoss, getTrialBalance } from '@/features/accounting/api/accounting-api';
 import type {
   ProfitLoss,
@@ -158,8 +159,7 @@ describe('TrialBalanceReport', () => {
     renderWithProviders(<TrialBalanceReport />);
 
     await screen.findByText('Salaam Bank');
-    await user.clear(screen.getByLabelText('As of'));
-    await user.type(screen.getByLabelText('As of'), '2026-03-31');
+    await pickDate(user, screen.getByLabelText('As of'), '2026-03-31');
 
     expect(vi.mocked(getTrialBalance)).toHaveBeenLastCalledWith(
       expect.objectContaining({ asOfDate: '2026-03-31' }),
@@ -260,8 +260,7 @@ describe('ProfitLossReport', () => {
     renderWithProviders(<ProfitLossReport />);
 
     await screen.findByText('Revenue');
-    await user.clear(screen.getByLabelText('From'));
-    await user.type(screen.getByLabelText('From'), '2026-03-01');
+    await pickDate(user, screen.getByLabelText('From'), '2026-03-01');
 
     expect(vi.mocked(getProfitLoss)).toHaveBeenLastCalledWith(
       expect.objectContaining({ fromDate: '2026-03-01' }),

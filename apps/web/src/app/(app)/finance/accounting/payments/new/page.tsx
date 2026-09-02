@@ -2,7 +2,7 @@ import { SupplierPaymentForm } from '@/features/procurement/components/payment-f
 
 export default function NewSupplierPaymentPage() {
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div className="w-full max-w-4xl">
       <SupplierPaymentForm />
     </div>
   );

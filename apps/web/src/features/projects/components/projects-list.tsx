@@ -124,7 +124,7 @@ export function ProjectsList() {
     <div className="flex flex-wrap gap-2">
       <div className="relative min-w-44">
         <Label htmlFor="project-status" className="sr-only">{t('filterByStatus')}</Label>
-        <Select id="project-status" value={status} className="ps-10" onChange={(event) => setStatus(event.target.value as ProjectStatus | 'ALL')}>
+        <Select id="project-status" value={status} className="ps-10" onChange={(value) => setStatus(value as ProjectStatus | 'ALL')}>
           <option value="ALL">{t('allStatuses')}</option>
           {PROJECT_STATUS_ORDER.map((value) => <option key={value} value={value}>{t(`status.${value}`)}</option>)}
         </Select>
@@ -132,7 +132,7 @@ export function ProjectsList() {
       </div>
       <div className="relative min-w-44">
         <Label htmlFor="project-category" className="sr-only">{tTypes('display.filterByCategory')}</Label>
-        <Select id="project-category" value={category} className="ps-10" onChange={(event) => setCategory(event.target.value as CategoryFilter)}>
+        <Select id="project-category" value={category} className="ps-10" onChange={(value) => setCategory(value as CategoryFilter)}>
           <option value="ALL">{tTypes('display.allCategories')}</option>
           {Object.values(ProjectCategory).map((value) => (
             <option key={value} value={value}>{tTypes(`categories.${value}`)}</option>

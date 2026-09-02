@@ -27,8 +27,6 @@ export {
   DialogTitle,
   DialogTrigger,
 } from './components/dialog';
-export { DateInput } from './components/date-input';
-export type { DateInputProps } from './components/date-input';
 export { DirectionProvider } from './components/direction-provider';
 export { Input } from './components/input';
 export type { InputProps } from './components/input';
@@ -72,6 +70,15 @@ export { Select } from './components/select';
 export type { SelectProps } from './components/select';
 export { Textarea } from './components/textarea';
 export type { TextareaProps } from './components/textarea';
+export { Checkbox, CheckboxField, RadioGroup } from './components/choice';
+export { Combobox } from './components/combobox';
+export { Calendar } from './components/calendar';
+export type { CalendarProps } from './components/calendar';
+export { DatePicker, parseWireDate, toWireDate } from './components/date-picker';
+export type { DatePickerProps } from './components/date-picker';
+export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from './components/popover';
+export type { ComboboxProps, ComboboxOption } from './components/combobox';
+export type { CheckboxProps, CheckboxFieldProps, RadioGroupProps, RadioOption } from './components/choice';
 export { FormField, FormFieldContext, useFormField } from './components/form-field';
 export type { FormFieldProps, FormFieldContextValue } from './components/form-field';
 export { FormSection } from './components/form-section';

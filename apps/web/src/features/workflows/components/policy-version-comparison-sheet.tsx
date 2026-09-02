@@ -113,7 +113,7 @@ function VersionComparer({ versions }: { versions: ApprovalPolicyVersionSummary[
               <span className="text-caption font-medium uppercase tracking-wide text-muted-foreground">
                 {t('baseLabel')}
               </span>
-              <Select value={baseId} onChange={(event) => setBaseId(event.target.value)} aria-label={t('baseLabel')}>
+              <Select value={baseId} onChange={(value) => setBaseId(value)} aria-label={t('baseLabel')}>
                 {versions.map((version) => (
                   <option key={version.id} value={version.id}>
                     {t('versionOption', { version: version.version, status: version.status })}
@@ -125,7 +125,7 @@ function VersionComparer({ versions }: { versions: ApprovalPolicyVersionSummary[
               <span className="text-caption font-medium uppercase tracking-wide text-muted-foreground">
                 {t('targetLabel')}
               </span>
-              <Select value={targetId} onChange={(event) => setTargetId(event.target.value)} aria-label={t('targetLabel')}>
+              <Select value={targetId} onChange={(value) => setTargetId(value)} aria-label={t('targetLabel')}>
                 {versions.map((version) => (
                   <option key={version.id} value={version.id}>
                     {t('versionOption', { version: version.version, status: version.status })}

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 
 import type { PurchaseOrderLine } from '../types';
+import { openSelect } from '@/test/choose-option';
 import {
   GrnLineEditor,
   SELECTABLE_QUALITY,
@@ -227,12 +228,14 @@ describe('GrnLineEditor — rendering', () => {
   });
 
   /** P6 — offering REJECTED would guarantee a 400, since it needs accepted = 0. */
-  it('does not offer REJECTED as a quality status', () => {
+  it('does not offer REJECTED as a quality status', async () => {
+    const user = userEvent.setup();
     const lines = grnLinesFromPo(PO_LINES);
     lines[0] = { ...received(lines[0]!, '24'), mode: 'discrepancy' };
     setup(lines);
 
     expect(SELECTABLE_QUALITY).not.toContain('REJECTED');
+    await openSelect(user, screen.getByLabelText(/quality/i));
     expect(screen.queryByRole('option', { name: 'Rejected' })).not.toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Partially accepted' })).toBeInTheDocument();
   });

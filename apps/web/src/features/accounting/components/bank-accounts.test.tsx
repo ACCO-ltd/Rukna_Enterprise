@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../hooks/use-accounting', () => mocks);
 
 import { BankAccounts } from './bank-accounts';
+import { openSelect } from '@/test/choose-option';
 
 function account(id: string, code: string, name: string, subtype: string): Account {
   return {
@@ -127,8 +128,9 @@ describe('configure form', () => {
   /** A19 / #42 — the field the form must never grow back until the column exists. */
 
   it('offers only unmapped cash and bank GL accounts', async () => {
-    await openForm();
+    const user = await openForm();
 
+    await openSelect(user, screen.getByLabelText('GL account'));
     expect(screen.getByRole('option', { name: '10100 · Salaam Bank' })).toBeInTheDocument();
     expect(
       screen.queryByRole('option', { name: /Accounts Receivable/ }),

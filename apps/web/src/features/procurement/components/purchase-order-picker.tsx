@@ -8,7 +8,7 @@
  * PO whose only revision is still a DRAFT, has no committed exposure to bill against — the
  * server would resolve no ACTIVE revision and reject the create — so it is not offered.
  *
- * It is a native `<select>`, matching `SupplierPicker` and `MaterialPicker`: a PO master is
+ * It is a native `<Select>`, matching `SupplierPicker` and `MaterialPicker`: a PO master is
  * bounded, and a native select is what works at 375px and with a screen reader.
  *
  * **Empty is a normal first state.** A fresh tenant, or one whose POs are all still draft,
@@ -19,7 +19,7 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Alert } from '@erp/ui';
+import { Alert, Select } from '@erp/ui';
 
 import { usePurchaseOrders } from '../hooks/use-procurement';
 import type { PurchaseOrder } from '../types';
@@ -94,13 +94,12 @@ export function PurchaseOrderPicker({
   }
 
   return (
-    <select
+    <Select
       id={id}
       value={value}
       required={required}
       disabled={disabled}
-      onChange={(event) => onChange(event.target.value)}
-      className="min-h-11 w-full rounded-control border border-border bg-surface px-3 text-sm disabled:opacity-50"
+      onChange={(value) => onChange(value)}
     >
       <option value="" disabled>
         —
@@ -110,6 +109,6 @@ export function PurchaseOrderPicker({
           {purchaseOrderOptionLabel(po)}
         </option>
       ))}
-    </select>
+    </Select>
   );
 }

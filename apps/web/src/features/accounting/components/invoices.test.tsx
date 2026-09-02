@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ClientStatus } from '@erp/types';
 
 import { renderWithProviders } from '@/test/render';
+import { chooseOption } from '@/test/choose-option';
 import { listClients } from '@/features/clients/api/clients-api';
 import { listInvoices } from '@/features/accounting/api/invoices-api';
 import type { Account, AccountVersion, ClientInvoice } from '@/features/accounting/types';
@@ -162,7 +163,7 @@ describe('InvoicesList', () => {
     renderWithProviders(<InvoicesList />);
     expect(await screen.findByText('INV-A')).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText('Filter by status'), 'DRAFT');
+    await chooseOption(user, screen.getByLabelText('Filter by status'), 'DRAFT');
 
     expect(screen.queryByText('INV-A')).not.toBeInTheDocument();
     expect(screen.getByText('INV-B')).toBeInTheDocument();

@@ -49,3 +49,10 @@ CLAUDE.local.md
 .playwright-cli/
 output/
 .scratch/
+
+# Database dumps. `rukna_acco.dump` appeared untracked in the working tree and is a pg_dump of
+# the live ACCO tenant — real client, contract and user rows. Nothing of this shape belongs in
+# the repository, so the pattern is ignored rather than the one file.
+*.dump
+*.sql.gz
+*.backup

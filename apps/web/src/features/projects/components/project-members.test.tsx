@@ -1,4 +1,5 @@
 import { fireEvent, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ProjectRole } from '@erp/types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -31,6 +32,7 @@ vi.mock('@/features/users/hooks/use-users', () => usersMocks);
 vi.mock('@/features/auth/session/use-session', () => sessionMocks);
 
 import { ProjectMembers } from './project-members';
+import { openSelect } from '@/test/choose-option';
 
 function member(id: string, userId: string, roles: ProjectRole[], first: string): ProjectMember {
   return {
@@ -123,7 +125,8 @@ describe('ProjectMembers', () => {
     expect(buttons[1]).toHaveAttribute('title', expect.stringMatching(/cannot remove yourself/i));
   });
 
-  it('offers only users who are not already members', () => {
+  it('offers only users who are not already members', async () => {
+    const user = userEvent.setup();
     usersMocks.useUsers.mockReturnValue({
       data: [
         { id: 'u-1', email: 'u-1@acco.test', firstName: 'Amina', lastName: 'Yusuf', status: 'ACTIVE', organizationId: 'org-1' },
@@ -134,6 +137,7 @@ describe('ProjectMembers', () => {
     });
     renderWithProviders(<ProjectMembers projectId="p-1" />);
 
+    await openSelect(user, screen.getByLabelText('Name'));
     expect(screen.getByRole('option', { name: /Caasho Nur/ })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /Amina Yusuf ·/ })).not.toBeInTheDocument();
   });

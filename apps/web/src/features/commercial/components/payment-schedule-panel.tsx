@@ -12,6 +12,7 @@ import {
   Alert,
   Badge,
   Button,
+  DatePicker,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -354,19 +355,17 @@ function GenerateInvoiceDialog({
 
         <div className="mt-4 space-y-3">
           <FormField htmlFor="inst-invoice-date" label={t('paymentSchedule.generateDialog.invoiceDate')}>
-            <Input
+            <DatePicker
               id="inst-invoice-date"
-              type="date"
               value={invoiceDate}
-              onChange={(e) => setInvoiceDate(e.target.value)}
+              onChange={(value) => setInvoiceDate(value)}
             />
           </FormField>
           <FormField htmlFor="inst-due-date" label={t('paymentSchedule.generateDialog.dueDate')}>
-            <Input
+            <DatePicker
               id="inst-due-date"
-              type="date"
               value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
+              onChange={(value) => setDueDate(value)}
             />
           </FormField>
           <FormField htmlFor="inst-terms" label={t('paymentSchedule.generateDialog.paymentTerms')}>
@@ -455,7 +454,7 @@ function LinkMilestoneDialog({
               <Select
                 id="inst-milestone"
                 value={selected}
-                onChange={(e) => setSelected(e.target.value)}
+                onChange={(value) => setSelected(value)}
                 disabled={milestonesLoading}
               >
                 <option value="">{t('paymentSchedule.milestone.pickerNone')}</option>

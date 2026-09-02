@@ -15,6 +15,18 @@ import nextTs from "eslint-config-next/typescript";
 // `Unexpected token Delim('*')` on the first attempt.
 const designScaleSelectors = [
   {
+    selector:
+      "Literal[value=/(mx-auto[\s\S]*max-w-[3-7]xl|max-w-[3-7]xl[\s\S]*mx-auto)/]",
+    message:
+      "Centred page column. Page content anchors to the reading edge, not the middle: two symmetric gutters around a capped column read as an unfinished layout and break alignment with the top bar and sidebar. Use PageColumn (components/layout/page-column) and drop the horizontal auto margin. The shell already centres the whole content area on ultrawide displays.",
+  },
+  {
+    selector:
+      "TemplateElement[value.raw=/(mx-auto[\s\S]*max-w-[3-7]xl|max-w-[3-7]xl[\s\S]*mx-auto)/]",
+    message:
+      "Centred page column. Page content anchors to the reading edge. Use PageColumn (components/layout/page-column).",
+  },
+  {
     selector: "Literal[value=/text-\\[[0-9.]+(px|rem|em)\\]/]",
     message:
       "Arbitrary font size. Use a type scale step: text-display, text-h1, text-h2, text-h3, text-body, text-body-sm, text-caption, text-micro. See /design.",

@@ -8,7 +8,7 @@ export default async function EditContractPage({ params }: { params: Promise<{ i
   const t = await getTranslations('platform.contracts');
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div className="w-full max-w-4xl">
       <PageHeader
         breadcrumbs={[{ label: t('detail.back'), href: `/contracts/${id}` }]}
         title={t('create.editTitle')}

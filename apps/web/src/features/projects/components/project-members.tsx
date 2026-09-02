@@ -34,6 +34,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogTitle,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -416,11 +417,10 @@ function AddMemberForm({
         <label htmlFor={ids.user} className="block text-xs font-medium text-muted-foreground">
           {t('colName')}
         </label>
-        <select
+        <Select
           id={ids.user}
           value={userId}
-          onChange={(event) => setUserId(event.target.value)}
-          className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm"
+          onChange={(value) => setUserId(value)}
         >
           <option value="" disabled>
             —
@@ -430,7 +430,7 @@ function AddMemberForm({
               {userName(candidate)} · {candidate.email}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <fieldset className="space-y-2">

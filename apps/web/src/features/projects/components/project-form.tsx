@@ -8,8 +8,8 @@ import { Controller, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ClientStatus, ProjectCategory } from '@erp/types';
-import { Alert, Button, FormField, FormSection, Input, Select, Textarea } from '@erp/ui';
-import { ArrowLeft, ArrowRight, Check, Hash, UserRound } from 'lucide-react';
+import { Alert, Button, DatePicker, FormField, FormSection, Input, Select, Textarea } from '@erp/ui';
+import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
 
 import { FormActions } from '@/components/form-actions';
 import { FormErrorSummary } from '@/components/form-error-summary';
@@ -18,6 +18,7 @@ import { ApiError } from '@/lib/api-client';
 import { useCreateProject } from '../hooks/use-create-project';
 import { useUpdateProject } from '../hooks/use-update-project';
 import { useClients } from '@/features/clients/hooks/use-clients';
+import { DistrictSelect } from '@/features/districts/components/district-select';
 import { useDistricts } from '@/features/districts/hooks/use-districts';
 import { ProjectSubtypeSelect } from '@/features/project-types/components/project-subtype-select';
 import { useProjectSubtypes } from '@/features/project-types/hooks/use-project-subtypes';
@@ -142,6 +143,7 @@ function ProjectCreateWizard() {
   // ADR-025: district drives the project code. Only active districts are offered.
   const { data: districts = [] } = useDistricts(true);
   const districtId = useWatch({ control: form.control, name: 'districtId' });
+  const startDate = useWatch({ control: form.control, name: 'startDate' });
   const selectedDistrict = districts.find((d) => d.id === districtId);
   const { user } = useSession();
   const codePreview = selectedDistrict
@@ -235,13 +237,6 @@ function ProjectCreateWizard() {
         {/* ── Step 1: Identity ─────────────────────────────────────────────── */}
         {step === 1 ? (
           <FormSection title={t('identitySection')} description={t('identitySectionHint')} variant="plain">
-            <div className="mb-5 flex items-start gap-3 rounded-md border border-border bg-surface-subtle px-4 py-3">
-              <Hash className="mt-0.5 h-4 w-4 shrink-0 text-brand-primary" aria-hidden="true" />
-              <div>
-                <p className="text-sm font-medium text-foreground">{t('automaticCodeTitle')}</p>
-                <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{t('automaticCodeHint')}</p>
-              </div>
-            </div>
             <div className="grid gap-5 sm:grid-cols-2">
               <FormField htmlFor="project-name" label={t('nameLabel')} error={errors.name?.message} required>
                 <Input id="project-name" placeholder={t('namePlaceholder')} {...register('name')} />
@@ -251,21 +246,34 @@ function ProjectCreateWizard() {
                 htmlFor="project-district"
                 label={t('districtLabel')}
                 error={errors.districtId?.message}
+                hint={
+                  codePreview ? (
+                    <>
+                      {t('codePreview')}{' '}
+                      <span className="font-mono text-foreground">{codePreview}</span>
+                    </>
+                  ) : (
+                    t('districtHint')
+                  )
+                }
                 required
               >
-                <Select id="project-district" {...register('districtId')}>
-                  <option value="">{t('districtPlaceholder')}</option>
-                  {districts.map((district) => (
-                    <option key={district.id} value={district.id}>
-                      {district.code} — {district.name}
-                    </option>
-                  ))}
-                </Select>
-                {codePreview ? (
-                  <p className="text-xs text-muted-foreground">
-                    {t('codePreview')} <span className="font-mono text-foreground">{codePreview}</span>
-                  </p>
-                ) : null}
+                {/* DistrictSelect rather than a plain Select: twenty districts is past the
+                    point a flat list is scannable, and the registry has to be extendable from
+                    here — a project cannot be created without a district, so "ask an
+                    administrator" is a dead end in the middle of the form. */}
+                <Controller
+                  control={form.control}
+                  name="districtId"
+                  render={({ field }) => (
+                    <DistrictSelect
+                      id="project-district"
+                      value={field.value}
+                      onChange={field.onChange}
+                      invalid={Boolean(errors.districtId)}
+                    />
+                  )}
+                />
               </FormField>
 
               {/* Project type (PTD1-PTD5): the required category, then its optional subtype. The
@@ -285,8 +293,8 @@ function ProjectCreateWizard() {
                     <Select
                       id="project-category"
                       value={field.value}
-                      onChange={(event) => {
-                        field.onChange(event.target.value);
+                      onChange={(value) => {
+                        field.onChange(value);
                         setValue('subtypeId', '');
                       }}
                     >
@@ -321,17 +329,29 @@ function ProjectCreateWizard() {
               </FormField>
 
               <FormField htmlFor="project-commercial-model" label={t('commercialModelLabel')} required>
-                <Select id="project-commercial-model" {...register('commercialModel')}>
-                  <option value="CLIENT_CONTRACT">{t('commercialModel.clientContract')}</option>
-                  <option value="INTERNAL_CAPITAL">{t('commercialModel.internalCapital')}</option>
-                </Select>
+                <Controller
+                  control={form.control}
+                  name="commercialModel"
+                  render={({ field }) => (
+                    <Select id="project-commercial-model" value={field.value} onChange={field.onChange}>
+                      <option value="CLIENT_CONTRACT">{t('commercialModel.clientContract')}</option>
+                      <option value="INTERNAL_CAPITAL">{t('commercialModel.internalCapital')}</option>
+                    </Select>
+                  )}
+                />
               </FormField>
 
               <FormField htmlFor="project-participation-model" label={t('participationModelLabel')} required>
-                <Select id="project-participation-model" {...register('participationModel')}>
-                  <option value="SOLE">{t('participationModel.sole')}</option>
-                  <option value="JOINT_VENTURE">{t('participationModel.jointVenture')}</option>
-                </Select>
+                <Controller
+                  control={form.control}
+                  name="participationModel"
+                  render={({ field }) => (
+                    <Select id="project-participation-model" value={field.value} onChange={field.onChange}>
+                      <option value="SOLE">{t('participationModel.sole')}</option>
+                      <option value="JOINT_VENTURE">{t('participationModel.jointVenture')}</option>
+                    </Select>
+                  )}
+                />
               </FormField>
 
               {commercialModel === 'CLIENT_CONTRACT' ? (
@@ -347,28 +367,35 @@ function ProjectCreateWizard() {
                     />
                   </>
                 ) : (
-                  <Select id="project-clientId" {...register('clientId')}>
-                    <option value="">{t('currencyNone')}</option>
-                    {activeClients.map((client) => (
-                      <option key={client.id} value={client.id}>{client.name}</option>
-                    ))}
-                  </Select>
+                  <Controller
+                    control={form.control}
+                    name="clientId"
+                    render={({ field }) => (
+                      <Select id="project-clientId" value={field.value} onChange={field.onChange}>
+                        <option value="">{t('currencyNone')}</option>
+                        {activeClients.map((client) => (
+                          <option key={client.id} value={client.id}>{client.name}</option>
+                        ))}
+                      </Select>
+                    )}
+                  />
                 )}
               </FormField>
               ) : null}
 
-              <FormField htmlFor="project-location" label={t('locationLabel')} error={errors.location?.message}>
-                <Input id="project-location" {...register('location')} />
+              <FormField
+                htmlFor="project-location"
+                label={t('locationLabel')}
+                hint={t('locationHint')}
+                error={errors.location?.message}
+              >
+                <Input
+                  id="project-location"
+                  placeholder={t('locationPlaceholder')}
+                  {...register('location')}
+                />
               </FormField>
             </div>
-
-            <section className="mt-5 flex items-start gap-3 rounded-md border border-brand-primary/20 bg-brand-accent/35 p-4" aria-labelledby="project-manager-heading">
-              <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-brand-primary" aria-hidden="true" />
-              <div>
-                <h2 id="project-manager-heading" className="text-sm font-semibold text-foreground">{t('projectManagerLabel')}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">{t('projectManagerHint')}</p>
-              </div>
-            </section>
 
             <div className="flex justify-end pt-2">
               <Button type="button" onClick={() => void goNext()}>
@@ -384,11 +411,32 @@ function ProjectCreateWizard() {
           <FormSection title={t('scheduleSection')} description={t('scheduleSectionHint')} variant="plain">
             <div className="grid gap-5 sm:grid-cols-2">
               <FormField htmlFor="project-startDate" label={t('startDateLabel')} error={errors.startDate?.message}>
-                <Input id="project-startDate" type="date" {...register('startDate')} />
+                <Controller
+                  control={form.control}
+                  name="startDate"
+                  render={({ field }) => (
+                    <DatePicker
+                      id="project-startDate"
+                      value={field.value}
+                      onChange={field.onChange}
+                    />
+                  )}
+                />
               </FormField>
 
               <FormField htmlFor="project-expectedEndDate" label={t('expectedEndDateLabel')} error={errors.expectedEndDate?.message}>
-                <Input id="project-expectedEndDate" type="date" {...register('expectedEndDate')} />
+                <Controller
+                  control={form.control}
+                  name="expectedEndDate"
+                  render={({ field }) => (
+                    <DatePicker
+                      id="project-expectedEndDate"
+                      value={field.value}
+                      onChange={field.onChange}
+                      min={startDate || undefined}
+                    />
+                  )}
+                />
               </FormField>
             </div>
 
@@ -577,6 +625,7 @@ function ProjectEditForm({ project }: { project: ProjectDetail }) {
     formState: { errors },
   } = form;
   const category = useWatch({ control, name: 'category' });
+  const startDate = useWatch({ control, name: 'startDate' });
 
   const onSubmit = (values: ProjectFormValues) => {
     update.mutate(toUpdateProjectPayload(values));
@@ -610,12 +659,18 @@ function ProjectEditForm({ project }: { project: ProjectDetail }) {
           </FormField>
 
           <FormField htmlFor="project-clientId" label={t('clientNameLabel')} error={errors.clientId?.message}>
-            <Select id="project-clientId" {...register('clientId')}>
-              <option value="">{t('currencyNone')}</option>
-              {clients.filter((client) => client.status === ClientStatus.ACTIVE).map((client) => (
-                <option key={client.id} value={client.id}>{client.name}</option>
-              ))}
-            </Select>
+            <Controller
+              control={form.control}
+              name="clientId"
+              render={({ field }) => (
+                <Select id="project-clientId" value={field.value} onChange={field.onChange}>
+                  <option value="">{t('currencyNone')}</option>
+                  {clients.filter((client) => client.status === ClientStatus.ACTIVE).map((client) => (
+                    <option key={client.id} value={client.id}>{client.name}</option>
+                  ))}
+                </Select>
+              )}
+            />
           </FormField>
 
           <FormField htmlFor="project-name" label={t('nameLabel')} error={errors.name?.message} required>
@@ -638,8 +693,8 @@ function ProjectEditForm({ project }: { project: ProjectDetail }) {
                 <Select
                   id="project-category"
                   value={field.value}
-                  onChange={(event) => {
-                    field.onChange(event.target.value);
+                  onChange={(value) => {
+                    field.onChange(value);
                     setValue('subtypeId', '');
                   }}
                 >
@@ -673,8 +728,17 @@ function ProjectEditForm({ project }: { project: ProjectDetail }) {
             />
           </FormField>
 
-          <FormField htmlFor="project-location" label={t('locationLabel')} error={errors.location?.message}>
-            <Input id="project-location" {...register('location')} />
+          <FormField
+            htmlFor="project-location"
+            label={t('locationLabel')}
+            hint={t('locationHint')}
+            error={errors.location?.message}
+          >
+            <Input
+              id="project-location"
+              placeholder={t('locationPlaceholder')}
+              {...register('location')}
+            />
           </FormField>
         </div>
       </FormSection>
@@ -682,11 +746,32 @@ function ProjectEditForm({ project }: { project: ProjectDetail }) {
       <FormSection title={t('scheduleSection')} description={t('scheduleSectionHint')} variant="plain">
         <div className="grid gap-5 sm:grid-cols-2">
           <FormField htmlFor="project-startDate" label={t('startDateLabel')} error={errors.startDate?.message}>
-            <Input id="project-startDate" type="date" {...register('startDate')} />
+            <Controller
+              control={control}
+              name="startDate"
+              render={({ field }) => (
+                <DatePicker
+                  id="project-startDate"
+                  value={field.value}
+                  onChange={field.onChange}
+                />
+              )}
+            />
           </FormField>
 
           <FormField htmlFor="project-expectedEndDate" label={t('expectedEndDateLabel')} error={errors.expectedEndDate?.message}>
-            <Input id="project-expectedEndDate" type="date" {...register('expectedEndDate')} />
+            <Controller
+              control={control}
+              name="expectedEndDate"
+              render={({ field }) => (
+                <DatePicker
+                  id="project-expectedEndDate"
+                  value={field.value}
+                  onChange={field.onChange}
+                  min={startDate || undefined}
+                />
+              )}
+            />
           </FormField>
         </div>
       </FormSection>

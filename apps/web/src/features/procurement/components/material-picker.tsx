@@ -15,12 +15,15 @@
 
 import { useId, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Input, cn } from '@erp/ui';
+import { cn, Input, Select } from '@erp/ui';
 
 import { formatNumber } from '@/lib/format';
 import { QUANTITY_SCALE, fromMinorUnits } from '@/lib/money';
 
-import { useMaterials, useUoms } from '../hooks/use-procurement';
+import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+
+import { useCreateUom, useMaterials, useUoms } from '../hooks/use-procurement';
+import { CreateInPickerDialog } from './create-in-picker-dialog';
 import type { Material, UnitOfMeasure } from '../types';
 
 interface MaterialPickerProps {
@@ -167,7 +170,13 @@ interface UomDisplayProps {
  */
 export function UomDisplay({ uom, locked, value, onChange, disabled }: UomDisplayProps) {
   const t = useTranslations('procurement.uomDisplay');
+  const tUom = useTranslations('procurement.uom');
+  const tc = useTranslations('procurement.common');
   const { data: uoms } = useUoms();
+  const { can } = usePermissions();
+  const canManage = can(PROCUREMENT_PERMISSIONS.manageConfig);
+  const create = useCreateUom();
+  const [creating, setCreating] = useState(false);
 
   if (locked) {
     return (
@@ -183,19 +192,57 @@ export function UomDisplay({ uom, locked, value, onChange, disabled }: UomDispla
   }
 
   return (
-    <select
-      value={value ?? ''}
-      disabled={disabled}
-      onChange={(e) => onChange?.(e.target.value)}
-      className="min-h-11 w-full rounded-md border border-border bg-surface px-2 text-sm"
-    >
-      <option value="">—</option>
-      {(uoms ?? []).map((u) => (
-        <option key={u.id} value={u.code}>
-          {u.code} · {u.symbol}
-        </option>
-      ))}
-    </select>
+    <>
+      <Select
+        // The visible "Unit" text belongs to a <span>, not a <label htmlFor>, so without this
+        // the control has no accessible name at all.
+        aria-label={t('label')}
+        value={value ?? ''}
+        disabled={disabled}
+        onChange={(value) => onChange?.(value)}
+        // "No units of measure yet. Create one before adding materials." used to be advice with
+        // nowhere to act on it; this is that instruction made reachable.
+        createAction={
+          canManage ? { label: tUom('new'), onSelect: () => setCreating(true) } : undefined
+        }
+      >
+        <option value="">—</option>
+        {(uoms ?? []).map((u) => (
+          <option key={u.id} value={u.code}>
+            {u.code} · {u.symbol}
+          </option>
+        ))}
+      </Select>
+
+      {creating ? (
+        <CreateInPickerDialog
+          title={tUom('createTitle')}
+          fields={[
+            { name: 'code', label: tc('code'), hint: tUom('codeHint'), uppercase: true, maxLength: 12, required: true, narrow: true },
+            { name: 'name', label: tc('name'), required: true },
+            { name: 'symbol', label: tUom('symbol'), hint: tUom('symbolHint'), required: true, narrow: true },
+          ]}
+          submitLabel={tUom('new')}
+          isPending={create.isPending}
+          error={create.error}
+          onDismiss={() => {
+            setCreating(false);
+            create.reset();
+          }}
+          onSubmit={(values) =>
+            create.mutate(
+              { code: values.code ?? '', name: values.name ?? '', symbol: values.symbol ?? '' },
+              {
+                onSuccess: (created) => {
+                  onChange?.(created.code);
+                  setCreating(false);
+                },
+              },
+            )
+          }
+        />
+      ) : null}
+    </>
   );
 }
 

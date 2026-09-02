@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import type { VariationOrderResponse } from '@erp/types';
 
 import { renderWithProviders } from '@/test/render';
+import { pickDate } from '@/test/pick-date';
 import * as hooks from '../hooks/use-commercial';
 
 import { VariationDetailSheet } from './variation-detail-sheet';
@@ -260,7 +261,7 @@ describe('ExtensionOfTimeSection — explicit record flow', () => {
     await user.click(screen.getByRole('button', { name: 'Record extension of time' }));
 
     const dialog = screen.getByRole('dialog');
-    await user.type(within(dialog).getByLabelText('New completion date'), '2027-03-31');
+    await pickDate(user, within(dialog).getByLabelText('New completion date'), '2027-03-31');
     await user.type(within(dialog).getByLabelText('Reason'), 'Weather delay');
     // Cite the VO as justification.
     await user.click(within(dialog).getByRole('checkbox'));

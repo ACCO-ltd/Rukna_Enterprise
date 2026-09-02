@@ -216,8 +216,8 @@ function AdHocRow({ deduction, t, onChange, onRemove }: AdHocRowProps) {
         <Select
           id={typeId}
           value={deduction.deductionType}
-          onChange={(e) =>
-            onChange({ deductionType: e.target.value as AdHocDeduction['deductionType'] })
+          onChange={(value) =>
+            onChange({ deductionType: value as AdHocDeduction['deductionType'] })
           }
         >
           <option value="TAX">{t('deductionType.TAX')}</option>

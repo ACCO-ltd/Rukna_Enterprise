@@ -117,6 +117,34 @@ more data per screen.
 with it: the theme has a `system` mode that resolves against a media query and density does not,
 so merging them would mean one shared module with a branch inside it.
 
+## Page measure and alignment
+
+Page content is capped and **anchored to the reading edge** — never centred. Every page used to
+write `mx-auto` beside its `max-w-*`, which on a 1193px content area left ~210px of empty
+background on *both* sides of a form. Two symmetric gutters framing a capped column is the
+strongest "unfinished layout" signal a screen can give: the eye reads the whitespace as part of
+the page rather than as margin, and the page title stops lining up with the top bar's search
+field and the sidebar edge. Anchoring left puts the whole of the slack into one trailing gutter,
+and gives an unbroken vertical edge from the search field down to the last form control.
+
+The measure is a named size on `PageColumn` (`components/layout/page-column`), not a raw class,
+because each width is a statement about what the page is for:
+
+| Size | Cap | For |
+| --- | --- | --- |
+| `form` | `max-w-4xl` | Data entry — two columns of controls and no more. |
+| `record` | `max-w-5xl` | One record being read: detail pages, summaries, statements. |
+| `wide` | `max-w-6xl` | Tables and ledgers, where a cut column costs more than a long line. |
+| `full` | none | Boards, grids, dashboards that manage their own measure. |
+
+The shell still centres the whole content area at `max-w-[1440px]`, so an ultrawide display is
+handled once, at the shell, rather than by every page independently. An `mx-auto` written beside
+a `max-w-*xl` is a lint error (`apps/web/eslint.config.mjs`).
+
+A sticky bar that is `fixed inset-x-0` must also start where the content column starts
+(`lg:start-[var(--sidebar-width)]`) and carry the shell's own padding, or its contents will not
+line up with the fields above it.
+
 ## Verification
 
 Every new shared component must be verified in light and dark themes, English LTR and Arabic

@@ -2,7 +2,7 @@ import { SupplierBillsList } from '@/features/procurement/components/bill-screen
 
 export default function SupplierBillsPage() {
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    <div className="w-full max-w-6xl">
       <SupplierBillsList />
     </div>
   );
