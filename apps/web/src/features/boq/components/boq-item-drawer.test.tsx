@@ -77,8 +77,11 @@ describe('BoqItemDrawer — library fast entry', () => {
     expect(screen.getByLabelText(/^Unit$/i)).toHaveValue('m3');
     // Rate carried across as assistance.
     expect(screen.getByLabelText(/Unit rate/i)).toHaveValue('12.50');
-    // The code is NOT copied — it must be unique within this BOQ, so the user enters their own.
-    expect(screen.getByLabelText(/Item code/i)).toHaveValue('');
+    // The code is NOT copied from the library item — it must be unique within this BOQ. The
+    // field is no longer blank, but what fills it is the drawer's own suggestion from the
+    // sibling codes ('001' for the first item here), never the picked item's code.
+    expect(screen.getByLabelText(/Item code/i)).not.toHaveValue(ITEM.code);
+    expect(screen.getByLabelText(/Item code/i)).toHaveValue('001');
   });
 
   it('carries the picked item id out on submit so the workspace records its usage', async () => {
@@ -88,9 +91,10 @@ describe('BoqItemDrawer — library fast entry', () => {
     await userEvent.click(screen.getByRole('button', { name: /Add from library/i }));
     await userEvent.click(await screen.findByRole('option', { name: /EXC-100/ }));
 
-    // A code is still required by the form; supply one, then save.
+    // A code is proposed; this test overrides it with its own, so clear before typing.
+    await userEvent.clear(screen.getByLabelText(/Item code/i));
     await userEvent.type(screen.getByLabelText(/Item code/i), '02.01.001');
-    await userEvent.click(screen.getByRole('button', { name: /Save changes/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Add item/i }));
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
     const [, , library] = onSubmit.mock.calls[0]!;
@@ -101,10 +105,11 @@ describe('BoqItemDrawer — library fast entry', () => {
     mocks.useLibrarySearch.mockReturnValue({ data: [], isPending: false, isError: false });
     const { onSubmit } = renderDrawer(ADD_ITEM);
 
+    await userEvent.clear(screen.getByLabelText(/Item code/i));
     await userEvent.type(screen.getByLabelText(/Item code/i), 'NEW-1');
     await userEvent.type(screen.getByLabelText(/Description/i), 'A new work item');
     await userEvent.click(screen.getByLabelText(/save this item to the library/i));
-    await userEvent.click(screen.getByRole('button', { name: /Save changes/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Add item/i }));
 
     const [, , library] = onSubmit.mock.calls[0]!;
     expect(library).toEqual({ pickedItemId: null, saveToLibrary: true });
@@ -155,9 +160,10 @@ describe('BoqItemDrawer — library fast entry', () => {
 
     expect(screen.queryByRole('button', { name: /Add from library/i })).not.toBeInTheDocument();
 
+    await userEvent.clear(screen.getByLabelText(/Item code/i));
     await userEvent.type(screen.getByLabelText(/Item code/i), 'M-1');
     await userEvent.type(screen.getByLabelText(/Description/i), 'Manual item');
-    await userEvent.click(screen.getByRole('button', { name: /Save changes/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Add item/i }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     const [, , library] = onSubmit.mock.calls[0]!;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ClipboardList, GitCompare, MoreHorizontal, Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import {
@@ -121,6 +121,14 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
 
   const nodes = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
   const counts = useMemo(() => countTree(nodes), [nodes]);
+
+  // Codes already under a given parent, so the drawer can propose the next one. The tree is
+  // flat here, so a node's parent is `parentId` — nothing needs walking.
+  const siblingCodesUnder = useCallback(
+    (parentId: string | null) =>
+      nodes.filter((node) => node.parentId === parentId).map((node) => node.code),
+    [nodes],
+  );
   // The headline total and every section subtotal, in one memoized pass over the tree. Keyed
   // on the tree reference so a large BOQ is walked once per load, not per render.
   const rollup = useMemo(() => computeRollup(nodes), [nodes]);
@@ -195,7 +203,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         initialize.mutate();
         return;
       case 'ADD_ITEMS':
-        setDrawer({ mode: 'add', kind: 'section', parent: null, node: null });
+        setDrawer({ mode: 'add', kind: 'section', parent: null, node: null, siblingCodes: siblingCodesUnder(null) });
         return;
       case 'PRICE_ITEMS':
       case 'FIX_BLOCKERS':
@@ -241,8 +249,10 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
     ? {
         onEdit: (node) =>
           setDrawer({ mode: 'edit', kind: node.isLeaf ? 'item' : 'section', parent: null, node }),
-        onAddItem: (parent) => setDrawer({ mode: 'add', kind: 'item', parent, node: null }),
-        onAddSection: (parent) => setDrawer({ mode: 'add', kind: 'section', parent, node: null }),
+        onAddItem: (parent) =>
+          setDrawer({ mode: 'add', kind: 'item', parent, node: null, siblingCodes: siblingCodesUnder(parent.id) }),
+        onAddSection: (parent) =>
+          setDrawer({ mode: 'add', kind: 'section', parent, node: null, siblingCodes: siblingCodesUnder(parent.id) }),
         onDelete: (node) => {
           if (!selectedVersionId) return;
           deleteNode.mutate(node.id);
@@ -381,7 +391,9 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
             setCollapsed(allExpanded ? new Set(allSectionIds) : new Set())
           }
           onExport={handleExportTree}
-          onAddSection={() => setDrawer({ mode: 'add', kind: 'section', parent: null, node: null })}
+          onAddSection={() =>
+            setDrawer({ mode: 'add', kind: 'section', parent: null, node: null, siblingCodes: siblingCodesUnder(null) })
+          }
           canManage={canManage}
           resultCount={rows.length}
           totalCount={counts.sections + counts.items}

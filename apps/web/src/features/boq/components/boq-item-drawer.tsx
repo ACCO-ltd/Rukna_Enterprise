@@ -35,6 +35,7 @@ import {
   type PricingBasisValue,
 } from '../node-form';
 import { BoqLibraryPicker } from './boq-library-picker';
+import { suggestNodeCode } from '../suggest-node-code';
 
 export interface DrawerTarget {
   mode: 'add' | 'edit';
@@ -43,6 +44,11 @@ export interface DrawerTarget {
   parent: BoqTreeNodeResponse | null;
   /** The node being edited. Null when adding. */
   node: BoqTreeNodeResponse | null;
+  /**
+   * Codes already in use under `parent`. The drawer proposes the next one from them, so the
+   * code field arrives answered rather than blank — see `suggestNodeCode`.
+   */
+  siblingCodes?: readonly string[];
 }
 
 /**
@@ -106,9 +112,16 @@ export function BoqItemDrawer({
   // pointing the drawer at a different row remounts it. An effect that re-seeded on a
   // changing target would be a setState cascade, and would fight the user's own edits on
   // any unrelated re-render.
-  const [values, setValues] = useState<NodeFormValues>(() =>
-    target?.node ? toNodeFormValues(target.node) : EMPTY_NODE_FORM,
-  );
+  const [values, setValues] = useState<NodeFormValues>(() => {
+    if (target?.node) return toNodeFormValues(target.node);
+    if (!target) return EMPTY_NODE_FORM;
+    // Proposed, not imposed: the field is editable and the server still owns uniqueness. What
+    // this removes is having to know the numbering convention before you can type anything.
+    return {
+      ...EMPTY_NODE_FORM,
+      code: suggestNodeCode(target.kind, target.parent?.code ?? null, target.siblingCodes ?? []),
+    };
+  });
   const [touched, setTouched] = useState(false);
 
   // Library state, only relevant on an item add. `pickedItemId` records which library item
@@ -234,15 +247,26 @@ export function BoqItemDrawer({
           <Section title={t('identity')}>
             <FormField
               htmlFor="boq-code"
-              label={t('code')}
+              // "Item code" was shown while adding a section, because one key served both
+              // forms. The noun is the thing being added.
+              label={isItem ? t('code') : t('sectionCode')}
+              hint={
+                isAdd
+                  ? target.parent
+                    ? t('codeHintUnder', { parent: target.parent.code })
+                    : t('codeHintRoot')
+                  : undefined
+              }
               error={touched ? errors.code : undefined}
             >
               <Input
                 id="boq-code"
                 value={values.code}
+                placeholder={isItem ? t('itemCodePlaceholder') : t('codePlaceholder')}
                 maxLength={NODE_LIMITS.codeMax}
                 disabled={readOnly || isPending}
                 dir="ltr"
+                className="font-mono"
                 onChange={(event) => set('code', event.target.value)}
               />
             </FormField>
@@ -255,6 +279,9 @@ export function BoqItemDrawer({
               <Textarea
                 id="boq-description"
                 rows={2}
+                placeholder={
+                  isItem ? t('descriptionPlaceholderItem') : t('descriptionPlaceholderSection')
+                }
                 value={values.description}
                 maxLength={NODE_LIMITS.descriptionMax}
                 disabled={readOnly || isPending}
@@ -392,7 +419,13 @@ export function BoqItemDrawer({
         <DialogFooter>
           {!readOnly ? (
             <Button onClick={handleSubmit} disabled={isPending}>
-              {isPending ? t('saving') : t('save')}
+              {isPending
+                ? t('saving')
+                : isAdd
+                  ? isItem
+                    ? t('addItemAction')
+                    : t('addSectionAction')
+                  : t('save')}
             </Button>
           ) : null}
           <Button variant="outline" onClick={onClose} disabled={isPending}>
