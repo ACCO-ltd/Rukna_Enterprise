@@ -1,7 +1,9 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
+import { ACCOUNTING_PERMISSIONS } from '@/features/auth/permissions/can';
 
 import type { Supplier } from '../types';
 
@@ -9,15 +11,16 @@ import type { Supplier } from '../types';
  * Tier A — the supplier master and the shared picker.
  *
  * Rendering against the real catalogues is half the point: `renderWithProviders` throws on
- * a missing key, so every string these components ask for is proven to exist in English
- * and Arabic. `catalogues.test.ts` proves en and ar agree with each other; only this proves
- * they agree with the code.
+ * a missing key, so every string these components ask for is proven to exist. Only this
+ * proves the catalogue agrees with the code.
  *
  * The behavioural assertions each pin a decision that a future reader would otherwise be
  * tempted to undo:
  *
- *  - no edit or deactivate control anywhere, because the API has no PATCH (A15)
- *  - the write-once warning on both the screen and the create form
+ *  - an Edit control appears only for a holder of `manage:payable` (A15 / D8), never for a
+ *    viewer, and there is still no deactivate control
+ *  - the edit form pre-fills, gates on client validation, sends only the changed fields as
+ *    a PATCH, and never sends `code` or `status`
  *  - the picker's empty state links to the Suppliers screen rather than rendering an empty
  *    select, because no environment seeds a supplier
  */
@@ -25,6 +28,7 @@ import type { Supplier } from '../types';
 const mocks = vi.hoisted(() => ({
   useSuppliers: vi.fn(),
   useCreateSupplier: vi.fn(),
+  useUpdateSupplier: vi.fn(),
 }));
 
 vi.mock('../hooks/use-procurement', () => mocks);
@@ -39,6 +43,7 @@ const RASHID: Supplier = {
   taxNumber: '310122445500003',
   defaultCurrency: 'USD',
   paymentTermsDays: 30,
+  address: 'King Fahd Rd, Riyadh',
   status: 'ACTIVE',
 };
 
@@ -49,12 +54,15 @@ const BAREBONES: Supplier = {
   taxNumber: null,
   defaultCurrency: null,
   paymentTermsDays: null,
+  address: null,
   status: 'ACTIVE',
 };
 
 function loaded(data: Supplier[]) {
   return { data, isPending: false, isError: false };
 }
+
+const updateMutate = vi.fn();
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -65,7 +73,16 @@ beforeEach(() => {
     isError: false,
     error: null,
   });
+  mocks.useUpdateSupplier.mockReturnValue({
+    mutate: updateMutate,
+    isPending: false,
+    isError: false,
+    error: null,
+  });
 });
+
+/** The permission the edit affordance and the PATCH endpoint both gate on. */
+const MANAGE_PAYABLE = [ACCOUNTING_PERMISSIONS.managePayables];
 
 describe('filterSuppliers', () => {
   const all = [RASHID, BAREBONES];
@@ -103,29 +120,113 @@ describe('SupplierList', () => {
   });
 
   /**
-   * A15. There is no `PATCH /suppliers/:id` and nothing sets `status`, so offering either
-   * control would be an input that silently does nothing. If an edit button ever appears
-   * here, the endpoint has to appear first.
+   * A15 / D8. `PATCH /suppliers/:id` exists but is gated on `manage:payable`. A viewer who
+   * lacks it must not see an Edit control the server would reject — and there is still no
+   * deactivate control, because this endpoint cannot move `status`.
    */
-  it('offers no edit or deactivate control', () => {
+  it('hides the edit control from a user without manage:payable', () => {
     renderWithProviders(<SupplierList />);
 
     expect(screen.queryByRole('button', { name: /edit/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /deactivate/i })).not.toBeInTheDocument();
   });
 
-  it('warns that a supplier cannot be edited once created', () => {
-    renderWithProviders(<SupplierList />);
+  it('shows an edit control per row for a holder of manage:payable', () => {
+    renderWithProviders(<SupplierList />, { permissions: MANAGE_PAYABLE });
 
-    expect(screen.getByText(/cannot be edited or deactivated/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /edit sup-001/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /edit sup-002/i }),
+    ).toBeInTheDocument();
+    // Still no deactivate — status is a separate flow this endpoint cannot reach.
+    expect(screen.queryByRole('button', { name: /deactivate/i })).not.toBeInTheDocument();
   });
-
 
   it('tells the user to create one when the list is empty', () => {
     mocks.useSuppliers.mockReturnValue(loaded([]));
     renderWithProviders(<SupplierList />);
 
     expect(screen.getByText(/create one before raising a purchase order/i)).toBeInTheDocument();
+  });
+});
+
+describe('SupplierList — edit form (A15 / D8)', () => {
+  async function openEditor(supplierName: RegExp) {
+    const user = userEvent.setup();
+    renderWithProviders(<SupplierList />, { permissions: MANAGE_PAYABLE });
+    await user.click(screen.getByRole('button', { name: supplierName }));
+    const dialog = await screen.findByRole('dialog');
+    return { user, dialog };
+  }
+
+  it('pre-fills every editable field from the supplier and shows the code read-only', async () => {
+    const { dialog } = await openEditor(/edit sup-001/i);
+
+    // Code is context, not an input: rendered read-only, never editable.
+    const code = within(dialog).getByDisplayValue('SUP-001');
+    expect(code).toHaveAttribute('readonly');
+
+    expect(within(dialog).getByDisplayValue('Al-Rashid Trading')).toBeInTheDocument();
+    expect(within(dialog).getByDisplayValue('310122445500003')).toBeInTheDocument();
+    expect(within(dialog).getByDisplayValue('USD')).toBeInTheDocument();
+    expect(within(dialog).getByDisplayValue('30')).toBeInTheDocument();
+    expect(within(dialog).getByDisplayValue('King Fahd Rd, Riyadh')).toBeInTheDocument();
+
+    // Status is a separate flow — it must not appear on this form at all.
+    expect(within(dialog).queryByText(/status/i)).not.toBeInTheDocument();
+  });
+
+  it('sends only the changed field as a PATCH, with no code or status', async () => {
+    const { user, dialog } = await openEditor(/edit sup-001/i);
+
+    const name = within(dialog).getByDisplayValue('Al-Rashid Trading');
+    await user.clear(name);
+    await user.type(name, 'Al-Rashid Trading Co.');
+
+    await user.click(within(dialog).getByRole('button', { name: /save changes/i }));
+
+    expect(updateMutate).toHaveBeenCalledTimes(1);
+    const [args] = updateMutate.mock.calls[0];
+    expect(args.id).toBe('sup-1');
+    // Only the changed field travels — a true PATCH.
+    expect(args.payload).toEqual({ name: 'Al-Rashid Trading Co.' });
+    expect(args.payload).not.toHaveProperty('code');
+    expect(args.payload).not.toHaveProperty('status');
+  });
+
+  it('refuses to submit an empty name and never calls the mutation', async () => {
+    const { user, dialog } = await openEditor(/edit sup-001/i);
+
+    const name = within(dialog).getByDisplayValue('Al-Rashid Trading');
+    await user.clear(name);
+    await user.click(within(dialog).getByRole('button', { name: /save changes/i }));
+
+    expect(updateMutate).not.toHaveBeenCalled();
+    expect(within(dialog).getByText(/supplier name is required/i)).toBeInTheDocument();
+  });
+
+  it('refuses to submit when nothing changed rather than provoking the server 400', async () => {
+    const { user, dialog } = await openEditor(/edit sup-001/i);
+
+    await user.click(within(dialog).getByRole('button', { name: /save changes/i }));
+
+    expect(updateMutate).not.toHaveBeenCalled();
+    expect(within(dialog).getByText(/change at least one field/i)).toBeInTheDocument();
+  });
+
+  it('surfaces the backend error verbatim', async () => {
+    const { ApiError } = await import('@/lib/api-client');
+    mocks.useUpdateSupplier.mockReturnValue({
+      mutate: updateMutate,
+      isPending: false,
+      isError: true,
+      error: new ApiError(404, 'Supplier sup-1 not found', 'NOT_FOUND'),
+    });
+
+    const { dialog } = await openEditor(/edit sup-001/i);
+    expect(within(dialog).getByText(/supplier sup-1 not found/i)).toBeInTheDocument();
   });
 });
 

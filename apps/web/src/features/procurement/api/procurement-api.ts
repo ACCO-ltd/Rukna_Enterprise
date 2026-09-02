@@ -44,6 +44,7 @@ import type {
   PostSupplierPaymentPayload,
   ReverseSupplierPaymentPayload,
   CreateSupplierPayload,
+  UpdateSupplierPayload,
   CreateSupplierBillPayload,
   PostSupplierBillPayload,
   ReverseSupplierBillPayload,
@@ -578,13 +579,29 @@ export function listSuppliers(filters?: {
  *
  * A duplicate `code` returns `409` with a message naming it, which `CreateForm` surfaces
  * verbatim — the same treatment every other create path in this module gets.
- *
- * There is no update endpoint (A15), so this is the only write there will ever be for a
- * given supplier until the backend adds one.
  */
 export function createSupplier(payload: CreateSupplierPayload): Promise<Supplier> {
   return apiClient<Supplier>('/suppliers', {
     method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * `PATCH /suppliers/:id` — corrects supplier master data (A15, merged #152 / D8).
+ *
+ * Edits only `name`, `taxNumber`, `defaultCurrency`, `paymentTermsDays` and `address`. The
+ * server drops any other field (so `code` and `status` cannot move through here), rejects
+ * an empty patch with `400` "At least one editable field must be provided", and `404`s a
+ * supplier outside the caller's organisation. The correction is audited server-side. Both
+ * errors carry a message `CreateForm`/`FormDialog` surface verbatim.
+ */
+export function updateSupplier(
+  id: string,
+  payload: UpdateSupplierPayload,
+): Promise<Supplier> {
+  return apiClient<Supplier>(`/suppliers/${id}`, {
+    method: 'PATCH',
     body: JSON.stringify(payload),
   });
 }
