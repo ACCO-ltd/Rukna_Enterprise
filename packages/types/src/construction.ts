@@ -768,6 +768,93 @@ export interface BoqWorkspaceResponse {
   capabilities: BoqCapabilities;
 }
 
+// ─── BOQ import (ADR-016, Phase 2) ──────────────────────────────────────────────
+//
+// Bulk entry. The browser parses the spreadsheet (SheetJS), the user maps columns, and
+// posts the mapped rows here — the API never receives a file. The server rebuilds the tree
+// from the dotted codes, validates every row, and either creates the whole BOQ in one
+// transaction or rejects the import untouched (all-or-nothing). Decimals stay strings
+// (CONST-BOQ-014).
+
+/** How an import lands against a DRAFT that already holds nodes. */
+export type BoqImportMode = 'REPLACE' | 'APPEND';
+
+/**
+ * One already-mapped spreadsheet row. The browser has applied the column mapping, so these
+ * are the BOQ's own field names, not the sheet's headers. `rowNumber` is the 1-based line in
+ * the source sheet, echoed back in any finding so the user can locate the offending row.
+ * `sheetAmount` is the sheet's own total column when present — never stored (the amount is
+ * always recomputed as quantity × unitRate), only used to flag a mis-mapped column.
+ */
+export interface BoqImportRow {
+  rowNumber: number;
+  code: string;
+  description: string;
+  unit?: string | null;
+  quantity?: string | null;
+  unitRate?: string | null;
+  sheetAmount?: string | null;
+}
+
+export interface BoqImportRequest {
+  mode: BoqImportMode;
+  /** Opt-in (Q7): also upsert each imported leaf into the item library. */
+  addToLibrary: boolean;
+  rows: BoqImportRow[];
+}
+
+/** Findings that block the import — nothing is created while any of these stand. */
+export type BoqImportViolationCode =
+  | 'MISSING_CODE'
+  | 'MISSING_DESCRIPTION'
+  | 'INVALID_CODE'
+  | 'DUPLICATE_CODE'
+  | 'NON_NUMERIC_QUANTITY'
+  | 'NON_NUMERIC_RATE'
+  | 'NEGATIVE_QUANTITY'
+  | 'NEGATIVE_RATE'
+  | 'QUANTITY_SCALE'
+  | 'RATE_SCALE'
+  | 'MAX_DEPTH_EXCEEDED'
+  | 'TOO_MANY_ROWS';
+
+export interface BoqImportViolation {
+  code: BoqImportViolationCode;
+  /** 1-based sheet row, or null for whole-import findings (e.g. TOO_MANY_ROWS). */
+  rowNumber: number | null;
+  /** The offending node code, when the finding is about one. */
+  nodeCode: string | null;
+  message: string;
+}
+
+/** Findings that inform but do not block — the import proceeds with these surfaced. */
+export type BoqImportWarningCode =
+  | 'SECTION_CARRIES_PRICING'
+  | 'UNKNOWN_UNIT'
+  | 'UNPRICED_ITEM'
+  | 'AUTO_CREATED_SECTION'
+  | 'AMOUNT_MISMATCH';
+
+export interface BoqImportWarning {
+  code: BoqImportWarningCode;
+  rowNumber: number | null;
+  nodeCode: string | null;
+  message: string;
+}
+
+/** Returned by a successful commit (Slice 2). */
+export interface BoqImportResult {
+  versionId: string;
+  versionNumber: number;
+  mode: BoqImportMode;
+  createdSectionCount: number;
+  createdItemCount: number;
+  /** Ancestor sections synthesised from the codes because the sheet omitted them. */
+  autoCreatedSectionCount: number;
+  addedToLibraryCount: number;
+  warnings: BoqImportWarning[];
+}
+
 // ─── Commercial workspace read models (ADR-017, Gate B) ─────────────────────────
 //
 // Backend-owned response contracts for the Commercial workspace. The frontend consumes
