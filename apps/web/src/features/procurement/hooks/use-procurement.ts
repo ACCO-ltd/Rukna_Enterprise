@@ -71,6 +71,7 @@ import {
   submitMaterialRequest,
   submitPurchaseOrder,
   submitSupplierBill,
+  updateSupplier,
 } from '../api/procurement-api';
 import type {
   ApproveExceptionPayload,
@@ -102,6 +103,7 @@ import type {
   PostSupplierPaymentPayload,
   ReverseSupplierPaymentPayload,
   CreateSupplierPayload,
+  UpdateSupplierPayload,
   CreateSupplierBillPayload,
   PostSupplierBillPayload,
   ReverseSupplierBillPayload,
@@ -220,6 +222,21 @@ export function useCreateSupplier() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateSupplierPayload) => createSupplier(payload),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'suppliers'] }),
+  });
+}
+
+/**
+ * Corrects a supplier's master data (A15 / D8). Invalidates every supplier list regardless
+ * of its status filter, and every `SupplierPicker` reads the same cache entry, so a corrected
+ * name propagates to the pickers on the PO, bill and payment forms without a manual refetch.
+ */
+export function useUpdateSupplier() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateSupplierPayload }) =>
+      updateSupplier(id, payload),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'suppliers'] }),
   });

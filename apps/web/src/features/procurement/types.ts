@@ -183,10 +183,11 @@ export interface MaterialRequest {
  * which — unlike the catalogue endpoints (P2) — is a real parameter the controller reads,
  * so INACTIVE suppliers are reachable here in a way inactive units and materials are not.
  *
- * **There is no `PATCH /suppliers/:id` and nothing sets `status`** (A15). A supplier is
- * write-once: a misspelt name is permanent and prints on every bill and payment that
- * references it. That is why the create form warns before submitting and why no screen
- * offers an edit control — an input that silently has no effect is worse than no input.
+ * `PATCH /suppliers/:id` corrects master data (A15, merged #152 / D8) — name, tax number,
+ * default currency, payment terms and `address`. It does **not** touch the supplier `code`
+ * (its stable identity) or `status` (owned by a separate activate/deactivate flow), and it
+ * rewrites no historical facts: issued POs and bills reference the supplier by FK and
+ * snapshot no master field, so past documents carry no stale copy. See `UpdateSupplierPayload`.
  */
 export interface Supplier {
   id: string;
@@ -195,6 +196,8 @@ export interface Supplier {
   taxNumber: string | null;
   defaultCurrency: string | null;
   paymentTermsDays: number | null;
+  /** Free-text postal address. Editable via PATCH; not captured on the create form. */
+  address: string | null;
   status: MasterDataStatus;
 }
 
@@ -212,6 +215,23 @@ export interface CreateSupplierPayload {
   taxNumber?: string;
   defaultCurrency?: string;
   paymentTermsDays?: number;
+}
+
+/**
+ * `PATCH /suppliers/:id` (A15, D8). Every field is optional — a PATCH sends only what
+ * changed — and the server rejects a body with no editable field (`400`, "At least one
+ * editable field must be provided").
+ *
+ * `code` and `status` are deliberately absent: the endpoint drops them silently, so the
+ * identity of a supplier and its active/inactive state can never move through this path.
+ * `defaultCurrency` is `@Length(3, 3)`; `paymentTermsDays` is `@IsInt() @Min(0)`.
+ */
+export interface UpdateSupplierPayload {
+  name?: string;
+  taxNumber?: string;
+  defaultCurrency?: string;
+  paymentTermsDays?: number;
+  address?: string;
 }
 
 // ─── Purchase orders ─────────────────────────────────────────────────────────────
