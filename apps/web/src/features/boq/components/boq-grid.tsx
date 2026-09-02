@@ -55,6 +55,7 @@ export function BoqGrid({
   currency,
   totalAmount,
   visibleAmount,
+  sectionTotals,
   isFiltered,
   canManage,
   canViewCommercials,
@@ -71,6 +72,12 @@ export function BoqGrid({
   totalAmount: string | null;
   /** Sum of the items currently visible. Shown only while a filter narrows the list. */
   visibleAmount: string | null;
+  /**
+   * Section id → client-rolled-up subtotal (decimal string, or null when unpriced). Computed
+   * once in the workspace from the tree and memoized, so a section shows the sum of its own
+   * descendant leaves rather than each leaf being read in isolation.
+   */
+  sectionTotals: ReadonlyMap<string, string | null>;
   isFiltered: boolean;
   canManage: boolean;
   canViewCommercials: boolean;
@@ -166,6 +173,9 @@ export function BoqGrid({
                   locale={locale}
                   canManage={canManage}
                   canViewCommercials={canViewCommercials}
+                  sectionTotal={
+                    row.node.isLeaf ? undefined : (sectionTotals.get(row.node.id) ?? null)
+                  }
                   highlighted={highlighted.has(row.node.id)}
                   collapsed={collapsed.has(row.node.id)}
                   tabbable={index === activeIndex}
@@ -225,6 +235,7 @@ function GridRow({
   locale,
   canManage,
   canViewCommercials,
+  sectionTotal,
   highlighted,
   collapsed,
   tabbable,
@@ -238,6 +249,8 @@ function GridRow({
   locale: 'en' | 'ar';
   canManage: boolean;
   canViewCommercials: boolean;
+  /** A section's client-rolled-up subtotal. `undefined` for a leaf (which uses computedTotal). */
+  sectionTotal?: string | null;
   highlighted: boolean;
   collapsed: boolean;
   /** True for the single row holding the grid's tab stop. */
@@ -351,12 +364,19 @@ function GridRow({
               <span className="text-muted-foreground">{node.isLeaf ? '—' : ''}</span>
             )}
           </TableCell>
+          {/* A section shows its client-rolled-up subtotal — the sum of its own descendant
+              leaves — computed once in the workspace and memoized. A leaf shows its own
+              server-computed line amount. Both are right-aligned and tabular so subtotals line
+              up down the column against the items they roll up. */}
           <TableCell numeric className={cn(!node.isLeaf && 'font-semibold')}>
-            {node.computedTotal ? (
-              <LtrValue>{formatMoney(node.computedTotal, currency, locale)}</LtrValue>
-            ) : (
-              <span className="text-muted-foreground">—</span>
-            )}
+            {(() => {
+              const amount = node.isLeaf ? node.computedTotal : (sectionTotal ?? null);
+              return amount ? (
+                <LtrValue>{formatMoney(amount, currency, locale)}</LtrValue>
+              ) : (
+                <span className="text-muted-foreground">—</span>
+              );
+            })()}
           </TableCell>
         </>
       ) : null}
