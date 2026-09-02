@@ -512,6 +512,35 @@
       "contractCurrentAt": "Contract baseline: Version {number} — matches approved",
       "contractBehindAt": "Contract baseline: Version {number} — an approved revision supersedes it"
     },
+    "metrics": {
+      "label": "BOQ headline",
+      "totalValue": "Total value",
+      "priced": "Priced",
+      "pricedValue": "{priced} of {total}",
+      "unpriced": "Unpriced",
+      "unpricedValue": "{count} items",
+      "percentPriced": "% priced",
+      "percentValue": "{percent}%",
+      "notPriced": "Not priced",
+      "restricted": "Restricted"
+    },
+    "library": {
+      "sectionTitle": "Add from library",
+      "toggleOpen": "Add from library",
+      "toggleClose": "Enter manually",
+      "searchPlaceholder": "Search the item library…",
+      "searchLabel": "Search the reusable BOQ item library",
+      "searching": "Searching the library…",
+      "loadFailed": "Could not search the item library.",
+      "empty": "No library items yet. Enter an item manually, then save it to the library to reuse it.",
+      "noMatches": "No library items match that search.",
+      "lastRate": "Last rate {rate}",
+      "assistanceNote": "Picking an item prefills the fields below. The last-used rate is a starting point, not a quote — confirm it for this project.",
+      "prefilledFrom": "Prefilled from the library. Enter a code for this BOQ and adjust anything before saving.",
+      "saveToLibrary": "Also save this item to the library",
+      "saveToLibraryHint": "Adds it to the reusable library so it can be picked on future BOQs.",
+      "saveConflict": "A library item with this code already exists — it was not overwritten."
+    },
     "readiness": {
       "dismiss": "Dismiss",
       "ready": "Ready to baseline",
@@ -646,6 +675,11 @@
     },
     "versions": {
       "heading": "Version history",
+      "disclosureTitle": "Versions & history",
+      "disclosureShow": "Show versions & history",
+      "disclosureHide": "Hide versions & history",
+      "disclosureHint": "{count, plural, one {# version} other {# versions}} · compare and switch",
+      "currentHeading": "Current version",
       "count": "{count, plural, one {# version} other {# versions}}",
       "version": "Version {number}",
       "status": {

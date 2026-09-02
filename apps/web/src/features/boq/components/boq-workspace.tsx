@@ -18,7 +18,9 @@ import type { BoqTreeNodeResponse } from '@erp/types';
 
 import { ApiError } from '@/lib/api-client';
 import { fromMinorUnits, sumMinorUnits, MONEY_SCALE } from '@/lib/money';
+import { formatMoney } from '@/lib/format';
 import { EmptyState } from '@/components/empty-state';
+import { MetricStrip, type Metric } from '@/components/widget/metric-strip';
 import { LifecycleCommandDrawer } from '@/components/lifecycle-command-drawer';
 import { usePermissions } from '@/features/auth/permissions/can';
 
@@ -30,6 +32,7 @@ import {
   isPriced,
   type PricingFilter,
 } from '../boq-rows';
+import { computeRollup, type BoqTotals } from '../boq-totals';
 import { compareToCsv, downloadCsv, treeToCsv } from '../boq-export';
 import { resolveNextStep, type BoqNextStep } from '../boq-next-step';
 import {
@@ -45,12 +48,16 @@ import {
   useAddNode,
   useUpdateNode,
 } from '../hooks/use-boq';
+import {
+  useCreateLibraryItem,
+  useRecordLibraryUsage,
+} from '../hooks/use-boq-item-library';
 import { toCreateNodePayload, toUpdateNodePayload, type NodeFormValues } from '../node-form';
 import { BOQ_PERMISSIONS } from '../permissions';
 import { getVersionActions } from '../version-actions';
 import { BoqComparePanel } from './boq-compare-panel';
 import { BoqGrid, type BoqRowCommands } from './boq-grid';
-import { BoqItemDrawer, type DrawerTarget } from './boq-item-drawer';
+import { BoqItemDrawer, type DrawerTarget, type LibraryIntent } from './boq-item-drawer';
 import { BoqReadinessBanner } from './boq-readiness-banner';
 import { BoqStatusBar } from './boq-status-bar';
 import { BoqStickyBar, useIsOffScreen } from './boq-sticky-bar';
@@ -83,6 +90,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const [drawer, setDrawer] = useState<DrawerTarget | null>(null);
   const [command, setCommand] = useState<Command>(null);
   const [comparing, setComparing] = useState<{ left: string; right: string } | null>(null);
+  const [versionsOpen, setVersionsOpen] = useState(false);
   const [stickyRef, stickyOffScreen] = useIsOffScreen();
 
   // Derived during render rather than synchronised in an effect: a cancelled draft or a
@@ -106,9 +114,16 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const baseline = useBaselineVersion(projectId);
   const discard = useCancelDraftVersion(projectId);
   const revise = useCreateDraftVersion(projectId);
+  // Library side-effects of an item add (ADR-020). Both are assistance and run best-effort:
+  // recording the used rate and saving a manual entry never gate or fail the node add itself.
+  const recordLibraryUsage = useRecordLibraryUsage();
+  const saveLibraryItem = useCreateLibraryItem();
 
   const nodes = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
   const counts = useMemo(() => countTree(nodes), [nodes]);
+  // The headline total and every section subtotal, in one memoized pass over the tree. Keyed
+  // on the tree reference so a large BOQ is walked once per load, not per render.
+  const rollup = useMemo(() => computeRollup(nodes), [nodes]);
   const rows = useMemo(
     () => buildRows(nodes, { collapsed, search, pricing, pinned: highlighted }),
     [nodes, collapsed, search, pricing, highlighted],
@@ -202,6 +217,17 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const visibleAmount = isFiltered
     ? sumVisibleItems(rows.map((row) => row.node))
     : (selected?.totalAmount ?? null);
+
+  // The headline metric strip. The TOTAL is the server's version total (the exact figure the
+  // status bar and version panel show), so the three can never disagree; the completeness
+  // figures come from the tree rollup the section subtotals are also drawn from.
+  const headlineMetrics: Metric[] = buildHeadlineMetrics({
+    totalAmount: selected?.totalAmount ?? null,
+    totals: rollup.totals,
+    currency: workspace.currency,
+    canViewCommercials,
+    t,
+  });
 
   const toggleCollapsed = (nodeId: string) =>
     setCollapsed((current) => {
@@ -336,6 +362,11 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         />
       ) : null}
 
+      {/* The BOQ headline — the project budget, the first number the eye should land on.
+          The total is the version total the status bar and version panel already show, so the
+          three never disagree; the completeness figures come from the memoized tree rollup. */}
+      <MetricStrip aria-label={t('metrics.label')} metrics={headlineMetrics} />
+
       <div id="boq-grid" className="space-y-3 scroll-mt-4">
         <BoqToolbar
           search={search}
@@ -367,6 +398,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
             currency={workspace.currency}
             totalAmount={selected?.totalAmount ?? null}
             visibleAmount={visibleAmount}
+            sectionTotals={rollup.sectionTotals}
             isFiltered={isFiltered}
             canManage={canManage}
             canViewCommercials={canViewCommercials}
@@ -398,6 +430,8 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         selectedId={selectedVersionId}
         currency={workspace.currency}
         canViewCommercials={canViewCommercials}
+        open={versionsOpen}
+        onToggle={() => setVersionsOpen((current) => !current)}
         onSelect={setChosenVersionId}
         onCompare={(left, right) => setComparing({ left, right })}
       />
@@ -414,6 +448,11 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         currency={workspace.currency}
         readOnly={!canManage}
         isPending={addNode.isPending || updateNode.isPending}
+        // Library assistance rides on the same permission as managing the BOQ (both the
+        // controller's create/record-usage need `manage:boq`, which `canManage` implies).
+        libraryEnabled={canManage}
+        canViewCommercials={canViewCommercials}
+        canSaveToLibrary={canManage}
         errorMessage={
           addNode.error || updateNode.error
             ? errorText(addNode.error ?? updateNode.error, t('editor.saveFailed'))
@@ -424,7 +463,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
           updateNode.reset();
           setDrawer(null);
         }}
-        onSubmit={(values, target) => handleSave(values, target)}
+        onSubmit={(values, target, library) => handleSave(values, target, library)}
       />
 
       {comparing ? (
@@ -484,7 +523,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
 
   // ─── Handlers ────────────────────────────────────────────────────────────────
 
-  function handleSave(values: NodeFormValues, target: DrawerTarget) {
+  function handleSave(values: NodeFormValues, target: DrawerTarget, library: LibraryIntent) {
     if (!selectedVersionId) return;
 
     if (target.mode === 'edit' && target.node) {
@@ -498,13 +537,48 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
       return;
     }
 
-    addNode.mutate(
-      toCreateNodePayload(values, {
-        kind: target.kind,
-        parentId: target.parent?.id,
-      }),
-      { onSuccess: () => setDrawer(null) },
-    );
+    const payload = toCreateNodePayload(values, {
+      kind: target.kind,
+      parentId: target.parent?.id,
+    });
+
+    addNode.mutate(payload, {
+      onSuccess: () => {
+        // Library side-effects run AFTER the node is saved and never block it — a failure
+        // here must not undo or surface an error on the add the user actually asked for.
+        runLibrarySideEffects(values, library, payload.unitRate ?? null);
+        setDrawer(null);
+      },
+    });
+  }
+
+  /**
+   * Records a picked item's used rate and/or saves a manual entry to the library. Fire-and-
+   * forget: the library is assistance (ADR-020 CONST-BOQ-021), so neither call gates the add,
+   * and a `409` on save (code already exists) is swallowed rather than shown as a failure.
+   */
+  function runLibrarySideEffects(
+    values: NodeFormValues,
+    library: LibraryIntent,
+    unitRate: string | null,
+  ) {
+    if (library.pickedItemId && unitRate) {
+      recordLibraryUsage.mutate({
+        id: library.pickedItemId,
+        payload: { rate: unitRate, projectId },
+      });
+    }
+
+    if (library.saveToLibrary) {
+      const unit = values.unit.trim();
+      saveLibraryItem.mutate({
+        code: values.code.trim(),
+        description: values.description.trim(),
+        ...(unit ? { defaultUnit: unit } : {}),
+        measurementMethod: values.measurementMethod,
+        pricingBasis: values.pricingBasis,
+      });
+    }
   }
 
   function runCommand(current: Exclude<Command, null>, reason: string) {
@@ -531,6 +605,48 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
 
     return errorText(mutation.error, translate(`commands.${current}.failed`));
   }
+}
+
+/**
+ * The four headline metrics, pre-formatted for the metric strip.
+ *
+ * The total is the caller-supplied version total (the exact figure the status bar and version
+ * panel show), not a re-derived sum — so the three never disagree. When commercial visibility
+ * is withheld the total reads "Restricted", never a blank or a fake zero. The completeness
+ * figures come from the tree rollup and are always visible: a count is not commercial.
+ */
+function buildHeadlineMetrics({
+  totalAmount,
+  totals,
+  currency,
+  canViewCommercials,
+  t,
+}: {
+  totalAmount: string | null;
+  totals: BoqTotals;
+  currency: string;
+  canViewCommercials: boolean;
+  t: ReturnType<typeof useTranslations>;
+}): Metric[] {
+  const totalValue = canViewCommercials
+    ? (formatMoney(totalAmount, currency, 'en') ?? t('metrics.notPriced'))
+    : t('metrics.restricted');
+
+  return [
+    { label: t('metrics.totalValue'), value: totalValue },
+    {
+      label: t('metrics.priced'),
+      value: t('metrics.pricedValue', { priced: totals.pricedCount, total: totals.itemCount }),
+    },
+    {
+      label: t('metrics.unpriced'),
+      value: t('metrics.unpricedValue', { count: totals.unpricedCount }),
+    },
+    {
+      label: t('metrics.percentPriced'),
+      value: t('metrics.percentValue', { percent: totals.pricedPercent }),
+    },
+  ];
 }
 
 /**

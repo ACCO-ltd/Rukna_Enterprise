@@ -46,6 +46,7 @@ function render(overrides: Partial<Parameters<typeof BoqGrid>[0]> = {}) {
       currency="USD"
       totalAmount="45000.00"
       visibleAmount="45000.00"
+      sectionTotals={new Map([['s1', '45000.00']])}
       isFiltered={false}
       canManage
       canViewCommercials
