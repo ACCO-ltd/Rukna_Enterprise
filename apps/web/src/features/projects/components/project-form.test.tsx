@@ -30,6 +30,15 @@ vi.mock('@/features/districts/hooks/use-districts', () => ({
   }),
 }));
 
+// The subtype picker (and the review-step name lookup) read this hook. Return no subtypes —
+// the subtype is optional and no test here exercises picking one; the point is that category
+// is required and rides in the payload.
+vi.mock('@/features/project-types/hooks/use-project-subtypes', () => ({
+  useProjectSubtypes: () => ({ data: [], isPending: false }),
+  useCreateProjectSubtype: () => ({ mutate: vi.fn(), isPending: false, isError: false, error: null }),
+  useDeactivateProjectSubtype: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
 const push = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push, refresh: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
@@ -67,6 +76,8 @@ async function fillStep1(
   // required fields; getByRole uses the ARIA accessible-name algorithm which excludes it.
   await user.type(screen.getByRole('textbox', { name: /^project name/i }), name);
   await user.selectOptions(screen.getByRole('combobox', { name: /^district/i }), 'd-wbr');
+  // Category is required (PTD1-PTD5) — pick one so step 1 can advance.
+  await user.selectOptions(screen.getByRole('combobox', { name: /^category/i }), 'COMMERCIAL');
   await user.selectOptions(screen.getByRole('combobox', { name: /^client/i }), clientValue);
   if (location) await user.type(screen.getByLabelText('Location'), location);
 }
@@ -127,6 +138,20 @@ describe('ProjectForm — validation', () => {
     expect(createProject).not.toHaveBeenCalled();
   });
 
+  it('requires a category before advancing from step 1 (PTD1-PTD5)', async () => {
+    const user = userEvent.setup();
+    renderForm();
+
+    await user.type(screen.getByRole('textbox', { name: /^project name/i }), 'Tower');
+    await user.selectOptions(screen.getByRole('combobox', { name: /^district/i }), 'd-wbr');
+    await user.selectOptions(screen.getByRole('combobox', { name: /^client/i }), 'client-1');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    // The category field surfaces its required error (a role="alert"); the wizard stays on step 1.
+    expect(await screen.findByRole('alert')).toHaveTextContent('Select a category');
+    expect(createProject).not.toHaveBeenCalled();
+  });
+
   it('rejects a completion date before the start date', async () => {
     const user = userEvent.setup();
     renderForm();
@@ -162,6 +187,7 @@ describe('ProjectForm — submission', () => {
       expect(createProject).toHaveBeenCalledWith({
         name: 'Al-Baraka Tower',
         districtId: 'd-wbr',
+        category: 'COMMERCIAL',
         commercialModel: 'CLIENT_CONTRACT',
         participationModel: 'SOLE',
         clientId: 'client-1',
@@ -188,6 +214,7 @@ describe('ProjectForm — submission', () => {
       expect(createProject).toHaveBeenCalledWith({
         name: 'Tower',
         districtId: 'd-wbr',
+        category: 'COMMERCIAL',
         commercialModel: 'CLIENT_CONTRACT',
         participationModel: 'SOLE',
         clientId: 'client-1',
@@ -248,6 +275,7 @@ describe('ProjectForm — client preselection', () => {
     // User can advance without selecting a client from a dropdown.
     await user.type(screen.getByRole('textbox', { name: /^project name/i }), 'Tower');
     await user.selectOptions(screen.getByRole('combobox', { name: /^district/i }), 'd-wbr');
+    await user.selectOptions(screen.getByRole('combobox', { name: /^category/i }), 'COMMERCIAL');
     await user.click(screen.getByRole('button', { name: 'Next' }));
 
     // Step 2 should be shown.

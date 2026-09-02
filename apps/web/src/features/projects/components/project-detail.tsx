@@ -161,6 +161,7 @@ function Overview({
 }) {
   const t = useTranslations('platform.projects.detail');
   const tProjects = useTranslations('platform.projects');
+  const tTypes = useTranslations('projectTypes');
   const contractValueDisplay = formatMoney(
     summary?.mainContract?.contractValue ?? null,
     summary?.mainContract?.currency ?? null,
@@ -175,9 +176,19 @@ function Overview({
     summary?.mainContract?.contractNumber ??
     (project.commercialModel === 'INTERNAL_CAPITAL' ? t('notApplicable') : null);
 
+  // Project type (PTD1-PTD5): show the category (Untyped for legacy projects) and the subtype
+  // when one is assigned. Classification facts, so they sit with the other identity rows.
+  const categoryValue = project.category
+    ? tTypes(`categories.${project.category}`)
+    : tTypes('display.untyped');
+
   const details: Array<{ label: string; value: string | null }> = [
     { label: t('client'), value: project.clientName },
     { label: t('mainContract'), value: mainContractRef },
+    { label: tTypes('display.categoryLabel'), value: categoryValue },
+    ...(project.subtype
+      ? [{ label: tTypes('display.subtypeLabel'), value: project.subtype.name }]
+      : []),
     {
       label: t('commercialModel'),
       value: tProjects(

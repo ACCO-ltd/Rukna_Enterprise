@@ -11,6 +11,8 @@ export type {
   ProjectDetail,
   ProjectMember,
   ProjectMemberRoleAssignment,
+  ProjectSubtype,
+  ProjectSubtypeRef,
   ProjectSuspension,
   ProjectWorkspaceSummary,
 } from '@/lib/api-types';

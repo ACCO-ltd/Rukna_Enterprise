@@ -67,6 +67,7 @@ import type {
   IpaStatus,
   IpcStatus,
   MeasurementMethod,
+  ProjectCategory,
   ProjectRole,
   ProjectStatus,
 } from '@erp/types';
@@ -78,6 +79,35 @@ import type {
 } from '@erp/types';
 
 // ─── Projects ────────────────────────────────────────────────────────────────────
+
+/**
+ * Project type (PTD1-PTD5) — the subtype registry row, org-scoped classification within a
+ * fixed `ProjectCategory`. Read off `ProjectSubtypeResponseDto`; `status` is `ACTIVE` or
+ * `INACTIVE` (deactivated subtypes are hidden from new-project pickers but keep their history).
+ *
+ * Hand-maintained here rather than adopted from `@erp/types` for the same reason `Project`
+ * is: `packages/types` is backend-owned and exports the enum + labels only, not this DTO.
+ */
+export interface ProjectSubtype {
+  id: string;
+  organizationId: string;
+  category: ProjectCategory;
+  name: string;
+  status: 'ACTIVE' | 'INACTIVE';
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * The trimmed subtype the project read model embeds on the detail response
+ * (`GET /projects/:id`). The list response carries the scalar `category` but NOT this object.
+ */
+export interface ProjectSubtypeRef {
+  id: string;
+  name: string;
+  category: ProjectCategory;
+  status: 'ACTIVE' | 'INACTIVE';
+}
 
 /** `GET /projects` — list rows. */
 export interface Project {
@@ -93,6 +123,12 @@ export interface Project {
   clientId?: string | null;
   /** ADR-025: district where the project is built (segment of the code). */
   districtId?: string | null;
+  /**
+   * Project type (PTD1-PTD5): the required classification category. Comes on both the list and
+   * the detail response. Legacy projects created before the field existed read as `null` — the
+   * UI shows those as "Untyped" rather than fabricating a category.
+   */
+  category?: ProjectCategory | null;
   location?: string | null;
   commercialModel?: 'CLIENT_CONTRACT' | 'INTERNAL_CAPITAL';
   participationModel?: 'SOLE' | 'JOINT_VENTURE';
@@ -146,6 +182,13 @@ export interface ProjectMember {
 export interface ProjectDetail extends Project {
   members: ProjectMember[];
   suspensions: ProjectSuspension[];
+  /**
+   * Project type (PTD1-PTD5): the assigned subtype, or `null` when none was set. The scalar
+   * `category` above is the required classification; this is its optional refinement. Present on
+   * the detail response only (`PROJECT_FULL_INCLUDE`) — the list response omits it.
+   */
+  subtypeId?: string | null;
+  subtype?: ProjectSubtypeRef | null;
 }
 
 export type ProjectWorkspaceSummary = ProjectWorkspaceSummaryResponse;
