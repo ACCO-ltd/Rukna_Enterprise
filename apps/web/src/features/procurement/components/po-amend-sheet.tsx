@@ -20,9 +20,9 @@ import {
   DatePicker,
   FormField,
   Input,
-  Sheet,
-  SheetContent,
-  SheetTitle,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   Textarea,
 } from '@erp/ui';
 
@@ -160,12 +160,15 @@ export function PoAmendSheet({
     revise.error instanceof ApiError ? revise.error.message : revise.error ? tc('loadFailed') : null;
 
   return (
-    <Sheet open onOpenChange={(next) => (next ? undefined : onClose())}>
-      <SheetContent className="flex w-full max-w-2xl flex-col gap-0 overflow-y-auto p-0">
+    <Dialog open onOpenChange={(next) => (next ? undefined : onClose())}>
+      {/* The one panel that was genuinely large: it hosts the same line editor the create
+          screen uses. It had already written `max-w-2xl` inside a 420px drawer that could
+          never honour it — the width it was asking for is what it gets here. */}
+      <DialogContent className="flex flex-col gap-0 p-0 sm:max-w-4xl">
         <div className="border-b border-border px-5 py-4 sm:px-6">
-          <SheetTitle className="text-lg font-semibold text-foreground">
+          <DialogTitle className="text-lg font-semibold text-foreground">
             {t('amendTitle', { number: order.poNumber })}
-          </SheetTitle>
+          </DialogTitle>
           <p className="mt-1 text-sm text-muted-foreground">{t('amendBody')}</p>
         </div>
 
@@ -243,7 +246,7 @@ export function PoAmendSheet({
             </Button>
           </div>
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -97,15 +97,6 @@ export { Tabs, TabsContent, TabsList, TabsTrigger } from './components/tabs';
 export { ViewSwitcher } from './components/view-switcher';
 export type { ViewSwitcherItem, ViewSwitcherProps } from './components/view-switcher';
 export {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetTitle,
-  SheetTrigger,
-} from './components/sheet';
-export {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,

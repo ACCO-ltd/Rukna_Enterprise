@@ -9,9 +9,9 @@ import {
   FormField,
   Input,
   SectionHeader,
-  Sheet,
-  SheetContent,
-  SheetTitle,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   Table,
   TableBody,
   TableCell,
@@ -33,7 +33,7 @@ import { DprDetail } from './dpr-detail';
  * Daily progress reports: an operational index that leads with the list, not a form.
  *
  * The create form used to sit always-on above the table (audit PR2); it now lives behind the
- * one primary action (`+ New daily report`) in a `Sheet`, so the view opens on the record of
+ * one primary action (`+ New daily report`) in a `Dialog`, so the view opens on the record of
  * what has already happened. On a successful create the sheet closes and the new report's detail
  * opens — the same flow, one step less noise on arrival.
  */
@@ -64,9 +64,9 @@ export function DailyReportsSection({ projectId }: { projectId: string }) {
         </Button>
       </SectionHeader>
 
-      <Sheet open={creating} onOpenChange={setCreating}>
-        <SheetContent className="p-5 sm:p-6">
-          <SheetTitle>{t('report.newTitle')}</SheetTitle>
+      <Dialog open={creating} onOpenChange={setCreating}>
+        <DialogContent className="p-5 sm:p-6 sm:max-w-xl">
+          <DialogTitle>{t('report.newTitle')}</DialogTitle>
           <div className="mt-5">
             <CreateReportForm
               projectId={projectId}
@@ -76,8 +76,8 @@ export function DailyReportsSection({ projectId }: { projectId: string }) {
               }}
             />
           </div>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
       {isPending ? (
         <div role="status" aria-live="polite">

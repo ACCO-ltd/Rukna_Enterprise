@@ -25,9 +25,9 @@ import {
   Alert,
   FormField,
   Input,
-  Sheet,
-  SheetContent,
-  SheetTitle,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   Table,
   TableBody,
   TableCell,
@@ -168,19 +168,19 @@ export function SupplierList() {
         </Table>
       </TableScroll>
 
-      <Sheet open={editing !== null} onOpenChange={(open) => (open ? null : setEditing(null))}>
-        <SheetContent className="p-6">
-          <SheetTitle className="text-lg font-semibold text-foreground">
+      <Dialog open={editing !== null} onOpenChange={(open) => (open ? null : setEditing(null))}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogTitle className="text-lg font-semibold text-foreground">
             {t('editTitle')}
-          </SheetTitle>
+          </DialogTitle>
           <p className="mt-1 text-sm text-muted-foreground">{t('editSubtitle')}</p>
           {editing ? (
             <div className="mt-5">
               <SupplierEditForm supplier={editing} onDone={() => setEditing(null)} />
             </div>
           ) : null}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </SetupScreen>
   );
 }

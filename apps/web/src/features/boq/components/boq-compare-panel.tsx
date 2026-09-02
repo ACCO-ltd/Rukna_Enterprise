@@ -8,10 +8,10 @@ import {
   Badge,
   Button,
   LtrValue,
-  Sheet,
-  SheetContent,
-  SheetFooter,
-  SheetTitle,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogTitle,
   Skeleton,
   Table,
   TableBody,
@@ -59,10 +59,10 @@ export function BoqComparePanel({
   const locale = useLocale() as 'en' | 'ar';
 
   return (
-    <Sheet open onOpenChange={(next) => !next && onClose()}>
-      <SheetContent className="sm:w-[min(56rem,100vw)]">
+    <Dialog open onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="sm:w-[min(56rem,100vw)] sm:max-w-4xl">
         <div className="px-5 pb-4 pt-10">
-          <SheetTitle>{t('heading')}</SheetTitle>
+          <DialogTitle>{t('heading')}</DialogTitle>
           {diff ? (
             <p className="mt-1 text-body-sm text-muted-foreground">
               {t('between', {
@@ -183,7 +183,7 @@ export function BoqComparePanel({
           ) : null}
         </div>
 
-        <SheetFooter>
+        <DialogFooter>
           <Button variant="outline" className="gap-2" onClick={onExport} disabled={!diff}>
             <Download size={15} aria-hidden="true" />
             {t('export')}
@@ -191,9 +191,9 @@ export function BoqComparePanel({
           <Button variant="outline" onClick={onClose}>
             {t('close')}
           </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

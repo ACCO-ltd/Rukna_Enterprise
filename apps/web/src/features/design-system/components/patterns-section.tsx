@@ -16,13 +16,6 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetTitle,
-  SheetTrigger,
   SkeletonForm,
   SkeletonRecord,
   SkeletonTable,
@@ -423,7 +416,7 @@ export function PatternsSection() {
         title="Overlays"
         intro="Open each one and try Escape, Tab and the direction toggle. Radix supplies the focus trap, the scroll lock and the return-focus behaviour; these wrappers supply only the surface."
       >
-        <Specimen label="Dialog, Sheet, DropdownMenu" token="<Dialog> · <Sheet> · <DropdownMenu>">
+        <Specimen label="Dialog and DropdownMenu" token="<Dialog> · <DropdownMenu>">
           <div className="flex flex-wrap gap-3">
             <Dialog>
               <DialogTrigger asChild>
@@ -445,27 +438,6 @@ export function PatternsSection() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button variant="outline">Filters</Button>
-              </SheetTrigger>
-              <SheetContent>
-                <SheetTitle>Filter bills</SheetTitle>
-                <SheetDescription>
-                  A sheet is for a secondary task alongside the page. A dialog is for a decision
-                  that blocks it.
-                </SheetDescription>
-                <SheetFooter>
-                  <SheetClose asChild>
-                    <Button variant="ghost">Reset</Button>
-                  </SheetClose>
-                  <SheetClose asChild>
-                    <Button>Apply</Button>
-                  </SheetClose>
-                </SheetFooter>
-              </SheetContent>
-            </Sheet>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

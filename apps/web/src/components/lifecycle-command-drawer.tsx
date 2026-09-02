@@ -7,11 +7,11 @@ import {
   Button,
   cn,
   FormField,
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
   Textarea,
 } from '@erp/ui';
 
@@ -100,7 +100,7 @@ export interface LifecycleCommandDrawerProps {
 /**
  * The standard shell for every lifecycle transition in the platform.
  *
- * Wraps a Sheet (right-anchored panel) with the command header, status transition
+ * Wraps a Dialog (right-anchored panel) with the command header, status transition
  * indicator, optional business impact copy, a customisable form area, and a
  * sticky footer. Callers bring their own lifecycle hook (`useLifecycleCommand`)
  * and pass `isPending`, `errorMessage`, and `onConfirm` down to this shell.
@@ -176,8 +176,8 @@ export function LifecycleCommandDrawer({
   };
 
   return (
-    <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetContent
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-lg"
         onEscapeKeyDown={preventWhilePending}
         onPointerDownOutside={preventWhilePending}
         onInteractOutside={preventWhilePending}
@@ -190,7 +190,7 @@ export function LifecycleCommandDrawer({
       >
         {/* Header */}
         <div className="px-5 pb-4 pt-10">
-          <SheetTitle>{commandName}</SheetTitle>
+          <DialogTitle>{commandName}</DialogTitle>
 
           {/* Status transition indicator */}
           <div className="mt-3 flex items-center gap-2 text-sm">
@@ -201,7 +201,7 @@ export function LifecycleCommandDrawer({
 
           {/* Business impact */}
           {businessImpact ? (
-            <SheetDescription className="mt-4">{businessImpact}</SheetDescription>
+            <DialogDescription className="mt-4">{businessImpact}</DialogDescription>
           ) : null}
         </div>
 
@@ -238,7 +238,7 @@ export function LifecycleCommandDrawer({
         </div>
 
         {/* Sticky footer */}
-        <SheetFooter>
+        <DialogFooter>
           <Button
             variant={isDestructive ? 'destructive' : 'default'}
             onClick={handleConfirm}
@@ -249,8 +249,8 @@ export function LifecycleCommandDrawer({
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             {t('dismiss')}
           </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

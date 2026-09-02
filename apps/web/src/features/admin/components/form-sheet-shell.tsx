@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { Button, Sheet, SheetContent, SheetDescription, SheetTitle } from '@erp/ui';
+import { Button, Dialog, DialogContent, DialogDescription, DialogTitle } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
 
@@ -19,8 +19,19 @@ import { ApiError } from '@/lib/api-client';
  *                  disabled while pending; its label swaps to a pending verb.
  *
  * Modelled on the "Add role" reference and screens/create-form.html. Kept as a shell rather
- * than a full <Form> so each sheet owns its own fields and submit — only the chrome is shared,
+ * than a full <Form> so each form owns its own fields and submit — only the chrome is shared,
  * which is what makes them read consistently.
+ *
+ * ─── Why a dialog and not the side panel it used to be ───────────────────────────
+ *
+ * These are short forms — four or five fields — asked in the middle of a table. A side panel
+ * keeps the page visible behind it, which is worth something when you are checking a record
+ * while acting on it; none of these need that, because the field you are filling in does not
+ * depend on the row behind the panel. What the panel did cost was width: 420px, on screens
+ * where 900px was available, so a two-column pair like first/last name never had room.
+ *
+ * The one place a panel still earned its keep is comparison — and 420px was the worst width
+ * for that too, so nothing is left holding the primitive up.
  */
 export function FormSheetShell({
   open,
@@ -36,21 +47,13 @@ export function FormSheetShell({
   children: ReactNode;
 }) {
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex max-h-full flex-col p-0">
-        <div className="border-b border-border px-6 pb-4 pt-6">
-          <SheetTitle className="text-base font-semibold leading-6 text-foreground">
-            {title}
-          </SheetTitle>
-          {description ? (
-            <SheetDescription className="mt-1 text-sm leading-5 text-muted-foreground">
-              {description}
-            </SheetDescription>
-          ) : null}
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">{children}</div>
-      </SheetContent>
-    </Sheet>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogTitle>{title}</DialogTitle>
+        {description ? <DialogDescription>{description}</DialogDescription> : null}
+        <div className="mt-5">{children}</div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

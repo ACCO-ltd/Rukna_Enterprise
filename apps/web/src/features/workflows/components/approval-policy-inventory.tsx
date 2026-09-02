@@ -9,10 +9,10 @@ import {
   Button,
   FormField,
   Input,
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
   Table,
   TableBody,
   TableCell,
@@ -183,10 +183,10 @@ export function ApprovalPolicyInventory() {
         />
       ) : null}
 
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent className="p-6">
-          <SheetTitle>{t('newDraft')}</SheetTitle>
-          <SheetDescription className="mt-1">{t('draftHint')}</SheetDescription>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="p-6 sm:max-w-lg">
+          <DialogTitle>{t('newDraft')}</DialogTitle>
+          <DialogDescription className="mt-1">{t('draftHint')}</DialogDescription>
           <form onSubmit={submit} className="mt-5 space-y-4">
             <FormField htmlFor="policyKey" label={t('policyKey')} required>
               <Input
@@ -211,8 +211,8 @@ export function ApprovalPolicyInventory() {
               </Button>
             </div>
           </form>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

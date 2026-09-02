@@ -7,11 +7,11 @@ import {
   Button,
   Input,
   Label,
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
   Textarea,
   ViewSwitcher,
   useToast,
@@ -53,11 +53,11 @@ export function VariationCreateSheet({
   // The form body is mounted only while the sheet is open, so its state starts fresh every time
   // rather than being reset by an effect — a cancelled draft can never bleed into the next.
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent aria-describedby="vo-create-desc">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-xl" aria-describedby="vo-create-desc">
         {open ? <CreateForm {...formProps} onOpenChange={onOpenChange} /> : null}
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -121,8 +121,8 @@ function CreateForm({
   return (
     <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
       <div className="border-b border-border px-5 py-4">
-        <SheetTitle>{t('create.title')}</SheetTitle>
-        <SheetDescription id="vo-create-desc">{t('create.subtitle')}</SheetDescription>
+        <DialogTitle>{t('create.title')}</DialogTitle>
+        <DialogDescription id="vo-create-desc">{t('create.subtitle')}</DialogDescription>
           </div>
 
           <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
@@ -283,7 +283,7 @@ function CreateForm({
             </div>
           </div>
 
-          <SheetFooter>
+          <DialogFooter>
             <Button type="submit" disabled={!canSave}>
               {create.isPending ? tCommon('saving') : t('create.save')}
             </Button>
@@ -295,7 +295,7 @@ function CreateForm({
             >
               {tCommon('cancel')}
             </Button>
-      </SheetFooter>
+      </DialogFooter>
     </form>
   );
 }

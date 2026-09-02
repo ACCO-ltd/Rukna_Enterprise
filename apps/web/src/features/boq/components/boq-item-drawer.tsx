@@ -2,25 +2,28 @@
 
 import { useState } from 'react';
 import type { BoqTreeNodeResponse } from '@erp/types';
+import { Library } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
+  CheckboxField,
   FormField,
   Input,
   LtrValue,
   MoneyInput,
   Select,
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
   Textarea,
 } from '@erp/ui';
 
 import { formatDate, formatMoney } from '@/lib/format';
 
+import type { BoqLibraryItem } from '../api/boq-item-library-api';
 import {
   EMPTY_NODE_FORM,
   NODE_LIMITS,
@@ -31,6 +34,7 @@ import {
   type NodeKind,
   type PricingBasisValue,
 } from '../node-form';
+import { BoqLibraryPicker } from './boq-library-picker';
 
 export interface DrawerTarget {
   mode: 'add' | 'edit';
@@ -42,16 +46,31 @@ export interface DrawerTarget {
 }
 
 /**
+ * What the drawer wants done with the library after the node is saved (ADR-020). Both are
+ * assistance and neither blocks the plain add — the workspace runs them best-effort.
+ */
+export interface LibraryIntent {
+  /** The library item this line was prefilled from, if any — its usage rate is recorded. */
+  pickedItemId: string | null;
+  /** True when the user asked to save this manually-entered item back to the library. */
+  saveToLibrary: boolean;
+}
+
+/**
  * The item editor.
  *
- * A `Sheet` from `@erp/ui`, which is Radix Dialog. It replaces 318 lines that reimplemented
+ * A `Dialog` from `@erp/ui`, which is Radix Dialog. It replaces 318 lines that reimplemented
  * a modal by hand — its own overlay, its own Tab-cycling focus trap, its own
  * `document.body.style.overflow` lock, its own focus restore. All of that is Radix's job,
  * and Radix does it correctly on iOS and with a screen reader.
  *
- * A drawer rather than a centred dialog because editing a BOQ line is a comparison task:
- * the surveyor is checking this rate against the rows above it, which stay visible behind a
- * right-anchored panel. On < sm it goes full screen — `SheetContent` already handles that.
+ * It was a right-anchored drawer, on the argument that editing a BOQ line is a comparison
+ * task — the surveyor checks this rate against the rows above it, and a side panel leaves
+ * them visible. The argument is real but the panel did not deliver it: at 420px it covered
+ * the right third of the table, which is where the rate column sits, and it gave the form
+ * itself less width than its seven fields wanted. A wider centred dialog trades a partial
+ * view of the rows for a form you can actually read; if the comparison turns out to matter
+ * more than that in use, the honest fix is a split view, not a narrow panel.
  */
 export function BoqItemDrawer({
   target,
@@ -59,6 +78,9 @@ export function BoqItemDrawer({
   readOnly,
   isPending,
   errorMessage,
+  libraryEnabled = false,
+  canViewCommercials = false,
+  canSaveToLibrary = false,
   onSubmit,
   onClose,
 }: {
@@ -67,10 +89,17 @@ export function BoqItemDrawer({
   readOnly: boolean;
   isPending: boolean;
   errorMessage?: string | undefined;
-  onSubmit: (values: NodeFormValues, target: DrawerTarget) => void;
+  /** Show the "Add from library" path. Only meaningful when adding a new item. */
+  libraryEnabled?: boolean;
+  /** Gates whether the assistive last-used rate is shown in the picker. */
+  canViewCommercials?: boolean;
+  /** Whether the user may save a manually-entered item back to the library. */
+  canSaveToLibrary?: boolean;
+  onSubmit: (values: NodeFormValues, target: DrawerTarget, library: LibraryIntent) => void;
   onClose: () => void;
 }) {
   const t = useTranslations('platform.boq.editor');
+  const tLib = useTranslations('platform.boq.library');
   const locale = useLocale() as 'en' | 'ar';
 
   // Seeded once, because the caller gives this component a `key` derived from the target —
@@ -82,9 +111,20 @@ export function BoqItemDrawer({
   );
   const [touched, setTouched] = useState(false);
 
+  // Library state, only relevant on an item add. `pickedItemId` records which library item
+  // (if any) prefilled the form, so its usage rate can be recorded after the node saves.
+  // `saveToLibrary` is the reverse path — persist a manual entry for reuse. `showPicker`
+  // toggles the search list open; it stays a disclosure so a plain manual add is unchanged.
+  const [showPicker, setShowPicker] = useState(false);
+  const [pickedItemId, setPickedItemId] = useState<string | null>(null);
+  const [saveToLibrary, setSaveToLibrary] = useState(false);
+
   if (!target) return null;
 
   const isItem = target.kind === 'item';
+  const isAdd = target.mode === 'add';
+  // The library only assists adding a NEW item, and only for someone who can manage the BOQ.
+  const showLibrary = libraryEnabled && isItem && isAdd && !readOnly;
   const errors = validate(values, target.kind, t);
   const hasErrors = Object.keys(errors).length > 0;
   const preview = isItem ? previewLineTotal(values) : null;
@@ -92,20 +132,42 @@ export function BoqItemDrawer({
   const set = <K extends keyof NodeFormValues>(key: K, value: NodeFormValues[K]) =>
     setValues((current) => ({ ...current, [key]: value }));
 
+  /** Prefills the form from a library item. Assistance — every field stays editable. */
+  const applyLibraryItem = (item: BoqLibraryItem) => {
+    setValues((current) => ({
+      ...current,
+      description: item.description,
+      unit: item.defaultUnit ?? current.unit,
+      measurementMethod: item.measurementMethod,
+      pricingBasis: item.pricingBasis,
+      // Last-used rate is a starting point, never authoritative (CONST-BOQ-021).
+      unitRate: item.lastUsedRate ?? current.unitRate,
+    }));
+    setPickedItemId(item.id);
+    // Once a manual entry has been prefilled from the library, re-saving it would just
+    // duplicate what is already there.
+    setSaveToLibrary(false);
+    setShowPicker(false);
+  };
+
   const handleSubmit = () => {
     setTouched(true);
     if (hasErrors) return;
-    onSubmit(values, target);
+    onSubmit(values, target, {
+      pickedItemId: showLibrary ? pickedItemId : null,
+      saveToLibrary: showLibrary && saveToLibrary,
+    });
   };
 
   return (
-    <Sheet open onOpenChange={(next) => !next && !isPending && onClose()}>
-      <SheetContent
+    <Dialog open onOpenChange={(next) => !next && !isPending && onClose()}>
+      <DialogContent
+        className="sm:max-w-2xl"
         onEscapeKeyDown={(event) => isPending && event.preventDefault()}
         onInteractOutside={(event) => isPending && event.preventDefault()}
       >
         <div className="px-5 pb-4 pt-10">
-          <SheetTitle>
+          <DialogTitle>
             {target.mode === 'add'
               ? isItem
                 ? t('addItem')
@@ -113,8 +175,8 @@ export function BoqItemDrawer({
               : isItem
                 ? t('editItem')
                 : t('editSection')}
-          </SheetTitle>
-          <SheetDescription className="mt-1">
+          </DialogTitle>
+          <DialogDescription className="mt-1">
             {target.node ? (
               <LtrValue className="font-mono">{target.node.code}</LtrValue>
             ) : target.parent ? (
@@ -122,7 +184,7 @@ export function BoqItemDrawer({
             ) : (
               t('atRoot')
             )}
-          </SheetDescription>
+          </DialogDescription>
         </div>
 
         <div className="border-t border-border" />
@@ -132,6 +194,41 @@ export function BoqItemDrawer({
 
           {readOnly ? (
             <Alert variant="info" messages={[t('readOnly')]} />
+          ) : null}
+
+          {/* Library fast-entry: an ADDITIONAL path, disclosed by choice, that never changes
+              how a plain manual add works. A first-time builder sees a quiet toggle; a QS
+              assembling from known items opens the picker and prefills a line in one click. */}
+          {showLibrary ? (
+            <section className="space-y-3 rounded-panel border border-border bg-surface-subtle p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="flex items-center gap-2 text-body-sm font-semibold text-foreground">
+                  <Library size={16} className="text-muted-foreground" aria-hidden="true" />
+                  {tLib('sectionTitle')}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isPending}
+                  onClick={() => setShowPicker((current) => !current)}
+                >
+                  {showPicker ? tLib('toggleClose') : tLib('toggleOpen')}
+                </Button>
+              </div>
+
+              {showPicker ? (
+                <BoqLibraryPicker
+                  currency={currency}
+                  canViewCommercials={canViewCommercials}
+                  onPick={applyLibraryItem}
+                />
+              ) : null}
+
+              {pickedItemId ? (
+                <Alert variant="info" messages={[tLib('prefilledFrom')]} />
+              ) : null}
+            </section>
           ) : null}
 
           <Section title={t('identity')}>
@@ -256,6 +353,20 @@ export function BoqItemDrawer({
                 </div>
                 <p className="text-xs text-muted-foreground">{t('amountHint', { currency })}</p>
               </Section>
+
+              {/* Save-to-library: the reverse of the fast-entry path. Offered only on a manual
+                  add (an item already prefilled from the library is not re-saved) and only when
+                  the user may write to the library. Ticking it grows the reusable catalogue. */}
+              {showLibrary && canSaveToLibrary && !pickedItemId ? (
+                <CheckboxField
+                  id="boq-save-to-library"
+                  checked={saveToLibrary}
+                  disabled={isPending}
+                  onChange={(event) => setSaveToLibrary(event.target.checked)}
+                  label={tLib('saveToLibrary')}
+                  description={tLib('saveToLibraryHint')}
+                />
+              ) : null}
             </>
           ) : null}
 
@@ -278,7 +389,7 @@ export function BoqItemDrawer({
           ) : null}
         </div>
 
-        <SheetFooter>
+        <DialogFooter>
           {!readOnly ? (
             <Button onClick={handleSubmit} disabled={isPending}>
               {isPending ? t('saving') : t('save')}
@@ -287,9 +398,9 @@ export function BoqItemDrawer({
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             {readOnly ? t('close') : t('cancel')}
           </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

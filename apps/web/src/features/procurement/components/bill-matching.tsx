@@ -25,9 +25,9 @@ import {
   Alert,
   Button,
   FormField,
-  Sheet,
-  SheetContent,
-  SheetTitle,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   Table,
   TableBody,
   TableCell,
@@ -365,11 +365,11 @@ function ApproveExceptionDrawer({
   const valid = reason.trim().length > 0;
 
   return (
-    <Sheet open onOpenChange={(next) => (next ? undefined : onClose())}>
-      <SheetContent className="p-6">
-        <SheetTitle className="text-lg font-semibold text-foreground">
+    <Dialog open onOpenChange={(next) => (next ? undefined : onClose())}>
+      <DialogContent className="p-6 sm:max-w-lg">
+        <DialogTitle className="text-lg font-semibold text-foreground">
           {t('approveExceptionTitle')}
-        </SheetTitle>
+        </DialogTitle>
 
         <div className="mt-5 space-y-4">
           <Alert variant="info" messages={[t('approveExceptionBody')]} />
@@ -412,7 +412,7 @@ function ApproveExceptionDrawer({
             </Button>
           </div>
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }

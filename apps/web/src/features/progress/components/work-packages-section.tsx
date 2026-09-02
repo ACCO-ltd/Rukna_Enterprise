@@ -10,9 +10,9 @@ import {
   Label,
   SectionHeader,
   Select,
-  Sheet,
-  SheetContent,
-  SheetTitle,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   Table,
   TableBody,
   TableCell,
@@ -31,7 +31,7 @@ import { lineLabel, useBoqLeaves } from '../hooks/use-boq-leaves';
 /**
  * Work-package control layer: an index that leads with the weighted roll-up and the packages
  * table. The two forms (create a package, allocate a BOQ leaf) used to sit always-on above the
- * table; they now live behind primaries (`+ New work package`, `Allocate item`) in `Sheet`s, so
+ * table; they now live behind primaries (`+ New work package`, `Allocate item`) in `Dialog`s, so
  * the view opens on the data — the project figure and the packages behind it — not two forms.
  */
 export function WorkPackagesSection({ projectId }: { projectId: string }) {
@@ -139,23 +139,23 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
         )}
       </div>
 
-      <Sheet open={creating} onOpenChange={setCreating}>
-        <SheetContent className="p-5 sm:p-6">
-          <SheetTitle>{t('actions.newWorkPackage')}</SheetTitle>
+      <Dialog open={creating} onOpenChange={setCreating}>
+        <DialogContent className="p-5 sm:p-6 sm:max-w-lg">
+          <DialogTitle>{t('actions.newWorkPackage')}</DialogTitle>
           <div className="mt-5">
             <CreateWorkPackageForm projectId={projectId} onCreated={() => setCreating(false)} />
           </div>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
-      <Sheet open={allocating} onOpenChange={setAllocating}>
-        <SheetContent className="p-5 sm:p-6">
-          <SheetTitle>{t('workPackage.allocate.title')}</SheetTitle>
+      <Dialog open={allocating} onOpenChange={setAllocating}>
+        <DialogContent className="p-5 sm:p-6">
+          <DialogTitle>{t('workPackage.allocate.title')}</DialogTitle>
           <div className="mt-5">
             <AllocateForm projectId={projectId} packages={packages} onAllocated={() => setAllocating(false)} />
           </div>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

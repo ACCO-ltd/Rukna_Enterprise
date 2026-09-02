@@ -13,9 +13,9 @@ import { useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
-  Sheet,
-  SheetContent,
-  SheetTitle,
+  Dialog,
+  DialogContent,
+  DialogTitle,
 } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
@@ -82,14 +82,16 @@ export function SetupScreen({
         children
       )}
 
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent className="p-6">
-          <SheetTitle className="text-lg font-semibold text-foreground">
+      {/* A dialog, not the side panel this was: these setup forms are three or four short
+          fields, and none of them needs the table behind it to stay readable while you type. */}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogTitle>
             {createTitle}
-          </SheetTitle>
+          </DialogTitle>
           <div className="mt-5">{createForm(() => setOpen(false))}</div>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

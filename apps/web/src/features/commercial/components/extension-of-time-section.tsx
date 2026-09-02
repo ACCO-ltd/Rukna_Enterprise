@@ -9,11 +9,11 @@ import {
   DatePicker,
   Label,
   SectionHeader,
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
   Skeleton,
   Textarea,
   useToast,
@@ -211,12 +211,12 @@ function GrantExtensionSheet({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent aria-describedby="eot-desc">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg" aria-describedby="eot-desc">
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <div className="border-b border-border px-5 py-4">
-            <SheetTitle>{t('grantTitle')}</SheetTitle>
-            <SheetDescription id="eot-desc">{t('grantSubtitle')}</SheetDescription>
+            <DialogTitle>{t('grantTitle')}</DialogTitle>
+            <DialogDescription id="eot-desc">{t('grantSubtitle')}</DialogDescription>
           </div>
 
           <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
@@ -283,7 +283,7 @@ function GrantExtensionSheet({
             </div>
           </div>
 
-          <SheetFooter>
+          <DialogFooter>
             <Button type="submit" disabled={!canSave}>
               {grant.isPending ? tCommon('saving') : t('grantConfirm')}
             </Button>
@@ -295,10 +295,10 @@ function GrantExtensionSheet({
             >
               {tCommon('cancel')}
             </Button>
-          </SheetFooter>
+          </DialogFooter>
         </form>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }
 

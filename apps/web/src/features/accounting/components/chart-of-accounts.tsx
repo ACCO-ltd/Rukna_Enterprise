@@ -8,9 +8,9 @@ import {
   FormField,
   Input,
   Select,
-  Sheet,
-  SheetContent,
-  SheetTitle,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   Table,
   TableBody,
   TableCell,
@@ -93,16 +93,16 @@ export function ChartOfAccounts() {
         ) : null}
       </div>
 
-      <Sheet open={creating} onOpenChange={setCreating}>
-        <SheetContent className="p-6">
-          <SheetTitle className="text-lg font-semibold text-foreground">
+      <Dialog open={creating} onOpenChange={setCreating}>
+        <DialogContent className="p-6 sm:max-w-lg">
+          <DialogTitle className="text-lg font-semibold text-foreground">
             {t('create.title')}
-          </SheetTitle>
+          </DialogTitle>
           <div className="mt-5">
             <CreateAccountForm onDone={() => setCreating(false)} />
           </div>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
       {accounts.data.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">

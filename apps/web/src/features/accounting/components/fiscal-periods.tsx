@@ -7,9 +7,9 @@ import {
   Badge,
   Button,
   type BadgeTone,
-  Sheet,
-  SheetContent,
-  SheetTitle,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   Table,
   TableBody,
   TableCell,
@@ -86,16 +86,16 @@ export function FiscalPeriods() {
         ) : null}
       </div>
 
-      <Sheet open={creating} onOpenChange={setCreating}>
-        <SheetContent className="p-6">
-          <SheetTitle className="text-lg font-semibold text-foreground">
+      <Dialog open={creating} onOpenChange={setCreating}>
+        <DialogContent className="p-6 sm:max-w-2xl">
+          <DialogTitle className="text-lg font-semibold text-foreground">
             {t('create.title')}
-          </SheetTitle>
+          </DialogTitle>
           <div className="mt-5">
             <CreateFiscalYearForm onDone={() => setCreating(false)} />
           </div>
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
 
       {/* The lifecycle endpoints carry `JwtAuthGuard` and nothing else — any signed-in user
           can close a fiscal year (#25). The actions are gated on `can()` so one flag secures

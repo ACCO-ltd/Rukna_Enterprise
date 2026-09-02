@@ -285,7 +285,8 @@ export function GovernanceWorkspace({ policyId }: { policyId: string }) {
         }}
       />
 
-      {/* Version comparison — re-anchored to the workspace, still a side Sheet. */}
+      {/* Version comparison — a wide dialog: two versions side by side needed width, and
+          the 420px panel it used to be was narrower than either column. */}
       <PolicyVersionComparisonSheet
         policyKey={compareOpen ? policy.policyKey : null}
         onOpenChange={(open) => {

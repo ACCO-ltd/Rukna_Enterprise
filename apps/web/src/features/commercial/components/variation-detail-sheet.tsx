@@ -9,11 +9,11 @@ import {
   DefinitionRow,
   Input,
   Label,
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
   Skeleton,
   Textarea,
   useToast,
@@ -65,8 +65,8 @@ export function VariationDetailSheet({
   const query = useVariation(open ? variationId : null);
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent aria-describedby="vo-detail-desc" className="sm:w-[520px]">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-3xl" aria-describedby="vo-detail-desc">
         {query.isPending ? (
           <div className="space-y-3 p-5" role="status" aria-live="polite">
             <span className="sr-only">{t('detail.loading')}</span>
@@ -76,10 +76,10 @@ export function VariationDetailSheet({
           </div>
         ) : query.isError || !query.data ? (
           <div className="p-5">
-            <SheetTitle>{t('detail.loadFailed')}</SheetTitle>
-            <SheetDescription id="vo-detail-desc" className="mt-1">
+            <DialogTitle>{t('detail.loadFailed')}</DialogTitle>
+            <DialogDescription id="vo-detail-desc" className="mt-1">
               {t('detail.loadFailedHint')}
-            </SheetDescription>
+            </DialogDescription>
             <Button variant="outline" size="sm" className="mt-3" onClick={() => query.refetch()}>
               {t('detail.retry')}
             </Button>
@@ -96,8 +96,8 @@ export function VariationDetailSheet({
             onDone={() => onOpenChange(false)}
           />
         )}
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -210,10 +210,10 @@ function DetailBody({
             {t(`status.${variation.status}`)}
           </Badge>
         </div>
-        <SheetTitle className="mt-1.5">{variation.title}</SheetTitle>
-        <SheetDescription id="vo-detail-desc" className="mt-1">
+        <DialogTitle className="mt-1.5">{variation.title}</DialogTitle>
+        <DialogDescription id="vo-detail-desc" className="mt-1">
           {t('detail.subtitle')}
-        </SheetDescription>
+        </DialogDescription>
       </div>
 
       <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
@@ -341,7 +341,7 @@ function DetailBody({
         ) : null}
       </div>
 
-      <SheetFooter>
+      <DialogFooter>
         <Actions
           status={variation.status}
           canManage={canManage}
@@ -358,7 +358,7 @@ function DetailBody({
           canConfirmClientApprove={clientRef.trim() !== ''}
           canConfirmReject={reason.trim() !== ''}
         />
-      </SheetFooter>
+      </DialogFooter>
     </div>
   );
 }

@@ -6,10 +6,10 @@ import {
   Alert,
   Badge,
   Select,
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
 } from '@erp/ui';
 
 import type { ApprovalPolicyVersionSummary } from '@erp/types';
@@ -42,13 +42,13 @@ export function PolicyVersionComparisonSheet({
   const versions = history.data?.versions ?? [];
 
   return (
-    <Sheet open={Boolean(policyKey)} onOpenChange={onOpenChange}>
-      <SheetContent className="overflow-y-auto p-6">
-        <SheetTitle>
+    <Dialog open={Boolean(policyKey)} onOpenChange={onOpenChange}>
+      <DialogContent className="overflow-y-auto p-6 sm:max-w-4xl">
+        <DialogTitle>
           {t('title')}{' '}
           <span className="font-mono text-sm font-normal text-muted-foreground">{policyKey}</span>
-        </SheetTitle>
-        <SheetDescription>{t('description')}</SheetDescription>
+        </DialogTitle>
+        <DialogDescription>{t('description')}</DialogDescription>
 
         {history.isPending ? (
           <div
@@ -64,8 +64,8 @@ export function PolicyVersionComparisonSheet({
         ) : (
           <VersionComparer versions={versions} />
         )}
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }
 
