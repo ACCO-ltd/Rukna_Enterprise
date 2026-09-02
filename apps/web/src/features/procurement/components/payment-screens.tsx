@@ -66,8 +66,6 @@ export function SupplierPaymentsList() {
         ) : null}
       </div>
 
-      <Alert variant="info" messages={[t('advanceOnlyNotice')]} />
-
       {payments.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
 
       <TableScroll aria-label={t('title')}>

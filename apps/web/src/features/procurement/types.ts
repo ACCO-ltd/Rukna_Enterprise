@@ -691,12 +691,14 @@ export interface SupplierPayment {
   currencyCode: string;
   totalAmount: Money;
   /**
-   * ⚠ Set at creation from `allocations[]` **without any allocation row being written**
-   * (A16 / #34). A payment created with allocations debits AP at post while the bill it names
-   * stays fully outstanding, and no row links the two.
+   * The applied / unapplied split. Set at creation from `allocations[]` — which, since A16 was
+   * completed (commit eb826bb), **does** write allocation rows and reduce each target
+   * bill's `outstandingAmount` in the same transaction. `allocatedAmount` is `Σ` of the create
+   * allocations; `unallocatedAmount` is `totalAmount − Σ`, held as a supplier advance.
    *
-   * The create form never sends `allocations[]` for that reason, so on anything this UI raises
-   * these two are `0` and `totalAmount` until `POST /payments/:id/allocations` moves them.
+   * `POST /payments/:id/allocations` (the standalone panel) later moves the pair as it applies
+   * the advance. A pure advance created with no allocations has `allocatedAmount: 0` and
+   * `unallocatedAmount: totalAmount`.
    */
   allocatedAmount: Money;
   unallocatedAmount: Money;
@@ -709,12 +711,24 @@ export interface SupplierPayment {
 }
 
 /**
+ * One line of `allocations[]` on `POST /payments` — a target bill and how much of the payment
+ * settles it. `amount` is a JSON number (`@Min(0.01)`), built with `moneyToApi`.
+ */
+export interface PaymentAllocationPayload {
+  supplierBillId: string;
+  amount: number;
+}
+
+/**
  * `POST /payments`.
  *
- * `allocations` is **deliberately absent**. The DTO accepts it and `supplier-payment.service.ts:62`
- * counts it into `allocatedAmount`, but no `SupplierPaymentAllocation` row is ever written and
- * the bill's `outstandingAmount` is never reduced (A16 / #34). Settlement goes through
- * `POST /payments/:id/allocations`, which does all three things correctly.
+ * `allocations` is the D9 allocate-on-create array. Since A16 was completed (commit
+ * eb826bb) the server writes an allocation row per entry, reduces each target bill's
+ * `outstandingAmount`, and stores the remainder (`totalAmount − Σ amount`) as a supplier
+ * advance — all in the create transaction. Omit it for a pure advance. Per entry the server
+ * requires: same supplier, same currency, a POSTED bill, and `amount ≤ that bill's
+ * outstanding`; and `Σ amount ≤ totalAmount`. The form makes the first three unreachable by
+ * scoping the bill list, and mirrors the two amount ceilings client-side.
  *
  * `accountingDate` defaults to `paymentDate` server-side; it is sent explicitly so the value
  * that lands in the ledger is the one the user saw.
@@ -729,6 +743,7 @@ export interface CreateSupplierPaymentPayload {
   paymentMethod: string;
   bankReference?: string;
   notes?: string;
+  allocations?: PaymentAllocationPayload[];
 }
 
 /** Body of `POST /payments/:id/post`. All three are required even when a branch is unused. */
