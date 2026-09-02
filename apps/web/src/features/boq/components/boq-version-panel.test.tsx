@@ -18,7 +18,6 @@ import { BoqVersionPanel } from './boq-version-panel';
 
 function version(overrides: Partial<BoqVersionSummary> & { id: string }): BoqVersionSummary {
   return {
-    id: overrides.id,
     boqId: 'b1',
     versionNumber: 1,
     status: 'BASELINED',
