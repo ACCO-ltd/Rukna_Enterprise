@@ -1,4 +1,4 @@
-import { ProjectStatus } from '@erp/types';
+import { ProjectCategory, ProjectStatus } from '@erp/types';
 import { describe, expect, it } from 'vitest';
 
 import { filterProjects } from './filter-projects';
@@ -82,5 +82,46 @@ describe('filterProjects', () => {
 
   it('tolerates a project with null optional fields', () => {
     expect(filterProjects([project({ id: 'x' })], { search: 'zzz', status: 'ALL' })).toEqual([]);
+  });
+
+  describe('category filter (PTD1-PTD5)', () => {
+    const typed = [
+      project({ id: 'c', name: 'Commercial one', category: ProjectCategory.COMMERCIAL }),
+      project({ id: 'r', name: 'Residential one', category: ProjectCategory.RESIDENTIAL }),
+      project({ id: 'legacy', name: 'Old project', category: null }),
+    ];
+
+    it('does not constrain when category is ALL or omitted', () => {
+      expect(filterProjects(typed, { search: '', status: 'ALL' })).toHaveLength(3);
+      expect(filterProjects(typed, { search: '', status: 'ALL', category: 'ALL' })).toHaveLength(3);
+    });
+
+    it('matches a specific category exactly', () => {
+      expect(
+        filterProjects(typed, { search: '', status: 'ALL', category: ProjectCategory.COMMERCIAL }).map(
+          (p) => p.id,
+        ),
+      ).toEqual(['c']);
+    });
+
+    it('UNTYPED selects legacy projects with no category', () => {
+      expect(
+        filterProjects(typed, { search: '', status: 'ALL', category: 'UNTYPED' }).map((p) => p.id),
+      ).toEqual(['legacy']);
+    });
+
+    it('combines the category filter with search and status', () => {
+      const rows = [
+        project({ id: '1', name: 'Tower', category: ProjectCategory.COMMERCIAL, status: ProjectStatus.ACTIVE }),
+        project({ id: '2', name: 'Tower', category: ProjectCategory.RESIDENTIAL, status: ProjectStatus.ACTIVE }),
+      ];
+      expect(
+        filterProjects(rows, {
+          search: 'tower',
+          status: ProjectStatus.ACTIVE,
+          category: ProjectCategory.RESIDENTIAL,
+        }).map((p) => p.id),
+      ).toEqual(['2']);
+    });
   });
 });

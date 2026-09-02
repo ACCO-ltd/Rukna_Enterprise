@@ -207,11 +207,17 @@ describe('NAV_DOMAINS', () => {
       expect(people?.items.map((i) => i.href)).toEqual(['/admin/users', '/admin/roles']);
     });
 
-    it('puts Districts alone under Organization, keeping its manage:district gate', () => {
+    it('puts Districts and Project subtypes under Organization, keeping their gates', () => {
       const groups = groupNavItems(admin().items);
       const organization = groups.find((g) => g.key === 'organization');
-      expect(organization?.items.map((i) => i.href)).toEqual(['/admin/districts']);
+      expect(organization?.items.map((i) => i.href)).toEqual([
+        '/admin/districts',
+        '/admin/project-subtypes',
+      ]);
       expect(organization?.items[0]?.permissionKey).toBe('manage:district');
+      // The subtype registry is admin/Settings work — gated on manage:project-type, the same
+      // permission POST /project-subtypes enforces.
+      expect(organization?.items[1]?.permissionKey).toBe('manage:project-type');
     });
 
     it('puts Policies/Workflows under Approval governance as a single entry (no duplicate deep route)', () => {

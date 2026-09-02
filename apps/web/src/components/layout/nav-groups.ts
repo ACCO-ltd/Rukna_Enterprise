@@ -156,6 +156,7 @@ export const NAV_DOMAINS: NavDomain[] = [
       { href: '/admin/users', labelKey: 'users', iconKey: 'users', groupKey: 'people' },
       { href: '/admin/roles', labelKey: 'roles', iconKey: 'user-gear', groupKey: 'people' },
       { href: '/admin/districts', labelKey: 'districts', iconKey: 'building', permissionKey: 'manage:district', groupKey: 'organization' },
+      { href: '/admin/project-subtypes', labelKey: 'projectSubtypes', iconKey: 'tag', permissionKey: 'manage:project-type', groupKey: 'organization' },
       { href: '/admin/workflows', labelKey: 'workflows', iconKey: 'git-branch', groupKey: 'governance' },
       { href: '/admin/audit-logs', labelKey: 'auditLogs', iconKey: 'key', groupKey: 'evidence' },
     ],

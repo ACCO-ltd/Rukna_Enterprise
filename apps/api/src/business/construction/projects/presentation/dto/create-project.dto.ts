@@ -1,6 +1,6 @@
 import { IsString, IsOptional, IsDateString, IsNumber, Length, MaxLength, Min, IsEnum } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { CommercialModel, ParticipationModel } from '@prisma/client';
+import { CommercialModel, ParticipationModel, ProjectCategory } from '@prisma/client';
 
 export class CreateProjectDto {
   @ApiPropertyOptional({
@@ -25,6 +25,23 @@ export class CreateProjectDto {
   @IsString()
   districtId!: string;
 
+  @ApiProperty({
+    enum: ProjectCategory,
+    description:
+      'Project type (PTD1-PTD5): the fixed classification category. Required on create; a ' +
+      'reporting attribute only — it drives no workflow/template/approval and is not part of the code.',
+  })
+  @IsEnum(ProjectCategory)
+  category!: ProjectCategory;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional subtype within the chosen category. Must be an ACTIVE ProjectSubtype in this ' +
+      'organization whose category matches the project category.',
+  })
+  @IsOptional()
+  @IsString()
+  subtypeId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

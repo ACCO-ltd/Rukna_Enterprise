@@ -21,6 +21,7 @@ import enProcurement from '../../messages/en/procurement.json';
 import enCommercial from '../../messages/en/commercial.json';
 import enDocuments from '../../messages/en/documents.json';
 import enProgress from '../../messages/en/progress.json';
+import enProjectTypes from '../../messages/en/project-types.json';
 
 /**
  * The REAL message catalogues, loaded the same way `src/i18n/request.ts` loads them.
@@ -41,6 +42,7 @@ const MESSAGES = {
     commercial: enCommercial,
     documents: enDocuments,
     progress: enProgress,
+    projectTypes: enProjectTypes,
   },
 } as const;
 

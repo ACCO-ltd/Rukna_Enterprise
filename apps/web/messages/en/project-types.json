@@ -1,0 +1,55 @@
+{
+  "categories": {
+    "COMMERCIAL": "Commercial",
+    "RESIDENTIAL": "Residential",
+    "INFRASTRUCTURE_CIVIL": "Infrastructure & Civil",
+    "INSTITUTIONAL_PUBLIC": "Institutional & Public",
+    "INDUSTRIAL": "Industrial",
+    "RENOVATION_FITOUT": "Renovation & Fit-Out"
+  },
+  "form": {
+    "categoryLabel": "Category",
+    "categoryPlaceholder": "Choose a category…",
+    "categoryRequired": "Select a category",
+    "categoryHint": "How this project is classified for reporting. It does not change any workflow.",
+    "subtypeLabel": "Subtype",
+    "subtypeHint": "An optional refinement of the category. Leave blank if none applies.",
+    "subtypePickCategoryFirst": "Choose a category first"
+  },
+  "select": {
+    "placeholder": "Select a subtype (optional)",
+    "noMatch": "No subtype matches that search.",
+    "emptyRestricted": "No subtypes have been set up for this category yet. An administrator can add them under Administration › Project subtypes.",
+    "empty": "No subtypes yet for this category.",
+    "addTitle": "Add a subtype",
+    "nameLabel": "Subtype name",
+    "nameHint": "A short label for this kind of work, for example Office buildings.",
+    "add": "Add subtype",
+    "createFailed": "Could not add the subtype."
+  },
+  "manager": {
+    "title": "Project subtypes",
+    "intro": "Subtypes refine a project's category for reporting. They are classification only and change no workflow. Add the ones your team uses; deactivate a subtype to hide it from new projects while keeping the projects already classified under it.",
+    "categoryColumn": "Category",
+    "nameLabel": "Subtype name",
+    "namePlaceholder": "Office buildings",
+    "statusLabel": "Status",
+    "actionsLabel": "Actions",
+    "add": "Add",
+    "adding": "Adding...",
+    "active": "Active",
+    "inactive": "Inactive",
+    "deactivate": "Deactivate",
+    "empty": "No subtypes in this category yet.",
+    "loadFailed": "Could not load project subtypes.",
+    "createFailed": "Could not add the subtype.",
+    "retry": "Try again"
+  },
+  "display": {
+    "categoryLabel": "Category",
+    "subtypeLabel": "Subtype",
+    "untyped": "Untyped",
+    "filterByCategory": "Filter by category",
+    "allCategories": "All categories"
+  }
+}

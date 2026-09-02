@@ -4,10 +4,10 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useForm, useWatch } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ClientStatus } from '@erp/types';
+import { ClientStatus, ProjectCategory } from '@erp/types';
 import { Alert, Button, FormField, FormSection, Input, Select, Textarea } from '@erp/ui';
 import { ArrowLeft, ArrowRight, Check, Hash, UserRound } from 'lucide-react';
 
@@ -19,6 +19,8 @@ import { useCreateProject } from '../hooks/use-create-project';
 import { useUpdateProject } from '../hooks/use-update-project';
 import { useClients } from '@/features/clients/hooks/use-clients';
 import { useDistricts } from '@/features/districts/hooks/use-districts';
+import { ProjectSubtypeSelect } from '@/features/project-types/components/project-subtype-select';
+import { useProjectSubtypes } from '@/features/project-types/hooks/use-project-subtypes';
 import { useSession } from '@/features/auth/session/use-session';
 import {
   EMPTY_PROJECT_FORM,
@@ -27,7 +29,7 @@ import {
   toUpdateProjectPayload,
   type ProjectFormValues,
 } from '../project-form-payload';
-import type { Project } from '../types';
+import type { ProjectDetail } from '../types';
 
 // ─── Wizard step definitions ──────────────────────────────────────────────────
 
@@ -36,6 +38,7 @@ type WizardStep = 1 | 2 | 3;
 const STEP_1_FIELDS: (keyof ProjectFormValues)[] = [
   'name',
   'districtId',
+  'category',
   'commercialModel',
   'participationModel',
   'clientId',
@@ -44,12 +47,21 @@ const STEP_2_FIELDS: (keyof ProjectFormValues)[] = ['startDate', 'expectedEndDat
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
-function buildSchema(t: ReturnType<typeof useTranslations<'platform.projects.create'>>) {
+function buildSchema(
+  t: ReturnType<typeof useTranslations<'platform.projects.create'>>,
+  tTypes: ReturnType<typeof useTranslations<'projectTypes'>>,
+) {
   return z
     .object({
       code: z.string(),
       name: z.string().trim().min(1, t('nameRequired')).max(255, t('nameTooLong')),
       districtId: z.string().trim().min(1, t('districtRequired')),
+      // Project type (PTD1-PTD5): category is required. Held as a string that is `''` until
+      // picked; the object-level refine below rejects `''` with `categoryRequired`, so it
+      // surfaces on Next before step 1 can advance. Kept as a string (not z.enum) so the form
+      // value type `ProjectCategory | ''` matches the resolver's inferred shape.
+      category: z.union([z.nativeEnum(ProjectCategory), z.literal('')]),
+      subtypeId: z.string(),
       description: z.string(),
       clientName: z.string(),
       clientId: z.string(),
@@ -60,6 +72,10 @@ function buildSchema(t: ReturnType<typeof useTranslations<'platform.projects.cre
       currency: z.string(),
       startDate: z.string(),
       expectedEndDate: z.string(),
+    })
+    .refine((v) => v.category !== '', {
+      message: tTypes('form.categoryRequired'),
+      path: ['category'],
     })
     .refine(
       (v) => v.commercialModel !== 'CLIENT_CONTRACT' || v.clientId.length > 0,
@@ -74,7 +90,7 @@ function buildSchema(t: ReturnType<typeof useTranslations<'platform.projects.cre
 // ─── Shared props ─────────────────────────────────────────────────────────────
 
 interface ProjectFormProps {
-  project?: Project;
+  project?: ProjectDetail;
 }
 
 // ─── Public export ────────────────────────────────────────────────────────────
@@ -93,6 +109,7 @@ export function ProjectForm({ project }: ProjectFormProps = {}) {
 
 function ProjectCreateWizard() {
   const t = useTranslations('platform.projects.create');
+  const tTypes = useTranslations('projectTypes');
   const searchParams = useSearchParams();
   const { data: clients = [], isPending: clientsPending } = useClients();
 
@@ -111,13 +128,16 @@ function ProjectCreateWizard() {
   const create = useCreateProject();
   const { isPending, error } = create;
 
-  const schema = buildSchema(t);
+  const schema = buildSchema(t, tTypes);
   const form = useForm<ProjectFormValues>({
     resolver: zodResolver(schema),
     defaultValues: { ...EMPTY_PROJECT_FORM, clientId: lockedClientId },
   });
-  const { register, handleSubmit, trigger, getValues, formState: { errors, isDirty } } = form;
+  const { register, handleSubmit, trigger, getValues, setValue, formState: { errors, isDirty } } = form;
   const commercialModel = useWatch({ control: form.control, name: 'commercialModel' });
+  // Project type (PTD1-PTD5): the chosen category scopes the subtype picker. Changing it clears
+  // any selected subtype — a subtype from the old category can never be paired with the new one.
+  const category = useWatch({ control: form.control, name: 'category' });
 
   // ADR-025: district drives the project code. Only active districts are offered.
   const { data: districts = [] } = useDistricts(true);
@@ -144,6 +164,7 @@ function ProjectCreateWizard() {
   const fieldErrors = [
     ...(errors.name ? [{ label: t('nameLabel'), fieldId: 'project-name', message: errors.name.message ?? '' }] : []),
     ...(errors.districtId ? [{ label: t('districtLabel'), fieldId: 'project-district', message: errors.districtId.message ?? '' }] : []),
+    ...(errors.category ? [{ label: tTypes('form.categoryLabel'), fieldId: 'project-category', message: errors.category.message ?? '' }] : []),
     ...(errors.clientId ? [{ label: t('clientNameLabel'), fieldId: 'project-clientId', message: errors.clientId.message ?? '' }] : []),
     ...(errors.expectedEndDate ? [{ label: t('expectedEndDateLabel'), fieldId: 'project-expectedEndDate', message: errors.expectedEndDate.message ?? '' }] : []),
   ];
@@ -164,6 +185,17 @@ function ProjectCreateWizard() {
   const values = step === 3 ? getValues() : null;
   const reviewClient = values
     ? (isClientLocked ? lockedClientName : clients.find((c) => c.id === values.clientId)?.name ?? values.clientId)
+    : '';
+
+  // Project type (PTD1-PTD5): resolve the chosen category/subtype to display names for the
+  // review step. The form holds ids; the review shows what the user picked.
+  const { data: reviewSubtypes = [] } = useProjectSubtypes(
+    category === '' ? undefined : category,
+    true,
+  );
+  const reviewCategory = values?.category ? tTypes(`categories.${values.category}`) : '';
+  const reviewSubtype = values?.subtypeId
+    ? reviewSubtypes.find((sub) => sub.id === values.subtypeId)?.name ?? ''
     : '';
 
   // Only offer ACTIVE clients in the dropdown; INACTIVE ones cannot receive new projects.
@@ -234,6 +266,58 @@ function ProjectCreateWizard() {
                     {t('codePreview')} <span className="font-mono text-foreground">{codePreview}</span>
                   </p>
                 ) : null}
+              </FormField>
+
+              {/* Project type (PTD1-PTD5): the required category, then its optional subtype. The
+                  subtype picker is disabled until a category is chosen; changing the category
+                  clears the subtype (a subtype belongs to exactly one category). */}
+              <FormField
+                htmlFor="project-category"
+                label={tTypes('form.categoryLabel')}
+                error={errors.category?.message}
+                hint={tTypes('form.categoryHint')}
+                required
+              >
+                <Controller
+                  control={form.control}
+                  name="category"
+                  render={({ field }) => (
+                    <Select
+                      id="project-category"
+                      value={field.value}
+                      onChange={(event) => {
+                        field.onChange(event.target.value);
+                        setValue('subtypeId', '');
+                      }}
+                    >
+                      <option value="">{tTypes('form.categoryPlaceholder')}</option>
+                      {Object.values(ProjectCategory).map((value) => (
+                        <option key={value} value={value}>
+                          {tTypes(`categories.${value}`)}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                />
+              </FormField>
+
+              <FormField
+                htmlFor="project-subtype"
+                label={tTypes('form.subtypeLabel')}
+                hint={tTypes('form.subtypeHint')}
+              >
+                <Controller
+                  control={form.control}
+                  name="subtypeId"
+                  render={({ field }) => (
+                    <ProjectSubtypeSelect
+                      id="project-subtype"
+                      category={category === '' ? undefined : category}
+                      value={field.value}
+                      onChange={field.onChange}
+                    />
+                  )}
+                />
               </FormField>
 
               <FormField htmlFor="project-commercial-model" label={t('commercialModelLabel')} required>
@@ -334,6 +418,8 @@ function ProjectCreateWizard() {
               editLabel={t('wizard.editStep')}
               rows={[
                 { label: t('nameLabel'), value: values.name },
+                { label: tTypes('form.categoryLabel'), value: reviewCategory },
+                ...(reviewSubtype ? [{ label: tTypes('form.subtypeLabel'), value: reviewSubtype }] : []),
                 { label: t('commercialModelLabel'), value: t(values.commercialModel === 'CLIENT_CONTRACT' ? 'commercialModel.clientContract' : 'commercialModel.internalCapital') },
                 { label: t('participationModelLabel'), value: t(values.participationModel === 'SOLE' ? 'participationModel.sole' : 'participationModel.jointVenture') },
                 ...(values.commercialModel === 'CLIENT_CONTRACT' ? [{ label: t('clientNameLabel'), value: reviewClient }] : []),
@@ -469,23 +555,28 @@ function ReviewSection({
 
 // ─── Edit form (single page) ──────────────────────────────────────────────────
 
-function ProjectEditForm({ project }: { project: Project }) {
+function ProjectEditForm({ project }: { project: ProjectDetail }) {
   const t = useTranslations('platform.projects.create');
+  const tTypes = useTranslations('projectTypes');
   const tActions = useTranslations('common');
   const { data: clients = [] } = useClients();
 
   const update = useUpdateProject(project.id);
   const { isPending, error } = update;
 
-  const schema = buildSchema(t);
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<ProjectFormValues>({
+  const schema = buildSchema(t, tTypes);
+  const form = useForm<ProjectFormValues>({
     resolver: zodResolver(schema),
     defaultValues: toFormValues(project),
   });
+  const {
+    control,
+    register,
+    handleSubmit,
+    setValue,
+    formState: { errors },
+  } = form;
+  const category = useWatch({ control, name: 'category' });
 
   const onSubmit = (values: ProjectFormValues) => {
     update.mutate(toUpdateProjectPayload(values));
@@ -496,6 +587,7 @@ function ProjectEditForm({ project }: { project: Project }) {
     error instanceof ApiError && error.messages.length > 0 ? error.messages : [];
   const fieldErrors = [
     ...(errors.name ? [{ label: t('nameLabel'), fieldId: 'project-name', message: errors.name.message ?? '' }] : []),
+    ...(errors.category ? [{ label: tTypes('form.categoryLabel'), fieldId: 'project-category', message: errors.category.message ?? '' }] : []),
     ...(errors.expectedEndDate ? [{ label: t('expectedEndDateLabel'), fieldId: 'project-expectedEndDate', message: errors.expectedEndDate.message ?? '' }] : []),
   ];
 
@@ -528,6 +620,57 @@ function ProjectEditForm({ project }: { project: Project }) {
 
           <FormField htmlFor="project-name" label={t('nameLabel')} error={errors.name?.message} required>
             <Input id="project-name" placeholder={t('namePlaceholder')} {...register('name')} />
+          </FormField>
+
+          {/* Project type (PTD1-PTD5): editable while DRAFT. Changing the category clears the
+              subtype, exactly as on create. */}
+          <FormField
+            htmlFor="project-category"
+            label={tTypes('form.categoryLabel')}
+            error={errors.category?.message}
+            hint={tTypes('form.categoryHint')}
+            required
+          >
+            <Controller
+              control={control}
+              name="category"
+              render={({ field }) => (
+                <Select
+                  id="project-category"
+                  value={field.value}
+                  onChange={(event) => {
+                    field.onChange(event.target.value);
+                    setValue('subtypeId', '');
+                  }}
+                >
+                  <option value="">{tTypes('form.categoryPlaceholder')}</option>
+                  {Object.values(ProjectCategory).map((value) => (
+                    <option key={value} value={value}>
+                      {tTypes(`categories.${value}`)}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            />
+          </FormField>
+
+          <FormField
+            htmlFor="project-subtype"
+            label={tTypes('form.subtypeLabel')}
+            hint={tTypes('form.subtypeHint')}
+          >
+            <Controller
+              control={control}
+              name="subtypeId"
+              render={({ field }) => (
+                <ProjectSubtypeSelect
+                  id="project-subtype"
+                  category={category === '' ? undefined : category}
+                  value={field.value}
+                  onChange={field.onChange}
+                />
+              )}
+            />
           </FormField>
 
           <FormField htmlFor="project-location" label={t('locationLabel')} error={errors.location?.message}>

@@ -1,5 +1,7 @@
+import type { ProjectCategory } from '@erp/types';
+
 import type { CreateProjectPayload, UpdateProjectPayload } from './api/projects-api';
-import type { Project } from './types';
+import type { Project, ProjectDetail } from './types';
 
 /** What the form holds — every field a string, as HTML inputs produce. */
 export interface ProjectFormValues {
@@ -9,6 +11,13 @@ export interface ProjectFormValues {
   description: string;
   /** ADR-025: district where the project is built — the code segment (WBR). Required. */
   districtId: string;
+  /**
+   * Project type (PTD1-PTD5): the required classification category. `''` until picked, which
+   * the schema rejects. Held as a string so the native <select> can drive it.
+   */
+  category: ProjectCategory | '';
+  /** Optional subtype within the chosen category. `''` = none. */
+  subtypeId: string;
   clientName: string;
   clientId: string;
   commercialModel: 'CLIENT_CONTRACT' | 'INTERNAL_CAPITAL';
@@ -25,6 +34,8 @@ export const EMPTY_PROJECT_FORM: ProjectFormValues = {
   name: '',
   description: '',
   districtId: '',
+  category: '',
+  subtypeId: '',
   clientName: '',
   clientId: '',
   commercialModel: 'CLIENT_CONTRACT',
@@ -55,6 +66,9 @@ export function toCreateProjectPayload(values: ProjectFormValues): CreateProject
   const payload: CreateProjectPayload = {
     name: values.name.trim(),
     districtId: values.districtId,
+    // Project type (PTD1-PTD5): category is required and validated non-empty by the schema, so
+    // it is always sent. The cast is safe — the empty string is rejected before this runs.
+    category: values.category as CreateProjectPayload['category'],
     commercialModel: values.commercialModel,
     participationModel: values.participationModel,
   };
@@ -62,6 +76,8 @@ export function toCreateProjectPayload(values: ProjectFormValues): CreateProject
   const optionalText = {
     description: values.description,
     clientId: values.commercialModel === 'CLIENT_CONTRACT' ? values.clientId : '',
+    // Omitted when blank: an optional subtype left empty must be absent, not "".
+    subtypeId: values.subtypeId,
     location: values.location,
     startDate: values.startDate,
     expectedEndDate: values.expectedEndDate,
@@ -94,6 +110,11 @@ export function toUpdateProjectPayload(values: ProjectFormValues): UpdateProject
 
   return {
     name: values.name.trim(),
+    // Project type (PTD1-PTD5): category is required, so it is sent when set. subtypeId sends
+    // `null` when cleared (PATCH semantics: null clears, omission leaves unchanged) — the same
+    // rule the other optional columns follow.
+    ...(values.category ? { category: values.category } : {}),
+    subtypeId: values.subtypeId.trim() || null,
     description: text(values.description),
     clientId: text(values.clientId),
     location: text(values.location),
@@ -102,13 +123,22 @@ export function toUpdateProjectPayload(values: ProjectFormValues): UpdateProject
   };
 }
 
-/** Fills the form from an existing project, converting nulls to the empty strings inputs need. */
-export function toFormValues(project: Project): ProjectFormValues {
+/**
+ * Fills the form from an existing project, converting nulls to the empty strings inputs need.
+ *
+ * Accepts a `ProjectDetail` so the assigned `subtype` (present on the detail read model only)
+ * can seed the subtype picker. A plain `Project` also works — `subtypeId` reads as `''`.
+ */
+export function toFormValues(project: Project | ProjectDetail): ProjectFormValues {
+  const subtypeId = 'subtype' in project ? (project.subtype?.id ?? '') : '';
+
   return {
     code: project.code,
     name: project.name,
     description: project.description ?? '',
     districtId: project.districtId ?? '',
+    category: project.category ?? '',
+    subtypeId,
     clientName: project.clientName ?? '',
     clientId: project.clientId ?? '',
     commercialModel: project.commercialModel ?? 'CLIENT_CONTRACT',

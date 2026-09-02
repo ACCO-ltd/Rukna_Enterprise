@@ -15,6 +15,9 @@ export const PROJECT_FULL_INCLUDE = {
     },
   },
   suspensions: { where: { resumedAt: null }, take: 1 },
+  // Project type (PTD1-PTD5): the read model surfaces the scalar `category` (comes for free) plus
+  // the assigned subtype's id/name/category so the UI can render + edit the classification.
+  subtype: { select: { id: true, name: true, category: true, status: true } },
 } satisfies Prisma.ProjectInclude;
 
 export type ProjectFull = Prisma.ProjectGetPayload<{ include: typeof PROJECT_FULL_INCLUDE }>;

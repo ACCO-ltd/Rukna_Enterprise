@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { ProjectStatus } from '@erp/types';
+import { ProjectCategory, ProjectStatus } from '@erp/types';
 import { Button, Label, Select } from '@erp/ui';
 import { AlertTriangle, CalendarDays, Filter, Plus } from 'lucide-react';
 
@@ -11,8 +11,9 @@ import { EmptyState } from '@/components/empty-state';
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { formatDate, formatMoney } from '@/lib/format';
 import { usePermissions } from '@/features/auth/permissions/can';
+import { ProjectCategoryBadge } from '@/features/project-types/components/project-category-badge';
 
-import { filterProjects } from '../filter-projects';
+import { filterProjects, type CategoryFilter } from '../filter-projects';
 import { useProjects } from '../hooks/use-projects';
 import { PROJECT_STATUS_ORDER, type Project } from '../types';
 import { ProjectStatusBadge } from './project-status-badge';
@@ -37,6 +38,7 @@ function attention(project: Project, t: ReturnType<typeof useTranslations<'platf
 
 function buildColumns(
   t: ReturnType<typeof useTranslations<'platform.projects'>>,
+  tTypes: ReturnType<typeof useTranslations<'projectTypes'>>,
   locale: 'en' | 'ar',
 ): GridColumn<Project>[] {
   return [
@@ -54,6 +56,13 @@ function buildColumns(
       ),
     },
     { key: 'stage', header: t('columns.stage'), render: (project) => <ProjectStatusBadge status={project.status} /> },
+    {
+      key: 'category',
+      header: tTypes('display.categoryLabel'),
+      plainValue: (project) =>
+        project.category ? tTypes(`categories.${project.category}`) : tTypes('display.untyped'),
+      render: (project) => <ProjectCategoryBadge category={project.category} />,
+    },
     {
       key: 'manager',
       header: t('columns.manager'),
@@ -98,22 +107,40 @@ function buildColumns(
 
 export function ProjectsList() {
   const t = useTranslations('platform.projects');
+  const tTypes = useTranslations('projectTypes');
   const locale = useLocale() as 'en' | 'ar';
   const { data, isPending, isError, refetch } = useProjects();
   const { can } = usePermissions();
   const mayCreate = can('create:project');
   const [status, setStatus] = useState<ProjectStatus | 'ALL'>('ALL');
-  const rows = useMemo(() => filterProjects(data ?? [], { search: '', status }), [data, status]);
-  const columns = useMemo(() => buildColumns(t, locale), [t, locale]);
+  const [category, setCategory] = useState<CategoryFilter>('ALL');
+  const rows = useMemo(
+    () => filterProjects(data ?? [], { search: '', status, category }),
+    [data, status, category],
+  );
+  const columns = useMemo(() => buildColumns(t, tTypes, locale), [t, tTypes, locale]);
 
   const statusFilter = (
-    <div className="relative min-w-44">
-      <Label htmlFor="project-status" className="sr-only">{t('filterByStatus')}</Label>
-      <Select id="project-status" value={status} className="ps-10" onChange={(event) => setStatus(event.target.value as ProjectStatus | 'ALL')}>
-        <option value="ALL">{t('allStatuses')}</option>
-        {PROJECT_STATUS_ORDER.map((value) => <option key={value} value={value}>{t(`status.${value}`)}</option>)}
-      </Select>
-      <Filter className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+    <div className="flex flex-wrap gap-2">
+      <div className="relative min-w-44">
+        <Label htmlFor="project-status" className="sr-only">{t('filterByStatus')}</Label>
+        <Select id="project-status" value={status} className="ps-10" onChange={(event) => setStatus(event.target.value as ProjectStatus | 'ALL')}>
+          <option value="ALL">{t('allStatuses')}</option>
+          {PROJECT_STATUS_ORDER.map((value) => <option key={value} value={value}>{t(`status.${value}`)}</option>)}
+        </Select>
+        <Filter className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+      </div>
+      <div className="relative min-w-44">
+        <Label htmlFor="project-category" className="sr-only">{tTypes('display.filterByCategory')}</Label>
+        <Select id="project-category" value={category} className="ps-10" onChange={(event) => setCategory(event.target.value as CategoryFilter)}>
+          <option value="ALL">{tTypes('display.allCategories')}</option>
+          {Object.values(ProjectCategory).map((value) => (
+            <option key={value} value={value}>{tTypes(`categories.${value}`)}</option>
+          ))}
+          <option value="UNTYPED">{tTypes('display.untyped')}</option>
+        </Select>
+        <Filter className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+      </div>
     </div>
   );
 

@@ -4,7 +4,7 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
-import { CommercialModel, ParticipationModel, Prisma, Project } from '@prisma/client';
+import { CommercialModel, ParticipationModel, Prisma, Project, ProjectCategory } from '@prisma/client';
 import {
   PERMISSIONS,
   type ProjectLifecycleCommand,
@@ -369,6 +369,11 @@ export class ProjectService {
         throw new BadRequestException('Cannot create a project in an inactive district');
       }
 
+      // Project type (PTD1-PTD5): `category` is required (enforced by the DTO). The optional
+      // `subtypeId`, when present, must be an ACTIVE subtype in this org whose category matches
+      // the project's category — a subtype can never be paired with the wrong category.
+      await this.assertSubtypeMatchesCategory(tx, identity, dto.category, dto.subtypeId);
+
       // The company segment (e.g. ACCO) is the org short code, set once in org settings.
       const org = await tx.organization.findUnique({
         where: { id: identity.activeOrganizationId },
@@ -398,6 +403,8 @@ export class ProjectService {
         // Preserve the legacy display field while new records reference the client aggregate.
         clientId: dto.clientId,
         districtId: district.id,
+        category: dto.category,
+        subtypeId: dto.subtypeId,
         clientName: client?.name ?? dto.clientName,
         location: dto.location,
         commercialModel,
@@ -464,17 +471,62 @@ export class ProjectService {
       throw new BadRequestException('Inactive clients cannot be assigned to projects');
     }
 
+    // Project type (PTD1-PTD5): both fields are editable. Validate the subtype that WILL be
+    // persisted against the category that WILL be persisted — using the caller's new value where
+    // provided, otherwise the project's current value — so changing only the category can never
+    // leave a subtype paired with the wrong category.
+    const effectiveCategory = dto.category !== undefined ? dto.category : project.category;
+    const effectiveSubtypeId =
+      dto.subtypeId !== undefined ? dto.subtypeId : project.subtypeId ?? undefined;
+    await this.assertSubtypeMatchesCategory(
+      prisma,
+      identity,
+      effectiveCategory,
+      effectiveSubtypeId,
+    );
+
     return this.repo.update(prisma, id, {
       name: dto.name,
       description: dto.description,
       clientName: client?.name ?? dto.clientName,
       clientId: dto.clientId,
       location: dto.location,
+      category: dto.category,
+      subtypeId: dto.subtypeId,
       contractValue: dto.contractValue,
       currency: dto.currency,
       startDate: dto.startDate ? new Date(dto.startDate) : undefined,
       expectedEndDate: dto.expectedEndDate ? new Date(dto.expectedEndDate) : undefined,
     });
+  }
+
+  /**
+   * Project type (PTD1-PTD5) — the subtype-matches-category invariant. When a `subtypeId` is
+   * supplied, it must resolve to an ACTIVE ProjectSubtype in the caller's organization whose
+   * `category` equals the project's effective category. A subtype from a different category, an
+   * inactive one, or one from another org is a 400/404: a subtype can never be paired with the
+   * wrong category. A null/undefined subtypeId is always valid (the subtype is optional).
+   */
+  private async assertSubtypeMatchesCategory(
+    prisma: Prisma.TransactionClient | ReturnType<TenancyService['getClient']>,
+    identity: RequestIdentity,
+    category: ProjectCategory | null | undefined,
+    subtypeId: string | null | undefined,
+  ): Promise<void> {
+    if (!subtypeId) return;
+
+    const subtype = await prisma.projectSubtype.findFirst({
+      where: { id: subtypeId, organizationId: identity.activeOrganizationId },
+    });
+    if (!subtype) throw new NotFoundException(`Project subtype ${subtypeId} not found`);
+    if (subtype.status !== 'ACTIVE') {
+      throw new BadRequestException('Cannot assign an inactive project subtype');
+    }
+    if (subtype.category !== category) {
+      throw new BadRequestException(
+        `Project subtype '${subtype.name}' belongs to category ${subtype.category}, not ${category}`,
+      );
+    }
   }
 
   // ─── Lifecycle commands ───────────────────────────────────────────────────────

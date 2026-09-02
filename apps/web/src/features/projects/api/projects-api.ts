@@ -1,4 +1,4 @@
-import type { ProjectRole, ProjectStatus } from '@erp/types';
+import type { ProjectCategory, ProjectRole, ProjectStatus } from '@erp/types';
 
 import { apiClient } from '@/lib/api-client';
 
@@ -26,6 +26,10 @@ export interface CreateProjectPayload {
   name: string;
   /** ADR-025: district where the project is built — required, forms the code segment. */
   districtId: string;
+  /** Project type (PTD1-PTD5): the required classification category. */
+  category: ProjectCategory;
+  /** Optional subtype within that category. Omitted when blank (not sent as ""). */
+  subtypeId?: string;
   description?: string;
   clientName?: string;
   clientId?: string;
@@ -85,6 +89,10 @@ export function getProjectWorkspaceGuidance(id: string): Promise<ProjectWorkspac
  */
 export interface UpdateProjectPayload {
   name?: string;
+  /** Project type (PTD1-PTD5): both are editable while the project is DRAFT. */
+  category?: ProjectCategory;
+  /** `null` clears the subtype; an id sets it. Must match the (new or current) category. */
+  subtypeId?: string | null;
   description?: string | null;
   clientName?: string | null;
   clientId?: string | null;
