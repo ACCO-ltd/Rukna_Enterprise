@@ -26,6 +26,7 @@ export function BoqToolbar({
   onImport,
   canManage,
   canImport,
+  hasVariations,
   resultCount,
   totalCount,
 }: {
@@ -39,6 +40,8 @@ export function BoqToolbar({
   onImport: () => void;
   canManage: boolean;
   canImport: boolean;
+  /** Whether any line was scoped in by a variation — gates the provenance filter (Phase 6). */
+  hasVariations: boolean;
   resultCount: number;
   totalCount: number;
 }) {
@@ -75,6 +78,12 @@ export function BoqToolbar({
           <option value="priced">{t('filter.priced')}</option>
           <option value="sections">{t('filter.sections')}</option>
           <option value="items">{t('filter.items')}</option>
+          {hasVariations ? (
+            <>
+              <option value="original">{t('filter.original')}</option>
+              <option value="variations">{t('filter.variations')}</option>
+            </>
+          ) : null}
         </Select>
 
         {/* Only meaningful while a filter narrows the list — otherwise it restates the

@@ -196,3 +196,34 @@ describe('collectSectionIds', () => {
     expect(collectSectionIds(tree())).toEqual(['s1', 's2', 's3']);
   });
 });
+
+describe('source filter (Phase 6 — original vs variation scope)', () => {
+  const mixed = () => [
+    testNode({
+      id: 'o1',
+      code: '01',
+      isLeaf: false,
+      children: [
+        testNode({ id: 'o1a', code: '01.001', isLeaf: true, sourceType: 'BASELINE', children: [] }),
+        testNode({
+          id: 'v1a',
+          code: '01.002',
+          isLeaf: true,
+          sourceType: 'VARIATION',
+          sourceChangeOrderId: 'vo-3',
+          children: [],
+        }),
+      ],
+    }),
+  ];
+
+  it('keeps only variation lines, with their section for context', () => {
+    const rows = buildRows(mixed(), { ...defaults, pricing: 'variations' });
+    expect(rows.map((row) => row.node.code)).toEqual(['01', '01.002']);
+  });
+
+  it('keeps only original scope', () => {
+    const rows = buildRows(mixed(), { ...defaults, pricing: 'original' });
+    expect(rows.map((row) => row.node.code)).toEqual(['01', '01.001']);
+  });
+});
