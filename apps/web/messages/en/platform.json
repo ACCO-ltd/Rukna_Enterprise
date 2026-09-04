@@ -553,7 +553,7 @@
     "basedOn": "Based on approved Version {number}",
     "changeSummary": "{count, plural, one {# change} other {# changes}} · {amount}",
     "baselinedOn": "Baselined {date}",
-    "contractBaselineBadge": "Referenced by main contract",
+    "contractBaselineBadge": "Contract BOQ",
     "notInitialized": "No BOQ yet",
     "notInitializedHint": "Create the bill of quantities to start pricing this project scope.",
     "initialize": "Create BOQ",
@@ -561,10 +561,10 @@
     "loadFailed": "Could not load the BOQ",
     "loadFailedHint": "Try again, or reload the page.",
     "versionStatus": {
-      "DRAFT": "Draft",
-      "BASELINED": "Baselined",
-      "SUPERSEDED": "Superseded",
-      "CANCELLED": "Cancelled"
+      "DRAFT": "Working BOQ",
+      "BASELINED": "Approved",
+      "SUPERSEDED": "Past revision",
+      "CANCELLED": "Discarded"
     },
     "actions": {
       "reviewChanges": "Review changes",
@@ -771,12 +771,12 @@
       "count": "{count, plural, one {# version} other {# versions}}",
       "version": "Version {number}",
       "status": {
-        "DRAFT": "Draft",
-        "BASELINED": "Baselined",
-        "SUPERSEDED": "Superseded",
-        "CANCELLED": "Cancelled"
+        "DRAFT": "Working BOQ",
+        "BASELINED": "Approved",
+        "SUPERSEDED": "Past revision",
+        "CANCELLED": "Discarded"
       },
-      "contractBaseline": "Contract baseline",
+      "contractBaseline": "Contract BOQ",
       "basedOn": "Based on Version {number}",
       "original": "Original version",
       "items": "{count} items",
