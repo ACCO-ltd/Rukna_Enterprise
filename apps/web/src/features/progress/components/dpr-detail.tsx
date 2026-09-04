@@ -1,14 +1,16 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
+  ApprovalChain,
   Button,
+  Combobox,
   FormField,
   Input,
   Label,
-  Select,
   Skeleton,
   Table,
   TableBody,
@@ -17,13 +19,16 @@ import {
   TableHeader,
   TableRow,
   TableScroll,
+  type ApprovalStep,
 } from '@erp/ui';
-import { ArrowLeft, Download, Upload } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { MediaUpload, type MediaUploadLabels } from '@/components/media-upload';
 import { ApiError } from '@/lib/api-client';
 import { getFileDownloadUrl } from '@/features/files/api/files-api';
 import { useFileUpload } from '@/features/files/hooks/use-file-upload';
+import { useSession } from '@/features/auth/session/use-session';
 import { formatDate, formatNumber } from '@/lib/format';
 
 import {
@@ -31,6 +36,7 @@ import {
   useApproveDpr,
   useAttachDprEvidence,
   useDpr,
+  useProjectProgress,
   useReturnDpr,
   useSubmitDpr,
 } from '../hooks/use-progress';
@@ -57,6 +63,7 @@ export function DprDetail({
   const submit = useSubmitDpr(projectId, dprId);
   const approve = useApproveDpr(projectId, dprId);
   const returnDpr = useReturnDpr(projectId, dprId);
+  const session = useSession();
 
   const [confirm, setConfirm] = useState<'approve' | 'return' | null>(null);
 
@@ -95,6 +102,25 @@ export function DprDetail({
   const editable = dpr.status === 'DRAFT' || dpr.status === 'RETURNED';
   const isApproved = dpr.status === 'APPROVED';
 
+  const currentUserId = session.user?.id ?? null;
+  // Surfaces (does not block) the separation-of-duties gap: the same person can raise and approve a
+  // report until a governance workflow enforces preparer≠approver (ADR-021 §7, redesign spec).
+  const isSelfApprover =
+    currentUserId != null && (currentUserId === dpr.preparedBy || currentUserId === dpr.submittedBy);
+
+  // Provenance chain — where the report is and who prepared it. Prepared is always done; the rest
+  // follows the DPR lifecycle. RETURNED/REOPENED are editable-again, so they read as "to submit".
+  const submittedReached = dpr.status === 'SUBMITTED' || dpr.status === 'APPROVED';
+  const chain: ApprovalStep[] = [
+    { id: 'prepared', title: t('report.chain.prepared'), actor: dpr.preparedByName, state: 'approved' },
+    { id: 'submitted', title: t('report.chain.submitted'), state: submittedReached ? 'approved' : 'current' },
+    {
+      id: 'approved',
+      title: t('report.chain.approved'),
+      state: dpr.status === 'APPROVED' ? 'approved' : dpr.status === 'SUBMITTED' ? 'current' : 'upcoming',
+    },
+  ];
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -118,11 +144,18 @@ export function DprDetail({
         </div>
       </div>
 
+      {dpr.status === 'SUBMITTED' && isSelfApprover ? (
+        <Alert variant="warning" messages={[t('report.selfApprovalWarning')]} />
+      ) : null}
+
       {/* Header */}
       <div className="rounded-panel border border-border bg-surface p-4 sm:p-5">
         <div className="flex flex-wrap items-center gap-3">
           <h3 className="text-h3 font-bold text-foreground">{formatDate(dpr.reportDate, locale)}</h3>
           <DprStatusBadge status={dpr.status} />
+        </div>
+        <div className="mt-3 border-t border-border pt-3">
+          <ApprovalChain steps={chain} label={t('report.chain.label')} />
         </div>
         {isApproved ? (
           <p className="mt-2 text-sm text-success">{t('report.approvedHint')}</p>
@@ -142,7 +175,7 @@ export function DprDetail({
       <section className="rounded-panel border border-border bg-surface p-4 sm:p-5">
         <h4 className="text-sm font-semibold text-foreground">{t('measurement.title')}</h4>
         {editable ? (
-          <AddMeasurementForm dprId={dprId} leaves={leaves} />
+          <AddMeasurementForm dprId={dprId} projectId={projectId} leaves={leaves} />
         ) : (
           <p className="mt-2 text-sm text-muted-foreground">{t('report.draftOnlyHint')}</p>
         )}
@@ -175,23 +208,7 @@ export function DprDetail({
       </section>
 
       {/* Evidence */}
-      <section className="rounded-panel border border-border bg-surface p-4 sm:p-5">
-        <h4 className="text-sm font-semibold text-foreground">{t('evidence.title')}</h4>
-        <p className="mt-1 text-xs text-muted-foreground">{t('evidence.hint')}</p>
-        {!isApproved ? <EvidenceUpload dprId={dprId} /> : null}
-        {dpr.attachments.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">{t('evidence.empty')}</p>
-        ) : (
-          <ul className="mt-3 space-y-2">
-            {dpr.attachments.map((a, i) => (
-              <li key={a.id} className="flex items-center justify-between gap-3 rounded-control border border-border px-3 py-2 text-sm">
-                <span>{t('evidence.item', { n: i + 1 })}</span>
-                <EvidenceDownload platformFileId={a.platformFileId} label={t('actions.download')} />
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <DprEvidence dprId={dprId} canUpload={!isApproved} attachments={dpr.attachments} />
 
       {confirm === 'approve' ? (
         <ConfirmActionDialog
@@ -236,13 +253,17 @@ function Meta({ label, value }: { label: string; value: string }) {
 
 function AddMeasurementForm({
   dprId,
+  projectId,
   leaves,
 }: {
   dprId: string;
+  projectId: string;
   leaves: ReturnType<typeof useBoqLeaves>['leaves'];
 }) {
   const t = useTranslations('progress');
+  const locale = useLocale() as 'en' | 'ar';
   const add = useAddMeasurement(dprId);
+  const progress = useProjectProgress(projectId);
 
   const [boqNodeId, setBoqNodeId] = useState('');
   const [quantity, setQuantity] = useState('');
@@ -250,7 +271,29 @@ function AddMeasurementForm({
   const [touched, setTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const options = useMemo(
+    () => leaves.map((leaf) => ({ value: leaf.id, label: lineLabel(leaf), hint: leaf.unit ?? undefined })),
+    [leaves],
+  );
+  const progressByNode = useMemo(
+    () => new Map((progress.data ?? []).map((line) => [line.boqNodeId, line])),
+    [progress.data],
+  );
+
   const qtyError = touched && !(Number(quantity) > 0) ? t('measurement.quantityRequired') : undefined;
+
+  // Remaining scope so the user never guesses against the CONST-PROG-009 cap (verified ≤ scope).
+  // Scope + unit come from the BOQ leaf; verified-to-date is what other approved reports already
+  // count (this draft's own measurements are not verified yet), which is exactly the cap basis.
+  const selectedLeaf = boqNodeId ? leaves.find((l) => l.id === boqNodeId) ?? null : null;
+  const line = boqNodeId ? progressByNode.get(boqNodeId) : undefined;
+  const scopeStr = line?.measurableQuantity ?? selectedLeaf?.quantity ?? null;
+  const scopeNum = scopeStr != null ? Number(scopeStr) : null;
+  const verifiedNum = line ? Number(line.verifiedToDate) : 0;
+  const remainingNum = scopeNum != null ? scopeNum - verifiedNum : null;
+  const unit = selectedLeaf?.unit ?? '';
+  const exceeds = remainingNum != null && Number(quantity) > remainingNum;
+  const withUnit = (n: number) => `${formatNumber(n, locale, 3)}${unit ? ` ${unit}` : ''}`;
 
   function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -280,15 +323,29 @@ function AddMeasurementForm({
       ) : null}
       <div className="sm:col-span-2">
         <Label htmlFor="m-leaf">{t('measurement.boqNode')}</Label>
-        <Select id="m-leaf" value={boqNodeId} onChange={(value) => setBoqNodeId(value)}>
-          <option value="">{t('measurement.boqNodePlaceholder')}</option>
-          {leaves.map((leaf) => (
-            <option key={leaf.id} value={leaf.id}>
-              {lineLabel(leaf)}
-            </option>
-          ))}
-        </Select>
-        <p className="mt-1 text-xs text-muted-foreground">{t('measurement.leafOnlyHint')}</p>
+        <div className="mt-1">
+          <Combobox
+            id="m-leaf"
+            value={boqNodeId}
+            onChange={(value) => setBoqNodeId(value)}
+            options={options}
+            placeholder={t('measurement.boqNodePlaceholder')}
+            searchPlaceholder={t('measurement.boqNodeSearch')}
+            emptyLabel={t('measurement.boqNodeEmpty')}
+          />
+        </div>
+        {selectedLeaf && scopeNum != null ? (
+          <p className={exceeds ? 'mt-1 text-xs text-warning' : 'mt-1 text-xs text-muted-foreground'}>
+            {t('measurement.scopeHint', {
+              scope: withUnit(scopeNum),
+              verified: withUnit(verifiedNum),
+              remaining: withUnit(remainingNum ?? 0),
+            })}
+            {exceeds ? ` ${t('measurement.exceedsRemaining')}` : ''}
+          </p>
+        ) : (
+          <p className="mt-1 text-xs text-muted-foreground">{t('measurement.leafOnlyHint')}</p>
+        )}
       </div>
       <FormField htmlFor="m-qty" label={t('measurement.quantity')} error={qtyError}>
         <Input id="m-qty" type="number" min="0" step="0.001" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
@@ -305,60 +362,122 @@ function AddMeasurementForm({
   );
 }
 
-function EvidenceUpload({ dprId }: { dprId: string }) {
+/**
+ * Evidence section: a multi-file photo/video uploader over a thumbnail gallery of what's attached.
+ * Upload is offered only while the report is not approved (an approved report is immutable). Each
+ * stored attachment resolves its own signed URL, which doubles as the thumbnail and carries the
+ * mime type used to pick <img> vs <video>.
+ */
+function DprEvidence({
+  dprId,
+  canUpload,
+  attachments,
+}: {
+  dprId: string;
+  canUpload: boolean;
+  attachments: Array<{ id: string; platformFileId: string }>;
+}) {
   const t = useTranslations('progress');
   const upload = useFileUpload();
   const attach = useAttachDprEvidence(dprId);
-  const [error, setError] = useState<string | null>(null);
-  const busy = upload.isPending || attach.isPending;
 
-  async function onChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    setError(null);
-    try {
-      const fileId = await upload.mutateAsync(file);
-      await attach.mutateAsync(fileId);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : t('evidence.notReady'));
-    }
-  }
+  const onUpload = async (file: File) => {
+    const fileId = await upload.mutateAsync(file);
+    await attach.mutateAsync(fileId);
+  };
+
+  const labels: MediaUploadLabels = {
+    dropHint: t('evidence.dropHint'),
+    browse: t('evidence.browse'),
+    tooLargeImage: t('evidence.tooLargeImage'),
+    tooLargeVideo: t('evidence.tooLargeVideo'),
+    wrongType: t('evidence.wrongType'),
+    uploading: t('evidence.uploading'),
+    failed: t('evidence.failed'),
+    retry: t('evidence.retry'),
+    remove: t('evidence.remove'),
+  };
 
   return (
-    <div className="mt-3">
-      {error ? (
-        <div className="mb-2">
-          <Alert variant="error" messages={[error]} />
+    <section className="rounded-panel border border-border bg-surface p-4 sm:p-5">
+      <h4 className="text-sm font-semibold text-foreground">{t('evidence.title')}</h4>
+      <p className="mt-1 text-xs text-muted-foreground">{t('evidence.hint')}</p>
+      {canUpload ? (
+        <div className="mt-3">
+          <MediaUpload onUpload={onUpload} labels={labels} />
         </div>
       ) : null}
-      <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-control border border-border bg-surface px-3 text-sm font-medium text-foreground hover:bg-surface-hover">
-        <Upload size={16} aria-hidden="true" />
-        {busy ? t('states.loading') : t('actions.attachEvidence')}
-        <input type="file" className="sr-only" onChange={(e) => void onChange(e)} disabled={busy} />
-      </label>
-    </div>
+      {attachments.length === 0 ? (
+        <p className="mt-3 text-sm text-muted-foreground">{t('evidence.empty')}</p>
+      ) : (
+        <ul className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-4">
+          {attachments.map((a) => (
+            <EvidenceTile key={a.id} platformFileId={a.platformFileId} />
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
-function EvidenceDownload({ platformFileId, label }: { platformFileId: string; label: string }) {
-  const [busy, setBusy] = useState(false);
-  async function onClick() {
-    setBusy(true);
-    try {
-      const { url } = await getFileDownloadUrl(platformFileId);
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } catch {
-      // Non-fatal: the row simply does not open. A retry re-signs the URL.
-    } finally {
-      setBusy(false);
-    }
+function EvidenceTile({ platformFileId }: { platformFileId: string }) {
+  const t = useTranslations('progress');
+  // The signed URL is the thumbnail src AND the open-in-new-tab target, and it carries the mime type
+  // that decides <img> vs <video>. Cached under its ~15-min expiry so a gallery is not a burst of
+  // identical re-signs.
+  const query = useQuery({
+    queryKey: ['file-download', platformFileId],
+    queryFn: () => getFileDownloadUrl(platformFileId),
+    staleTime: 10 * 60 * 1000,
+  });
+
+  if (query.isPending) {
+    return <li className="aspect-square animate-pulse rounded-control bg-muted" aria-hidden="true" />;
   }
+  if (query.isError || !query.data) {
+    return (
+      <li className="flex aspect-square items-center justify-center rounded-control border border-border bg-surface px-2 text-center text-caption text-muted-foreground">
+        {t('evidence.unavailable')}
+      </li>
+    );
+  }
+
+  const { url, originalName, mimeType } = query.data;
+  const isImage = mimeType.startsWith('image/');
+  const isVideo = mimeType.startsWith('video/');
+
   return (
-    <Button variant="ghost" size="sm" onClick={() => void onClick()} disabled={busy}>
-      <Download size={16} aria-hidden="true" />
-      <span className="sr-only">{label}</span>
-    </Button>
+    <li className="relative aspect-square overflow-hidden rounded-control border border-border bg-muted">
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block h-full w-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
+        title={originalName}
+      >
+        {isImage ? (
+          // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL, not a static asset
+          <img src={url} alt={originalName} className="h-full w-full object-cover" />
+        ) : isVideo ? (
+          <video src={url} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+        ) : (
+          <span className="flex h-full w-full items-center justify-center px-2 text-center text-caption text-muted-foreground">
+            {originalName}
+          </span>
+        )}
+        {isVideo ? (
+          <span className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white">▶</span>
+          </span>
+        ) : null}
+        <span
+          className="absolute inset-x-0 bottom-0 truncate bg-black/55 px-1.5 py-0.5 text-micro text-white"
+          title={originalName}
+        >
+          {originalName}
+        </span>
+      </a>
+    </li>
   );
 }
 

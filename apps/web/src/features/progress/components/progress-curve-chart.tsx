@@ -48,6 +48,11 @@ export interface ProgressCurveChartProps {
   actual: ProgressActualPoint[];
   /** Draw the faint verified line as well as physical. Off by default to keep the chart calm. */
   showVerified?: boolean;
+  /**
+   * The planned line is the provisional Option-C estimate (no approved baseline yet). Renders it
+   * fainter and labels the legend "estimate" so a reader never mistakes it for a committed plan.
+   */
+  plannedProvisional?: boolean;
 }
 
 /** Map a value on 0..100 to a Y pixel (inverted — 100% is at the top). */
@@ -76,9 +81,11 @@ export function ProgressCurveChart({
   baseline,
   actual,
   showVerified = false,
+  plannedProvisional = false,
 }: ProgressCurveChartProps) {
   const t = useTranslations('progress');
   const titleId = useId();
+  const plannedLabel = plannedProvisional ? t('curve.plannedEstimate') : t('curve.plannedBaseline');
 
   // The shared X axis is the union of every date across both series, in order. A planned point
   // and an actual point on the same date land on the same X, which is what makes them comparable.
@@ -179,6 +186,7 @@ export function ProgressCurveChart({
             className="stroke-muted-foreground"
             strokeWidth={1.5}
             strokeDasharray="5 4"
+            strokeOpacity={plannedProvisional ? 0.55 : 1}
             vectorEffect="non-scaling-stroke"
             aria-hidden="true"
           />
@@ -232,7 +240,7 @@ export function ProgressCurveChart({
             className="inline-block h-0.5 w-4 border-t-2 border-dashed border-muted-foreground"
             aria-hidden="true"
           />
-          {t('curve.planned')}
+          {plannedLabel}
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-block h-0.5 w-4 rounded-full bg-chart-1" aria-hidden="true" />

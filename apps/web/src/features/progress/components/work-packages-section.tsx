@@ -64,6 +64,9 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
   }
 
   const packages = data.packages.map((p) => ({ id: p.id, code: p.code, name: p.name }));
+  // Reduce blank-guessing: suggest the next sequential code, and show how much weight is still free.
+  const nextCode = `WP-${String(data.packages.length + 1).padStart(2, '0')}`;
+  const existingWeightPercent = Math.round(Number(data.weightsTotal) * 100);
 
   return (
     <div className="space-y-5">
@@ -143,7 +146,12 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
         <DialogContent className="p-5 sm:p-6 sm:max-w-lg">
           <DialogTitle>{t('actions.newWorkPackage')}</DialogTitle>
           <div className="mt-5">
-            <CreateWorkPackageForm projectId={projectId} onCreated={() => setCreating(false)} />
+            <CreateWorkPackageForm
+              projectId={projectId}
+              suggestedCode={nextCode}
+              existingWeightPercent={existingWeightPercent}
+              onCreated={() => setCreating(false)}
+            />
           </div>
         </DialogContent>
       </Dialog>
@@ -190,15 +198,19 @@ function PercentCompleteBar({ percent, label }: { percent: number; label: string
 
 function CreateWorkPackageForm({
   projectId,
+  suggestedCode,
+  existingWeightPercent,
   onCreated,
 }: {
   projectId: string;
+  suggestedCode: string;
+  existingWeightPercent: number;
   onCreated: () => void;
 }) {
   const t = useTranslations('progress');
   const create = useCreateWorkPackage(projectId);
 
-  const [code, setCode] = useState('');
+  const [code, setCode] = useState(suggestedCode);
   const [name, setName] = useState('');
   const [owner, setOwner] = useState('');
   const [weight, setWeight] = useState('');
@@ -207,6 +219,11 @@ function CreateWorkPackageForm({
 
   const codeError = touched && !code.trim() ? t('workPackage.form.codeRequired') : undefined;
   const nameError = touched && !name.trim() ? t('workPackage.form.nameRequired') : undefined;
+
+  // Live "how much of the 100% is still free" so weights are entered against a target, not guessed.
+  const enteredWeightPercent = weight ? Math.round(Number(weight) * 100) : 0;
+  const remainingPercent = Math.max(0, 100 - existingWeightPercent - enteredWeightPercent);
+  const weightHint = `${t('workPackage.form.weightHint')} ${t('workPackage.form.weightRemaining', { remaining: remainingPercent })}`;
 
   function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -245,7 +262,7 @@ function CreateWorkPackageForm({
         <FormField htmlFor="wp-owner" label={t('workPackage.form.responsibleOwner')}>
           <Input id="wp-owner" value={owner} onChange={(e) => setOwner(e.target.value)} />
         </FormField>
-        <FormField htmlFor="wp-weight" label={t('workPackage.form.progressWeight')} hint={t('workPackage.form.weightHint')}>
+        <FormField htmlFor="wp-weight" label={t('workPackage.form.progressWeight')} hint={weightHint}>
           <Input id="wp-weight" type="number" min="0" max="1" step="0.01" value={weight} onChange={(e) => setWeight(e.target.value)} />
         </FormField>
       </div>

@@ -8,10 +8,48 @@
   "tabs": {
     "label": "Progress sections",
     "reports": "Daily Reports",
+    "record": "Record",
     "verified": "Verified Progress",
     "milestones": "Milestones",
+    "schedule": "Schedule",
     "workPackages": "Work Packages",
+    "planSetup": "Plan & Setup",
     "performance": "Performance"
+  },
+  "headline": {
+    "physical": "Physical progress",
+    "schedule": "Schedule",
+    "cost": "Cost consumed",
+    "alignment": "Cost vs progress",
+    "weightsIncomplete": "Weights below 100%",
+    "loading": "Loading…",
+    "physicalNone": "No work packages yet",
+    "scheduleNone": "No baseline or snapshots yet",
+    "costNone": "No forecast cost yet",
+    "alignmentNone": "No cost data yet"
+  },
+  "setup": {
+    "title": "Set up progress tracking",
+    "progress": "{done} of {total} done",
+    "workPackages": {
+      "label": "Create work packages",
+      "description": "Break the scope into control units, each with an owner and a progress weight.",
+      "action": "Add work packages"
+    },
+    "allocate": {
+      "label": "Allocate BOQ items",
+      "description": "Link each work package to the BOQ items it covers, so progress can roll up.",
+      "blocked": "Create a work package first",
+      "action": "Allocate items"
+    },
+    "weights": {
+      "label": "Assign weights to 100%",
+      "blocked": "Create a work package first"
+    },
+    "baseline": {
+      "label": "Set the planned baseline",
+      "description": "Optional — gives the progress curve a real planned line instead of an estimate."
+    }
   },
   "actions": {
     "newReport": "New daily report",
@@ -69,26 +107,47 @@
     "approveConfirmTitle": "Approve this report?",
     "approveConfirmBody": "Its measurements become verified progress and the report becomes read-only.",
     "returnConfirmTitle": "Return for revision?",
-    "returnConfirmBody": "The report goes back to the author to correct."
+    "returnConfirmBody": "The report goes back to the author to correct.",
+    "selfApprovalWarning": "You prepared this report. Approving your own report may need a second reviewer.",
+    "chain": {
+      "label": "Report status",
+      "prepared": "Prepared",
+      "submitted": "Submitted",
+      "approved": "Approved"
+    }
   },
   "measurement": {
     "title": "Measurements",
     "add": "Add measurement",
     "boqNode": "BOQ item",
     "boqNodePlaceholder": "Choose a BOQ item",
+    "boqNodeSearch": "Search BOQ items",
+    "boqNodeEmpty": "No matching BOQ item",
     "leafOnlyHint": "Measure against a BOQ item (leaf), not a section.",
     "quantity": "Quantity this report",
     "notes": "Notes",
     "empty": "No measurements recorded on this report.",
-    "quantityRequired": "Enter a quantity greater than zero"
+    "quantityRequired": "Enter a quantity greater than zero",
+    "scopeHint": "Scope {scope} · verified to date {verified} · remaining {remaining}",
+    "exceedsRemaining": "This exceeds the remaining scope."
   },
   "evidence": {
     "title": "Evidence",
     "add": "Attach evidence",
-    "hint": "Photos, measurement sheets or delivery tickets. A photo shows work happened, not the exact quantity.",
+    "hint": "Photos or short videos of the day's work. A photo shows work happened, not the exact quantity.",
     "empty": "No evidence attached.",
     "notReady": "The file is still uploading. Try again once it finishes.",
-    "item": "Evidence file {n}"
+    "item": "Evidence file {n}",
+    "dropHint": "Drag photos or videos here, or",
+    "browse": "browse",
+    "tooLargeImage": "Photos must be under 15 MB.",
+    "tooLargeVideo": "Videos must be under 150 MB.",
+    "wrongType": "Only photos and videos can be attached.",
+    "uploading": "Uploading…",
+    "failed": "Upload failed",
+    "retry": "Retry",
+    "remove": "Remove",
+    "unavailable": "Preview unavailable"
   },
   "verified": {
     "title": "Verified progress",
@@ -105,12 +164,18 @@
   "curve": {
     "title": "Progress curve",
     "planned": "Planned",
+    "plannedBaseline": "Planned (baseline)",
+    "plannedEstimate": "Planned (estimate)",
+    "plannedToDate": "Planned to date",
+    "scheduleStripLabel": "Schedule position",
     "actual": "Actual physical",
     "verified": "Verified",
     "percentComplete": "% complete",
     "ariaSummary": "Progress curve over {points, plural, one {# period} other {# periods}}. Latest planned {planned}, latest actual physical {physical}.",
     "insufficient": "The progress curve begins once progress is recorded.",
-    "provisionalNote": "Planned line is provisional (a baseline programme isn't set yet).",
+    "provisionalChip": "Provisional baseline",
+    "provisionalNote": "The planned line is an estimate until a baseline is set in Plan & Setup.",
+    "lastSnapshot": "Last snapshot {date}",
     "status": {
       "AHEAD": "Ahead of schedule",
       "ON_TRACK": "On track",
@@ -146,6 +211,7 @@
       "responsibleOwner": "Responsible owner",
       "progressWeight": "Progress weight",
       "weightHint": "Fraction of the project (0–1). All work-package weights should total 100%.",
+      "weightRemaining": "{remaining}% still free to reach 100%.",
       "submit": "Create work package",
       "codeRequired": "Enter a code",
       "nameRequired": "Enter a name"
@@ -174,6 +240,26 @@
     "weightsComplete": "Weights complete",
     "weightsLabel": "Work-package weights",
     "unavailable": "Add work packages with weights to see a project figure."
+  },
+  "baseline": {
+    "title": "Planned baseline",
+    "subtitle": "The planned progress curve the S-curve compares actuals against. Without one, the planned line is only an estimate.",
+    "currentSet": "Baseline set",
+    "currentNone": "Estimate only",
+    "generateLinear": "Generate monthly (linear)",
+    "deriveMilestones": "Derive from milestones",
+    "noDates": "Set the project start and end dates to generate a linear baseline.",
+    "colDate": "Date",
+    "colPercent": "Cumulative %",
+    "addPoint": "Add point",
+    "remove": "Remove point",
+    "save": "Save baseline",
+    "saved": "Baseline saved.",
+    "empty": "Add points, or start from a generator above.",
+    "preview": "Preview",
+    "errorRange": "Each cumulative % must be between 0 and 100.",
+    "errorOrder": "Cumulative % cannot go backwards over time.",
+    "errorDup": "Each date must be unique."
   },
   "signal": {
     "title": "Physical vs financial",
@@ -254,5 +340,33 @@
       "hint": "Confirm the stage is complete and record the date it actually finished. This becomes billing evidence for any linked payment installment.",
       "actualDate": "Actual completion date"
     }
+  },
+  "activity": {
+    "title": "Activities",
+    "subtitle": "The work breakdown under each package — planned dates and milestones. Dependencies are deliberately out of scope.",
+    "noWorkPackagesTitle": "No work packages yet",
+    "noWorkPackages": "Create work packages in Plan & Setup first, then break each into activities.",
+    "add": "Add activity",
+    "addTitle": "New activity",
+    "editTitle": "Edit activity",
+    "empty": "No activities yet.",
+    "noDates": "No dates",
+    "timeline": "Timeline",
+    "col": {
+      "milestone": "Milestone"
+    },
+    "form": {
+      "code": "Code",
+      "name": "Name",
+      "start": "Planned start",
+      "end": "Planned end",
+      "milestone": "This is a milestone"
+    },
+    "codeRequired": "Enter a code",
+    "nameRequired": "Enter a name",
+    "dateOrder": "End date must be on or after the start date.",
+    "save": "Save",
+    "delete": "Delete",
+    "confirmDelete": "Confirm delete"
   }
 }

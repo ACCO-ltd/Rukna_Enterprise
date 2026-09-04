@@ -1,39 +1,22 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { Alert, Badge, Button, SectionHeader, Skeleton, type AlertProps, type BadgeProps } from '@erp/ui';
-import type { PhysicalFinancialSignalResponse, ProgressScheduleStatus } from '@erp/types';
+import { Alert, Badge, Button, SectionHeader, Skeleton, type BadgeProps } from '@erp/ui';
+import type { ProgressScheduleStatus } from '@erp/types';
 
 import { MetricStrip } from '@/components/widget/metric-strip';
+import { formatDate } from '@/lib/format';
 
-import {
-  usePhysicalFinancialSignal,
-  useProgressCurve,
-  useProjectRollup,
-} from '../hooks/use-progress';
+import { useProgressCurve } from '../hooks/use-progress';
 import { CaptureSnapshotAction } from './capture-snapshot-action';
+import { CollectionProgressSignalBanner } from './collection-progress-signal-banner';
+import { PhysicalFinancialSignalBanner } from './physical-financial-signal-banner';
 import { ProgressCurveChart } from './progress-curve-chart';
 
-type SignalStatus = PhysicalFinancialSignalResponse['status'];
-
-const STATUS_VARIANT: Record<SignalStatus, AlertProps['variant']> = {
-  ALIGNED: 'success',
-  COST_AHEAD: 'warning',
-  PROGRESS_AHEAD: 'info',
-  INSUFFICIENT_DATA: 'info',
-};
-
-const STATUS_HINT: Record<SignalStatus, string> = {
-  ALIGNED: 'signal.alignedHint',
-  COST_AHEAD: 'signal.costAheadHint',
-  PROGRESS_AHEAD: 'signal.progressAheadHint',
-  INSUFFICIENT_DATA: 'signal.insufficientHint',
-};
-
 /**
- * The schedule-status chip may carry a status colour — it *is* a status (ahead/on-track/behind),
- * not data-viz. This is the one place the Performance view colours by meaning; the curve itself
- * stays on the `--chart-*` ramp.
+ * The schedule-status chip *is* a status (ahead/on-track/behind), so it colours by meaning. This is
+ * the one place the Performance view colours by status; the curve itself stays on the `--chart-*`
+ * ramp. Mirrors the headline band so the tab reads one vocabulary.
  */
 const SCHEDULE_TONE: Record<ProgressScheduleStatus, BadgeProps['tone']> = {
   AHEAD: 'live',
@@ -42,77 +25,27 @@ const SCHEDULE_TONE: Record<ProgressScheduleStatus, BadgeProps['tone']> = {
   INSUFFICIENT_DATA: 'neutral',
 };
 
-/** Physical-vs-financial early warning + the planned-vs-actual S-curve and schedule status. */
+/**
+ * Performance view: the planned-vs-actual S-curve with schedule status, then both cockpit signals
+ * (physical-vs-financial + collection-vs-progress) with their explanatory hints.
+ *
+ * The physical/cost/alignment figures now headline the tab's always-on band, so this view no longer
+ * repeats them — it leads with the curve (the detail behind the headline) and gathers both signals
+ * in one place instead of scattering them across Progress and Finance.
+ */
 export function PerformanceSection({ projectId }: { projectId: string }) {
-  const t = useTranslations('progress');
-  const tCommon = useTranslations('common');
-  const signalQuery = usePhysicalFinancialSignal(projectId);
-  const rollupQuery = useProjectRollup(projectId);
   const curveQuery = useProgressCurve(projectId);
-
-  if (signalQuery.isPending) {
-    return (
-      <div role="status" aria-live="polite">
-        <span className="sr-only">{tCommon('loading')}</span>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Skeleton className="h-28 w-full" aria-hidden="true" />
-          <Skeleton className="h-28 w-full" aria-hidden="true" />
-          <Skeleton className="h-28 w-full" aria-hidden="true" />
-        </div>
-      </div>
-    );
-  }
-
-  if (signalQuery.isError) {
-    return (
-      <Alert variant="error" messages={[t('states.loadFailed')]}>
-        <div className="mt-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void signalQuery.refetch()}
-            disabled={signalQuery.isFetching}
-          >
-            {t('actions.retry')}
-          </Button>
-        </div>
-      </Alert>
-    );
-  }
-
-  const s = signalQuery.data;
-  const pct = (v: number | null) => (v === null ? null : `${v}%`);
-  const divergence = s.divergence === null ? null : `${s.divergence > 0 ? '+' : ''}${s.divergence}%`;
 
   return (
     <div className="space-y-5">
-      {/* Existing signal strip + physical-vs-financial Alert — kept exactly. */}
-      <div className="space-y-4">
-        <MetricStrip
-          aria-label={t('signal.title')}
-          metrics={[
-            { label: t('signal.physical'), value: `${s.physicalPercent}%` },
-            { label: t('signal.cost'), value: pct(s.costConsumedPercent) },
-            { label: t('signal.divergence'), value: divergence },
-          ]}
-        />
-
-        <Alert
-          variant={STATUS_VARIANT[s.status]}
-          title={t(`signal.status.${s.status}`)}
-          messages={[t(STATUS_HINT[s.status])]}
-        />
-
-        {rollupQuery.data && !rollupQuery.data.weightsComplete ? (
-          <Alert
-            variant="warning"
-            messages={[t('rollup.weightsIncomplete', { total: rollupQuery.data.weightsTotal })]}
-          />
-        ) : null}
-      </div>
-
-      {/* Progress curve (planned vs actual) + schedule status. */}
       <ProgressCurvePanel projectId={projectId} query={curveQuery} />
+
+      <div className="space-y-4">
+        {/* The physical-vs-financial link would point back to this same tab, so it's suppressed
+            here; the collection banner keeps its cross-link into Commercial. */}
+        <PhysicalFinancialSignalBanner projectId={projectId} showLink={false} />
+        <CollectionProgressSignalBanner projectId={projectId} />
+      </div>
     </div>
   );
 }
@@ -168,8 +101,8 @@ function ProgressCurvePanel({
   const curve = query.data;
   const status = curve.status;
 
-  // Honest insufficient-data state: no baseline or no snapshots → say so, offer the capture,
-  // and never draw a fabricated line.
+  // Honest insufficient-data state: no baseline or no snapshots → say so, offer the capture, and
+  // never draw a fabricated line.
   if (status === 'INSUFFICIENT_DATA' || curve.actual.length === 0) {
     return (
       <div className="space-y-3">
@@ -191,10 +124,18 @@ function ProgressCurvePanel({
       ? null
       : `${variance > 0 ? '+' : variance < 0 ? '−' : ''}${Math.abs(variance)}%`;
 
+  // Baseline is sampled at the snapshot dates, so the last point is "planned to date".
+  const plannedToDate = curve.baseline.at(-1)?.plannedPercent ?? null;
+  const latest = curve.actual.at(-1) ?? null;
+  const pct = (v: number | null) => (v === null ? '—' : `${v}%`);
+
   return (
     <div className="space-y-3">
       <SectionHeader title={t('curve.title')}>
         <div className="flex items-center gap-3">
+          {curve.baselineProvisional ? (
+            <Badge tone="accent">{t('curve.provisionalChip')}</Badge>
+          ) : null}
           <Badge tone={SCHEDULE_TONE[status]}>
             {varianceLabel === null
               ? t(`curve.status.${status}`)
@@ -204,11 +145,32 @@ function ProgressCurvePanel({
         </div>
       </SectionHeader>
 
-      <ProgressCurveChart baseline={curve.baseline} actual={curve.actual} showVerified />
+      <MetricStrip
+        aria-label={t('curve.scheduleStripLabel')}
+        metrics={[
+          { label: t('curve.plannedToDate'), value: pct(plannedToDate) },
+          { label: t('curve.actual'), value: latest ? `${latest.physicalPercent}%` : '—' },
+          { label: t('curve.verified'), value: latest ? `${latest.verifiedPercent}%` : '—' },
+        ]}
+      />
 
-      {curve.baselineProvisional ? (
-        <p className="text-caption text-muted-foreground">{t('curve.provisionalNote')}</p>
-      ) : null}
+      <ProgressCurveChart
+        baseline={curve.baseline}
+        actual={curve.actual}
+        showVerified
+        plannedProvisional={curve.baselineProvisional}
+      />
+
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        {latest ? (
+          <p className="text-caption text-muted-foreground">
+            {t('curve.lastSnapshot', { date: formatDate(latest.periodEndDate) ?? '—' })}
+          </p>
+        ) : null}
+        {curve.baselineProvisional ? (
+          <p className="text-caption text-muted-foreground">{t('curve.provisionalNote')}</p>
+        ) : null}
+      </div>
     </div>
   );
 }

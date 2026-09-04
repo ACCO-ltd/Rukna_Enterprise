@@ -40,3 +40,65 @@ export function verifyMilestone(
     body: JSON.stringify({ actualDate }),
   });
 }
+
+/**
+ * Programme activities (ADR-021 CONST-PROG-005) — the time layer under a work package: planned
+ * dates + an optional milestone flag. No dependency network (deliberately deferred). Dates come back
+ * as ISO datetime strings (the column is @db.Date); slice to YYYY-MM-DD in the UI.
+ */
+export interface ProgrammeActivityResponse {
+  id: string;
+  workPackageId: string;
+  code: string;
+  name: string;
+  plannedStart: string | null;
+  plannedEnd: string | null;
+  durationDays: number | null;
+  isMilestone: boolean;
+  sortOrder: number;
+}
+
+export interface CreateActivityBody {
+  code: string;
+  name: string;
+  /** ISO date, YYYY-MM-DD. */
+  plannedStart?: string;
+  plannedEnd?: string;
+  isMilestone?: boolean;
+}
+
+/** Code is immutable after creation (the API has no code field on update). */
+export interface UpdateActivityBody {
+  name?: string;
+  plannedStart?: string | null;
+  plannedEnd?: string | null;
+  isMilestone?: boolean;
+}
+
+export function listActivities(projectId: string): Promise<ProgrammeActivityResponse[]> {
+  return apiClient<ProgrammeActivityResponse[]>(`/projects/${projectId}/programme/activities`);
+}
+
+export function createActivity(
+  workPackageId: string,
+  body: CreateActivityBody,
+): Promise<ProgrammeActivityResponse> {
+  return apiClient<ProgrammeActivityResponse>(`/work-packages/${workPackageId}/activities`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateActivity(
+  activityId: string,
+  body: UpdateActivityBody,
+): Promise<ProgrammeActivityResponse> {
+  return apiClient<ProgrammeActivityResponse>(`/programme/activities/${activityId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteActivity(activityId: string): Promise<void> {
+  return apiClient<void>(`/programme/activities/${activityId}`, { method: 'DELETE' });
+}

@@ -10,9 +10,10 @@ import {
 } from '@erp/types';
 
 import {
-  assessSchedule,
   computeProvisionalBaseline,
   isoDate,
+  plannedPercentAtDate,
+  scheduleStatusFor,
 } from '../domain/progress-curve.js';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
@@ -674,20 +675,44 @@ export class ProgressService {
     const startDate = dates?.startDate ?? null;
     const expectedEndDate = dates?.expectedEndDate ?? null;
 
-    const baseline = computeProvisionalBaseline(
-      startDate,
-      expectedEndDate,
-      actual.map((a) => new Date(a.periodEndDate)),
-    );
-    const { scheduleVariancePercent, status } = assessSchedule(actual, startDate, expectedEndDate);
+    // Prefer the approved target curve (CONST-PROG-011) when one is set; otherwise fall back to the
+    // provisional Option-C ramp. Setting a baseline is exactly what un-provisions the S-curve: the
+    // planned line becomes the entered plan and `baselineProvisional` flips to false.
+    const targets = await this.repo.findTargets(prisma, projectId);
+    const hasTargets = targets.length > 0;
+
+    const baseline = hasTargets
+      ? targets.map((r) => ({
+          periodEndDate: isoDate(r.targetDate),
+          plannedPercent: Number(r.cumulativePercent),
+        }))
+      : computeProvisionalBaseline(
+          startDate,
+          expectedEndDate,
+          actual.map((a) => new Date(a.periodEndDate)),
+        );
+
+    // Variance = latest actual physical − planned at that date, from the same source as the baseline.
+    let scheduleVariancePercent: number | null = null;
+    let status: ProgressCurveResponse['status'] = 'INSUFFICIENT_DATA';
+    if (actual.length > 0 && baseline.length > 0) {
+      const latest = actual[actual.length - 1];
+      const plannedAtLatest = hasTargets
+        ? plannedPercentAt(targets, new Date(latest.periodEndDate))
+        : plannedPercentAtDate(startDate, expectedEndDate, new Date(latest.periodEndDate));
+      if (plannedAtLatest !== null) {
+        scheduleVariancePercent = Math.round((latest.physicalPercent - plannedAtLatest) * 100) / 100;
+        status = scheduleStatusFor(scheduleVariancePercent);
+      }
+    }
 
     return {
       projectId,
       baseline,
       actual,
-      scheduleVariancePercent: baseline.length === 0 ? null : scheduleVariancePercent,
-      status: baseline.length === 0 ? 'INSUFFICIENT_DATA' : status,
-      baselineProvisional: true,
+      scheduleVariancePercent,
+      status,
+      baselineProvisional: !hasTargets,
     };
   }
 

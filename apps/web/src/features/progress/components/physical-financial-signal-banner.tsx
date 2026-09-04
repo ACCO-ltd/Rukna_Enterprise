@@ -28,7 +28,14 @@ const STATUS_HINT: Record<Status, string> = {
  * consumed %. Same read model as the Progress Performance view and the Overview card — one
  * source, three surfaces.
  */
-export function PhysicalFinancialSignalBanner({ projectId }: { projectId: string }) {
+export function PhysicalFinancialSignalBanner({
+  projectId,
+  showLink = true,
+}: {
+  projectId: string;
+  /** Suppress the "Open Progress" link when the banner already sits inside the Progress tab. */
+  showLink?: boolean;
+}) {
   const t = useTranslations('progress');
   const q = usePhysicalFinancialSignal(projectId);
 
@@ -50,7 +57,7 @@ export function PhysicalFinancialSignalBanner({ projectId }: { projectId: string
         { label: t('signal.cost'), value: formatPct(s.costConsumedPercent) },
         { label: t('signal.divergence'), value: formatSignedPct(s.divergence) },
       ]}
-      link={{ href: `/projects/${projectId}/progress`, label: t('overview.link') }}
+      link={showLink ? { href: `/projects/${projectId}/progress`, label: t('overview.link') } : undefined}
     />
   );
 }

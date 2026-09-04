@@ -29,6 +29,8 @@ function build(
     snapshots?: SnapshotRow[];
     existingForPeriod?: { id: string } | null;
     projectDates?: { startDate: Date | null; expectedEndDate: Date | null } | null;
+    // The approved planned-progress curve (CONST-PROG-011). Empty ⇒ provisional Option-C baseline.
+    targets?: Array<{ targetDate: Date; cumulativePercent: Decimal }>;
     // Drives getRollup (weighted physical) + getProjectProgress (verified per leaf).
     workPackages?: unknown[];
     approvedMeasurements?: unknown[];
@@ -42,6 +44,7 @@ function build(
     approvedMeasurementsForProject: jest.fn().mockResolvedValue(over.approvedMeasurements ?? []),
     findSnapshotForPeriod: jest.fn().mockResolvedValue(over.existingForPeriod ?? null),
     findSnapshotsForProject: jest.fn().mockResolvedValue(over.snapshots ?? []),
+    findTargets: jest.fn().mockResolvedValue(over.targets ?? []),
     findProjectDates: jest
       .fn()
       .mockResolvedValue(over.projectDates === undefined ? null : over.projectDates),
@@ -149,6 +152,27 @@ describe('ProgressService.getCurve (BE-1)', () => {
     expect(curve.baseline).toHaveLength(2); // sampled at the two snapshot dates
     expect(curve.baselineProvisional).toBe(true);
     // Mid-year planned ≈ 50, actual 20 → BEHIND.
+    expect(curve.status).toBe('BEHIND');
+    expect(curve.scheduleVariancePercent).toBeLessThan(0);
+  });
+
+  it('uses the entered target curve (un-provisional) when a baseline is set', async () => {
+    const { svc } = build({
+      snapshots: [snap('s1', '2026-06-30', 20, 18)],
+      projectDates: { startDate: new Date('2026-01-01'), expectedEndDate: new Date('2026-12-31') },
+      targets: [
+        { targetDate: new Date('2026-03-31'), cumulativePercent: new Decimal(10) },
+        { targetDate: new Date('2026-09-30'), cumulativePercent: new Decimal(60) },
+      ],
+    });
+    const curve = await svc.getCurve(identity, 'p1');
+    // Planned line is the entered plan, not the snapshot-sampled ramp.
+    expect(curve.baselineProvisional).toBe(false);
+    expect(curve.baseline).toEqual([
+      { periodEndDate: '2026-03-31', plannedPercent: 10 },
+      { periodEndDate: '2026-09-30', plannedPercent: 60 },
+    ]);
+    // Planned at 2026-06-30 interpolates to ≈ 34.9; actual physical 20 → BEHIND.
     expect(curve.status).toBe('BEHIND');
     expect(curve.scheduleVariancePercent).toBeLessThan(0);
   });
