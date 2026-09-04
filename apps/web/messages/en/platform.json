@@ -475,6 +475,55 @@
     }
   },
   "boq": {
+    "import": {
+      "action": "Import from spreadsheet",
+      "title": "Import BOQ from a spreadsheet",
+      "description": "Upload an Excel or CSV file, match its columns, and review everything before it is added.",
+      "steps": { "upload": "Upload", "map": "Map columns", "review": "Review" },
+      "upload": {
+        "prompt": "Choose an Excel (.xlsx) or CSV file",
+        "hint": "The first row must be the column headings.",
+        "choose": "Choose file",
+        "template": "Download template",
+        "parseFailed": "That file could not be read. Check it is a valid .xlsx or .csv with a header row."
+      },
+      "map": {
+        "intro": "Match each spreadsheet column to a BOQ field. Code and Description are required; the rest are optional.",
+        "notMapped": "— Not mapped —",
+        "required": "Required",
+        "fields": {
+          "code": "Code",
+          "description": "Description",
+          "unit": "Unit",
+          "quantity": "Quantity",
+          "unitRate": "Rate",
+          "sheetAmount": "Amount (cross-check only)"
+        },
+        "modeLabel": "If the draft already has items",
+        "modeReplace": "Replace them with this import",
+        "modeAppend": "Add these on top",
+        "addToLibrary": "Also save these items to the library",
+        "addToLibraryHint": "New descriptions become reusable for other BOQs.",
+        "rowsFound": "{count, plural, one {# row found} other {# rows found}}",
+        "preview": "Preview"
+      },
+      "review": {
+        "summary": "{sections, plural, one {# section} other {# sections}} · {items, plural, one {# item} other {# items}}",
+        "autoCreated": "{count, plural, one {# section heading was added automatically from the codes} other {# section headings were added automatically from the codes}}",
+        "errorsTitle": "Fix these, then upload again",
+        "warningsTitle": "Worth a look",
+        "rowLabel": "Row {row}",
+        "unpriced": "unpriced",
+        "auto": "added",
+        "back": "Back",
+        "confirm": "{items, plural, one {Import # item} other {Import # items}}",
+        "importing": "Importing…",
+        "blocked": "This spreadsheet has errors and cannot be imported. Fix them and upload it again.",
+        "empty": "There are no rows to import."
+      },
+      "success": "{items, plural, one {# item imported} other {# items imported}}.",
+      "failed": "The import could not be completed."
+    },
     "title": "BOQ",
     "subtitle": "Priced scope and approved revisions",
     "versionNumber": "Version {number}",

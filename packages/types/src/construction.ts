@@ -855,6 +855,33 @@ export interface BoqImportResult {
   warnings: BoqImportWarning[];
 }
 
+/** One node as the preview will render it — a dry-run of the same planner the commit runs. */
+export interface BoqImportPreviewNode {
+  code: string;
+  /** null for a root; otherwise the parent's code (a planned node or an existing one). */
+  parentCode: string | null;
+  description: string;
+  isLeaf: boolean;
+  depth: number;
+  unit: string | null;
+  quantity: string | null;
+  unitRate: string | null;
+  totalAmount: string | null;
+  autoCreated: boolean;
+}
+
+/** What an import would create, plus every finding — computed without committing anything. */
+export interface BoqImportPreview {
+  ok: boolean;
+  mode: BoqImportMode;
+  sectionCount: number;
+  itemCount: number;
+  autoCreatedSectionCount: number;
+  nodes: BoqImportPreviewNode[];
+  violations: BoqImportViolation[];
+  warnings: BoqImportWarning[];
+}
+
 // ─── Commercial workspace read models (ADR-017, Gate B) ─────────────────────────
 //
 // Backend-owned response contracts for the Commercial workspace. The frontend consumes

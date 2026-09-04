@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type {
   BoqCompareResponse,
+  BoqImportRequest,
   BoqTreeNodeResponse,
   BoqWorkspaceResponse,
 } from '@erp/types';
@@ -18,8 +19,10 @@ import {
   deleteBoqNode,
   getBoqTree,
   getBoqWorkspace,
+  importBoq,
   initializeBoq,
   moveBoqNode,
+  previewBoqImport,
   updateBoqNode,
   type CreateNodePayload,
   type UpdateNodePayload,
@@ -106,6 +109,33 @@ export function useCancelDraftVersion(projectId: string) {
 
 export function useCreateDraftVersion(projectId: string) {
   return useBoqMutation(projectId, (notes: string) => createDraftVersion(projectId, notes));
+}
+
+// ─── Import (ADR-016 Phase 2) ────────────────────────────────────────────────────
+
+/**
+ * Dry-run preview. A plain mutation, deliberately NOT wrapped in `useBoqMutation`: it changes
+ * nothing on the server, so invalidating the workspace after it would be wasteful — and would
+ * refetch the tree the user is still deciding whether to replace.
+ */
+export function useBoqImportPreview(projectId: string) {
+  return useMutation({ mutationFn: (body: BoqImportRequest) => previewBoqImport(projectId, body) });
+}
+
+/**
+ * The commit. Invalidates the BOQ so the workspace, versions and tree all reflect the new nodes.
+ * Written out rather than via `useBoqMutation` so the `BoqImportResult` return type survives to
+ * the caller's `onSuccess` (the shared helper widens it to `unknown`).
+ */
+export function useImportBoq(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: BoqImportRequest) => importBoq(projectId, body),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: boqKeys.all(projectId) });
+      await queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+    },
+  });
 }
 
 // ─── Node editing ──────────────────────────────────────────────────────────────

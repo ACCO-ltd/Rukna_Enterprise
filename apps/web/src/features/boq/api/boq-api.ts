@@ -1,6 +1,9 @@
 import type {
   BoqBaselineReadinessResponse,
   BoqCompareResponse,
+  BoqImportPreview,
+  BoqImportRequest,
+  BoqImportResult,
   BoqResponse,
   BoqTreeNodeResponse,
   BoqWorkspaceResponse,
@@ -183,5 +186,31 @@ export function createDraftVersion(projectId: string, notes: string): Promise<Bo
   return apiClient<BoqResponse>(`/projects/${projectId}/boq/draft`, {
     method: 'POST',
     body: JSON.stringify(notes ? { notes } : {}),
+  });
+}
+
+/**
+ * Import (ADR-016 Phase 2). The browser parses the sheet and maps columns; only the mapped rows
+ * cross the wire (the API never sees a file).
+ *
+ * `previewBoqImport` is a dry-run — it runs the same server planner as the commit and returns the
+ * tree it would create plus every finding, changing nothing. `importBoq` commits: it creates the
+ * BOQ/draft if needed and writes the whole tree in one transaction, or rejects it with `400` and
+ * `details.violations` (all-or-nothing).
+ */
+export function previewBoqImport(
+  projectId: string,
+  body: BoqImportRequest,
+): Promise<BoqImportPreview> {
+  return apiClient<BoqImportPreview>(`/projects/${projectId}/boq/import/preview`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function importBoq(projectId: string, body: BoqImportRequest): Promise<BoqImportResult> {
+  return apiClient<BoqImportResult>(`/projects/${projectId}/boq/import`, {
+    method: 'POST',
+    body: JSON.stringify(body),
   });
 }

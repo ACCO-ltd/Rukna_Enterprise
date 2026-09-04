@@ -7,7 +7,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { BoqNode, BoqVersion, Prisma } from '@prisma/client';
-import type { BoqImportRequest, BoqImportResult, RequestIdentity } from '@erp/types';
+import type {
+  BoqImportPreview,
+  BoqImportRequest,
+  BoqImportResult,
+  RequestIdentity,
+} from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { BoqPrismaRepository, BoqWithVersions } from '../infrastructure/boq-prisma.repository.js';
@@ -15,7 +20,7 @@ import {
   BoqItemLibraryRepository,
   type ImportLibraryItem,
 } from '../infrastructure/boq-item-library.repository.js';
-import { planBoqImport, type PlannedImportNode } from '../domain/boq-import.policy.js';
+import { planBoqImport, type BoqImportPlan, type PlannedImportNode } from '../domain/boq-import.policy.js';
 
 /**
  * Bulk import (ADR-016 Phase 2). The browser parses the sheet, maps columns, and posts the
@@ -42,40 +47,17 @@ export class BoqImportService {
     const prisma = this.tenancy.getClient();
     const orgId = identity.activeOrganizationId;
 
-    // 1 — resolve the currency and any existing draft codes, creating nothing yet.
-    let boq = await this.repo.findByProject(prisma, projectId);
-    let currency: string;
-    if (boq) {
-      if (boq.organizationId !== orgId) throw new ForbiddenException();
-      currency = boq.currency;
-    } else {
-      const project = await prisma.project.findFirst({
-        where: { id: projectId, organizationId: orgId },
-        select: { currency: true },
-      });
-      if (!project) throw new NotFoundException(`Project ${projectId} not found`);
-      currency = project.currency || 'USD';
-    }
-
-    const draftId = boq?.currentDraftVersionId ?? null;
-    const existingCodes = draftId
-      ? await this.repo.findCodesInVersion(prisma, draftId)
-      : new Set<string>();
-    const knownUnits = await this.loadKnownUnits(prisma, orgId);
-
-    // 2 — plan (pure). Validate the whole sheet before touching the database (Q6).
-    const plan = planBoqImport(dto.rows, {
-      boqCurrency: currency,
-      existingCodes,
-      knownUnits,
-      mode: dto.mode,
-    });
+    // 1+2 — resolve context and plan the whole sheet (pure). Validate before any write (Q6).
+    const { plan, boq: resolvedBoq, currency } = await this.resolveAndPlan(prisma, orgId, projectId, dto);
     if (!plan.ok) {
       throw new BadRequestException({
         message: 'The import has blocking errors and was not applied.',
-        violations: plan.violations,
+        // The global exception filter forwards `message` and `details` only, so the per-row
+        // violations must travel inside `details`.
+        details: { violations: plan.violations },
       });
     }
+    let boq = resolvedBoq;
 
     // 3 — ensure a BOQ and an editable DRAFT to import into.
     if (!boq) boq = await this.createBoq(prisma, projectId, orgId, currency);
@@ -142,7 +124,83 @@ export class BoqImportService {
     };
   }
 
+  /**
+   * A dry-run of the same planner the commit uses — the authoritative preview. Returns exactly
+   * what would be created (including auto-synthesised sections) and every finding, without
+   * touching the database. The browser mirrors basic checks for instant feedback, but this is
+   * the source of truth the preview screen renders, so there is no client/server drift.
+   */
+  async preview(
+    identity: RequestIdentity,
+    projectId: string,
+    dto: BoqImportRequest,
+  ): Promise<BoqImportPreview> {
+    const prisma = this.tenancy.getClient();
+    const { plan } = await this.resolveAndPlan(prisma, identity.activeOrganizationId, projectId, dto);
+    return {
+      ok: plan.ok,
+      mode: dto.mode,
+      sectionCount: plan.nodes.filter((node) => !node.isLeaf).length,
+      itemCount: plan.nodes.filter((node) => node.isLeaf).length,
+      autoCreatedSectionCount: plan.nodes.filter((node) => node.autoCreated).length,
+      nodes: plan.nodes.map((node) => ({
+        code: node.code,
+        parentCode: node.parentCode,
+        description: node.description,
+        isLeaf: node.isLeaf,
+        depth: node.depth,
+        unit: node.unit,
+        quantity: node.quantity,
+        unitRate: node.unitRate,
+        totalAmount: node.totalAmount,
+        autoCreated: node.autoCreated,
+      })),
+      violations: plan.violations,
+      warnings: plan.warnings,
+    };
+  }
+
   // ─── mutation helpers ──────────────────────────────────────────────────────────
+
+  /**
+   * Resolves the BOQ, its currency and any existing draft codes, then runs the pure planner.
+   * Shared by preview (dry-run) and import (commit) so both judge a sheet identically — the
+   * only difference is that import goes on to persist the plan.
+   */
+  private async resolveAndPlan(
+    prisma: ReturnType<TenancyService['getClient']>,
+    orgId: string,
+    projectId: string,
+    dto: BoqImportRequest,
+  ): Promise<{ plan: BoqImportPlan; boq: BoqWithVersions | null; currency: string }> {
+    const boq = await this.repo.findByProject(prisma, projectId);
+    let currency: string;
+    if (boq) {
+      if (boq.organizationId !== orgId) throw new ForbiddenException();
+      currency = boq.currency;
+    } else {
+      const project = await prisma.project.findFirst({
+        where: { id: projectId, organizationId: orgId },
+        select: { currency: true },
+      });
+      if (!project) throw new NotFoundException(`Project ${projectId} not found`);
+      currency = project.currency || 'USD';
+    }
+
+    const draftId = boq?.currentDraftVersionId ?? null;
+    const existingCodes = draftId
+      ? await this.repo.findCodesInVersion(prisma, draftId)
+      : new Set<string>();
+    const knownUnits = await this.loadKnownUnits(prisma, orgId);
+
+    const plan = planBoqImport(dto.rows, {
+      boqCurrency: currency,
+      existingCodes,
+      knownUnits,
+      mode: dto.mode,
+    });
+    return { plan, boq, currency };
+  }
 
   private async createBoq(
     prisma: ReturnType<TenancyService['getClient']>,
