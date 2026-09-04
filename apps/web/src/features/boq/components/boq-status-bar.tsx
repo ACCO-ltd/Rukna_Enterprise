@@ -1,7 +1,7 @@
 'use client';
 
 import type { BoqRevisionSummary, BoqVersionSummary } from '@erp/types';
-import { AlertTriangle, Check, ClipboardList } from 'lucide-react';
+import { AlertTriangle, Check, ClipboardList, Lock } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Badge, LtrValue, cn, type BadgeTone } from '@erp/ui';
 
@@ -96,8 +96,12 @@ export function BoqStatusBar({
                 {/* `info`, not `accent`. Accent maps to the historical purple, which
                     already means "superseded" one panel below — so a live contractual
                     reference and a dead version were wearing the same colour. */}
+                {/* The signed, frozen BOQ — a lock marks it as the official one at a glance. */}
                 {version.isContractBaseline ? (
-                  <Badge tone="info">{t('contractBaselineBadge')}</Badge>
+                  <Badge tone="info" className="gap-1">
+                    <Lock size={11} aria-hidden="true" />
+                    {t('contractBaselineBadge')}
+                  </Badge>
                 ) : null}
               </>
             ) : null}

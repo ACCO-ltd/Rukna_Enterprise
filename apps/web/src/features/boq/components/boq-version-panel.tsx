@@ -1,7 +1,7 @@
 'use client';
 
 import type { BoqVersionSummary } from '@erp/types';
-import { ChevronRight, GitCompare, History } from 'lucide-react';
+import { ChevronRight, GitCompare, History, Lock } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Badge, Button, cn, LtrValue, type BadgeTone } from '@erp/ui';
 
@@ -124,7 +124,10 @@ export function BoqVersionPanel({
                     {/* `info`, not `accent` — accent is the historical purple, which is what
                         SUPERSEDED already wears in this very list. */}
                     {version.isContractBaseline ? (
-                      <Badge tone="info">{t('contractBaseline')}</Badge>
+                      <Badge tone="info" className="gap-1">
+                        <Lock size={11} aria-hidden="true" />
+                        {t('contractBaseline')}
+                      </Badge>
                     ) : null}
                     {/* A tick beside a "Draft" badge reads as approved. The row is already
                         tinted and carries aria-current; say plainly what it means instead. */}
