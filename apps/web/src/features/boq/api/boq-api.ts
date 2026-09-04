@@ -84,7 +84,8 @@ export function compareBoqVersions(
 export interface CreateNodePayload {
   parentId?: string;
   sortOrder?: number;
-  code: string;
+  /** Omit to let the server auto-number from tree position (D2); send only to override. */
+  code?: string;
   description: string;
   isLeaf?: boolean;
   unit?: string;

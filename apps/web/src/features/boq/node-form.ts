@@ -71,10 +71,14 @@ export function toCreateNodePayload(
   options: { kind: NodeKind; parentId?: string | undefined },
 ): CreateNodePayload {
   const payload: CreateNodePayload = {
-    code: values.code.trim(),
     description: values.description.trim(),
     isLeaf: options.kind === 'item',
   };
+
+  // D2: an empty code means "auto-number" — omit it so the server assigns from tree position.
+  // A non-empty code is an explicit override (the "Advanced" path in the dialog).
+  const code = values.code.trim();
+  if (code) payload.code = code;
 
   if (options.parentId) payload.parentId = options.parentId;
 
