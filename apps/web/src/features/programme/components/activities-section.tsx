@@ -76,8 +76,9 @@ export function ActivitiesSection({ projectId }: { projectId: string }) {
   for (const wp of packages) byWp.set(wp.id, []);
   for (const a of activities) byWp.get(a.workPackageId)?.push(a);
 
-  const projectStart = project.data?.startDate ?? null;
-  const projectEnd = project.data?.expectedEndDate ?? null;
+  // Slice @db.Date ISO datetimes to yyyy-MM-dd so DatePicker bounds and the Gantt axis parse them.
+  const projectStart = project.data?.startDate ? project.data.startDate.slice(0, 10) : null;
+  const projectEnd = project.data?.expectedEndDate ? project.data.expectedEndDate.slice(0, 10) : null;
 
   return (
     <div className="space-y-5">

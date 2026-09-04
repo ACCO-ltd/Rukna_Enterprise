@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Upload } from 'lucide-react';
+import { Upload, X } from 'lucide-react';
 import { cn } from '@erp/ui';
 
 /**
@@ -230,9 +230,9 @@ export function MediaUpload({
                 type="button"
                 onClick={() => remove(it)}
                 aria-label={labels.remove}
-                className="absolute end-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-sm leading-none text-white hover:bg-black/80"
+                className="absolute end-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
               >
-                ×
+                <X size={12} aria-hidden="true" />
               </button>
             </li>
           ))}

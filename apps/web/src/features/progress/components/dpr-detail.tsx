@@ -21,7 +21,7 @@ import {
   TableScroll,
   type ApprovalStep,
 } from '@erp/ui';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Play } from 'lucide-react';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { MediaUpload, type MediaUploadLabels } from '@/components/media-upload';
@@ -467,7 +467,9 @@ function EvidenceTile({ platformFileId }: { platformFileId: string }) {
         )}
         {isVideo ? (
           <span className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white">▶</span>
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white">
+              <Play size={14} className="fill-current" aria-hidden="true" />
+            </span>
           </span>
         ) : null}
         <span

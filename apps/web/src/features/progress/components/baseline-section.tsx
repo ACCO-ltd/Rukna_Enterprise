@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Alert, Badge, Button, DatePicker, Input, Label, SectionHeader, useToast } from '@erp/ui';
+import { X } from 'lucide-react';
 
 import { ApiError } from '@/lib/api-client';
 import { useProject } from '@/features/projects/hooks/use-project';
@@ -67,8 +68,10 @@ export function BaselineSection({ projectId }: { projectId: string }) {
   const current = rows ?? serverRows;
   const isSet = serverRows.length > 0;
 
-  const startDate = project.data?.startDate ?? null;
-  const endDate = project.data?.expectedEndDate ?? null;
+  // Project dates arrive from @db.Date columns as full ISO datetimes; slice to yyyy-MM-dd so the
+  // DatePicker bounds (and the linear generator) get the calendar-date format they expect.
+  const startDate = project.data?.startDate ? project.data.startDate.slice(0, 10) : null;
+  const endDate = project.data?.expectedEndDate ? project.data.expectedEndDate.slice(0, 10) : null;
   const canLinear = Boolean(startDate && endDate);
   const milestoneCount = milestones.data?.length ?? 0;
 
@@ -195,7 +198,7 @@ export function BaselineSection({ projectId }: { projectId: string }) {
                 onClick={() => removeRow(index)}
                 aria-label={t('baseline.remove')}
               >
-                ×
+                <X size={14} aria-hidden="true" />
               </Button>
             </li>
           ))}

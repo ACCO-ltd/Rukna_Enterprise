@@ -124,9 +124,14 @@ function ProgressCurvePanel({
       ? null
       : `${variance > 0 ? '+' : variance < 0 ? '−' : ''}${Math.abs(variance)}%`;
 
-  // Baseline is sampled at the snapshot dates, so the last point is "planned to date".
-  const plannedToDate = curve.baseline.at(-1)?.plannedPercent ?? null;
   const latest = curve.actual.at(-1) ?? null;
+  // Planned-to-date = latest actual physical − variance (both server-computed). Correct for the
+  // provisional ramp AND an entered baseline — where `baseline.at(-1)` would be the final target,
+  // not the planned figure as of the latest snapshot.
+  const plannedToDate =
+    latest && variance !== null
+      ? Math.round((latest.physicalPercent - variance) * 100) / 100
+      : null;
   const pct = (v: number | null) => (v === null ? '—' : `${v}%`);
 
   return (
