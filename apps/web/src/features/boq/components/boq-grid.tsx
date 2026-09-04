@@ -35,6 +35,8 @@ export interface BoqRowCommands {
   onAddItem: (parent: BoqTreeNodeResponse) => void;
   onDelete: (node: BoqTreeNodeResponse) => void;
   onMove: (node: BoqTreeNodeResponse, direction: -1 | 1) => void;
+  /** Opens the change log filtered to this line (BOQ refinement Phase 1). Optional. */
+  onViewHistory?: (node: BoqTreeNodeResponse) => void;
 }
 
 /**
@@ -437,6 +439,12 @@ function RowMenu({ node, commands }: { node: BoqTreeNodeResponse; commands: BoqR
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onSelect={() => commands.onEdit(node)}>{t('edit')}</DropdownMenuItem>
+
+          {commands.onViewHistory ? (
+            <DropdownMenuItem onSelect={() => commands.onViewHistory!(node)}>
+              {t('viewHistory')}
+            </DropdownMenuItem>
+          ) : null}
 
           {!node.isLeaf ? (
             <>

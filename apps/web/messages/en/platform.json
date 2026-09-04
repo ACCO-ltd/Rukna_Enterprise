@@ -524,6 +524,29 @@
       "success": "{items, plural, one {# item imported} other {# items imported}}.",
       "failed": "The import could not be completed."
     },
+    "history": {
+      "title": "History",
+      "hint": "Every change to this BOQ",
+      "filteredHint": "Changes to {code}",
+      "filteredTo": "Showing changes to {code}",
+      "clearFilter": "Show all",
+      "empty": "No changes recorded yet.",
+      "loadFailed": "Could not load the change history.",
+      "someone": "Someone",
+      "changed": "changed {field} of {code}: {from} → {to}",
+      "changedRestricted": "changed the {field} of {code}",
+      "genericChange": "made a change",
+      "field": {
+        "rate": "rate",
+        "quantity": "quantity",
+        "description": "description",
+        "unit": "unit",
+        "code": "code",
+        "measurementMethod": "measurement method",
+        "pricingBasis": "pricing basis",
+        "field": "a field"
+      }
+    },
     "title": "BOQ",
     "subtitle": "Priced scope and approved revisions",
     "versionNumber": "Version {number}",
@@ -656,6 +679,7 @@
       "incomplete": "Incomplete pricing",
       "rowMenu": "Actions for {code}",
       "edit": "Edit",
+      "viewHistory": "View history",
       "addItem": "Add item",
       "addSubsection": "Add sub-section",
       "moveUp": "Move up",

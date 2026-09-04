@@ -58,6 +58,7 @@ import { BOQ_PERMISSIONS } from '../permissions';
 import { getVersionActions } from '../version-actions';
 import { BoqComparePanel } from './boq-compare-panel';
 import { BoqGrid, type BoqRowCommands } from './boq-grid';
+import { BoqHistoryPanel } from './boq-history-panel';
 import { BoqImportDialog } from './boq-import-dialog';
 import { BoqItemDrawer, type DrawerTarget, type LibraryIntent } from './boq-item-drawer';
 import { BoqReadinessBanner } from './boq-readiness-banner';
@@ -95,6 +96,8 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const [comparing, setComparing] = useState<{ left: string; right: string } | null>(null);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState<{ id: string; code: string } | null>(null);
   const [stickyRef, stickyOffScreen] = useIsOffScreen();
 
   // Derived during render rather than synchronised in an effect: a cancelled draft or a
@@ -271,6 +274,11 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
             ...(node.parentId ? { newParentId: node.parentId } : {}),
             newSortOrder: Math.max(0, node.sortOrder + direction),
           });
+        },
+        onViewHistory: (node) => {
+          setHistoryFilter({ id: node.id, code: node.code });
+          setHistoryOpen(true);
+          document.getElementById('boq-history')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         },
       }
     : null;
@@ -459,6 +467,22 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         onSelect={setChosenVersionId}
         onCompare={(left, right) => setComparing({ left, right })}
       />
+
+      {/* The change log — "who changed what, and what was it before". Collapsed by default (it
+          does not fetch until opened); the row menu's "View history" opens it filtered to a line. */}
+      <div id="boq-history" className="scroll-mt-4">
+        <BoqHistoryPanel
+          projectId={projectId}
+          versionId={selectedVersionId}
+          currency={workspace.currency}
+          canViewCommercials={canViewCommercials}
+          open={historyOpen}
+          onToggle={() => setHistoryOpen((current) => !current)}
+          filterCode={historyFilter?.code ?? null}
+          filterNodeId={historyFilter?.id ?? null}
+          onClearFilter={() => setHistoryFilter(null)}
+        />
+      </div>
 
       {importOpen ? (
         <BoqImportDialog

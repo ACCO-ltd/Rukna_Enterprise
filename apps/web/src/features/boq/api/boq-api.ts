@@ -1,5 +1,6 @@
 import type {
   BoqBaselineReadinessResponse,
+  BoqChangeEventResponse,
   BoqCompareResponse,
   BoqImportPreview,
   BoqImportRequest,
@@ -213,4 +214,23 @@ export function importBoq(projectId: string, body: BoqImportRequest): Promise<Bo
     method: 'POST',
     body: JSON.stringify(body),
   });
+}
+
+/**
+ * The version's change log — "who changed what, and what was it before" — newest first.
+ * `nodeId` narrows it to one line's history; the values are decimal strings for display only.
+ */
+export function getBoqHistory(
+  projectId: string,
+  versionId: string,
+  options: { nodeId?: string; take?: number; skip?: number } = {},
+): Promise<BoqChangeEventResponse[]> {
+  const params = new URLSearchParams();
+  if (options.nodeId) params.set('nodeId', options.nodeId);
+  if (options.take) params.set('take', String(options.take));
+  if (options.skip) params.set('skip', String(options.skip));
+  const query = params.toString();
+  return apiClient<BoqChangeEventResponse[]>(
+    `/projects/${projectId}/boq/versions/${versionId}/history${query ? `?${query}` : ''}`,
+  );
 }
