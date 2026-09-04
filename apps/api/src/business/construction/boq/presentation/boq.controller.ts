@@ -92,6 +92,21 @@ export class BoqController {
     return this.versioningService.getBoq(identity, projectId);
   }
 
+  @Post('import/preview')
+  @RequirePermissions(PERMISSIONS.boqManage)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Dry-run an import: what it would create + every finding, without committing',
+  })
+  @ApiParam({ name: 'projectId' })
+  previewImport(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Body() dto: ImportBoqDto,
+  ) {
+    return this.importService.preview(identity, projectId, dto);
+  }
+
   @Post('import')
   @RequirePermissions(PERMISSIONS.boqManage)
   @ApiOperation({

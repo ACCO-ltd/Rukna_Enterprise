@@ -127,13 +127,43 @@ describe('BoqImportService', () => {
   });
 
   describe('all-or-nothing', () => {
-    it('rejects with 400 and creates nothing when the sheet has a blocking error', async () => {
+    it('rejects with 400 (violations in details) and creates nothing on a blocking error', async () => {
       const { svc, repo } = build();
-      await expect(
-        svc.import(identity, 'p1', req({ rows: [{ rowNumber: 1, code: '', description: 'x' }] })),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      const error = await svc
+        .import(identity, 'p1', req({ rows: [{ rowNumber: 1, code: '', description: 'x' }] }))
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(BadRequestException);
+      // The global filter forwards only message + details — violations must ride in details.
+      const response = (error as BadRequestException).getResponse() as {
+        details?: { violations?: unknown[] };
+      };
+      expect(response.details?.violations?.length).toBeGreaterThan(0);
       expect(repo.createManyNodes).not.toHaveBeenCalled();
       expect(repo.createBoq).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('preview (dry-run)', () => {
+    it('returns the planned tree and findings without mutating anything', async () => {
+      const { svc, repo } = build();
+      const result = await svc.preview(
+        identity,
+        'p1',
+        req({ rows: [{ rowNumber: 1, code: '02.01.001', description: 'Mass concrete', quantity: '10', unitRate: '85.00' }] }),
+      );
+      expect(result.ok).toBe(true);
+      expect(result.nodes.map((n) => n.code).sort()).toEqual(['02', '02.01', '02.01.001']);
+      expect(result.itemCount).toBe(1);
+      expect(result.autoCreatedSectionCount).toBe(2);
+      expect(repo.createManyNodes).not.toHaveBeenCalled();
+      expect(repo.createBoq).not.toHaveBeenCalled();
+    });
+
+    it('reports violations with ok=false instead of throwing', async () => {
+      const { svc } = build();
+      const result = await svc.preview(identity, 'p1', req({ rows: [{ rowNumber: 1, code: '', description: 'x' }] }));
+      expect(result.ok).toBe(false);
+      expect(result.violations.length).toBeGreaterThan(0);
     });
   });
 

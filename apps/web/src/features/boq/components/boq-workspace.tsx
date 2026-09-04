@@ -12,6 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   Skeleton,
+  useToast,
 } from '@erp/ui';
 
 import type { BoqTreeNodeResponse } from '@erp/types';
@@ -57,6 +58,7 @@ import { BOQ_PERMISSIONS } from '../permissions';
 import { getVersionActions } from '../version-actions';
 import { BoqComparePanel } from './boq-compare-panel';
 import { BoqGrid, type BoqRowCommands } from './boq-grid';
+import { BoqImportDialog } from './boq-import-dialog';
 import { BoqItemDrawer, type DrawerTarget, type LibraryIntent } from './boq-item-drawer';
 import { BoqReadinessBanner } from './boq-readiness-banner';
 import { BoqStatusBar } from './boq-status-bar';
@@ -78,6 +80,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const t = useTranslations('platform.boq');
   const tCommon = useTranslations('common');
   const { can } = usePermissions();
+  const { toast } = useToast();
 
   const workspaceQuery = useBoqWorkspace(projectId);
   const workspace = workspaceQuery.data;
@@ -91,6 +94,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const [command, setCommand] = useState<Command>(null);
   const [comparing, setComparing] = useState<{ left: string; right: string } | null>(null);
   const [versionsOpen, setVersionsOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [stickyRef, stickyOffScreen] = useIsOffScreen();
 
   // Derived during render rather than synchronised in an effect: a cancelled draft or a
@@ -174,6 +178,9 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const selected = workspace.versions.find((version) => version.id === selectedVersionId) ?? null;
   const isDraft = selected !== null && selected.id === workspace.draft?.id;
   const canManage = can(BOQ_PERMISSIONS.manage) && workspace.capabilities.canManage && isDraft;
+  // Import creates or opens a draft itself, so — unlike node editing — it is not gated on the
+  // currently-viewed version being the draft.
+  const canImport = can(BOQ_PERMISSIONS.manage) && workspace.capabilities.canManage;
   const canViewCommercials = workspace.capabilities.canViewCommercials;
   const actions = getVersionActions(workspace, selectedVersionId);
 
@@ -324,6 +331,11 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
+                  {canImport ? (
+                    <DropdownMenuItem onSelect={() => setImportOpen(true)}>
+                      {t('import.action')}
+                    </DropdownMenuItem>
+                  ) : null}
                   <DropdownMenuItem onSelect={handleExportTree}>
                     {t('toolbar.export')}
                   </DropdownMenuItem>
@@ -447,6 +459,16 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         onSelect={setChosenVersionId}
         onCompare={(left, right) => setComparing({ left, right })}
       />
+
+      {importOpen ? (
+        <BoqImportDialog
+          projectId={projectId}
+          currency={workspace.currency}
+          open
+          onClose={() => setImportOpen(false)}
+          onImported={(summary) => toast({ title: summary })}
+        />
+      ) : null}
 
       <BoqItemDrawer
         // Remount when the drawer points somewhere else, so the form seeds from the new
