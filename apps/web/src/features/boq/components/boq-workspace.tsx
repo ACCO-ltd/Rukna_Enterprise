@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
-import { ClipboardList, GitCompare, MoreHorizontal, Plus } from 'lucide-react';
+import { ClipboardList, FileSpreadsheet, GitCompare, MoreHorizontal, Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
@@ -158,23 +158,46 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
 
   if (!workspace) return null;
 
-  // A project with no BOQ is a starting state, not a failure.
+  // A project with no BOQ is a starting state, not a failure. Two clear doors, no jargon: bring
+  // in a priced bill, or start a blank one. Import creates the BOQ itself; "Start blank" does too.
   if (!workspace.boq) {
     return (
-      <EmptyState
-        variant="page"
-        icon={<ClipboardList size={25} strokeWidth={1.8} aria-hidden="true" />}
-        title={t('notInitialized')}
-        description={t('notInitializedHint')}
-        action={
-          workspace.capabilities.canManage ? (
-            <Button className="gap-2" disabled={initialize.isPending} onClick={() => initialize.mutate()}>
-              <Plus size={16} aria-hidden="true" />
-              {initialize.isPending ? t('initializing') : t('initialize')}
-            </Button>
-          ) : undefined
-        }
-      />
+      <>
+        <EmptyState
+          variant="page"
+          icon={<ClipboardList size={25} strokeWidth={1.8} aria-hidden="true" />}
+          title={t('empty.title')}
+          description={t('empty.description')}
+          action={
+            workspace.capabilities.canManage ? (
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button className="gap-2" onClick={() => setImportOpen(true)}>
+                  <FileSpreadsheet size={16} aria-hidden="true" />
+                  {t('empty.import')}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  disabled={initialize.isPending}
+                  onClick={() => initialize.mutate()}
+                >
+                  <Plus size={16} aria-hidden="true" />
+                  {initialize.isPending ? t('initializing') : t('empty.startBlank')}
+                </Button>
+              </div>
+            ) : undefined
+          }
+        />
+        {importOpen ? (
+          <BoqImportDialog
+            projectId={projectId}
+            currency={workspace.currency}
+            open
+            onClose={() => setImportOpen(false)}
+            onImported={(summary) => toast({ title: summary })}
+          />
+        ) : null}
+      </>
     );
   }
 
@@ -339,11 +362,8 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  {canImport ? (
-                    <DropdownMenuItem onSelect={() => setImportOpen(true)}>
-                      {t('import.action')}
-                    </DropdownMenuItem>
-                  ) : null}
+                  {/* Export lives here — reading a BOQ out is rare next to building it. Add
+                      section + Import are in the toolbar, always visible. */}
                   <DropdownMenuItem onSelect={handleExportTree}>
                     {t('toolbar.export')}
                   </DropdownMenuItem>
@@ -410,11 +430,12 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
           onToggleExpandAll={() =>
             setCollapsed(allExpanded ? new Set(allSectionIds) : new Set())
           }
-          onExport={handleExportTree}
           onAddSection={() =>
             setDrawer({ mode: 'add', kind: 'section', parent: null, node: null, siblingCodes: siblingCodesUnder(null) })
           }
+          onImport={() => setImportOpen(true)}
           canManage={canManage}
+          canImport={canImport}
           resultCount={rows.length}
           totalCount={counts.sections + counts.items}
         />

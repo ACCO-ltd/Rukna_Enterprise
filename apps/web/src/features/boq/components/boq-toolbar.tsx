@@ -1,17 +1,19 @@
 'use client';
 
-import { ChevronsDownUp, ChevronsUpDown, Download, Plus, Search } from 'lucide-react';
+import { ChevronsDownUp, ChevronsUpDown, FileUp, Plus, Search } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Button, Input, Select, cn } from '@erp/ui';
 
 import type { PricingFilter } from '../boq-rows';
 
 /**
- * Search, filters and the row-adding entry point.
+ * Search, filters, and the always-visible ways to add scope.
  *
- * Import is deliberately absent, not disabled. It needs ACCO's real workbook to define a
- * column mapping, and a greyed-out control that never becomes available is a worse answer
- * than no control — it invites a support question every time someone sees it. See ADR-016.
+ * The two creative actions a BOQ needs — **Add section** and **Import** — live here in the open,
+ * not behind the header overflow: on an empty or new BOQ they are the whole job, and hiding them
+ * is what made "how do I start?" a support question. Export moved the other way, into the header
+ * overflow, because reading the BOQ out is a rare act next to building it. Both stay `outline`:
+ * the status bar owns the one primary button (the contextual next step).
  */
 export function BoqToolbar({
   search,
@@ -20,9 +22,10 @@ export function BoqToolbar({
   onPricingChange,
   allExpanded,
   onToggleExpandAll,
-  onExport,
   onAddSection,
+  onImport,
   canManage,
+  canImport,
   resultCount,
   totalCount,
 }: {
@@ -32,9 +35,10 @@ export function BoqToolbar({
   onPricingChange: (value: PricingFilter) => void;
   allExpanded: boolean;
   onToggleExpandAll: () => void;
-  onExport: () => void;
   onAddSection: () => void;
+  onImport: () => void;
   canManage: boolean;
+  canImport: boolean;
   resultCount: number;
   totalCount: number;
 }) {
@@ -92,18 +96,19 @@ export function BoqToolbar({
           {allExpanded ? t('collapseAll') : t('expandAll')}
         </Button>
 
-        <Button variant="outline" size="sm" className="gap-2" onClick={onExport}>
-          <Download size={15} aria-hidden="true" />
-          {t('export')}
-        </Button>
-
-        {/* Outline, not primary. The status bar owns the one blue button on this page —
-            "Add section" competing with it meant two primaries and neither reading as the
-            answer to "what do I do next". */}
+        {/* Outline, not primary — the status bar owns the one blue button. Add section and
+            Import are peers, always visible so starting a BOQ is never a hunt. */}
         {canManage ? (
           <Button variant="outline" size="sm" className={cn('gap-2')} onClick={onAddSection}>
             <Plus size={15} aria-hidden="true" />
             {t('addSection')}
+          </Button>
+        ) : null}
+
+        {canImport ? (
+          <Button variant="outline" size="sm" className="gap-2" onClick={onImport}>
+            <FileUp size={15} aria-hidden="true" />
+            {t('import')}
           </Button>
         ) : null}
       </div>

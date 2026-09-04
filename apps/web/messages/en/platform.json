@@ -556,6 +556,12 @@
     "contractBaselineBadge": "Contract BOQ",
     "notInitialized": "No BOQ yet",
     "notInitializedHint": "Create the bill of quantities to start pricing this project scope.",
+    "empty": {
+      "title": "No BOQ yet",
+      "description": "Bring in your priced bill from a spreadsheet, or start a blank one and add sections and items.",
+      "import": "Import from spreadsheet",
+      "startBlank": "Start a blank BOQ"
+    },
     "initialize": "Create BOQ",
     "initializing": "Creating…",
     "loadFailed": "Could not load the BOQ",
@@ -657,7 +663,8 @@
       "expandAll": "Expand all",
       "collapseAll": "Collapse all",
       "export": "Export",
-      "addSection": "Add section"
+      "addSection": "Add section",
+      "import": "Import"
     },
     "grid": {
       "code": "Code",
@@ -687,7 +694,7 @@
       "delete": "Delete",
       "totalRestricted": "Total restricted",
       "empty": "This version has no items.",
-      "emptyDraft": "Add a section to start building the BOQ.",
+      "emptyDraft": "This BOQ is empty. Use Add section or Import above to start building it.",
       "noMatches": "No rows match the current filters.",
       "showingRows": "Showing {shown} of {total} rows",
       "visibleTotal": "Visible",
