@@ -18,6 +18,17 @@ export interface CreateBoqItemData {
   createdBy: string;
 }
 
+/** One library row synthesised from an imported leaf. `lastUsedRate` is a decimal string. */
+export interface ImportLibraryItem {
+  organizationId: string;
+  code: string;
+  description: string;
+  defaultUnit?: string;
+  lastUsedRate?: string;
+  lastUsedProjectId?: string;
+  createdBy: string;
+}
+
 /** ADR-020 CONST-BOQ-020 — persistence for the reusable BOQ work-item catalogue. */
 @Injectable()
 export class BoqItemLibraryRepository {
@@ -51,6 +62,24 @@ export class BoqItemLibraryRepository {
 
   create(prisma: TenantPrisma, data: CreateBoqItemData) {
     return prisma.boqItemLibrary.create({ data });
+  }
+
+  /** Every item in the org — code + description + active — for import de-duplication. */
+  findAllForDedup(prisma: TenantPrisma, organizationId: string) {
+    return prisma.boqItemLibrary.findMany({
+      where: { organizationId },
+      select: { code: true, description: true, active: true },
+    });
+  }
+
+  /**
+   * Bulk-adds items an import chose to save (Q7). Codes are generated + de-duplicated by the
+   * caller; the seeded `lastUsedRate` is assistance only (CONST-BOQ-021), never authoritative.
+   */
+  async createManyFromImport(prisma: TenantPrisma, data: ImportLibraryItem[]): Promise<number> {
+    if (data.length === 0) return 0;
+    const result = await prisma.boqItemLibrary.createMany({ data });
+    return result.count;
   }
 
   // CONST-BOQ-021: the last-used rate is assistance only. Recorded on use, never authoritative.

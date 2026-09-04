@@ -6,6 +6,7 @@ import { BoqVersioningService } from './application/boq-versioning.service.js';
 import { BoqTreeService } from './application/boq-tree.service.js';
 import { BoqWorkspaceService } from './application/boq-workspace.service.js';
 import { BoqItemLibraryService } from './application/boq-item-library.service.js';
+import { BoqImportService } from './application/boq-import.service.js';
 import { BoqPrismaRepository } from './infrastructure/boq-prisma.repository.js';
 import { BoqItemLibraryRepository } from './infrastructure/boq-item-library.repository.js';
 
@@ -18,6 +19,7 @@ import { BoqItemLibraryRepository } from './infrastructure/boq-item-library.repo
     BoqTreeService,
     BoqWorkspaceService,
     BoqItemLibraryService,
+    BoqImportService,
     BoqPrismaRepository,
     BoqItemLibraryRepository,
   ],
