@@ -6,10 +6,14 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { BoqNode, MeasurementMethod, PricingBasis, BoqSourceType } from '@prisma/client';
-import type { RequestIdentity } from '@erp/types';
+import type { BoqChangeEventResponse, RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
-import { BoqPrismaRepository, BoqWithVersions } from '../infrastructure/boq-prisma.repository.js';
+import {
+  BoqPrismaRepository,
+  BoqWithVersions,
+  type BoqChangeEventInput,
+} from '../infrastructure/boq-prisma.repository.js';
 import {
   formatAmount,
   formatQuantity,
@@ -159,6 +163,12 @@ export class BoqTreeService {
       },
       parentPath,
       targetOrder,
+      {
+        ...this.changeBase(identity, boq, versionId),
+        code: dto.code,
+        action: 'CREATE',
+        detail: isLeaf ? `Added item ${dto.code}` : `Added section ${dto.code}`,
+      },
     );
   }
 
@@ -197,18 +207,31 @@ export class BoqTreeService {
       ),
     );
 
-    return this.repo.updateNode(prisma, nodeId, {
+    const events = this.buildUpdateEvents(identity, boq, node, dto, {
       code,
-      description: dto.description,
       isLeaf,
-      measurementMethod: dto.measurementMethod,
-      pricingBasis: dto.pricingBasis,
-      unit: isLeaf ? (unit ?? null) : null,
-      quantity: isLeaf ? (quantity ?? null) : null,
-      unitRate: isLeaf ? (unitRate ?? null) : null,
-      currency: isLeaf ? boq.currency : null,
-      totalAmount: formatAmount(lineAmount(quantity, unitRate, isLeaf)),
+      unit: unit ?? null,
+      quantity: quantity ?? null,
+      unitRate: unitRate ?? null,
     });
+
+    return this.repo.updateNode(
+      prisma,
+      nodeId,
+      {
+        code,
+        description: dto.description,
+        isLeaf,
+        measurementMethod: dto.measurementMethod,
+        pricingBasis: dto.pricingBasis,
+        unit: isLeaf ? (unit ?? null) : null,
+        quantity: isLeaf ? (quantity ?? null) : null,
+        unitRate: isLeaf ? (unitRate ?? null) : null,
+        currency: isLeaf ? boq.currency : null,
+        totalAmount: formatAmount(lineAmount(quantity, unitRate, isLeaf)),
+      },
+      events,
+    );
   }
 
   async moveNode(
@@ -257,9 +280,19 @@ export class BoqTreeService {
         newParent.path,
         newParent.depth,
         dto.newSortOrder,
+        this.moveEvent(identity, boq, versionId, node),
       );
     } else {
-      await this.repo.moveNode(prisma, versionId, node, null, null, -1, dto.newSortOrder);
+      await this.repo.moveNode(
+        prisma,
+        versionId,
+        node,
+        null,
+        null,
+        -1,
+        dto.newSortOrder,
+        this.moveEvent(identity, boq, versionId, node),
+      );
     }
 
     // Returning the tree closes B6 — the endpoint used to answer 200 with an empty body,
@@ -300,10 +333,128 @@ export class BoqTreeService {
       });
     }
 
-    await this.repo.deleteNodeAndReindex(prisma, node);
+    await this.repo.deleteNodeAndReindex(prisma, node, {
+      ...this.changeBase(identity, boq, versionId),
+      nodeId: node.id,
+      code: node.code,
+      action: 'DELETE',
+      detail: node.isLeaf ? `Deleted item ${node.code}` : `Deleted section ${node.code}`,
+    });
+  }
+
+  /**
+   * The version's change log, newest first — the "who changed what, and what was it before" feed
+   * (BOQ refinement Phase 1). Resolves actor names in one batch query.
+   */
+  async getHistory(
+    identity: RequestIdentity,
+    projectId: string,
+    versionId: string,
+    options: { nodeId?: string; take: number; skip: number },
+  ): Promise<BoqChangeEventResponse[]> {
+    const prisma = this.tenancyService.getClient();
+    const boq = await this.requireBoqForProject(prisma, projectId, identity.activeOrganizationId);
+    this.requireVersionBelongsToBoq(versionId, boq);
+
+    const events = await this.repo.findHistory(prisma, versionId, options);
+    const names = await this.repo.findActorNames(prisma, [
+      ...new Set(events.map((event) => event.actorUserId)),
+    ]);
+
+    return events.map((event) => ({
+      id: event.id,
+      versionId: event.versionId,
+      nodeId: event.nodeId,
+      code: event.code,
+      action: event.action,
+      field: event.field,
+      oldValue: event.oldValue,
+      newValue: event.newValue,
+      detail: event.detail,
+      actorUserId: event.actorUserId,
+      actorName: names.get(event.actorUserId) ?? null,
+      createdAt: event.createdAt.toISOString(),
+    }));
   }
 
   // ─── Private helpers ──────────────────────────────────────────────────────────
+
+  /** The org/boq/version/actor fields every change event shares. */
+  private changeBase(
+    identity: RequestIdentity,
+    boq: BoqWithVersions,
+    versionId: string,
+  ): Pick<BoqChangeEventInput, 'organizationId' | 'boqId' | 'versionId' | 'actorUserId'> {
+    return {
+      organizationId: identity.activeOrganizationId,
+      boqId: boq.id,
+      versionId,
+      actorUserId: identity.userId,
+    };
+  }
+
+  private moveEvent(
+    identity: RequestIdentity,
+    boq: BoqWithVersions,
+    versionId: string,
+    node: BoqNode,
+  ): BoqChangeEventInput {
+    return {
+      ...this.changeBase(identity, boq, versionId),
+      nodeId: node.id,
+      code: node.code,
+      action: 'MOVE',
+      detail: `Moved ${node.code}`,
+    };
+  }
+
+  /**
+   * One UPDATE event per field that actually changed, with its before/after — this is what makes
+   * the log read "rate 80.00 → 85.00". Quantities and rates are compared as decimals so a
+   * reformat ("85" vs "85.00") is not mistaken for an edit.
+   */
+  private buildUpdateEvents(
+    identity: RequestIdentity,
+    boq: BoqWithVersions,
+    node: BoqNode,
+    dto: UpdateNodeDto,
+    resolved: { code: string; isLeaf: boolean; unit: string | null; quantity: string | null; unitRate: string | null },
+  ): BoqChangeEventInput[] {
+    const base = {
+      ...this.changeBase(identity, boq, node.versionId),
+      nodeId: node.id,
+      code: resolved.code,
+      action: 'UPDATE' as const,
+    };
+    const events: BoqChangeEventInput[] = [];
+
+    const textChanged = (field: string, before: string | null, after: string | null | undefined) => {
+      if (after === undefined) return; // field not part of this patch
+      const from = before ?? null;
+      const to = after ?? null;
+      if (from !== to) events.push({ ...base, field, oldValue: from, newValue: to });
+    };
+    const numberChanged = (field: string, before: BoqNode['quantity'], after: string | null) => {
+      const from = before !== null ? toDecimal(before) : null;
+      const to = after !== null ? toDecimal(after) : null;
+      const differs = from === null || to === null ? from !== to : !from.equals(to);
+      if (differs) {
+        events.push({ ...base, field, oldValue: before !== null ? before.toString() : null, newValue: after });
+      }
+    };
+
+    textChanged('code', node.code, resolved.code);
+    textChanged('description', node.description, dto.description);
+    if (resolved.isLeaf) {
+      textChanged('unit', node.unit, resolved.unit);
+      numberChanged('quantity', node.quantity, resolved.quantity);
+      numberChanged('unitRate', node.unitRate, resolved.unitRate);
+    }
+    textChanged('measurementMethod', node.measurementMethod, dto.measurementMethod);
+    textChanged('pricingBasis', node.pricingBasis, dto.pricingBasis);
+
+    return events;
+  }
 
   private assertValid(violations: { code: string; message: string }[]): void {
     if (violations.length === 0) return;

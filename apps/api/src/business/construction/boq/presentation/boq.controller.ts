@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   HttpCode,
   HttpStatus,
   UseGuards,
@@ -121,6 +122,25 @@ export class BoqController {
     @Body() dto: ImportBoqDto,
   ) {
     return this.importService.import(identity, projectId, dto);
+  }
+
+  @Get('versions/:versionId/history')
+  @ApiOperation({ summary: 'The version change log (newest first); optional ?nodeId= narrows to one line' })
+  @ApiParam({ name: 'projectId' })
+  @ApiParam({ name: 'versionId' })
+  getHistory(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Param('versionId') versionId: string,
+    @Query('nodeId') nodeId?: string,
+    @Query('take') take?: string,
+    @Query('skip') skip?: string,
+  ) {
+    return this.treeService.getHistory(identity, projectId, versionId, {
+      ...(nodeId ? { nodeId } : {}),
+      take: Math.min(200, Math.max(1, take ? parseInt(take, 10) || 100 : 100)),
+      skip: skip ? Math.max(0, parseInt(skip, 10) || 0) : 0,
+    });
   }
 
   @Post('draft')

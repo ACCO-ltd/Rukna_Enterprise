@@ -107,6 +107,19 @@ export class BoqImportService {
         await this.repo.clearVersionNodes(tx as never, targetVersionId);
       }
       await this.repo.createManyNodes(tx as never, creates as never);
+      // One summary event, not one per row (BOQ refinement Phase 1) — the log stays readable.
+      await this.repo.recordChangeEvents(tx as never, [
+        {
+          organizationId: orgId,
+          boqId: boq.id,
+          versionId: targetVersionId,
+          nodeId: null,
+          code: null,
+          action: 'IMPORT',
+          detail: `Imported ${creates.length} lines from a spreadsheet (${dto.mode === 'REPLACE' ? 'replaced existing' : 'appended'})`,
+          actorUserId: identity.userId,
+        },
+      ]);
       if (dto.addToLibrary) {
         addedToLibraryCount = await this.addLeavesToLibrary(tx, orgId, projectId, identity.userId, plan.nodes);
       }
