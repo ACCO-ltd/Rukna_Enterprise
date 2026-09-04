@@ -5,7 +5,7 @@ import {
   ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
-import { BoqNode, MeasurementMethod, PricingBasis, BoqSourceType } from '@prisma/client';
+import { BoqNode, MeasurementMethod, PricingBasis, BoqSourceType, Prisma } from '@prisma/client';
 import type { BoqChangeEventResponse, RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
@@ -23,6 +23,7 @@ import {
   type DecimalString,
 } from '../domain/boq-money.js';
 import { MAX_DEPTH, validateNodeWrite } from '../domain/boq-node.policy.js';
+import { proposeNodeCode } from '../domain/boq-code.policy.js';
 import type { CreateNodeDto } from '../presentation/dto/create-node.dto.js';
 import type { UpdateNodeDto } from '../presentation/dto/update-node.dto.js';
 import type { MoveNodeDto } from '../presentation/dto/move-node.dto.js';
@@ -102,6 +103,7 @@ export class BoqTreeService {
     let parentPath: string | null = null;
     let parentDepth = -1;
     let parentIsItem = false;
+    let parentCode: string | null = null;
 
     if (dto.parentId) {
       const parent = await this.repo.findNodeById(prisma, dto.parentId);
@@ -111,65 +113,87 @@ export class BoqTreeService {
       parentPath = parent.path;
       parentDepth = parent.depth;
       parentIsItem = parent.isLeaf;
+      parentCode = parent.code;
     }
 
     const isLeaf = dto.isLeaf ?? false;
-    this.assertValid(
-      validateNodeWrite(
-        {
-          code: dto.code,
-          isLeaf,
-          unit: dto.unit,
-          quantity: dto.quantity,
-          unitRate: dto.unitRate,
-          currency: dto.currency,
-          depth: parentDepth + 1,
-        },
-        {
-          boqCurrency: boq.currency,
-          siblingCodes: await this.repo.findCodesInVersion(prisma, versionId),
-          parentIsItem,
-          hasChildren: false,
-        },
-      ),
-    );
+    const overrideCode = dto.code?.trim();
 
     // Position: append unless the caller asked for a specific slot. Sibling order is dense
     // and server-owned (CONST-BOQ-017), so an out-of-range request is clamped, not rejected.
     const siblingCount = await this.repo.countSiblings(prisma, versionId, dto.parentId ?? null);
     const targetOrder = Math.max(0, Math.min(dto.sortOrder ?? siblingCount, siblingCount));
 
-    return this.repo.createNodeAtPosition(
-      prisma,
-      {
-        boqId: boq.id,
-        versionId,
-        parentId: dto.parentId ?? null,
-        path: '',
-        depth: parentDepth + 1,
-        sortOrder: targetOrder,
-        code: dto.code,
-        description: dto.description,
-        isLeaf,
-        measurementMethod: dto.measurementMethod ?? MeasurementMethod.QUANTITY,
-        pricingBasis: dto.pricingBasis ?? PricingBasis.UNIT_RATE,
-        unit: isLeaf ? (dto.unit ?? null) : null,
-        quantity: isLeaf ? (dto.quantity ?? null) : null,
-        unitRate: isLeaf ? (dto.unitRate ?? null) : null,
-        // A leaf always carries the BOQ's currency; a section carries none. Storing it makes
-        // the IPA rate snapshot self-describing without walking back up to the aggregate.
-        currency: isLeaf ? boq.currency : null,
-        totalAmount: formatAmount(lineAmount(dto.quantity, dto.unitRate, isLeaf)),
-      },
-      parentPath,
-      targetOrder,
-      {
-        ...this.changeBase(identity, boq, versionId),
-        code: dto.code,
-        action: 'CREATE',
-        detail: isLeaf ? `Added item ${dto.code}` : `Added section ${dto.code}`,
-      },
-    );
+    // D2: the server assigns the code from the tree position unless the caller overrode it. If a
+    // concurrent add just claimed the generated code (the unique index fires), regenerate and
+    // retry; an *overridden* code that collides is the caller's to resolve, so it is not retried.
+    for (let attempt = 1; ; attempt += 1) {
+      const code =
+        overrideCode && overrideCode.length > 0
+          ? overrideCode
+          : proposeNodeCode(
+              isLeaf ? 'item' : 'section',
+              parentCode,
+              await this.repo.findChildCodes(prisma, versionId, dto.parentId ?? null),
+            );
+
+      this.assertValid(
+        validateNodeWrite(
+          {
+            code,
+            isLeaf,
+            unit: dto.unit,
+            quantity: dto.quantity,
+            unitRate: dto.unitRate,
+            currency: dto.currency,
+            depth: parentDepth + 1,
+          },
+          {
+            boqCurrency: boq.currency,
+            siblingCodes: await this.repo.findCodesInVersion(prisma, versionId),
+            parentIsItem,
+            hasChildren: false,
+          },
+        ),
+      );
+
+      try {
+        return await this.repo.createNodeAtPosition(
+          prisma,
+          {
+            boqId: boq.id,
+            versionId,
+            parentId: dto.parentId ?? null,
+            path: '',
+            depth: parentDepth + 1,
+            sortOrder: targetOrder,
+            code,
+            description: dto.description,
+            isLeaf,
+            measurementMethod: dto.measurementMethod ?? MeasurementMethod.QUANTITY,
+            pricingBasis: dto.pricingBasis ?? PricingBasis.UNIT_RATE,
+            unit: isLeaf ? (dto.unit ?? null) : null,
+            quantity: isLeaf ? (dto.quantity ?? null) : null,
+            unitRate: isLeaf ? (dto.unitRate ?? null) : null,
+            // A leaf always carries the BOQ's currency; a section carries none. Storing it makes
+            // the IPA rate snapshot self-describing without walking back up to the aggregate.
+            currency: isLeaf ? boq.currency : null,
+            totalAmount: formatAmount(lineAmount(dto.quantity, dto.unitRate, isLeaf)),
+          },
+          parentPath,
+          targetOrder,
+          {
+            ...this.changeBase(identity, boq, versionId),
+            code,
+            action: 'CREATE',
+            detail: isLeaf ? `Added item ${code}` : `Added section ${code}`,
+          },
+        );
+      } catch (error) {
+        if (!overrideCode && attempt < 4 && isDuplicateCodeConflict(error)) continue;
+        throw error;
+      }
+    }
   }
 
   async updateNode(
@@ -515,6 +539,18 @@ export class BoqTreeService {
     }
     return node;
   }
+}
+
+/**
+ * True when a write hit the version's unique-code index — the signal to retry an auto-generated
+ * code a concurrent add claimed first. An overridden code that collides is not retried.
+ */
+function isDuplicateCodeConflict(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2002' &&
+    String((error.meta as { target?: unknown } | undefined)?.target ?? '').includes('code')
+  );
 }
 
 /**
