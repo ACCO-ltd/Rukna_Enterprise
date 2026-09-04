@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type {
+  BoqChangeEventResponse,
   BoqCompareResponse,
   BoqImportRequest,
   BoqTreeNodeResponse,
@@ -17,6 +18,7 @@ import {
   compareBoqVersions,
   createDraftVersion,
   deleteBoqNode,
+  getBoqHistory,
   getBoqTree,
   getBoqWorkspace,
   importBoq,
@@ -35,6 +37,8 @@ export const boqKeys = {
     [...boqKeys.all(projectId), 'tree', versionId] as const,
   compare: (projectId: string, leftId: string, rightId: string) =>
     [...boqKeys.all(projectId), 'compare', leftId, rightId] as const,
+  history: (projectId: string, versionId: string, nodeId: string) =>
+    [...boqKeys.all(projectId), 'history', versionId, nodeId] as const,
 };
 
 /**
@@ -60,6 +64,24 @@ export function useBoqTree(
     queryKey: boqKeys.tree(projectId, versionId ?? 'none'),
     queryFn: () => getBoqTree(projectId, versionId!),
     enabled: versionId !== null,
+  });
+}
+
+/**
+ * The version's change log. Enabled by the caller (the panel is collapsed by default, so it does
+ * not fetch until opened). Keyed under `boqKeys.all`, so any node mutation's invalidation refreshes
+ * the feed. `nodeId` narrows it to one line.
+ */
+export function useBoqHistory(
+  projectId: string,
+  versionId: string | null,
+  options: { nodeId?: string | null; enabled: boolean },
+): UseQueryResult<BoqChangeEventResponse[], Error> {
+  return useQuery({
+    queryKey: boqKeys.history(projectId, versionId ?? 'none', options.nodeId ?? 'all'),
+    queryFn: () =>
+      getBoqHistory(projectId, versionId!, options.nodeId ? { nodeId: options.nodeId } : {}),
+    enabled: options.enabled && versionId !== null,
   });
 }
 
