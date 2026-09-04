@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
-import { ClipboardList, FileSpreadsheet, GitCompare, MoreHorizontal, Plus } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowRight, ClipboardList, FileSpreadsheet, GitCompare, Lock, MoreHorizontal, Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
@@ -133,6 +134,11 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
 
   const nodes = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
   const counts = useMemo(() => countTree(nodes), [nodes]);
+  // Whether any line was scoped in by a variation (Phase 6) — gates the provenance filter.
+  const hasVariations = useMemo(
+    () => flattenTree(nodes).some((node) => node.sourceType === 'VARIATION'),
+    [nodes],
+  );
 
   // Codes already under a given parent, so the drawer can propose the next one. The tree is
   // flat here, so a node's parent is `parentId` — nothing needs walking.
@@ -430,6 +436,25 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
           three never disagree; the completeness figures come from the memoized tree rollup. */}
       <MetricStrip aria-label={t('metrics.label')} metrics={headlineMetrics} />
 
+      {/* Post-contract, the locked BOQ is not edited — scope changes go through a Variation
+          (Phase 6). This is the answer to "how do I add to a signed BOQ", pointing at the built
+          Variations flow rather than letting anyone edit a frozen bill. */}
+      {selected?.status === 'BASELINED' && workspace.contractBaseline ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-panel border border-border bg-surface-subtle px-4 py-3">
+          <span className="flex items-center gap-2 text-body-sm text-muted-foreground">
+            <Lock size={15} aria-hidden="true" />
+            {t('contractLocked.note')}
+          </span>
+          <Link
+            href={`/projects/${projectId}/commercial/variations`}
+            className="inline-flex items-center gap-1 text-body-sm font-medium text-brand-primary hover:underline"
+          >
+            {t('contractLocked.action')}
+            <ArrowRight size={14} aria-hidden="true" />
+          </Link>
+        </div>
+      ) : null}
+
       <div id="boq-grid" className="space-y-3 scroll-mt-4">
         <BoqToolbar
           search={search}
@@ -449,6 +474,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
           onImport={() => setImportOpen(true)}
           canManage={canManage}
           canImport={canImport}
+          hasVariations={hasVariations}
           resultCount={rows.length}
           totalCount={counts.sections + counts.items}
         />

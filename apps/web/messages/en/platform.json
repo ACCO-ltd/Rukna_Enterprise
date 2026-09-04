@@ -562,6 +562,10 @@
       "import": "Import from spreadsheet",
       "startBlank": "Start a blank BOQ"
     },
+    "contractLocked": {
+      "note": "This BOQ is under contract and locked. To add, omit or change work, raise a variation.",
+      "action": "Manage variations"
+    },
     "initialize": "Create BOQ",
     "initializing": "Creating…",
     "loadFailed": "Could not load the BOQ",
@@ -657,7 +661,9 @@
         "incomplete": "Incomplete pricing",
         "priced": "Priced",
         "sections": "Sections only",
-        "items": "Items only"
+        "items": "Items only",
+        "original": "Original scope",
+        "variations": "Variations only"
       },
       "matching": "{count} of {total} rows",
       "expandAll": "Expand all",

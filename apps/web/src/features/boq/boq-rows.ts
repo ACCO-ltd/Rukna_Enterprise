@@ -15,7 +15,15 @@ export interface BoqRow {
   expanded: boolean;
 }
 
-export type PricingFilter = 'all' | 'incomplete' | 'priced' | 'sections' | 'items';
+export type PricingFilter =
+  | 'all'
+  | 'incomplete'
+  | 'priced'
+  | 'sections'
+  | 'items'
+  // Provenance (BOQ refinement Phase 6): original contract scope vs work scoped in by a variation.
+  | 'original'
+  | 'variations';
 
 export interface RowOptions {
   collapsed: ReadonlySet<string>;
@@ -103,6 +111,10 @@ function matches(node: BoqTreeNodeResponse, term: string, options: RowOptions): 
       return !node.isLeaf;
     case 'items':
       return node.isLeaf;
+    case 'variations':
+      return node.sourceType === 'VARIATION';
+    case 'original':
+      return node.sourceType === 'BASELINE';
     default:
       return true;
   }

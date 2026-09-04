@@ -31,17 +31,20 @@ import {
   getPhysicalFinancialSignal,
   getProgressCurve,
   getProgressPeriodComparison,
+  getProgressTargets,
   getProjectProgress,
   getProjectRollup,
   listDprs,
   listWorkPackages,
   returnDpr,
+  setProgressTargets,
   submitDpr,
   type AddMeasurementBody,
   type CaptureProgressSnapshotBody,
   type CreateDprBody,
   type CreateWorkPackageBody,
   type DailyProgressReportDetail,
+  type ProgressTargetItem,
   type WorkPackageResponse,
 } from '../api/progress-api';
 
@@ -56,6 +59,7 @@ export const progressKeys = {
   curve: (projectId: string) => [...progressKeys.all(projectId), 'curve'] as const,
   periodComparison: (projectId: string) =>
     [...progressKeys.all(projectId), 'period-comparison'] as const,
+  targets: (projectId: string) => [...progressKeys.all(projectId), 'targets'] as const,
   workPackages: (projectId: string) => [...progressKeys.all(projectId), 'work-packages'] as const,
   /** A DPR detail is keyed by its own id, not the project. */
   report: (dprId: string) => ['progress-report', dprId] as const,
@@ -162,6 +166,15 @@ export function useProgressPeriodComparison(
   });
 }
 
+/** The approved planned-baseline target curve (CONST-PROG-011), for the Plan & Setup editor. */
+export function useProgressTargets(projectId: string): UseQueryResult<ProgressTargetItem[], Error> {
+  return useQuery({
+    queryKey: progressKeys.targets(projectId),
+    queryFn: () => getProgressTargets(projectId),
+    enabled: Boolean(projectId),
+  });
+}
+
 // ─── DPR mutations ────────────────────────────────────────────────────────────────────────
 // Navigation is left to the caller (these return the created/updated report) so no UX/route
 // decision is baked into the data layer.
@@ -255,6 +268,23 @@ export function useCaptureProgressSnapshot(projectId: string) {
         queryClient.invalidateQueries({ queryKey: progressKeys.periodComparison(projectId) }),
         queryClient.invalidateQueries({ queryKey: progressKeys.rollup(projectId) }),
         queryClient.invalidateQueries({ queryKey: progressKeys.signal(projectId) }),
+      ]);
+    },
+  });
+}
+
+/**
+ * Replace the baseline target curve. Setting a real baseline un-provisions the S-curve, so the curve
+ * (and its schedule status/variance) is invalidated alongside the targets.
+ */
+export function useSetProgressTargets(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (targets: ProgressTargetItem[]) => setProgressTargets(projectId, targets),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: progressKeys.targets(projectId) }),
+        queryClient.invalidateQueries({ queryKey: progressKeys.curve(projectId) }),
       ]);
     },
   });

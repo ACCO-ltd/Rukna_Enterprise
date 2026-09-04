@@ -35,7 +35,8 @@ export function SignalBanner({
   tone: BadgeTone;
   hint: string;
   stats: SignalStat[];
-  link: { href: string; label: string };
+  /** Cross-link into the surface that owns the detail. Omit to render no link (e.g. a self-link). */
+  link?: { href: string; label: string };
 }) {
   return (
     <section
@@ -48,12 +49,14 @@ export function SignalBanner({
         </h2>
         <div className="flex items-center gap-3">
           <Badge tone={tone}>{statusLabel}</Badge>
-          <Link
-            href={link.href}
-            className="text-caption font-medium text-brand-primary hover:underline"
-          >
-            {link.label}
-          </Link>
+          {link ? (
+            <Link
+              href={link.href}
+              className="text-caption font-medium text-brand-primary hover:underline"
+            >
+              {link.label}
+            </Link>
+          ) : null}
         </div>
       </div>
 

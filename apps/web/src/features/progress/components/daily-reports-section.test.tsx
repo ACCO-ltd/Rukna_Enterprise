@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   useDprs: vi.fn(),
   useCreateDpr: vi.fn(),
   useDpr: vi.fn(),
+  useProjectProgress: vi.fn(),
   useBoqLeaves: vi.fn(),
   useSubmitDpr: vi.fn(),
   useApproveDpr: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock('../hooks/use-progress', () => ({
   useDprs: mocks.useDprs,
   useCreateDpr: mocks.useCreateDpr,
   useDpr: mocks.useDpr,
+  useProjectProgress: mocks.useProjectProgress,
   useSubmitDpr: mocks.useSubmitDpr,
   useApproveDpr: mocks.useApproveDpr,
   useReturnDpr: mocks.useReturnDpr,
@@ -72,6 +74,7 @@ beforeEach(() => {
   mocks.useDpr.mockReturnValue(
     loaded({ ...DPRS[0], measurements: [], attachments: [] }),
   );
+  mocks.useProjectProgress.mockReturnValue(loaded([]));
   mocks.useBoqLeaves.mockReturnValue({ leaves: [] });
   mocks.useSubmitDpr.mockReturnValue({ mutate: vi.fn(), isPending: false });
   mocks.useApproveDpr.mockReturnValue({ mutate: vi.fn(), isPending: false });

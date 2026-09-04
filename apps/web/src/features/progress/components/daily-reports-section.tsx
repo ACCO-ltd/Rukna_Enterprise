@@ -8,6 +8,7 @@ import {
   DatePicker,
   FormField,
   Input,
+  Select,
   SectionHeader,
   Dialog,
   DialogContent,
@@ -142,6 +143,39 @@ export function DailyReportsSection({ projectId }: { projectId: string }) {
   );
 }
 
+/**
+ * Bounded site-condition options (ADR-021 redesign §5.2). Stored as their readable string so the
+ * DPR detail can show them verbatim and analysis can group by a known set — never free-typed prose
+ * that reads "rainy" / "Rainy" / "RAINY". A hot-climate (Banaadir) weather set; a delay taxonomy
+ * that seeds later delay/EOT analysis. Defaults are the first entry, so no field is a blank guess.
+ */
+const WEATHER_OPTIONS = [
+  'Clear',
+  'Sunny / hot',
+  'Partly cloudy',
+  'Overcast',
+  'Light rain',
+  'Heavy rain',
+  'Thunderstorm',
+  'Windy',
+  'Dust / haze',
+  'Fog',
+] as const;
+
+const DELAY_OPTIONS = [
+  'No delay',
+  'Weather',
+  'Material shortage',
+  'Labour shortage',
+  'Equipment breakdown',
+  'Client instruction',
+  'Design change / RFI',
+  'Site access restriction',
+  'Utilities / services',
+  'Permit / authority',
+  'Other',
+] as const;
+
 function CreateReportForm({
   projectId,
   onCreated,
@@ -154,10 +188,11 @@ function CreateReportForm({
 
   const today = new Date().toISOString().slice(0, 10);
   const [reportDate, setReportDate] = useState(today);
-  const [weather, setWeather] = useState('');
+  const [weather, setWeather] = useState<string>(WEATHER_OPTIONS[0]);
   const [labourCount, setLabourCount] = useState('');
+  const [equipmentNote, setEquipmentNote] = useState('');
   const [narrative, setNarrative] = useState('');
-  const [delayReason, setDelayReason] = useState('');
+  const [delayReason, setDelayReason] = useState<string>(DELAY_OPTIONS[0]);
   const [error, setError] = useState<string | null>(null);
 
   function onSubmit(event: React.FormEvent) {
@@ -167,10 +202,11 @@ function CreateReportForm({
     create.mutate(
       {
         reportDate,
-        weather: weather.trim() || undefined,
+        weather: weather || undefined,
         labourCount: labourCount ? Number(labourCount) : undefined,
+        equipmentNote: equipmentNote.trim() || undefined,
         narrative: narrative.trim() || undefined,
-        delayReason: delayReason.trim() || undefined,
+        delayReason: delayReason || undefined,
       },
       {
         onSuccess: (dpr) => onCreated(dpr.id),
@@ -188,16 +224,32 @@ function CreateReportForm({
       ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
         <FormField htmlFor="dpr-date" label={t('report.fields.reportDate')}>
-          <DatePicker id="dpr-date" value={reportDate} onChange={(value) => setReportDate(value)} />
+          {/* A report can't be filed for the future. */}
+          <DatePicker id="dpr-date" value={reportDate} max={today} onChange={(value) => setReportDate(value)} />
         </FormField>
         <FormField htmlFor="dpr-weather" label={t('report.fields.weather')}>
-          <Input id="dpr-weather" value={weather} onChange={(e) => setWeather(e.target.value)} />
+          <Select id="dpr-weather" value={weather} onChange={(value) => setWeather(value)}>
+            {WEATHER_OPTIONS.map((w) => (
+              <option key={w} value={w}>
+                {w}
+              </option>
+            ))}
+          </Select>
         </FormField>
         <FormField htmlFor="dpr-labour" label={t('report.fields.labourCount')}>
           <Input id="dpr-labour" type="number" min="0" value={labourCount} onChange={(e) => setLabourCount(e.target.value)} />
         </FormField>
+        <FormField htmlFor="dpr-equipment" label={t('report.fields.equipmentNote')}>
+          <Input id="dpr-equipment" value={equipmentNote} onChange={(e) => setEquipmentNote(e.target.value)} />
+        </FormField>
         <FormField htmlFor="dpr-delay" label={t('report.fields.delayReason')}>
-          <Input id="dpr-delay" value={delayReason} onChange={(e) => setDelayReason(e.target.value)} />
+          <Select id="dpr-delay" value={delayReason} onChange={(value) => setDelayReason(value)}>
+            {DELAY_OPTIONS.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </Select>
         </FormField>
         <div className="sm:col-span-2">
           <FormField htmlFor="dpr-narrative" label={t('report.fields.narrative')}>

@@ -97,6 +97,14 @@ export function assessSchedule(
   return { scheduleVariancePercent: variance, status };
 }
 
+/** Maps a signed schedule variance (actual − planned, in points) to a status using the on-track band. */
+export function scheduleStatusFor(variancePercent: number | null): ProgressScheduleStatus {
+  if (variancePercent === null) return 'INSUFFICIENT_DATA';
+  if (variancePercent > SCHEDULE_ON_TRACK_BAND) return 'AHEAD';
+  if (variancePercent < -SCHEDULE_ON_TRACK_BAND) return 'BEHIND';
+  return 'ON_TRACK';
+}
+
 /** YYYY-MM-DD in UTC — the period-end date is a calendar date, not a moment. */
 export function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);

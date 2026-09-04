@@ -189,6 +189,30 @@ export function getProgressPeriodComparison(
   );
 }
 
+// ─── Planned baseline — the approved progress-target curve (CONST-PROG-011) ────────────────
+/** One point on the planned-progress curve. */
+export interface ProgressTargetItem {
+  /** ISO date, YYYY-MM-DD. */
+  targetDate: string;
+  /** Cumulative planned %, 0..100. Non-decreasing over time. */
+  cumulativePercent: number;
+}
+
+export function getProgressTargets(projectId: string): Promise<ProgressTargetItem[]> {
+  return apiClient<ProgressTargetItem[]>(`/projects/${projectId}/programme/targets`);
+}
+
+/** Replace the whole baseline curve. Empty array clears it (the curve falls back to provisional). */
+export function setProgressTargets(
+  projectId: string,
+  targets: ProgressTargetItem[],
+): Promise<ProgressTargetItem[]> {
+  return apiClient<ProgressTargetItem[]>(`/projects/${projectId}/programme/targets`, {
+    method: 'PUT',
+    body: JSON.stringify({ targets }),
+  });
+}
+
 // ─── Work packages ────────────────────────────────────────────────────────────────────────
 export function listWorkPackages(projectId: string): Promise<WorkPackageResponse[]> {
   return apiClient<WorkPackageResponse[]>(`/projects/${projectId}/work-packages`);

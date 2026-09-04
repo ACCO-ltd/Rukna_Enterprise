@@ -1,6 +1,7 @@
 import { screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
+  CollectionProgressSignalResponse,
   PhysicalFinancialSignalResponse,
   ProgressCurveResponse,
   ProjectRollupResponse,
@@ -10,6 +11,7 @@ import { renderWithProviders } from '@/test/render';
 
 const mocks = vi.hoisted(() => ({
   usePhysicalFinancialSignal: vi.fn(),
+  useCollectionProgressSignal: vi.fn(),
   useProjectRollup: vi.fn(),
   useProgressCurve: vi.fn(),
   useCaptureProgressSnapshot: vi.fn(),
@@ -31,6 +33,13 @@ const ROLLUP: ProjectRollupResponse = {
   weightsComplete: true,
   weightsTotal: '1',
 } as unknown as ProjectRollupResponse;
+
+const COLLECTION: CollectionProgressSignalResponse = {
+  physicalPercent: 62,
+  collectedPercent: 70,
+  divergence: 8,
+  status: 'CASH_AHEAD',
+} as unknown as CollectionProgressSignalResponse;
 
 const CURVE: ProgressCurveResponse = {
   projectId: 'proj-1',
@@ -61,6 +70,7 @@ const loaded = <T,>(data: T) => ({ data, isPending: false, isError: false, isFet
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.usePhysicalFinancialSignal.mockReturnValue(loaded(SIGNAL));
+  mocks.useCollectionProgressSignal.mockReturnValue(loaded(COLLECTION));
   mocks.useProjectRollup.mockReturnValue(loaded(ROLLUP));
   mocks.useProgressCurve.mockReturnValue(loaded(CURVE));
   mocks.useCaptureProgressSnapshot.mockReturnValue({ mutate: vi.fn(), isPending: false });
@@ -79,7 +89,7 @@ describe('PerformanceSection', () => {
   it('notes when the baseline is provisional', () => {
     renderWithProviders(<PerformanceSection projectId="proj-1" />, { withToast: true });
 
-    expect(screen.getByText(/Planned line is provisional/)).toBeInTheDocument();
+    expect(screen.getByText(/planned line is an estimate/i)).toBeInTheDocument();
   });
 
   it('shows an honest insufficient-data state instead of a fabricated curve', () => {
