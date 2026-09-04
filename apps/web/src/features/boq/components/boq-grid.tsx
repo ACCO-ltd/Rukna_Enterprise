@@ -28,6 +28,7 @@ import { formatMoney, formatNumber } from '@/lib/format';
 
 import { clamp, isNavigationKey, resolveKeyIntent } from '../boq-keyboard';
 import { isIncomplete, type BoqRow } from '../boq-rows';
+import { EditableCell } from './boq-editable-cell';
 
 export interface BoqRowCommands {
   onEdit: (node: BoqTreeNodeResponse) => void;
@@ -37,6 +38,15 @@ export interface BoqRowCommands {
   onMove: (node: BoqTreeNodeResponse, direction: -1 | 1) => void;
   /** Opens the change log filtered to this line (BOQ refinement Phase 1). Optional. */
   onViewHistory?: (node: BoqTreeNodeResponse) => void;
+  /**
+   * Inline field edit (BOQ refinement Phase 5). Resolves when persisted, rejects on failure so the
+   * cell can show a retry. Present only when the version is an editable draft.
+   */
+  onEditField?: (
+    node: BoqTreeNodeResponse,
+    field: 'description' | 'quantity' | 'unitRate',
+    value: string,
+  ) => Promise<void>;
 }
 
 /**
@@ -265,6 +275,9 @@ function GridRow({
   const t = useTranslations('platform.boq.grid');
   const { node, depth, hasChildren } = row;
   const incomplete = isIncomplete(node);
+  // Present only on an editable draft (the workspace withholds it otherwise), so its presence is
+  // the signal that cells accept inline edits.
+  const edit = commands?.onEditField;
 
   // The sticky cell needs its own opaque background or the columns scrolling underneath
   // show through it. It has to track the row's state, not just default to the surface.
@@ -330,9 +343,18 @@ function GridRow({
       </TableCell>
 
       <TableCell>
-        <span className={cn('block truncate', !node.isLeaf && 'text-foreground')}>
-          {node.description}
-        </span>
+        <EditableCell
+          editable={Boolean(edit)}
+          value={node.description}
+          kind="text"
+          ariaLabel={t('editDescription', { code: node.code })}
+          onCommit={edit ? (next) => edit(node, 'description', next) : async () => {}}
+          display={
+            <span className={cn('block truncate', !node.isLeaf && 'text-foreground')}>
+              {node.description}
+            </span>
+          }
+        />
       </TableCell>
 
       {/* TYPE and UNIT are the quietest columns on the row and should look it.
@@ -350,21 +372,41 @@ function GridRow({
       </TableCell>
 
       <TableCell numeric>
-        {node.quantity ? (
-          <LtrValue>{formatNumber(Number(node.quantity), locale, 3)}</LtrValue>
-        ) : (
-          <span className="text-muted-foreground">{node.isLeaf ? '—' : ''}</span>
-        )}
+        <EditableCell
+          editable={Boolean(edit) && node.isLeaf}
+          value={node.quantity}
+          kind="quantity"
+          numeric
+          ariaLabel={t('editQuantity', { code: node.code })}
+          onCommit={edit ? (next) => edit(node, 'quantity', next) : async () => {}}
+          display={
+            node.quantity ? (
+              <LtrValue>{formatNumber(Number(node.quantity), locale, 3)}</LtrValue>
+            ) : (
+              <span className="text-muted-foreground">{node.isLeaf ? '—' : ''}</span>
+            )
+          }
+        />
       </TableCell>
 
       {canViewCommercials ? (
         <>
           <TableCell numeric>
-            {node.unitRate ? (
-              <LtrValue>{formatNumber(Number(node.unitRate), locale, 2)}</LtrValue>
-            ) : (
-              <span className="text-muted-foreground">{node.isLeaf ? '—' : ''}</span>
-            )}
+            <EditableCell
+              editable={Boolean(edit) && node.isLeaf}
+              value={node.unitRate}
+              kind="rate"
+              numeric
+              ariaLabel={t('editRate', { code: node.code })}
+              onCommit={edit ? (next) => edit(node, 'unitRate', next) : async () => {}}
+              display={
+                node.unitRate ? (
+                  <LtrValue>{formatNumber(Number(node.unitRate), locale, 2)}</LtrValue>
+                ) : (
+                  <span className="text-muted-foreground">{node.isLeaf ? '—' : ''}</span>
+                )
+              }
+            />
           </TableCell>
           {/* A section shows its client-rolled-up subtotal — the sum of its own descendant
               leaves — computed once in the workspace and memoized. A leaf shows its own
