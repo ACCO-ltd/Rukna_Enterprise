@@ -77,11 +77,11 @@ describe('BoqItemDrawer — library fast entry', () => {
     expect(screen.getByLabelText(/^Unit$/i)).toHaveValue('m3');
     // Rate carried across as assistance.
     expect(screen.getByLabelText(/Unit rate/i)).toHaveValue('12.50');
-    // The code is NOT copied from the library item — it must be unique within this BOQ. The
-    // field is no longer blank, but what fills it is the drawer's own suggestion from the
-    // sibling codes ('001' for the first item here), never the picked item's code.
-    expect(screen.getByLabelText(/Item code/i)).not.toHaveValue(ITEM.code);
-    expect(screen.getByLabelText(/Item code/i)).toHaveValue('001');
+    // The code is server-assigned and shown as a chip (D2), not copied from the library item —
+    // it must be unique within this BOQ. The chip shows the drawer's own suggestion ('001' for
+    // the first item here), never the picked item's code.
+    expect(screen.getByText('001')).toBeInTheDocument();
+    expect(screen.queryByText(ITEM.code)).not.toBeInTheDocument();
   });
 
   it('carries the picked item id out on submit so the workspace records its usage', async () => {
@@ -91,9 +91,7 @@ describe('BoqItemDrawer — library fast entry', () => {
     await userEvent.click(screen.getByRole('button', { name: /Add from library/i }));
     await userEvent.click(await screen.findByRole('option', { name: /EXC-100/ }));
 
-    // A code is proposed; this test overrides it with its own, so clear before typing.
-    await userEvent.clear(screen.getByLabelText(/Item code/i));
-    await userEvent.type(screen.getByLabelText(/Item code/i), '02.01.001');
+    // The code is auto-assigned (no need to type one); just submit.
     await userEvent.click(screen.getByRole('button', { name: /Add item/i }));
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
@@ -105,14 +103,35 @@ describe('BoqItemDrawer — library fast entry', () => {
     mocks.useLibrarySearch.mockReturnValue({ data: [], isPending: false, isError: false });
     const { onSubmit } = renderDrawer(ADD_ITEM);
 
-    await userEvent.clear(screen.getByLabelText(/Item code/i));
-    await userEvent.type(screen.getByLabelText(/Item code/i), 'NEW-1');
     await userEvent.type(screen.getByLabelText(/Description/i), 'A new work item');
     await userEvent.click(screen.getByLabelText(/save this item to the library/i));
     await userEvent.click(screen.getByRole('button', { name: /Add item/i }));
 
     const [, , library] = onSubmit.mock.calls[0]!;
     expect(library).toEqual({ pickedItemId: null, saveToLibrary: true });
+  });
+
+  it('sends no code on a plain add (server auto-numbers), and the override rides out via Advanced', async () => {
+    mocks.useLibrarySearch.mockReturnValue({ data: [], isPending: false, isError: false });
+
+    // Plain add: the code is auto-assigned, so an empty code is submitted (server numbers it).
+    const auto = renderDrawer(ADD_ITEM);
+    await userEvent.type(screen.getByLabelText(/Description/i), 'Auto-numbered item');
+    await userEvent.click(screen.getByRole('button', { name: /Add item/i }));
+    expect(auto.onSubmit.mock.calls[0]![0].code).toBe('');
+  });
+
+  it('overrides the auto code through Advanced', async () => {
+    mocks.useLibrarySearch.mockReturnValue({ data: [], isPending: false, isError: false });
+    const { onSubmit } = renderDrawer(ADD_ITEM);
+
+    await userEvent.type(screen.getByLabelText(/Description/i), 'Custom-coded item');
+    await userEvent.click(screen.getByRole('button', { name: /Set a custom code/i }));
+    await userEvent.clear(screen.getByLabelText(/Item code/i));
+    await userEvent.type(screen.getByLabelText(/Item code/i), '07.07.007');
+    await userEvent.click(screen.getByRole('button', { name: /Add item/i }));
+
+    expect(onSubmit.mock.calls[0]![0].code).toBe('07.07.007');
   });
 
   it('offers no library affordance when editing an existing item', () => {
@@ -160,8 +179,6 @@ describe('BoqItemDrawer — library fast entry', () => {
 
     expect(screen.queryByRole('button', { name: /Add from library/i })).not.toBeInTheDocument();
 
-    await userEvent.clear(screen.getByLabelText(/Item code/i));
-    await userEvent.type(screen.getByLabelText(/Item code/i), 'M-1');
     await userEvent.type(screen.getByLabelText(/Description/i), 'Manual item');
     await userEvent.click(screen.getByRole('button', { name: /Add item/i }));
 

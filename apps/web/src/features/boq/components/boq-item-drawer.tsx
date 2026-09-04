@@ -123,6 +123,9 @@ export function BoqItemDrawer({
     };
   });
   const [touched, setTouched] = useState(false);
+  // D2: the code is server-assigned. It shows as a read-only chip; "Advanced" reveals an editable
+  // field to override it. On edit, the code starts revealed only if the user chooses to renumber.
+  const [advancedCode, setAdvancedCode] = useState(false);
 
   // Library state, only relevant on an item add. `pickedItemId` records which library item
   // (if any) prefilled the form, so its usage rate can be recorded after the node saves.
@@ -166,7 +169,9 @@ export function BoqItemDrawer({
   const handleSubmit = () => {
     setTouched(true);
     if (hasErrors) return;
-    onSubmit(values, target, {
+    // On an add that did not override the code, send it empty so the server auto-numbers (D2).
+    const submitted = isAdd && !advancedCode ? { ...values, code: '' } : values;
+    onSubmit(submitted, target, {
       pickedItemId: showLibrary ? pickedItemId : null,
       saveToLibrary: showLibrary && saveToLibrary,
     });
@@ -245,31 +250,74 @@ export function BoqItemDrawer({
           ) : null}
 
           <Section title={t('identity')}>
-            <FormField
-              htmlFor="boq-code"
-              // "Item code" was shown while adding a section, because one key served both
-              // forms. The noun is the thing being added.
-              label={isItem ? t('code') : t('sectionCode')}
-              hint={
-                isAdd
-                  ? target.parent
-                    ? t('codeHintUnder', { parent: target.parent.code })
-                    : t('codeHintRoot')
-                  : undefined
-              }
-              error={touched ? errors.code : undefined}
-            >
-              <Input
-                id="boq-code"
-                value={values.code}
-                placeholder={isItem ? t('itemCodePlaceholder') : t('codePlaceholder')}
-                maxLength={NODE_LIMITS.codeMax}
-                disabled={readOnly || isPending}
-                dir="ltr"
-                className="font-mono"
-                onChange={(event) => set('code', event.target.value)}
-              />
-            </FormField>
+            {/* D2: the code is server-assigned. It reads as a chip; "Advanced" reveals an
+                override field — the user does not fill a blank box for the one value that must be
+                unique and is quoted by every downstream document. */}
+            {advancedCode ? (
+              <FormField
+                htmlFor="boq-code"
+                label={isItem ? t('code') : t('sectionCode')}
+                hint={isAdd ? t('codeOverrideHint') : t('codeRenumberHint')}
+                error={touched ? errors.code : undefined}
+              >
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="boq-code"
+                    value={values.code}
+                    placeholder={isItem ? t('itemCodePlaceholder') : t('codePlaceholder')}
+                    maxLength={NODE_LIMITS.codeMax}
+                    disabled={readOnly || isPending}
+                    dir="ltr"
+                    className="font-mono"
+                    onChange={(event) => set('code', event.target.value)}
+                  />
+                  {isAdd ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={isPending}
+                      onClick={() => {
+                        set(
+                          'code',
+                          suggestNodeCode(target.kind, target.parent?.code ?? null, target.siblingCodes ?? []),
+                        );
+                        setAdvancedCode(false);
+                      }}
+                    >
+                      {t('codeUseAuto')}
+                    </Button>
+                  ) : null}
+                </div>
+              </FormField>
+            ) : (
+              <div className="space-y-1.5">
+                <span className="text-body-sm font-medium text-foreground">
+                  {isItem ? t('code') : t('sectionCode')}
+                </span>
+                <div className="flex items-center justify-between gap-2 rounded-control border border-border bg-surface-subtle px-3 py-2">
+                  <span className="flex items-center gap-2">
+                    <LtrValue className="font-mono text-body-sm font-semibold text-foreground">
+                      {values.code || '—'}
+                    </LtrValue>
+                    {isAdd ? (
+                      <span className="text-caption text-muted-foreground">{t('codeAuto')}</span>
+                    ) : null}
+                  </span>
+                  {!readOnly ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={isPending}
+                      onClick={() => setAdvancedCode(true)}
+                    >
+                      {isAdd ? t('codeSetCustom') : t('codeChange')}
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            )}
 
             <FormField
               htmlFor="boq-description"
