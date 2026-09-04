@@ -140,6 +140,47 @@ export class BoqPrismaRepository {
     await prisma.boqNode.createMany({ data: data as Prisma.BoqNodeCreateManyInput[] });
   }
 
+  /**
+   * Empties a version of its nodes, deepest level first.
+   *
+   * The self-relation FK is `onDelete: Restrict`, checked immediately per row — a single
+   * `deleteMany` over the whole version would try to remove a parent while its children still
+   * reference it and be rejected. Deleting by descending depth means every child is gone
+   * before its parent. Used only for an import Replace against a DRAFT (CONST-BOQ-003 — a
+   * referenced node is guarded upstream, so nothing removed here is referenced downstream).
+   */
+  async clearVersionNodes(prisma: PrismaClient, versionId: string): Promise<void> {
+    const nodes = await prisma.boqNode.findMany({
+      where: { versionId },
+      select: { id: true, depth: true },
+    });
+    if (nodes.length === 0) return;
+    const maxDepth = nodes.reduce((deepest, node) => Math.max(deepest, node.depth), 0);
+    for (let depth = maxDepth; depth >= 0; depth -= 1) {
+      const ids = nodes.filter((node) => node.depth === depth).map((node) => node.id);
+      if (ids.length > 0) await prisma.boqNode.deleteMany({ where: { id: { in: ids } } });
+    }
+  }
+
+  /**
+   * How many downstream records point at any of these nodes — the set-wide form of
+   * `countNodeReferences`, used to refuse an import Replace that would strand a reference.
+   * A DRAFT's nodes are not expected to carry any, so this is the assertion that they don't.
+   */
+  async countReferencesForNodes(prisma: PrismaClient, nodeIds: string[]): Promise<number> {
+    if (nodeIds.length === 0) return 0;
+    const where = { boqNodeId: { in: nodeIds } };
+    const counts = await Promise.all([
+      prisma.interimPaymentApplicationItem.count({ where }),
+      prisma.materialRequestLine.count({ where }),
+      prisma.supplierBillLine.count({ where }),
+      prisma.journalLine.count({ where }),
+      prisma.commitmentLedgerEntry.count({ where }),
+      prisma.purchaseOrderLine.count({ where }),
+    ]);
+    return counts.reduce((total, count) => total + count, 0);
+  }
+
   /** How many nodes in this version already carry the given VO's provenance — CONST-VAR-007
    * idempotency guard. A VO whose nodes already exist on the (draft or approved) revision has
    * been applied and must not be applied again. */

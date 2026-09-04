@@ -28,10 +28,12 @@ import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import { BoqVersioningService } from '../application/boq-versioning.service.js';
 import { BoqTreeService } from '../application/boq-tree.service.js';
 import { BoqWorkspaceService } from '../application/boq-workspace.service.js';
+import { BoqImportService } from '../application/boq-import.service.js';
 import { CreateDraftDto } from './dto/create-draft.dto.js';
 import { CreateNodeDto } from './dto/create-node.dto.js';
 import { UpdateNodeDto } from './dto/update-node.dto.js';
 import { MoveNodeDto } from './dto/move-node.dto.js';
+import { ImportBoqDto } from './dto/import-boq.dto.js';
 
 @ApiTags('BOQ')
 @ApiBearerAuth('access-token')
@@ -44,6 +46,7 @@ export class BoqController {
     private readonly versioningService: BoqVersioningService,
     private readonly treeService: BoqTreeService,
     private readonly workspaceService: BoqWorkspaceService,
+    private readonly importService: BoqImportService,
   ) {}
 
   // ─── Workspace read models ────────────────────────────────────────────────────
@@ -87,6 +90,22 @@ export class BoqController {
   @ApiParam({ name: 'projectId' })
   getBoq(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
     return this.versioningService.getBoq(identity, projectId);
+  }
+
+  @Post('import')
+  @RequirePermissions(PERMISSIONS.boqManage)
+  @ApiOperation({
+    summary: 'Bulk-import mapped spreadsheet rows into the DRAFT (creates BOQ/draft if needed)',
+  })
+  @ApiParam({ name: 'projectId' })
+  @ApiResponse({ status: 400, description: 'Blocking violations — nothing was created' })
+  @ApiResponse({ status: 409, description: 'No editable draft, or a Replace would strand a reference' })
+  importBoq(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Body() dto: ImportBoqDto,
+  ) {
+    return this.importService.import(identity, projectId, dto);
   }
 
   @Post('draft')
