@@ -53,7 +53,12 @@ import {
   useCreateLibraryItem,
   useRecordLibraryUsage,
 } from '../hooks/use-boq-item-library';
-import { toCreateNodePayload, toUpdateNodePayload, type NodeFormValues } from '../node-form';
+import {
+  toCreateNodePayload,
+  toNodeFormValues,
+  toUpdateNodePayload,
+  type NodeFormValues,
+} from '../node-form';
 import { BOQ_PERMISSIONS } from '../permissions';
 import { getVersionActions } from '../version-actions';
 import { BoqComparePanel } from './boq-compare-panel';
@@ -302,6 +307,14 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
           setHistoryFilter({ id: node.id, code: node.code });
           setHistoryOpen(true);
           document.getElementById('boq-history')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        },
+        // Inline edit (Phase 5): one changed field, built onto the node's current values so the
+        // rest is unchanged, awaited so the cell can surface a failure and stay open for a retry.
+        onEditField: async (node, field, value) => {
+          if (!selectedVersionId) return;
+          const values = { ...toNodeFormValues(node), [field]: value };
+          const payload = toUpdateNodePayload(values, { kind: node.isLeaf ? 'item' : 'section' });
+          await updateNode.mutateAsync({ nodeId: node.id, payload });
         },
       }
     : null;
