@@ -37,10 +37,16 @@ export class CreateNodeDto {
   @Min(0)
   sortOrder?: number;
 
-  @ApiProperty({ example: '1.2.3', maxLength: 50, description: 'Unique within the version' })
+  @ApiPropertyOptional({
+    example: '1.2.3',
+    maxLength: 50,
+    description:
+      'Omit to auto-number from the tree position (D2 — the server assigns it). Provide only to override.',
+  })
+  @IsOptional()
   @IsString()
   @Length(1, 50)
-  code!: string;
+  code?: string;
 
   @ApiProperty({ example: 'Reinforced concrete columns' })
   @IsString()

@@ -240,6 +240,19 @@ export class BoqPrismaRepository {
     return new Set(rows.map((row) => row.code));
   }
 
+  /** Codes of the nodes directly under `parentId` (null = root) — feeds the next-code proposal. */
+  async findChildCodes(
+    prisma: PrismaClient,
+    versionId: string,
+    parentId: string | null,
+  ): Promise<string[]> {
+    const rows = await prisma.boqNode.findMany({
+      where: { versionId, parentId },
+      select: { code: true },
+    });
+    return rows.map((row) => row.code);
+  }
+
   /** Number of nodes directly under `parentId` (null = root level). */
   async countSiblings(
     prisma: PrismaClient,
