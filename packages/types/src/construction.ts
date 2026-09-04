@@ -882,6 +882,32 @@ export interface BoqImportPreview {
   warnings: BoqImportWarning[];
 }
 
+// ─── BOQ change history (BOQ refinement Phase 1) ─────────────────────────────────
+
+export type BoqChangeAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'MOVE' | 'IMPORT';
+
+/**
+ * One entry in a BOQ's change log — "who changed what, and what was it before". For a value edit,
+ * `field` / `oldValue` / `newValue` are set (e.g. field `unitRate`, `80.00` → `85.00`); structural
+ * events (add / delete / move) and imports carry a human `detail` instead. `nodeId` / `code` are
+ * null on a version-wide event such as an import.
+ */
+export interface BoqChangeEventResponse {
+  id: string;
+  versionId: string;
+  nodeId: string | null;
+  code: string | null;
+  action: BoqChangeAction;
+  field: string | null;
+  oldValue: string | null;
+  newValue: string | null;
+  detail: string | null;
+  actorUserId: string;
+  /** Resolved "First Last" for display; null if the user can't be found. */
+  actorName: string | null;
+  createdAt: string;
+}
+
 // ─── Commercial workspace read models (ADR-017, Gate B) ─────────────────────────
 //
 // Backend-owned response contracts for the Commercial workspace. The frontend consumes

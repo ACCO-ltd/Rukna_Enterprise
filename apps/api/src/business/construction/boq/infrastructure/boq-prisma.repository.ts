@@ -1,9 +1,28 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaClient, Prisma, Boq, BoqVersion, BoqNode } from '@prisma/client';
+import { PrismaClient, Prisma, Boq, BoqVersion, BoqNode, BoqChangeEvent, BoqChangeAction } from '@prisma/client';
 
 export type BoqWithVersions = Prisma.BoqGetPayload<{
   include: { versions: { orderBy: { versionNumber: 'desc' } } };
 }>;
+
+/**
+ * One change to record alongside a node mutation. Written in the SAME transaction as the mutation
+ * (BOQ refinement Phase 1). On a CREATE the caller may omit `nodeId` — the repo fills it with the
+ * id it just generated. FK-free, so a DELETE event survives the node it names.
+ */
+export interface BoqChangeEventInput {
+  organizationId: string;
+  boqId: string;
+  versionId: string;
+  nodeId?: string | null;
+  code?: string | null;
+  action: BoqChangeAction;
+  field?: string | null;
+  oldValue?: string | null;
+  newValue?: string | null;
+  detail?: string | null;
+  actorUserId: string;
+}
 
 @Injectable()
 export class BoqPrismaRepository {
@@ -88,8 +107,15 @@ export class BoqPrismaRepository {
     prisma: PrismaClient,
     id: string,
     data: Prisma.BoqNodeUncheckedUpdateInput,
+    events?: BoqChangeEventInput[],
   ): Promise<BoqNode> {
-    return prisma.boqNode.update({ where: { id }, data });
+    if (!events || events.length === 0) return prisma.boqNode.update({ where: { id }, data });
+    // Update and its field-level history commit together.
+    return prisma.$transaction(async (tx) => {
+      const updated = await tx.boqNode.update({ where: { id }, data });
+      await tx.boqChangeEvent.createMany({ data: events });
+      return updated;
+    });
   }
 
   async deleteNode(prisma: PrismaClient, id: string): Promise<void> {
@@ -109,16 +135,20 @@ export class BoqPrismaRepository {
     data: Prisma.BoqNodeUncheckedCreateInput,
     parentPath: string | null,
     targetOrder: number,
+    event?: BoqChangeEventInput,
   ): Promise<BoqNode> {
     return prisma.$transaction(async (tx) => {
       await this.shiftSiblingsUp(tx, data.versionId, data.parentId ?? null, targetOrder);
       const created = await tx.boqNode.create({
         data: { ...data, sortOrder: targetOrder, path: '__pending__' },
       });
-      return tx.boqNode.update({
+      const node = await tx.boqNode.update({
         where: { id: created.id },
         data: { path: parentPath ? `${parentPath}/${created.id}` : created.id },
       });
+      // The audit event rides the same transaction, and only now knows the node's id.
+      if (event) await tx.boqChangeEvent.create({ data: { ...event, nodeId: created.id } });
+      return node;
     });
   }
 
@@ -126,8 +156,11 @@ export class BoqPrismaRepository {
   async deleteNodeAndReindex(
     prisma: PrismaClient,
     node: Pick<BoqNode, 'id' | 'versionId' | 'parentId'>,
+    event?: BoqChangeEventInput,
   ): Promise<void> {
     await prisma.$transaction(async (tx) => {
+      // Record before the delete — the event is FK-free, so it stands after the node is gone.
+      if (event) await tx.boqChangeEvent.create({ data: event });
       await tx.boqNode.delete({ where: { id: node.id } });
       await this.reindexSiblings(tx, node.versionId, node.parentId);
     });
@@ -350,6 +383,7 @@ export class BoqPrismaRepository {
     newParentPath: string | null,
     newParentDepth: number,
     newSortOrder: number,
+    event?: BoqChangeEventInput,
   ): Promise<void> {
     const newDepth = newParentDepth + 1;
     const newNodePath = newParentPath ? `${newParentPath}/${node.id}` : node.id;
@@ -416,6 +450,40 @@ export class BoqPrismaRepository {
       if (oldParentId === newParentId) {
         await this.reindexSiblings(tx, versionId, newParentId);
       }
+
+      if (event) await tx.boqChangeEvent.create({ data: event });
     });
+  }
+
+  // ─── Change history (BOQ refinement Phase 1) ────────────────────────────────────
+
+  /** Records events outside a node mutation — used for the one summary event on an import. */
+  async recordChangeEvents(prisma: PrismaClient, events: BoqChangeEventInput[]): Promise<void> {
+    if (events.length === 0) return;
+    await prisma.boqChangeEvent.createMany({ data: events });
+  }
+
+  /** A version's change log, newest first, optionally narrowed to one node. */
+  async findHistory(
+    prisma: PrismaClient,
+    versionId: string,
+    options: { nodeId?: string; take: number; skip: number },
+  ): Promise<BoqChangeEvent[]> {
+    return prisma.boqChangeEvent.findMany({
+      where: { versionId, ...(options.nodeId ? { nodeId: options.nodeId } : {}) },
+      orderBy: { createdAt: 'desc' },
+      take: options.take,
+      skip: options.skip,
+    });
+  }
+
+  /** Maps actor ids to "First Last" for the history feed, in one query. */
+  async findActorNames(prisma: PrismaClient, userIds: string[]): Promise<Map<string, string>> {
+    if (userIds.length === 0) return new Map();
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, firstName: true, lastName: true },
+    });
+    return new Map(users.map((user) => [user.id, `${user.firstName} ${user.lastName}`.trim()]));
   }
 }

@@ -1119,6 +1119,44 @@ model BoqItemLibrary {
   @@map("boq_item_library")
 }
 
+// ─── BOQ change history (BOQ refinement Phase 1) ─────────────────────────────────
+//
+// The per-line audit trail behind "who changed what, and what was it before". One immutable
+// row per change, written in the SAME transaction as the node mutation it records. Deliberately
+// FK-free on node/version/boq: an audit fact must outlive the node it describes (a DELETE event
+// names a node that no longer exists), so those are plain string columns. Value edits carry the
+// changed field + old/new; structural changes (add/delete/move) and imports carry a summary.
+enum BoqChangeAction {
+  CREATE
+  UPDATE
+  DELETE
+  MOVE
+  IMPORT
+}
+
+model BoqChangeEvent {
+  id             String          @id @default(cuid())
+  organizationId String          @map("organization_id")
+  boqId          String          @map("boq_id")
+  versionId      String          @map("version_id")
+  // Null for a version-wide event such as an import; otherwise the node the change concerns.
+  nodeId         String?         @map("node_id")
+  code           String?         @db.VarChar(50)
+  action         BoqChangeAction
+  // The field a value edit changed (e.g. "unitRate"), with its before/after. Null on structural
+  // events. `detail` is a human summary for imports and structural changes.
+  field          String?         @db.VarChar(40)
+  oldValue       String?         @map("old_value")
+  newValue       String?         @map("new_value")
+  detail         String?
+  actorUserId    String          @map("actor_user_id")
+  createdAt      DateTime        @default(now()) @map("created_at")
+
+  @@index([versionId, createdAt])
+  @@index([versionId, nodeId])
+  @@map("boq_change_events")
+}
+
 // ─── Contract Domain ──────────────────────────────────────────────────────────
 
 model Contract {

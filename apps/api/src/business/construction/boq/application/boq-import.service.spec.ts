@@ -45,6 +45,7 @@ function build(over: Overrides = {}) {
     countReferencesForNodes: jest.fn().mockResolvedValue(over.references ?? 0),
     clearVersionNodes: jest.fn().mockResolvedValue(undefined),
     createManyNodes: jest.fn().mockResolvedValue(undefined),
+    recordChangeEvents: jest.fn().mockResolvedValue(undefined),
   };
   const libraryRepo = {
     findAllForDedup: jest.fn().mockResolvedValue(over.libraryExisting ?? []),
@@ -111,6 +112,24 @@ describe('BoqImportService', () => {
       expect(result.createdSectionCount).toBe(2);
       expect(result.createdItemCount).toBe(1);
       expect(result.versionNumber).toBe(1);
+    });
+
+    it('records one IMPORT change event, not one per row', async () => {
+      const { svc, repo } = build();
+      await svc.import(
+        identity,
+        'p1',
+        req({
+          rows: [
+            { rowNumber: 1, code: '02', description: 'Concrete' },
+            { rowNumber: 2, code: '02.01.001', description: 'Mass', quantity: '10', unitRate: '85.00' },
+          ],
+        }),
+      );
+      expect(repo.recordChangeEvents).toHaveBeenCalledTimes(1);
+      const events = repo.recordChangeEvents.mock.calls[0][1] as { action: string }[];
+      expect(events).toHaveLength(1);
+      expect(events[0].action).toBe('IMPORT');
     });
 
     it('synthesises ancestor sections from a flat leaf sheet', async () => {
