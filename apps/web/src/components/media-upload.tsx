@@ -71,9 +71,12 @@ export function MediaUpload({
   const [items, setItems] = useState<QueueItem[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Revoke any still-queued object URLs on unmount so previews don't leak.
+  // Mirror the queue into a ref (updated in an effect, never during render) so the unmount cleanup
+  // can revoke any object URLs still outstanding without leaking previews.
   const itemsRef = useRef(items);
-  itemsRef.current = items;
+  useEffect(() => {
+    itemsRef.current = items;
+  });
   useEffect(
     () => () => itemsRef.current.forEach((it) => URL.revokeObjectURL(it.previewUrl)),
     [],
