@@ -608,12 +608,14 @@
     "reportingAmount": "Amount",
     "empty": "No commitment entries for this selection.",
     "filterByBoqNode": "BOQ node",
-    "accuracyNotice": "These figures may overstate committed cost. Cancelling a purchase order does not reverse commitments, and revising one after goods were received can reverse too much.",
     "sourceType": {
       "PURCHASE_ORDER_REVISION": "Purchase order",
       "GOODS_RECEIPT": "Goods receipt",
       "PO_CANCELLATION": "Revision superseded",
       "SUPPLIER_BILL": "Supplier bill"
-    }
+    },
+    "projectSectionTitle": "Cost position",
+    "projectSectionHint": "Project cost from approved purchase orders through to posted supplier bills.",
+    "openProcurement": "Open Procurement"
   }
 }

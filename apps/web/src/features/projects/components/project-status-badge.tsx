@@ -12,7 +12,10 @@ import { Badge, type BadgeTone } from '@erp/ui';
 const STATUS_TONES: Record<ProjectStatus, BadgeTone> = {
   [ProjectStatus.DRAFT]: 'neutral',
   [ProjectStatus.ACTIVE]: 'live',
-  [ProjectStatus.PRACTICAL_COMPLETION]: 'warning',
+  // A milestone reached, not a problem: amber here read as a warning about a project that
+  // had just achieved something. Violet keeps it distinct from CLOSEOUT (which genuinely is
+  // amber, being work outstanding) without borrowing the interaction blue.
+  [ProjectStatus.PRACTICAL_COMPLETION]: 'accent',
   [ProjectStatus.CLOSEOUT]: 'warning',
   [ProjectStatus.CLOSED]: 'neutral',
   [ProjectStatus.CANCELLED]: 'danger',

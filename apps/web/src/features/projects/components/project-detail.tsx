@@ -1,35 +1,27 @@
 'use client';
 
-import { useEffect, useState, useSyncExternalStore } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, DefinitionList, DefinitionRow, SectionHeader } from '@erp/ui';
-import {
-  ArrowRight,
-  Check,
-  CircleCheck,
-  History,
-  Lock,
-} from 'lucide-react';
+import { Alert, Button, DefinitionList, DefinitionRow, RecordPanel } from '@erp/ui';
+import { ArrowRight, Building2, CircleCheck, FileText, History, PencilLine } from 'lucide-react';
 
 import { ApiError } from '@/lib/api-client';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatMoney } from '@/lib/format';
 
-import {
-  useProject,
-  useProjectWorkspaceSummary,
-} from '../hooks/use-project';
+import { usePermissions } from '@/features/auth/permissions/can';
+
+import { useProject, useProjectWorkspaceSummary } from '../hooks/use-project';
 import { ProjectCommitmentsCard } from '@/features/procurement/components/commitments';
 import { ProjectProgressCard } from '@/features/progress/components/project-progress-card';
-
-import { getAvailableActions } from '../project-actions';
-import type { ProjectDetail as ProjectDetailModel } from '../types';
-import type { ProjectWorkspaceSummary } from '../types';
-import { ProjectActionsPanel } from './project-actions-panel';
 import { CommercialSummaryStrip } from '@/features/commercial/components/commercial-summary-strip';
 import { useCommercialSummary } from '@/features/commercial/hooks/use-commercial';
+
+import { PROJECT_PERMISSIONS } from '../permissions';
+import type { ProjectDetail as ProjectDetailModel, ProjectWorkspaceSummary } from '../types';
+import { ProjectLifecycleRail } from './project-lifecycle-rail';
+import { ProjectReadiness } from './project-readiness';
 
 export function ProjectDetail({ id }: { id: string }) {
   const t = useTranslations('platform.projects.detail');
@@ -71,9 +63,6 @@ export function ProjectDetail({ id }: { id: string }) {
     );
   }
 
-  const suspension = project.suspensions.find((s) => s.resumedAt === null);
-  const actions = getAvailableActions(project);
-
   return (
     <div className="space-y-6">
       {showCreated ? (
@@ -90,17 +79,6 @@ export function ProjectDetail({ id }: { id: string }) {
           </div>
         </div>
       ) : null}
-      {suspension ? (
-        <Alert variant="warning" title={t('suspendedTitle')}>
-          <p className="mt-1">{suspension.reason}</p>
-          <p className="mt-2 text-xs">
-            {t('suspendedSince', { date: formatDate(suspension.suspendedAt, locale) ?? '—' })}
-            {actions.advanceBlockedBySuspension ? ` ${t('suspendedBlocks')}` : ''}
-          </p>
-        </Alert>
-      ) : null}
-
-      <ProjectHeaderActions project={project} label={t('actionsHeading')} />
 
       <Overview
         project={project}
@@ -113,28 +91,24 @@ export function ProjectDetail({ id }: { id: string }) {
   );
 }
 
-function ProjectHeaderActions({ project, label }: { project: ProjectDetailModel; label: string }) {
-  const target = useSyncExternalStore(
-    (onStoreChange) => {
-      const observer = new MutationObserver(onStoreChange);
-      observer.observe(document.body, { childList: true, subtree: true });
-      return () => observer.disconnect();
-    },
-    () => document.getElementById('project-header-actions'),
-    () => null,
-  );
-
-  const actions = (
-    <section aria-label={label} className="flex flex-wrap items-center justify-end gap-2">
-      <ProjectActionsPanel project={project} />
-    </section>
-  );
-
-  return target ? createPortal(actions, target) : actions;
-}
-
 // ─── Overview ─────────────────────────────────────────────────────────────────
 
+/**
+ * The project's own tab, and the only one carrying project-level context.
+ *
+ * It is lifecycle-aware rather than a fixed set of panels. In preparation the page answers one
+ * question — *what is stopping this project from starting?* — so readiness leads and the
+ * money, which is all zero, follows. Once the project is running that question is settled and
+ * the readiness checklist disappears rather than standing as a permanent "4 of 4 complete";
+ * physical progress and the revenue chain take the lead instead.
+ *
+ * Six regions, each a bounded `RecordPanel`. The first build made them open hairline sections,
+ * which is the doctrine's default (§2.1) and the right call in one column — but this page is two
+ * columns, and there a rule under every heading produces rules at six different heights across
+ * the page with nothing bounding any of them. Rendered, it read as one undifferentiated field of
+ * text. A panel per *region* is not the anti-pattern the doctrine blacklists; a panel per *fact*
+ * is, and that is what the original Overview did with three identity cards.
+ */
 function Overview({
   project,
   locale,
@@ -149,39 +123,99 @@ function Overview({
   summaryError: boolean;
 }) {
   const t = useTranslations('platform.projects.detail');
-  const tProjects = useTranslations('platform.projects');
-  const tTypes = useTranslations('projectTypes');
+  const isDraft = project.status === 'DRAFT';
   // The Commercial tab's own summary, so the Overview band and that tab can never
   // disagree about the same five figures.
   const commercial = useCommercialSummary(project.id);
 
-  // Identity facts the shell metric strip does NOT already carry. Programme, current stage,
-  // contract value and project manager live in the strip and lifecycle above (P2), so they are
-  // deliberately absent here — one summary, not two competing ones. A single hairline section,
-  // no per-fact cards (P1).
-  const mainContractRef =
-    summary?.mainContract?.contractNumber ??
-    (project.commercialModel === 'INTERNAL_CAPITAL' ? t('notApplicable') : null);
+  return (
+    // `gap-5` throughout, matching `RecordLayout`: the panel edges are what separate one region
+    // from the next now, so the gutter only has to keep them from touching.
+    <div className="space-y-5">
+      <ProjectLifecycleRail status={project.status} />
 
-  // Project type (PTD1-PTD5): show the category (Untyped for legacy projects) and the subtype
-  // when one is assigned. Classification facts, so they sit with the other identity rows.
-  const categoryValue = project.category
-    ? tTypes(`categories.${project.category}`)
-    : tTypes('display.untyped');
+      {summaryError ? <Alert variant="warning" messages={[t('summaryUnavailable')]} /> : null}
 
-  const details: Array<{ label: string; value: string | null }> = [
-    { label: t('client'), value: project.clientName },
-    { label: t('mainContract'), value: mainContractRef },
-    { label: tTypes('display.categoryLabel'), value: categoryValue },
+      {/* The revenue chain — value → certified → invoiced → received → outstanding. Nothing to
+          say about a project that has not started, so it waits until there is. */}
+      {!isDraft && commercial.data ? <CommercialSummaryStrip summary={commercial.data} /> : null}
+
+      {/* Left column: what the project is doing. Right column: what it is.
+
+          1.4fr/1fr — 58/42 — rather than `RecordLayout`'s 1.7/1. That ratio is tuned for a
+          narrow summary rail beside a wide table; here the right column carries three full
+          sections of label/value pairs while the left carries a checklist and three figures.
+          At 1366 the old split left the right column wrapping values the left column had room
+          to spare for. */}
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <div className="flex min-w-0 flex-col gap-5">
+          {isDraft ? (
+            summaryPending ? (
+              <div
+                className="h-56 animate-pulse rounded-panel border border-border bg-muted"
+                aria-hidden="true"
+              />
+            ) : summary ? (
+              <ProjectReadiness project={project} setup={summary.setup} />
+            ) : null
+          ) : (
+            <ProjectProgressCard projectId={project.id} />
+          )}
+
+          <ProjectCommitmentsCard
+            projectId={project.id}
+            currencyCode={summary?.mainContract?.currency ?? project.currency ?? null}
+            presentation="overview"
+          />
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-5">
+          <ProjectInformation project={project} locale={locale} />
+          <CommercialFoundation project={project} summary={summary} locale={locale} />
+          <RecentActivity summary={summary} locale={locale} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Project information ──────────────────────────────────────────────────────
+
+/**
+ * What the project *is*: classification, delivery shape, where it is, when it runs.
+ *
+ * Project code and client are deliberately absent — both are two lines up in the workspace
+ * header, and a fact restated one screen from itself is a fact the reader has to reconcile.
+ * Empty optional fields are dropped rather than rendered as a dash: a column of `—` is a
+ * picture of the database schema, not of the project.
+ */
+function ProjectInformation({
+  project,
+  locale,
+}: {
+  project: ProjectDetailModel;
+  locale: 'en' | 'ar';
+}) {
+  const t = useTranslations('platform.projects.detail');
+  const tProjects = useTranslations('platform.projects');
+  const tTypes = useTranslations('projectTypes');
+  const { can } = usePermissions();
+
+  const startDate = formatDate(project.startDate, locale);
+  const endDate = formatDate(project.expectedEndDate, locale);
+
+  const rows: Array<{ label: string; value: string | null }> = [
+    {
+      label: tTypes('display.categoryLabel'),
+      // Legacy projects created before the field existed read as "Untyped" rather than
+      // being given a category they were never classified with.
+      value: project.category
+        ? tTypes(`categories.${project.category}`)
+        : tTypes('display.untyped'),
+    },
     ...(project.subtype
       ? [{ label: tTypes('display.subtypeLabel'), value: project.subtype.name }]
       : []),
-    {
-      label: t('commercialModel'),
-      value: tProjects(
-        `create.commercialModel.${project.commercialModel === 'INTERNAL_CAPITAL' ? 'internalCapital' : 'clientContract'}`,
-      ),
-    },
     {
       label: tProjects('create.participationModelLabel'),
       value: project.participationModel
@@ -190,116 +224,184 @@ function Overview({
           )
         : null,
     },
-    { label: t('location'), value: project.location ?? null },
-    { label: t('projectCode'), value: project.code },
-    { label: t('description'), value: project.description },
+    ...(project.location ? [{ label: t('location'), value: project.location }] : []),
+    ...(startDate ? [{ label: t('startDate'), value: startDate }] : []),
+    ...(endDate ? [{ label: t('expectedEnd'), value: endDate }] : []),
+    ...(project.description ? [{ label: t('description'), value: project.description }] : []),
   ];
 
   return (
-    <div className="space-y-5">
-      {/* The guidance queue that used to sit here is gone. SetupStepper below states the same
-          four conditions with the two things the queue could not: which step is locked behind
-          which, and which are already done. The queue rendered "Main contract is blocked" as a
-          peer of "BOQ baseline is required" with the same Open BOQ button — two rows, one piece
-          of work — and counted them as two of "3 items". A queue across many projects is worth
-          having; on one project, where all four steps fit on screen, the stepper is it. */}
-      {project.status === 'DRAFT' ? (
-        summaryPending ? (
-          <div className="h-40 animate-pulse rounded-panel border border-border bg-muted" />
-        ) : summary ? (
-          <SetupStepper project={project} summary={summary} />
+    <RecordPanel
+      title={t('projectInformation')}
+      icon={<FileText size={17} strokeWidth={1.9} />}
+      action={
+        /* Contextual, so it says what it edits. Two conditions, and they are different kinds
+           of thing: only a draft accepts edits at all (a lifecycle rule), and
+           `PATCH /projects/:id` requires `manage:project` (an authorization rule). */
+        project.status === 'DRAFT' && can(PROJECT_PERMISSIONS.manage) ? (
+          <Link
+            href={`/projects/${project.id}/edit`}
+            className="inline-flex items-center gap-1.5 text-caption font-medium text-brand-primary hover:underline"
+          >
+            <PencilLine size={14} aria-hidden="true" />
+            {t('edit')}
+          </Link>
         ) : null
-      ) : null}
+      }
+    >
+      {/* Hairline rows are right again now that a panel bounds them — that is the composition
+          `DefinitionRow` was drawn for, and inside an edge they read as one table rather than
+          as loose rules on an open page. */}
+      <DefinitionList>
+        {rows.map((row) => (
+          <DefinitionRow key={row.label} label={row.label}>
+            {row.value}
+          </DefinitionRow>
+        ))}
+      </DefinitionList>
+    </RecordPanel>
+  );
+}
 
-      {summaryError ? <Alert variant="warning" messages={[t('summaryUnavailable')]} /> : null}
+// ─── Commercial foundation ────────────────────────────────────────────────────
 
-      <section aria-labelledby="overview-heading">
-        <SectionHeader id="overview-heading" title={t('projectDetails')}>
-          {project.status === 'DRAFT' ? (
+/**
+ * The commercial facts a project stands on, separated from its identity because they are
+ * configuration and state rather than what the project is.
+ *
+ * Absence is stated in business terms. "Main contract — " tells a reader a value is missing;
+ * "Main contract  Not created" tells them what has not happened yet, which is the thing they
+ * can act on. Billing model and contract value are hidden entirely until a contract exists to
+ * give them meaning — an empty row for a figure that cannot exist yet is noise.
+ */
+function CommercialFoundation({
+  project,
+  summary,
+  locale,
+}: {
+  project: ProjectDetailModel;
+  summary: ProjectWorkspaceSummary | undefined;
+  locale: 'en' | 'ar';
+}) {
+  const t = useTranslations('platform.projects.detail');
+  const tProjects = useTranslations('platform.projects');
+
+  const setup = summary?.setup;
+  const mainContract = summary?.mainContract ?? null;
+  const contractApplicable = project.commercialModel !== 'INTERNAL_CAPITAL';
+
+  const boqStatus = !setup
+    ? null
+    : setup.boqBaselined
+      ? t('boqBaselined')
+      : setup.boqExists
+        ? t('boqWorking')
+        : t('boqNotStarted');
+
+  const contractValue = mainContract?.contractValue
+    ? formatMoney(mainContract.contractValue, mainContract.currency, locale)
+    : null;
+
+  // The contract owns the currency. `toCreateProjectPayload` deliberately never sends one —
+  // "Commercial value and currency intentionally do not travel through this workflow" — so
+  // `Project.currency` is a legacy read-compatible column that is NULL on everything the app
+  // creates. Before a contract exists there is genuinely no answer, and the row is dropped
+  // rather than showing a dash for a fact that cannot exist yet, on the same rule as contract
+  // value below it. It is emphatically NOT defaulted to USD: ACCO being USD-only today
+  // (ADR-024) is a tenant fact, not a reason for the UI to state a currency nobody chose.
+  const currency = mainContract?.currency ?? project.currency ?? null;
+
+  return (
+    <RecordPanel
+      title={t('commercialFoundation')}
+      icon={<Building2 size={17} strokeWidth={1.9} />}
+      action={
+        <Link
+          href={`/projects/${project.id}/commercial`}
+          className="inline-flex items-center gap-1.5 text-caption font-medium text-brand-primary hover:underline"
+        >
+          {t('openCommercial')}
+          <ArrowRight size={14} className="rtl:rotate-180" aria-hidden="true" />
+        </Link>
+      }
+    >
+      <DefinitionList>
+        <DefinitionRow label={t('commercialModel')}>
+          {tProjects(
+            `create.commercialModel.${project.commercialModel === 'INTERNAL_CAPITAL' ? 'internalCapital' : 'clientContract'}`,
+          )}
+        </DefinitionRow>
+        <DefinitionRow label={t('boqStatus')}>{boqStatus}</DefinitionRow>
+        <DefinitionRow label={t('mainContract')}>
+          {!contractApplicable ? (
+            t('notApplicable')
+          ) : mainContract ? (
             <Link
-              href={`/projects/${project.id}/edit`}
-              className="text-caption font-medium text-brand-primary hover:underline"
+              href={`/contracts/${mainContract.id}`}
+              className="font-medium text-brand-primary hover:underline"
             >
-              {t('editInformation')}
+              {mainContract.contractNumber}
             </Link>
-          ) : null}
-        </SectionHeader>
-        {/* One hairline definition list, two columns on desktop, single-column at 375px — not a
-            card per fact (P1/P2). DefinitionRow renders `—` for a missing value on its own. */}
-        <DefinitionList className="mt-3 grid gap-x-8 sm:grid-cols-2">
-          {details.map((row) => (
-            <DefinitionRow key={row.label} label={row.label}>
-              {row.value}
-            </DefinitionRow>
-          ))}
-        </DefinitionList>
-      </section>
+          ) : (
+            t('notCreated')
+          )}
+        </DefinitionRow>
+        {contractValue ? (
+          <DefinitionRow label={t('contractValue')} numeric>
+            {contractValue}
+          </DefinitionRow>
+        ) : null}
+        {currency ? (
+          <DefinitionRow label={t('currency')}>{currency}</DefinitionRow>
+        ) : null}
+      </DefinitionList>
+    </RecordPanel>
+  );
+}
 
-      {/* The revenue chain — value → certified → invoiced → received → outstanding — replacing
-          a card that carried only contract value. That single figure was already in the shell
-          strip and in the details list, so the card spent a third of the row restating it while
-          the money picture stayed a tab away. This is the same band the Commercial tab uses, on
-          the same project-scoped summary, so the two can never disagree. */}
-      {project.status !== 'DRAFT' && commercial.data ? (
-        <CommercialSummaryStrip summary={commercial.data} />
-      ) : null}
+// ─── Recent activity ──────────────────────────────────────────────────────────
 
-      <section
-        className={cn('grid gap-4', project.status === 'DRAFT' ? '' : 'lg:grid-cols-2')}
-        aria-label={t('commercialCostPosition')}
-      >
-        {project.status === 'DRAFT' ? null : <ProjectProgressCard projectId={project.id} />}
-        <ProjectCommitmentsCard
-          projectId={project.id}
-          currencyCode={summary?.mainContract?.currency ?? null}
-        />
-      </section>
+/**
+ * The last five things that happened to this project, as a feed rather than a table.
+ *
+ * There is no "View all" link: the API returns five events and has no project-scoped history
+ * endpoint behind them, and `/admin/audit-logs` is org-wide and permission-gated, so pointing
+ * at it would send most readers to a 403 for someone else's records.
+ */
+function RecentActivity({
+  summary,
+  locale,
+}: {
+  summary: ProjectWorkspaceSummary | undefined;
+  locale: 'en' | 'ar';
+}) {
+  const t = useTranslations('platform.projects.detail');
 
-      {summary ? (
-        <section aria-labelledby="recent-activity-heading">
-          <div className="overflow-hidden rounded-panel border border-border bg-surface">
-            <div className="flex min-h-12 items-center gap-2 border-b border-border px-5">
-              <History size={16} className="text-muted-foreground" aria-hidden="true" />
-              <h2
-                id="recent-activity-heading"
-                className="text-body-sm font-semibold text-foreground"
-              >
-                {t('recentActivity')}
-              </h2>
-            </div>
-            {summary.recentActivity.length > 0 ? (
-              <ol className="divide-y divide-border">
-                {summary.recentActivity.map((event) => (
-                  <li
-                    key={event.id}
-                    className="flex items-start justify-between gap-4 px-4 py-3 sm:px-5"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground">
-                        {t('activityEvent', {
-                          actor: event.actor.name,
-                          action: activityLabel(event.sourceCommand ?? event.action, t),
-                        })}
-                      </p>
-                    </div>
-                    <time
-                      className="shrink-0 text-xs text-muted-foreground"
-                      dateTime={event.occurredAt}
-                    >
-                      {formatActivityTime(event.occurredAt, locale)}
-                    </time>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p className="px-5 py-8 text-center text-sm text-muted-foreground">
-                {t('noRecentActivity')}
+  if (!summary) return null;
+
+  return (
+    <RecordPanel title={t('recentActivity')} icon={<History size={17} strokeWidth={1.9} />}>
+      {summary.recentActivity.length > 0 ? (
+        <ol className="flex flex-col gap-3">
+          {summary.recentActivity.map((event) => (
+            <li key={event.id}>
+              <p className="text-body-sm font-medium text-foreground">
+                {activityLabel(event.sourceCommand ?? event.action, t)}
               </p>
-            )}
-          </div>
-        </section>
-      ) : null}
-    </div>
+              <p className="mt-0.5 text-caption text-muted-foreground">
+                {event.actor.name}
+                <span aria-hidden="true"> · </span>
+                <time dateTime={event.occurredAt}>
+                  {formatActivityTime(event.occurredAt, locale)}
+                </time>
+              </p>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="text-caption text-muted-foreground">{t('noRecentActivity')}</p>
+      )}
+    </RecordPanel>
   );
 }
 
@@ -332,6 +434,8 @@ function activityLabel(
     'project.update': t('activityProjectUpdated'),
     'project.suspend': t('activityProjectSuspended'),
     'project.resume': t('activityProjectResumed'),
+    // Retired commands (the approve → mobilize → activate chain, ADR-019) still have audit
+    // rows behind them, so they keep their labels even though nothing writes them now.
     'project.approve': t('activityProjectApproved'),
     'project.mobilize': t('activityProjectMobilized'),
     'project.activate': t('activityProjectActivated'),
@@ -341,259 +445,4 @@ function activityLabel(
     'project.cancel': t('activityProjectCancelled'),
   };
   return labels[command] ?? t('activityProjectChanged');
-}
-
-// ─── Setup stepper ────────────────────────────────────────────────────────────
-
-interface StepDef {
-  labelKey: 'setupProject' | 'setupBoq' | 'setupContract' | 'setupTeam';
-  descKey: 'setupProjectDesc' | 'setupBoqDesc' | 'setupContractDesc' | 'setupTeamDesc';
-  complete: boolean;
-  /** Cannot act yet — a prior step must be done first. */
-  locked: boolean;
-  /** Where the action button navigates. Omitted if complete or locked. */
-  href?: string;
-  actionKey?: 'continueSetup' | 'createContract' | 'addTeam';
-  /** Short reason shown when locked. */
-  blockedKey?: 'setupContractBlocked';
-}
-
-function SetupStepper({
-  project,
-  summary,
-}: {
-  project: ProjectDetailModel;
-  summary: ProjectWorkspaceSummary;
-}) {
-  const t = useTranslations('platform.projects.detail');
-  const steps: StepDef[] = [
-    {
-      labelKey: 'setupProject',
-      descKey: 'setupProjectDesc',
-      complete: true,
-      locked: false,
-    },
-    {
-      labelKey: 'setupBoq',
-      descKey: 'setupBoqDesc',
-      complete: summary.setup.boqBaselined,
-      locked: false,
-      href: `/projects/${project.id}/boq`,
-      actionKey: 'continueSetup',
-    },
-    ...(project.commercialModel === 'INTERNAL_CAPITAL'
-      ? []
-      : [
-          {
-            labelKey: 'setupContract' as const,
-            descKey: 'setupContractDesc' as const,
-            complete: summary.setup.mainContractExists,
-            locked: !summary.setup.boqBaselined,
-            href: summary.setup.boqBaselined ? `/contracts/new?projectId=${project.id}` : undefined,
-            actionKey: 'createContract' as const,
-            blockedKey: 'setupContractBlocked' as const,
-          },
-        ]),
-    {
-      labelKey: 'setupTeam',
-      descKey: 'setupTeamDesc',
-      complete: summary.setup.teamReady,
-      locked: false,
-      href: `/projects/${project.id}/members`,
-      actionKey: 'addTeam',
-    },
-  ];
-
-  const doneCount = summary.setup.completedSteps;
-  const total = summary.setup.totalSteps;
-  const progressPct = Math.round((doneCount / total) * 100);
-
-  return (
-    <section
-      aria-labelledby="setup-heading"
-      className="overflow-hidden rounded-container border border-border bg-surface shadow-e1"
-    >
-      <div className="border-b border-border px-4 py-3 sm:px-5">
-        <div className="flex items-center justify-between gap-4">
-          <h2 id="setup-heading" className="text-body-sm font-semibold text-foreground">
-            {t('setup')}
-          </h2>
-          <div className="flex shrink-0 items-center gap-2">
-            <span className="rounded-full bg-brand-primary/10 px-2 py-0.5 text-micro font-bold tabular-nums text-brand-primary">
-              {progressPct}%
-            </span>
-            <span className="text-caption font-medium text-muted-foreground">
-              {t('setupProgress', { done: doneCount, total })}
-            </span>
-          </div>
-        </div>
-        <span
-          className="sr-only"
-          role="progressbar"
-          aria-valuenow={doneCount}
-          aria-valuemin={0}
-          aria-valuemax={total}
-        />
-      </div>
-
-      {/* Steps */}
-      <ol className="flex min-w-max overflow-x-auto px-4 py-4 [-webkit-overflow-scrolling:touch] lg:min-w-0 lg:overflow-visible lg:px-5">
-        {steps.map((step, index) => {
-          const isLast = index === steps.length - 1;
-          const isNextAction =
-            !step.complete &&
-            !step.locked &&
-            steps.slice(0, index).every((s) => s.complete || s.locked);
-
-          return (
-            <li
-              key={step.labelKey}
-              className="relative flex w-56 shrink-0 gap-3 pe-5 last:pe-0 lg:w-auto lg:min-w-0 lg:flex-1"
-            >
-              {/* Left column: indicator + connecting line */}
-              <div className="flex flex-col items-center">
-                <StepIndicator
-                  index={index}
-                  complete={step.complete}
-                  isNextAction={isNextAction}
-                  locked={step.locked}
-                />
-                {!isLast ? (
-                  <div
-                    className={cn(
-                      'absolute start-6 top-3 h-px w-[calc(100%-1.5rem)]',
-                      step.complete ? 'bg-success/40' : 'bg-border',
-                    )}
-                    aria-hidden="true"
-                  />
-                ) : null}
-              </div>
-
-              {/* Right column: content */}
-              <div className="relative z-10 min-w-0 flex-1 bg-surface pe-2">
-                <p
-                  className={cn(
-                    'truncate text-caption font-semibold leading-5',
-                    step.complete
-                      ? 'text-foreground'
-                      : step.locked
-                        ? 'text-muted-foreground/60'
-                        : 'text-foreground',
-                  )}
-                >
-                  {t(step.labelKey)}
-                </p>
-
-                <p
-                  className={cn(
-                    'mt-0.5 text-micro font-semibold uppercase tracking-[0.06em]',
-                    step.complete
-                      ? 'text-success'
-                      : step.locked
-                        ? 'text-warning'
-                        : isNextAction
-                          ? 'text-brand-primary'
-                          : 'text-muted-foreground',
-                  )}
-                >
-                  {step.complete
-                    ? t('setupComplete')
-                    : step.locked
-                      ? t('setupBlocked')
-                      : t('setupPending')}
-                </p>
-
-                {!step.complete ? (
-                  <p
-                    className={cn(
-                      'mt-0.5 line-clamp-1 text-caption leading-4',
-                      step.complete || step.locked
-                        ? 'text-muted-foreground/70'
-                        : 'text-muted-foreground',
-                    )}
-                  >
-                    {t(step.descKey)}
-                  </p>
-                ) : null}
-
-                {/* Locked reason */}
-                {step.locked && step.blockedKey ? (
-                  <p
-                    className="mt-1 line-clamp-1 text-micro font-medium text-warning"
-                    title={t(step.blockedKey)}
-                  >
-                    {t(step.blockedKey)}
-                  </p>
-                ) : null}
-
-                {/* Action button — only on incomplete, unlocked steps */}
-                {!step.complete && !step.locked && step.href && step.actionKey ? (
-                  <div className="mt-1.5">
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href={step.href} className="gap-2">
-                        {t(step.actionKey)}
-                        <ArrowRight size={14} className="rtl:rotate-180" aria-hidden="true" />
-                      </Link>
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-            </li>
-          );
-        })}
-      </ol>
-    </section>
-  );
-}
-
-// ─── Step indicator (circle with number or check) ─────────────────────────────
-
-function StepIndicator({
-  index,
-  complete,
-  isNextAction,
-  locked,
-}: {
-  index: number;
-  complete: boolean;
-  isNextAction: boolean;
-  locked: boolean;
-}) {
-  if (complete) {
-    return (
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-success text-white">
-        <Check size={12} strokeWidth={3} aria-hidden="true" />
-      </span>
-    );
-  }
-
-  if (isNextAction) {
-    return (
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-primary text-micro font-bold text-white ring-4 ring-brand-primary/15">
-        {index + 1}
-      </span>
-    );
-  }
-
-  if (locked) {
-    return (
-      <span className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-warning/30 bg-surface text-warning">
-        <Lock size={12} aria-hidden="true" />
-      </span>
-    );
-  }
-
-  return (
-    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-border bg-surface text-micro font-semibold text-muted-foreground">
-      {index + 1}
-    </span>
-  );
-}
-
-// ─── Icons ────────────────────────────────────────────────────────────────────
-
-// ─── Utility ──────────────────────────────────────────────────────────────────
-
-function cn(...classes: (string | boolean | undefined | null)[]): string {
-  return classes.filter(Boolean).join(' ');
 }

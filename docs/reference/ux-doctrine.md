@@ -167,11 +167,28 @@ command-center dashboard. Until they exist, the dashboard ships as a metric stri
 ## 7. Anti-patterns (blacklist — reject in review)
 
 No gradients (except the one documented skeleton shimmer) · no hero headings · no card around every
-element · no coloured icon tiles · no illustrations · no rainbow charts · no pills for plain text · no
-coloured table-header fills · no icon-only ambiguous actions · no wizard where a form works · no
-page-specific button styles · no fake metrics or placeholder analytics · no converting tables to card
-lists · no shadows for page structure · no emoji · no disabled control for an unbuilt feature (§4) ·
-no second colour competing with the accent · no money coloured as a heat map.
+element · **no icon tile below region level** (revised — see below) · no illustrations · no rainbow
+charts · no pills for plain text · no coloured table-header fills · no icon-only ambiguous actions ·
+no wizard where a form works · no page-specific button styles · no fake metrics or placeholder
+analytics · no converting tables to card lists · no shadows for page structure · no emoji · no
+disabled control for an unbuilt feature (§4) · no second colour competing with the accent · no money
+coloured as a heat map.
+
+**Revised 2026-09-05 — "no coloured icon tiles" was too broad.** It was written against the pattern
+it should have named: a *grid* of tiles in assorted hues, one per metric or per row, where the colour
+carries no meaning and the icons compete with the numbers. That stays banned.
+
+A **single accent-tinted tile marking where a region begins** is a different thing and does a real
+job: on a multi-panel page it is what lets the eye find a panel's start without reading its title.
+`RecordPanel`'s `icon` prop is the only sanctioned form, and it is deliberately narrow:
+
+- **One accent, one size.** The brand tint only — never a second hue, never a per-status colour.
+- **Region level only.** A panel header. Never per row, per fact, per metric or per status.
+- **Decorative, so `aria-hidden`.** The `<h2>` beside it is the accessible name; the tile adds
+  nothing a screen reader needs.
+
+If a page ever wants more than one tint across its tiles, that is the original anti-pattern coming
+back and the answer is no.
 
 ---
 

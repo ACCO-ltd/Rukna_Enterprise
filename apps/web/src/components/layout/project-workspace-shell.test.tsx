@@ -11,7 +11,6 @@ import { openSelect } from '@/test/choose-option';
 const push = vi.fn();
 const useProject = vi.fn();
 const useProjectWorkspaceSummary = vi.fn();
-const useProjectWorkspaceGuidance = vi.fn();
 
 let pathname = '/projects/project-1';
 
@@ -32,11 +31,26 @@ vi.mock('next/link', () => ({
   ),
 }));
 
+/** The header's action panel is exercised in its own suite; here it only has to mount. */
+const inertMutation = () => ({
+  mutate: vi.fn(),
+  reset: vi.fn(),
+  isPending: false,
+  isError: false,
+  error: null,
+});
+
 vi.mock('@/features/projects/hooks/use-project', () => ({
   useProject: (...args: unknown[]) => useProject(...args),
   useProjectWorkspaceSummary: (...args: unknown[]) => useProjectWorkspaceSummary(...args),
-  useProjectWorkspaceGuidance: (...args: unknown[]) => useProjectWorkspaceGuidance(...args),
+  useAdvanceProject: () => inertMutation(),
+  useCancelProject: () => inertMutation(),
+  useSuspendProject: () => inertMutation(),
+  useResumeProject: () => inertMutation(),
 }));
+
+/** The header's controls all call `manage:project` routes; seed it where they matter. */
+const MANAGER = { permissions: ['manage:project'] };
 
 const project = {
   id: 'project-1',
@@ -62,22 +76,24 @@ const project = {
   suspensions: [],
 };
 
+const readySetup = {
+  identityComplete: true,
+  boqExists: true,
+  boqBaselined: true,
+  mainContractApplicable: true,
+  mainContractExists: true,
+  teamReady: true,
+  completedSteps: 4,
+  totalSteps: 4,
+};
+
 beforeEach(() => {
   push.mockReset();
   useProject.mockReturnValue({ data: project, isPending: false, isError: false, refetch: vi.fn() });
   useProjectWorkspaceSummary.mockReturnValue({
     data: {
       projectId: 'project-1',
-      setup: {
-        identityComplete: true,
-        boqExists: true,
-        boqBaselined: true,
-        mainContractApplicable: true,
-        mainContractExists: true,
-        teamReady: true,
-        completedSteps: 4,
-        totalSteps: 4,
-      },
+      setup: readySetup,
       responsibility: { projectManager: { id: 'user-1', name: 'Ahmed Hassan' }, teamCount: 1 },
       programme: { startDate: '2026-08-05', expectedEndDate: '2028-10-14', daysRemaining: 793 },
       mainContract: {
@@ -95,38 +111,221 @@ beforeEach(() => {
     isPending: false,
     isError: false,
   });
-  useProjectWorkspaceGuidance.mockReturnValue({ data: [], isPending: false, isError: false });
   pathname = '/projects/project-1';
 });
 
-describe('ProjectWorkspaceShell', () => {
-  it('presents project identity and uses the authoritative main contract reference', () => {
+describe('ProjectWorkspaceShell — identity', () => {
+  it('states the project, its stage, and the three facts that identify it', () => {
     renderWithProviders(
       <ProjectWorkspaceShell id="project-1">
         <p>Workspace content</p>
       </ProjectWorkspaceShell>,
+      MANAGER,
     );
 
     expect(screen.getByRole('heading', { name: 'Baraka Tower' })).toBeInTheDocument();
-    expect(screen.getByText('Mogadishu')).toBeInTheDocument();
+    expect(screen.getByText('Active')).toBeInTheDocument();
+    expect(screen.getByText('PRJ-000001')).toBeInTheDocument();
     expect(screen.getByText('Baraka Real Estate')).toBeInTheDocument();
-    expect(screen.getByText('CTR-001')).toBeInTheDocument();
+    expect(screen.getByText('Mogadishu')).toBeInTheDocument();
+    // Money never appears in the identity line.
     expect(screen.queryByText('$12,500,000.00')).not.toBeInTheDocument();
     expect(screen.queryByText('$999,999.00')).not.toBeInTheDocument();
   });
 
   /**
-   * One flat row, no nesting. Commercial used to be a dropdown holding Contracts, Applications
-   * & certificates and Finance — the only nested control in the bar, and a duplicate of the
-   * Commercial workspace's own sub-navigation. Every tab here leads to a workspace that exists;
-   * Programme & Progress, Procurement and Documents joined once theirs shipped (ADR-021/014).
-   * Activity is deliberately absent — recent activity lives on Overview, not as its own tab.
+   * The commercial model is configuration, not identity — it reads on Overview under
+   * Commercial foundation, where the contract it configures also lives.
    */
+  it('keeps configuration out of the identity line', () => {
+    renderWithProviders(
+      <ProjectWorkspaceShell id="project-1">
+        <p>Workspace content</p>
+      </ProjectWorkspaceShell>,
+      MANAGER,
+    );
+
+    expect(screen.queryByText('Client contract')).not.toBeInTheDocument();
+  });
+
+  /**
+   * The lifecycle rail and the summary tiles moved to Overview. They are project-level
+   * context, and repeating them above seven working tabs cost a row of vertical space on
+   * every one of them — on BOQ it pushed the first row below the fold at 1440x900.
+   */
+  it('carries no lifecycle rail or summary tiles of its own', () => {
+    renderWithProviders(
+      <ProjectWorkspaceShell id="project-1">
+        <p>Workspace content</p>
+      </ProjectWorkspaceShell>,
+      MANAGER,
+    );
+
+    expect(screen.queryByRole('list', { name: 'Project lifecycle' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Programme')).not.toBeInTheDocument();
+    expect(screen.queryByText('Current stage')).not.toBeInTheDocument();
+    expect(screen.queryByText('CTR-001')).not.toBeInTheDocument();
+  });
+
+  /**
+   * A construction project name is routinely a sentence — "Ministry of Health Regional
+   * Headquarters Expansion". The header has to absorb that without pushing the actions off
+   * screen, and whatever it clips has to stay reachable.
+   */
+  it('truncates long identity values without losing them', () => {
+    const longName = 'Ministry of Health Regional Headquarters Expansion — Phase Two';
+    useProject.mockReturnValue({
+      data: {
+        ...project,
+        name: longName,
+        clientName: 'Federal Government of Somalia, Ministry of Health and Human Services',
+      },
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    renderWithProviders(
+      <ProjectWorkspaceShell id="project-1">
+        <p>Workspace content</p>
+      </ProjectWorkspaceShell>,
+      MANAGER,
+    );
+
+    // The crumb clips, and says what it clipped.
+    const crumb = within(
+      screen.getByRole('navigation', { name: 'Project breadcrumb' }),
+    ).getByRole('link', { name: longName });
+    expect(crumb).toHaveClass('truncate');
+    expect(crumb).toHaveAttribute('title', longName);
+
+    // The title itself does not clip — it is the one place the whole name must read.
+    const heading = screen.getByRole('heading', { name: longName });
+    expect(heading).not.toHaveClass('truncate');
+
+    // `min-w-0` is what actually lets a flex child ellipsize; without it the row just grows.
+    const client = screen.getByTitle(
+      'Federal Government of Somalia, Ministry of Health and Human Services',
+    );
+    expect(client).toHaveClass('min-w-0', 'truncate');
+  });
+
+  it('names the active tab in the breadcrumb, not always "Overview"', () => {
+    pathname = '/projects/project-1/boq';
+
+    renderWithProviders(
+      <ProjectWorkspaceShell id="project-1">
+        <p>Workspace content</p>
+      </ProjectWorkspaceShell>,
+      MANAGER,
+    );
+
+    const crumbs = screen.getByRole('navigation', { name: 'Project breadcrumb' });
+    expect(crumbs).toHaveTextContent('BOQ');
+    expect(crumbs).not.toHaveTextContent('Overview');
+  });
+});
+
+/**
+ * The action set used to be portalled up from the Overview page, so the other seven tabs had
+ * a header with nothing in it. It belongs to the shell.
+ */
+describe('ProjectWorkspaceShell — actions', () => {
+  it('offers the project actions on a working tab, not only on Overview', () => {
+    pathname = '/projects/project-1/boq';
+
+    renderWithProviders(
+      <ProjectWorkspaceShell id="project-1">
+        <p>Workspace content</p>
+      </ProjectWorkspaceShell>,
+      MANAGER,
+    );
+
+    expect(screen.getByRole('button', { name: 'Record practical completion' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Actions' })).toBeInTheDocument();
+  });
+
+  it('hands readiness to the action panel, so an unfinished draft is offered its next step', () => {
+    useProject.mockReturnValue({
+      data: { ...project, status: ProjectStatus.DRAFT },
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    useProjectWorkspaceSummary.mockReturnValue({
+      data: {
+        projectId: 'project-1',
+        setup: { ...readySetup, boqBaselined: false, completedSteps: 1 },
+        responsibility: { projectManager: null, teamCount: 1 },
+        programme: { startDate: null, expectedEndDate: null, daysRemaining: null },
+        mainContract: null,
+        financialsVisible: true,
+        recentActivity: [],
+      },
+      isPending: false,
+      isError: false,
+    });
+
+    renderWithProviders(
+      <ProjectWorkspaceShell id="project-1">
+        <p>Workspace content</p>
+      </ProjectWorkspaceShell>,
+      MANAGER,
+    );
+
+    expect(screen.getByRole('link', { name: /Continue setup/ })).toHaveAttribute(
+      'href',
+      '/projects/project-1/boq',
+    );
+    expect(screen.queryByRole('button', { name: 'Start project' })).not.toBeInTheDocument();
+  });
+
+  /**
+   * A suspension blocks every lifecycle command, so its explanation follows the Resume button
+   * onto every tab. A Resume button whose reason is one tab away is worse than no banner.
+   */
+  it('explains a suspension wherever the Resume button appears', () => {
+    pathname = '/projects/project-1/procurement';
+    useProject.mockReturnValue({
+      data: {
+        ...project,
+        suspensions: [
+          {
+            id: 's1',
+            projectId: 'project-1',
+            reason: 'Awaiting site access clearance',
+            suspendedAt: '2026-08-01T00:00:00.000Z',
+            suspendedBy: 'user-1',
+            resumedAt: null,
+            resumedBy: null,
+          },
+        ],
+      },
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    renderWithProviders(
+      <ProjectWorkspaceShell id="project-1">
+        <p>Workspace content</p>
+      </ProjectWorkspaceShell>,
+      MANAGER,
+    );
+
+    expect(screen.getByText('This project is suspended')).toBeInTheDocument();
+    expect(screen.getByText('Awaiting site access clearance')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument();
+  });
+});
+
+describe('ProjectWorkspaceShell — navigation', () => {
   it('keeps the menu and the tab row on opposite sides of the md breakpoint', () => {
     renderWithProviders(
       <ProjectWorkspaceShell id="project-1">
         <p>Workspace content</p>
       </ProjectWorkspaceShell>,
+      MANAGER,
     );
 
     // Asserted on the class because the failure is invisible to the DOM: both navigations
@@ -140,12 +339,19 @@ describe('ProjectWorkspaceShell', () => {
     expect(tabRow).toHaveClass('hidden', 'md:flex');
   });
 
-  it('shows one flat row of implemented destinations', async () => {
+  /**
+   * One flat row of eight peers, ordered by the project's operating logic rather than by the
+   * order the workspaces shipped: understand → scope → execute → earn → spend → financial
+   * position → evidence → people. Procurement precedes Finance because procurement creates the
+   * commitments, accruals and actuals Finance interprets.
+   */
+  it('orders the tabs by the project operating flow', async () => {
     const user = userEvent.setup();
     renderWithProviders(
       <ProjectWorkspaceShell id="project-1">
         <p>Workspace content</p>
       </ProjectWorkspaceShell>,
+      MANAGER,
     );
 
     expect(screen.getByRole('navigation', { name: 'Project navigation' })).toBeInTheDocument();
@@ -155,10 +361,10 @@ describe('ProjectWorkspaceShell', () => {
       'BOQ',
       'Progress',
       'Commercial',
-      'Finance',
       'Procurement',
-      'Team',
+      'Finance',
       'Documents',
+      'Team',
     ]);
     expect(screen.queryByText('Inventory')).not.toBeInTheDocument();
   });
@@ -168,6 +374,7 @@ describe('ProjectWorkspaceShell', () => {
       <ProjectWorkspaceShell id="project-1">
         <p>Workspace content</p>
       </ProjectWorkspaceShell>,
+      MANAGER,
     );
 
     // The workspace shipped unreachable: the shell had no Commercial tab at all, and its
@@ -177,91 +384,5 @@ describe('ProjectWorkspaceShell', () => {
       .find((link) => link.getAttribute('href') === '/projects/project-1/commercial');
     expect(commercial).toBeDefined();
     expect(screen.queryByRole('button', { name: /Commercial/ })).not.toBeInTheDocument();
-  });
-
-  /**
-   * The project's headline facts belong to Overview. Repeating them above every working tab
-   * gave the BOQ two visually identical tile rows — the project's and its own — and pushed
-   * the first BOQ row below the fold at 1440x900. The lifecycle strip and the header above
-   * still say which project this is and where it stands.
-   */
-  it('shows the project summary tiles on Overview', () => {
-    renderWithProviders(
-      <ProjectWorkspaceShell id="project-1">
-        <p>Workspace content</p>
-      </ProjectWorkspaceShell>,
-    );
-
-    expect(screen.getByText('Main contract')).toBeInTheDocument();
-    expect(screen.getByText('Programme')).toBeInTheDocument();
-  });
-
-  it('hides them on a working tab, where the feature brings its own', () => {
-    pathname = '/projects/project-1/boq';
-
-    renderWithProviders(
-      <ProjectWorkspaceShell id="project-1">
-        <p>Workspace content</p>
-      </ProjectWorkspaceShell>,
-    );
-
-    expect(screen.queryByText('Main contract')).not.toBeInTheDocument();
-    expect(screen.queryByText('Programme')).not.toBeInTheDocument();
-    // Identity and lifecycle stay: losing those would be losing context, not decluttering.
-    expect(screen.getByRole('heading', { name: 'Baraka Tower' })).toBeInTheDocument();
-  });
-
-  /**
-   * The lifecycle is a compact inline stepper: every stage renders on one row as a dot +
-   * label, and the semantics are carried by colour — completed (success), current (brand),
-   * upcoming (muted). The project here is ACTIVE, so Preparation is complete, Active is the
-   * current step, and the remaining stages are upcoming.
-   */
-  it('renders the lifecycle stepper with every stage and marks the current one', () => {
-    renderWithProviders(
-      <ProjectWorkspaceShell id="project-1">
-        <p>Workspace content</p>
-      </ProjectWorkspaceShell>,
-    );
-
-    const stepper = screen.getByRole('list', { name: 'Current stage' });
-    const steps = within(stepper).getAllByRole('listitem');
-    expect(steps.map((step) => step.textContent)).toEqual([
-      'Preparation',
-      'Active',
-      'Practical completion',
-      'Closeout',
-      'Closed',
-    ]);
-
-    // The current stage (ACTIVE) is announced as the current step and coloured with the brand.
-    const active = within(stepper).getByText('Active');
-    expect(active).toHaveClass('text-brand-primary');
-    expect(active.closest('[aria-current="step"]')).not.toBeNull();
-
-    // A passed stage carries the success colour, not the brand.
-    const preparation = within(stepper).getByText('Preparation');
-    expect(preparation).toHaveClass('text-success');
-
-    // An upcoming stage is muted.
-    const closed = within(stepper).getByText('Closed');
-    expect(closed).toHaveClass('text-muted-foreground');
-  });
-
-  it('drops the lifecycle stepper for a cancelled project', () => {
-    useProject.mockReturnValue({
-      data: { ...project, status: ProjectStatus.CANCELLED },
-      isPending: false,
-      isError: false,
-      refetch: vi.fn(),
-    });
-
-    renderWithProviders(
-      <ProjectWorkspaceShell id="project-1">
-        <p>Workspace content</p>
-      </ProjectWorkspaceShell>,
-    );
-
-    expect(screen.queryByRole('list', { name: 'Current stage' })).not.toBeInTheDocument();
   });
 });

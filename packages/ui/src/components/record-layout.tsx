@@ -156,6 +156,7 @@ export function RecordHeader({
  */
 export function RecordPanel({
   title,
+  icon,
   action,
   meta,
   padded = true,
@@ -163,6 +164,18 @@ export function RecordPanel({
   className,
 }: {
   title?: React.ReactNode;
+  /**
+   * A single glyph identifying the region, rendered in a tinted tile before the title.
+   *
+   * Deliberately narrow (decided 2026-09-05, `ux-doctrine.md` §7): **one accent, one size, and
+   * only ever at region level.** The tile marks where a panel begins so a page of several reads
+   * as several places rather than one wall — which is the job it does on the project Overview.
+   * It is not a licence for an icon per row, per fact, or per status, and never a second hue:
+   * a grid of differently-coloured tiles is the anti-pattern this stayed banned for.
+   *
+   * `aria-hidden` is applied here, so pass the bare glyph — the `<h2>` beside it is the name.
+   */
+  icon?: React.ReactNode;
   /** Right-aligned control in the panel header — a link, a small button, a count. */
   action?: React.ReactNode;
   /** Small print under the title, e.g. "as at 13 Aug 2026". */
@@ -180,9 +193,19 @@ export function RecordPanel({
     >
       {title ? (
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border px-4 py-3">
-          <div className="min-w-0">
-            <h2 className="text-h3 font-semibold text-foreground">{title}</h2>
-            {meta ? <p className="text-caption text-muted-foreground">{meta}</p> : null}
+          <div className="flex min-w-0 items-center gap-2.5">
+            {icon ? (
+              <span
+                aria-hidden="true"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-brand-accent text-brand-primary"
+              >
+                {icon}
+              </span>
+            ) : null}
+            <div className="min-w-0">
+              <h2 className="text-h3 font-semibold text-foreground">{title}</h2>
+              {meta ? <p className="text-caption text-muted-foreground">{meta}</p> : null}
+            </div>
           </div>
           {action}
         </div>
