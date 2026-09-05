@@ -208,13 +208,13 @@ function RequirementRow({ row, canOpen }: { row: ProjectRequirementRow; canOpen:
         {row.estimatedValue === null ? (
           <span title={t('noEstimateHint')}>—</span>
         ) : (
-          <LtrValue>{formatMoney(row.estimatedValue, null, locale) ?? '—'}</LtrValue>
+          <LtrValue>{formatMoney(row.estimatedValue, row.currencyCode, locale) ?? '—'}</LtrValue>
         )}
       </TableCell>
       {/* Real money: allocated quantity at the price a buyer agreed. A different basis, so the
           two are never subtracted into a "saving". */}
       <TableCell className="text-end tabular-nums">
-        <LtrValue>{formatMoney(row.orderedValue, null, locale) ?? '—'}</LtrValue>
+        <LtrValue>{formatMoney(row.orderedValue, row.currencyCode, locale) ?? '—'}</LtrValue>
         {row.purchaseOrderCount > 0 ? (
           <span className="block text-micro text-muted-foreground">
             {t('acrossOrders', { n: row.purchaseOrderCount })}

@@ -2079,6 +2079,8 @@ export interface ProjectRequirementRow {
   requestedDate: string;
   requiredByDate: string | null;
   lineCount: number;
+  /** The currency the estimate is denominated in. Null when the request carries no estimate. */
+  currencyCode: string | null;
   estimatedValue: string | null;
   orderedValue: string | null;
   /** estimatedValue − orderedValue, floored at zero. Null when there is no estimate. */

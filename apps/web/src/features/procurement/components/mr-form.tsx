@@ -15,7 +15,7 @@
 import { useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, DatePicker, FormField, RadioGroup, Select, Textarea } from '@erp/ui';
+import { Alert, Button, DatePicker, FormField, Input, RadioGroup, Select, Textarea } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
 import { QUANTITY_SCALE, parseMinorUnits } from '@/lib/money';
@@ -27,6 +27,9 @@ import type { CreateMrLinePayload, MaterialRequestScope } from '../types';
 import { MrLineEditor, emptyMrLine, mrLineError, type MrLineDraft } from './mr-line-editor';
 
 /** Today in the `YYYY-MM-DD` shape `@IsDateString()` accepts. */
+/** The four the schema has, and only those. */
+type MrPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+
 function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -34,6 +37,7 @@ function today(): string {
 export function MrForm() {
   const t = useTranslations('procurement.mr');
   const tc = useTranslations('procurement.common');
+  const tPriority = useTranslations('procurement.project.requirements.priority');
   const router = useRouter();
 
   const [step, setStep] = useState<1 | 2>(1);
@@ -41,6 +45,9 @@ export function MrForm() {
   const [projectId, setProjectId] = useState('');
   const [requestedDate, setRequestedDate] = useState(today);
   const [requiredByDate, setRequiredByDate] = useState('');
+  const [title, setTitle] = useState('');
+  const [priority, setPriority] = useState<MrPriority>('NORMAL');
+  const [currencyCode] = useState('USD');
   const [description, setDescription] = useState('');
   const [lines, setLines] = useState<MrLineDraft[]>([emptyMrLine('line-1')]);
   const [showErrors, setShowErrors] = useState(false);
@@ -49,6 +56,8 @@ export function MrForm() {
     project: useId(),
     requested: useId(),
     required: useId(),
+    title: useId(),
+    priority: useId(),
     description: useId(),
   };
 
@@ -78,6 +87,12 @@ export function MrForm() {
       ...(scope === 'PROJECT' ? { projectId } : {}),
       requestedDate,
       ...(requiredByDate ? { requiredByDate } : {}),
+      ...(title.trim() ? { title: title.trim() } : {}),
+      // An amount with no currency is not a figure anyone can approve against a threshold, and
+      // the server refuses the half-specified case. Sent only when a line actually carries one.
+      ...(lines.some((line) => line.estimatedUnitPrice.trim()) ? { currencyCode } : {}),
+      // NORMAL is the default the server already applies; sending it would be noise.
+      ...(priority !== 'NORMAL' ? { priority } : {}),
       ...(description.trim() ? { description: description.trim() } : {}),
       lines: lines.map((line): CreateMrLinePayload => {
         const minor = parseMinorUnits(line.quantity, QUANTITY_SCALE) ?? 0;
@@ -90,6 +105,11 @@ export function MrForm() {
           uomCode: line.material?.baseUom?.code ?? line.uomCode,
           requestedQuantity: quantityToApi(minor),
           ...(line.material ? { materialCode: line.material.code } : {}),
+          // Blank stays absent. A zero estimate would route a real requirement through the
+          // approval chain as though it cost nothing (ADR-022 CONST-DOA-001).
+          ...(line.estimatedUnitPrice.trim() && Number.isFinite(Number(line.estimatedUnitPrice))
+            ? { estimatedUnitPrice: Number(line.estimatedUnitPrice) }
+            : {}),
           ...(line.spendCategoryId ? { spendCategoryId: line.spendCategoryId } : {}),
         };
       }),
@@ -174,6 +194,32 @@ export function MrForm() {
               value={requiredByDate}
               onChange={(value) => setRequiredByDate(value)}
             />
+          </FormField>
+
+          <FormField htmlFor={ids.title} label={`${t('titleField')} (${tc('optional')})`}>
+            <Input
+              id={ids.title}
+              value={title}
+              maxLength={160}
+              placeholder={t('titlePlaceholder')}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </FormField>
+
+          {/* Only the four the domain has. A "Critical" tier nobody can act on differently would
+              be a label pretending to be a control. */}
+          <FormField htmlFor={ids.priority} label={t('priorityField')}>
+            <Select
+              id={ids.priority}
+              value={priority}
+              onChange={(value) => setPriority(value as MrPriority)}
+            >
+              {(['LOW', 'NORMAL', 'HIGH', 'URGENT'] as const).map((value) => (
+                <option key={value} value={value}>
+                  {tPriority(value)}
+                </option>
+              ))}
+            </Select>
           </FormField>
 
           <FormField

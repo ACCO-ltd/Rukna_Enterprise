@@ -533,6 +533,7 @@ export class ProjectProcurementService {
       description: string | null;
       status: string;
       priority: string;
+      currencyCode: string | null;
       requestedDate: Date;
       requiredByDate: Date | null;
       lines: Array<{
@@ -605,6 +606,8 @@ export class ProjectProcurementService {
       requestedDate: mr.requestedDate.toISOString(),
       requiredByDate: mr.requiredByDate?.toISOString() ?? null,
       lineCount: mr.lines.length,
+      // Only where there is an amount to denominate — a currency beside no figure is noise.
+      currencyCode: hasEstimate ? mr.currencyCode : null,
       estimatedValue: hasEstimate ? money(estimated) : null,
       orderedValue: money(ordered),
       remainingValue: hasEstimate ? money(Decimal.max(ZERO, estimated.minus(ordered))) : null,

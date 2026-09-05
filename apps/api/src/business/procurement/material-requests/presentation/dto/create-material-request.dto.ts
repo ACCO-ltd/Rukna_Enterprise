@@ -1,6 +1,6 @@
 import {
   IsString, IsEnum, IsOptional, IsArray, ValidateNested,
-  IsPositive, IsDateString, ArrayMinSize,
+  IsPositive, IsDateString, ArrayMinSize, IsNumber, MaxLength, Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -28,6 +28,18 @@ export class CreateMrLineDto {
   requestedQuantity: number;
 
   @ApiPropertyOptional()
+  /**
+   * The requester's estimate of unit cost. ADR-022 CONST-DOA-001 routes approval by **monetary
+   * threshold**, so a requirement with no value cannot be routed at all — this is the field that
+   * makes the approval chain reachable. It is superseded by the PO line's real `unitPrice` the
+   * moment a buyer has been to market; the two are never netted into a "saving".
+   */
+  @ApiPropertyOptional({ example: 100, description: "Requester's estimate of unit cost" })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  estimatedUnitPrice?: number;
+
   @IsOptional()
   @IsString()
   boqNodeId?: string;
@@ -77,7 +89,29 @@ export class CreateMaterialRequestDto {
   @IsDateString()
   requiredByDate?: string;
 
-  @ApiPropertyOptional()
+  /** A short name for the requirement, distinct from the paragraph that justifies it. */
+  @ApiPropertyOptional({ example: 'Reinforcement steel' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  title?: string;
+
+  /**
+   * The currency the line estimates are in. Required whenever any line carries an estimate —
+   * an amount without a currency is not a figure anyone can approve against a threshold.
+   */
+  @ApiPropertyOptional({ example: 'USD' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(3)
+  currencyCode?: string;
+
+  /** How badly the site needs it. Orders the attention queue; authorises nothing by itself. */
+  @ApiPropertyOptional({ enum: ['LOW', 'NORMAL', 'HIGH', 'URGENT'] })
+  @IsOptional()
+  @IsEnum(['LOW', 'NORMAL', 'HIGH', 'URGENT'])
+  priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+
   @IsOptional()
   @IsString()
   description?: string;

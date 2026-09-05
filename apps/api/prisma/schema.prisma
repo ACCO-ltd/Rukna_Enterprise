@@ -3532,6 +3532,12 @@ model MaterialRequest {
   // A short name for the requirement ("Reinforcement steel"), distinct from the longer
   // `description` that justifies it. A list keyed on a paragraph is unreadable.
   title              String?               @db.VarChar(160)
+  // The currency the line estimates are in. Every monetary field in this schema is paired with
+  // a currency; an estimate that drives an approval threshold is no exception. On the header
+  // rather than the line because a single requirement is priced in one currency — the same
+  // shape ContractPaymentInstallment uses. Nullable: requests raised before estimates existed
+  // have no amounts to denominate.
+  currencyCode       String?               @map("currency_code") @db.VarChar(3)
   // How badly the site needs it. Drives the attention queue's site-blocking tier — a
   // requirement nobody has ordered matters far more when it is URGENT.
   priority           MaterialRequestPriority @default(NORMAL)

@@ -109,6 +109,10 @@ export function CostCommitmentsView({ projectId }: { projectId: string }) {
 /**
  * Cost against priced scope, expandable.
  *
+ * Committed, accrued and actual are **stages of one cost's recognition, not three buckets to
+ * add up**. Nothing on this screen sums them, and no "total exposure" metric exists — each
+ * column is the ledger's current signed balance for that stage, reversals included.
+ *
  * Opens at section level: cost is coded to leaves, but a 400-row cost report is a data dump, so
  * the server rolls every node's descendants into it and this only expands where the reader asks.
  *
@@ -308,6 +312,15 @@ function CostBySupplierTable({ data }: { data: ProjectProcurementCostResponse })
   );
 }
 
+/**
+ * Cost by spend category — **and deliberately no budget column.**
+ *
+ * A budget line codes to a BOQ node *or* a spend category, never both: the schema supports one
+ * total per BOQ node, not a materials/labour/equipment split inside each BOQ item. So only the
+ * project-level budget lines are category-coded. A budget column here would be populated for
+ * those rows and blank for every BOQ-coded one, which reads as missing data rather than as the
+ * model boundary it actually is. Budget belongs on the BOQ view, where it is complete.
+ */
 function CostByCategoryTable({ data }: { data: ProjectProcurementCostResponse }) {
   const t = useTranslations('procurement.project.cost');
   const locale = useLocale() as 'en' | 'ar';

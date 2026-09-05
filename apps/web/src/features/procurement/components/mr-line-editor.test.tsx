@@ -28,7 +28,13 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../hooks/use-procurement', () => mocks);
 
-import { MrLineEditor, emptyMrLine, mrLineError, type MrLineDraft } from './mr-line-editor';
+import {
+  MrLineEditor,
+  emptyMrLine,
+  estimatedLineValue,
+  mrLineError,
+  type MrLineDraft,
+} from './mr-line-editor';
 
 const TON: UnitOfMeasure = {
   id: 'uom-1',
@@ -257,4 +263,39 @@ describe('MrLineEditor — rows', () => {
     expect(emitted.map((l) => l.key)).toEqual(['line-1']);
   });
 
+});
+
+describe('estimatedLineValue', () => {
+  function draft(overrides: Partial<MrLineDraft> = {}): MrLineDraft {
+    return { ...emptyMrLine('l1'), ...overrides };
+  }
+
+  /**
+   * ADR-022 CONST-DOA-001 routes approval by monetary threshold, so this figure has a governance
+   * consequence — and a requirement nobody has estimated is a real, common state. Null rather
+   * than 0: "$0.00" would tell an approver the requirement is free.
+   */
+  it('is null until both a quantity and a unit price are entered', () => {
+    expect(estimatedLineValue(draft({ quantity: '', estimatedUnitPrice: '' }))).toBeNull();
+    expect(estimatedLineValue(draft({ quantity: '500', estimatedUnitPrice: '' }))).toBeNull();
+    expect(estimatedLineValue(draft({ quantity: '', estimatedUnitPrice: '100' }))).toBeNull();
+  });
+
+  it('multiplies quantity by unit price to two decimals', () => {
+    expect(estimatedLineValue(draft({ quantity: '500', estimatedUnitPrice: '100' }))).toBe(
+      '50000.00',
+    );
+    expect(estimatedLineValue(draft({ quantity: '2.5', estimatedUnitPrice: '10.50' }))).toBe(
+      '26.25',
+    );
+  });
+
+  /** A zero estimate is a deliberate statement and stays one; only blank means "not estimated". */
+  it('treats an explicit zero as a value, not as absent', () => {
+    expect(estimatedLineValue(draft({ quantity: '10', estimatedUnitPrice: '0' }))).toBe('0.00');
+  });
+
+  it('refuses to guess at unparseable input', () => {
+    expect(estimatedLineValue(draft({ quantity: 'abc', estimatedUnitPrice: '100' }))).toBeNull();
+  });
 });
