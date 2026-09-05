@@ -106,7 +106,13 @@ function ProgressCurvePanel({
   if (status === 'INSUFFICIENT_DATA' || curve.actual.length === 0) {
     return (
       <div className="space-y-3">
-        {header}
+        {/* The header's own capture button is dropped here: it and the empty state's were the
+            same action 60px apart, and the empty state's is the more capable of the two — it
+            carries the period-end date, which is the only way to record a snapshot for a date
+            that is not today. The date stays with the action rather than moving to Record,
+            because a snapshot is a point-in-time roll-up capture and a daily report is a site
+            record; they are different objects and merging their controls would say otherwise. */}
+        <SectionHeader title={t('curve.title')} />
         <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
           <p className="text-sm text-muted-foreground">{t('curve.insufficient')}</p>
           <div className="mt-4 flex justify-center">

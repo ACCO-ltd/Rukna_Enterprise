@@ -106,6 +106,21 @@ describe('PerformanceSection', () => {
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
 
+  /**
+   * The section header and the empty state each carried a capture button, 60px apart and doing
+   * the same thing. The empty state keeps its one, because only that copy carries the
+   * period-end date — the sole way to record a snapshot for a date that is not today.
+   */
+  it('offers the capture action once in the empty state, not twice', () => {
+    mocks.useProgressCurve.mockReturnValue(loaded(INSUFFICIENT_CURVE));
+    renderWithProviders(<PerformanceSection projectId="proj-1" />, {
+      permissions: ['manage:project'],
+      withToast: true,
+    });
+
+    expect(screen.getAllByRole('button', { name: 'Record progress snapshot' })).toHaveLength(1);
+  });
+
   it('hides the capture action from a user who cannot manage progress', () => {
     renderWithProviders(<PerformanceSection projectId="proj-1" />, { withToast: true });
     // No permission → the control is absent (honesty §4), not a disabled stub.

@@ -58,6 +58,7 @@ export function PhysicalFinancialSignalBanner({
         { label: t('signal.divergence'), value: formatSignedPct(s.divergence) },
       ]}
       link={showLink ? { href: `/projects/${projectId}/progress`, label: t('overview.link') } : undefined}
+      insufficient={s.status === 'INSUFFICIENT_DATA'}
     />
   );
 }

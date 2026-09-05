@@ -52,6 +52,7 @@ export function CollectionProgressSignalBanner({ projectId }: { projectId: strin
         href: `/projects/${projectId}/commercial/billing-collection`,
         label: t('collectionSignal.link'),
       }}
+      insufficient={s.status === 'INSUFFICIENT_DATA'}
     />
   );
 }

@@ -14,7 +14,7 @@ import { PerformanceSection } from './performance-section';
 import { ProgressOverviewHeader } from './progress-overview-header';
 import { BaselineSection } from './baseline-section';
 
-export type ProgressView = 'performance' | 'record' | 'verified' | 'schedule' | 'planSetup';
+export type ProgressView = 'overview' | 'record' | 'verification' | 'schedule' | 'planSetup';
 
 /**
  * Programme & Progress workspace tab (ADR-021), refined to a reader-first layout
@@ -32,7 +32,7 @@ export type ProgressView = 'performance' | 'record' | 'verified' | 'schedule' | 
  */
 export function ProgressTab({ projectId }: { projectId: string }) {
   const t = useTranslations('progress');
-  const [view, setView] = useState<ProgressView>('performance');
+  const [view, setView] = useState<ProgressView>('overview');
 
   return (
     <div className="space-y-5">
@@ -48,18 +48,18 @@ export function ProgressTab({ projectId }: { projectId: string }) {
         value={view}
         onValueChange={(next) => setView(next as ProgressView)}
         items={[
-          { value: 'performance', label: t('tabs.performance') },
+          { value: 'overview', label: t('tabs.overview') },
           { value: 'record', label: t('tabs.record') },
-          { value: 'verified', label: t('tabs.verified') },
+          { value: 'verification', label: t('tabs.verification') },
           { value: 'schedule', label: t('tabs.schedule') },
           { value: 'planSetup', label: t('tabs.planSetup') },
         ]}
       />
 
       <div>
-        {view === 'performance' ? <PerformanceSection projectId={projectId} /> : null}
+        {view === 'overview' ? <PerformanceSection projectId={projectId} /> : null}
         {view === 'record' ? <DailyReportsSection projectId={projectId} /> : null}
-        {view === 'verified' ? <VerifiedProgressSection projectId={projectId} /> : null}
+        {view === 'verification' ? <VerifiedProgressSection projectId={projectId} /> : null}
         {view === 'schedule' ? (
           <div className="space-y-6">
             <MilestonesSection projectId={projectId} />

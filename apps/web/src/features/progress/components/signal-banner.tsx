@@ -28,6 +28,7 @@ export function SignalBanner({
   hint,
   stats,
   link,
+  insufficient = false,
 }: {
   headingId: string;
   title: string;
@@ -37,7 +38,28 @@ export function SignalBanner({
   stats: SignalStat[];
   /** Cross-link into the surface that owns the detail. Omit to render no link (e.g. a self-link). */
   link?: { href: string; label: string };
+  /**
+   * True when the comparison cannot be made yet. Collapses the banner to its title and the
+   * reason: a full-height card whose three figures are all em-dashes says nothing three times,
+   * and two of them stacked filled half the Progress tab on every project without a contract
+   * value or a forecast cost — which is every project early on.
+   */
+  insufficient?: boolean;
 }) {
+  if (insufficient) {
+    return (
+      <section
+        aria-labelledby={headingId}
+        className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-panel border border-border bg-surface px-5 py-3"
+      >
+        <h2 id={headingId} className="text-body-sm font-semibold text-foreground">
+          {title}
+        </h2>
+        <p className="text-caption text-muted-foreground">{hint}</p>
+      </section>
+    );
+  }
+
   return (
     <section
       aria-labelledby={headingId}

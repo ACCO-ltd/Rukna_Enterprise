@@ -321,3 +321,93 @@ Each slice: `pnpm --filter @erp/web type-check` before push; browser-QA at 375px
 ---
 
 *End — awaiting review. Nothing built yet.*
+
+---
+
+## Phase-3 audit — 2026-09-05
+
+A Progress redesign spec arrived with four mockups. Audited against the code and the schema first.
+Most of the spec's structural asks were already built; three of its assumptions do not match the
+domain. Recorded so the next person does not re-derive it.
+
+### The domain, as it actually is
+
+```text
+DailyProgressReport   one reportDate (a DAY), status DRAFT|SUBMITTED|APPROVED|RETURNED|REOPENED
+ProgressMeasurement   dprId + boqNodeId + quantity        ← quantity only, never a percentage
+WorkPackage           progressWeight Decimal(5,4)
+WorkPackageBoqNode    @@unique([boqNodeId])               ← a leaf belongs to at most ONE package
+ProgressSnapshot      periodEndDate, source MANUAL|PERIOD_CLOSE
+ProgrammeMilestone    → ContractPaymentInstallment        ← milestones drive billing
+```
+
+Roll-up: leaf % = verified ÷ BOQ quantity (approved reports only) → package % = **plain average of
+its leaves** → project % = Σ(weight × package %). Cost consumed = actual ÷ forecast cost.
+Collected = received ÷ contract value. Commands are `submit` / `approve` / `return` / `reopen` —
+there is no `verify` and no `reject`. Every write is `manage:project`.
+
+### Already built — do not rebuild
+
+| The spec asked for | Where it already lives |
+|---|---|
+| Setup disappears once configured | `progress-overview-header.tsx` — returns `ProgressHeadline` as soon as packages + allocation exist |
+| Optional baseline excluded from the count | Same file — `total = items.filter(i => i.status !== 'optional').length`, so it reads "2 of 3 done" |
+| Planned baseline under Plan & Setup | `BaselineSection` is already in the `planSetup` view |
+| Quantity-based recording | The only input there has ever been; `addMeasurement` takes a quantity |
+| Honest insufficient-data states | Curve, both signals |
+| Server-grounded roll-up | One read model behind four surfaces |
+
+The mockup's **"3 of 4 complete"** with step 4 marked *Optional* is the inconsistency; the code
+already gets this right.
+
+### Three spec assumptions that do not hold
+
+**1. There is no progress period.** Every mockup assumes a month — "Sep 1 – Sep 30", "Days
+remaining 5", one submission covering 5 work packages and 42 BOQ items. The record is a **daily
+report keyed to one date**. No period entity, no deadline, no period-scoped submission exists.
+Decision: build on daily reports as they are, and drop the period framing rather than draw a model
+we do not have.
+
+**2. Mixed-unit quantities cannot be summed.** The mockups show "Total quantity this period
+2,765.00 m³" and a `TOTAL QUANTITY` column. A measurement carries no unit — the BOQ leaf does — so
+m³ + m² + kg + lot is not a number. Count items and packages instead. (The spec's own §28 and §34
+say the same.)
+
+**3. "Snapshot" is the right word.** §12 proposed renaming it. `ProgressSnapshot` is a real
+immutable point-in-time row with `source: MANUAL | PERIOD_CLOSE`. Kept.
+
+### Schedule keeps its own tab
+
+The spec asked to demote it. `ProgrammeMilestone.installments` links to
+`ContractPaymentInstallment`, so under ACCO's milestone billing model **a milestone is what triggers
+an invoice**. Folding it into setup would bury a revenue surface. The planned baseline — genuinely
+configuration — was already under Plan & Setup, which is what the spec was really reaching for.
+
+### Changed in this pass
+
+1. **`Performance` → `Overview`.** "Performance" reads as cost, schedule, productivity or people
+   depending on who opens it; the view answers where the project physically is.
+2. **`Verified Progress` → `Verification`.** The old name described a list. The job is a decision:
+   which submitted work becomes trusted progress.
+3. **`Physical vs financial` → `Cost vs physical progress`**, and **`Collection vs progress` →
+   `Collection vs physical progress`**. "Financial" was far broader than what is compared; the
+   denominators are `actual ÷ forecast cost` and `received ÷ contract value`.
+4. **One capture action in the curve's empty state**, not two 60px apart. The empty state keeps its
+   copy because only that one carries the period-end date — the sole way to record a snapshot for a
+   date other than today. The date stays with the action rather than moving into Record: a snapshot
+   is a point-in-time roll-up capture and a daily report is a site record, and merging their
+   controls would imply they are the same object.
+5. **Insufficient-data signals collapse to one line.** A full card whose three figures are all
+   em-dashes says nothing three times; two of them stacked filled half the tab on every project
+   without a contract value or a forecast cost — which is every project early on.
+
+### Open, and blocking nothing
+
+- **`ceo-memo-work-package-progress-weighting.md`** — inside a work package, leaf percentages are
+  averaged with **no weighting**, so a 1-lot item and a 10,000 m³ item count the same. Recommended
+  fix is value-weighting. Backend-owned, and it moves the headline figure on every live project.
+- **Segregation of duties.** Every progress write is `manage:project`, so one person can submit a
+  report and approve it. The `commandGovernance` seam on `approve` can enforce four eyes, but no
+  binding is active. Noted, not filed.
+- **VAT basis.** `received ÷ contract value` and `actual ÷ forecast cost` are shown side by side.
+  Their tax bases have not been verified against each other.
