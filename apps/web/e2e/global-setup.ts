@@ -24,6 +24,24 @@ export interface Scenario {
 }
 
 /**
+ * ─── Environment prerequisites (not application defects) ─────────────────────────
+ *
+ * The scenario drives the real endpoints, so it inherits the tenant's configuration. Two things
+ * must be true of the target tenant or seeding stops part-way:
+ *
+ *  1. **An active workflow binding for `InterimPaymentApplication` DRAFT → PENDING_INTERNAL_APPROVAL.**
+ *     Without it `POST /ipa/:id/submit-for-approval` answers 422 by design — a REQUIRED governed
+ *     transition with no chain configured is refused, not waved through. The seeder currently
+ *     depends on that binding existing rather than creating it; making the scenario seed its own
+ *     governance bindings would make the test environment reproducible instead of borrowing
+ *     whatever the tenant happens to have.
+ *  2. **An accounting foundation** — chart of accounts, a fiscal year with an open period, and
+ *     posting configuration — for anything that posts to the GL. Absent it,
+ *     `POST /invoices/:id/post` answers `POSTING_ACCOUNT_NOT_CONFIGURED`.
+ *
+ * Both are configuration gaps. A spec that brings its own data should set `E2E_SKIP_SEED=1`
+ * rather than wait for either to be fixed.
+ *
  * Seeds a complete billing scenario before the suite runs.
  *
  * The alternative — asserting against whatever is already in the database — makes a test
@@ -34,6 +52,12 @@ export interface Scenario {
  * in a separate process from the tests.
  */
 async function globalSetup(): Promise<void> {
+  // Some specs bring their own data and assert against it — the Commercial QA gate is one.
+  // For those, seeding is not just wasted time: the scenario walks the whole IPA→IPC→receipt
+  // chain, so it dies in any tenant missing a workflow binding and takes every unrelated spec
+  // down with it before a single browser opens.
+  if (process.env['E2E_SKIP_SEED'] === '1') return;
+
   // Quiet: the reporter owns stdout, and a machine-readable report must not be interleaved
   // with the seeder's progress log.
   const seeded = await seedScenario({ quiet: true });

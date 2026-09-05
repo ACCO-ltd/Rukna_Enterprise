@@ -246,6 +246,10 @@ async function main() {
     // "A client is required for a client contract project". The seed predates that rule.
     clientId: client.id,
     clientName: client.name,
+    // ADR-PT: `category` became required when project classification landed, after this seeder
+    // was written — every run since has died on a 400 before reaching the first screen.
+    // COMMERCIAL matches the eight-storey office tower the rest of the scenario describes.
+    category: 'COMMERCIAL',
     contractValue: 4_500_000,
     currency: 'USD',
     // startDate + expectedEndDate satisfy the WAIVABLE PROGRAMME_DATES start condition naturally.
