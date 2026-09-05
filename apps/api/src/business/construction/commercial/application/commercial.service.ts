@@ -6,14 +6,24 @@ import {
   type CommercialOutstandingInvoice,
   type CommercialApplicationRow,
   type CommercialApplicationsResponse,
+  type CommercialAgingBucket,
   type CommercialAttentionItem,
+  type CommercialBillingPosition,
+  type CommercialBillingResponse,
   type CommercialCapabilities,
+  type ClientInvoiceDocStatus,
+  type ClientInvoiceSource,
+  type ClientInvoiceSettlementStatus,
+  type ArPostingStatus,
+  type CommercialInvoiceRow,
+  type CommercialReceiptRow,
   type CommercialCurrentCycleResponse,
   type CommercialGuaranteeSummary,
   type CommercialMetric,
   type CommercialNextAction,
   type CommercialPaymentSchedule,
   type CommercialPaymentScheduleInstallment,
+  type CommercialSecurityPosition,
   type CommercialSettlementState,
   type CommercialSummaryResponse,
   type PaymentInstallmentBillStatus,
@@ -33,6 +43,110 @@ import {
 import type { CommercialContractValue } from '@erp/types';
 
 const ZERO = new Decimal(0);
+
+// ─── Billing helpers ────────────────────────────────────────────────────────────
+//
+// Pure date/classification rules for the billing read model. Module-level rather than private
+// methods because none of them touch instance state, and a rule with no dependencies is far
+// easier to reason about (and to test) sitting on its own.
+
+const AGING_BUCKETS: ReadonlyArray<CommercialAgingBucket['bucket']> = [
+  'NOT_DUE',
+  'DAYS_1_30',
+  'DAYS_31_60',
+  'DAYS_61_90',
+  'DAYS_90_PLUS',
+];
+
+/** Midnight UTC for a moment — so "how many days late" counts calendar days, not elapsed hours. */
+function utcMidnight(date: Date): number {
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
+/** Whole UTC days from `dueDate` to `todayUtc`. Negative while the invoice is not yet due. */
+function daysBetweenUtc(todayUtc: number, dueDate: Date): number {
+  return Math.round((todayUtc - utcMidnight(dueDate)) / 86_400_000);
+}
+
+function agingBucket(daysLate: number): CommercialAgingBucket['bucket'] {
+  if (daysLate <= 0) return 'NOT_DUE';
+  if (daysLate <= 30) return 'DAYS_1_30';
+  if (daysLate <= 60) return 'DAYS_31_60';
+  if (daysLate <= 90) return 'DAYS_61_90';
+  return 'DAYS_90_PLUS';
+}
+
+function emptyAging(): CommercialAgingBucket[] {
+  return AGING_BUCKETS.map((bucket) => ({ bucket, amount: null, invoiceCount: 0 }));
+}
+
+function emptyBillingPosition(): CommercialBillingPosition {
+  return {
+    invoiced: null,
+    collected: null,
+    outstanding: null,
+    overdue: null,
+    postedInvoiceCount: 0,
+    overdueInvoiceCount: 0,
+    collectionRate: null,
+  };
+}
+
+/**
+ * Where an invoice came from, named the way a reader recognises it (ADR-023): the installment's
+ * own name for a MILESTONE contract, the application reference behind the certificate for a
+ * measured one. The two links are mutually exclusive by schema; a migration-loaded invoice has
+ * neither, and says so rather than borrowing a provenance it does not have.
+ */
+function invoiceSource(inv: {
+  sourceInstallmentId: string | null;
+  sourceInstallment: { id: string; name: string; sortOrder: number } | null;
+  sourceIpcId: string | null;
+  sourceIpc: {
+    id: string;
+    application: { id: string; applicationRef: string | null; applicationNumber: number | null } | null;
+  } | null;
+}): ClientInvoiceSource {
+  if (inv.sourceInstallmentId) {
+    return {
+      kind: 'INSTALLMENT',
+      label: inv.sourceInstallment?.name ?? null,
+      id: inv.sourceInstallmentId,
+    };
+  }
+  if (inv.sourceIpcId) {
+    const application = inv.sourceIpc?.application ?? null;
+    const label =
+      application?.applicationRef ??
+      (application?.applicationNumber !== null && application?.applicationNumber !== undefined
+        ? `IPA ${application.applicationNumber}`
+        : null);
+    return { kind: 'IPC', label, id: inv.sourceIpcId };
+  }
+  return { kind: 'NONE', label: null, id: null };
+}
+
+/**
+ * The client-facing state of one invoice.
+ *
+ * Document lifecycle first — a cancelled or draft invoice has no settlement story — then posting,
+ * then how much of the *total* has been paid. The comparison is against `totalAmount` and nothing
+ * else: an invoice is settled when the client has paid what the invoice asked for, VAT included.
+ */
+function invoiceSettlementStatus(
+  documentStatus: string,
+  postingStatus: string,
+  total: Decimal,
+  balance: Decimal,
+): ClientInvoiceSettlementStatus {
+  if (documentStatus === 'CANCELLED') return 'CANCELLED';
+  if (documentStatus === 'DRAFT') return 'DRAFT';
+  if (postingStatus !== 'POSTED') return 'AWAITING_POSTING';
+  if (balance.lte(ZERO)) return 'PAID';
+  if (balance.gte(total)) return 'UNPAID';
+  return 'PARTIALLY_PAID';
+}
+
 
 type MainContract = NonNullable<
   Awaited<ReturnType<CommercialPrismaRepository['findMainContract']>>
@@ -100,6 +214,12 @@ export class CommercialService {
         receivables: { collectionRate: null, outstandingInvoices: [] },
         retention: null,
         advances: [],
+        securityPosition: {
+          applicable: false,
+          retentionHeld: null,
+          advanceRecovered: null,
+          advanceOutstanding: null,
+        },
         guarantees: [],
         attention: [
           {
@@ -140,10 +260,19 @@ export class CommercialService {
     // Certified — effective IPCs only (CONST-COM-003).
     let certifiedGross = ZERO;
     let certifiedDeductions = ZERO;
+    // The two slices of the same deduction set that are commercial positions in their own right
+    // (CONST-COM-005): what the client is still holding back, and how much of the advance has
+    // been paid down. Summed here so they can never disagree with certifiedNet.
+    let retentionHeld = ZERO;
+    let advanceRecovered = ZERO;
     for (const cert of certs) {
       certifiedGross = certifiedGross.plus(new Decimal(cert.certifiedTotal.toString()));
       for (const ded of cert.deductions) {
-        certifiedDeductions = certifiedDeductions.plus(new Decimal(ded.amount.toString()));
+        const amount = new Decimal(ded.amount.toString());
+        certifiedDeductions = certifiedDeductions.plus(amount);
+        if (ded.deductionType === 'RETENTION') retentionHeld = retentionHeld.plus(amount);
+        else if (ded.deductionType === 'ADVANCE_RECOVERY')
+          advanceRecovered = advanceRecovered.plus(amount);
       }
     }
     const certifiedNet = certifiedGross.minus(certifiedDeductions);
@@ -332,6 +461,13 @@ export class CommercialService {
             retentionSplitOnPC: contract.retentionTerms.retentionSplitOnPC.toString(),
           }
         : null,
+      securityPosition: this.securityPosition(
+        contract,
+        retentionHeld,
+        advanceRecovered,
+        certFailed,
+        mayViewFinancials,
+      ),
       advances: contract.advanceTerms.map((a): CommercialAdvanceSummary => ({
         id: a.id,
         advanceType: a.advanceType,
@@ -599,6 +735,182 @@ export class CommercialService {
     };
   }
 
+  // ─── Billing & Collection — the project's AR position ───────────────────────────
+
+  /**
+   * What has been billed to the client and what has been collected against it.
+   *
+   * Everything here is on the **invoice-total basis**: settlement is measured against what the
+   * client was actually asked to pay, never against a pre-VAT certified amount or a plan
+   * percentage. Mixing those bases is the specific accounting error this read model exists to
+   * make impossible — `subtotal` and `vatAmount` ride along so a screen showing both can label
+   * which is which, but every ratio and every balance uses `totalAmount`.
+   *
+   * Only POSTED invoices count toward the position. A draft invoice is a document somebody is
+   * still writing; reporting it as "invoiced" would tell a commercial manager they have asked
+   * for money they have not asked for.
+   */
+  async getBilling(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<CommercialBillingResponse> {
+    await this.projectAccess.assertMember(identity, projectId);
+    const prisma = this.tenancyService.getClient();
+    const orgId = identity.activeOrganizationId;
+    const mayViewFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
+    const asOf = new Date();
+    const asOfIso = asOf.toISOString();
+
+    const contract = await this.repo.findMainContract(prisma, orgId, projectId);
+    if (!contract) {
+      return {
+        projectId,
+        contractId: null,
+        currency: null,
+        billingModel: null,
+        financialsVisible: mayViewFinancials,
+        position: emptyBillingPosition(),
+        invoices: [],
+        receipts: [],
+        clientUnappliedTotal: null,
+        aging: emptyAging(),
+        capabilities: this.capabilities(identity, null),
+        asOf: asOfIso,
+      };
+    }
+
+    const [invoiceRows, receiptRows, clientUnapplied] = await Promise.all([
+      this.repo.findInvoicesForBilling(prisma, orgId, contract.id),
+      this.repo.findReceiptsForContract(prisma, orgId, contract.id),
+      this.repo
+        .sumClientUnappliedReceipts(prisma, orgId, contract.clientId)
+        .catch(() => ZERO),
+    ]);
+
+    const money = (d: Decimal): string | null => (mayViewFinancials ? d.toFixed(2) : null);
+    const today = utcMidnight(asOf);
+
+    let invoiced = ZERO;
+    let collected = ZERO;
+    let outstanding = ZERO;
+    let overdue = ZERO;
+    let postedInvoiceCount = 0;
+    let overdueInvoiceCount = 0;
+    const buckets = new Map<CommercialAgingBucket['bucket'], { amount: Decimal; count: number }>();
+
+    const invoices = invoiceRows.map((inv): CommercialInvoiceRow => {
+      const total = new Decimal(inv.totalAmount.toString());
+      const balance = new Decimal(inv.outstandingAmount.toString());
+      const paid = inv.allocations.reduce(
+        (sum, a) => sum.plus(new Decimal(a.allocatedAmount.toString())),
+        ZERO,
+      );
+      const posted = inv.postingStatus === 'POSTED';
+      const daysLate = daysBetweenUtc(today, inv.dueDate);
+      const isOverdue = posted && balance.gt(ZERO) && daysLate > 0;
+
+      if (posted) {
+        postedInvoiceCount += 1;
+        invoiced = invoiced.plus(total);
+        collected = collected.plus(paid);
+        outstanding = outstanding.plus(balance);
+        if (balance.gt(ZERO)) {
+          const bucket = agingBucket(daysLate);
+          const current = buckets.get(bucket) ?? { amount: ZERO, count: 0 };
+          buckets.set(bucket, { amount: current.amount.plus(balance), count: current.count + 1 });
+        }
+        if (isOverdue) {
+          overdue = overdue.plus(balance);
+          overdueInvoiceCount += 1;
+        }
+      }
+
+      return {
+        id: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        source: invoiceSource(inv),
+        invoiceDate: inv.invoiceDate.toISOString(),
+        dueDate: inv.dueDate.toISOString(),
+        currency: inv.currencyCode,
+        subtotal: money(new Decimal(inv.subtotal.toString())),
+        vatAmount: money(new Decimal(inv.vatAmount.toString())),
+        totalAmount: money(total),
+        paidAmount: money(paid),
+        outstandingAmount: money(balance),
+        documentStatus: inv.documentStatus as ClientInvoiceDocStatus,
+        postingStatus: inv.postingStatus as ArPostingStatus,
+        status: invoiceSettlementStatus(inv.documentStatus, inv.postingStatus, total, balance),
+        daysOverdue: isOverdue ? daysLate : 0,
+      };
+    });
+
+    const receipts = receiptRows.map((receipt): CommercialReceiptRow => {
+      const mine = receipt.clientAllocations.filter(
+        (a) => a.invoice?.contractId === contract.id,
+      );
+      const allocatedHere = mine.reduce(
+        (sum, a) => sum.plus(new Decimal(a.allocatedAmount.toString())),
+        ZERO,
+      );
+      return {
+        id: receipt.id,
+        receiptDate: receipt.receiptDate.toISOString(),
+        currency: receipt.currencyCode,
+        totalAmount: money(new Decimal(receipt.totalAmount.toString())),
+        allocatedAmount: money(new Decimal(receipt.allocatedAmount.toString())),
+        unallocatedAmount: money(new Decimal(receipt.unallocatedAmount.toString())),
+        allocatedToThisContract: money(allocatedHere),
+        paymentMethod: receipt.paymentMethod ?? null,
+        // The bank's own reference is what reconciles against a statement; fall back to the
+        // free-text reference only when there is no bank one.
+        reference: receipt.bankReference ?? receipt.reference ?? null,
+        postingStatus: receipt.postingStatus as ArPostingStatus,
+        allocations: mine.map((a) => ({
+          id: a.id,
+          invoiceId: a.clientInvoiceId,
+          invoiceNumber: a.invoice?.invoiceNumber ?? null,
+          allocatedAmount: money(new Decimal(a.allocatedAmount.toString())),
+          allocationDate: a.allocationDate.toISOString(),
+        })),
+      };
+    });
+
+    return {
+      projectId,
+      contractId: contract.id,
+      currency: contract.currency,
+      billingModel: contract.billingModel,
+      financialsVisible: mayViewFinancials,
+      position: {
+        invoiced: money(invoiced),
+        collected: money(collected),
+        outstanding: money(outstanding),
+        overdue: money(overdue),
+        postedInvoiceCount,
+        overdueInvoiceCount,
+        // Null rather than 0 when nothing has been invoiced: "0% collected" on a project that
+        // has not billed yet reads as a collection failure instead of an empty ledger.
+        collectionRate:
+          !mayViewFinancials || invoiced.lte(ZERO)
+            ? null
+            : Math.round(collected.div(invoiced).mul(100).toNumber()),
+      },
+      invoices,
+      receipts,
+      clientUnappliedTotal: money(clientUnapplied),
+      aging: AGING_BUCKETS.map((bucket) => {
+        const entry = buckets.get(bucket);
+        return {
+          bucket,
+          amount: money(entry?.amount ?? ZERO),
+          invoiceCount: entry?.count ?? 0,
+        };
+      }),
+      capabilities: this.capabilities(identity, contract),
+      asOf: asOfIso,
+    };
+  }
+
   // ─── Internal helpers ───────────────────────────────────────────────────────────
 
   /**
@@ -718,6 +1030,51 @@ export class CommercialService {
       approvedVariationsTotal: figures.approvedVariationsTotal.toFixed(2),
       governingContractValue: figures.governing.toFixed(2),
       pendingVariations: figures.pending.toFixed(2),
+    };
+  }
+
+  /**
+   * ADR-017 CONST-COM-005 — retention held and advance recovered, from the certificate deductions
+   * that are the only record of either.
+   *
+   * A MILESTONE contract deducts neither (ADR-023 CONST-COM-013/014), so it reports `applicable:
+   * false` rather than three zeros — "we hold no retention on this contract" and "retention is not
+   * part of this contract" are different statements, and only one of them is true here.
+   *
+   * `advanceOutstanding` needs a principal to count down from. An advance term expressed as a
+   * percentage with no `amount` has none until somebody derives it, so this returns null rather
+   * than inventing one from the contract value.
+   */
+  private securityPosition(
+    contract: MainContract,
+    retentionHeld: Decimal,
+    advanceRecovered: Decimal,
+    certFailed: boolean,
+    mayViewFinancials: boolean,
+  ): CommercialSecurityPosition {
+    const applicable = contract.billingModel !== 'MILESTONE';
+    if (!applicable || !mayViewFinancials || certFailed) {
+      return {
+        applicable,
+        retentionHeld: null,
+        advanceRecovered: null,
+        advanceOutstanding: null,
+      };
+    }
+
+    const principal = contract.advanceTerms.reduce(
+      (sum, term) => (term.amount === null ? sum : sum.plus(new Decimal(term.amount.toString()))),
+      ZERO,
+    );
+    const hasPrincipal = contract.advanceTerms.some((term) => term.amount !== null);
+
+    return {
+      applicable: true,
+      retentionHeld: retentionHeld.toFixed(2),
+      advanceRecovered: advanceRecovered.toFixed(2),
+      advanceOutstanding: hasPrincipal
+        ? Decimal.max(ZERO, principal.minus(advanceRecovered)).toFixed(2)
+        : null,
     };
   }
 
@@ -1034,8 +1391,12 @@ export class CommercialService {
       canGenerateInvoice: has(PERMISSIONS.receivablesManage),
       canPostInvoice: has(PERMISSIONS.receivablesManage),
       canManageGuarantee: has(PERMISSIONS.contractsManage) && notTerminal,
-      canRecordReceipt: false,
-      canAllocateReceipt: false,
+      // These were hardcoded `false` from before the AR receipt endpoints existed. They do now
+      // (`POST /customer-receipts`, `POST /customer-receipts/:id/allocations`), so the honest
+      // answer is the caller's actual permission — a UI that hides a control the server would
+      // accept is as wrong as one that offers a control the server refuses.
+      canRecordReceipt: has(PERMISSIONS.receiptsCreate),
+      canAllocateReceipt: has(PERMISSIONS.receiptsAllocate) || has(PERMISSIONS.receivablesManage),
     };
   }
 }

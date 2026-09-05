@@ -70,6 +70,38 @@ export class VariationOrderPrismaRepository {
   }
 
   /**
+   * ADR-026 CONST-VAR-011 — at-risk exposure per VariationOrder for a whole contract, in one
+   * grouped query.
+   *
+   * The list needs to mark which variations are being worked at risk, and a per-row fetch would
+   * be an N+1 on a screen that already loads every VO. Grouping by `variationOrderId` answers the
+   * question for the whole contract in a single round trip. Exposure is Σ of the recorded
+   * exposures — what ACCO accepted by starting early — which is deliberately not the VO's net
+   * price and never touches the contract value.
+   */
+  async findAtRiskTotalsByContract(
+    prisma: TenantPrisma,
+    organizationId: string,
+    contractId: string,
+  ): Promise<Map<string, { count: number; exposure: Decimal }>> {
+    const rows = await prisma.variationOrderAtRiskAuthorisation.groupBy({
+      by: ['variationOrderId'],
+      where: { organizationId, variationOrder: { contractId } },
+      _count: { _all: true },
+      _sum: { exposureAmount: true },
+    });
+    return new Map(
+      rows.map((row) => [
+        row.variationOrderId,
+        {
+          count: row._count._all,
+          exposure: new Decimal(row._sum.exposureAmount?.toString() ?? 0),
+        },
+      ]),
+    );
+  }
+
+  /**
    * CONST-VAR-005/-006: the VO figures the commercial summary derives contract value from. Only
    * status + the line amounts are needed (net price is Σ amount), so this stays a narrow read.
    */

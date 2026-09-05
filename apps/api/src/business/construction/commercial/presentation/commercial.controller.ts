@@ -37,6 +37,16 @@ export class CommercialController {
     return this.commercialService.getApplications(identity, projectId);
   }
 
+  @Get('billing')
+  @ApiOperation({
+    summary:
+      "The project's billing position, invoices, receipts and ageing — invoice-total basis",
+  })
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  getBilling(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
+    return this.commercialService.getBilling(identity, projectId);
+  }
+
   @Get('current-cycle')
   @ApiOperation({ summary: 'Authoritative current commercial cycle and next action' })
   @ApiParam({ name: 'projectId', description: 'Project ID' })

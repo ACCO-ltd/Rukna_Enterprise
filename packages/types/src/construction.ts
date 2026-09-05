@@ -1078,6 +1078,28 @@ export interface CommercialContractValue {
   pendingVariations: string | null;
 }
 
+/**
+ * Retention held and advance recovered to date.
+ *
+ * Both are sums over the deductions on **effective** certificates, categorised the same way the
+ * IPC calculation policy categorises them (`RETENTION` / `ADVANCE_RECOVERY`). `applicable` is
+ * false when the contract's billing model cannot produce either — the caller must render that as
+ * "not applicable", never as zero.
+ */
+export interface CommercialSecurityPosition {
+  applicable: boolean;
+  /** Decimal string. Null when not applicable, or without financial visibility. */
+  retentionHeld: string | null;
+  /** Decimal string. Null when not applicable, or without financial visibility. */
+  advanceRecovered: string | null;
+  /**
+   * Advance still to recover: the advance terms' total value less `advanceRecovered`. Null when
+   * the contract has no advance term carrying an explicit amount — a percentage-only term has no
+   * principal to count down from until one is derived, and guessing it would be a fabrication.
+   */
+  advanceOutstanding: string | null;
+}
+
 export interface CommercialSummaryResponse {
   projectId: string;
   currency: string | null;
@@ -1102,9 +1124,16 @@ export interface CommercialSummaryResponse {
   };
   certification: CommercialCertificationSummary;
   receivables: CommercialReceivablesSummary;
-  /** Read-first contractual terms only — no held/released/recovered values (Gate C C5). */
+  /** The negotiated contractual terms. The balances they produce are `securityPosition`. */
   retention: CommercialRetentionSummary | null;
   advances: CommercialAdvanceSummary[];
+  /**
+   * What the terms above have actually produced to date, derived from the deductions on
+   * effective certificates (the only place either is recorded). Both are null for a MILESTONE
+   * contract — ADR-023 CONST-COM-013/014: a payment-schedule contract deducts neither, so a
+   * zero would answer a question that does not apply.
+   */
+  securityPosition: CommercialSecurityPosition;
   guarantees: CommercialGuaranteeSummary[];
   attention: CommercialAttentionItem[];
   capabilities: CommercialCapabilities;
@@ -1289,6 +1318,160 @@ export interface CommercialCurrentCycleResponse {
   asOf: string;
 }
 
+// ─── Billing & Collection (project-scoped AR position) ──────────────────────────
+//
+// The client-facing money-in view for one project's main contract: what has been invoiced,
+// what has been collected against those invoices, and what is still owed. Every figure is on
+// the **invoice-total basis** (VAT-inclusive) — settlement is measured against what the client
+// was actually asked to pay, never against a pre-VAT certified or plan amount. `subtotal` and
+// `vatAmount` are carried alongside so a screen that shows both can label the basis.
+
+/**
+ * Mirrors the AR `InvoiceDocStatus` / `PostingStatus` Prisma enums. Declared here rather than
+ * imported from `./enums.js` because those are accounting enums and `@erp/types` does not yet
+ * publish them; the commercial workspace only ever reads them.
+ */
+export type ClientInvoiceDocStatus = 'DRAFT' | 'APPROVED' | 'CANCELLED';
+
+export type ArPostingStatus =
+  | 'NOT_POSTED'
+  | 'PENDING'
+  | 'POSTED'
+  | 'FAILED'
+  | 'REVERSED'
+  | 'OPENING_BALANCE';
+
+/** Where a client invoice came from. `NONE` = a migration-loaded invoice with no source document. */
+export type ClientInvoiceSourceKind = 'INSTALLMENT' | 'IPC' | 'NONE';
+
+export interface ClientInvoiceSource {
+  kind: ClientInvoiceSourceKind;
+  /** The source document's human reference — the installment name, or the IPA ref behind the IPC. */
+  label: string | null;
+  /** The source record's id, for a drill-through. Null for `NONE`. */
+  id: string | null;
+}
+
+/**
+ * How an invoice stands with the client. Derived server-side from the document's own lifecycle
+ * plus its allocated receipts — never re-derived in the browser.
+ *
+ * `DRAFT` and `CANCELLED` mirror `documentStatus`; `AWAITING_POSTING` is an approved invoice the
+ * GL has not taken yet (a real commercial claim, not yet an accounting fact). The three
+ * settlement states apply only once the invoice is POSTED.
+ */
+export type ClientInvoiceSettlementStatus =
+  | 'DRAFT'
+  | 'AWAITING_POSTING'
+  | 'UNPAID'
+  | 'PARTIALLY_PAID'
+  | 'PAID'
+  | 'CANCELLED';
+
+export interface CommercialInvoiceRow {
+  id: string;
+  invoiceNumber: string | null;
+  source: ClientInvoiceSource;
+  invoiceDate: string;
+  dueDate: string;
+  currency: string;
+  /** Pre-VAT. Null without financial visibility. */
+  subtotal: string | null;
+  /** Null without financial visibility. */
+  vatAmount: string | null;
+  /** VAT-inclusive — the settlement basis. Null without financial visibility. */
+  totalAmount: string | null;
+  /** Sum of posted allocations against this invoice. Null without financial visibility. */
+  paidAmount: string | null;
+  /** AR-maintained balance. Null without financial visibility. */
+  outstandingAmount: string | null;
+  documentStatus: ClientInvoiceDocStatus;
+  postingStatus: ArPostingStatus;
+  status: ClientInvoiceSettlementStatus;
+  /**
+   * Whole UTC days past `dueDate`, measured against the **server** clock, and 0 when not yet due
+   * or already settled. Whether a client is late is a commercial fact with consequences; a
+   * browser with a skewed clock does not get a vote.
+   */
+  daysOverdue: number;
+}
+
+/** One receipt's allocation against one of this contract's invoices. */
+export interface CommercialReceiptAllocationRow {
+  id: string;
+  invoiceId: string;
+  invoiceNumber: string | null;
+  allocatedAmount: string | null;
+  allocationDate: string;
+}
+
+/**
+ * A client payment that has landed against this contract.
+ *
+ * `PaymentReceipt` is client-scoped, not project-scoped — a receipt is money from a client, and
+ * only its allocations tie it to a particular contract. This list is therefore exactly "receipts
+ * with at least one posted allocation against an invoice of this contract". `unallocatedAmount`
+ * is the receipt's own client-level unapplied balance, not a project figure; it is reported so
+ * unapplied cash is never hidden, and labelled as client-level wherever it is shown.
+ */
+export interface CommercialReceiptRow {
+  id: string;
+  receiptDate: string;
+  currency: string;
+  totalAmount: string | null;
+  allocatedAmount: string | null;
+  unallocatedAmount: string | null;
+  /** Sum of this receipt's posted allocations against *this contract's* invoices. */
+  allocatedToThisContract: string | null;
+  paymentMethod: string | null;
+  reference: string | null;
+  postingStatus: ArPostingStatus;
+  allocations: CommercialReceiptAllocationRow[];
+}
+
+/** One ageing bucket over posted invoices still carrying a balance. */
+export interface CommercialAgingBucket {
+  bucket: 'NOT_DUE' | 'DAYS_1_30' | 'DAYS_31_60' | 'DAYS_61_90' | 'DAYS_90_PLUS';
+  amount: string | null;
+  invoiceCount: number;
+}
+
+/**
+ * The project's billing position. All four figures are on the invoice-total basis and count
+ * **posted** invoices only — a draft invoice is not yet a claim on the client.
+ */
+export interface CommercialBillingPosition {
+  invoiced: string | null;
+  collected: string | null;
+  outstanding: string | null;
+  /** Outstanding on posted invoices whose due date has passed. */
+  overdue: string | null;
+  postedInvoiceCount: number;
+  overdueInvoiceCount: number;
+  /** Collected over invoiced as a whole percent, or null when nothing has been invoiced. */
+  collectionRate: number | null;
+}
+
+export interface CommercialBillingResponse {
+  projectId: string;
+  contractId: string | null;
+  currency: string | null;
+  billingModel: `${BillingModel}` | null;
+  financialsVisible: boolean;
+  position: CommercialBillingPosition;
+  invoices: CommercialInvoiceRow[];
+  receipts: CommercialReceiptRow[];
+  /**
+   * Unapplied cash on this client's posted receipts. **Client-level, not project-level** — an
+   * unallocated receipt has not been attributed to any contract yet, which is precisely why it
+   * needs allocating. Null without financial visibility.
+   */
+  clientUnappliedTotal: string | null;
+  aging: CommercialAgingBucket[];
+  capabilities: CommercialCapabilities;
+  asOf: string;
+}
+
 // ─── Project Financial Position (ADR-013) ───────────────────────────────────────
 
 /**
@@ -1424,9 +1607,19 @@ export interface VariationOrderResponse {
   updatedAt: string;
 }
 
-/** A single VariationOrder without its lines — for the per-contract list read. */
+/**
+ * A single VariationOrder without its lines — for the per-contract list read.
+ *
+ * ADR-026 CONST-VAR-011: the at-risk figures ride along on the list row so a reader can tell
+ * sanctioned-early work from ordinary pending scope without opening every VO. `atRiskExposure`
+ * is the Σ of the recorded exposures (what ACCO accepted by starting), which is deliberately
+ * NOT the VO's net price and never enters the contract value.
+ */
 export type VariationOrderListItem = Omit<VariationOrderResponse, 'lines'> & {
   lineCount: number;
+  atRiskAuthorisationCount: number;
+  /** Decimal string; "0.00" when there are none. Null without financial visibility. */
+  atRiskExposure: string | null;
 };
 
 export interface VariationOrderListResponse {

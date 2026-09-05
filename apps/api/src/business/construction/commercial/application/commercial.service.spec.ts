@@ -47,6 +47,9 @@ function build(overrides: {
   applicationCount?: number;
   installments?: unknown;
   variationInputs?: unknown;
+  billingInvoices?: unknown;
+  receipts?: unknown;
+  clientUnapplied?: Decimal;
 }) {
   const repo = {
     findMainContract: jest
@@ -61,6 +64,11 @@ function build(overrides: {
     findRecentActivity: jest.fn().mockResolvedValue([]),
     findBoqVersionNumber: jest.fn().mockResolvedValue(overrides.boqVersionNumber ?? 3),
     countSubmittedApplications: jest.fn().mockResolvedValue(overrides.applicationCount ?? 0),
+    findInvoicesForBilling: jest.fn().mockResolvedValue(overrides.billingInvoices ?? []),
+    findReceiptsForContract: jest.fn().mockResolvedValue(overrides.receipts ?? []),
+    sumClientUnappliedReceipts: jest
+      .fn()
+      .mockResolvedValue(overrides.clientUnapplied ?? new Decimal(0)),
   };
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
   const tenancy = { getClient: () => ({}) };
@@ -663,5 +671,346 @@ describe('CommercialService.getCurrentCycle', () => {
     expect(result.stage).toBe('AWAITING_PAYMENT');
     expect(result.nextAction).toBeNull();
     expect(result.blockers).toContain('RECEIPT_WORKFLOW_UNAVAILABLE');
+  });
+});
+
+// ─── Billing & Collection ───────────────────────────────────────────────────────
+
+/**
+ * A client invoice as `findInvoicesForBilling` returns it. The defaults describe a posted,
+ * unpaid invoice, so a test only has to state the thing it is actually about.
+ */
+function billingInvoice(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'inv-1',
+    invoiceNumber: 'INV-0001',
+    invoiceDate: new Date('2026-08-01'),
+    dueDate: new Date('2026-08-31'),
+    currencyCode: 'USD',
+    subtotal: new Decimal('100000'),
+    vatAmount: new Decimal('5000'),
+    totalAmount: new Decimal('105000'),
+    outstandingAmount: new Decimal('105000'),
+    documentStatus: 'APPROVED',
+    postingStatus: 'POSTED',
+    sourceInstallmentId: null,
+    sourceInstallment: null,
+    sourceIpcId: null,
+    sourceIpc: null,
+    allocations: [],
+    ...overrides,
+  };
+}
+
+describe('getBilling — the invoice-total settlement basis', () => {
+  beforeAll(() => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-15T00:00:00.000Z'));
+  });
+  afterAll(() => {
+    jest.useRealTimers();
+  });
+
+  /**
+   * The error this read model exists to prevent: measuring collection against a pre-VAT figure.
+   * A $105,000 invoice fully paid is 100% collected — not 105% of the $100,000 net behind it.
+   */
+  it('measures collection against the VAT-inclusive invoice total, not the net subtotal', async () => {
+    const { service } = build({
+      billingInvoices: [
+        billingInvoice({
+          outstandingAmount: new Decimal('0'),
+          allocations: [
+            {
+              id: 'al-1',
+              allocatedAmount: new Decimal('105000'),
+              allocationDate: new Date('2026-09-01'),
+              paymentReceiptId: 'r-1',
+            },
+          ],
+        }),
+      ],
+    });
+
+    const result = await service.getBilling(financeIdentity, 'p-1');
+
+    expect(result.position.invoiced).toBe('105000.00');
+    expect(result.position.collected).toBe('105000.00');
+    expect(result.position.outstanding).toBe('0.00');
+    expect(result.position.collectionRate).toBe(100);
+    expect(result.invoices[0]!.status).toBe('PAID');
+    // Both bases are carried so a screen showing them together can label which is which.
+    expect(result.invoices[0]!.subtotal).toBe('100000.00');
+    expect(result.invoices[0]!.vatAmount).toBe('5000.00');
+  });
+
+  /** A draft invoice is a document somebody is still writing, not a claim on the client. */
+  it('counts only posted invoices toward the position', async () => {
+    const { service } = build({
+      billingInvoices: [
+        billingInvoice({ id: 'inv-draft', documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED' }),
+        billingInvoice({ id: 'inv-posted' }),
+      ],
+    });
+
+    const result = await service.getBilling(financeIdentity, 'p-1');
+
+    expect(result.position.postedInvoiceCount).toBe(1);
+    expect(result.position.invoiced).toBe('105000.00');
+    expect(result.invoices).toHaveLength(2);
+    expect(result.invoices.find((i) => i.id === 'inv-draft')!.status).toBe('DRAFT');
+  });
+
+  /** An approved invoice the GL has not taken yet is a normal step, not a settlement state. */
+  it('distinguishes an approved-but-unposted invoice from an unpaid one', async () => {
+    const { service } = build({
+      billingInvoices: [billingInvoice({ postingStatus: 'NOT_POSTED' })],
+    });
+    const result = await service.getBilling(financeIdentity, 'p-1');
+    expect(result.invoices[0]!.status).toBe('AWAITING_POSTING');
+  });
+
+  /** Lateness is measured against the server clock in whole UTC days, and the buckets follow it. */
+  it('ages an overdue balance against the server clock', async () => {
+    const { service } = build({
+      billingInvoices: [billingInvoice({ dueDate: new Date('2026-08-31') })],
+    });
+
+    const result = await service.getBilling(financeIdentity, 'p-1');
+
+    expect(result.invoices[0]!.daysOverdue).toBe(15);
+    expect(result.position.overdue).toBe('105000.00');
+    expect(result.position.overdueInvoiceCount).toBe(1);
+    expect(result.aging.find((b) => b.bucket === 'DAYS_1_30')).toEqual({
+      bucket: 'DAYS_1_30',
+      amount: '105000.00',
+      invoiceCount: 1,
+    });
+  });
+
+  /** Not-yet-due money is outstanding but not late; it must not land in an overdue bucket. */
+  it('puts a balance that is not yet due in NOT_DUE and out of overdue', async () => {
+    const { service } = build({
+      billingInvoices: [billingInvoice({ dueDate: new Date('2026-10-31') })],
+    });
+
+    const result = await service.getBilling(financeIdentity, 'p-1');
+
+    expect(result.invoices[0]!.daysOverdue).toBe(0);
+    expect(result.position.overdue).toBe('0.00');
+    expect(result.aging.find((b) => b.bucket === 'NOT_DUE')!.amount).toBe('105000.00');
+  });
+
+  it('names the source document a reader recognises', async () => {
+    const { service } = build({
+      billingInvoices: [
+        billingInvoice({
+          id: 'inv-m',
+          sourceInstallmentId: 'inst-3',
+          sourceInstallment: { id: 'inst-3', name: 'Structural frame', sortOrder: 2 },
+        }),
+        billingInvoice({
+          id: 'inv-c',
+          sourceIpcId: 'ipc-6',
+          sourceIpc: {
+            id: 'ipc-6',
+            application: { id: 'ipa-6', applicationRef: 'IPA-006', applicationNumber: 6 },
+          },
+        }),
+        billingInvoice({ id: 'inv-migrated' }),
+      ],
+    });
+
+    const result = await service.getBilling(financeIdentity, 'p-1');
+    const byId = new Map(result.invoices.map((i) => [i.id, i.source]));
+
+    expect(byId.get('inv-m')).toEqual({
+      kind: 'INSTALLMENT',
+      label: 'Structural frame',
+      id: 'inst-3',
+    });
+    expect(byId.get('inv-c')).toEqual({ kind: 'IPC', label: 'IPA-006', id: 'ipc-6' });
+    // A migration-loaded invoice says it has no source rather than borrowing one.
+    expect(byId.get('inv-migrated')).toEqual({ kind: 'NONE', label: null, id: null });
+  });
+
+  /**
+   * A receipt belongs to a client, not a project. Only the allocations against *this* contract's
+   * invoices are this project's money — the receipt's own total may be larger.
+   */
+  it('reports only the part of a receipt allocated to this contract', async () => {
+    const { service } = build({
+      receipts: [
+        {
+          id: 'r-1',
+          receiptDate: new Date('2026-09-01'),
+          currencyCode: 'USD',
+          totalAmount: new Decimal('200000'),
+          allocatedAmount: new Decimal('180000'),
+          unallocatedAmount: new Decimal('20000'),
+          paymentMethod: 'Bank Transfer',
+          reference: 'free text',
+          bankReference: 'TRX784512',
+          postingStatus: 'POSTED',
+          clientAllocations: [
+            {
+              id: 'al-1',
+              allocatedAmount: new Decimal('105000'),
+              allocationDate: new Date('2026-09-01'),
+              clientInvoiceId: 'inv-1',
+              invoice: { id: 'inv-1', invoiceNumber: 'INV-0001', contractId: 'c-1' },
+            },
+            {
+              id: 'al-2',
+              allocatedAmount: new Decimal('75000'),
+              allocationDate: new Date('2026-09-01'),
+              clientInvoiceId: 'inv-other',
+              invoice: { id: 'inv-other', invoiceNumber: 'INV-9999', contractId: 'c-other' },
+            },
+          ],
+        },
+      ],
+      clientUnapplied: new Decimal('20000'),
+    });
+
+    const result = await service.getBilling(financeIdentity, 'p-1');
+
+    expect(result.receipts).toHaveLength(1);
+    expect(result.receipts[0]!.allocatedToThisContract).toBe('105000.00');
+    expect(result.receipts[0]!.allocations).toHaveLength(1);
+    // Unapplied cash is never hidden, and is reported as the client-level figure it is.
+    expect(result.receipts[0]!.unallocatedAmount).toBe('20000.00');
+    expect(result.clientUnappliedTotal).toBe('20000.00');
+    // The bank's reference reconciles against a statement; free text is only the fallback.
+    expect(result.receipts[0]!.reference).toBe('TRX784512');
+  });
+
+  /** Withheld, never zeroed — a figure the caller may not see must not read as "nothing owed". */
+  it('withholds every money field without financial visibility', async () => {
+    const { service } = build({ billingInvoices: [billingInvoice()] });
+    const result = await service.getBilling(noFinanceIdentity, 'p-1');
+
+    expect(result.position.invoiced).toBeNull();
+    expect(result.position.collectionRate).toBeNull();
+    expect(result.invoices[0]!.totalAmount).toBeNull();
+    // Structural facts stay readable: what exists is not a commercial secret.
+    expect(result.invoices[0]!.status).toBe('UNPAID');
+    expect(result.position.postedInvoiceCount).toBe(1);
+  });
+
+  /** "Nothing invoiced" and "0% collected" are different statements; only one is true here. */
+  it('returns a null collection rate when nothing has been invoiced', async () => {
+    const { service } = build({ billingInvoices: [] });
+    const result = await service.getBilling(financeIdentity, 'p-1');
+    expect(result.position.collectionRate).toBeNull();
+    expect(result.position.invoiced).toBe('0.00');
+  });
+
+  it('answers with no contract rather than an error when the project has none', async () => {
+    const { service } = build({ contract: null });
+    const result = await service.getBilling(financeIdentity, 'p-1');
+    expect(result.contractId).toBeNull();
+    expect(result.invoices).toEqual([]);
+    expect(result.aging.every((b) => b.amount === null)).toBe(true);
+  });
+});
+
+describe('capabilities — receipt permissions are the caller-s, not a hardcoded false', () => {
+  it('grants receipt capabilities from the real permissions', async () => {
+    const identity = identityWith([
+      PERMISSIONS.contractsView,
+      PERMISSIONS.financialPositionView,
+      PERMISSIONS.receiptsCreate,
+      PERMISSIONS.receiptsAllocate,
+    ]);
+    const { service } = build({});
+    const result = await service.getSummary(identity, 'p-1');
+    expect(result.capabilities.canRecordReceipt).toBe(true);
+    expect(result.capabilities.canAllocateReceipt).toBe(true);
+  });
+
+  it('withholds them from a caller without the permission', async () => {
+    const { service } = build({});
+    const result = await service.getSummary(financeIdentity, 'p-1');
+    expect(result.capabilities.canRecordReceipt).toBe(false);
+    expect(result.capabilities.canAllocateReceipt).toBe(false);
+  });
+});
+
+describe('securityPosition — retention held and advance recovered', () => {
+  /** CONST-COM-005: both come from the deductions on effective certificates, categorised. */
+  it('sums the RETENTION and ADVANCE_RECOVERY slices of the certificate deductions', async () => {
+    const { service } = build({
+      contract: {
+        ...baseContract,
+        advanceTerms: [
+          {
+            id: 'a-1',
+            advanceType: 'MOBILIZATION',
+            description: null,
+            amount: new Decimal('240000'),
+            percentage: null,
+            recoveryRate: new Decimal('0.1'),
+          },
+        ],
+      },
+      certs: [
+        {
+          id: 'ipc-1',
+          certifiedTotal: new Decimal('500000'),
+          deductions: [
+            { amount: new Decimal('25000'), deductionType: 'RETENTION' },
+            { amount: new Decimal('50000'), deductionType: 'ADVANCE_RECOVERY' },
+            { amount: new Decimal('1000'), deductionType: 'OTHER' },
+          ],
+        },
+      ],
+    });
+
+    const result = await service.getSummary(financeIdentity, 'p-1');
+
+    expect(result.securityPosition.applicable).toBe(true);
+    expect(result.securityPosition.retentionHeld).toBe('25000.00');
+    expect(result.securityPosition.advanceRecovered).toBe('50000.00');
+    expect(result.securityPosition.advanceOutstanding).toBe('190000.00');
+    // The same deduction set still drives certified net — the two can never disagree.
+    expect(result.metrics.certifiedNet.amount).toBe('424000.00');
+  });
+
+  /**
+   * ADR-023 CONST-COM-013/014 — a payment-schedule contract deducts neither. `applicable: false`
+   * rather than three zeros: "we hold no retention" and "retention does not apply here" are
+   * different statements, and only the second is true.
+   */
+  it('reports not-applicable rather than zero on a MILESTONE contract', async () => {
+    const { service } = build({ contract: { ...baseContract, billingModel: 'MILESTONE' } });
+    const result = await service.getSummary(financeIdentity, 'p-1');
+    expect(result.securityPosition).toEqual({
+      applicable: false,
+      retentionHeld: null,
+      advanceRecovered: null,
+      advanceOutstanding: null,
+    });
+  });
+
+  /** A percentage-only advance has no principal to count down from, so none is invented. */
+  it('leaves advance outstanding null when no term carries an amount', async () => {
+    const { service } = build({
+      contract: {
+        ...baseContract,
+        advanceTerms: [
+          {
+            id: 'a-1',
+            advanceType: 'MOBILIZATION',
+            description: null,
+            amount: null,
+            percentage: new Decimal('0.2'),
+            recoveryRate: new Decimal('0.1'),
+          },
+        ],
+      },
+    });
+    const result = await service.getSummary(financeIdentity, 'p-1');
+    expect(result.securityPosition.advanceRecovered).toBe('0.00');
+    expect(result.securityPosition.advanceOutstanding).toBeNull();
   });
 });

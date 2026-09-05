@@ -68,12 +68,29 @@ export class VariationOrderService {
   ): Promise<VariationOrderListResponse> {
     await this.projectAccess.assertContract(identity, contractId);
     const prisma = this.tenancy.getClient();
-    const vos = await this.repo.findByContract(prisma, identity.activeOrganizationId, contractId);
+    const orgId = identity.activeOrganizationId;
+    const [vos, atRisk] = await Promise.all([
+      this.repo.findByContract(prisma, orgId, contractId),
+      // CONST-VAR-011: one grouped read for the whole contract, so a list of 40 variations does
+      // not become 40 at-risk queries. A failure here must not take the list down with it —
+      // "we could not load the at-risk figures" is a missing badge, not a missing variation.
+      this.repo
+        .findAtRiskTotalsByContract(prisma, orgId, contractId)
+        .catch(() => new Map<string, { count: number; exposure: Decimal }>()),
+    ]);
+    const mayViewFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
+
     return {
       contractId,
       variations: vos.map((vo) => {
         const { lines, ...rest } = this.toResponse(vo);
-        return { ...rest, lineCount: lines.length };
+        const risk = atRisk.get(vo.id);
+        return {
+          ...rest,
+          lineCount: lines.length,
+          atRiskAuthorisationCount: risk?.count ?? 0,
+          atRiskExposure: mayViewFinancials ? (risk?.exposure ?? new Decimal(0)).toFixed(2) : null,
+        };
       }),
     };
   }
