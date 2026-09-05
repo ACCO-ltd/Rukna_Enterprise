@@ -1,6 +1,6 @@
 {
   "title": "Commercial",
-  "subtitle": "Contract administration, certification, billing and collection",
+  "subtitle": "Manage contract value, billing and collection.",
   "actions": {
     "more": "More",
     "backToProject": "Back to project",
@@ -8,7 +8,8 @@
     "view": "View",
     "open": "Open",
     "viewTerms": "View terms",
-    "retry": "Retry"
+    "retry": "Retry",
+    "edit": "Edit"
   },
   "states": {
     "loadFailed": "Could not load commercial data",
@@ -22,7 +23,7 @@
     "label": "Commercial sections",
     "overview": "Overview",
     "main-contract": "Main Contract",
-    "applications": "Applications & Certificates",
+    "applications": "Applications & Certification",
     "variations": "Variations",
     "retention-advances": "Retention & Advances",
     "guarantees": "Guarantees"
@@ -50,7 +51,8 @@
     "restrictedShort": "—",
     "RESTRICTED": "Restricted",
     "UNAVAILABLE": "Not applicable",
-    "FAILED": "Unavailable"
+    "FAILED": "Unavailable",
+    "NOT_APPLICABLE": "Not applicable"
   },
   "contractStatus": {
     "DRAFT": "Draft",
@@ -73,7 +75,10 @@
       "CANCELLED": "This contract was cancelled and is commercially read-only.",
       "TERMINATED": "This contract was terminated and is commercially read-only."
     },
-    "terminalHint": "Records remain available for reference and export. No further applications or certificates can be raised against it."
+    "terminalHint": "Records remain available for reference and export. No further applications or certificates can be raised against it.",
+    "notActiveTitle": "Contract is {status}",
+    "notActiveHint": "Billing begins once the contract is executed and active. Complete the contract to start the payment cycle.",
+    "notActiveAction": "Open contract"
   },
   "attention": {
     "none": "Nothing needs attention right now.",
@@ -125,7 +130,13 @@
     "boqBaseline": "BOQ baseline",
     "boqVersion": "Version {number}",
     "billingModel": "Billing model",
-    "termsLocked": "Contract terms are locked while the contract is active."
+    "termsLocked": "Contract terms are locked while the contract is active.",
+    "currency": "Currency",
+    "clientLockedTitle": "Client details are locked",
+    "clientLockedHint": "The client name and tax details were frozen onto this contract when it was executed. Editing the client record will not change them.",
+    "willLockTitle": "Executing locks the client details",
+    "willLockHint": "The client name and tax details will be frozen onto this contract when it is executed.",
+    "viewBoq": "View the BOQ baseline"
   },
   "retention": {
     "title": "Retention",
@@ -135,7 +146,13 @@
     "none": "No retention terms set.",
     "capOfValue": "{percent} of contract value",
     "release": "Release terms",
-    "releaseTerms": "{pc} at practical completion, {fc} at final completion"
+    "releaseTerms": "{pc} at practical completion, {fc} at final completion",
+    "releaseAtPc": "Release at practical completion",
+    "releaseAtFinal": "Release at final account",
+    "held": "Retained to date",
+    "heldUnknown": "No certificates yet",
+    "heldNotApplicable": "Not applicable",
+    "notApplicable": "This contract is billed from a payment schedule, which deducts no retention."
   },
   "advances": {
     "title": "Advances",
@@ -151,7 +168,11 @@
       "EQUIPMENT": "Equipment",
       "OTHER": "Other"
     },
-    "percentageOfValue": "{percent} of contract value"
+    "percentageOfValue": "{percent} of contract value",
+    "recovered": "Recovered to date",
+    "recoveredUnknown": "No certificates yet",
+    "outstanding": "Outstanding",
+    "recoveredNotApplicable": "Not applicable"
   },
   "retentionAdvances": {
     "readFirstNote": "Contractual terms only. Held, released and recovered balances are calculated by a future release and are not shown here yet.",
@@ -169,7 +190,15 @@
     "issueDate": "Issued",
     "expiryDate": "Expires",
     "title": "Guarantees",
-    "expires": "expires {date}"
+    "expires": "expires {date}",
+    "add": "Add guarantee",
+    "col": {
+      "type": "Type",
+      "reference": "Reference",
+      "value": "Value",
+      "expiry": "Expiry date",
+      "status": "Status"
+    }
   },
   "guaranteeStatus": {
     "ACTIVE": "Active",
@@ -212,7 +241,10 @@
       "outstanding": "Outstanding",
       "settlement": "Settlement",
       "nextAction": "Next action"
-    }
+    },
+    "hiddenTitle": "This contract has no application workflow",
+    "hiddenHint": "It is billed from a negotiated payment schedule, so there are no interim payment applications or certificates. Billing happens on the payment plan.",
+    "hiddenAction": "Go to Billing & Collection"
   },
   "contractSecurity": {
     "title": "Contract & Security",
@@ -231,12 +263,75 @@
     "col": {
       "action": "Action",
       "invoice": "Invoice",
-      "source": "Source application",
+      "source": "Source",
       "amount": "Invoiced",
       "received": "Received",
       "outstanding": "Outstanding",
-      "status": "Payment status"
-    }
+      "status": "Status",
+      "issued": "Issued",
+      "due": "Due",
+      "total": "Total",
+      "paid": "Paid",
+      "balance": "Balance"
+    },
+    "noContractTitle": "No main contract",
+    "noContractHint": "Billing runs against the main contract. Create and execute a contract first.",
+    "loadFailed": "Could not load the billing position",
+    "loadFailedHint": "Something went wrong loading invoices and receipts. Try again.",
+    "retry": "Retry",
+    "collectionProgress": "Collection progress",
+    "collectedOf": "{collected} of {invoiced}",
+    "nothingInvoiced": "Nothing has been invoiced yet.",
+    "basisNote": "Measured against invoice totals, VAT included.",
+    "receipts": "Client receipts",
+    "noInvoices": "No client invoices have been raised against this contract yet.",
+    "noReceipts": "No client payments have been allocated to this contract yet.",
+    "receiptsNote": "Receipts are shown with the allocations that settle this contract's invoices.",
+    "methodUnknown": "Method not recorded",
+    "unnumbered": "Unnumbered draft",
+    "unapplied": "Unapplied",
+    "unappliedTitle": "Unapplied receipts",
+    "unappliedHint": "Client-level, not project-level: this cash has not been attributed to any contract yet.",
+    "allocate": "Allocate",
+    "overdueBy": "{days} days overdue",
+    "vatNote": "Totals are VAT-inclusive. Settlement is measured against the invoice total, never against a pre-VAT certified amount.",
+    "position": {
+      "title": "Billing position",
+      "invoiced": "Invoiced",
+      "collected": "Collected",
+      "outstanding": "Outstanding",
+      "overdue": "Overdue",
+      "postedInvoices": "{n} posted invoices",
+      "ofInvoiced": "{percent}% of invoiced",
+      "vatInclusive": "VAT inclusive",
+      "overdueInvoices": "{n} invoices past due",
+      "nothingOverdue": "Nothing past due"
+    },
+    "source": {
+      "INSTALLMENT": "Installment",
+      "IPC": "Certificate",
+      "NONE": "No source document"
+    },
+    "status": {
+      "DRAFT": "Draft",
+      "AWAITING_POSTING": "Awaiting posting",
+      "UNPAID": "Unpaid",
+      "PARTIALLY_PAID": "Part paid",
+      "PAID": "Paid",
+      "CANCELLED": "Cancelled"
+    },
+    "aging": {
+      "title": "Aging analysis",
+      "nothingOutstanding": "No outstanding balances.",
+      "bucket": {
+        "NOT_DUE": "Not due",
+        "DAYS_1_30": "1–30 days",
+        "DAYS_31_60": "31–60 days",
+        "DAYS_61_90": "61–90 days",
+        "DAYS_90_PLUS": "Over 90 days"
+      }
+    },
+    "noUnapplied": "No unapplied client cash."
   },
   "paymentSchedule": {
     "title": "Payment schedule",
@@ -346,7 +441,55 @@
     "milestone": {
       "title": "Payment schedule",
       "billed": "{billed} of {total} installments invoiced",
-      "view": "Open Billing & Collection"
+      "view": "View payment plan",
+      "installmentOf": "Installment {n} of {total}",
+      "trigger": "Trigger: {trigger}",
+      "evidenceVerified": "Milestone {code} is verified",
+      "allBilledTitle": "Every installment is invoiced",
+      "allBilledHint": "All {total} installments have been billed. Collection is tracked in Billing & Collection."
+    },
+    "restricted": "Restricted",
+    "application": "Application {n}",
+    "claimed": "Claimed",
+    "certified": "Certified",
+    "adjustment": "Certification adjustment",
+    "responsible": "With {role}",
+    "rail": {
+      "contractActive": "Contract active",
+      "installmentDue": "Installment due",
+      "readyToInvoice": "Ready to invoice",
+      "applicationPrepared": "Application prepared",
+      "submitted": "Submitted",
+      "certified": "Certified",
+      "invoiceIssued": "Invoice issued",
+      "awaitingPayment": "Awaiting payment",
+      "settled": "Settled"
+    },
+    "stageTitle": {
+      "NO_CONTRACT": "No contract",
+      "CONTRACT_DRAFT": "Contract not yet active",
+      "READY_FOR_APPLICATION": "Ready for the first application",
+      "APPLICATION_DRAFT": "Application in progress",
+      "APPLICATION_SUBMITTED": "Application submitted",
+      "APPLICATION_RETURNED": "Application returned for revision",
+      "AWAITING_CERTIFICATION": "Awaiting certification",
+      "CERTIFIED": "Certified",
+      "AWAITING_INVOICE": "Ready to invoice",
+      "INVOICE_DRAFT": "Invoice awaiting posting",
+      "AWAITING_PAYMENT": "Awaiting payment",
+      "PARTIALLY_PAID": "Part paid",
+      "SETTLED": "Settled",
+      "MILESTONE_SCHEDULE": "Payment schedule",
+      "TERMINAL": "Contract closed"
+    },
+    "roles": {
+      "PROJECT_MANAGER": "the project manager",
+      "QUANTITY_SURVEYOR": "the quantity surveyor",
+      "SITE_ENGINEER": "the site engineer",
+      "COMMERCIAL_MANAGER": "the commercial manager",
+      "FINANCE_REVIEWER": "finance",
+      "VIEWER": "the team",
+      "CONTRACT_ADMINISTRATOR": "the contract administrator"
     }
   },
   "settlement": {
@@ -447,7 +590,10 @@
       "title": "Title",
       "netPrice": "Net price",
       "status": "Status",
-      "timeImpact": "Time impact"
+      "timeImpact": "Time impact",
+      "type": "Type",
+      "internalStatus": "Internal status",
+      "clientApproval": "Client approval"
     },
     "status": {
       "DRAFT": "Draft",
@@ -584,6 +730,29 @@
         "recorded": "At-risk commencement recorded",
         "recordFailed": "Could not record the at-risk commencement"
       }
+    },
+    "atRiskBadge": "At risk",
+    "summary": {
+      "title": "Variation position",
+      "pending": "Pending client approval",
+      "approved": "Approved variations",
+      "omissions": "Omissions",
+      "atRisk": "At-risk exposure",
+      "count": "{n} variations",
+      "atRiskCount": "on {n} variations",
+      "atRiskNone": "None authorised"
+    },
+    "kind": {
+      "VARIATION": "Variation",
+      "OMISSION": "Omission",
+      "NEUTRAL": "No value change"
+    },
+    "clientApproval": {
+      "APPROVED": "Approved",
+      "REJECTED": "Rejected",
+      "WITHDRAWN": "Withdrawn",
+      "PENDING": "Pending",
+      "NOT_SUBMITTED": "Not submitted"
     }
   },
   "eot": {
@@ -611,6 +780,86 @@
     "toast": {
       "granted": "Extension of time recorded",
       "grantFailed": "Could not record the extension of time"
+    }
+  },
+  "position": {
+    "title": "Contract position",
+    "otherTitle": "Other commercial items",
+    "contractValue": "Contract value",
+    "invoiced": "Invoiced",
+    "collected": "Collected",
+    "outstanding": "Outstanding",
+    "ofContract": "{percent}% of contract",
+    "perContract": "As per contract",
+    "pendingVariations": "Pending variations",
+    "pendingHint": "Not in contract value",
+    "retentionHeld": "Retention held",
+    "retentionHint": "Deducted on certificates",
+    "advanceOutstanding": "Advance outstanding",
+    "advanceRecovered": "{amount} recovered to date",
+    "advanceHint": "To be recovered",
+    "governingIncl": "Incl. {approved} approved variations"
+  },
+  "paymentPlan": {
+    "title": "Payment plan",
+    "viewFull": "View full plan",
+    "empty": "This contract has no payment installments yet.",
+    "restricted": "Restricted",
+    "total": "Total",
+    "notReconciled": "The plan does not total 100% — the contract cannot be billed in full until it does.",
+    "col": {
+      "number": "#",
+      "milestone": "Milestone",
+      "percent": "%",
+      "value": "Value",
+      "status": "Status"
+    },
+    "originalBasis": "Shares are of the original contract value. Approved variations change the contract value but not this plan."
+  },
+  "paymentTerms": {
+    "title": "Payment terms",
+    "model": "Billing model",
+    "measuredHint": "This contract is billed from certified progress. There is no negotiated installment plan — each interim certificate becomes an invoice.",
+    "empty": "No payment installments have been agreed yet.",
+    "total": "Plan total",
+    "reconciled": "Reconciled",
+    "notReconciled": "Does not reconcile",
+    "amendmentHint": "Changing an agreed installment requires a contract amendment.",
+    "afterCommencement": "{days} days after commencement",
+    "trigger": {
+      "ADVANCE": "On commencement",
+      "TIME_BASED": "Time based",
+      "MILESTONE": "On milestone completion"
+    },
+    "col": {
+      "installment": "Installment",
+      "percent": "%",
+      "value": "Value",
+      "trigger": "Trigger"
+    }
+  },
+  "contractStatus_": {
+    "title": "Contract status",
+    "current": "Current status",
+    "next": "Next",
+    "noneRequired": "No further action required at this stage",
+    "exited": "This contract is {status} and has left the normal lifecycle.",
+    "transition": {
+      "SUBMIT_FOR_REVIEW": "Submit for review",
+      "APPROVE_REVIEW": "Approve review",
+      "EXECUTE": "Execute contract",
+      "CLOSE": "Close contract"
+    }
+  },
+  "contractMilestones": {
+    "title": "Contractual milestones",
+    "completed": "Completed",
+    "open": "Open",
+    "col": {
+      "milestone": "Milestone",
+      "description": "Description",
+      "target": "Target date",
+      "status": "Status"
     }
   }
 }

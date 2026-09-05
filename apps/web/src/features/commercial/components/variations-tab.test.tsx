@@ -54,6 +54,8 @@ function listItem(overrides: Partial<VariationOrderListItem> = {}): VariationOrd
     proposedTimeImpactDays: 14,
     netPrice: '25000.00',
     lineCount: 2,
+    atRiskAuthorisationCount: 0,
+    atRiskExposure: '0.00',
     createdBy: 'u-1',
     submittedBy: null,
     submittedAt: null,
@@ -108,6 +110,12 @@ function summary(overrides: Partial<CommercialSummaryResponse> = {}): Commercial
     receivables: { collectionRate: 0, outstandingInvoices: [] },
     retention: null,
     advances: [],
+    securityPosition: {
+      applicable: true,
+      retentionHeld: null,
+      advanceRecovered: null,
+      advanceOutstanding: null,
+    },
     guarantees: [],
     attention: [],
     capabilities: {} as CommercialSummaryResponse['capabilities'],
@@ -200,23 +208,58 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('VariationsTab — contract-value header renders backend figures only', () => {
-  it('shows Original / Approved / Governing and the Pending badge from the summary', () => {
+describe('VariationsTab — the position band renders backend figures only', () => {
+  it('reports pending separately from approved and never adds them', () => {
     stubHooks();
     renderWithProviders(<VariationsTab projectId="p-1" summary={summary()} />, {
       permissions: MANAGE,
       withToast: true,
     });
 
-    // Governing is the emphasised figure; pending is a badge, never folded into governing.
-    expect(screen.getByText('Governing value')).toBeInTheDocument();
-    expect(screen.getByText(/1,025,000/)).toBeInTheDocument();
-    // Pending is a badge beside governing — the "{amount} pending" pill — never folded in.
-    expect(screen.getByText(/5,000.*pending/i)).toBeInTheDocument();
-    // The rule is stated on screen.
+    // CONST-VAR-006a: the two figures are peers, stated apart. Nothing on screen may show
+    // approved + pending as a single total — that would be a contract value nobody agreed to.
+    expect(screen.getByText('Pending client approval')).toBeInTheDocument();
+    expect(screen.getByText('Approved variations')).toBeInTheDocument();
+    // `getAllByText` because the approved total also appears as the VO's own net price in the
+    // list below — the same figure, correctly, in two places.
+    expect(screen.getAllByText(/25,000/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/5,000/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/30,000/)).not.toBeInTheDocument();
+
+    // The rule is stated on screen, not left for the reader to infer from the layout.
     expect(
       screen.getByText(/contract value changes only when a variation is client-approved/i),
     ).toBeInTheDocument();
+  });
+
+  /**
+   * CONST-VAR-011: at-risk work is sanctioned but unapproved. It must be visible as exposure in
+   * the band and marked on its own row — never blended into approved scope.
+   */
+  it('surfaces at-risk exposure in the band and marks the row', () => {
+    stubHooks({
+      variations: [
+        listItem({
+          id: 'vo-9',
+          reference: 'VO-009',
+          title: 'Urgent slab works',
+          status: 'INTERNAL_APPROVED',
+          atRiskAuthorisationCount: 1,
+          atRiskExposure: '20000.00',
+        }),
+      ],
+    });
+    renderWithProviders(<VariationsTab projectId="p-1" summary={summary()} />, {
+      permissions: MANAGE,
+      withToast: true,
+    });
+
+    expect(screen.getByText('At-risk exposure')).toBeInTheDocument();
+    expect(screen.getByText(/20,000/)).toBeInTheDocument();
+    expect(screen.getByText('At risk')).toBeInTheDocument();
+    // Internal state and the client's answer stay in different columns.
+    expect(screen.getByText('Internally approved')).toBeInTheDocument();
+    expect(screen.getByText('Pending')).toBeInTheDocument();
   });
 
   it('renders the no-contract empty state when there is no main contract', () => {

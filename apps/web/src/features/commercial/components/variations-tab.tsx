@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { FilePlus2, GitBranch } from 'lucide-react';
+import { FilePlus2, GitBranch, TriangleAlert } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -16,18 +16,16 @@ import {
   TableRow,
   TableScroll,
 } from '@erp/ui';
-import type {
-  CommercialContractValue,
-  CommercialSummaryResponse,
-  VariationOrderListItem,
-} from '@erp/types';
+import type { CommercialSummaryResponse, VariationOrderListItem } from '@erp/types';
 
 import { EmptyState } from '@/components/empty-state';
 import { formatMoney } from '@/lib/format';
 import { usePermissions } from '@/features/auth/permissions/can';
 
 import { useVariations } from '../hooks/use-commercial';
+import { summariseVariations, variationClientApproval, variationKind } from '../variations-summary';
 import { variationStatusTone } from '../presentation';
+import { PositionBand, type PositionFigure } from './contract-position';
 import { errorText } from './commercial-workspace';
 import { VariationCreateSheet } from './variation-create-sheet';
 import { VariationDetailSheet } from './variation-detail-sheet';
@@ -35,18 +33,17 @@ import { ExtensionOfTimeSection } from './extension-of-time-section';
 import { CertifiedInvoicedByVariationSection } from './certified-invoiced-by-variation-section';
 
 /**
- * The Variations view (ADR-026 Phases 1 + 4). Variations are contract-scoped, so this tab reads
- * the project's MAIN contract from the commercial summary and works against it. With no main
- * contract there is nothing to raise a variation against, so it shows the same empty state the
- * other commercial tabs use.
+ * Variations (ADR-026 Phases 1–5).
  *
- * Only backend figures render: the contract-value header uses the summary's derived
- * `contractValue` (Original / Approved / Governing / Pending), and the VO list shows each VO's
- * server-derived net price and status. Nothing here re-implements a rule (ADR-017).
+ * The governing rule the whole view is shaped around: **a variation changes the contract value
+ * only when the client has approved it** (CONST-VAR-005). So the summary band reports pending
+ * separately from approved and never adds them, the list keeps the internal workflow state and
+ * the client's approval in different columns, and at-risk work — sanctioned early under
+ * CONST-VAR-011 — is marked as the exposure it is rather than blending into approved scope.
  *
- * P3 (certified/invoiced traced by variation) is surfaced below the list as its own section;
- * P5 (at-risk commencement authorisation) lives on the VO detail sheet. Both consume backend read
- * models/commands and re-implement no rule.
+ * Time is the second rule: a proposed `+N days` is justification, not effect. The contractual
+ * completion date moves only through an Extension of Time, which is its own audited command and
+ * its own section below.
  */
 export function VariationsTab({
   projectId,
@@ -66,36 +63,36 @@ export function VariationsTab({
   const [detailId, setDetailId] = React.useState<string | null>(null);
 
   if (!contract) {
-    return (
-      <EmptyState
-        variant="page"
-        title={t('noContractTitle')}
-        description={t('noContractHint')}
-      />
-    );
+    return <EmptyState variant="page" title={t('noContractTitle')} description={t('noContractHint')} />;
   }
 
   const canManage = can('manage:contract');
   const currency = summary.currency ?? contract.currency;
+  const variations = variationsQuery.data?.variations ?? [];
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-h3 font-semibold text-foreground">{t('title')}</h2>
-        <p className="mt-1 text-body-sm text-muted-foreground">{t('subtitle')}</p>
-      </div>
-
-      <ContractValueHeader
-        value={summary.contractValue}
+    <div className="space-y-4">
+      <VariationSummaryBand
+        variations={variations}
         currency={currency}
+        pendingValue={summary.contractValue?.pendingVariations ?? null}
+        approvedValue={summary.contractValue?.approvedVariationsTotal ?? null}
         financialsVisible={summary.financialsVisible}
+        loading={variationsQuery.isPending}
       />
+
+      <p className="text-caption text-muted-foreground">{t('contractValue.rule')}</p>
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-body-sm font-semibold text-foreground">{t('listTitle')}</h3>
           {canManage ? (
-            <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Button
+              size="sm"
+              className="min-h-11 sm:min-h-0"
+              onClick={() => setCreateOpen(true)}
+            >
+              <FilePlus2 size={15} aria-hidden="true" />
               {t('new')}
             </Button>
           ) : null}
@@ -118,7 +115,7 @@ export function VariationsTab({
               {t('retry')}
             </Button>
           </Alert>
-        ) : variationsQuery.data.variations.length === 0 ? (
+        ) : variations.length === 0 ? (
           <EmptyState
             icon={<GitBranch size={22} aria-hidden="true" />}
             variant="page"
@@ -134,20 +131,22 @@ export function VariationsTab({
             }
           />
         ) : (
-          <div className="overflow-hidden rounded-panel border border-border bg-surface shadow-e1">
+          <div className="overflow-hidden rounded-panel border border-border bg-surface">
             <TableScroll>
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t('col.ref')}</TableHead>
                     <TableHead>{t('col.title')}</TableHead>
+                    <TableHead>{t('col.type')}</TableHead>
                     <TableHead className="text-end">{t('col.netPrice')}</TableHead>
-                    <TableHead>{t('col.status')}</TableHead>
                     <TableHead className="text-end">{t('col.timeImpact')}</TableHead>
+                    <TableHead>{t('col.internalStatus')}</TableHead>
+                    <TableHead>{t('col.clientApproval')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {variationsQuery.data.variations.map((vo) => (
+                  {variations.map((vo) => (
                     <VariationRow
                       key={vo.id}
                       vo={vo}
@@ -168,7 +167,7 @@ export function VariationsTab({
       <ExtensionOfTimeSection
         contractId={contract.id}
         projectId={projectId}
-        variations={variationsQuery.data?.variations ?? []}
+        variations={variations}
       />
 
       <VariationCreateSheet
@@ -195,76 +194,75 @@ export function VariationsTab({
 }
 
 /**
- * Original → Approved → Governing, with Pending as a badge/note beside the governing figure.
- * The copy states the rule the figures obey: the contract value only moves when a variation is
- * client-approved (CONST-VAR-005). Pending is management information (CONST-VAR-006a), never
- * folded into governing.
+ * Pending · Approved · Omissions · At-risk exposure.
+ *
+ * Four figures that must never be added together, so they are presented as four answers to four
+ * questions rather than a total. Approved is the only one inside the contract value; pending is
+ * management information (CONST-VAR-006a); omissions are a signed subset of approved, shown
+ * because a reader asking "what has been taken out" should not have to filter the list; at-risk
+ * exposure is money ACCO has put at risk and the client has not yet agreed to at all.
  */
-function ContractValueHeader({
-  value,
+function VariationSummaryBand({
+  variations,
   currency,
+  pendingValue,
+  approvedValue,
   financialsVisible,
+  loading,
 }: {
-  value: CommercialContractValue | null;
+  variations: VariationOrderListItem[];
   currency: string | null;
+  pendingValue: string | null;
+  approvedValue: string | null;
   financialsVisible: boolean;
+  loading: boolean;
 }) {
-  const t = useTranslations('commercial.variations.contractValue');
+  const t = useTranslations('commercial.variations.summary');
   const locale = useLocale() as 'en' | 'ar';
 
-  const money = (raw: string | null) => {
-    if (raw === null) return financialsVisible ? t('notSet') : t('restricted');
-    return formatMoney(raw, currency, locale) ?? t('notSet');
-  };
+  if (loading) return <Skeleton className="h-28 w-full" />;
 
-  const pending = value?.pendingVariations ?? null;
+  const totals = summariseVariations(variations);
+  const money = (value: string | null): PositionFigure['value'] =>
+    !financialsVisible || value === null ? null : (formatMoney(value, currency, locale) ?? null);
+  const blank: PositionFigure['blank'] = financialsVisible ? 'unavailable' : 'restricted';
 
   return (
-    <section className="rounded-panel border border-border bg-surface shadow-e1">
-      <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-        <ValueCell label={t('original')} value={money(value?.originalContractValue ?? null)} />
-        <ValueCell label={t('approved')} value={money(value?.approvedVariationsTotal ?? null)} />
-        <ValueCell
-          label={t('governing')}
-          value={money(value?.governingContractValue ?? null)}
-          emphasis
-          badge={
-            pending !== null && pending !== '0.00' && pending !== '0' ? (
-              <Badge tone="warning">{t('pendingBadge', { amount: money(pending) })}</Badge>
-            ) : null
-          }
-        />
-      </div>
-      <p className="border-t border-border px-4 py-2.5 text-caption text-muted-foreground">
-        {t('rule')}
-      </p>
-    </section>
-  );
-}
-
-function ValueCell({
-  label,
-  value,
-  emphasis,
-  badge,
-}: {
-  label: string;
-  value: string;
-  emphasis?: boolean;
-  badge?: React.ReactNode;
-}) {
-  return (
-    <div className="px-4 py-3.5">
-      <span className="text-micro font-semibold uppercase text-muted-foreground">{label}</span>
-      <p
-        className={`mt-1 tabular-nums ${
-          emphasis ? 'text-h2 font-bold text-foreground' : 'text-h3 font-semibold text-foreground'
-        }`}
-      >
-        {value}
-      </p>
-      {badge ? <div className="mt-1.5">{badge}</div> : null}
-    </div>
+    <PositionBand
+      title={t('title')}
+      currency={currency}
+      figures={[
+        {
+          label: t('pending'),
+          value: money(pendingValue),
+          blank,
+          support: t('count', { n: totals.pendingCount }),
+          small: true,
+        },
+        {
+          label: t('approved'),
+          value: money(approvedValue),
+          blank,
+          support: t('count', { n: totals.approvedCount }),
+          small: true,
+        },
+        {
+          label: t('omissions'),
+          value: money(totals.omissionsTotal),
+          blank,
+          support: t('count', { n: totals.omissionCount }),
+          small: true,
+        },
+        {
+          label: t('atRisk'),
+          value: money(totals.atRiskExposure),
+          blank,
+          support:
+            totals.atRiskCount > 0 ? t('atRiskCount', { n: totals.atRiskCount }) : t('atRiskNone'),
+          small: true,
+        },
+      ]}
+    />
   );
 }
 
@@ -280,6 +278,8 @@ function VariationRow({
   onOpen: () => void;
 }) {
   const t = useTranslations('commercial.variations');
+  const approval = variationClientApproval(vo);
+  const kind = variationKind(vo);
 
   return (
     <TableRow
@@ -293,20 +293,39 @@ function VariationRow({
         }
       }}
     >
-      <TableCell className="font-mono text-caption text-muted-foreground">{vo.reference}</TableCell>
-      <TableCell className="font-medium text-foreground">{vo.title}</TableCell>
-      {/* Net price is neutral tabular — signed, not heat-mapped. An omission reads negative on
-          its own; colouring it red would imply "bad", which a legitimate omission is not. */}
+      <TableCell className="whitespace-nowrap font-mono text-caption text-muted-foreground">
+        {vo.reference}
+      </TableCell>
+      <TableCell className="font-medium text-foreground">
+        <span className="flex flex-wrap items-center gap-1.5">
+          {vo.title}
+          {/* At-risk work is sanctioned but unapproved. Marking it in the list is the whole
+              point of CONST-VAR-011 — it must never look like ordinary approved scope. */}
+          {vo.atRiskAuthorisationCount > 0 ? (
+            <Badge tone="warning">
+              <TriangleAlert size={11} className="me-1" aria-hidden="true" />
+              {t('atRiskBadge')}
+            </Badge>
+          ) : null}
+        </span>
+      </TableCell>
+      <TableCell className="whitespace-nowrap text-caption text-muted-foreground">
+        {t(`kind.${kind}`)}
+      </TableCell>
+      {/* Signed and neutral, never heat-mapped: an omission reads negative on its own, and
+          colouring it red would imply "bad", which a legitimate omission is not. */}
       <TableCell className="text-end tabular-nums">
         {formatMoney(vo.netPrice, currency, locale) ?? '—'}
+      </TableCell>
+      {/* Proposed only. It never moves the contractual completion date (CONST-VAR-003). */}
+      <TableCell className="text-end tabular-nums text-muted-foreground">
+        {vo.proposedTimeImpactDays === null ? '—' : t('daysShort', { n: vo.proposedTimeImpactDays })}
       </TableCell>
       <TableCell>
         <Badge tone={variationStatusTone(vo.status)}>{t(`status.${vo.status}`)}</Badge>
       </TableCell>
-      <TableCell className="text-end tabular-nums text-muted-foreground">
-        {vo.proposedTimeImpactDays === null
-          ? '—'
-          : t('daysShort', { n: vo.proposedTimeImpactDays })}
+      <TableCell className="whitespace-nowrap text-caption text-muted-foreground">
+        {t(`clientApproval.${approval}`)}
       </TableCell>
     </TableRow>
   );

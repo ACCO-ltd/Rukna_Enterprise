@@ -44,6 +44,12 @@ function summary(overrides: Partial<CommercialSummaryResponse> = {}): Commercial
     receivables: { collectionRate: 82, outstandingInvoices: [] },
     retention: { retentionRate: '0.05', retentionCap: '0.10', retentionSplitOnPC: '0.5' },
     advances: [],
+    securityPosition: {
+      applicable: true,
+      retentionHeld: null,
+      advanceRecovered: null,
+      advanceOutstanding: null,
+    },
     guarantees: [],
     attention: [
       {
@@ -76,14 +82,13 @@ function summary(overrides: Partial<CommercialSummaryResponse> = {}): Commercial
 }
 
 describe('OverviewTab', () => {
-  it('renders the summary metrics with a genuine zero and a restricted blank', () => {
+  it('renders the contract position with a genuine zero and a restricted blank', () => {
     renderWithProviders(<OverviewTab projectId="p-1" summary={summary()} />, {
       permissions: ['view:contract', 'view:financial-position'],
     });
 
-    // Labels appear twice by design — once as the headline in the summary strip, once as a
-    // row in the panel that owns the record. Same fact, two altitudes.
-    expect(screen.getAllByText('Contract Value').length).toBeGreaterThan(0);
+    expect(screen.getByText('Contract position')).toBeInTheDocument();
+    expect(screen.getAllByText('Contract value').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Outstanding').length).toBeGreaterThan(0);
     // A genuine zero is a formatted value, not a blank.
     expect(screen.getAllByText('$0.00').length).toBeGreaterThan(0);
@@ -91,18 +96,76 @@ describe('OverviewTab', () => {
     expect(screen.getAllByText('Restricted').length).toBeGreaterThan(0);
   });
 
-  it('states the contract identity the panel is responsible for', () => {
+  /**
+   * Contract identity belongs to Contract & Security. The project shell above already names the
+   * record, and Overview restating the contract number, client and dates is the duplication the
+   * refinement removed — every fact stated once, in the section that owns it.
+   */
+  it('does not restate the contract identity the shell and Contract & Security own', () => {
     renderWithProviders(<OverviewTab projectId="p-1" summary={summary()} />, {
       permissions: ['view:contract', 'view:financial-position'],
     });
 
-    expect(screen.getAllByText('CN-2026-001').length).toBeGreaterThan(0);
-    expect(screen.getByText('Version 3')).toBeInTheDocument();
-    expect(screen.getByText('Progress certification')).toBeInTheDocument();
-    // The baseline is immutable while the contract governs work — say it, do not offer Edit.
-    expect(
-      screen.getByText('Contract terms are locked while the contract is active.'),
-    ).toBeInTheDocument();
+    expect(screen.queryByText('CN-2026-001')).not.toBeInTheDocument();
+    expect(screen.queryByText('Version 3')).not.toBeInTheDocument();
+  });
+
+  /**
+   * CONST-VAR-006a — the single most important invariant on this screen: pending variation value
+   * is reported beside the contract value, never inside it. The headline is the *governing*
+   * value (original + client-approved), and no element may show the two added together.
+   */
+  it('keeps pending variations out of the contract value', () => {
+    const base = summary();
+    renderWithProviders(
+      <OverviewTab
+        projectId="p-1"
+        summary={{
+          ...base,
+          contractValue: {
+            originalContractValue: '1000000.00',
+            approvedVariationsTotal: '25000.00',
+            governingContractValue: '1025000.00',
+            pendingVariations: '180000.00',
+          },
+        }}
+      />,
+      { permissions: ['view:contract', 'view:financial-position'] },
+    );
+
+    expect(screen.getByText('Pending variations')).toBeInTheDocument();
+    expect(screen.getByText('Not in contract value')).toBeInTheDocument();
+    expect(screen.getAllByText(/1,025,000/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/180,000/).length).toBeGreaterThan(0);
+    // 1,025,000 + 180,000 must appear nowhere.
+    expect(screen.queryByText(/1,205,000/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * ADR-023 CONST-COM-013/014 — a payment-schedule contract deducts no retention and recovers no
+   * advance. "Not applicable" and "0.00 held" are different statements and only the first is true.
+   */
+  it('marks retention as not applicable on a milestone contract', () => {
+    const base = summary();
+    renderWithProviders(
+      <OverviewTab
+        projectId="p-1"
+        summary={{
+          ...base,
+          mainContract: { ...base.mainContract!, billingModel: 'MILESTONE' },
+          securityPosition: {
+            applicable: false,
+            retentionHeld: null,
+            advanceRecovered: null,
+            advanceOutstanding: null,
+          },
+        }}
+      />,
+      { permissions: ['view:contract', 'view:financial-position'] },
+    );
+
+    expect(screen.getByText('Retention held')).toBeInTheDocument();
+    expect(screen.getAllByText('Not applicable').length).toBeGreaterThan(0);
   });
 
   it('shows the certification chain as counts', () => {
@@ -131,8 +194,8 @@ describe('OverviewTab', () => {
     ).toBeInTheDocument();
   });
 
-  /** allSettled on the server only pays off if the UI degrades per panel. */
-  it('reports a failed metric in its own panel without losing the page', () => {
+  /** allSettled on the server only pays off if the UI degrades one figure at a time. */
+  it('reports a failed metric in place without losing the page', () => {
     const base = summary();
     renderWithProviders(
       <OverviewTab
@@ -145,9 +208,10 @@ describe('OverviewTab', () => {
       { permissions: ['view:contract', 'view:financial-position'] },
     );
 
-    expect(screen.getByText('Receivables could not be loaded.')).toBeInTheDocument();
-    // The rest of the screen is untouched.
-    expect(screen.getAllByText('CN-2026-001').length).toBeGreaterThan(0);
+    // A broken figure says so — it must never fall back to a zero, which would be a lie.
+    expect(screen.getAllByText('Unavailable').length).toBeGreaterThan(0);
+    // The rest of the position is untouched.
+    expect(screen.getAllByText('Collected').length).toBeGreaterThan(0);
   });
 
   it('surfaces attention items with their action', () => {

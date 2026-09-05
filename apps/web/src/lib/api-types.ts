@@ -75,6 +75,7 @@ import type {
   BoqResponse,
   BoqTreeNodeResponse,
   BoqVersionResponse,
+  ContractPaymentInstallmentResponse,
   ProjectWorkspaceSummaryResponse,
 } from '@erp/types';
 
@@ -381,6 +382,16 @@ export interface ContractDetail extends Contract {
   advanceTerms: ContractAdvanceTerm[];
   guarantees: ContractGuarantee[];
   milestones: ContractMilestone[];
+  /**
+   * ADR-023: the negotiated payment schedule of a MILESTONE contract. The installments *are*
+   * the plan (no separate header), and only the fraction is stored — the money is derived as
+   * `percentage × contractValue`, so there is nothing to drift.
+   *
+   * Empty on a MEASURED_IPC contract, which is billed from certificates instead. The response
+   * has always carried this array; the type omitted it, so the negotiated terms could not be
+   * read anywhere in the app.
+   */
+  paymentInstallments: ContractPaymentInstallmentResponse[];
   attachments: ContractAttachment[];
   client: { id: string; name: string; taxNumber: string | null };
 }
