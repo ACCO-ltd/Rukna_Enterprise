@@ -1,7 +1,25 @@
 # Procurement workspace — refinement (Phase 5)
 
-Status: **BUILT and browser-QA'd 2026-09-05.** Backend + frontend landed; 947 API tests, 1717 web
-tests, both browser states verified. Residual gaps in *Still open*.
+Status: **FROZEN 2026-09-05.**
+
+```
+Boundary / IA                 FROZEN
+ProjectCostBudget backend     COMPLETE   (NEW in Phase 5 — see below)
+Procurement read model        COMPLETE
+Requirements frontend         COMPLETE
+Cost & Commitments frontend   COMPLETE
+MR form: title/priority/est   COMPLETE
+Responsive + dark-mode QA     PASS
+RBAC boundary                 PASS
+Null-vs-zero semantics        PASS
+PO / revision semantics       PASS
+
+Still open                    populated-ledger browser QA
+                              deterministic procurement workflow QA fixture
+Deferred to Cost Control      ProjectCostBudget authoring UI
+```
+
+948 API tests, 1721 web tests, 8 browser specs across two projects.
 Phase 5 of the project-workspace redesign, after Commercial (`commercial-workspace-refinement.md`).
 Sources of truth: **ADR-013** (Project Financial Position), **ADR-018** (bill matching),
 **ADR-020** (BOQ backbone + change classifier), **ADR-022** (DOA + SoD).
@@ -237,3 +255,56 @@ asserting one figure was "larger" than the other, which is false whenever nothin
   not built — budgets are currently set through the API.
 - **`MaterialRequest.title` / `priority` are not yet on the MR create form** in the org
   workspace; the columns read them, and older requests have neither.
+
+---
+
+## 8. `ProjectCostBudget` is NEW in Phase 5, not legacy
+
+Stated plainly so nobody later reads it as pre-existing behaviour and reasons from it the way this
+phase's own spec did. **There was no cost budget model in this codebase before Phase 5.** No
+`Budget`, `CostBudget` or `CostPlan` aggregate, no budget field on `BoqNode`; the only hint —
+`MaterialRequestLine.projectCostCategoryId` — was a dangling column with no model behind it. Every
+"% of budget" figure in the source design had nothing under it.
+
+### What a budget line actually supports
+
+**One total per BOQ node. There is no category-level budgeting inside a BOQ item.**
+
+```
+boqNodeId  XOR  spendCategoryId          ← enforced in the service, both/neither refused
+
+BOQ node 002 Substructure → $600,000                                    ✅ supported
+BOQ node 002 → Materials $300k · Labour $200k · Equipment $100k         ❌ NOT supported
+```
+
+This is recorded because the earlier aspirational model assumed the richer shape, and no UI may
+imply it. Two places obey the distinction and say so in code:
+
+- **The category breakdown carries no budget column.** Only project-level lines are
+  category-coded, so a budget column would populate for those rows and blank for every BOQ-coded
+  one — reading as missing data rather than as the model boundary it is.
+- **Committed / accrued / actual are never summed.** They are stages of one cost's recognition,
+  and no "total exposure" metric exists anywhere in the read model or the UI.
+
+If category-level BOQ budgeting is ever wanted, it is a schema change and an ADR, not a UI feature.
+
+## 9. Budget authoring belongs to Cost Control, not Procurement
+
+**Decided 2026-09-05, before building the editor.** `ProjectCostBudget` is broader than a
+supplier-document workflow: procurement contributes one family of cost events (`PO → COMMITTED`,
+`GRN → ACCRUED`, `Bill → ACTUAL`), while a project budget must eventually also cover labour,
+equipment, internal transport, payroll allocation, site overhead and rework.
+
+```
+PROJECT COST CONTROL (Finance)     PROJECT PROCUREMENT
+owns                               consumes
+  cost budget authoring              the baselined budget
+  versions, baseline, revision       the procurement ledger
+  budget-vs-actual control           its exposure against that budget
+```
+
+So Procurement links out — `No cost budget baselined → Open Cost Control` — rather than becoming
+the owner of budgeting, which would mean moving a mature editor later.
+
+The Finance workspace is the likely home, evolving from today's single financial-position screen
+toward `Overview · Cost Control · Project P&L · Ledger`, subject to its own audit.
