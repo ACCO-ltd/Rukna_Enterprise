@@ -143,6 +143,12 @@ local view switcher uses a quiet segmented control** (selected = subtle fill), s
 inside this module, switching views" rather than "a second global tab bar." Use the shared `ViewSwitcher`,
 not another underline `Tabs`.
 
+> **Narrowed 2026-09-05 (owner call).** `ViewSwitcher` now also has an `underline` appearance, used by
+> Progress. The rule it relaxes is real, so the exception carries its own separation: a shorter row
+> (44px vs 48px), `font-medium` vs `font-semibold`, and a glyph on the **active tab only** — which is
+> also a non-colour signal of which view is current. Segmented stays the default and Commercial stays on
+> it; `underline` is opt-in per call site, not a new default.
+
 Standing anti-patterns for nav: no generic "Change status" control anywhere (lifecycle is business-action
 commands — see ADR-019); no decorative sidebar cards that don't do a job; a level-3 switcher must never
 *look* like the level-2 module tabs.

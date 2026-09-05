@@ -5,10 +5,20 @@ import * as React from 'react';
 import { cn } from '../lib/utils';
 
 /**
- * ViewSwitcher — a quiet segmented control for a *level-3 local view switch* inside a module
- * (ux-doctrine §5). It is deliberately NOT the underline `Tabs` treatment: level-2 module tabs
- * use an underline; a level-3 switcher uses a subtle-fill segmented control so the eye reads
- * "still inside this module, switching views" rather than "a second global tab bar."
+ * ViewSwitcher — a *level-3 local view switch* inside a module (ux-doctrine §5), in one of two
+ * appearances.
+ *
+ * **`segmented`** (default) is the quiet subtle-fill control §5 describes: level-2 module tabs use
+ * an underline, so a segmented level-3 reads as "still inside this module, switching views" rather
+ * than "a second global tab bar."
+ *
+ * **`underline`** was added for Progress on the owner's instruction (2026-09-05). It is the same
+ * treatment as the level-2 tabs and therefore needs its own separation, which it gets from three
+ * things: a shorter row (44px against 48px), `font-medium` against `font-semibold`, and an icon on
+ * the **active tab only** rather than on every tab. That last one is not decoration — it is a
+ * second, non-colour signal of "you are here", alongside the underline and `aria-selected`.
+ *
+ * Opt in per call site. Commercial stays segmented; changing that is a separate decision.
  *
  * The selected segment is a subtle fill (`bg-surface` lifted off a `bg-muted` track) with the
  * accent as its text colour — the accent carries interactivity, not a loud filled background
@@ -53,8 +63,55 @@ const SEGMENT_SELECTED_CLASS = 'bg-surface text-brand-primary shadow-e1';
 const SEGMENT_UNSELECTED_CLASS =
   'text-muted-foreground hover:bg-surface-hover hover:text-foreground';
 
-function segmentClass(selected: boolean): string {
+// The underline appearance. `-mb-px` pulls each segment's own bottom border onto the track's
+// hairline, so the active indicator sits *on* the rule rather than under it.
+const UNDERLINE_TRACK_CLASS =
+  'flex max-w-full items-center gap-1 overflow-x-auto border-b border-border';
+
+const UNDERLINE_BASE_CLASS = cn(
+  '-mb-px inline-flex min-h-11 items-center gap-2 whitespace-nowrap border-b-2 px-3',
+  'text-body-sm font-medium',
+  'transition-colors duration-(--motion-enter) ease-brand',
+  'focus-visible:outline-none focus-visible:shadow-ring',
+);
+
+const UNDERLINE_SELECTED_CLASS = 'border-brand-primary text-brand-primary';
+const UNDERLINE_UNSELECTED_CLASS =
+  'border-transparent text-muted-foreground hover:text-foreground';
+
+export type ViewSwitcherAppearance = 'segmented' | 'underline';
+
+function trackClass(appearance: ViewSwitcherAppearance): string {
+  return appearance === 'underline' ? UNDERLINE_TRACK_CLASS : TRACK_CLASS;
+}
+
+function segmentClass(selected: boolean, appearance: ViewSwitcherAppearance = 'segmented'): string {
+  if (appearance === 'underline') {
+    return cn(
+      UNDERLINE_BASE_CLASS,
+      selected ? UNDERLINE_SELECTED_CLASS : UNDERLINE_UNSELECTED_CLASS,
+    );
+  }
   return cn(SEGMENT_BASE_CLASS, selected ? SEGMENT_SELECTED_CLASS : SEGMENT_UNSELECTED_CLASS);
+}
+
+/**
+ * The label, with the item's glyph in front of it when it is the active view.
+ *
+ * Only when active, and only in the underline appearance: the icon is what tells the eye which
+ * tab is current without relying on the accent colour. Rendering one on every tab would put this
+ * row a hair away from the level-2 project tabs it sits directly beneath.
+ */
+function segmentContent(item: ViewSwitcherItem, selected: boolean, appearance: ViewSwitcherAppearance) {
+  if (appearance !== 'underline' || !selected || !item.icon) return item.label;
+  return (
+    <>
+      <span aria-hidden="true" className="flex shrink-0 items-center">
+        {item.icon}
+      </span>
+      {item.label}
+    </>
+  );
 }
 
 export interface ViewSwitcherItem {
@@ -62,6 +119,11 @@ export interface ViewSwitcherItem {
   label: string;
   /** In link mode, the destination URL for this view (deep-linkable). Ignored in button mode. */
   href?: string;
+  /**
+   * A single glyph, shown before the label **only while this view is active** and only in the
+   * `underline` appearance. Rendered `aria-hidden` — the label is the name.
+   */
+  icon?: React.ReactNode;
 }
 
 export interface ViewSwitcherProps {
@@ -84,6 +146,8 @@ export interface ViewSwitcherProps {
   }) => React.ReactNode;
   /** Names the switcher for assistive tech, e.g. "Progress views". */
   'aria-label': string;
+  /** Defaults to `segmented`. See the note at the top of this file before choosing `underline`. */
+  appearance?: ViewSwitcherAppearance;
   className?: string;
 }
 
@@ -93,6 +157,7 @@ export function ViewSwitcher({
   onValueChange,
   renderLink,
   'aria-label': ariaLabel,
+  appearance = 'segmented',
   className,
 }: ViewSwitcherProps) {
   // ─── Link mode ────────────────────────────────────────────────────────────
@@ -100,14 +165,14 @@ export function ViewSwitcher({
   // no roving focus. The consumer's renderLink carries aria-current="page" on the active link.
   if (renderLink) {
     return (
-      <nav aria-label={ariaLabel} className={cn(TRACK_CLASS, className)}>
+      <nav aria-label={ariaLabel} className={cn(trackClass(appearance), className)}>
         {items.map((item) => {
           const active = item.value === value;
           return renderLink({
             href: item.href ?? '#',
             active,
-            className: segmentClass(active),
-            children: item.label,
+            className: segmentClass(active, appearance),
+            children: segmentContent(item, active, appearance),
             key: item.value,
           });
         })}
@@ -122,6 +187,7 @@ export function ViewSwitcher({
       value={value}
       onValueChange={onValueChange}
       ariaLabel={ariaLabel}
+      appearance={appearance}
       className={className}
     />
   );
@@ -132,12 +198,14 @@ function ButtonSwitcher({
   value,
   onValueChange,
   ariaLabel,
+  appearance,
   className,
 }: {
   items: ViewSwitcherItem[];
   value: string;
   onValueChange?: (value: string) => void;
   ariaLabel: string;
+  appearance: ViewSwitcherAppearance;
   className?: string;
 }) {
   const refs = React.useRef<(HTMLButtonElement | null)[]>([]);
@@ -180,7 +248,7 @@ function ButtonSwitcher({
       role="tablist"
       aria-label={ariaLabel}
       aria-orientation="horizontal"
-      className={cn(TRACK_CLASS, className)}
+      className={cn(trackClass(appearance), className)}
     >
       {items.map((item, index) => {
         const selected = item.value === value;
@@ -197,9 +265,9 @@ function ButtonSwitcher({
             tabIndex={selected ? 0 : -1}
             onClick={() => onValueChange?.(item.value)}
             onKeyDown={(event) => onKeyDown(event, index)}
-            className={segmentClass(selected)}
+            className={segmentClass(selected, appearance)}
           >
-            {item.label}
+            {segmentContent(item, selected, appearance)}
           </button>
         );
       })}

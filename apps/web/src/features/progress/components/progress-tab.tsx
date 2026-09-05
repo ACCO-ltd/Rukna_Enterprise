@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ViewSwitcher } from '@erp/ui';
+import { CalendarDays, CircleCheck, Gauge, PenLine, Settings } from 'lucide-react';
 
 import { MilestonesSection } from '@/features/programme/components/milestones-section';
 import { ActivitiesSection } from '@/features/programme/components/activities-section';
@@ -43,16 +44,33 @@ export function ProgressTab({ projectId }: { projectId: string }) {
 
       <ProgressOverviewHeader projectId={projectId} onGoTo={setView} />
 
+      {/* Underline, on the owner's instruction (2026-09-05), overriding ux-doctrine §5's
+          "level-3 uses a segmented control". It sits directly under the project tab row, so it
+          earns its separation instead from a shorter row, a lighter weight, and a glyph on the
+          active tab only — which doubles as a non-colour signal of which view is current. */}
       <ViewSwitcher
+        appearance="underline"
         aria-label={t('tabs.label')}
         value={view}
         onValueChange={(next) => setView(next as ProgressView)}
         items={[
-          { value: 'overview', label: t('tabs.overview') },
-          { value: 'record', label: t('tabs.record') },
-          { value: 'verification', label: t('tabs.verification') },
-          { value: 'schedule', label: t('tabs.schedule') },
-          { value: 'planSetup', label: t('tabs.planSetup') },
+          { value: 'overview', label: t('tabs.overview'), icon: <Gauge size={16} strokeWidth={1.9} /> },
+          { value: 'record', label: t('tabs.record'), icon: <PenLine size={16} strokeWidth={1.9} /> },
+          {
+            value: 'verification',
+            label: t('tabs.verification'),
+            icon: <CircleCheck size={16} strokeWidth={1.9} />,
+          },
+          {
+            value: 'schedule',
+            label: t('tabs.schedule'),
+            icon: <CalendarDays size={16} strokeWidth={1.9} />,
+          },
+          {
+            value: 'planSetup',
+            label: t('tabs.planSetup'),
+            icon: <Settings size={16} strokeWidth={1.9} />,
+          },
         ]}
       />
 

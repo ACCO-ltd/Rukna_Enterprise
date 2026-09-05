@@ -5,11 +5,12 @@ import { ViewSwitcher } from '@erp/ui';
 import { describe, expect, it, vi } from 'vitest';
 
 /**
- * ViewSwitcher — the quiet segmented control for a level-3 local view switch inside a module
- * (ux-doctrine §5). These pin the contract the Progress workspace relies on: a `tablist` of
- * `tab` buttons with a single selected segment, `onValueChange` on click, and roving arrow-key
- * navigation. It must NOT be the underline `Tabs` treatment — that distinction is visual, but
- * the accessibility model (tablist + roving focus + aria-selected) is what these tests fix.
+ * ViewSwitcher — the level-3 local view switch inside a module (ux-doctrine §5). These pin the
+ * contract the Progress workspace relies on: a `tablist` of `tab` buttons with a single selected
+ * segment, `onValueChange` on click, and roving arrow-key navigation.
+ *
+ * The `underline` appearance (2026-09-05) changes only the styling and the active-tab glyph — the
+ * accessibility model below is identical in both appearances, which is the point of these tests.
  */
 const ITEMS = [
   { value: 'reports', label: 'Daily Reports' },
@@ -130,6 +131,66 @@ function renderLinkSwitcher(value: string) {
     />,
   );
 }
+
+/**
+ * The underline appearance is what Progress uses. It sits directly beneath the level-2 project
+ * tabs, so the glyph on the active tab is doing real work: it is a second, non-colour signal of
+ * which view is current. An inactive tab must not carry one, or the row becomes a copy of the
+ * level-2 bar above it.
+ */
+describe('ViewSwitcher — underline appearance', () => {
+  const WITH_ICONS = [
+    { value: 'overview', label: 'Overview', icon: <svg data-testid="icon-overview" /> },
+    { value: 'setup', label: 'Plan & Setup', icon: <svg data-testid="icon-setup" /> },
+  ];
+
+  it('keeps the tablist accessibility model of the segmented appearance', () => {
+    render(
+      <ViewSwitcher
+        appearance="underline"
+        items={WITH_ICONS}
+        value="overview"
+        onValueChange={vi.fn()}
+        aria-label="Progress views"
+      />,
+    );
+
+    expect(screen.getByRole('tablist', { name: 'Progress views' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Plan & Setup' })).toHaveAttribute(
+      'aria-selected',
+      'false',
+    );
+  });
+
+  it('shows the glyph on the active tab only', () => {
+    render(
+      <ViewSwitcher
+        appearance="underline"
+        items={WITH_ICONS}
+        value="setup"
+        onValueChange={vi.fn()}
+        aria-label="Progress views"
+      />,
+    );
+
+    expect(screen.getByTestId('icon-setup')).toBeInTheDocument();
+    expect(screen.queryByTestId('icon-overview')).not.toBeInTheDocument();
+  });
+
+  it('never shows a glyph in the segmented appearance', () => {
+    render(
+      <ViewSwitcher
+        items={WITH_ICONS}
+        value="setup"
+        onValueChange={vi.fn()}
+        aria-label="Progress views"
+      />,
+    );
+
+    expect(screen.queryByTestId('icon-setup')).not.toBeInTheDocument();
+  });
+});
 
 describe('ViewSwitcher — link mode', () => {
   it('renders a labelled nav of links (not a tablist) with the right hrefs', () => {
