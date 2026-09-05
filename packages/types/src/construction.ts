@@ -1843,18 +1843,33 @@ export interface ProjectCostPosition {
   accrued: string | null;
   actual: string | null;
   /**
-   * Committed but not yet actual — the cost already promised to suppliers that has not landed
-   * in the ledger as a bill. Named "exposure" rather than "remaining commitment" because that
-   * is what it is: money the project is on the hook for.
+   * Committed to a supplier and not yet billed. Says exactly that and nothing more — it is not
+   * a forecast, and it is not budget headroom. Derived from the ledger alone, so it exists with
+   * or without a budget.
    */
-  forecastExposure: string | null;
+  committedNotBilled: string | null;
   /** The BASELINED budget total, or null when none is set. */
   budgetTotal: string | null;
-  /** Each stage as a percent of budget, to one decimal. Null without a budget. */
-  committedPercentOfBudget: number | null;
-  accruedPercentOfBudget: number | null;
-  actualPercentOfBudget: number | null;
-  forecastExposurePercentOfBudget: number | null;
+  /**
+   * The two budget remainders, which are **not interchangeable** and must never collapse into
+   * one "remaining":
+   *
+   * - `uncommittedBudget` = budget − committed. What is still free to spend. This is the
+   *   cost-control figure — money already on a purchase order is spent as far as headroom goes.
+   * - `budgetLessActual` = budget − actual. What has not yet been billed against the budget.
+   *   Larger, and dangerous to read as headroom, because it counts committed money as available.
+   *
+   * Both null without a baselined budget.
+   */
+  uncommittedBudget: string | null;
+  budgetLessActual: string | null;
+  /**
+   * Ratios, each named for its own numerator. "% of budget" under three different figures would
+   * make a reader guess which one a number belongs to.
+   */
+  committedOfBudgetPercent: number | null;
+  accruedOfBudgetPercent: number | null;
+  actualOfBudgetPercent: number | null;
 }
 
 /** One stage of the requirement→payment pipeline, with its count and its money. */
@@ -1923,8 +1938,14 @@ export interface ProjectProcurementOverviewResponse {
   /** Open requirements, active POs touching this project, open exceptions. */
   openRequirementCount: number;
   requirementsAwaitingProcurement: number;
-  activePoCount: number;
-  activePoValue: string | null;
+  /**
+   * `PurchaseOrder.status = OPEN`, and named for it. Not "active": the header's OPEN/CLOSED and
+   * a revision's DRAFT→ACTIVE lifecycle are different records, and one word for both is how a
+   * reader ends up believing an order is approved when only its header is open.
+   */
+  openPoCount: number;
+  /** This project's share of those orders' active revisions — never the whole order value. */
+  openPoValue: string | null;
   openExceptionCount: number;
   pipeline: ProjectProcurementPipelineStage[];
   attention: ProcurementAttentionItem[];
@@ -1968,10 +1989,17 @@ export interface ProjectCostByBoqRow {
   committed: string | null;
   accrued: string | null;
   actual: string | null;
-  /** budget − committed. Null without a budget: "remaining" needs something to remain of. */
-  remaining: string | null;
-  /** committed ÷ budget as a whole percent. Null without a budget. */
-  percentUsed: number | null;
+  /**
+   * budget − committed: what is still free to spend on this line. Null without a budget —
+   * "remaining" needs something to remain of.
+   */
+  uncommittedBudget: string | null;
+  /**
+   * Two explicitly named ratios rather than one "% used". With committed, accrued and actual all
+   * on the row, a single unlabelled percentage is a guessing game about which one it divides.
+   */
+  committedOfBudgetPercent: number | null;
+  actualOfBudgetPercent: number | null;
 }
 
 export interface ProjectCostBySupplierRow {
@@ -2011,6 +2039,17 @@ export interface ProjectProcurementCostResponse {
 
 export type MaterialRequestPriorityValue = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
 
+/** Has the requirement been agreed? Derived from `MaterialRequestStatus`, never invented. */
+export type RequirementApprovalStatus =
+  | 'DRAFT'
+  | 'SUBMITTED'
+  | 'APPROVED'
+  | 'CANCELLED'
+  | 'CLOSED';
+
+/** How much of it has been converted to purchase orders? A separate fact from approval. */
+export type RequirementFulfillmentStatus = 'NOT_ORDERED' | 'PARTIALLY_ORDERED' | 'FULLY_ORDERED';
+
 /**
  * A requirement as the project reads it.
  *
@@ -2025,7 +2064,15 @@ export interface ProjectRequirementRow {
   mrNumber: string;
   title: string | null;
   description: string | null;
+  /** The raw `MaterialRequestStatus`, kept so nothing is lost in the split below. */
   status: string;
+  /**
+   * The one enum carries two different questions, and a single "Status" column answers neither
+   * cleanly: has this been approved, and how much of it has been ordered. Split server-side so
+   * every surface separates them the same way — the same discipline as PO header vs revision.
+   */
+  approvalStatus: RequirementApprovalStatus;
+  fulfillmentStatus: RequirementFulfillmentStatus;
   priority: MaterialRequestPriorityValue;
   /** Rolled up from the lines' spend categories; null when the lines carry none. */
   category: string | null;

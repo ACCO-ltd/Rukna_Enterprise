@@ -95,19 +95,29 @@ export class ProjectProcurementService {
     // "Active" is the header being OPEN — the revisions carry their own lifecycle and a PO can be
     // open with a draft revision in flight. Value is this project's share of its active revision,
     // never the whole order: the other lines belong to other sites.
-    const activePos = purchaseOrders.filter((po) => po.status === 'OPEN');
-    let activePoValue = ZERO;
-    for (const po of activePos) {
-      const active = po.revisions.find((r) => r.status === 'ACTIVE') ?? po.revisions[0];
-      for (const line of active?.lines ?? []) {
-        activePoValue = activePoValue.plus(new Decimal(line.extendedAmount.toString()));
+    // `PurchaseOrder.status = OPEN`, and called that. "Active" would blur the header state into
+    // the revision lifecycle, which is a different record — the same conflation that makes a
+    // reader believe an order is approved when only its header is open.
+    const openPos = purchaseOrders.filter((po) => po.status === 'OPEN');
+    let openPoValue = ZERO;
+    for (const po of openPos) {
+      const activeRevision = po.revisions.find((r) => r.status === 'ACTIVE') ?? po.revisions[0];
+      for (const line of activeRevision?.lines ?? []) {
+        openPoValue = openPoValue.plus(new Decimal(line.extendedAmount.toString()));
       }
     }
 
+    // Open = still wanting something. Approved-and-fully-ordered is done; cancelled and closed
+    // are gone. Read from the split statuses so the two questions stay separate.
     const openRequirements = rows.filter(
-      (r) => !['CANCELLED', 'CLOSED', 'FULLY_ORDERED'].includes(r.status),
+      (r) =>
+        !['CANCELLED', 'CLOSED'].includes(r.approvalStatus) &&
+        r.fulfillmentStatus !== 'FULLY_ORDERED',
     );
-    const awaitingProcurement = rows.filter((r) => r.status === 'APPROVED');
+    // The site-blocking set: agreed, and nobody has ordered any of it.
+    const awaitingProcurement = rows.filter(
+      (r) => r.approvalStatus === 'APPROVED' && r.fulfillmentStatus === 'NOT_ORDERED',
+    );
 
     const boqTree = await this.repo.findBoqTree(prisma, projectId);
     const { costByNode } = this.indexByNode(boqRows);
@@ -119,12 +129,12 @@ export class ProjectProcurementService {
       position: buildPosition(totals, budgetTotal, currency, mayViewFinancials),
       openRequirementCount: openRequirements.length,
       requirementsAwaitingProcurement: awaitingProcurement.length,
-      activePoCount: activePos.length,
-      activePoValue: mayViewFinancials ? activePoValue.toFixed(2) : null,
+      openPoCount: openPos.length,
+      openPoValue: mayViewFinancials ? openPoValue.toFixed(2) : null,
       openExceptionCount: attention
         .filter((a) => a.tier === 'SITE_BLOCKING' || a.tier === 'FINANCIAL_CONTROL')
         .reduce((sum, a) => sum + a.count, 0),
-      pipeline: this.buildPipeline(rows, activePos.length, activePoValue, totals, mayViewFinancials),
+      pipeline: this.buildPipeline(rows, openPos.length, openPoValue, totals, mayViewFinancials),
       attention,
       // The overview chart wants sections, not the whole tree — depth 0 only.
       costByBoq: rollUpCostByBoq({
@@ -235,11 +245,14 @@ export class ProjectProcurementService {
       financialsVisible: mayViewFinancials,
       summary: {
         total: rows.length,
-        approved: rows.filter((r) => r.status === 'APPROVED').length,
-        ordered: rows.filter((r) => r.status === 'FULLY_ORDERED').length,
-        partiallyOrdered: rows.filter((r) => r.status === 'PARTIALLY_ORDERED').length,
+        // Approved and not yet ordered — the set a buyer should be working from.
+        approved: rows.filter(
+          (r) => r.approvalStatus === 'APPROVED' && r.fulfillmentStatus === 'NOT_ORDERED',
+        ).length,
+        ordered: rows.filter((r) => r.fulfillmentStatus === 'FULLY_ORDERED').length,
+        partiallyOrdered: rows.filter((r) => r.fulfillmentStatus === 'PARTIALLY_ORDERED').length,
         draftOrOther: rows.filter((r) =>
-          ['DRAFT', 'SUBMITTED', 'CANCELLED', 'CLOSED'].includes(r.status),
+          ['DRAFT', 'SUBMITTED', 'CANCELLED', 'CLOSED'].includes(r.approvalStatus),
         ).length,
       },
       requirements: rows,
@@ -297,8 +310,8 @@ export class ProjectProcurementService {
    */
   private buildPipeline(
     requirements: ProjectRequirementRow[],
-    activePoCount: number,
-    activePoValue: Decimal,
+    openPoCount: number,
+    openPoValue: Decimal,
     totals: StageTotals,
     mayViewFinancials: boolean,
   ): ProjectProcurementPipelineStage[] {
@@ -308,17 +321,21 @@ export class ProjectProcurementService {
         stage: 'REQUIREMENTS',
         count: requirements.length,
         amount: null,
-        qualifierCount: requirements.filter((r) => r.status === 'APPROVED').length,
+        qualifierCount: requirements.filter(
+          (r) => r.approvalStatus === 'APPROVED' && r.fulfillmentStatus === 'NOT_ORDERED',
+        ).length,
       },
       {
         stage: 'PURCHASE_ORDERS',
-        count: activePoCount,
-        amount: money(activePoValue),
+        count: openPoCount,
+        amount: money(openPoValue),
         qualifierCount: null,
       },
       { stage: 'GOODS_RECEIVED', count: 0, amount: money(totals.accrued), qualifierCount: null },
       { stage: 'SUPPLIER_BILLS', count: 0, amount: money(totals.actual), qualifierCount: null },
-      // Cash, not cost. Reported as unavailable rather than inferred — see above.
+      // Payment settles a liability; it is not a fourth cost stage, and it is not in the
+      // commitment ledger at all. So this stage carries a count and **no amount** — inferring
+      // one from ACTUAL would report money as paid that nobody has paid.
       { stage: 'PAYMENTS', count: 0, amount: null, qualifierCount: null },
     ];
   }
@@ -358,7 +375,9 @@ export class ProjectProcurementService {
 
     // P1 — the site cannot proceed. An approved requirement nobody has ordered is the single
     // most common reason work stops, which is why it leads.
-    const notOrdered = rows.filter((r) => r.status === 'APPROVED');
+    const notOrdered = rows.filter(
+      (r) => r.approvalStatus === 'APPROVED' && r.fulfillmentStatus === 'NOT_ORDERED',
+    );
     if (notOrdered.length > 0) {
       items.push({
         kind: 'APPROVED_NOT_ORDERED',
@@ -554,12 +573,30 @@ export class ProjectProcurementService {
 
     const money = (d: Decimal): string | null => (mayViewFinancials ? d.toFixed(2) : null);
 
+    // Two facts out of one enum. `PARTIALLY_ORDERED` and `FULLY_ORDERED` are fulfilment states
+    // that say nothing about approval — a request cannot be ordered without having been approved,
+    // so the approval side reads APPROVED for both rather than losing it.
+    const approvalStatus: ProjectRequirementRow['approvalStatus'] =
+      mr.status === 'PARTIALLY_ORDERED' || mr.status === 'FULLY_ORDERED'
+        ? 'APPROVED'
+        : (mr.status as ProjectRequirementRow['approvalStatus']);
+    // Fulfilment from the allocations themselves rather than the status word, so a request whose
+    // status has not caught up with its purchase orders still reads honestly.
+    const fulfillmentStatus: ProjectRequirementRow['fulfillmentStatus'] =
+      mr.status === 'FULLY_ORDERED'
+        ? 'FULLY_ORDERED'
+        : ordered.gt(ZERO) || mr.status === 'PARTIALLY_ORDERED'
+          ? 'PARTIALLY_ORDERED'
+          : 'NOT_ORDERED';
+
     return {
       id: mr.id,
       mrNumber: mr.mrNumber,
       title: mr.title,
       description: mr.description,
       status: mr.status,
+      approvalStatus,
+      fulfillmentStatus,
       priority: mr.priority as ProjectRequirementRow['priority'],
       // One category when the lines agree, "Mixed" when they do not — a request spanning
       // materials and subcontract is a real thing and picking one of them would be a lie.

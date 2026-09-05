@@ -44,11 +44,16 @@ export function percentOf(amount: Decimal, budget: Decimal | null): number | nul
 }
 
 /**
- * The headline position.
+ * The headline position, with every figure named for what it actually measures.
  *
- * `forecastExposure` is committed minus actual — cost already promised to suppliers that has not
- * yet landed as a bill. It is floored at zero: a negative would mean more has been billed than
- * committed, which is a data problem to investigate rather than a negative exposure to report.
+ * There is no single "remaining" here, deliberately. Budget minus committed and budget minus
+ * actual answer different questions — the first is what is still free to spend, the second counts
+ * money already on a purchase order as though it were available — and one catch-all word for both
+ * is how a project reads itself as having headroom it has already spent.
+ *
+ * `committedNotBilled` is a ledger fact, not a forecast: it exists with or without a budget. It
+ * is floored at zero, because more billed than committed is a data problem to investigate rather
+ * than a negative to report.
  */
 export function buildPosition(
   totals: StageTotals,
@@ -56,20 +61,23 @@ export function buildPosition(
   currency: string | null,
   mayViewFinancials: boolean,
 ): ProjectCostPosition {
-  const exposure = Decimal.max(ZERO, totals.committed.minus(totals.actual));
+  const committedNotBilled = Decimal.max(ZERO, totals.committed.minus(totals.actual));
   const money = (d: Decimal): string | null => (mayViewFinancials ? d.toFixed(2) : null);
+  const budgetMoney = (d: Decimal | null): string | null =>
+    mayViewFinancials && d !== null ? d.toFixed(2) : null;
 
   return {
     currency,
     committed: money(totals.committed),
     accrued: money(totals.accrued),
     actual: money(totals.actual),
-    forecastExposure: money(exposure),
-    budgetTotal: mayViewFinancials && budgetTotal !== null ? budgetTotal.toFixed(2) : null,
-    committedPercentOfBudget: mayViewFinancials ? percentOf(totals.committed, budgetTotal) : null,
-    accruedPercentOfBudget: mayViewFinancials ? percentOf(totals.accrued, budgetTotal) : null,
-    actualPercentOfBudget: mayViewFinancials ? percentOf(totals.actual, budgetTotal) : null,
-    forecastExposurePercentOfBudget: mayViewFinancials ? percentOf(exposure, budgetTotal) : null,
+    committedNotBilled: money(committedNotBilled),
+    budgetTotal: budgetMoney(budgetTotal),
+    uncommittedBudget: budgetMoney(budgetTotal === null ? null : budgetTotal.minus(totals.committed)),
+    budgetLessActual: budgetMoney(budgetTotal === null ? null : budgetTotal.minus(totals.actual)),
+    committedOfBudgetPercent: mayViewFinancials ? percentOf(totals.committed, budgetTotal) : null,
+    accruedOfBudgetPercent: mayViewFinancials ? percentOf(totals.accrued, budgetTotal) : null,
+    actualOfBudgetPercent: mayViewFinancials ? percentOf(totals.actual, budgetTotal) : null,
   };
 }
 
@@ -165,8 +173,11 @@ export function rollUpCostByBoq(options: {
       committed: money(committed),
       accrued: money(totals?.accrued ?? ZERO),
       actual: money(totals?.actual ?? ZERO),
-      remaining: budget === null ? null : money(budget.minus(committed)),
-      percentUsed: mayViewFinancials ? percentOf(committed, budget) : null,
+      uncommittedBudget: budget === null ? null : money(budget.minus(committed)),
+      committedOfBudgetPercent: mayViewFinancials ? percentOf(committed, budget) : null,
+      actualOfBudgetPercent: mayViewFinancials
+        ? percentOf(totals?.actual ?? ZERO, budget)
+        : null,
     });
 
     for (const child of childrenOf.get(node.id) ?? []) visit(child);
@@ -189,8 +200,14 @@ export function rollUpCostByBoq(options: {
       committed: money(committed),
       accrued: money(projectLevelCost?.accrued ?? ZERO),
       actual: money(projectLevelCost?.actual ?? ZERO),
-      remaining: projectLevelBudget === null ? null : money(projectLevelBudget.minus(committed)),
-      percentUsed: mayViewFinancials ? percentOf(committed, projectLevelBudget) : null,
+      uncommittedBudget:
+        projectLevelBudget === null ? null : money(projectLevelBudget.minus(committed)),
+      committedOfBudgetPercent: mayViewFinancials
+        ? percentOf(committed, projectLevelBudget)
+        : null,
+      actualOfBudgetPercent: mayViewFinancials
+        ? percentOf(projectLevelCost?.actual ?? ZERO, projectLevelBudget)
+        : null,
     });
   }
 

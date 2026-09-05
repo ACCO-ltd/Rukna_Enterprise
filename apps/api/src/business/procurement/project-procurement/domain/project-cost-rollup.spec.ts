@@ -52,33 +52,48 @@ describe('percentOf', () => {
 });
 
 describe('buildPosition', () => {
-  it('derives forecast exposure as committed less actual', () => {
+  it('reports committed-not-billed as a ledger fact, with or without a budget', () => {
     const position = buildPosition(totals('420000', '310000', '265000'), null, 'USD', true);
     expect(position.committed).toBe('420000.00');
-    expect(position.forecastExposure).toBe('155000.00');
+    expect(position.committedNotBilled).toBe('155000.00');
   });
 
   /**
-   * More billed than committed is a data problem to investigate, not a negative exposure to
-   * report. Flooring at zero keeps a broken ledger from rendering as a nonsense figure.
+   * More billed than committed is a data problem to investigate, not a negative to report.
+   * Flooring at zero keeps a broken ledger from rendering as a nonsense figure.
    */
-  it('floors exposure at zero rather than reporting a negative', () => {
+  it('floors committed-not-billed at zero rather than reporting a negative', () => {
     const position = buildPosition(totals('100', '0', '250'), null, 'USD', true);
-    expect(position.forecastExposure).toBe('0.00');
+    expect(position.committedNotBilled).toBe('0.00');
   });
 
-  it('leaves every percentage null when no budget is baselined', () => {
+  it('leaves every budget figure null when no budget is baselined', () => {
     const position = buildPosition(totals('420000'), null, 'USD', true);
     expect(position.budgetTotal).toBeNull();
-    expect(position.committedPercentOfBudget).toBeNull();
-    expect(position.actualPercentOfBudget).toBeNull();
+    expect(position.uncommittedBudget).toBeNull();
+    expect(position.budgetLessActual).toBeNull();
+    expect(position.committedOfBudgetPercent).toBeNull();
+    expect(position.actualOfBudgetPercent).toBeNull();
   });
 
-  it('measures each stage against the budget when one exists', () => {
+  /**
+   * The two remainders are NOT interchangeable, which is exactly why neither is called
+   * "remaining". Budget less committed is what is still free to spend; budget less actual counts
+   * money already on a purchase order as available, and reading it as headroom is how a project
+   * overspends a budget it believes it is under.
+   */
+  it('keeps the two budget remainders distinct', () => {
+    const position = buildPosition(totals('760000', '560000', '465000'), d('2800000'), 'USD', true);
+    expect(position.uncommittedBudget).toBe('2040000.00');
+    expect(position.budgetLessActual).toBe('2335000.00');
+    expect(position.uncommittedBudget).not.toBe(position.budgetLessActual);
+  });
+
+  it('names each ratio for its own numerator', () => {
     const position = buildPosition(totals('420000', '310000', '265000'), d('2400000'), 'USD', true);
-    expect(position.committedPercentOfBudget).toBe(17.5);
-    expect(position.accruedPercentOfBudget).toBe(12.9);
-    expect(position.actualPercentOfBudget).toBe(11);
+    expect(position.committedOfBudgetPercent).toBe(17.5);
+    expect(position.accruedOfBudgetPercent).toBe(12.9);
+    expect(position.actualOfBudgetPercent).toBe(11);
   });
 
   /** Withheld, never zeroed — a figure the caller may not see must not read as "nothing spent". */
@@ -86,7 +101,8 @@ describe('buildPosition', () => {
     const position = buildPosition(totals('420000'), d('2400000'), 'USD', false);
     expect(position.committed).toBeNull();
     expect(position.budgetTotal).toBeNull();
-    expect(position.committedPercentOfBudget).toBeNull();
+    expect(position.uncommittedBudget).toBeNull();
+    expect(position.committedOfBudgetPercent).toBeNull();
   });
 });
 
@@ -130,8 +146,8 @@ describe('rollUpCostByBoq', () => {
     const section = rows.find((r) => r.code === '002')!;
 
     expect(section.budget).toBe('1000.00');
-    expect(section.remaining).toBe('900.00');
-    expect(section.percentUsed).toBe(10);
+    expect(section.uncommittedBudget).toBe('900.00');
+    expect(section.committedOfBudgetPercent).toBe(10);
   });
 
   /** Without a budget there is nothing for cost to remain of, and no percentage to be used. */
@@ -145,8 +161,9 @@ describe('rollUpCostByBoq', () => {
     });
     const leaf = rows.find((r) => r.code === '002.001')!;
     expect(leaf.budget).toBeNull();
-    expect(leaf.remaining).toBeNull();
-    expect(leaf.percentUsed).toBeNull();
+    expect(leaf.uncommittedBudget).toBeNull();
+    expect(leaf.committedOfBudgetPercent).toBeNull();
+    expect(leaf.actualOfBudgetPercent).toBeNull();
   });
 
   /**
@@ -170,7 +187,7 @@ describe('rollUpCostByBoq', () => {
     expect(projectLevel.code).toBeNull();
     expect(projectLevel.description).toBe('Project-level (non-BOQ)');
     expect(projectLevel.committed).toBe('70.00');
-    expect(projectLevel.remaining).toBe('180.00');
+    expect(projectLevel.uncommittedBudget).toBe('180.00');
     expect(projectLevel.depth).toBe(0);
     // It is the last row, after the BOQ sections it sits beside.
     expect(rows.at(-1)!.kind).toBe('PROJECT_LEVEL');
@@ -215,7 +232,7 @@ describe('rollUpCostByBoq', () => {
     const section = rows.find((r) => r.code === '002')!;
     expect(section.committed).toBeNull();
     expect(section.budget).toBeNull();
-    expect(section.percentUsed).toBeNull();
+    expect(section.committedOfBudgetPercent).toBeNull();
     // The scope itself is not a secret — a reader still sees which sections exist.
     expect(section.description).toBe('Substructure');
   });
@@ -234,6 +251,6 @@ describe('rollUpCostByBoq', () => {
       mayViewFinancials: true,
     });
     expect(rows.find((r) => r.code === '002.001')!.committed).toBe('0.00');
-    expect(rows.find((r) => r.code === '002.001')!.remaining).toBe('400.00');
+    expect(rows.find((r) => r.code === '002.001')!.uncommittedBudget).toBe('400.00');
   });
 });
