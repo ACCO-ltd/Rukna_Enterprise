@@ -1,154 +1,81 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
-import { useLocale, useTranslations } from 'next-intl';
-import {
-  Alert,
-  Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableEmpty,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-} from '@erp/ui';
+import { useTranslations } from 'next-intl';
+import { Coins, ExternalLink, LayoutDashboard, ClipboardList } from 'lucide-react';
+import { Button, ViewSwitcher } from '@erp/ui';
 
-import { formatDate } from '@/lib/format';
-import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
-import { useProjectWorkspaceSummary } from '@/features/projects/hooks/use-project';
+import { ProcurementOverviewView } from './project/procurement-overview-view';
+import { RequirementsView } from './project/requirements-view';
+import { CostCommitmentsView } from './project/cost-commitments-view';
 
-import { useMaterialRequests } from '../hooks/use-procurement';
-import { ProjectCommitmentsCard } from './commitments';
-import { ProcurementStatusBadge } from './procurement-badges';
+export type ProjectProcurementView = 'overview' | 'requirements' | 'cost';
 
 /**
- * Project Procurement tab (procurement-tab spec §1).
+ * Project Procurement (Phase 5).
  *
- * A project-scoped read over the org-level procurement services: it leads with this project's
- * cost commitments (COMMITTED → ACCRUED → ACTUAL, ADR-013/020) and lists its Material Requests
- * (`projectId`-filtered). Purchase orders and goods receipts stay in the org buyer workspace —
- * they have no project filter server-side and are the cross-project queue by design — so the tab
- * links out for them. The consumption→cost step (issue material to site) arrives with Inventory.
+ * The boundary this tab implements: **the organisation owns supplier documents; the project owns
+ * the cost coded onto their lines.** `PurchaseOrder` carries no `projectId` — the cost target
+ * lives on `PurchaseOrderLine` and is inherited read-only downstream — because one order
+ * legitimately buys cement for three sites. So there is no PO authoring here, no goods-receipt
+ * queue, no bill or payment operation. Those are the buyer's, at `/procurement/*`, and this tab
+ * links out to them rather than duplicating a second workflow to keep in step with the first.
+ *
+ * Three views, answering three questions: what have we committed and consumed, what does the site
+ * need, and where is the money going against the scope we priced. Deliberately not five — a tab
+ * per document type would be exactly the project-filtered clone of the buyer's application this
+ * design exists to avoid.
  */
 export function ProjectProcurementTab({ projectId }: { projectId: string }) {
-  const t = useTranslations('procurement.projectTab');
-  const tMr = useTranslations('procurement.mr');
-  const tc = useTranslations('procurement.common');
-  const tCommon = useTranslations('common');
-  const locale = useLocale() as 'en' | 'ar';
-  const { can } = usePermissions();
-
-  const summary = useProjectWorkspaceSummary(projectId);
-  const currency = summary.data?.mainContract?.currency ?? null;
-  const requests = useMaterialRequests({ projectId });
+  const t = useTranslations('procurement.project');
+  const [view, setView] = useState<ProjectProcurementView>('overview');
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-h2 font-bold text-foreground">{t('title')}</h2>
-        <p className="mt-1 text-body-sm text-muted-foreground">{t('subtitle')}</p>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-h2 font-bold text-foreground">{t('title')}</h2>
+          <p className="mt-1 text-body-sm text-muted-foreground">{t('subtitle')}</p>
+        </div>
+        {/* Where the rest of procurement lives. Stated once, at the top, rather than as a dashed
+            box at the bottom of every view. */}
+        <Button asChild variant="outline" size="sm" className="min-h-11 sm:min-h-0">
+          <Link href="/procurement/orders">
+            {t('openProcurement')}
+            <ExternalLink size={14} aria-hidden="true" />
+          </Link>
+        </Button>
       </div>
 
-      <ProjectCommitmentsCard projectId={projectId} currencyCode={currency} />
+      {/* Underline, matching Progress and Commercial: the same level-3 control everywhere, with a
+          glyph on the active view only as a non-colour signal of where you are. */}
+      <ViewSwitcher
+        appearance="underline"
+        aria-label={t('tabs.label')}
+        value={view}
+        onValueChange={(next) => setView(next as ProjectProcurementView)}
+        items={[
+          {
+            value: 'overview',
+            label: t('tabs.overview'),
+            icon: <LayoutDashboard size={16} strokeWidth={1.9} />,
+          },
+          {
+            value: 'requirements',
+            label: t('tabs.requirements'),
+            icon: <ClipboardList size={16} strokeWidth={1.9} />,
+          },
+          { value: 'cost', label: t('tabs.cost'), icon: <Coins size={16} strokeWidth={1.9} /> },
+        ]}
+      />
 
-      {/* Material Requests — this project only */}
-      <section className="overflow-hidden rounded-panel border border-border bg-surface">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3">
-          <h3 className="text-body-sm font-semibold text-foreground">{tMr('title')}</h3>
-          {can(PROCUREMENT_PERMISSIONS.createRequest) ? (
-            <Button asChild size="sm" variant="outline">
-              <Link href="/procurement/requests/new">{tMr('new')}</Link>
-            </Button>
-          ) : null}
-        </div>
-
-        {requests.isPending ? (
-          <div role="status" aria-live="polite" className="p-5">
-            <span className="sr-only">{tCommon('loading')}</span>
-            <div className="h-24 animate-pulse rounded-control bg-muted" aria-hidden="true" />
-          </div>
-        ) : requests.isError ? (
-          <div className="p-5">
-            <Alert variant="error" messages={[tc('loadFailed')]} />
-          </div>
-        ) : (
-          <TableScroll aria-label={tMr('title')}>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{tMr('number')}</TableHead>
-                  <TableHead>{tc('description')}</TableHead>
-                  <TableHead>{tMr('requestedDate')}</TableHead>
-                  <TableHead numeric>{tc('lines')}</TableHead>
-                  <TableHead>{tc('status')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(requests.data ?? []).length === 0 ? (
-                  <TableEmpty colSpan={5}>{t('mrEmpty')}</TableEmpty>
-                ) : (
-                  (requests.data ?? []).map((mr) => (
-                    <TableRow key={mr.id}>
-                      <TableCell>
-                        <Link
-                          href={`/procurement/requests/${mr.id}`}
-                          className="font-mono text-xs font-semibold text-brand-primary underline-offset-2 hover:underline"
-                        >
-                          {mr.mrNumber}
-                        </Link>
-                      </TableCell>
-                      <TableCell className="max-w-[18rem]">
-                        {mr.description ? (
-                          <span className="block truncate text-sm text-foreground">
-                            {mr.description}
-                          </span>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">
-                            {mr.requestScope === 'PROJECT'
-                              ? tMr('scopeProject')
-                              : tMr('scopeOrganization')}
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                        <bdi>{formatDate(mr.requestedDate, locale) ?? tc('notAvailable')}</bdi>
-                      </TableCell>
-                      <TableCell numeric className="text-sm tabular-nums text-muted-foreground">
-                        {mr.lines?.length ?? 0}
-                      </TableCell>
-                      <TableCell>
-                        <ProcurementStatusBadge status={mr.status} />
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </TableScroll>
-        )}
-      </section>
-
-      {/* Where the rest of procurement lives + the honest open loop */}
-      <div className="rounded-panel border border-dashed border-border bg-surface px-5 py-4">
-        <p className="text-body-sm font-medium text-foreground">{t('elsewhereTitle')}</p>
-        <p className="mt-1 text-caption text-muted-foreground">{t('elsewhereHint')}</p>
-        <div className="mt-3 flex flex-wrap gap-4">
-          <Link
-            href="/procurement/orders"
-            className="text-sm font-medium text-brand-primary underline-offset-2 hover:underline"
-          >
-            {t('ordersLink')} →
-          </Link>
-          <Link
-            href="/procurement/grn"
-            className="text-sm font-medium text-brand-primary underline-offset-2 hover:underline"
-          >
-            {t('grnLink')} →
-          </Link>
-        </div>
-        <p className="mt-3 text-caption text-muted-foreground">{t('inventoryNote')}</p>
+      <div data-project-procurement-root>
+        {view === 'overview' ? (
+          <ProcurementOverviewView projectId={projectId} onGoTo={setView} />
+        ) : null}
+        {view === 'requirements' ? <RequirementsView projectId={projectId} /> : null}
+        {view === 'cost' ? <CostCommitmentsView projectId={projectId} /> : null}
       </div>
     </div>
   );
