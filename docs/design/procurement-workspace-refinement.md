@@ -1,6 +1,7 @@
 # Procurement workspace — refinement (Phase 5)
 
-Status: **Audit complete, boundary locked 2026-09-05. Not yet designed or built.**
+Status: **BUILT and browser-QA'd 2026-09-05.** Backend + frontend landed; 947 API tests, 1717 web
+tests, both browser states verified. Residual gaps in *Still open*.
 Phase 5 of the project-workspace redesign, after Commercial (`commercial-workspace-refinement.md`).
 Sources of truth: **ADR-013** (Project Financial Position), **ADR-018** (bill matching),
 **ADR-020** (BOQ backbone + change classifier), **ADR-022** (DOA + SoD).
@@ -158,3 +159,81 @@ step, and must not read as one.
   needs Inventory (Sprint 7, not built). The existing tab flags this honestly and the refined one
   must keep doing so.
 - The org `/procurement/*` workspace. Round-2 refined it; this phase does not reopen it.
+
+---
+
+## 7. What was built, and what the review changed
+
+Three views — **Overview · Requirements · Cost & Commitments** — over a ledger-backed read model,
+plus `ProjectCostBudget` as a new versioned aggregate.
+
+### The correction that mattered most
+
+The spec assumed a cost budget existed. **It did not** — no `Budget`, `CostBudget` or `CostPlan`
+model anywhere, no budget field on `BoqNode`, and `MaterialRequestLine.projectCostCategoryId` was
+a dangling column with no model behind it. Every "% of budget" figure and the whole Budget /
+Remaining / % Used column set had zero backing data.
+
+`ProjectCostBudget` is therefore new, and **versioned/baselined like the BOQ**: a budget that can
+be edited in place is worthless as a control, because the first response to an overrun is to raise
+the number and the evidence goes with it. Lines code to a BOQ node **or** a spend category —
+exactly one — which is what makes the three-tier model real:
+
+```
+BOQ-coded          → rolls up the BOQ hierarchy
+project-level      → its own named row (site overhead, transport, insurance)
+corporate overhead → no project attribution, never reaches the read model
+```
+
+### Vocabulary corrections, before any of it reached a screen
+
+| Was | Now | Why |
+|---|---|---|
+| `forecastExposure` | `committedNotBilled` | It was not a forecast. It is a ledger fact, present with or without a budget. |
+| one `remaining` | `uncommittedBudget` + `budgetLessActual` | Different questions. Budget−actual counts money already on a PO as available; reading it as headroom is how a project overspends a budget it believes it is under. A test asserts they differ. |
+| `% used` | `committedOfBudgetPercent`, `actualOfBudgetPercent` | With three stages on the row, an unlabelled ratio is a guess. |
+| one MR `status` | `approvalStatus` + `fulfillmentStatus` | Two facts in one enum. Same discipline as PO header vs revision. |
+| "Active POs" | `openPoCount` | `PurchaseOrder.status = OPEN` is not a revision reaching ACTIVE. |
+
+### Also added, because the domain required it
+
+`MaterialRequestLine.estimatedUnitPrice`. ADR-022 routes approval by **monetary threshold**, so a
+requirement carrying no value could not be routed at all — a governance contradiction, not a UI
+gap. Plus `title` and `priority` on the header.
+
+### Design decisions taken during the build
+
+- **Table first, no charts.** A grouped committed-vs-actual bar looks like analysis and answers
+  nothing actionable. Supplier and category are ranked tables, not donuts: the question is which
+  supplier owns this exposure, answered to the cent.
+- **Payment carries a count and no amount.** Settling a bill moves cash, not cost. It is not in
+  the commitment ledger, and inferring an amount from ACTUAL would report money as paid that
+  nobody paid.
+- **No MR attachments.** No attachment model, and file serving is deferred platform-wide.
+
+### Browser QA
+
+`e2e/project-procurement-qa.spec.ts`, run against two real projects — one with a baselined budget
+and one without, because the null-versus-zero rule renders as a tidy "0.0%" and is invisible
+otherwise. Verified end to end:
+
+| | With budget | Without budget |
+|---|---|---|
+| `budgetTotal` | `990000.00` | `null` |
+| `committedOfBudgetPercent` | `0` (a valid zero) | `null` |
+| `uncommittedBudget` | `990000.00` | `null` |
+
+Eight specs pass across 1440/375 × light/dark: zero overflow, zero controls under 44px, zero
+console errors, zero 4xx. It caught two defects — a 20px disclosure chevron, and a remainder note
+asserting one figure was "larger" than the other, which is false whenever nothing is committed.
+
+## Still open
+
+- **No live cost data.** The ledger is empty on both QA projects, so the rollup, supplier ranking
+  and category split are unit-tested but have never rendered populated. Reaching COMMITTED needs
+  an approved PO, which needs DOA workflow bindings this tenant lacks.
+- **The budget authoring UI.** The API is complete (create / edit draft / baseline, with
+  supersede in the same transaction) and the position band links to it, but the editor itself is
+  not built — budgets are currently set through the API.
+- **`MaterialRequest.title` / `priority` are not yet on the MR create form** in the org
+  workspace; the columns read them, and older requests have neither.
