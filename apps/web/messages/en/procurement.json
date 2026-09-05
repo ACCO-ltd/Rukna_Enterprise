@@ -253,7 +253,13 @@
     },
     "scopeError": {
       "projectRequired": "Project-scoped requests require a project to be selected."
-    }
+    },
+    "titleField": "Title",
+    "titlePlaceholder": "e.g. Reinforcement steel",
+    "priorityField": "Priority",
+    "estimatedUnitPrice": "Estimated unit price",
+    "estimatedValueHint": "Enter a quantity and unit price to estimate this line",
+    "estimatedValueIs": "Estimated value {value}"
   },
   "po": {
     "title": "Purchase Orders",
