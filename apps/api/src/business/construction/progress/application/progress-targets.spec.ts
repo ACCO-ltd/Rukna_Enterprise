@@ -24,6 +24,7 @@ function build(over: { targets?: { targetDate: Date; cumulativePercent: unknown 
     }),
     // getRollup path — no work packages ⇒ physicalPercent 0
     findWorkPackages: jest.fn().mockResolvedValue([]),
+    findLeafValues: jest.fn().mockResolvedValue([]),
     approvedMeasurementsForProject: jest.fn().mockResolvedValue([]),
   };
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };

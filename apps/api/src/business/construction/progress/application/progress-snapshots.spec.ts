@@ -33,6 +33,7 @@ function build(
     targets?: Array<{ targetDate: Date; cumulativePercent: Decimal }>;
     // Drives getRollup (weighted physical) + getProjectProgress (verified per leaf).
     workPackages?: unknown[];
+    leafValues?: unknown[];
     approvedMeasurements?: unknown[];
     // Drives getPhysicalFinancialSignal cost read.
     financialPosition?: { actualCost: string; forecastCost: string };
@@ -41,6 +42,7 @@ function build(
   const created: SnapshotRow[] = [];
   const repo = {
     findWorkPackages: jest.fn().mockResolvedValue(over.workPackages ?? []),
+    findLeafValues: jest.fn().mockResolvedValue(over.leafValues ?? []),
     approvedMeasurementsForProject: jest.fn().mockResolvedValue(over.approvedMeasurements ?? []),
     findSnapshotForPeriod: jest.fn().mockResolvedValue(over.existingForPeriod ?? null),
     findSnapshotsForProject: jest.fn().mockResolvedValue(over.snapshots ?? []),

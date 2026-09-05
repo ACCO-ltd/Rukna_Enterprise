@@ -24,6 +24,7 @@ import {
   CommandGovernanceService,
   throwIfGated,
 } from '../../../../platform/workflows/application/command-governance.service.js';
+import { weightedPackagePercent } from '../domain/progress-rollup.js';
 
 const DIVERGENCE_THRESHOLD = 20; // percentage points before the signal flags a divergence (cf. ADR-023 CONST-COM-018)
 
@@ -381,13 +382,20 @@ export class ProgressService {
     const pctByNode = new Map<string, number>();
     for (const l of progressLines) pctByNode.set(l.boqNodeId, l.percentComplete ?? 0);
 
+    // Every allocated leaf, not only the measured ones: a leaf with no progress yet still carries
+    // value, and leaving it out would make a package look complete as soon as its first item was.
+    const allocatedLeafIds = packages.flatMap((wp) => wp.boqLinks.map((b) => b.boqNodeId));
+    const leafValues = await this.repo.findLeafValues(prisma, projectId, allocatedLeafIds);
+    const valueByNode = new Map<string, Decimal>(
+      leafValues.map((v) => [v.id, new Decimal(v.totalAmount?.toString() ?? '0')] as const),
+    );
+
     let weightsTotal = ZERO;
     let weighted = ZERO;
     const packageLines = packages.map((wp) => {
       const leaves = wp.boqLinks.map((b) => b.boqNodeId);
-      const pct = leaves.length
-        ? leaves.reduce((sum, n) => sum + (pctByNode.get(n) ?? 0), 0) / leaves.length
-        : 0;
+      // Value-weighted, not a plain average — see `progress-rollup.ts` for why.
+      const pct = weightedPackagePercent(leaves, pctByNode, valueByNode);
       const weight = new Decimal(wp.progressWeight.toString());
       weightsTotal = weightsTotal.plus(weight);
       weighted = weighted.plus(weight.mul(pct));

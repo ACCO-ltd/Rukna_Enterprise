@@ -403,9 +403,11 @@ configuration — was already under Plan & Setup, which is what the spec was rea
 
 ### Open, and blocking nothing
 
-- **`ceo-memo-work-package-progress-weighting.md`** — inside a work package, leaf percentages are
-  averaged with **no weighting**, so a 1-lot item and a 10,000 m³ item count the same. Recommended
-  fix is value-weighting. Backend-owned, and it moves the headline figure on every live project.
+- ~~**`ceo-memo-work-package-progress-weighting.md`**~~ — **implemented 2026-09-05.** Package
+  percentage is now value-weighted (`domain/progress-rollup.ts`), and
+  `scripts/recompute-progress-snapshots.ts` replays stored snapshots so the curve does not bend at
+  the changeover. The memo records what the recompute cannot reconstruct. **The script has not been
+  run against any environment.**
 - **Segregation of duties.** Every progress write is `manage:project`, so one person can submit a
   report and approve it. The `commandGovernance` seam on `approve` can enforce four eyes, but no
   binding is active. Noted, not filed.

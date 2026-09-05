@@ -19,6 +19,7 @@ type Over = {
   workPackages?: unknown[];
   measurements?: unknown[];
   fp?: unknown;
+  leafValues?: unknown[];
   leafAllocation?: unknown;
   dprs?: unknown[];
   users?: unknown[];
@@ -42,6 +43,7 @@ function build(over: Over = {}) {
     createWorkPackage: jest.fn().mockResolvedValue({ id: 'wp-1' }),
     findWorkPackageById: jest.fn().mockResolvedValue({ id: 'wp-1', projectId: 'p-1' }),
     findWorkPackages: jest.fn().mockResolvedValue(over.workPackages ?? []),
+    findLeafValues: jest.fn().mockResolvedValue(over.leafValues ?? []),
     findLeafAllocation: jest.fn().mockResolvedValue(over.leafAllocation ?? null),
     allocateBoqNode: jest.fn().mockResolvedValue({ id: 'wpn-1' }),
   };
@@ -214,6 +216,10 @@ describe('ProgressService (ADR-021 MVP)', () => {
         { boqNodeId: 'n1', quantity: 500, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }, // 50%
         { boqNodeId: 'n2', quantity: 200, boqNode: { id: 'n2', code: '2', description: 'y', quantity: 1000 } }, // 20%
       ],
+      leafValues: [
+        { id: 'n1', totalAmount: '100000.00' },
+        { id: 'n2', totalAmount: '100000.00' },
+      ],
     });
     const res = await service.getRollup(identity, 'p-1');
     // 0.6*50 + 0.4*20 = 38
@@ -232,6 +238,101 @@ describe('ProgressService (ADR-021 MVP)', () => {
     const res = await service.getRollup(identity, 'p-1');
     expect(res.weightsComplete).toBe(false);
     expect(res.weightsTotal).toBe('0.5');
+  });
+
+  /**
+   * The memo's worked example (`ceo-memo-work-package-progress-weighting.md`). A day of
+   * setting-out and a fortnight of concrete used to read as "half built" because every leaf
+   * counted equally, while 9,500 m³ was still in the ground.
+   */
+  it('getRollup: weights a package by leaf value, not by counting leaves equally', async () => {
+    const { service } = build({
+      workPackages: [
+        {
+          id: 'a',
+          code: 'WP-A',
+          name: 'Substructure',
+          responsibleOwner: null,
+          progressWeight: '1',
+          boqLinks: [{ boqNodeId: 'setting-out' }, { boqNodeId: 'concrete' }],
+        },
+      ],
+      measurements: [
+        // 1 lot of 1 → 100%
+        { boqNodeId: 'setting-out', quantity: 1, boqNode: { id: 'setting-out', code: '1', description: 'Setting out', quantity: 1 } },
+        // 500 m³ of 10,000 → 5%
+        { boqNodeId: 'concrete', quantity: 500, boqNode: { id: 'concrete', code: '2', description: 'RC', quantity: 10000 } },
+      ],
+      leafValues: [
+        { id: 'setting-out', totalAmount: '2000.00' },
+        { id: 'concrete', totalAmount: '998000.00' },
+      ],
+    });
+
+    const res = await service.getRollup(identity, 'p-1');
+
+    // (2,000×100 + 998,000×5) ÷ 1,000,000 = 5.19 — not the old plain average of 52.5.
+    expect(res.packages[0]!.percentComplete).toBe(5);
+    expect(res.physicalPercent).toBeCloseTo(5.19, 2);
+  });
+
+  /**
+   * A leaf with no rate is worth nothing, so a package where nothing is priced has no values to
+   * weight by. Falling back to the plain average beats reporting 0% for work that happened.
+   */
+  it('getRollup: falls back to a plain average when no leaf in the package is priced', async () => {
+    const { service } = build({
+      workPackages: [
+        {
+          id: 'a',
+          code: 'WP-A',
+          name: 'Unpriced',
+          responsibleOwner: null,
+          progressWeight: '1',
+          boqLinks: [{ boqNodeId: 'n1' }, { boqNodeId: 'n2' }],
+        },
+      ],
+      measurements: [
+        { boqNodeId: 'n1', quantity: 1000, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }, // 100%
+        { boqNodeId: 'n2', quantity: 0, boqNode: { id: 'n2', code: '2', description: 'y', quantity: 1000 } }, // 0%
+      ],
+      leafValues: [
+        { id: 'n1', totalAmount: null },
+        { id: 'n2', totalAmount: null },
+      ],
+    });
+
+    const res = await service.getRollup(identity, 'p-1');
+    expect(res.packages[0]!.percentComplete).toBe(50);
+  });
+
+  /**
+   * An allocated leaf that has never been measured still carries value. Leaving it out of the
+   * denominator would let a package read 100% as soon as its first item finished.
+   */
+  it('getRollup: counts an allocated leaf with no progress yet', async () => {
+    const { service } = build({
+      workPackages: [
+        {
+          id: 'a',
+          code: 'WP-A',
+          name: 'Mixed',
+          responsibleOwner: null,
+          progressWeight: '1',
+          boqLinks: [{ boqNodeId: 'done' }, { boqNodeId: 'untouched' }],
+        },
+      ],
+      measurements: [
+        { boqNodeId: 'done', quantity: 100, boqNode: { id: 'done', code: '1', description: 'x', quantity: 100 } }, // 100%
+      ],
+      leafValues: [
+        { id: 'done', totalAmount: '50000.00' },
+        { id: 'untouched', totalAmount: '50000.00' },
+      ],
+    });
+
+    const res = await service.getRollup(identity, 'p-1');
+    expect(res.packages[0]!.percentComplete).toBe(50);
   });
 
   it('allocateBoqNode: allocates a free BOQ leaf to a work package', async () => {

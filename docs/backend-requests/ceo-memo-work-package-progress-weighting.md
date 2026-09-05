@@ -3,8 +3,10 @@
 **To:** Eng Ahmed Shirie (CEO, ACCO Ltd)
 **From:** product/eng
 **Date:** 2026-09-05
-**Decision needed before:** any further work on the Progress workspace's headline figure.
-**Status:** open question. No code changed.
+**Status:** **Option A implemented 2026-09-05** on Abdulsalam's instruction, including the
+retrospective recompute. Questions 2 and 3 below were answered by that decision; question 1 is
+recorded for confirmation, and the behaviour can still be changed if you want a different option.
+See "What was built" at the end.
 
 ---
 
@@ -129,3 +131,58 @@ packages. Most control, most setup work, and one more thing to keep at 100%.
 - `ProgressSnapshot` rows store the percentage **as it was calculated at capture time**. A formula
   change will make historical snapshots inconsistent with new ones, so the progress curve will bend
   at the changeover. Worth deciding whether to recompute or to annotate.
+
+
+---
+
+## What was built (2026-09-05)
+
+**Option A — value-weighted.** `weightedPackagePercent` in
+`apps/api/src/business/construction/progress/domain/progress-rollup.ts`, called from
+`ProgressService.getRollup()`.
+
+```text
+work package %  =  Σ (leaf value × leaf %)  ÷  Σ (leaf value)
+```
+
+The leaf's value is `BoqNode.totalAmount` — the server-computed line value — so the weighting
+always agrees with the BOQ's own arithmetic and nothing new has to be derived.
+
+Three behaviours worth knowing:
+
+- **Every allocated leaf counts**, not only measured ones. A leaf with no progress yet still
+  carries value; leaving it out would let a package read 100% the moment its first item finished.
+- **Question 2 answered as "yes, an unpriced item contributes nothing"** — with one guard. If
+  *nothing* in a package is priced there are no values to weight by, so it falls back to the plain
+  average rather than reporting 0% for work that has genuinely happened. That is the only place the
+  old behaviour survives, and only on a BOQ that has not been priced.
+- **The worked example above is a test.** `progress.service.spec.ts` asserts the 1-lot /
+  10,000 m³ package now reads ~5%, not 52.5%.
+
+**Question 3 answered as "yes, retrospectively."**
+`apps/api/scripts/recompute-progress-snapshots.ts` (`pnpm progress:recompute-snapshots
+--slug=acco --dry-run` / `--apply`) replays every stored `ProgressSnapshot.physicalPercent` under
+the new formula, so the progress curve does not bend at the changeover. It prints old → new and the
+delta for every row it would touch, and writes nothing without `--apply`.
+
+**It has not been run against any environment yet.** Run the dry run first and read the deltas.
+
+### What the recompute cannot reconstruct
+
+A snapshot froze "everything approved as of `capturedAt`". The script replays that using **today's**
+work packages, allocations and BOQ values. It is a faithful replay only where those have not moved.
+Three cases where it is not, none of them recoverable from stored data:
+
+1. A report **reopened and re-approved** with different quantities — only the current quantities
+   survive.
+2. Work packages, allocations or weights **changed** since — the replay uses today's structure.
+3. The BOQ **re-rated** since — the replay values leaves at today's rates.
+
+This is why the script reports every change rather than applying silently.
+
+### Separately noticed, not changed
+
+`computeVerifiedPercent` — the figure stored as `ProgressSnapshot.verifiedPercent` — sums
+*measurable quantities across all leaves*, which adds m³ to m² to kg. That total has no unit and no
+meaning. It is a different bug from this one, it does not affect `physicalPercent`, and it was left
+alone rather than folded into a change you were asked to approve. Worth its own decision.

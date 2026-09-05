@@ -127,6 +127,22 @@ export class ProgressRepository {
     });
   }
 
+  /**
+   * The contract value of each allocated leaf, so the roll-up can weight a package's items by
+   * what they are worth rather than counting them equally. `totalAmount` is the server-computed
+   * line value, so the weighting always agrees with the BOQ's own arithmetic.
+   *
+   * Scoped through the BOQ rather than by `organizationId`, the way every other node read in this
+   * repository is — `BoqNode` carries no organization column of its own.
+   */
+  async findLeafValues(prisma: TenantPrisma, projectId: string, boqNodeIds: string[]) {
+    if (boqNodeIds.length === 0) return [];
+    return prisma.boqNode.findMany({
+      where: { id: { in: boqNodeIds }, version: { boq: { projectId } } },
+      select: { id: true, totalAmount: true },
+    });
+  }
+
   /** The work package a leaf is already allocated to, or null. A leaf allocates to at most one. */
   findLeafAllocation(prisma: TenantPrisma, boqNodeId: string) {
     return prisma.workPackageBoqNode.findUnique({
