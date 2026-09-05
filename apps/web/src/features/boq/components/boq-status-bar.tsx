@@ -65,6 +65,8 @@ export function BoqStatusBar({
   const complete = itemCount > 0 && pricedCount === itemCount;
   const percent = itemCount === 0 ? 0 : Math.round((pricedCount / itemCount) * 100);
   const status = version?.status ?? 'DRAFT';
+  /** Only a draft is still being worked on, so only a draft has progress to report. */
+  const inProgress = status === 'DRAFT';
 
   return (
     <section
@@ -123,38 +125,52 @@ export function BoqStatusBar({
             )}
           </div>
 
-          {/* Structure and pricing completeness, on one line rather than in two boxes. */}
+          {/* Structure and pricing, on one line rather than in two boxes.
+
+              Progress belongs to a draft. A frozen version cannot be worked on, so a 100% bar
+              there is a picture of finished work rather than a measure of anything — it answers
+              "how close are we?" on a screen where the question is "what is this baseline?".
+              The fact survives as a word; the bar and the percentage do not. */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-caption text-muted-foreground">
             <span>{t('summary.sectionsAndItems', { sections: sectionCount, items: itemCount })}</span>
             <span aria-hidden="true">·</span>
             <span className={cn(complete ? 'font-medium text-success' : 'text-muted-foreground')}>
-              {t('summary.pricedOf', { priced: pricedCount, total: itemCount })}
+              {inProgress || !complete
+                ? t('summary.pricedOf', { priced: pricedCount, total: itemCount })
+                : t('summary.pricingComplete')}
             </span>
 
-            {/* A progress bar is a status carrier, not an accent: amber while there is work
-                left, green when there is none. It was brand blue, so a finished BOQ looked
-                exactly like an unfinished one. */}
-            <span
-              className="h-1.5 w-24 overflow-hidden rounded-full bg-muted"
-              role="progressbar"
-              aria-valuenow={percent}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label={t('summary.pricingCompleteness')}
-            >
-              <span
-                className={cn(
-                  'block h-full rounded-full transition-[width] duration-(--motion-layout)',
-                  complete ? 'bg-success' : 'bg-warning',
-                )}
-                style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
-              />
-            </span>
-            <span
-              className={cn('tabular-nums', complete ? 'font-medium text-success' : 'text-warning')}
-            >
-              {percent}%
-            </span>
+            {inProgress ? (
+              <>
+                {/* A progress bar is a status carrier, not an accent: amber while there is work
+                    left, green when there is none. It was brand blue, so a finished BOQ looked
+                    exactly like an unfinished one. */}
+                <span
+                  className="h-1.5 w-24 overflow-hidden rounded-full bg-muted"
+                  role="progressbar"
+                  aria-valuenow={percent}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={t('summary.pricingCompleteness')}
+                >
+                  <span
+                    className={cn(
+                      'block h-full rounded-full transition-[width] duration-(--motion-layout)',
+                      complete ? 'bg-success' : 'bg-warning',
+                    )}
+                    style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+                  />
+                </span>
+                <span
+                  className={cn(
+                    'tabular-nums',
+                    complete ? 'font-medium text-success' : 'text-warning',
+                  )}
+                >
+                  {percent}%
+                </span>
+              </>
+            ) : null}
           </div>
 
           {/* Provenance: what this version derives from, and what the contract points at. */}

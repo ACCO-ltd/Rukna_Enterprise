@@ -225,7 +225,8 @@ disabled one. That design stands.
 
 1. **State labels.** "Working BOQ" said BOQ twice on a page already headed BOQ; "Past revision" and
    "Discarded" were our words for states the domain calls superseded and cancelled.
-   → `Working / Approved / Superseded / Cancelled`.
+   → `Working / Baselined / Superseded / Cancelled`. (Briefly shipped as `Approved` — corrected
+   the same day, see §7.)
 2. **Versions vs Activity.** One disclosure called "Versions & history" made a reader guess which
    question it answered. → `Versions` (which version am I on) and `Activity` (who changed what).
 3. **TYPE column dropped; SOURCE conditional.** Whether a row is a section or an item is already
@@ -246,3 +247,73 @@ the contract points at — is unchanged and still in use.
 
 `boq-grid.test.tsx` now addresses columns by header name rather than by position. The positional
 assertion broke when TYPE was dropped, and it broke by silently pointing at the wrong column.
+
+
+---
+
+## 7. State-semantics pass — 2026-09-05 (second)
+
+Four corrections after seeing §6 rendered. All are state semantics, not information architecture.
+
+### `Approved` → `Baselined`
+
+Shipped as "Approved" earlier the same day, and it was wrong. The two words name different
+business concepts:
+
+```text
+Approved    someone signed this off through governance
+Baselined   this is the controlled scope the contract is measured against
+```
+
+Collapsing them lost the distinction — and the panel was already contradicting itself, reading
+**"Approved"** directly above **"Baselined 5 Sep 2026"** in its own provenance line. Governance can
+gate the baseline transition (`commands.baseline.awaitingApproval` exists for exactly that), so the
+product needs both words available and pointing at different things.
+
+**Locked:** `DRAFT → Working`, `BASELINED → Baselined`, `SUPERSEDED → Superseded`,
+`CANCELLED → Cancelled`. Backend enum untouched.
+
+### `Start revision` → `Create revision`
+
+Verified against the command first: `POST …/boq/draft` creates a new DRAFT version copied from the
+approved one. So the operation produces an object rather than entering a state, and "Create" names
+what the reader gets. "Start revision" read like a workflow status — *revision started, revision in
+progress* — which the system does not have.
+
+### The duplicate headline strip is gone
+
+`MetricStrip` restated total value, priced count, unpriced count and percentage roughly 20px below
+the status bar, which already carried all four. One authoritative summary — the status bar. Nothing
+was lost; `buildHeadlineMetrics` and the `platform.boq.metrics` catalogue went with it.
+
+### Progress belongs to a draft
+
+A frozen version cannot be worked on, so a 100% bar there is a picture of work finished months ago,
+sitting where the reader is asking *what is this baseline?* rather than *how close are we?*
+
+```text
+Working     3 of 4 items priced · ▓▓▓░ · 75%
+Frozen      Pricing complete
+```
+
+The fact survives as a word; the bar and the percentage do not. A **superseded or cancelled**
+version can be frozen while incomplete — those still show the count, because "Pricing complete"
+there would be false.
+
+### Import hidden off a draft
+
+`BoqImportService` always writes into an editable DRAFT: it uses `currentDraftVersionId`, or refuses
+with *"The BOQ has no editable draft to import into."* So an Import button beside a frozen baseline
+either 409s or silently opens a draft the reader never asked for. `canImport` now carries the same
+`isDraft` gate `canManage` already had — which is why Add section, inline editing, move and delete
+were already correctly hidden and Import was the one that leaked.
+
+### Copy that was overstating
+
+- **Versions disclosure** — "1 version · compare and switch" offered a comparison with nothing to
+  compare against. Now `{count, plural, one {# version} other {# versions · compare and switch}}`.
+- **Activity** — said "Every change to this BOQ" while `useBoqHistory` calls
+  `GET …/versions/:versionId/history`. It is **version-scoped**, and now says so.
+
+New `boq-status-bar.test.tsx` covers the state labels, the draft-only progress rule (including the
+incomplete-frozen case) and the contract-usage silence on a draft.

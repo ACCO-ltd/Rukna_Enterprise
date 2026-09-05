@@ -537,7 +537,7 @@
     },
     "history": {
       "title": "Activity",
-      "hint": "Every change to this BOQ",
+      "hint": "Changes to this version",
       "filteredHint": "Changes to {code}",
       "filteredTo": "Showing changes to {code}",
       "clearFilter": "Show all",
@@ -583,13 +583,13 @@
     "loadFailedHint": "Try again, or reload the page.",
     "versionStatus": {
       "DRAFT": "Working",
-      "BASELINED": "Approved",
+      "BASELINED": "Baselined",
       "SUPERSEDED": "Superseded",
       "CANCELLED": "Cancelled"
     },
     "actions": {
       "reviewChanges": "Review changes",
-      "startRevision": "Start revision",
+      "startRevision": "Create revision",
       "discardDraft": "Discard draft",
       "submitForBaseline": "Submit for baseline",
       "more": "More actions"
@@ -603,19 +603,8 @@
       "restrictedHint": "You do not have commercial visibility",
       "noContractBaselineHint": "Not yet used by the main contract",
       "contractCurrentAt": "Contract baseline: Version {number} — matches approved",
-      "contractBehindAt": "Contract baseline: Version {number} — an approved revision supersedes it"
-    },
-    "metrics": {
-      "label": "BOQ headline",
-      "totalValue": "Total value",
-      "priced": "Priced",
-      "pricedValue": "{priced} of {total}",
-      "unpriced": "Unpriced",
-      "unpricedValue": "{count} items",
-      "percentPriced": "% priced",
-      "percentValue": "{percent}%",
-      "notPriced": "Not priced",
-      "restricted": "Restricted"
+      "contractBehindAt": "Contract baseline: Version {number} — an approved revision supersedes it",
+      "pricingComplete": "Pricing complete"
     },
     "library": {
       "sectionTitle": "Add from library",
@@ -793,13 +782,13 @@
       "disclosureTitle": "Versions",
       "disclosureShow": "Show versions",
       "disclosureHide": "Hide versions",
-      "disclosureHint": "{count, plural, one {# version} other {# versions}} · compare and switch",
+      "disclosureHint": "{count, plural, one {# version} other {# versions · compare and switch}}",
       "currentHeading": "Current version",
       "count": "{count, plural, one {# version} other {# versions}}",
       "version": "Version {number}",
       "status": {
         "DRAFT": "Working",
-        "BASELINED": "Approved",
+        "BASELINED": "Baselined",
         "SUPERSEDED": "Superseded",
         "CANCELLED": "Cancelled"
       },
@@ -877,7 +866,7 @@
       "PRICE_ITEMS": "{count, plural, one {Price # item} other {Price # items}}",
       "FIX_BLOCKERS": "{count, plural, one {Resolve # issue} other {Resolve # issues}}",
       "SUBMIT_BASELINE": "Submit for baseline",
-      "START_REVISION": "Start revision",
+      "START_REVISION": "Create revision",
       "VIEW_ONLY": ""
     }
   },
