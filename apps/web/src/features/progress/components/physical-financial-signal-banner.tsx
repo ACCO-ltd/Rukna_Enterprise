@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 import { Skeleton, type BadgeTone } from '@erp/ui';
+import { Wallet } from 'lucide-react';
 import type { PhysicalFinancialSignalResponse } from '@erp/types';
 
 import { usePhysicalFinancialSignal } from '../hooks/use-progress';
@@ -52,10 +53,19 @@ export function PhysicalFinancialSignalBanner({
       statusLabel={t(`signal.status.${s.status}`)}
       tone={STATUS_TONE[s.status]}
       hint={t(STATUS_HINT[s.status])}
+      icon={<Wallet size={17} strokeWidth={1.9} />}
       stats={[
-        { label: t('signal.physical'), value: `${s.physicalPercent}%` },
-        { label: t('signal.cost'), value: formatPct(s.costConsumedPercent) },
-        { label: t('signal.divergence'), value: formatSignedPct(s.divergence) },
+        {
+          label: t('signal.physical'),
+          value: `${s.physicalPercent}%`,
+          percent: s.physicalPercent,
+        },
+        {
+          label: t('signal.cost'),
+          value: formatPct(s.costConsumedPercent),
+          percent: s.costConsumedPercent,
+        },
+        { label: t('signal.variance'), value: formatSignedPct(s.divergence), variance: true },
       ]}
       link={showLink ? { href: `/projects/${projectId}/progress`, label: t('overview.link') } : undefined}
       insufficient={s.status === 'INSUFFICIENT_DATA'}

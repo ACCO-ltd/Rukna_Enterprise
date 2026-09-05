@@ -57,7 +57,9 @@ export function ProgressTab({ projectId }: { projectId: string }) {
       />
 
       <div>
-        {view === 'overview' ? <PerformanceSection projectId={projectId} /> : null}
+        {view === 'overview' ? (
+          <PerformanceSection projectId={projectId} onGoTo={setView} />
+        ) : null}
         {view === 'record' ? <DailyReportsSection projectId={projectId} /> : null}
         {view === 'verification' ? <VerifiedProgressSection projectId={projectId} /> : null}
         {view === 'schedule' ? (

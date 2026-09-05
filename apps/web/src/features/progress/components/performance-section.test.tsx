@@ -15,9 +15,16 @@ const mocks = vi.hoisted(() => ({
   useProjectRollup: vi.fn(),
   useProgressCurve: vi.fn(),
   useCaptureProgressSnapshot: vi.fn(),
+  // The attention panel reads these; this suite is about the curve, so they stay empty.
+  useDprs: vi.fn(),
+  useWorkPackages: vi.fn(),
+  useProgressPeriodComparison: vi.fn(),
 }));
 
 vi.mock('../hooks/use-progress', () => mocks);
+vi.mock('../hooks/use-boq-leaves', () => ({
+  useBoqLeaves: () => ({ leaves: [], isPending: false, hasBaseline: false }),
+}));
 
 import { PerformanceSection } from './performance-section';
 
@@ -74,11 +81,14 @@ beforeEach(() => {
   mocks.useProjectRollup.mockReturnValue(loaded(ROLLUP));
   mocks.useProgressCurve.mockReturnValue(loaded(CURVE));
   mocks.useCaptureProgressSnapshot.mockReturnValue({ mutate: vi.fn(), isPending: false });
+  mocks.useDprs.mockReturnValue(loaded([]));
+  mocks.useWorkPackages.mockReturnValue(loaded([]));
+  mocks.useProgressPeriodComparison.mockReturnValue(loaded(null));
 });
 
 describe('PerformanceSection', () => {
   it('keeps the physical-vs-financial signal strip and shows the schedule-status chip', () => {
-    renderWithProviders(<PerformanceSection projectId="proj-1" />, { withToast: true });
+    renderWithProviders(<PerformanceSection projectId="proj-1" onGoTo={() => {}} />, { withToast: true });
 
     // Existing signal content preserved.
     expect(screen.getByText('Cost ahead of progress')).toBeInTheDocument();
@@ -87,14 +97,14 @@ describe('PerformanceSection', () => {
   });
 
   it('notes when the baseline is provisional', () => {
-    renderWithProviders(<PerformanceSection projectId="proj-1" />, { withToast: true });
+    renderWithProviders(<PerformanceSection projectId="proj-1" onGoTo={() => {}} />, { withToast: true });
 
     expect(screen.getByText(/planned line is an estimate/i)).toBeInTheDocument();
   });
 
   it('shows an honest insufficient-data state instead of a fabricated curve', () => {
     mocks.useProgressCurve.mockReturnValue(loaded(INSUFFICIENT_CURVE));
-    renderWithProviders(<PerformanceSection projectId="proj-1" />, {
+    renderWithProviders(<PerformanceSection projectId="proj-1" onGoTo={() => {}} />, {
       permissions: ['manage:project'],
       withToast: true,
     });
@@ -113,7 +123,7 @@ describe('PerformanceSection', () => {
    */
   it('offers the capture action once in the empty state, not twice', () => {
     mocks.useProgressCurve.mockReturnValue(loaded(INSUFFICIENT_CURVE));
-    renderWithProviders(<PerformanceSection projectId="proj-1" />, {
+    renderWithProviders(<PerformanceSection projectId="proj-1" onGoTo={() => {}} />, {
       permissions: ['manage:project'],
       withToast: true,
     });
@@ -122,7 +132,7 @@ describe('PerformanceSection', () => {
   });
 
   it('hides the capture action from a user who cannot manage progress', () => {
-    renderWithProviders(<PerformanceSection projectId="proj-1" />, { withToast: true });
+    renderWithProviders(<PerformanceSection projectId="proj-1" onGoTo={() => {}} />, { withToast: true });
     // No permission → the control is absent (honesty §4), not a disabled stub.
     expect(
       screen.queryByRole('button', { name: 'Record progress snapshot' }),
@@ -130,7 +140,7 @@ describe('PerformanceSection', () => {
   });
 
   it('shows the capture action when the user holds manage:project', () => {
-    renderWithProviders(<PerformanceSection projectId="proj-1" />, {
+    renderWithProviders(<PerformanceSection projectId="proj-1" onGoTo={() => {}} />, {
       permissions: ['manage:project'],
       withToast: true,
     });

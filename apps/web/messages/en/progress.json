@@ -17,7 +17,7 @@
     "verification": "Verification"
   },
   "headline": {
-    "physical": "Physical progress",
+    "physical": "Overall physical progress",
     "schedule": "Schedule",
     "cost": "Cost consumed",
     "alignment": "Cost vs progress",
@@ -26,7 +26,17 @@
     "physicalNone": "No work packages yet",
     "scheduleNone": "No baseline or snapshots yet",
     "costNone": "No forecast cost yet",
-    "alignmentNone": "No cost data yet"
+    "alignmentNone": "No cost data yet",
+    "physicalVsPlanned": "vs planned ({planned})",
+    "physicalNoPlan": "No planned baseline yet",
+    "thisPeriod": "This period",
+    "sinceLast": "since last snapshot ({previous})",
+    "noPeriod": "Needs two snapshots to compare",
+    "planned": "Planned progress",
+    "plannedAsOf": "as of {date}",
+    "status": "Progress status",
+    "statusPoints": "{points} percentage points",
+    "statusOnPlan": "On the planned line"
   },
   "setup": {
     "title": "Set up progress tracking",
@@ -275,7 +285,9 @@
     "costAheadHint": "Spending is running ahead of physical progress — investigate the variance.",
     "progressAheadHint": "Physical progress is ahead of recorded cost.",
     "alignedHint": "Physical progress and cost are broadly aligned.",
-    "insufficientHint": "There is no forecast cost yet, so no comparison can be made."
+    "insufficientHint": "There is no forecast cost yet, so no comparison can be made.",
+    "compare": "Comparison",
+    "variance": "Variance"
   },
   "collectionSignal": {
     "title": "Collection vs physical progress",
@@ -368,5 +380,24 @@
     "save": "Save",
     "delete": "Delete",
     "confirmDelete": "Confirm delete"
+  },
+  "attention": {
+    "title": "Needs attention",
+    "clear": "Nothing needs attention.",
+    "clearHint": "No reports are waiting, and the progress model is complete.",
+    "pendingVerification": "{count, plural, one {# progress report awaiting verification} other {# progress reports awaiting verification}}",
+    "pendingVerificationHint": "Quantities do not count towards progress until a report is approved.",
+    "weightsIncomplete": "Work-package weights total {total}, not 100%",
+    "weightsIncompleteHint": "The project figure is understated until they reach 100%.",
+    "unallocated": "{count, plural, one {# billable BOQ item is not allocated} other {# billable BOQ items are not allocated}}",
+    "unallocatedHint": "An unallocated item contributes nothing to any work package."
+  },
+  "packages": {
+    "title": "Work package progress",
+    "workPackage": "Work package",
+    "weight": "Weight",
+    "progress": "Progress",
+    "empty": "No work packages yet.",
+    "noVsPlan": "Planned progress is tracked for the project as a whole, not per work package."
   }
 }
