@@ -536,7 +536,7 @@
       "failed": "The import could not be completed."
     },
     "history": {
-      "title": "History",
+      "title": "Activity",
       "hint": "Every change to this BOQ",
       "filteredHint": "Changes to {code}",
       "filteredTo": "Showing changes to {code}",
@@ -582,10 +582,10 @@
     "loadFailed": "Could not load the BOQ",
     "loadFailedHint": "Try again, or reload the page.",
     "versionStatus": {
-      "DRAFT": "Working BOQ",
+      "DRAFT": "Working",
       "BASELINED": "Approved",
-      "SUPERSEDED": "Past revision",
-      "CANCELLED": "Discarded"
+      "SUPERSEDED": "Superseded",
+      "CANCELLED": "Cancelled"
     },
     "actions": {
       "reviewChanges": "Review changes",
@@ -601,7 +601,7 @@
       "notPriced": "Not priced",
       "restricted": "Restricted",
       "restrictedHint": "You do not have commercial visibility",
-      "noContractBaselineHint": "No contract references a BOQ version yet",
+      "noContractBaselineHint": "Not yet used by the main contract",
       "contractCurrentAt": "Contract baseline: Version {number} — matches approved",
       "contractBehindAt": "Contract baseline: Version {number} — an approved revision supersedes it"
     },
@@ -789,19 +789,19 @@
       }
     },
     "versions": {
-      "heading": "Version history",
-      "disclosureTitle": "Versions & history",
-      "disclosureShow": "Show versions & history",
-      "disclosureHide": "Hide versions & history",
+      "heading": "Versions",
+      "disclosureTitle": "Versions",
+      "disclosureShow": "Show versions",
+      "disclosureHide": "Hide versions",
       "disclosureHint": "{count, plural, one {# version} other {# versions}} · compare and switch",
       "currentHeading": "Current version",
       "count": "{count, plural, one {# version} other {# versions}}",
       "version": "Version {number}",
       "status": {
-        "DRAFT": "Working BOQ",
+        "DRAFT": "Working",
         "BASELINED": "Approved",
-        "SUPERSEDED": "Past revision",
-        "CANCELLED": "Discarded"
+        "SUPERSEDED": "Superseded",
+        "CANCELLED": "Cancelled"
       },
       "contractBaseline": "Contract BOQ",
       "basedOn": "Based on Version {number}",

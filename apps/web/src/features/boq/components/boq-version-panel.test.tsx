@@ -11,7 +11,7 @@ import { BoqVersionPanel } from './boq-version-panel';
  * Progressive-disclosure versioning.
  *
  * The full version list + Compare used to sit always-open and compete with the build task. It
- * now lives behind a "Versions & history" disclosure — reachable in one interaction, hidden by
+ * now lives behind a "Versions" disclosure — reachable in one interaction, hidden by
  * default so a first-time builder is not distracted. These pin that the list is gated by the
  * disclosure and that nothing versioning-related is removed, only deferred.
  */
@@ -68,7 +68,7 @@ describe('BoqVersionPanel — progressive disclosure', () => {
     render(false);
 
     // The disclosure control is present and reports collapsed.
-    const toggle = screen.getByRole('button', { name: /versions & history/i });
+    const toggle = screen.getByRole('button', { name: /versions/i });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
 
     // No version rows and no Compare while collapsed — nothing removed, just deferred.
@@ -79,7 +79,7 @@ describe('BoqVersionPanel — progressive disclosure', () => {
   it('asks the workspace to open when the disclosure is clicked', async () => {
     const { onToggle } = render(false);
 
-    await userEvent.click(screen.getByRole('button', { name: /versions & history/i }));
+    await userEvent.click(screen.getByRole('button', { name: /versions/i }));
 
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
@@ -87,7 +87,7 @@ describe('BoqVersionPanel — progressive disclosure', () => {
   it('reveals the full list, amounts and Compare once expanded', () => {
     render(true);
 
-    expect(screen.getByRole('button', { name: /versions & history/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /versions/i })).toHaveAttribute(
       'aria-expanded',
       'true',
     );

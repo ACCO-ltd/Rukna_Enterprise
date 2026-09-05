@@ -178,6 +178,7 @@ export function BoqStatusBar({
             <ContractBaselineNote
               contractBaseline={contractBaseline}
               matchesApproved={contractMatchesApproved}
+              versionStatus={version?.status ?? null}
             />
 
             {version?.baselinedAt ? (
@@ -208,13 +209,19 @@ function signed(formatted: string | null, raw: string): string {
 function ContractBaselineNote({
   contractBaseline,
   matchesApproved,
+  versionStatus,
 }: {
   contractBaseline: BoqVersionSummary | null;
   matchesApproved: boolean;
+  versionStatus: BoqVersionSummary['status'] | null;
 }) {
   const t = useTranslations('platform.boq.summary');
 
   if (!contractBaseline) {
+    // Silent on a draft. A contract can only reference a baselined version, so "not yet
+    // used" on an editable one states a rule rather than a fact about this project — and it
+    // was doing so on every brand-new BOQ, next to nothing the reader could act on.
+    if (versionStatus === 'DRAFT') return null;
     return <span>{t('noContractBaselineHint')}</span>;
   }
 

@@ -50,6 +50,7 @@ function render(overrides: Partial<Parameters<typeof BoqGrid>[0]> = {}) {
       isFiltered={false}
       canManage
       canViewCommercials
+      showSource={false}
       highlighted={new Set()}
       collapsed={new Set()}
       onToggle={onToggle}
@@ -60,8 +61,21 @@ function render(overrides: Partial<Parameters<typeof BoqGrid>[0]> = {}) {
     />,
   );
 
-  const rows = screen.getAllByRole('row').slice(1); // drop the header row
-  return { rows, onSelect, onToggle };
+  const allRows = screen.getAllByRole('row');
+  const headers = [...allRows[0]!.querySelectorAll('th')].map(
+    (th) => th.textContent?.trim() ?? '',
+  );
+
+  return {
+    rows: allRows.slice(1),
+    headers,
+    // Addressed by header rather than by index. A positional assertion broke the moment the
+    // TYPE column was dropped, and it broke by pointing at the wrong column rather than by
+    // saying the column had moved.
+    columnIndex: (name: string) => headers.indexOf(name),
+    onSelect,
+    onToggle,
+  };
 }
 
 /**
@@ -144,13 +158,38 @@ describe('BoqGrid — reading the rows', () => {
    * the amber row edge already carries for data that genuinely is absent.
    */
   it('leaves a section blank under Unit rather than printing a dash', () => {
-    const { rows } = render();
+    const { rows, columnIndex } = render();
+    const unit = columnIndex('Unit');
 
-    const sectionCells = rows[0]!.querySelectorAll('td');
-    const itemCells = rows[1]!.querySelectorAll('td');
+    expect(rows[0]!.querySelectorAll('td')[unit]?.textContent).toBe('');
+    expect(rows[1]!.querySelectorAll('td')[unit]?.textContent).toBe('LS');
+  });
 
-    expect(sectionCells[3]?.textContent).toBe('');
-    expect(itemCells[3]?.textContent).toBe('LS');
+  /**
+   * Section or item is already carried by the chevron, the indent, the weight, the tint and
+   * the absence of pricing cells. A sixth signal spelling it out in words spent a column on
+   * every row of a 400-line bill to repeat what the row already looked like.
+   */
+  it('spends no column on TYPE, but still announces it', () => {
+    const { rows, headers } = render();
+
+    expect(headers).not.toContain('Type');
+    // The screen reader still hears it, once, at the start of the row.
+    expect(rows[0]!).toHaveTextContent('Section');
+    expect(rows[1]!).toHaveTextContent('Item');
+  });
+
+  /**
+   * Provenance only earns a column once there is provenance to tell apart. Until a Variation
+   * scopes a line in, SOURCE reads "Baseline" on every row — horizontal space spent to say
+   * nothing on the densest screen in the product.
+   */
+  it('hides Source while every line came in with the original scope', () => {
+    expect(render().headers).not.toContain('Source');
+  });
+
+  it('shows Source once provenance is mixed', () => {
+    expect(render({ showSource: true }).headers).toContain('Source');
   });
 
   /**

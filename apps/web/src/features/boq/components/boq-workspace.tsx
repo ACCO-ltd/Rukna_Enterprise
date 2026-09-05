@@ -494,6 +494,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
             isFiltered={isFiltered}
             canManage={canManage}
             canViewCommercials={canViewCommercials}
+            showSource={hasVariations}
             highlighted={highlighted}
             collapsed={collapsed}
             onToggle={toggleCollapsed}
