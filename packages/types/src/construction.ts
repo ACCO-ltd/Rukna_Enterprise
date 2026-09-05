@@ -1812,3 +1812,286 @@ export interface AtRiskCommencementResponse {
   authorisedAt: string;
   createdAt: string;
 }
+
+// ─── Project Procurement (Phase 5) ──────────────────────────────────────────────
+//
+// The project's view of procurement. The boundary it obeys: **the organisation owns supplier
+// documents; the project owns the cost coded onto their lines.** `PurchaseOrder` has no
+// `projectId` and neither does `GoodsReceiptNote` — the cost target lives on
+// `PurchaseOrderLine` and is inherited read-only by every downstream document, so one PO can
+// legitimately serve three sites. Nothing here presents a supplier document as if the project
+// owned it; documents are named and linked out to, never operated on.
+//
+// Every money figure is derived from `CommitmentLedgerEntry`, which already carries projectId,
+// boqNodeId, supplierId, purchaseOrderId, stage and the full source-document trace. Reading the
+// ledger rather than re-aggregating PO/GRN/bill lists means these figures **cannot** disagree
+// with the Project Financial Position — they are the same rows.
+
+/** A cost with no project attribution is corporate overhead and appears in no project view. */
+export type ProjectCostStage = 'COMMITTED' | 'ACCRUED' | 'ACTUAL';
+
+/**
+ * The three ledger stages plus what they are measured against.
+ *
+ * `budget*` fields are null when the project has no BASELINED cost budget — which is the normal
+ * state of a new project, and must render as "no budget set", never as 0% used.
+ */
+export interface ProjectCostPosition {
+  currency: string | null;
+  /** Decimal strings. Null when the caller lacks financial visibility. */
+  committed: string | null;
+  accrued: string | null;
+  actual: string | null;
+  /**
+   * Committed but not yet actual — the cost already promised to suppliers that has not landed
+   * in the ledger as a bill. Named "exposure" rather than "remaining commitment" because that
+   * is what it is: money the project is on the hook for.
+   */
+  forecastExposure: string | null;
+  /** The BASELINED budget total, or null when none is set. */
+  budgetTotal: string | null;
+  /** Each stage as a percent of budget, to one decimal. Null without a budget. */
+  committedPercentOfBudget: number | null;
+  accruedPercentOfBudget: number | null;
+  actualPercentOfBudget: number | null;
+  forecastExposurePercentOfBudget: number | null;
+}
+
+/** One stage of the requirement→payment pipeline, with its count and its money. */
+export interface ProjectProcurementPipelineStage {
+  stage: 'REQUIREMENTS' | 'PURCHASE_ORDERS' | 'GOODS_RECEIVED' | 'SUPPLIER_BILLS' | 'PAYMENTS';
+  count: number;
+  /** The money this stage represents. Null without financial visibility. */
+  amount: string | null;
+  /** A second count that qualifies the first — "12 approved", "4 not yet ordered". */
+  qualifierCount: number | null;
+}
+
+/**
+ * Something a project manager has to do something about.
+ *
+ * Ordered by **operational consequence**, not by document lifecycle: whether the site can keep
+ * working comes before whether a bill reconciles. `tier` is the server's classification so the
+ * ordering cannot drift between screens, and so a UI never invents a severity engine of its own.
+ */
+export type ProcurementAttentionTier =
+  /** The site cannot proceed, or is about to be unable to. */
+  | 'SITE_BLOCKING'
+  /** Cost has landed but is not yet recognised — accrual and supplier-reconciliation risk. */
+  | 'COST_RECOGNITION'
+  /** Financial control: matching, tolerance, approval. */
+  | 'FINANCIAL_CONTROL'
+  /** Hygiene. Real, but must never outrank the three above. */
+  | 'ROUTINE';
+
+export type ProcurementAttentionKind =
+  | 'APPROVED_NOT_ORDERED'
+  | 'OVER_RECEIPT_EXCEPTION'
+  | 'RECEIVED_NOT_BILLED'
+  | 'BILL_OUTSIDE_TOLERANCE'
+  | 'INSPECTION_UNRESOLVED'
+  | 'STALE_DRAFT_REQUIREMENT';
+
+export interface ProcurementAttentionItem {
+  kind: ProcurementAttentionKind;
+  tier: ProcurementAttentionTier;
+  count: number;
+  /** Total money behind the count, where the kind has one. Null otherwise or when withheld. */
+  amount: string | null;
+  /** Where to go to act on it. Null when the caller cannot act. */
+  actionUrl: string | null;
+}
+
+/** A ledger movement, named by the document that caused it. */
+export interface ProjectProcurementActivityRow {
+  id: string;
+  /** The source document's type, as the ledger recorded it. */
+  documentType: string;
+  /** Its human reference — "PO-0042 (Rev 3)", "GRN-0032". Null for a document since deleted. */
+  reference: string | null;
+  description: string | null;
+  amount: string | null;
+  currency: string;
+  stage: ProjectCostStage;
+  occurredAt: string;
+}
+
+export interface ProjectProcurementOverviewResponse {
+  projectId: string;
+  financialsVisible: boolean;
+  position: ProjectCostPosition;
+  /** Open requirements, active POs touching this project, open exceptions. */
+  openRequirementCount: number;
+  requirementsAwaitingProcurement: number;
+  activePoCount: number;
+  activePoValue: string | null;
+  openExceptionCount: number;
+  pipeline: ProjectProcurementPipelineStage[];
+  attention: ProcurementAttentionItem[];
+  /** Committed vs actual per top-level BOQ section, for the overview chart. */
+  costByBoq: ProjectCostByBoqRow[];
+  committedBySupplier: ProjectCostBySupplierRow[];
+  recentActivity: ProjectProcurementActivityRow[];
+  capabilities: ProjectProcurementCapabilities;
+  asOf: string;
+}
+
+export interface ProjectProcurementCapabilities {
+  canViewFinancials: boolean;
+  canRaiseRequirement: boolean;
+  canManageBudget: boolean;
+  canBaselineBudget: boolean;
+  /** True only where the caller also holds buyer authority (ADR-022); the tab still links out. */
+  canOperateProcurement: boolean;
+}
+
+// ─── Cost & Commitments ─────────────────────────────────────────────────────────
+
+/**
+ * One row of the cost breakdown, in whichever dimension was requested.
+ *
+ * `boqNodeId` null with `kind: 'PROJECT_LEVEL'` is the legitimate project cost that has no BOQ
+ * line — site office, transport, insurance, temporary facilities. It is project cost and must be
+ * shown; it simply does not trace to priced scope. Corporate overhead (no project at all) never
+ * reaches this read model.
+ */
+export interface ProjectCostByBoqRow {
+  kind: 'BOQ' | 'PROJECT_LEVEL';
+  boqNodeId: string | null;
+  /** "001", "003.002". Null for the project-level bucket. */
+  code: string | null;
+  description: string;
+  /** Depth in the BOQ tree, 0 for a top-level section. Drives indentation, not layout. */
+  depth: number;
+  hasChildren: boolean;
+  budget: string | null;
+  committed: string | null;
+  accrued: string | null;
+  actual: string | null;
+  /** budget − committed. Null without a budget: "remaining" needs something to remain of. */
+  remaining: string | null;
+  /** committed ÷ budget as a whole percent. Null without a budget. */
+  percentUsed: number | null;
+}
+
+export interface ProjectCostBySupplierRow {
+  supplierId: string | null;
+  supplierName: string;
+  committed: string | null;
+  accrued: string | null;
+  actual: string | null;
+  /** Share of the project's committed total, to one decimal. */
+  percentOfCommitted: number | null;
+}
+
+export interface ProjectCostByCategoryRow {
+  spendCategoryId: string | null;
+  categoryName: string;
+  committed: string | null;
+  accrued: string | null;
+  actual: string | null;
+  percentOfActual: number | null;
+}
+
+export interface ProjectProcurementCostResponse {
+  projectId: string;
+  financialsVisible: boolean;
+  position: ProjectCostPosition;
+  /** Null when no BASELINED budget exists — the UI says so rather than showing 0%. */
+  budgetVersion: number | null;
+  byBoq: ProjectCostByBoqRow[];
+  bySupplier: ProjectCostBySupplierRow[];
+  byCategory: ProjectCostByCategoryRow[];
+  recentEntries: ProjectProcurementActivityRow[];
+  capabilities: ProjectProcurementCapabilities;
+  asOf: string;
+}
+
+// ─── Requirements ───────────────────────────────────────────────────────────────
+
+export type MaterialRequestPriorityValue = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+
+/**
+ * A requirement as the project reads it.
+ *
+ * `estimatedValue` is the requester's estimate (Σ quantity × estimatedUnitPrice), which ADR-022
+ * routes approval on. `orderedValue` is real money: Σ over the PO lines allocated to this
+ * request, at the PO's own unit price. They are different bases and the UI must not present
+ * their difference as a saving — a buyer beating an estimate and a buyer part-ordering look
+ * identical in a single number.
+ */
+export interface ProjectRequirementRow {
+  id: string;
+  mrNumber: string;
+  title: string | null;
+  description: string | null;
+  status: string;
+  priority: MaterialRequestPriorityValue;
+  /** Rolled up from the lines' spend categories; null when the lines carry none. */
+  category: string | null;
+  requestedDate: string;
+  requiredByDate: string | null;
+  lineCount: number;
+  estimatedValue: string | null;
+  orderedValue: string | null;
+  /** estimatedValue − orderedValue, floored at zero. Null when there is no estimate. */
+  remainingValue: string | null;
+  /** How many purchase orders carry lines allocated to this request. */
+  purchaseOrderCount: number;
+}
+
+export interface ProjectRequirementsSummary {
+  total: number;
+  approved: number;
+  ordered: number;
+  partiallyOrdered: number;
+  draftOrOther: number;
+}
+
+export interface ProjectRequirementsResponse {
+  projectId: string;
+  financialsVisible: boolean;
+  summary: ProjectRequirementsSummary;
+  requirements: ProjectRequirementRow[];
+  capabilities: ProjectProcurementCapabilities;
+  asOf: string;
+}
+
+// ─── Project cost budget ────────────────────────────────────────────────────────
+
+export type ProjectCostBudgetStatusValue = 'DRAFT' | 'BASELINED' | 'SUPERSEDED';
+
+export interface ProjectCostBudgetLineResponse {
+  id: string;
+  boqNodeId: string | null;
+  boqNodeCode: string | null;
+  spendCategoryId: string | null;
+  spendCategoryName: string | null;
+  description: string;
+  budgetAmount: string;
+  sortOrder: number;
+}
+
+export interface ProjectCostBudgetResponse {
+  id: string;
+  projectId: string;
+  versionNumber: number;
+  status: ProjectCostBudgetStatusValue;
+  currency: string;
+  notes: string | null;
+  derivedFromId: string | null;
+  total: string;
+  preparedBy: string;
+  baselinedAt: string | null;
+  baselinedBy: string | null;
+  lines: ProjectCostBudgetLineResponse[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectCostBudgetListResponse {
+  projectId: string;
+  /** The version the project is currently measured against, or null when none is baselined. */
+  baselined: ProjectCostBudgetResponse | null;
+  budgets: Array<Omit<ProjectCostBudgetResponse, 'lines'> & { lineCount: number }>;
+}

@@ -66,6 +66,12 @@ export const PERMISSIONS = {
   goodsReceiptExceptionsApprove: 'approve:goods-receipt-exception',
   matchingExceptionsApprove: 'approve:matching-exception',
   commitmentsView: 'view:commitment-ledger',
+  // The project's cost budget — what it intends to spend, against which the commitment ledger
+  // is read. Authoring and baselining are separate because they are different acts: drafting a
+  // budget is planning, baselining one sets the figure the project is measured against and
+  // supersedes the last, so it carries the same weight as baselining a BOQ.
+  projectBudgetManage: 'manage:project-budget',
+  projectBudgetBaseline: 'baseline:project-budget',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -94,6 +100,7 @@ const DOMAIN_BY_RESOURCE: Record<string, string> = {
   'purchase-order': 'Procurement', 'goods-receipt': 'Procurement',
   'goods-receipt-exception': 'Procurement', 'matching-exception': 'Procurement',
   'commitment-ledger': 'Procurement',
+  'project-budget': 'Procurement',
 };
 
 function riskFor(action: string): PermissionDefinition['riskClass'] {
@@ -163,6 +170,8 @@ const DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.goodsReceiptExceptionsApprove]: 'Approve goods receipt exceptions',
   [PERMISSIONS.matchingExceptionsApprove]: 'Approve supplier bill matching exceptions',
   [PERMISSIONS.commitmentsView]: 'View the commitment ledger',
+  [PERMISSIONS.projectBudgetManage]: 'Draft and edit project cost budgets',
+  [PERMISSIONS.projectBudgetBaseline]: 'Baseline a project cost budget',
 };
 
 export const PERMISSION_DEFINITIONS: readonly PermissionDefinition[] = Object.values(

@@ -35,6 +35,7 @@ model Organization {
   clients                  Client[]
   clientCodeSequence       ClientCodeSequence?
   contracts                Contract[]
+  projectCostBudgets       ProjectCostBudget[]
   applications             InterimPaymentApplication[]
   certificates             InterimPaymentCertificate[]
   receipts                 PaymentReceipt[]
@@ -601,6 +602,7 @@ model Project {
   suspensions          ProjectSuspension[]
   boq                  Boq?
   contracts            Contract[]
+  costBudgets          ProjectCostBudget[]
   documents            ProjectDocument[]
   dailyProgressReports DailyProgressReport[]
   workPackages         WorkPackage[]
@@ -1027,6 +1029,7 @@ model BoqNode {
   progressMeasurements ProgressMeasurement[]
   workPackageLinks     WorkPackageBoqNode[]
   purchaseOrderLines   PurchaseOrderLine[]
+  costBudgetLines      ProjectCostBudgetLine[]
 
   // CONST-BOQ-015 — codes address lines in a contract; two nodes answering to "02.01.002"
   // makes every downstream reference ambiguous.
@@ -3043,6 +3046,89 @@ enum IpcStatus {
   REJECTED
 }
 
+// ─── Project cost budget ──────────────────────────────────────────────────────
+//
+// What the project INTENDS to spend, against which the commitment ledger's
+// COMMITTED → ACCRUED → ACTUAL is read. It is the cost-side comparison and it is emphatically
+// NOT the client contract value: a BOQ line's rate is what the client pays, and comparing
+// supplier cost against a selling rate produces a "remaining" figure that is really margin.
+// The two must never share a column.
+//
+// **Versioned and baselined, deliberately.** A budget that can be edited in place is worth
+// nothing as a control: the first response to an overrun is to raise the number, and the
+// evidence that it moved disappears with it. So this follows the BOQ's own pattern — a DRAFT is
+// working material, BASELINED is the figure the project is measured against, and changing a
+// baselined budget means a new version that supersedes the old one. The history is the point.
+//
+// One BASELINED version per project at a time; the service enforces it.
+enum ProjectCostBudgetStatus {
+  DRAFT
+  BASELINED
+  SUPERSEDED
+}
+
+model ProjectCostBudget {
+  id             String                  @id @default(cuid())
+  organizationId String                  @map("organization_id")
+  projectId      String                  @map("project_id")
+  versionNumber  Int                     @map("version_number")
+  status         ProjectCostBudgetStatus @default(DRAFT)
+  currency       String                  @db.VarChar(3)
+  notes          String?
+  // The version this one was derived from, so a re-budget can be read against its predecessor.
+  derivedFromId  String?                 @map("derived_from_id")
+
+  preparedBy  String    @map("prepared_by")
+  baselinedAt DateTime? @map("baselined_at")
+  baselinedBy String?   @map("baselined_by")
+  supersededAt DateTime? @map("superseded_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization            @relation(fields: [organizationId], references: [id])
+  project      Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  derivedFrom  ProjectCostBudget?      @relation("ProjectCostBudgetLineage", fields: [derivedFromId], references: [id])
+  supersedes   ProjectCostBudget[]     @relation("ProjectCostBudgetLineage")
+  lines        ProjectCostBudgetLine[]
+
+  @@unique([projectId, versionNumber])
+  @@index([organizationId, projectId, status])
+  @@map("project_cost_budgets")
+}
+
+// One budgeted amount, coded the same way cost is coded.
+//
+// `boqNodeId` set = BOQ-coded budget, and the ledger's own `boqNodeId` rolls straight onto it.
+// `boqNodeId` null = a project-level cost that legitimately has no BOQ line — site office
+// utilities, project transport, insurance, temporary facilities. Both are project cost; only
+// the first traces to priced scope. A cost with no project at all is corporate overhead and
+// belongs to neither (see the project procurement read model).
+model ProjectCostBudgetLine {
+  id       String @id @default(cuid())
+  budgetId String @map("budget_id")
+
+  // Exactly one of these two carries the coding. Both null is rejected by the service — an
+  // unlabelled budget line is a number nobody can reconcile against anything.
+  boqNodeId       String? @map("boq_node_id")
+  spendCategoryId String? @map("spend_category_id")
+
+  description  String
+  budgetAmount Decimal @map("budget_amount") @db.Decimal(18, 2)
+  sortOrder    Int     @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  budget        ProjectCostBudget @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  boqNode       BoqNode?          @relation(fields: [boqNodeId], references: [id])
+  spendCategory SpendCategory?    @relation(fields: [spendCategoryId], references: [id])
+
+  @@index([budgetId])
+  @@index([boqNodeId])
+  @@map("project_cost_budget_lines")
+}
+
 // ─── Enums — Accounting ───────────────────────────────────────────────────────
 
 enum SupplierStatus {
@@ -3397,6 +3483,7 @@ model SpendCategory {
   commitments         CommitmentLedgerEntry[]
   matchingPolicies    MatchingTolerancePolicy[]
   overReceiptPolicies OverReceiptPolicy[]
+  costBudgetLines     ProjectCostBudgetLine[]
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
@@ -3442,6 +3529,12 @@ model MaterialRequest {
   requestedBy        String                @map("requested_by")
   requestedDate      DateTime              @map("requested_date") @db.Date
   requiredByDate     DateTime?             @map("required_by_date") @db.Date
+  // A short name for the requirement ("Reinforcement steel"), distinct from the longer
+  // `description` that justifies it. A list keyed on a paragraph is unreadable.
+  title              String?               @db.VarChar(160)
+  // How badly the site needs it. Drives the attention queue's site-blocking tier — a
+  // requirement nobody has ordered matters far more when it is URGENT.
+  priority           MaterialRequestPriority @default(NORMAL)
   description        String?
   status             MaterialRequestStatus @default(DRAFT)
   approvalInstanceId String?               @map("approval_instance_id")
@@ -3468,6 +3561,11 @@ model MaterialRequestLine {
   unitOfMeasureId       String              @map("unit_of_measure_id")
   requestedQuantity     Decimal             @map("requested_quantity") @db.Decimal(18, 4)
   approvedQuantity      Decimal?            @map("approved_quantity") @db.Decimal(18, 4)
+  // ADR-022 CONST-DOA-001: approval routing is by monetary threshold, so a requirement with
+  // no value cannot be routed at all. The requester's estimate — not a commitment, and always
+  // superseded by the PO line's real `unitPrice` once a buyer has been to market. Nullable:
+  // a requirement raised before this column existed has none, and inventing one would be worse.
+  estimatedUnitPrice    Decimal?            @map("estimated_unit_price") @db.Decimal(18, 4)
   boqNodeId             String?             @map("boq_node_id")
   spendCategoryId       String?             @map("spend_category_id")
   departmentId          String?             @map("department_id")
@@ -3886,6 +3984,15 @@ enum ProcurementLineType {
   MATERIAL
   SERVICE
   OTHER
+}
+
+// How urgently the site needs a requirement. Ordering, not severity: it ranks the attention
+// queue, and does not by itself authorise anything.
+enum MaterialRequestPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
 }
 
 enum MaterialRequestScope {
