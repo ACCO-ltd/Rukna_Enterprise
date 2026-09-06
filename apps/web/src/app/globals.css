@@ -149,13 +149,24 @@
      it `success` would tell a red-green-blind reader nothing and would collide
      with the meaning those tokens carry elsewhere (ux-doctrine §7: no rainbow
      charts, no second colour competing with the accent).
-       chart-1 — the primary measured series (actual physical %)
-       chart-2 — a secondary measured series (verified %), quieter than chart-1
+       chart-1 — the primary measured series (actual physical %, committed cost)
+       chart-2 — a secondary measured series (verified %, accrued cost)
+       chart-3 — a third stage in an ordered progression (actual/billed cost)
+       chart-4/5 — additional categorical slices, for a breakdown by supplier or
+                   spend category where the categories have no inherent order
      The planned/baseline reference line intentionally uses `--muted-foreground`
      (a dashed hairline), so "planned" reads as a backdrop the actuals move
-     against, never as a third competing hue. */
+     against, never as a third competing hue.
+
+     1-2-3 read as one ordered family on purpose: committed → accrued → actual is a
+     progression, and three unrelated hues would say those stages are unrelated
+     things. 4 and 5 step outside the family only where the data genuinely is
+     categorical. */
   --chart-1: #2b6fd6;
   --chart-2: #5b8ff9;
+  --chart-3: #93b4f9;
+  --chart-4: #7c5cd6;
+  --chart-5: #2f9e8f;
 
   /* ── Density ───────────────────────────────────────────────────────────
      Comfortable is the default: most screens are read and approved, not
@@ -222,6 +233,9 @@
   /* Data-viz ramp, lifted for a dark surface (see the light-theme note above). */
   --chart-1: #6d96ff;
   --chart-2: #93b4ff;
+  --chart-3: #b9cdff;
+  --chart-4: #a78bfa;
+  --chart-5: #4fc4b1;
   --shadow-control: 0 1px 2px rgb(0 0 0 / 0.3);
   --shadow-panel: 0 1px 3px rgb(0 0 0 / 0.28), 0 12px 32px rgb(0 0 0 / 0.18);
   --shadow-overlay: 0 24px 56px rgb(0 0 0 / 0.42);
@@ -293,6 +307,9 @@
   --color-overlay: var(--overlay);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
   /* Inter, loaded variable in app/layout.tsx. The fallback chain is system-first so a
      failed font fetch degrades to the closest available grotesque rather than to Arial. */
   --font-sans:

@@ -28,6 +28,7 @@ import { formatDate, formatMoney } from '@/lib/format';
 
 import { useProjectProcurementCost } from '../../hooks/use-project-procurement';
 import { CostPositionBand } from './cost-position-band';
+import { CostByAreaChart, ShareRing, topSlices } from './cost-charts';
 import { SectionPanel } from './section-panel';
 
 type Dimension = 'boq' | 'supplier' | 'category';
@@ -72,6 +73,43 @@ export function CostCommitmentsView({ projectId }: { projectId: string }) {
         position={data.position}
         canManageBudget={data.capabilities.canManageBudget}
       />
+
+      {/* Charts sit ABOVE the breakdown only because they are one screen-third tall; the table
+          below is still the authoritative reading and is never pushed off the first screen. */}
+      <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+        <SectionPanel title={t('chartByArea')} description={t('chartByAreaHint')}>
+          <CostByAreaChart
+            groups={data.byBoq
+              .filter((r) => r.depth === 0)
+              .map((r) => ({
+                label: r.kind === 'PROJECT_LEVEL' ? t('projectLevelShort') : r.description,
+                committed: Number(r.committed ?? 0),
+                accrued: Number(r.accrued ?? 0),
+                actual: Number(r.actual ?? 0),
+              }))
+              .filter((g) => g.committed > 0 || g.accrued > 0 || g.actual > 0)}
+          />
+        </SectionPanel>
+
+        <SectionPanel title={t('chartByCategory')} description={t('chartByCategoryHint')}>
+          <ShareRing
+            slices={topSlices(
+              data.byCategory.map((r) => ({
+                label: r.categoryName,
+                // Committed, not actual: on a project that has ordered but not yet been billed,
+                // an actual-based ring would be empty while real money is committed.
+                value: Number(r.committed ?? 0),
+                amount: r.committed,
+              })),
+              5,
+              t('others'),
+            )}
+            total={data.byCategory.reduce((sum, r) => sum + Number(r.committed ?? 0), 0)}
+            centreLabel={t('col.committed')}
+            currency={data.position.currency}
+          />
+        </SectionPanel>
+      </div>
 
       <SectionPanel
         title={t('breakdown')}
@@ -237,10 +275,12 @@ function CostByBoqTable({ data }: { data: ProjectProcurementCostResponse }) {
                       <TableCell className="text-end tabular-nums">
                         {money(row.uncommittedBudget)}
                       </TableCell>
-                      <TableCell className="text-end tabular-nums text-muted-foreground">
-                        {row.committedOfBudgetPercent === null
-                          ? '—'
-                          : `${row.committedOfBudgetPercent}%`}
+                      <TableCell className="text-end">
+                        {row.committedOfBudgetPercent === null ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : (
+                          <UsageBar percent={row.committedOfBudgetPercent} />
+                        )}
                       </TableCell>
                       <TableCell className="text-end tabular-nums text-muted-foreground">
                         {row.actualOfBudgetPercent === null ? '—' : `${row.actualOfBudgetPercent}%`}
@@ -362,6 +402,30 @@ function CostByCategoryTable({ data }: { data: ProjectProcurementCostResponse })
         </TableBody>
       </Table>
     </TableScroll>
+  );
+}
+
+/**
+ * Committed against budget, as a figure with a bar behind it.
+ *
+ * Amber past 100%: a line committed beyond its budget is a fact worth seeing without reading the
+ * number, and it is the one place on this screen where a status colour is right — that is a
+ * threshold crossed, not a data series.
+ */
+function UsageBar({ percent }: { percent: number }) {
+  const over = percent > 100;
+  return (
+    <span className="inline-flex items-center justify-end gap-2">
+      <span className="hidden w-16 overflow-hidden rounded-full bg-muted sm:block">
+        <span
+          className={cn('block h-1.5 rounded-full', over ? 'bg-warning' : 'bg-brand-primary')}
+          style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+        />
+      </span>
+      <span className={cn('tabular-nums', over ? 'font-medium text-warning' : 'text-muted-foreground')}>
+        {percent}%
+      </span>
+    </span>
   );
 }
 

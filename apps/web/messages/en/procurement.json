@@ -722,7 +722,29 @@
         "supplier": "Supplier",
         "committed": "Committed",
         "actual": "Actual"
-      }
+      },
+      "tile": {
+        "openRequirements": "Open requirements",
+        "openPos": "Open purchase orders",
+        "openExceptions": "Open exceptions"
+      },
+      "awaitingProcurement": "{n} awaiting procurement",
+      "poValue": "{amount} committed",
+      "poValueRestricted": "Value restricted",
+      "exceptionsSupport": "Require attention",
+      "costByArea": "Cost by BOQ area",
+      "costByAreaHint": "Committed, accrued and actual per top-level cost area.",
+      "noCostYet": "No procurement cost recorded yet.",
+      "projectLevelShort": "Project-level",
+      "viewDetails": "View details",
+      "actions": "Actions",
+      "raiseRequirementHint": "Tell procurement what the site needs",
+      "viewRequirements": "View requirements",
+      "viewRequirementsHint": "Everything this project has asked for",
+      "viewCost": "View project cost",
+      "viewCostHint": "Drill down by BOQ, supplier or cost category",
+      "openProcurement": "Open Procurement",
+      "openProcurementHint": "Orders, receipts and bills live in the buyer workspace"
     },
     "requirements": {
       "title": "Project requirements",
@@ -834,7 +856,15 @@
         "PO_CANCELLATION": "PO cancellation",
         "GRN_REVERSAL": "Receipt reversal",
         "BILL_REVERSAL": "Bill reversal"
-      }
+      },
+      "chartByArea": "Cost by BOQ area",
+      "chartByAreaHint": "All three stages per top-level area — the gap between them is what is received but not billed.",
+      "chartByCategory": "Committed cost by category",
+      "chartByCategoryHint": "Where this project has committed money, by spend category.",
+      "chartByAreaSummary": "Bar chart of committed, accrued and actual cost across {n} cost areas.",
+      "chartShareSummary": "Share of committed cost across {n} categories.",
+      "projectLevelShort": "Project-level",
+      "others": "Others"
     }
   }
 }
