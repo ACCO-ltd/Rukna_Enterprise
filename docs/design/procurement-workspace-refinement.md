@@ -1,25 +1,25 @@
 # Procurement workspace — refinement (Phase 5)
 
-Status: **FROZEN 2026-09-05.**
+Status: **FROZEN 2026-09-06.**
 
 ```
-Boundary / IA                 FROZEN
-ProjectCostBudget backend     COMPLETE   (NEW in Phase 5 — see below)
-Procurement read model        COMPLETE
-Requirements frontend         COMPLETE
-Cost & Commitments frontend   COMPLETE
-MR form: title/priority/est   COMPLETE
-Responsive + dark-mode QA     PASS
-RBAC boundary                 PASS
-Null-vs-zero semantics        PASS
-PO / revision semantics       PASS
-
-Still open                    populated-ledger browser QA
-                              deterministic procurement workflow QA fixture
-Deferred to Cost Control      ProjectCostBudget authoring UI
+Domain boundary                FROZEN
+Budget model                   COMPLETE   (ProjectCostBudget — NEW in Phase 5)
+Cost attribution               COMPLETE
+BOQ / project-level rollup     COMPLETE
+Overview                       COMPLETE
+Requirements                   COMPLETE
+Cost & Commitments             COMPLETE
+Committed E2E                  PASS
+Accrued E2E                    PASS
+Actual E2E                     DEFERRED TO ACCOUNTING CONFIG
+Responsive / dark              PASS
+RBAC                           PASS
+PO / revision semantics        PASS
+Null-vs-zero semantics         PASS
 ```
 
-948 API tests, 1721 web tests, 8 browser specs across two projects.
+955 API tests, 1729 web tests, 9 browser specs across two projects.
 Phase 5 of the project-workspace redesign, after Commercial (`commercial-workspace-refinement.md`).
 Sources of truth: **ADR-013** (Project Financial Position), **ADR-018** (bill matching),
 **ADR-020** (BOQ backbone + change classifier), **ADR-022** (DOA + SoD).
@@ -308,3 +308,85 @@ the owner of budgeting, which would mean moving a mature editor later.
 
 The Finance workspace is the likely home, evolving from today's single financial-position screen
 toward `Overview · Cost Control · Project P&L · Ledger`, subject to its own audit.
+
+---
+
+## 10. Project-level cost is spendable (2026-09-06)
+
+The model was inconsistent on delivery: a budget line could target a project spend category, but
+a PO line demanded a project and a BOQ node together or neither — so those budgets could never be
+consumed. **A budget category that can never receive actual cost is a reporting artefact, not a
+cost control.** Resolved in favour of making it spendable.
+
+The symmetric rule is replaced by two narrower invariants:
+
+```
+boqNodeId requires projectId          a node lives on a project's BOQ
+projectId requires a cost target      a BOQ node, or a spend category
+```
+
+giving three valid attributions and two named-separately impossible ones:
+
+| | projectId | boqNodeId | spendCategoryId |
+|---|---|---|---|
+| Corporate / non-project | null | null | — |
+| **Project-level (non-BOQ)** | set | null | **required** |
+| BOQ-coded project cost | set | set | optional |
+| *invalid* — `BOQ_NODE_WITHOUT_PROJECT` | null | set | — |
+| *invalid* — `PROJECT_WITHOUT_COST_TARGET` | set | null | null |
+
+The last rule matters: a project with no target is an unclassified suspense bucket nobody
+reconciles, and there is deliberately no such thing here.
+
+This is not a procurement convenience. A construction BOQ is the **contractual measured scope**,
+not the complete internal cost structure — site security, temporary utilities, transport,
+insurance, supervision, fuel and permits are real project cost with no BOQ line to charge. The old
+rule left only two options, an invented "Site overhead" BOQ node or losing real cost into
+corporate overhead, and both corrupt the client-scope-versus-internal-cost distinction the BOQ
+exists to draw.
+
+Capture-once is unchanged: the PO line stays authoritative and the goods receipt, bill and ledger
+inherit read-only. The ledger already carried `spendCategoryId`, so the rollup is deterministic
+rather than inferred later:
+
+```
+boqNodeId              → BOQ hierarchy
+projectId + category   → Project-level (non-BOQ), broken into named child rows
+neither                → corporate, never reaches a project view
+```
+
+Proven through the real governed chain — two purchase orders category-coded with no BOQ node,
+each through its approval band and a posted receipt:
+
+```
+Project-level (non-BOQ)   budget 390,000   committed 8,400   accrued 24,600
+  Transport               budget 120,000   committed 8,400   accrued 12,600
+  Site overhead           budget 180,000   committed     0   accrued 12,000
+  Insurance               budget  90,000   committed     0   accrued      0
+```
+
+Insurance — budgeted, nothing bought — is the row that proves the budget is consumable.
+
+## 11. What the browser gate now pins
+
+Nine specs across 1440/375 × light/dark, on two projects (one budgeted, one not):
+
+- no baselined budget → the absence is stated and **every** percentage is gone, not zeroed;
+- with a budget → each ratio names its own numerator, and the two remainders are stated apart;
+- project-level cost expands into its named categories — the assertion that stops it silently
+  reverting to a budget-only artefact;
+- **no PO, GRN, bill or payment authoring exists** anywhere in the project surface;
+- the requirement panel has Details / Items / Purchase orders and **no History or Attachments**,
+  because neither has anything real behind it.
+
+## 12. Deferred, deliberately
+
+- **`ACTUAL` waits on GL posting.** `PO → COMMITTED, GRN → ACCRUED, GL-posted bill → ACTUAL` is
+  financially defensible and stays that way. Do not move ACTUAL earlier to make a dashboard
+  populate. Once the accounting foundation is configured, run one bill end to end and verify
+  actual by BOQ, actual by project-level category, supplier ranking and the ledger entry.
+- **Budget authoring UI** → Cost Control (see §9).
+- **History tab** → returns when a resource-scoped audit read exists.
+- **QA data hygiene.** The fixture runs left 21 purchase orders on the office-building project.
+  Deterministic, identifiable, disposable — worth `qa:seed` / `qa:reset` before Finance QA starts
+  mutating ledgers.
