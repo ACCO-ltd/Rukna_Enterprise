@@ -111,13 +111,15 @@ describe('Meter', () => {
   it('states the remainder rather than leaving it to be inferred', () => {
     renderWithProviders(
       <Meter
-        title="Revenue consumed by cost"
-        limitLabel="Revenue"
+        ratioLabel="Project cost / Revenue"
+        limitLabel="Revenue (posted)"
         limit="720000.00"
-        fillLabel="Total cost"
+        fillLabel="Project cost (posted)"
         fill="510000.00"
         remainderLabel="Net project income"
         remainderNegativeLabel="Net project loss"
+        noLimitLabel="No revenue posted"
+        emptyLabel="Nothing posted yet"
         currency="USD"
       />,
     );
@@ -131,13 +133,15 @@ describe('Meter', () => {
   it('names a loss instead of drawing a negative remainder', () => {
     renderWithProviders(
       <Meter
-        title="Revenue consumed by cost"
-        limitLabel="Revenue"
+        ratioLabel="Project cost / Revenue"
+        limitLabel="Revenue (posted)"
         limit="100000.00"
-        fillLabel="Total cost"
+        fillLabel="Project cost (posted)"
         fill="140000.00"
         remainderLabel="Net project income"
         remainderNegativeLabel="Net project loss"
+        noLimitLabel="No revenue posted"
+        emptyLabel="Nothing posted yet"
         currency="USD"
       />,
     );
@@ -147,5 +151,57 @@ describe('Meter', () => {
     expect(screen.getByText(/^\$?40,000\.00$/)).toBeInTheDocument();
     expect(screen.queryByText(/-40,000/)).not.toBeInTheDocument();
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '140');
+  });
+});
+
+/**
+ * The boundary values a ratio has to survive. `cost / 0` is the one that matters most: it is
+ * undefined, and both plausible fudges are lies — 100% claims the project consumed all of its
+ * revenue, and ∞% is not a number anyone can act on.
+ */
+describe('Meter — boundaries', () => {
+  const meter = (limit: string, fill: string) => (
+    <Meter
+      ratioLabel="Project cost / Revenue"
+      limitLabel="Revenue (posted)"
+      limit={limit}
+      fillLabel="Project cost (posted)"
+      fill={fill}
+      remainderLabel="Net project income"
+      remainderNegativeLabel="Net project loss"
+      noLimitLabel="No revenue posted for this project, so there is no ratio to report."
+      emptyLabel="Nothing posted to this project yet."
+      currency="USD"
+    />
+  );
+
+  it.each([
+    ['0%', '100000.00', '0.00', '0'],
+    ['50%', '100000.00', '50000.00', '50'],
+    ['99%', '100000.00', '99000.00', '99'],
+    ['100%', '100000.00', '100000.00', '100'],
+    ['over 100%', '100000.00', '125000.00', '125'],
+  ])('reports %s exactly', (_name, limit, fill, expected) => {
+    renderWithProviders(meter(limit, fill));
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', expected);
+  });
+
+  it('reports no ratio at all when there is revenue of zero and cost above it', () => {
+    renderWithProviders(meter('0.00', '45000.00'));
+
+    expect(screen.getByText(/No revenue posted/)).toBeInTheDocument();
+    // Neither fudge appears: not 100%, not infinity, not a bar.
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    expect(screen.queryByText('100%')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Infinity|∞|NaN/)).not.toBeInTheDocument();
+    // The cost itself is still a fact worth reporting.
+    expect(screen.getByText(/45,000/)).toBeInTheDocument();
+  });
+
+  it('shows an empty state when nothing has been posted at all', () => {
+    renderWithProviders(meter('0.00', '0.00'));
+
+    expect(screen.getByText('Nothing posted to this project yet.')).toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
 });

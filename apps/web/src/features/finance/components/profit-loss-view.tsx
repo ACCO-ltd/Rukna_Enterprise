@@ -188,8 +188,7 @@ function ProfitCharts({ report }: { report: ProfitLoss }) {
 
   return (
     <div className="min-w-0 space-y-6">
-      {revenue > 0 ? (
-        <div className="overflow-hidden rounded-panel border border-border bg-surface">
+      <div className="overflow-hidden rounded-panel border border-border bg-surface">
           <div className="border-b border-border px-4 py-2.5 sm:px-5">
             <h3 className="text-h3 font-semibold text-foreground">{t('charts.consumed')}</h3>
             <p className="mt-0.5 text-caption text-muted-foreground">
@@ -197,17 +196,18 @@ function ProfitCharts({ report }: { report: ProfitLoss }) {
             </p>
           </div>
           <Meter
-            title={t('charts.consumed')}
-            limitLabel={t('revenue')}
+            ratioLabel={t('charts.ratio')}
+            limitLabel={t('charts.revenuePosted')}
             limit={report.revenue.total}
-            fillLabel={t('charts.totalCost')}
+            fillLabel={t('charts.costPosted')}
             fill={totalCost.toFixed(2)}
             remainderLabel={t('netIncome')}
             remainderNegativeLabel={t('netLoss')}
+            noLimitLabel={t('charts.noRevenue')}
+            emptyLabel={t('charts.noActivity')}
             currency="USD"
           />
-        </div>
-      ) : null}
+      </div>
 
       {costLines.length > 0 ? (
         <div className="overflow-hidden rounded-panel border border-border bg-surface">

@@ -179,23 +179,36 @@ export function ShareBar({
  * A single ratio against a limit, drawn as a meter.
  *
  * The form for "how much of the whole has this consumed" — not a two-slice pie, and not two
- * separate bars, which make a reader compare two lengths that share no baseline. The remainder
- * is stated rather than left to be inferred.
+ * separate bars, which make a reader compare two lengths that share no baseline.
  *
- * Overflow is a real state here: project cost can exceed revenue, and when it does the meter
- * fills completely and the remainder is named as a loss rather than drawn as a negative.
+ * **The ratio is named as a division, not as a verb.** "Revenue consumed" invites a finance
+ * reader to hear cash collection or revenue-recognition mechanics; `Project cost / Revenue`
+ * says exactly which number is over which, and the three figures beneath it — revenue, cost, and
+ * the remainder — let the reader check the arithmetic rather than trust the bar. The remainder is
+ * named by the caller, because what is left over depends on what the fill included: subtracting
+ * *all* project cost leaves net income, not gross profit.
+ *
+ * Two states have no ratio and must not be forced into one:
+ *
+ *  - **Limit is zero, fill is not.** The division is undefined. Rendering 100% would claim the
+ *    project consumed all of its revenue; rendering ∞% is not a number anyone can act on. The
+ *    meter is replaced by the two figures and a plain statement that there is no revenue posted.
+ *  - **Both are zero.** Nothing has happened yet — an empty state, not a chart of zero.
  */
 export function Meter({
-  title,
+  ratioLabel,
   limitLabel,
   limit,
   fillLabel,
   fill,
   remainderLabel,
   remainderNegativeLabel,
+  noLimitLabel,
+  emptyLabel,
   currency,
 }: {
-  title: string;
+  /** The division itself, e.g. "Project cost / Revenue". Never a verb. */
+  ratioLabel: string;
   limitLabel: string;
   limit: string;
   fillLabel: string;
@@ -203,6 +216,10 @@ export function Meter({
   remainderLabel: string;
   /** Used when the fill exceeds the limit — "Net loss" rather than a negative remainder. */
   remainderNegativeLabel: string;
+  /** Used when the limit is zero: the ratio is undefined, so it is not shown at all. */
+  noLimitLabel: string;
+  /** Used when nothing has happened yet. */
+  emptyLabel: string;
   currency: string | null;
 }) {
   const locale = useLocale() as 'en' | 'ar';
@@ -212,19 +229,58 @@ export function Meter({
   const limitValue = Number(limit);
   const fillValue = Number(fill);
   const remainder = limitValue - fillValue;
-  const percent =
-    limitValue > 0 ? Math.round((fillValue / limitValue) * 1000) / 10 : null;
   const over = remainder < 0;
+  const hasLimit = limitValue > 0;
+  const percent = hasLimit ? Math.round((fillValue / limitValue) * 1000) / 10 : null;
+
+  // Nothing posted at all. A meter at 0% claims a measurement that was never taken.
+  if (!hasLimit && fillValue <= 0) {
+    return (
+      <div className="px-4 py-5 sm:px-5">
+        <p className="text-body-sm text-muted-foreground">{emptyLabel}</p>
+      </div>
+    );
+  }
+
+  // Cost with no revenue behind it. `cost / 0` is undefined — not 100%, and not infinity — so
+  // the figures are reported and the ratio is not.
+  if (!hasLimit) {
+    return (
+      <figure className="m-0 px-4 py-4 sm:px-5">
+        <figcaption className="sr-only">{ratioLabel}</figcaption>
+        <p className="text-body-sm font-medium text-foreground">{noLimitLabel}</p>
+        <dl className="mt-3 space-y-1.5">
+          <div className="flex items-baseline gap-2">
+            <dt className="min-w-0 flex-1 truncate text-caption text-muted-foreground">
+              {fillLabel}
+            </dt>
+            <dd className="shrink-0 text-caption font-medium tabular-nums text-foreground">
+              {money(fill)}
+            </dd>
+          </div>
+        </dl>
+      </figure>
+    );
+  }
 
   return (
     <figure className="m-0 px-4 py-4 sm:px-5">
-      <figcaption className="sr-only">{title}</figcaption>
+      <figcaption className="sr-only">{ratioLabel}</figcaption>
 
+      {/* The ratio names its own division, so there is nothing to infer about which number is
+          over which — and the three figures beneath let the reader check it. */}
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-          {limitLabel}
+          {ratioLabel}
         </span>
-        <span className="text-h3 font-bold tabular-nums text-foreground">{money(limit)}</span>
+        <span
+          className={cn(
+            'text-h3 font-bold tabular-nums',
+            over ? 'text-danger' : 'text-foreground',
+          )}
+        >
+          {percent}%
+        </span>
       </div>
 
       <div
@@ -233,7 +289,7 @@ export function Meter({
         aria-valuenow={percent ?? 0}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-label={`${fillLabel} / ${limitLabel}`}
+        aria-label={ratioLabel}
       >
         <span
           className={cn('block h-full rounded-full', over ? 'bg-danger' : 'bg-brand-primary')}
@@ -246,24 +302,27 @@ export function Meter({
       <dl className="mt-3 space-y-1.5">
         <div className="flex items-baseline gap-2">
           <dt className="min-w-0 flex-1 truncate text-caption text-muted-foreground">
+            {limitLabel}
+          </dt>
+          <dd className="shrink-0 text-caption font-medium tabular-nums text-foreground">
+            {money(limit)}
+          </dd>
+        </div>
+        <div className="flex items-baseline gap-2">
+          <dt className="min-w-0 flex-1 truncate text-caption text-muted-foreground">
             {fillLabel}
           </dt>
-          {percent === null ? null : (
-            <dd className="shrink-0 text-caption tabular-nums text-muted-foreground">
-              {percent}%
-            </dd>
-          )}
           <dd className="shrink-0 text-caption font-medium tabular-nums text-foreground">
             {money(fill)}
           </dd>
         </div>
-        <div className="flex items-baseline gap-2">
+        <div className="flex items-baseline gap-2 border-t border-border pt-1.5">
           <dt className="min-w-0 flex-1 truncate text-caption text-muted-foreground">
             {over ? remainderNegativeLabel : remainderLabel}
           </dt>
           <dd
             className={cn(
-              'shrink-0 text-caption font-medium tabular-nums',
+              'shrink-0 text-caption font-semibold tabular-nums',
               over ? 'text-danger' : 'text-foreground',
             )}
           >

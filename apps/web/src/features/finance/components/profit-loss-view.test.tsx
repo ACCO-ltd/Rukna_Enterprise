@@ -96,9 +96,12 @@ describe('ProfitLossView', () => {
     expect(
       screen.getByText('Project profitability based on posted general ledger entries only.'),
     ).toBeInTheDocument();
-    expect(screen.getByText('Gross profit')).toBeInTheDocument();
     expect(screen.getByText('Gross margin 35.4%')).toBeInTheDocument();
     expect(screen.getAllByText('Net project income').length).toBeGreaterThan(0);
+
+    // One label, one figure. The statement's gross profit stops at cost of sales, so the meter
+    // beside it — whose fill is *all* project cost — must name its remainder net income.
+    expect(screen.getAllByText('Gross profit')).toHaveLength(1);
   });
 
   /**

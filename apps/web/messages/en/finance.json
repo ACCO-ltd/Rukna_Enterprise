@@ -230,11 +230,16 @@
     "unavailableTitle": "Profit & Loss unavailable",
     "unavailableReason": "Posted accounting entries require accounting setup to be complete.",
     "charts": {
-      "consumed": "Revenue consumed by cost",
-      "consumedHint": "How much of what the project earned it has spent.",
+      "consumed": "Project cost against revenue",
+      "consumedHint": "How much of the revenue this project recognised its cost has absorbed.",
       "totalCost": "Total cost",
       "breakdown": "What the cost was spent on",
-      "breakdownHint": "Cost of sales and operating expenses, by account."
+      "breakdownHint": "Cost of sales and operating expenses, by account.",
+      "ratio": "Project cost / Revenue",
+      "revenuePosted": "Revenue (posted)",
+      "costPosted": "Project cost (posted)",
+      "noRevenue": "No revenue posted for this project, so there is no ratio to report.",
+      "noActivity": "Nothing posted to this project yet."
     }
   },
   "ledger": {

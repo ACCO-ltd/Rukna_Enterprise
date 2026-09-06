@@ -173,8 +173,8 @@ command-center dashboard. Until they exist, the dashboard ships as a metric stri
 ## 7. Anti-patterns (blacklist — reject in review)
 
 No gradients (except the one documented skeleton shimmer) · no hero headings · no card around every
-element · **no icon tile below region level** (revised — see below) · no illustrations · no rainbow
-charts · no pills for plain text · no coloured table-header fills · no icon-only ambiguous actions ·
+element · **no icon tile below region level** (revised — see below) · no illustrations · **no sequential ramp used
+categorically** (§8.1) · no rainbow charts · no pills for plain text · no coloured table-header fills · no icon-only ambiguous actions ·
 no wizard where a form works · no page-specific button styles · no fake metrics or placeholder
 analytics · no converting tables to card lists · no shadows for page structure · no emoji · no
 disabled control for an unbuilt feature (§4) · no second colour competing with the accent · no money
@@ -198,7 +198,76 @@ back and the answer is no.
 
 ---
 
-## 8. Definition of done (every Round-2 slice)
+## 8. Chart encoding
+
+Added 2026-09-06, from the Phase-6 Finance build. The trigger was a real defect: `ShareRing` in
+Procurement cycled `--chart-1/2/3` — a *sequential* ramp — across unrelated cost areas, so two
+neighbouring slices differed only in lightness and the ring read as a gradient rather than as
+categories. The palette validator caught it; nothing in this doctrine had forbidden it.
+
+### 8.1 Two palettes, two jobs — never swapped
+
+| Palette | Tokens | Encodes | Example |
+|---|---|---|---|
+| **Sequential** | `--chart-1` → `--chart-5` | one quantity, ordered, light → dark | Committed → Accrued → Actual: three stages of one number |
+| **Categorical** | `--series-1` → `--series-5` | identity, unordered | Cost areas, expense accounts, suppliers |
+
+A sequential ramp used categorically says "these differ by degree" about things that differ in
+kind. A categorical set used sequentially says "these are unrelated" about a progression. Both are
+lies about the data, and both are invisible in review unless you know to look — hence the table.
+
+`--series-*` was validated with the `dataviz` validator against both surfaces before it was
+adopted; do not add a hue to it by eye.
+
+### 8.2 Maximum five visible identities
+
+Five categorical slots, assigned in fixed order, **never cycled**. A sixth generated hue is not
+distinguishable from one already on screen. The tail folds into **Other** — grouped, never dropped,
+and its total still reconciles to the whole.
+
+### 8.3 Form follows question
+
+- **Part-to-whole** → horizontal stacked bar. Long labels ("Project-level (non-BOQ)") do not fit
+  around a ring, and arc-length comparison is measurably worse than length comparison. Donuts are
+  permitted, not the default.
+- **A ratio against a limit** → a meter, not a two-slice pie and not two bars sharing no baseline.
+- **A single figure** → not a chart at all. A metric.
+
+### 8.4 Every charted value is also text
+
+The chart carries the proportion; the number carries the fact. Every segment is named and valued
+in the legend beside it, and the precise table is on the same screen. This is also the relief the
+palette's contrast warning requires: **label + value is the primary identification, colour is
+secondary.** Nothing — identity, state, or severity — may be encoded by colour alone.
+
+### 8.5 An undefined ratio is reported, not drawn
+
+Extends §4's honesty rule to charts. When the denominator is zero the ratio does not exist, and
+both plausible fudges are false statements:
+
+| State | Wrong | Right |
+|---|---|---|
+| Revenue 0, cost > 0 | `100%` (claims the project consumed all its revenue) or `∞%` | *No posted revenue* + the cost figure, no bar |
+| Revenue 0, cost 0 | a meter at 0% | empty state — nothing has been posted |
+
+A meter at 0% claims a measurement that was taken and came back zero. Draw no bar rather than a
+bar that means nothing.
+
+### 8.6 Name a ratio as a division, not as a verb
+
+"Revenue consumed" invites a finance reader to hear cash collection or revenue-recognition
+mechanics. **`Project cost / Revenue`** says exactly which number is over which, and the figures
+beneath it — Revenue (posted), Project cost (posted), and the remainder — let the reader check the
+arithmetic instead of trusting the bar.
+
+Name the remainder for what was actually subtracted. On the P&L meter the fill is *all* project
+cost, so the remainder is **Net project income** and ties to the statement's own last line. Calling
+it "Gross profit" would put that label on two different figures on one screen — the statement's
+gross profit stops at cost of sales.
+
+---
+
+## 9. Definition of done (every Round-2 slice)
 
 A slice is done when, verified in the running app:
 1. Light **and** dark theme correct (WCAG AA contrast on all status tokens).
