@@ -168,6 +168,31 @@
   --chart-4: #7c5cd6;
   --chart-5: #2f9e8f;
 
+  /* ── Categorical series ─────────────────────────────────────────────────
+     A SEPARATE set from --chart-*, because they answer different questions.
+     --chart-1/2/3 are one blue at three lightnesses: a sequential ramp, and
+     the right encoding for committed → accrued → actual, which is a
+     progression. Cycling that same ramp for data that has no order — a
+     breakdown by supplier, by spend category, by account — renders three
+     near-identical blues that nobody can tell apart. Measured on the
+     adjacent pairlist, the worst pair there is ΔE 10.9 for a reader with
+     normal colour vision, against a floor of 15.
+
+     These five are hue-distinct and validated in both modes: worst adjacent
+     CVD ΔE 9.1 light / 8.4 dark (target ≥8), worst adjacent normal-vision
+     ΔE 19.6 light / 19.3 dark (floor ≥15). Assign them in fixed order and
+     never cycle past the fifth — a sixth generated hue is indistinguishable
+     from one already on screen. Fold the tail into "Other" instead.
+
+     Aqua, yellow and magenta sit under 3:1 against the light surface, so any
+     chart using them must carry visible labels or a table beside it. Every
+     chart here does both. */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+
   /* ── Density ───────────────────────────────────────────────────────────
      Comfortable is the default: most screens are read and approved, not
      typed into. Compact is opt-in per user and exists for the screens where
@@ -236,6 +261,14 @@
   --chart-3: #b9cdff;
   --chart-4: #a78bfa;
   --chart-5: #4fc4b1;
+  /* The same five hues re-stepped for the dark surface, not an automatic flip.
+     All five clear 3:1 here, so the light mode's label obligation is a floor
+     rather than a ceiling. */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
   --shadow-control: 0 1px 2px rgb(0 0 0 / 0.3);
   --shadow-panel: 0 1px 3px rgb(0 0 0 / 0.28), 0 12px 32px rgb(0 0 0 / 0.18);
   --shadow-overlay: 0 24px 56px rgb(0 0 0 / 0.42);
@@ -310,6 +343,11 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
+  --color-series-3: var(--series-3);
+  --color-series-4: var(--series-4);
+  --color-series-5: var(--series-5);
   /* Inter, loaded variable in app/layout.tsx. The fallback chain is system-first so a
      failed font fetch degrades to the closest available grotesque rather than to Arial. */
   --font-sans:

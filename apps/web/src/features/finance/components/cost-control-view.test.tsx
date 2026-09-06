@@ -247,7 +247,8 @@ describe('CostControlView', () => {
     costMocks.useProjectCostBudgets.mockReturnValue(ready(budgets()));
     renderWithProviders(<CostControlView projectId="p1" />);
 
-    expect(screen.getByText('Project-level (non-BOQ)')).toBeInTheDocument();
+    // In the table and again in the chart legend: a segment is never colour alone.
+    expect(screen.getAllByText('Project-level (non-BOQ)').length).toBeGreaterThan(0);
     expect(screen.queryByText('Unallocated')).not.toBeInTheDocument();
     expect(screen.queryByText('Other')).not.toBeInTheDocument();
   });

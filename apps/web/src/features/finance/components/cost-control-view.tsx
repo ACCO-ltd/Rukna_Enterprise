@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { ChevronRight, Download, History, Plus, Search, Wallet } from 'lucide-react';
+import { ChevronRight, Download, History, PieChart, Plus, Search, Wallet } from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -42,6 +42,7 @@ import {
   RatioBar,
 } from './finance-primitives';
 import { downloadCostCsv } from '../cost-export';
+import { ShareBar, toSegments } from './share-bar';
 import { BudgetEditorDialog } from './budget-editor-dialog';
 
 type Dimension = 'boq' | 'category' | 'supplier';
@@ -228,13 +229,43 @@ export function CostControlView({ projectId }: { projectId: string }) {
           )}
         </SectionPanel>
 
-        <BudgetPanel
-          list={budgetList}
-          mayManage={mayManage}
-          onCreate={() => setEditing({ mode: 'create' })}
-          onEdit={(budgetId) => setEditing({ mode: 'edit', budgetId })}
-          locale={locale}
-        />
+        <div className="min-w-0 space-y-6">
+          <BudgetPanel
+            list={budgetList}
+            mayManage={mayManage}
+            onCreate={() => setEditing({ mode: 'create' })}
+            onEdit={(budgetId) => setEditing({ mode: 'edit', budgetId })}
+            locale={locale}
+          />
+
+          {/* What proportion of the budget each area holds — the one thing the table beside
+              it cannot be read for quickly. Drawn only when there is a budget to divide. */}
+          {position.budgetTotal !== null ? (
+            <SectionPanel
+              title={t('composition.title')}
+              description={t('composition.description')}
+              icon={<PieChart size={16} strokeWidth={1.9} />}
+              bodyClassName="p-0"
+            >
+              <ShareBar
+                title={t('composition.title')}
+                totalLabel={t('composition.totalLabel')}
+                total={position.budgetTotal}
+                currency={position.currency}
+                segments={toSegments(
+                  data.byBoq
+                    .filter((row) => row.depth === 0 && row.budget !== null)
+                    .map((row) => ({
+                      key: row.boqNodeId ?? row.description,
+                      label: row.code ? row.code + ' \u00b7 ' + row.description : row.description,
+                      amount: row.budget!,
+                    })),
+                  tc('other'),
+                )}
+              />
+            </SectionPanel>
+          ) : null}
+        </div>
       </div>
 
       {editing ? (

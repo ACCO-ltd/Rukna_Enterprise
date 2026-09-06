@@ -98,7 +98,7 @@ describe('ProfitLossView', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('Gross profit')).toBeInTheDocument();
     expect(screen.getByText('Gross margin 35.4%')).toBeInTheDocument();
-    expect(screen.getByText('Net project income')).toBeInTheDocument();
+    expect(screen.getAllByText('Net project income').length).toBeGreaterThan(0);
   });
 
   /**
@@ -131,7 +131,7 @@ describe('ProfitLossView', () => {
     });
     renderWithProviders(<ProfitLossView projectId="p1" />);
 
-    expect(screen.getByText('Net project loss')).toBeInTheDocument();
+    expect(screen.getAllByText('Net project loss').length).toBeGreaterThan(0);
   });
 
   /** Two different facts, and they must not look alike. */

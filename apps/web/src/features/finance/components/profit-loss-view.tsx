@@ -36,6 +36,7 @@ import {
   type FinanceRange,
 } from '../finance-period';
 import { UnavailableNotice } from './finance-primitives';
+import { Meter, ShareBar, toSegments } from './share-bar';
 
 /**
  * The project's income statement, from posted general-ledger entries.
@@ -152,8 +153,79 @@ export function ProfitLossView({ projectId }: { projectId: string }) {
           </Button>
         </Alert>
       ) : (
-        <Statement report={report.data} locale={locale} />
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <Statement report={report.data} locale={locale} />
+          <ProfitCharts report={report.data} />
+        </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Two pictures of the statement beside it, never instead of it.
+ *
+ * The statement is the artefact an accountant checks; these answer the two questions a reader
+ * asks of it at a glance — how much of the revenue the project spent, and what it spent it on.
+ * Every value in both is also a line in the statement, so nothing here is a figure that exists
+ * only as a picture.
+ */
+function ProfitCharts({ report }: { report: ProfitLoss }) {
+  const t = useTranslations('finance.profitLoss');
+  const tc = useTranslations('finance.common');
+
+  const revenue = Number(report.revenue.total);
+  const totalCost = Number(report.costOfSales.total) + Number(report.expenses.total);
+
+  // Nothing to divide, and nothing to consume: a chart of zero is a picture of nothing.
+  if (revenue <= 0 && totalCost <= 0) return null;
+
+  const costLines = [...report.costOfSales.lines, ...report.expenses.lines].map((line) => ({
+    key: line.accountId,
+    label: line.accountName,
+    amount: line.amount,
+  }));
+
+  return (
+    <div className="min-w-0 space-y-6">
+      {revenue > 0 ? (
+        <div className="overflow-hidden rounded-panel border border-border bg-surface">
+          <div className="border-b border-border px-4 py-2.5 sm:px-5">
+            <h3 className="text-h3 font-semibold text-foreground">{t('charts.consumed')}</h3>
+            <p className="mt-0.5 text-caption text-muted-foreground">
+              {t('charts.consumedHint')}
+            </p>
+          </div>
+          <Meter
+            title={t('charts.consumed')}
+            limitLabel={t('revenue')}
+            limit={report.revenue.total}
+            fillLabel={t('charts.totalCost')}
+            fill={totalCost.toFixed(2)}
+            remainderLabel={t('netIncome')}
+            remainderNegativeLabel={t('netLoss')}
+            currency="USD"
+          />
+        </div>
+      ) : null}
+
+      {costLines.length > 0 ? (
+        <div className="overflow-hidden rounded-panel border border-border bg-surface">
+          <div className="border-b border-border px-4 py-2.5 sm:px-5">
+            <h3 className="text-h3 font-semibold text-foreground">{t('charts.breakdown')}</h3>
+            <p className="mt-0.5 text-caption text-muted-foreground">
+              {t('charts.breakdownHint')}
+            </p>
+          </div>
+          <ShareBar
+            title={t('charts.breakdown')}
+            totalLabel={t('charts.totalCost')}
+            total={totalCost.toFixed(2)}
+            currency="USD"
+            segments={toSegments(costLines, tc('other'))}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
