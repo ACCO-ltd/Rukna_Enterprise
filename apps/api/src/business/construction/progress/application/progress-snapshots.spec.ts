@@ -36,7 +36,7 @@ function build(
     leafValues?: unknown[];
     approvedMeasurements?: unknown[];
     // Drives getPhysicalFinancialSignal cost read.
-    financialPosition?: { actualCost: string; forecastCost: string };
+    financialPosition?: { actualCost: string; budgetTotal: string | null };
   } = {},
 ) {
   const created: SnapshotRow[] = [];
@@ -71,7 +71,7 @@ function build(
   const financialPosition = {
     getForProject: jest
       .fn()
-      .mockResolvedValue(over.financialPosition ?? { actualCost: '0', forecastCost: '0' }),
+      .mockResolvedValue(over.financialPosition ?? { actualCost: '0', budgetTotal: null }),
   };
   const svc = new ProgressService(
     { getClient: () => ({}) } as never,
@@ -105,7 +105,7 @@ const snap = (
 describe('ProgressService.captureSnapshot (BE-1)', () => {
   it('persists a MANUAL snapshot at the supplied period-end date (never the clock)', async () => {
     const { svc, repo, created } = build({
-      financialPosition: { actualCost: '0', forecastCost: '0' },
+      financialPosition: { actualCost: '0', budgetTotal: null },
     });
     const res = await svc.captureSnapshot(identity, 'p1', '2026-08-31');
 
@@ -137,7 +137,7 @@ describe('ProgressService.captureSnapshot (BE-1)', () => {
   });
 
   it('freezes the live cost-consumed % from the physical-financial signal', async () => {
-    const { svc } = build({ financialPosition: { actualCost: '40', forecastCost: '100' } });
+    const { svc } = build({ financialPosition: { actualCost: '40', budgetTotal: '100' } });
     const res = await svc.captureSnapshot(identity, 'p1', '2026-08-31');
     expect(res.costConsumedPercent).toBe(40);
   });

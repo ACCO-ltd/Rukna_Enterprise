@@ -1,21 +1,28 @@
 'use client';
 
 /**
- * Project Financial Position (ADR-013) — the PM/control view: posted actuals **plus** remaining
- * committed cost, so forecast margin is honest. This sits above the Project Actual P&L, which is
- * posted GL only; committed cost is the whole reason the two are separate.
+ * Project Financial Position (ADR-013) — what the project has spent, what it has
+ * committed to spend, and what it budgeted to spend.
  *
- * Gated on `view:financial-position` — the card is not rendered without it (the endpoint would
- * 403), leaving the accounting P&L below for `view:accounting` holders.
+ * **There is no forecast here, deliberately.** This card used to lead with "Forecast
+ * margin" and "Forecast cost", both computed from `actual + committed + accrued`. That
+ * expression contains no estimate of cost still to come, so a project with no open
+ * purchase orders reported cost-at-completion equal to cost-to-date and a margin equal
+ * to the entire contract. The error only ever ran one way — understate cost, overstate
+ * margin — and it was worst at the start of a job, when the number matters most. A real
+ * forecast needs remaining scope valued at a cost rate, and the platform has no cost
+ * rates yet (BOQ rates are sell rates). Until it does, this reports what is known.
+ *
+ * Gated on `view:financial-position` — the card is not rendered without it (the endpoint
+ * would 403), leaving the accounting P&L below for `view:accounting` holders.
  */
 
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Badge } from '@erp/ui';
+import { Alert } from '@erp/ui';
 
 import { usePermissions } from '@/features/auth/permissions/can';
 import { useProjectFinancialPosition } from '@/features/accounting/hooks/use-accounting';
 import { formatMoney } from '@/lib/format';
-import { MONEY_SCALE, toMinorUnits } from '@/lib/money';
 
 const FINANCIAL_POSITION_VIEW = 'view:financial-position' as const;
 
@@ -62,17 +69,42 @@ export function ProjectFinancialPositionCard({ projectId }: { projectId: string 
           {!fp.data.hasContract ? (
             <Alert variant="info" messages={[t('noContract')]} />
           ) : null}
-
-          {/* Forecast margin — the number this whole view exists to make honest. */}
-          <ForecastMargin
-            value={fp.data.forecastMargin}
-            currency={fp.data.currency}
-            money={money}
-            label={t('forecastMargin')}
-            hint={t('forecastMarginHint')}
-          />
+          {/* Said once, plainly, rather than implied by a row of missing percentages. */}
+          {!fp.data.hasBudget ? (
+            <Alert variant="info" messages={[t('noBudget')]} />
+          ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2">
+            {/* Cost — always present; the ledger stages stay apart on purpose. */}
+            <MetricGroup label={t('cost')}>
+              <Metric
+                label={t('budgetTotal')}
+                value={money(fp.data.budgetTotal, fp.data.currency)}
+                hint={t('budgetTotalHint')}
+              />
+              <Metric
+                label={t('openCommitment')}
+                value={money(fp.data.openCommitment, fp.data.currency)}
+                hint={t('openCommitmentHint')}
+              />
+              <Metric
+                label={t('accruedCost')}
+                value={money(fp.data.accruedCost, fp.data.currency)}
+                hint={t('accruedCostHint')}
+              />
+              <Metric
+                label={t('actualCost')}
+                value={money(fp.data.actualCost, fp.data.currency)}
+                hint={t('actualCostHint')}
+                emphasis
+              />
+              <Metric
+                label={t('uncommittedBudget')}
+                value={money(fp.data.uncommittedBudget, fp.data.currency)}
+                hint={t('uncommittedBudgetHint')}
+              />
+            </MetricGroup>
+
             {/* Revenue — only meaningful with a contract. */}
             {fp.data.hasContract ? (
               <MetricGroup label={t('revenue')}>
@@ -83,56 +115,16 @@ export function ProjectFinancialPositionCard({ projectId }: { projectId: string 
                 <Metric label={t('outstandingReceivables')} value={money(fp.data.outstandingReceivables, fp.data.currency)} />
               </MetricGroup>
             ) : null}
-
-            {/* Cost — always present; remaining committed is the mandatory addition. */}
-            <MetricGroup label={t('cost')}>
-              <Metric label={t('actualCost')} value={money(fp.data.actualCost, fp.data.currency)} />
-              <Metric
-                label={t('remainingCommitments')}
-                value={money(fp.data.remainingCommitments, fp.data.currency)}
-                hint={t('committedHint')}
-              />
-              <Metric label={t('forecastCost')} value={money(fp.data.forecastCost, fp.data.currency)} emphasis />
-            </MetricGroup>
           </div>
+
+          {/* Certified is pre-VAT and invoiced is VAT-inclusive; stacking them without
+              saying so reads as though the project invoiced more than it certified. */}
+          {fp.data.hasContract ? (
+            <p className="text-xs text-muted-foreground">{t('basisNote')}</p>
+          ) : null}
         </div>
       )}
     </section>
-  );
-}
-
-function ForecastMargin({
-  value,
-  currency,
-  money,
-  label,
-  hint,
-}: {
-  value: string | null;
-  currency: string | null;
-  money: (amount: string | null, currency: string | null) => string;
-  label: string;
-  hint: string;
-}) {
-  const negative = value !== null && toMinorUnits(value, MONEY_SCALE) < 0;
-
-  return (
-    <div className="rounded-panel border border-border bg-surface p-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-sm font-medium text-muted-foreground">{label}</span>
-        {value !== null ? (
-          <Badge tone={negative ? 'danger' : 'live'}>{negative ? '−' : '+'}</Badge>
-        ) : null}
-      </div>
-      <p
-        className={`mt-1 text-2xl font-semibold tabular-nums ${
-          negative ? 'text-danger' : 'text-foreground'
-        }`}
-      >
-        <bdi>{money(value, currency)}</bdi>
-      </p>
-      <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
-    </div>
   );
 }
 

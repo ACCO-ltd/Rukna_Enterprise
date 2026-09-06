@@ -47,6 +47,9 @@ function build(
   const tx = {
     accountVersion: { findFirst: jest.fn().mockResolvedValue({ id: 'v1' }) },
     journalEntry: { update: jest.fn().mockResolvedValue({ id: 'j1', status: 'POSTED' }) },
+    // Posting now strips the authoring record's lines so the journal is not counted
+    // twice by every report that aggregates them (see MJ-05).
+    journalLine: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
   };
 
   const prisma = {

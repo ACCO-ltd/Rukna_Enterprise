@@ -34,7 +34,7 @@ interface CapturedPost {
 
 function build(
   plAccounts: PLAccountFixture[],
-  opts: { existingClose?: boolean } = {},
+  opts: { existingClose?: boolean; fiscalYearStatus?: 'OPEN' | 'LOCKED' | 'CLOSED' } = {},
 ) {
   const captured: CapturedPost[] = [];
 
@@ -53,7 +53,7 @@ function build(
       findFirst: jest.fn().mockResolvedValue({
         id: 'fy1',
         name: 'FY2025',
-        status: 'OPEN',
+        status: opts.fiscalYearStatus ?? 'OPEN',
         organizationId: 'o1',
         retainedEarningsAccountId: RE_ACCOUNT,
         periods,
@@ -83,7 +83,15 @@ function build(
       }),
     },
     accountingPeriod: { update: jest.fn().mockResolvedValue({}) },
-    $transaction: jest.fn().mockImplementation((fn: (tx: unknown) => unknown) => fn({})),
+    // Posting, snapshot, period close and fiscal-year close now all commit together,
+    // so the transaction client has to expose the models the service writes through
+    // it. Delegating to the same mocks keeps the existing assertions meaningful.
+    $transaction: jest.fn().mockImplementation((fn: (tx: unknown) => unknown) =>
+      fn({
+        accountingPeriod: { update: (...args: unknown[]) => prisma.accountingPeriod.update(...(args as [never])) },
+        fiscalYear: { update: (...args: unknown[]) => prisma.fiscalYear.update(...(args as [never])) },
+      }),
+    ),
   };
 
   const tenancy = { getClient: () => prisma } as never;
@@ -218,9 +226,28 @@ describe('YearEndCloseService — net-P&L sign + retained-earnings transfer (YE1
     expectBalanced(captured);
   });
 
-  it('8. Close called twice → second call rejected (idempotent)', async () => {
-    const { svc, identity } = build([revenue('rev', 1000)], { existingClose: true });
+  it('8. Already-closed fiscal year → rejected', async () => {
+    const { svc, identity } = build([revenue('rev', 1000)], { fiscalYearStatus: 'CLOSED' });
     await expect(svc.closeYear(identity, 'fy1')).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  // A closing journal with an OPEN fiscal year is a run that posted and then failed
+  // before it finished. Refusing that retry was what made the state unrecoverable, so
+  // the rerun resumes: it must NOT post a second closing journal, and it must finish
+  // closing the period and the year.
+  it('8b. Existing closing journal + open year → resumes without double-posting', async () => {
+    const { svc, identity, captured, prisma } = build([revenue('rev', 1000)], {
+      existingClose: true,
+    });
+
+    const result = await svc.closeYear(identity, 'fy1');
+
+    expect(captured).toHaveLength(0);
+    expect(result.closingJournalId).toBe('je-existing');
+    expect(prisma.accountingPeriod.update).toHaveBeenCalled();
+    expect(prisma.fiscalYear.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'CLOSED' }) }),
+    );
   });
 
   it('9. Post-close closing journal is balanced (∑debits === ∑credits)', async () => {

@@ -52,7 +52,7 @@ export function SignalBanner({
   /**
    * True when the comparison cannot be made yet. Collapses to the title and the reason: a full
    * card whose figures are all em-dashes says nothing three times, and two of them stacked filled
-   * half the Progress tab on every project without a contract value or a forecast cost — which is
+   * half the Progress tab on every project without a contract value or a baselined budget — which is
    * every project early on.
    */
   insufficient?: boolean;

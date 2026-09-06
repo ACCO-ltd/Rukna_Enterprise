@@ -50,7 +50,7 @@ function build(over: Over = {}) {
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
   const tenancy = { getClient: () => ({}) };
   const financialPosition = {
-    getForProject: jest.fn().mockResolvedValue(over.fp ?? { actualCost: '0', forecastCost: '0' }),
+    getForProject: jest.fn().mockResolvedValue(over.fp ?? { actualCost: '0', budgetTotal: null }),
   };
   // ADR-022 DPR governance seam: with no active binding the gate returns null (approval proceeds).
   const commandGovernance = { gateStateTransition: jest.fn().mockResolvedValue(null) };
@@ -353,7 +353,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
     const { service } = build({
       workPackages: [{ id: 'a', code: 'WP', name: 'x', responsibleOwner: null, progressWeight: '1', boqLinks: [{ boqNodeId: 'n1' }] }],
       measurements: [{ boqNodeId: 'n1', quantity: 200, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }], // 20% built
-      fp: { actualCost: '510', forecastCost: '1000' }, // 51% cost consumed
+      fp: { actualCost: '510', budgetTotal: '1000' }, // 51% cost consumed
     });
     const res = await service.getPhysicalFinancialSignal(identity, 'p-1');
     expect(res.physicalPercent).toBe(20);
@@ -366,7 +366,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
     const { service } = build({
       workPackages: [{ id: 'a', code: 'WP', name: 'x', responsibleOwner: null, progressWeight: '1', boqLinks: [{ boqNodeId: 'n1' }] }],
       measurements: [{ boqNodeId: 'n1', quantity: 200, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }], // 20%
-      fp: { actualCost: '250', forecastCost: '1000' }, // 25%
+      fp: { actualCost: '250', budgetTotal: '1000' }, // 25%
     });
     const res = await service.getPhysicalFinancialSignal(identity, 'p-1');
     expect(res.status).toBe('ALIGNED');
@@ -376,7 +376,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
     const { service } = build({
       workPackages: [{ id: 'a', code: 'WP', name: 'x', responsibleOwner: null, progressWeight: '1', boqLinks: [{ boqNodeId: 'n1' }] }],
       measurements: [{ boqNodeId: 'n1', quantity: 200, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }], // 20% built
-      fp: { actualCost: '0', forecastCost: '0', contractValue: '1000', receivedRevenue: '700' }, // 70% collected
+      fp: { actualCost: '0', budgetTotal: null, contractValue: '1000', receivedRevenue: '700' }, // 70% collected
     });
     const res = await service.getCollectionProgressSignal(identity, 'p-1');
     expect(res.physicalPercent).toBe(20);
@@ -389,7 +389,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
     const { service } = build({
       workPackages: [{ id: 'a', code: 'WP', name: 'x', responsibleOwner: null, progressWeight: '1', boqLinks: [{ boqNodeId: 'n1' }] }],
       measurements: [{ boqNodeId: 'n1', quantity: 800, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }], // 80% built
-      fp: { actualCost: '0', forecastCost: '0', contractValue: '1000', receivedRevenue: '100' }, // 10% collected
+      fp: { actualCost: '0', budgetTotal: null, contractValue: '1000', receivedRevenue: '100' }, // 10% collected
     });
     const res = await service.getCollectionProgressSignal(identity, 'p-1');
     expect(res.status).toBe('WORK_AHEAD');
@@ -400,7 +400,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
     const { service } = build({
       workPackages: [{ id: 'a', code: 'WP', name: 'x', responsibleOwner: null, progressWeight: '1', boqLinks: [{ boqNodeId: 'n1' }] }],
       measurements: [{ boqNodeId: 'n1', quantity: 200, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }],
-      fp: { actualCost: '0', forecastCost: '0', contractValue: null, receivedRevenue: null },
+      fp: { actualCost: '0', budgetTotal: null, contractValue: null, receivedRevenue: null },
     });
     const res = await service.getCollectionProgressSignal(identity, 'p-1');
     expect(res.collectedPercent).toBeNull();

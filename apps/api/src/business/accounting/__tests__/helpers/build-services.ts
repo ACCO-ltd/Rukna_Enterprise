@@ -44,6 +44,7 @@ import { TrialBalanceService }       from '../../general-ledger/application/tria
 import { PLReportService }           from '../../general-ledger/application/pl-report.service.js';
 import { BalanceSheetService }       from '../../general-ledger/application/balance-sheet.service.js';
 import { PeriodManagementService }   from '../../general-ledger/application/period-management.service.js';
+import { YearEndCloseService }       from '../../general-ledger/application/year-end-close.service.js';
 
 export interface AccountingServices {
   prisma: PrismaClient;
@@ -69,6 +70,7 @@ export interface AccountingServices {
   plReportService: PLReportService;
   balanceSheetService: BalanceSheetService;
   periodManagementService: PeriodManagementService;
+  yearEndCloseService: YearEndCloseService;
 }
 
 export function buildServices(prisma: PrismaClient): AccountingServices {
@@ -128,6 +130,7 @@ export function buildServices(prisma: PrismaClient): AccountingServices {
   const trialBalanceService    = new TrialBalanceService(tenancy, snapshotService);
   const balanceSheetService    = new BalanceSheetService(tenancy, snapshotService, plReportService);
   const periodManagementService = new PeriodManagementService(tenancy, snapshotService);
+  const yearEndCloseService     = new YearEndCloseService(tenancy, snapshotService, sequenceRepo, postingService);
 
   return {
     prisma,
@@ -153,5 +156,6 @@ export function buildServices(prisma: PrismaClient): AccountingServices {
     plReportService,
     balanceSheetService,
     periodManagementService,
+    yearEndCloseService,
   };
 }

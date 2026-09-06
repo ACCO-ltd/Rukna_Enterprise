@@ -75,27 +75,61 @@ export class ProjectFinancialPositionRepository {
   }
 
   /**
-   * Remaining committed cost for the project: commitment-ledger COMMITTED + ACCRUED reporting
-   * amounts. ACTUAL is excluded — a posted bill is already counted in the GL actual cost, so
-   * including it would double-count (confirmed 2026-08-14). Assumes goods receipt posts no GL
-   * accrual, so ACCRUED is not yet in the GL either.
+   * Commitment-ledger totals per stage, as signed running balances.
+   *
+   * Returned separately rather than as one "remaining committed" figure. The two mean
+   * different things — COMMITTED is ordered and not yet delivered, ACCRUED is delivered
+   * and not yet billed — and only one of them is a commitment anyone can still cancel.
+   * Summing them also hid a defect: because goods receipt accrues the purchase-order
+   * value while a posted bill releases the bill's gross amount, the combined figure
+   * goes NEGATIVE by the VAT once a project is fully billed, and "Remaining committed:
+   * -$2,000" is not a number anyone can act on.
+   *
+   * ACTUAL is excluded from both — it is already counted in the GL actual cost.
    */
-  async sumRemainingCommitments(
+  async sumCommitmentStages(
     prisma: TenantPrisma,
     organizationId: string,
     projectId: string,
-  ): Promise<Decimal> {
+  ): Promise<{ openCommitment: Decimal; accruedCost: Decimal }> {
     const rows = await prisma.commitmentLedgerEntry.groupBy({
       by: ['stage'],
       where: { organizationId, projectId, stage: { in: ['COMMITTED', 'ACCRUED'] as never[] } },
       _sum: { reportingAmount: true },
     });
 
-    let remaining = ZERO;
+    let openCommitment = ZERO;
+    let accruedCost = ZERO;
     for (const row of rows) {
-      remaining = remaining.plus(new Decimal((row._sum.reportingAmount ?? 0).toString()));
+      const amount = new Decimal((row._sum.reportingAmount ?? 0).toString());
+      if (row.stage === 'COMMITTED') openCommitment = openCommitment.plus(amount);
+      else accruedCost = accruedCost.plus(amount);
     }
-    return remaining;
+    return { openCommitment, accruedCost };
+  }
+
+  /**
+   * Total of the project's BASELINED cost budget, or null when it has never set one.
+   *
+   * Null rather than zero throughout: a project with no baselined budget has no
+   * denominator, and every ratio built on it must be absent rather than 0%.
+   */
+  async sumBaselinedBudget(
+    prisma: TenantPrisma,
+    organizationId: string,
+    projectId: string,
+  ): Promise<{ total: Decimal; currency: string } | null> {
+    const budget = await prisma.projectCostBudget.findFirst({
+      where: { organizationId, projectId, status: 'BASELINED' },
+      select: { currency: true, lines: { select: { budgetAmount: true } } },
+    });
+    if (!budget) return null;
+
+    let total = ZERO;
+    for (const line of budget.lines) {
+      total = total.plus(new Decimal(line.budgetAmount.toString()));
+    }
+    return { total, currency: budget.currency };
   }
 
   /**

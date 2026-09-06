@@ -35,10 +35,13 @@ const DATA: ProjectFinancialPositionResponse = {
   invoicedRevenue: '650000.00',
   receivedRevenue: '500000.00',
   outstandingReceivables: '150000.00',
+  hasBudget: true,
+  budgetTotal: '900000.00',
+  openCommitment: '100000.00',
+  accruedCost: '50000.00',
   actualCost: '600000.00',
-  remainingCommitments: '150000.00',
-  forecastCost: '750000.00',
-  forecastMargin: '250000.00',
+  committedToDate: '750000.00',
+  uncommittedBudget: '150000.00',
   asOf: '2026-08-14T00:00:00.000Z',
 };
 
@@ -66,6 +69,6 @@ describe('ProjectFinancialPositionCard — request gating (real query)', () => {
 
     await waitFor(() => expect(apiMocks.getProjectFinancialPosition).toHaveBeenCalledTimes(1));
     expect(apiMocks.getProjectFinancialPosition).toHaveBeenCalledWith('p1');
-    expect(await screen.findByText(/250,000/)).toBeInTheDocument();
+    expect(await screen.findByText(/600,000/)).toBeInTheDocument();
   });
 });

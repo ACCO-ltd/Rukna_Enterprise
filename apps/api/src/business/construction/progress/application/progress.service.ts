@@ -420,21 +420,29 @@ export class ProgressService {
   }
 
   /**
-   * Physical-vs-financial early warning (ADR-021/023): weighted physical % (roll-up) vs cost-consumed
-   * % (posted actual ÷ forecast cost, from the ADR-013 Financial Position). A large positive gap
-   * (cost ahead of progress) says "investigate"; a large negative gap means progress is ahead of
-   * spend (ACCO financing the client). The cost read crosses into accounting — the allowed direction.
+   * Physical-vs-financial early warning (ADR-021/023): weighted physical % (roll-up) against how
+   * much of the **baselined cost budget** has been consumed. A large positive gap (cost ahead of
+   * progress) says "investigate"; a large negative gap means progress is ahead of spend. The cost
+   * read crosses into accounting — the allowed direction.
+   *
+   * The denominator is the budget, and is `null` when no budget is baselined. It used to be
+   * `forecastCost` (= actual + committed + accrued), which is not a forecast: with no open
+   * purchase orders it equals actual, so this ratio read **100% cost consumed** on any project
+   * that happened to have nothing on order — and then reported COST_AHEAD against real progress.
+   * A project that has set no budget has not consumed 0% of it, so INSUFFICIENT_DATA is the
+   * honest answer rather than a ratio against a number nobody agreed.
    */
   async getPhysicalFinancialSignal(identity: RequestIdentity, projectId: string) {
     await this.projectAccess.assertMember(identity, projectId);
     const rollup = await this.getRollup(identity, projectId);
     const fp = await this.financialPosition.getForProject(identity, projectId);
 
-    const forecastCost = new Decimal(fp.forecastCost);
+    const budgetTotal = fp.budgetTotal === null ? null : new Decimal(fp.budgetTotal);
     const actualCost = new Decimal(fp.actualCost);
-    const costConsumedPercent = forecastCost.greaterThan(ZERO)
-      ? Math.round(actualCost.div(forecastCost).mul(100).toNumber() * 100) / 100
-      : null;
+    const costConsumedPercent =
+      budgetTotal !== null && budgetTotal.greaterThan(ZERO)
+        ? Math.round(actualCost.div(budgetTotal).mul(100).toNumber() * 100) / 100
+        : null;
 
     const physicalPercent = rollup.physicalPercent;
     const { divergence, status } = classifyDivergence(
@@ -447,7 +455,7 @@ export class ProgressService {
       projectId,
       physicalPercent,
       actualCost: fp.actualCost,
-      forecastCost: fp.forecastCost,
+      budgetTotal: fp.budgetTotal,
       costConsumedPercent,
       divergence,
       status,

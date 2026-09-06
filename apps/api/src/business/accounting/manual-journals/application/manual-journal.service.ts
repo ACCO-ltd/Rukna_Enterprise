@@ -257,11 +257,33 @@ export class ManualJournalService {
         tx as never,
       );
 
-      // Update the DRAFT journal to POSTED (the posting engine creates a new record)
-      // For manual journals, we update status on the existing draft record
+      // The posting engine has created the canonical GL entry, with its own copy of
+      // every line. This record was only ever the authoring/workflow staging row, so
+      // its lines must go: every report aggregates `JournalLine` filtered on
+      // `entry.status = 'POSTED'`, and leaving them here counted each manual journal
+      // twice in the trial balance, both P&Ls, the balance sheet and project actual
+      // cost. Debits and credits doubled together, so nothing that checks balance
+      // could ever catch it.
+      //
+      // The row itself stays — it carries who drafted, submitted and approved — and
+      // points at the entry that replaced it, so the workflow trail leads to the
+      // posting rather than competing with it.
+      await tx.journalLine.deleteMany({ where: { journalEntryId: journalId } });
       await tx.journalEntry.update({
         where: { id: journalId },
-        data: { status: 'POSTED', postedBy: userId, postedAt: new Date() },
+        data: {
+          status: 'POSTED',
+          postedBy: userId,
+          postedAt: new Date(),
+          replacedByJournalEntryId: result.journalEntryId,
+        },
+      });
+
+      // Carry the submission evidence onto the entry that actually posted, so the
+      // audit trail reads off the canonical journal instead of only the staging row.
+      await tx.journalEntry.update({
+        where: { id: result.journalEntryId },
+        data: { submittedBy: journal.submittedBy, submittedAt: journal.submittedAt },
       });
 
       return result;
@@ -272,13 +294,39 @@ export class ManualJournalService {
     const prisma = this.tenancyService.getClient();
     const { activeOrganizationId: orgId, userId } = identity;
 
-    const journal = await prisma.journalEntry.findFirst({
-      where: { id: dto.journalId, organizationId: orgId, status: 'POSTED' },
+    const requested = await prisma.journalEntry.findFirst({
+      where: { id: dto.journalId, organizationId: orgId },
       include: { lines: true },
     });
-    if (!journal) throw new NotFoundException(`Journal ${dto.journalId} not found in POSTED status`);
+    if (!requested) throw new NotFoundException(`Journal ${dto.journalId} not found`);
+
+    // A manual journal's authoring row is replaced at post time by the canonical GL
+    // entry (see post()). Reversing has to target whichever of the two actually
+    // carries the lines, so callers holding either id land on the same journal.
+    const journal = requested.replacedByJournalEntryId
+      ? await prisma.journalEntry.findFirstOrThrow({
+          where: { id: requested.replacedByJournalEntryId, organizationId: orgId },
+          include: { lines: true },
+        })
+      : requested;
+
+    if (journal.status !== 'POSTED') {
+      throw new NotFoundException(`Journal ${dto.journalId} is ${journal.status} — only a POSTED journal can be reversed`);
+    }
     if (journal.reversalOfJournalEntryId) {
       throw new ConflictException(`Journal ${dto.journalId} is already a reversal — cannot reverse a reversal`);
+    }
+
+    // Reversing twice would post the mirror entry twice and take the accounts to the
+    // opposite of the original. One reversal per journal.
+    const existingReversal = await prisma.journalEntry.findFirst({
+      where: { organizationId: orgId, reversalOfJournalEntryId: journal.id, status: 'POSTED' },
+      select: { id: true, journalNumber: true },
+    });
+    if (existingReversal) {
+      throw new ConflictException(
+        `Journal ${journal.journalNumber ?? journal.id} is already reversed by ${existingReversal.journalNumber ?? existingReversal.id}`,
+      );
     }
 
     const reversalDate = new Date(dto.reversalDate);
@@ -313,9 +361,15 @@ export class ManualJournalService {
         tx as never,
       );
 
+      // The original stays POSTED. A reversal is a second posting that offsets the
+      // first, not an erasure of it: every report filters on `status = 'POSTED'`, so
+      // moving the original out of that set would remove its lines *and* add the
+      // mirror lines, leaving the accounts at minus the original amount. Reversal is
+      // recorded by the link and the stamps below, and read back through
+      // `reversalOfJournalEntryId`.
       await tx.journalEntry.update({
         where: { id: journal.id },
-        data: { status: 'REVERSED', reversedBy: userId, reversalReason: dto.reason },
+        data: { reversedBy: userId, reversalReason: dto.reason },
       });
 
       return result;
@@ -324,8 +378,16 @@ export class ManualJournalService {
 
   async findAll(identity: RequestIdentity) {
     const prisma = this.tenancyService.getClient();
+    // `replacedByJournalEntryId: null` hides the authoring rows of journals that have
+    // already posted, so the list shows one row per journal instead of the staging
+    // record and the GL entry side by side. Unposted drafts have no replacement and
+    // still appear.
     return prisma.journalEntry.findMany({
-      where: { organizationId: identity.activeOrganizationId, sourceDocumentType: 'MANUAL_JOURNAL' },
+      where: {
+        organizationId: identity.activeOrganizationId,
+        sourceDocumentType: 'MANUAL_JOURNAL',
+        replacedByJournalEntryId: null,
+      },
       include: { lines: { orderBy: { lineNumber: 'asc' } } },
       orderBy: { createdAt: 'desc' },
     });

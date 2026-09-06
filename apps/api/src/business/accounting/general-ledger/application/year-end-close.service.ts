@@ -90,7 +90,12 @@ export class YearEndCloseService {
       );
     }
 
-    // Idempotency: check for existing closing journal
+    // A closing journal that already exists means a previous run posted it and then
+    // failed before the fiscal year was marked CLOSED. Refusing here is what turned
+    // that into a state only a DBA could clear: the journal blocks the retry, and the
+    // year can never close. The posting engine is idempotent on
+    // (org, sourceDocType, sourceDocId, eventType), so re-running is safe — it returns
+    // the same journal — and the run continues on to snapshot and close the year.
     const existingClose = await prisma.journalEntry.findFirst({
       where: {
         organizationId: orgId,
@@ -98,12 +103,8 @@ export class YearEndCloseService {
         sourceDocumentId: fiscalYearId,
         accountingEventId: 'EVT-YE-001',
       },
+      select: { id: true, journalNumber: true },
     });
-    if (existingClose) {
-      throw new ConflictException(
-        `Closing journal already posted for ${fy.name} (${existingClose.journalNumber})`,
-      );
-    }
 
     // ── Compute P&L for the year ───────────────────────────────────────────────
     const plAccountClasses = ['INCOME', 'COST_OF_SALES', 'EXPENSE'];
@@ -186,7 +187,9 @@ export class YearEndCloseService {
       netIncome = netIncome.minus(netBalance);
     }
 
-    if (closingLines.length === 0) {
+    // A resumed run finds every P&L account already zeroed by the closing journal it
+    // posted last time, so "no activity" is the expected shape of a retry, not an error.
+    if (closingLines.length === 0 && !existingClose) {
       throw new BadRequestException(
         `No P&L activity found for ${fy.name}. Ensure income/expense accounts have posted journals.`,
       );
@@ -208,47 +211,64 @@ export class YearEndCloseService {
       });
     }
 
-    // ── Post CLOSING journal ───────────────────────────────────────────────────
-    const result = await prisma.$transaction(async (tx) => {
-      return this.postingPort.post(
-        {
-          organizationId: orgId,
-          accountingDate: period12.endDate,
-          documentDate: period12.endDate,
-          description: `Year-end close — ${fy.name}`,
-          currencyCode: baseCurrency,
-          eventType: 'EVT-YE-001',
-          sourceDocumentType: 'YEAR_END_CLOSE',
-          sourceDocumentId: fiscalYearId,
-          journalCategory: 'YEAR_END_CLOSE',
-          entryPurpose: 'CLOSING',
-          postingOrigin: 'SYSTEM_YEAR_END',
-          createdBy: userId,
-          approvedBy: userId,
-          lines: closingLines.map((l) => ({
-            accountId: l.accountId,
-            debitAmount: l.debitAmount,
-            creditAmount: l.creditAmount,
-            memo: l.memo,
-          })),
-        },
-        tx as never,
-      );
-    });
+    // ── Post, snapshot and close — one transaction ────────────────────────────
+    // All four steps commit together. Previously only the posting was transactional,
+    // so a failure in the snapshot or either status update left a posted closing
+    // journal against an OPEN fiscal year — the exact half-closed state the
+    // idempotency guard above then refused to let anyone retry.
+    const { result, snapshot } = await prisma.$transaction(
+      async (tx) => {
+        const posted = existingClose
+          ? { journalEntryId: existingClose.id, journalNumber: existingClose.journalNumber ?? '' }
+          : await this.postingPort.post(
+              {
+                organizationId: orgId,
+                accountingDate: period12.endDate,
+                documentDate: period12.endDate,
+                description: `Year-end close — ${fy.name}`,
+                currencyCode: baseCurrency,
+                eventType: 'EVT-YE-001',
+                sourceDocumentType: 'YEAR_END_CLOSE',
+                sourceDocumentId: fiscalYearId,
+                journalCategory: 'YEAR_END_CLOSE',
+                entryPurpose: 'CLOSING',
+                postingOrigin: 'SYSTEM_YEAR_END',
+                createdBy: userId,
+                approvedBy: userId,
+                lines: closingLines.map((l) => ({
+                  accountId: l.accountId,
+                  debitAmount: l.debitAmount,
+                  creditAmount: l.creditAmount,
+                  memo: l.memo,
+                })),
+              },
+              tx as never,
+            );
 
-    // ── Generate Period 12 snapshot (includes closing journal) ────────────────
-    const snapshot = await this.snapshotService.generateForPeriod(orgId, period12.id, userId);
+        // Snapshot AFTER the closing journal so the balance sheet ties: the closing
+        // entry is what moves P&L into retained earnings.
+        const snap = await this.snapshotService.generateForPeriod(
+          orgId,
+          period12.id,
+          userId,
+          tx as never,
+        );
 
-    // ── Close Period 12 and FiscalYear ────────────────────────────────────────
-    await prisma.accountingPeriod.update({
-      where: { id: period12.id },
-      data: { status: 'CLOSED' },
-    });
+        await tx.accountingPeriod.update({
+          where: { id: period12.id },
+          data: { status: 'CLOSED' },
+        });
 
-    await prisma.fiscalYear.update({
-      where: { id: fiscalYearId },
-      data: { status: 'CLOSED', closedAt: new Date(), closedBy: userId },
-    });
+        await tx.fiscalYear.update({
+          where: { id: fiscalYearId },
+          data: { status: 'CLOSED', closedAt: new Date(), closedBy: userId },
+        });
+
+        return { result: posted, snapshot: snap };
+      },
+      // A year's worth of accounts is more work than the 5s default allows.
+      { timeout: 120_000, maxWait: 20_000 },
+    );
 
     return {
       fiscalYearId,

@@ -247,8 +247,12 @@ export interface PhysicalFinancialSignalResponse {
   projectId: string;
   physicalPercent: number;
   actualCost: string;
-  forecastCost: string;
-  /** actualCost ÷ forecastCost × 100. Null when there is no forecast cost yet. */
+  /** Total of the BASELINED cost budget. Null when the project has never baselined one. */
+  budgetTotal: string | null;
+  /**
+   * actualCost ÷ budgetTotal × 100. Null without a baselined budget — a project with no
+   * budget has not consumed 0% of it, and the signal reads INSUFFICIENT_DATA instead.
+   */
   costConsumedPercent: number | null;
   /** physicalPercent − costConsumedPercent (positive = built ahead of spend). */
   divergence: number | null;
@@ -1486,19 +1490,25 @@ export interface ProjectFinancialPositionResponse {
   projectId: string;
   currency: string | null;
   hasContract: boolean;
+  /** False when the project has no BASELINED cost budget — every budget ratio is then absent. */
+  hasBudget: boolean;
   contractValue: string | null;
   certifiedRevenue: string | null;
   invoicedRevenue: string | null;
   receivedRevenue: string | null;
   outstandingReceivables: string | null;
+  /** Total of the BASELINED cost budget. Null when none is baselined — never 0. */
+  budgetTotal: string | null;
+  /** Commitment ledger COMMITTED: ordered, not yet received. */
+  openCommitment: string;
+  /** Commitment ledger ACCRUED: received, not yet billed. */
+  accruedCost: string;
   /** Posted GL cost attributed to the project (COST_OF_SALES + EXPENSE), project-to-date. */
   actualCost: string;
-  /** Commitment ledger COMMITTED + ACCRUED — open commitments not yet posted to the GL. */
-  remainingCommitments: string;
-  /** actualCost + remainingCommitments. */
-  forecastCost: string;
-  /** contractValue − forecastCost. Null without a contract. */
-  forecastMargin: string | null;
+  /** openCommitment + accruedCost + actualCost — spent or contractually committed. */
+  committedToDate: string;
+  /** budgetTotal − committedToDate. Null without a baselined budget. */
+  uncommittedBudget: string | null;
   asOf: string;
 }
 

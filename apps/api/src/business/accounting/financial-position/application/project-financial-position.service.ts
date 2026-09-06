@@ -7,15 +7,17 @@ import { ProjectFinancialPositionRepository } from '../infrastructure/project-fi
 import { calculateFinancialPosition } from './financial-position.policy.js';
 
 /**
- * Project Financial Position (ADR-013): the PM/control view — posted actuals **plus** remaining
- * committed cost, so forecast margin is not overstated. Built on the org-level FP policy
- * (`calculateFinancialPosition`, ADR-010) with project-scoped inputs.
+ * Project Financial Position (ADR-013): the PM/control view — what the project has
+ * spent, what it has committed to spend, and what it budgeted to spend.
  *
- * Scope of this first cut (flagged for confirmation with Eng Ahmed):
- *  - Single currency. Amounts are combined in the contract currency; the GL and commitment
- *    reporting amounts are assumed to be the same currency (ACCO is USD-only). Multi-currency
- *    conversion via approved-rate snapshots (ADR-010 `toReportingAmount`) is a follow-up.
- *  - `remainingCommitments` = COMMITTED + ACCRUED (excludes ACTUAL, already in GL actual cost).
+ * Scope of this cut:
+ *  - Single currency. Amounts are combined in the contract currency; the GL and
+ *    commitment reporting amounts are assumed to be the same currency (ACCO is
+ *    USD-only). Multi-currency conversion via approved-rate snapshots (ADR-010
+ *    `toReportingAmount`) is a follow-up.
+ *  - **No forecast.** `forecastCost` / `forecastMargin` were removed: they were
+ *    actual-plus-commitments wearing a forecast's name, with no estimate of remaining
+ *    cost in them at all, so they could only ever flatter margin. See the policy.
  */
 @Injectable()
 export class ProjectFinancialPositionService {
@@ -33,29 +35,47 @@ export class ProjectFinancialPositionService {
     const asOf = new Date().toISOString();
 
     // Cost side does not depend on a contract — always resolved.
-    const [contract, remainingCommitments, actualCost] = await Promise.all([
+    const [contract, stages, actualCost, budget] = await Promise.all([
       this.repo.findMainContract(prisma, orgId, projectId),
-      this.repo.sumRemainingCommitments(prisma, orgId, projectId),
+      this.repo.sumCommitmentStages(prisma, orgId, projectId),
       this.repo.sumActualCost(prisma, orgId, projectId),
+      this.repo.sumBaselinedBudget(prisma, orgId, projectId),
     ]);
 
-    const forecastCost = actualCost.plus(remainingCommitments);
+    const costInputs = {
+      openCommitment: stages.openCommitment,
+      accruedCost: stages.accruedCost,
+      actualCost,
+      budgetTotal: budget?.total ?? null,
+    };
 
-    // No main contract: cost/forecast are real, revenue and margin are unavailable (not zero).
+    // No main contract: cost and budget are real, revenue is unavailable (not zero).
     if (!contract) {
+      const position = calculateFinancialPosition({
+        contractValue: new Decimal(0),
+        certifiedRevenue: new Decimal(0),
+        invoicedRevenue: new Decimal(0),
+        cashReceived: new Decimal(0),
+        postedReceiptAllocations: new Decimal(0),
+        ...costInputs,
+      });
       return {
         projectId,
-        currency: null,
+        currency: budget?.currency ?? null,
         hasContract: false,
+        hasBudget: budget !== null,
         contractValue: null,
         certifiedRevenue: null,
         invoicedRevenue: null,
         receivedRevenue: null,
         outstandingReceivables: null,
-        actualCost: actualCost.toFixed(2),
-        remainingCommitments: remainingCommitments.toFixed(2),
-        forecastCost: forecastCost.toFixed(2),
-        forecastMargin: null,
+        budgetTotal: budget === null ? null : position.budgetTotal!.toFixed(2),
+        openCommitment: position.openCommitment.toFixed(2),
+        accruedCost: position.accruedCost.toFixed(2),
+        actualCost: position.actualCost.toFixed(2),
+        committedToDate: position.committedToDate.toFixed(2),
+        uncommittedBudget:
+          position.uncommittedBudget === null ? null : position.uncommittedBudget.toFixed(2),
         asOf,
       };
     }
@@ -71,23 +91,26 @@ export class ProjectFinancialPositionService {
       invoicedRevenue: settlement.invoiced,
       cashReceived: settlement.received,
       postedReceiptAllocations: settlement.received,
-      remainingCommitments,
-      actualCost,
+      ...costInputs,
     });
 
     return {
       projectId,
       currency: contract.currency,
       hasContract: true,
+      hasBudget: budget !== null,
       contractValue: position.contractValue.toFixed(2),
       certifiedRevenue: position.certifiedRevenue.toFixed(2),
       invoicedRevenue: position.invoicedRevenue.toFixed(2),
       receivedRevenue: settlement.received.toFixed(2),
       outstandingReceivables: position.outstandingReceivables.toFixed(2),
+      budgetTotal: position.budgetTotal === null ? null : position.budgetTotal.toFixed(2),
+      openCommitment: position.openCommitment.toFixed(2),
+      accruedCost: position.accruedCost.toFixed(2),
       actualCost: position.actualCost.toFixed(2),
-      remainingCommitments: position.remainingCommitments.toFixed(2),
-      forecastCost: position.forecastCost.toFixed(2),
-      forecastMargin: position.forecastMargin.toFixed(2),
+      committedToDate: position.committedToDate.toFixed(2),
+      uncommittedBudget:
+        position.uncommittedBudget === null ? null : position.uncommittedBudget.toFixed(2),
       asOf,
     };
   }
