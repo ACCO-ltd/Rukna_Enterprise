@@ -46,6 +46,7 @@ import {
   poLineError,
   type PoLineDraft,
 } from './po-line-editor';
+import { buildCostTargetPayload } from './po-cost-target-picker';
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -70,10 +71,14 @@ function linesFromRevision(revision: PurchaseOrderRevision | null): PoLineDraft[
     uomCode: line.uom?.code ?? '',
     quantity: line.orderedQuantity,
     unitPrice: line.unitPrice,
-    costTarget:
-      line.projectId && line.boqNodeId
-        ? { notChargeable: false, projectId: line.projectId, boqNodeId: line.boqNodeId }
-        : { notChargeable: true, projectId: null, boqNodeId: null },
+    costTarget: line.projectId
+      ? {
+          notChargeable: false,
+          projectId: line.projectId,
+          boqNodeId: line.boqNodeId ?? null,
+          spendCategoryId: line.boqNodeId ? null : (line.spendCategoryId ?? null),
+        }
+      : { notChargeable: true, projectId: null, boqNodeId: null, spendCategoryId: null },
   }));
 }
 
@@ -132,12 +137,9 @@ export function PoAmendSheet({
       lines: lines.map((line): CreatePoLinePayload => {
         const qty = parseMinorUnits(line.quantity, QUANTITY_SCALE) ?? 0;
         const price = parseMinorUnits(line.unitPrice, MONEY_SCALE) ?? 0;
-        // A3 (no. 148): a chargeable line sends both cost-target ids; a not-chargeable line sends
-        // neither. The revise DTO validates the target the same way create does.
-        const costTarget =
-          !line.costTarget.notChargeable && line.costTarget.projectId && line.costTarget.boqNodeId
-            ? { projectId: line.costTarget.projectId, boqNodeId: line.costTarget.boqNodeId }
-            : {};
+        // A3: the revise DTO validates the target exactly as create does — project plus
+        // either a BOQ node or a spend category, or nothing at all for overhead.
+        const costTarget = buildCostTargetPayload(line.costTarget);
         return {
           lineType: line.lineType,
           description: line.description.trim(),

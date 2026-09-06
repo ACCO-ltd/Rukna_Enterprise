@@ -38,16 +38,38 @@ import { useCreateSupplierBill } from '../hooks/use-procurement';
 import { moneyToApi } from '../quantities';
 import type { CreateSupplierBillLinePayload } from '../types';
 import { SupplierPicker } from './supplier-picker';
+import {
+  PoCostTargetPicker,
+  buildCostTargetPayload,
+  emptyCostTarget,
+  isCostTargetComplete,
+  type CostTargetValue,
+} from './po-cost-target-picker';
 
 export interface BillLineDraft {
   description: string;
   netAmount: string;
   vatAmount: string;
   expenseProfileCode: string;
+  /**
+   * Where this cost belongs. A non-PO bill is the only path where cost coding is keyed by
+   * hand — a PO-backed bill inherits the purchase-order line's target at post time and never
+   * re-codes it (D7) — so this form is where an unattributed project cost gets created.
+   *
+   * Without it every bill entered here posted with `projectId = null`, which is why project
+   * actual cost in the accounts was $0 for every project regardless of how much had been spent.
+   */
+  costTarget: CostTargetValue;
 }
 
 export function emptyBillLine(): BillLineDraft {
-  return { description: '', netAmount: '', vatAmount: '', expenseProfileCode: '' };
+  return {
+    description: '',
+    netAmount: '',
+    vatAmount: '',
+    expenseProfileCode: '',
+    costTarget: emptyCostTarget(),
+  };
 }
 
 /**
@@ -59,7 +81,9 @@ export function emptyBillLine(): BillLineDraft {
  * typed, because "no VAT" and "VAT not yet entered" must not look the same on a form that
  * posts to the ledger.
  */
-export function billLineError(line: BillLineDraft): 'description' | 'net' | 'vat' | 'profile' | null {
+export function billLineError(
+  line: BillLineDraft,
+): 'description' | 'net' | 'vat' | 'profile' | 'costTarget' | null {
   if (!line.description.trim()) return 'description';
 
   const net = parseMinorUnits(line.netAmount, MONEY_SCALE);
@@ -69,6 +93,10 @@ export function billLineError(line: BillLineDraft): 'description' | 'net' | 'vat
   if (vat === null || vat < 0) return 'vat';
 
   if (!line.expenseProfileCode) return 'profile';
+
+  // Mirrors the server's `validateCostTarget`: a project needs to say what it is spending on.
+  // Blocking here means the rejection lands on the field, not on whoever pressed Save.
+  if (!isCostTargetComplete(line.costTarget)) return 'costTarget';
   return null;
 }
 
@@ -137,6 +165,7 @@ export function SupplierBillForm() {
       netAmount: moneyToApi(parseMinorUnits(line.netAmount, MONEY_SCALE) ?? 0),
       vatAmount: moneyToApi(parseMinorUnits(line.vatAmount, MONEY_SCALE) ?? 0),
       expenseProfileCode: line.expenseProfileCode,
+      ...buildCostTargetPayload(line.costTarget),
     }));
 
     create.mutate(
@@ -367,6 +396,12 @@ function BillLineRow({
         </Select>
         <p className="text-xs text-muted-foreground">{t('expenseProfileHint')}</p>
       </FormField>
+
+      <PoCostTargetPicker
+        value={line.costTarget}
+        onChange={(costTarget) => onChange({ costTarget })}
+        showError={error === 'costTarget'}
+      />
 
       {error ? <Alert variant="error" messages={[t(`lineError.${error}`)]} /> : null}
     </div>

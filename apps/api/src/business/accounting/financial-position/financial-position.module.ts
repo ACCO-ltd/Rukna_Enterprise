@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { TenancyModule } from '../../../platform/tenancy/tenancy.module.js';
 import { ProjectFinancialPositionRepository } from './infrastructure/project-financial-position.repository.js';
 import { ProjectFinancialPositionService } from './application/project-financial-position.service.js';
+import { ProjectCostReconciliationService } from './application/project-cost-reconciliation.service.js';
 import { ProjectFinancialPositionController } from './presentation/project-financial-position.controller.js';
 
 /**
@@ -11,8 +12,12 @@ import { ProjectFinancialPositionController } from './presentation/project-finan
  */
 @Module({
   imports: [TenancyModule],
-  providers: [ProjectFinancialPositionRepository, ProjectFinancialPositionService],
+  providers: [
+    ProjectFinancialPositionRepository,
+    ProjectFinancialPositionService,
+    ProjectCostReconciliationService,
+  ],
   controllers: [ProjectFinancialPositionController],
-  exports: [ProjectFinancialPositionService],
+  exports: [ProjectFinancialPositionService, ProjectCostReconciliationService],
 })
 export class FinancialPositionModule {}

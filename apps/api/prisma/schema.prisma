@@ -2614,6 +2614,12 @@ model JournalLine {
   supplierId              String?        @map("supplier_id")
   contractId              String?        @map("contract_id")
   boqNodeId               String?        @map("boq_node_id")
+  // The project-level cost target for spend that legitimately has no BOQ line: site
+  // security, transport, insurance, temporary facilities. Without it the second of the
+  // three valid cost attributions (project + spend category, no BOQ node) could reach
+  // the commitment ledger but not the GL, so project-level cost arrived in the accounts
+  // as an unclassified bucket. See purchase-orders/domain/cost-target.policy.ts.
+  spendCategoryId         String?        @map("spend_category_id")
   taxCodeId               String?        @map("tax_code_id")
   createdAt               DateTime       @default(now()) @map("created_at")
 
@@ -2628,6 +2634,7 @@ model JournalLine {
   // Dimension indexes for project-scoped reporting (Project Actual P&L, ADR-013)
   @@index([projectId])
   @@index([contractId])
+  @@index([spendCategoryId])
   @@map("journal_lines")
 }
 

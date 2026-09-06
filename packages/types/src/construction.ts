@@ -1512,6 +1512,36 @@ export interface ProjectFinancialPositionResponse {
   asOf: string;
 }
 
+/**
+ * Does procurement's ACTUAL agree with the general ledger? (REC-01)
+ *
+ * Source-scoped deliberately: only supplier-bill-originated GL cost is comparable with the
+ * commitment ledger. Payroll, plant, depreciation and manual project journals are real
+ * project cost that procurement never sees, so they are reported separately rather than
+ * counted as a variance.
+ *
+ *     glTotalProjectCost = glProcurementCost + glNonProcurementCost
+ */
+export interface ProjectCostReconciliationResponse {
+  projectId: string;
+  /** Commitment-ledger ACTUAL for the project. */
+  ledgerActual: string;
+  /** Posted GL project cost whose journal came from a supplier bill. */
+  glProcurementCost: string;
+  /** Posted GL project cost from every other source — payroll, plant, manual journals. */
+  glNonProcurementCost: string;
+  glTotalProjectCost: string;
+  /** glProcurementCost − ledgerActual. Zero when the two sides agree. */
+  variance: string;
+  reconciled: boolean;
+  /**
+   * Posted bill lines on this project's purchase orders that reached the GL with no project
+   * on them — project cost the accounts have lost, and the likeliest cause of a variance.
+   */
+  unattributedBillLines: number;
+  asOf: string;
+}
+
 export type BoqChangeKind =
   | 'ADDED'
   | 'REMOVED'

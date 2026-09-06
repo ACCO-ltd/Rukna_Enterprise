@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
-import type { Decimal } from '@prisma/client/runtime/library';
+import { Decimal } from '@prisma/client/runtime/library';
 
 type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
@@ -32,20 +32,29 @@ export interface CreateSupplierBillData {
     departmentId?: string;
     costCenterId?: string;
     boqNodeId?: string;
+    spendCategoryId?: string;
   }[];
 }
 
 // D7 (capture-once, inherit downstream): the cost-target a PO-backed bill line inherits from its
-// matched PO line. Both set = a project-cost line; both null = an org/overhead line. Resolved from the
-// SupplierBillMatch (guaranteed present for a PO-backed bill by the posting gate) so the ACTUAL/ACCRUED
-// commitment attributes to the SAME project/node the PO COMMITTED and the GRN ACCRUED used — and the
-// ledger nets per project/node.
+// matched PO line. Resolved from the SupplierBillMatch (guaranteed present for a PO-backed bill by the
+// posting gate) so BOTH the GL journal line AND the ACTUAL/ACCRUED commitment attribute to the SAME
+// project/node the PO COMMITTED and the GRN ACCRUED used.
+//
+// The GL used to take its attribution from whatever the AP clerk keyed on the bill line instead, which
+// made project cost in the accounts and project cost in the ledger two independent variables that
+// nothing reconciled — and, since no bill form ever sent a project at all, the GL side was always null.
+//
+// `accruedBasis` is the amount the goods receipt actually accrued for the quantity this bill covers:
+// billedQuantity × poUnitPrice. Releasing the accrual at the bill's gross amount instead left a
+// permanent −VAT residual in ACCRUED, because the accrual was raised net of a tax the bill adds.
 export interface BillLineCostTarget {
   supplierBillLineId: string;
   purchaseOrderLineId: string;
   projectId: string | null;
   boqNodeId: string | null;
   spendCategoryId: string | null;
+  accruedBasis: Decimal;
 }
 
 @Injectable()
@@ -149,6 +158,10 @@ export class SupplierBillRepository {
       projectId: l.purchaseOrderLine.projectId,
       boqNodeId: l.purchaseOrderLine.boqNodeId,
       spendCategoryId: l.purchaseOrderLine.spendCategoryId,
+      // The exact basis the GRN accrued on, for the quantity this bill line covers.
+      accruedBasis: new Decimal(l.billedQuantity.toString()).mul(
+        new Decimal(l.poUnitPrice.toString()),
+      ),
     }));
   }
 }

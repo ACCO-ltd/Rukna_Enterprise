@@ -174,4 +174,108 @@ export class ProjectFinancialPositionRepository {
     }
     return total;
   }
+
+  // ─── Reconciliation ───────────────────────────────────────────────────────────
+
+  /** Commitment-ledger ACTUAL for the project — the procurement side of REC-01. */
+  async sumLedgerActual(
+    prisma: TenantPrisma,
+    organizationId: string,
+    projectId: string,
+  ): Promise<Decimal> {
+    const agg = await prisma.commitmentLedgerEntry.aggregate({
+      where: { organizationId, projectId, stage: 'ACTUAL' },
+      _sum: { reportingAmount: true },
+    });
+    return new Decimal((agg._sum.reportingAmount ?? 0).toString());
+  }
+
+  /**
+   * Posted project cost split by where it came from.
+   *
+   * The split is the whole point: only supplier-bill-originated cost can be compared with
+   * procurement's ACTUAL. Payroll, plant, depreciation and manual accruals are real project
+   * cost that procurement never sees, and folding them into the comparison would report a
+   * variance every time someone journals a legitimate cost.
+   */
+  async sumActualCostBySource(
+    prisma: TenantPrisma,
+    organizationId: string,
+    projectId: string,
+  ): Promise<{ fromSupplierBills: Decimal; fromOtherSources: Decimal }> {
+    const costAccountIds = await this.costAccountIds(prisma, organizationId);
+    if (costAccountIds.length === 0) {
+      return { fromSupplierBills: ZERO, fromOtherSources: ZERO };
+    }
+
+    const rows = await prisma.journalLine.groupBy({
+      by: ['journalEntryId'],
+      where: {
+        accountId: { in: costAccountIds },
+        projectId,
+        entry: { organizationId, status: 'POSTED', entryPurpose: { not: 'CLOSING' } },
+      },
+      _sum: { debitAmount: true, creditAmount: true },
+    });
+    if (rows.length === 0) return { fromSupplierBills: ZERO, fromOtherSources: ZERO };
+
+    const entries = await prisma.journalEntry.findMany({
+      where: { id: { in: rows.map((r) => r.journalEntryId) } },
+      select: { id: true, sourceDocumentType: true },
+    });
+    const sourceById = new Map(entries.map((e) => [e.id, e.sourceDocumentType]));
+
+    let fromSupplierBills = ZERO;
+    let fromOtherSources = ZERO;
+    for (const row of rows) {
+      const net = new Decimal((row._sum.debitAmount ?? 0).toString()).minus(
+        new Decimal((row._sum.creditAmount ?? 0).toString()),
+      );
+      if (sourceById.get(row.journalEntryId) === 'SUPPLIER_BILL') {
+        fromSupplierBills = fromSupplierBills.plus(net);
+      } else {
+        fromOtherSources = fromOtherSources.plus(net);
+      }
+    }
+    return { fromSupplierBills, fromOtherSources };
+  }
+
+  /**
+   * Posted bill lines that belong to this project's procurement but reached the GL with no
+   * project on them — cost the accounts have lost. The likeliest cause of a variance.
+   */
+  async countUnattributedBillLines(
+    prisma: TenantPrisma,
+    organizationId: string,
+    projectId: string,
+  ): Promise<number> {
+    return prisma.supplierBillLine.count({
+      where: {
+        projectId: null,
+        bill: { organizationId, postingStatus: 'POSTED' },
+        purchaseOrderLineId: { not: null },
+        // Reached via the PO line, which is where the project attribution actually lives.
+        OR: [{ bill: { projectId } }, { bill: { lines: { some: { projectId } } } }],
+      },
+    });
+  }
+
+  /** Accounts whose current version is a cost class. Shared by the cost reads above. */
+  private async costAccountIds(prisma: TenantPrisma, organizationId: string): Promise<string[]> {
+    const accounts = await prisma.account.findMany({
+      where: {
+        organizationId,
+        versions: {
+          some: { accountClass: { in: ['COST_OF_SALES', 'EXPENSE'] as never[] } },
+        },
+      },
+      select: { id: true, versions: { orderBy: { effectiveFrom: 'desc' }, take: 1 } },
+    });
+    return accounts
+      .filter((a) => {
+        const cls = a.versions[0]?.accountClass;
+        return cls === 'COST_OF_SALES' || cls === 'EXPENSE';
+      })
+      .map((a) => a.id);
+  }
 }

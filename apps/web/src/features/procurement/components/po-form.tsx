@@ -55,6 +55,7 @@ import {
   poLineError,
   type PoLineDraft,
 } from './po-line-editor';
+import { buildCostTargetPayload } from './po-cost-target-picker';
 import { SupplierPicker } from './supplier-picker';
 
 function today(): string {
@@ -114,13 +115,11 @@ export function PoForm() {
       lines: lines.map((line): CreatePoLinePayload => {
         const qty = parseMinorUnits(line.quantity, QUANTITY_SCALE) ?? 0;
         const price = parseMinorUnits(line.unitPrice, MONEY_SCALE) ?? 0;
-        // A3 (no. 148): a chargeable line sends BOTH cost-target ids; a not-chargeable
-        // (org/overhead) line sends NEITHER. The picker never yields a half-specified
-        // target, and `hasLineError` blocks submit if one somehow exists.
-        const costTarget =
-          !line.costTarget.notChargeable && line.costTarget.projectId && line.costTarget.boqNodeId
-            ? { projectId: line.costTarget.projectId, boqNodeId: line.costTarget.boqNodeId }
-            : {};
+        // A3: one of the three valid attributions. Corporate/overhead sends nothing;
+        // a project line sends its project plus EITHER a BOQ node or a spend category.
+        // The picker never yields a project with neither, and `hasLineError` blocks
+        // submit if one somehow exists.
+        const costTarget = buildCostTargetPayload(line.costTarget);
         return {
           lineType: line.lineType,
           description: line.description.trim(),

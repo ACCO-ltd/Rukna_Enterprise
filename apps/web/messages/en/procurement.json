@@ -75,7 +75,12 @@
     "noBaseline": "This project has no baselined BOQ yet, so it has no cost nodes to charge to.",
     "noLeafNodes": "This project's baselined BOQ has no active cost items to charge to.",
     "nodesLoadFailed": "The BOQ cost nodes could not be loaded.",
-    "incompleteError": "Choose both a project and a BOQ cost node, or mark this line not chargeable to a project."
+    "incompleteError": "Choose what this project is spending on: either a BOQ cost item, or a project-level cost category.",
+    "spendCategoryLabel": "Or project-level cost category",
+    "spendCategoryHint": "For project cost the BOQ has no line for: site security, transport, insurance, temporary facilities.",
+    "selectCategory": "Select a category",
+    "loadingCategories": "Loading categories...",
+    "categoriesLoadFailed": "Could not load spend categories."
   },
   "status": {
     "DRAFT": "Draft",
@@ -430,7 +435,8 @@
       "unitPrice": "Enter a unit price of zero or more.",
       "net": "Enter a net amount of zero or more.",
       "vat": "Enter a VAT amount of zero or more. Enter 0 if there is none.",
-      "profile": "Choose an expense posting profile."
+      "profile": "Choose an expense posting profile.",
+      "costTarget": "Say where this cost belongs: a project with a BOQ item or a cost category, or mark it not chargeable to a project."
     },
     "submit": "Submit",
     "approve": "Approve",

@@ -45,6 +45,14 @@ export class CreateSupplierBillLineDto {
   @ApiPropertyOptional()
   @IsString() @IsOptional()
   boqNodeId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Project-level cost target for spend with no BOQ line (transport, insurance, site overhead). ' +
+      'Non-PO bills only — a PO-backed bill inherits its cost-target from the matched PO line.',
+  })
+  @IsString() @IsOptional()
+  spendCategoryId?: string;
 }
 
 export class CreateSupplierBillDto {

@@ -18,6 +18,10 @@ import { SupplierBillRepository } from '../infrastructure/supplier-bill.reposito
 import { CommitmentLedgerWriter } from '../../../../business/procurement/commitment-ledger/application/commitment-ledger-writer.service.js';
 import { BillMatchingService } from '../../../../business/procurement/bill-matching/application/bill-matching.service.js';
 import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
+import {
+  validateCostTarget,
+  costTargetViolationMessage,
+} from '../../../../business/procurement/purchase-orders/domain/cost-target.policy.js';
 import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
 
 export interface CreateSupplierBillLineDto {
@@ -31,6 +35,12 @@ export interface CreateSupplierBillLineDto {
   departmentId?: string;
   costCenterId?: string;
   boqNodeId?: string;
+  /**
+   * Project-level cost target for spend with no BOQ line. Only meaningful on a genuine
+   * non-PO bill: a PO-backed bill inherits its whole cost-target from the matched PO line
+   * at post time and never re-codes it (D7).
+   */
+  spendCategoryId?: string;
 }
 
 export interface CreateSupplierBillDto {
@@ -69,6 +79,26 @@ export class SupplierBillService {
     const prisma = this.tenancyService.getClient();
     const { activeOrganizationId: orgId, userId } = identity;
 
+    // A non-PO bill is the only path where cost coding is keyed by hand, so it is validated
+    // by the same rule a purchase order is: a BOQ node needs its project, and a project needs
+    // a target (a BOQ node, or a spend category for project-level cost). A PO-backed bill
+    // carries no coding of its own — it inherits the PO line's at post time (D7).
+    if (!dto.purchaseOrderId) {
+      for (const [idx, line] of dto.lines.entries()) {
+        const projectId = line.projectId ?? dto.projectId;
+        const resolvedNode = line.boqNodeId
+          ? await this.resolveCostNode(prisma, orgId, line.boqNodeId)
+          : null;
+        const violation = validateCostTarget(
+          { projectId, boqNodeId: line.boqNodeId, spendCategoryId: line.spendCategoryId },
+          resolvedNode,
+        );
+        if (violation) {
+          throw new BadRequestException(`Line ${idx + 1}: ${costTargetViolationMessage(violation)}`);
+        }
+      }
+    }
+
     const lines = dto.lines.map((line, idx) => {
       const net = new Decimal(line.netAmount);
       const vat = new Decimal(line.vatAmount);
@@ -82,10 +112,11 @@ export class SupplierBillService {
         vatAmount: vat,
         grossAmount: gross,
         expenseProfileCode: line.expenseProfileCode,
-        projectId: line.projectId,
+        projectId: line.projectId ?? dto.projectId,
         departmentId: line.departmentId,
         costCenterId: line.costCenterId,
         boqNodeId: line.boqNodeId,
+        spendCategoryId: line.spendCategoryId,
       };
     });
 
@@ -210,6 +241,18 @@ export class SupplierBillService {
       return await prisma.$transaction(async (tx) => {
         const lines: Parameters<typeof this.postingPort.post>[0]['lines'] = [];
 
+        // D7, capture-once: for a PO-backed bill the authoritative cost-target is the one the
+        // buyer set on the PO line, not whatever was keyed onto the bill. Resolved BEFORE the
+        // journal lines are built, because the GL and the commitment ledger must both use it —
+        // they used to be attributed independently, so project cost in the accounts and project
+        // cost in the ledger could never be reconciled. The posting gate guarantees a completed
+        // match for a PO-backed bill, so every line resolves; a line that defensively does not
+        // falls back to its own coding.
+        const costTargets = bill.purchaseOrderRevisionId
+          ? await this.repo.findBillLineCostTargets(tx as never, bill.id)
+          : [];
+        const targetByLine = new Map(costTargets.map((t) => [t.supplierBillLineId, t]));
+
         // Debit lines: one per bill line (expense/inventory)
         for (const billLine of bill.lines) {
           // Resolve posting profile for expense account
@@ -240,14 +283,18 @@ export class SupplierBillService {
           }
 
           const gross = new Decimal(billLine.grossAmount.toString());
+          const target = targetByLine.get(billLine.id);
           lines.push({
             accountId: expenseAccountId,
             debitAmount: gross,
             creditAmount: new Decimal(0),
-            projectId: billLine.projectId ?? bill.projectId ?? undefined,
+            // Inherited from the PO line when there is one; the bill's own coding otherwise
+            // (a genuine non-PO bill, validated at create by the cost-target policy).
+            projectId: target?.projectId ?? billLine.projectId ?? bill.projectId ?? undefined,
+            boqNodeId: target?.boqNodeId ?? billLine.boqNodeId ?? undefined,
+            spendCategoryId: target?.spendCategoryId ?? billLine.spendCategoryId ?? undefined,
             departmentId: billLine.departmentId ?? bill.departmentId ?? undefined,
             costCenterId: billLine.costCenterId ?? undefined,
-            boqNodeId: billLine.boqNodeId ?? undefined,
             supplierId: bill.supplierId,
           });
         }
@@ -303,13 +350,21 @@ export class SupplierBillService {
             'ACTUAL',
           );
           if (!alreadyPosted) {
-            const costTargets = await this.repo.findBillLineCostTargets(tx as never, bill.id);
-            const targetByLine = new Map(costTargets.map((t) => [t.supplierBillLineId, t]));
-
             for (const billLine of bill.lines) {
               const target = targetByLine.get(billLine.id);
+              // ACTUAL is the GL expense: gross, because ACCO's input VAT is non-recoverable
+              // and posts into cost (ACC-TAX-001). This is what makes ledger ACTUAL and GL
+              // project cost the same number (REC-01).
               const lineAmount = new Decimal(billLine.grossAmount.toString());
-              if (lineAmount.isZero()) continue;
+              // The accrual is released at what the goods receipt actually accrued for this
+              // quantity — billedQuantity × poUnitPrice — not at the bill's gross. Releasing
+              // gross against a net accrual left a permanent −VAT residual in ACCRUED, which
+              // surfaced as a NEGATIVE "remaining committed" on any fully-billed project.
+              // Using the accrued basis makes the stage net to exactly zero whatever the
+              // purchase-order price basis turns out to be, so this holds without first
+              // settling whether ACCO's supplier prices include VAT.
+              const accrualRelease = target?.accruedBasis ?? lineAmount;
+              if (lineAmount.isZero() && accrualRelease.isZero()) continue;
 
               const common = {
                 organizationId: orgId,
@@ -329,7 +384,7 @@ export class SupplierBillService {
               // Reverse the ACCRUED raised at goods receipt for this line's cost-target.
               await this.commitmentWriter.accrued(tx, {
                 ...common,
-                amount: lineAmount.negated(),
+                amount: accrualRelease.negated(),
                 eventType: 'BILL_POSTED_ACCRUED_REVERSAL',
                 idempotencyKey: `bill-accrued-rev-${bill.id}-${billLine.id}`,
               });
@@ -418,12 +473,52 @@ export class SupplierBillService {
             sourceSubledgerType: l.sourceSubledgerType ?? undefined,
             supplierId: l.supplierId ?? undefined,
             projectId: l.projectId ?? undefined,
+            boqNodeId: l.boqNodeId ?? undefined,
+            spendCategoryId: l.spendCategoryId ?? undefined,
             departmentId: l.departmentId ?? undefined,
             memo: `Reversal: ${l.description ?? ''}`,
           })),
         },
         tx as never,
       );
+
+      // Reverse the commitment ledger too.
+      //
+      // This used to post the mirror journal and stop, so a reversed bill took GL project
+      // cost back to zero while procurement's ACTUAL still showed the full amount — the two
+      // could never agree again. `BILL_REVERSAL` existed in the enum and was written by
+      // nothing.
+      //
+      // ACTUAL is backed out, and the ACCRUED released at posting is re-raised: the goods are
+      // still on site and still unbilled, which is exactly what ACCRUED means. Attribution and
+      // amounts come from the original ledger rows rather than being recomputed, so the
+      // reversal cannot land on a different cost-target than the posting did.
+      const postedActuals = await tx.commitmentLedgerEntry.findMany({
+        where: {
+          organizationId: orgId,
+          sourceDocumentType: 'SUPPLIER_BILL',
+          sourceDocumentId: billId,
+        },
+      });
+      for (const entry of postedActuals) {
+        await this.commitmentWriter[entry.stage === 'ACTUAL' ? 'actual' : 'accrued'](tx, {
+          organizationId: orgId,
+          projectId: entry.projectId ?? undefined,
+          boqNodeId: entry.boqNodeId ?? undefined,
+          spendCategoryId: entry.spendCategoryId ?? undefined,
+          supplierId: entry.supplierId ?? undefined,
+          purchaseOrderId: entry.purchaseOrderId ?? undefined,
+          currencyCode: entry.currencyCode,
+          amount: new Decimal(entry.amount.toString()).negated(),
+          sourceDocumentType: 'BILL_REVERSAL',
+          sourceDocumentId: billId,
+          sourceLineId: entry.sourceLineId ?? undefined,
+          eventType: `BILL_REVERSED_${entry.eventType}`,
+          idempotencyKey: `bill-reversal-${entry.id}`,
+          // Accounting-date rule: the reversal's own date, never new Date().
+          accountingDate: reversalDate,
+        });
+      }
 
       await tx.supplierBill.update({
         where: { id: billId },
@@ -449,6 +544,24 @@ export class SupplierBillService {
     const bill = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!bill) throw new NotFoundException(`SupplierBill ${id} not found`);
     return bill;
+  }
+
+  /** The facts the cost-target rule needs about a BOQ node, or null when it does not resolve. */
+  private async resolveCostNode(
+    prisma: ReturnType<TenancyService['getClient']>,
+    organizationId: string,
+    boqNodeId: string,
+  ) {
+    const node = await prisma.boqNode.findFirst({
+      where: { id: boqNodeId, version: { boq: { organizationId } } },
+      select: {
+        isLeaf: true,
+        isActive: true,
+        version: { select: { boq: { select: { projectId: true } } } },
+      },
+    });
+    if (!node) return null;
+    return { projectId: node.version.boq.projectId, isLeaf: node.isLeaf, isActive: node.isActive };
   }
 
   private async requireStatus(

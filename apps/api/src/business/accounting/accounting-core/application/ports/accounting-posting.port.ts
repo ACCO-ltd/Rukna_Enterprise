@@ -30,6 +30,8 @@ export interface PostingLineCommand {
   supplierId?: string;
   contractId?: string;
   boqNodeId?: string;
+  /** Project-level cost target for spend with no BOQ line (transport, insurance, site overhead). */
+  spendCategoryId?: string;
   taxCodeId?: string;
   memo?: string;
 }
