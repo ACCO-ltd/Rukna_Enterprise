@@ -51,9 +51,16 @@ export function percentOf(amount: Decimal, budget: Decimal | null): number | nul
  * money already on a purchase order as though it were available — and one catch-all word for both
  * is how a project reads itself as having headroom it has already spent.
  *
- * `committedNotBilled` is a ledger fact, not a forecast: it exists with or without a budget. It
- * is floored at zero, because more billed than committed is a data problem to investigate rather
- * than a negative to report.
+ * `committedToDate` is the sum of the three stages — everything ordered, received or billed.
+ * Each stage transition reverses the previous one (a purchase order raises COMMITTED, goods
+ * receipt moves it to ACCRUED, a posted bill moves that to ACTUAL), so the three always add up
+ * to what has been committed, with no double count.
+ *
+ * `uncommittedBudget` is measured against that, never against COMMITTED alone. COMMITTED is a
+ * signed running balance that FALLS when goods arrive, so `budget − committed` handed back
+ * headroom the project had already spent: a 1,000 budget with a 400 order fully received
+ * reported the whole 1,000 as still available. This is the same definition the Project
+ * Financial Position uses, so Overview and Cost Control cannot disagree.
  */
 export function buildPosition(
   totals: StageTotals,
@@ -61,7 +68,7 @@ export function buildPosition(
   currency: string | null,
   mayViewFinancials: boolean,
 ): ProjectCostPosition {
-  const committedNotBilled = Decimal.max(ZERO, totals.committed.minus(totals.actual));
+  const committedToDate = totals.committed.plus(totals.accrued).plus(totals.actual);
   const money = (d: Decimal): string | null => (mayViewFinancials ? d.toFixed(2) : null);
   const budgetMoney = (d: Decimal | null): string | null =>
     mayViewFinancials && d !== null ? d.toFixed(2) : null;
@@ -71,9 +78,11 @@ export function buildPosition(
     committed: money(totals.committed),
     accrued: money(totals.accrued),
     actual: money(totals.actual),
-    committedNotBilled: money(committedNotBilled),
+    committedToDate: money(committedToDate),
     budgetTotal: budgetMoney(budgetTotal),
-    uncommittedBudget: budgetMoney(budgetTotal === null ? null : budgetTotal.minus(totals.committed)),
+    uncommittedBudget: budgetMoney(
+      budgetTotal === null ? null : budgetTotal.minus(committedToDate),
+    ),
     budgetLessActual: budgetMoney(budgetTotal === null ? null : budgetTotal.minus(totals.actual)),
     committedOfBudgetPercent: mayViewFinancials ? percentOf(totals.committed, budgetTotal) : null,
     accruedOfBudgetPercent: mayViewFinancials ? percentOf(totals.accrued, budgetTotal) : null,
@@ -180,6 +189,9 @@ export function rollUpCostByBoq(options: {
     if (!totals && budget === null) return;
 
     const committed = totals?.committed ?? ZERO;
+    const nodeCommittedToDate = committed
+      .plus(totals?.accrued ?? ZERO)
+      .plus(totals?.actual ?? ZERO);
     rows.push({
       kind: 'BOQ',
       boqNodeId: node.id,
@@ -191,7 +203,7 @@ export function rollUpCostByBoq(options: {
       committed: money(committed),
       accrued: money(totals?.accrued ?? ZERO),
       actual: money(totals?.actual ?? ZERO),
-      uncommittedBudget: budget === null ? null : money(budget.minus(committed)),
+      uncommittedBudget: budget === null ? null : money(budget.minus(nodeCommittedToDate)),
       committedOfBudgetPercent: mayViewFinancials ? percentOf(committed, budget) : null,
       actualOfBudgetPercent: mayViewFinancials
         ? percentOf(totals?.actual ?? ZERO, budget)
@@ -207,6 +219,9 @@ export function rollUpCostByBoq(options: {
   const projectLevelBudget = budgetByNode.get(null) ?? null;
   if (projectLevelCost || projectLevelBudget !== null) {
     const committed = projectLevelCost?.committed ?? ZERO;
+    const projectLevelCommittedToDate = committed
+      .plus(projectLevelCost?.accrued ?? ZERO)
+      .plus(projectLevelCost?.actual ?? ZERO);
     rows.push({
       kind: 'PROJECT_LEVEL',
       boqNodeId: null,
@@ -219,7 +234,9 @@ export function rollUpCostByBoq(options: {
       accrued: money(projectLevelCost?.accrued ?? ZERO),
       actual: money(projectLevelCost?.actual ?? ZERO),
       uncommittedBudget:
-        projectLevelBudget === null ? null : money(projectLevelBudget.minus(committed)),
+        projectLevelBudget === null
+          ? null
+          : money(projectLevelBudget.minus(projectLevelCommittedToDate)),
       committedOfBudgetPercent: mayViewFinancials
         ? percentOf(committed, projectLevelBudget)
         : null,
@@ -233,6 +250,9 @@ export function rollUpCostByBoq(options: {
     for (const category of projectLevelByCategory) {
       if (!category.cost && category.budget === null) continue;
       const catCommitted = category.cost?.committed ?? ZERO;
+      const catCommittedToDate = catCommitted
+        .plus(category.cost?.accrued ?? ZERO)
+        .plus(category.cost?.actual ?? ZERO);
       rows.push({
         kind: 'PROJECT_LEVEL_CATEGORY',
         boqNodeId: null,
@@ -246,7 +266,7 @@ export function rollUpCostByBoq(options: {
         accrued: money(category.cost?.accrued ?? ZERO),
         actual: money(category.cost?.actual ?? ZERO),
         uncommittedBudget:
-          category.budget === null ? null : money(category.budget.minus(catCommitted)),
+          category.budget === null ? null : money(category.budget.minus(catCommittedToDate)),
         committedOfBudgetPercent: mayViewFinancials
           ? percentOf(catCommitted, category.budget)
           : null,

@@ -1617,6 +1617,113 @@ export interface AccountingReadinessResponse {
   checkedAt: string;
 }
 
+// ─── Project Finance workspace ──────────────────────────────────────────────────
+
+/** A control state Finance reports on itself, so a reader knows whether to trust the figures. */
+export type FinanceControlState = 'OK' | 'ATTENTION' | 'UNAVAILABLE';
+
+export interface FinanceControlStatus {
+  state: FinanceControlState;
+  /** Short status word for the chip: "Reconciled", "Ready", "Baselined", "Open". */
+  label: string;
+  /** One line of supporting fact. Never a recommendation. */
+  detail: string | null;
+}
+
+/**
+ * Posted accounting for one project.
+ *
+ * `available` is false when the ledger cannot yet accept postings at all — then every figure is
+ * null and `blockers` says what is missing. A project whose accounting was never configured has
+ * not earned $0; the two states must not render the same.
+ */
+export interface ProjectAccountingPosition {
+  available: boolean;
+  revenue: string | null;
+  projectCost: string | null;
+  grossProfit: string | null;
+  /** Gross profit ÷ revenue × 100. Null when there is no revenue to be a percentage of. */
+  marginPercent: number | null;
+  blockers: AccountingReadinessBlocker[];
+}
+
+/** Where the project stands against its accounting period. */
+export interface ProjectFinancePeriod {
+  id: string;
+  name: string;
+  status: string;
+  endDate: string;
+  /** Days from today to the period end, computed server-side — never inferred in the browser. */
+  daysToPeriodEnd: number;
+}
+
+export type FinanceAttentionCode =
+  | 'RECONCILIATION_VARIANCE'
+  | 'UNATTRIBUTED_BILL_LINES'
+  | 'ACCOUNTING_SETUP_INCOMPLETE'
+  | 'BILLS_AWAITING_POSTING'
+  | 'BUDGET_DRAFT_NOT_BASELINED'
+  | 'NO_BASELINED_BUDGET'
+  | 'PERIOD_CLOSING_SOON';
+
+/** Something a reader has to act on, each backed by a counted or measured server fact. */
+export interface FinanceAttentionItem {
+  code: FinanceAttentionCode;
+  severity: 'CRITICAL' | 'WARNING' | 'INFO';
+  title: string;
+  detail: string;
+  /** Present only where a real destination exists. */
+  href: string | null;
+}
+
+/** A financially meaningful event: a posting, or a budget-lifecycle act. */
+export interface FinanceActivityRow {
+  id: string;
+  date: string;
+  description: string;
+  /** "Supplier bill", "Client invoice", "Manual journal", "Cost budget" … */
+  source: string;
+  reference: string | null;
+  /** Net project-attributed movement. Null for events that carry no amount, e.g. a baseline. */
+  amount: string | null;
+  sourceDocumentType: string | null;
+  sourceDocumentId: string | null;
+}
+
+/**
+ * Everything the Finance Overview renders, in one read.
+ *
+ * The cost position reuses the same rollup Cost Control renders, so the two screens cannot show
+ * different numbers for the same thing.
+ */
+export interface ProjectFinanceOverviewResponse {
+  projectId: string;
+  currency: string | null;
+  financialsVisible: boolean;
+  costPosition: ProjectCostPosition;
+  accountingPosition: ProjectAccountingPosition;
+  controls: {
+    reconciliation: FinanceControlStatus;
+    accountingSetup: FinanceControlStatus;
+    costBudget: FinanceControlStatus;
+    period: FinanceControlStatus;
+  };
+  reconciliation: ProjectCostReconciliationResponse;
+  period: ProjectFinancePeriod | null;
+  budget: {
+    versionNumber: number | null;
+    status: 'WORKING' | 'BASELINED' | 'SUPERSEDED' | null;
+    baselinedAt: string | null;
+    baselinedBy: string | null;
+    hasWorkingDraft: boolean;
+  };
+  /** Top-level cost areas only. The full hierarchy lives in Cost Control. */
+  costByArea: ProjectCostByBoqRow[];
+  attention: FinanceAttentionItem[];
+  activity: FinanceActivityRow[];
+  asOf: string;
+}
+
 export type BoqChangeKind =
   | 'ADDED'
   | 'REMOVED'
@@ -1958,19 +2065,21 @@ export interface ProjectCostPosition {
   accrued: string | null;
   actual: string | null;
   /**
-   * Committed to a supplier and not yet billed. Says exactly that and nothing more — it is not
-   * a forecast, and it is not budget headroom. Derived from the ledger alone, so it exists with
-   * or without a budget.
+   * Everything ordered, received or billed: COMMITTED + ACCRUED + ACTUAL. The stages sum without
+   * double-counting because each transition reverses the previous one. Derived from the ledger
+   * alone, so it exists with or without a budget — and it is what budget headroom is measured
+   * against.
    */
-  committedNotBilled: string | null;
+  committedToDate: string | null;
   /** The BASELINED budget total, or null when none is set. */
   budgetTotal: string | null;
   /**
    * The two budget remainders, which are **not interchangeable** and must never collapse into
    * one "remaining":
    *
-   * - `uncommittedBudget` = budget − committed. What is still free to spend. This is the
-   *   cost-control figure — money already on a purchase order is spent as far as headroom goes.
+   * - `uncommittedBudget` = budget − committedToDate. What is still free to spend. Measured
+   *   against all three stages, never COMMITTED alone: COMMITTED falls when goods arrive, so
+   *   subtracting it handed back headroom the project had already spent.
    * - `budgetLessActual` = budget − actual. What has not yet been billed against the budget.
    *   Larger, and dangerous to read as headroom, because it counts committed money as available.
    *

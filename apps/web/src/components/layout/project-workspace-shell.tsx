@@ -110,7 +110,15 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
       href: `/projects/${id}/procurement`,
       icon: ShoppingCart,
     },
-    { key: 'finance', label: t('workspace.finance'), href: `/projects/${id}/pl`, icon: Wallet },
+    // The Finance tab used to land on the Project Actual P&L alone — a subset presented as the
+    // whole. It now opens the Finance workspace: cost position and control status first, with
+    // Cost Control, Profit & Loss and the Ledger beneath it.
+    {
+      key: 'finance',
+      label: t('workspace.finance'),
+      href: `/projects/${id}/finance`,
+      icon: Wallet,
+    },
     {
       key: 'documents',
       label: t('workspace.documents'),

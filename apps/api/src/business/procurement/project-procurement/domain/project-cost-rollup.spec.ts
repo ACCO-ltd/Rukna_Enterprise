@@ -52,19 +52,28 @@ describe('percentOf', () => {
 });
 
 describe('buildPosition', () => {
-  it('reports committed-not-billed as a ledger fact, with or without a budget', () => {
+  it('reports committed-to-date as the sum of the three stages, with or without a budget', () => {
     const position = buildPosition(totals('420000', '310000', '265000'), null, 'USD', true);
     expect(position.committed).toBe('420000.00');
-    expect(position.committedNotBilled).toBe('155000.00');
+    // 420k still on order + 310k received-not-billed + 265k billed.
+    expect(position.committedToDate).toBe('995000.00');
   });
 
   /**
-   * More billed than committed is a data problem to investigate, not a negative to report.
-   * Flooring at zero keeps a broken ledger from rendering as a nonsense figure.
+   * The defect this replaces. COMMITTED is a signed running balance that goods receipt reduces,
+   * so `budget − committed` gave a project back headroom it had already spent: receiving what
+   * you ordered restored the budget. The three stages always sum to what was committed, so
+   * measuring against their total holds at every point in the lifecycle.
    */
-  it('floors committed-not-billed at zero rather than reporting a negative', () => {
-    const position = buildPosition(totals('100', '0', '250'), null, 'USD', true);
-    expect(position.committedNotBilled).toBe('0.00');
+  it('does not release budget headroom as an order moves through its stages', () => {
+    const budget = d('1000');
+    const afterOrder = buildPosition(totals('400', '0', '0'), budget, 'USD', true);
+    const afterReceipt = buildPosition(totals('0', '400', '0'), budget, 'USD', true);
+    const afterBill = buildPosition(totals('0', '0', '400'), budget, 'USD', true);
+
+    expect(afterOrder.uncommittedBudget).toBe('600.00');
+    expect(afterReceipt.uncommittedBudget).toBe('600.00');
+    expect(afterBill.uncommittedBudget).toBe('600.00');
   });
 
   it('leaves every budget figure null when no budget is baselined', () => {
@@ -78,13 +87,15 @@ describe('buildPosition', () => {
 
   /**
    * The two remainders are NOT interchangeable, which is exactly why neither is called
-   * "remaining". Budget less committed is what is still free to spend; budget less actual counts
-   * money already on a purchase order as available, and reading it as headroom is how a project
-   * overspends a budget it believes it is under.
+   * "remaining". Uncommitted budget is what is still free to spend, measured against everything
+   * ordered, received or billed; budget less actual counts money already on a purchase order as
+   * available, and reading it as headroom is how a project overspends a budget it believes it is
+   * under.
    */
   it('keeps the two budget remainders distinct', () => {
     const position = buildPosition(totals('760000', '560000', '465000'), d('2800000'), 'USD', true);
-    expect(position.uncommittedBudget).toBe('2040000.00');
+    // 2.8m budget less 1.785m committed to date (760k + 560k + 465k).
+    expect(position.uncommittedBudget).toBe('1015000.00');
     expect(position.budgetLessActual).toBe('2335000.00');
     expect(position.uncommittedBudget).not.toBe(position.budgetLessActual);
   });
@@ -187,7 +198,8 @@ describe('rollUpCostByBoq', () => {
     expect(projectLevel.code).toBeNull();
     expect(projectLevel.description).toBe('Project-level (non-BOQ)');
     expect(projectLevel.committed).toBe('70.00');
-    expect(projectLevel.uncommittedBudget).toBe('180.00');
+    // 250 budget less 153 committed to date (70 on order + 50 received + 33 billed).
+    expect(projectLevel.uncommittedBudget).toBe('97.00');
     expect(projectLevel.depth).toBe(0);
     // It is the last row, after the BOQ sections it sits beside.
     expect(rows.at(-1)!.kind).toBe('PROJECT_LEVEL');

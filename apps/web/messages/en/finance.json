@@ -1,0 +1,273 @@
+{
+  "common": {
+    "unavailable": "Unavailable",
+    "restricted": "Restricted",
+    "restrictedReason": "You do not have permission to see financial values on this project.",
+    "loadFailed": "Could not load this view.",
+    "loadFailedHint": "The data could not be fetched. Try again, or reload the page.",
+    "retry": "Try again",
+    "cancel": "Cancel",
+    "saving": "Saving…"
+  },
+  "shell": {
+    "title": "Finance",
+    "subtitle": "Review project cost, posted accounting position and financial controls.",
+    "views": {
+      "overview": "Overview",
+      "costControl": "Cost Control",
+      "profitLoss": "Profit & Loss",
+      "ledger": "Ledger"
+    }
+  },
+  "overview": {
+    "ratio": {
+      "committed": "Open commitment / Budget",
+      "accrued": "Accrued / Budget",
+      "actual": "Actual / Budget"
+    },
+    "costPosition": {
+      "title": "Project cost position",
+      "description": "From the project cost budget and the procurement commitment ledger.",
+      "budget": "Budget",
+      "budgetBasis": "Baselined cost budget",
+      "notBaselined": "Not baselined",
+      "openCommitment": "Open commitment",
+      "openCommitmentBasis": "Ordered, not yet received",
+      "accrued": "Accrued",
+      "accruedBasis": "Received, not yet billed",
+      "actual": "Actual",
+      "actualBasis": "Posted to the general ledger",
+      "uncommittedBudget": "Uncommitted budget",
+      "uncommittedBudgetBasis": "Budget still free to spend"
+    },
+    "accountingPosition": {
+      "title": "Accounting position",
+      "description": "From posted general ledger entries carrying this project.",
+      "revenue": "Revenue",
+      "revenueBasis": "Posted, excludes VAT",
+      "projectCost": "Project cost",
+      "projectCostBasis": "Posted, includes non-recoverable VAT",
+      "grossProfit": "Gross profit",
+      "margin": "Margin",
+      "marginBasis": "Gross profit / revenue",
+      "unavailableTitle": "Accounting position unavailable",
+      "unavailableReason": "The general ledger cannot accept postings yet, so this project has no accounting position. Cost budget, commitments and accruals above are unaffected."
+    },
+    "controls": {
+      "title": "Data & control status",
+      "description": "Whether the figures above can be relied on.",
+      "reconciliation": "Procurement and general ledger",
+      "reconciliationDetail": "Supplier-bill variance {variance}",
+      "accountingSetup": "Accounting setup",
+      "costBudget": "Cost budget",
+      "budgetDetail": "Version {version}, baselined {date}",
+      "period": "Accounting period",
+      "periodDetail": "{name} — {days} day(s) to period end",
+      "nonProcurementNote": "Total project cost {total} is procurement {procurement} plus non-procurement cost {other}. Non-procurement cost is payroll, plant and manual journals, and is not a reconciliation variance."
+    },
+    "attention": {
+      "title": "Needs attention",
+      "empty": "Nothing needs attention on this project.",
+      "severity": {
+        "CRITICAL": "Critical",
+        "WARNING": "Warning",
+        "INFO": "For info"
+      }
+    },
+    "costByArea": {
+      "title": "Cost by area",
+      "description": "Top-level cost areas. The full breakdown is in Cost Control.",
+      "area": "Cost area",
+      "budget": "Budget",
+      "openCommitment": "Open commitment",
+      "actual": "Actual",
+      "openCostControl": "Cost Control",
+      "empty": "No cost has been coded to this project yet."
+    },
+    "activity": {
+      "title": "Recent financial activity",
+      "description": "Postings and budget decisions that affected this project.",
+      "empty": "No financial activity recorded for this project yet."
+    }
+  },
+  "costControl": {
+    "ratio": {
+      "committed": "Open commitment / Budget",
+      "accrued": "Accrued / Budget",
+      "actual": "Actual / Budget"
+    },
+    "position": {
+      "title": "Cost Control",
+      "description": "Manage the project cost budget and compare planned cost with commitment, accrual and actual cost.",
+      "budget": "Budget",
+      "budgetBasis": "Baselined version {version}",
+      "notBaselined": "Not baselined",
+      "openCommitment": "Open commitment",
+      "openCommitmentBasis": "Ordered, not yet received",
+      "accrued": "Accrued",
+      "accruedBasis": "Received, not yet billed",
+      "actual": "Actual",
+      "actualBasis": "Posted to the general ledger",
+      "uncommittedBudget": "Uncommitted budget",
+      "uncommittedBudgetBasis": "Budget less everything committed",
+      "remainderNote": "Uncommitted budget {uncommitted} is what is still free to spend. Budget less actual {lessActual} is larger because it counts money already on a purchase order as available."
+    },
+    "breakdown": {
+      "title": "Cost breakdown",
+      "description": "Committed, accrued and actual are stages of one cost, not amounts to add up.",
+      "dimensionLabel": "Break down cost by",
+      "byBoq": "By BOQ",
+      "byCategory": "By spend category",
+      "bySupplier": "By supplier"
+    },
+    "table": {
+      "costArea": "Cost area",
+      "category": "Spend category",
+      "supplier": "Supplier",
+      "budget": "Budget",
+      "openCommitment": "Open commitment",
+      "accrued": "Accrued",
+      "actual": "Actual",
+      "uncommitted": "Uncommitted budget"
+    },
+    "budget": {
+      "title": "Cost budget",
+      "description": "What this project intends to spend.",
+      "version": "Version {version}",
+      "current": "Current",
+      "total": "Total budget",
+      "lines": "Cost lines",
+      "baselinedOn": "Baselined",
+      "none": "No cost budget has been set for this project.",
+      "createBudget": "Create budget",
+      "createRevision": "Create revision",
+      "editDraft": "Edit working version",
+      "workingHint": "Not yet baselined, so cost is not measured against it.",
+      "history": "All versions ({count})",
+      "status": {
+        "WORKING": "Working",
+        "BASELINED": "Baselined",
+        "SUPERSEDED": "Superseded"
+      }
+    }
+  },
+  "budgetEditor": {
+    "createTitle": "New cost budget version",
+    "editTitle": "Edit working cost budget",
+    "description": "Every line targets either a BOQ item or a project spend category — never both, and never neither.",
+    "targetType": "Cost target",
+    "targetBoq": "BOQ item",
+    "targetCategory": "Project spend category",
+    "boqItem": "BOQ item",
+    "spendCategory": "Spend category",
+    "selectBoqItem": "Select a BOQ item",
+    "selectCategory": "Select a category",
+    "noBoqItems": "This project has no baselined BOQ items",
+    "lineDescription": "Description",
+    "amount": "Budget amount",
+    "addLine": "Add cost line",
+    "removeLine": "Remove this line",
+    "total": "{count} line(s) — {amount}",
+    "save": "Save",
+    "discardDraft": "Discard draft",
+    "baseline": "Baseline budget",
+    "baselineConfirmTitle": "Baseline this version?",
+    "baselineConfirmBody": "This version becomes the figure the project is measured against. It cannot be edited afterwards — changing it means creating a new revision.",
+    "baselineConfirmAction": "Baseline budget",
+    "lineError": {
+      "target": "Choose the BOQ item or spend category this line budgets for.",
+      "description": "Give this line a description.",
+      "amount": "Enter a budget amount of zero or more."
+    }
+  },
+  "profitLoss": {
+    "title": "Profit & Loss",
+    "basis": "Project profitability based on posted general ledger entries only.",
+    "periodLabel": "Reporting period",
+    "presets": {
+      "PROJECT_TO_DATE": "Project to date",
+      "CURRENT_PERIOD": "This period",
+      "FISCAL_YTD": "Fiscal year to date",
+      "CUSTOM": "Custom"
+    },
+    "fromDate": "From",
+    "toDate": "To",
+    "rangeNote": "{from} to {to}",
+    "account": "Account",
+    "amount": "Amount",
+    "revenue": "Revenue",
+    "costOfSales": "Cost of sales",
+    "expenses": "Operating expenses",
+    "grossProfit": "Gross profit",
+    "grossMargin": "Gross margin {percent}%",
+    "netIncome": "Net project income",
+    "netLoss": "Net project loss",
+    "total": "Total {section}",
+    "noneInRange": "Nothing posted in this range",
+    "showCodes": "Show account codes",
+    "hideCodes": "Hide account codes",
+    "generatedAt": "Generated {timestamp}",
+    "closingExcluded": "Year-end closing entries excluded",
+    "managementNote": "A management view of one project. Revenue is recognised from posted client invoices and project cost from posted supplier bills and journals; this may differ from statutory financial statements.",
+    "empty": "Nothing has been posted to this project in this range.",
+    "emptyHint": "Post a supplier bill or client invoice coded to this project, or widen the dates.",
+    "unavailableTitle": "Profit & Loss unavailable",
+    "unavailableReason": "Posted accounting entries require accounting setup to be complete."
+  },
+  "ledger": {
+    "title": "Ledger",
+    "basis": "Project accounting entries. Posted journals only.",
+    "fromDate": "From",
+    "toDate": "To",
+    "search": "Search",
+    "searchPlaceholder": "Description, account or journal",
+    "reset": "Reset",
+    "col": {
+      "date": "Date",
+      "journal": "Journal",
+      "account": "Account",
+      "description": "Description",
+      "debit": "Debit",
+      "credit": "Credit",
+      "source": "Source"
+    },
+    "totals": {
+      "revenue": "Revenue in range",
+      "cost": "Cost in range",
+      "entries": "Entries"
+    },
+    "source": {
+      "SUPPLIER_BILL": "Supplier bill",
+      "CLIENT_INVOICE": "Client invoice",
+      "MANUAL_JOURNAL": "Manual journal",
+      "PAYMENT_RECEIPT": "Receipt",
+      "SUPPLIER_PAYMENT": "Supplier payment",
+      "OPENING_BALANCE": "Opening balance",
+      "YEAR_END_CLOSE": "Year-end close"
+    },
+    "empty": "No posted entries carry this project in this range.",
+    "noMatches": "No entries on this page match your search.",
+    "showing": "Showing {from}–{to} of {total} entries",
+    "showingFiltered": "Showing {shown} of {page} entries on this page",
+    "previous": "Previous",
+    "next": "Next",
+    "pageOf": "Page {page} of {total}",
+    "selectHint": "Select an entry to see the journal behind it.",
+    "unavailableTitle": "Ledger unavailable",
+    "unavailableReason": "Posted accounting entries require accounting setup to be complete.",
+    "detail": {
+      "title": "Journal entry",
+      "close": "Close details",
+      "journal": "Journal number",
+      "accountingDate": "Accounting date",
+      "documentDate": "Document date",
+      "account": "Account",
+      "purpose": "Entry purpose",
+      "attribution": "Project attribution",
+      "boqItem": "BOQ item",
+      "spendCategory": "Spend category",
+      "contract": "Contract",
+      "openSource": "Open source document"
+    }
+  }
+}

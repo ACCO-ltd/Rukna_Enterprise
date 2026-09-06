@@ -67,6 +67,7 @@ import { ReconciliationController } from './presentation/reconciliation.controll
   exports: [
     ACCOUNTING_POSTING_PORT,
     AccountingConfigurationService,
+    AccountingReadinessService,
     FiscalYearService,
     AccountService,
     BankAccountService,

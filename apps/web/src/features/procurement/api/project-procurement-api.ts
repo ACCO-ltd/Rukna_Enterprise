@@ -98,6 +98,18 @@ export function updateProjectCostBudget(
 }
 
 /** Makes a draft the figure the project is measured against, superseding the previous one. */
+/**
+ * Abandon a Working (DRAFT) version.
+ *
+ * Only a draft can go. A baselined figure is what the project is measured against and a
+ * superseded one is the evidence of what it used to be, so neither is anyone's to delete.
+ */
+export function discardProjectCostBudget(projectId: string, budgetId: string): Promise<void> {
+  return apiClient<void>(`/projects/${projectId}/procurement/budgets/${budgetId}`, {
+    method: 'DELETE',
+  });
+}
+
 export function baselineProjectCostBudget(
   projectId: string,
   budgetId: string,

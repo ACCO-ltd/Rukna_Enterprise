@@ -278,4 +278,178 @@ export class ProjectFinancialPositionRepository {
       })
       .map((a) => a.id);
   }
+
+  // ─── Finance Overview ─────────────────────────────────────────────────────────
+
+  /** Posted revenue carrying this project: credit-normal, excluding CLOSING entries. */
+  async sumPostedRevenue(
+    prisma: TenantPrisma,
+    organizationId: string,
+    projectId: string,
+  ): Promise<Decimal> {
+    const accounts = await prisma.account.findMany({
+      where: {
+        organizationId,
+        versions: { some: { accountClass: 'INCOME' as never } },
+      },
+      select: { id: true, versions: { orderBy: { effectiveFrom: 'desc' }, take: 1 } },
+    });
+    const incomeIds = accounts
+      .filter((a) => a.versions[0]?.accountClass === 'INCOME')
+      .map((a) => a.id);
+    if (incomeIds.length === 0) return ZERO;
+
+    const agg = await prisma.journalLine.groupBy({
+      by: ['accountId'],
+      where: {
+        accountId: { in: incomeIds },
+        projectId,
+        entry: { organizationId, status: 'POSTED', entryPurpose: { not: 'CLOSING' } },
+      },
+      _sum: { debitAmount: true, creditAmount: true },
+    });
+
+    let total = ZERO;
+    for (const row of agg) {
+      total = total
+        .plus(new Decimal((row._sum.creditAmount ?? 0).toString()))
+        .minus(new Decimal((row._sum.debitAmount ?? 0).toString()));
+    }
+    return total;
+  }
+
+  /** Every cost-budget version for the project, newest first. */
+  findBudgetVersions(prisma: TenantPrisma, organizationId: string, projectId: string) {
+    return prisma.projectCostBudget.findMany({
+      where: { organizationId, projectId },
+      orderBy: { versionNumber: 'desc' },
+      select: {
+        id: true,
+        versionNumber: true,
+        status: true,
+        baselinedAt: true,
+        baselinedBy: true,
+      },
+    });
+  }
+
+  /** The accounting period covering today, or null when the calendar does not reach it. */
+  findCurrentPeriod(prisma: TenantPrisma, organizationId: string) {
+    const today = new Date();
+    return prisma.accountingPeriod.findFirst({
+      where: { organizationId, startDate: { lte: today }, endDate: { gte: today } },
+      orderBy: { startDate: 'desc' },
+      select: { id: true, name: true, status: true, endDate: true },
+    });
+  }
+
+  /**
+   * Approved supplier bills touching this project that have not reached the ledger.
+   *
+   * Cost the project has incurred and agreed but the accounts do not yet show — the most common
+   * honest reason for actual cost to look lower than a site manager expects.
+   */
+  async countApprovedUnpostedBills(
+    prisma: TenantPrisma,
+    organizationId: string,
+    projectId: string,
+  ): Promise<{ count: number; total: Decimal }> {
+    const bills = await prisma.supplierBill.findMany({
+      where: {
+        organizationId,
+        documentStatus: 'APPROVED',
+        postingStatus: { in: ['NOT_POSTED', 'FAILED'] },
+        OR: [{ projectId }, { lines: { some: { projectId } } }],
+      },
+      select: { totalAmount: true },
+    });
+    return {
+      count: bills.length,
+      total: bills.reduce((sum, b) => sum.plus(new Decimal(b.totalAmount.toString())), ZERO),
+    };
+  }
+
+  /**
+   * Recent posted journals that moved this project, with the net movement attributed to it.
+   *
+   * The amount is the project's own share of the entry, not the journal total: a bill covering
+   * three projects should not report its full value against each of them.
+   */
+  async findRecentProjectPostings(
+    prisma: TenantPrisma,
+    organizationId: string,
+    projectId: string,
+    take: number,
+  ) {
+    const lines = await prisma.journalLine.findMany({
+      where: { projectId, entry: { organizationId, status: 'POSTED' } },
+      orderBy: [{ entry: { accountingDate: 'desc' } }, { entry: { journalNumber: 'desc' } }],
+      // Enough lines to cover `take` distinct entries even when an entry has several.
+      take: take * 6,
+      select: {
+        debitAmount: true,
+        creditAmount: true,
+        entry: {
+          select: {
+            id: true,
+            journalNumber: true,
+            accountingDate: true,
+            description: true,
+            sourceDocumentType: true,
+            sourceDocumentId: true,
+          },
+        },
+      },
+    });
+
+    const byEntry = new Map<
+      string,
+      {
+        id: string;
+        journalNumber: string | null;
+        accountingDate: Date;
+        description: string;
+        sourceDocumentType: string | null;
+        sourceDocumentId: string | null;
+        projectAmount: Decimal;
+      }
+    >();
+    for (const line of lines) {
+      const existing = byEntry.get(line.entry.id);
+      const movement = new Decimal(line.debitAmount.toString()).minus(
+        new Decimal(line.creditAmount.toString()),
+      );
+      if (existing) {
+        existing.projectAmount = existing.projectAmount.plus(movement);
+      } else {
+        byEntry.set(line.entry.id, { ...line.entry, projectAmount: movement });
+      }
+    }
+    return [...byEntry.values()].slice(0, take);
+  }
+
+  /** Cost-budget lifecycle events for this project, from the audit trail. */
+  async findRecentBudgetEvents(
+    prisma: TenantPrisma,
+    organizationId: string,
+    projectId: string,
+    take: number,
+  ) {
+    const budgets = await prisma.projectCostBudget.findMany({
+      where: { organizationId, projectId },
+      select: { id: true },
+    });
+    if (budgets.length === 0) return [];
+
+    return prisma.auditLog.findMany({
+      where: {
+        orgId: organizationId,
+        resource: 'ProjectCostBudget',
+        resourceId: { in: budgets.map((b) => b.id) },
+      },
+      orderBy: { createdAt: 'desc' },
+      take,
+      select: { id: true, action: true, createdAt: true, resourceId: true },
+    });
+  }
 }

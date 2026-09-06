@@ -10,6 +10,7 @@ import { ProjectAccessGuard } from '../../../../platform/project-access/project-
 
 import { ProjectFinancialPositionService } from '../application/project-financial-position.service.js';
 import { ProjectCostReconciliationService } from '../application/project-cost-reconciliation.service.js';
+import { ProjectFinanceOverviewService } from '../application/project-finance-overview.service.js';
 
 /**
  * Project Financial Position (ADR-013) — the PM/control view: posted actual cost, remaining
@@ -26,6 +27,7 @@ export class ProjectFinancialPositionController {
   constructor(
     private readonly service: ProjectFinancialPositionService,
     private readonly reconciliation: ProjectCostReconciliationService,
+    private readonly financeOverview: ProjectFinanceOverviewService,
   ) {}
 
   @Get('financial-position')
@@ -59,5 +61,22 @@ export class ProjectFinancialPositionController {
     @Param('projectId') projectId: string,
   ) {
     return this.reconciliation.getForProject(identity, projectId);
+  }
+
+  @Get('finance/overview')
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  @ApiOperation({
+    summary: 'Everything the project Finance Overview renders, in one read',
+    description:
+      'Cost position and cost areas come from the same rollup Cost Control uses, so the two ' +
+      'screens cannot disagree. Control states (reconciliation, accounting setup, budget, ' +
+      'period) are measured server-side rather than inferred in the browser — they exist to ' +
+      'tell a reader whether the money figures above them can be trusted.',
+  })
+  getFinanceOverview(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+  ) {
+    return this.financeOverview.getOverview(identity, projectId);
   }
 }

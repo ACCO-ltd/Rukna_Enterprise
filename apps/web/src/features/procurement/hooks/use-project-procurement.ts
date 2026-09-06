@@ -13,6 +13,7 @@ import type {
 import {
   baselineProjectCostBudget,
   createProjectCostBudget,
+  discardProjectCostBudget,
   getProjectProcurementCost,
   getProjectProcurementOverview,
   getProjectRequirement,
@@ -88,9 +89,9 @@ export function useProjectCostBudgets(
  * baselining a budget changes every percentage on every cost screen, and a stale overview showing
  * "no budget set" beside a freshly baselined one is worse than a refetch.
  */
-function useBudgetMutation<TArgs>(
+function useBudgetMutation<TArgs, TResult = ProjectCostBudgetResponse>(
   projectId: string,
-  fn: (args: TArgs) => Promise<ProjectCostBudgetResponse>,
+  fn: (args: TArgs) => Promise<TResult>,
 ) {
   const qc = useQueryClient();
   return useMutation({
@@ -112,6 +113,12 @@ export function useUpdateProjectCostBudget(projectId: string) {
     projectId,
     ({ budgetId, payload }: { budgetId: string; payload: Partial<CreateProjectCostBudgetPayload> }) =>
       updateProjectCostBudget(projectId, budgetId, payload),
+  );
+}
+
+export function useDiscardProjectCostBudget(projectId: string) {
+  return useBudgetMutation<string, void>(projectId, (budgetId) =>
+    discardProjectCostBudget(projectId, budgetId),
   );
 }
 
