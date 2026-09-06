@@ -78,6 +78,31 @@ export class ProjectProcurementRepository {
     });
   }
 
+  /**
+   * Project-level cost by spend category — ledger rows that carry a project but **no BOQ node**.
+   *
+   * These are the deliberately-coded costs a BOQ has no line for: site security, transport,
+   * insurance, supervision, fuel, permits. Filtering on `boqNodeId: null` is what separates them
+   * from BOQ-coded cost; the project filter is what separates them from corporate overhead.
+   */
+  groupProjectLevelByCategory(
+    prisma: TenantPrisma,
+    organizationId: string,
+    projectId: string,
+    asOf?: Date,
+  ) {
+    return prisma.commitmentLedgerEntry.groupBy({
+      by: ['spendCategoryId', 'stage'],
+      where: {
+        organizationId,
+        projectId,
+        boqNodeId: null,
+        ...(asOf ? { accountingDate: { lte: asOf } } : {}),
+      },
+      _sum: { amount: true },
+    });
+  }
+
   /** Names for the ids the groupings return, in one round trip each. */
   findSupplierNames(prisma: TenantPrisma, organizationId: string, ids: string[]) {
     if (ids.length === 0) return Promise.resolve([]);

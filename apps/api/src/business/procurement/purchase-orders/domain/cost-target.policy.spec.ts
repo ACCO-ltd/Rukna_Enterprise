@@ -16,15 +16,44 @@ describe('validateCostTarget (A3/D7)', () => {
     ).toBeNull();
   });
 
-  // A3 — a half-specified target is a fabricated attribution. Rejected both ways round.
-  it('rejects a project without a node', () => {
-    expect(validateCostTarget({ projectId: 'proj-A' }, null)).toBe('COST_TARGET_INCOMPLETE');
+  /**
+   * Project-level (non-BOQ) cost. A construction BOQ is the contractual measured scope, not the
+   * complete internal cost structure — site security, transport, insurance and supervision are
+   * real project cost with no BOQ line to charge. Before this was allowed, the only options were
+   * an invented "Site overhead" BOQ node or losing the cost into corporate overhead, and a
+   * ProjectCostBudget could plan a category that no purchase could ever consume.
+   */
+  it('allows a project line with a spend category and no BOQ node', () => {
+    expect(
+      validateCostTarget({ projectId: 'proj-A', spendCategoryId: 'cat-transport' }, null),
+    ).toBeNull();
   });
 
+  /** A project with no target at all is an unclassified suspense bucket nobody reconciles. */
+  it('rejects a project with neither a node nor a category', () => {
+    expect(validateCostTarget({ projectId: 'proj-A' }, null)).toBe('PROJECT_WITHOUT_COST_TARGET');
+  });
+
+  /** A BOQ node lives on a project's BOQ; outside one it means nothing. */
   it('rejects a node without a project', () => {
     expect(validateCostTarget({ boqNodeId: 'node-1' }, leafOnProjectA)).toBe(
-      'COST_TARGET_INCOMPLETE',
+      'BOQ_NODE_WITHOUT_PROJECT',
     );
+  });
+
+  /** The BOQ node wins when both are given — it is the more specific attribution. */
+  it('validates the node when a category is also supplied', () => {
+    expect(
+      validateCostTarget(
+        { projectId: 'proj-A', boqNodeId: 'node-1', spendCategoryId: 'cat-materials' },
+        leafOnProjectA,
+      ),
+    ).toBeNull();
+  });
+
+  /** A category on a corporate line changes nothing — no project, no project attribution. */
+  it('still allows a corporate line that happens to carry a category', () => {
+    expect(validateCostTarget({ spendCategoryId: 'cat-admin' }, null)).toBeNull();
   });
 
   // D7 — the node must be real, on the named project, active, and a chargeable leaf.

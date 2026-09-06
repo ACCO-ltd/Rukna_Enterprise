@@ -110,8 +110,26 @@ export function rollUpCostByBoq(options: {
   budgetByNode: Map<string | null, Decimal>;
   projectLevelLabel: string;
   mayViewFinancials: boolean;
+  /**
+   * Project-level cost and budget broken out by spend category — Transport, Insurance, Site
+   * overhead. These are deliberately coded project costs with no BOQ line to charge, so they get
+   * named child rows rather than sitting inside one opaque total.
+   */
+  projectLevelByCategory?: Array<{
+    spendCategoryId: string;
+    name: string;
+    cost: StageTotals | null;
+    budget: Decimal | null;
+  }>;
 }): ProjectCostByBoqRow[] {
-  const { nodes, costByNode, budgetByNode, projectLevelLabel, mayViewFinancials } = options;
+  const {
+    nodes,
+    costByNode,
+    budgetByNode,
+    projectLevelLabel,
+    mayViewFinancials,
+    projectLevelByCategory = [],
+  } = options;
 
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const childrenOf = new Map<string | null, BoqNodeShape[]>();
@@ -195,7 +213,7 @@ export function rollUpCostByBoq(options: {
       code: null,
       description: projectLevelLabel,
       depth: 0,
-      hasChildren: false,
+      hasChildren: projectLevelByCategory.length > 0,
       budget: money(projectLevelBudget),
       committed: money(committed),
       accrued: money(projectLevelCost?.accrued ?? ZERO),
@@ -209,6 +227,34 @@ export function rollUpCostByBoq(options: {
         ? percentOf(projectLevelCost?.actual ?? ZERO, projectLevelBudget)
         : null,
     });
+
+    // One child per category actually used, so "Project-level" is a heading over named costs
+    // rather than a single figure nobody can decompose.
+    for (const category of projectLevelByCategory) {
+      if (!category.cost && category.budget === null) continue;
+      const catCommitted = category.cost?.committed ?? ZERO;
+      rows.push({
+        kind: 'PROJECT_LEVEL_CATEGORY',
+        boqNodeId: null,
+        spendCategoryId: category.spendCategoryId,
+        code: null,
+        description: category.name,
+        depth: 1,
+        hasChildren: false,
+        budget: money(category.budget),
+        committed: money(catCommitted),
+        accrued: money(category.cost?.accrued ?? ZERO),
+        actual: money(category.cost?.actual ?? ZERO),
+        uncommittedBudget:
+          category.budget === null ? null : money(category.budget.minus(catCommitted)),
+        committedOfBudgetPercent: mayViewFinancials
+          ? percentOf(catCommitted, category.budget)
+          : null,
+        actualOfBudgetPercent: mayViewFinancials
+          ? percentOf(category.cost?.actual ?? ZERO, category.budget)
+          : null,
+      });
+    }
   }
 
   return rows;

@@ -193,6 +193,51 @@ describe('rollUpCostByBoq', () => {
     expect(rows.at(-1)!.kind).toBe('PROJECT_LEVEL');
   });
 
+  /**
+   * Project-level cost is spendable, and it is broken out by the category it was coded to.
+   * Budget and cost meet on the same `spendCategoryId`, which is exactly what makes the budget
+   * consumable rather than a reporting artefact.
+   */
+  it('breaks project-level cost into its named spend categories', () => {
+    const rows = rollUpCostByBoq({
+      nodes: TREE,
+      costByNode: new Map([[null, totals('8400', '24600')]]),
+      budgetByNode: new Map([[null, d('390000')]]),
+      projectLevelLabel: 'Project-level (non-BOQ)',
+      mayViewFinancials: true,
+      projectLevelByCategory: [
+        { spendCategoryId: 'c-transport', name: 'Transport', cost: totals('8400', '12600'), budget: d('120000') },
+        { spendCategoryId: 'c-overhead', name: 'Site overhead', cost: totals('0', '12000'), budget: d('180000') },
+        // Budgeted, nothing bought yet — a real state, and it must still appear.
+        { spendCategoryId: 'c-insurance', name: 'Insurance', cost: null, budget: d('90000') },
+      ],
+    });
+
+    const parent = rows.find((r) => r.kind === 'PROJECT_LEVEL')!;
+    expect(parent.hasChildren).toBe(true);
+
+    const children = rows.filter((r) => r.kind === 'PROJECT_LEVEL_CATEGORY');
+    expect(children.map((c) => c.description)).toEqual(['Transport', 'Site overhead', 'Insurance']);
+    expect(children[0]!.committed).toBe('8400.00');
+    expect(children[0]!.budget).toBe('120000.00');
+    expect(children[0]!.depth).toBe(1);
+    // Budgeted with no spend reads as a zero against a real budget, not as absent.
+    expect(children[2]!.committed).toBe('0.00');
+    expect(children[2]!.uncommittedBudget).toBe('90000.00');
+  });
+
+  it('leaves the project-level bucket childless when no category has been used', () => {
+    const rows = rollUpCostByBoq({
+      nodes: TREE,
+      costByNode: new Map([[null, totals('70')]]),
+      budgetByNode: new Map([[null, d('250')]]),
+      projectLevelLabel: 'Project-level',
+      mayViewFinancials: true,
+    });
+    expect(rows.find((r) => r.kind === 'PROJECT_LEVEL')!.hasChildren).toBe(false);
+    expect(rows.filter((r) => r.kind === 'PROJECT_LEVEL_CATEGORY')).toHaveLength(0);
+  });
+
   it('orders rows depth-first so a section is followed by its own children', () => {
     const rows = rollUpCostByBoq({
       nodes: TREE,

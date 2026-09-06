@@ -1977,8 +1977,15 @@ export interface ProjectProcurementCapabilities {
  * reaches this read model.
  */
 export interface ProjectCostByBoqRow {
-  kind: 'BOQ' | 'PROJECT_LEVEL';
+  /**
+   * `PROJECT_LEVEL` is the parent bucket; `PROJECT_LEVEL_CATEGORY` are its children, one per
+   * spend category actually used — Transport, Insurance, Site overhead. They are named coded
+   * costs, never an "unallocated" remainder.
+   */
+  kind: 'BOQ' | 'PROJECT_LEVEL' | 'PROJECT_LEVEL_CATEGORY';
   boqNodeId: string | null;
+  /** Set on a `PROJECT_LEVEL_CATEGORY` row. */
+  spendCategoryId?: string | null;
   /** "001", "003.002". Null for the project-level bucket. */
   code: string | null;
   description: string;

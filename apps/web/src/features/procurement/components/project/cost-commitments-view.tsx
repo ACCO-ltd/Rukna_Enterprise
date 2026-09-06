@@ -33,6 +33,9 @@ import { SectionPanel } from './section-panel';
 
 type Dimension = 'boq' | 'supplier' | 'category';
 
+/** The project-level bucket has no BOQ node, so its disclosure state needs a key of its own. */
+const PROJECT_LEVEL_KEY = '__project-level__';
+
 /**
  * Cost & Commitments — the authoritative backbone of the project's procurement view.
  *
@@ -168,18 +171,24 @@ function CostByBoqTable({ data }: { data: ProjectProcurementCostResponse }) {
   const hasBudget = data.position.budgetTotal !== null;
 
   // A row shows when every ancestor above it is expanded. Depth alone is not enough — a collapsed
-  // section must hide its grandchildren too.
+  // section must hide its grandchildren too. The project-level bucket expands the same way, keyed
+  // on a synthetic id because it has no BOQ node of its own.
+  const rowKey = (row: ProjectCostByBoqRow) =>
+    row.kind === 'PROJECT_LEVEL'
+      ? PROJECT_LEVEL_KEY
+      : (row.boqNodeId ?? row.spendCategoryId ?? row.description);
+
   const visible: ProjectCostByBoqRow[] = [];
   const openDepth: boolean[] = [];
   for (const row of data.byBoq) {
-    if (row.kind === 'PROJECT_LEVEL' || row.depth === 0) {
+    if (row.depth === 0) {
       visible.push(row);
-      openDepth[row.depth] = row.boqNodeId !== null && expanded.has(row.boqNodeId);
+      openDepth[0] = expanded.has(rowKey(row));
       continue;
     }
     if (openDepth.slice(0, row.depth).every(Boolean)) {
       visible.push(row);
-      openDepth[row.depth] = row.boqNodeId !== null && expanded.has(row.boqNodeId);
+      openDepth[row.depth] = expanded.has(rowKey(row));
     } else {
       openDepth[row.depth] = false;
     }
@@ -212,8 +221,8 @@ function CostByBoqTable({ data }: { data: ProjectProcurementCostResponse }) {
           </TableHeader>
           <TableBody>
             {visible.map((row) => {
-              const key = row.boqNodeId ?? 'project-level';
-              const isOpen = row.boqNodeId !== null && expanded.has(row.boqNodeId);
+              const key = rowKey(row);
+              const isOpen = expanded.has(key);
               return (
                 <TableRow key={key} className={cn(row.kind === 'PROJECT_LEVEL' && 'bg-muted/40')}>
                   <TableCell>
@@ -221,7 +230,7 @@ function CostByBoqTable({ data }: { data: ProjectProcurementCostResponse }) {
                       className="flex items-center gap-1.5"
                       style={{ paddingInlineStart: `${row.depth * 1.25}rem` }}
                     >
-                      {row.hasChildren && row.boqNodeId ? (
+                      {row.hasChildren ? (
                         <button
                           type="button"
                           aria-expanded={isOpen}
@@ -229,8 +238,8 @@ function CostByBoqTable({ data }: { data: ProjectProcurementCostResponse }) {
                           onClick={() =>
                             setExpanded((prev) => {
                               const next = new Set(prev);
-                              if (next.has(row.boqNodeId!)) next.delete(row.boqNodeId!);
-                              else next.add(row.boqNodeId!);
+                              if (next.has(key)) next.delete(key);
+                              else next.add(key);
                               return next;
                             })
                           }

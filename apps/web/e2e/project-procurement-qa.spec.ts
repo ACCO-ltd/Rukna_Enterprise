@@ -117,6 +117,14 @@ test('names project-level non-BOQ cost as its own row', async ({ app }) => {
   const root = app.locator('[data-project-procurement-root]');
   await expect(root.getByText('Project-level (non-BOQ)').first()).toBeVisible();
   await expect(root.getByText(/Other \/ Unallocated/i)).toHaveCount(0);
+
+  /**
+   * And it is a spendable bucket, not a budget-only artefact. Expanding it must reveal the named
+   * spend categories the cost was coded to — a budget category that can never receive actual
+   * cost is a reporting artefact, and this is the assertion that keeps it from becoming one.
+   */
+  await root.getByRole('button', { name: /expand/i }).last().click();
+  await expect(root.getByText('Transport').first()).toBeVisible();
 });
 
 /** The project owns requirements and nothing else. No PO, GRN, bill or payment authoring here. */

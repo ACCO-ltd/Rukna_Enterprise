@@ -170,7 +170,7 @@ export class ProjectProcurementService {
     const mayViewFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
     const asOfIso = (asOf ?? new Date()).toISOString();
 
-    const [stageRows, budget, boqRows, supplierRows, categoryRows, boqTree, entries] =
+    const [stageRows, budget, boqRows, supplierRows, categoryRows, boqTree, entries, projectLevelRows] =
       await Promise.all([
         this.repo.groupByStage(prisma, orgId, projectId, asOf),
         this.repo.findBaselinedBudget(prisma, orgId, projectId),
@@ -179,6 +179,7 @@ export class ProjectProcurementService {
         this.repo.groupByCategoryAndStage(prisma, orgId, projectId, asOf),
         this.repo.findBoqTree(prisma, projectId),
         this.repo.findRecentEntries(prisma, orgId, projectId, 10, asOf),
+        this.repo.groupProjectLevelByCategory(prisma, orgId, projectId, asOf),
       ]);
 
     const totals = emptyStageTotals();
@@ -202,6 +203,12 @@ export class ProjectProcurementService {
         budgetByNode: this.budgetByNode(budget),
         projectLevelLabel: PROJECT_LEVEL_LABEL,
         mayViewFinancials,
+        projectLevelByCategory: await this.buildProjectLevelCategories(
+          prisma,
+          orgId,
+          projectLevelRows,
+          budget,
+        ),
       }),
       bySupplier: await this.buildBySupplier(
         prisma,
@@ -298,6 +305,63 @@ export class ProjectProcurementService {
       map.set(key, (map.get(key) ?? ZERO).plus(new Decimal(line.budgetAmount.toString())));
     }
     return map;
+  }
+
+  /**
+   * Project-level cost and budget, per spend category.
+   *
+   * Both sides key on the same `spendCategoryId`, which is exactly what makes the budget
+   * consumable: a category budgeted at $40,000 and a purchase order coded to that category meet
+   * on the same row. Categories appear when either side has something — a budget with no spend
+   * yet is as worth showing as spend against no budget.
+   */
+  private async buildProjectLevelCategories(
+    prisma: ReturnType<TenancyService['getClient']>,
+    orgId: string,
+    categoryRows: Array<{
+      spendCategoryId: string | null;
+      stage: string;
+      _sum: { amount: Decimal | null };
+    }>,
+    budget: { lines: Array<{ boqNodeId: string | null; spendCategoryId: string | null; budgetAmount: Decimal }> } | null,
+  ) {
+    const costByCategory = new Map<string, StageTotals>();
+    for (const row of categoryRows) {
+      // A project-level ledger row with no category cannot be named, so it stays in the parent
+      // total rather than becoming an "unallocated" child that implies a coding failure.
+      if (!row.spendCategoryId) continue;
+      const totals = costByCategory.get(row.spendCategoryId) ?? emptyStageTotals();
+      addStage(totals, row.stage as never, new Decimal(row._sum.amount?.toString() ?? 0));
+      costByCategory.set(row.spendCategoryId, totals);
+    }
+
+    const budgetByCategory = new Map<string, Decimal>();
+    for (const line of budget?.lines ?? []) {
+      if (line.boqNodeId || !line.spendCategoryId) continue;
+      budgetByCategory.set(
+        line.spendCategoryId,
+        (budgetByCategory.get(line.spendCategoryId) ?? ZERO).plus(
+          new Decimal(line.budgetAmount.toString()),
+        ),
+      );
+    }
+
+    const ids = [...new Set([...costByCategory.keys(), ...budgetByCategory.keys()])];
+    if (ids.length === 0) return [];
+    const names = new Map<string, string>(
+      (await this.repo.findSpendCategoryNames(prisma, orgId, ids)).map(
+        (c) => [c.id, c.name] as const,
+      ),
+    );
+
+    return ids
+      .map((spendCategoryId) => ({
+        spendCategoryId,
+        name: names.get(spendCategoryId) ?? 'Unknown category',
+        cost: costByCategory.get(spendCategoryId) ?? null,
+        budget: budgetByCategory.get(spendCategoryId) ?? null,
+      }))
+      .sort((a, b) => Number(b.cost?.committed ?? 0) - Number(a.cost?.committed ?? 0));
   }
 
   /**

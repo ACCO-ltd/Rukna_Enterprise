@@ -435,12 +435,17 @@ export class PurchaseOrderService {
         }
 
         // Cost-target (A3/D7). Resolve the node only when one was supplied; the policy decides
-        // whether the pair is valid, half-specified, or a legitimate org/overhead line (neither).
+        // which of the three valid attributions this is — corporate, project-level (non-BOQ),
+        // or BOQ-coded — and rejects the two impossible ones.
         const resolvedNode = line.boqNodeId
           ? await this.repo.resolveCostNode(prisma, orgId, line.boqNodeId)
           : null;
         const violation = validateCostTarget(
-          { projectId: line.projectId, boqNodeId: line.boqNodeId },
+          {
+            projectId: line.projectId,
+            boqNodeId: line.boqNodeId,
+            spendCategoryId: line.spendCategoryId,
+          },
           resolvedNode,
         );
         if (violation) {
