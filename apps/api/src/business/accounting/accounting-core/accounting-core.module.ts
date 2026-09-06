@@ -14,6 +14,7 @@ import { AccountingPostingService } from './infrastructure/accounting-posting.se
 
 import { AccountingConfigurationService } from './application/accounting-configuration.service.js';
 import { FiscalYearService } from './application/fiscal-year.service.js';
+import { AccountingReadinessService } from './application/accounting-readiness.service.js';
 import { AccountService } from './application/account.service.js';
 import { BankAccountService } from './application/bank-account.service.js';
 import { BankAccountSignatoryService } from './application/bank-account-signatory.service.js';
@@ -21,6 +22,7 @@ import { OpeningBalanceService } from './application/opening-balance.service.js'
 import { ReconciliationService } from './application/reconciliation.service.js';
 import { PostingAccountResolver } from './application/posting-account-resolver.service.js';
 
+import { AccountingReadinessController } from './presentation/accounting-readiness.controller.js';
 import { AccountController } from './presentation/account.controller.js';
 import { FiscalYearController } from './presentation/fiscal-year.controller.js';
 import { BankAccountController } from './presentation/bank-account.controller.js';
@@ -31,6 +33,7 @@ import { ReconciliationController } from './presentation/reconciliation.controll
   imports: [TenancyModule],
   controllers: [
     AccountController,
+    AccountingReadinessController,
     FiscalYearController,
     BankAccountController,
     OpeningBalanceController,
@@ -54,6 +57,7 @@ import { ReconciliationController } from './presentation/reconciliation.controll
     AccountingConfigurationService,
     FiscalYearService,
     AccountService,
+    AccountingReadinessService,
     BankAccountService,
     BankAccountSignatoryService,
     OpeningBalanceService,

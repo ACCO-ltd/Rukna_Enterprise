@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 
 type TenantPrisma = Omit<
   PrismaClient,
@@ -161,6 +162,28 @@ export class ProjectProcurementRepository {
       where: { organizationId, projectId, status: 'BASELINED' },
       include: { lines: { orderBy: { sortOrder: 'asc' } } },
     });
+  }
+
+  /**
+   * Line totals for a set of budget versions, in one round trip.
+   *
+   * The version list used to report a hardcoded `'0.00'` for every row — a column of zeroes
+   * beside real line counts, which reads as "these versions budget nothing" rather than as
+   * "nobody computed this".
+   */
+  async sumBudgetTotals(
+    prisma: TenantPrisma,
+    budgetIds: string[],
+  ): Promise<Map<string, Decimal>> {
+    if (budgetIds.length === 0) return new Map();
+    const rows = await prisma.projectCostBudgetLine.groupBy({
+      by: ['budgetId'],
+      where: { budgetId: { in: budgetIds } },
+      _sum: { budgetAmount: true },
+    });
+    return new Map(
+      rows.map((r) => [r.budgetId, new Decimal((r._sum.budgetAmount ?? 0).toString())]),
+    );
   }
 
   findBudgets(prisma: TenantPrisma, organizationId: string, projectId: string) {

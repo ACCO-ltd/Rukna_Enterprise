@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
@@ -120,6 +131,21 @@ export class ProjectProcurementController {
     @Body() dto: UpdateProjectCostBudgetDto,
   ) {
     return this.budgets.update(identity, budgetId, dto);
+  }
+
+  @Delete('budgets/:budgetId')
+  @HttpCode(204)
+  @RequirePermissions(PERMISSIONS.projectBudgetManage)
+  @ApiOperation({
+    summary: 'Discard a DRAFT cost budget. Baselined and superseded versions are permanent.',
+  })
+  @ApiParam({ name: 'projectId' })
+  @ApiParam({ name: 'budgetId' })
+  discardBudget(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('budgetId') budgetId: string,
+  ) {
+    return this.budgets.discard(identity, budgetId);
   }
 
   @Post('budgets/:budgetId/baseline')

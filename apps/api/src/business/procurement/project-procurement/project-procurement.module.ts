@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { TenancyModule } from '../../../platform/tenancy/tenancy.module.js';
+import { AuditLogsModule } from '../../../platform/audit-logs/audit-logs.module.js';
 import { ProjectProcurementRepository } from './infrastructure/project-procurement.repository.js';
 import { ProjectProcurementService } from './application/project-procurement.service.js';
 import { ProjectCostBudgetService } from './application/project-cost-budget.service.js';
@@ -14,7 +15,7 @@ import { ProjectProcurementController } from './presentation/project-procurement
  * operates POs, GRNs and bills; the project reads the cost coded onto their lines.
  */
 @Module({
-  imports: [TenancyModule],
+  imports: [TenancyModule, AuditLogsModule],
   providers: [ProjectProcurementRepository, ProjectProcurementService, ProjectCostBudgetService],
   controllers: [ProjectProcurementController],
   exports: [ProjectProcurementService],

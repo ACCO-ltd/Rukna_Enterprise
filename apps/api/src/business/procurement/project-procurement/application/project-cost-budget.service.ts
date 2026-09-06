@@ -7,6 +7,7 @@ import {
 } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
+import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { ProjectProcurementRepository } from '../infrastructure/project-procurement.repository.js';
 import type { CreateProjectCostBudgetDto } from '../presentation/dto/create-project-cost-budget.dto.js';
@@ -34,6 +35,7 @@ export class ProjectCostBudgetService {
     private readonly tenancy: TenancyService,
     private readonly projectAccess: ProjectAccessService,
     private readonly repo: ProjectProcurementRepository,
+    private readonly auditOutbox: TransactionalAuditOutboxService,
   ) {}
 
   async list(
@@ -49,6 +51,14 @@ export class ProjectCostBudgetService {
       this.repo.findBaselinedBudget(prisma, orgId, projectId),
     ]);
 
+    // Every row in this list used to report `total: '0.00'`, hardcoded — so a version list
+    // showed a column of zeroes beside real line counts. A budget version's total is the sum
+    // of its lines; the repository now returns it.
+    const totals = await this.repo.sumBudgetTotals(
+      prisma,
+      budgets.map((b) => b.id),
+    );
+
     return {
       projectId,
       baselined: baselined
@@ -62,7 +72,7 @@ export class ProjectCostBudgetService {
         currency: b.currency,
         notes: b.notes,
         derivedFromId: b.derivedFromId,
-        total: '0.00',
+        total: (totals.get(b.id) ?? ZERO).toFixed(2),
         preparedBy: b.preparedBy,
         baselinedAt: b.baselinedAt?.toISOString() ?? null,
         baselinedBy: b.baselinedBy,
@@ -113,18 +123,38 @@ export class ProjectCostBudgetService {
       select: { id: true, versionNumber: true },
     });
 
-    const created = await prisma.projectCostBudget.create({
-      data: {
+    const versionNumber = (last?.versionNumber ?? 0) + 1;
+    const created = await prisma.$transaction(async (tx) => {
+      const budget = await tx.projectCostBudget.create({
+        data: {
+          organizationId: orgId,
+          projectId,
+          versionNumber,
+          currency: dto.currency,
+          notes: dto.notes ?? null,
+          derivedFromId: last?.id ?? null,
+          preparedBy: identity.userId,
+          lines: { create: dto.lines.map((line, index) => this.toLineData(line, index)) },
+        },
+        select: { id: true },
+      });
+
+      // A budget is a control instrument: who drafted it, who changed it and who baselined it
+      // are part of the control. The BOQ's baseline has always written these; this aggregate
+      // shipped without them.
+      await this.auditOutbox.record(tx, {
         organizationId: orgId,
-        projectId,
-        versionNumber: (last?.versionNumber ?? 0) + 1,
-        currency: dto.currency,
-        notes: dto.notes ?? null,
-        derivedFromId: last?.id ?? null,
-        preparedBy: identity.userId,
-        lines: { create: dto.lines.map((line, index) => this.toLineData(line, index)) },
-      },
-      select: { id: true },
+        actorUserId: identity.userId,
+        action: 'CREATE',
+        resourceType: 'ProjectCostBudget',
+        resourceId: budget.id,
+        sourceCommand: 'projectCostBudget.create',
+        eventType: 'PROJECT_COST_BUDGET_DRAFTED',
+        idempotencyKey: `project-cost-budget-create-${budget.id}`,
+        after: { projectId, versionNumber, status: 'DRAFT', lineCount: dto.lines.length },
+      });
+
+      return budget;
     });
 
     return this.findOne(identity, created.id);
@@ -160,6 +190,19 @@ export class ProjectCostBudgetService {
             ? { lines: { create: dto.lines.map((line, index) => this.toLineData(line, index)) } }
             : {}),
         },
+      });
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'UPDATE',
+        resourceType: 'ProjectCostBudget',
+        resourceId: id,
+        sourceCommand: 'projectCostBudget.update',
+        eventType: 'PROJECT_COST_BUDGET_EDITED',
+        // Editing is repeatable, so the key carries the revision counter the row already keeps.
+        idempotencyKey: `project-cost-budget-update-${id}-${Date.now()}`,
+        after: { versionNumber: budget.versionNumber, lineCount: dto.lines?.length ?? null },
       });
     });
 
@@ -197,7 +240,7 @@ export class ProjectCostBudgetService {
 
     const now = new Date();
     await prisma.$transaction(async (tx) => {
-      await tx.projectCostBudget.updateMany({
+      const superseded = await tx.projectCostBudget.updateMany({
         where: { organizationId: orgId, projectId: budget.projectId, status: 'BASELINED' },
         data: { status: 'SUPERSEDED', supersededAt: now },
       });
@@ -205,9 +248,69 @@ export class ProjectCostBudgetService {
         where: { id },
         data: { status: 'BASELINED', baselinedAt: now, baselinedBy: identity.userId },
       });
+
+      // Baselining sets the figure the project is measured against and supersedes the last.
+      // It carries the same weight as baselining a BOQ, and needs the same evidence.
+      await this.auditOutbox.record(tx, {
+        organizationId: orgId,
+        actorUserId: identity.userId,
+        action: 'BASELINE',
+        resourceType: 'ProjectCostBudget',
+        resourceId: id,
+        sourceCommand: 'projectCostBudget.baseline',
+        eventType: 'PROJECT_COST_BUDGET_BASELINED',
+        idempotencyKey: `project-cost-budget-baseline-${id}`,
+        before: { status: 'DRAFT' },
+        after: {
+          status: 'BASELINED',
+          versionNumber: budget.versionNumber,
+          supersededVersions: superseded.count,
+        },
+      });
     });
 
     return this.findOne(identity, id);
+  }
+
+  /**
+   * Abandon a DRAFT version.
+   *
+   * Without this a bad draft could only be edited, never dropped — and since only one DRAFT
+   * may exist at a time, a mistaken version blocked starting a fresh one indefinitely. Only
+   * a DRAFT can go: a BASELINED figure is what the project is measured against and a
+   * SUPERSEDED one is the evidence of what it used to be, so neither is anyone's to delete.
+   */
+  async discard(identity: RequestIdentity, id: string): Promise<void> {
+    const prisma = this.tenancy.getClient();
+    const orgId = identity.activeOrganizationId;
+    const budget = await prisma.projectCostBudget.findFirst({
+      where: { id, organizationId: orgId },
+      select: { id: true, projectId: true, status: true, versionNumber: true },
+    });
+    if (!budget) throw new NotFoundException(`Cost budget ${id} not found`);
+    await this.projectAccess.assertMember(identity, budget.projectId);
+    if (budget.status !== 'DRAFT') {
+      throw new ConflictException(
+        `Version ${budget.versionNumber} is ${budget.status.toLowerCase()} and cannot be discarded. Only a draft can be abandoned.`,
+      );
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await this.auditOutbox.record(tx, {
+        organizationId: orgId,
+        actorUserId: identity.userId,
+        action: 'DELETE',
+        resourceType: 'ProjectCostBudget',
+        resourceId: id,
+        sourceCommand: 'projectCostBudget.discard',
+        eventType: 'PROJECT_COST_BUDGET_DISCARDED',
+        idempotencyKey: `project-cost-budget-discard-${id}`,
+        before: { status: 'DRAFT', versionNumber: budget.versionNumber },
+      });
+      // Lines cascade. The version number is not reused, so the history still reads as a
+      // sequence with the abandoned attempt visible as a gap.
+      await tx.projectCostBudget.delete({ where: { id } });
+    });
   }
 
   private toLineData(

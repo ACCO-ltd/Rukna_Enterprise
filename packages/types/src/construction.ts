@@ -1542,6 +1542,81 @@ export interface ProjectCostReconciliationResponse {
   asOf: string;
 }
 
+/** One posted journal line carrying a project, for the project ledger drill-down. */
+export interface ProjectLedgerLine {
+  journalEntryId: string;
+  journalNumber: string | null;
+  accountingDate: string;
+  documentDate: string;
+  description: string;
+  lineDescription: string | null;
+  entryPurpose: string;
+  accountId: string;
+  /** The code as it was when the line posted, not the account's current code. */
+  accountCode: string;
+  accountName: string;
+  debitAmount: string;
+  creditAmount: string;
+  sourceDocumentType: string | null;
+  sourceDocumentId: string | null;
+  boqNodeId: string | null;
+  spendCategoryId: string | null;
+  supplierId: string | null;
+  clientId: string | null;
+  contractId: string | null;
+}
+
+/**
+ * The postings behind a project's figures.
+ *
+ * No running balance: down one account a running balance accumulates to something a person
+ * can check, but down a project the rows are revenue, cost, receivables and cash interleaved,
+ * and adding a revenue credit to a cost debit produces a number nobody can reconcile. Class
+ * totals are reported instead, over the whole filtered set rather than the current page.
+ */
+export interface ProjectLedgerResponse {
+  projectId: string;
+  fromDate: string | null;
+  toDate: string | null;
+  /** Matching lines in total, for paging. */
+  total: number;
+  limit: number;
+  offset: number;
+  /** Posted revenue over the filtered range, excluding CLOSING entries. */
+  totalRevenue: string;
+  /** Posted cost of sales + expenses over the filtered range, excluding CLOSING entries. */
+  totalCost: string;
+  lines: ProjectLedgerLine[];
+}
+
+/** One reason the general ledger cannot accept a posting yet. */
+export interface AccountingReadinessBlocker {
+  code:
+    | 'NO_CHART_OF_ACCOUNTS'
+    | 'POSTING_ACCOUNT_NOT_CONFIGURED'
+    | 'POSTING_ACCOUNT_AMBIGUOUS'
+    | 'NO_OPEN_PERIOD'
+    | 'NO_POSTING_PROFILES'
+    | 'NO_DOCUMENT_SEQUENCE';
+  /** What is missing, named the way an administrator would recognise it. */
+  label: string;
+  detail: string;
+}
+
+/**
+ * Whether the general ledger can accept a posting, and precisely what is missing when it
+ * cannot.
+ *
+ * Lets a Finance screen say "Unavailable — accounting is not configured, here is what to fix"
+ * instead of rendering a confident $0. A project with no posted cost because nobody finished
+ * the chart of accounts has not spent nothing.
+ */
+export interface AccountingReadinessResponse {
+  ready: boolean;
+  blockers: AccountingReadinessBlocker[];
+  checkedAt: string;
+}
+
 export type BoqChangeKind =
   | 'ADDED'
   | 'REMOVED'

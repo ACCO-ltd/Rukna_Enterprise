@@ -6,6 +6,7 @@ import { AccountingCoreModule } from '../accounting-core/accounting-core.module.
 import { SnapshotService } from './application/snapshot.service.js';
 import { LedgerService } from './application/ledger.service.js';
 import { TrialBalanceService } from './application/trial-balance.service.js';
+import { ProjectLedgerService } from './application/project-ledger.service.js';
 import { PLReportService } from './application/pl-report.service.js';
 import { BalanceSheetService } from './application/balance-sheet.service.js';
 import { PeriodManagementService } from './application/period-management.service.js';
@@ -23,6 +24,7 @@ import { PeriodController } from './presentation/period.controller.js';
     SnapshotService,
     LedgerService,
     PLReportService,         // no deps on other GL services
+    ProjectLedgerService,    // no deps on other GL services
     TrialBalanceService,     // depends on SnapshotService
     BalanceSheetService,     // depends on SnapshotService + PLReportService
     PeriodManagementService, // depends on SnapshotService
@@ -37,6 +39,7 @@ import { PeriodController } from './presentation/period.controller.js';
     BalanceSheetService,
     PeriodManagementService,
     YearEndCloseService,
+    ProjectLedgerService,
   ],
 })
 export class GeneralLedgerModule {}
