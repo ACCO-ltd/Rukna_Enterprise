@@ -267,7 +267,50 @@ gross profit stops at cost of sales.
 
 ---
 
-## 9. Definition of done (every Round-2 slice)
+## 9. Shared workspace UI debt
+
+Cross-module defects that are real, are **not** any one workspace's to fix, and must be fixed once
+in the shared primitives rather than patched per module. A slice that trips over one of these works
+around it and adds a line here; it does not fix it locally.
+
+### 9.1 Heading hierarchy is inconsistent across workspaces
+
+Found 2026-09-06 by the Phase-6 browser QA, which could not anchor on a heading because the four
+Finance views do not name themselves the same way:
+
+```text
+Finance shell            h1
+Overview                 no local heading
+Cost Control             h3   (the first SectionPanel's title)
+Profit & Loss            h2
+Ledger                   h2
+```
+
+Two views title themselves at `h2`; one has no title of its own and opens straight into a panel at
+`h3`, skipping a level; one is only named by the shell. A screen reader's document outline is
+therefore wrong on half the workspace, and the same pattern is used by Procurement and the other
+rebuilt modules, so this is not a Finance bug.
+
+**The rule to converge on:**
+
+```text
+Page shell title         h1
+Internal workspace view  h2
+Section headings         h3
+Subsections              h4
+```
+
+**Do not patch one workspace.** `SectionPanel` and `MetricBand` hard-code `h3`, and every rebuilt
+module renders them; fixing Finance alone would make Finance the outlier instead of the norm. The
+fix is a heading-level prop (or a heading-level context) on those primitives plus a view-title slot
+in each workspace shell, done once across Procurement, Progress, Commercial, Finance and the rest.
+
+Until then: **anchor tests and automation on `aria-current`, not on headings.** Finance's browser QA
+does this (`nav[aria-label="Finance"] a[aria-current="page"]`).
+
+---
+
+## 10. Definition of done (every Round-2 slice)
 
 A slice is done when, verified in the running app:
 1. Light **and** dark theme correct (WCAG AA contrast on all status tokens).

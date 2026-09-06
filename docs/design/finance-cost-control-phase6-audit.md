@@ -1,14 +1,45 @@
 # Phase 6 — Project Finance & Cost Control: grounded codebase audit
 
-> **STATUS 2026-09-06 — Slices A, B and C are implemented and merged.** This document is kept
-> as the record of what was found, not as a to-do list. What changed since the audit:
-> P0-1, P0-2, P0-3, P1-1, P1-2, P1-3, P1-5, P1-7, P2-1..P2-5 and P3-1 are **fixed**; REC-01
-> passes on seeded data (`rec.spec`), so the §25 gate for UI work is met. Still open and
-> deliberately deferred: **P1-4** (IPC retention/advance recovery not applied to the client
-> invoice — needs Eng Ahmed's ruling), **P1-6** (journal approval is optional server-side),
-> bank reconciliation, P2-6..P2-11, P3-2..P3-7. One question the audit did not settle and the
-> implementation deliberately routed around: **which tax basis the commitment stages should
-> report in** — see §8 and the Slice B commit.
+> # PHASE 6 — FROZEN 2026-09-06
+>
+> This document is the record of what was found. It is not a to-do list, and Finance is not
+> reopened by anything on the deferred list below.
+>
+> | | |
+> |---|---|
+> | Financial correctness | **PASS** |
+> | REC-01 · MJ-05 · YE-05 | **PASS** |
+> | Finance IA | **FROZEN** |
+> | Overview · Cost Control · Profit & Loss · Ledger | **COMPLETE** |
+> | Budget lifecycle | **COMPLETE** |
+> | Project cost reconciliation | **COMPLETE** |
+> | Accounting setup states | **COMPLETE** |
+> | Chart semantics | **LOCKED** (ux-doctrine §8) |
+> | Sequential palette · categorical palette | **VALID** |
+> | Meter edge cases | **PASS** |
+> | Runtime browser QA · responsive · dark mode | **PASS** |
+> | Accessibility encoding | **PASS** |
+> | Build · typecheck · lint | **PASS** |
+>
+> **Fixed since the audit:** P0-1, P0-2, P0-3, P1-1, P1-2, P1-3, P1-5, P1-7, P2-1..P2-5, P3-1.
+>
+> **Deferred, legitimately open, and NOT a reason to reopen Finance:**
+>
+> - **P1-4** — IPC retention / advance-recovery treatment on the client invoice. Needs Eng
+>   Ahmed's ruling before any code.
+> - **P1-6** — journal approval is optional server-side.
+> - Real bank reconciliation.
+> - The remaining P2 / P3 accounting backlog (P2-6..P2-11, P3-2..P3-7).
+> - **Shared heading hierarchy** — a cross-module UI debt, not a Finance one. See
+>   `ux-doctrine.md` §9.
+>
+> **One question the audit did not settle and the implementation deliberately routed around:**
+> which tax basis the commitment stages report in. Slice B releases the accrual at exactly what
+> was accrued, which nets ACCRUED to zero under either answer — so REC-02 holds without it being
+> decided. It is a reporting-basis question for Cost Control, not a ledger-integrity one. See §8.
+>
+> **Runtime proof:** `apps/web/e2e/project-finance-qa.spec.ts` — 28 cases across 1440-dark,
+> 375-light and 375-dark.
 
 **Date:** 2026-09-06 · **Branch:** `feat/project-workspace-shell-overview` · **Method:** read of the
 actual backend, schema, migrations, tests and frontend. No code was changed. Where a prior design
