@@ -231,7 +231,7 @@
     "unavailableReason": "Posted accounting entries require accounting setup to be complete.",
     "charts": {
       "consumed": "Project cost against revenue",
-      "consumedHint": "How much of the revenue this project recognised its cost has absorbed.",
+      "consumedHint": "Posted project cost measured against posted revenue.",
       "totalCost": "Total cost",
       "breakdown": "What the cost was spent on",
       "breakdownHint": "Cost of sales and operating expenses, by account.",
