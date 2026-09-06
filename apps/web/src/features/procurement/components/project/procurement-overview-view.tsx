@@ -233,7 +233,7 @@ function PipelinePanel({ data }: { data: ProjectProcurementOverviewResponse }) {
       <ol className="flex items-start gap-1 overflow-x-auto pb-1">
         {data.pipeline.map((stage, index) => (
           <li key={stage.stage} className="flex min-w-0 shrink-0 items-start gap-1">
-            <div className="min-w-20 text-center">
+            <div className="min-w-24 text-center">
               <span
                 className="mx-auto flex size-9 items-center justify-center rounded-full border border-border bg-surface-subtle text-brand-primary"
                 aria-hidden="true"
@@ -244,17 +244,17 @@ function PipelinePanel({ data }: { data: ProjectProcurementOverviewResponse }) {
                 {t(`stage.${stage.stage}`)}
               </p>
               <p className="text-h3 font-bold tabular-nums text-foreground">{stage.count}</p>
-              <p className="text-micro leading-tight text-muted-foreground">
+              <p className="text-caption leading-tight text-muted-foreground">
                 {t(`stageUnit.${stage.stage}`, { n: stage.count })}
               </p>
               {stage.amount !== null ? (
-                <p className="text-micro leading-tight text-muted-foreground">
+                <p className="text-caption leading-tight text-muted-foreground">
                   {formatMoney(stage.amount, data.position.currency, locale) ?? ''}{' '}
                   {t(`stageBasis.${stage.stage}`)}
                 </p>
               ) : null}
               {stage.qualifierCount !== null && stage.qualifierCount > 0 ? (
-                <p className="mt-0.5 text-micro font-medium leading-tight text-warning">
+                <p className="mt-0.5 text-caption font-medium leading-tight text-warning">
                   {t('approvedNotOrdered', { n: stage.qualifierCount })}
                 </p>
               ) : null}

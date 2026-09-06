@@ -34,7 +34,7 @@ export function SectionPanel({
     >
       <div className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2.5 sm:px-5">
         <div className="min-w-0">
-          <h3 className="text-body-sm font-semibold text-foreground">{title}</h3>
+          <h3 className="text-h3 font-semibold text-foreground">{title}</h3>
           {description ? (
             <p className="mt-0.5 text-caption text-muted-foreground">{description}</p>
           ) : null}

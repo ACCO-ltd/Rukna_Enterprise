@@ -72,6 +72,21 @@ export class ProjectProcurementController {
     return this.service.getRequirements(identity, projectId);
   }
 
+  @Get('requirements/:requirementId')
+  @RequirePermissions(PERMISSIONS.procurementView)
+  @ApiOperation({
+    summary: 'One requirement with its lines and the purchase orders they reached',
+  })
+  @ApiParam({ name: 'projectId' })
+  @ApiParam({ name: 'requirementId' })
+  getRequirement(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Param('requirementId') requirementId: string,
+  ) {
+    return this.service.getRequirementDetail(identity, projectId, requirementId);
+  }
+
   // ─── Cost budget ──────────────────────────────────────────────────────────────
 
   @Get('budgets')

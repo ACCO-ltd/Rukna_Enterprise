@@ -67,7 +67,7 @@ export function CostPositionBand({
       )}
     >
       <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 border-b border-border px-4 sm:px-5">
-        <h3 className="text-body-sm font-semibold text-foreground">
+        <h3 className="text-h3 font-semibold text-foreground">
           {t('title')}
           {position.currency ? (
             <span className="ms-1.5 font-normal text-caption text-muted-foreground">

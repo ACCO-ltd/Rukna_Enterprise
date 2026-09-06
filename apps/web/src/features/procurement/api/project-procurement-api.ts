@@ -3,6 +3,7 @@ import type {
   ProjectCostBudgetResponse,
   ProjectProcurementCostResponse,
   ProjectProcurementOverviewResponse,
+  ProjectRequirementDetail,
   ProjectRequirementsResponse,
 } from '@erp/types';
 
@@ -41,6 +42,16 @@ export function getProjectProcurementCost(
 
 export function getProjectRequirements(projectId: string): Promise<ProjectRequirementsResponse> {
   return apiClient<ProjectRequirementsResponse>(`/projects/${projectId}/procurement/requirements`);
+}
+
+/** One requirement with its lines and the purchase orders they reached. */
+export function getProjectRequirement(
+  projectId: string,
+  requirementId: string,
+): Promise<ProjectRequirementDetail> {
+  return apiClient<ProjectRequirementDetail>(
+    `/projects/${projectId}/procurement/requirements/${requirementId}`,
+  );
 }
 
 // ─── Cost budget ────────────────────────────────────────────────────────────────

@@ -2096,12 +2096,70 @@ export interface ProjectRequirementRow {
   purchaseOrderCount: number;
 }
 
+/**
+ * One requirement line, with what it is for and how much of it has been ordered.
+ *
+ * `costTarget` is the line's own attribution, which is where cost coding lives — a BOQ node for
+ * measured scope, or a spend category for project-level cost. The header carries no BOQ node and
+ * this never invents one.
+ */
+export interface ProjectRequirementLine {
+  id: string;
+  lineNumber: number;
+  description: string;
+  /** Approved quantity where one exists, else requested. Always the figure the value uses. */
+  quantity: string;
+  uomCode: string | null;
+  estimatedUnitPrice: string | null;
+  estimatedValue: string | null;
+  costTargetKind: 'BOQ' | 'CATEGORY' | 'NONE';
+  costTargetLabel: string | null;
+  /** Sum of the quantities allocated to purchase-order lines. */
+  orderedQuantity: string;
+  fulfillmentStatus: RequirementFulfillmentStatus;
+}
+
+/**
+ * A purchase order that carries a line for this requirement.
+ *
+ * **The header state and the revision lifecycle are separate records and stay separate.**
+ * `PurchaseOrder.status` is only OPEN/CLOSED/CANCELLED; DRAFT→SUBMITTED→APPROVED→ACTIVE lives on
+ * an immutable revision. Rendering "PO-0021 Approved" as one status conflates the two.
+ */
+export interface ProjectRequirementPurchaseOrder {
+  id: string;
+  poNumber: string;
+  /** OPEN | CLOSED | CANCELLED — the document's own state. */
+  documentState: string;
+  /** The governing revision's number and its lifecycle status. */
+  revisionNumber: number | null;
+  revisionStatus: string | null;
+  supplierName: string | null;
+  /** Value of this PO's lines allocated to this requirement, at the agreed price. */
+  orderedValue: string | null;
+}
+
+export interface ProjectRequirementDetail extends ProjectRequirementRow {
+  createdBy: string | null;
+  createdAt: string;
+  lines: ProjectRequirementLine[];
+  purchaseOrders: ProjectRequirementPurchaseOrder[];
+}
+
+/**
+ * Counts for the requirements band.
+ *
+ * `approved` is approved **and not yet ordered** — the set a buyer works from — and the three
+ * fulfilment counts are the ladder beneath it. There is deliberately no "draft or closed"
+ * bucket: a draft awaiting submission and a closed request share nothing operationally, and one
+ * number for both is a count nobody can act on.
+ */
 export interface ProjectRequirementsSummary {
   total: number;
   approved: number;
-  ordered: number;
+  notOrdered: number;
   partiallyOrdered: number;
-  draftOrOther: number;
+  ordered: number;
 }
 
 export interface ProjectRequirementsResponse {

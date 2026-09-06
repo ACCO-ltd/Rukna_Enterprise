@@ -1,13 +1,15 @@
 'use client';
 
-import Link from 'next/link';
+import * as React from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { ClipboardList, ExternalLink } from 'lucide-react';
+import { ClipboardList, Search } from 'lucide-react';
 import {
   Alert,
   Badge,
   Button,
+  Input,
   LtrValue,
+  Select,
   Skeleton,
   Table,
   TableBody,
@@ -16,16 +18,28 @@ import {
   TableHeader,
   TableRow,
   TableScroll,
-  type BadgeTone,
 } from '@erp/ui';
 import type { ProjectRequirementRow, ProjectRequirementsResponse } from '@erp/types';
 
 import { EmptyState } from '@/components/empty-state';
 import { formatDate, formatMoney } from '@/lib/format';
 
+import {
+  EMPTY_REQUIREMENT_FILTERS,
+  filterRequirements,
+  hasActiveFilters,
+  requirementCategoryOptions,
+  type RequirementFilters,
+} from '../../filter-requirements';
 import { useProjectRequirements } from '../../hooks/use-project-procurement';
 import { RaiseRequirementButton } from './procurement-overview-view';
+import { RequirementDetailDialog } from './requirement-detail-dialog';
+import { APPROVAL_TONE, FULFILMENT_TONE, PRIORITY_TONE } from './requirement-tones';
 import { SectionPanel } from './section-panel';
+
+const APPROVAL_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'CANCELLED', 'CLOSED'] as const;
+const FULFILMENT_STATUSES = ['NOT_ORDERED', 'PARTIALLY_ORDERED', 'FULLY_ORDERED'] as const;
+const PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'] as const;
 
 /**
  * Project requirements — what the site needs.
@@ -37,6 +51,8 @@ import { SectionPanel } from './section-panel';
 export function RequirementsView({ projectId }: { projectId: string }) {
   const t = useTranslations('procurement.project.requirements');
   const query = useProjectRequirements(projectId);
+  const [filters, setFilters] = React.useState<RequirementFilters>(EMPTY_REQUIREMENT_FILTERS);
+  const [openId, setOpenId] = React.useState<string | null>(null);
 
   if (query.isPending) return <Skeleton className="h-96 w-full" />;
   if (query.isError) {
@@ -50,6 +66,7 @@ export function RequirementsView({ projectId }: { projectId: string }) {
   }
 
   const data = query.data;
+  const filtered = filterRequirements(data.requirements, filters);
 
   return (
     <div className="space-y-4">
@@ -71,7 +88,37 @@ export function RequirementsView({ projectId }: { projectId: string }) {
           description={t('emptyHint')}
         />
       ) : (
-        <SectionPanel title={t('listTitle')} bodyClassName="px-0 py-0">
+        <SectionPanel
+          title={t('listTitle')}
+          description={
+            filtered.length === data.requirements.length
+              ? undefined
+              : t('showingFiltered', { shown: filtered.length, total: data.requirements.length })
+          }
+          action={
+            hasActiveFilters(filters) ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="min-h-11 sm:min-h-0"
+                onClick={() => setFilters(EMPTY_REQUIREMENT_FILTERS)}
+              >
+                {t('clearFilters')}
+              </Button>
+            ) : null
+          }
+          bodyClassName="px-0 py-0"
+        >
+          <FilterBar
+            filters={filters}
+            onChange={setFilters}
+            categories={requirementCategoryOptions(data.requirements)}
+          />
+          {filtered.length === 0 ? (
+            <p className="px-4 py-6 text-center text-body-sm text-muted-foreground sm:px-5">
+              {t('noMatches')}
+            </p>
+          ) : (
           <TableScroll>
             <Table>
               <TableHeader>
@@ -92,17 +139,128 @@ export function RequirementsView({ projectId }: { projectId: string }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.requirements.map((row) => (
-                  <RequirementRow key={row.id} row={row} canOpen={data.capabilities.canRaiseRequirement} />
+                {filtered.map((row) => (
+                  <RequirementRow key={row.id} row={row} onOpen={() => setOpenId(row.id)} />
                 ))}
               </TableBody>
             </Table>
           </TableScroll>
+          )}
           <p className="border-t border-border px-4 py-2 text-caption text-muted-foreground sm:px-5">
             {t('valueBasisNote')}
           </p>
         </SectionPanel>
       )}
+
+      {openId ? (
+        <RequirementDetailDialog
+          projectId={projectId}
+          requirementId={openId}
+          onClose={() => setOpenId(null)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Five filters, and approval and fulfilment stay apart.
+ *
+ * Merging them would make "approved, and nobody has ordered it" — the most operationally urgent
+ * set on this screen — impossible to select.
+ */
+function FilterBar({
+  filters,
+  onChange,
+  categories,
+}: {
+  filters: RequirementFilters;
+  onChange: (next: RequirementFilters) => void;
+  categories: string[];
+}) {
+  const t = useTranslations('procurement.project.requirements');
+  const searchId = React.useId();
+  const set = (patch: Partial<RequirementFilters>) => onChange({ ...filters, ...patch });
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
+      <div className="relative w-full sm:w-auto sm:min-w-56 sm:flex-1">
+        <Search
+          size={15}
+          className="pointer-events-none absolute inset-inline-start-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          aria-hidden="true"
+        />
+        <label className="sr-only" htmlFor={searchId}>
+          {t('searchLabel')}
+        </label>
+        <Input
+          id={searchId}
+          value={filters.search}
+          placeholder={t('searchPlaceholder')}
+          onChange={(e) => set({ search: e.target.value })}
+          className="ps-9"
+        />
+      </div>
+
+      <Select
+        aria-label={t('col.approval')}
+        value={filters.approvalStatus}
+        onChange={(value) => set({ approvalStatus: value })}
+        className="w-full sm:w-44"
+      >
+        <option value="">{t('allApproval')}</option>
+        {APPROVAL_STATUSES.map((value) => (
+          <option key={value} value={value}>
+            {t(`approval.${value}`)}
+          </option>
+        ))}
+      </Select>
+
+      <Select
+        aria-label={t('col.fulfilment')}
+        value={filters.fulfillmentStatus}
+        onChange={(value) => set({ fulfillmentStatus: value })}
+        className="w-full sm:w-48"
+      >
+        <option value="">{t('allFulfilment')}</option>
+        {FULFILMENT_STATUSES.map((value) => (
+          <option key={value} value={value}>
+            {t(`fulfilment.${value}`)}
+          </option>
+        ))}
+      </Select>
+
+      {/* Only the categories present in the data — a filter offering values that match nothing
+          is a dead end. */}
+      {categories.length > 0 ? (
+        <Select
+          aria-label={t('col.category')}
+          value={filters.category}
+          onChange={(value) => set({ category: value })}
+          className="w-full sm:w-40"
+        >
+          <option value="">{t('allCategories')}</option>
+          {categories.map((value) => (
+            <option key={value} value={value}>
+              {value}
+            </option>
+          ))}
+        </Select>
+      ) : null}
+
+      <Select
+        aria-label={t('col.priority')}
+        value={filters.priority}
+        onChange={(value) => set({ priority: value })}
+        className="w-full sm:w-36"
+      >
+        <option value="">{t('allPriorities')}</option>
+        {PRIORITIES.map((value) => (
+          <option key={value} value={value}>
+            {t(`priority.${value}`)}
+          </option>
+        ))}
+      </Select>
     </div>
   );
 }
@@ -110,12 +268,14 @@ export function RequirementsView({ projectId }: { projectId: string }) {
 function SummaryBand({ data }: { data: ProjectRequirementsResponse }) {
   const t = useTranslations('procurement.project.requirements');
   const { summary } = data;
+  // One total, then the fulfilment ladder. "Draft or closed" is gone: a draft and a closed
+  // request share nothing operationally, and one bucket for both was a count nobody could act on.
   const cells = [
     { key: 'total', value: summary.total },
     { key: 'approved', value: summary.approved },
+    { key: 'notOrdered', value: summary.notOrdered },
     { key: 'partiallyOrdered', value: summary.partiallyOrdered },
     { key: 'ordered', value: summary.ordered },
-    { key: 'draftOrOther', value: summary.draftOrOther },
   ];
 
   return (
@@ -136,28 +296,13 @@ function SummaryBand({ data }: { data: ProjectRequirementsResponse }) {
   );
 }
 
-const APPROVAL_TONE: Record<ProjectRequirementRow['approvalStatus'], BadgeTone> = {
-  DRAFT: 'neutral',
-  SUBMITTED: 'info',
-  APPROVED: 'live',
-  CANCELLED: 'historical',
-  CLOSED: 'historical',
-};
-
-const FULFILMENT_TONE: Record<ProjectRequirementRow['fulfillmentStatus'], BadgeTone> = {
-  NOT_ORDERED: 'neutral',
-  PARTIALLY_ORDERED: 'warning',
-  FULLY_ORDERED: 'live',
-};
-
-const PRIORITY_TONE: Record<ProjectRequirementRow['priority'], BadgeTone> = {
-  LOW: 'neutral',
-  NORMAL: 'neutral',
-  HIGH: 'warning',
-  URGENT: 'danger',
-};
-
-function RequirementRow({ row, canOpen }: { row: ProjectRequirementRow; canOpen: boolean }) {
+function RequirementRow({
+  row,
+  onOpen,
+}: {
+  row: ProjectRequirementRow;
+  onOpen: () => void;
+}) {
   const t = useTranslations('procurement.project.requirements');
   const locale = useLocale() as 'en' | 'ar';
 
@@ -180,7 +325,7 @@ function RequirementRow({ row, canOpen }: { row: ProjectRequirementRow; canOpen:
       <TableCell className="whitespace-nowrap text-muted-foreground">
         {formatDate(row.requestedDate, locale) ?? '—'}
         {row.requiredByDate ? (
-          <span className="block text-micro text-muted-foreground">
+          <span className="block text-caption text-muted-foreground">
             {t('requiredBy', { date: formatDate(row.requiredByDate, locale) ?? '' })}
           </span>
         ) : null}
@@ -216,20 +361,17 @@ function RequirementRow({ row, canOpen }: { row: ProjectRequirementRow; canOpen:
       <TableCell className="text-end tabular-nums">
         <LtrValue>{formatMoney(row.orderedValue, row.currencyCode, locale) ?? '—'}</LtrValue>
         {row.purchaseOrderCount > 0 ? (
-          <span className="block text-micro text-muted-foreground">
+          <span className="block text-caption text-muted-foreground">
             {t('acrossOrders', { n: row.purchaseOrderCount })}
           </span>
         ) : null}
       </TableCell>
       <TableCell className="text-end">
-        {canOpen ? (
-          <Button asChild variant="ghost" size="sm" className="min-h-11 sm:min-h-0">
-            <Link href={`/procurement/requests/${row.id}`}>
-              {t('open')}
-              <ExternalLink size={13} aria-hidden="true" />
-            </Link>
-          </Button>
-        ) : null}
+        {/* Opens the detail panel rather than leaving the workspace. The link out to the buyer's
+            application lives inside it, where the purchase orders are. */}
+        <Button variant="ghost" size="sm" className="min-h-11 sm:min-h-0" onClick={onOpen}>
+          {t('open')}
+        </Button>
       </TableCell>
     </TableRow>
   );

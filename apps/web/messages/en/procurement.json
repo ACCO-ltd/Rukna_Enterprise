@@ -764,28 +764,37 @@
       "summary": {
         "total": "Total requirements",
         "approved": "Approved, not ordered",
+        "notOrdered": "Not ordered",
         "partiallyOrdered": "Partially ordered",
-        "ordered": "Fully ordered",
-        "draftOrOther": "Draft or closed"
+        "ordered": "Fully ordered"
       },
       "summaryHint": {
         "total": "Across all statuses",
         "approved": "Ready for procurement",
+        "notOrdered": "No quantity on order yet",
         "partiallyOrdered": "Some quantity on order",
-        "ordered": "Converted to purchase orders",
-        "draftOrOther": "Not in the procurement queue"
+        "ordered": "Converted to purchase orders"
       },
       "col": {
         "mr": "MR #",
         "requirement": "Requirement",
         "category": "Category",
-        "requested": "Requested",
+        "requested": "Required / requested",
         "priority": "Priority",
         "approval": "Approval",
         "fulfilment": "Fulfilment",
         "estimated": "Estimated value",
         "ordered": "Ordered value",
-        "action": "Action"
+        "action": "Action",
+        "description": "Description",
+        "qty": "Qty",
+        "estUnitPrice": "Est. unit price",
+        "costTarget": "Cost target",
+        "orderedQty": "Ordered qty",
+        "po": "PO",
+        "revision": "Revision",
+        "poState": "PO state",
+        "supplier": "Supplier"
       },
       "priority": {
         "LOW": "Low",
@@ -804,6 +813,56 @@
         "NOT_ORDERED": "Not ordered",
         "PARTIALLY_ORDERED": "Partially ordered",
         "FULLY_ORDERED": "Fully ordered"
+      },
+      "searchLabel": "Search requirements",
+      "searchPlaceholder": "Search by number, title or description…",
+      "allApproval": "All approval states",
+      "allFulfilment": "All fulfilment states",
+      "allCategories": "All categories",
+      "allPriorities": "All priorities",
+      "clearFilters": "Clear filters",
+      "noMatches": "No requirements match these filters.",
+      "showingFiltered": "Showing {shown} of {total}",
+      "restricted": "Restricted",
+      "detailLoading": "Loading requirement…",
+      "detailFailed": "Could not load this requirement",
+      "detailFailedHint": "Something went wrong. Close and try again.",
+      "detailTabsLabel": "Requirement detail sections",
+      "openInProcurement": "Open in Procurement",
+      "noItems": "This requirement has no lines.",
+      "noPurchaseOrders": "Nothing has been ordered against this requirement yet.",
+      "revShort": "Rev {n}",
+      "tab": {
+        "details": "Details",
+        "items": "Items ({n})",
+        "pos": "Purchase orders ({n})"
+      },
+      "field": {
+        "mrNumber": "MR number",
+        "requiredAtSite": "Required at site",
+        "noRequiredDate": "No date set",
+        "requestedOn": "Requested on",
+        "createdOn": "Created on",
+        "description": "Description",
+        "remaining": "Remaining estimated"
+      },
+      "costTarget": {
+        "BOQ": "BOQ item",
+        "CATEGORY": "Project-level",
+        "NONE": "Not coded"
+      },
+      "poState": {
+        "OPEN": "Open",
+        "CLOSED": "Closed",
+        "CANCELLED": "Cancelled"
+      },
+      "revisionStatus": {
+        "DRAFT": "Draft",
+        "SUBMITTED": "Submitted",
+        "APPROVED": "Approved",
+        "ACTIVE": "Active",
+        "SUPERSEDED": "Superseded",
+        "CANCELLED": "Cancelled"
       }
     },
     "cost": {

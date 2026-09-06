@@ -6,6 +6,7 @@ import type {
   ProjectCostBudgetResponse,
   ProjectProcurementCostResponse,
   ProjectProcurementOverviewResponse,
+  ProjectRequirementDetail,
   ProjectRequirementsResponse,
 } from '@erp/types';
 
@@ -14,6 +15,7 @@ import {
   createProjectCostBudget,
   getProjectProcurementCost,
   getProjectProcurementOverview,
+  getProjectRequirement,
   getProjectRequirements,
   listProjectCostBudgets,
   updateProjectCostBudget,
@@ -28,6 +30,8 @@ export const projectProcurementKeys = {
     [...projectProcurementKeys.all(projectId), 'cost', asOf ?? 'now'] as const,
   requirements: (projectId: string) =>
     [...projectProcurementKeys.all(projectId), 'requirements'] as const,
+  requirement: (projectId: string, id: string) =>
+    [...projectProcurementKeys.all(projectId), 'requirement', id] as const,
   budgets: (projectId: string) => [...projectProcurementKeys.all(projectId), 'budgets'] as const,
 };
 
@@ -57,6 +61,16 @@ export function useProjectRequirements(
   return useQuery({
     queryKey: projectProcurementKeys.requirements(projectId),
     queryFn: () => getProjectRequirements(projectId),
+  });
+}
+
+export function useProjectRequirement(
+  projectId: string,
+  requirementId: string,
+): UseQueryResult<ProjectRequirementDetail, Error> {
+  return useQuery({
+    queryKey: projectProcurementKeys.requirement(projectId, requirementId),
+    queryFn: () => getProjectRequirement(projectId, requirementId),
   });
 }
 

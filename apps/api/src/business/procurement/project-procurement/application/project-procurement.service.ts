@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import {
   PERMISSIONS,
@@ -10,6 +10,9 @@ import {
   type ProjectProcurementCostResponse,
   type ProjectProcurementOverviewResponse,
   type ProjectProcurementPipelineStage,
+  type ProjectRequirementDetail,
+  type ProjectRequirementLine,
+  type ProjectRequirementPurchaseOrder,
   type ProjectRequirementRow,
   type ProjectRequirementsResponse,
   type RequestIdentity,
@@ -256,15 +259,133 @@ export class ProjectProcurementService {
         approved: rows.filter(
           (r) => r.approvalStatus === 'APPROVED' && r.fulfillmentStatus === 'NOT_ORDERED',
         ).length,
-        ordered: rows.filter((r) => r.fulfillmentStatus === 'FULLY_ORDERED').length,
-        partiallyOrdered: rows.filter((r) => r.fulfillmentStatus === 'PARTIALLY_ORDERED').length,
-        draftOrOther: rows.filter((r) =>
-          ['DRAFT', 'SUBMITTED', 'CANCELLED', 'CLOSED'].includes(r.approvalStatus),
+        // The fulfilment ladder, over requests that are still live — a cancelled or closed
+        // request is not "not ordered", it is finished.
+        notOrdered: rows.filter(
+          (r) =>
+            r.fulfillmentStatus === 'NOT_ORDERED' &&
+            !['CANCELLED', 'CLOSED'].includes(r.approvalStatus),
         ).length,
+        partiallyOrdered: rows.filter((r) => r.fulfillmentStatus === 'PARTIALLY_ORDERED').length,
+        ordered: rows.filter((r) => r.fulfillmentStatus === 'FULLY_ORDERED').length,
       },
       requirements: rows,
       capabilities: this.capabilities(identity),
       asOf: new Date().toISOString(),
+    };
+  }
+
+
+  /**
+   * One requirement, with its lines and the purchase orders they reached.
+   *
+   * The header carries no BOQ node — cost coding lives on the lines — so nothing here invents a
+   * header-level target. Each line names its own: a BOQ node for measured scope, a spend category
+   * for project-level cost, or neither.
+   */
+  async getRequirementDetail(
+    identity: RequestIdentity,
+    projectId: string,
+    id: string,
+  ): Promise<ProjectRequirementDetail> {
+    await this.projectAccess.assertMember(identity, projectId);
+    const prisma = this.tenancy.getClient();
+    const mayViewFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
+
+    const mr = await this.repo.findRequirementDetail(
+      prisma,
+      identity.activeOrganizationId,
+      projectId,
+      id,
+    );
+    if (!mr) throw new NotFoundException(`Requirement ${id} not found on this project`);
+
+    const row = this.toRequirementRow(mr, mayViewFinancials);
+    const money = (d: Decimal): string | null => (mayViewFinancials ? d.toFixed(2) : null);
+
+    // The lines' own BOQ targets. `MaterialRequestLine.boqNodeId` is a bare column with no
+    // relation, so the codes come from one extra lookup rather than a join.
+    const boqIds = mr.lines.map((l) => l.boqNodeId).filter((v): v is string => !!v);
+    const boqLabels = new Map<string, string>(
+      (await this.repo.findBoqNodeLabels(prisma, [...new Set(boqIds)])).map(
+        (n) => [n.id, `${n.code} ${n.description}`] as const,
+      ),
+    );
+
+    const lines = mr.lines.map((line): ProjectRequirementLine => {
+      const quantity = new Decimal((line.approvedQuantity ?? line.requestedQuantity).toString());
+      const ordered = line.poAllocations.reduce(
+        (sum, a) => sum.plus(new Decimal(a.allocatedQuantity.toString())),
+        ZERO,
+      );
+      const estimatedValue =
+        line.estimatedUnitPrice === null
+          ? null
+          : quantity.mul(new Decimal(line.estimatedUnitPrice.toString()));
+
+      // Per-line fulfilment, from the allocated quantity rather than the header's status word —
+      // a line can be fully ordered on a request that is only partially ordered overall.
+      const fulfillmentStatus: ProjectRequirementLine['fulfillmentStatus'] = ordered.lte(ZERO)
+        ? 'NOT_ORDERED'
+        : ordered.gte(quantity)
+          ? 'FULLY_ORDERED'
+          : 'PARTIALLY_ORDERED';
+
+      return {
+        id: line.id,
+        lineNumber: line.lineNumber,
+        description: line.description,
+        quantity: quantity.toFixed(4),
+        uomCode: line.uom?.code ?? null,
+        estimatedUnitPrice: mayViewFinancials
+          ? (line.estimatedUnitPrice?.toString() ?? null)
+          : null,
+        estimatedValue: estimatedValue === null ? null : money(estimatedValue),
+        costTargetKind: line.boqNodeId ? 'BOQ' : line.spendCategory ? 'CATEGORY' : 'NONE',
+        costTargetLabel: line.boqNodeId
+          ? (boqLabels.get(line.boqNodeId) ?? null)
+          : (line.spendCategory?.name ?? null),
+        orderedQuantity: ordered.toFixed(4),
+        fulfillmentStatus,
+      };
+    });
+
+    // One entry per purchase order, with the header state and the governing revision kept
+    // apart — "PO-0021 Approved" as a single status conflates two different records.
+    const byPo = new Map<string, ProjectRequirementPurchaseOrder & { value: Decimal }>();
+    for (const line of mr.lines) {
+      for (const allocation of line.poAllocations) {
+        const poLine = allocation.purchaseOrderLine;
+        const po = poLine.revision.purchaseOrder;
+        const value = new Decimal(allocation.allocatedQuantity.toString()).mul(
+          new Decimal(poLine.unitPrice.toString()),
+        );
+        const existing = byPo.get(po.id);
+        if (existing) {
+          existing.value = existing.value.plus(value);
+          continue;
+        }
+        byPo.set(po.id, {
+          id: po.id,
+          poNumber: po.poNumber,
+          documentState: po.status,
+          revisionNumber: poLine.revision.revisionNumber,
+          revisionStatus: poLine.revision.status,
+          supplierName: po.supplier?.name ?? null,
+          orderedValue: null,
+          value,
+        });
+      }
+    }
+
+    return {
+      ...row,
+      createdBy: mr.requestedBy,
+      createdAt: mr.createdAt.toISOString(),
+      lines,
+      purchaseOrders: [...byPo.values()]
+        .map(({ value, ...po }) => ({ ...po, orderedValue: money(value) }))
+        .sort((a, b) => a.poNumber.localeCompare(b.poNumber)),
     };
   }
 

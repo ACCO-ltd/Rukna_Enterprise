@@ -224,6 +224,69 @@ export class ProjectProcurementRepository {
     });
   }
 
+  /**
+   * One requirement with everything the detail panel shows.
+   *
+   * Reaches through each line's PO allocations to the purchase order **and its revisions**,
+   * because the header state and the revision lifecycle are different records and the panel must
+   * render both rather than collapsing them into one "status".
+   */
+  findRequirementDetail(
+    prisma: TenantPrisma,
+    organizationId: string,
+    projectId: string,
+    id: string,
+  ) {
+    return prisma.materialRequest.findFirst({
+      where: { id, organizationId, projectId },
+      include: {
+        lines: {
+          orderBy: { lineNumber: 'asc' },
+          include: {
+            uom: { select: { code: true } },
+            spendCategory: { select: { id: true, name: true } },
+            poAllocations: {
+              select: {
+                allocatedQuantity: true,
+                purchaseOrderLine: {
+                  select: {
+                    unitPrice: true,
+                    boqNode: { select: { code: true, description: true } },
+                    revision: {
+                      select: {
+                        // Also selected by the narrower list read, so one row mapper serves both.
+                        purchaseOrderId: true,
+                        revisionNumber: true,
+                        status: true,
+                        purchaseOrder: {
+                          select: {
+                            id: true,
+                            poNumber: true,
+                            status: true,
+                            supplier: { select: { name: true } },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  /** BOQ node codes for the requirement lines that carry one, so a line can name its target. */
+  findBoqNodeLabels(prisma: TenantPrisma, ids: string[]) {
+    if (ids.length === 0) return Promise.resolve([]);
+    return prisma.boqNode.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, code: true, description: true },
+    });
+  }
+
   // ─── Attention ────────────────────────────────────────────────────────────────
 
   /**

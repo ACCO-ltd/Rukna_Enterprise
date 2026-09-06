@@ -127,6 +127,36 @@ test('names project-level non-BOQ cost as its own row', async ({ app }) => {
   await expect(root.getByText('Transport').first()).toBeVisible();
 });
 
+/**
+ * The requirement detail panel.
+ *
+ * Three tabs, and the two that are absent are absent on purpose: **History** has no
+ * resource-scoped audit endpoint behind it, and **Attachments** has no model and no file serving.
+ * A tab that renders an empty feed advertises a capability the platform does not have, so this
+ * asserts they stay gone rather than trusting nobody adds them back.
+ */
+test('opens a requirement without advertising history or attachments', async ({ app }) => {
+  await app.goto(`/projects/${BUDGETED}/procurement`);
+  await app.getByRole('heading', { name: 'Procurement', exact: true, level: 2 }).waitFor();
+  await app.getByRole('tab', { name: 'Requirements' }).click();
+  await app.waitForLoadState('networkidle');
+
+  await app.getByRole('button', { name: 'Open' }).first().click();
+  const dialog = app.getByRole('dialog');
+  await expect(dialog.getByRole('tab', { name: 'Details' })).toBeVisible();
+  await expect(dialog.getByRole('tab', { name: /^Items/ })).toBeVisible();
+  await expect(dialog.getByRole('tab', { name: /^Purchase orders/ })).toBeVisible();
+  await expect(dialog.getByRole('tab', { name: /history/i })).toHaveCount(0);
+  await expect(dialog.getByRole('tab', { name: /attachment/i })).toHaveCount(0);
+
+  // Approval and fulfilment stay two facts, in the panel as in the list.
+  await expect(dialog.getByText('Estimated value').first()).toBeVisible();
+
+  // The line's own cost target — the header carries none and none is invented.
+  await dialog.getByRole('tab', { name: /^Items/ }).click();
+  await expect(dialog.getByText('Cost target').first()).toBeVisible();
+});
+
 /** The project owns requirements and nothing else. No PO, GRN, bill or payment authoring here. */
 test('offers no supplier-document authoring', async ({ app }) => {
   await app.goto(`/projects/${BUDGETED}/procurement`);
