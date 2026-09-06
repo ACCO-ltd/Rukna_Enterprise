@@ -4,6 +4,7 @@ import {
   availablePresets,
   buildRange,
   projectToDateStart,
+  startsInFuture,
   toLocalIso,
 } from './finance-period';
 
@@ -65,5 +66,25 @@ describe('availablePresets', () => {
       'FISCAL_YTD',
       'CUSTOM',
     ]);
+  });
+});
+
+/**
+ * A planned project whose start date is still in the future produced a range running from that
+ * start to today — `from` after `to`. Every report over it comes back empty, and the screen then
+ * says "nothing has been posted" when the truth is "this project has not started".
+ */
+describe('a range never runs backwards', () => {
+  const future = toLocalIso(new Date(Date.now() + 30 * 86_400_000));
+
+  it('clamps a future project start rather than inverting the range', () => {
+    const range = buildRange('PROJECT_TO_DATE', { projectStartDate: future });
+    expect(range.fromDate <= range.toDate).toBe(true);
+  });
+
+  it('reports that the project has not started, so the screen can say so', () => {
+    expect(startsInFuture(future)).toBe(true);
+    expect(startsInFuture('2020-01-01')).toBe(false);
+    expect(startsInFuture(null)).toBe(false);
   });
 });

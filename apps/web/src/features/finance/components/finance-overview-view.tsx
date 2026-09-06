@@ -3,14 +3,20 @@
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import {
+  Activity,
   AlertTriangle,
   ArrowRight,
   CalendarClock,
+  ChevronRight,
   ClipboardCheck,
   Info,
+  LayoutGrid,
+  Receipt,
   Scale,
   Settings2,
+  ShieldCheck,
   TriangleAlert,
+  Wallet,
 } from 'lucide-react';
 import {
   Alert,
@@ -33,11 +39,12 @@ import { SectionPanel } from '@/features/procurement/components/project/section-
 import { useFinanceOverview } from '../hooks/use-finance';
 import {
   ControlRow,
+  InlineRatio,
   Metric,
   MetricBand,
   Money,
+  RatioBar,
   UnavailableNotice,
-  namedRatio,
 } from './finance-primitives';
 
 /**
@@ -100,7 +107,19 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
       <MetricBand
         title={t('costPosition.title')}
         description={t('costPosition.description')}
+        icon={<Wallet size={16} strokeWidth={1.9} />}
         columns={5}
+        footer={
+          // Drawn as well as written: a column of percentages is only comparable at a glance
+          // once it has a shape. Absent, not 0%, when nothing is baselined.
+          <div className="grid gap-3 sm:grid-cols-2">
+            <RatioBar
+              label={t('ratio.committed')}
+              percent={cost.committedOfBudgetPercent}
+            />
+            <RatioBar label={t('ratio.actual')} percent={cost.actualOfBudgetPercent} />
+          </div>
+        }
       >
         <Metric
           label={t('costPosition.budget')}
@@ -116,7 +135,6 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
           amount={cost.committed}
           currency={data.currency}
           basis={t('costPosition.openCommitmentBasis')}
-          ratio={namedRatio(t('ratio.committed'), cost.committedOfBudgetPercent)}
           unavailableLabel={tc('restricted')}
         />
         <Metric
@@ -124,7 +142,6 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
           amount={cost.accrued}
           currency={data.currency}
           basis={t('costPosition.accruedBasis')}
-          ratio={namedRatio(t('ratio.accrued'), cost.accruedOfBudgetPercent)}
           unavailableLabel={tc('restricted')}
         />
         <Metric
@@ -132,7 +149,6 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
           amount={cost.actual}
           currency={data.currency}
           basis={t('costPosition.actualBasis')}
-          ratio={namedRatio(t('ratio.actual'), cost.actualOfBudgetPercent)}
           emphasis
           unavailableLabel={tc('restricted')}
         />
@@ -143,6 +159,7 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
           amount={cost.uncommittedBudget}
           currency={data.currency}
           basis={t('costPosition.uncommittedBudgetBasis')}
+          overrunLabel={tc('overrun')}
           unavailableLabel={
             data.financialsVisible ? t('costPosition.notBaselined') : tc('restricted')
           }
@@ -177,6 +194,7 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
       <MetricBand
         title={t('accountingPosition.title')}
         description={t('accountingPosition.description')}
+        icon={<Receipt size={16} strokeWidth={1.9} />}
         columns={4}
       >
         <Metric
@@ -222,7 +240,12 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
   function ControlStatus({ data }: { data: ProjectFinanceOverviewResponse }) {
     const { controls, reconciliation, budget, period } = data;
     return (
-      <SectionPanel title={t('controls.title')} description={t('controls.description')} bodyClassName="p-0">
+      <SectionPanel
+        title={t('controls.title')}
+        description={t('controls.description')}
+        icon={<ShieldCheck size={16} strokeWidth={1.9} />}
+        bodyClassName="p-0"
+      >
         <div>
           <ControlRow
             icon={<Scale size={16} strokeWidth={1.9} />}
@@ -299,6 +322,7 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
     return (
       <SectionPanel
         title={t('attention.title')}
+        icon={<TriangleAlert size={16} strokeWidth={1.9} />}
         action={<Badge tone="neutral">{items.length}</Badge>}
         bodyClassName="p-0"
       >
@@ -318,9 +342,19 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
                     {item.detail}
                   </span>
                 </span>
-                <Badge tone={TONE[item.severity]} className="shrink-0">
-                  {t(`attention.severity.${item.severity}`)}
-                </Badge>
+                <span className="flex shrink-0 items-center gap-1.5">
+                  <Badge tone={TONE[item.severity]}>
+                    {t(`attention.severity.${item.severity}`)}
+                  </Badge>
+                  {item.href ? (
+                    <ChevronRight
+                      size={15}
+                      strokeWidth={2}
+                      className="text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                </span>
               </>
             );
             return (
@@ -366,6 +400,7 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
       <SectionPanel
         title={t('costByArea.title')}
         description={t('costByArea.description')}
+        icon={<LayoutGrid size={16} strokeWidth={1.9} />}
         action={
           <Button variant="ghost" size="sm" asChild>
             <Link href={`/projects/${projectId}/finance/cost-control`}>
@@ -403,11 +438,34 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
                   <TableCell className="text-end">
                     <Money amount={row.actual} currency={data.currency} />
                   </TableCell>
-                  <TableCell className="text-end tabular-nums text-muted-foreground">
-                    {row.actualOfBudgetPercent === null ? '—' : `${row.actualOfBudgetPercent}%`}
+                  <TableCell className="text-end">
+                    <InlineRatio
+                      percent={row.actualOfBudgetPercent}
+                      label={`${t('ratio.actual')} ${row.description}`}
+                    />
                   </TableCell>
                 </TableRow>
               ))}
+              {/* The total ties back to the position band above. Without it a reader has to
+                  add four rows in their head to check the two agree. */}
+              <TableRow className="bg-muted/40">
+                <TableCell className="font-semibold text-foreground">{tc('total')}</TableCell>
+                <TableCell className="text-end font-semibold">
+                  <Money amount={cost.budgetTotal} currency={data.currency} />
+                </TableCell>
+                <TableCell className="text-end font-semibold">
+                  <Money amount={cost.committed} currency={data.currency} />
+                </TableCell>
+                <TableCell className="text-end font-semibold">
+                  <Money amount={cost.actual} currency={data.currency} />
+                </TableCell>
+                <TableCell className="text-end">
+                  <InlineRatio
+                    percent={cost.actualOfBudgetPercent}
+                    label={t('ratio.actual') + ' ' + tc('total')}
+                  />
+                </TableCell>
+              </TableRow>
             </TableBody>
           </Table>
         </TableScroll>
@@ -436,6 +494,7 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
       <SectionPanel
         title={t('activity.title')}
         description={t('activity.description')}
+        icon={<Activity size={16} strokeWidth={1.9} />}
         bodyClassName="p-0"
       >
         <ul>

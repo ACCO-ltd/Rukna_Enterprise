@@ -36,6 +36,24 @@ export function projectToDateStart(projectStartDate: string | null | undefined):
   return toLocalIso(new Date(today.getFullYear() - 10, 0, 1));
 }
 
+/**
+ * A range never runs backwards.
+ *
+ * A project whose start date is in the future — planned, not yet begun — produced a range from
+ * its start to today, which is `from > to`. Every report over it returns nothing, and the screen
+ * says "nothing has been posted" rather than "this project has not started". The clamp keeps the
+ * range legal; the screen can then say the honest thing.
+ */
+function clamp(fromDate: string, toDate: string): { fromDate: string; toDate: string } {
+  return fromDate > toDate ? { fromDate: toDate, toDate } : { fromDate, toDate };
+}
+
+/** True when the project has not started yet, so there is nothing for a report to cover. */
+export function startsInFuture(projectStartDate: string | null | undefined): boolean {
+  if (!projectStartDate) return false;
+  return projectStartDate.slice(0, 10) > toLocalIso(new Date());
+}
+
 export function buildRange(
   preset: FinancePeriodPreset,
   context: {
@@ -53,24 +71,21 @@ export function buildRange(
     case 'CURRENT_PERIOD':
       return {
         preset,
-        fromDate: context.currentPeriodStart ?? today,
-        toDate: context.currentPeriodEnd ?? today,
+        ...clamp(context.currentPeriodStart ?? today, context.currentPeriodEnd ?? today),
       };
     case 'FISCAL_YTD':
       return {
         preset,
         // Without a resolved fiscal year, fall back to the current period's start rather than to
         // 1 January: guessing the calendar year is the defect this replaces.
-        fromDate: context.fiscalYearStart ?? context.currentPeriodStart ?? today,
-        toDate: today,
+        ...clamp(context.fiscalYearStart ?? context.currentPeriodStart ?? today, today),
       };
     case 'PROJECT_TO_DATE':
     case 'CUSTOM':
     default:
       return {
         preset,
-        fromDate: projectToDateStart(context.projectStartDate),
-        toDate: today,
+        ...clamp(projectToDateStart(context.projectStartDate), today),
       };
   }
 }

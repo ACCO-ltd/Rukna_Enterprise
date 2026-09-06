@@ -26,7 +26,7 @@ import { formatDate, formatMoney } from '@/lib/format';
 import { useProject } from '@/features/projects/hooks/use-project';
 
 import { useFinanceOverview, useProjectLedger } from '../hooks/use-finance';
-import { buildRange } from '../finance-period';
+import { buildRange, startsInFuture } from '../finance-period';
 import { UnavailableNotice } from './finance-primitives';
 
 const PAGE_SIZE = 25;
@@ -70,6 +70,10 @@ export function LedgerView({ projectId }: { projectId: string }) {
   });
 
   const accountingReady = overview.data?.accountingPosition.available ?? true;
+
+  if (startsInFuture(project.data?.startDate)) {
+    return <UnavailableNotice title={tc('notStartedTitle')} reason={tc('notStartedReason')} />;
+  }
 
   if (!accountingReady) {
     return (

@@ -169,9 +169,76 @@ describe('CostControlView', () => {
     renderWithProviders(<CostControlView projectId="p1" />);
 
     expect(screen.getAllByText('Open commitment').length).toBeGreaterThan(0);
-    // A bare "%" is a guessing game about which stage it divides.
-    expect(screen.getByText('Actual / Budget 4.2%')).toBeInTheDocument();
+    // A bare "%" is a guessing game about which stage it divides, so every ratio names its
+    // own numerator — on the bar's accessible name as well as in the text beside it.
+    expect(screen.getByRole('progressbar', { name: 'Actual / Budget' })).toHaveAttribute(
+      'aria-valuenow',
+      '4.2',
+    );
+    expect(screen.getByRole('progressbar', { name: 'Accrued / Budget' })).toBeInTheDocument();
     expect(screen.queryByText(/% used/i)).not.toBeInTheDocument();
+  });
+
+  /**
+   * A cost area committed beyond its budget is an overrun and the most important thing on the
+   * screen. A bare negative reads as a formatting mistake, so it is marked by a word as well as
+   * by colour.
+   */
+  it('marks negative headroom as an overrun rather than printing a bare minus', () => {
+    costMocks.useProjectProcurementCost.mockReturnValue(
+      ready(
+        cost({
+          byBoq: [
+            {
+              ...cost().byBoq[0]!,
+              budget: '600000.00',
+              committed: '350000.00',
+              accrued: '337000.00',
+              actual: '0.00',
+              uncommittedBudget: '-87000.00',
+            },
+          ],
+        }),
+      ),
+    );
+    costMocks.useProjectCostBudgets.mockReturnValue(ready(budgets()));
+    renderWithProviders(<CostControlView projectId="p1" />);
+
+    expect(screen.getAllByText('Over').length).toBeGreaterThan(0);
+  });
+
+  /** Cost Control exists to be read; a reader should not have to open four sections first. */
+  it('opens the cost tree expanded', () => {
+    costMocks.useProjectProcurementCost.mockReturnValue(
+      ready(
+        cost({
+          byBoq: [
+            { ...cost().byBoq[0]!, hasChildren: true },
+            {
+              ...cost().byBoq[0]!,
+              boqNodeId: 'n1-1',
+              code: '1.1',
+              description: 'General requirements',
+              depth: 1,
+              hasChildren: false,
+            },
+          ],
+        }),
+      ),
+    );
+    costMocks.useProjectCostBudgets.mockReturnValue(ready(budgets()));
+    renderWithProviders(<CostControlView projectId="p1" />);
+
+    expect(screen.getByText(/General requirements/)).toBeInTheDocument();
+  });
+
+  it('totals the breakdown so it can be checked against the band above', () => {
+    costMocks.useProjectProcurementCost.mockReturnValue(ready(cost()));
+    costMocks.useProjectCostBudgets.mockReturnValue(ready(budgets()));
+    renderWithProviders(<CostControlView projectId="p1" />);
+
+    expect(screen.getByText('Total')).toBeInTheDocument();
+    expect(screen.getAllByText(/990,000/).length).toBeGreaterThan(0);
   });
 
   /** Project-level cost is a deliberate classification, not a failure to code something. */

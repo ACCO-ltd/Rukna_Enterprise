@@ -99,7 +99,39 @@ describe('FinanceOverviewView', () => {
     expect(screen.getByText('Accrued')).toBeInTheDocument();
     expect(screen.getByText('Uncommitted budget')).toBeInTheDocument();
     expect(screen.getByText(/720,000/)).toBeInTheDocument();
-    expect(screen.getByText('35.4%')).toBeInTheDocument();
+    // 35.4% is both the margin and the committed-of-budget ratio.
+    expect(screen.getAllByText('35.4%').length).toBeGreaterThan(0);
+
+    // Each ratio is drawn as well as written, and names its own numerator.
+    expect(
+      screen.getByRole('progressbar', { name: 'Open commitment / Budget' }),
+    ).toHaveAttribute('aria-valuenow', '35.4');
+    expect(screen.getByRole('progressbar', { name: 'Actual / Budget' })).toHaveAttribute(
+      'aria-valuenow',
+      '4.2',
+    );
+  });
+
+  /** The bar must be absent, not drawn empty at 0%, when there is no denominator. */
+  it('draws no ratio bar when no budget is baselined', () => {
+    hookMocks.useFinanceOverview.mockReturnValue(
+      ready(
+        overview({
+          costPosition: {
+            ...overview().costPosition,
+            budgetTotal: null,
+            uncommittedBudget: null,
+            committedOfBudgetPercent: null,
+            accruedOfBudgetPercent: null,
+            actualOfBudgetPercent: null,
+          },
+        }),
+      ),
+    );
+    renderWithProviders(<FinanceOverviewView projectId="p1" />);
+
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    expect(screen.getAllByText('No basis').length).toBeGreaterThan(0);
   });
 
   /** The three metrics the audit removed. They must not reappear under any label. */

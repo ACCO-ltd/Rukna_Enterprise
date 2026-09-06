@@ -2,11 +2,12 @@
 
 import * as React from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { ChevronRight, History, Plus } from 'lucide-react';
+import { ChevronRight, Download, History, Plus, Search, Wallet } from 'lucide-react';
 import {
   Alert,
   Badge,
   Button,
+  Input,
   Skeleton,
   Table,
   TableBody,
@@ -32,7 +33,15 @@ import {
   useProjectProcurementCost,
 } from '@/features/procurement/hooks/use-project-procurement';
 
-import { Metric, MetricBand, Money, namedRatio } from './finance-primitives';
+import {
+  Headroom,
+  InlineRatio,
+  Metric,
+  MetricBand,
+  Money,
+  RatioBar,
+} from './finance-primitives';
+import { downloadCostCsv } from '../cost-export';
 import { BudgetEditorDialog } from './budget-editor-dialog';
 
 type Dimension = 'boq' | 'category' | 'supplier';
@@ -59,6 +68,7 @@ export function CostControlView({ projectId }: { projectId: string }) {
   const cost = useProjectProcurementCost(projectId);
   const budgets = useProjectCostBudgets(projectId);
   const [dimension, setDimension] = React.useState<Dimension>('boq');
+  const [search, setSearch] = React.useState('');
   const [editing, setEditing] = React.useState<{ mode: 'create' | 'edit'; budgetId?: string } | null>(
     null,
   );
@@ -85,7 +95,15 @@ export function CostControlView({ projectId }: { projectId: string }) {
       <MetricBand
         title={t('position.title')}
         description={t('position.description')}
+        icon={<Wallet size={16} strokeWidth={1.9} />}
         columns={5}
+        footer={
+          <div className="grid gap-3 sm:grid-cols-3">
+            <RatioBar label={t('ratio.committed')} percent={position.committedOfBudgetPercent} />
+            <RatioBar label={t('ratio.accrued')} percent={position.accruedOfBudgetPercent} />
+            <RatioBar label={t('ratio.actual')} percent={position.actualOfBudgetPercent} />
+          </div>
+        }
       >
         <Metric
           label={t('position.budget')}
@@ -105,7 +123,6 @@ export function CostControlView({ projectId }: { projectId: string }) {
           amount={position.committed}
           currency={position.currency}
           basis={t('position.openCommitmentBasis')}
-          ratio={namedRatio(t('ratio.committed'), position.committedOfBudgetPercent)}
           unavailableLabel={tc('restricted')}
         />
         <Metric
@@ -113,7 +130,6 @@ export function CostControlView({ projectId }: { projectId: string }) {
           amount={position.accrued}
           currency={position.currency}
           basis={t('position.accruedBasis')}
-          ratio={namedRatio(t('ratio.accrued'), position.accruedOfBudgetPercent)}
           unavailableLabel={tc('restricted')}
         />
         <Metric
@@ -121,7 +137,6 @@ export function CostControlView({ projectId }: { projectId: string }) {
           amount={position.actual}
           currency={position.currency}
           basis={t('position.actualBasis')}
-          ratio={namedRatio(t('ratio.actual'), position.actualOfBudgetPercent)}
           emphasis
           unavailableLabel={tc('restricted')}
         />
@@ -130,6 +145,7 @@ export function CostControlView({ projectId }: { projectId: string }) {
           amount={position.uncommittedBudget}
           currency={position.currency}
           basis={t('position.uncommittedBudgetBasis')}
+          overrunLabel={tc('overrun')}
           unavailableLabel={
             data.financialsVisible ? t('position.notBaselined') : tc('restricted')
           }
@@ -152,25 +168,63 @@ export function CostControlView({ projectId }: { projectId: string }) {
           title={t('breakdown.title')}
           description={t('breakdown.description')}
           action={
-            <ViewSwitcher
-              aria-label={t('breakdown.dimensionLabel')}
-              value={dimension}
-              onValueChange={(next) => setDimension(next as Dimension)}
-              items={[
-                { value: 'boq', label: t('breakdown.byBoq') },
-                { value: 'category', label: t('breakdown.byCategory') },
-                { value: 'supplier', label: t('breakdown.bySupplier') },
-              ]}
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <ViewSwitcher
+                aria-label={t('breakdown.dimensionLabel')}
+                value={dimension}
+                onValueChange={(next) => setDimension(next as Dimension)}
+                items={[
+                  { value: 'boq', label: t('breakdown.byBoq') },
+                  { value: 'category', label: t('breakdown.byCategory') },
+                  { value: 'supplier', label: t('breakdown.bySupplier') },
+                ]}
+              />
+              <label className="relative">
+                <span className="sr-only">{t('breakdown.search')}</span>
+                <Search
+                  size={15}
+                  strokeWidth={1.9}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-y-0 start-2.5 my-auto text-muted-foreground"
+                />
+                <Input
+                  value={search}
+                  placeholder={t('breakdown.search')}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="h-11 w-44 ps-8"
+                />
+              </label>
+              {/* Real file, real data — the same rows the table shows, in the current view. */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-h-11"
+                onClick={() =>
+                  downloadCostCsv(data, dimension, {
+                    costArea: t('table.costArea'),
+                    category: t('table.category'),
+                    supplier: t('table.supplier'),
+                    budget: t('table.budget'),
+                    openCommitment: t('table.openCommitment'),
+                    accrued: t('table.accrued'),
+                    actual: t('table.actual'),
+                    uncommitted: t('table.uncommitted'),
+                  })
+                }
+              >
+                <Download size={15} strokeWidth={1.9} aria-hidden="true" />
+                {tc('export')}
+              </Button>
+            </div>
           }
           bodyClassName="px-0 py-0"
         >
           {dimension === 'boq' ? (
-            <CostByBoqTable data={data} />
+            <CostByBoqTable data={data} search={search} />
           ) : dimension === 'category' ? (
-            <CostByCategoryTable data={data} />
+            <CostByCategoryTable data={data} search={search} />
           ) : (
-            <CostBySupplierTable data={data} />
+            <CostBySupplierTable data={data} search={search} />
           )}
         </SectionPanel>
 
@@ -344,29 +398,53 @@ export function CostControlView({ projectId }: { projectId: string }) {
  * `budget − committed`: COMMITTED falls when goods arrive, so that formula handed a project back
  * headroom it had already spent.
  */
-function CostByBoqTable({ data }: { data: ProjectProcurementCostResponse }) {
+function CostByBoqTable({
+  data,
+  search,
+}: {
+  data: ProjectProcurementCostResponse;
+  search: string;
+}) {
   const t = useTranslations('finance.costControl');
-  const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
+  const tc = useTranslations('finance.common');
 
   const rowKey = (row: ProjectCostByBoqRow, index: number) =>
     row.boqNodeId ?? `${row.kind}-${row.spendCategoryId ?? index}`;
 
-  // A row shows when every ancestor above it is expanded. Depth alone is not enough — a collapsed
-  // section must hide its grandchildren too.
+  // Expanded by default. Cost Control exists to be read, and a reader who has to open four
+  // sections before seeing where the money went will not do it — the collapsed default was right
+  // on the Procurement tab, where the tree is context, and wrong here, where it is the subject.
+  // `collapsed` holds the exceptions rather than `expanded` holding the norm.
+  const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set());
+
+  const term = search.trim().toLowerCase();
+  const matches = (row: ProjectCostByBoqRow) =>
+    !term || `${row.code ?? ''} ${row.description}`.toLowerCase().includes(term);
+
+  // A row shows when every ancestor above it is open. Depth alone is not enough — a collapsed
+  // section must hide its grandchildren too. A search flattens the tree instead: every hit shows
+  // regardless of its ancestors, because hiding a match inside a closed section makes the search
+  // look broken.
   const visible: Array<{ row: ProjectCostByBoqRow; key: string }> = [];
-  const openDepth: number[] = [];
+  const closedDepth: number[] = [];
   data.byBoq.forEach((row, index) => {
-    while (openDepth.length > 0 && openDepth[openDepth.length - 1]! >= row.depth) openDepth.pop();
-    const hiddenByAncestor = openDepth.length < row.depth;
-    if (!hiddenByAncestor) {
-      const key = rowKey(row, index);
+    const key = rowKey(row, index);
+    if (term) {
+      if (matches(row)) visible.push({ row, key });
+      return;
+    }
+    while (closedDepth.length > 0 && closedDepth[closedDepth.length - 1]! >= row.depth) {
+      closedDepth.pop();
+    }
+    if (closedDepth.length === 0) {
       visible.push({ row, key });
-      if (row.hasChildren && expanded.has(key)) openDepth.push(row.depth);
+      if (row.hasChildren && collapsed.has(key)) closedDepth.push(row.depth);
     }
   });
 
+  const isOpen = (key: string) => !collapsed.has(key);
   const toggle = (key: string) =>
-    setExpanded((prev) => {
+    setCollapsed((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -399,14 +477,14 @@ function CostByBoqTable({ data }: { data: ProjectProcurementCostResponse }) {
                     <button
                       type="button"
                       onClick={() => toggle(key)}
-                      aria-expanded={expanded.has(key)}
+                      aria-expanded={isOpen(key)}
                       aria-label={row.description}
                       className="inline-flex size-11 shrink-0 items-center justify-center -my-2 text-muted-foreground hover:text-foreground"
                     >
                       <ChevronRight
                         size={15}
                         strokeWidth={2}
-                        className={cn('transition-transform', expanded.has(key) && 'rotate-90')}
+                        className={cn('transition-transform', isOpen(key) && 'rotate-90')}
                         aria-hidden="true"
                       />
                     </button>
@@ -432,21 +510,67 @@ function CostByBoqTable({ data }: { data: ProjectProcurementCostResponse }) {
                 <Money amount={row.actual} currency={data.position.currency} />
               </TableCell>
               <TableCell className="text-end">
-                <Money amount={row.uncommittedBudget} currency={data.position.currency} />
+                <Headroom
+                  amount={row.uncommittedBudget}
+                  currency={data.position.currency}
+                  overrunLabel={tc('overrun')}
+                />
               </TableCell>
-              <TableCell className="text-end tabular-nums text-muted-foreground">
-                {row.actualOfBudgetPercent === null ? '—' : `${row.actualOfBudgetPercent}%`}
+              <TableCell className="text-end">
+                <InlineRatio
+                  percent={row.actualOfBudgetPercent}
+                  label={t('ratio.actual') + ' ' + row.description}
+                />
               </TableCell>
             </TableRow>
           ))}
+          {/* Ties back to the position band above; without it a reader adds the rows by hand. */}
+          <TableRow className="bg-muted/40">
+            <TableCell className="font-semibold text-foreground">{tc('total')}</TableCell>
+            <TableCell className="text-end font-semibold">
+              <Money amount={data.position.budgetTotal} currency={data.position.currency} />
+            </TableCell>
+            <TableCell className="text-end font-semibold">
+              <Money amount={data.position.committed} currency={data.position.currency} />
+            </TableCell>
+            <TableCell className="text-end font-semibold">
+              <Money amount={data.position.accrued} currency={data.position.currency} />
+            </TableCell>
+            <TableCell className="text-end font-semibold">
+              <Money amount={data.position.actual} currency={data.position.currency} />
+            </TableCell>
+            <TableCell className="text-end font-semibold">
+              <Headroom
+                amount={data.position.uncommittedBudget}
+                currency={data.position.currency}
+                overrunLabel={tc('overrun')}
+              />
+            </TableCell>
+            <TableCell className="text-end">
+              <InlineRatio
+                percent={data.position.actualOfBudgetPercent}
+                label={t('ratio.actual') + ' ' + tc('total')}
+              />
+            </TableCell>
+          </TableRow>
         </TableBody>
       </Table>
     </TableScroll>
   );
 }
 
-function CostByCategoryTable({ data }: { data: ProjectProcurementCostResponse }) {
+function CostByCategoryTable({
+  data,
+  search,
+}: {
+  data: ProjectProcurementCostResponse;
+  search: string;
+}) {
   const t = useTranslations('finance.costControl');
+  const term = search.trim().toLowerCase();
+  const rows = data.byCategory.filter(
+    (r) => !term || r.categoryName.toLowerCase().includes(term),
+  );
   return (
     <TableScroll>
       <Table>
@@ -459,7 +583,7 @@ function CostByCategoryTable({ data }: { data: ProjectProcurementCostResponse })
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.byCategory.map((row) => (
+          {rows.map((row) => (
             <TableRow key={row.spendCategoryId ?? row.categoryName}>
               <TableCell className="font-medium text-foreground">{row.categoryName}</TableCell>
               <TableCell className="text-end">
@@ -479,8 +603,18 @@ function CostByCategoryTable({ data }: { data: ProjectProcurementCostResponse })
   );
 }
 
-function CostBySupplierTable({ data }: { data: ProjectProcurementCostResponse }) {
+function CostBySupplierTable({
+  data,
+  search,
+}: {
+  data: ProjectProcurementCostResponse;
+  search: string;
+}) {
   const t = useTranslations('finance.costControl');
+  const term = search.trim().toLowerCase();
+  const rows = data.bySupplier.filter(
+    (r) => !term || r.supplierName.toLowerCase().includes(term),
+  );
   return (
     <TableScroll>
       <Table>
@@ -493,7 +627,7 @@ function CostBySupplierTable({ data }: { data: ProjectProcurementCostResponse })
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.bySupplier.map((row) => (
+          {rows.map((row) => (
             <TableRow key={row.supplierId ?? row.supplierName}>
               <TableCell className="font-medium text-foreground">{row.supplierName}</TableCell>
               <TableCell className="text-end">

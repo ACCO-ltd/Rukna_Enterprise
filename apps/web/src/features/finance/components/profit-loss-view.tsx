@@ -31,6 +31,7 @@ import { useFinanceOverview, useProjectPl } from '../hooks/use-finance';
 import {
   availablePresets,
   buildRange,
+  startsInFuture,
   type FinancePeriodPreset,
   type FinanceRange,
 } from '../finance-period';
@@ -79,6 +80,9 @@ export function ProfitLossView({ projectId }: { projectId: string }) {
 
   const accountingReady = overview.data?.accountingPosition.available ?? true;
   const presets = availablePresets(context);
+  // A project whose start date is still in the future has nothing for a report to cover. Saying
+  // "nothing has been posted" there is true but useless; it reads as a data problem.
+  const notStarted = startsInFuture(project.data?.startDate);
 
   return (
     <div className="space-y-6">
@@ -128,7 +132,9 @@ export function ProfitLossView({ projectId }: { projectId: string }) {
 
       {/* Two different states, and they must not look alike: the ledger cannot accept a posting
           at all, versus it can and this project has none in range. */}
-      {!accountingReady ? (
+      {notStarted ? (
+        <UnavailableNotice title={tc('notStartedTitle')} reason={tc('notStartedReason')} />
+      ) : !accountingReady ? (
         <UnavailableNotice
           title={t('unavailableTitle')}
           reason={t('unavailableReason')}

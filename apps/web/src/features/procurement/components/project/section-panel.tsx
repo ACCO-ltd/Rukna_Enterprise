@@ -14,6 +14,7 @@ export function SectionPanel({
   title,
   description,
   action,
+  icon,
   children,
   className,
   bodyClassName,
@@ -21,6 +22,8 @@ export function SectionPanel({
   title: string;
   description?: string;
   action?: React.ReactNode;
+  /** A quiet glyph beside the heading, so a column of panels is scannable by shape. */
+  icon?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
   bodyClassName?: string;
@@ -33,11 +36,18 @@ export function SectionPanel({
       )}
     >
       <div className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2.5 sm:px-5">
-        <div className="min-w-0">
-          <h3 className="text-h3 font-semibold text-foreground">{title}</h3>
-          {description ? (
-            <p className="mt-0.5 text-caption text-muted-foreground">{description}</p>
+        <div className="flex min-w-0 items-start gap-2">
+          {icon ? (
+            <span className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true">
+              {icon}
+            </span>
           ) : null}
+          <div className="min-w-0">
+            <h3 className="text-h3 font-semibold text-foreground">{title}</h3>
+            {description ? (
+              <p className="mt-0.5 text-caption text-muted-foreground">{description}</p>
+            ) : null}
+          </div>
         </div>
         {action}
       </div>

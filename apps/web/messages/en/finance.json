@@ -7,7 +7,15 @@
     "loadFailedHint": "The data could not be fetched. Try again, or reload the page.",
     "retry": "Try again",
     "cancel": "Cancel",
-    "saving": "Saving…"
+    "saving": "Saving…",
+    "noBasis": "No basis",
+    "overrun": "Over",
+    "total": "Total",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "export": "Export",
+    "notStartedTitle": "This project has not started",
+    "notStartedReason": "Its start date is in the future, so there is nothing for a financial report to cover yet."
   },
   "shell": {
     "title": "Finance",
@@ -118,7 +126,8 @@
       "dimensionLabel": "Break down cost by",
       "byBoq": "By BOQ",
       "byCategory": "By spend category",
-      "bySupplier": "By supplier"
+      "bySupplier": "By supplier",
+      "search": "Search cost area"
     },
     "table": {
       "costArea": "Cost area",
