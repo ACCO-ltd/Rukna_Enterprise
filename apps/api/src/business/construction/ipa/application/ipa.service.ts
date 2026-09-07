@@ -15,6 +15,7 @@ import { ProgressService } from '../../progress/application/progress.service.js'
 import type { CreateIpaDto } from '../presentation/dto/create-ipa.dto.js';
 import type { AddIpaItemDto } from '../presentation/dto/add-ipa-item.dto.js';
 import type { AddIpaDeductionDto } from '../presentation/dto/add-ipa-deduction.dto.js';
+import { RecordAttachmentService } from '../../../../platform/files/application/record-attachment.service.js';
 
 // Allowed source status(es) for each command
 const TRANSITIONS: Record<string, string | string[]> = {
@@ -42,6 +43,7 @@ export class IpaService {
     private readonly projectAccess: ProjectAccessService,
     private readonly auditOutbox: TransactionalAuditOutboxService,
     private readonly progress: ProgressService,
+    private readonly attachments: RecordAttachmentService,
   ) {}
 
   /**
@@ -207,7 +209,7 @@ export class IpaService {
       extra['submittedBy'] = identity.userId;
     }
 
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const updated = await this.repo.update(tx, id, { status: toState, ...extra } as never);
 
       await this.auditOutbox.record(tx, {
@@ -225,6 +227,14 @@ export class IpaService {
 
       return updated;
     });
+
+    // Phase 7A: submission is what puts this claim, and the evidence behind it, in front of the
+    // client. From here the supporting files are part of the submitted record — a correction is a
+    // new application, not a quiet swap of the measurement sheet that justified the last one.
+    if (command === 'submit') {
+      await this.attachments.freezeFor('IPA', id, `evidence on submitted application ${id}`);
+    }
+    return result;
   }
 
   async cancel(identity: RequestIdentity, id: string) {

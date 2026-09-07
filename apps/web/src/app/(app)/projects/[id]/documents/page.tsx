@@ -1,4 +1,4 @@
-import { DocumentsTab } from '@/features/documents/components/documents-tab';
+import { DocumentRegisterView } from '@/features/documents/components/document-register-view';
 
 export default async function ProjectDocumentsPage({
   params,
@@ -6,5 +6,5 @@ export default async function ProjectDocumentsPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <DocumentsTab projectId={id} />;
+  return <DocumentRegisterView projectId={id} />;
 }

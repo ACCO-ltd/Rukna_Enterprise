@@ -3,6 +3,8 @@ import { Module } from '@nestjs/common';
 import { FilesController } from './presentation/files.controller.js';
 import { PlatformFileService } from './application/platform-file.service.js';
 import { FileAuthorizationService } from './application/file-authorization.service.js';
+import { RecordAttachmentService } from './application/record-attachment.service.js';
+import { RecordAttachmentRepository } from './infrastructure/record-attachment.repository.js';
 import { PlatformFileRepository } from './infrastructure/platform-file.repository.js';
 import { MinioFileStorageAdapter } from './infrastructure/minio-file-storage.adapter.js';
 import { FILE_STORAGE_PORT } from './application/ports/file-storage.port.js';
@@ -19,9 +21,11 @@ import { FILE_STORAGE_PORT } from './application/ports/file-storage.port.js';
   providers: [
     PlatformFileService,
     FileAuthorizationService,
+    RecordAttachmentService,
     PlatformFileRepository,
+    RecordAttachmentRepository,
     { provide: FILE_STORAGE_PORT, useClass: MinioFileStorageAdapter },
   ],
-  exports: [PlatformFileService, FileAuthorizationService],
+  exports: [PlatformFileService, FileAuthorizationService, RecordAttachmentService],
 })
 export class FilesModule {}

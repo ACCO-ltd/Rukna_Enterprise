@@ -20,6 +20,14 @@ import { defineConfig, devices } from '@playwright/test';
  * database.
  */
 const BASE_URL = process.env['E2E_BASE_URL'] ?? 'http://acco.localhost:3000';
+/**
+ * The readiness probe, derived from BASE_URL's port rather than pinned to 3000.
+ *
+ * Pinning it meant that running against a dev server on any other port made Playwright conclude
+ * nothing was listening and start a second one, which then died because the first held the lock.
+ * A stale process squatting on 3000 was enough to make the whole suite unrunnable.
+ */
+const PROBE_URL = `http://localhost:${new URL(BASE_URL).port || '3000'}/login`;
 
 export default defineConfig({
   testDir: './e2e',
@@ -68,7 +76,7 @@ export default defineConfig({
      * `/login` rather than `/`, which redirects. The probe only needs to know something is
      * serving on the port; the browser handles the tenant host itself.
      */
-    url: 'http://localhost:3000/login',
+    url: PROBE_URL,
     reuseExistingServer: true,
     timeout: 120_000,
   },

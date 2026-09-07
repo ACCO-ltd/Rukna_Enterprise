@@ -23,6 +23,14 @@ export const PERMISSIONS = {
   projectsApprove: 'approve:project',
   projectMembersManage: 'manage:project-member',
 
+  // The controlled project document register. Read reuses `view:project` deliberately: the
+  // register is project data behind project membership, and a third view permission would mean
+  // every existing role silently losing a tab it can open today. Writing is split the way BOQ
+  // splits it, because drafting a document and ISSUING one are different acts — an issued
+  // revision is frozen evidence the site is told to build from.
+  projectDocumentsManage: 'manage:project-document',
+  projectDocumentsIssue: 'issue:project-document',
+
   boqView: 'view:boq',
   boqManage: 'manage:boq',
   boqBaseline: 'baseline:boq',
@@ -92,7 +100,7 @@ const DOMAIN_BY_RESOURCE: Record<string, string> = {
   'governance-impact': 'Access governance',
   organization: 'Organization', workflow: 'Approval policies', 'audit-log': 'Audit',
   client: 'Commercial', project: 'Projects', district: 'Organization', 'project-member': 'Projects',
-  'project-type': 'Organization',
+  'project-type': 'Organization', 'project-document': 'Projects',
   boq: 'Projects', contract: 'Commercial', ipa: 'Commercial', ipc: 'Commercial', receipt: 'Commercial',
   accounting: 'Accounting', 'financial-position': 'Accounting', journal: 'Accounting',
   receivable: 'Accounting', payable: 'Accounting', period: 'Accounting', 'fiscal-year': 'Accounting',
@@ -133,6 +141,10 @@ const DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.projectTypeManage]: 'Manage the project subtype registry (project type classification)',
   [PERMISSIONS.projectsApprove]: 'Approve projects and controlled lifecycle transitions',
   [PERMISSIONS.projectMembersManage]: 'Manage project membership and project roles',
+  [PERMISSIONS.projectDocumentsManage]:
+    'Register controlled project documents, draft revisions and replace draft files',
+  [PERMISSIONS.projectDocumentsIssue]:
+    'Issue, withdraw, supersede and archive controlled project documents',
   [PERMISSIONS.boqView]: 'View bills of quantities',
   [PERMISSIONS.boqManage]: 'Create and edit BOQ drafts',
   [PERMISSIONS.boqBaseline]: 'Baseline BOQ versions',

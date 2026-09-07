@@ -22,6 +22,7 @@ import type { UpdateGuaranteeDto } from '../presentation/dto/update-guarantee.dt
 import type { AddMilestoneDto } from '../presentation/dto/add-milestone.dto.js';
 import type { AddRetentionTermsDto } from '../presentation/dto/add-retention-terms.dto.js';
 import type { SetInstallmentMilestoneDto } from '../presentation/dto/set-installment-milestone.dto.js';
+import { RecordAttachmentService } from '../../../../platform/files/application/record-attachment.service.js';
 
 const CANCEL_ALLOWED_FROM = new Set(['DRAFT', 'UNDER_REVIEW', 'PENDING_SIGNATURE']);
 
@@ -39,6 +40,7 @@ export class ContractService {
     private readonly repo: ContractPrismaRepository,
     private readonly projectAccess: ProjectAccessService,
     private readonly auditOutbox: TransactionalAuditOutboxService,
+    private readonly attachments: RecordAttachmentService,
   ) {}
 
   async findAll(identity: RequestIdentity, projectId?: string) {
@@ -289,7 +291,7 @@ export class ContractService {
       snapshotData['clientTaxSnapshot'] = contract.client.taxNumber ?? '';
     }
 
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const updated = await this.repo.update(tx, id, { status: step.to, ...snapshotData });
 
       await this.auditOutbox.record(tx, {
@@ -307,6 +309,15 @@ export class ContractService {
 
       return updated;
     });
+
+    // Phase 7A: execution is the contract's real signature event, so from here its evidence is
+    // part of the record. Outside the transaction because the file lifecycle is a second
+    // aggregate and the freeze is idempotent — a retry finishes the job, a rollback would not
+    // have to undo it.
+    if (command === 'execute') {
+      await this.attachments.freezeFor('CONTRACT', id, `evidence on executed contract ${id}`);
+    }
+    return result;
   }
 
   async cancel(identity: RequestIdentity, id: string, reason: string) {
@@ -544,7 +555,7 @@ export class ContractService {
       throw new NotFoundException(`Guarantee ${guaranteeId} not found on contract ${contractId}`);
     }
 
-    return prisma.$transaction(async (tx) => {
+    const guarantee = await prisma.$transaction(async (tx) => {
       await this.repo.updateGuarantee(tx, contractId, guaranteeId, {
         status: dto.status,
         notes: dto.notes,
@@ -565,6 +576,19 @@ export class ContractService {
 
       return this.repo.findGuaranteeById(tx, guaranteeId);
     });
+
+    // Phase 7A: a guarantee is CREATED active — there is no draft period and no "accepted"
+    // transition to hook, so leaving ACTIVE (discharged, expired, called) is the only real
+    // finalisation the aggregate has. Its instrument becomes history at that point. Inventing an
+    // earlier transition to make the rule tidier would be a fabricated control.
+    if (dto.status && dto.status !== 'ACTIVE' && before.status === 'ACTIVE') {
+      await this.attachments.freezeFor(
+        'GUARANTEE',
+        guaranteeId,
+        `instrument on ${dto.status.toLowerCase()} guarantee ${guaranteeId}`,
+      );
+    }
+    return guarantee;
   }
 
   async addMilestone(identity: RequestIdentity, id: string, dto: AddMilestoneDto) {

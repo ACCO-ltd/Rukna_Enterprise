@@ -310,6 +310,38 @@ does this (`nav[aria-label="Finance"] a[aria-current="page"]`).
 
 ---
 
+### 9.2 App-shell controls are below the 44px touch minimum
+
+Found 2026-09-07 by the Phase-7A browser QA, which is the first gate in the product to assert the
+44px rule `apps/web/CLAUDE.md` has always mandated. Scanning the whole document at 375px, every
+failure came from the shell rather than from the workspace under test:
+
+```text
+skip link                 A.sr-only focus:not-sr-only
+sidebar collapse toggle   h-9  (36px)
+sidebar item control      h-9  (36px)
+breadcrumb project link   unconstrained, ~20px
+breadcrumb "Projects"     unconstrained, ~20px
+```
+
+(The TanStack devtools button also fails and is dev-only — not debt, ignore it.)
+
+**Do not patch this from a feature branch.** These controls are rendered by `AppShell` and
+`ProjectWorkspaceShell` on *every* screen in the product. Fixing them inside Documents would make
+Documents the outlier and leave the other nine workspaces failing the same rule, which is the exact
+shape of the heading-hierarchy problem in §9.1. The fix is one pass over the two shells.
+
+The underlying cause is worth naming, because it will recur: **`Button size="sm"` is `h-9` (36px)
+and fails the touch rule by construction.** The default size is `h-control`, which resolves to 44px
+at comfortable density and follows the user's own density preference. `sm` is legitimate only where
+a control is never the primary tap target on a touch viewport. Phase 7A removed all twelve uses of
+it from the Documents views for this reason.
+
+**Until the shell pass happens: scope touch-target assertions to the workspace under test.** The
+Documents gate does this — the workspace root carries `data-qa="documents-workspace"` and the
+assertion queries inside it. A gate that fails on another module's debt gets disabled rather than
+fixed, and then it protects nothing.
+
 ## 10. Definition of done (every Round-2 slice)
 
 A slice is done when, verified in the running app:

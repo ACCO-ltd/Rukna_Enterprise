@@ -24,8 +24,17 @@ import { ProjectAccessService } from '../../project-access/project-access.servic
  */
 
 export type FileOwner =
-  | { kind: 'PROJECT_DOCUMENT'; documentId: string; projectId: string }
-  | { kind: 'DPR_ATTACHMENT'; attachmentId: string; dprId: string; projectId: string };
+  | {
+      kind: 'DOCUMENT_REVISION';
+      revisionId: string;
+      documentId: string;
+      projectId: string;
+    }
+  | { kind: 'DPR_ATTACHMENT'; attachmentId: string; dprId: string; projectId: string }
+  | { kind: 'CONTRACT_ATTACHMENT'; attachmentId: string; contractId: string; projectId: string }
+  | { kind: 'GUARANTEE_ATTACHMENT'; attachmentId: string; guaranteeId: string; projectId: string }
+  | { kind: 'IPA_ATTACHMENT'; attachmentId: string; applicationId: string; projectId: string }
+  | { kind: 'IPC_ATTACHMENT'; attachmentId: string; certificateId: string; projectId: string };
 
 export interface FileOwnership {
   fileId: string;
@@ -68,23 +77,85 @@ export class FileAuthorizationService {
         uploadedBy: true,
         lifecycle: true,
         status: true,
-        projectDocuments: { select: { id: true, projectId: true } },
+        // The register holds files on REVISIONS now, not on the document. A file that reached a
+        // superseded revision is still readable by the project — that is the point of keeping it.
+        documentRevisions: {
+          select: {
+            id: true,
+            projectDocumentId: true,
+            document: { select: { projectId: true } },
+          },
+        },
         dprAttachments: { select: { id: true, dprId: true, dpr: { select: { projectId: true } } } },
+        // Every attachment kind reaches a project by a different path, and each path is the
+        // scoping. Resolving them here rather than per controller is what stops a module shipping
+        // an upload route that forgets to authorize the download.
+        contractAttachments: {
+          select: { id: true, contractId: true, contract: { select: { projectId: true } } },
+        },
+        guaranteeAttachments: {
+          select: {
+            id: true,
+            guaranteeId: true,
+            guarantee: { select: { contract: { select: { projectId: true } } } },
+          },
+        },
+        ipaAttachments: {
+          select: {
+            id: true,
+            applicationId: true,
+            application: { select: { contract: { select: { projectId: true } } } },
+          },
+        },
+        ipcAttachments: {
+          select: {
+            id: true,
+            certificateId: true,
+            certificate: {
+              select: { application: { select: { contract: { select: { projectId: true } } } } },
+            },
+          },
+        },
       },
     });
     if (!file) throw new NotFoundException(`File ${fileId} not found`);
 
     const owners: FileOwner[] = [
-      ...file.projectDocuments.map((doc) => ({
-        kind: 'PROJECT_DOCUMENT' as const,
-        documentId: doc.id,
-        projectId: doc.projectId,
+      ...file.documentRevisions.map((revision) => ({
+        kind: 'DOCUMENT_REVISION' as const,
+        revisionId: revision.id,
+        documentId: revision.projectDocumentId,
+        projectId: revision.document.projectId,
       })),
       ...file.dprAttachments.map((attachment) => ({
         kind: 'DPR_ATTACHMENT' as const,
         attachmentId: attachment.id,
         dprId: attachment.dprId,
         projectId: attachment.dpr.projectId,
+      })),
+      ...file.contractAttachments.map((attachment) => ({
+        kind: 'CONTRACT_ATTACHMENT' as const,
+        attachmentId: attachment.id,
+        contractId: attachment.contractId,
+        projectId: attachment.contract.projectId,
+      })),
+      ...file.guaranteeAttachments.map((attachment) => ({
+        kind: 'GUARANTEE_ATTACHMENT' as const,
+        attachmentId: attachment.id,
+        guaranteeId: attachment.guaranteeId,
+        projectId: attachment.guarantee.contract.projectId,
+      })),
+      ...file.ipaAttachments.map((attachment) => ({
+        kind: 'IPA_ATTACHMENT' as const,
+        attachmentId: attachment.id,
+        applicationId: attachment.applicationId,
+        projectId: attachment.application.contract.projectId,
+      })),
+      ...file.ipcAttachments.map((attachment) => ({
+        kind: 'IPC_ATTACHMENT' as const,
+        attachmentId: attachment.id,
+        certificateId: attachment.certificateId,
+        projectId: attachment.certificate.application.contract.projectId,
       })),
     ];
 
@@ -172,14 +243,27 @@ export class FileAuthorizationService {
     return ownership;
   }
 
-  /** Whether the caller can reach the business record behind one binding. */
+  /**
+   * Whether the caller can reach the business record behind one binding.
+   *
+   * Every owner resolves to a project today, and project membership is the rule for all of them.
+   * They stay separate cases rather than collapsing into one, because they will not stay the
+   * same — a commercial attachment will want `view:contract` alongside membership long before a
+   * drawing does, and the shape that anticipates it costs one line each.
+   *
+   * The **future organization document** owner attaches here: it will be the first case whose
+   * answer is an organization permission rather than project membership, which is precisely why
+   * `OrganizationDocument` is planned as a separate aggregate rather than a nullable-project
+   * variant of this one. A shared table would force this switch to guess which rule applied.
+   */
   private async canReachOwner(identity: RequestIdentity, owner: FileOwner): Promise<boolean> {
     switch (owner.kind) {
-      // Both current owners resolve to a project, and project membership is the rule for both.
-      // They are separate cases rather than one because they will not stay the same: a DPR will
-      // gain its own visibility rule long before the document register does.
-      case 'PROJECT_DOCUMENT':
+      case 'DOCUMENT_REVISION':
       case 'DPR_ATTACHMENT':
+      case 'CONTRACT_ATTACHMENT':
+      case 'GUARANTEE_ATTACHMENT':
+      case 'IPA_ATTACHMENT':
+      case 'IPC_ATTACHMENT':
         if (!identity.permissions.includes(PERMISSIONS.projectsView)) return false;
         return this.isProjectMember(identity, owner.projectId);
     }

@@ -144,6 +144,37 @@ cat deploy/Caddyfile >> /opt/simad/deploy/Caddyfile
 docker exec deploy-caddy-1 caddy reload --config /etc/caddy/Caddyfile
 ```
 
+> ### ⚠ First deploy only. Do NOT re-run `cat` on an already-configured box.
+>
+> Appending the whole file a second time writes **duplicate `api.rukna.site` and
+> `acco.rukna.site` blocks** into the shared Caddyfile. Caddy rejects duplicate site addresses, so
+> `caddy validate` fails, `caddy reload` refuses to apply — and because reload is atomic, the box
+> keeps serving the old config while looking like the change was applied.
+>
+> **To add one site to a box that already has the others** (this is the live case for
+> `storage.rukna.site` — see below), append only that block:
+>
+> ```bash
+> cp /opt/simad/deploy/Caddyfile /opt/simad/deploy/Caddyfile.bak.$(date +%s)
+>
+> # Idempotent: append the block only if the shared file does not already have it
+> if grep -q 'storage.rukna.site' /opt/simad/deploy/Caddyfile; then
+>   echo "already present — do not append"
+> else
+>   awk '/^storage[.]rukna[.]site \{/,/^\}/' deploy/Caddyfile >> /opt/simad/deploy/Caddyfile
+> fi
+>
+> docker exec deploy-caddy-1 caddy validate --config /etc/caddy/Caddyfile   # MUST pass first
+> docker exec deploy-caddy-1 caddy reload   --config /etc/caddy/Caddyfile
+> docker logs deploy-caddy-1 2>&1 | grep -i storage.rukna.site              # ACME result
+> ```
+>
+> **`git pull` does not change Caddy.** The repo's `deploy/Caddyfile` is a *source* that gets
+> appended into `/opt/simad/deploy/Caddyfile`; Caddy never reads the repo copy. A block can be
+> present in the repo — and in `main` — while the running Caddy has never heard of it. That is
+> exactly the state `storage.rukna.site` is in as of 2026-09-07: correct in the repo, absent from
+> the box, TLS handshake aborted. See `docs/design/documents-phase7a-delivery.md` §13.
+
 Caddy fetches Let's Encrypt certs for `api.rukna.site` + `storage.rukna.site` (needs the
 step-1 DNS live, DNS-only). Verify:
 

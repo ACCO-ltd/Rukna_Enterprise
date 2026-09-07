@@ -30,8 +30,31 @@ interface FileRow {
   uploadedBy: string;
   lifecycle: 'TEMPORARY' | 'BOUND' | 'IMMUTABLE';
   status: 'PENDING' | 'READY';
-  projectDocuments: { id: string; projectId: string }[];
+  // Phase 7A: the register holds files on REVISIONS, not on the document — a superseded drawing
+  // stays readable, which is the whole reason revisions exist.
+  documentRevisions: { id: string; projectDocumentId: string; document: { projectId: string } }[];
   dprAttachments: { id: string; dprId: string; dpr: { projectId: string } }[];
+  contractAttachments: { id: string; contractId: string; contract: { projectId: string } }[];
+  guaranteeAttachments: {
+    id: string;
+    guaranteeId: string;
+    guarantee: { contract: { projectId: string } };
+  }[];
+  ipaAttachments: {
+    id: string;
+    applicationId: string;
+    application: { contract: { projectId: string } };
+  }[];
+  ipcAttachments: {
+    id: string;
+    certificateId: string;
+    certificate: { application: { contract: { projectId: string } } };
+  }[];
+}
+
+/** A revision binding on the given project — the register's owner shape, in one place. */
+function revisionOn(projectId: string, id = 'rev-1') {
+  return [{ id, projectDocumentId: 'doc-1', document: { projectId } }];
 }
 
 function fileRow(over: Partial<FileRow> = {}): FileRow {
@@ -41,8 +64,12 @@ function fileRow(over: Partial<FileRow> = {}): FileRow {
     uploadedBy: 'alice',
     lifecycle: 'TEMPORARY',
     status: 'READY',
-    projectDocuments: [],
+    documentRevisions: [],
     dprAttachments: [],
+    contractAttachments: [],
+    guaranteeAttachments: [],
+    ipaAttachments: [],
+    ipcAttachments: [],
     ...over,
   };
 }
@@ -90,17 +117,17 @@ describe('FileAuthorizationService', () => {
     });
   });
 
-  describe('project documents', () => {
+  describe('document revisions', () => {
     const onProjectB = fileRow({
       uploadedBy: 'someone-else',
       lifecycle: 'BOUND',
-      projectDocuments: [{ id: 'doc-1', projectId: 'project-b' }],
+      documentRevisions: revisionOn('project-b'),
     });
 
     it('lets a member of the owning project read it', async () => {
       const { service } = build(onProjectB, ['project-b']);
       await expect(service.assertCanRead(BOB, 'file-1')).resolves.toMatchObject({
-        owners: [{ kind: 'PROJECT_DOCUMENT', projectId: 'project-b' }],
+        owners: [{ kind: 'DOCUMENT_REVISION', projectId: 'project-b' }],
       });
     });
 
@@ -187,7 +214,7 @@ describe('FileAuthorizationService', () => {
     it('refuses to delete a bound file through the file API, even for the owning project', async () => {
       const bound = fileRow({
         lifecycle: 'BOUND',
-        projectDocuments: [{ id: 'doc-1', projectId: 'project-b' }],
+        documentRevisions: revisionOn('project-b'),
       });
       const { service } = build(bound, ['project-b']);
       await expect(service.assertCanDelete(ALICE, 'file-1')).rejects.toBeInstanceOf(
@@ -217,7 +244,7 @@ describe('FileAuthorizationService', () => {
     it('refuses to change a file a record already owns', async () => {
       const bound = fileRow({
         lifecycle: 'BOUND',
-        projectDocuments: [{ id: 'doc-1', projectId: 'project-b' }],
+        documentRevisions: revisionOn('project-b'),
       });
       const { service } = build(bound, ['project-b']);
       await expect(service.assertCanWrite(ALICE, 'file-1')).rejects.toBeInstanceOf(
@@ -237,7 +264,7 @@ describe('FileAuthorizationService', () => {
     const shared = fileRow({
       uploadedBy: 'someone-else',
       lifecycle: 'BOUND',
-      projectDocuments: [{ id: 'doc-1', projectId: 'project-a' }],
+      documentRevisions: revisionOn('project-a'),
       dprAttachments: [{ id: 'att-1', dprId: 'dpr-1', dpr: { projectId: 'project-b' } }],
     });
 
@@ -253,6 +280,73 @@ describe('FileAuthorizationService', () => {
     it('is unreadable by someone in neither', async () => {
       const { service } = build(shared, ['project-c']);
       await expect(service.assertCanRead(BOB, 'file-1')).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  /**
+   * Phase 7A wired four commercial attachment kinds. Each reaches its project by a different join,
+   * and a resolver that got one of those joins wrong would leak another project's contract
+   * evidence — silently, because the aggregation that lists these rows scopes correctly.
+   */
+  describe('commercial evidence', () => {
+    const cases = [
+      {
+        name: 'contract',
+        row: {
+          contractAttachments: [
+            { id: 'a-1', contractId: 'c-1', contract: { projectId: 'project-b' } },
+          ],
+        },
+      },
+      {
+        name: 'guarantee',
+        row: {
+          guaranteeAttachments: [
+            { id: 'a-1', guaranteeId: 'g-1', guarantee: { contract: { projectId: 'project-b' } } },
+          ],
+        },
+      },
+      {
+        name: 'IPA',
+        row: {
+          ipaAttachments: [
+            {
+              id: 'a-1',
+              applicationId: 'i-1',
+              application: { contract: { projectId: 'project-b' } },
+            },
+          ],
+        },
+      },
+      {
+        name: 'IPC',
+        row: {
+          ipcAttachments: [
+            {
+              id: 'a-1',
+              certificateId: 'k-1',
+              certificate: { application: { contract: { projectId: 'project-b' } } },
+            },
+          ],
+        },
+      },
+    ] satisfies { name: string; row: Partial<FileRow> }[];
+
+    it.each(cases)('$name evidence is readable by a member of its project', async ({ row }) => {
+      const { service } = build(fileRow({ lifecycle: 'BOUND', ...row }), ['project-b']);
+      await expect(service.assertCanRead(BOB, 'file-1')).resolves.toBeDefined();
+    });
+
+    it.each(cases)('$name evidence is denied to a member of another project', async ({ row }) => {
+      const { service } = build(fileRow({ lifecycle: 'BOUND', ...row }), ['project-a']);
+      await expect(service.assertCanRead(BOB, 'file-1')).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it.each(cases)('$name evidence is never deletable through the file API', async ({ row }) => {
+      const { service } = build(fileRow({ lifecycle: 'BOUND', ...row }), ['project-b']);
+      await expect(service.assertCanDelete(BOB, 'file-1')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
     });
   });
 });

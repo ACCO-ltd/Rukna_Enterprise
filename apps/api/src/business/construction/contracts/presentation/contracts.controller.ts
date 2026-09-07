@@ -23,6 +23,11 @@ import {
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import {
+  RecordAttachmentService,
+  type AttachEvidenceDto,
+} from '../../../../platform/files/application/record-attachment.service.js';
+import { AttachRecordEvidenceDto } from './dto/attach-record-evidence.dto.js';
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { ContractService } from '../application/contract.service.js';
@@ -43,7 +48,9 @@ import { SetInstallmentMilestoneDto } from './dto/set-installment-milestone.dto.
 @RequirePermissions(PERMISSIONS.contractsView)
 @Controller('contracts')
 export class ContractsController {
-  constructor(private readonly contractService: ContractService) {}
+  constructor(private readonly contractService: ContractService,
+    private readonly attachments: RecordAttachmentService,
+  ) {}
 
   // ─── CRUD ────────────────────────────────────────────────────────────────────
 
@@ -253,5 +260,97 @@ export class ContractsController {
     @Param('milestoneId') milestoneId: string,
   ) {
     return this.contractService.completeMilestone(identity, id, milestoneId);
+  }
+
+  // --- Evidence (Phase 7A) ------------------------------------------------------
+  //
+  // The contract aggregate owns its business facts — number, value, dates, terms, status. These
+  // routes add the supporting *legal* evidence: the signed contract, an amendment, a guarantee
+  // instrument. Structured contract data is never duplicated into a document, and the signed PDF
+  // is never treated as the source of a contract value.
+  //
+  // Evidence freezes when the parent finalises: a contract's on execution (ACTIVE), a guarantee's
+  // when the guarantee leaves ACTIVE — the only real transitions those aggregates have. Freezing
+  // was not invented to make the rule tidy; see RecordAttachmentService.
+
+  @Get(':id/attachments')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Evidence attached to this contract' })
+  listContractAttachments(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.attachments.list(identity, 'CONTRACT', id);
+  }
+
+  @Post(':id/attachments')
+  @RequirePermissions(PERMISSIONS.contractsManage)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({
+    summary: 'Attach evidence to a contract',
+    description:
+      'Upload through the Files API first. On an executed (ACTIVE or later) contract the file ' +
+      'is frozen immediately — the signature has already happened.',
+  })
+  attachToContract(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: AttachRecordEvidenceDto,
+  ) {
+    return this.attachments.attach(identity, 'CONTRACT', id, dto as AttachEvidenceDto);
+  }
+
+  @Delete(':id/attachments/:attachmentId')
+  @RequirePermissions(PERMISSIONS.contractsManage)
+  @ApiParam({ name: 'id' })
+  @ApiParam({ name: 'attachmentId' })
+  @ApiOperation({ summary: 'Detach evidence that has not been frozen by execution' })
+  detachFromContract(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Param('attachmentId') attachmentId: string,
+  ) {
+    return this.attachments.remove(identity, 'CONTRACT', id, attachmentId);
+  }
+
+  @Get(':id/guarantees/:guaranteeId/attachments')
+  @ApiParam({ name: 'id' })
+  @ApiParam({ name: 'guaranteeId' })
+  @ApiOperation({ summary: 'The guarantee instrument and any supporting evidence' })
+  listGuaranteeAttachments(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('guaranteeId') guaranteeId: string,
+  ) {
+    return this.attachments.list(identity, 'GUARANTEE', guaranteeId);
+  }
+
+  @Post(':id/guarantees/:guaranteeId/attachments')
+  @RequirePermissions(PERMISSIONS.contractsManage)
+  @ApiParam({ name: 'id' })
+  @ApiParam({ name: 'guaranteeId' })
+  @ApiOperation({
+    summary: 'Attach the guarantee instrument',
+    description:
+      'The structured guarantee record owns type, amount, issuer and dates; this is the ' +
+      'instrument itself. It stays replaceable while the guarantee is ACTIVE and freezes when ' +
+      'the guarantee is discharged, expired or called.',
+  })
+  attachToGuarantee(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('guaranteeId') guaranteeId: string,
+    @Body() dto: AttachRecordEvidenceDto,
+  ) {
+    return this.attachments.attach(identity, 'GUARANTEE', guaranteeId, dto as AttachEvidenceDto);
+  }
+
+  @Delete(':id/guarantees/:guaranteeId/attachments/:attachmentId')
+  @RequirePermissions(PERMISSIONS.contractsManage)
+  @ApiParam({ name: 'id' })
+  @ApiParam({ name: 'guaranteeId' })
+  @ApiParam({ name: 'attachmentId' })
+  @ApiOperation({ summary: 'Detach a guarantee instrument that has not yet been frozen' })
+  detachFromGuarantee(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('guaranteeId') guaranteeId: string,
+    @Param('attachmentId') attachmentId: string,
+  ) {
+    return this.attachments.remove(identity, 'GUARANTEE', guaranteeId, attachmentId);
   }
 }

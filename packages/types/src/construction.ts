@@ -3,7 +3,13 @@ import type {
   BillingModel,
   AdvanceType,
   PaymentTrigger,
+  AttachmentSourceType,
   DocumentCategory,
+  DocumentDiscipline,
+  DocumentRevisionPurpose,
+  DocumentRevisionStatus,
+  DocumentValidity,
+  ProjectDocumentStatus,
   DprStatus,
   ProgrammeMilestoneStatus,
   GuaranteeStatus,
@@ -420,22 +426,153 @@ export interface ProgrammeMilestoneResponse {
   verifiedAt: string | null;
 }
 
-// Documents tab (ADR-014): a standalone project document + its stored-file metadata.
+// --- Documents (Phase 7A): the controlled project register ---------------------
+//
+// Read these three shapes as the three axes they represent. `status` is where the controlled
+// record is, `currentRevision` is which issue of it is current, and `validity` is whether it can
+// be relied on today. A permit can be ISSUED, at R01, and EXPIRED at the same time.
+
+/** The stored file behind one revision. Enough to render a row; the URL is resolved on demand. */
+export interface DocumentFileSummary {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  /** PlatformFileStatus: PENDING | READY. */
+  status: string;
+  /** PlatformFileLifecycle: TEMPORARY | BOUND | IMMUTABLE. Drives whether replace is offered. */
+  lifecycle: string;
+}
+
+export interface DocumentRevisionResponse {
+  id: string;
+  projectDocumentId: string;
+  revisionNumber: number;
+  revisionCode: string | null;
+  status: `${DocumentRevisionStatus}`;
+  purpose: `${DocumentRevisionPurpose}` | null;
+  notes: string | null;
+  issuedAt: string | null;
+  issuedBy: string | null;
+  issuedByName: string | null;
+  supersededAt: string | null;
+  withdrawnAt: string | null;
+  createdBy: string;
+  createdByName: string | null;
+  createdAt: string;
+  file: DocumentFileSummary;
+  /** True when the document points at this revision. Only ever one per document. */
+  isCurrent: boolean;
+}
+
+/** One row of the register. Everything the table renders, with no follow-up call per row. */
 export interface ProjectDocumentResponse {
   id: string;
   projectId: string;
-  platformFileId: string;
-  category: `${DocumentCategory}`;
+  documentNumber: string;
   title: string;
-  uploadedBy: string;
+  category: `${DocumentCategory}`;
+  discipline: `${DocumentDiscipline}` | null;
+  status: `${ProjectDocumentStatus}`;
+  responsibleUserId: string | null;
+  responsibleUserName: string | null;
+  issuerName: string | null;
+  issuedAt: string | null;
+  validFrom: string | null;
+  expiresAt: string | null;
+  /** Derived server-side on every read — never stored. See DocumentValidity. */
+  validity: `${DocumentValidity}`;
+  /** Days until expiry; negative once past. Null when the document has no expiry date. */
+  daysUntilExpiry: number | null;
+  revisionCount: number;
+  currentRevision: DocumentRevisionResponse | null;
+  supersededByDocumentId: string | null;
+  supersededByDocumentNumber: string | null;
+  withdrawnReason: string | null;
+  createdBy: string;
   createdAt: string;
-  platformFile: {
-    originalName: string;
-    mimeType: string;
-    sizeBytes: number;
-    /** PlatformFileStatus: PENDING | READY. */
-    status: string;
-  };
+  updatedAt: string;
+}
+
+/** Register list payload: the page, the total, and the server-derived attention counts. */
+export interface ProjectDocumentListResponse {
+  items: ProjectDocumentResponse[];
+  total: number;
+  page: number;
+  pageSize: number;
+  summary: ProjectDocumentSummary;
+}
+
+/**
+ * The four figures above the register. Computed over the whole project, not the current page, and
+ * never over a filtered subset — a count that changes when you type in a search box is not a
+ * control figure. `expiringSoonDays` states the threshold rather than leaving the reader to guess.
+ */
+export interface ProjectDocumentSummary {
+  controlledDocuments: number;
+  currentDrawings: number;
+  expiringSoon: number;
+  expired: number;
+  draft: number;
+  expiringSoonDays: number;
+}
+
+export interface ProjectDocumentDetailResponse {
+  document: ProjectDocumentResponse;
+  revisions: DocumentRevisionResponse[];
+  activity: DocumentActivityEntry[];
+}
+
+/** One audited event on the document. Domain events only — never a file read. */
+export interface DocumentActivityEntry {
+  id: string;
+  action: string;
+  sourceCommand: string;
+  actorUserId: string;
+  actorName: string | null;
+  reason: string | null;
+  occurredAt: string;
+}
+
+/** What the caller may do, resolved server-side from permission + status + revision state. */
+export interface ProjectDocumentCapabilities {
+  canCreate: boolean;
+  canEdit: boolean;
+  canIssue: boolean;
+  canArchive: boolean;
+}
+
+// --- Linked Attachments -------------------------------------------------------
+//
+// A read-only aggregation over files owned by OTHER aggregates. It is not a second owner: nothing
+// here can be attached, replaced or deleted, and every row was authorized through its parent.
+
+export interface LinkedAttachmentResponse {
+  attachmentId: string;
+  fileId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  /** PlatformFileLifecycle — an immutable row is evidence on a finalised record. */
+  lifecycle: string;
+  sourceType: `${AttachmentSourceType}`;
+  sourceId: string;
+  /** The parent's business reference — "DPR 04 Sep 2026", "IPC-00007". Never a database id. */
+  sourceReference: string;
+  /** Which workspace the parent lives in: Progress, Commercial, Procurement. */
+  context: string;
+  /** Canonical route to the owning record, or null when that record has no screen yet. */
+  sourceHref: string | null;
+  uploadedBy: string;
+  uploadedByName: string | null;
+  uploadedAt: string;
+}
+
+export interface LinkedAttachmentListResponse {
+  items: LinkedAttachmentResponse[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 export interface ContractResponse {

@@ -211,12 +211,25 @@ export class PlatformFileService {
         storageBucket: true,
         storageKey: true,
         lifecycle: true,
-        _count: { select: { projectDocuments: true, dprAttachments: true } },
+        // EVERY binding kind, not just the caller's. A file this module was told to discard may
+        // still be owned by something else, and a count that knows about only two of six owners
+        // is a delete waiting to destroy a contract attachment.
+        _count: {
+          select: {
+            documentRevisions: true,
+            dprAttachments: true,
+            contractAttachments: true,
+            guaranteeAttachments: true,
+            ipaAttachments: true,
+            ipcAttachments: true,
+            journalEntryAttachments: true,
+          },
+        },
       },
     });
     if (!file) return false;
     if (file.lifecycle === 'IMMUTABLE') return false;
-    if (file._count.projectDocuments > 0 || file._count.dprAttachments > 0) return false;
+    if (Object.values(file._count).some((count) => count > 0)) return false;
 
     await this.storage.deleteObject(file.storageBucket, file.storageKey);
     await this.repo.delete(prisma, file.id);

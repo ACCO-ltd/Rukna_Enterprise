@@ -1020,6 +1020,67 @@ Records cash received from clients and allocates it against certified IPCs.
 
 ---
 
+### 6.x Project Documents (Phase 7A) — `/projects/:projectId/documents`
+
+The **controlled document register**. Read the model before the routes:
+`docs/design/documents-phase7a-delivery.md`.
+
+Three things that are constantly confused and are separate fields here:
+
+| | |
+|---|---|
+| `status` | where the controlled RECORD is — `DRAFT / ISSUED / SUPERSEDED / WITHDRAWN / ARCHIVED` |
+| `currentRevision` | which ISSUE of it is current |
+| `validity` | whether it can be RELIED ON today — **derived every read, never stored** |
+
+Class gate `view:project` + project membership (asserted per call). Writes need
+`manage:project-document`; **issue / withdraw / supersede / archive need `issue:project-document`**,
+because drafting a drawing and telling a site to build from it are different authorities.
+
+| Method | Path | Permission | Notes |
+|---|---|---|---|
+| `GET` | `/projects/:id/documents` | `view:project` | Filters: `search` (number, title, revision code), `category`, `discipline`, `status`, `validity`, `responsibleUserId`, `page`, `pageSize`. Returns `{ items, total, page, pageSize, summary }` |
+| `GET` | `/projects/:id/documents/attachments` | `view:project` | **Linked Attachments** — read-only aggregation over DPR / contract / guarantee / IPA / IPC evidence. No write routes exist here by design |
+| `GET` | `/projects/:id/documents/capabilities` | `view:project` | `{ canCreate, canEdit, canIssue, canArchive }` — resolved server-side; the UI hides what this says, it never decides |
+| `GET` | `/projects/:id/documents/:documentId` | `view:project` | `{ document, revisions, activity }` |
+| `POST` | `/projects/:id/documents` | `manage:project-document` | Registers the document **and its first revision**, both `DRAFT`. Body: `documentNumber`, `title`, `category`, `platformFileId` (required) + `discipline?`, `responsibleUserId?`, `issuerName?`, `issuedAt?`, `validFrom?`, `expiresAt?`, `revisionCode?`, `purpose?`, `notes?` |
+| `PATCH` | `/projects/:id/documents/:documentId` | `manage:project-document` | A DRAFT admits every field. An ISSUED document admits only `title`, `responsibleUserId`, `issuerName`, `issuedAt`, `validFrom`, `expiresAt`. **`null` clears a field; omitting it leaves it alone** |
+| `POST` | `/projects/:id/documents/:documentId/revisions` | `manage:project-document` | New draft revision. Refused if a draft already exists |
+| `PATCH` | `/projects/:id/documents/:documentId/revisions/:revisionId/file` | `manage:project-document` | **DRAFT revisions only.** 403 on an issued one. The replaced file is discarded, not orphaned |
+| `POST` | `/projects/:id/documents/:documentId/revisions/:revisionId/issue` | `issue:project-document` | One transaction: supersede the outgoing revision, promote this one, repoint the document, issue the document if this is its first. **The file becomes IMMUTABLE and can never be replaced** |
+| `POST` | `/projects/:id/documents/:documentId/withdraw` | `issue:project-document` | Body `{ reason }` (required). ISSUED only |
+| `POST` | `/projects/:id/documents/:documentId/supersede` | `issue:project-document` | Body `{ supersededByDocumentId }` — must be another **issued** document on the same project |
+| `POST` | `/projects/:id/documents/:documentId/archive` | `issue:project-document` | — |
+| `DELETE` | `/projects/:id/documents/:documentId` | `manage:project-document` | **Only a DRAFT with no issued revision in its history.** 403 otherwise — a controlled record keeps its history |
+
+**Upload is unchanged and is not issuance.** `POST /files` → PUT the bytes to storage → `POST
+/files/:id/confirm` → pass the READY `platformFileId` here.
+
+**Validity** is `NO_EXPIRY | NOT_YET_VALID | VALID | EXPIRING_SOON | EXPIRED`, with
+`daysUntilExpiry` (negative once past, `null` with no expiry). The threshold is server-owned
+(`DOCUMENT_EXPIRY_WARNING_DAYS`, default 30) and returned as `summary.expiringSoonDays` — do not
+hard-code one in the browser. **Expiry drives visibility only**; it blocks nothing in any other
+domain.
+
+`purpose` (`FOR_REVIEW / FOR_APPROVAL / ISSUED_FOR_CONSTRUCTION / AS_BUILT`) is accepted on
+**drawings only** and 400s elsewhere.
+
+### 6.x Record evidence (Phase 7A)
+
+Attachments on business records that are *not* controlled documents. Same payload everywhere:
+`{ platformFileId }`, plus `{ purpose }` on the IPC.
+
+| Method | Path | Permission | Frozen when |
+|---|---|---|---|
+| `GET`/`POST`/`DELETE` | `/contracts/:id/attachments[/:attachmentId]` | `contractsView` / `contractsManage` | Contract reaches `ACTIVE` (executed) |
+| `GET`/`POST`/`DELETE` | `/contracts/:id/guarantees/:guaranteeId/attachments[/:attachmentId]` | `contractsView` / `contractsManage` | Guarantee **leaves** `ACTIVE` — it is created ACTIVE, so there is no earlier transition |
+| `GET`/`POST`/`DELETE` | `/ipa/:id/attachments[/:attachmentId]` | `ipaView` / `ipaManage` | IPA reaches `SUBMITTED` |
+| `GET`/`POST`/`DELETE` | `/ipc/:id/attachments[/:attachmentId]` | `ipcView` / `ipcIssue` | `purpose=ISSUED_CERTIFICATE` freezes **on attach** (the certificate is already effective); `SUPPORTING` freezes when the certificate is superseded |
+
+A frozen file cannot be detached (403). `JournalEntryAttachment` is deliberately **not** wired.
+
+---
+
 ## 7. Lifecycle State Machines
 
 ### Project

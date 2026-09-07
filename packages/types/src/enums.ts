@@ -179,18 +179,92 @@ export enum ProgrammeMilestoneStatus {
   VERIFIED = 'VERIFIED',
 }
 
-// Documents tab (ADR-014): category of a standalone project document.
+// Phase 7A project document control. Three enums, three axes, deliberately not merged:
+// `ProjectDocumentStatus` is where the controlled record is, `DocumentRevisionStatus` is which
+// issue of it is current, and validity (below) is whether it can be relied on today.
+
+// The controlled-document taxonomy. Curated, not free text, and never derived from a file
+// extension. Replaces the old ten-value list, in which PERMIT and LICENSE were two values for one
+// instrument class and PHOTO was not a controlled document at all.
 export enum DocumentCategory {
-  PERMIT = 'PERMIT',
-  LICENSE = 'LICENSE',
   DRAWING = 'DRAWING',
   CONTRACT = 'CONTRACT',
-  CERTIFICATE = 'CERTIFICATE',
+  PERMIT_LICENSE = 'PERMIT_LICENSE',
+  GUARANTEE_BOND = 'GUARANTEE_BOND',
   INSURANCE = 'INSURANCE',
-  GUARANTEE = 'GUARANTEE',
-  CORRESPONDENCE = 'CORRESPONDENCE',
-  PHOTO = 'PHOTO',
-  OTHER = 'OTHER',
+  TECHNICAL_SUBMITTAL = 'TECHNICAL_SUBMITTAL',
+  METHOD_STATEMENT = 'METHOD_STATEMENT',
+  QUALITY_TEST_CERTIFICATE = 'QUALITY_TEST_CERTIFICATE',
+  CORRESPONDENCE_INSTRUCTION = 'CORRESPONDENCE_INSTRUCTION',
+  HANDOVER = 'HANDOVER',
+  OTHER_CONTROLLED = 'OTHER_CONTROLLED',
+}
+
+// Optional, and only where it is technically meaningful — a bank guarantee has no discipline.
+export enum DocumentDiscipline {
+  ARCHITECTURAL = 'ARCHITECTURAL',
+  STRUCTURAL = 'STRUCTURAL',
+  CIVIL = 'CIVIL',
+  MECHANICAL = 'MECHANICAL',
+  ELECTRICAL = 'ELECTRICAL',
+  PLUMBING = 'PLUMBING',
+  FIRE_PROTECTION = 'FIRE_PROTECTION',
+  HSE = 'HSE',
+  QUALITY = 'QUALITY',
+  COMMERCIAL = 'COMMERCIAL',
+  GENERAL = 'GENERAL',
+}
+
+// Where the controlled record is. No APPROVED: nothing binds an approval workflow to document
+// issuance, and a status implying a control that does not run is worse than no status at all.
+export enum ProjectDocumentStatus {
+  DRAFT = 'DRAFT',
+  ISSUED = 'ISSUED',
+  SUPERSEDED = 'SUPERSEDED',
+  WITHDRAWN = 'WITHDRAWN',
+  ARCHIVED = 'ARCHIVED',
+}
+
+export enum DocumentRevisionStatus {
+  DRAFT = 'DRAFT',
+  ISSUED = 'ISSUED',
+  SUPERSEDED = 'SUPERSEDED',
+  WITHDRAWN = 'WITHDRAWN',
+}
+
+// Drawing issue purpose. Only these four, because they are what a drawing register distinguishes.
+export enum DocumentRevisionPurpose {
+  FOR_REVIEW = 'FOR_REVIEW',
+  FOR_APPROVAL = 'FOR_APPROVAL',
+  ISSUED_FOR_CONSTRUCTION = 'ISSUED_FOR_CONSTRUCTION',
+  AS_BUILT = 'AS_BUILT',
+}
+
+// DERIVED server-side from validFrom/expiresAt on every read, never stored: a persisted EXPIRED
+// becomes a lie the moment the clock passes it without a job running. NOT_YET_VALID is not in the
+// original four because the original four forgot that `validFrom` exists — a document whose
+// validity has not started is not VALID, and saying so would be the register's first falsehood.
+export enum DocumentValidity {
+  NO_EXPIRY = 'NO_EXPIRY',
+  NOT_YET_VALID = 'NOT_YET_VALID',
+  VALID = 'VALID',
+  EXPIRING_SOON = 'EXPIRING_SOON',
+  EXPIRED = 'EXPIRED',
+}
+
+// Which business aggregate owns an attachment surfaced under Linked Attachments. The aggregation
+// is read-only, so this is a provenance label — never a second owner.
+export enum AttachmentSourceType {
+  DAILY_PROGRESS_REPORT = 'DAILY_PROGRESS_REPORT',
+  CONTRACT = 'CONTRACT',
+  CONTRACT_GUARANTEE = 'CONTRACT_GUARANTEE',
+  IPA = 'IPA',
+  IPC = 'IPC',
+}
+
+export enum IpcAttachmentPurpose {
+  SUPPORTING = 'SUPPORTING',
+  ISSUED_CERTIFICATE = 'ISSUED_CERTIFICATE',
 }
 
 export enum GuaranteeStatus {

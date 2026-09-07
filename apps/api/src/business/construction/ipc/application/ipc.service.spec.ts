@@ -24,6 +24,7 @@ describe('IpcService.findAll', () => {
     repository as never,
     projectAccess as never,
     {} as never,
+    { freezeFor: jest.fn() } as never, // Phase 7A record attachments
   );
 
   beforeEach(() => jest.clearAllMocks());

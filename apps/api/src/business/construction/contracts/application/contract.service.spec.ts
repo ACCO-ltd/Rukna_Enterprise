@@ -15,6 +15,8 @@ type Mocks = {
   repo: Record<string, jest.Mock>;
   projectAccess: Record<string, jest.Mock>;
   audit: { record: jest.Mock };
+  /** Phase 7A: the record-attachment freeze seam, so execute/discharge can be asserted on. */
+  attachments: { freezeFor: jest.Mock };
   service: ContractService;
 };
 
@@ -39,13 +41,17 @@ function build(contract: Record<string, unknown> | null): Mocks {
   const prisma = { $transaction: (fn: (tx: unknown) => unknown) => fn({}) };
   const tenancy = { getClient: () => prisma };
 
+  // Phase 7A: evidence freezes when the contract executes and when a guarantee leaves ACTIVE.
+  const attachments = { freezeFor: jest.fn().mockResolvedValue(0) };
+
   const service = new ContractService(
     tenancy as never,
     repo as never,
     projectAccess as never,
     audit as never,
+    attachments as never,
   );
-  return { repo, projectAccess, audit, service };
+  return { repo, projectAccess, audit, attachments, service };
 }
 
 const draft = { id: 'c-1', status: 'DRAFT', retentionTerms: null };
@@ -311,13 +317,15 @@ describe('ADR-023 — payment schedule on contract create (CONST-COM-012)', () =
       $transaction: (fn: (tx: unknown) => unknown) => fn({}),
     };
     const tenancy = { getClient: () => prisma };
+    const attachments = { freezeFor: jest.fn().mockResolvedValue(0) };
     const service = new ContractService(
       tenancy as never,
       repo as never,
       projectAccess as never,
       audit as never,
+      attachments as never,
     );
-    return { repo, service };
+    return { repo, attachments, service };
   }
 
   const base = {

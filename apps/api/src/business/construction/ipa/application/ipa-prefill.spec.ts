@@ -29,6 +29,7 @@ function build(opts: { progress?: unknown[]; prevCertified?: number }) {
     projectAccess as never,
     {} as never, // auditOutbox (unused)
     progress as never,
+    { freezeFor: jest.fn() } as never, // Phase 7A record attachments (unused by getPrefill)
   );
   return { service, repo };
 }

@@ -663,37 +663,200 @@ model ProjectSubtype {
   @@map("project_subtypes")
 }
 
-// ADR-014 / Documents tab: a standalone project document (permit, drawing, licence...) linking a
-// PlatformFile to a project with a human title + category. Distinct from the per-entity *Attachment
-// tables (which the Documents tab also surfaces as "linked documents").
+// --- Project document control (Phase 7A) -------------------------------------
+//
+// A **controlled document**: a record the project is accountable for keeping current, with its own
+// identity, lifecycle, revisions and validity. It is emphatically not a file, and it is not an
+// attachment.
+//
+//   PlatformFile              storage object - bytes and their metadata
+//   ProjectDocument           this: the controlled business record
+//   ProjectDocumentRevision   one historical or current issue of it, and the only holder of a file
+//   *Attachment               evidence owned by some OTHER aggregate (a DPR, a contract, an IPC)
+//
+// The register used to be a file list - `platformFileId` sat directly on this row, so replacing a
+// drawing destroyed the revision it replaced. The file now lives on the revision and the document
+// points at whichever revision is current. That single move is what makes this a register.
+//
+// Three axes that are constantly confused, and are kept apart here:
+//
+//   status      where the CONTROLLED RECORD is:  DRAFT -> ISSUED -> SUPERSEDED / WITHDRAWN / ARCHIVED
+//   revision    which ISSUE of it is current:    R00 -> R01 -> R02, one current at a time
+//   validity    whether it can be RELIED ON:     derived from validFrom/expiresAt, never stored
+//
+// A permit can be ISSUED (status), at R01 (revision) and EXPIRED (validity) all at once. Merging
+// any two of those loses a fact the site needs.
 model ProjectDocument {
-  id             String           @id @default(cuid())
-  organizationId String           @map("organization_id")
-  projectId      String           @map("project_id")
-  platformFileId String           @map("platform_file_id")
-  category       DocumentCategory
-  title          String
-  uploadedBy     String           @map("uploaded_by")
-  createdAt      DateTime         @default(now()) @map("created_at")
+  id                       String @id @default(cuid())
+  organizationId           String @map("organization_id")
+  projectId                String @map("project_id")
+  // The document's stable identity - "ACCO-OB-STR-DRG-0012" - independent of any filename.
+  // `documentNumberNormalized` is the uniqueness key: upper-cased, trimmed, inner whitespace
+  // collapsed, so "acco-ob-0012" and "ACCO-OB-0012 " cannot both exist on one project.
+  documentNumber           String @map("document_number") @db.VarChar(60)
+  documentNumberNormalized String @map("document_number_normalized") @db.VarChar(60)
+  title                    String @db.VarChar(200)
 
-  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  platformFile PlatformFile @relation(fields: [platformFileId], references: [id])
+  category   DocumentCategory
+  discipline DocumentDiscipline?
+  status     ProjectDocumentStatus @default(DRAFT)
 
-  @@index([projectId])
+  // Accountable for keeping this document current and valid. NOT the uploader and NOT the issuer:
+  // "owner" is overloaded on a construction project, so the business label is "Responsible person".
+  responsibleUserId String? @map("responsible_user_id")
+  // Who issued the instrument - Municipality, the consultant, a bank, ACCO. A plain business name
+  // rather than a party master: building an external-party registry for the document register
+  // alone would be a second source of truth for something Clients and Suppliers already model.
+  issuerName        String? @map("issuer_name") @db.VarChar(120)
+
+  issuedAt  DateTime? @map("issued_at") @db.Date
+  validFrom DateTime? @map("valid_from") @db.Date
+  // Validity is DERIVED from these two dates and never persisted as a state - a stored "EXPIRED"
+  // becomes a lie the moment the clock passes it without a job running. See DocumentValidityPolicy.
+  expiresAt DateTime? @map("expires_at") @db.Date
+
+  currentRevisionId String? @unique @map("current_revision_id")
+
+  // Document-level supersession: this whole controlled record replaced by another one (a permit
+  // renewed as a new permit). Distinct from revision-level supersession, which replaces an issue
+  // of the SAME document. Backed by a real link, so the status is never an unexplained dead end.
+  supersededByDocumentId String?   @map("superseded_by_document_id")
+  supersededAt           DateTime? @map("superseded_at")
+  withdrawnAt            DateTime? @map("withdrawn_at")
+  withdrawnBy            String?   @map("withdrawn_by")
+  withdrawnReason        String?   @map("withdrawn_reason") @db.VarChar(300)
+  archivedAt             DateTime? @map("archived_at")
+  archivedBy             String?   @map("archived_by")
+
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  project         Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  revisions       ProjectDocumentRevision[] @relation("DocumentRevisions")
+  currentRevision ProjectDocumentRevision?  @relation("CurrentRevision", fields: [currentRevisionId], references: [id])
+  supersededBy    ProjectDocument?          @relation("DocumentSupersession", fields: [supersededByDocumentId], references: [id])
+  supersedes      ProjectDocument[]         @relation("DocumentSupersession")
+
+  @@unique([projectId, documentNumberNormalized])
+  @@index([projectId, status])
+  @@index([projectId, category])
+  // The expiring/expired attention query, which is org-wide as often as it is project-wide.
+  @@index([organizationId, expiresAt])
   @@map("project_documents")
 }
 
+// One issue of a controlled document, and the only thing in the register that holds a file.
+//
+// **Append-only after issue.** An ISSUED revision's file is IMMUTABLE and its row is never
+// rewritten; a correction is a new revision that supersedes it. This is the same
+// supersede-don't-overwrite rule the BOQ baseline, the cost budget and the IPC already follow, and
+// it is the whole reason a drawing register is worth more than a shared folder.
+//
+// Two partial unique indexes carry the invariants (they live in the migration - Prisma schema
+// cannot express a filtered index): at most one DRAFT revision per document, so "the draft" is
+// never ambiguous, and at most one ISSUED revision per document, which is what makes
+// `currentRevisionId` unambiguous and, for drawings, enforces "at most one current
+// Issued-For-Construction revision" without a second rule.
+model ProjectDocumentRevision {
+  id                String @id @default(cuid())
+  organizationId    String @map("organization_id")
+  projectDocumentId String @map("project_document_id")
+  platformFileId    String @map("platform_file_id")
+
+  // Monotonic per document, assigned by the server. `revisionCode` is the business-facing label
+  // ("R00", "Rev B") and is optional: not every document class uses formal revision codes, and
+  // inventing one for a one-off insurance certificate would be noise.
+  revisionNumber Int                      @map("revision_number")
+  revisionCode   String?                  @map("revision_code") @db.VarChar(20)
+  status         DocumentRevisionStatus   @default(DRAFT)
+  // Drawing practice. Optional, and only meaningful for drawings - a permit has no "purpose".
+  purpose        DocumentRevisionPurpose?
+  notes          String?                  @db.VarChar(300)
+
+  issuedAt     DateTime? @map("issued_at")
+  issuedBy     String?   @map("issued_by")
+  supersededAt DateTime? @map("superseded_at")
+  withdrawnAt  DateTime? @map("withdrawn_at")
+  withdrawnBy  String?   @map("withdrawn_by")
+
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  document     ProjectDocument  @relation("DocumentRevisions", fields: [projectDocumentId], references: [id], onDelete: Cascade)
+  currentFor   ProjectDocument? @relation("CurrentRevision")
+  platformFile PlatformFile     @relation(fields: [platformFileId], references: [id])
+
+  @@unique([projectDocumentId, revisionNumber])
+  @@index([projectDocumentId, status])
+  @@index([platformFileId])
+  @@map("project_document_revisions")
+}
+
+// The controlled-document taxonomy. Curated, not free text, and deliberately NOT derived from the
+// file extension - a PDF is not a category.
+//
+// Migrated from the old 10-value list rather than duplicated beside it: PERMIT and LICENSE were
+// two values for one instrument class, and PHOTO was never a controlled document - it is DPR
+// evidence, which now reads under Linked Attachments where it belongs.
 enum DocumentCategory {
-  PERMIT
-  LICENSE
   DRAWING
   CONTRACT
-  CERTIFICATE
+  PERMIT_LICENSE
+  GUARANTEE_BOND
   INSURANCE
-  GUARANTEE
-  CORRESPONDENCE
-  PHOTO
-  OTHER
+  TECHNICAL_SUBMITTAL
+  METHOD_STATEMENT
+  QUALITY_TEST_CERTIFICATE
+  CORRESPONDENCE_INSTRUCTION
+  HANDOVER
+  OTHER_CONTROLLED
+}
+
+// Optional, and only where it is technically meaningful: a bank guarantee has no discipline.
+// A fixed enum rather than an admin registry - discipline is a stable engineering vocabulary, and
+// a configurable one would be administration built before anyone asked for it.
+enum DocumentDiscipline {
+  ARCHITECTURAL
+  STRUCTURAL
+  CIVIL
+  MECHANICAL
+  ELECTRICAL
+  PLUMBING
+  FIRE_PROTECTION
+  HSE
+  QUALITY
+  COMMERCIAL
+  GENERAL
+}
+
+// Where the controlled RECORD is. No APPROVED: nothing in the platform binds an approval workflow
+// to document issuance, and a status implying a control that does not run is worse than no status
+// at all - the same fake-control problem JD1 removed from journals.
+enum ProjectDocumentStatus {
+  DRAFT
+  ISSUED
+  // Replaced by a different controlled document (`supersededByDocumentId`) - a renewed permit.
+  SUPERSEDED
+  // Pulled from use: no longer to be relied on, but retained as history.
+  WITHDRAWN
+  ARCHIVED
+}
+
+enum DocumentRevisionStatus {
+  DRAFT
+  ISSUED
+  SUPERSEDED
+  WITHDRAWN
+}
+
+// Drawing issue purpose. Only these four, because they are what a construction drawing register
+// actually distinguishes; anything else would be decoration.
+enum DocumentRevisionPurpose {
+  FOR_REVIEW
+  FOR_APPROVAL
+  ISSUED_FOR_CONSTRUCTION
+  AS_BUILT
 }
 
 // ADR-021 Progress MVP: the daily site record. An evidence container (weather, labour, narrative,
@@ -1511,7 +1674,9 @@ model PlatformFile {
   ipaAttachments          IpaAttachment[]
   ipcAttachments          IpcAttachment[]
   journalEntryAttachments JournalEntryAttachment[]
-  projectDocuments        ProjectDocument[]
+  // The register holds files on its REVISIONS, never on the document itself - that is what keeps
+  // a superseded drawing readable after a new one is issued.
+  documentRevisions       ProjectDocumentRevision[]
   dprAttachments          DprAttachment[]
 
   @@index([organizationId])
@@ -1716,18 +1881,30 @@ model InterimPaymentCertificateDeduction {
   @@map("interim_payment_certificate_deductions")
 }
 
+// Phase 7A: evidence on an interim payment certificate. `purpose` separates the two things that
+// were otherwise indistinguishable - working support for the certification, and the issued
+// certificate document itself. They have different freeze rules, so they cannot share a state.
 model IpcAttachment {
-  id             String   @id @default(cuid())
-  certificateId  String   @map("certificate_id")
-  platformFileId String   @map("platform_file_id")
-  createdAt      DateTime @default(now()) @map("created_at")
-  createdBy      String   @map("created_by")
+  id             String               @id @default(cuid())
+  certificateId  String               @map("certificate_id")
+  platformFileId String               @map("platform_file_id")
+  purpose        IpcAttachmentPurpose @default(SUPPORTING)
+  createdAt      DateTime             @default(now()) @map("created_at")
+  createdBy      String               @map("created_by")
 
   certificate  InterimPaymentCertificate @relation(fields: [certificateId], references: [id], onDelete: Cascade)
   platformFile PlatformFile              @relation(fields: [platformFileId], references: [id])
 
   @@index([certificateId])
   @@map("ipc_attachments")
+}
+
+enum IpcAttachmentPurpose {
+  // Working evidence behind the certification. Replaceable while the certificate stands.
+  SUPPORTING
+  // The signed certificate as issued to the client. Frozen the moment it is attached, because
+  // the certificate it evidences is already effective - there is no later finalisation to wait for.
+  ISSUED_CERTIFICATE
 }
 
 // ADR-024 ACC-SET-001 BE-2: the legacy receipt→IPC allocation ledger (ReceiptAllocation) was
