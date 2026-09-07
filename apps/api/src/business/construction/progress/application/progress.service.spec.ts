@@ -25,6 +25,15 @@ type Over = {
   users?: unknown[];
 };
 
+/** The file lifecycle seam: attaching evidence binds it, approving the report freezes it. */
+function files() {
+  return {
+    bind: jest.fn().mockResolvedValue(undefined),
+    markImmutable: jest.fn().mockResolvedValue(undefined),
+    markManyImmutable: jest.fn().mockResolvedValue(0),
+  };
+}
+
 function build(over: Over = {}) {
   const repo = {
     createDpr: jest.fn().mockResolvedValue({ id: 'dpr-1', status: 'DRAFT' }),
@@ -34,6 +43,7 @@ function build(over: Over = {}) {
     findDprsByProject: jest.fn().mockResolvedValue(over.dprs ?? []),
     findUserNamesByIds: jest.fn().mockResolvedValue(over.users ?? []),
     updateDprStatus: jest.fn().mockResolvedValue({ id: 'dpr-1' }),
+    findAttachmentFileIds: jest.fn().mockResolvedValue([]),
     addMeasurement: jest.fn().mockResolvedValue({ id: 'm-1' }),
     createAttachment: jest.fn().mockResolvedValue({ id: 'att-1' }),
     findBoqNodeForProject: jest.fn().mockResolvedValue(over.node ?? { id: 'n1', quantity: 1000, isLeaf: true }),
@@ -54,14 +64,16 @@ function build(over: Over = {}) {
   };
   // ADR-022 DPR governance seam: with no active binding the gate returns null (approval proceeds).
   const commandGovernance = { gateStateTransition: jest.fn().mockResolvedValue(null) };
+  const fileService = files();
   const service = new ProgressService(
     tenancy as never,
     repo as never,
     projectAccess as never,
     financialPosition as never,
     commandGovernance as never,
+    fileService as never,
   );
-  return { repo, service, commandGovernance };
+  return { repo, service, commandGovernance, fileService };
 }
 
 describe('ProgressService (ADR-021 MVP)', () => {
@@ -106,6 +118,25 @@ describe('ProgressService (ADR-021 MVP)', () => {
       expect.anything(),
       'dpr-1',
       expect.objectContaining({ status: 'APPROVED' }),
+    );
+  });
+
+  /**
+   * CONST-PROG-008 makes approval the point at which measurements become verified, so from here
+   * the evidence behind them is part of the record. Before Phase 7 Step 2 nothing ever marked a
+   * file immutable, so approved evidence stayed deletable by anyone in the organisation.
+   */
+  it('approve: freezes the evidence that supported the approval', async () => {
+    const { repo, service, fileService } = build({
+      dpr: { id: 'dpr-1', status: 'SUBMITTED', projectId: 'p-1', measurements: [], attachments: [] },
+    });
+    repo.findAttachmentFileIds.mockResolvedValue(['file-a', 'file-b']);
+
+    await service.approve(identity, 'dpr-1');
+
+    expect(fileService.markManyImmutable).toHaveBeenCalledWith(
+      ['file-a', 'file-b'],
+      expect.stringContaining('dpr-1'),
     );
   });
 

@@ -19,6 +19,7 @@ import {
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { ProgressRepository } from '../infrastructure/progress.repository.js';
+import { PlatformFileService } from '../../../../platform/files/application/platform-file.service.js';
 import { ProjectFinancialPositionService } from '../../../accounting/financial-position/application/project-financial-position.service.js';
 import {
   CommandGovernanceService,
@@ -83,6 +84,7 @@ export class ProgressService {
     private readonly projectAccess: ProjectAccessService,
     private readonly financialPosition: ProjectFinancialPositionService,
     private readonly commandGovernance: CommandGovernanceService,
+    private readonly files: PlatformFileService,
   ) {}
 
   async createDpr(identity: RequestIdentity, projectId: string, dto: CreateDprDto) {
@@ -138,11 +140,15 @@ export class ProgressService {
     if (file.status !== 'READY') {
       throw new BadRequestException('The evidence file must be fully uploaded (READY).');
     }
-    return this.repo.createAttachment(prisma, {
+    // Binding takes the file out of reach of the abandoned-upload sweep and of DELETE /files/:id:
+    // from here it is evidence on a report, and only the report can release it.
+    const attachment = await this.repo.createAttachment(prisma, {
       dprId,
       platformFileId,
       createdBy: identity.userId,
     });
+    await this.files.bind(platformFileId, `DPR evidence ${attachment.id}`);
+    return attachment;
   }
 
   async submit(identity: RequestIdentity, dprId: string) {
@@ -196,6 +202,13 @@ export class ProgressService {
         );
       }
     }
+
+    // CONST-PROG-008: approval is what makes these measurements verified, so from here the
+    // evidence behind them is part of the record. A REOPENED correction appends new evidence; it
+    // never releases the old, which is the same supersede-don't-overwrite rule the BOQ and the
+    // programme already follow.
+    const evidence = await this.repo.findAttachmentFileIds(prisma, dprId);
+    await this.files.markManyImmutable(evidence, `evidence on approved report ${dprId}`);
 
     return this.repo.updateDprStatus(prisma, dprId, {
       status: DprStatus.APPROVED,

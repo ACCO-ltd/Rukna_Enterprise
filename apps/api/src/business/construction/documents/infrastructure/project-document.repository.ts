@@ -33,19 +33,26 @@ export class ProjectDocumentRepository {
     });
   }
 
+  /** Includes the file's lifecycle: removal is refused once the file is IMMUTABLE. */
   findOwned(prisma: TenantPrisma, organizationId: string, projectId: string, id: string) {
-    return prisma.projectDocument.findFirst({ where: { id, organizationId, projectId } });
+    return prisma.projectDocument.findFirst({
+      where: { id, organizationId, projectId },
+      include: { platformFile: { select: { lifecycle: true } } },
+    });
   }
 
   delete(prisma: TenantPrisma, id: string): Promise<ProjectDocument> {
     return prisma.projectDocument.delete({ where: { id } });
   }
 
-  /** Verify a PlatformFile exists in this org and read its upload status. */
+  /**
+   * Verify a PlatformFile exists in this org and read what attaching it depends on: whether the
+   * bytes arrived, whether anything already owns it, and who uploaded it.
+   */
   findFileStatus(prisma: TenantPrisma, organizationId: string, fileId: string) {
     return prisma.platformFile.findFirst({
       where: { id: fileId, organizationId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, lifecycle: true, uploadedBy: true },
     });
   }
 }

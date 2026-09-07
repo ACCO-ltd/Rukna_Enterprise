@@ -70,18 +70,18 @@ model Organization {
 }
 
 model User {
-  id                String     @id @default(cuid())
-  email             String     @unique
-  passwordHash      String     @map("password_hash")
-  mustChangePassword Boolean   @default(false) @map("must_change_password")
-  temporaryPasswordExpiresAt DateTime? @map("temporary_password_expires_at")
-  sessionVersion    Int        @default(0) @map("session_version")
-  firstName         String     @map("first_name")
-  lastName          String     @map("last_name")
-  status            UserStatus @default(ACTIVE)
-  organizationId    String     @map("organization_id")
-  createdAt         DateTime   @default(now()) @map("created_at")
-  updatedAt         DateTime   @updatedAt @map("updated_at")
+  id                         String     @id @default(cuid())
+  email                      String     @unique
+  passwordHash               String     @map("password_hash")
+  mustChangePassword         Boolean    @default(false) @map("must_change_password")
+  temporaryPasswordExpiresAt DateTime?  @map("temporary_password_expires_at")
+  sessionVersion             Int        @default(0) @map("session_version")
+  firstName                  String     @map("first_name")
+  lastName                   String     @map("last_name")
+  status                     UserStatus @default(ACTIVE)
+  organizationId             String     @map("organization_id")
+  createdAt                  DateTime   @default(now()) @map("created_at")
+  updatedAt                  DateTime   @updatedAt @map("updated_at")
 
   organization   Organization             @relation(fields: [organizationId], references: [id])
   userRoles      UserRole[]
@@ -124,13 +124,13 @@ model Role {
 }
 
 model Permission {
-  id          String   @id @default(cuid())
+  id          String              @id @default(cuid())
   action      String
   resource    String
   description String?
-  domain      String   @default("Platform")
+  domain      String              @default("Platform")
   riskClass   PermissionRiskClass @default(HIGH) @map("risk_class")
-  createdAt   DateTime @default(now()) @map("created_at")
+  createdAt   DateTime            @default(now()) @map("created_at")
 
   rolePermissions RolePermission[]
 
@@ -139,13 +139,13 @@ model Permission {
 }
 
 model RoleAccessReview {
-  id             String   @id @default(cuid())
-  organizationId String   @map("organization_id")
-  roleId         String   @map("role_id")
-  reviewerUserId String   @map("reviewer_user_id")
+  id             String                   @id @default(cuid())
+  organizationId String                   @map("organization_id")
+  roleId         String                   @map("role_id")
+  reviewerUserId String                   @map("reviewer_user_id")
   decision       RoleAccessReviewDecision
   notes          String?
-  createdAt      DateTime @default(now()) @map("created_at")
+  createdAt      DateTime                 @default(now()) @map("created_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   role         Role         @relation(fields: [roleId], references: [id], onDelete: Cascade)
@@ -316,20 +316,20 @@ model WorkflowStep {
 }
 
 model ApprovalInstance {
-  id                    String                   @id @default(cuid())
-  workflowDefinitionId  String                   @map("workflow_definition_id")
-  transactionType       WorkflowTransactionType? @map("transaction_type")
-  transactionId         String                   @map("transaction_id")
-  status                ApprovalStatus           @default(PENDING)
-  currentStepOrder      Int                      @default(1) @map("current_step_order")
-  initiatedBy           String                   @map("initiated_by")
-  initiatedAt           DateTime                 @default(now()) @map("initiated_at")
-  updatedAt             DateTime                 @updatedAt @map("updated_at")
+  id                   String                   @id @default(cuid())
+  workflowDefinitionId String                   @map("workflow_definition_id")
+  transactionType      WorkflowTransactionType? @map("transaction_type")
+  transactionId        String                   @map("transaction_id")
+  status               ApprovalStatus           @default(PENDING)
+  currentStepOrder     Int                      @default(1) @map("current_step_order")
+  initiatedBy          String                   @map("initiated_by")
+  initiatedAt          DateTime                 @default(now()) @map("initiated_at")
+  updatedAt            DateTime                 @updatedAt @map("updated_at")
   // Sprint 5: immutable condition snapshot — why this policy was selected (ADR-007, Rule DOA-001)
-  evaluatedAmount       Decimal?                 @map("evaluated_amount") @db.Decimal(18, 2)
-  matchedPolicyId       String?                  @map("matched_policy_id")
-  matchedPolicyVersion  Int?                     @map("matched_policy_version")
-  conditionSnapshot     Json?                    @map("condition_snapshot")
+  evaluatedAmount      Decimal?                 @map("evaluated_amount") @db.Decimal(18, 2)
+  matchedPolicyId      String?                  @map("matched_policy_id")
+  matchedPolicyVersion Int?                     @map("matched_policy_version")
+  conditionSnapshot    Json?                    @map("condition_snapshot")
 
   definition WorkflowDefinition @relation(fields: [workflowDefinitionId], references: [id])
   actions    ApprovalAction[]
@@ -1019,13 +1019,13 @@ model BoqNode {
   createdAt           DateTime          @default(now()) @map("created_at")
   updatedAt           DateTime          @updatedAt @map("updated_at")
 
-  version              BoqVersion            @relation(fields: [versionId], references: [id])
-  parent               BoqNode?              @relation("BoqNodeChildren", fields: [parentId], references: [id], onDelete: Restrict)
-  children             BoqNode[]             @relation("BoqNodeChildren")
+  version              BoqVersion              @relation(fields: [versionId], references: [id])
+  parent               BoqNode?                @relation("BoqNodeChildren", fields: [parentId], references: [id], onDelete: Restrict)
+  children             BoqNode[]               @relation("BoqNodeChildren")
   // ADR-026 CONST-VAR-007 — the VariationOrder that introduced this node (null for BASELINE scope).
   // SetNull, not Restrict: a baselined node is immutable and outlives its source; if a VO were ever
   // removed (only via contract cascade), the historical node keeps its scope and loses only the link.
-  sourceChangeOrder    VariationOrder?       @relation("VariationOrderBoqNodes", fields: [sourceChangeOrderId], references: [id], onDelete: SetNull)
+  sourceChangeOrder    VariationOrder?         @relation("VariationOrderBoqNodes", fields: [sourceChangeOrderId], references: [id], onDelete: SetNull)
   progressMeasurements ProgressMeasurement[]
   workPackageLinks     WorkPackageBoqNode[]
   purchaseOrderLines   PurchaseOrderLine[]
@@ -1239,19 +1239,19 @@ model ContractAdvanceTerm {
 // Invariant: Σ(percentage) = 1.0000 across a contract's installments (validated in the service).
 // ACCO V1: no retention, no advance recovery (ADR-023 CONST-COM-013/014).
 model ContractPaymentInstallment {
-  id             String         @id @default(cuid())
-  contractId     String         @map("contract_id")
-  sortOrder      Int            @default(0) @map("sort_order")
-  name           String
-  percentage     Decimal        @db.Decimal(5, 4)
-  triggerType    PaymentTrigger @map("trigger_type")
+  id                   String         @id @default(cuid())
+  contractId           String         @map("contract_id")
+  sortOrder            Int            @default(0) @map("sort_order")
+  name                 String
+  percentage           Decimal        @db.Decimal(5, 4)
+  triggerType          PaymentTrigger @map("trigger_type")
   // TIME_BASED triggers: due N days after commencement, or on an explicit date.
-  dueOffsetDays  Int?           @map("due_offset_days")
-  dueDate        DateTime?      @map("due_date") @db.Date
+  dueOffsetDays        Int?           @map("due_offset_days")
+  dueDate              DateTime?      @map("due_date") @db.Date
   // MILESTONE triggers: a free-text label (interim/fallback) plus an optional link to a verified
   // programme milestone (ADR-021), which is the billing evidence when present (CONST-COM-011).
-  milestoneLabel      String? @map("milestone_label")
-  programmeMilestoneId String? @map("programme_milestone_id")
+  milestoneLabel       String?        @map("milestone_label")
+  programmeMilestoneId String?        @map("programme_milestone_id")
 
   contract           Contract            @relation(fields: [contractId], references: [id], onDelete: Cascade)
   clientInvoice      ClientInvoice? // ADR-023: the invoice generated from this installment, if any
@@ -1311,52 +1311,52 @@ model ContractMilestone {
 // lines (the source of truth) — no mutable stored copy. Figures freeze at INTERNAL_APPROVED
 // (CONST-VAR-010) and field editing closes at PENDING_INTERNAL (CONST-VAR-004).
 model VariationOrder {
-  id             String               @id @default(cuid())
-  organizationId String               @map("organization_id")
-  contractId     String               @map("contract_id")
+  id                     String               @id @default(cuid())
+  organizationId         String               @map("organization_id")
+  contractId             String               @map("contract_id")
   // Per-contract sequential human reference, e.g. "VO-001" (mirrors contractNumber / applicationNumber).
-  reference      String               @map("reference") @db.VarChar(50)
-  status         VariationOrderStatus @default(DRAFT)
-  title          String
-  description    String?
+  reference              String               @map("reference") @db.VarChar(50)
+  status                 VariationOrderStatus @default(DRAFT)
+  title                  String
+  description            String?
   // CONST-VAR-003: proposed only — an optional number of days. It NEVER moves the contractual
   // completion date automatically (that is the Phase-4 Extension-of-Time command, CONST-VAR-009).
-  proposedTimeImpactDays Int?         @map("proposed_time_impact_days")
+  proposedTimeImpactDays Int?                 @map("proposed_time_impact_days")
 
   // Approval / audit trail. Dates use the actor-supplied or command-time instant, recorded explicitly.
-  createdBy              String       @map("created_by")
-  submittedBy            String?      @map("submitted_by")
-  submittedAt            DateTime?    @map("submitted_at")
-  internalApprovedBy     String?      @map("internal_approved_by")
-  internalApprovedAt     DateTime?    @map("internal_approved_at")
-  clientApprovedBy       String?      @map("client_approved_by")
-  clientApprovedAt       DateTime?    @map("client_approved_at")
+  createdBy               String    @map("created_by")
+  submittedBy             String?   @map("submitted_by")
+  submittedAt             DateTime? @map("submitted_at")
+  internalApprovedBy      String?   @map("internal_approved_by")
+  internalApprovedAt      DateTime? @map("internal_approved_at")
+  clientApprovedBy        String?   @map("client_approved_by")
+  clientApprovedAt        DateTime? @map("client_approved_at")
   // OQ-4 (provisional): the client's contractual approval reference (signed VO no. / letter ref).
-  clientApprovalReference String?     @map("client_approval_reference")
-  rejectedBy             String?      @map("rejected_by")
-  rejectedAt             DateTime?    @map("rejected_at")
+  clientApprovalReference String?   @map("client_approval_reference")
+  rejectedBy              String?   @map("rejected_by")
+  rejectedAt              DateTime? @map("rejected_at")
   // Reason for a REJECTED or WITHDRAWN terminal transition.
-  reason                 String?
+  reason                  String?
 
   // ADR-026 CONST-VAR-007 (Phase 2): set when this client-approved VO's scope has been materialised
   // into the BOQ as VARIATION-tagged nodes on a revision. The idempotency guard for the apply-to-BOQ
   // command — a VO whose boqAppliedAt is set cannot be applied twice. Records who/when applied it and
   // the DRAFT revision the nodes landed on (the revision then follows the normal governed baseline).
-  boqAppliedAt           DateTime?    @map("boq_applied_at")
-  boqAppliedBy           String?      @map("boq_applied_by")
-  boqAppliedVersionId    String?      @map("boq_applied_version_id")
+  boqAppliedAt        DateTime? @map("boq_applied_at")
+  boqAppliedBy        String?   @map("boq_applied_by")
+  boqAppliedVersionId String?   @map("boq_applied_version_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  contract Contract             @relation(fields: [contractId], references: [id], onDelete: Cascade)
-  lines    VariationOrderLine[]
+  contract             Contract                            @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  lines                VariationOrderLine[]
   // ADR-026 CONST-VAR-007 (Phase 2): the BOQ nodes this VO scoped into the project (its provenance
   // fields). Every such node carries sourceType = VARIATION + sourceChangeOrderId = this VO's id.
-  boqNodes BoqNode[]            @relation("VariationOrderBoqNodes")
+  boqNodes             BoqNode[]                           @relation("VariationOrderBoqNodes")
   // ADR-026 CONST-VAR-009 (Phase 4): the Extension-of-Time acts that cite this VO as justification.
   // Citation is justification, not effect — a cited VO never moves the date by itself.
-  extensionsOfTime ExtensionOfTime[] @relation("ExtensionOfTimeVariationOrders")
+  extensionsOfTime     ExtensionOfTime[]                   @relation("ExtensionOfTimeVariationOrders")
   // ADR-026 CONST-VAR-011 (Phase 5, Route 7B): the at-risk commencement authorisations recorded on
   // this VO — audited records that CD+CFO (+CEO above the cap) sanctioned starting the work before
   // CLIENT_APPROVED. They change NEITHER contract value NOR the BOQ.
@@ -1421,7 +1421,7 @@ model ExtensionOfTime {
 
   createdAt DateTime @default(now()) @map("created_at")
 
-  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contract             Contract         @relation(fields: [contractId], references: [id], onDelete: Cascade)
   // Cited VariationOrders — justification, not effect (CONST-VAR-009). Implicit many-to-many.
   citedVariationOrders VariationOrder[] @relation("ExtensionOfTimeVariationOrders")
 
@@ -1445,14 +1445,14 @@ model VariationOrderAtRiskAuthorisation {
 
   // The exposure ACCO accepts by starting early, in the contract currency. Drives whether the CEO
   // step is required (above the cap). Non-negative; independent of the VO's signed net price.
-  exposureAmount   Decimal @map("exposure_amount") @db.Decimal(18, 2)
-  currency         String  @db.VarChar(3)
+  exposureAmount Decimal @map("exposure_amount") @db.Decimal(18, 2)
+  currency       String  @db.VarChar(3)
   // The cap in force when this authorisation was recorded (config-driven; snapshotted as evidence so
   // a later cap change never rewrites why the CEO was — or was not — required at the time).
-  capAmount        Decimal @map("cap_amount") @db.Decimal(18, 2)
+  capAmount      Decimal @map("cap_amount") @db.Decimal(18, 2)
   // Whether the exposure exceeded the cap, i.e. whether the CEO step was required. Snapshot of the
   // rule outcome at authorisation time.
-  ceoRequired      Boolean @map("ceo_required")
+  ceoRequired    Boolean @map("ceo_required")
 
   // The authorising identities (the fixed chain CONST-VAR-011): the Construction Director and the CFO
   // always; the CEO additionally when ceoRequired. Recorded explicitly so the audit shows exactly who
@@ -1464,7 +1464,7 @@ model VariationOrderAtRiskAuthorisation {
   reason         String
   // The VO status at the moment of authorisation (must be a pre-CLIENT_APPROVED state). Evidence that
   // this really was a before-finalisation, at-risk act.
-  voStatusAtAuth String  @map("vo_status_at_auth")
+  voStatusAtAuth String @map("vo_status_at_auth")
 
   // Action metadata: who recorded the authorisation and when the command ran.
   authorisedBy String   @map("authorised_by")
@@ -1483,19 +1483,28 @@ model VariationOrderAtRiskAuthorisation {
 // behind FileStoragePort (MinIO first adapter); this row is the metadata + tenant-prefixed key.
 // The five *Attachment tables relate to it. Immutable rows (audit-relevant) cannot be deleted.
 model PlatformFile {
-  id             String             @id @default(cuid())
-  organizationId String             @map("organization_id")
-  originalName   String             @map("original_name")
-  mimeType       String             @map("mime_type")
-  sizeBytes      Int                @map("size_bytes")
-  checksumSha256 String?            @map("checksum_sha256")
-  storageBucket  String             @map("storage_bucket")
-  storageKey     String             @unique @map("storage_key")
-  status         PlatformFileStatus @default(PENDING)
-  immutable      Boolean            @default(false)
-  uploadedBy     String             @map("uploaded_by")
-  createdAt      DateTime           @default(now()) @map("created_at")
-  confirmedAt    DateTime?          @map("confirmed_at")
+  id              String                @id @default(cuid())
+  organizationId  String                @map("organization_id")
+  originalName    String                @map("original_name")
+  mimeType        String                @map("mime_type")
+  sizeBytes       Int                   @map("size_bytes")
+  // The client's SHA-256 of the bytes, captured BEFORE the upload and used to sign the PUT, so
+  // object storage itself rejects a body that does not hash to it. Nullable only for rows that
+  // predate Phase 7 Step 2; every new upload has one.
+  checksumSha256  String?               @map("checksum_sha256")
+  storageBucket   String                @map("storage_bucket")
+  storageKey      String                @unique @map("storage_key")
+  status          PlatformFileStatus    @default(PENDING)
+  // Whether anything owns this file yet, and whether its owner has finalised. Replaces the old
+  // `immutable` boolean, which was a two-state field for a three-state problem and which nothing
+  // ever set. See PlatformFileLifecycle.
+  lifecycle       PlatformFileLifecycle @default(TEMPORARY)
+  boundAt         DateTime?             @map("bound_at")
+  /// Why the file is in its current lifecycle state — for the audit trail, not for logic.
+  lifecycleReason String?               @map("lifecycle_reason") @db.VarChar(120)
+  uploadedBy      String                @map("uploaded_by")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  confirmedAt     DateTime?             @map("confirmed_at")
 
   contractAttachments     ContractAttachment[]
   guaranteeAttachments    GuaranteeAttachment[]
@@ -1506,12 +1515,27 @@ model PlatformFile {
   dprAttachments          DprAttachment[]
 
   @@index([organizationId])
+  @@index([lifecycle, createdAt])
   @@map("platform_files")
 }
 
 enum PlatformFileStatus {
   PENDING // metadata created; awaiting client upload + confirm
   READY // uploaded and checksum-verified
+}
+
+/// The file's relationship to the business, which is what decides whether it may be deleted.
+/// Storage state (PENDING/READY) is a different axis and says nothing about ownership.
+enum PlatformFileLifecycle {
+  /// Uploaded and owned by nothing. Only the uploader can see it, and the cleanup sweep reaps
+  /// it once the retention window passes — this is what an abandoned upload looks like.
+  TEMPORARY
+  /// Attached to a business record. Never reaped. Deletable only through the owning record, and
+  /// only while that record's own workflow still permits replacement.
+  BOUND
+  /// The owning record reached a state where its evidence is part of the record — approved,
+  /// posted, issued, baselined. No hard delete. Corrections append a new file.
+  IMMUTABLE
 }
 
 model ContractAttachment {
@@ -1545,20 +1569,20 @@ model GuaranteeAttachment {
 // ─── IPA Domain ───────────────────────────────────────────────────────────────
 
 model InterimPaymentApplication {
-  id                   String    @id @default(cuid())
-  contractId           String    @map("contract_id")
-  organizationId       String    @map("organization_id")
-  applicationNumber    Int?      @map("application_number")
-  applicationRef       String?   @map("application_ref")
-  status               IpaStatus @default(DRAFT)
-  periodFrom           DateTime? @map("period_from") @db.Date
-  periodTo             DateTime? @map("period_to") @db.Date
-  submittedAt          DateTime? @map("submitted_at")
-  submittedBy          String?   @map("submitted_by")
-  notes                String?
-  createdBy            String    @map("created_by")
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @updatedAt @map("updated_at")
+  id                String    @id @default(cuid())
+  contractId        String    @map("contract_id")
+  organizationId    String    @map("organization_id")
+  applicationNumber Int?      @map("application_number")
+  applicationRef    String?   @map("application_ref")
+  status            IpaStatus @default(DRAFT)
+  periodFrom        DateTime? @map("period_from") @db.Date
+  periodTo          DateTime? @map("period_to") @db.Date
+  submittedAt       DateTime? @map("submitted_at")
+  submittedBy       String?   @map("submitted_by")
+  notes             String?
+  createdBy         String    @map("created_by")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
   contract     Contract                             @relation(fields: [contractId], references: [id])
   organization Organization                         @relation(fields: [organizationId], references: [id])
@@ -1625,24 +1649,24 @@ model IpaAttachment {
 // ─── IPC Domain ───────────────────────────────────────────────────────────────
 
 model InterimPaymentCertificate {
-  id                   String    @id @default(cuid())
-  applicationId        String    @map("application_id")
-  organizationId       String    @map("organization_id")
-  certificateNumber    Int       @map("certificate_number")
-  certificateRef       String?   @map("certificate_ref")
-  status               IpcStatus
-  isEffective          Boolean   @default(false) @map("is_effective")
-  effectiveAt          DateTime? @map("effective_at")
-  supersededAt         DateTime? @map("superseded_at")
-  supersededById       String?   @map("superseded_by_id")
-  supersessionReason   String?   @map("supersession_reason")
-  certifiedTotal       Decimal   @map("certified_total") @db.Decimal(18, 2)
-  currency             String    @db.VarChar(3)
-  issuedAt             DateTime? @map("issued_at")
-  issuedBy             String?   @map("issued_by")
-  notes                String?
-  createdBy            String    @map("created_by")
-  createdAt            DateTime  @default(now()) @map("created_at")
+  id                 String    @id @default(cuid())
+  applicationId      String    @map("application_id")
+  organizationId     String    @map("organization_id")
+  certificateNumber  Int       @map("certificate_number")
+  certificateRef     String?   @map("certificate_ref")
+  status             IpcStatus
+  isEffective        Boolean   @default(false) @map("is_effective")
+  effectiveAt        DateTime? @map("effective_at")
+  supersededAt       DateTime? @map("superseded_at")
+  supersededById     String?   @map("superseded_by_id")
+  supersessionReason String?   @map("supersession_reason")
+  certifiedTotal     Decimal   @map("certified_total") @db.Decimal(18, 2)
+  currency           String    @db.VarChar(3)
+  issuedAt           DateTime? @map("issued_at")
+  issuedBy           String?   @map("issued_by")
+  notes              String?
+  createdBy          String    @map("created_by")
+  createdAt          DateTime  @default(now()) @map("created_at")
 
   application   InterimPaymentApplication            @relation(fields: [applicationId], references: [id])
   organization  Organization                         @relation(fields: [organizationId], references: [id])
@@ -2040,7 +2064,7 @@ model Supplier {
   matchingPolicies MatchingTolerancePolicy[]
   // ADR-022 CONST-DOA-003: the vendor maintainer. Nullable — suppliers created before this
   // field have an unknown maintainer, so the VENDOR_MAINTAINER SoD rule cannot fire for them.
-  createdBy        String?                  @map("created_by")
+  createdBy        String?                   @map("created_by")
 
   @@unique([organizationId, code])
   @@index([organizationId, status])
@@ -2455,10 +2479,10 @@ model SupplierPayment {
   createdAt            DateTime         @default(now()) @map("created_at")
   updatedAt            DateTime         @updatedAt @map("updated_at")
 
-  organization     Organization                @relation(fields: [organizationId], references: [id])
-  supplier         Supplier                    @relation(fields: [supplierId], references: [id])
-  bankAccount      BankAccount                 @relation(fields: [bankAccountId], references: [id])
-  allocations      SupplierPaymentAllocation[]
+  organization      Organization                @relation(fields: [organizationId], references: [id])
+  supplier          Supplier                    @relation(fields: [supplierId], references: [id])
+  bankAccount       BankAccount                 @relation(fields: [bankAccountId], references: [id])
+  allocations       SupplierPaymentAllocation[]
   releaseSignatures PaymentReleaseSignature[]
 
   @@index([organizationId, postingStatus])
@@ -2836,7 +2860,6 @@ enum OrganizationStatus {
   SUSPENDED
 }
 
-
 enum WorkflowTransactionType {
   MATERIAL_REQUEST
   PURCHASE_ORDER
@@ -3085,9 +3108,9 @@ model ProjectCostBudget {
   // The version this one was derived from, so a re-budget can be read against its predecessor.
   derivedFromId  String?                 @map("derived_from_id")
 
-  preparedBy  String    @map("prepared_by")
-  baselinedAt DateTime? @map("baselined_at")
-  baselinedBy String?   @map("baselined_by")
+  preparedBy   String    @map("prepared_by")
+  baselinedAt  DateTime? @map("baselined_at")
+  baselinedBy  String?   @map("baselined_by")
   supersededAt DateTime? @map("superseded_at")
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -3528,32 +3551,32 @@ model Material {
 // ─── Sprint 5: Material Request ───────────────────────────────────────────────
 
 model MaterialRequest {
-  id                 String                @id @default(cuid())
-  organizationId     String                @map("organization_id")
-  mrNumber           String                @map("mr_number") @db.VarChar(30)
-  requestScope       MaterialRequestScope  @map("request_scope")
-  projectId          String?               @map("project_id")
-  requestedBy        String                @map("requested_by")
-  requestedDate      DateTime              @map("requested_date") @db.Date
-  requiredByDate     DateTime?             @map("required_by_date") @db.Date
+  id                 String                  @id @default(cuid())
+  organizationId     String                  @map("organization_id")
+  mrNumber           String                  @map("mr_number") @db.VarChar(30)
+  requestScope       MaterialRequestScope    @map("request_scope")
+  projectId          String?                 @map("project_id")
+  requestedBy        String                  @map("requested_by")
+  requestedDate      DateTime                @map("requested_date") @db.Date
+  requiredByDate     DateTime?               @map("required_by_date") @db.Date
   // A short name for the requirement ("Reinforcement steel"), distinct from the longer
   // `description` that justifies it. A list keyed on a paragraph is unreadable.
-  title              String?               @db.VarChar(160)
+  title              String?                 @db.VarChar(160)
   // The currency the line estimates are in. Every monetary field in this schema is paired with
   // a currency; an estimate that drives an approval threshold is no exception. On the header
   // rather than the line because a single requirement is priced in one currency — the same
   // shape ContractPaymentInstallment uses. Nullable: requests raised before estimates existed
   // have no amounts to denominate.
-  currencyCode       String?               @map("currency_code") @db.VarChar(3)
+  currencyCode       String?                 @map("currency_code") @db.VarChar(3)
   // How badly the site needs it. Drives the attention queue's site-blocking tier — a
   // requirement nobody has ordered matters far more when it is URGENT.
   priority           MaterialRequestPriority @default(NORMAL)
   description        String?
-  status             MaterialRequestStatus @default(DRAFT)
-  approvalInstanceId String?               @map("approval_instance_id")
+  status             MaterialRequestStatus   @default(DRAFT)
+  approvalInstanceId String?                 @map("approval_instance_id")
   notes              String?
-  createdAt          DateTime              @default(now()) @map("created_at")
-  updatedAt          DateTime              @updatedAt @map("updated_at")
+  createdAt          DateTime                @default(now()) @map("created_at")
+  updatedAt          DateTime                @updatedAt @map("updated_at")
 
   organization Organization          @relation(fields: [organizationId], references: [id])
   lines        MaterialRequestLine[]
@@ -3638,21 +3661,21 @@ enum PoReceiptExceptionStatus {
 }
 
 model PoReceiptException {
-  id                  String                   @id @default(cuid())
-  organizationId      String                   @map("organization_id")
-  purchaseOrderId     String                   @map("purchase_order_id")
+  id                   String                   @id @default(cuid())
+  organizationId       String                   @map("organization_id")
+  purchaseOrderId      String                   @map("purchase_order_id")
   // The person authorized to receive despite being the PO creator (= purchaseOrder.createdBy).
-  receiverUserId      String                   @map("receiver_user_id")
-  reason              String
-  status              PoReceiptExceptionStatus @default(PENDING)
-  requestedBy         String                   @map("requested_by")
-  supervisorUserId    String?                  @map("supervisor_user_id")
-  supervisorVerifiedAt DateTime?               @map("supervisor_verified_at")
-  cfoUserId           String?                  @map("cfo_user_id")
-  cfoApprovedAt       DateTime?                @map("cfo_approved_at")
-  rejectionReason     String?                  @map("rejection_reason")
-  createdAt           DateTime                 @default(now()) @map("created_at")
-  updatedAt           DateTime                 @updatedAt @map("updated_at")
+  receiverUserId       String                   @map("receiver_user_id")
+  reason               String
+  status               PoReceiptExceptionStatus @default(PENDING)
+  requestedBy          String                   @map("requested_by")
+  supervisorUserId     String?                  @map("supervisor_user_id")
+  supervisorVerifiedAt DateTime?                @map("supervisor_verified_at")
+  cfoUserId            String?                  @map("cfo_user_id")
+  cfoApprovedAt        DateTime?                @map("cfo_approved_at")
+  rejectionReason      String?                  @map("rejection_reason")
+  createdAt            DateTime                 @default(now()) @map("created_at")
+  updatedAt            DateTime                 @updatedAt @map("updated_at")
 
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
 
@@ -3838,23 +3861,23 @@ model GoodsReceiptLineAllocation {
 // Explicit matching result per bill — "linked by construction" is not the same as matched.
 // (ADR-007, Rule MATCH-001)
 model SupplierBillMatch {
-  id                 String          @id @default(cuid())
-  supplierBillId     String          @unique @map("supplier_bill_id")
-  matchType          BillMatchType   @map("match_type")
-  status             BillMatchStatus @default(NOT_RUN)
-  matchedAt          DateTime?       @map("matched_at")
-  matchedBy          String?         @map("matched_by")
-  approvedBy         String?         @map("approved_by")
-  approvedAt         DateTime?       @map("approved_at")
-  approvalReason     String?         @map("approval_reason")
-  approvalInstanceId String?         @map("approval_instance_id")
+  id                 String                 @id @default(cuid())
+  supplierBillId     String                 @unique @map("supplier_bill_id")
+  matchType          BillMatchType          @map("match_type")
+  status             BillMatchStatus        @default(NOT_RUN)
+  matchedAt          DateTime?              @map("matched_at")
+  matchedBy          String?                @map("matched_by")
+  approvedBy         String?                @map("approved_by")
+  approvedAt         DateTime?              @map("approved_at")
+  approvalReason     String?                @map("approval_reason")
+  approvalInstanceId String?                @map("approval_instance_id")
   // ADR-018 CONST-MATCH-007/008/014 — the structured resolution of an exception (approvedBy/At are
   // the resolver + time). resolutionAction is derived from the reason.
   resolutionReason   MatchExceptionReason?  @map("resolution_reason")
   resolutionAction   MatchResolutionAction? @map("resolution_action")
   resolutionNotes    String?                @map("resolution_notes")
-  createdAt          DateTime        @default(now()) @map("created_at")
-  updatedAt          DateTime        @updatedAt @map("updated_at")
+  createdAt          DateTime               @default(now()) @map("created_at")
+  updatedAt          DateTime               @updatedAt @map("updated_at")
 
   lines SupplierBillMatchLine[]
 
@@ -3862,27 +3885,27 @@ model SupplierBillMatch {
 }
 
 model SupplierBillMatchLine {
-  id                  String   @id @default(cuid())
-  supplierBillMatchId String   @map("supplier_bill_match_id")
-  supplierBillLineId  String   @map("supplier_bill_line_id")
-  purchaseOrderLineId String   @map("purchase_order_line_id")
-  goodsReceiptLineId  String?  @map("goods_receipt_line_id")
-  poQuantity          Decimal  @map("po_quantity") @db.Decimal(18, 4)
-  receivedQuantity    Decimal? @map("received_quantity") @db.Decimal(18, 4)
-  billedQuantity      Decimal  @map("billed_quantity") @db.Decimal(18, 4)
-  poUnitPrice         Decimal  @map("po_unit_price") @db.Decimal(18, 4)
-  billedUnitPrice     Decimal  @map("billed_unit_price") @db.Decimal(18, 4)
-  quantityVariance    Decimal  @map("quantity_variance") @db.Decimal(18, 4)
-  priceVariance       Decimal  @map("price_variance") @db.Decimal(18, 4)
-  amountVariance      Decimal  @map("amount_variance") @db.Decimal(18, 2)
+  id                      String   @id @default(cuid())
+  supplierBillMatchId     String   @map("supplier_bill_match_id")
+  supplierBillLineId      String   @map("supplier_bill_line_id")
+  purchaseOrderLineId     String   @map("purchase_order_line_id")
+  goodsReceiptLineId      String?  @map("goods_receipt_line_id")
+  poQuantity              Decimal  @map("po_quantity") @db.Decimal(18, 4)
+  receivedQuantity        Decimal? @map("received_quantity") @db.Decimal(18, 4)
+  billedQuantity          Decimal  @map("billed_quantity") @db.Decimal(18, 4)
+  poUnitPrice             Decimal  @map("po_unit_price") @db.Decimal(18, 4)
+  billedUnitPrice         Decimal  @map("billed_unit_price") @db.Decimal(18, 4)
+  quantityVariance        Decimal  @map("quantity_variance") @db.Decimal(18, 4)
+  priceVariance           Decimal  @map("price_variance") @db.Decimal(18, 4)
+  amountVariance          Decimal  @map("amount_variance") @db.Decimal(18, 2)
   // ADR-018 CONST-MATCH-003: each dimension is evaluated against tolerance independently. The
   // single `withinTolerance` boolean is retained as the derived overall verdict (CONST-MATCH-004).
-  quantityWithinTolerance Boolean @default(true) @map("quantity_within_tolerance")
-  priceWithinTolerance    Boolean @default(true) @map("price_within_tolerance")
-  amountWithinTolerance   Boolean @default(true) @map("amount_within_tolerance")
-  withinTolerance     Boolean  @map("within_tolerance")
-  exceptionReason     String?  @map("exception_reason")
-  createdAt           DateTime @default(now()) @map("created_at")
+  quantityWithinTolerance Boolean  @default(true) @map("quantity_within_tolerance")
+  priceWithinTolerance    Boolean  @default(true) @map("price_within_tolerance")
+  amountWithinTolerance   Boolean  @default(true) @map("amount_within_tolerance")
+  withinTolerance         Boolean  @map("within_tolerance")
+  exceptionReason         String?  @map("exception_reason")
+  createdAt               DateTime @default(now()) @map("created_at")
 
   billMatch         SupplierBillMatch @relation(fields: [supplierBillMatchId], references: [id], onDelete: Cascade)
   purchaseOrderLine PurchaseOrderLine @relation(fields: [purchaseOrderLineId], references: [id])
@@ -3949,31 +3972,31 @@ model OverReceiptPolicy {
 // CommitmentLedger ACTUAL + JournalLine.
 // Never UPDATE rows — corrections create compensating entries.
 model CommitmentLedgerEntry {
-  id                   String                  @id @default(cuid())
-  organizationId       String                  @map("organization_id")
-  projectId            String?                 @map("project_id")
-  boqNodeId            String?                 @map("boq_node_id")
-  departmentId         String?                 @map("department_id")
-  costCenterId         String?                 @map("cost_center_id")
-  materialId           String?                 @map("material_id")
-  supplierId           String?                 @map("supplier_id")
-  purchaseOrderId      String?                 @map("purchase_order_id")
-  spendCategoryId      String?                 @map("spend_category_id")
-  stage                CommitmentStage         @map("stage")
+  id                 String                  @id @default(cuid())
+  organizationId     String                  @map("organization_id")
+  projectId          String?                 @map("project_id")
+  boqNodeId          String?                 @map("boq_node_id")
+  departmentId       String?                 @map("department_id")
+  costCenterId       String?                 @map("cost_center_id")
+  materialId         String?                 @map("material_id")
+  supplierId         String?                 @map("supplier_id")
+  purchaseOrderId    String?                 @map("purchase_order_id")
+  spendCategoryId    String?                 @map("spend_category_id")
+  stage              CommitmentStage         @map("stage")
   // Signed: positive = increase, negative = decrease/reversal
-  amount               Decimal                 @map("amount") @db.Decimal(18, 2)
-  currencyCode         String                  @map("currency_code") @db.VarChar(3)
-  reportingAmount      Decimal                 @map("reporting_amount") @db.Decimal(18, 2)
-  sourceDocumentType   CommitmentSourceDocType @map("source_document_type")
-  sourceDocumentId     String                  @map("source_document_id")
-  sourceLineId         String?                 @map("source_line_id")
-  sourceRevision       Int?                    @map("source_revision")
-  eventType            String                  @map("event_type")
+  amount             Decimal                 @map("amount") @db.Decimal(18, 2)
+  currencyCode       String                  @map("currency_code") @db.VarChar(3)
+  reportingAmount    Decimal                 @map("reporting_amount") @db.Decimal(18, 2)
+  sourceDocumentType CommitmentSourceDocType @map("source_document_type")
+  sourceDocumentId   String                  @map("source_document_id")
+  sourceLineId       String?                 @map("source_line_id")
+  sourceRevision     Int?                    @map("source_revision")
+  eventType          String                  @map("event_type")
   // Idempotency: prevents duplicate commitment on retry (ADR-007, Rule CL-005)
-  idempotencyKey       String                  @unique @map("idempotency_key")
-  occurredAt           DateTime                @map("occurred_at")
-  accountingDate       DateTime                @map("accounting_date") @db.Date
-  createdAt            DateTime                @default(now()) @map("created_at")
+  idempotencyKey     String                  @unique @map("idempotency_key")
+  occurredAt         DateTime                @map("occurred_at")
+  accountingDate     DateTime                @map("accounting_date") @db.Date
+  createdAt          DateTime                @default(now()) @map("created_at")
 
   organization  Organization   @relation(fields: [organizationId], references: [id])
   material      Material?      @relation(fields: [materialId], references: [id])

@@ -24,6 +24,15 @@ interface SnapshotRow {
   capturedById: string;
 }
 
+/** The file lifecycle seam: attaching evidence binds it, approving the report freezes it. */
+function files() {
+  return {
+    bind: jest.fn().mockResolvedValue(undefined),
+    markImmutable: jest.fn().mockResolvedValue(undefined),
+    markManyImmutable: jest.fn().mockResolvedValue(0),
+  };
+}
+
 function build(
   over: {
     snapshots?: SnapshotRow[];
@@ -79,6 +88,7 @@ function build(
     projectAccess as never,
     financialPosition as never,
     {} as never,
+    files() as never,
   );
   return { svc, repo, projectAccess, created };
 }

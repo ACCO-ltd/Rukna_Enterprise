@@ -66,6 +66,15 @@ export class ProgressRepository {
     return prisma.dprAttachment.create({ data });
   }
 
+  /** The files behind a report's evidence — read when approval freezes them. */
+  async findAttachmentFileIds(prisma: TenantPrisma, dprId: string): Promise<string[]> {
+    const rows = await prisma.dprAttachment.findMany({
+      where: { dprId },
+      select: { platformFileId: true },
+    });
+    return rows.map((row) => row.platformFileId);
+  }
+
   /** The BOQ leaf must belong to this project's BOQ. Returns the measurable quantity + leaf flag. */
   findBoqNodeForProject(prisma: TenantPrisma, projectId: string, boqNodeId: string) {
     return prisma.boqNode.findFirst({

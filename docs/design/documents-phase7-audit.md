@@ -176,6 +176,13 @@ journalEntryAttachment  0
 dprAttachment           1  (progress.repository.ts — the only live one)
 ```
 
+> **Corrected 2026-09-07 (Step 2).** `journalEntryAttachment` is not quite zero: `att.spec.ts`
+> (ATT-01…ATT-05) exercises the table directly through Prisma, and migration `20260806042100`
+> installs `trg_journal_entry_attachments_immutable`, a database trigger that already blocks
+> deleting an attachment on a POSTED journal. So that one has a finalisation rule enforced at the
+> lowest level available and no way for a user to create a row. The count above was measured with
+> specs excluded; the product conclusion — no upload path exists — stands for all five.
+
 The existing spec defers "Linked documents" and describes the blocker as a missing aggregation
 endpoint (`GET /projects/:id/linked-documents`). That is not the blocker. **The tables have no rows
 and no way to get any** — step 3 of that spec's own sequence, "wire the existing `*Attachment`
