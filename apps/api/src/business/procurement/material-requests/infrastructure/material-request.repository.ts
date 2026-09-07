@@ -1,5 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import type { PrismaClient, MaterialRequestStatus, MaterialRequestScope, ProcurementLineType } from '@prisma/client';
+import type {
+  PrismaClient,
+  MaterialRequestStatus,
+  MaterialRequestScope,
+  MaterialRequestPriority,
+  ProcurementLineType,
+} from '@prisma/client';
 import type { Decimal } from '@prisma/client/runtime/library';
 
 type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
@@ -11,6 +17,8 @@ export interface CreateMrLineData {
   description: string;
   unitOfMeasureId: string;
   requestedQuantity: Decimal;
+  /** The requester's estimate. ADR-022 routes approval on the value it produces. */
+  estimatedUnitPrice?: Decimal;
   boqNodeId?: string;
   spendCategoryId?: string;
   departmentId?: string;
@@ -27,6 +35,9 @@ export interface CreateMrData {
   requestedBy: string;
   requestedDate: Date;
   requiredByDate?: Date;
+  title?: string;
+  currencyCode?: string;
+  priority?: MaterialRequestPriority;
   description?: string;
   notes?: string;
   lines: CreateMrLineData[];

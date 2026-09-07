@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => ({
   useSuppliers: vi.fn(),
   // SupplierPicker offers "New supplier" from the picker itself.
   useCreateSupplier: () => ({ mutate: vi.fn(), isPending: false, isError: false, error: null, reset: vi.fn() }),
+  // The line's cost-target picker offers project-level spend categories.
+  useSpendCategories: () => ({ data: [], isLoading: false, isError: false }),
 }));
 
 const accountingMocks = vi.hoisted(() => ({
@@ -32,7 +34,13 @@ vi.mock('../hooks/use-procurement', () => mocks);
 vi.mock('@/features/accounting/hooks/use-accounting', () => accountingMocks);
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), back: vi.fn() }) }));
 
-import { SupplierBillForm, billLineError, billTotalMinor, emptyBillLine } from './bill-form';
+import {
+  SupplierBillForm,
+  billLineError,
+  billTotalMinor,
+  emptyBillLine,
+  type BillLineDraft,
+} from './bill-form';
 import { openSelect } from '@/test/choose-option';
 
 const OFFICE = {
@@ -111,11 +119,13 @@ beforeEach(() => {
 });
 
 describe('billLineError', () => {
-  const valid = {
+  const valid: BillLineDraft = {
     description: 'Rent',
     netAmount: '400.00',
     vatAmount: '0',
     expenseProfileCode: 'OFFICE_EXPENSE',
+    // Head-office rent belongs to no project: the corporate/overhead attribution.
+    costTarget: { notChargeable: true, projectId: null, boqNodeId: null, spendCategoryId: null },
   };
 
   it('accepts a complete line, including zero VAT', () => {
@@ -142,6 +152,35 @@ describe('billLineError', () => {
     expect(billLineError({ ...valid, netAmount: 'abc' })).toBe('net');
   });
 
+  /**
+   * A non-PO bill is the only path where project cost coding is keyed by hand. Every bill
+   * entered here used to post with no project at all, which is why project actual cost in the
+   * accounts read $0 however much had been spent. A project named without saying what it is
+   * spending on is the unclassified bucket the server refuses.
+   */
+  it('requires a cost target, and accepts either of the two project attributions', () => {
+    expect(
+      billLineError({
+        ...valid,
+        costTarget: { notChargeable: false, projectId: 'p1', boqNodeId: null, spendCategoryId: null },
+      }),
+    ).toBe('costTarget');
+
+    expect(
+      billLineError({
+        ...valid,
+        costTarget: { notChargeable: false, projectId: 'p1', boqNodeId: 'n1', spendCategoryId: null },
+      }),
+    ).toBeNull();
+
+    expect(
+      billLineError({
+        ...valid,
+        costTarget: { notChargeable: false, projectId: 'p1', boqNodeId: null, spendCategoryId: 'c1' },
+      }),
+    ).toBeNull();
+  });
+
   it('requires an expense profile', () => {
     expect(billLineError({ ...valid, expenseProfileCode: '' })).toBe('profile');
   });
@@ -151,8 +190,8 @@ describe('billTotalMinor', () => {
   it('sums net plus VAT across lines, in minor units', () => {
     expect(
       billTotalMinor([
-        { description: 'a', netAmount: '600.00', vatAmount: '30.00', expenseProfileCode: 'X' },
-        { description: 'b', netAmount: '400.00', vatAmount: '20.00', expenseProfileCode: 'X' },
+        { ...emptyBillLine(), description: 'a', netAmount: '600.00', vatAmount: '30.00', expenseProfileCode: 'X' },
+        { ...emptyBillLine(), description: 'b', netAmount: '400.00', vatAmount: '20.00', expenseProfileCode: 'X' },
       ]),
     ).toBe(105000);
   });

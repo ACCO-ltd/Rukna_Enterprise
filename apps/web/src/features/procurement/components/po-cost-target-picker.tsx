@@ -8,11 +8,21 @@
  * captures this once here and every downstream document inherits it (D7), so the value has to
  * be right — a wrong node commits cost against the wrong budget line.
  *
- * A3's first-class exception is the **"Not chargeable to a project cost line"** toggle: an
- * org/overhead line (rent, shared plant, head-office consumables) belongs to no project. When
- * it is on, the cost-target is hidden and cleared and the create payload sends NEITHER field.
- * The backend rejects a half-specified target (one id without the other) with a 400; this
- * picker makes that unreachable from the UI by only ever emitting both ids or neither.
+ * ─── The three valid attributions ───────────────────────────────────────────────────────
+ *
+ *   1. Corporate / non-project   project = null,  node = null
+ *   2. Project-level (non-BOQ)   project = set,   node = null,  spend category = set
+ *   3. BOQ-coded project cost    project = set,   node = set
+ *
+ * State 2 is what this picker used to make impossible. It insisted on "both ids or neither",
+ * so site security, temporary utilities, project transport, insurance and fuel — real project
+ * cost that a contractual bill of quantities has no line for — could only be recorded by
+ * inventing a fake BOQ node or by losing it into corporate overhead. The backend's
+ * `validateCostTarget` has accepted all three since 2026-09-06; the UI had not caught up, so
+ * an entire class of legitimate project cost was unreachable from the product.
+ *
+ * The rule the picker enforces, matching the server exactly: a BOQ node needs its project, and
+ * a project needs a target — either a node, or a spend category.
  *
  * ─── Where the BOQ leaf nodes come from ─────────────────────────────────────────────────
  *
@@ -29,6 +39,7 @@ import { useTranslations } from 'next-intl';
 import { flattenTree } from '@/features/boq/boq-rows';
 import { useBoqTree, useBoqWorkspace } from '@/features/boq/hooks/use-boq';
 import { useProjects } from '@/features/projects/hooks/use-projects';
+import { useSpendCategories } from '../hooks/use-procurement';
 import { Select } from '@erp/ui';
 
 /** The cost-target a line carries, or the explicit org/overhead opt-out. */
@@ -36,20 +47,43 @@ export interface CostTargetValue {
   notChargeable: boolean;
   projectId: string | null;
   boqNodeId: string | null;
+  /** Project-level target, for cost the BOQ has no line for. Mutually exclusive with a node. */
+  spendCategoryId: string | null;
 }
 
 export function emptyCostTarget(): CostTargetValue {
-  return { notChargeable: false, projectId: null, boqNodeId: null };
+  return { notChargeable: false, projectId: null, boqNodeId: null, spendCategoryId: null };
 }
 
 /**
- * A cost-target is complete when it is the org/overhead opt-out, OR it names both a project
- * and a BOQ node. A half-specified target (project chosen, node not yet) is incomplete and
- * blocks submit — it is the exact state the backend refuses with COST_TARGET_INCOMPLETE.
+ * Complete when it is the org/overhead opt-out, or it names a project AND says what the
+ * project is spending on — a BOQ node, or a spend category. A project with neither is the
+ * unclassified suspense bucket the server refuses with PROJECT_WITHOUT_COST_TARGET.
  */
 export function isCostTargetComplete(value: CostTargetValue): boolean {
   if (value.notChargeable) return true;
-  return Boolean(value.projectId) && Boolean(value.boqNodeId);
+  if (!value.projectId) return false;
+  return Boolean(value.boqNodeId) || Boolean(value.spendCategoryId);
+}
+
+/**
+ * The cost-target fields to send for a line, as the create/revise DTOs expect them.
+ *
+ * One place, so the create form and the amend sheet cannot disagree about which of the three
+ * attributions they are emitting — and so a project can never be sent without a target.
+ */
+export function buildCostTargetPayload(value: CostTargetValue): {
+  projectId?: string;
+  boqNodeId?: string;
+  spendCategoryId?: string;
+} {
+  if (value.notChargeable || !value.projectId) return {};
+  if (value.boqNodeId) return { projectId: value.projectId, boqNodeId: value.boqNodeId };
+  if (value.spendCategoryId) {
+    return { projectId: value.projectId, spendCategoryId: value.spendCategoryId };
+  }
+  // Incomplete: submit is already blocked, and sending a bare project would be rejected.
+  return {};
 }
 
 interface PoCostTargetPickerProps {
@@ -62,7 +96,7 @@ interface PoCostTargetPickerProps {
 export function PoCostTargetPicker({ value, onChange, showError }: PoCostTargetPickerProps) {
   const t = useTranslations('procurement.costTarget');
   const tc = useTranslations('procurement.common');
-  const ids = { toggle: useId(), project: useId(), node: useId() };
+  const ids = { toggle: useId(), project: useId(), node: useId(), category: useId() };
 
   const { data: projects, isLoading: projectsLoading, isError: projectsError } = useProjects();
 
@@ -77,8 +111,8 @@ export function PoCostTargetPicker({ value, onChange, showError }: PoCostTargetP
             // Turning the opt-out on clears any chosen target so a stale id can never be sent.
             onChange(
               e.target.checked
-                ? { notChargeable: true, projectId: null, boqNodeId: null }
-                : { notChargeable: false, projectId: null, boqNodeId: null },
+                ? { notChargeable: true, projectId: null, boqNodeId: null, spendCategoryId: null }
+                : { notChargeable: false, projectId: null, boqNodeId: null, spendCategoryId: null },
             )
           }
           className="mt-0.5 size-4 shrink-0 rounded border-border"
@@ -100,11 +134,12 @@ export function PoCostTargetPicker({ value, onChange, showError }: PoCostTargetP
               value={value.projectId ?? ''}
               disabled={projectsLoading || projectsError}
               onChange={(value) =>
-                // Changing the project invalidates any node chosen under the old one.
+                // Changing the project invalidates any target chosen under the old one.
                 onChange({
                   notChargeable: false,
                   projectId: value || null,
                   boqNodeId: null,
+                  spendCategoryId: null,
                 })
               }
             >
@@ -124,8 +159,31 @@ export function PoCostTargetPicker({ value, onChange, showError }: PoCostTargetP
             id={ids.node}
             projectId={value.projectId}
             value={value.boqNodeId}
+            disabled={Boolean(value.spendCategoryId)}
             onChange={(boqNodeId) =>
-              onChange({ notChargeable: false, projectId: value.projectId, boqNodeId })
+              // A node and a category are alternatives, not a pair: choosing one clears the
+              // other so a line can never roll up two ways at once.
+              onChange({
+                notChargeable: false,
+                projectId: value.projectId,
+                boqNodeId,
+                spendCategoryId: null,
+              })
+            }
+          />
+
+          <SpendCategorySelect
+            id={ids.category}
+            projectId={value.projectId}
+            value={value.spendCategoryId}
+            disabled={Boolean(value.boqNodeId)}
+            onChange={(spendCategoryId) =>
+              onChange({
+                notChargeable: false,
+                projectId: value.projectId,
+                boqNodeId: null,
+                spendCategoryId,
+              })
             }
           />
         </div>
@@ -144,6 +202,7 @@ interface BoqNodeSelectProps {
   id: string;
   projectId: string | null;
   value: string | null;
+  disabled?: boolean;
   onChange: (boqNodeId: string | null) => void;
 }
 
@@ -153,7 +212,7 @@ interface BoqNodeSelectProps {
  * otherwise). It stays disabled until a project is chosen, because a node without a project
  * is a half-specified target the backend refuses.
  */
-function BoqNodeSelect({ id, projectId, value, onChange }: BoqNodeSelectProps) {
+function BoqNodeSelect({ id, projectId, value, disabled, onChange }: BoqNodeSelectProps) {
   const t = useTranslations('procurement.costTarget');
 
   const workspace = useBoqWorkspace(projectId ?? '');
@@ -182,7 +241,7 @@ function BoqNodeSelect({ id, projectId, value, onChange }: BoqNodeSelectProps) {
       <Select
         id={id}
         value={value ?? ''}
-        disabled={!projectId || loading || noBaseline || empty}
+        disabled={disabled || !projectId || loading || noBaseline || empty}
         onChange={(value) => onChange(value || null)}
       >
         <option value="">
@@ -202,6 +261,62 @@ function BoqNodeSelect({ id, projectId, value, onChange }: BoqNodeSelectProps) {
       {noBaseline ? <p className="mt-1 text-xs text-muted-foreground">{t('noBaseline')}</p> : null}
       {empty ? <p className="mt-1 text-xs text-muted-foreground">{t('noLeafNodes')}</p> : null}
       {tree.isError ? <p className="mt-1 text-xs text-danger">{t('nodesLoadFailed')}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * The project-level alternative to a BOQ node: what this project is spending on when the
+ * priced scope has no line for it — site security, transport, insurance, temporary
+ * facilities. A construction BOQ is the contractual measured scope, not the complete
+ * internal cost-accounting structure, and forcing these into invented BOQ items would
+ * corrupt exactly that distinction.
+ */
+function SpendCategorySelect({
+  id,
+  projectId,
+  value,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  projectId: string | null;
+  value: string | null;
+  disabled?: boolean;
+  onChange: (spendCategoryId: string | null) => void;
+}) {
+  const t = useTranslations('procurement.costTarget');
+  const categories = useSpendCategories();
+  const options = (categories.data ?? []).filter((c) => c.status === 'ACTIVE');
+
+  return (
+    <div>
+      <label htmlFor={id} className="mb-1 block text-xs font-medium">
+        {t('spendCategoryLabel')}
+      </label>
+      <Select
+        id={id}
+        value={value ?? ''}
+        disabled={disabled || !projectId || categories.isLoading}
+        onChange={(next) => onChange(next || null)}
+      >
+        <option value="">
+          {!projectId
+            ? t('selectProjectFirst')
+            : categories.isLoading
+              ? t('loadingCategories')
+              : t('selectCategory')}
+        </option>
+        {options.map((category) => (
+          <option key={category.id} value={category.id}>
+            {category.code} · {category.name}
+          </option>
+        ))}
+      </Select>
+      <p className="mt-1 text-xs text-muted-foreground">{t('spendCategoryHint')}</p>
+      {categories.isError ? (
+        <p className="mt-1 text-xs text-danger">{t('categoriesLoadFailed')}</p>
+      ) : null}
     </div>
   );
 }

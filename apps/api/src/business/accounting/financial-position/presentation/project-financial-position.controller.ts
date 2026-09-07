@@ -9,6 +9,8 @@ import { ProjectScoped } from '../../../../common/decorators/project-scoped.deco
 import { ProjectAccessGuard } from '../../../../platform/project-access/project-access.guard.js';
 
 import { ProjectFinancialPositionService } from '../application/project-financial-position.service.js';
+import { ProjectCostReconciliationService } from '../application/project-cost-reconciliation.service.js';
+import { ProjectFinanceOverviewService } from '../application/project-finance-overview.service.js';
 
 /**
  * Project Financial Position (ADR-013) — the PM/control view: posted actual cost, remaining
@@ -22,7 +24,11 @@ import { ProjectFinancialPositionService } from '../application/project-financia
 @ProjectScoped('projectId')
 @Controller('projects/:projectId')
 export class ProjectFinancialPositionController {
-  constructor(private readonly service: ProjectFinancialPositionService) {}
+  constructor(
+    private readonly service: ProjectFinancialPositionService,
+    private readonly reconciliation: ProjectCostReconciliationService,
+    private readonly financeOverview: ProjectFinanceOverviewService,
+  ) {}
 
   @Get('financial-position')
   @ApiParam({ name: 'projectId', description: 'Project ID' })
@@ -38,5 +44,39 @@ export class ProjectFinancialPositionController {
     @Param('projectId') projectId: string,
   ) {
     return this.service.getForProject(identity, projectId);
+  }
+
+  @Get('cost-reconciliation')
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  @ApiOperation({
+    summary: "Does procurement's ACTUAL agree with the general ledger? (REC-01)",
+    description:
+      'Compares commitment-ledger ACTUAL against posted GL project cost whose journal came ' +
+      'from a supplier bill. Source-scoped on purpose: payroll, plant, depreciation and ' +
+      'manual project journals are real project cost procurement never sees, and are ' +
+      'reported separately rather than counted as a variance.',
+  })
+  getCostReconciliation(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+  ) {
+    return this.reconciliation.getForProject(identity, projectId);
+  }
+
+  @Get('finance/overview')
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  @ApiOperation({
+    summary: 'Everything the project Finance Overview renders, in one read',
+    description:
+      'Cost position and cost areas come from the same rollup Cost Control uses, so the two ' +
+      'screens cannot disagree. Control states (reconciliation, accounting setup, budget, ' +
+      'period) are measured server-side rather than inferred in the browser — they exist to ' +
+      'tell a reader whether the money figures above them can be trusted.',
+  })
+  getFinanceOverview(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+  ) {
+    return this.financeOverview.getOverview(identity, projectId);
   }
 }

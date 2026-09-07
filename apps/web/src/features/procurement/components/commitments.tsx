@@ -1,28 +1,28 @@
 'use client';
 
 /**
- * Commitment ledger (§12.9) — the project card and the full ledger screen.
+ * Commitment ledger (§12.9) — the project cost position and the full ledger screen.
  *
- * These are the figures Sprint 5 exists to produce, and two server defects make them
- * overstate committed cost in ordinary use:
+ * Both surfaces used to carry a standing accuracy warning: cancelling a purchase order wrote
+ * no reversal (P12), and superseding a revision reversed the full original value rather than
+ * the uncommitted balance (P11), so COMMITTED overstated in ordinary use and could go
+ * negative. A note was the only honest thing a consumer of wrong numbers could do.
  *
- *  - Cancelling a purchase order writes no reversal, so its commitments stand forever
- *    (P12).
- *  - Superseding a revision reverses the full original value rather than the uncommitted
- *    balance, so a revision received against before revision drives COMMITTED negative
- *    (P11).
- *
- * Neither is correctable from here — the ledger is append-only and has no write endpoint.
- * Both surfaces therefore carry a note. A note is not a fix, and it is the only thing a
- * consumer of wrong numbers can honestly do.
+ * **Both are fixed on the server** — `PurchaseOrderService` writes a `PO_CANCELLED` reversal
+ * for each active line on cancel, and supersede reverses only the net COMMITTED balance summed
+ * per line (`frontend-blockers.md` P11/P12, both marked fixed). The warning came down with
+ * them: a permanent notice about a defect that no longer exists trains people to distrust
+ * figures that are now correct, which costs more than it ever bought.
  */
 
 import { useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { HandCoins, Receipt, TrendUp, WarningCircle } from '@phosphor-icons/react';
+import { Coins, HandCoins, Receipt, TrendUp } from '@phosphor-icons/react';
 import {
   Alert,
+  cn,
+  RecordPanel,
   Select,
   Table,
   TableBody,
@@ -45,21 +45,28 @@ import { CommitmentStageTag } from './procurement-badges';
 
 const STAGES: CommitmentStage[] = ['COMMITTED', 'ACCRUED', 'ACTUAL'];
 
-// ─── Project card (§12.9) ─────────────────────────────────────────────────────
+// ─── Project cost position (§12.9) ────────────────────────────
 
 /**
- * Rendered on the project page. Hidden entirely without `view:commitment-ledger` —
- * §12.9 is explicit that this is hidden rather than shown empty, because an empty
- * commitments card reads as "this project has committed nothing".
+ * Committed → accrued → actual for one project.
+ *
+ * Rendered in two shapes. `panel` is what the Procurement tab wants beside its other widgets;
+ * `overview` is the project Overview's version — the same bounded surface every region there
+ * uses, with the three stages as a metric strip rather than a stack of labelled rows
+ * (`ux-doctrine.md` §2.2).
+ *
+ * Hidden entirely without `view:commitment-ledger` — §12.9 is explicit that this is hidden
+ * rather than shown empty, because an empty commitments card reads as "this project has
+ * committed nothing".
  */
 export function ProjectCommitmentsCard({
   projectId,
   currencyCode,
-  embedded = false,
+  presentation = 'panel',
 }: {
   projectId: string;
   currencyCode: string | null;
-  embedded?: boolean;
+  presentation?: 'panel' | 'overview';
 }) {
   const t = useTranslations('procurement.commitments');
   const tc = useTranslations('procurement.common');
@@ -71,12 +78,60 @@ export function ProjectCommitmentsCard({
 
   if (!allowed) return null;
 
+  const stages = [
+    { key: 'committed', value: summary.data?.committed },
+    { key: 'accrued', value: summary.data?.accrued },
+    { key: 'actual', value: summary.data?.actual },
+  ] as const;
+
+  if (presentation === 'overview') {
+    return (
+      <RecordPanel
+        title={t('projectSectionTitle')}
+        meta={t('projectSectionHint')}
+        icon={<Coins size={17} />}
+        action={
+          <Link
+            href={`/projects/${projectId}/procurement`}
+            className="text-caption font-medium text-brand-primary hover:underline"
+          >
+            {t('openProcurement')}
+          </Link>
+        }
+      >
+        {summary.isPending ? (
+          <div className="h-20 animate-pulse rounded-control bg-muted" aria-hidden="true" />
+        ) : summary.isError ? (
+          <p className="text-caption text-muted-foreground">{tc('loadFailed')}</p>
+        ) : (
+          // A metric strip, not three cards inside a card: committed → accrued → actual is one
+          // sentence read left to right, and boxing each step made them look like three
+          // measurements of unrelated things.
+          <dl className="grid gap-y-5 sm:grid-cols-3 sm:gap-y-0 sm:divide-x sm:divide-border">
+            {stages.map(({ key, value }, index) => (
+              <div key={key} className={cn('min-w-0', index > 0 && 'sm:ps-5')}>
+                <dt className="text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                  {t(key)}
+                </dt>
+                {/* `text-h1` rather than body weight: doctrine §2.2 puts a metric strip's
+                    value at the top of the type scale precisely so it reads as a measurement
+                    rather than as another row of a definition list. */}
+                <dd className="mt-1.5 text-h1 font-semibold tabular-nums text-foreground">
+                  {formatMoney(value, currencyCode, locale) ?? tc('notAvailable')}
+                </dd>
+                <dd className="mt-1 text-caption leading-4 text-muted-foreground">
+                  {t(`${key}Hint`)}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </RecordPanel>
+    );
+  }
+
   return (
-    <section
-      className={
-        embedded ? '' : 'overflow-hidden rounded-panel border border-border bg-surface shadow-e1'
-      }
-    >
+    <section className="overflow-hidden rounded-panel border border-border bg-surface shadow-e1">
       <div className="border-b border-border px-5 py-3 sm:px-6">
         <h3 className="text-body-sm font-semibold text-foreground">{t('cardTitle')}</h3>
       </div>
@@ -97,13 +152,7 @@ export function ProjectCommitmentsCard({
       ) : (
         <>
           <dl className="grid divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0 rtl:sm:divide-x-reverse">
-            {(
-              [
-                ['committed', summary.data?.committed],
-                ['accrued', summary.data?.accrued],
-                ['actual', summary.data?.actual],
-              ] as const
-            ).map(([key, value], index) => {
+            {stages.map(({ key, value }, index) => {
               const MetricIcon = [HandCoins, TrendUp, Receipt][index];
               return (
                 <div key={key} className="p-4 sm:p-5">
@@ -125,17 +174,9 @@ export function ProjectCommitmentsCard({
           </dl>
 
           <div className="border-t border-border px-5 py-3 sm:px-6">
-            <p className="flex items-start gap-2 text-caption leading-5 text-muted-foreground">
-              <WarningCircle
-                size={17}
-                className="mt-0.5 shrink-0 text-warning"
-                aria-hidden="true"
-              />
-              {t('accuracyNotice')}
-            </p>
             <Link
               href={`/procurement/commitments?projectId=${projectId}`}
-              className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-brand-primary underline-offset-2 hover:underline"
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-primary underline-offset-2 hover:underline"
             >
               {t('viewLedger')} →
             </Link>
@@ -343,9 +384,6 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
               </Table>
             </TableScroll>
           </section>
-
-          {/* ── Accuracy notice — below the data it qualifies ─────────────── */}
-          <Alert variant="warning" messages={[t('accuracyNotice')]} />
         </>
       )}
     </div>

@@ -190,3 +190,130 @@ Each phase is a reviewable slice, same as the import work.
    NOT block Phases 1–5. To confirm with the team / Eng Ahmed before Phase 6.
 
 Build sequence per §4: **History → Auto-numbering → Naming → Action-bar/first-run → Inline edit → Variations.**
+
+---
+
+## 6. Phase-2 audit — 2026-09-05
+
+A second BOQ redesign spec arrived, written against the screen as it looked before Phases 1–5
+landed. **Audited against the code first, and most of it was already built** — in several places
+better than the new spec describes. Recorded here so the next person does not re-litigate it.
+
+### Already built, do not rebuild
+
+| The spec asked for | Where it already lives |
+|---|---|
+| Import primary on an empty BOQ | `boq-workspace.tsx` empty state — `[Import]` primary + `[Start blank]` outline (§5 decision 4) |
+| One state-driven primary CTA | `boq-next-step.ts` — INITIALIZE / ADD_ITEMS / PRICE_ITEMS / FIX_BLOCKERS / SUBMIT_BASELINE / START_REVISION / VIEW_ONLY |
+| Server-grounded baseline readiness | `boq-readiness.policy.ts` — one policy, rendered by `GET …/readiness` and enforced by `baseline` |
+| Actionable blocker count + "View items" | `BoqReadinessBanner` → `onShowNodes` filters the grid to the offending `nodeId`s |
+| Needs-attention filter | `BoqToolbar` — all / incomplete / priced / sections / items, plus variation filters when relevant |
+| State-aware expand/collapse | `BoqToolbar` — already a toggle, not a one-way control |
+| Sticky toolbar and table header | `BoqStickyBar` + sticky `TableHeader` |
+| Import upload → map → dry-run → commit | `boq-import-dialog.tsx` + `boq-import.service.ts` |
+| RBAC | `view:boq` / `manage:boq` / `baseline:boq` via `capabilities`; rate and amount never reach a restricted browser |
+| Remove the "About BOQ" panel | Never existed — it is in the mockup only |
+
+**`resolveNextStep` is better than the spec.** The spec still assumes a `Baseline BOQ` button that
+appears when ready. The code instead turns the primary button into *the blocker* ("Price 5 items")
+when not ready, and is never disabled — because the previous version's only blue button was the
+disabled one. That design stands.
+
+**No backend work is needed.** Every capability the spec asks for is already served.
+
+### The four real gaps — closed
+
+1. **State labels.** "Working BOQ" said BOQ twice on a page already headed BOQ; "Past revision" and
+   "Discarded" were our words for states the domain calls superseded and cancelled.
+   → `Working / Baselined / Superseded / Cancelled`. (Briefly shipped as `Approved` — corrected
+   the same day, see §7.)
+2. **Versions vs Activity.** One disclosure called "Versions & history" made a reader guess which
+   question it answered. → `Versions` (which version am I on) and `Activity` (who changed what).
+3. **TYPE column dropped; SOURCE conditional.** Whether a row is a section or an item is already
+   carried by the chevron, indent, weight, tint and absence of pricing cells — five signals did not
+   need a sixth in words. Screen readers keep it as `sr-only` in the code cell. SOURCE now renders
+   only when provenance is actually mixed (`hasVariations`); until a Variation scopes a line in it
+   read "Baseline" on every row. **The field is not dropped from the data** — the column returns on
+   its own, and Variation traceability is untouched.
+4. **Contract usage in business language.** "No contract references a BOQ version yet" →
+   "Not yet used by the main contract", and it is **silent on a draft**: a contract can only
+   reference a baselined version, so saying so on every new BOQ states a rule rather than a fact.
+
+### Supersedes §5 decision 5
+
+Decision 5 locked the name **"Working BOQ"** on 2026-09-04. Superseded 2026-09-05 (owner call):
+the label is now **"Working"**. The other half of that decision — **"Contract BOQ"** for the version
+the contract points at — is unchanged and still in use.
+
+`boq-grid.test.tsx` now addresses columns by header name rather than by position. The positional
+assertion broke when TYPE was dropped, and it broke by silently pointing at the wrong column.
+
+
+---
+
+## 7. State-semantics pass — 2026-09-05 (second)
+
+Four corrections after seeing §6 rendered. All are state semantics, not information architecture.
+
+### `Approved` → `Baselined`
+
+Shipped as "Approved" earlier the same day, and it was wrong. The two words name different
+business concepts:
+
+```text
+Approved    someone signed this off through governance
+Baselined   this is the controlled scope the contract is measured against
+```
+
+Collapsing them lost the distinction — and the panel was already contradicting itself, reading
+**"Approved"** directly above **"Baselined 5 Sep 2026"** in its own provenance line. Governance can
+gate the baseline transition (`commands.baseline.awaitingApproval` exists for exactly that), so the
+product needs both words available and pointing at different things.
+
+**Locked:** `DRAFT → Working`, `BASELINED → Baselined`, `SUPERSEDED → Superseded`,
+`CANCELLED → Cancelled`. Backend enum untouched.
+
+### `Start revision` → `Create revision`
+
+Verified against the command first: `POST …/boq/draft` creates a new DRAFT version copied from the
+approved one. So the operation produces an object rather than entering a state, and "Create" names
+what the reader gets. "Start revision" read like a workflow status — *revision started, revision in
+progress* — which the system does not have.
+
+### The duplicate headline strip is gone
+
+`MetricStrip` restated total value, priced count, unpriced count and percentage roughly 20px below
+the status bar, which already carried all four. One authoritative summary — the status bar. Nothing
+was lost; `buildHeadlineMetrics` and the `platform.boq.metrics` catalogue went with it.
+
+### Progress belongs to a draft
+
+A frozen version cannot be worked on, so a 100% bar there is a picture of work finished months ago,
+sitting where the reader is asking *what is this baseline?* rather than *how close are we?*
+
+```text
+Working     3 of 4 items priced · ▓▓▓░ · 75%
+Frozen      Pricing complete
+```
+
+The fact survives as a word; the bar and the percentage do not. A **superseded or cancelled**
+version can be frozen while incomplete — those still show the count, because "Pricing complete"
+there would be false.
+
+### Import hidden off a draft
+
+`BoqImportService` always writes into an editable DRAFT: it uses `currentDraftVersionId`, or refuses
+with *"The BOQ has no editable draft to import into."* So an Import button beside a frozen baseline
+either 409s or silently opens a draft the reader never asked for. `canImport` now carries the same
+`isDraft` gate `canManage` already had — which is why Add section, inline editing, move and delete
+were already correctly hidden and Import was the one that leaked.
+
+### Copy that was overstating
+
+- **Versions disclosure** — "1 version · compare and switch" offered a comparison with nothing to
+  compare against. Now `{count, plural, one {# version} other {# versions · compare and switch}}`.
+- **Activity** — said "Every change to this BOQ" while `useBoqHistory` calls
+  `GET …/versions/:versionId/history`. It is **version-scoped**, and now says so.
+
+New `boq-status-bar.test.tsx` covers the state labels, the draft-only progress rule (including the
+incomplete-frozen case) and the contract-usage silence on a draft.

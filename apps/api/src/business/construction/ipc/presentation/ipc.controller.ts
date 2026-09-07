@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Body,
   Param,
   Query,
@@ -26,6 +27,11 @@ import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import { IpcService } from '../application/ipc.service.js';
 import { CreateIpcDto } from './dto/create-ipc.dto.js';
 import { SupersedeIpcDto } from './dto/supersede-ipc.dto.js';
+import {
+  RecordAttachmentService,
+  type AttachEvidenceDto,
+} from '../../../../platform/files/application/record-attachment.service.js';
+import { AttachRecordEvidenceDto } from '../../contracts/presentation/dto/attach-record-evidence.dto.js';
 
 @ApiTags('IPC')
 @ApiBearerAuth('access-token')
@@ -33,7 +39,10 @@ import { SupersedeIpcDto } from './dto/supersede-ipc.dto.js';
 @RequirePermissions(PERMISSIONS.ipcView)
 @Controller('ipc')
 export class IpcController {
-  constructor(private readonly ipcService: IpcService) {}
+  constructor(
+    private readonly ipcService: IpcService,
+    private readonly attachments: RecordAttachmentService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List interim payment certificates' })
@@ -94,5 +103,57 @@ export class IpcController {
     @Body() dto: SupersedeIpcDto,
   ) {
     return this.ipcService.supersede(identity, applicationId, dto);
+  }
+
+  // --- Evidence (Phase 7A) ------------------------------------------------------
+  //
+  // Two kinds of file, deliberately distinguished:
+  //
+  //   SUPPORTING          working evidence behind the certification. Replaceable while the
+  //                       certificate stands; frozen when it is superseded, because its content
+  //                       becomes history at that moment.
+  //   ISSUED_CERTIFICATE  the signed certificate as issued to the client. Frozen on arrival —
+  //                       `issue()` creates a certificate already effective, so there is no later
+  //                       finalisation event to wait for.
+  //
+  // The platform is itself the authoritative certificate. An uploaded PDF is never required; it
+  // is recorded when an external signed copy exists, which is a different fact.
+
+  @Get(':id/attachments')
+  @ApiParam({ name: 'id', description: 'Certificate ID' })
+  @ApiOperation({ summary: 'Evidence on this certificate' })
+  listAttachments(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.attachments.list(identity, 'IPC', id);
+  }
+
+  @Post(':id/attachments')
+  @RequirePermissions(PERMISSIONS.ipcIssue)
+  @ApiParam({ name: 'id', description: 'Certificate ID' })
+  @ApiOperation({
+    summary: 'Attach evidence to a certificate',
+    description:
+      'purpose=ISSUED_CERTIFICATE marks the signed certificate itself and freezes the file ' +
+      'immediately. SUPPORTING evidence stays replaceable until the certificate is superseded.',
+  })
+  attach(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: AttachRecordEvidenceDto,
+  ) {
+    return this.attachments.attach(identity, 'IPC', id, dto as AttachEvidenceDto);
+  }
+
+  @Delete(':id/attachments/:attachmentId')
+  @RequirePermissions(PERMISSIONS.ipcIssue)
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id', description: 'Certificate ID' })
+  @ApiParam({ name: 'attachmentId' })
+  @ApiOperation({ summary: 'Detach supporting evidence that has not been frozen' })
+  detach(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Param('attachmentId') attachmentId: string,
+  ) {
+    return this.attachments.remove(identity, 'IPC', id, attachmentId);
   }
 }

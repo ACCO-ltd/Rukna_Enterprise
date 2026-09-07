@@ -10,6 +10,7 @@ import type {
   AtRiskCommencementResponse,
   CertifiedInvoicedByVariationResponse,
   CommercialApplicationsResponse,
+  CommercialBillingResponse,
   CommercialCurrentCycleResponse,
   CommercialSummaryResponse,
   ExtensionOfTimeListResponse,
@@ -25,6 +26,7 @@ import {
   createVariation,
   getCertifiedInvoicedByVariation,
   getCommercialApplications,
+  getCommercialBilling,
   getCommercialCurrentCycle,
   getCommercialSummary,
   getVariation,
@@ -50,6 +52,7 @@ export const commercialKeys = {
   summary: (projectId: string) => [...commercialKeys.all(projectId), 'summary'] as const,
   applications: (projectId: string) => [...commercialKeys.all(projectId), 'applications'] as const,
   currentCycle: (projectId: string) => [...commercialKeys.all(projectId), 'current-cycle'] as const,
+  billing: (projectId: string) => [...commercialKeys.all(projectId), 'billing'] as const,
 };
 
 /** Variations are contract-scoped, so their cache is keyed by contract, not project. */
@@ -94,6 +97,20 @@ export function useCommercialApplications(
   return useQuery({
     queryKey: commercialKeys.applications(projectId),
     queryFn: () => getCommercialApplications(projectId),
+  });
+}
+
+/**
+ * The project's billing position. Separate from the summary because Billing & Collection is the
+ * only screen that needs invoice-by-invoice and receipt-by-receipt detail — loading it on every
+ * commercial tab would make Overview pay for a table nobody is looking at.
+ */
+export function useCommercialBilling(
+  projectId: string,
+): UseQueryResult<CommercialBillingResponse, Error> {
+  return useQuery({
+    queryKey: commercialKeys.billing(projectId),
+    queryFn: () => getCommercialBilling(projectId),
   });
 }
 

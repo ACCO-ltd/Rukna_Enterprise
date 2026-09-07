@@ -93,6 +93,12 @@ function summary(): CommercialSummaryResponse {
     receivables: { collectionRate: 0, outstandingInvoices: [] },
     retention: { retentionRate: '0.05', retentionCap: '0.10', retentionSplitOnPC: '0.5' },
     advances: [],
+    securityPosition: {
+      applicable: true,
+      retentionHeld: null,
+      advanceRecovered: null,
+      advanceOutstanding: null,
+    },
     guarantees: [],
     attention: [],
     capabilities: {

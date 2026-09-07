@@ -1,21 +1,15 @@
-import { ProjectFinancialPositionCard } from '@/features/projects/components/project-financial-position-card';
-import { ProjectPlContent } from '@/features/projects/components/project-pl-content';
-import { PhysicalFinancialSignalBanner } from '@/features/progress/components/physical-financial-signal-banner';
-import { CollectionProgressSignalBanner } from '@/features/progress/components/collection-progress-signal-banner';
+import { redirect } from 'next/navigation';
 
-export default async function ProjectPlPage({ params }: { params: Promise<{ id: string }> }) {
+/**
+ * The Finance tab used to land here, on the Project Actual P&L alone — a subset presented as the
+ * whole project's finances. It now lands on the Finance workspace; this route keeps every
+ * existing link, bookmark and notification working by sending them to the report they meant.
+ */
+export default async function LegacyProjectPlPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = await params;
-  return (
-    <div className="space-y-10">
-      <ProjectFinancialPositionCard projectId={id} />
-      {/* Two ADR-021/023 early-warnings, read from backend signal read models (no client-side
-          financial ratios): cost-vs-progress, then collection-vs-progress. Both sit under the
-          Financial Position they draw from. */}
-      <div className="space-y-4">
-        <PhysicalFinancialSignalBanner projectId={id} />
-        <CollectionProgressSignalBanner projectId={id} />
-      </div>
-      <ProjectPlContent projectId={id} />
-    </div>
-  );
+  redirect(`/projects/${id}/finance/profit-loss`);
 }

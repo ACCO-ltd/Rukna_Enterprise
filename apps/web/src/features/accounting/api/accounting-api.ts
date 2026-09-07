@@ -308,7 +308,7 @@ export function getProjectActualPl(
 
 /**
  * `GET /projects/:id/financial-position` — Project Financial Position (ADR-013). The PM/control
- * view: posted actual cost plus remaining committed cost, and the forecast margin that follows,
+ * view: posted actual cost, the commitment-ledger stages behind it, and the baselined budget
  * alongside contract/certified/invoiced/received revenue. Requires `view:financial-position`.
  * Unlike the Actual P&L, committed cost is included — this is the complete project money picture.
  */

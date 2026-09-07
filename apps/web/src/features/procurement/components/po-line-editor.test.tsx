@@ -28,12 +28,19 @@ const mocks = vi.hoisted(() => ({
   useProjects: vi.fn(),
   useBoqWorkspace: vi.fn(),
   useBoqTree: vi.fn(),
+  // The cost-target picker offers project-level spend categories alongside BOQ nodes.
+  useSpendCategories: () => ({
+    data: [{ id: 'cat-1', code: 'TRANSPORT', name: 'Transport', status: 'ACTIVE' }],
+    isLoading: false,
+    isError: false,
+  }),
 }));
 
 vi.mock('../hooks/use-procurement', () => ({
   useMaterials: mocks.useMaterials,
   useUoms: mocks.useUoms,
   useCreateUom: mocks.useCreateUom,
+  useSpendCategories: mocks.useSpendCategories,
 }));
 vi.mock('@/features/projects/hooks/use-projects', () => ({
   useProjects: mocks.useProjects,
@@ -99,13 +106,15 @@ const CHARGEABLE: CostTargetValue = {
   notChargeable: false,
   projectId: 'proj-1',
   boqNodeId: 'node-1',
+  spendCategoryId: null,
 };
 const NOT_CHARGEABLE: CostTargetValue = {
   notChargeable: true,
   projectId: null,
   boqNodeId: null,
+  spendCategoryId: null,
 };
-const HALF: CostTargetValue = { notChargeable: false, projectId: 'proj-1', boqNodeId: null };
+const HALF: CostTargetValue = { notChargeable: false, projectId: 'proj-1', boqNodeId: null, spendCategoryId: null };
 
 function setup(lines: PoLineDraft[], showErrors = false) {
   const onChange = vi.fn();
@@ -221,6 +230,7 @@ describe('PoLineEditor — A3 cost target', () => {
       notChargeable: false,
       projectId: null,
       boqNodeId: 'node-1',
+      spendCategoryId: null,
     };
     expect(poLineCostTargetIncomplete({ ...COMPLETE, costTarget: nodeOnly })).toBe(true);
   });
@@ -244,7 +254,7 @@ describe('PoLineEditor — A3 cost target', () => {
     setup([{ ...COMPLETE, costTarget: HALF }], true);
     expect(
       screen.getByText(
-        'Choose both a project and a BOQ cost node, or mark this line not chargeable to a project.',
+        'Choose what this project is spending on: either a BOQ cost item, or a project-level cost category.',
       ),
     ).toBeInTheDocument();
   });

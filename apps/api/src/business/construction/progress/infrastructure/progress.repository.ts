@@ -66,6 +66,15 @@ export class ProgressRepository {
     return prisma.dprAttachment.create({ data });
   }
 
+  /** The files behind a report's evidence — read when approval freezes them. */
+  async findAttachmentFileIds(prisma: TenantPrisma, dprId: string): Promise<string[]> {
+    const rows = await prisma.dprAttachment.findMany({
+      where: { dprId },
+      select: { platformFileId: true },
+    });
+    return rows.map((row) => row.platformFileId);
+  }
+
   /** The BOQ leaf must belong to this project's BOQ. Returns the measurable quantity + leaf flag. */
   findBoqNodeForProject(prisma: TenantPrisma, projectId: string, boqNodeId: string) {
     return prisma.boqNode.findFirst({
@@ -124,6 +133,22 @@ export class ProgressRepository {
       where: { organizationId, projectId },
       orderBy: { code: 'asc' },
       include: { boqLinks: { select: { boqNodeId: true } } },
+    });
+  }
+
+  /**
+   * The contract value of each allocated leaf, so the roll-up can weight a package's items by
+   * what they are worth rather than counting them equally. `totalAmount` is the server-computed
+   * line value, so the weighting always agrees with the BOQ's own arithmetic.
+   *
+   * Scoped through the BOQ rather than by `organizationId`, the way every other node read in this
+   * repository is — `BoqNode` carries no organization column of its own.
+   */
+  async findLeafValues(prisma: TenantPrisma, projectId: string, boqNodeIds: string[]) {
+    if (boqNodeIds.length === 0) return [];
+    return prisma.boqNode.findMany({
+      where: { id: { in: boqNodeIds }, version: { boq: { projectId } } },
+      select: { id: true, totalAmount: true },
     });
   }
 

@@ -14,12 +14,22 @@
 #   docker exec deploy-caddy-1 caddy validate --config /etc/caddy/Caddyfile
 #   docker exec deploy-caddy-1 caddy reload   --config /etc/caddy/Caddyfile
 #
-# api.rukna.site (backend) + acco.rukna.site (web) are here. storage.rukna.site is
-# intentionally omitted: MinIO is kept internal (not on deploy_internal), so browser
-# file uploads are deferred until you deliberately expose MinIO. Everything except the
-# Documents/file feature works.
+# api.rukna.site (backend), acco.rukna.site (web) and storage.rukna.site (object
+# storage) are here.
 #
-# DNS: both api.rukna.site and acco.rukna.site are A records → this VPS (DNS-only).
+# storage.rukna.site was added in Phase 7 Step 2. It had been deliberately omitted, and
+# that is what made every file upload and download fail in production: the presigned URL
+# is followed by the BROWSER, not the API, so an unroutable storage host breaks the whole
+# feature (Phase 7 audit P0-3).
+#
+# What is exposed is narrow: MinIO's S3 API port (9000) only. The console (9001) is on
+# no proxied path. The bucket has no anonymous policy, so a URL without a valid signature
+# gets AccessDenied — there are no public object URLs and no listing. Signatures last 15
+# minutes and the API issues one only after authorizing the caller against the record that
+# owns the file.
+#
+# DNS: api.rukna.site, acco.rukna.site and storage.rukna.site are A records → this VPS
+# (DNS-only). Caddy terminates TLS for all three.
 # ─────────────────────────────────────────────────────────────────────────────
 
 api.rukna.site {
@@ -33,4 +43,14 @@ api.rukna.site {
 acco.rukna.site {
 	encode zstd gzip
 	reverse_proxy rukna_web:3000
+}
+
+storage.rukna.site {
+	encode zstd gzip
+	# Object uploads. The API caps nothing at this layer — the signature does.
+	request_body {
+		max_size 512MB
+	}
+	# MinIO's S3 API. NOT :9001, which is the admin console and must never be proxied.
+	reverse_proxy rukna_minio:9000
 }

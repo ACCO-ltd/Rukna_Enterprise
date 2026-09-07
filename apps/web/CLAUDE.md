@@ -139,11 +139,18 @@ the Matching tab, and the Commitment Ledger with its project card.
 **Five things to know before you touch procurement or start Sprint 6:**
 
 1. **The contract sweep found seventeen defects — the P-series in `frontend-blockers.md`.**
-   Seven are implementation bugs rather than doc drift, and **three corrupt the commitment
-   ledger** (#31): cancelling a PO writes no reversal, superseding over-reverses, and an
-   `EXCEPTION_PENDING` goods receipt can never be released. The Commitments card and ledger
-   both carry an accuracy note for this reason. Read the P-series before trusting any
-   committed figure on screen.
+   Seven were implementation bugs rather than doc drift, and **three corrupted the commitment
+   ledger** (#31): cancelling a PO wrote no reversal, superseding over-reversed, and an
+   `EXCEPTION_PENDING` goods receipt could never be released. The Commitments card and ledger
+   each carried an accuracy note for this reason.
+
+   > **Corrected 2026-09-05.** All seven implementation defects (P6, P8, P10, P11, P12, P15,
+   > P16) are now marked fixed in `frontend-blockers.md`, and the fixes are in
+   > `PurchaseOrderService` — `cancel()` writes a `PO_CANCELLED` reversal per active line, and
+   > supersede reverses only the net `COMMITTED` balance via `queryByPoLineAndStage()`. **The
+   > accuracy note has been removed from both surfaces.** A permanent warning about a defect
+   > that no longer exists trains people to distrust figures that are now correct. Re-verify
+   > against the service before re-adding one.
 2. **`quantities.ts` holds every rule that can be wrong at the cent or the unit** — the
    quantity×price scale change, the GRN `accepted + rejected = received` split, over-receipt,
    MR line rules, the bill post gate. Put new procurement arithmetic there, not in a

@@ -1,0 +1,281 @@
+import { Decimal } from '@prisma/client/runtime/library';
+
+import type {
+  ProjectCostByBoqRow,
+  ProjectCostPosition,
+  ProjectCostStage,
+} from '@erp/types';
+
+/**
+ * Pure cost arithmetic for the project procurement read model.
+ *
+ * Separated from the service because these are the rules that must not go wrong, and a rule with
+ * no database behind it is one that can be tested exhaustively. Nothing here reads or writes;
+ * everything takes ledger totals and a budget and returns what a screen should show.
+ */
+
+export const ZERO = new Decimal(0);
+
+export interface StageTotals {
+  committed: Decimal;
+  accrued: Decimal;
+  actual: Decimal;
+}
+
+export function emptyStageTotals(): StageTotals {
+  return { committed: ZERO, accrued: ZERO, actual: ZERO };
+}
+
+export function addStage(totals: StageTotals, stage: ProjectCostStage, amount: Decimal): void {
+  if (stage === 'COMMITTED') totals.committed = totals.committed.plus(amount);
+  else if (stage === 'ACCRUED') totals.accrued = totals.accrued.plus(amount);
+  else totals.actual = totals.actual.plus(amount);
+}
+
+/**
+ * A percentage of budget, or null when there is nothing to be a percentage of.
+ *
+ * Null rather than 0 is the whole point: a project with no budget set has not spent 0% of it,
+ * and a screen showing "0.0% of budget" on every card invents a control that does not exist.
+ */
+export function percentOf(amount: Decimal, budget: Decimal | null): number | null {
+  if (budget === null || budget.lte(ZERO)) return null;
+  return Math.round(amount.div(budget).mul(1000).toNumber()) / 10;
+}
+
+/**
+ * The headline position, with every figure named for what it actually measures.
+ *
+ * There is no single "remaining" here, deliberately. Budget minus committed and budget minus
+ * actual answer different questions — the first is what is still free to spend, the second counts
+ * money already on a purchase order as though it were available — and one catch-all word for both
+ * is how a project reads itself as having headroom it has already spent.
+ *
+ * `committedToDate` is the sum of the three stages — everything ordered, received or billed.
+ * Each stage transition reverses the previous one (a purchase order raises COMMITTED, goods
+ * receipt moves it to ACCRUED, a posted bill moves that to ACTUAL), so the three always add up
+ * to what has been committed, with no double count.
+ *
+ * `uncommittedBudget` is measured against that, never against COMMITTED alone. COMMITTED is a
+ * signed running balance that FALLS when goods arrive, so `budget − committed` handed back
+ * headroom the project had already spent: a 1,000 budget with a 400 order fully received
+ * reported the whole 1,000 as still available. This is the same definition the Project
+ * Financial Position uses, so Overview and Cost Control cannot disagree.
+ */
+export function buildPosition(
+  totals: StageTotals,
+  budgetTotal: Decimal | null,
+  currency: string | null,
+  mayViewFinancials: boolean,
+): ProjectCostPosition {
+  const committedToDate = totals.committed.plus(totals.accrued).plus(totals.actual);
+  const money = (d: Decimal): string | null => (mayViewFinancials ? d.toFixed(2) : null);
+  const budgetMoney = (d: Decimal | null): string | null =>
+    mayViewFinancials && d !== null ? d.toFixed(2) : null;
+
+  return {
+    currency,
+    committed: money(totals.committed),
+    accrued: money(totals.accrued),
+    actual: money(totals.actual),
+    committedToDate: money(committedToDate),
+    budgetTotal: budgetMoney(budgetTotal),
+    uncommittedBudget: budgetMoney(
+      budgetTotal === null ? null : budgetTotal.minus(committedToDate),
+    ),
+    budgetLessActual: budgetMoney(budgetTotal === null ? null : budgetTotal.minus(totals.actual)),
+    committedOfBudgetPercent: mayViewFinancials ? percentOf(totals.committed, budgetTotal) : null,
+    accruedOfBudgetPercent: mayViewFinancials ? percentOf(totals.accrued, budgetTotal) : null,
+    actualOfBudgetPercent: mayViewFinancials ? percentOf(totals.actual, budgetTotal) : null,
+  };
+}
+
+export interface BoqNodeShape {
+  id: string;
+  parentId: string | null;
+  code: string;
+  description: string;
+  depth: number;
+  sortOrder: number;
+  isLeaf: boolean;
+}
+
+/**
+ * Roll leaf-coded cost up the BOQ hierarchy into a readable tree.
+ *
+ * Cost is coded to leaves — that is what `PurchaseOrderLine.boqNodeId` points at — but a
+ * 400-line cost report is not a report, it is a data dump. Every node therefore carries the sum
+ * of itself and everything beneath it, so a reader opens at section level and expands only where
+ * the money went.
+ *
+ * The project-level bucket (`boqNodeId = null`) is appended as a peer of the top-level sections,
+ * not hidden and not folded into one of them. It is real project cost — site office, transport,
+ * insurance — that simply has no priced scope to trace to. Cost with no *project* never arrives
+ * here at all; that is corporate overhead and belongs to neither.
+ */
+export function rollUpCostByBoq(options: {
+  nodes: BoqNodeShape[];
+  costByNode: Map<string | null, StageTotals>;
+  budgetByNode: Map<string | null, Decimal>;
+  projectLevelLabel: string;
+  mayViewFinancials: boolean;
+  /**
+   * Project-level cost and budget broken out by spend category — Transport, Insurance, Site
+   * overhead. These are deliberately coded project costs with no BOQ line to charge, so they get
+   * named child rows rather than sitting inside one opaque total.
+   */
+  projectLevelByCategory?: Array<{
+    spendCategoryId: string;
+    name: string;
+    cost: StageTotals | null;
+    budget: Decimal | null;
+  }>;
+}): ProjectCostByBoqRow[] {
+  const {
+    nodes,
+    costByNode,
+    budgetByNode,
+    projectLevelLabel,
+    mayViewFinancials,
+    projectLevelByCategory = [],
+  } = options;
+
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const childrenOf = new Map<string | null, BoqNodeShape[]>();
+  for (const node of nodes) {
+    const siblings = childrenOf.get(node.parentId) ?? [];
+    siblings.push(node);
+    childrenOf.set(node.parentId, siblings);
+  }
+
+  // Accumulate each node's own cost, then push it up every ancestor. One pass per coded node
+  // rather than a walk per ancestor, so a deep tree does not become quadratic.
+  const rolled = new Map<string, StageTotals>();
+  const rolledBudget = new Map<string, Decimal>();
+  const bump = (id: string, totals: StageTotals) => {
+    const current = rolled.get(id) ?? emptyStageTotals();
+    current.committed = current.committed.plus(totals.committed);
+    current.accrued = current.accrued.plus(totals.accrued);
+    current.actual = current.actual.plus(totals.actual);
+    rolled.set(id, current);
+  };
+
+  for (const [nodeId, totals] of costByNode) {
+    if (nodeId === null) continue;
+    let cursor: string | null = nodeId;
+    while (cursor) {
+      bump(cursor, totals);
+      cursor = byId.get(cursor)?.parentId ?? null;
+    }
+  }
+  for (const [nodeId, amount] of budgetByNode) {
+    if (nodeId === null) continue;
+    let cursor: string | null = nodeId;
+    while (cursor) {
+      rolledBudget.set(cursor, (rolledBudget.get(cursor) ?? ZERO).plus(amount));
+      cursor = byId.get(cursor)?.parentId ?? null;
+    }
+  }
+
+  const rows: ProjectCostByBoqRow[] = [];
+  const money = (d: Decimal | null): string | null =>
+    !mayViewFinancials || d === null ? null : d.toFixed(2);
+
+  const visit = (node: BoqNodeShape) => {
+    const totals = rolled.get(node.id);
+    const budget = rolledBudget.get(node.id) ?? null;
+    // A node with neither cost nor budget is scope nobody has spent against. Including it would
+    // bury the five sections that matter under three hundred that do not.
+    if (!totals && budget === null) return;
+
+    const committed = totals?.committed ?? ZERO;
+    const nodeCommittedToDate = committed
+      .plus(totals?.accrued ?? ZERO)
+      .plus(totals?.actual ?? ZERO);
+    rows.push({
+      kind: 'BOQ',
+      boqNodeId: node.id,
+      code: node.code,
+      description: node.description,
+      depth: node.depth,
+      hasChildren: (childrenOf.get(node.id) ?? []).length > 0,
+      budget: money(budget),
+      committed: money(committed),
+      accrued: money(totals?.accrued ?? ZERO),
+      actual: money(totals?.actual ?? ZERO),
+      uncommittedBudget: budget === null ? null : money(budget.minus(nodeCommittedToDate)),
+      committedOfBudgetPercent: mayViewFinancials ? percentOf(committed, budget) : null,
+      actualOfBudgetPercent: mayViewFinancials
+        ? percentOf(totals?.actual ?? ZERO, budget)
+        : null,
+    });
+
+    for (const child of childrenOf.get(node.id) ?? []) visit(child);
+  };
+
+  for (const root of childrenOf.get(null) ?? []) visit(root);
+
+  const projectLevelCost = costByNode.get(null);
+  const projectLevelBudget = budgetByNode.get(null) ?? null;
+  if (projectLevelCost || projectLevelBudget !== null) {
+    const committed = projectLevelCost?.committed ?? ZERO;
+    const projectLevelCommittedToDate = committed
+      .plus(projectLevelCost?.accrued ?? ZERO)
+      .plus(projectLevelCost?.actual ?? ZERO);
+    rows.push({
+      kind: 'PROJECT_LEVEL',
+      boqNodeId: null,
+      code: null,
+      description: projectLevelLabel,
+      depth: 0,
+      hasChildren: projectLevelByCategory.length > 0,
+      budget: money(projectLevelBudget),
+      committed: money(committed),
+      accrued: money(projectLevelCost?.accrued ?? ZERO),
+      actual: money(projectLevelCost?.actual ?? ZERO),
+      uncommittedBudget:
+        projectLevelBudget === null
+          ? null
+          : money(projectLevelBudget.minus(projectLevelCommittedToDate)),
+      committedOfBudgetPercent: mayViewFinancials
+        ? percentOf(committed, projectLevelBudget)
+        : null,
+      actualOfBudgetPercent: mayViewFinancials
+        ? percentOf(projectLevelCost?.actual ?? ZERO, projectLevelBudget)
+        : null,
+    });
+
+    // One child per category actually used, so "Project-level" is a heading over named costs
+    // rather than a single figure nobody can decompose.
+    for (const category of projectLevelByCategory) {
+      if (!category.cost && category.budget === null) continue;
+      const catCommitted = category.cost?.committed ?? ZERO;
+      const catCommittedToDate = catCommitted
+        .plus(category.cost?.accrued ?? ZERO)
+        .plus(category.cost?.actual ?? ZERO);
+      rows.push({
+        kind: 'PROJECT_LEVEL_CATEGORY',
+        boqNodeId: null,
+        spendCategoryId: category.spendCategoryId,
+        code: null,
+        description: category.name,
+        depth: 1,
+        hasChildren: false,
+        budget: money(category.budget),
+        committed: money(catCommitted),
+        accrued: money(category.cost?.accrued ?? ZERO),
+        actual: money(category.cost?.actual ?? ZERO),
+        uncommittedBudget:
+          category.budget === null ? null : money(category.budget.minus(catCommittedToDate)),
+        committedOfBudgetPercent: mayViewFinancials
+          ? percentOf(catCommitted, category.budget)
+          : null,
+        actualOfBudgetPercent: mayViewFinancials
+          ? percentOf(category.cost?.actual ?? ZERO, category.budget)
+          : null,
+      });
+    }
+  }
+
+  return rows;
+}

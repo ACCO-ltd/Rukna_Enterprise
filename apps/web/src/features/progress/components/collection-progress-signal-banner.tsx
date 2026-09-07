@@ -1,6 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
+import { Banknote } from 'lucide-react';
 import { Skeleton, type BadgeTone } from '@erp/ui';
 import type { CollectionProgressSignalResponse } from '@erp/types';
 
@@ -43,15 +44,25 @@ export function CollectionProgressSignalBanner({ projectId }: { projectId: strin
       statusLabel={t(`collectionSignal.status.${s.status}`)}
       tone={STATUS_TONE[s.status]}
       hint={t(STATUS_HINT[s.status])}
+      icon={<Banknote size={17} strokeWidth={1.9} />}
       stats={[
-        { label: t('collectionSignal.collected'), value: formatPct(s.collectedPercent) },
-        { label: t('signal.physical'), value: `${s.physicalPercent}%` },
-        { label: t('signal.divergence'), value: formatSignedPct(s.divergence) },
+        {
+          label: t('signal.physical'),
+          value: `${s.physicalPercent}%`,
+          percent: s.physicalPercent,
+        },
+        {
+          label: t('collectionSignal.collected'),
+          value: formatPct(s.collectedPercent),
+          percent: s.collectedPercent,
+        },
+        { label: t('signal.variance'), value: formatSignedPct(s.divergence), variance: true },
       ]}
       link={{
         href: `/projects/${projectId}/commercial/billing-collection`,
         label: t('collectionSignal.link'),
       }}
+      insufficient={s.status === 'INSUFFICIENT_DATA'}
     />
   );
 }

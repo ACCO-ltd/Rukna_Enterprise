@@ -31,8 +31,14 @@ export class SnapshotService {
     orgId: string,
     periodId: string,
     generatedBy: string,
+    /**
+     * Join a caller's transaction. Year-end close posts the closing journal and
+     * snapshots the period it belongs to; both have to commit together, or a crash
+     * between them leaves a posted closing entry with no snapshot behind it.
+     */
+    client?: TenantPrisma,
   ): Promise<SnapshotSummary> {
-    const prisma = this.tenancyService.getClient();
+    const prisma = client ?? this.tenancyService.getClient();
 
     const period = await prisma.accountingPeriod.findFirst({
       where: { id: periodId, organizationId: orgId },

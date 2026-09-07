@@ -44,7 +44,6 @@ import {
   useSetInstallmentMilestone,
 } from '../hooks/use-payment-schedule';
 import { isBilledInstallment, paymentInstallmentTone } from '../presentation';
-import { CommercialSummaryStrip } from './commercial-summary-strip';
 import { errorText } from './commercial-workspace';
 
 type Installment = CommercialPaymentScheduleInstallment;
@@ -118,12 +117,6 @@ export function PaymentSchedulePanel({
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-h3 font-semibold text-foreground">{t('paymentSchedule.title')}</h2>
-        <p className="mt-1 text-body-sm text-muted-foreground">{t('paymentSchedule.subtitle')}</p>
-      </div>
-      <CommercialSummaryStrip summary={summary} />
-
       {installments.length === 0 ? (
         <EmptyState
           icon={<CalendarClock size={24} aria-hidden="true" />}
@@ -132,9 +125,13 @@ export function PaymentSchedulePanel({
           description={t('paymentSchedule.emptyHint')}
         />
       ) : (
-        <div className="overflow-hidden rounded-panel border border-border bg-surface shadow-e1">
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <h3 className="text-body-sm font-semibold">{t('paymentSchedule.title')}</h3>
+        <div className="overflow-hidden rounded-panel border border-border bg-surface">
+          {/* The panel names itself: it sits inside Billing & Collection among the invoice and
+              receipt panels, and an unlabelled table of percentages would be a guessing game. */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
+            <h3 className="text-body-sm font-semibold text-foreground">
+              {t('paymentSchedule.title')}
+            </h3>
             {schedule?.totalCollected !== null && schedule?.contractValue !== null ? (
               <p className="text-body-sm text-muted-foreground">
                 {t('paymentSchedule.collected')}:{' '}
@@ -248,7 +245,13 @@ function InstallmentRow({
       <TableCell className="text-end">
         {inst.status === 'NEXT' && canInvoice ? (
           <div className="flex flex-col items-end gap-1">
-            <Button variant="ghost" size="sm" onClick={onInvoice} disabled={blocked}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="min-h-11 sm:min-h-0"
+              onClick={onInvoice}
+              disabled={blocked}
+            >
               {t('paymentSchedule.generate')}
             </Button>
             {blocked ? (
@@ -282,7 +285,7 @@ function MilestoneCell({
 
   if (!milestone) {
     return canManageLink ? (
-      <Button variant="ghost" size="sm" onClick={onLink}>
+      <Button variant="ghost" size="sm" className="min-h-11 sm:min-h-0" onClick={onLink}>
         {t('paymentSchedule.milestone.link')}
       </Button>
     ) : (
@@ -300,7 +303,7 @@ function MilestoneCell({
           : t('paymentSchedule.milestone.planned')}
       </Badge>
       {canManageLink ? (
-        <Button variant="ghost" size="sm" onClick={onLink}>
+        <Button variant="ghost" size="sm" className="min-h-11 sm:min-h-0" onClick={onLink}>
           {t('paymentSchedule.milestone.change')}
         </Button>
       ) : null}

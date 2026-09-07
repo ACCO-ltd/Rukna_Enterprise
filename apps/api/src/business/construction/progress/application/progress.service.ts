@@ -19,11 +19,13 @@ import {
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { ProgressRepository } from '../infrastructure/progress.repository.js';
+import { PlatformFileService } from '../../../../platform/files/application/platform-file.service.js';
 import { ProjectFinancialPositionService } from '../../../accounting/financial-position/application/project-financial-position.service.js';
 import {
   CommandGovernanceService,
   throwIfGated,
 } from '../../../../platform/workflows/application/command-governance.service.js';
+import { weightedPackagePercent } from '../domain/progress-rollup.js';
 
 const DIVERGENCE_THRESHOLD = 20; // percentage points before the signal flags a divergence (cf. ADR-023 CONST-COM-018)
 
@@ -82,6 +84,7 @@ export class ProgressService {
     private readonly projectAccess: ProjectAccessService,
     private readonly financialPosition: ProjectFinancialPositionService,
     private readonly commandGovernance: CommandGovernanceService,
+    private readonly files: PlatformFileService,
   ) {}
 
   async createDpr(identity: RequestIdentity, projectId: string, dto: CreateDprDto) {
@@ -137,11 +140,15 @@ export class ProgressService {
     if (file.status !== 'READY') {
       throw new BadRequestException('The evidence file must be fully uploaded (READY).');
     }
-    return this.repo.createAttachment(prisma, {
+    // Binding takes the file out of reach of the abandoned-upload sweep and of DELETE /files/:id:
+    // from here it is evidence on a report, and only the report can release it.
+    const attachment = await this.repo.createAttachment(prisma, {
       dprId,
       platformFileId,
       createdBy: identity.userId,
     });
+    await this.files.bind(platformFileId, `DPR evidence ${attachment.id}`);
+    return attachment;
   }
 
   async submit(identity: RequestIdentity, dprId: string) {
@@ -195,6 +202,13 @@ export class ProgressService {
         );
       }
     }
+
+    // CONST-PROG-008: approval is what makes these measurements verified, so from here the
+    // evidence behind them is part of the record. A REOPENED correction appends new evidence; it
+    // never releases the old, which is the same supersede-don't-overwrite rule the BOQ and the
+    // programme already follow.
+    const evidence = await this.repo.findAttachmentFileIds(prisma, dprId);
+    await this.files.markManyImmutable(evidence, `evidence on approved report ${dprId}`);
 
     return this.repo.updateDprStatus(prisma, dprId, {
       status: DprStatus.APPROVED,
@@ -381,13 +395,20 @@ export class ProgressService {
     const pctByNode = new Map<string, number>();
     for (const l of progressLines) pctByNode.set(l.boqNodeId, l.percentComplete ?? 0);
 
+    // Every allocated leaf, not only the measured ones: a leaf with no progress yet still carries
+    // value, and leaving it out would make a package look complete as soon as its first item was.
+    const allocatedLeafIds = packages.flatMap((wp) => wp.boqLinks.map((b) => b.boqNodeId));
+    const leafValues = await this.repo.findLeafValues(prisma, projectId, allocatedLeafIds);
+    const valueByNode = new Map<string, Decimal>(
+      leafValues.map((v) => [v.id, new Decimal(v.totalAmount?.toString() ?? '0')] as const),
+    );
+
     let weightsTotal = ZERO;
     let weighted = ZERO;
     const packageLines = packages.map((wp) => {
       const leaves = wp.boqLinks.map((b) => b.boqNodeId);
-      const pct = leaves.length
-        ? leaves.reduce((sum, n) => sum + (pctByNode.get(n) ?? 0), 0) / leaves.length
-        : 0;
+      // Value-weighted, not a plain average — see `progress-rollup.ts` for why.
+      const pct = weightedPackagePercent(leaves, pctByNode, valueByNode);
       const weight = new Decimal(wp.progressWeight.toString());
       weightsTotal = weightsTotal.plus(weight);
       weighted = weighted.plus(weight.mul(pct));
@@ -412,21 +433,29 @@ export class ProgressService {
   }
 
   /**
-   * Physical-vs-financial early warning (ADR-021/023): weighted physical % (roll-up) vs cost-consumed
-   * % (posted actual ÷ forecast cost, from the ADR-013 Financial Position). A large positive gap
-   * (cost ahead of progress) says "investigate"; a large negative gap means progress is ahead of
-   * spend (ACCO financing the client). The cost read crosses into accounting — the allowed direction.
+   * Physical-vs-financial early warning (ADR-021/023): weighted physical % (roll-up) against how
+   * much of the **baselined cost budget** has been consumed. A large positive gap (cost ahead of
+   * progress) says "investigate"; a large negative gap means progress is ahead of spend. The cost
+   * read crosses into accounting — the allowed direction.
+   *
+   * The denominator is the budget, and is `null` when no budget is baselined. It used to be
+   * `forecastCost` (= actual + committed + accrued), which is not a forecast: with no open
+   * purchase orders it equals actual, so this ratio read **100% cost consumed** on any project
+   * that happened to have nothing on order — and then reported COST_AHEAD against real progress.
+   * A project that has set no budget has not consumed 0% of it, so INSUFFICIENT_DATA is the
+   * honest answer rather than a ratio against a number nobody agreed.
    */
   async getPhysicalFinancialSignal(identity: RequestIdentity, projectId: string) {
     await this.projectAccess.assertMember(identity, projectId);
     const rollup = await this.getRollup(identity, projectId);
     const fp = await this.financialPosition.getForProject(identity, projectId);
 
-    const forecastCost = new Decimal(fp.forecastCost);
+    const budgetTotal = fp.budgetTotal === null ? null : new Decimal(fp.budgetTotal);
     const actualCost = new Decimal(fp.actualCost);
-    const costConsumedPercent = forecastCost.greaterThan(ZERO)
-      ? Math.round(actualCost.div(forecastCost).mul(100).toNumber() * 100) / 100
-      : null;
+    const costConsumedPercent =
+      budgetTotal !== null && budgetTotal.greaterThan(ZERO)
+        ? Math.round(actualCost.div(budgetTotal).mul(100).toNumber() * 100) / 100
+        : null;
 
     const physicalPercent = rollup.physicalPercent;
     const { divergence, status } = classifyDivergence(
@@ -439,7 +468,7 @@ export class ProgressService {
       projectId,
       physicalPercent,
       actualCost: fp.actualCost,
-      forecastCost: fp.forecastCost,
+      budgetTotal: fp.budgetTotal,
       costConsumedPercent,
       divergence,
       status,

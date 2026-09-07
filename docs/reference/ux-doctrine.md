@@ -143,6 +143,12 @@ local view switcher uses a quiet segmented control** (selected = subtle fill), s
 inside this module, switching views" rather than "a second global tab bar." Use the shared `ViewSwitcher`,
 not another underline `Tabs`.
 
+> **Narrowed 2026-09-05 (owner call).** `ViewSwitcher` now also has an `underline` appearance, used by
+> Progress. The rule it relaxes is real, so the exception carries its own separation: a shorter row
+> (44px vs 48px), `font-medium` vs `font-semibold`, and a glyph on the **active tab only** — which is
+> also a non-colour signal of which view is current. Segmented stays the default and Commercial stays on
+> it; `underline` is opt-in per call site, not a new default.
+
 Standing anti-patterns for nav: no generic "Change status" control anywhere (lifecycle is business-action
 commands — see ADR-019); no decorative sidebar cards that don't do a job; a level-3 switcher must never
 *look* like the level-2 module tabs.
@@ -167,15 +173,176 @@ command-center dashboard. Until they exist, the dashboard ships as a metric stri
 ## 7. Anti-patterns (blacklist — reject in review)
 
 No gradients (except the one documented skeleton shimmer) · no hero headings · no card around every
-element · no coloured icon tiles · no illustrations · no rainbow charts · no pills for plain text · no
-coloured table-header fills · no icon-only ambiguous actions · no wizard where a form works · no
-page-specific button styles · no fake metrics or placeholder analytics · no converting tables to card
-lists · no shadows for page structure · no emoji · no disabled control for an unbuilt feature (§4) ·
-no second colour competing with the accent · no money coloured as a heat map.
+element · **no icon tile below region level** (revised — see below) · no illustrations · **no sequential ramp used
+categorically** (§8.1) · no rainbow charts · no pills for plain text · no coloured table-header fills · no icon-only ambiguous actions ·
+no wizard where a form works · no page-specific button styles · no fake metrics or placeholder
+analytics · no converting tables to card lists · no shadows for page structure · no emoji · no
+disabled control for an unbuilt feature (§4) · no second colour competing with the accent · no money
+coloured as a heat map.
+
+**Revised 2026-09-05 — "no coloured icon tiles" was too broad.** It was written against the pattern
+it should have named: a *grid* of tiles in assorted hues, one per metric or per row, where the colour
+carries no meaning and the icons compete with the numbers. That stays banned.
+
+A **single accent-tinted tile marking where a region begins** is a different thing and does a real
+job: on a multi-panel page it is what lets the eye find a panel's start without reading its title.
+`RecordPanel`'s `icon` prop is the only sanctioned form, and it is deliberately narrow:
+
+- **One accent, one size.** The brand tint only — never a second hue, never a per-status colour.
+- **Region level only.** A panel header. Never per row, per fact, per metric or per status.
+- **Decorative, so `aria-hidden`.** The `<h2>` beside it is the accessible name; the tile adds
+  nothing a screen reader needs.
+
+If a page ever wants more than one tint across its tiles, that is the original anti-pattern coming
+back and the answer is no.
 
 ---
 
-## 8. Definition of done (every Round-2 slice)
+## 8. Chart encoding
+
+Added 2026-09-06, from the Phase-6 Finance build. The trigger was a real defect: `ShareRing` in
+Procurement cycled `--chart-1/2/3` — a *sequential* ramp — across unrelated cost areas, so two
+neighbouring slices differed only in lightness and the ring read as a gradient rather than as
+categories. The palette validator caught it; nothing in this doctrine had forbidden it.
+
+### 8.1 Two palettes, two jobs — never swapped
+
+| Palette | Tokens | Encodes | Example |
+|---|---|---|---|
+| **Sequential** | `--chart-1` → `--chart-5` | one quantity, ordered, light → dark | Committed → Accrued → Actual: three stages of one number |
+| **Categorical** | `--series-1` → `--series-5` | identity, unordered | Cost areas, expense accounts, suppliers |
+
+A sequential ramp used categorically says "these differ by degree" about things that differ in
+kind. A categorical set used sequentially says "these are unrelated" about a progression. Both are
+lies about the data, and both are invisible in review unless you know to look — hence the table.
+
+`--series-*` was validated with the `dataviz` validator against both surfaces before it was
+adopted; do not add a hue to it by eye.
+
+### 8.2 Maximum five visible identities
+
+Five categorical slots, assigned in fixed order, **never cycled**. A sixth generated hue is not
+distinguishable from one already on screen. The tail folds into **Other** — grouped, never dropped,
+and its total still reconciles to the whole.
+
+### 8.3 Form follows question
+
+- **Part-to-whole** → horizontal stacked bar. Long labels ("Project-level (non-BOQ)") do not fit
+  around a ring, and arc-length comparison is measurably worse than length comparison. Donuts are
+  permitted, not the default.
+- **A ratio against a limit** → a meter, not a two-slice pie and not two bars sharing no baseline.
+- **A single figure** → not a chart at all. A metric.
+
+### 8.4 Every charted value is also text
+
+The chart carries the proportion; the number carries the fact. Every segment is named and valued
+in the legend beside it, and the precise table is on the same screen. This is also the relief the
+palette's contrast warning requires: **label + value is the primary identification, colour is
+secondary.** Nothing — identity, state, or severity — may be encoded by colour alone.
+
+### 8.5 An undefined ratio is reported, not drawn
+
+Extends §4's honesty rule to charts. When the denominator is zero the ratio does not exist, and
+both plausible fudges are false statements:
+
+| State | Wrong | Right |
+|---|---|---|
+| Revenue 0, cost > 0 | `100%` (claims the project consumed all its revenue) or `∞%` | *No posted revenue* + the cost figure, no bar |
+| Revenue 0, cost 0 | a meter at 0% | empty state — nothing has been posted |
+
+A meter at 0% claims a measurement that was taken and came back zero. Draw no bar rather than a
+bar that means nothing.
+
+### 8.6 Name a ratio as a division, not as a verb
+
+"Revenue consumed" invites a finance reader to hear cash collection or revenue-recognition
+mechanics. **`Project cost / Revenue`** says exactly which number is over which, and the figures
+beneath it — Revenue (posted), Project cost (posted), and the remainder — let the reader check the
+arithmetic instead of trusting the bar.
+
+Name the remainder for what was actually subtracted. On the P&L meter the fill is *all* project
+cost, so the remainder is **Net project income** and ties to the statement's own last line. Calling
+it "Gross profit" would put that label on two different figures on one screen — the statement's
+gross profit stops at cost of sales.
+
+---
+
+## 9. Shared workspace UI debt
+
+Cross-module defects that are real, are **not** any one workspace's to fix, and must be fixed once
+in the shared primitives rather than patched per module. A slice that trips over one of these works
+around it and adds a line here; it does not fix it locally.
+
+### 9.1 Heading hierarchy is inconsistent across workspaces
+
+Found 2026-09-06 by the Phase-6 browser QA, which could not anchor on a heading because the four
+Finance views do not name themselves the same way:
+
+```text
+Finance shell            h1
+Overview                 no local heading
+Cost Control             h3   (the first SectionPanel's title)
+Profit & Loss            h2
+Ledger                   h2
+```
+
+Two views title themselves at `h2`; one has no title of its own and opens straight into a panel at
+`h3`, skipping a level; one is only named by the shell. A screen reader's document outline is
+therefore wrong on half the workspace, and the same pattern is used by Procurement and the other
+rebuilt modules, so this is not a Finance bug.
+
+**The rule to converge on:**
+
+```text
+Page shell title         h1
+Internal workspace view  h2
+Section headings         h3
+Subsections              h4
+```
+
+**Do not patch one workspace.** `SectionPanel` and `MetricBand` hard-code `h3`, and every rebuilt
+module renders them; fixing Finance alone would make Finance the outlier instead of the norm. The
+fix is a heading-level prop (or a heading-level context) on those primitives plus a view-title slot
+in each workspace shell, done once across Procurement, Progress, Commercial, Finance and the rest.
+
+Until then: **anchor tests and automation on `aria-current`, not on headings.** Finance's browser QA
+does this (`nav[aria-label="Finance"] a[aria-current="page"]`).
+
+---
+
+### 9.2 App-shell controls are below the 44px touch minimum
+
+Found 2026-09-07 by the Phase-7A browser QA, which is the first gate in the product to assert the
+44px rule `apps/web/CLAUDE.md` has always mandated. Scanning the whole document at 375px, every
+failure came from the shell rather than from the workspace under test:
+
+```text
+skip link                 A.sr-only focus:not-sr-only
+sidebar collapse toggle   h-9  (36px)
+sidebar item control      h-9  (36px)
+breadcrumb project link   unconstrained, ~20px
+breadcrumb "Projects"     unconstrained, ~20px
+```
+
+(The TanStack devtools button also fails and is dev-only — not debt, ignore it.)
+
+**Do not patch this from a feature branch.** These controls are rendered by `AppShell` and
+`ProjectWorkspaceShell` on *every* screen in the product. Fixing them inside Documents would make
+Documents the outlier and leave the other nine workspaces failing the same rule, which is the exact
+shape of the heading-hierarchy problem in §9.1. The fix is one pass over the two shells.
+
+The underlying cause is worth naming, because it will recur: **`Button size="sm"` is `h-9` (36px)
+and fails the touch rule by construction.** The default size is `h-control`, which resolves to 44px
+at comfortable density and follows the user's own density preference. `sm` is legitimate only where
+a control is never the primary tap target on a touch viewport. Phase 7A removed all twelve uses of
+it from the Documents views for this reason.
+
+**Until the shell pass happens: scope touch-target assertions to the workspace under test.** The
+Documents gate does this — the workspace root carries `data-qa="documents-workspace"` and the
+assertion queries inside it. A gate that fails on another module's debt gets disabled rather than
+fixed, and then it protects nothing.
+
+## 10. Definition of done (every Round-2 slice)
 
 A slice is done when, verified in the running app:
 1. Light **and** dark theme correct (WCAG AA contrast on all status tokens).

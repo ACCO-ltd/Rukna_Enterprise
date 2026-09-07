@@ -10,6 +10,15 @@ import { ProgressService } from './progress.service.js';
  */
 const identity = { userId: 'u1', activeOrganizationId: 'o1' } as never;
 
+/** The file lifecycle seam: attaching evidence binds it, approving the report freezes it. */
+function files() {
+  return {
+    bind: jest.fn().mockResolvedValue(undefined),
+    markImmutable: jest.fn().mockResolvedValue(undefined),
+    markManyImmutable: jest.fn().mockResolvedValue(0),
+  };
+}
+
 function build(over: { targets?: { targetDate: Date; cumulativePercent: unknown }[] } = {}) {
   const captured: { created?: unknown[] } = {};
   const prisma = {
@@ -24,6 +33,7 @@ function build(over: { targets?: { targetDate: Date; cumulativePercent: unknown 
     }),
     // getRollup path — no work packages ⇒ physicalPercent 0
     findWorkPackages: jest.fn().mockResolvedValue([]),
+    findLeafValues: jest.fn().mockResolvedValue([]),
     approvedMeasurementsForProject: jest.fn().mockResolvedValue([]),
   };
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
@@ -33,6 +43,7 @@ function build(over: { targets?: { targetDate: Date; cumulativePercent: unknown 
     projectAccess as never,
     {} as never, // financialPosition — not used here
     {} as never, // commandGovernance — not used here
+    files() as never,
   );
   return { svc, repo, captured };
 }

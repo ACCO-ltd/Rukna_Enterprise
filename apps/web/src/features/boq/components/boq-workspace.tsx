@@ -20,9 +20,7 @@ import type { BoqTreeNodeResponse } from '@erp/types';
 
 import { ApiError } from '@/lib/api-client';
 import { fromMinorUnits, sumMinorUnits, MONEY_SCALE } from '@/lib/money';
-import { formatMoney } from '@/lib/format';
 import { EmptyState } from '@/components/empty-state';
-import { MetricStrip, type Metric } from '@/components/widget/metric-strip';
 import { LifecycleCommandDrawer } from '@/components/lifecycle-command-drawer';
 import { usePermissions } from '@/features/auth/permissions/can';
 
@@ -34,7 +32,7 @@ import {
   isPriced,
   type PricingFilter,
 } from '../boq-rows';
-import { computeRollup, type BoqTotals } from '../boq-totals';
+import { computeRollup } from '../boq-totals';
 import { compareToCsv, downloadCsv, treeToCsv } from '../boq-export';
 import { resolveNextStep, type BoqNextStep } from '../boq-next-step';
 import {
@@ -217,7 +215,11 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const canManage = can(BOQ_PERMISSIONS.manage) && workspace.capabilities.canManage && isDraft;
   // Import creates or opens a draft itself, so — unlike node editing — it is not gated on the
   // currently-viewed version being the draft.
-  const canImport = can(BOQ_PERMISSIONS.manage) && workspace.capabilities.canManage;
+  // `isDraft`, like `canManage`. `BoqImportService` always writes into an editable DRAFT —
+  // it either uses `currentDraftVersionId` or refuses with "The BOQ has no editable draft to
+  // import into." So an Import button next to a frozen baseline either 409s or silently opens
+  // a draft the reader never asked for, and neither is what the button appears to promise.
+  const canImport = can(BOQ_PERMISSIONS.manage) && workspace.capabilities.canManage && isDraft;
   const canViewCommercials = workspace.capabilities.canViewCommercials;
   const actions = getVersionActions(workspace, selectedVersionId);
 
@@ -269,17 +271,6 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const visibleAmount = isFiltered
     ? sumVisibleItems(rows.map((row) => row.node))
     : (selected?.totalAmount ?? null);
-
-  // The headline metric strip. The TOTAL is the server's version total (the exact figure the
-  // status bar and version panel show), so the three can never disagree; the completeness
-  // figures come from the tree rollup the section subtotals are also drawn from.
-  const headlineMetrics: Metric[] = buildHeadlineMetrics({
-    totalAmount: selected?.totalAmount ?? null,
-    totals: rollup.totals,
-    currency: workspace.currency,
-    canViewCommercials,
-    t,
-  });
 
   const toggleCollapsed = (nodeId: string) =>
     setCollapsed((current) => {
@@ -431,11 +422,6 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         />
       ) : null}
 
-      {/* The BOQ headline — the project budget, the first number the eye should land on.
-          The total is the version total the status bar and version panel already show, so the
-          three never disagree; the completeness figures come from the memoized tree rollup. */}
-      <MetricStrip aria-label={t('metrics.label')} metrics={headlineMetrics} />
-
       {/* Post-contract, the locked BOQ is not edited — scope changes go through a Variation
           (Phase 6). This is the answer to "how do I add to a signed BOQ", pointing at the built
           Variations flow rather than letting anyone edit a frozen bill. */}
@@ -494,6 +480,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
             isFiltered={isFiltered}
             canManage={canManage}
             canViewCommercials={canViewCommercials}
+            showSource={hasVariations}
             highlighted={highlighted}
             collapsed={collapsed}
             onToggle={toggleCollapsed}
@@ -725,47 +712,6 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   }
 }
 
-/**
- * The four headline metrics, pre-formatted for the metric strip.
- *
- * The total is the caller-supplied version total (the exact figure the status bar and version
- * panel show), not a re-derived sum — so the three never disagree. When commercial visibility
- * is withheld the total reads "Restricted", never a blank or a fake zero. The completeness
- * figures come from the tree rollup and are always visible: a count is not commercial.
- */
-function buildHeadlineMetrics({
-  totalAmount,
-  totals,
-  currency,
-  canViewCommercials,
-  t,
-}: {
-  totalAmount: string | null;
-  totals: BoqTotals;
-  currency: string;
-  canViewCommercials: boolean;
-  t: ReturnType<typeof useTranslations>;
-}): Metric[] {
-  const totalValue = canViewCommercials
-    ? (formatMoney(totalAmount, currency, 'en') ?? t('metrics.notPriced'))
-    : t('metrics.restricted');
-
-  return [
-    { label: t('metrics.totalValue'), value: totalValue },
-    {
-      label: t('metrics.priced'),
-      value: t('metrics.pricedValue', { priced: totals.pricedCount, total: totals.itemCount }),
-    },
-    {
-      label: t('metrics.unpriced'),
-      value: t('metrics.unpricedValue', { count: totals.unpricedCount }),
-    },
-    {
-      label: t('metrics.percentPriced'),
-      value: t('metrics.percentValue', { percent: totals.pricedPercent }),
-    },
-  ];
-}
 
 /**
  * The single primary action. Always `brand-primary`.

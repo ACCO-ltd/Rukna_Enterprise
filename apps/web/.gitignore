@@ -41,5 +41,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 e2e/.scenario.json
+# Browser-QA screenshots and traces. Evidence for a run, not source.
+e2e/.artifacts/
 playwright-report/
 test-results/

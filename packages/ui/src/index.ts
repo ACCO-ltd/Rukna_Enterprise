@@ -95,7 +95,11 @@ export {
 } from './components/table';
 export { Tabs, TabsContent, TabsList, TabsTrigger } from './components/tabs';
 export { ViewSwitcher } from './components/view-switcher';
-export type { ViewSwitcherItem, ViewSwitcherProps } from './components/view-switcher';
+export type {
+  ViewSwitcherAppearance,
+  ViewSwitcherItem,
+  ViewSwitcherProps,
+} from './components/view-switcher';
 export {
   DropdownMenu,
   DropdownMenuContent,

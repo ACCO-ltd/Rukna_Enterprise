@@ -52,10 +52,19 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY in deploy/.env}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY in deploy/.env}
+      # The browser PUTs bytes straight to storage with Content-Type and an
+      # x-amz-checksum-sha256 header, which makes it a CORS preflight. Without this the
+      # upload fails in the browser and nowhere else — curl and the API never see it.
+      MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_CORS_ALLOW_ORIGIN:-https://acco.rukna.site}
     volumes:
       - minio_data:/data
     networks:
-      - rukna_internal # ONLY internal — not exposed to the shared proxy or the host
+      # rukna_internal: how the API reaches storage for its own calls (stat, delete).
+      # deploy_internal: how the shared Caddy reaches the S3 port to serve
+      # storage.rukna.site. The console (:9001) is on neither path and stays unreachable
+      # from outside the box — see deploy/Caddyfile.
+      - rukna_internal
+      - deploy_internal
     healthcheck:
       test: ['CMD', 'mc', 'ready', 'local']
       interval: 10s
@@ -77,7 +86,8 @@ services:
       /bin/sh -c "
       mc alias set local http://minio:9000 $${MINIO_ACCESS_KEY} $${MINIO_SECRET_KEY} &&
       mc mb --ignore-existing local/$${FILE_STORAGE_BUCKET} &&
-      echo 'bucket ready: '$${FILE_STORAGE_BUCKET}
+      mc anonymous set none local/$${FILE_STORAGE_BUCKET} &&
+      echo 'bucket ready (private, no anonymous access): '$${FILE_STORAGE_BUCKET}
       "
     restart: 'no'
 
@@ -160,9 +170,13 @@ networks:
     name: rukna_internal # explicit, so it is not prefixed to rukna_rukna_internal
     driver: bridge
   # The shared reverse-proxy network created by /opt/simad/deploy (deploy-caddy-1).
-  # Only the api service attaches here (secondary), so the existing Caddy can reach it.
-  # NOTE: minio is intentionally NOT on this network, so storage.rukna.site is not proxied
-  # and browser file uploads are deferred until MinIO is deliberately exposed later.
+  # api, web and minio attach here (secondary) so the existing Caddy can reach them.
+  #
+  # minio joined this network in Phase 7 Step 2. It had been kept off deliberately, which
+  # meant storage.rukna.site was unroutable and every browser upload and download in
+  # production failed — the presigned URL is followed by the BROWSER, so an unreachable
+  # storage host makes the whole file feature inoperable (audit P0-3). Only the S3 port is
+  # proxied, the bucket stays private, and access is still presigned-only.
   deploy_internal:
     external: true
 

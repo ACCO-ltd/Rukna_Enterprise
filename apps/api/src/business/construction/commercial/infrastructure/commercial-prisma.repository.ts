@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 
 type TenantPrisma = Omit<
   PrismaClient,
@@ -61,7 +62,10 @@ export class CommercialPrismaRepository {
         applicationId: true,
         certifiedTotal: true,
         currency: true,
-        deductions: { select: { amount: true } },
+        // `deductionType` as well as the amount: retention held and advance recovered are the
+        // RETENTION / ADVANCE_RECOVERY slices of this same set, and deriving them here means
+        // they can never disagree with the certified-net figure computed beside them.
+        deductions: { select: { amount: true, deductionType: true } },
       },
     });
   }
@@ -147,6 +151,117 @@ export class CommercialPrismaRepository {
         },
       },
     });
+  }
+
+  /**
+   * Every client invoice raised under a contract, with the detail Billing & Collection needs:
+   * the tax split, the settlement balance, the source document that produced it, and the posted
+   * allocations behind what has been collected.
+   *
+   * Deliberately separate from `findInvoices` (the narrow summary read). Widening that one would
+   * have made every summary request carry allocation ids and installment names it never uses.
+   */
+  findInvoicesForBilling(prisma: TenantPrisma, organizationId: string, contractId: string) {
+    return prisma.clientInvoice.findMany({
+      where: { organizationId, contractId },
+      orderBy: [{ invoiceDate: 'desc' }, { createdAt: 'desc' }],
+      select: {
+        id: true,
+        invoiceNumber: true,
+        invoiceDate: true,
+        dueDate: true,
+        currencyCode: true,
+        subtotal: true,
+        vatAmount: true,
+        totalAmount: true,
+        outstandingAmount: true,
+        documentStatus: true,
+        postingStatus: true,
+        // The two mutually-exclusive provenance links (ADR-023). Names, not ids, are what a
+        // reader recognises, so each carries the human reference of its source document.
+        sourceInstallmentId: true,
+        sourceInstallment: { select: { id: true, name: true, sortOrder: true } },
+        sourceIpcId: true,
+        sourceIpc: {
+          select: {
+            id: true,
+            application: { select: { id: true, applicationRef: true, applicationNumber: true } },
+          },
+        },
+        allocations: {
+          where: { postingStatus: 'POSTED' },
+          orderBy: { allocationDate: 'desc' },
+          select: {
+            id: true,
+            allocatedAmount: true,
+            allocationDate: true,
+            paymentReceiptId: true,
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * The receipts that have actually landed against this contract.
+   *
+   * A `PaymentReceipt` belongs to a client, not a project — only an allocation ties one to a
+   * contract. So "this project's receipts" is exactly "receipts with a posted allocation against
+   * an invoice of this contract", and saying that in the query is more honest than filtering by
+   * client and hoping the money was for this job.
+   */
+  findReceiptsForContract(prisma: TenantPrisma, organizationId: string, contractId: string) {
+    return prisma.paymentReceipt.findMany({
+      where: {
+        organizationId,
+        clientAllocations: {
+          some: { postingStatus: 'POSTED', invoice: { contractId } },
+        },
+      },
+      orderBy: { receiptDate: 'desc' },
+      select: {
+        id: true,
+        receiptDate: true,
+        currencyCode: true,
+        totalAmount: true,
+        allocatedAmount: true,
+        unallocatedAmount: true,
+        paymentMethod: true,
+        reference: true,
+        bankReference: true,
+        postingStatus: true,
+        clientAllocations: {
+          where: { postingStatus: 'POSTED' },
+          orderBy: { allocationDate: 'desc' },
+          select: {
+            id: true,
+            allocatedAmount: true,
+            allocationDate: true,
+            clientInvoiceId: true,
+            invoice: { select: { id: true, invoiceNumber: true, contractId: true } },
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * Unapplied cash sitting on this client's posted receipts.
+   *
+   * Client-scoped on purpose and reported as such: an unallocated receipt has not been
+   * attributed to any contract, which is the whole reason it needs allocating. Scoping it to a
+   * project would mean inventing an attribution the data does not carry.
+   */
+  async sumClientUnappliedReceipts(
+    prisma: TenantPrisma,
+    organizationId: string,
+    clientId: string,
+  ): Promise<Decimal> {
+    const result = await prisma.paymentReceipt.aggregate({
+      where: { organizationId, clientId, postingStatus: 'POSTED' },
+      _sum: { unallocatedAmount: true },
+    });
+    return new Decimal(result._sum.unallocatedAmount?.toString() ?? 0);
   }
 
   /**

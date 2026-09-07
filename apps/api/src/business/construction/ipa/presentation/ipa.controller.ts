@@ -28,6 +28,11 @@ import { IpaService } from '../application/ipa.service.js';
 import { CreateIpaDto } from './dto/create-ipa.dto.js';
 import { AddIpaItemDto } from './dto/add-ipa-item.dto.js';
 import { AddIpaDeductionDto } from './dto/add-ipa-deduction.dto.js';
+import {
+  RecordAttachmentService,
+  type AttachEvidenceDto,
+} from '../../../../platform/files/application/record-attachment.service.js';
+import { AttachRecordEvidenceDto } from '../../contracts/presentation/dto/attach-record-evidence.dto.js';
 
 @ApiTags('IPA')
 @ApiBearerAuth('access-token')
@@ -35,7 +40,10 @@ import { AddIpaDeductionDto } from './dto/add-ipa-deduction.dto.js';
 @RequirePermissions(PERMISSIONS.ipaView)
 @Controller('ipa')
 export class IpaController {
-  constructor(private readonly ipaService: IpaService) {}
+  constructor(
+    private readonly ipaService: IpaService,
+    private readonly attachments: RecordAttachmentService,
+  ) {}
 
   // ─── CRUD ────────────────────────────────────────────────────────────────────
 
@@ -170,5 +178,48 @@ export class IpaController {
     @Param('deductionId') deductionId: string,
   ) {
     return this.ipaService.removeDeduction(identity, id, deductionId);
+  }
+
+  // --- Evidence (Phase 7A) ------------------------------------------------------
+  //
+  // Optional supporting evidence for a claim: measurement sheets, site photographs, a marked-up
+  // drawing. It stays replaceable while the application is being prepared and freezes on SUBMITTED
+  // — submission is what puts the evidence in front of the client, and IPA is the one commercial
+  // aggregate that has a genuine finalisation event to hang this on.
+
+  @Get(':id/attachments')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Supporting evidence on this application' })
+  listAttachments(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.attachments.list(identity, 'IPA', id);
+  }
+
+  @Post(':id/attachments')
+  @RequirePermissions(PERMISSIONS.ipaManage)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({
+    summary: 'Attach supporting evidence',
+    description: 'Freezes when the application is submitted; replaceable until then.',
+  })
+  attach(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: AttachRecordEvidenceDto,
+  ) {
+    return this.attachments.attach(identity, 'IPA', id, dto as AttachEvidenceDto);
+  }
+
+  @Delete(':id/attachments/:attachmentId')
+  @RequirePermissions(PERMISSIONS.ipaManage)
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiParam({ name: 'attachmentId' })
+  @ApiOperation({ summary: 'Detach evidence from an application that has not been submitted' })
+  detach(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Param('attachmentId') attachmentId: string,
+  ) {
+    return this.attachments.remove(identity, 'IPA', id, attachmentId);
   }
 }

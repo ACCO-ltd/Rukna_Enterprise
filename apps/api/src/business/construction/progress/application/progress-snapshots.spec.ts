@@ -24,6 +24,15 @@ interface SnapshotRow {
   capturedById: string;
 }
 
+/** The file lifecycle seam: attaching evidence binds it, approving the report freezes it. */
+function files() {
+  return {
+    bind: jest.fn().mockResolvedValue(undefined),
+    markImmutable: jest.fn().mockResolvedValue(undefined),
+    markManyImmutable: jest.fn().mockResolvedValue(0),
+  };
+}
+
 function build(
   over: {
     snapshots?: SnapshotRow[];
@@ -33,14 +42,16 @@ function build(
     targets?: Array<{ targetDate: Date; cumulativePercent: Decimal }>;
     // Drives getRollup (weighted physical) + getProjectProgress (verified per leaf).
     workPackages?: unknown[];
+    leafValues?: unknown[];
     approvedMeasurements?: unknown[];
     // Drives getPhysicalFinancialSignal cost read.
-    financialPosition?: { actualCost: string; forecastCost: string };
+    financialPosition?: { actualCost: string; budgetTotal: string | null };
   } = {},
 ) {
   const created: SnapshotRow[] = [];
   const repo = {
     findWorkPackages: jest.fn().mockResolvedValue(over.workPackages ?? []),
+    findLeafValues: jest.fn().mockResolvedValue(over.leafValues ?? []),
     approvedMeasurementsForProject: jest.fn().mockResolvedValue(over.approvedMeasurements ?? []),
     findSnapshotForPeriod: jest.fn().mockResolvedValue(over.existingForPeriod ?? null),
     findSnapshotsForProject: jest.fn().mockResolvedValue(over.snapshots ?? []),
@@ -69,7 +80,7 @@ function build(
   const financialPosition = {
     getForProject: jest
       .fn()
-      .mockResolvedValue(over.financialPosition ?? { actualCost: '0', forecastCost: '0' }),
+      .mockResolvedValue(over.financialPosition ?? { actualCost: '0', budgetTotal: null }),
   };
   const svc = new ProgressService(
     { getClient: () => ({}) } as never,
@@ -77,6 +88,7 @@ function build(
     projectAccess as never,
     financialPosition as never,
     {} as never,
+    files() as never,
   );
   return { svc, repo, projectAccess, created };
 }
@@ -103,7 +115,7 @@ const snap = (
 describe('ProgressService.captureSnapshot (BE-1)', () => {
   it('persists a MANUAL snapshot at the supplied period-end date (never the clock)', async () => {
     const { svc, repo, created } = build({
-      financialPosition: { actualCost: '0', forecastCost: '0' },
+      financialPosition: { actualCost: '0', budgetTotal: null },
     });
     const res = await svc.captureSnapshot(identity, 'p1', '2026-08-31');
 
@@ -135,7 +147,7 @@ describe('ProgressService.captureSnapshot (BE-1)', () => {
   });
 
   it('freezes the live cost-consumed % from the physical-financial signal', async () => {
-    const { svc } = build({ financialPosition: { actualCost: '40', forecastCost: '100' } });
+    const { svc } = build({ financialPosition: { actualCost: '40', budgetTotal: '100' } });
     const res = await svc.captureSnapshot(identity, 'p1', '2026-08-31');
     expect(res.costConsumedPercent).toBe(40);
   });

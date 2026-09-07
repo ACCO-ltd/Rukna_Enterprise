@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
+import { Badge, RecordPanel, type BadgeTone } from '@erp/ui';
 import { Activity } from 'lucide-react';
-import { Badge, type BadgeTone } from '@erp/ui';
 import type { PhysicalFinancialSignalResponse } from '@erp/types';
 
 import { usePhysicalFinancialSignal, useProjectRollup } from '../hooks/use-progress';
@@ -28,6 +28,10 @@ const STATUS_HINT: Record<SignalStatus, string> = {
  * Overview cockpit card: weighted physical % and the physical-vs-financial signal, with a link
  * into the Progress workspace. Reads the same ADR-021 signal the Performance tab shows, so the
  * headline on Overview and the detail behind it can never disagree.
+ *
+ * On `RecordPanel` like every other Overview region — it used to carry its own hand-rolled
+ * surface, one hairline lighter than its neighbours, which read as a mistake once the regions
+ * around it became panels.
  */
 export function ProjectProgressCard({ projectId }: { projectId: string }) {
   const t = useTranslations('progress');
@@ -35,49 +39,45 @@ export function ProjectProgressCard({ projectId }: { projectId: string }) {
   const rollup = useProjectRollup(projectId);
 
   return (
-    <div className="overflow-hidden rounded-panel border border-border bg-surface">
-      <div className="flex min-h-12 items-center justify-between border-b border-border px-5">
-        <div className="flex items-center gap-2 text-body-sm font-semibold text-foreground">
-          <Activity size={16} className="text-muted-foreground" strokeWidth={1.8} aria-hidden="true" />
-          {t('overview.title')}
-        </div>
+    <RecordPanel
+      title={t('overview.title')}
+      icon={<Activity size={17} strokeWidth={1.9} />}
+      action={
         <Link
           href={`/projects/${projectId}/progress`}
           className="text-caption font-medium text-brand-primary hover:underline"
         >
           {t('overview.link')}
         </Link>
-      </div>
-
-      <div className="px-5 py-4">
-        {signal.isPending ? (
-          <div className="h-16 animate-pulse rounded-control bg-muted" aria-hidden="true" />
-        ) : signal.isError ? (
-          <p className="text-caption text-muted-foreground">{t('states.loadFailed')}</p>
-        ) : (
-          <>
-            <div className="flex items-end justify-between gap-4">
-              <div>
-                <p className="text-caption text-muted-foreground">{t('signal.physical')}</p>
-                <p className="text-h2 font-bold tabular-nums text-foreground">
-                  {signal.data.physicalPercent}%
-                </p>
-              </div>
-              <Badge tone={STATUS_TONE[signal.data.status]}>
-                {t(`signal.status.${signal.data.status}`)}
-              </Badge>
-            </div>
-            <p className="mt-2 text-caption text-muted-foreground">
-              {t(STATUS_HINT[signal.data.status])}
-            </p>
-            {rollup.data && !rollup.data.weightsComplete ? (
-              <p className="mt-2 text-micro font-medium text-warning">
-                {t('rollup.weightsIncomplete', { total: rollup.data.weightsTotal })}
+      }
+    >
+      {signal.isPending ? (
+        <div className="h-16 animate-pulse rounded-control bg-muted" aria-hidden="true" />
+      ) : signal.isError ? (
+        <p className="text-caption text-muted-foreground">{t('states.loadFailed')}</p>
+      ) : (
+        <>
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="text-caption text-muted-foreground">{t('signal.physical')}</p>
+              <p className="text-h2 font-bold tabular-nums text-foreground">
+                {signal.data.physicalPercent}%
               </p>
-            ) : null}
-          </>
-        )}
-      </div>
-    </div>
+            </div>
+            <Badge tone={STATUS_TONE[signal.data.status]}>
+              {t(`signal.status.${signal.data.status}`)}
+            </Badge>
+          </div>
+          <p className="mt-2 text-caption text-muted-foreground">
+            {t(STATUS_HINT[signal.data.status])}
+          </p>
+          {rollup.data && !rollup.data.weightsComplete ? (
+            <p className="mt-2 text-micro font-medium text-warning">
+              {t('rollup.weightsIncomplete', { total: rollup.data.weightsTotal })}
+            </p>
+          ) : null}
+        </>
+      )}
+    </RecordPanel>
   );
 }

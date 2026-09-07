@@ -38,6 +38,12 @@ export interface MrLineDraft {
   description: string;
   uomCode: string;
   quantity: string;
+  /**
+   * The requester's estimate of unit cost, as typed. ADR-022 routes approval by monetary
+   * threshold, so a requirement with no value cannot be routed at all — but blank stays blank:
+   * defaulting it to zero would route a real requirement as though it were free.
+   */
+  estimatedUnitPrice: string;
   spendCategoryId: string;
 }
 
@@ -49,8 +55,24 @@ export function emptyMrLine(key: string): MrLineDraft {
     description: '',
     uomCode: '',
     quantity: '',
+    estimatedUnitPrice: '',
     spendCategoryId: '',
   };
+}
+
+/**
+ * Quantity x estimated unit price, or null when either is missing.
+ *
+ * Null rather than 0: a requirement whose cost nobody has estimated is a real and common state,
+ * and showing "$0.00" would tell an approver it is free. Formatted with two decimals only —
+ * this is an estimate, and more precision than that is false confidence.
+ */
+export function estimatedLineValue(line: MrLineDraft): string | null {
+  const quantity = Number(line.quantity);
+  const price = Number(line.estimatedUnitPrice);
+  if (line.quantity.trim() === '' || line.estimatedUnitPrice.trim() === '') return null;
+  if (!Number.isFinite(quantity) || !Number.isFinite(price)) return null;
+  return (quantity * price).toFixed(2);
 }
 
 /** The error for a line, or null. Exported so the parent can block submit on any. */
@@ -175,6 +197,7 @@ function MrLineRow({
     type: useId(),
     description: useId(),
     quantity: useId(),
+    estimate: useId(),
     spend: useId(),
   };
 
@@ -247,6 +270,27 @@ function MrLineRow({
             onChange={(e) => onPatch({ quantity: e.target.value })}
             className="text-end tabular-nums"
           />
+        </div>
+
+        <div>
+          <label htmlFor={ids.estimate} className="mb-1 block text-xs font-medium">
+            {t('estimatedUnitPrice')} ({tc('optional')})
+          </label>
+          <Input
+            id={ids.estimate}
+            inputMode="decimal"
+            value={line.estimatedUnitPrice}
+            onChange={(e) => onPatch({ estimatedUnitPrice: e.target.value })}
+            className="text-end tabular-nums"
+          />
+          {/* The figure approval routes on, shown as it is typed. Called an estimate wherever it
+              appears — the buyer's purchase order price supersedes it, and the difference between
+              them is not a saving. */}
+          <p className="mt-1 text-xs text-muted-foreground">
+            {estimatedLineValue(line) === null
+              ? t('estimatedValueHint')
+              : t('estimatedValueIs', { value: estimatedLineValue(line)! })}
+          </p>
         </div>
 
         <div className="sm:col-span-2">

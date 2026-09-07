@@ -340,7 +340,7 @@ export function useProjectActualPl(
 
 /**
  * Project Financial Position (ADR-013) — the rich PM view: posted actuals plus remaining committed
- * cost and forecast, via `GET /projects/:id/financial-position`. Requires `view:financial-position`.
+ * cost and budget, via `GET /projects/:id/financial-position`. Requires `view:financial-position`.
  */
 export function useProjectFinancialPosition(
   projectId: string,

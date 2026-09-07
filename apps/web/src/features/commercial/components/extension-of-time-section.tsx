@@ -58,7 +58,7 @@ export function ExtensionOfTimeSection({
     <section className="space-y-3">
       <SectionHeader title={t('title')}>
         {canManage ? (
-          <Button size="sm" onClick={() => setOpen(true)}>
+          <Button size="sm" className="min-h-11 sm:min-h-0" onClick={() => setOpen(true)}>
             {t('record')}
           </Button>
         ) : null}

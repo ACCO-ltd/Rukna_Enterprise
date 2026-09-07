@@ -3,7 +3,13 @@ import type {
   BillingModel,
   AdvanceType,
   PaymentTrigger,
+  AttachmentSourceType,
   DocumentCategory,
+  DocumentDiscipline,
+  DocumentRevisionPurpose,
+  DocumentRevisionStatus,
+  DocumentValidity,
+  ProjectDocumentStatus,
   DprStatus,
   ProgrammeMilestoneStatus,
   GuaranteeStatus,
@@ -247,8 +253,12 @@ export interface PhysicalFinancialSignalResponse {
   projectId: string;
   physicalPercent: number;
   actualCost: string;
-  forecastCost: string;
-  /** actualCost ÷ forecastCost × 100. Null when there is no forecast cost yet. */
+  /** Total of the BASELINED cost budget. Null when the project has never baselined one. */
+  budgetTotal: string | null;
+  /**
+   * actualCost ÷ budgetTotal × 100. Null without a baselined budget — a project with no
+   * budget has not consumed 0% of it, and the signal reads INSUFFICIENT_DATA instead.
+   */
   costConsumedPercent: number | null;
   /** physicalPercent − costConsumedPercent (positive = built ahead of spend). */
   divergence: number | null;
@@ -416,22 +426,153 @@ export interface ProgrammeMilestoneResponse {
   verifiedAt: string | null;
 }
 
-// Documents tab (ADR-014): a standalone project document + its stored-file metadata.
+// --- Documents (Phase 7A): the controlled project register ---------------------
+//
+// Read these three shapes as the three axes they represent. `status` is where the controlled
+// record is, `currentRevision` is which issue of it is current, and `validity` is whether it can
+// be relied on today. A permit can be ISSUED, at R01, and EXPIRED at the same time.
+
+/** The stored file behind one revision. Enough to render a row; the URL is resolved on demand. */
+export interface DocumentFileSummary {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  /** PlatformFileStatus: PENDING | READY. */
+  status: string;
+  /** PlatformFileLifecycle: TEMPORARY | BOUND | IMMUTABLE. Drives whether replace is offered. */
+  lifecycle: string;
+}
+
+export interface DocumentRevisionResponse {
+  id: string;
+  projectDocumentId: string;
+  revisionNumber: number;
+  revisionCode: string | null;
+  status: `${DocumentRevisionStatus}`;
+  purpose: `${DocumentRevisionPurpose}` | null;
+  notes: string | null;
+  issuedAt: string | null;
+  issuedBy: string | null;
+  issuedByName: string | null;
+  supersededAt: string | null;
+  withdrawnAt: string | null;
+  createdBy: string;
+  createdByName: string | null;
+  createdAt: string;
+  file: DocumentFileSummary;
+  /** True when the document points at this revision. Only ever one per document. */
+  isCurrent: boolean;
+}
+
+/** One row of the register. Everything the table renders, with no follow-up call per row. */
 export interface ProjectDocumentResponse {
   id: string;
   projectId: string;
-  platformFileId: string;
-  category: `${DocumentCategory}`;
+  documentNumber: string;
   title: string;
-  uploadedBy: string;
+  category: `${DocumentCategory}`;
+  discipline: `${DocumentDiscipline}` | null;
+  status: `${ProjectDocumentStatus}`;
+  responsibleUserId: string | null;
+  responsibleUserName: string | null;
+  issuerName: string | null;
+  issuedAt: string | null;
+  validFrom: string | null;
+  expiresAt: string | null;
+  /** Derived server-side on every read — never stored. See DocumentValidity. */
+  validity: `${DocumentValidity}`;
+  /** Days until expiry; negative once past. Null when the document has no expiry date. */
+  daysUntilExpiry: number | null;
+  revisionCount: number;
+  currentRevision: DocumentRevisionResponse | null;
+  supersededByDocumentId: string | null;
+  supersededByDocumentNumber: string | null;
+  withdrawnReason: string | null;
+  createdBy: string;
   createdAt: string;
-  platformFile: {
-    originalName: string;
-    mimeType: string;
-    sizeBytes: number;
-    /** PlatformFileStatus: PENDING | READY. */
-    status: string;
-  };
+  updatedAt: string;
+}
+
+/** Register list payload: the page, the total, and the server-derived attention counts. */
+export interface ProjectDocumentListResponse {
+  items: ProjectDocumentResponse[];
+  total: number;
+  page: number;
+  pageSize: number;
+  summary: ProjectDocumentSummary;
+}
+
+/**
+ * The four figures above the register. Computed over the whole project, not the current page, and
+ * never over a filtered subset — a count that changes when you type in a search box is not a
+ * control figure. `expiringSoonDays` states the threshold rather than leaving the reader to guess.
+ */
+export interface ProjectDocumentSummary {
+  controlledDocuments: number;
+  currentDrawings: number;
+  expiringSoon: number;
+  expired: number;
+  draft: number;
+  expiringSoonDays: number;
+}
+
+export interface ProjectDocumentDetailResponse {
+  document: ProjectDocumentResponse;
+  revisions: DocumentRevisionResponse[];
+  activity: DocumentActivityEntry[];
+}
+
+/** One audited event on the document. Domain events only — never a file read. */
+export interface DocumentActivityEntry {
+  id: string;
+  action: string;
+  sourceCommand: string;
+  actorUserId: string;
+  actorName: string | null;
+  reason: string | null;
+  occurredAt: string;
+}
+
+/** What the caller may do, resolved server-side from permission + status + revision state. */
+export interface ProjectDocumentCapabilities {
+  canCreate: boolean;
+  canEdit: boolean;
+  canIssue: boolean;
+  canArchive: boolean;
+}
+
+// --- Linked Attachments -------------------------------------------------------
+//
+// A read-only aggregation over files owned by OTHER aggregates. It is not a second owner: nothing
+// here can be attached, replaced or deleted, and every row was authorized through its parent.
+
+export interface LinkedAttachmentResponse {
+  attachmentId: string;
+  fileId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  /** PlatformFileLifecycle — an immutable row is evidence on a finalised record. */
+  lifecycle: string;
+  sourceType: `${AttachmentSourceType}`;
+  sourceId: string;
+  /** The parent's business reference — "DPR 04 Sep 2026", "IPC-00007". Never a database id. */
+  sourceReference: string;
+  /** Which workspace the parent lives in: Progress, Commercial, Procurement. */
+  context: string;
+  /** Canonical route to the owning record, or null when that record has no screen yet. */
+  sourceHref: string | null;
+  uploadedBy: string;
+  uploadedByName: string | null;
+  uploadedAt: string;
+}
+
+export interface LinkedAttachmentListResponse {
+  items: LinkedAttachmentResponse[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 export interface ContractResponse {
@@ -1078,6 +1219,28 @@ export interface CommercialContractValue {
   pendingVariations: string | null;
 }
 
+/**
+ * Retention held and advance recovered to date.
+ *
+ * Both are sums over the deductions on **effective** certificates, categorised the same way the
+ * IPC calculation policy categorises them (`RETENTION` / `ADVANCE_RECOVERY`). `applicable` is
+ * false when the contract's billing model cannot produce either — the caller must render that as
+ * "not applicable", never as zero.
+ */
+export interface CommercialSecurityPosition {
+  applicable: boolean;
+  /** Decimal string. Null when not applicable, or without financial visibility. */
+  retentionHeld: string | null;
+  /** Decimal string. Null when not applicable, or without financial visibility. */
+  advanceRecovered: string | null;
+  /**
+   * Advance still to recover: the advance terms' total value less `advanceRecovered`. Null when
+   * the contract has no advance term carrying an explicit amount — a percentage-only term has no
+   * principal to count down from until one is derived, and guessing it would be a fabrication.
+   */
+  advanceOutstanding: string | null;
+}
+
 export interface CommercialSummaryResponse {
   projectId: string;
   currency: string | null;
@@ -1102,9 +1265,16 @@ export interface CommercialSummaryResponse {
   };
   certification: CommercialCertificationSummary;
   receivables: CommercialReceivablesSummary;
-  /** Read-first contractual terms only — no held/released/recovered values (Gate C C5). */
+  /** The negotiated contractual terms. The balances they produce are `securityPosition`. */
   retention: CommercialRetentionSummary | null;
   advances: CommercialAdvanceSummary[];
+  /**
+   * What the terms above have actually produced to date, derived from the deductions on
+   * effective certificates (the only place either is recorded). Both are null for a MILESTONE
+   * contract — ADR-023 CONST-COM-013/014: a payment-schedule contract deducts neither, so a
+   * zero would answer a question that does not apply.
+   */
+  securityPosition: CommercialSecurityPosition;
   guarantees: CommercialGuaranteeSummary[];
   attention: CommercialAttentionItem[];
   capabilities: CommercialCapabilities;
@@ -1289,6 +1459,160 @@ export interface CommercialCurrentCycleResponse {
   asOf: string;
 }
 
+// ─── Billing & Collection (project-scoped AR position) ──────────────────────────
+//
+// The client-facing money-in view for one project's main contract: what has been invoiced,
+// what has been collected against those invoices, and what is still owed. Every figure is on
+// the **invoice-total basis** (VAT-inclusive) — settlement is measured against what the client
+// was actually asked to pay, never against a pre-VAT certified or plan amount. `subtotal` and
+// `vatAmount` are carried alongside so a screen that shows both can label the basis.
+
+/**
+ * Mirrors the AR `InvoiceDocStatus` / `PostingStatus` Prisma enums. Declared here rather than
+ * imported from `./enums.js` because those are accounting enums and `@erp/types` does not yet
+ * publish them; the commercial workspace only ever reads them.
+ */
+export type ClientInvoiceDocStatus = 'DRAFT' | 'APPROVED' | 'CANCELLED';
+
+export type ArPostingStatus =
+  | 'NOT_POSTED'
+  | 'PENDING'
+  | 'POSTED'
+  | 'FAILED'
+  | 'REVERSED'
+  | 'OPENING_BALANCE';
+
+/** Where a client invoice came from. `NONE` = a migration-loaded invoice with no source document. */
+export type ClientInvoiceSourceKind = 'INSTALLMENT' | 'IPC' | 'NONE';
+
+export interface ClientInvoiceSource {
+  kind: ClientInvoiceSourceKind;
+  /** The source document's human reference — the installment name, or the IPA ref behind the IPC. */
+  label: string | null;
+  /** The source record's id, for a drill-through. Null for `NONE`. */
+  id: string | null;
+}
+
+/**
+ * How an invoice stands with the client. Derived server-side from the document's own lifecycle
+ * plus its allocated receipts — never re-derived in the browser.
+ *
+ * `DRAFT` and `CANCELLED` mirror `documentStatus`; `AWAITING_POSTING` is an approved invoice the
+ * GL has not taken yet (a real commercial claim, not yet an accounting fact). The three
+ * settlement states apply only once the invoice is POSTED.
+ */
+export type ClientInvoiceSettlementStatus =
+  | 'DRAFT'
+  | 'AWAITING_POSTING'
+  | 'UNPAID'
+  | 'PARTIALLY_PAID'
+  | 'PAID'
+  | 'CANCELLED';
+
+export interface CommercialInvoiceRow {
+  id: string;
+  invoiceNumber: string | null;
+  source: ClientInvoiceSource;
+  invoiceDate: string;
+  dueDate: string;
+  currency: string;
+  /** Pre-VAT. Null without financial visibility. */
+  subtotal: string | null;
+  /** Null without financial visibility. */
+  vatAmount: string | null;
+  /** VAT-inclusive — the settlement basis. Null without financial visibility. */
+  totalAmount: string | null;
+  /** Sum of posted allocations against this invoice. Null without financial visibility. */
+  paidAmount: string | null;
+  /** AR-maintained balance. Null without financial visibility. */
+  outstandingAmount: string | null;
+  documentStatus: ClientInvoiceDocStatus;
+  postingStatus: ArPostingStatus;
+  status: ClientInvoiceSettlementStatus;
+  /**
+   * Whole UTC days past `dueDate`, measured against the **server** clock, and 0 when not yet due
+   * or already settled. Whether a client is late is a commercial fact with consequences; a
+   * browser with a skewed clock does not get a vote.
+   */
+  daysOverdue: number;
+}
+
+/** One receipt's allocation against one of this contract's invoices. */
+export interface CommercialReceiptAllocationRow {
+  id: string;
+  invoiceId: string;
+  invoiceNumber: string | null;
+  allocatedAmount: string | null;
+  allocationDate: string;
+}
+
+/**
+ * A client payment that has landed against this contract.
+ *
+ * `PaymentReceipt` is client-scoped, not project-scoped — a receipt is money from a client, and
+ * only its allocations tie it to a particular contract. This list is therefore exactly "receipts
+ * with at least one posted allocation against an invoice of this contract". `unallocatedAmount`
+ * is the receipt's own client-level unapplied balance, not a project figure; it is reported so
+ * unapplied cash is never hidden, and labelled as client-level wherever it is shown.
+ */
+export interface CommercialReceiptRow {
+  id: string;
+  receiptDate: string;
+  currency: string;
+  totalAmount: string | null;
+  allocatedAmount: string | null;
+  unallocatedAmount: string | null;
+  /** Sum of this receipt's posted allocations against *this contract's* invoices. */
+  allocatedToThisContract: string | null;
+  paymentMethod: string | null;
+  reference: string | null;
+  postingStatus: ArPostingStatus;
+  allocations: CommercialReceiptAllocationRow[];
+}
+
+/** One ageing bucket over posted invoices still carrying a balance. */
+export interface CommercialAgingBucket {
+  bucket: 'NOT_DUE' | 'DAYS_1_30' | 'DAYS_31_60' | 'DAYS_61_90' | 'DAYS_90_PLUS';
+  amount: string | null;
+  invoiceCount: number;
+}
+
+/**
+ * The project's billing position. All four figures are on the invoice-total basis and count
+ * **posted** invoices only — a draft invoice is not yet a claim on the client.
+ */
+export interface CommercialBillingPosition {
+  invoiced: string | null;
+  collected: string | null;
+  outstanding: string | null;
+  /** Outstanding on posted invoices whose due date has passed. */
+  overdue: string | null;
+  postedInvoiceCount: number;
+  overdueInvoiceCount: number;
+  /** Collected over invoiced as a whole percent, or null when nothing has been invoiced. */
+  collectionRate: number | null;
+}
+
+export interface CommercialBillingResponse {
+  projectId: string;
+  contractId: string | null;
+  currency: string | null;
+  billingModel: `${BillingModel}` | null;
+  financialsVisible: boolean;
+  position: CommercialBillingPosition;
+  invoices: CommercialInvoiceRow[];
+  receipts: CommercialReceiptRow[];
+  /**
+   * Unapplied cash on this client's posted receipts. **Client-level, not project-level** — an
+   * unallocated receipt has not been attributed to any contract yet, which is precisely why it
+   * needs allocating. Null without financial visibility.
+   */
+  clientUnappliedTotal: string | null;
+  aging: CommercialAgingBucket[];
+  capabilities: CommercialCapabilities;
+  asOf: string;
+}
+
 // ─── Project Financial Position (ADR-013) ───────────────────────────────────────
 
 /**
@@ -1303,19 +1627,237 @@ export interface ProjectFinancialPositionResponse {
   projectId: string;
   currency: string | null;
   hasContract: boolean;
+  /** False when the project has no BASELINED cost budget — every budget ratio is then absent. */
+  hasBudget: boolean;
   contractValue: string | null;
   certifiedRevenue: string | null;
   invoicedRevenue: string | null;
   receivedRevenue: string | null;
   outstandingReceivables: string | null;
+  /** Total of the BASELINED cost budget. Null when none is baselined — never 0. */
+  budgetTotal: string | null;
+  /** Commitment ledger COMMITTED: ordered, not yet received. */
+  openCommitment: string;
+  /** Commitment ledger ACCRUED: received, not yet billed. */
+  accruedCost: string;
   /** Posted GL cost attributed to the project (COST_OF_SALES + EXPENSE), project-to-date. */
   actualCost: string;
-  /** Commitment ledger COMMITTED + ACCRUED — open commitments not yet posted to the GL. */
-  remainingCommitments: string;
-  /** actualCost + remainingCommitments. */
-  forecastCost: string;
-  /** contractValue − forecastCost. Null without a contract. */
-  forecastMargin: string | null;
+  /** openCommitment + accruedCost + actualCost — spent or contractually committed. */
+  committedToDate: string;
+  /** budgetTotal − committedToDate. Null without a baselined budget. */
+  uncommittedBudget: string | null;
+  asOf: string;
+}
+
+/**
+ * Does procurement's ACTUAL agree with the general ledger? (REC-01)
+ *
+ * Source-scoped deliberately: only supplier-bill-originated GL cost is comparable with the
+ * commitment ledger. Payroll, plant, depreciation and manual project journals are real
+ * project cost that procurement never sees, so they are reported separately rather than
+ * counted as a variance.
+ *
+ *     glTotalProjectCost = glProcurementCost + glNonProcurementCost
+ */
+export interface ProjectCostReconciliationResponse {
+  projectId: string;
+  /** Commitment-ledger ACTUAL for the project. */
+  ledgerActual: string;
+  /** Posted GL project cost whose journal came from a supplier bill. */
+  glProcurementCost: string;
+  /** Posted GL project cost from every other source — payroll, plant, manual journals. */
+  glNonProcurementCost: string;
+  glTotalProjectCost: string;
+  /** glProcurementCost − ledgerActual. Zero when the two sides agree. */
+  variance: string;
+  reconciled: boolean;
+  /**
+   * Posted bill lines on this project's purchase orders that reached the GL with no project
+   * on them — project cost the accounts have lost, and the likeliest cause of a variance.
+   */
+  unattributedBillLines: number;
+  asOf: string;
+}
+
+/** One posted journal line carrying a project, for the project ledger drill-down. */
+export interface ProjectLedgerLine {
+  journalEntryId: string;
+  journalNumber: string | null;
+  accountingDate: string;
+  documentDate: string;
+  description: string;
+  lineDescription: string | null;
+  entryPurpose: string;
+  accountId: string;
+  /** The code as it was when the line posted, not the account's current code. */
+  accountCode: string;
+  accountName: string;
+  debitAmount: string;
+  creditAmount: string;
+  sourceDocumentType: string | null;
+  sourceDocumentId: string | null;
+  boqNodeId: string | null;
+  spendCategoryId: string | null;
+  supplierId: string | null;
+  clientId: string | null;
+  contractId: string | null;
+}
+
+/**
+ * The postings behind a project's figures.
+ *
+ * No running balance: down one account a running balance accumulates to something a person
+ * can check, but down a project the rows are revenue, cost, receivables and cash interleaved,
+ * and adding a revenue credit to a cost debit produces a number nobody can reconcile. Class
+ * totals are reported instead, over the whole filtered set rather than the current page.
+ */
+export interface ProjectLedgerResponse {
+  projectId: string;
+  fromDate: string | null;
+  toDate: string | null;
+  /** Matching lines in total, for paging. */
+  total: number;
+  limit: number;
+  offset: number;
+  /** Posted revenue over the filtered range, excluding CLOSING entries. */
+  totalRevenue: string;
+  /** Posted cost of sales + expenses over the filtered range, excluding CLOSING entries. */
+  totalCost: string;
+  lines: ProjectLedgerLine[];
+}
+
+/** One reason the general ledger cannot accept a posting yet. */
+export interface AccountingReadinessBlocker {
+  code:
+    | 'NO_CHART_OF_ACCOUNTS'
+    | 'POSTING_ACCOUNT_NOT_CONFIGURED'
+    | 'POSTING_ACCOUNT_AMBIGUOUS'
+    | 'NO_OPEN_PERIOD'
+    | 'NO_POSTING_PROFILES'
+    | 'NO_DOCUMENT_SEQUENCE';
+  /** What is missing, named the way an administrator would recognise it. */
+  label: string;
+  detail: string;
+}
+
+/**
+ * Whether the general ledger can accept a posting, and precisely what is missing when it
+ * cannot.
+ *
+ * Lets a Finance screen say "Unavailable — accounting is not configured, here is what to fix"
+ * instead of rendering a confident $0. A project with no posted cost because nobody finished
+ * the chart of accounts has not spent nothing.
+ */
+export interface AccountingReadinessResponse {
+  ready: boolean;
+  blockers: AccountingReadinessBlocker[];
+  checkedAt: string;
+}
+
+// ─── Project Finance workspace ──────────────────────────────────────────────────
+
+/** A control state Finance reports on itself, so a reader knows whether to trust the figures. */
+export type FinanceControlState = 'OK' | 'ATTENTION' | 'UNAVAILABLE';
+
+export interface FinanceControlStatus {
+  state: FinanceControlState;
+  /** Short status word for the chip: "Reconciled", "Ready", "Baselined", "Open". */
+  label: string;
+  /** One line of supporting fact. Never a recommendation. */
+  detail: string | null;
+}
+
+/**
+ * Posted accounting for one project.
+ *
+ * `available` is false when the ledger cannot yet accept postings at all — then every figure is
+ * null and `blockers` says what is missing. A project whose accounting was never configured has
+ * not earned $0; the two states must not render the same.
+ */
+export interface ProjectAccountingPosition {
+  available: boolean;
+  revenue: string | null;
+  projectCost: string | null;
+  grossProfit: string | null;
+  /** Gross profit ÷ revenue × 100. Null when there is no revenue to be a percentage of. */
+  marginPercent: number | null;
+  blockers: AccountingReadinessBlocker[];
+}
+
+/** Where the project stands against its accounting period. */
+export interface ProjectFinancePeriod {
+  id: string;
+  name: string;
+  status: string;
+  endDate: string;
+  /** Days from today to the period end, computed server-side — never inferred in the browser. */
+  daysToPeriodEnd: number;
+}
+
+export type FinanceAttentionCode =
+  | 'RECONCILIATION_VARIANCE'
+  | 'UNATTRIBUTED_BILL_LINES'
+  | 'ACCOUNTING_SETUP_INCOMPLETE'
+  | 'BILLS_AWAITING_POSTING'
+  | 'BUDGET_DRAFT_NOT_BASELINED'
+  | 'NO_BASELINED_BUDGET'
+  | 'PERIOD_CLOSING_SOON';
+
+/** Something a reader has to act on, each backed by a counted or measured server fact. */
+export interface FinanceAttentionItem {
+  code: FinanceAttentionCode;
+  severity: 'CRITICAL' | 'WARNING' | 'INFO';
+  title: string;
+  detail: string;
+  /** Present only where a real destination exists. */
+  href: string | null;
+}
+
+/** A financially meaningful event: a posting, or a budget-lifecycle act. */
+export interface FinanceActivityRow {
+  id: string;
+  date: string;
+  description: string;
+  /** "Supplier bill", "Client invoice", "Manual journal", "Cost budget" … */
+  source: string;
+  reference: string | null;
+  /** Net project-attributed movement. Null for events that carry no amount, e.g. a baseline. */
+  amount: string | null;
+  sourceDocumentType: string | null;
+  sourceDocumentId: string | null;
+}
+
+/**
+ * Everything the Finance Overview renders, in one read.
+ *
+ * The cost position reuses the same rollup Cost Control renders, so the two screens cannot show
+ * different numbers for the same thing.
+ */
+export interface ProjectFinanceOverviewResponse {
+  projectId: string;
+  currency: string | null;
+  financialsVisible: boolean;
+  costPosition: ProjectCostPosition;
+  accountingPosition: ProjectAccountingPosition;
+  controls: {
+    reconciliation: FinanceControlStatus;
+    accountingSetup: FinanceControlStatus;
+    costBudget: FinanceControlStatus;
+    period: FinanceControlStatus;
+  };
+  reconciliation: ProjectCostReconciliationResponse;
+  period: ProjectFinancePeriod | null;
+  budget: {
+    versionNumber: number | null;
+    status: 'WORKING' | 'BASELINED' | 'SUPERSEDED' | null;
+    baselinedAt: string | null;
+    baselinedBy: string | null;
+    hasWorkingDraft: boolean;
+  };
+  /** Top-level cost areas only. The full hierarchy lives in Cost Control. */
+  costByArea: ProjectCostByBoqRow[];
+  attention: FinanceAttentionItem[];
+  activity: FinanceActivityRow[];
   asOf: string;
 }
 
@@ -1424,9 +1966,19 @@ export interface VariationOrderResponse {
   updatedAt: string;
 }
 
-/** A single VariationOrder without its lines — for the per-contract list read. */
+/**
+ * A single VariationOrder without its lines — for the per-contract list read.
+ *
+ * ADR-026 CONST-VAR-011: the at-risk figures ride along on the list row so a reader can tell
+ * sanctioned-early work from ordinary pending scope without opening every VO. `atRiskExposure`
+ * is the Σ of the recorded exposures (what ACCO accepted by starting), which is deliberately
+ * NOT the VO's net price and never enters the contract value.
+ */
 export type VariationOrderListItem = Omit<VariationOrderResponse, 'lines'> & {
   lineCount: number;
+  atRiskAuthorisationCount: number;
+  /** Decimal string; "0.00" when there are none. Null without financial visibility. */
+  atRiskExposure: string | null;
 };
 
 export interface VariationOrderListResponse {
@@ -1618,4 +2170,403 @@ export interface AtRiskCommencementResponse {
   authorisedBy: string;
   authorisedAt: string;
   createdAt: string;
+}
+
+// ─── Project Procurement (Phase 5) ──────────────────────────────────────────────
+//
+// The project's view of procurement. The boundary it obeys: **the organisation owns supplier
+// documents; the project owns the cost coded onto their lines.** `PurchaseOrder` has no
+// `projectId` and neither does `GoodsReceiptNote` — the cost target lives on
+// `PurchaseOrderLine` and is inherited read-only by every downstream document, so one PO can
+// legitimately serve three sites. Nothing here presents a supplier document as if the project
+// owned it; documents are named and linked out to, never operated on.
+//
+// Every money figure is derived from `CommitmentLedgerEntry`, which already carries projectId,
+// boqNodeId, supplierId, purchaseOrderId, stage and the full source-document trace. Reading the
+// ledger rather than re-aggregating PO/GRN/bill lists means these figures **cannot** disagree
+// with the Project Financial Position — they are the same rows.
+
+/** A cost with no project attribution is corporate overhead and appears in no project view. */
+export type ProjectCostStage = 'COMMITTED' | 'ACCRUED' | 'ACTUAL';
+
+/**
+ * The three ledger stages plus what they are measured against.
+ *
+ * `budget*` fields are null when the project has no BASELINED cost budget — which is the normal
+ * state of a new project, and must render as "no budget set", never as 0% used.
+ */
+export interface ProjectCostPosition {
+  currency: string | null;
+  /** Decimal strings. Null when the caller lacks financial visibility. */
+  committed: string | null;
+  accrued: string | null;
+  actual: string | null;
+  /**
+   * Everything ordered, received or billed: COMMITTED + ACCRUED + ACTUAL. The stages sum without
+   * double-counting because each transition reverses the previous one. Derived from the ledger
+   * alone, so it exists with or without a budget — and it is what budget headroom is measured
+   * against.
+   */
+  committedToDate: string | null;
+  /** The BASELINED budget total, or null when none is set. */
+  budgetTotal: string | null;
+  /**
+   * The two budget remainders, which are **not interchangeable** and must never collapse into
+   * one "remaining":
+   *
+   * - `uncommittedBudget` = budget − committedToDate. What is still free to spend. Measured
+   *   against all three stages, never COMMITTED alone: COMMITTED falls when goods arrive, so
+   *   subtracting it handed back headroom the project had already spent.
+   * - `budgetLessActual` = budget − actual. What has not yet been billed against the budget.
+   *   Larger, and dangerous to read as headroom, because it counts committed money as available.
+   *
+   * Both null without a baselined budget.
+   */
+  uncommittedBudget: string | null;
+  budgetLessActual: string | null;
+  /**
+   * Ratios, each named for its own numerator. "% of budget" under three different figures would
+   * make a reader guess which one a number belongs to.
+   */
+  committedOfBudgetPercent: number | null;
+  accruedOfBudgetPercent: number | null;
+  actualOfBudgetPercent: number | null;
+}
+
+/** One stage of the requirement→payment pipeline, with its count and its money. */
+export interface ProjectProcurementPipelineStage {
+  stage: 'REQUIREMENTS' | 'PURCHASE_ORDERS' | 'GOODS_RECEIVED' | 'SUPPLIER_BILLS' | 'PAYMENTS';
+  count: number;
+  /** The money this stage represents. Null without financial visibility. */
+  amount: string | null;
+  /** A second count that qualifies the first — "12 approved", "4 not yet ordered". */
+  qualifierCount: number | null;
+}
+
+/**
+ * Something a project manager has to do something about.
+ *
+ * Ordered by **operational consequence**, not by document lifecycle: whether the site can keep
+ * working comes before whether a bill reconciles. `tier` is the server's classification so the
+ * ordering cannot drift between screens, and so a UI never invents a severity engine of its own.
+ */
+export type ProcurementAttentionTier =
+  /** The site cannot proceed, or is about to be unable to. */
+  | 'SITE_BLOCKING'
+  /** Cost has landed but is not yet recognised — accrual and supplier-reconciliation risk. */
+  | 'COST_RECOGNITION'
+  /** Financial control: matching, tolerance, approval. */
+  | 'FINANCIAL_CONTROL'
+  /** Hygiene. Real, but must never outrank the three above. */
+  | 'ROUTINE';
+
+export type ProcurementAttentionKind =
+  | 'APPROVED_NOT_ORDERED'
+  | 'OVER_RECEIPT_EXCEPTION'
+  | 'RECEIVED_NOT_BILLED'
+  | 'BILL_OUTSIDE_TOLERANCE'
+  | 'INSPECTION_UNRESOLVED'
+  | 'STALE_DRAFT_REQUIREMENT';
+
+export interface ProcurementAttentionItem {
+  kind: ProcurementAttentionKind;
+  tier: ProcurementAttentionTier;
+  count: number;
+  /** Total money behind the count, where the kind has one. Null otherwise or when withheld. */
+  amount: string | null;
+  /** Where to go to act on it. Null when the caller cannot act. */
+  actionUrl: string | null;
+}
+
+/** A ledger movement, named by the document that caused it. */
+export interface ProjectProcurementActivityRow {
+  id: string;
+  /** The source document's type, as the ledger recorded it. */
+  documentType: string;
+  /** Its human reference — "PO-0042 (Rev 3)", "GRN-0032". Null for a document since deleted. */
+  reference: string | null;
+  description: string | null;
+  amount: string | null;
+  currency: string;
+  stage: ProjectCostStage;
+  occurredAt: string;
+}
+
+export interface ProjectProcurementOverviewResponse {
+  projectId: string;
+  financialsVisible: boolean;
+  position: ProjectCostPosition;
+  /** Open requirements, active POs touching this project, open exceptions. */
+  openRequirementCount: number;
+  requirementsAwaitingProcurement: number;
+  /**
+   * `PurchaseOrder.status = OPEN`, and named for it. Not "active": the header's OPEN/CLOSED and
+   * a revision's DRAFT→ACTIVE lifecycle are different records, and one word for both is how a
+   * reader ends up believing an order is approved when only its header is open.
+   */
+  openPoCount: number;
+  /** This project's share of those orders' active revisions — never the whole order value. */
+  openPoValue: string | null;
+  openExceptionCount: number;
+  pipeline: ProjectProcurementPipelineStage[];
+  attention: ProcurementAttentionItem[];
+  /** Committed vs actual per top-level BOQ section, for the overview chart. */
+  costByBoq: ProjectCostByBoqRow[];
+  committedBySupplier: ProjectCostBySupplierRow[];
+  recentActivity: ProjectProcurementActivityRow[];
+  capabilities: ProjectProcurementCapabilities;
+  asOf: string;
+}
+
+export interface ProjectProcurementCapabilities {
+  canViewFinancials: boolean;
+  canRaiseRequirement: boolean;
+  canManageBudget: boolean;
+  canBaselineBudget: boolean;
+  /** True only where the caller also holds buyer authority (ADR-022); the tab still links out. */
+  canOperateProcurement: boolean;
+}
+
+// ─── Cost & Commitments ─────────────────────────────────────────────────────────
+
+/**
+ * One row of the cost breakdown, in whichever dimension was requested.
+ *
+ * `boqNodeId` null with `kind: 'PROJECT_LEVEL'` is the legitimate project cost that has no BOQ
+ * line — site office, transport, insurance, temporary facilities. It is project cost and must be
+ * shown; it simply does not trace to priced scope. Corporate overhead (no project at all) never
+ * reaches this read model.
+ */
+export interface ProjectCostByBoqRow {
+  /**
+   * `PROJECT_LEVEL` is the parent bucket; `PROJECT_LEVEL_CATEGORY` are its children, one per
+   * spend category actually used — Transport, Insurance, Site overhead. They are named coded
+   * costs, never an "unallocated" remainder.
+   */
+  kind: 'BOQ' | 'PROJECT_LEVEL' | 'PROJECT_LEVEL_CATEGORY';
+  boqNodeId: string | null;
+  /** Set on a `PROJECT_LEVEL_CATEGORY` row. */
+  spendCategoryId?: string | null;
+  /** "001", "003.002". Null for the project-level bucket. */
+  code: string | null;
+  description: string;
+  /** Depth in the BOQ tree, 0 for a top-level section. Drives indentation, not layout. */
+  depth: number;
+  hasChildren: boolean;
+  budget: string | null;
+  committed: string | null;
+  accrued: string | null;
+  actual: string | null;
+  /**
+   * budget − committed: what is still free to spend on this line. Null without a budget —
+   * "remaining" needs something to remain of.
+   */
+  uncommittedBudget: string | null;
+  /**
+   * Two explicitly named ratios rather than one "% used". With committed, accrued and actual all
+   * on the row, a single unlabelled percentage is a guessing game about which one it divides.
+   */
+  committedOfBudgetPercent: number | null;
+  actualOfBudgetPercent: number | null;
+}
+
+export interface ProjectCostBySupplierRow {
+  supplierId: string | null;
+  supplierName: string;
+  committed: string | null;
+  accrued: string | null;
+  actual: string | null;
+  /** Share of the project's committed total, to one decimal. */
+  percentOfCommitted: number | null;
+}
+
+export interface ProjectCostByCategoryRow {
+  spendCategoryId: string | null;
+  categoryName: string;
+  committed: string | null;
+  accrued: string | null;
+  actual: string | null;
+  percentOfActual: number | null;
+}
+
+export interface ProjectProcurementCostResponse {
+  projectId: string;
+  financialsVisible: boolean;
+  position: ProjectCostPosition;
+  /** Null when no BASELINED budget exists — the UI says so rather than showing 0%. */
+  budgetVersion: number | null;
+  byBoq: ProjectCostByBoqRow[];
+  bySupplier: ProjectCostBySupplierRow[];
+  byCategory: ProjectCostByCategoryRow[];
+  recentEntries: ProjectProcurementActivityRow[];
+  capabilities: ProjectProcurementCapabilities;
+  asOf: string;
+}
+
+// ─── Requirements ───────────────────────────────────────────────────────────────
+
+export type MaterialRequestPriorityValue = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+
+/** Has the requirement been agreed? Derived from `MaterialRequestStatus`, never invented. */
+export type RequirementApprovalStatus =
+  | 'DRAFT'
+  | 'SUBMITTED'
+  | 'APPROVED'
+  | 'CANCELLED'
+  | 'CLOSED';
+
+/** How much of it has been converted to purchase orders? A separate fact from approval. */
+export type RequirementFulfillmentStatus = 'NOT_ORDERED' | 'PARTIALLY_ORDERED' | 'FULLY_ORDERED';
+
+/**
+ * A requirement as the project reads it.
+ *
+ * `estimatedValue` is the requester's estimate (Σ quantity × estimatedUnitPrice), which ADR-022
+ * routes approval on. `orderedValue` is real money: Σ over the PO lines allocated to this
+ * request, at the PO's own unit price. They are different bases and the UI must not present
+ * their difference as a saving — a buyer beating an estimate and a buyer part-ordering look
+ * identical in a single number.
+ */
+export interface ProjectRequirementRow {
+  id: string;
+  mrNumber: string;
+  title: string | null;
+  description: string | null;
+  /** The raw `MaterialRequestStatus`, kept so nothing is lost in the split below. */
+  status: string;
+  /**
+   * The one enum carries two different questions, and a single "Status" column answers neither
+   * cleanly: has this been approved, and how much of it has been ordered. Split server-side so
+   * every surface separates them the same way — the same discipline as PO header vs revision.
+   */
+  approvalStatus: RequirementApprovalStatus;
+  fulfillmentStatus: RequirementFulfillmentStatus;
+  priority: MaterialRequestPriorityValue;
+  /** Rolled up from the lines' spend categories; null when the lines carry none. */
+  category: string | null;
+  requestedDate: string;
+  requiredByDate: string | null;
+  lineCount: number;
+  /** The currency the estimate is denominated in. Null when the request carries no estimate. */
+  currencyCode: string | null;
+  estimatedValue: string | null;
+  orderedValue: string | null;
+  /** estimatedValue − orderedValue, floored at zero. Null when there is no estimate. */
+  remainingValue: string | null;
+  /** How many purchase orders carry lines allocated to this request. */
+  purchaseOrderCount: number;
+}
+
+/**
+ * One requirement line, with what it is for and how much of it has been ordered.
+ *
+ * `costTarget` is the line's own attribution, which is where cost coding lives — a BOQ node for
+ * measured scope, or a spend category for project-level cost. The header carries no BOQ node and
+ * this never invents one.
+ */
+export interface ProjectRequirementLine {
+  id: string;
+  lineNumber: number;
+  description: string;
+  /** Approved quantity where one exists, else requested. Always the figure the value uses. */
+  quantity: string;
+  uomCode: string | null;
+  estimatedUnitPrice: string | null;
+  estimatedValue: string | null;
+  costTargetKind: 'BOQ' | 'CATEGORY' | 'NONE';
+  costTargetLabel: string | null;
+  /** Sum of the quantities allocated to purchase-order lines. */
+  orderedQuantity: string;
+  fulfillmentStatus: RequirementFulfillmentStatus;
+}
+
+/**
+ * A purchase order that carries a line for this requirement.
+ *
+ * **The header state and the revision lifecycle are separate records and stay separate.**
+ * `PurchaseOrder.status` is only OPEN/CLOSED/CANCELLED; DRAFT→SUBMITTED→APPROVED→ACTIVE lives on
+ * an immutable revision. Rendering "PO-0021 Approved" as one status conflates the two.
+ */
+export interface ProjectRequirementPurchaseOrder {
+  id: string;
+  poNumber: string;
+  /** OPEN | CLOSED | CANCELLED — the document's own state. */
+  documentState: string;
+  /** The governing revision's number and its lifecycle status. */
+  revisionNumber: number | null;
+  revisionStatus: string | null;
+  supplierName: string | null;
+  /** Value of this PO's lines allocated to this requirement, at the agreed price. */
+  orderedValue: string | null;
+}
+
+export interface ProjectRequirementDetail extends ProjectRequirementRow {
+  createdBy: string | null;
+  createdAt: string;
+  lines: ProjectRequirementLine[];
+  purchaseOrders: ProjectRequirementPurchaseOrder[];
+}
+
+/**
+ * Counts for the requirements band.
+ *
+ * `approved` is approved **and not yet ordered** — the set a buyer works from — and the three
+ * fulfilment counts are the ladder beneath it. There is deliberately no "draft or closed"
+ * bucket: a draft awaiting submission and a closed request share nothing operationally, and one
+ * number for both is a count nobody can act on.
+ */
+export interface ProjectRequirementsSummary {
+  total: number;
+  approved: number;
+  notOrdered: number;
+  partiallyOrdered: number;
+  ordered: number;
+}
+
+export interface ProjectRequirementsResponse {
+  projectId: string;
+  financialsVisible: boolean;
+  summary: ProjectRequirementsSummary;
+  requirements: ProjectRequirementRow[];
+  capabilities: ProjectProcurementCapabilities;
+  asOf: string;
+}
+
+// ─── Project cost budget ────────────────────────────────────────────────────────
+
+export type ProjectCostBudgetStatusValue = 'DRAFT' | 'BASELINED' | 'SUPERSEDED';
+
+export interface ProjectCostBudgetLineResponse {
+  id: string;
+  boqNodeId: string | null;
+  boqNodeCode: string | null;
+  spendCategoryId: string | null;
+  spendCategoryName: string | null;
+  description: string;
+  budgetAmount: string;
+  sortOrder: number;
+}
+
+export interface ProjectCostBudgetResponse {
+  id: string;
+  projectId: string;
+  versionNumber: number;
+  status: ProjectCostBudgetStatusValue;
+  currency: string;
+  notes: string | null;
+  derivedFromId: string | null;
+  total: string;
+  preparedBy: string;
+  baselinedAt: string | null;
+  baselinedBy: string | null;
+  lines: ProjectCostBudgetLineResponse[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectCostBudgetListResponse {
+  projectId: string;
+  /** The version the project is currently measured against, or null when none is baselined. */
+  baselined: ProjectCostBudgetResponse | null;
+  budgets: Array<Omit<ProjectCostBudgetResponse, 'lines'> & { lineCount: number }>;
 }

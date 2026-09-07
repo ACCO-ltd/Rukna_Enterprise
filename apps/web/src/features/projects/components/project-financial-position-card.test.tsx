@@ -24,10 +24,13 @@ function position(overrides: Partial<ProjectFinancialPositionResponse> = {}): Pr
     invoicedRevenue: '650000.00',
     receivedRevenue: '500000.00',
     outstandingReceivables: '150000.00',
+    hasBudget: true,
+    budgetTotal: '900000.00',
+    openCommitment: '100000.00',
+    accruedCost: '50000.00',
     actualCost: '600000.00',
-    remainingCommitments: '150000.00',
-    forecastCost: '750000.00',
-    forecastMargin: '250000.00',
+    committedToDate: '750000.00',
+    uncommittedBudget: '150000.00',
     asOf: '2026-08-14T00:00:00.000Z',
     ...overrides,
   };
@@ -39,16 +42,38 @@ beforeEach(() => {
 });
 
 describe('ProjectFinancialPositionCard', () => {
-  it('shows the forecast margin plus revenue and cost metrics', () => {
+  it('shows the cost stages and revenue, and no forecast of any kind', () => {
     hookMocks.useProjectFinancialPosition.mockReturnValue({ data: position(), isPending: false, isError: false });
     renderWithProviders(<ProjectFinancialPositionCard projectId="p1" />);
 
     expect(screen.getByRole('heading', { name: 'Financial Position' })).toBeInTheDocument();
-    expect(screen.getByText('Forecast margin')).toBeInTheDocument();
+    expect(screen.getByText('Budget')).toBeInTheDocument();
+    expect(screen.getByText('Open commitment')).toBeInTheDocument();
+    expect(screen.getByText('Accrued')).toBeInTheDocument();
+    expect(screen.getByText('Actual cost')).toBeInTheDocument();
+    expect(screen.getByText('Uncommitted budget')).toBeInTheDocument();
     expect(screen.getByText('Contract value')).toBeInTheDocument();
-    expect(screen.getByText('Remaining committed')).toBeInTheDocument();
     // Amounts formatted with the currency.
-    expect(screen.getByText(/250,000/)).toBeInTheDocument();
+    expect(screen.getByText(/600,000/)).toBeInTheDocument();
+
+    // The three metrics this card must never show again. Matched as whole labels: the
+    // card's own hint mentions the word "forecast" to say it deliberately has none.
+    expect(screen.queryByText('Forecast margin')).not.toBeInTheDocument();
+    expect(screen.queryByText('Forecast cost')).not.toBeInTheDocument();
+    expect(screen.queryByText('Remaining committed')).not.toBeInTheDocument();
+  });
+
+  it('reports budget figures as unavailable, not zero, when none is baselined', () => {
+    hookMocks.useProjectFinancialPosition.mockReturnValue({
+      data: position({ hasBudget: false, budgetTotal: null, uncommittedBudget: null }),
+      isPending: false,
+      isError: false,
+    });
+    renderWithProviders(<ProjectFinancialPositionCard projectId="p1" />);
+
+    expect(screen.getByText(/No cost budget has been baselined/i)).toBeInTheDocument();
+    // A project that has set no budget has not got $0 of budget.
+    expect(screen.queryByText('$0.00')).not.toBeInTheDocument();
   });
 
   it('enables the query only with view:financial-position', () => {
@@ -69,7 +94,7 @@ describe('ProjectFinancialPositionCard', () => {
     expect(hookMocks.useProjectFinancialPosition).toHaveBeenCalledWith('p1', { enabled: false });
   });
 
-  it('hides revenue and margin, and explains, when there is no main contract', () => {
+  it('hides revenue, and explains, when there is no main contract', () => {
     hookMocks.useProjectFinancialPosition.mockReturnValue({
       data: position({
         hasContract: false,
@@ -79,7 +104,6 @@ describe('ProjectFinancialPositionCard', () => {
         invoicedRevenue: null,
         receivedRevenue: null,
         outstandingReceivables: null,
-        forecastMargin: null,
       }),
       isPending: false,
       isError: false,

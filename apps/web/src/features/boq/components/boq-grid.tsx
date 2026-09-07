@@ -71,6 +71,7 @@ export function BoqGrid({
   isFiltered,
   canManage,
   canViewCommercials,
+  showSource,
   highlighted,
   collapsed,
   onToggle,
@@ -93,6 +94,13 @@ export function BoqGrid({
   isFiltered: boolean;
   canManage: boolean;
   canViewCommercials: boolean;
+  /**
+   * Whether provenance is worth a column. False while every line came in with the original
+   * scope, which is every BOQ until a Variation adds one — a column reading "Baseline" on all
+   * 400 rows spends horizontal space to say nothing. `sourceType` is never dropped from the
+   * data, and the column returns the moment provenance is actually mixed.
+   */
+  showSource: boolean;
   /** Node ids the readiness banner asked to draw attention to. */
   highlighted: ReadonlySet<string>;
   collapsed: ReadonlySet<string>;
@@ -110,7 +118,8 @@ export function BoqGrid({
   const [focusIndex, setFocusIndex] = useState(0);
   const activeIndex = clamp(focusIndex, rows.length);
 
-  const columnCount = canViewCommercials ? 9 : 7;
+  // code · description · unit · quantity · actions, plus rate/amount and source when shown.
+  const columnCount = 5 + (canViewCommercials ? 2 : 0) + (showSource ? 1 : 0);
 
   const focusRow = (index: number) => {
     setFocusIndex(index);
@@ -151,7 +160,10 @@ export function BoqGrid({
               </TableHead>
               {/* Takes every spare pixel, so wide viewports widen the column that benefits. */}
               <TableHead className="w-full min-w-64">{t('description')}</TableHead>
-              <TableHead className="whitespace-nowrap">{t('type')}</TableHead>
+              {/* No TYPE column. Whether a row is a section or an item is already carried by
+                  the chevron, the indent, the weight, the tint and the absence of pricing
+                  cells — five signals, none of which needed a sixth in words. Screen readers
+                  keep it: the code cell states it. */}
               <TableHead className="whitespace-nowrap">{t('unit')}</TableHead>
               <TableHead numeric className="whitespace-nowrap">
                 {t('quantity')}
@@ -166,7 +178,9 @@ export function BoqGrid({
                   </TableHead>
                 </>
               ) : null}
-              <TableHead className="whitespace-nowrap">{t('source')}</TableHead>
+              {showSource ? (
+                <TableHead className="whitespace-nowrap">{t('source')}</TableHead>
+              ) : null}
               <TableHead className="w-12">
                 <span className="sr-only">{t('actions')}</span>
               </TableHead>
@@ -185,6 +199,7 @@ export function BoqGrid({
                   locale={locale}
                   canManage={canManage}
                   canViewCommercials={canViewCommercials}
+                  showSource={showSource}
                   sectionTotal={
                     row.node.isLeaf ? undefined : (sectionTotals.get(row.node.id) ?? null)
                   }
@@ -247,6 +262,7 @@ function GridRow({
   locale,
   canManage,
   canViewCommercials,
+  showSource,
   sectionTotal,
   highlighted,
   collapsed,
@@ -261,6 +277,7 @@ function GridRow({
   locale: 'en' | 'ar';
   canManage: boolean;
   canViewCommercials: boolean;
+  showSource: boolean;
   /** A section's client-rolled-up subtotal. `undefined` for a leaf (which uses computedTotal). */
   sectionTotal?: string | null;
   highlighted: boolean;
@@ -338,6 +355,9 @@ function GridRow({
             <span className="h-7 w-7 shrink-0" aria-hidden="true" />
           )}
           <LtrValue className="font-mono text-caption">{node.code}</LtrValue>
+          {/* What the visible TYPE column used to say. Sighted readers get it from the row's
+              shape; a screen reader gets it here, once, at the start of the row. */}
+          <span className="sr-only">{node.isLeaf ? t('typeItem') : t('typeSection')}</span>
           {incomplete ? <span className="sr-only">{t('incomplete')}</span> : null}
         </div>
       </TableCell>
@@ -357,16 +377,12 @@ function GridRow({
         />
       </TableCell>
 
-      {/* TYPE and UNIT are the quietest columns on the row and should look it.
-          `text-muted-foreground` is the sanctioned secondary-text token. An earlier attempt
-          used `text-foreground/55` to dodge the faint blue cast these read with at 12px —
-          measured, the composite is still cool, because `--foreground` is itself a navy and
-          every grey in the ramp inherits that. Fighting it here only produced an off-system
-          value on one screen; a warmer ramp is a token decision for the whole product. */}
-      <TableCell className="text-caption text-muted-foreground">
-        {node.isLeaf ? t('typeItem') : t('typeSection')}
-      </TableCell>
-
+      {/* UNIT is the quietest column on the row and should look it. `text-muted-foreground`
+          is the sanctioned secondary-text token. An earlier attempt used `text-foreground/55`
+          to dodge the faint blue cast it reads with at 12px — measured, the composite is still
+          cool, because `--foreground` is itself a navy and every grey in the ramp inherits
+          that. Fighting it here only produced an off-system value on one screen; a warmer ramp
+          is a token decision for the whole product. */}
       <TableCell className="text-caption text-muted-foreground">
         {node.isLeaf ? (node.unit ?? '—') : ''}
       </TableCell>
@@ -425,9 +441,11 @@ function GridRow({
         </>
       ) : null}
 
-      <TableCell>
-        <SourceCell node={node} />
-      </TableCell>
+      {showSource ? (
+        <TableCell>
+          <SourceCell node={node} />
+        </TableCell>
+      ) : null}
 
       <TableCell className="w-12">
         {commands && canManage ? (

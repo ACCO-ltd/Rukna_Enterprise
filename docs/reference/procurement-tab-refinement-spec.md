@@ -1,7 +1,14 @@
 # Procurement tab — refinement spec
 
-Status: **Backend largely built (INTEGRATED, org-level). Refinement = a project-scoped surface +
-ADR wiring.** Owners: Backend — Abdulsalam · Frontend — frontend engineer.
+Status: **Boundary section SUPERSEDED 2026-09-05 by `docs/design/procurement-workspace-refinement.md`**
+(Phase 5, boundary locked). This document's "Two homes" split was right in spirit but assumed the
+project tab would be "mostly a project-filtered read over existing services" — the schema puts the
+cost target on `PurchaseOrderLine`, not on the PO, so the project surface is **line-level**, and
+the read model is built on the commitment ledger rather than on new list filters. Sections 1-5
+(ADR wiring, DOA/SoD, the classifier, matching) remain accurate and unbuilt.
+
+Original status: **Backend largely built (INTEGRATED, org-level). Refinement = a project-scoped
+surface + ADR wiring.** Owners: Backend — Abdulsalam · Frontend — frontend engineer.
 Source of truth: ADR-020 (BOQ backbone + change classifier), ADR-022 (DOA + SoD + roles), ADR-018
 (bill matching), ADR-013 (Project Financial Position).
 

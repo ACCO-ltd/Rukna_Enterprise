@@ -1,7 +1,8 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { Alert, Badge, Button, SectionHeader, Skeleton, type BadgeProps } from '@erp/ui';
+import { Alert, Badge, Button, RecordPanel, SectionHeader, Skeleton, type BadgeProps } from '@erp/ui';
+import { TrendingUp } from 'lucide-react';
 import type { ProgressScheduleStatus } from '@erp/types';
 
 import { MetricStrip } from '@/components/widget/metric-strip';
@@ -11,6 +12,9 @@ import { useProgressCurve } from '../hooks/use-progress';
 import { CaptureSnapshotAction } from './capture-snapshot-action';
 import { CollectionProgressSignalBanner } from './collection-progress-signal-banner';
 import { PhysicalFinancialSignalBanner } from './physical-financial-signal-banner';
+import { NeedsAttentionPanel } from './needs-attention-panel';
+import { WorkPackageProgressPanel } from './work-package-progress-panel';
+import type { ProgressView } from './progress-tab';
 import { ProgressCurveChart } from './progress-curve-chart';
 
 /**
@@ -33,14 +37,27 @@ const SCHEDULE_TONE: Record<ProgressScheduleStatus, BadgeProps['tone']> = {
  * repeats them — it leads with the curve (the detail behind the headline) and gathers both signals
  * in one place instead of scattering them across Progress and Finance.
  */
-export function PerformanceSection({ projectId }: { projectId: string }) {
+export function PerformanceSection({
+  projectId,
+  onGoTo,
+}: {
+  projectId: string;
+  onGoTo: (view: ProgressView) => void;
+}) {
   const curveQuery = useProgressCurve(projectId);
 
   return (
-    <div className="space-y-5">
-      <ProgressCurvePanel projectId={projectId} query={curveQuery} />
+    // Left is the story of the number — the curve, then the packages it is made of. Right is what
+    // to do about it and what it compares against. 1.6fr/1fr rather than an even split: the curve
+    // needs width to be readable at all, while a comparison is three short rows.
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+      <div className="flex min-w-0 flex-col gap-5">
+        <ProgressCurvePanel projectId={projectId} query={curveQuery} />
+        <WorkPackageProgressPanel projectId={projectId} />
+      </div>
 
-      <div className="space-y-4">
+      <div className="flex min-w-0 flex-col gap-5">
+        <NeedsAttentionPanel projectId={projectId} onGoTo={onGoTo} />
         {/* The physical-vs-financial link would point back to this same tab, so it's suppressed
             here; the collection banner keeps its cross-link into Commercial. */}
         <PhysicalFinancialSignalBanner projectId={projectId} showLink={false} />
@@ -106,7 +123,13 @@ function ProgressCurvePanel({
   if (status === 'INSUFFICIENT_DATA' || curve.actual.length === 0) {
     return (
       <div className="space-y-3">
-        {header}
+        {/* The header's own capture button is dropped here: it and the empty state's were the
+            same action 60px apart, and the empty state's is the more capable of the two — it
+            carries the period-end date, which is the only way to record a snapshot for a date
+            that is not today. The date stays with the action rather than moving to Record,
+            because a snapshot is a point-in-time roll-up capture and a daily report is a site
+            record; they are different objects and merging their controls would say otherwise. */}
+        <SectionHeader title={t('curve.title')} />
         <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
           <p className="text-sm text-muted-foreground">{t('curve.insufficient')}</p>
           <div className="mt-4 flex justify-center">
@@ -135,9 +158,11 @@ function ProgressCurvePanel({
   const pct = (v: number | null) => (v === null ? '—' : `${v}%`);
 
   return (
-    <div className="space-y-3">
-      <SectionHeader title={t('curve.title')}>
-        <div className="flex items-center gap-3">
+    <RecordPanel
+      title={t('curve.title')}
+      icon={<TrendingUp size={17} strokeWidth={1.9} />}
+      action={
+        <div className="flex flex-wrap items-center gap-2.5">
           {curve.baselineProvisional ? (
             <Badge tone="accent">{t('curve.provisionalChip')}</Badge>
           ) : null}
@@ -148,8 +173,8 @@ function ProgressCurvePanel({
           </Badge>
           <CaptureSnapshotAction projectId={projectId} />
         </div>
-      </SectionHeader>
-
+      }
+    >
       <MetricStrip
         aria-label={t('curve.scheduleStripLabel')}
         metrics={[
@@ -176,6 +201,6 @@ function ProgressCurvePanel({
           <p className="text-caption text-muted-foreground">{t('curve.provisionalNote')}</p>
         ) : null}
       </div>
-    </div>
+    </RecordPanel>
   );
 }

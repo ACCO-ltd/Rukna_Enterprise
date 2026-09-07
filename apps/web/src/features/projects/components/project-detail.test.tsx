@@ -1,19 +1,11 @@
 import { ProjectStatus } from '@erp/types';
-import { screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
 import { ApiError } from '@/lib/api-client';
-import {
-  cancelProject,
-  getProject,
-  getProjectWorkspaceSummary,
-  resumeProject,
-  runProjectCommand,
-  suspendProject,
-} from '@/features/projects/api/projects-api';
-import type { ProjectDetail as ProjectDetailModel, ProjectSuspension } from '../types';
+import { getProject, getProjectWorkspaceSummary } from '@/features/projects/api/projects-api';
+import type { ProjectDetail as ProjectDetailModel, ProjectWorkspaceSummary } from '../types';
 
 import { ProjectDetail } from './project-detail';
 
@@ -39,19 +31,6 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-function suspension(overrides: Partial<ProjectSuspension> = {}): ProjectSuspension {
-  return {
-    id: 's1',
-    projectId: 'p1',
-    reason: 'Awaiting site access clearance',
-    suspendedAt: '2026-08-01T00:00:00.000Z',
-    suspendedBy: 'user-1',
-    resumedAt: null,
-    resumedBy: null,
-    ...overrides,
-  };
-}
-
 function project(overrides: Partial<ProjectDetailModel> = {}): ProjectDetailModel {
   return {
     id: 'p1',
@@ -61,7 +40,7 @@ function project(overrides: Partial<ProjectDetailModel> = {}): ProjectDetailMode
     description: null,
     status: ProjectStatus.DRAFT,
     contractValue: null,
-    currency: null,
+    currency: 'USD',
     clientName: null,
     startDate: null,
     expectedEndDate: null,
@@ -74,7 +53,9 @@ function project(overrides: Partial<ProjectDetailModel> = {}): ProjectDetailMode
   };
 }
 
-function workspaceSummary() {
+function workspaceSummary(
+  overrides: Partial<ProjectWorkspaceSummary> = {},
+): ProjectWorkspaceSummary {
   return {
     projectId: 'p1',
     setup: {
@@ -92,6 +73,7 @@ function workspaceSummary() {
     mainContract: null,
     financialsVisible: false,
     recentActivity: [],
+    ...overrides,
   };
 }
 
@@ -99,16 +81,7 @@ beforeEach(() => {
   vi.mocked(getProject).mockReset();
   vi.mocked(getProjectWorkspaceSummary).mockReset();
   vi.mocked(getProjectWorkspaceSummary).mockResolvedValue(workspaceSummary());
-  vi.mocked(runProjectCommand).mockReset();
-  vi.mocked(cancelProject).mockReset();
-  vi.mocked(suspendProject).mockReset();
-  vi.mocked(resumeProject).mockReset();
 });
-
-async function chooseOverflowAction(user: ReturnType<typeof userEvent.setup>, name: string) {
-  await user.click(await screen.findByRole('button', { name: 'Actions' }));
-  await user.click(await screen.findByRole('menuitem', { name }));
-}
 
 describe('ProjectDetail — loading and failure', () => {
   it('announces loading', () => {
@@ -143,221 +116,388 @@ describe('ProjectDetail — loading and failure', () => {
   });
 });
 
-describe('ProjectDetail — available actions', () => {
-  it('offers start, edit, and secondary lifecycle actions for a draft', async () => {
-    const user = userEvent.setup();
+/**
+ * Overview is the one tab carrying project-level context, so the lifecycle rail lives here
+ * rather than above every working tab.
+ */
+describe('ProjectDetail — project lifecycle', () => {
+  it('renders the rail with every stage and marks the current one', async () => {
+    vi.mocked(getProject).mockResolvedValue(project({ status: ProjectStatus.ACTIVE }));
+
+    renderWithProviders(<ProjectDetail id="p1" />);
+
+    const rail = await screen.findByRole('list', { name: 'Project lifecycle' });
+    expect(within(rail).getAllByRole('listitem').map((step) => step.textContent)).toEqual([
+      'Preparation',
+      'Active',
+      'Practical completion',
+      'Closeout',
+      'Closed',
+    ]);
+
+    const active = within(rail).getByText('Active');
+    expect(active).toHaveClass('text-brand-primary');
+    expect(active.closest('[aria-current="step"]')).not.toBeNull();
+    // A passed stage carries the success colour, not the brand; an upcoming one is muted.
+    expect(within(rail).getByText('Preparation')).toHaveClass('text-success');
+    // An upcoming stage sits below full muted-foreground, so the rail reads as project
+    // context rather than as a second row of tabs under the real one.
+    expect(within(rail).getByText('Closed')).toHaveClass('text-muted-foreground/70');
+  });
+
+  it('drops the rail for a cancelled project, which left it rather than reaching a point on it', async () => {
+    vi.mocked(getProject).mockResolvedValue(project({ status: ProjectStatus.CANCELLED }));
+
+    renderWithProviders(<ProjectDetail id="p1" />);
+
+    await screen.findByRole('heading', { name: 'Project information' });
+    expect(screen.queryByRole('list', { name: 'Project lifecycle' })).not.toBeInTheDocument();
+  });
+
+  // Lifecycle history has no endpoint behind it. A control that advertises one earns a
+  // support question on every visit (ux-doctrine.md §4).
+  it('offers no history control it cannot honour', async () => {
     vi.mocked(getProject).mockResolvedValue(project());
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
-    expect(await screen.findByRole('button', { name: 'Start project' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Edit' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Actions' })).toBeInTheDocument();
-    await chooseOverflowAction(user, 'Suspend');
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-  });
-
-  it('offers nothing but the record for a closed project', async () => {
-    vi.mocked(getProject).mockResolvedValue(project({ status: ProjectStatus.CLOSED }));
-
-    renderWithProviders(<ProjectDetail id="p1" />);
-
-    // The Project details section heading is a reliable signal that the project loaded.
-    await screen.findByRole('heading', { name: 'Project details' });
-    expect(screen.queryByRole('button', { name: 'Start project' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Actions' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument();
-  });
-
-  it('shows the suspension, hides the forward step, and offers resume', async () => {
-    vi.mocked(getProject).mockResolvedValue(
-      project({ status: ProjectStatus.ACTIVE, suspensions: [suspension()] }),
-    );
-
-    renderWithProviders(<ProjectDetail id="p1" />);
-
-    expect(await screen.findByText('This project is suspended')).toBeInTheDocument();
-    expect(screen.getByText('Awaiting site access clearance')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Record practical completion' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Actions' })).toBeInTheDocument();
+    await screen.findByRole('heading', { name: 'Project lifecycle' });
+    expect(screen.queryByText(/View history/i)).not.toBeInTheDocument();
   });
 });
 
-describe('ProjectDetail — Overview reshape (P1/P2)', () => {
+describe('ProjectDetail — project readiness', () => {
   it('leads a draft with what is left to set up, above the identity facts', async () => {
     vi.mocked(getProject).mockResolvedValue(project());
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
-    const setupHeading = await screen.findByRole('heading', { name: 'Project setup' });
-    const detailsHeading = await screen.findByRole('heading', { name: 'Project details' });
+    const readiness = await screen.findByRole('heading', { name: 'Project readiness' });
+    const information = await screen.findByRole('heading', { name: 'Project information' });
 
-    // What needs doing comes before what the project is (P1). This used to be asserted against
-    // a separate guidance queue that restated the same four steps; the stepper is now the only
-    // thing saying them.
-    expect(setupHeading.compareDocumentPosition(detailsHeading)).toBe(
+    expect(readiness.compareDocumentPosition(information)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
   });
 
-  it('renders identity facts as one definition list, not three separate cards', async () => {
-    vi.mocked(getProject).mockResolvedValue(
-      project({
-        status: ProjectStatus.ACTIVE,
-        clientName: 'Baraka Real Estate LLC',
-        commercialModel: 'CLIENT_CONTRACT',
-        participationModel: 'SOLE',
+  /**
+   * The steps are not peers — the contract is gated behind a baselined BOQ — so they read as
+   * a checklist in dependency order, and the blocked one says so on its own row.
+   */
+  it('states each step, its action, and the one thing that is blocked', async () => {
+    vi.mocked(getProject).mockResolvedValue(project());
+
+    renderWithProviders(<ProjectDetail id="p1" />);
+
+    const section = (await screen.findByRole('heading', { name: 'Project readiness' })).closest(
+      'section',
+    )!;
+    const steps = within(section).getAllByRole('listitem');
+    expect(steps).toHaveLength(4);
+
+    expect(within(section).getByText('1 of 4 complete')).toBeInTheDocument();
+    expect(within(section).getByText('25%')).toBeInTheDocument();
+
+    expect(within(section).getByRole('link', { name: /Open BOQ/ })).toHaveAttribute(
+      'href',
+      '/projects/p1/boq',
+    );
+    expect(within(section).getByRole('link', { name: /Add members/ })).toHaveAttribute(
+      'href',
+      '/projects/p1/members',
+    );
+
+    // The contract is blocked, and there is no link to a screen that would reject the work.
+    expect(within(section).getByText('Blocked')).toBeInTheDocument();
+    expect(within(section).queryByRole('link', { name: /Create contract/ })).toBeNull();
+
+    // The recommended next step and a later open step are both reachable — the server imposes
+    // no dependency between them — but they are not offered with equal emphasis.
+    expect(within(section).getByRole('link', { name: /Open BOQ/ }).className).not.toEqual(
+      within(section).getByRole('link', { name: /Add members/ }).className,
+    );
+
+    // The dependency is explained once, not once per step (§23).
+    expect(
+      within(section).getAllByText('The main contract becomes available once the BOQ is baselined.'),
+    ).toHaveLength(1);
+  });
+
+  it('says it is ready once every step is done, and stops explaining the dependency', async () => {
+    vi.mocked(getProject).mockResolvedValue(project());
+    vi.mocked(getProjectWorkspaceSummary).mockResolvedValue(
+      workspaceSummary({
+        setup: {
+          identityComplete: true,
+          boqExists: true,
+          boqBaselined: true,
+          mainContractApplicable: true,
+          mainContractExists: true,
+          teamReady: true,
+          completedSteps: 4,
+          totalSteps: 4,
+        },
       }),
     );
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
-    await screen.findByRole('heading', { name: 'Project details' });
-    // The three old identity card headings are gone.
-    expect(screen.queryByText('Client information')).not.toBeInTheDocument();
-    expect(screen.queryByText('Responsibility')).not.toBeInTheDocument();
-    // Facts the strip does not carry render in the list.
-    expect(screen.getByText('Baraka Real Estate LLC')).toBeInTheDocument();
-    expect(screen.getByText('Sole delivery')).toBeInTheDocument();
-    expect(screen.getByText('Client contract')).toBeInTheDocument();
+    expect(await screen.findByText('Ready to start')).toBeInTheDocument();
+    expect(screen.queryByText('Blocked')).not.toBeInTheDocument();
   });
 
-  it('does not restate strip facts (programme, current stage, project manager) in the body', async () => {
-    vi.mocked(getProject).mockResolvedValue(
-      project({
-        status: ProjectStatus.ACTIVE,
-        startDate: '2026-02-01T00:00:00.000Z',
-        expectedEndDate: '2026-08-31T00:00:00.000Z',
-      }),
-    );
-    vi.mocked(getProjectWorkspaceSummary).mockResolvedValue({
-      ...workspaceSummary(),
-      responsibility: { projectManager: { id: 'u1', name: 'System Admin' }, teamCount: 3 },
-      programme: {
-        startDate: '2026-02-01T00:00:00.000Z',
-        expectedEndDate: '2026-08-31T00:00:00.000Z',
-        daysRemaining: 30,
-      },
-      financialsVisible: true,
-    });
-
-    renderWithProviders(<ProjectDetail id="p1" />);
-
-    await screen.findByRole('heading', { name: 'Project details' });
-    // These labels belong to the shell strip / lifecycle, not the Overview body (P2).
-    expect(screen.queryByText('Programme')).not.toBeInTheDocument();
-    expect(screen.queryByText('Current stage')).not.toBeInTheDocument();
-    expect(screen.queryByText('Project manager')).not.toBeInTheDocument();
-    // Main contract appears once here (Commercial snapshot no longer restates it).
-    expect(screen.queryAllByText('Main contract')).toHaveLength(1);
-  });
-});
-
-describe('ProjectDetail — running commands', () => {
-  it('confirms before advancing the lifecycle', async () => {
-    const user = userEvent.setup();
-    vi.mocked(getProject).mockResolvedValue(project());
-    vi.mocked(runProjectCommand).mockResolvedValue(project({ status: ProjectStatus.ACTIVE }));
-
-    renderWithProviders(<ProjectDetail id="p1" />);
-
-    await user.click(await screen.findByRole('button', { name: 'Start project' }));
-
-    // Nothing has been sent yet — the dialog is the whole point.
-    expect(runProjectCommand).not.toHaveBeenCalled();
-    expect(screen.getByRole('dialog')).toHaveTextContent(
-      'The project leaves preparation and becomes active on site. It can no longer be edited.',
-    );
-
-    await user.click(screen.getByRole('button', { name: 'Confirm' }));
-
-    await waitFor(() => {
-      expect(runProjectCommand).toHaveBeenCalledWith('p1', 'start');
-    });
-  });
-
-  it('abandons the command when the dialog is dismissed', async () => {
-    const user = userEvent.setup();
-    vi.mocked(getProject).mockResolvedValue(project());
-
-    renderWithProviders(<ProjectDetail id="p1" />);
-
-    await user.click(await screen.findByRole('button', { name: 'Start project' }));
-    await user.click(screen.getByRole('button', { name: 'Cancel' }));
-
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    });
-    expect(runProjectCommand).not.toHaveBeenCalled();
-  });
-
-  it('requires a reason before suspending', async () => {
-    const user = userEvent.setup();
+  /**
+   * Once the project is running, the checklist is history. A permanent "4 of 4 complete" panel
+   * is a monument to work finished months ago.
+   */
+  it('disappears entirely once the project is no longer in preparation', async () => {
     vi.mocked(getProject).mockResolvedValue(project({ status: ProjectStatus.ACTIVE }));
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
-    await chooseOverflowAction(user, 'Suspend');
-    await user.click(screen.getByRole('button', { name: 'Confirm' }));
-
-    expect(await screen.findByText('Enter a reason')).toBeInTheDocument();
-    expect(suspendProject).not.toHaveBeenCalled();
-
-    await user.type(screen.getByLabelText('Reason'), 'Awaiting municipality clearance');
-    await user.click(screen.getByRole('button', { name: 'Confirm' }));
-
-    await waitFor(() => {
-      expect(suspendProject).toHaveBeenCalledWith('p1', 'Awaiting municipality clearance');
-    });
+    await screen.findByRole('heading', { name: 'Project information' });
+    expect(screen.queryByRole('heading', { name: 'Project readiness' })).not.toBeInTheDocument();
   });
+});
 
-  it('requires a reason before cancelling', async () => {
-    const user = userEvent.setup();
+describe('ProjectDetail — project information', () => {
+  /**
+   * `PATCH /projects/:id` requires `manage:project`. The contextual Edit link is two conditions,
+   * not one: a draft (lifecycle) read by someone who may write to it (authorization).
+   */
+  it('hides the contextual Edit link without manage:project', async () => {
     vi.mocked(getProject).mockResolvedValue(project());
 
-    renderWithProviders(<ProjectDetail id="p1" />);
+    renderWithProviders(<ProjectDetail id="p1" />, { permissions: ['view:project'] });
 
-    await chooseOverflowAction(user, 'Cancel project');
-    await user.type(screen.getByLabelText('Reason'), 'Client withdrew funding');
-    await user.click(screen.getByRole('button', { name: 'Confirm' }));
-
-    await waitFor(() => {
-      expect(cancelProject).toHaveBeenCalledWith('p1', 'Client withdrew funding');
-    });
+    const section = (await screen.findByRole('heading', { name: 'Project information' })).closest(
+      'section',
+    )!;
+    expect(within(section).queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument();
   });
 
-  it('resumes without a confirmation, since it is not destructive', async () => {
-    const user = userEvent.setup();
+  it('offers it to a draft when the reader may write to it', async () => {
+    vi.mocked(getProject).mockResolvedValue(project());
+
+    renderWithProviders(<ProjectDetail id="p1" />, { permissions: ['manage:project'] });
+
+    const section = (await screen.findByRole('heading', { name: 'Project information' })).closest(
+      'section',
+    )!;
+    expect(within(section).getByRole('link', { name: 'Edit' })).toHaveAttribute(
+      'href',
+      '/projects/p1/edit',
+    );
+  });
+
+  /**
+   * Identity is stated once, in the workspace header. Repeating the code and the client here
+   * gives the reader two copies of the same fact to reconcile.
+   */
+  it('does not restate the facts the workspace header already carries', async () => {
     vi.mocked(getProject).mockResolvedValue(
-      project({ status: ProjectStatus.ACTIVE, suspensions: [suspension()] }),
+      project({ status: ProjectStatus.ACTIVE, clientName: 'Baraka Real Estate LLC' }),
     );
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
-    await user.click(await screen.findByRole('button', { name: 'Resume' }));
-
-    await waitFor(() => {
-      expect(resumeProject).toHaveBeenCalledWith('p1');
-    });
+    const section = (await screen.findByRole('heading', { name: 'Project information' })).closest(
+      'section',
+    )!;
+    expect(within(section).queryByText('Project code')).not.toBeInTheDocument();
+    expect(within(section).queryByText('ACCO-2026-001')).not.toBeInTheDocument();
+    expect(within(section).queryByText('Client')).not.toBeInTheDocument();
+    // Nor the strip facts that belong to the lifecycle rail and the progress card.
+    expect(within(section).queryByText('Programme')).not.toBeInTheDocument();
+    expect(within(section).queryByText('Current stage')).not.toBeInTheDocument();
+    expect(within(section).queryByText('Project manager')).not.toBeInTheDocument();
   });
 
-  // The API's messages are more useful than ours: "Project is suspended. Resume it
-  // before changing status." beats "that action could not be completed".
-  it("shows the server's explanation when a command fails", async () => {
-    const user = userEvent.setup();
-    vi.mocked(getProject).mockResolvedValue(project());
-    vi.mocked(runProjectCommand).mockRejectedValue(
-      new ApiError(400, 'Project is suspended.', 'BAD_REQUEST', ['Project is suspended.']),
+  it('renders the classification and delivery facts it does own', async () => {
+    vi.mocked(getProject).mockResolvedValue(
+      project({
+        status: ProjectStatus.ACTIVE,
+        participationModel: 'SOLE',
+        location: 'Waaberi, Mogadishu',
+      }),
     );
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
-    await user.click(await screen.findByRole('button', { name: 'Start project' }));
-    await user.click(screen.getByRole('button', { name: 'Confirm' }));
+    const section = (await screen.findByRole('heading', { name: 'Project information' })).closest(
+      'section',
+    )!;
+    expect(within(section).getByText('Sole delivery')).toBeInTheDocument();
+    expect(within(section).getByText('Waaberi, Mogadishu')).toBeInTheDocument();
+    // No category was ever assigned, so it reads as untyped rather than being invented.
+    expect(within(section).getByText('Untyped')).toBeInTheDocument();
+  });
 
-    expect(await screen.findByText('Project is suspended.')).toBeInTheDocument();
-    // The dialog stays open so the user can read it and retry or back out.
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  /**
+   * A column of em-dashes is a picture of the database schema, not of the project. An optional
+   * field nobody filled in is dropped instead.
+   */
+  it('drops optional fields that are empty rather than rendering a dash', async () => {
+    vi.mocked(getProject).mockResolvedValue(project({ status: ProjectStatus.ACTIVE }));
+
+    renderWithProviders(<ProjectDetail id="p1" />);
+
+    const section = (await screen.findByRole('heading', { name: 'Project information' })).closest(
+      'section',
+    )!;
+    expect(within(section).queryByText('Description')).not.toBeInTheDocument();
+    expect(within(section).queryByText('Start date')).not.toBeInTheDocument();
+    expect(within(section).queryByText('Location')).not.toBeInTheDocument();
+  });
+});
+
+describe('ProjectDetail — commercial foundation', () => {
+  /**
+   * Absence that means something is stated in business terms. "—" tells a reader a value is
+   * missing; "Not created" tells them what has not happened yet, which is the actionable half.
+   */
+  it('says what has not happened yet instead of showing a dash', async () => {
+    vi.mocked(getProject).mockResolvedValue(project());
+
+    renderWithProviders(<ProjectDetail id="p1" />);
+
+    const section = (
+      await screen.findByRole('heading', { name: 'Commercial foundation' })
+    ).closest('section')!;
+    expect(within(section).getByText('Not created')).toBeInTheDocument();
+    expect(within(section).getByText('Not started')).toBeInTheDocument();
+    expect(within(section).getByText('Client contract')).toBeInTheDocument();
+    expect(within(section).getByText('USD')).toBeInTheDocument();
+
+    // Contract value cannot exist before the contract does, so the row does not either.
+    expect(within(section).queryByText('Contract value')).not.toBeInTheDocument();
+  });
+
+  /**
+   * The contract owns the currency — `toCreateProjectPayload` deliberately never sends one, so
+   * `Project.currency` is NULL on everything the app creates. Before a contract exists there is
+   * genuinely no answer, and the row is dropped rather than dashed or defaulted to USD. ACCO
+   * being USD-only is a tenant fact, not a licence for the UI to state a currency nobody chose.
+   */
+  it('drops the currency row entirely when no contract has defined one', async () => {
+    vi.mocked(getProject).mockResolvedValue(project({ currency: null }));
+
+    renderWithProviders(<ProjectDetail id="p1" />);
+
+    const section = (
+      await screen.findByRole('heading', { name: 'Commercial foundation' })
+    ).closest('section')!;
+    expect(within(section).queryByText('Currency')).not.toBeInTheDocument();
+    expect(within(section).queryByText('USD')).not.toBeInTheDocument();
+  });
+
+  it('reports a working BOQ as unbaselined rather than as done', async () => {
+    vi.mocked(getProject).mockResolvedValue(project());
+    vi.mocked(getProjectWorkspaceSummary).mockResolvedValue(
+      workspaceSummary({
+        setup: {
+          identityComplete: true,
+          boqExists: true,
+          boqBaselined: false,
+          mainContractApplicable: true,
+          mainContractExists: false,
+          teamReady: false,
+          completedSteps: 1,
+          totalSteps: 4,
+        },
+      }),
+    );
+
+    renderWithProviders(<ProjectDetail id="p1" />);
+
+    const section = (
+      await screen.findByRole('heading', { name: 'Commercial foundation' })
+    ).closest('section')!;
+    expect(within(section).getByText('Working · Not baselined')).toBeInTheDocument();
+  });
+
+  it('links to the contract, and shows its value, once one exists', async () => {
+    vi.mocked(getProject).mockResolvedValue(project({ status: ProjectStatus.ACTIVE }));
+    vi.mocked(getProjectWorkspaceSummary).mockResolvedValue(
+      workspaceSummary({
+        mainContract: {
+          id: 'contract-1',
+          contractNumber: 'CTR-001',
+          status: 'ACTIVE',
+          startDate: null,
+          expectedEndDate: null,
+          contractValue: '12500000.00',
+          currency: 'USD',
+        },
+      }),
+    );
+
+    renderWithProviders(<ProjectDetail id="p1" />);
+
+    const section = (
+      await screen.findByRole('heading', { name: 'Commercial foundation' })
+    ).closest('section')!;
+    expect(within(section).getByRole('link', { name: 'CTR-001' })).toHaveAttribute(
+      'href',
+      '/contracts/contract-1',
+    );
+    expect(within(section).getByText('$12,500,000.00')).toBeInTheDocument();
+  });
+});
+
+describe('ProjectDetail — recent activity', () => {
+  it('reads as a feed: what happened, then who and when', async () => {
+    vi.mocked(getProject).mockResolvedValue(project());
+    vi.mocked(getProjectWorkspaceSummary).mockResolvedValue(
+      workspaceSummary({
+        recentActivity: [
+          {
+            id: 'a1',
+            action: 'CREATE',
+            sourceCommand: 'project.create',
+            occurredAt: '2026-09-04T09:42:00.000Z',
+            actor: { id: 'u1', name: 'System Admin' },
+          },
+        ],
+      }),
+    );
+
+    renderWithProviders(<ProjectDetail id="p1" />);
+
+    const section = (await screen.findByRole('heading', { name: 'Recent activity' })).closest(
+      'section',
+    )!;
+    expect(within(section).getByText('Project created')).toBeInTheDocument();
+    expect(within(section).getByText(/System Admin/)).toBeInTheDocument();
+
+    // The API returns five events and has no history endpoint behind them, so there is
+    // nothing honest for a "View all" link to point at.
+    expect(within(section).queryByText(/View all/i)).not.toBeInTheDocument();
+  });
+
+  it('says so when nothing has happened yet', async () => {
+    vi.mocked(getProject).mockResolvedValue(project());
+
+    renderWithProviders(<ProjectDetail id="p1" />);
+
+    expect(
+      await screen.findByText('No project activity has been recorded yet.'),
+    ).toBeInTheDocument();
+  });
+});
+
+/**
+ * The lifecycle commands moved to the workspace shell, so they reach the reader on BOQ and
+ * Procurement too rather than on Overview alone. Overview must not grow a second copy.
+ */
+describe('ProjectDetail — actions belong to the shell', () => {
+  it('renders no lifecycle controls of its own', async () => {
+    vi.mocked(getProject).mockResolvedValue(project());
+
+    renderWithProviders(<ProjectDetail id="p1" />);
+
+    await screen.findByRole('heading', { name: 'Project readiness' });
+    expect(screen.queryByRole('button', { name: 'Start project' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Actions' })).not.toBeInTheDocument();
   });
 });

@@ -13,12 +13,20 @@ import { chooseOption, openSelect } from '@/test/choose-option';
  */
 
 const mocks = vi.hoisted(() => ({
+  useSpendCategories: () => ({
+    data: [{ id: 'cat-1', code: 'TRANSPORT', name: 'Transport', status: 'ACTIVE' }],
+    isLoading: false,
+    isError: false,
+  }),
   useProjects: vi.fn(),
   useBoqWorkspace: vi.fn(),
   useBoqTree: vi.fn(),
 }));
 
 vi.mock('@/features/projects/hooks/use-projects', () => ({ useProjects: mocks.useProjects }));
+vi.mock('../hooks/use-procurement', () => ({
+  useSpendCategories: mocks.useSpendCategories,
+}));
 vi.mock('@/features/boq/hooks/use-boq', () => ({
   useBoqWorkspace: mocks.useBoqWorkspace,
   useBoqTree: mocks.useBoqTree,
@@ -112,20 +120,20 @@ describe('isCostTargetComplete', () => {
 
   it('is true when both ids are set', () => {
     expect(
-      isCostTargetComplete({ notChargeable: false, projectId: 'p', boqNodeId: 'n' }),
+      isCostTargetComplete({ notChargeable: false, projectId: 'p', boqNodeId: 'n', spendCategoryId: null }),
     ).toBe(true);
   });
 
   it('is true for the not-chargeable opt-out', () => {
     // The org/overhead opt-out is a complete, valid decision — it needs no ids.
     expect(
-      isCostTargetComplete({ notChargeable: true, projectId: null, boqNodeId: null }),
+      isCostTargetComplete({ notChargeable: true, projectId: null, boqNodeId: null, spendCategoryId: null }),
     ).toBe(true);
   });
 
   it('is false for a half-specified target', () => {
     expect(
-      isCostTargetComplete({ notChargeable: false, projectId: 'p', boqNodeId: null }),
+      isCostTargetComplete({ notChargeable: false, projectId: 'p', boqNodeId: null, spendCategoryId: null }),
     ).toBe(false);
   });
 });
@@ -139,11 +147,12 @@ describe('PoCostTargetPicker — not-chargeable toggle', () => {
       notChargeable: true,
       projectId: null,
       boqNodeId: null,
+      spendCategoryId: null,
     });
   });
 
   it('hides the project and node selectors while not chargeable', () => {
-    setup({ notChargeable: true, projectId: null, boqNodeId: null });
+    setup({ notChargeable: true, projectId: null, boqNodeId: null, spendCategoryId: null });
     expect(screen.queryByText('Select a project')).not.toBeInTheDocument();
     expect(screen.queryByText('Select a cost node')).not.toBeInTheDocument();
   });
@@ -152,7 +161,7 @@ describe('PoCostTargetPicker — not-chargeable toggle', () => {
 describe('PoCostTargetPicker — BOQ node select', () => {
   it('offers only leaf, active nodes and hides sections and inactive nodes', async () => {
     const user = userEvent.setup();
-    setup({ notChargeable: false, projectId: 'proj-1', boqNodeId: null });
+    setup({ notChargeable: false, projectId: 'proj-1', boqNodeId: null, spendCategoryId: null });
     // The active leaf is offered.
     await openSelect(user, screen.getByLabelText(/BOQ cost node/i));
     expect(screen.getByRole('option', { name: /01\.01 · Excavation/ })).toBeInTheDocument();
@@ -163,23 +172,25 @@ describe('PoCostTargetPicker — BOQ node select', () => {
 
   it('emits both ids when a node is chosen under a project', async () => {
     const user = userEvent.setup();
-    const { onChange } = setup({ notChargeable: false, projectId: 'proj-1', boqNodeId: null });
+    const { onChange } = setup({ notChargeable: false, projectId: 'proj-1', boqNodeId: null, spendCategoryId: null });
     await chooseOption(user, screen.getByLabelText(/BOQ cost node/i), /01\.01 · Excavation/);
     expect(onChange).toHaveBeenCalledWith({
       notChargeable: false,
       projectId: 'proj-1',
       boqNodeId: 'leaf-1',
+      spendCategoryId: null,
     });
   });
 
   it('clears the node when the project changes', async () => {
     const user = userEvent.setup();
-    const { onChange } = setup({ notChargeable: false, projectId: null, boqNodeId: null });
+    const { onChange } = setup({ notChargeable: false, projectId: null, boqNodeId: null, spendCategoryId: null });
     await chooseOption(user, screen.getByLabelText('Project'), /Waberi Roadworks/);
     expect(onChange).toHaveBeenCalledWith({
       notChargeable: false,
       projectId: 'proj-1',
       boqNodeId: null,
+      spendCategoryId: null,
     });
   });
 
@@ -190,7 +201,7 @@ describe('PoCostTargetPicker — BOQ node select', () => {
       isError: false,
     });
     mocks.useBoqTree.mockReturnValue({ data: undefined, isLoading: false, isError: false });
-    setup({ notChargeable: false, projectId: 'proj-1', boqNodeId: null });
+    setup({ notChargeable: false, projectId: 'proj-1', boqNodeId: null, spendCategoryId: null });
     expect(screen.getByText(/no baselined BOQ yet/i)).toBeInTheDocument();
   });
 });

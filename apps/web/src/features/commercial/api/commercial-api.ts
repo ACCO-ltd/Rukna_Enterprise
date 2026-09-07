@@ -1,5 +1,6 @@
 import type {
   AtRiskCommencementResponse,
+  CommercialBillingResponse,
   CertifiedInvoicedByVariationResponse,
   CommercialApplicationsResponse,
   CommercialCurrentCycleResponse,
@@ -33,6 +34,16 @@ export function getCommercialCurrentCycle(
   return apiClient<CommercialCurrentCycleResponse>(
     `/projects/${projectId}/commercial/current-cycle`,
   );
+}
+
+/**
+ * The project's billing position — invoices, receipts, ageing and unapplied cash.
+ *
+ * Everything is on the invoice-total (VAT-inclusive) basis and comes pre-classified: the browser
+ * never decides whether an invoice is overdue or how much of it is settled.
+ */
+export function getCommercialBilling(projectId: string): Promise<CommercialBillingResponse> {
+  return apiClient<CommercialBillingResponse>(`/projects/${projectId}/commercial/billing`);
 }
 
 /** The IPA → IPC → invoice → settlement chain for a project. */

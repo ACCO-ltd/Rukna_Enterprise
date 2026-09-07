@@ -75,7 +75,12 @@
     "noBaseline": "This project has no baselined BOQ yet, so it has no cost nodes to charge to.",
     "noLeafNodes": "This project's baselined BOQ has no active cost items to charge to.",
     "nodesLoadFailed": "The BOQ cost nodes could not be loaded.",
-    "incompleteError": "Choose both a project and a BOQ cost node, or mark this line not chargeable to a project."
+    "incompleteError": "Choose what this project is spending on: either a BOQ cost item, or a project-level cost category.",
+    "spendCategoryLabel": "Or project-level cost category",
+    "spendCategoryHint": "For project cost the BOQ has no line for: site security, transport, insurance, temporary facilities.",
+    "selectCategory": "Select a category",
+    "loadingCategories": "Loading categories...",
+    "categoriesLoadFailed": "Could not load spend categories."
   },
   "status": {
     "DRAFT": "Draft",
@@ -253,7 +258,13 @@
     },
     "scopeError": {
       "projectRequired": "Project-scoped requests require a project to be selected."
-    }
+    },
+    "titleField": "Title",
+    "titlePlaceholder": "e.g. Reinforcement steel",
+    "priorityField": "Priority",
+    "estimatedUnitPrice": "Estimated unit price",
+    "estimatedValueHint": "Enter a quantity and unit price to estimate this line",
+    "estimatedValueIs": "Estimated value {value}"
   },
   "po": {
     "title": "Purchase Orders",
@@ -424,7 +435,8 @@
       "unitPrice": "Enter a unit price of zero or more.",
       "net": "Enter a net amount of zero or more.",
       "vat": "Enter a VAT amount of zero or more. Enter 0 if there is none.",
-      "profile": "Choose an expense posting profile."
+      "profile": "Choose an expense posting profile.",
+      "costTarget": "Say where this cost belongs: a project with a BOQ item or a cost category, or mark it not chargeable to a project."
     },
     "submit": "Submit",
     "approve": "Approve",
@@ -608,12 +620,316 @@
     "reportingAmount": "Amount",
     "empty": "No commitment entries for this selection.",
     "filterByBoqNode": "BOQ node",
-    "accuracyNotice": "These figures may overstate committed cost. Cancelling a purchase order does not reverse commitments, and revising one after goods were received can reverse too much.",
     "sourceType": {
       "PURCHASE_ORDER_REVISION": "Purchase order",
       "GOODS_RECEIPT": "Goods receipt",
       "PO_CANCELLATION": "Revision superseded",
       "SUPPLIER_BILL": "Supplier bill"
+    },
+    "projectSectionTitle": "Cost position",
+    "projectSectionHint": "Project cost from approved purchase orders through to posted supplier bills.",
+    "openProcurement": "Open Procurement"
+  },
+  "project": {
+    "title": "Procurement",
+    "subtitle": "Manage project requirements and track procurement costs.",
+    "openProcurement": "Open Procurement",
+    "tabs": {
+      "label": "Procurement views",
+      "overview": "Overview",
+      "requirements": "Requirements",
+      "cost": "Cost & Commitments"
+    },
+    "position": {
+      "title": "Project cost position",
+      "restricted": "Restricted",
+      "budget": "Budget",
+      "budgetBasis": "Baselined cost budget",
+      "committed": "Committed",
+      "accrued": "Accrued (received)",
+      "actual": "Actual (billed)",
+      "committedBasis": "On purchase orders",
+      "accruedBasis": "Goods received",
+      "actualBasis": "Billed by suppliers",
+      "committedOfBudget": "Committed / budget",
+      "accruedOfBudget": "Accrued / budget",
+      "actualOfBudget": "Actual / budget",
+      "uncommittedBudget": "Uncommitted budget",
+      "uncommittedBudgetBasis": "Budget less committed",
+      "noBudget": "No cost budget baselined",
+      "setBudget": "Set a budget",
+      "remainderNote": "Uncommitted budget ({uncommitted}) is what is still free to spend. Budget less actual ({lessActual}) counts money already on a purchase order as though it were available, so it is not headroom — use the first for cost control."
+    },
+    "overview": {
+      "loadFailed": "Could not load procurement",
+      "loadFailedHint": "Something went wrong loading this project's procurement position. Try again.",
+      "retry": "Retry",
+      "raiseRequirement": "Raise requirement",
+      "pipeline": "Procurement pipeline",
+      "pipelineHint": "From project requirements to supplier payment.",
+      "approvedNotOrdered": "{n} approved, not ordered",
+      "stage": {
+        "REQUIREMENTS": "Requirements",
+        "PURCHASE_ORDERS": "Purchase orders",
+        "GOODS_RECEIVED": "Received",
+        "SUPPLIER_BILLS": "Supplier bills",
+        "PAYMENTS": "Payments"
+      },
+      "stageUnit": {
+        "REQUIREMENTS": "{n} raised",
+        "PURCHASE_ORDERS": "{n} open",
+        "GOODS_RECEIVED": "{n} receipts",
+        "SUPPLIER_BILLS": "{n} bills",
+        "PAYMENTS": "{n} paid"
+      },
+      "stageBasis": {
+        "REQUIREMENTS": "",
+        "PURCHASE_ORDERS": "committed",
+        "GOODS_RECEIVED": "accrued",
+        "SUPPLIER_BILLS": "actual",
+        "PAYMENTS": ""
+      },
+      "attention": "Needs attention",
+      "attentionNone": "Nothing needs attention.",
+      "view": "View",
+      "attentionKind": {
+        "APPROVED_NOT_ORDERED": {
+          "title": "Approved requirements not yet ordered",
+          "impact": "Materials the site is waiting on"
+        },
+        "OVER_RECEIPT_EXCEPTION": {
+          "title": "Over-receipt exceptions",
+          "impact": "Awaiting a decision before the goods can be used"
+        },
+        "RECEIVED_NOT_BILLED": {
+          "title": "Received items not yet billed",
+          "impact": "Goods on site with no supplier bill against them"
+        },
+        "BILL_OUTSIDE_TOLERANCE": {
+          "title": "Supplier bills outside tolerance",
+          "impact": "Blocked from posting until resolved"
+        },
+        "INSPECTION_UNRESOLVED": {
+          "title": "Received items awaiting inspection",
+          "impact": "Not yet accepted, so not yet usable"
+        },
+        "STALE_DRAFT_REQUIREMENT": {
+          "title": "Draft requirements left open",
+          "impact": "Raised but never submitted"
+        }
+      },
+      "supplierExposure": "Committed cost by supplier",
+      "supplierExposureHint": "Who holds this project's committed cost.",
+      "viewAllSuppliers": "View all",
+      "noSuppliers": "No committed cost yet.",
+      "activity": "Recent procurement activity",
+      "noActivity": "No procurement activity yet.",
+      "col": {
+        "supplier": "Supplier",
+        "committed": "Committed",
+        "actual": "Actual"
+      },
+      "tile": {
+        "openRequirements": "Open requirements",
+        "openPos": "Open purchase orders",
+        "openExceptions": "Open exceptions"
+      },
+      "awaitingProcurement": "{n} awaiting procurement",
+      "poValue": "{amount} committed",
+      "poValueRestricted": "Value restricted",
+      "exceptionsSupport": "Require attention",
+      "costByArea": "Cost by BOQ area",
+      "costByAreaHint": "Committed, accrued and actual per top-level cost area.",
+      "noCostYet": "No procurement cost recorded yet.",
+      "projectLevelShort": "Project-level",
+      "viewDetails": "View details",
+      "actions": "Actions",
+      "raiseRequirementHint": "Tell procurement what the site needs",
+      "viewRequirements": "View requirements",
+      "viewRequirementsHint": "Everything this project has asked for",
+      "viewCost": "View project cost",
+      "viewCostHint": "Drill down by BOQ, supplier or cost category",
+      "openProcurement": "Open Procurement",
+      "openProcurementHint": "Orders, receipts and bills live in the buyer workspace"
+    },
+    "requirements": {
+      "title": "Project requirements",
+      "subtitle": "Raise and track material and service requirements for this project.",
+      "listTitle": "Requirements",
+      "loadFailed": "Could not load requirements",
+      "loadFailedHint": "Something went wrong loading this project's requirements. Try again.",
+      "retry": "Retry",
+      "emptyTitle": "No requirements yet",
+      "emptyHint": "Raise a requirement when the site needs materials, equipment or a subcontractor.",
+      "untitled": "Untitled requirement",
+      "open": "Open",
+      "requiredBy": "Required {date}",
+      "acrossOrders": "across {n} orders",
+      "noEstimateHint": "No estimated value on this requirement",
+      "valueBasisNote": "Estimated value is the requester's figure and drives approval routing. Ordered value is the price a buyer agreed on the purchase order — a different basis, so the difference between them is not a saving.",
+      "summary": {
+        "total": "Total requirements",
+        "approved": "Approved, not ordered",
+        "notOrdered": "Not ordered",
+        "partiallyOrdered": "Partially ordered",
+        "ordered": "Fully ordered"
+      },
+      "summaryHint": {
+        "total": "Across all statuses",
+        "approved": "Ready for procurement",
+        "notOrdered": "No quantity on order yet",
+        "partiallyOrdered": "Some quantity on order",
+        "ordered": "Converted to purchase orders"
+      },
+      "col": {
+        "mr": "MR #",
+        "requirement": "Requirement",
+        "category": "Category",
+        "requested": "Required / requested",
+        "priority": "Priority",
+        "approval": "Approval",
+        "fulfilment": "Fulfilment",
+        "estimated": "Estimated value",
+        "ordered": "Ordered value",
+        "action": "Action",
+        "description": "Description",
+        "qty": "Qty",
+        "estUnitPrice": "Est. unit price",
+        "costTarget": "Cost target",
+        "orderedQty": "Ordered qty",
+        "po": "PO",
+        "revision": "Revision",
+        "poState": "PO state",
+        "supplier": "Supplier"
+      },
+      "priority": {
+        "LOW": "Low",
+        "NORMAL": "Normal",
+        "HIGH": "High",
+        "URGENT": "Urgent"
+      },
+      "approval": {
+        "DRAFT": "Draft",
+        "SUBMITTED": "Submitted",
+        "APPROVED": "Approved",
+        "CANCELLED": "Cancelled",
+        "CLOSED": "Closed"
+      },
+      "fulfilment": {
+        "NOT_ORDERED": "Not ordered",
+        "PARTIALLY_ORDERED": "Partially ordered",
+        "FULLY_ORDERED": "Fully ordered"
+      },
+      "searchLabel": "Search requirements",
+      "searchPlaceholder": "Search by number, title or description…",
+      "allApproval": "All approval states",
+      "allFulfilment": "All fulfilment states",
+      "allCategories": "All categories",
+      "allPriorities": "All priorities",
+      "clearFilters": "Clear filters",
+      "noMatches": "No requirements match these filters.",
+      "showingFiltered": "Showing {shown} of {total}",
+      "restricted": "Restricted",
+      "detailLoading": "Loading requirement…",
+      "detailFailed": "Could not load this requirement",
+      "detailFailedHint": "Something went wrong. Close and try again.",
+      "detailTabsLabel": "Requirement detail sections",
+      "openInProcurement": "Open in Procurement",
+      "noItems": "This requirement has no lines.",
+      "noPurchaseOrders": "Nothing has been ordered against this requirement yet.",
+      "revShort": "Rev {n}",
+      "tab": {
+        "details": "Details",
+        "items": "Items ({n})",
+        "pos": "Purchase orders ({n})"
+      },
+      "field": {
+        "mrNumber": "MR number",
+        "requiredAtSite": "Required at site",
+        "noRequiredDate": "No date set",
+        "requestedOn": "Requested on",
+        "createdOn": "Created on",
+        "description": "Description",
+        "remaining": "Remaining estimated"
+      },
+      "costTarget": {
+        "BOQ": "BOQ item",
+        "CATEGORY": "Project-level",
+        "NONE": "Not coded"
+      },
+      "poState": {
+        "OPEN": "Open",
+        "CLOSED": "Closed",
+        "CANCELLED": "Cancelled"
+      },
+      "revisionStatus": {
+        "DRAFT": "Draft",
+        "SUBMITTED": "Submitted",
+        "APPROVED": "Approved",
+        "ACTIVE": "Active",
+        "SUPERSEDED": "Superseded",
+        "CANCELLED": "Cancelled"
+      }
+    },
+    "cost": {
+      "title": "Cost & Commitments",
+      "subtitle": "Project procurement cost from commitment to actual, read from the procurement ledger.",
+      "loadFailed": "Could not load project cost",
+      "loadFailedHint": "Something went wrong loading the commitment ledger. Try again.",
+      "retry": "Retry",
+      "breakdown": "Cost breakdown",
+      "breakdownHint": "Committed, accrued and actual cost. Expand a section to see what sits beneath it.",
+      "dimensionLabel": "Cost breakdown dimension",
+      "byBoq": "By BOQ",
+      "bySupplier": "By supplier",
+      "byCategory": "By cost category",
+      "noCost": "No procurement cost recorded for this project yet.",
+      "projectLevel": "Project-level (non-BOQ)",
+      "expand": "Expand",
+      "collapse": "Collapse",
+      "budgetBasisNote": "Budget values are project cost budgets, not client contract values. Project-level (non-BOQ) is legitimate project cost with no BOQ line — site overhead, transport, insurance.",
+      "noBudgetNote": "No cost budget is baselined, so there is nothing to measure this against. Project-level (non-BOQ) is legitimate project cost with no BOQ line.",
+      "recentEntries": "Recent cost entries",
+      "col": {
+        "scope": "BOQ / cost area",
+        "budget": "Budget",
+        "committed": "Committed",
+        "accrued": "Accrued",
+        "actual": "Actual",
+        "uncommitted": "Uncommitted",
+        "committedOfBudget": "Committed / budget",
+        "actualOfBudget": "Actual / budget",
+        "supplier": "Supplier",
+        "category": "Cost category",
+        "shareOfCommitted": "Share of committed",
+        "shareOfActual": "Share of actual",
+        "date": "Date",
+        "document": "Document",
+        "reference": "Reference",
+        "stage": "Stage",
+        "amount": "Amount"
+      },
+      "stage": {
+        "COMMITTED": "Committed",
+        "ACCRUED": "Accrued",
+        "ACTUAL": "Actual"
+      },
+      "documentType": {
+        "PURCHASE_ORDER_REVISION": "Purchase order",
+        "GOODS_RECEIPT": "Goods receipt",
+        "SUPPLIER_BILL": "Supplier bill",
+        "PO_CANCELLATION": "PO cancellation",
+        "GRN_REVERSAL": "Receipt reversal",
+        "BILL_REVERSAL": "Bill reversal"
+      },
+      "chartByArea": "Cost by BOQ area",
+      "chartByAreaHint": "All three stages per top-level area — the gap between them is what is received but not billed.",
+      "chartByCategory": "Committed cost by category",
+      "chartByCategoryHint": "Where this project has committed money, by spend category.",
+      "chartByAreaSummary": "Bar chart of committed, accrued and actual cost across {n} cost areas.",
+      "chartShareSummary": "Share of committed cost across {n} categories.",
+      "projectLevelShort": "Project-level",
+      "others": "Others"
     }
   }
 }

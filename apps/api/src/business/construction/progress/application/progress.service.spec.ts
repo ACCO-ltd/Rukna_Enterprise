@@ -19,10 +19,20 @@ type Over = {
   workPackages?: unknown[];
   measurements?: unknown[];
   fp?: unknown;
+  leafValues?: unknown[];
   leafAllocation?: unknown;
   dprs?: unknown[];
   users?: unknown[];
 };
+
+/** The file lifecycle seam: attaching evidence binds it, approving the report freezes it. */
+function files() {
+  return {
+    bind: jest.fn().mockResolvedValue(undefined),
+    markImmutable: jest.fn().mockResolvedValue(undefined),
+    markManyImmutable: jest.fn().mockResolvedValue(0),
+  };
+}
 
 function build(over: Over = {}) {
   const repo = {
@@ -33,6 +43,7 @@ function build(over: Over = {}) {
     findDprsByProject: jest.fn().mockResolvedValue(over.dprs ?? []),
     findUserNamesByIds: jest.fn().mockResolvedValue(over.users ?? []),
     updateDprStatus: jest.fn().mockResolvedValue({ id: 'dpr-1' }),
+    findAttachmentFileIds: jest.fn().mockResolvedValue([]),
     addMeasurement: jest.fn().mockResolvedValue({ id: 'm-1' }),
     createAttachment: jest.fn().mockResolvedValue({ id: 'att-1' }),
     findBoqNodeForProject: jest.fn().mockResolvedValue(over.node ?? { id: 'n1', quantity: 1000, isLeaf: true }),
@@ -42,24 +53,27 @@ function build(over: Over = {}) {
     createWorkPackage: jest.fn().mockResolvedValue({ id: 'wp-1' }),
     findWorkPackageById: jest.fn().mockResolvedValue({ id: 'wp-1', projectId: 'p-1' }),
     findWorkPackages: jest.fn().mockResolvedValue(over.workPackages ?? []),
+    findLeafValues: jest.fn().mockResolvedValue(over.leafValues ?? []),
     findLeafAllocation: jest.fn().mockResolvedValue(over.leafAllocation ?? null),
     allocateBoqNode: jest.fn().mockResolvedValue({ id: 'wpn-1' }),
   };
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
   const tenancy = { getClient: () => ({}) };
   const financialPosition = {
-    getForProject: jest.fn().mockResolvedValue(over.fp ?? { actualCost: '0', forecastCost: '0' }),
+    getForProject: jest.fn().mockResolvedValue(over.fp ?? { actualCost: '0', budgetTotal: null }),
   };
   // ADR-022 DPR governance seam: with no active binding the gate returns null (approval proceeds).
   const commandGovernance = { gateStateTransition: jest.fn().mockResolvedValue(null) };
+  const fileService = files();
   const service = new ProgressService(
     tenancy as never,
     repo as never,
     projectAccess as never,
     financialPosition as never,
     commandGovernance as never,
+    fileService as never,
   );
-  return { repo, service, commandGovernance };
+  return { repo, service, commandGovernance, fileService };
 }
 
 describe('ProgressService (ADR-021 MVP)', () => {
@@ -104,6 +118,25 @@ describe('ProgressService (ADR-021 MVP)', () => {
       expect.anything(),
       'dpr-1',
       expect.objectContaining({ status: 'APPROVED' }),
+    );
+  });
+
+  /**
+   * CONST-PROG-008 makes approval the point at which measurements become verified, so from here
+   * the evidence behind them is part of the record. Before Phase 7 Step 2 nothing ever marked a
+   * file immutable, so approved evidence stayed deletable by anyone in the organisation.
+   */
+  it('approve: freezes the evidence that supported the approval', async () => {
+    const { repo, service, fileService } = build({
+      dpr: { id: 'dpr-1', status: 'SUBMITTED', projectId: 'p-1', measurements: [], attachments: [] },
+    });
+    repo.findAttachmentFileIds.mockResolvedValue(['file-a', 'file-b']);
+
+    await service.approve(identity, 'dpr-1');
+
+    expect(fileService.markManyImmutable).toHaveBeenCalledWith(
+      ['file-a', 'file-b'],
+      expect.stringContaining('dpr-1'),
     );
   });
 
@@ -214,6 +247,10 @@ describe('ProgressService (ADR-021 MVP)', () => {
         { boqNodeId: 'n1', quantity: 500, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }, // 50%
         { boqNodeId: 'n2', quantity: 200, boqNode: { id: 'n2', code: '2', description: 'y', quantity: 1000 } }, // 20%
       ],
+      leafValues: [
+        { id: 'n1', totalAmount: '100000.00' },
+        { id: 'n2', totalAmount: '100000.00' },
+      ],
     });
     const res = await service.getRollup(identity, 'p-1');
     // 0.6*50 + 0.4*20 = 38
@@ -234,6 +271,101 @@ describe('ProgressService (ADR-021 MVP)', () => {
     expect(res.weightsTotal).toBe('0.5');
   });
 
+  /**
+   * The memo's worked example (`ceo-memo-work-package-progress-weighting.md`). A day of
+   * setting-out and a fortnight of concrete used to read as "half built" because every leaf
+   * counted equally, while 9,500 m³ was still in the ground.
+   */
+  it('getRollup: weights a package by leaf value, not by counting leaves equally', async () => {
+    const { service } = build({
+      workPackages: [
+        {
+          id: 'a',
+          code: 'WP-A',
+          name: 'Substructure',
+          responsibleOwner: null,
+          progressWeight: '1',
+          boqLinks: [{ boqNodeId: 'setting-out' }, { boqNodeId: 'concrete' }],
+        },
+      ],
+      measurements: [
+        // 1 lot of 1 → 100%
+        { boqNodeId: 'setting-out', quantity: 1, boqNode: { id: 'setting-out', code: '1', description: 'Setting out', quantity: 1 } },
+        // 500 m³ of 10,000 → 5%
+        { boqNodeId: 'concrete', quantity: 500, boqNode: { id: 'concrete', code: '2', description: 'RC', quantity: 10000 } },
+      ],
+      leafValues: [
+        { id: 'setting-out', totalAmount: '2000.00' },
+        { id: 'concrete', totalAmount: '998000.00' },
+      ],
+    });
+
+    const res = await service.getRollup(identity, 'p-1');
+
+    // (2,000×100 + 998,000×5) ÷ 1,000,000 = 5.19 — not the old plain average of 52.5.
+    expect(res.packages[0]!.percentComplete).toBe(5);
+    expect(res.physicalPercent).toBeCloseTo(5.19, 2);
+  });
+
+  /**
+   * A leaf with no rate is worth nothing, so a package where nothing is priced has no values to
+   * weight by. Falling back to the plain average beats reporting 0% for work that happened.
+   */
+  it('getRollup: falls back to a plain average when no leaf in the package is priced', async () => {
+    const { service } = build({
+      workPackages: [
+        {
+          id: 'a',
+          code: 'WP-A',
+          name: 'Unpriced',
+          responsibleOwner: null,
+          progressWeight: '1',
+          boqLinks: [{ boqNodeId: 'n1' }, { boqNodeId: 'n2' }],
+        },
+      ],
+      measurements: [
+        { boqNodeId: 'n1', quantity: 1000, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }, // 100%
+        { boqNodeId: 'n2', quantity: 0, boqNode: { id: 'n2', code: '2', description: 'y', quantity: 1000 } }, // 0%
+      ],
+      leafValues: [
+        { id: 'n1', totalAmount: null },
+        { id: 'n2', totalAmount: null },
+      ],
+    });
+
+    const res = await service.getRollup(identity, 'p-1');
+    expect(res.packages[0]!.percentComplete).toBe(50);
+  });
+
+  /**
+   * An allocated leaf that has never been measured still carries value. Leaving it out of the
+   * denominator would let a package read 100% as soon as its first item finished.
+   */
+  it('getRollup: counts an allocated leaf with no progress yet', async () => {
+    const { service } = build({
+      workPackages: [
+        {
+          id: 'a',
+          code: 'WP-A',
+          name: 'Mixed',
+          responsibleOwner: null,
+          progressWeight: '1',
+          boqLinks: [{ boqNodeId: 'done' }, { boqNodeId: 'untouched' }],
+        },
+      ],
+      measurements: [
+        { boqNodeId: 'done', quantity: 100, boqNode: { id: 'done', code: '1', description: 'x', quantity: 100 } }, // 100%
+      ],
+      leafValues: [
+        { id: 'done', totalAmount: '50000.00' },
+        { id: 'untouched', totalAmount: '50000.00' },
+      ],
+    });
+
+    const res = await service.getRollup(identity, 'p-1');
+    expect(res.packages[0]!.percentComplete).toBe(50);
+  });
+
   it('allocateBoqNode: allocates a free BOQ leaf to a work package', async () => {
     const { repo, service } = build();
     await service.allocateBoqNode(identity, 'wp-1', 'n1');
@@ -252,7 +384,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
     const { service } = build({
       workPackages: [{ id: 'a', code: 'WP', name: 'x', responsibleOwner: null, progressWeight: '1', boqLinks: [{ boqNodeId: 'n1' }] }],
       measurements: [{ boqNodeId: 'n1', quantity: 200, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }], // 20% built
-      fp: { actualCost: '510', forecastCost: '1000' }, // 51% cost consumed
+      fp: { actualCost: '510', budgetTotal: '1000' }, // 51% cost consumed
     });
     const res = await service.getPhysicalFinancialSignal(identity, 'p-1');
     expect(res.physicalPercent).toBe(20);
@@ -265,7 +397,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
     const { service } = build({
       workPackages: [{ id: 'a', code: 'WP', name: 'x', responsibleOwner: null, progressWeight: '1', boqLinks: [{ boqNodeId: 'n1' }] }],
       measurements: [{ boqNodeId: 'n1', quantity: 200, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }], // 20%
-      fp: { actualCost: '250', forecastCost: '1000' }, // 25%
+      fp: { actualCost: '250', budgetTotal: '1000' }, // 25%
     });
     const res = await service.getPhysicalFinancialSignal(identity, 'p-1');
     expect(res.status).toBe('ALIGNED');
@@ -275,7 +407,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
     const { service } = build({
       workPackages: [{ id: 'a', code: 'WP', name: 'x', responsibleOwner: null, progressWeight: '1', boqLinks: [{ boqNodeId: 'n1' }] }],
       measurements: [{ boqNodeId: 'n1', quantity: 200, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }], // 20% built
-      fp: { actualCost: '0', forecastCost: '0', contractValue: '1000', receivedRevenue: '700' }, // 70% collected
+      fp: { actualCost: '0', budgetTotal: null, contractValue: '1000', receivedRevenue: '700' }, // 70% collected
     });
     const res = await service.getCollectionProgressSignal(identity, 'p-1');
     expect(res.physicalPercent).toBe(20);
@@ -288,7 +420,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
     const { service } = build({
       workPackages: [{ id: 'a', code: 'WP', name: 'x', responsibleOwner: null, progressWeight: '1', boqLinks: [{ boqNodeId: 'n1' }] }],
       measurements: [{ boqNodeId: 'n1', quantity: 800, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }], // 80% built
-      fp: { actualCost: '0', forecastCost: '0', contractValue: '1000', receivedRevenue: '100' }, // 10% collected
+      fp: { actualCost: '0', budgetTotal: null, contractValue: '1000', receivedRevenue: '100' }, // 10% collected
     });
     const res = await service.getCollectionProgressSignal(identity, 'p-1');
     expect(res.status).toBe('WORK_AHEAD');
@@ -299,7 +431,7 @@ describe('ProgressService (ADR-021 MVP)', () => {
     const { service } = build({
       workPackages: [{ id: 'a', code: 'WP', name: 'x', responsibleOwner: null, progressWeight: '1', boqLinks: [{ boqNodeId: 'n1' }] }],
       measurements: [{ boqNodeId: 'n1', quantity: 200, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }],
-      fp: { actualCost: '0', forecastCost: '0', contractValue: null, receivedRevenue: null },
+      fp: { actualCost: '0', budgetTotal: null, contractValue: null, receivedRevenue: null },
     });
     const res = await service.getCollectionProgressSignal(identity, 'p-1');
     expect(res.collectedPercent).toBeNull();

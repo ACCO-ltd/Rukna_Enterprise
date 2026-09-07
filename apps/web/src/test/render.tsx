@@ -18,6 +18,7 @@ import enAuth from '../../messages/en/auth.json';
 import enPlatform from '../../messages/en/platform.json';
 import enAccounting from '../../messages/en/accounting.json';
 import enProcurement from '../../messages/en/procurement.json';
+import enFinance from '../../messages/en/finance.json';
 import enCommercial from '../../messages/en/commercial.json';
 import enDocuments from '../../messages/en/documents.json';
 import enProgress from '../../messages/en/progress.json';
@@ -39,6 +40,7 @@ const MESSAGES = {
     platform: enPlatform,
     accounting: enAccounting,
     procurement: enProcurement,
+    finance: enFinance,
     commercial: enCommercial,
     documents: enDocuments,
     progress: enProgress,

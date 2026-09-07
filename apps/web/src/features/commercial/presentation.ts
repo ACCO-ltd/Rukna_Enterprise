@@ -1,5 +1,6 @@
 import type { BadgeTone } from '@erp/ui';
 import type {
+  ClientInvoiceSettlementStatus,
   CommercialMetric,
   CommercialSettlementState,
   GuaranteeAttentionState,
@@ -64,6 +65,32 @@ export function settlementTone(state: CommercialSettlementState): BadgeTone {
     case 'UNPAID':
       return 'danger';
     case 'UNINVOICED':
+    default:
+      return 'neutral';
+  }
+}
+
+/**
+ * A client invoice's state → badge tone.
+ *
+ * `AWAITING_POSTING` is deliberately not a warning: an approved invoice the GL has not taken yet
+ * is a normal step in the day, not a problem. `UNPAID` is not danger either — whether unpaid is
+ * bad depends entirely on the due date, and the row states that separately. Only a genuinely
+ * cancelled document reads as inert.
+ */
+export function invoiceStatusTone(status: ClientInvoiceSettlementStatus): BadgeTone {
+  switch (status) {
+    case 'PAID':
+      return 'live';
+    case 'PARTIALLY_PAID':
+      return 'warning';
+    case 'AWAITING_POSTING':
+      return 'info';
+    case 'UNPAID':
+      return 'accent';
+    case 'CANCELLED':
+      return 'historical';
+    case 'DRAFT':
     default:
       return 'neutral';
   }

@@ -3,34 +3,24 @@
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { usePathname, useRouter } from 'next/navigation';
-import { ProjectStatus } from '@erp/types';
-import {
-  Alert,
-  Button,
-  cn,
-  Select,
-} from '@erp/ui';
+import { Alert, Button, cn, Select } from '@erp/ui';
 import {
   Activity,
   BriefcaseBusiness,
-  Building2,
-  CalendarDays,
-  Check,
   ChevronRight,
   ClipboardList,
   FolderOpen,
   LayoutDashboard,
-  MapPin,
   ShoppingCart,
-  UserRound,
   Users,
   Wallet,
 } from 'lucide-react';
 
+import { ProjectActionsPanel } from '@/features/projects/components/project-actions-panel';
 import { ProjectStatusBadge } from '@/features/projects/components/project-status-badge';
 import { useDistricts } from '@/features/districts/hooks/use-districts';
-import { useProjectRollup } from '@/features/progress/hooks/use-progress';
 import { useProject, useProjectWorkspaceSummary } from '@/features/projects/hooks/use-project';
+import { getAvailableActions } from '@/features/projects/project-actions';
 import { formatDate } from '@/lib/format';
 
 interface ProjectWorkspaceShellProps {
@@ -38,16 +28,32 @@ interface ProjectWorkspaceShellProps {
   children: React.ReactNode;
 }
 
-const LIFECYCLE_STAGES: ProjectStatus[] = [
-  ProjectStatus.DRAFT,
-  ProjectStatus.ACTIVE,
-  ProjectStatus.PRACTICAL_COMPLETION,
-  ProjectStatus.CLOSEOUT,
-  ProjectStatus.CLOSED,
-];
-
+/**
+ * The persistent project operating shell.
+ *
+ * It has four jobs and no others: say which project this is, say what state it is in, offer the
+ * one action that state calls for, and navigate between the workspaces underneath. Every project
+ * tab renders inside it, so anything that is not one of those four jobs is a tax paid eight
+ * times over.
+ *
+ * Three things used to sit here and no longer do:
+ *
+ *  - **The building icon.** Every project had the same one, so it encoded nothing while taking
+ *    horizontal space and pushing the title out of alignment.
+ *  - **The lifecycle strip.** Project stage is project-level context, not BOQ context — someone
+ *    editing a BOQ already knows which project they are in. It is now a section on Overview,
+ *    which is where a reader goes for the project's own facts. That returns a row of vertical
+ *    space to all seven working tabs.
+ *  - **The four-tile summary row.** Main contract, programme, physical progress and current
+ *    stage: every one of them is now stated once, in the Overview section that owns it
+ *    (Commercial foundation, Project information, the progress card, the lifecycle rail).
+ *
+ * The commercial model left the metadata line for the same reason — it is configuration, not
+ * identity, and it reads on Overview under Commercial foundation.
+ */
 export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellProps) {
   const t = useTranslations('platform.projects');
+  const tDetail = useTranslations('platform.projects.detail');
   const pathname = usePathname();
   const router = useRouter();
   const locale = useLocale() as 'en' | 'ar';
@@ -64,6 +70,11 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
   // order a site gets given to a driver. Either half stands alone when the other is absent.
   const siteLabel = [districtName, project?.location].filter(Boolean).join(', ');
 
+  // Ordered by the project's operating logic rather than by the order the workspaces shipped:
+  // understand → scope → execute → earn → spend → financial position → evidence → people.
+  // Procurement sits before Finance because procurement *creates* the commitments, accruals and
+  // actuals that Finance then interprets; Documents before Team because project evidence is
+  // read daily and membership is changed rarely.
   const primaryTabs = [
     {
       key: 'overview',
@@ -71,9 +82,10 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
       href: `/projects/${id}`,
       icon: LayoutDashboard,
     },
-    // Named "BOQ", not "Scope". For construction professionals BOQ is the precise term;
-    // "Scope" reads as programme, milestones and progress too, which are separate controls
-    // living behind a Programme & Progress tab that does not exist yet. See ADR-016.
+    // Named "BOQ", not "Scope" or "Planning". For construction professionals BOQ is the precise
+    // term, and the aggregate behind this tab really is a versioned, baselined bill of
+    // quantities. "Planning" would be the right name only once programme, work packages and
+    // milestones lived under it too. See ADR-016.
     { key: 'boq', label: t('workspace.boq'), href: `/projects/${id}/boq`, icon: ClipboardList },
     {
       key: 'progress',
@@ -92,20 +104,28 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
       href: `/projects/${id}/commercial`,
       icon: BriefcaseBusiness,
     },
-    { key: 'finance', label: t('workspace.finance'), href: `/projects/${id}/pl`, icon: Wallet },
     {
       key: 'procurement',
       label: t('workspace.procurement'),
       href: `/projects/${id}/procurement`,
       icon: ShoppingCart,
     },
-    { key: 'team', label: t('workspace.team'), href: `/projects/${id}/members`, icon: Users },
+    // The Finance tab used to land on the Project Actual P&L alone — a subset presented as the
+    // whole. It now opens the Finance workspace: cost position and control status first, with
+    // Cost Control, Profit & Loss and the Ledger beneath it.
+    {
+      key: 'finance',
+      label: t('workspace.finance'),
+      href: `/projects/${id}/finance`,
+      icon: Wallet,
+    },
     {
       key: 'documents',
       label: t('workspace.documents'),
       href: `/projects/${id}/documents`,
       icon: FolderOpen,
     },
+    { key: 'team', label: t('workspace.team'), href: `/projects/${id}/members`, icon: Users },
   ];
 
   function isActive(href: string): boolean {
@@ -113,24 +133,18 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
     return pathname === href || pathname.startsWith(`${href}/`);
   }
 
-  const isOverview = isActive(`/projects/${id}`);
-
   // The last breadcrumb used to read "Overview" on every tab, so the BOQ page announced
   // itself as the overview. Derive it from whichever tab is actually active.
   const activeCrumb =
     primaryTabs.find((tab) => isActive(tab.href))?.label ?? t('workspace.overview');
-  const mainContract = summaryQuery.data?.mainContract;
-  const programme =
-    project?.startDate || project?.expectedEndDate
-      ? [formatDate(project.startDate, locale), formatDate(project.expectedEndDate, locale)]
-          .filter(Boolean)
-          .join(' - ')
-      : null;
-  // Physical progress is the first thing a manager wants from a running project, and it was
-  // the one vital sign the strip did not carry. It comes from the work-package roll-up, not the
-  // workspace summary — which has no progress in it at all.
-  const rollupQuery = useProjectRollup(id);
-  const stageIndex = project?.status ? LIFECYCLE_STAGES.indexOf(project.status) : -1;
+
+  // A suspension blocks every lifecycle command, so it belongs to the shell rather than to
+  // Overview: the Resume button now follows the reader onto BOQ and Procurement, and a Resume
+  // button with its explanation one tab away is worse than no banner at all.
+  const suspension = project?.suspensions.find((s) => s.resumedAt === null) ?? null;
+  const advanceBlockedBySuspension = project
+    ? getAvailableActions(project).advanceBlockedBySuspension
+    : false;
 
   if (projectQuery.isError) {
     return (
@@ -160,7 +174,13 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
         {/* The one crumb that should navigate and did not. Only rendered as a link once the
             project has loaded — a link to a record we cannot name yet is not a way back. */}
         {project ? (
-          <Link href={`/projects/${id}`} className="max-w-72 truncate hover:text-foreground">
+          // `title` because the crumb truncates: a long project name has to stay reachable
+          // to a reader and to a screen reader, and the full name is still in the <h1> below.
+          <Link
+            href={`/projects/${id}`}
+            title={project.name}
+            className="max-w-72 truncate hover:text-foreground"
+          >
             {project.name}
           </Link>
         ) : (
@@ -170,69 +190,57 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
         <span className="font-medium text-foreground">{activeCrumb}</span>
       </nav>
 
-      <section className="mb-4 overflow-hidden border-y border-border bg-surface">
+      <section className="mb-6 overflow-hidden border-y border-border bg-surface">
         <div className="px-1 py-3 sm:px-4 sm:py-4">
           {projectQuery.isPending ? (
             <div className="space-y-3" role="status" aria-label={t('workspace.loadingProject')}>
-              <div className="h-12 w-12 animate-pulse rounded-panel bg-muted" />
               <div className="h-7 w-64 animate-pulse rounded bg-muted" />
               <div className="h-4 w-48 animate-pulse rounded bg-muted" />
             </div>
           ) : project ? (
-            <>
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="flex min-w-0 items-start gap-3">
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-panel border border-border bg-surface-subtle text-foreground">
-                    <Building2 size={20} strokeWidth={1.8} aria-hidden="true" />
-                  </span>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h1 className="text-h1 font-bold leading-tight text-foreground">
-                        {project.name}
-                      </h1>
-                      <ProjectStatusBadge status={project.status} />
-                    </div>
-                    {/* One meta line: CODE · model · client · location, `·`-separated, empties
-                        dropped. Previously a `code / model` line plus a separate location·client
-                        caption row — two rows collapsed to one to reclaim vertical space. */}
-                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-body-sm text-muted-foreground">
-                      <span>{project.code}</span>
-                      <span aria-hidden="true">·</span>
-                      <span>
-                        {t(
-                          `create.commercialModel.${project.commercialModel === 'INTERNAL_CAPITAL' ? 'internalCapital' : 'clientContract'}`,
-                        )}
-                      </span>
-                      {project.clientName ? (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <span className="inline-flex items-center gap-1">
-                            <UserRound size={14} aria-hidden="true" />
-                            {project.clientName}
-                          </span>
-                        </>
-                      ) : null}
-                      {siteLabel ? (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <span className="inline-flex items-center gap-1">
-                            <MapPin size={14} aria-hidden="true" />
-                            {siteLabel}
-                          </span>
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
+            <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h1 className="text-h1 font-semibold leading-tight text-foreground">
+                    {project.name}
+                  </h1>
+                  <ProjectStatusBadge status={project.status} />
                 </div>
-                <div id="project-header-actions" className="flex items-center" />
+                {/* Identity only: code, client, site. `·`-separated, empties dropped. What the
+                    project *is* — not how it is configured, and not what state it is in. */}
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-body-sm text-muted-foreground">
+                  <span className="shrink-0">{project.code}</span>
+                  {/* `min-w-0` is what makes `truncate` work on a flex child: without it the
+                      item's automatic minimum size is its content, so a long client name pushes
+                      the row wide instead of ellipsizing. `title` keeps the full value
+                      reachable. */}
+                  {project.clientName ? (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span className="min-w-0 max-w-full truncate" title={project.clientName}>
+                        {project.clientName}
+                      </span>
+                    </>
+                  ) : null}
+                  {siteLabel ? (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span className="min-w-0 max-w-full truncate" title={siteLabel}>
+                        {siteLabel}
+                      </span>
+                    </>
+                  ) : null}
+                </div>
               </div>
 
-              {project.status !== ProjectStatus.CANCELLED && stageIndex >= 0 ? (
-                <div className="mt-3 overflow-x-auto [-webkit-overflow-scrolling:touch]">
-                  <LifecycleStrip stages={LIFECYCLE_STAGES} current={stageIndex} t={t} />
-                </div>
-              ) : null}
-            </>
+              {/* One primary control and an overflow for everything else. These used to be
+                  portalled up from the Overview page, which left the other seven tabs with a
+                  header that had no actions in it at all. */}
+              <ProjectActionsPanel
+                project={project}
+                setup={summaryQuery.isPending ? undefined : (summaryQuery.data?.setup ?? null)}
+              />
+            </div>
           ) : null}
         </div>
 
@@ -248,7 +256,7 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
             // Navigation, not a picker: these are destinations someone browses, so no filter
             // however many tabs the workspace grows.
             searchable={false}
-            className="mx-5 my-3 w-[calc(100%-2.5rem)] md:hidden"
+            className="mx-4 my-3 w-[calc(100%-2rem)] md:hidden"
             value={primaryTabs.find((tab) => isActive(tab.href))?.href ?? `/projects/${id}`}
             onChange={(value) => router.push(value)}
           >
@@ -272,85 +280,21 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
             ))}
           </div>
         </nav>
-
-        {/* Overview only.
-
-            These four are the project's headline facts, and Overview is where someone goes
-            to read them. On a working tab they are a second, competing tile row above the
-            one the feature brought — on BOQ that meant eight visually identical boxes and no
-            complete BOQ row above the fold at 1440x900. The context is one tab away, and the
-            lifecycle strip and header above still say which project this is and where it is
-            in its life.
-            Not on a DRAFT. There the four tiles are BOQ / contract / team / stage — the setup
-            steps — and the Overview already renders them as a stepper with a percentage, the
-            order they unlock in, and an action on each. The tiles restated all four one screen
-            above, ending on "1 of 4 steps complete" directly over a panel headed "1 of 4 steps
-            complete". A draft is a project being set up, so the stepper is the vital sign; the
-            tiles start earning their place once it is running and they carry the contract, the
-            programme and the manager instead. */}
-        {project && isOverview && project.status !== ProjectStatus.DRAFT ? (
-          <dl className="grid border-t border-border bg-surface-subtle sm:grid-cols-2 lg:grid-cols-4">
-            <SummaryItem
-              icon={BriefcaseBusiness}
-              label={t('workspace.mainContract')}
-              value={
-                summaryQuery.isPending
-                  ? t('workspace.loadingValue')
-                  : (mainContract?.contractNumber ??
-                    (project.commercialModel === 'INTERNAL_CAPITAL'
-                      ? t('workspace.notApplicable')
-                      : t('workspace.notCreated')))
-              }
-              supporting={
-                project.commercialModel === 'INTERNAL_CAPITAL'
-                  ? t('create.commercialModel.internalCapital')
-                  : t('create.commercialModel.clientContract')
-              }
-            />
-            <SummaryItem
-              icon={CalendarDays}
-              label={t('workspace.programme')}
-              value={programme ?? t('detail.notSet')}
-              supporting={
-                summaryQuery.data?.programme.daysRemaining == null
-                  ? undefined
-                  : summaryQuery.data.programme.daysRemaining >= 0
-                    ? t('detail.daysCount', { count: summaryQuery.data.programme.daysRemaining })
-                    : t('detail.daysOverdueCount', {
-                        count: Math.abs(summaryQuery.data.programme.daysRemaining),
-                      })
-              }
-            />
-            {/* The project manager used to sit here. It is already two lines up in the header,
-                beside the client, so the tile spent a quarter of the strip repeating it. A
-                vital sign is what belongs in a vital-signs row. */}
-            <SummaryItem
-              icon={Activity}
-              label={t('workspace.physicalProgress')}
-              value={
-                rollupQuery.isPending
-                  ? t('workspace.loadingValue')
-                  : rollupQuery.data
-                    ? `${Math.round(rollupQuery.data.physicalPercent)}%`
-                    : t('detail.notSet')
-              }
-              supporting={
-                rollupQuery.data && !rollupQuery.data.weightsComplete
-                  ? // Said plainly rather than shown as a clean number: with weights below
-                    // 100% the roll-up can only understate, and a percentage that looks exact
-                    // when it is not is worse than no percentage.
-                    t('workspace.progressWeightsIncomplete')
-                  : undefined
-              }
-            />
-            <SummaryItem
-              icon={Building2}
-              label={t('workspace.currentStage')}
-              value={t(`status.${project.status}`)}
-            />
-          </dl>
-        ) : null}
       </section>
+
+      {suspension ? (
+        <div className="mb-4">
+          <Alert variant="warning" title={tDetail('suspendedTitle')}>
+            <p className="mt-1">{suspension.reason}</p>
+            <p className="mt-2 text-xs">
+              {tDetail('suspendedSince', {
+                date: formatDate(suspension.suspendedAt, locale) ?? '—',
+              })}
+              {advanceBlockedBySuspension ? ` ${tDetail('suspendedBlocks')}` : ''}
+            </p>
+          </Alert>
+        </div>
+      ) : null}
 
       {summaryQuery.isError ? (
         <div className="mb-4">
@@ -358,33 +302,6 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
         </div>
       ) : null}
       {children}
-    </div>
-  );
-}
-
-function SummaryItem({
-  icon: Icon,
-  label,
-  value,
-  supporting,
-}: {
-  icon: typeof Building2;
-  label: string;
-  value: string;
-  supporting?: string;
-}) {
-  return (
-    <div className="border-b border-border px-5 py-4 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 sm:odd:border-e lg:border-b-0 lg:not-last:border-e">
-      <dt className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
-        <Icon size={15} aria-hidden="true" />
-        {label}
-      </dt>
-      <dd className="mt-2 truncate text-sm font-semibold text-foreground" title={value}>
-        {value}
-      </dd>
-      {supporting ? (
-        <dd className="mt-1 truncate text-caption text-muted-foreground">{supporting}</dd>
-      ) : null}
     </div>
   );
 }
@@ -405,87 +322,16 @@ function WorkspaceLink({
       href={href}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'inline-flex min-h-11 items-center gap-2 border-b-2 px-4 text-body-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
+        // One stroke weight and one icon size in both states: colour and the underline carry
+        // "you are here", so the glyph does not have to thicken as well.
+        'inline-flex min-h-12 items-center gap-2 border-b-2 px-3.5 text-body-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
         active
           ? 'border-brand-primary text-brand-primary'
           : 'border-transparent text-muted-foreground hover:text-foreground',
       )}
     >
-      <Icon size={17} strokeWidth={active ? 2.4 : 1.8} aria-hidden="true" />
+      <Icon size={16} strokeWidth={1.8} aria-hidden="true" />
       {label}
     </Link>
-  );
-}
-
-interface LifecycleStripProps {
-  stages: ProjectStatus[];
-  current: number;
-  t: ReturnType<typeof useTranslations<'platform.projects'>>;
-}
-
-function LifecycleStrip({ stages, current, t }: LifecycleStripProps) {
-  // A single-line inline stepper: dot + label on the same line, thin connectors between
-  // stages. The parent scrolls this row on narrow screens (overflow-x-auto) so it never
-  // wraps and never pushes the page — this one row serves mobile too, replacing the old
-  // stacked w-24 columns and the separate sm:hidden current/prev/next summary.
-  //
-  // Green for stages already passed, blue for the one in progress, grey for the rest.
-  // The whole strip used to be brand blue up to the current stage, which meant the
-  // colour said "brand" rather than "done" — and blue is the interactive colour
-  // everywhere else in the product. See the semantics table in frontend-theme.md.
-  return (
-    <ol
-      aria-label={t('workspace.currentStage')}
-      className="flex min-w-max items-center gap-2"
-    >
-      {stages.map((stage, index) => {
-        const complete = index < current;
-        const active = index === current;
-        const label = t(`status.${stage}`);
-
-        return (
-          <li key={stage} className="flex shrink-0 items-center gap-2">
-            <div className="flex items-center gap-1.5" aria-current={active ? 'step' : undefined}>
-              <span
-                aria-hidden="true"
-                className={cn(
-                  'flex h-4 w-4 shrink-0 items-center justify-center rounded-full',
-                  active && 'bg-brand-primary ring-4 ring-brand-primary/15',
-                  complete && 'bg-success',
-                  !complete && !active && 'border border-border bg-surface',
-                )}
-              >
-                {complete ? (
-                  <Check size={10} strokeWidth={3} className="text-white" aria-hidden="true" />
-                ) : null}
-                {active ? (
-                  <span className="h-1 w-1 rounded-full bg-white" aria-hidden="true" />
-                ) : null}
-              </span>
-              <span
-                className={cn(
-                  'whitespace-nowrap text-caption font-medium leading-none',
-                  active && 'font-semibold text-brand-primary',
-                  complete && 'text-success',
-                  !complete && !active && 'text-muted-foreground',
-                )}
-              >
-                {label}
-              </span>
-            </div>
-            {index < stages.length - 1 ? (
-              <span
-                aria-hidden="true"
-                className={cn(
-                  'h-px w-5 shrink-0 lg:w-8',
-                  // The connector belongs to the stage behind it: green once passed.
-                  complete ? 'bg-success' : 'bg-border',
-                )}
-              />
-            ) : null}
-          </li>
-        );
-      })}
-    </ol>
   );
 }

@@ -21,6 +21,8 @@ export interface CreateMrLineDto {
   description: string;
   uomCode: string;
   requestedQuantity: number;
+  /** ADR-022 CONST-DOA-001: the value approval routing measures against. */
+  estimatedUnitPrice?: number;
   boqNodeId?: string;
   spendCategoryId?: string;
   departmentId?: string;
@@ -34,6 +36,9 @@ export interface CreateMaterialRequestDto {
   projectId?: string;
   requestedDate: string;
   requiredByDate?: string;
+  title?: string;
+  currencyCode?: string;
+  priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
   description?: string;
   notes?: string;
   lines: CreateMrLineDto[];
@@ -100,6 +105,15 @@ export class MaterialRequestService {
       throw new BadRequestException('At least one line is required');
     }
 
+    // An estimate with no currency is not a figure anyone can approve against a monetary
+    // threshold, and every amount in this schema is paired with one. Refuse the half-specified
+    // case rather than storing a number whose unit nobody knows.
+    if (dto.lines.some((line) => line.estimatedUnitPrice !== undefined) && !dto.currencyCode) {
+      throw new BadRequestException(
+        'currencyCode is required when any line carries an estimated unit price',
+      );
+    }
+
     // Resolve and validate lines
     const resolvedLines = await Promise.all(
       dto.lines.map(async (line, i) => {
@@ -131,6 +145,13 @@ export class MaterialRequestService {
           description: line.description,
           unitOfMeasureId: resolvedUomId,
           requestedQuantity: new Decimal(line.requestedQuantity),
+          // ADR-022 CONST-DOA-001: the value approval routing is measured against. Absent is
+          // a real state — a requirement raised before this field existed carries none — so it
+          // stays undefined rather than defaulting to zero, which would route as free.
+          estimatedUnitPrice:
+            line.estimatedUnitPrice === undefined
+              ? undefined
+              : new Decimal(line.estimatedUnitPrice),
           boqNodeId: line.boqNodeId,
           spendCategoryId: line.spendCategoryId,
           departmentId: line.departmentId,
@@ -153,6 +174,9 @@ export class MaterialRequestService {
         requestedBy: identity.userId,
         requestedDate: new Date(dto.requestedDate),
         requiredByDate: dto.requiredByDate ? new Date(dto.requiredByDate) : undefined,
+        title: dto.title,
+        currencyCode: dto.currencyCode,
+        priority: dto.priority,
         description: dto.description,
         notes: dto.notes,
         lines: resolvedLines,

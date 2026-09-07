@@ -14,6 +14,7 @@ import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs
 import { reconcileCertificate } from '../domain/ipc-calculation-policy.js';
 import type { CreateIpcDto } from '../presentation/dto/create-ipc.dto.js';
 import type { SupersedeIpcDto } from '../presentation/dto/supersede-ipc.dto.js';
+import { RecordAttachmentService } from '../../../../platform/files/application/record-attachment.service.js';
 
 const EFFECTIVE_STATUSES = new Set(['CERTIFIED', 'PARTIALLY_CERTIFIED']);
 
@@ -24,6 +25,7 @@ export class IpcService {
     private readonly repo: IpcPrismaRepository,
     private readonly projectAccess: ProjectAccessService,
     private readonly auditOutbox: TransactionalAuditOutboxService,
+    private readonly attachments: RecordAttachmentService,
   ) {}
 
   async findAll(identity: RequestIdentity, applicationId?: string, projectId?: string) {
@@ -287,7 +289,7 @@ export class IpcService {
     }
 
     // Both status flips and audit evidence commit together.
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const updated = await this.repo.supersede(
         tx,
         currentEffective.id,
@@ -311,5 +313,16 @@ export class IpcService {
 
       return updated;
     });
+
+    // Phase 7A: the outgoing certificate's evidence becomes history the moment it is superseded.
+    // The issued certificate itself was already frozen when it was attached — `issue()` creates a
+    // certificate that is already effective, so there is no earlier point to wait for. This
+    // covers the supporting evidence, which was legitimately replaceable until now.
+    await this.attachments.freezeFor(
+      'IPC',
+      currentEffective.id,
+      `evidence on superseded certificate ${currentEffective.id}`,
+    );
+    return result;
   }
 }

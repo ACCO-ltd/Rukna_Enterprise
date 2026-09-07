@@ -1,27 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { Building2, MoreHorizontal } from 'lucide-react';
-import { useLocale, useTranslations } from 'next-intl';
-import {
-  Alert,
-  Badge,
-  Button,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  Skeleton,
-} from '@erp/ui';
-import type { CommercialSummaryResponse } from '@erp/types';
+import { useTranslations } from 'next-intl';
+import { Alert, Button, Skeleton } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
-import { formatMoney } from '@/lib/format';
-import { usePermissions } from '@/features/auth/permissions/can';
+import { EmptyState } from '@/components/empty-state';
 
-import { useCommercialCurrentCycle, useCommercialSummary } from '../hooks/use-commercial';
-import { contractStatusTone } from '../presentation';
-import { CommercialNav, type CommercialTab } from './commercial-nav';
+import { useCommercialSummary } from '../hooks/use-commercial';
+import { CommercialNav, commercialTabsFor, type CommercialTab } from './commercial-nav';
 import { OverviewTab } from './overview-tab';
 import { ContractSecurityTab } from './contract-security-tab';
 import { ApplicationsTab } from './applications-tab';
@@ -29,13 +16,18 @@ import { VariationsTab } from './variations-tab';
 import { BillingCollectionTab } from './billing-collection-tab';
 
 /**
- * The Commercial workspace shell.
+ * The Commercial workspace.
  *
- * Composition follows the Project Workspace: a header carrying the contract's identity and
- * the single context-aware primary action, the internal tab nav, then the active surface.
- * Every financial figure and lifecycle decision is the server's — the summary withholds
- * money from a user without `view:financial-position` and returns capabilities rather than
- * a rule to re-derive.
+ * It renders inside the project shell, which already states which project this is, what state it
+ * is in, and the one project-level action that state calls for. So this used to be a *second*
+ * header — a building icon, the project's contract number, its value, its client — stacked
+ * directly under the first. It is now what the other refined workspaces are: a heading naming the
+ * module, the level-3 view switch, and the active view. Contract identity reads on Contract &
+ * Security, which is the section that owns it.
+ *
+ * Every financial figure and lifecycle verdict is the server's. The summary withholds money from
+ * a user without `view:financial-position` and returns capabilities rather than a rule for the
+ * browser to re-derive (ADR-017 CONST-COM).
  */
 export function CommercialWorkspace({
   projectId,
@@ -52,9 +44,8 @@ export function CommercialWorkspace({
 
   if (query.isError) {
     return (
-      <div className="space-y-3">
-        <Header projectId={projectId} summary={null} />
-        <CommercialNav projectId={projectId} active={active} />
+      <div className="space-y-4">
+        <Heading />
         <Alert
           variant="error"
           title={t('states.loadFailed')}
@@ -69,101 +60,73 @@ export function CommercialWorkspace({
   }
 
   const summary = query.data;
+  const billingModel = summary.mainContract?.billingModel ?? null;
+  // A MILESTONE contract has no Applications view (ADR-023). Someone who deep-links or
+  // back-buttons into it gets the explanation rather than a blank screen: the tab is gone
+  // because this contract is billed from its payment plan, and the plan is one click away.
+  const available = commercialTabsFor(billingModel);
+  const resolved: CommercialTab = available.includes(active) ? active : 'overview';
 
   return (
-    <div className="space-y-3" data-commercial-root>
-      <Header projectId={projectId} summary={summary} />
-      <CommercialNav projectId={projectId} active={active} />
+    <div className="space-y-5" data-commercial-root>
+      <Heading />
+      <CommercialNav projectId={projectId} active={resolved} billingModel={billingModel} />
+
       <div>
-        {active === 'overview' ? <OverviewTab projectId={projectId} summary={summary} /> : null}
-        {active === 'contract-security' ? <ContractSecurityTab summary={summary} /> : null}
-        {active === 'applications' ? (
-          <ApplicationsTab projectId={projectId} summary={summary} />
-        ) : null}
-        {active === 'variations' ? (
-          <VariationsTab projectId={projectId} summary={summary} />
-        ) : null}
-        {active === 'billing-collection' ? (
-          <BillingCollectionTab projectId={projectId} summary={summary} />
-        ) : null}
+        {!available.includes(active) ? (
+          <UnavailableView projectId={projectId} />
+        ) : (
+          <>
+            {active === 'overview' ? <OverviewTab projectId={projectId} summary={summary} /> : null}
+            {active === 'contract-security' ? (
+              <ContractSecurityTab projectId={projectId} summary={summary} />
+            ) : null}
+            {active === 'applications' ? (
+              <ApplicationsTab projectId={projectId} summary={summary} />
+            ) : null}
+            {active === 'variations' ? (
+              <VariationsTab projectId={projectId} summary={summary} />
+            ) : null}
+            {active === 'billing-collection' ? (
+              <BillingCollectionTab projectId={projectId} summary={summary} />
+            ) : null}
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-function Header({
-  projectId,
-  summary,
-}: {
-  projectId: string;
-  summary: CommercialSummaryResponse | null;
-}) {
+/**
+ * Module heading — the same shape Progress uses, so the two read as one product. No panel, no
+ * icon tile, no restatement of the contract: the project shell above has already introduced the
+ * record, and this only has to name the workspace and say what it is for.
+ */
+function Heading() {
   const t = useTranslations('commercial');
-  const tCycle = useTranslations('commercial.cycle.actions');
-  const locale = useLocale() as 'en' | 'ar';
-  const { can } = usePermissions();
-  const cycleQuery = useCommercialCurrentCycle(projectId);
-
-  // Exactly one primary action, resolved from the contract's own state rather than from
-  // "whichever attention item happens to carry a URL" — that ordering made the button change
-  // meaning as unrelated items appeared and disappeared. See commercial-next-step.ts.
-  const step = summary ? (cycleQuery.data?.nextAction ?? null) : null;
-  const contract = summary?.mainContract ?? null;
-  const value = contract && summary ? summary.metrics.contractValue : null;
-
   return (
-    <header className="flex flex-col gap-3 rounded-panel border border-border bg-surface px-4 py-3 shadow-e1 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-      <div className="flex min-w-0 items-start gap-3">
-        <div className="flex size-11 shrink-0 items-center justify-center rounded-control border border-brand-primary/20 bg-brand-primary-subtle text-brand-primary">
-          <Building2 size={22} strokeWidth={1.8} aria-hidden="true" />
-        </div>
-        <div className="min-w-0">
-          <h1 className="text-h3 font-bold text-foreground">{t('title')}</h1>
-          <p className="text-body-sm text-muted-foreground">{t('subtitle')}</p>
-          {contract ? (
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-body-sm">
-              <span className="font-medium text-foreground">{contract.contractNumber}</span>
-              <Badge tone={contractStatusTone(contract.status)}>
-                {t(`contractStatus.${contract.status}`)}
-              </Badge>
-              {value && value.state !== 'RESTRICTED' && value.amount ? (
-                <span className="tabular-nums text-muted-foreground">
-                  {formatMoney(value.amount, value.currency, locale)}
-                </span>
-              ) : null}
-              <span className="text-muted-foreground">{contract.clientName}</span>
-            </div>
-          ) : null}
-        </div>
-      </div>
+    <div>
+      <h2 className="text-h2 font-bold text-foreground">{t('title')}</h2>
+      <p className="mt-1 text-body-sm text-muted-foreground">{t('subtitle')}</p>
+    </div>
+  );
+}
 
-      <div className="flex items-center gap-2">
-        {step ? (
-          <Button asChild size="sm" className="min-h-11 sm:min-h-0">
-            <Link href={step.href}>{tCycle(step.kind)}</Link>
-          </Button>
-        ) : null}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon" aria-label={t('actions.more')}>
-              <MoreHorizontal size={16} aria-hidden="true" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem asChild>
-              <Link href={`/projects/${projectId}`}>{t('actions.backToProject')}</Link>
-            </DropdownMenuItem>
-            {can('view:contract') ? (
-              <DropdownMenuItem asChild>
-                <Link href={`/projects/${projectId}/commercial/applications`}>
-                  {t('actions.viewApplications')}
-                </Link>
-              </DropdownMenuItem>
-            ) : null}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </header>
+function UnavailableView({ projectId }: { projectId: string }) {
+  const t = useTranslations('commercial');
+  return (
+    <EmptyState
+      variant="page"
+      title={t('applications.hiddenTitle')}
+      description={t('applications.hiddenHint')}
+      action={
+        <Button asChild variant="outline">
+          <Link href={`/projects/${projectId}/commercial/billing-collection`}>
+            {t('applications.hiddenAction')}
+          </Link>
+        </Button>
+      }
+    />
   );
 }
 
@@ -174,16 +137,15 @@ export function errorText(error: unknown, fallback: string): string {
 
 function WorkspaceSkeleton({ label }: { label: string }) {
   return (
-    <div className="space-y-4" role="status" aria-live="polite">
+    <div className="space-y-5" role="status" aria-live="polite">
       <span className="sr-only">{label}</span>
-      <Skeleton className="h-14 w-full" aria-hidden="true" />
-      <Skeleton className="h-10 w-full" aria-hidden="true" />
-      {/* Skeletons mirror the final layout: one summary band, then the two-column body. */}
-      <Skeleton className="h-28 w-full" aria-hidden="true" />
+      <Skeleton className="h-12 w-64" aria-hidden="true" />
+      <Skeleton className="h-11 w-full" aria-hidden="true" />
+      {/* Skeletons mirror the final layout: the position strip, the cycle card, then the body. */}
       <Skeleton className="h-24 w-full" aria-hidden="true" />
       <div className="grid gap-4 lg:grid-cols-2">
-        <Skeleton className="h-80 w-full" aria-hidden="true" />
-        <Skeleton className="h-80 w-full" aria-hidden="true" />
+        <Skeleton className="h-64 w-full" aria-hidden="true" />
+        <Skeleton className="h-64 w-full" aria-hidden="true" />
       </div>
     </div>
   );

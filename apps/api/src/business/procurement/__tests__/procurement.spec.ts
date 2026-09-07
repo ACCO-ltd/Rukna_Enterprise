@@ -793,17 +793,37 @@ test('T17 — PO create with an org/overhead line (no cost-target) is allowed an
   expect(line.boqNodeId).toBeNull();
 });
 
-// ── T18: half-specified cost-targets are rejected ─────────────────────────────
-test('T18 — a project without a node (and a node without a project) is rejected with 400', async () => {
+// ── T18: the three valid cost-target attributions, and the two impossible ones ────
+//
+// The rule used to be "both ids or neither", which made project-level cost — site security,
+// transport, insurance, supervision — impossible to record, and left ProjectCostBudget able to
+// plan a spend category that no purchase could ever consume.
+test('T18 — a project line may target a spend category instead of a BOQ node', async () => {
+  const po = await svc.poService.create(identity(env), {
+    supplierId: env.supplierId,
+    currencyCode: 'USD',
+    effectiveFrom: '2026-08-15',
+    lines: [{ ...costTargetLine(), boqNodeId: undefined }],
+  });
+
+  const line = po!.revisions[0].lines[0];
+  expect(line.projectId).toBe(env.projectId);
+  expect(line.boqNodeId).toBeNull();
+  expect(line.spendCategoryId).toBe(env.spendCategoryId);
+});
+
+test('T18b — a project line with neither a node nor a category is rejected with 400', async () => {
   await expect(
     svc.poService.create(identity(env), {
       supplierId: env.supplierId,
       currencyCode: 'USD',
       effectiveFrom: '2026-08-15',
-      lines: [{ ...costTargetLine(), boqNodeId: undefined }],
+      lines: [{ ...costTargetLine(), boqNodeId: undefined, spendCategoryId: undefined }],
     }),
-  ).rejects.toThrow(/both a project and a BOQ node/i);
+  ).rejects.toThrow(/needs a cost target/i);
+});
 
+test('T18c — a BOQ node without its project is rejected with 400', async () => {
   await expect(
     svc.poService.create(identity(env), {
       supplierId: env.supplierId,
@@ -811,7 +831,7 @@ test('T18 — a project without a node (and a node without a project) is rejecte
       effectiveFrom: '2026-08-15',
       lines: [{ ...costTargetLine(), projectId: undefined }],
     }),
-  ).rejects.toThrow(/both a project and a BOQ node/i);
+  ).rejects.toThrow(/cannot be used without the project/i);
 });
 
 // ── T19: a boqNode not belonging to the given project → 400 ──────────────────
