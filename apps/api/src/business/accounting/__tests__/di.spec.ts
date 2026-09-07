@@ -9,6 +9,14 @@
 import { Test } from '@nestjs/testing';
 import { AppModule } from '../../../app.module.js';
 
+// Booting the whole graph pulls in AuthModule → Jwt/JwtRefresh strategies, whose passport
+// constructors throw when their secret is empty. CI's test env carries the DB URLs but no JWT
+// secrets, so provide test-only defaults here (||= never clobbers a real env value locally).
+beforeAll(() => {
+  process.env.JWT_ACCESS_SECRET ||= 'test-access-secret';
+  process.env.JWT_REFRESH_SECRET ||= 'test-refresh-secret';
+});
+
 it('DI-01: the whole application graph compiles', async () => {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   expect(moduleRef).toBeDefined();
