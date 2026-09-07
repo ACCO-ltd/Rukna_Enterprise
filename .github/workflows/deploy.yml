@@ -1,0 +1,66 @@
+name: Deploy
+
+# Auto-deploy to the Contabo VPS — the self-hosted equivalent of Vercel's git auto-deploy.
+#
+# Fires after the "CI" workflow finishes on `main`; the deploy job runs ONLY when that CI
+# run succeeded (so a red build never ships). Also exposes a manual "Run workflow" button
+# (workflow_dispatch) as a backup / on-demand deploy.
+#
+# The box PULLS the new code and rebuilds its own images (rukna_api + rukna_web) behind the
+# shared Caddy. SIMAD/TConnect are untouched — this only runs Rukna's compose project.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   DEPLOY_SSH_KEY  — private half of an SSH key whose public half is in the VPS deploy
+#                     user's ~/.ssh/authorized_keys (whole file incl. BEGIN/END lines)
+#   DEPLOY_HOST     — 169.58.180.80
+#   DEPLOY_USER     — deploy
+#
+# Note: the VPS `git fetch` authenticates to GitHub with the credential stored on the box
+# (credential.helper store / a PAT). If that credential is revoked, auto-deploy's fetch
+# fails until the box has a valid one again.
+
+on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# Never let two deploys run at once; let an in-flight deploy finish rather than cancelling it.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Contabo
+    runs-on: ubuntu-latest
+    # Manual runs always deploy; auto (workflow_run) runs only when CI succeeded.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Deploy over SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOY_SSH_KEY:-}" ] || [ -z "${DEPLOY_HOST:-}" ] || [ -z "${DEPLOY_USER:-}" ]; then
+            echo "::error::Missing DEPLOY_SSH_KEY / DEPLOY_HOST / DEPLOY_USER secret(s). Add them in repo Settings → Secrets → Actions."
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes "$DEPLOY_USER@$DEPLOY_HOST" 'bash -seuo pipefail' <<'REMOTE'
+          cd ~/Rukna_Enterprise
+          echo "── fetching latest main ──"
+          git fetch origin main
+          git reset --hard origin/main
+          echo "── rebuild + restart Rukna stack (SIMAD/TConnect untouched) ──"
+          docker compose -f deploy/docker-compose.prod.yml up -d --build
+          echo "── status ──"
+          docker compose -f deploy/docker-compose.prod.yml ps
+          REMOTE
+          echo "Deploy complete."
