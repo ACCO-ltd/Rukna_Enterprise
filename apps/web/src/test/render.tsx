@@ -80,6 +80,7 @@ export function renderWithProviders(
       user: {
         id: 'test-user',
         email: 'test@example.com',
+        name: null,
         orgId: 'org-1',
         tenantSlug: 'test',
         roles: [],

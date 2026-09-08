@@ -3,6 +3,11 @@ import { decodeJwt } from './decode-jwt';
 export interface AuthenticatedUser {
   id: string;
   email: string;
+  /**
+   * Display name. `null` for a token minted before the claim existed — the UI falls back to
+   * the email rather than inventing a name from it, which gets people's names wrong.
+   */
+  name: string | null;
   orgId: string;
   tenantSlug: string;
   roles: string[];
@@ -62,6 +67,7 @@ export const sessionStore = {
     const user: AuthenticatedUser = {
       id: payload.sub,
       email: payload.email,
+      name: payload.name ?? null,
       orgId: payload.orgId,
       tenantSlug: payload.tenantSlug,
       roles: payload.roles ?? [],

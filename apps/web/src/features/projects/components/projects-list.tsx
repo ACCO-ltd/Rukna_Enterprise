@@ -4,8 +4,18 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { ProjectCategory, ProjectStatus } from '@erp/types';
-import { Button, Label, Select } from '@erp/ui';
-import { AlertTriangle, CalendarDays, Filter, Plus } from 'lucide-react';
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  Label,
+  OverflowGlyph,
+  RowActions,
+  Select,
+} from '@erp/ui';
+import { AlertTriangle, Building2, CalendarDays, Filter, Plus } from 'lucide-react';
 
 import { EmptyState } from '@/components/empty-state';
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
@@ -49,10 +59,22 @@ function buildColumns(
       sortable: true,
       plainValue: (project) => [project.name, project.code, project.clientName].filter(Boolean).join(' '),
       render: (project) => (
-        <Link href={`/projects/${project.id}`} className="group -my-2 flex min-h-12 flex-col justify-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary">
-          <span className="font-semibold text-foreground transition-colors group-hover:text-brand-primary">{project.name}</span>
-          <span className="mt-0.5 text-xs text-muted-foreground">{project.clientName ?? project.code}</span>
-        </Link>
+        <div className="flex items-center gap-3">
+          {/* Identity marker, not decoration: a fixed left edge for the eye to run down, and
+              it stops the name/client pair from reading as two separate rows. */}
+          <span
+            className="flex size-9 shrink-0 items-center justify-center rounded-panel bg-brand-accent text-brand-primary"
+            aria-hidden="true"
+          >
+            <Building2 className="h-4 w-4" strokeWidth={1.8} />
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate font-semibold text-foreground">{project.name}</span>
+            <span className="mt-0.5 block truncate text-caption text-muted-foreground">
+              {project.clientName ?? project.code}
+            </span>
+          </span>
+        </div>
       ),
     },
     { key: 'stage', header: t('columns.stage'), render: (project) => <ProjectStatusBadge status={project.status} /> },
@@ -161,8 +183,43 @@ export function ProjectsList() {
       noMatchMessage={t('noMatches')}
       clearFiltersLabel={t('clearFilters')}
       emptyState={<EmptyState title={t('empty')} description={t('emptyHint')} action={mayCreate ? <Button asChild><Link href="/projects/new"><Plus className="me-2 h-4 w-4" aria-hidden="true" />{t('newProject')}</Link></Button> : undefined} />}
-      toolbarLeft={statusFilter}
-      toolbarRight={mayCreate ? <Button asChild><Link href="/projects/new"><Plus className="me-2 h-4 w-4" aria-hidden="true" />{t('newProject')}</Link></Button> : undefined}
+      toolbarFilters={statusFilter}
+      // No create button here. The page header already carries one, and two identical primary
+      // buttons a hundred pixels apart is not emphasis — it is a reader wondering whether they
+      // do different things.
+      rowHref={(project) => `/projects/${project.id}`}
+      onClearFilters={() => {
+        setStatus('ALL');
+        setCategory('ALL');
+      }}
+      filtersActive={status !== 'ALL' || category !== 'ALL'}
+      rowActions={(project) => (
+        <RowActions
+          overflow={
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t('rowMenu.label', { name: project.name })}
+                >
+                  <OverflowGlyph />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem asChild>
+                  <Link href={`/projects/${project.id}`}>{t('rowMenu.view')}</Link>
+                </DropdownMenuItem>
+                {mayCreate ? (
+                  <DropdownMenuItem asChild>
+                    <Link href={`/projects/${project.id}/edit`}>{t('rowMenu.edit')}</Link>
+                  </DropdownMenuItem>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          }
+        />
+      )}
     />
   );
 }

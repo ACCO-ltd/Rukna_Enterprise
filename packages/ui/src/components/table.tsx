@@ -68,6 +68,21 @@ export function TableRow({ className, ...props }: React.HTMLAttributes<HTMLTable
  * `numeric` right-aligns and applies tabular figures, so money and quantities line up on
  * the decimal point down a column. In RTL the logical `text-end` still means "the end of
  * the line", which is where a number belongs in both directions.
+ *
+ * ─── Why these headers are not uppercase ─────────────────────────────────────
+ *
+ * They were, and it did not survive contact with a sortable column. `text-transform` is
+ * inherited, but a sortable header renders its label inside a `<button>`, and form controls
+ * do not take the inherited transform — so one header row read `Project · STAGE · CATEGORY ·
+ * Project manager · PROGRAMME`, shouting only at the columns that happened not to sort. The
+ * casing was announcing sortability, which is what the arrow is for.
+ *
+ * Sentence case fixes it at the root rather than papering over it in the sort button: it is
+ * the same string in both paths, so the two can no longer disagree. It is also narrower —
+ * 13px sentence case measures about the same as 12px uppercase — so no dense table gets wider
+ * for the change. Uppercase micro-labels are still the house style *elsewhere*
+ * (`DropdownMenuLabel`, section eyebrows); this is a column header, which a reader scans as
+ * words rather than as a label.
  */
 export function TableHead({
   className,
@@ -78,7 +93,7 @@ export function TableHead({
     <th
       scope="col"
       className={cn(
-        'h-row px-3 text-start align-middle text-xs font-semibold uppercase text-muted-foreground whitespace-nowrap',
+        'h-row px-3 text-start align-middle text-body-sm font-medium text-muted-foreground whitespace-nowrap',
         numeric && 'text-end',
         className,
       )}

@@ -124,6 +124,12 @@
   },
   "projects": {
     "title": "Projects",
+    "subtitle": "Plan, track and manage your projects in one place.",
+    "rowMenu": {
+      "label": "Actions for {name}",
+      "view": "View project",
+      "edit": "Edit project"
+    },
     "newProject": "New project",
     "searchLabel": "Search projects",
     "searchPlaceholder": "Search by code, name or client",
@@ -1459,6 +1465,11 @@
     }
   },
   "clients": {
+    "rowMenu": {
+      "label": "Actions for {name}",
+      "view": "View client",
+      "edit": "Edit client"
+    },
     "noPrimaryContact": "Not assigned",
     "balanceRestricted": "You do not have permission to view client balances.",
     "restricted": "Restricted",

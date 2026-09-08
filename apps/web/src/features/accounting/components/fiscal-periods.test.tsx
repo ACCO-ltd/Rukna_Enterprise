@@ -58,6 +58,7 @@ beforeEach(() => {
     user: {
       id: 'user-1',
       email: 'controller@acco.test',
+      name: null,
       orgId: 'org-1',
       tenantSlug: 'acco',
       roles: ['FINANCE_CONTROLLER'],

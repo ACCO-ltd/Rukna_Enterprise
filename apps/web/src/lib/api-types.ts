@@ -246,6 +246,8 @@ export interface ClientDetail extends Client {
 
 export interface ClientListItem {
   id: string;
+  /** The human reference (CLI-000001). What a person quotes; the id is for machines. */
+  code: string;
   name: string;
   primaryContact: Pick<ClientContact, 'name' | 'role'> | null;
   activeProjectCount: number;
