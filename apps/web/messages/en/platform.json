@@ -147,14 +147,7 @@
       "stage": "Stage",
       "manager": "Project manager",
       "programme": "Programme",
-      "contractValue": "Contract value",
-      "attention": "Attention"
-    },
-    "attention": {
-      "suspended": "Suspended",
-      "overdue": "Past planned completion",
-      "setup": "Setup in progress",
-      "clear": "No action needed"
+      "contractValue": "Contract value"
     },
     "countLabel": "{count, plural, =0 {No projects} one {# project} other {# projects}}",
     "empty": "No projects yet.",
