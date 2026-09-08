@@ -174,4 +174,34 @@ describe('ProjectsList', () => {
     expect(status).toBeDefined();
     expect(status!.textContent).toContain('2 projects');
   });
+
+  it('offers Edit only on a project the domain will actually let you edit', async () => {
+    // Editing is a DRAFT-only command (`project-detail.tsx`). The row menu first shipped gated
+    // on `create:project` and on every status, so it offered Edit on an ACTIVE project and led
+    // to a page that refuses it. Permissions are granted in this file's mock, so what this
+    // pins is the lifecycle half of the gate.
+    vi.mocked(listProjects).mockResolvedValue([
+      project({ id: '1', name: 'Running Tower', status: ProjectStatus.ACTIVE }),
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<ProjectsList />);
+
+    await user.click(await screen.findByRole('button', { name: 'Actions for Running Tower' }));
+    expect(await screen.findByRole('menuitem', { name: 'View project' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Edit project' })).not.toBeInTheDocument();
+  });
+
+  it('offers Edit on a DRAFT project', async () => {
+    vi.mocked(listProjects).mockResolvedValue([
+      project({ id: '2', name: 'Planned Tower', status: ProjectStatus.DRAFT }),
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<ProjectsList />);
+
+    await user.click(await screen.findByRole('button', { name: 'Actions for Planned Tower' }));
+    expect(await screen.findByRole('menuitem', { name: 'Edit project' })).toHaveAttribute(
+      'href',
+      '/projects/2/edit',
+    );
+  });
 });

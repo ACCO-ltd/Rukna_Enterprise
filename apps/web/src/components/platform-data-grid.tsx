@@ -427,15 +427,28 @@ export interface PlatformDataGridProps<T> {
    * Makes the whole row navigable. Return the row's destination, or `undefined` for a row
    * that has none.
    *
-   * The grid does not attach a click handler to the `<tr>`. It renders one real link in the
-   * first cell and stretches it over the row with `::after`, which is the only version of
-   * "clickable row" that is also a link: it middle-clicks, it opens in a new tab, it shows
-   * its target in the status bar, it is reachable by keyboard, and a screen reader announces
-   * one link per row rather than a row that mysteriously responds to Enter. Text inside the
-   * row still selects, because nothing is intercepting mousedown.
+   * How it actually works, because the obvious reading is wrong: the grid renders **one real
+   * `<a>` in the primary column** — that is what a keyboard tabs to, what a screen reader
+   * announces, what shows a target in the status bar, and what open-in-new-tab acts on. The
+   * `<tr>` additionally carries a click handler that re-dispatches the click **onto that same
+   * anchor**, carrying the modifier keys across, so ctrl/cmd-clicking the row's whitespace
+   * opens a new tab exactly as clicking the name would. Nothing pushes a route directly, so
+   * the row and its link can never point at different places.
    *
-   * Every other link and button in the row is lifted above the overlay by the grid, so a
-   * kebab menu or a drill-down link keeps working.
+   * The stretched-`::after` technique is deliberately not used: the primary column is usually
+   * `sticky`, which makes the cell a positioned ancestor, so the overlay would cover the cell
+   * rather than the row.
+   *
+   * Two gestures it does not serve, stated rather than implied: **middle-click** on row
+   * whitespace (an `auxclick`, never a `click`), and any gesture on a row whose primary column
+   * has been hidden. Both still work on the anchor itself.
+   *
+   * The handler stands aside for anything in the row that already does something — a
+   * drill-down link, the kebab, a checkbox — and for a drag that selects text, which is
+   * someone reading rather than navigating.
+   *
+   * **Callers must not render their own `<a>` in the primary column**: the grid wraps that
+   * cell's content, and an anchor inside an anchor is invalid.
    */
   rowHref?: (row: T) => string | undefined;
 
@@ -632,6 +645,17 @@ export function PlatformDataGrid<T>({
     ? resultLabel(sorted.length)
     : t('results', { count: sorted.length });
 
+  /**
+   * The column that carries the row's link.
+   *
+   * Keyed off the sticky primary column rather than "index 0": hiding a column would otherwise
+   * slide the link onto whichever column landed first, which for these lists is one that
+   * renders its own anchor — an `<a>` inside an `<a>`. Falls back to the leading visible column
+   * when nothing is sticky, and to nothing at all when there are no columns.
+   */
+  const primaryColumnKey =
+    visibleColumns.find((col) => col.sticky)?.key ?? visibleColumns[0]?.key;
+
   /** Sortable columns currently on screen — a hidden column is not an offer worth making. */
   const sortableColumns = visibleColumns.filter((col) => col.sortable);
   const activeSortColumn = sort ? sortableColumns.find((col) => col.key === sort.key) : undefined;
@@ -670,7 +694,21 @@ export function PlatformDataGrid<T>({
     // the row already advertises, it keeps everything `Link` does — prefetch, client-side
     // transition, scroll restoration — and it leaves the grid with no dependency on a mounted
     // router, which a table has no business requiring.
-    event.currentTarget.querySelector<HTMLAnchorElement>('a[data-row-link]')?.click();
+    const anchor = event.currentTarget.querySelector<HTMLAnchorElement>('a[data-row-link]');
+    if (!anchor) return;
+    // Re-dispatch rather than `.click()`: a bare `.click()` synthesises a modifier-free event,
+    // so ctrl/cmd-clicking a row's whitespace would open in the current tab while doing the
+    // same thing to the name opens a new one. Same gesture, same result, wherever you aim.
+    anchor.dispatchEvent(
+      new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+      }),
+    );
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -744,7 +782,7 @@ export function PlatformDataGrid<T>({
           <button
             type="button"
             onClick={clearEverything}
-            className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-control px-2 text-body-sm font-medium text-brand-primary transition-colors hover:text-brand-primary-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+            className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-control px-2 text-body-sm font-medium text-brand-primary transition-colors hover:text-brand-primary-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
           >
             {onClearFilters ? t('clearFilters') : t('clearSearch')}
           </button>
@@ -783,12 +821,12 @@ export function PlatformDataGrid<T>({
             {footerSummary ? footerSummary(visible, sorted) : null}
           </p>
 
-          {sortControl && sortableColumns.length > 0 ? (
+          {sortControl && sortableColumns.length > 1 ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="inline-flex min-h-8 items-center gap-1.5 rounded-control px-2 text-body-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-control px-2 text-body-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
                 >
                   <ArrowsDownUp size={14} aria-hidden="true" />
                   <span>{t('sortBy', { column: activeSortColumn?.header ?? t('sortByDefault') })}</span>
@@ -805,8 +843,11 @@ export function PlatformDataGrid<T>({
                   >
                     <span className="flex-1">{col.header}</span>
                     {sort?.key === col.key ? (
+                      // "A–Z" on an amount column is nonsense. Money and counts sort low-to-high.
                       <span className="text-caption text-muted-foreground">
-                        {sort.direction === 'asc' ? t('sortAsc') : t('sortDesc')}
+                        {sort.direction === 'asc'
+                          ? t(col.numeric ? 'sortAscNumeric' : 'sortAsc')
+                          : t(col.numeric ? 'sortDescNumeric' : 'sortDesc')}
                       </span>
                     ) : null}
                   </DropdownMenuItem>
@@ -957,11 +998,11 @@ export function PlatformDataGrid<T>({
                               a pointer is not the only way in: this is what a keyboard tabs to,
                               what a screen reader announces, and what middle-click and
                               open-in-new-tab act on. */}
-                          {href && index === 0 ? (
+                          {href && col.key === primaryColumnKey ? (
                             <Link
                               href={href}
                               data-row-link=""
-                              className="-my-2 flex min-h-9 items-center rounded-control focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+                              className="-my-2 flex min-h-11 items-center rounded-control focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
                             >
                               {col.render(row, renderCtx)}
                             </Link>

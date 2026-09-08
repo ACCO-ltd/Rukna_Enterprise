@@ -15,15 +15,17 @@ import {
   RowActions,
   Select,
 } from '@erp/ui';
-import { AlertTriangle, Building2, CalendarDays, Filter, Plus } from 'lucide-react';
+import { AlertTriangle, CalendarDays, Filter, Plus } from 'lucide-react';
 
 import { EmptyState } from '@/components/empty-state';
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
+import { RecordTile } from '@/components/record-tile';
 import { formatDate, formatMoney } from '@/lib/format';
 import { usePermissions } from '@/features/auth/permissions/can';
 import { ProjectCategoryBadge } from '@/features/project-types/components/project-category-badge';
 
 import { filterProjects, type CategoryFilter } from '../filter-projects';
+import { PROJECT_PERMISSIONS } from '../permissions';
 import { useProjects } from '../hooks/use-projects';
 import { PROJECT_STATUS_ORDER, type Project } from '../types';
 import { ProjectStatusBadge } from './project-status-badge';
@@ -60,14 +62,7 @@ function buildColumns(
       plainValue: (project) => [project.name, project.code, project.clientName].filter(Boolean).join(' '),
       render: (project) => (
         <div className="flex items-center gap-3">
-          {/* Identity marker, not decoration: a fixed left edge for the eye to run down, and
-              it stops the name/client pair from reading as two separate rows. */}
-          <span
-            className="flex size-9 shrink-0 items-center justify-center rounded-panel bg-brand-accent text-brand-primary"
-            aria-hidden="true"
-          >
-            <Building2 className="h-4 w-4" strokeWidth={1.8} />
-          </span>
+          <RecordTile />
           <span className="min-w-0">
             <span className="block truncate font-semibold text-foreground">{project.name}</span>
             <span className="mt-0.5 block truncate text-caption text-muted-foreground">
@@ -134,6 +129,7 @@ export function ProjectsList() {
   const { data, isPending, isError, refetch } = useProjects();
   const { can } = usePermissions();
   const mayCreate = can('create:project');
+  const canManage = can(PROJECT_PERMISSIONS.manage);
   const [status, setStatus] = useState<ProjectStatus | 'ALL'>('ALL');
   const [category, setCategory] = useState<CategoryFilter>('ALL');
   const rows = useMemo(
@@ -210,7 +206,11 @@ export function ProjectsList() {
                 <DropdownMenuItem asChild>
                   <Link href={`/projects/${project.id}`}>{t('rowMenu.view')}</Link>
                 </DropdownMenuItem>
-                {mayCreate ? (
+                {/* The same gate the record page uses (`project-detail.tsx`): editing a
+                    project is a DRAFT-only command, and it is `manage:project` that grants it.
+                    This offered Edit on `create:project` and on every status — a menu item
+                    leading to a page that would refuse it. */}
+                {project.status === ProjectStatus.DRAFT && canManage ? (
                   <DropdownMenuItem asChild>
                     <Link href={`/projects/${project.id}/edit`}>{t('rowMenu.edit')}</Link>
                   </DropdownMenuItem>

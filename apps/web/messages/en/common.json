@@ -75,6 +75,8 @@
     "sortByDefault": "Default",
     "sortAsc": "A–Z",
     "sortDesc": "Z–A",
+    "sortAscNumeric": "Low–High",
+    "sortDescNumeric": "High–Low",
     "showingOf": "Showing {shown} of {total} results",
     "loadFailed": "Failed to load data.",
     "retry": "Try again",

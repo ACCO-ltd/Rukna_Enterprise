@@ -15,10 +15,11 @@ import {
   RowActions,
   Select,
 } from '@erp/ui';
-import { Buildings, FunnelSimple } from '@phosphor-icons/react';
+import { FunnelSimple } from '@phosphor-icons/react';
 
 import { EmptyState } from '@/components/empty-state';
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
+import { RecordTile } from '@/components/record-tile';
 import { formatMoney } from '@/lib/format';
 
 import { useClientSummaries } from '../hooks/use-clients';
@@ -39,14 +40,7 @@ function buildColumns(
       plainValue: (client) => `${client.name} ${client.code}`,
       render: (client) => (
         <div className="flex items-center gap-3">
-          {/* Identity marker, not decoration: it gives the eye a fixed left edge to run down
-              and keeps the two-line name/code block from reading as two separate rows. */}
-          <span
-            className="flex size-9 shrink-0 items-center justify-center rounded-panel bg-brand-accent text-brand-primary"
-            aria-hidden="true"
-          >
-            <Buildings size={18} weight="regular" />
-          </span>
+          <RecordTile />
           <span className="min-w-0">
             <span className="block truncate font-medium text-foreground">{client.name}</span>
             <span className="block truncate text-caption text-muted-foreground">{client.code}</span>
