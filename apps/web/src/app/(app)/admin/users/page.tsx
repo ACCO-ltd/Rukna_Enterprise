@@ -1,15 +1,9 @@
-import { getTranslations } from 'next-intl/server';
-
-import { PageHeader } from '@/components/layout/page-header';
 import { UsersList } from '@/features/users/components/users-list';
 
-export default async function UsersPage() {
-  const t = await getTranslations('platform.users');
-
-  return (
-    <>
-      <PageHeader title={t('title')} />
-      <UsersList />
-    </>
-  );
+/**
+ * The workspace shell supplies the breadcrumb, the `h1` and the tab bar; the list supplies its
+ * own panel heading and its "Add user" action. Nothing is left for the page to say.
+ */
+export default function UsersPage() {
+  return <UsersList />;
 }

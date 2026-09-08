@@ -28,6 +28,7 @@ import { usePermissions } from '@/features/auth/permissions/can';
 import { useSession } from '@/features/auth/session/use-session';
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { ApiError } from '@/lib/api-client';
+import { AdminPanel } from '@/features/admin/components/admin-panel';
 import { FilterSelect, TableToolbar } from '@/features/admin/components/table-toolbar';
 
 import {
@@ -178,32 +179,36 @@ export function UsersList() {
 
   if (isPending) {
     return (
-      <div role="status" aria-live="polite">
-        <span className="sr-only">{tCommon('loading')}</span>
-        <div
-          className="h-64 animate-pulse rounded-panel border border-border bg-muted"
-          aria-hidden="true"
-        />
-      </div>
+      <AdminPanel title={t('title')} description={t('subtitle')}>
+        <div role="status" aria-live="polite">
+          <span className="sr-only">{tCommon('loading')}</span>
+          <div
+            className="h-64 animate-pulse rounded-panel border border-border bg-muted"
+            aria-hidden="true"
+          />
+        </div>
+      </AdminPanel>
     );
   }
 
   if (isError) {
     return (
-      <Alert variant="error" messages={[t('loadFailed')]}>
-        <div className="mt-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              void refetch();
-            }}
-            disabled={isFetching}
-          >
-            {t('retry')}
-          </Button>
-        </div>
-      </Alert>
+      <AdminPanel title={t('title')} description={t('subtitle')}>
+        <Alert variant="error" messages={[t('loadFailed')]}>
+          <div className="mt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                void refetch();
+              }}
+              disabled={isFetching}
+            >
+              {t('retry')}
+            </Button>
+          </div>
+        </Alert>
+      </AdminPanel>
     );
   }
 
@@ -212,267 +217,271 @@ export function UsersList() {
   const columnCount = 4 + (canManage ? 2 : 0);
 
   return (
-    <div className="space-y-6">
-      {canManage ? (
-        <div className="flex justify-end">
+    <AdminPanel
+      title={t('title')}
+      description={t('subtitle')}
+      actions={
+        canManage ? (
           <Button type="button" onClick={() => setCreateOpen(true)}>
             {t('addUser')}
           </Button>
-        </div>
-      ) : null}
+        ) : null
+      }
+    >
+      <div className="space-y-6">
+        {data.length === 0 ? (
+          <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
+            <p className="text-sm font-medium text-foreground">{t('empty')}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{t('emptyHint')}</p>
+          </div>
+        ) : (
+          <>
+            <TableToolbar
+              searchId={searchId}
+              searchValue={query}
+              onSearchChange={setQuery}
+              searchLabel={t('searchLabel')}
+              searchPlaceholder={t('searchPlaceholder')}
+            >
+              <FilterSelect
+                label={t('filterStatus')}
+                value={statusFilter}
+                onChange={(next) => setStatusFilter(next as UserStatusFilter)}
+                options={[
+                  { value: 'ALL', label: t('filterAll') },
+                  { value: UserStatus.ACTIVE, label: t('status.ACTIVE') },
+                  { value: UserStatus.INACTIVE, label: t('status.INACTIVE') },
+                ]}
+              />
+            </TableToolbar>
 
-      {data.length === 0 ? (
-        <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
-          <p className="text-sm font-medium text-foreground">{t('empty')}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{t('emptyHint')}</p>
-        </div>
-      ) : (
-        <>
-          <TableToolbar
-            searchId={searchId}
-            searchValue={query}
-            onSearchChange={setQuery}
-            searchLabel={t('searchLabel')}
-            searchPlaceholder={t('searchPlaceholder')}
-          >
-            <FilterSelect
-              label={t('filterStatus')}
-              value={statusFilter}
-              onChange={(next) => setStatusFilter(next as UserStatusFilter)}
-              options={[
-                { value: 'ALL', label: t('filterAll') },
-                { value: UserStatus.ACTIVE, label: t('status.ACTIVE') },
-                { value: UserStatus.INACTIVE, label: t('status.INACTIVE') },
-              ]}
-            />
-          </TableToolbar>
-
-          {canManage && selectedCount > 0 ? (
-            <div className="flex flex-wrap items-center gap-3 rounded-panel border border-brand-primary/20 bg-brand-accent/50 px-4 py-2.5">
-              <span className="text-sm font-medium tabular-nums text-foreground">
-                {t('select.selectedCount', { count: selectedCount })}
-              </span>
-              <div className="ms-auto flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => requestBulk('reactivate')}
-                >
-                  {t('select.reactivate')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => requestBulk('deactivate')}
-                >
-                  {t('select.deactivate')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelectedIds(new Set())}
-                >
-                  {t('select.clear')}
-                </Button>
+            {canManage && selectedCount > 0 ? (
+              <div className="flex flex-wrap items-center gap-3 rounded-panel border border-brand-primary/20 bg-brand-accent/50 px-4 py-2.5">
+                <span className="text-sm font-medium tabular-nums text-foreground">
+                  {t('select.selectedCount', { count: selectedCount })}
+                </span>
+                <div className="ms-auto flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => requestBulk('reactivate')}
+                  >
+                    {t('select.reactivate')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => requestBulk('deactivate')}
+                  >
+                    {t('select.deactivate')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedIds(new Set())}
+                  >
+                    {t('select.clear')}
+                  </Button>
+                </div>
               </div>
-            </div>
-          ) : null}
+            ) : null}
 
-          <TableScroll aria-label={t('title')}>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  {canManage ? (
-                    <TableHead className="w-10">
-                      <input
-                        type="checkbox"
-                        aria-label={t('select.allLabel')}
-                        checked={allSelected}
-                        ref={(el) => {
-                          if (el) el.indeterminate = someSelected;
-                        }}
-                        onChange={toggleAll}
-                        className="h-4 w-4 rounded border-border-strong text-brand-primary focus-visible:shadow-ring"
-                      />
-                    </TableHead>
-                  ) : null}
-                  <TableHead>{t('colName')}</TableHead>
-                  <TableHead>{t('colEmail')}</TableHead>
-                  <TableHead>{t('colRoles')}</TableHead>
-                  <TableHead>{t('colStatus')}</TableHead>
-                  {canManage ? (
-                    <TableHead className="text-end">{t('colActions')}</TableHead>
-                  ) : null}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.length === 0 ? (
-                  <TableEmpty colSpan={columnCount}>{t('noMatches')}</TableEmpty>
-                ) : (
-                  rows.map((user) => {
-                    const isSelf = user.id === currentUserId;
-                    const isActive = user.status === 'ACTIVE';
-                    const checked = selectedIds.has(user.id);
-                    return (
-                      <TableRow key={user.id} className={checked ? 'bg-brand-accent/30' : undefined}>
-                        {canManage ? (
-                          <TableCell>
-                            <input
-                              type="checkbox"
-                              aria-label={t('select.rowLabel', {
-                                name: `${user.firstName} ${user.lastName}`,
-                              })}
-                              checked={checked}
-                              onChange={() => toggleRow(user.id)}
-                              className="h-4 w-4 rounded border-border-strong text-brand-primary focus-visible:shadow-ring"
-                            />
-                          </TableCell>
-                        ) : null}
-                        <TableCell className="font-medium">
-                          {user.firstName} {user.lastName}
-                          {isSelf ? (
-                            <span className="ms-2 text-xs font-normal text-muted-foreground">
-                              {t('you')}
-                            </span>
+            <TableScroll aria-label={t('title')}>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {canManage ? (
+                      <TableHead className="w-10">
+                        <input
+                          type="checkbox"
+                          aria-label={t('select.allLabel')}
+                          checked={allSelected}
+                          ref={(el) => {
+                            if (el) el.indeterminate = someSelected;
+                          }}
+                          onChange={toggleAll}
+                          className="h-4 w-4 rounded border-border-strong text-brand-primary focus-visible:shadow-ring"
+                        />
+                      </TableHead>
+                    ) : null}
+                    <TableHead>{t('colName')}</TableHead>
+                    <TableHead>{t('colEmail')}</TableHead>
+                    <TableHead>{t('colRoles')}</TableHead>
+                    <TableHead>{t('colStatus')}</TableHead>
+                    {canManage ? (
+                      <TableHead className="text-end">{t('colActions')}</TableHead>
+                    ) : null}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.length === 0 ? (
+                    <TableEmpty colSpan={columnCount}>{t('noMatches')}</TableEmpty>
+                  ) : (
+                    rows.map((user) => {
+                      const isSelf = user.id === currentUserId;
+                      const isActive = user.status === 'ACTIVE';
+                      const checked = selectedIds.has(user.id);
+                      return (
+                        <TableRow key={user.id} className={checked ? 'bg-brand-accent/30' : undefined}>
+                          {canManage ? (
+                            <TableCell>
+                              <input
+                                type="checkbox"
+                                aria-label={t('select.rowLabel', {
+                                  name: `${user.firstName} ${user.lastName}`,
+                                })}
+                                checked={checked}
+                                onChange={() => toggleRow(user.id)}
+                                className="h-4 w-4 rounded border-border-strong text-brand-primary focus-visible:shadow-ring"
+                              />
+                            </TableCell>
                           ) : null}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">{user.email}</TableCell>
-                        <TableCell>
-                          <UserRolesCell roles={user.roles} />
-                        </TableCell>
-                        <TableCell>
-                          <UserStatusBadge status={user.status} />
-                        </TableCell>
-                        {canManage ? (
-                          <TableCell className="text-end">
-                            <RowActions
-                              overflow={
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      aria-label={t('rowMenuLabel', {
-                                        name: `${user.firstName} ${user.lastName}`,
-                                      })}
-                                    >
-                                      <OverflowGlyph />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem onSelect={() => openSheet('edit', user)}>
-                                      {t('actions.edit')}
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onSelect={() => openSheet('password', user)}>
-                                      {t('actions.setPassword')}
-                                    </DropdownMenuItem>
-                                    {isActive ? (
-                                      <DropdownMenuItem onSelect={() => openSheet('regenerate', user)}>
-                                        {t('actions.regenerateTemporary')}
+                          <TableCell className="font-medium">
+                            {user.firstName} {user.lastName}
+                            {isSelf ? (
+                              <span className="ms-2 text-xs font-normal text-muted-foreground">
+                                {t('you')}
+                              </span>
+                            ) : null}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">{user.email}</TableCell>
+                          <TableCell>
+                            <UserRolesCell roles={user.roles} />
+                          </TableCell>
+                          <TableCell>
+                            <UserStatusBadge status={user.status} />
+                          </TableCell>
+                          {canManage ? (
+                            <TableCell className="text-end">
+                              <RowActions
+                                overflow={
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        aria-label={t('rowMenuLabel', {
+                                          name: `${user.firstName} ${user.lastName}`,
+                                        })}
+                                      >
+                                        <OverflowGlyph />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem onSelect={() => openSheet('edit', user)}>
+                                        {t('actions.edit')}
                                       </DropdownMenuItem>
-                                    ) : null}
-                                    <DropdownMenuItem onSelect={() => openSheet('roles', user)}>
-                                      {t('actions.manageRoles')}
-                                    </DropdownMenuItem>
-                                    {isActive ? (
-                                      // The backend rejects self-deactivation (400); the action is
-                                      // withheld from the own row rather than offered and refused.
-                                      isSelf ? null : (
+                                      <DropdownMenuItem onSelect={() => openSheet('password', user)}>
+                                        {t('actions.setPassword')}
+                                      </DropdownMenuItem>
+                                      {isActive ? (
+                                        <DropdownMenuItem onSelect={() => openSheet('regenerate', user)}>
+                                          {t('actions.regenerateTemporary')}
+                                        </DropdownMenuItem>
+                                      ) : null}
+                                      <DropdownMenuItem onSelect={() => openSheet('roles', user)}>
+                                        {t('actions.manageRoles')}
+                                      </DropdownMenuItem>
+                                      {isActive ? (
+                                        // The backend rejects self-deactivation (400); the action is
+                                        // withheld from the own row rather than offered and refused.
+                                        isSelf ? null : (
+                                          <DropdownMenuItem
+                                            destructive
+                                            disabled={statusPending}
+                                            onSelect={() => toggleStatus(user)}
+                                          >
+                                            {t('actions.deactivate')}
+                                          </DropdownMenuItem>
+                                        )
+                                      ) : (
                                         <DropdownMenuItem
-                                          destructive
                                           disabled={statusPending}
                                           onSelect={() => toggleStatus(user)}
                                         >
-                                          {t('actions.deactivate')}
+                                          {t('actions.reactivate')}
                                         </DropdownMenuItem>
-                                      )
-                                    ) : (
-                                      <DropdownMenuItem
-                                        disabled={statusPending}
-                                        onSelect={() => toggleStatus(user)}
-                                      >
-                                        {t('actions.reactivate')}
-                                      </DropdownMenuItem>
-                                    )}
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              }
-                            />
-                          </TableCell>
-                        ) : null}
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </TableScroll>
-        </>
-      )}
+                                      )}
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                }
+                              />
+                            </TableCell>
+                          ) : null}
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </TableScroll>
+          </>
+        )}
 
-      {canManage ? (
-        <>
-          <CreateUserSheet open={createOpen} onOpenChange={setCreateOpen} />
-          <EditUserSheet
-            user={sheet === 'edit' ? target : null}
-            onOpenChange={(open) => {
-              if (!open) closeSheet();
-            }}
-          />
-          <SetPasswordSheet
-            user={sheet === 'password' ? target : null}
-            onOpenChange={(open) => {
-              if (!open) closeSheet();
-            }}
-            onSuccess={() => {
-              toast({ tone: 'success', title: t('toast.passwordSet') });
-            }}
-          />
-          <RegenerateTemporarySheet
-            user={sheet === 'regenerate' ? target : null}
-            onOpenChange={(open) => {
-              if (!open) closeSheet();
-            }}
-          />
-          <ManageRolesSheet
-            user={sheet === 'roles' ? target : null}
-            onOpenChange={(open) => {
-              if (!open) closeSheet();
-            }}
-          />
-          {bulkIntent ? (
-            <ConfirmActionDialog
-              title={
-                bulkIntent === 'deactivate'
-                  ? t('select.deactivateTitle', { count: bulkIds.length })
-                  : t('select.reactivateTitle', { count: bulkIds.length })
-              }
-              description={
-                bulkIntent === 'deactivate'
-                  ? t('select.deactivateBody')
-                  : t('select.reactivateBody')
-              }
-              confirmLabel={
-                bulkIntent === 'deactivate'
-                  ? t('select.confirmDeactivate')
-                  : t('select.confirmReactivate')
-              }
-              isPending={bulk.isPending}
-              errorMessage={
-                bulk.error instanceof ApiError ? bulk.error.message : undefined
-              }
-              onConfirm={runBulk}
-              onDismiss={() => {
-                setBulkIntent(null);
-                bulk.reset();
+        {canManage ? (
+          <>
+            <CreateUserSheet open={createOpen} onOpenChange={setCreateOpen} />
+            <EditUserSheet
+              user={sheet === 'edit' ? target : null}
+              onOpenChange={(open) => {
+                if (!open) closeSheet();
               }}
             />
-          ) : null}
-        </>
-      ) : null}
-    </div>
+            <SetPasswordSheet
+              user={sheet === 'password' ? target : null}
+              onOpenChange={(open) => {
+                if (!open) closeSheet();
+              }}
+              onSuccess={() => {
+                toast({ tone: 'success', title: t('toast.passwordSet') });
+              }}
+            />
+            <RegenerateTemporarySheet
+              user={sheet === 'regenerate' ? target : null}
+              onOpenChange={(open) => {
+                if (!open) closeSheet();
+              }}
+            />
+            <ManageRolesSheet
+              user={sheet === 'roles' ? target : null}
+              onOpenChange={(open) => {
+                if (!open) closeSheet();
+              }}
+            />
+            {bulkIntent ? (
+              <ConfirmActionDialog
+                title={
+                  bulkIntent === 'deactivate'
+                    ? t('select.deactivateTitle', { count: bulkIds.length })
+                    : t('select.reactivateTitle', { count: bulkIds.length })
+                }
+                description={
+                  bulkIntent === 'deactivate'
+                    ? t('select.deactivateBody')
+                    : t('select.reactivateBody')
+                }
+                confirmLabel={
+                  bulkIntent === 'deactivate'
+                    ? t('select.confirmDeactivate')
+                    : t('select.confirmReactivate')
+                }
+                isPending={bulk.isPending}
+                errorMessage={
+                  bulk.error instanceof ApiError ? bulk.error.message : undefined
+                }
+                onConfirm={runBulk}
+                onDismiss={() => {
+                  setBulkIntent(null);
+                  bulk.reset();
+                }}
+              />
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    </AdminPanel>
   );
 }

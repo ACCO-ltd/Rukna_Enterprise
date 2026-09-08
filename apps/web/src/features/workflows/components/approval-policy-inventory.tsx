@@ -25,6 +25,7 @@ import {
 } from '@erp/ui';
 
 import { usePermissions } from '@/features/auth/permissions/can';
+import { AdminPanel } from '@/features/admin/components/admin-panel';
 import { FilterSelect, TableToolbar } from '@/features/admin/components/table-toolbar';
 import { useApprovalPolicies, useCreateApprovalPolicyDraft } from '../hooks/use-approval-policies';
 import { filterPolicies, type PolicyStatusFilter } from '../filter-policies';
@@ -73,146 +74,144 @@ export function ApprovalPolicyInventory() {
   }
 
   return (
-    <section aria-labelledby="approval-policies-heading" className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 id="approval-policies-heading" className="text-base font-semibold text-foreground">
-            {t('heading')}
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">{t('subheading')}</p>
-        </div>
-        {canManage ? (
+    <AdminPanel
+      title={t('heading')}
+      description={t('subheading')}
+      actions={
+        canManage ? (
           <Button className="shrink-0" onClick={() => setOpen(true)}>
             {t('newDraft')}
           </Button>
-        ) : null}
-      </div>
-
-      {isPending ? (
-        <div className="h-32 animate-pulse rounded-panel border border-border bg-muted" />
-      ) : isError ? (
-        <Alert variant="error" messages={[t('loadFailed')]} />
-      ) : data.length === 0 ? (
-        <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-10 text-center text-sm text-muted-foreground">
-          {t('empty')}
-        </div>
-      ) : (
-        <>
-          <TableToolbar
-            searchId={searchId}
-            searchValue={query}
-            onSearchChange={setQuery}
-            searchLabel={t('searchLabel')}
-            searchPlaceholder={t('searchPlaceholder')}
-          >
-            <FilterSelect
-              label={t('filterStatus')}
-              value={statusFilter}
-              onChange={(next) => setStatusFilter(next as PolicyStatusFilter)}
-              options={[
-                { value: 'ALL', label: t('filterAll') },
-                { value: 'DRAFT', label: t('statusDraft') },
-                { value: 'IN_REVIEW', label: t('statusInReview') },
-                { value: 'SCHEDULED', label: t('statusScheduled') },
-                { value: 'ACTIVE', label: t('statusActive') },
-                { value: 'RETIRED', label: t('statusRetired') },
-              ]}
-            />
-          </TableToolbar>
-
-          <TableScroll aria-label={t('heading')}>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('colPolicy')}</TableHead>
-                  <TableHead>{t('colStatus')}</TableHead>
-                  <TableHead className="text-end">{t('colVersion')}</TableHead>
-                  <TableHead className="text-end">{t('colRules')}</TableHead>
-                  {canView ? <TableHead className="text-end">{t('colActions')}</TableHead> : null}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.length === 0 ? (
-                  <TableEmpty colSpan={canView ? 5 : 4}>{t('noMatches')}</TableEmpty>
-                ) : (
-                  rows.map((policy) => (
-                    <TableRow
-                      key={policy.id}
-                      className="cursor-pointer"
-                      onClick={() => router.push(`/admin/workflows/${policy.id}`)}
-                    >
-                      <TableCell>
-                        <div className="font-medium">{policy.policyKey}</div>
-                        <div className="text-xs text-muted-foreground">{policy.amountBasis}</div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge tone={policy.status === 'ACTIVE' ? 'live' : 'neutral'}>
-                          {policy.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-end tabular-nums">v{policy.version}</TableCell>
-                      <TableCell className="text-end tabular-nums">{policy.ruleCount}</TableCell>
-                      {canView ? (
-                        <TableCell className="text-end whitespace-nowrap">
-                          <Button
-                            variant="ghost"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setCompareKey(policy.policyKey);
-                            }}
-                          >
-                            {t('compareVersions')}
-                          </Button>
-                        </TableCell>
-                      ) : null}
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </TableScroll>
-        </>
-      )}
-
-      {canView ? (
-        <PolicyVersionComparisonSheet
-          policyKey={compareKey}
-          onOpenChange={(value) => {
-            if (!value) setCompareKey(null);
-          }}
-        />
-      ) : null}
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="p-6 sm:max-w-lg">
-          <DialogTitle>{t('newDraft')}</DialogTitle>
-          <DialogDescription className="mt-1">{t('draftHint')}</DialogDescription>
-          <form onSubmit={submit} className="mt-5 space-y-4">
-            <FormField htmlFor="policyKey" label={t('policyKey')} required>
-              <Input
-                id="policyKey"
-                name="policyKey"
-                required
-                pattern="[A-Z][A-Z0-9_]{2,79}"
-                placeholder="PURCHASE_ORDER_APPROVAL"
-                disabled={create.isPending}
+        ) : null
+      }
+    >
+      <div className="space-y-4">
+        {isPending ? (
+          <div className="h-32 animate-pulse rounded-panel border border-border bg-muted" />
+        ) : isError ? (
+          <Alert variant="error" messages={[t('loadFailed')]} />
+        ) : data.length === 0 ? (
+          <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-10 text-center text-sm text-muted-foreground">
+            {t('empty')}
+          </div>
+        ) : (
+          <>
+            <TableToolbar
+              searchId={searchId}
+              searchValue={query}
+              onSearchChange={setQuery}
+              searchLabel={t('searchLabel')}
+              searchPlaceholder={t('searchPlaceholder')}
+            >
+              <FilterSelect
+                label={t('filterStatus')}
+                value={statusFilter}
+                onChange={(next) => setStatusFilter(next as PolicyStatusFilter)}
+                options={[
+                  { value: 'ALL', label: t('filterAll') },
+                  { value: 'DRAFT', label: t('statusDraft') },
+                  { value: 'IN_REVIEW', label: t('statusInReview') },
+                  { value: 'SCHEDULED', label: t('statusScheduled') },
+                  { value: 'ACTIVE', label: t('statusActive') },
+                  { value: 'RETIRED', label: t('statusRetired') },
+                ]}
               />
-            </FormField>
-            <FormField htmlFor="notes" label={t('notes')}>
-              <Textarea id="notes" name="notes" rows={3} disabled={create.isPending} />
-            </FormField>
-            {create.error ? <Alert variant="error" messages={[t('createFailed')]} /> : null}
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                {t('cancel')}
-              </Button>
-              <Button type="submit" disabled={create.isPending}>
-                {create.isPending ? t('creating') : t('create')}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </section>
+            </TableToolbar>
+
+            <TableScroll aria-label={t('heading')}>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t('colPolicy')}</TableHead>
+                    <TableHead>{t('colStatus')}</TableHead>
+                    <TableHead className="text-end">{t('colVersion')}</TableHead>
+                    <TableHead className="text-end">{t('colRules')}</TableHead>
+                    {canView ? <TableHead className="text-end">{t('colActions')}</TableHead> : null}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.length === 0 ? (
+                    <TableEmpty colSpan={canView ? 5 : 4}>{t('noMatches')}</TableEmpty>
+                  ) : (
+                    rows.map((policy) => (
+                      <TableRow
+                        key={policy.id}
+                        className="cursor-pointer"
+                        onClick={() => router.push(`/admin/workflows/${policy.id}`)}
+                      >
+                        <TableCell>
+                          <div className="font-medium">{policy.policyKey}</div>
+                          <div className="text-xs text-muted-foreground">{policy.amountBasis}</div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge tone={policy.status === 'ACTIVE' ? 'live' : 'neutral'}>
+                            {policy.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-end tabular-nums">v{policy.version}</TableCell>
+                        <TableCell className="text-end tabular-nums">{policy.ruleCount}</TableCell>
+                        {canView ? (
+                          <TableCell className="text-end whitespace-nowrap">
+                            <Button
+                              variant="ghost"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setCompareKey(policy.policyKey);
+                              }}
+                            >
+                              {t('compareVersions')}
+                            </Button>
+                          </TableCell>
+                        ) : null}
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </TableScroll>
+          </>
+        )}
+
+        {canView ? (
+          <PolicyVersionComparisonSheet
+            policyKey={compareKey}
+            onOpenChange={(value) => {
+              if (!value) setCompareKey(null);
+            }}
+          />
+        ) : null}
+
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent className="p-6 sm:max-w-lg">
+            <DialogTitle>{t('newDraft')}</DialogTitle>
+            <DialogDescription className="mt-1">{t('draftHint')}</DialogDescription>
+            <form onSubmit={submit} className="mt-5 space-y-4">
+              <FormField htmlFor="policyKey" label={t('policyKey')} required>
+                <Input
+                  id="policyKey"
+                  name="policyKey"
+                  required
+                  pattern="[A-Z][A-Z0-9_]{2,79}"
+                  placeholder="PURCHASE_ORDER_APPROVAL"
+                  disabled={create.isPending}
+                />
+              </FormField>
+              <FormField htmlFor="notes" label={t('notes')}>
+                <Textarea id="notes" name="notes" rows={3} disabled={create.isPending} />
+              </FormField>
+              {create.error ? <Alert variant="error" messages={[t('createFailed')]} /> : null}
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                  {t('cancel')}
+                </Button>
+                <Button type="submit" disabled={create.isPending}>
+                  {create.isPending ? t('creating') : t('create')}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </AdminPanel>
   );
 }

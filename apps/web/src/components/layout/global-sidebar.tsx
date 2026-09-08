@@ -5,37 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { cn } from '@erp/ui';
-import {
-  BookOpenIcon,
-  BriefcaseIcon,
-  BuildingsIcon,
-  CalendarBlankIcon,
-  CaretRightIcon,
-  ChartBarIcon,
-  ClipboardTextIcon,
-  CreditCardIcon,
-  FileTextIcon,
-  FolderOpenIcon,
-  GearIcon,
-  GitBranchIcon,
-  KeyIcon,
-  ListBulletsIcon,
-  PackageIcon,
-  PencilSimpleIcon,
-  ReceiptIcon,
-  RulerIcon,
-  ShieldCheckIcon,
-  ShoppingCartIcon,
-  SquaresFourIcon,
-  StorefrontIcon,
-  TagIcon,
-  TrendUpIcon,
-  TruckIcon,
-  UserGearIcon,
-  UsersThreeIcon,
-  WalletIcon,
-  type Icon,
-} from '@phosphor-icons/react';
+import { CaretRightIcon } from '@phosphor-icons/react';
 
 import { usePermissions } from '@/features/auth/permissions/can';
 import { useSession } from '@/features/auth/session/use-session';
@@ -46,9 +16,9 @@ import {
   NAV_DOMAINS,
   STANDALONE_NAV,
   type NavDomain,
-  type NavIconKey,
   type NavItem,
 } from './nav-groups';
+import { NavIcon } from './nav-icon';
 import { navCollapseStore } from './nav-collapse-store';
 import { sidebarCollapseStore } from './sidebar-collapse-store';
 
@@ -179,6 +149,21 @@ export function GlobalSidebar({
           {NAV_DOMAINS.map((domain) => {
             if (!moduleVisible(domain.moduleKey)) return null;
 
+            // A flat domain has no second level in here at all: one row, no chevron, no
+            // child list, no flyout. Its destinations live in its own workspace tab bar.
+            if (domain.flat) {
+              return (
+                <FlatDomainLink
+                  key={domain.labelKey}
+                  domain={domain}
+                  pathname={pathname}
+                  t={t}
+                  onNavigate={onNavigate}
+                  collapsed={sidebarCollapsed}
+                />
+              );
+            }
+
             const active = isDomainActive(domain);
             const shut = isDomainCollapsed(domain);
             const panelId = `nav-domain-${domain.labelKey}`;
@@ -304,6 +289,58 @@ export function GlobalSidebar({
             </div>
           </div>
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ─── Flat domain row (Administration) ─────────────────────────────────────────
+
+interface FlatDomainLinkProps {
+  domain: NavDomain;
+  pathname: string;
+  t: ReturnType<typeof useTranslations>;
+  onNavigate?: () => void;
+  collapsed?: boolean;
+}
+
+/**
+ * A domain that owns a workspace rather than a column.
+ *
+ * It looks exactly like the Dashboard row because it behaves exactly like it: one destination,
+ * one click. The row stays lit for every route beneath the domain — someone on Audit logs is
+ * still in Administration, and the sidebar has to keep saying so once the child rows that used
+ * to say it are gone.
+ */
+function FlatDomainLink({ domain, pathname, t, onNavigate, collapsed }: FlatDomainLinkProps) {
+  const isActive = isActiveNavItem(pathname, domain.href);
+  const label = t(`nav.${domain.labelKey}`);
+
+  return (
+    <div className="group/flat relative mx-1">
+      <Link
+        href={domain.href}
+        onClick={onNavigate}
+        aria-current={isActive ? 'page' : undefined}
+        title={collapsed ? label : undefined}
+        className={cn(
+          'relative flex min-h-10 items-center rounded-lg text-[13px] font-semibold transition-all duration-200',
+          collapsed ? 'justify-center px-0' : 'gap-2.5 px-2.5',
+          isActive
+            ? 'bg-brand-accent text-brand-primary before:absolute before:inset-y-1.5 before:-start-px before:w-0.5 before:rounded-full before:bg-brand-primary'
+            : 'text-brand-ink/82 hover:bg-muted/70 hover:text-brand-ink',
+        )}
+      >
+        <NavIcon
+          iconKey={domain.iconKey}
+          className={cn('shrink-0', isActive ? 'opacity-100' : 'opacity-70')}
+        />
+        <span className={cn('truncate', collapsed && 'sr-only')}>{label}</span>
+      </Link>
+      {collapsed ? (
+        <span className="pointer-events-none absolute start-[calc(100%+0.75rem)] top-1/2 z-50 -translate-y-1/2 translate-x-1 whitespace-nowrap rounded-md bg-foreground px-2.5 py-1.5 text-[11px] font-semibold text-background opacity-0 shadow-[var(--shadow-overlay)] transition-[opacity,transform] duration-150 group-hover/flat:translate-x-0 group-hover/flat:opacity-100 group-focus-within/flat:translate-x-0 group-focus-within/flat:opacity-100 rtl:-translate-x-1 rtl:group-hover/flat:translate-x-0 rtl:group-focus-within/flat:translate-x-0">
+          {label}
+        </span>
       ) : null}
     </div>
   );
@@ -476,44 +513,10 @@ function NavLink({ item, pathname, t, onNavigate, flyout = false }: NavLinkProps
   );
 }
 
-// ─── Icon set ─────────────────────────────────────────────────────────────────
+// ─── Chevron ──────────────────────────────────────────────────────────────────
 
 function ChevronIcon({ className }: { className?: string }) {
   return <CaretRightIcon size={14} weight="bold" aria-hidden="true" className={className} />;
-}
-
-function NavIcon({ iconKey, className }: { iconKey: NavIconKey; className?: string }) {
-  const icons: Record<NavIconKey, Icon> = {
-    grid: SquaresFourIcon,
-    building: BuildingsIcon,
-    folder: FolderOpenIcon,
-    receipt: ReceiptIcon,
-    cog: GearIcon,
-    pencil: PencilSimpleIcon,
-    'chart-bar': ChartBarIcon,
-    users: UsersThreeIcon,
-    clipboard: ClipboardTextIcon,
-    'shopping-cart': ShoppingCartIcon,
-    truck: TruckIcon,
-    'trending-up': TrendUpIcon,
-    shield: ShieldCheckIcon,
-    'git-branch': GitBranchIcon,
-    list: ListBulletsIcon,
-    briefcase: BriefcaseIcon,
-    'file-text': FileTextIcon,
-    'book-open': BookOpenIcon,
-    'credit-card': CreditCardIcon,
-    wallet: WalletIcon,
-    calendar: CalendarBlankIcon,
-    storefront: StorefrontIcon,
-    package: PackageIcon,
-    ruler: RulerIcon,
-    tag: TagIcon,
-    'user-gear': UserGearIcon,
-    key: KeyIcon,
-  };
-  const ProfessionalIcon = icons[iconKey];
-  return <ProfessionalIcon size={17} weight="regular" aria-hidden="true" className={className} />;
 }
 
 // ─── Logo mark ────────────────────────────────────────────────────────────────

@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { usePathname, useRouter } from 'next/navigation';
-import { Alert, Button, cn, Select } from '@erp/ui';
+import { usePathname } from 'next/navigation';
+import { Alert, Button } from '@erp/ui';
 import {
   Activity,
   BriefcaseBusiness,
@@ -22,6 +22,8 @@ import { useDistricts } from '@/features/districts/hooks/use-districts';
 import { useProject, useProjectWorkspaceSummary } from '@/features/projects/hooks/use-project';
 import { getAvailableActions } from '@/features/projects/project-actions';
 import { formatDate } from '@/lib/format';
+
+import { WorkspaceTabs } from './workspace-tabs';
 
 interface ProjectWorkspaceShellProps {
   id: string;
@@ -55,7 +57,6 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
   const t = useTranslations('platform.projects');
   const tDetail = useTranslations('platform.projects.detail');
   const pathname = usePathname();
-  const router = useRouter();
   const locale = useLocale() as 'en' | 'ar';
   const projectQuery = useProject(id);
   const summaryQuery = useProjectWorkspaceSummary(id);
@@ -244,42 +245,22 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
           ) : null}
         </div>
 
-        <nav aria-label={t('workspace.navLabel')} className="border-t border-border">
-          <label className="sr-only" htmlFor="project-workspace-menu">
-            {t('workspace.navLabel')}
-          </label>
-          {/* The narrow-screen form of the tab row. `md:hidden` is the whole point of it and
-              was lost when this moved off a native select — the two navigations were then
-              stacked on top of each other on every desktop. */}
-          <Select
-            id="project-workspace-menu"
-            // Navigation, not a picker: these are destinations someone browses, so no filter
-            // however many tabs the workspace grows.
-            searchable={false}
-            className="mx-4 my-3 w-[calc(100%-2rem)] md:hidden"
-            value={primaryTabs.find((tab) => isActive(tab.href))?.href ?? `/projects/${id}`}
-            onChange={(value) => router.push(value)}
-          >
-            {primaryTabs.map((tab) => (
-              <option key={tab.href} value={tab.href}>
-                {tab.label}
-              </option>
-            ))}
-          </Select>
-
-          {/* Eight peers, no nesting. Every tab leads to a workspace that exists. */}
-          <div className="hidden items-center md:flex">
-            {primaryTabs.map((tab) => (
-              <WorkspaceLink
-                key={tab.href}
-                label={tab.label}
-                href={tab.href}
-                icon={tab.icon}
-                active={isActive(tab.href)}
-              />
-            ))}
-          </div>
-        </nav>
+        {/* Eight peers, no nesting. Every tab leads to a workspace that exists. The bar itself
+            is shared with the Administration workspace — see `WorkspaceTabs`. */}
+        <WorkspaceTabs
+          navLabel={t('workspace.navLabel')}
+          selectId="project-workspace-menu"
+          className="border-t border-border"
+          // The picker sits inside the section's padding; the desktop row deliberately does
+          // not, so that the first tab aligns with the content below it.
+          selectClassName="mx-4 w-[calc(100%-2rem)]"
+          tabs={primaryTabs.map((tab) => ({
+            href: tab.href,
+            label: tab.label,
+            icon: <tab.icon size={16} strokeWidth={1.8} aria-hidden="true" />,
+            active: isActive(tab.href),
+          }))}
+        />
       </section>
 
       {suspension ? (
@@ -303,35 +284,5 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
       ) : null}
       {children}
     </div>
-  );
-}
-
-function WorkspaceLink({
-  label,
-  href,
-  icon: Icon,
-  active,
-}: {
-  label: string;
-  href: string;
-  icon: typeof LayoutDashboard;
-  active: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      aria-current={active ? 'page' : undefined}
-      className={cn(
-        // One stroke weight and one icon size in both states: colour and the underline carry
-        // "you are here", so the glyph does not have to thicken as well.
-        'inline-flex min-h-12 items-center gap-2 border-b-2 px-3.5 text-body-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary',
-        active
-          ? 'border-brand-primary text-brand-primary'
-          : 'border-transparent text-muted-foreground hover:text-foreground',
-      )}
-    >
-      <Icon size={16} strokeWidth={1.8} aria-hidden="true" />
-      {label}
-    </Link>
   );
 }

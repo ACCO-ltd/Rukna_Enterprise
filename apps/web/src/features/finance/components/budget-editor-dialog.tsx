@@ -180,7 +180,7 @@ export function BudgetEditorDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="sm:max-w-4xl">
         <DialogTitle>{mode === 'create' ? t('createTitle') : t('editTitle')}</DialogTitle>
         <DialogDescription>{t('description')}</DialogDescription>
 

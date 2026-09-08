@@ -55,7 +55,7 @@ export function RequirementDetailDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="sm:max-w-3xl">
         {query.isPending ? (
           <>
             <DialogTitle>{t('detailLoading')}</DialogTitle>

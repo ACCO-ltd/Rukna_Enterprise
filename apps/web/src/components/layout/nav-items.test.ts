@@ -180,6 +180,21 @@ describe('NAV_DOMAINS', () => {
   describe('administration domain', () => {
     const admin = () => NAV_DOMAINS.find((d) => d.moduleKey === 'administration')!;
 
+    it('renders as one flat sidebar row — its screens are a workspace, not a column', () => {
+      expect(admin().flat).toBe(true);
+      // And it is the only one. Accounting and Procurement still expand in place; a sidebar
+      // where every domain behaved differently would be worse than either rule alone.
+      expect(NAV_DOMAINS.filter((d) => d.flat).map((d) => d.moduleKey)).toEqual([
+        'administration',
+      ]);
+    });
+
+    it('keeps its items declared here — they feed the command menu and the tab bar', () => {
+      // Moving them out of the sidebar must not move them out of the nav model: three
+      // consumers read this one list, and a second copy is how they drift apart.
+      expect(admin().items).toHaveLength(6);
+    });
+
     it('contains users, roles, workflows and audit-logs', () => {
       const hrefs = admin().items.map((i) => i.href);
       expect(hrefs).toContain('/admin/users');
@@ -190,7 +205,9 @@ describe('NAV_DOMAINS', () => {
 
     it('groups every item into the four IA sections (no ungrouped run leads)', () => {
       const groups = groupNavItems(admin().items);
-      // People → Organization → Approval governance → Evidence, in that order.
+      // People → Organization → Approval governance → Evidence, in that order. Since the
+      // move to a tab bar these no longer draw micro-labels; they record the four jobs the
+      // workspace does and they fix the tab order, which is what a reader now perceives.
       expect(groups.map((g) => g.key)).toEqual([
         'people',
         'organization',

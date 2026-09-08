@@ -60,6 +60,62 @@ Three truths from the code that constrain everything below:
 
 ## 1. Restructured admin IA / navigation
 
+> ### §1 SUPERSEDED 2026-09-07 — Administration is a workspace, not a sidebar column
+>
+> What §1 specified below was built and shipped: four `groupKey` micro-labels sectioning six rows
+> inside the global sidebar. It worked, and it was still the wrong shape. It put a second level of
+> navigation permanently in the chrome of **every** screen in the product in order to serve six
+> screens people visit deliberately, a handful of times a week.
+>
+> Administration now works the way the project workspaces already do:
+>
+> - The sidebar holds **one flat row** — `flat: true` on the domain in `nav-groups.ts`. No chevron,
+>   no child rows, no collapsed-sidebar flyout. It stays lit for every `/admin/*` route, because the
+>   child rows that used to say "you are in Administration" are gone and something has to.
+> - Clicking it opens the **Administration workspace** (`AdminShell`, wrapping every `/admin/*` route
+>   via `app/(app)/admin/layout.tsx`): an `h1` and a **horizontal tab bar** of the six
+>   screens — Users · Roles · Districts · Project subtypes · Workflows · Audit logs.
+> - The six items **stay declared in `nav-groups.ts`**. That list is still the single source for
+>   their routes, labels, icons and permission gates, and it is read by three consumers: the
+>   sidebar's active state, the command menu, and now the tab bar.
+> - The four `groupKey`s survive but **draw nothing**. They record the four jobs this workspace does
+>   and they fix the tab order — which is what a reader now perceives instead of the labels.
+>
+> **The heading hierarchy moved with it.** Each screen used to render its own `h1` through
+> `PageHeader`, so "Users" was announced as the top of the document with nothing above it saying
+> which part of the product you were in. The shell now owns the `h1` and each screen is an `h2`
+> inside an `AdminPanel` — title, one line of description, and the screen's one primary action in
+> the header row rather than floating naked above the table. Districts' and Project subtypes' intro
+> paragraphs became those descriptions; their inner headings dropped a level.
+>
+> Deferred items are unchanged: **Access reviews** and a standalone **SoD registry** still have no
+> backend and are still absent. A tab that 404s is worse than one documented here.
+>
+> #### Refined 2026-09-08 — the rule generalised, and the header cut back
+>
+> Reviewed against the project workspaces, which had solved the same problem first. Three changes:
+>
+> - **The tab bar is now shared.** `WorkspaceTabs` (`components/layout/workspace-tabs.tsx`) draws
+>   the bar for the project workspaces *and* for Administration. The two had been written twice and
+>   had already drifted in height, padding and font weight.
+> - **Below `md` the tabs become a picker**, the gesture the project workspaces already used. The
+>   admin bar had been scrolling sideways instead, leaving Workflows and Audit logs off-screen at
+>   375px with nothing saying they were there — and scrolling the lit tab out of view entirely when
+>   the reader landed on the last one.
+> - **The breadcrumb and the subtitle are gone.** `Dashboard › Administration › Users` restated the
+>   sidebar row, the `h1` and the lit tab, and its middle crumb linked to `/admin`, which redirects
+>   to `/admin/users`. The subtitle was one fixed sentence repeated on all six screens; each screen
+>   states its own purpose in its `AdminPanel` description. Together they cost ~55px above the fold
+>   on every administration screen.
+>
+> The platform rule these follow is now **ADR-028** rather than this Administration-specific
+> document, so the next domain finds it.
+>
+> **Everything below this box is the record of the superseded design.** The screen inventory (§2),
+> the governance builder (§3) and the per-screen specs (§4–§6) are unaffected — only where the six
+> destinations are drawn has changed.
+
+
 The flat 5-item admin column mixes four different jobs. Group them with the **existing `groupKey`
 mechanism** (`nav-groups.ts` — a quiet micro-label divider, not a second collapsible level, not a nested tab).
 Domain stays `Administration → /admin`. `/admin` redirect retargets to `/admin/users` (People, unchanged).

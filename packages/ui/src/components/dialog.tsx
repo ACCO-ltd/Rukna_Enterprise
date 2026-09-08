@@ -53,6 +53,13 @@ export const DialogContent = React.forwardRef<
       // Anchored to the bottom on narrow screens and centred from `sm` up: a sheet within
       // thumb reach beats a box in the middle of a phone. `max-h` with an internal scroll
       // keeps a long dialog usable at 375px rather than pushing its buttons off-screen.
+      //
+      // A caller widening this dialog MUST prefix its width with the same breakpoint the
+      // default carries. `cn` is tailwind-merge, which keys on utility *and* variant, so an
+      // unprefixed width is not seen as competing with the default: both survive, and from
+      // `sm` up the variant wins on source order. The dialog then silently stays at the
+      // default width and the override looks like it was never written — which is exactly
+      // what happened to four dialogs before anyone noticed. Lint now catches it.
       className={cn(
         'fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] overflow-y-auto border border-border bg-surface-elevated p-6 shadow-e3',
         'rounded-t-container sm:rounded-container',
