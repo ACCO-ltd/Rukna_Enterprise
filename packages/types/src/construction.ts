@@ -283,6 +283,8 @@ export interface CollectionProgressSignalResponse {
 }
 
 // ADR-021 CONST-PROG-007: work-package roll-up → weighted project physical %.
+// Master Schedule P1-a (ADR-029): the WorkPackage IS the master-schedule phase row, so each line also
+// carries its planned schedule window. % complete and actual dates are DERIVED on read, never stored.
 export interface WorkPackageRollupLine {
   id: string;
   code: string;
@@ -290,8 +292,21 @@ export interface WorkPackageRollupLine {
   responsibleOwner: string | null;
   /** Fraction of project weight (0..1). */
   weight: string;
-  percentComplete: number;
+  /**
+   * Value-weighted verified % for the package (0..100). Null for a `scheduleOnly` phase, which has no
+   * measurable BOQ scope and is tracked by dates alone (master-schedule §8.5) — never a silent 0.
+   */
+  percentComplete: number | null;
   leafCount: number;
+  /** Planned schedule window (ISO `YYYY-MM-DD`), null until dates are set. */
+  plannedStart: string | null;
+  plannedEnd: string | null;
+  /** Planned duration in days, null until set. */
+  durationDays: number | null;
+  /** Optional PM forecast finish (ISO `YYYY-MM-DD`), null until set. */
+  forecastEnd: string | null;
+  /** A non-measurable phase (Mobilization, Design): no BOQ scope, tracked by dates only. */
+  scheduleOnly: boolean;
 }
 export interface ProjectRollupResponse {
   projectId: string;

@@ -128,10 +128,28 @@ export class ProgressRepository {
     });
   }
 
+  /**
+   * A work package with its BOQ-link count, for the update path: the schedule-only guard
+   * (a non-measurable phase must own no BOQ scope, master-schedule §8.5) needs to know whether the
+   * package has any allocations before it is flagged schedule-only.
+   */
+  findWorkPackageForUpdate(prisma: TenantPrisma, organizationId: string, id: string) {
+    return prisma.workPackage.findFirst({
+      where: { id, organizationId },
+      select: { id: true, projectId: true, _count: { select: { boqLinks: true } } },
+    });
+  }
+
+  updateWorkPackage(prisma: TenantPrisma, id: string, data: Prisma.WorkPackageUncheckedUpdateInput) {
+    return prisma.workPackage.update({ where: { id }, data });
+  }
+
   findWorkPackages(prisma: TenantPrisma, organizationId: string, projectId: string) {
     return prisma.workPackage.findMany({
       where: { organizationId, projectId },
       orderBy: { code: 'asc' },
+      // The schedule window (P1-a) travels with the roll-up so the master-schedule read model has the
+      // planned dates alongside the derived %. boqLinks stays included for the value-weighted roll-up.
       include: { boqLinks: { select: { boqNodeId: true } } },
     });
   }

@@ -13,6 +13,7 @@ import {
   ReturnDprDto,
   ReopenDprDto,
   CreateWorkPackageDto,
+  UpdateWorkPackageDto,
   AllocateBoqNodeDto,
   SetProgressTargetsDto,
   CreateProgrammeActivityDto,
@@ -207,6 +208,22 @@ export class ProgressController {
   @ApiOperation({ summary: 'List the project work packages' })
   listWorkPackages(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
     return this.service.listWorkPackages(identity, projectId);
+  }
+
+  @Patch('work-packages/:workPackageId')
+  @RequirePermissions(PERMISSIONS.projectsManage)
+  @ApiParam({ name: 'workPackageId' })
+  @ApiOperation({
+    summary:
+      'Update a work package incl. its master-schedule window (planned dates / duration / forecast / ' +
+      'schedule-only). % complete and actual dates are derived, never set here.',
+  })
+  updateWorkPackage(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('workPackageId') workPackageId: string,
+    @Body() dto: UpdateWorkPackageDto,
+  ) {
+    return this.service.updateWorkPackage(identity, workPackageId, dto);
   }
 
   @Post('work-packages/:workPackageId/boq-nodes')

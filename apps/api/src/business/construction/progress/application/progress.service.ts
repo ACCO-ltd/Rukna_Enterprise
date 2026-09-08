@@ -382,9 +382,65 @@ export class ProgressService {
   }
 
   /**
-   * Project physical %: each package's progress is the simple mean of its allocated BOQ leaves'
-   * verified % (not money-weighted, CONST-PROG-007), rolled up by the package `progressWeight`.
-   * Reports weightsTotal + weightsComplete so an incomplete plan (weights ≠ 100%) is visible.
+   * Master Schedule P1-a (ADR-029): partial update of a work package + its schedule window (the WP
+   * IS the master-schedule phase row). Project-scoped like every other WP mutation. Enforces the new
+   * schedule invariants: `plannedEnd ≥ plannedStart` and `durationDays ≥ 0` (reusing
+   * `validateActivityDates`), and a `scheduleOnly` phase must own no BOQ scope (§8.5). % complete and
+   * actual dates are DERIVED on read — never accepted here.
+   */
+  async updateWorkPackage(identity: RequestIdentity, workPackageId: string, dto: UpdateWorkPackageDto) {
+    const prisma = this.tenancy.getClient();
+    const wp = await this.repo.findWorkPackageForUpdate(prisma, identity.activeOrganizationId, workPackageId);
+    if (!wp) throw new NotFoundException(`Work package ${workPackageId} not found`);
+    await this.projectAccess.assertMember(identity, wp.projectId);
+
+    // Validate the effective (post-update) schedule window. Only-one-side edits are checked against
+    // the value that would remain — but the update DTO carries no read of the stored dates, so when
+    // only one bound is supplied we validate the pair only if both are present in this request.
+    this.validateActivityDates(
+      dto.plannedStart ?? undefined,
+      dto.plannedEnd ?? undefined,
+      dto.durationDays ?? undefined,
+    );
+
+    // §8.5: a non-measurable (schedule-only) phase is tracked by dates only and must carry no BOQ
+    // scope, so its derived % stays honestly null rather than a silent 0.
+    if (dto.scheduleOnly === true && wp._count.boqLinks > 0) {
+      throw new BadRequestException(
+        'A schedule-only phase cannot have BOQ scope. Remove its BOQ allocations first, or leave it measurable.',
+      );
+    }
+
+    return this.repo.updateWorkPackage(prisma, workPackageId, {
+      ...(dto.name !== undefined ? { name: dto.name } : {}),
+      ...(dto.responsibleOwner !== undefined ? { responsibleOwner: dto.responsibleOwner } : {}),
+      ...(dto.progressWeight !== undefined ? { progressWeight: new Decimal(dto.progressWeight) } : {}),
+      ...(dto.plannedStart !== undefined
+        ? { plannedStart: dto.plannedStart ? new Date(dto.plannedStart) : null }
+        : {}),
+      ...(dto.plannedEnd !== undefined
+        ? { plannedEnd: dto.plannedEnd ? new Date(dto.plannedEnd) : null }
+        : {}),
+      ...(dto.durationDays !== undefined ? { durationDays: dto.durationDays } : {}),
+      ...(dto.forecastEnd !== undefined
+        ? { forecastEnd: dto.forecastEnd ? new Date(dto.forecastEnd) : null }
+        : {}),
+      ...(dto.scheduleOnly !== undefined ? { scheduleOnly: dto.scheduleOnly } : {}),
+    });
+  }
+
+  /**
+   * Project physical %: each package's progress is the **value-weighted** mean of its allocated BOQ
+   * leaves' verified % — Σ(leaf value × leaf %) ÷ Σ(leaf value) (`weightedPackagePercent`, the
+   * 2026-09-05 Option-A change; falls back to a plain average only when nothing in the package is
+   * priced). Packages roll up to the project by their `progressWeight`. Reports weightsTotal +
+   * weightsComplete so an incomplete plan (weights ≠ 100%) is visible.
+   *
+   * Master Schedule P1-a (ADR-029): each package line also carries its schedule window (planned
+   * dates / duration / forecast) and `percentComplete` — the master-schedule read model. A
+   * `scheduleOnly` phase (no BOQ scope, master-schedule §8.5) has no derivable %: its
+   * `percentComplete` is null and it is excluded from both the weighting numerator and denominator,
+   * tracked by dates alone rather than reported as a silent 0.
    */
   async getRollup(identity: RequestIdentity, projectId: string) {
     await this.projectAccess.assertMember(identity, projectId);
@@ -407,6 +463,25 @@ export class ProgressService {
     let weighted = ZERO;
     const packageLines = packages.map((wp) => {
       const leaves = wp.boqLinks.map((b) => b.boqNodeId);
+      // A schedule-only phase has no measurable scope: no derived %, and it takes no part in the
+      // project weighting (master-schedule §8.5). Its own progressWeight should be 0, but exclude it
+      // from weightsTotal too so it never drags weightsComplete off 100%.
+      if (wp.scheduleOnly) {
+        return {
+          id: wp.id,
+          code: wp.code,
+          name: wp.name,
+          responsibleOwner: wp.responsibleOwner,
+          weight: new Decimal(wp.progressWeight.toString()).toString(),
+          percentComplete: null,
+          leafCount: leaves.length,
+          plannedStart: isoOrNull(wp.plannedStart),
+          plannedEnd: isoOrNull(wp.plannedEnd),
+          durationDays: wp.durationDays,
+          forecastEnd: isoOrNull(wp.forecastEnd),
+          scheduleOnly: true,
+        };
+      }
       // Value-weighted, not a plain average — see `progress-rollup.ts` for why.
       const pct = weightedPackagePercent(leaves, pctByNode, valueByNode);
       const weight = new Decimal(wp.progressWeight.toString());
@@ -420,6 +495,11 @@ export class ProgressService {
         weight: weight.toString(),
         percentComplete: Math.round(pct),
         leafCount: leaves.length,
+        plannedStart: isoOrNull(wp.plannedStart),
+        plannedEnd: isoOrNull(wp.plannedEnd),
+        durationDays: wp.durationDays,
+        forecastEnd: isoOrNull(wp.forecastEnd),
+        scheduleOnly: false,
       };
     });
 
@@ -910,11 +990,29 @@ function plannedPercentAt(
   return Number(last.cumulativePercent);
 }
 
+/** A `@db.Date` column → ISO `YYYY-MM-DD`, or null. The date-only shape the read models use. */
+function isoOrNull(date: Date | null | undefined): string | null {
+  return date ? isoDate(date) : null;
+}
+
 export interface CreateWorkPackageDto {
   code: string;
   name: string;
   responsibleOwner?: string;
   progressWeight?: number;
+}
+
+// Master Schedule P1-a (ADR-029): partial WP update incl. the schedule window. Dates are ISO
+// strings (@db.Date). % complete + actual dates are derived on read, never accepted here.
+export interface UpdateWorkPackageDto {
+  name?: string;
+  responsibleOwner?: string | null;
+  progressWeight?: number;
+  plannedStart?: string | null;
+  plannedEnd?: string | null;
+  durationDays?: number | null;
+  forecastEnd?: string | null;
+  scheduleOnly?: boolean;
 }
 
 /** Maps a stored ProgressSnapshot row to its wire DTO (Decimals → numbers, Dates → ISO). */
