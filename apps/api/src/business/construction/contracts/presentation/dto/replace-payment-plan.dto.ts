@@ -4,16 +4,19 @@ import { Type } from 'class-transformer';
 
 import { PaymentInstallmentDto } from './create-contract.dto.js';
 
-// ADR-023 / commercial-billing-model §5 P1: replace-all editor for a DRAFT MILESTONE contract's
-// payment schedule. The body is the FULL installment list (same item shape as create's
-// `paymentPlan`) — there is no granular add/edit/delete for the schedule. The service enforces
-// DRAFT + MILESTONE + not-yet-invoiced + Σ(percentage) = 1 before writing.
+// ADR-023 / commercial-billing-model §5 P1 + Q-B: the payment-plan editor for a MILESTONE contract,
+// permitted while DRAFT or ACTIVE. The body is the UN-INVOICED portion of the schedule (same item
+// shape as create's `paymentPlan`) — there is no granular add/edit/delete. On DRAFT nothing is
+// invoiced, so this is the whole plan (a full replace). On ACTIVE the already-invoiced installments
+// are frozen and untouched; this set re-profiles only the remaining stages. The service enforces
+// MILESTONE + (DRAFT|ACTIVE) + frozen-invoiced % + Σ(submitted %) = 1 before writing.
 export class ReplacePaymentPlanDto {
   @ApiProperty({
     type: [PaymentInstallmentDto],
     description:
-      'The complete replacement payment schedule. Σ(percentage) must equal 1. The existing ' +
-      'installments are removed and this set is written in their place (DRAFT contracts only).',
+      'The un-invoiced portion of the payment schedule. On a DRAFT contract this is the whole plan; ' +
+      'on an ACTIVE contract the already-invoiced installments stay frozen and this re-profiles the ' +
+      'rest. Σ(already-invoiced %) + Σ(this set %) must equal 1.',
   })
   @IsArray()
   @ArrayMinSize(1)

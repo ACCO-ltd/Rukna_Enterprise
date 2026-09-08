@@ -173,16 +173,18 @@ export class ContractsController {
   @Put(':id/payment-plan')
   @RequirePermissions(PERMISSIONS.contractsManage)
   @ApiOperation({
-    summary: "Replace a DRAFT MILESTONE contract's whole payment plan (commercial-billing §5 P1)",
+    summary: "Edit a MILESTONE contract's payment plan — DRAFT replace or ACTIVE re-profile (commercial-billing §5 P1, Q-B)",
     description:
-      'Replace-all editor: the body is the complete installment list (Σ percentage = 1). Permitted ' +
-      'only while the contract is DRAFT and the billing model is MILESTONE; rejected once committed ' +
-      '(re-profile a live schedule through a Variation).',
+      'The body is the un-invoiced portion of the schedule. On a DRAFT contract it is the whole plan ' +
+      '(a full replace). On an ACTIVE contract the already-invoiced installments are frozen and left ' +
+      'untouched, and this set re-profiles the remaining stages; Σ(invoiced %) + Σ(this set %) must ' +
+      'equal 1. Permitted only for MILESTONE contracts in DRAFT or ACTIVE — other statuses change ' +
+      'through a Variation.',
   })
   @ApiParam({ name: 'id' })
-  @ApiResponse({ status: 200, description: 'Payment plan replaced' })
-  @ApiResponse({ status: 400, description: 'Plan does not total 100%, or contract is not MILESTONE' })
-  @ApiResponse({ status: 409, description: 'Contract is not DRAFT, or an installment is already invoiced' })
+  @ApiResponse({ status: 200, description: 'Payment plan replaced (DRAFT) or re-profiled (ACTIVE)' })
+  @ApiResponse({ status: 400, description: 'Plan does not reconcile to 100%, or contract is not MILESTONE' })
+  @ApiResponse({ status: 409, description: 'Contract is not DRAFT or ACTIVE' })
   replacePaymentPlan(
     @CurrentUser() identity: RequestIdentity,
     @Param('id') id: string,
