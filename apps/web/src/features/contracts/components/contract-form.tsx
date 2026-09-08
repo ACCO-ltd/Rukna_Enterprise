@@ -6,14 +6,11 @@ import {
   useFieldArray,
   useForm,
   useWatch,
-  type Control,
-  type FieldErrors,
-  type UseFormRegister,
 } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import Link from 'next/link';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { BoqVersionStatus, PaymentTrigger } from '@erp/types';
@@ -35,12 +32,7 @@ import {
 } from '../contract-form-payload';
 import { useCreateContract, useUpdateContract } from '../hooks/use-contracts';
 import { BILLING_MODELS, BillingModel, type Contract } from '../types';
-
-const PAYMENT_TRIGGERS = [
-  PaymentTrigger.MILESTONE,
-  PaymentTrigger.ADVANCE,
-  PaymentTrigger.TIME_BASED,
-] as const;
+import { ACCO_STANDARD_PLAN, PlanRowFields } from './payment-plan-fields';
 
 interface ContractFormProps {
   /** Present in edit mode. The API accepts edits only while the contract is DRAFT. */
@@ -137,7 +129,12 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
       : { ...EMPTY_CONTRACT_FORM, projectId: requestedProjectId },
   });
 
-  const { fields: planFields, append: appendPlan, remove: removePlan } = useFieldArray({
+  const {
+    fields: planFields,
+    append: appendPlan,
+    remove: removePlan,
+    replace: replacePlan,
+  } = useFieldArray({
     control,
     name: 'paymentPlan',
   });
@@ -362,14 +359,28 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
           )}
 
           <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => appendPlan({ ...EMPTY_PAYMENT_PLAN_ROW })}
-            >
-              <Plus size={16} aria-hidden="true" /> {t('plan.add')}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => appendPlan({ ...EMPTY_PAYMENT_PLAN_ROW })}
+              >
+                <Plus size={16} aria-hidden="true" /> {t('plan.add')}
+              </Button>
+              {/* House standard: seeds the 40/30/20/10 Structure→Handover schedule (§4.2). Only
+                  when the plan is empty, so it fills rather than silently overwriting typed rows. */}
+              {planFields.length === 0 ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => replacePlan(ACCO_STANDARD_PLAN.map((row) => ({ ...row })))}
+                >
+                  {t('plan.useAccoStandard')}
+                </Button>
+              ) : null}
+            </div>
             {planFields.length > 0 ? (
               <p
                 className={`text-sm font-medium ${planBalanced ? 'text-success' : 'text-danger'}`}
@@ -426,110 +437,5 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
         </Button>
       </div>
     </form>
-  );
-}
-
-/**
- * One payment-plan installment row. Extracted so each row can watch its own trigger without
- * re-rendering the whole form: a TIME_BASED installment shows a day-offset field, everything
- * else shows the free-text milestone label.
- */
-function PlanRowFields({
-  index,
-  control,
-  register,
-  errors,
-  onRemove,
-  t,
-}: {
-  index: number;
-  control: Control<ContractFormValues>;
-  register: UseFormRegister<ContractFormValues>;
-  errors: FieldErrors<ContractFormValues>;
-  onRemove: () => void;
-  t: ReturnType<typeof useTranslations>;
-}) {
-  const trigger = useWatch({ control, name: `paymentPlan.${index}.triggerType` });
-  const rowErrors = errors.paymentPlan?.[index];
-
-  return (
-    <li className="rounded-panel border border-border bg-surface p-4">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <FormField htmlFor={`plan-${index}-name`} label={t('plan.name')} error={rowErrors?.name?.message}>
-          <Input
-            id={`plan-${index}-name`}
-            placeholder={t('plan.namePlaceholder')}
-            aria-invalid={Boolean(rowErrors?.name)}
-            {...register(`paymentPlan.${index}.name`)}
-          />
-        </FormField>
-
-        <FormField
-          htmlFor={`plan-${index}-percent`}
-          label={t('plan.percent')}
-          error={rowErrors?.percentage?.message}
-        >
-          <Input
-            id={`plan-${index}-percent`}
-            inputMode="decimal"
-            dir="ltr"
-            aria-invalid={Boolean(rowErrors?.percentage)}
-            {...register(`paymentPlan.${index}.percentage`)}
-          />
-        </FormField>
-
-        <FormField htmlFor={`plan-${index}-trigger`} label={t('plan.trigger')}>
-          <Controller
-            control={control}
-            name={`paymentPlan.${index}.triggerType`}
-            render={({ field }) => (
-              <Select
-                id={`plan-${index}-trigger`}
-                value={field.value}
-                onChange={field.onChange}
-              >
-                {PAYMENT_TRIGGERS.map((tr) => (
-                  <option key={tr} value={tr}>
-                    {t(`plan.triggerType.${tr}`)}
-                  </option>
-                ))}
-              </Select>
-            )}
-          />
-        </FormField>
-
-        {trigger === PaymentTrigger.TIME_BASED ? (
-          <FormField
-            htmlFor={`plan-${index}-offset`}
-            label={t('plan.offsetDays')}
-            error={rowErrors?.dueOffsetDays?.message}
-          >
-            <Input
-              id={`plan-${index}-offset`}
-              type="number"
-              min="0"
-              inputMode="numeric"
-              dir="ltr"
-              aria-invalid={Boolean(rowErrors?.dueOffsetDays)}
-              {...register(`paymentPlan.${index}.dueOffsetDays`)}
-            />
-          </FormField>
-        ) : (
-          <FormField htmlFor={`plan-${index}-label`} label={t('plan.milestoneLabel')}>
-            <Input
-              id={`plan-${index}-label`}
-              placeholder={t('plan.milestoneLabelPlaceholder')}
-              {...register(`paymentPlan.${index}.milestoneLabel`)}
-            />
-          </FormField>
-        )}
-      </div>
-
-      <div className="mt-3 flex justify-end">
-        <Button type="button" variant="ghost" size="sm" onClick={onRemove}>
-          <Trash2 size={15} aria-hidden="true" /> {t('plan.remove')}
-        </Button>
-      </div>
-    </li>
   );
 }

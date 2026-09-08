@@ -24,6 +24,7 @@
     "overview": "Overview",
     "main-contract": "Main Contract",
     "applications": "Applications & Certification",
+    "payment-schedule": "Payment Schedule",
     "variations": "Variations",
     "retention-advances": "Retention & Advances",
     "guarantees": "Guarantees"
@@ -388,6 +389,22 @@
       "cancel": "Cancel",
       "failed": "Could not update the milestone link"
     }
+  },
+  "paymentScheduleTab": {
+    "title": "Payment schedule",
+    "subtitle": "This contract is billed from a negotiated milestone schedule. Each stage is invoiced from its own document as the schedule advances.",
+    "contractValue": "Contract value",
+    "planTotal": "Plan total",
+    "valueNotSet": "Not set",
+    "restricted": "Restricted",
+    "editorTitle": "Edit schedule",
+    "edit": "Edit schedule",
+    "draftHint": "The contract is still a draft, so the whole schedule can be re-profiled. Percentages must total 100%.",
+    "reprofileNote": "This contract is committed, so its schedule is fixed. Re-profile a committed schedule through a Variation.",
+    "noPermission": "You do not have permission to edit this contract's payment schedule.",
+    "notReconciled": "The plan does not total 100% — the contract cannot be billed in full until it does.",
+    "save": "Save schedule",
+    "saveFailed": "Could not save the payment schedule."
   },
   "cycle": {
     "title": "Current Payment Cycle",

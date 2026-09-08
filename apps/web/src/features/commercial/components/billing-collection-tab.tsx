@@ -32,7 +32,6 @@ import { formatDate, formatMoney } from '@/lib/format';
 import { useCommercialBilling } from '../hooks/use-commercial';
 import { invoiceStatusTone } from '../presentation';
 import { PositionBand, type PositionFigure } from './contract-position';
-import { PaymentSchedulePanel } from './payment-schedule-panel';
 import { PanelLink, SectionCard } from './commercial-ui';
 import { errorText } from './commercial-workspace';
 
@@ -45,9 +44,9 @@ import { errorText } from './commercial-workspace';
  * error this view is built to make impossible, so every ratio here has an invoice total as its
  * denominator and the tax split is stated with its basis named.
  *
- * For a MILESTONE contract the payment schedule is also the billing source, so it stays here —
- * that is where "Generate invoice" lives, gated on the linked programme milestone being verified
- * (CONST-COM-011).
+ * For a MILESTONE contract the schedule now lives on its own Payment Schedule tab (§5 P2), which
+ * hosts the ledger, "Generate invoice" and the CONST-COM-011 gate; this screen keeps the invoices,
+ * receipts and ageing that follow from it.
  */
 export function BillingCollectionTab({
   projectId,
@@ -99,12 +98,6 @@ export function BillingCollectionTab({
         <AgingPanel billing={billing} />
         <UnappliedPanel billing={billing} />
       </div>
-
-      {/* The billing source for a payment-schedule contract. It carries its own generate and
-          milestone-link actions, which is why it stays a whole panel rather than a table. */}
-      {contract.billingModel === 'MILESTONE' ? (
-        <PaymentSchedulePanel projectId={projectId} contractId={contract.id} summary={summary} />
-      ) : null}
 
       <InvoicesPanel billing={billing} />
       <ReceiptsPanel billing={billing} />
