@@ -15,6 +15,7 @@ import {
   type CommercialMutationKind,
 } from '../domain/commercial-term-policy.js';
 import type { CreateContractDto, PaymentInstallmentDto } from '../presentation/dto/create-contract.dto.js';
+import type { ReplacePaymentPlanDto } from '../presentation/dto/replace-payment-plan.dto.js';
 import type { UpdateContractDto } from '../presentation/dto/update-contract.dto.js';
 import type { AddAdvanceTermDto } from '../presentation/dto/add-advance-term.dto.js';
 import type { AddGuaranteeDto } from '../presentation/dto/add-guarantee.dto.js';
@@ -191,6 +192,67 @@ export class ContractService {
       });
 
       return contract;
+    });
+  }
+
+  /**
+   * ADR-023 / commercial-billing-model §5 P1 (§3.2 G2): replace-all editor for a contract's
+   * milestone payment schedule, permitted ONLY while the contract is DRAFT.
+   *
+   * Scope (deliberately tight): DRAFT + MILESTONE only. Re-profiling an ACTIVE/executed contract's
+   * un-invoiced installments (vs requiring a Variation) is decision Q-B, still pending — so an
+   * out-of-DRAFT contract is rejected here rather than guessed at.
+   *
+   * Semantics: the body is the WHOLE new plan. In one transaction the existing installments are
+   * deleted and the new set written. This resets any programmeMilestoneId links; that is acceptable
+   * for a DRAFT contract (nothing has been billed) and links are re-established via the existing
+   * `PATCH …/installments/:id/milestone` route.
+   */
+  async replacePaymentPlan(identity: RequestIdentity, id: string, dto: ReplacePaymentPlanDto) {
+    const prisma = this.tenancyService.getClient();
+    const contract = await this.requireContract(prisma, identity, id);
+
+    if (contract.status !== 'DRAFT') {
+      throw new ConflictException(
+        `A contract's payment plan can only be edited while it is DRAFT (current status: ` +
+        `'${contract.status}'). Change a committed schedule through a Variation, not by editing it.`,
+      );
+    }
+    if (contract.billingModel !== 'MILESTONE') {
+      throw new BadRequestException(
+        'A payment plan applies only to a MILESTONE (payment-schedule) contract.',
+      );
+    }
+    // Defensive: an invoiced installment must never be re-profiled. This cannot normally happen in
+    // DRAFT (billing needs an ACTIVE contract), but the invariant is guarded explicitly.
+    if (await this.repo.hasInvoicedInstallment(prisma, id)) {
+      throw new ConflictException(
+        'This payment plan cannot be replaced because at least one installment has already been ' +
+        'invoiced.',
+      );
+    }
+
+    this.assertPaymentPlanReconciles(dto.installments);
+
+    return prisma.$transaction(async (tx) => {
+      await this.repo.replacePaymentInstallments(tx, id, dto.installments);
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'REPLACE',
+        resourceType: 'ContractPaymentPlan',
+        resourceId: id,
+        sourceCommand: 'contract.replacePaymentPlan',
+        eventType: 'CONTRACT_PAYMENT_PLAN_REPLACED',
+        idempotencyKey: `contract-payment-plan-replace-${id}-${Date.now()}`,
+        after: {
+          contractId: id,
+          installmentCount: dto.installments.length,
+        },
+      });
+
+      return this.repo.findById(tx, identity.activeOrganizationId, id);
     });
   }
 

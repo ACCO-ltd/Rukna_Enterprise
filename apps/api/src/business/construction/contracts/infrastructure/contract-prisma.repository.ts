@@ -141,6 +141,48 @@ export class ContractPrismaRepository {
     });
   }
 
+  /**
+   * ADR-023 / commercial-billing-model §5 P1 (replace-all editor).
+   * True if any of the contract's installments has already generated a ClientInvoice — the
+   * defensive backstop for the "never re-profile invoiced money" invariant. In DRAFT this should
+   * always be false (invoicing needs an ACTIVE contract), but the editor guards it anyway.
+   */
+  async hasInvoicedInstallment(prisma: TenantPrisma, contractId: string): Promise<boolean> {
+    const invoiced = await prisma.contractPaymentInstallment.findFirst({
+      where: { contractId, clientInvoice: { isNot: null } },
+      select: { id: true },
+    });
+    return invoiced !== null;
+  }
+
+  /**
+   * ADR-023 / commercial-billing-model §5 P1 (replace-all editor).
+   * Replace a contract's whole payment schedule in one transaction: drop the existing installments
+   * and write the supplied set. NOTE: this resets any `programmeMilestoneId` links, which is
+   * acceptable for a DRAFT contract — links are re-established afterwards via the existing
+   * `PATCH …/installments/:id/milestone` route. Caller must pass a transaction client so the delete
+   * and the insert are atomic.
+   */
+  async replacePaymentInstallments(
+    prisma: TenantPrisma,
+    contractId: string,
+    installments: PaymentInstallmentInput[],
+  ) {
+    await prisma.contractPaymentInstallment.deleteMany({ where: { contractId } });
+    return prisma.contractPaymentInstallment.createMany({
+      data: installments.map((i) => ({
+        contractId,
+        sortOrder: i.sortOrder,
+        name: i.name,
+        percentage: i.percentage,
+        triggerType: i.triggerType,
+        dueOffsetDays: i.dueOffsetDays ?? null,
+        dueDate: i.dueDate ? new Date(i.dueDate) : null,
+        milestoneLabel: i.milestoneLabel ?? null,
+      })),
+    });
+  }
+
   findInstallmentInContract(prisma: TenantPrisma, contractId: string, installmentId: string) {
     return prisma.contractPaymentInstallment.findFirst({
       where: { id: installmentId, contractId },

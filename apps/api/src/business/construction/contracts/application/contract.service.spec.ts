@@ -35,6 +35,9 @@ function build(contract: Record<string, unknown> | null): Mocks {
     findMilestoneOwned: jest.fn(),
     completeMilestone: jest.fn().mockResolvedValue({ count: 1 }),
     findMilestoneById: jest.fn().mockResolvedValue({ id: 'm-1' }),
+    // Replace-all payment-plan editor (commercial-billing §5 P1).
+    hasInvoicedInstallment: jest.fn().mockResolvedValue(false),
+    replacePaymentInstallments: jest.fn().mockResolvedValue({ count: 0 }),
   };
   const projectAccess = { assertContract: jest.fn().mockResolvedValue(undefined) };
   const audit = { record: jest.fn().mockResolvedValue(undefined) };
@@ -379,5 +382,74 @@ describe('ADR-023 — payment schedule on contract create (CONST-COM-012)', () =
       } as never),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(repo.createPaymentInstallments).not.toHaveBeenCalled();
+  });
+});
+
+describe('commercial-billing §5 P1 — replace-all payment-plan editor (DRAFT MILESTONE only)', () => {
+  const draftMilestone = { id: 'c-1', status: 'DRAFT', billingModel: 'MILESTONE', retentionTerms: null };
+  const activeMilestone = { id: 'c-1', status: 'ACTIVE', billingModel: 'MILESTONE', retentionTerms: null };
+  const draftMeasured = { id: 'c-1', status: 'DRAFT', billingModel: 'MEASURED_IPC', retentionTerms: null };
+
+  // Advance 40 / Structure 35 / Finish 25 = 100%.
+  const newPlan = [
+    { sortOrder: 0, name: 'Advance', percentage: 0.4, triggerType: 'ADVANCE' as const },
+    { sortOrder: 1, name: 'Structure', percentage: 0.35, triggerType: 'MILESTONE' as const },
+    { sortOrder: 2, name: 'Finish', percentage: 0.25, triggerType: 'MILESTONE' as const },
+  ];
+
+  it('replaces the plan on a DRAFT MILESTONE contract and audits it', async () => {
+    const { service, repo, audit } = build(draftMilestone);
+    await service.replacePaymentPlan(identity, 'c-1', { installments: newPlan } as never);
+
+    expect(repo.hasInvoicedInstallment).toHaveBeenCalledWith(expect.anything(), 'c-1');
+    // Delete-then-create is the repository's job; the service delegates the whole swap to it.
+    expect(repo.replacePaymentInstallments).toHaveBeenCalledWith(expect.anything(), 'c-1', newPlan);
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ eventType: 'CONTRACT_PAYMENT_PLAN_REPLACED' }),
+    );
+  });
+
+  it('rejects a plan that does not total 100% and writes nothing', async () => {
+    const { service, repo } = build(draftMilestone);
+    await expect(
+      service.replacePaymentPlan(identity, 'c-1', { installments: newPlan.slice(0, 2) } as never), // 75%
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.replacePaymentInstallments).not.toHaveBeenCalled();
+  });
+
+  it('rejects editing an ACTIVE contract with a 409 and the use-a-Variation message', async () => {
+    const { service, repo } = build(activeMilestone);
+    await expect(
+      service.replacePaymentPlan(identity, 'c-1', { installments: newPlan } as never),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(repo.hasInvoicedInstallment).not.toHaveBeenCalled();
+    expect(repo.replacePaymentInstallments).not.toHaveBeenCalled();
+  });
+
+  it('rejects editing a non-MILESTONE (MEASURED_IPC) contract', async () => {
+    const { service, repo } = build(draftMeasured);
+    await expect(
+      service.replacePaymentPlan(identity, 'c-1', { installments: newPlan } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.replacePaymentInstallments).not.toHaveBeenCalled();
+  });
+
+  it('refuses when an existing installment is already invoiced', async () => {
+    const { service, repo } = build(draftMilestone);
+    repo.hasInvoicedInstallment.mockResolvedValue(true);
+    await expect(
+      service.replacePaymentPlan(identity, 'c-1', { installments: newPlan } as never),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(repo.replacePaymentInstallments).not.toHaveBeenCalled();
+  });
+
+  it('cannot edit a plan through a foreign-organization contract (parent gate blocks first)', async () => {
+    const { service, repo } = build(null);
+    await expect(
+      service.replacePaymentPlan(identity, 'contract-in-org-2', { installments: newPlan } as never),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(repo.hasInvoicedInstallment).not.toHaveBeenCalled();
+    expect(repo.replacePaymentInstallments).not.toHaveBeenCalled();
   });
 });
