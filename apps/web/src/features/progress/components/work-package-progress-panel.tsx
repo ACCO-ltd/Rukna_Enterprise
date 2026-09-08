@@ -69,24 +69,30 @@ export function WorkPackageProgressPanel({ projectId }: { projectId: string }) {
                   {Math.round(Number(wp.weight) * 100)}%
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
-                      {/* One colour. A package is not "good" at 80% and "bad" at 20% — it is
-                          simply further along, and without a per-package plan there is nothing
-                          to be ahead or behind of. Colouring by magnitude would be inventing a
-                          judgement the data cannot support. */}
-                      <span
-                        className={cn(
-                          'block h-full rounded-full',
-                          wp.percentComplete >= 100 ? 'bg-success' : 'bg-brand-primary',
-                        )}
-                        style={{ width: `${Math.min(100, Math.max(0, wp.percentComplete))}%` }}
-                      />
-                    </span>
-                    <span className="w-10 shrink-0 text-end text-body-sm font-medium tabular-nums text-foreground">
-                      {wp.percentComplete}%
-                    </span>
-                  </div>
+                  {/* Schedule-only phases (no BOQ scope) have no derived %, so there is nothing to
+                      bar — show a dash, never a misleading 0%. */}
+                  {wp.percentComplete === null ? (
+                    <span className="text-body-sm text-muted-foreground">—</span>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+                        {/* One colour. A package is not "good" at 80% and "bad" at 20% — it is
+                            simply further along, and without a per-package plan there is nothing
+                            to be ahead or behind of. Colouring by magnitude would be inventing a
+                            judgement the data cannot support. */}
+                        <span
+                          className={cn(
+                            'block h-full rounded-full',
+                            wp.percentComplete >= 100 ? 'bg-success' : 'bg-brand-primary',
+                          )}
+                          style={{ width: `${Math.min(100, Math.max(0, wp.percentComplete))}%` }}
+                        />
+                      </span>
+                      <span className="w-10 shrink-0 text-end text-body-sm font-medium tabular-nums text-foreground">
+                        {wp.percentComplete}%
+                      </span>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

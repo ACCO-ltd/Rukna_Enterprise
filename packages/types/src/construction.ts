@@ -283,6 +283,8 @@ export interface CollectionProgressSignalResponse {
 }
 
 // ADR-021 CONST-PROG-007: work-package roll-up → weighted project physical %.
+// Master Schedule P1-a (ADR-029): the WorkPackage IS the master-schedule phase row, so each line also
+// carries its planned schedule window. % complete and actual dates are DERIVED on read, never stored.
 export interface WorkPackageRollupLine {
   id: string;
   code: string;
@@ -290,8 +292,39 @@ export interface WorkPackageRollupLine {
   responsibleOwner: string | null;
   /** Fraction of project weight (0..1). */
   weight: string;
-  percentComplete: number;
+  /**
+   * Value-weighted verified % for the package (0..100). Null for a `scheduleOnly` phase, which has no
+   * measurable BOQ scope and is tracked by dates alone (master-schedule §8.5) — never a silent 0.
+   */
+  percentComplete: number | null;
   leafCount: number;
+  /** Planned schedule window (ISO `YYYY-MM-DD`), null until dates are set. */
+  plannedStart: string | null;
+  plannedEnd: string | null;
+  /** Planned duration in days, null until set. */
+  durationDays: number | null;
+  /** Optional PM forecast finish (ISO `YYYY-MM-DD`), null until set. */
+  forecastEnd: string | null;
+  /** A non-measurable phase (Mobilization, Design): no BOQ scope, tracked by dates only. */
+  scheduleOnly: boolean;
+  /**
+   * Master Schedule P1-b (ADR-029) — DERIVED, never stored. The earliest APPROVED-DPR report date on
+   * which any of the package's allocated BOQ leaves were measured (ISO `YYYY-MM-DD`); null until the
+   * package has verified progress.
+   */
+  actualStart: string | null;
+  /**
+   * The latest such APPROVED-DPR report date, but ONLY once the package is complete
+   * (`percentComplete === 100`) — otherwise null. A documented approximation of "crossed 100%"; the
+   * exact-crossing replay is deferred.
+   */
+  actualFinish: string | null;
+  /**
+   * Per-phase schedule health from the planned window vs progress as-of the read date (same
+   * AHEAD/ON_TRACK/BEHIND bands as the project S-curve, `scheduleStatusFor`). INSUFFICIENT_DATA when
+   * the planned dates are missing.
+   */
+  scheduleStatus: ProgressScheduleStatus;
 }
 export interface ProjectRollupResponse {
   projectId: string;

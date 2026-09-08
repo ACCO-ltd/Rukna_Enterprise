@@ -949,6 +949,15 @@ model WorkPackage {
   name             String
   responsibleOwner String?  @map("responsible_owner")
   progressWeight   Decimal  @default(0) @map("progress_weight") @db.Decimal(5, 4)
+  // Master-schedule (P1-a): the WorkPackage IS the schedule/phase row (ADR-029, master-schedule §8).
+  // A time window makes it a Gantt-lite row; % complete and actual dates are DERIVED on read, never
+  // stored. `scheduleOnly` marks a non-measurable phase (Mobilization, Design) tracked by dates only,
+  // excluded from the physical-% weighting (master-schedule §8.5) — it must carry no BOQ scope.
+  plannedStart     DateTime? @map("planned_start") @db.Date
+  plannedEnd       DateTime? @map("planned_end") @db.Date
+  durationDays     Int?      @map("duration_days")
+  forecastEnd      DateTime? @map("forecast_end") @db.Date
+  scheduleOnly     Boolean   @default(false) @map("schedule_only")
   createdBy        String   @map("created_by")
   createdAt        DateTime @default(now()) @map("created_at")
 

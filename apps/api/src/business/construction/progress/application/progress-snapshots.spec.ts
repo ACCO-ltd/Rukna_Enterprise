@@ -53,6 +53,7 @@ function build(
     findWorkPackages: jest.fn().mockResolvedValue(over.workPackages ?? []),
     findLeafValues: jest.fn().mockResolvedValue(over.leafValues ?? []),
     approvedMeasurementsForProject: jest.fn().mockResolvedValue(over.approvedMeasurements ?? []),
+    approvedReportDatesForLeaves: jest.fn().mockResolvedValue([]),
     findSnapshotForPeriod: jest.fn().mockResolvedValue(over.existingForPeriod ?? null),
     findSnapshotsForProject: jest.fn().mockResolvedValue(over.snapshots ?? []),
     findTargets: jest.fn().mockResolvedValue(over.targets ?? []),

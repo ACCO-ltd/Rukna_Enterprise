@@ -23,6 +23,8 @@ type Over = {
   leafAllocation?: unknown;
   dprs?: unknown[];
   users?: unknown[];
+  workPackageForUpdate?: unknown;
+  reportDates?: { boqNodeId: string; reportDate: Date }[];
 };
 
 /** The file lifecycle seam: attaching evidence binds it, approving the report freezes it. */
@@ -52,8 +54,13 @@ function build(over: Over = {}) {
     findFileStatus: jest.fn().mockResolvedValue(over.file ?? { id: 'f-1', status: 'READY' }),
     createWorkPackage: jest.fn().mockResolvedValue({ id: 'wp-1' }),
     findWorkPackageById: jest.fn().mockResolvedValue({ id: 'wp-1', projectId: 'p-1' }),
+    findWorkPackageForUpdate: jest.fn().mockResolvedValue(
+      over.workPackageForUpdate ?? { id: 'wp-1', projectId: 'p-1', _count: { boqLinks: 0 } },
+    ),
+    updateWorkPackage: jest.fn().mockResolvedValue({ id: 'wp-1' }),
     findWorkPackages: jest.fn().mockResolvedValue(over.workPackages ?? []),
     findLeafValues: jest.fn().mockResolvedValue(over.leafValues ?? []),
+    approvedReportDatesForLeaves: jest.fn().mockResolvedValue(over.reportDates ?? []),
     findLeafAllocation: jest.fn().mockResolvedValue(over.leafAllocation ?? null),
     allocateBoqNode: jest.fn().mockResolvedValue({ id: 'wpn-1' }),
   };
@@ -378,6 +385,349 @@ describe('ProgressService (ADR-021 MVP)', () => {
       BadRequestException,
     );
     expect(repo.allocateBoqNode).not.toHaveBeenCalled();
+  });
+
+  // ── Master Schedule P1-a (ADR-029): WorkPackage schedule window + update guards ──
+
+  it('updateWorkPackage: persists the schedule window (planned dates / duration / forecast)', async () => {
+    const { repo, service } = build();
+    await service.updateWorkPackage(identity, 'wp-1', {
+      name: 'Excavation & Foundation',
+      plannedStart: '2026-06-01',
+      plannedEnd: '2026-06-21',
+      durationDays: 21,
+      forecastEnd: '2026-06-25',
+    });
+    expect(repo.updateWorkPackage).toHaveBeenCalledWith(
+      expect.anything(),
+      'wp-1',
+      expect.objectContaining({
+        name: 'Excavation & Foundation',
+        plannedStart: new Date('2026-06-01'),
+        plannedEnd: new Date('2026-06-21'),
+        durationDays: 21,
+        forecastEnd: new Date('2026-06-25'),
+      }),
+    );
+  });
+
+  it('updateWorkPackage: rejects plannedEnd before plannedStart', async () => {
+    const { repo, service } = build();
+    await expect(
+      service.updateWorkPackage(identity, 'wp-1', { plannedStart: '2026-06-21', plannedEnd: '2026-06-01' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.updateWorkPackage).not.toHaveBeenCalled();
+  });
+
+  it('updateWorkPackage: rejects a negative durationDays', async () => {
+    const { repo, service } = build();
+    await expect(
+      service.updateWorkPackage(identity, 'wp-1', { durationDays: -1 }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.updateWorkPackage).not.toHaveBeenCalled();
+  });
+
+  it('updateWorkPackage: rejects scheduleOnly=true on a package that has BOQ links (§8.5)', async () => {
+    const { repo, service } = build({
+      workPackageForUpdate: { id: 'wp-1', projectId: 'p-1', _count: { boqLinks: 2 } },
+    });
+    await expect(
+      service.updateWorkPackage(identity, 'wp-1', { scheduleOnly: true }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.updateWorkPackage).not.toHaveBeenCalled();
+  });
+
+  it('updateWorkPackage: allows scheduleOnly=true when the package has no BOQ links', async () => {
+    const { repo, service } = build({
+      workPackageForUpdate: { id: 'wp-1', projectId: 'p-1', _count: { boqLinks: 0 } },
+    });
+    await service.updateWorkPackage(identity, 'wp-1', { scheduleOnly: true });
+    expect(repo.updateWorkPackage).toHaveBeenCalledWith(
+      expect.anything(),
+      'wp-1',
+      expect.objectContaining({ scheduleOnly: true }),
+    );
+  });
+
+  it('getRollup: surfaces the planned schedule window + percentComplete per package (P1-a read model)', async () => {
+    const { service } = build({
+      workPackages: [
+        {
+          id: 'a',
+          code: 'WP-A',
+          name: 'Excavation & Foundation',
+          responsibleOwner: 'Ahmed',
+          progressWeight: '1',
+          boqLinks: [{ boqNodeId: 'n1' }],
+          plannedStart: new Date('2026-06-01'),
+          plannedEnd: new Date('2026-06-21'),
+          durationDays: 21,
+          forecastEnd: new Date('2026-06-25'),
+          scheduleOnly: false,
+        },
+      ],
+      measurements: [
+        { boqNodeId: 'n1', quantity: 300, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }, // 30%
+      ],
+      leafValues: [{ id: 'n1', totalAmount: '100000.00' }],
+    });
+    const res = await service.getRollup(identity, 'p-1');
+    const line = res.packages[0]!;
+    expect(line.percentComplete).toBe(30);
+    expect(line.plannedStart).toBe('2026-06-01');
+    expect(line.plannedEnd).toBe('2026-06-21');
+    expect(line.durationDays).toBe(21);
+    expect(line.forecastEnd).toBe('2026-06-25');
+    expect(line.scheduleOnly).toBe(false);
+  });
+
+  it('getRollup: a scheduleOnly phase reports null percentComplete and is excluded from the weighting (§8.5)', async () => {
+    const { service } = build({
+      workPackages: [
+        {
+          id: 'mob',
+          code: 'WP-00',
+          name: 'Mobilization',
+          responsibleOwner: null,
+          progressWeight: '0',
+          boqLinks: [],
+          plannedStart: new Date('2026-06-01'),
+          plannedEnd: new Date('2026-06-08'),
+          durationDays: 7,
+          forecastEnd: null,
+          scheduleOnly: true,
+        },
+        {
+          id: 'exc',
+          code: 'WP-01',
+          name: 'Excavation',
+          responsibleOwner: null,
+          progressWeight: '1',
+          boqLinks: [{ boqNodeId: 'n1' }],
+          plannedStart: null,
+          plannedEnd: null,
+          durationDays: null,
+          forecastEnd: null,
+          scheduleOnly: false,
+        },
+      ],
+      measurements: [
+        { boqNodeId: 'n1', quantity: 500, boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 } }, // 50%
+      ],
+      leafValues: [{ id: 'n1', totalAmount: '100000.00' }],
+    });
+    const res = await service.getRollup(identity, 'p-1');
+    const mob = res.packages.find((p) => p.id === 'mob')!;
+    expect(mob.percentComplete).toBeNull();
+    // The schedule-only phase's zero weight is excluded, so weights still total 100% → complete.
+    expect(res.weightsTotal).toBe('1');
+    expect(res.weightsComplete).toBe(true);
+    // Project physical % is driven by the measurable package alone: 1 × 50% = 50.
+    expect(res.physicalPercent).toBe(50);
+  });
+
+  /**
+   * Regression guard for the value-weighting the getRollup docstring now documents correctly.
+   * The master-schedule build spec's worked example: 1 lot @100% + 10,000 m³ @5% ≈ 5%, not 52.5%.
+   */
+  it('getRollup: percentComplete is value-weighted, not a plain average (master-schedule regression)', async () => {
+    const { service } = build({
+      workPackages: [
+        {
+          id: 'a',
+          code: 'WP-A',
+          name: 'Structure',
+          responsibleOwner: null,
+          progressWeight: '1',
+          boqLinks: [{ boqNodeId: 'lot' }, { boqNodeId: 'concrete' }],
+          plannedStart: null,
+          plannedEnd: null,
+          durationDays: null,
+          forecastEnd: null,
+          scheduleOnly: false,
+        },
+      ],
+      measurements: [
+        { boqNodeId: 'lot', quantity: 1, boqNode: { id: 'lot', code: '1', description: 'Lot', quantity: 1 } }, // 100%
+        { boqNodeId: 'concrete', quantity: 500, boqNode: { id: 'concrete', code: '2', description: 'RC', quantity: 10000 } }, // 5%
+      ],
+      leafValues: [
+        { id: 'lot', totalAmount: '2000.00' },
+        { id: 'concrete', totalAmount: '998000.00' },
+      ],
+    });
+    const res = await service.getRollup(identity, 'p-1');
+    // (2,000×100 + 998,000×5) ÷ 1,000,000 = 5.19 → rounded 5, NOT the plain average 52.5.
+    expect(res.packages[0]!.percentComplete).toBe(5);
+    expect(res.physicalPercent).toBeCloseTo(5.19, 2);
+  });
+
+  // ── Master Schedule P1-b (ADR-029): DERIVED actualStart / actualFinish / scheduleStatus ──
+
+  /** A package with a partly-verified leaf: actualStart = the earliest approved date; no finish yet. */
+  function partialProgressWP(over: {
+    plannedStart?: Date | null;
+    plannedEnd?: Date | null;
+    reportDates?: { boqNodeId: string; reportDate: Date }[];
+    verifiedQty?: number;
+  } = {}) {
+    return {
+      workPackages: [
+        {
+          id: 'a',
+          code: 'WP-A',
+          name: 'Excavation',
+          responsibleOwner: null,
+          progressWeight: '1',
+          boqLinks: [{ boqNodeId: 'n1' }],
+          plannedStart: over.plannedStart ?? null,
+          plannedEnd: over.plannedEnd ?? null,
+          durationDays: null,
+          forecastEnd: null,
+          scheduleOnly: false,
+        },
+      ],
+      measurements: [
+        {
+          boqNodeId: 'n1',
+          quantity: over.verifiedQty ?? 300,
+          boqNode: { id: 'n1', code: '1', description: 'x', quantity: 1000 },
+        },
+      ],
+      leafValues: [{ id: 'n1', totalAmount: '100000.00' }],
+      reportDates: over.reportDates ?? [],
+    };
+  }
+
+  it('getRollup: actualStart is the earliest approved-DPR date on the package leaves', async () => {
+    const { service } = build(
+      partialProgressWP({
+        reportDates: [
+          { boqNodeId: 'n1', reportDate: new Date('2026-06-10') },
+          { boqNodeId: 'n1', reportDate: new Date('2026-06-03') }, // earliest
+          { boqNodeId: 'n1', reportDate: new Date('2026-06-18') },
+        ],
+      }),
+    );
+    const line = (await service.getRollup(identity, 'p-1')).packages[0]!;
+    expect(line.actualStart).toBe('2026-06-03');
+  });
+
+  it('getRollup: actualStart is null when the package has no approved measurements', async () => {
+    const { service } = build(partialProgressWP({ reportDates: [] }));
+    const line = (await service.getRollup(identity, 'p-1')).packages[0]!;
+    expect(line.actualStart).toBeNull();
+    expect(line.actualFinish).toBeNull();
+  });
+
+  it('getRollup: actualFinish stays null until the package is 100% complete', async () => {
+    const { service } = build(
+      partialProgressWP({
+        verifiedQty: 300, // 30% — not complete
+        reportDates: [
+          { boqNodeId: 'n1', reportDate: new Date('2026-06-03') },
+          { boqNodeId: 'n1', reportDate: new Date('2026-06-18') },
+        ],
+      }),
+    );
+    const line = (await service.getRollup(identity, 'p-1')).packages[0]!;
+    expect(line.percentComplete).toBe(30);
+    expect(line.actualStart).toBe('2026-06-03');
+    expect(line.actualFinish).toBeNull();
+  });
+
+  it('getRollup: actualFinish = the latest approved-DPR date once the package reaches 100%', async () => {
+    const { service } = build(
+      partialProgressWP({
+        verifiedQty: 1000, // 1000/1000 = 100%
+        reportDates: [
+          { boqNodeId: 'n1', reportDate: new Date('2026-06-03') },
+          { boqNodeId: 'n1', reportDate: new Date('2026-06-25') }, // latest
+        ],
+      }),
+    );
+    const line = (await service.getRollup(identity, 'p-1')).packages[0]!;
+    expect(line.percentComplete).toBe(100);
+    expect(line.actualStart).toBe('2026-06-03');
+    expect(line.actualFinish).toBe('2026-06-25');
+  });
+
+  it('getRollup: scheduleStatus AHEAD when actual % leads the planned window at asOf', async () => {
+    // Planned 01→21 Jun; asOf 08 Jun ≈ 35% expected; verified 700/1000 = 70% → +35 pts → AHEAD.
+    const { service } = build(
+      partialProgressWP({
+        plannedStart: new Date('2026-06-01'),
+        plannedEnd: new Date('2026-06-21'),
+        verifiedQty: 700,
+      }),
+    );
+    const line = (await service.getRollup(identity, 'p-1', '2026-06-08')).packages[0]!;
+    expect(line.percentComplete).toBe(70);
+    expect(line.scheduleStatus).toBe('AHEAD');
+  });
+
+  it('getRollup: scheduleStatus ON_TRACK when actual % sits within the band of expected', async () => {
+    // Planned 01→21 Jun (20-day span); asOf 11 Jun = 50% expected; verified 500/1000 = 50% → 0 → ON_TRACK.
+    const { service } = build(
+      partialProgressWP({
+        plannedStart: new Date('2026-06-01'),
+        plannedEnd: new Date('2026-06-21'),
+        verifiedQty: 500,
+      }),
+    );
+    const line = (await service.getRollup(identity, 'p-1', '2026-06-11')).packages[0]!;
+    expect(line.percentComplete).toBe(50);
+    expect(line.scheduleStatus).toBe('ON_TRACK');
+  });
+
+  it('getRollup: scheduleStatus BEHIND when actual % trails the planned window at asOf', async () => {
+    // Planned 01→21 Jun; asOf 16 Jun = 75% expected; verified 100/1000 = 10% → −65 pts → BEHIND.
+    const { service } = build(
+      partialProgressWP({
+        plannedStart: new Date('2026-06-01'),
+        plannedEnd: new Date('2026-06-21'),
+        verifiedQty: 100,
+      }),
+    );
+    const line = (await service.getRollup(identity, 'p-1', '2026-06-16')).packages[0]!;
+    expect(line.percentComplete).toBe(10);
+    expect(line.scheduleStatus).toBe('BEHIND');
+  });
+
+  it('getRollup: scheduleStatus INSUFFICIENT_DATA when the planned window is unset', async () => {
+    const { service } = build(
+      partialProgressWP({ plannedStart: null, plannedEnd: null, verifiedQty: 500 }),
+    );
+    const line = (await service.getRollup(identity, 'p-1', '2026-06-16')).packages[0]!;
+    expect(line.scheduleStatus).toBe('INSUFFICIENT_DATA');
+  });
+
+  it('getRollup: a scheduleOnly phase derives status from dates only, no % and no actual dates', async () => {
+    const base = {
+      id: 'mob',
+      code: 'WP-00',
+      name: 'Mobilization',
+      responsibleOwner: null,
+      progressWeight: '0',
+      boqLinks: [],
+      plannedStart: new Date('2026-06-01'),
+      plannedEnd: new Date('2026-06-08'),
+      durationDays: 7,
+      forecastEnd: null,
+      scheduleOnly: true,
+    };
+    // asOf within the window → ON_TRACK; percentComplete null; no actual dates (no measurable scope).
+    const onTrack = build({ workPackages: [base], measurements: [], leafValues: [] });
+    const within = (await onTrack.service.getRollup(identity, 'p-1', '2026-06-05')).packages[0]!;
+    expect(within.percentComplete).toBeNull();
+    expect(within.actualStart).toBeNull();
+    expect(within.actualFinish).toBeNull();
+    expect(within.scheduleStatus).toBe('ON_TRACK');
+
+    // asOf past plannedEnd with nothing to mark it done → BEHIND.
+    const late = build({ workPackages: [base], measurements: [], leafValues: [] });
+    const overdue = (await late.service.getRollup(identity, 'p-1', '2026-06-20')).packages[0]!;
+    expect(overdue.scheduleStatus).toBe('BEHIND');
   });
 
   it('signal: COST_AHEAD when cost consumed outpaces physical progress', async () => {

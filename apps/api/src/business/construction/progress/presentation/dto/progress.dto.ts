@@ -174,3 +174,40 @@ export class AllocateBoqNodeDto {
   @IsString() @IsNotEmpty()
   boqNodeId!: string;
 }
+
+// Master Schedule P1-a (ADR-029) — partial update of a work package, including its schedule window
+// (the WorkPackage IS the master-schedule phase row). Dates are ISO strings (@db.Date). % complete
+// and actual dates are DERIVED on read, never accepted here.
+export class UpdateWorkPackageDto {
+  @ApiPropertyOptional({ example: 'Substructure' })
+  @IsOptional() @IsString() @IsNotEmpty() @MaxLength(255)
+  name?: string;
+
+  @ApiPropertyOptional({ example: 'Ahmed Ali', nullable: true })
+  @IsOptional() @IsString() @MaxLength(255)
+  responsibleOwner?: string | null;
+
+  @ApiPropertyOptional({ example: 0.35, description: 'Fraction of project weight (0..1)' })
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Max(1)
+  progressWeight?: number;
+
+  @ApiPropertyOptional({ example: '2026-09-01', nullable: true })
+  @IsOptional() @IsDateString()
+  plannedStart?: string | null;
+
+  @ApiPropertyOptional({ example: '2026-09-30', nullable: true })
+  @IsOptional() @IsDateString()
+  plannedEnd?: string | null;
+
+  @ApiPropertyOptional({ minimum: 0, nullable: true })
+  @IsOptional() @IsInt() @Min(0)
+  durationDays?: number | null;
+
+  @ApiPropertyOptional({ example: '2026-10-15', nullable: true, description: 'Optional PM forecast finish' })
+  @IsOptional() @IsDateString()
+  forecastEnd?: string | null;
+
+  @ApiPropertyOptional({ description: 'Non-measurable phase (no BOQ scope); tracked by dates only' })
+  @IsOptional() @IsBoolean()
+  scheduleOnly?: boolean;
+}

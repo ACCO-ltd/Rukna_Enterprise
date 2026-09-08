@@ -35,6 +35,7 @@ function build(over: { targets?: { targetDate: Date; cumulativePercent: unknown 
     findWorkPackages: jest.fn().mockResolvedValue([]),
     findLeafValues: jest.fn().mockResolvedValue([]),
     approvedMeasurementsForProject: jest.fn().mockResolvedValue([]),
+    approvedReportDatesForLeaves: jest.fn().mockResolvedValue([]),
   };
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
   const svc = new ProgressService(

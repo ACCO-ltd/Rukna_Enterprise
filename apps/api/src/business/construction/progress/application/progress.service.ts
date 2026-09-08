@@ -6,6 +6,7 @@ import {
   type ProgressActualPoint,
   type ProgressCurveResponse,
   type ProgressPeriodComparisonResponse,
+  type ProgressScheduleStatus,
   type ProgressSnapshotResponse,
 } from '@erp/types';
 
@@ -382,13 +383,77 @@ export class ProgressService {
   }
 
   /**
-   * Project physical %: each package's progress is the simple mean of its allocated BOQ leaves'
-   * verified % (not money-weighted, CONST-PROG-007), rolled up by the package `progressWeight`.
-   * Reports weightsTotal + weightsComplete so an incomplete plan (weights ≠ 100%) is visible.
+   * Master Schedule P1-a (ADR-029): partial update of a work package + its schedule window (the WP
+   * IS the master-schedule phase row). Project-scoped like every other WP mutation. Enforces the new
+   * schedule invariants: `plannedEnd ≥ plannedStart` and `durationDays ≥ 0` (reusing
+   * `validateActivityDates`), and a `scheduleOnly` phase must own no BOQ scope (§8.5). % complete and
+   * actual dates are DERIVED on read — never accepted here.
    */
-  async getRollup(identity: RequestIdentity, projectId: string) {
+  async updateWorkPackage(identity: RequestIdentity, workPackageId: string, dto: UpdateWorkPackageDto) {
+    const prisma = this.tenancy.getClient();
+    const wp = await this.repo.findWorkPackageForUpdate(prisma, identity.activeOrganizationId, workPackageId);
+    if (!wp) throw new NotFoundException(`Work package ${workPackageId} not found`);
+    await this.projectAccess.assertMember(identity, wp.projectId);
+
+    // Validate the effective (post-update) schedule window. Only-one-side edits are checked against
+    // the value that would remain — but the update DTO carries no read of the stored dates, so when
+    // only one bound is supplied we validate the pair only if both are present in this request.
+    this.validateActivityDates(
+      dto.plannedStart ?? undefined,
+      dto.plannedEnd ?? undefined,
+      dto.durationDays ?? undefined,
+    );
+
+    // §8.5: a non-measurable (schedule-only) phase is tracked by dates only and must carry no BOQ
+    // scope, so its derived % stays honestly null rather than a silent 0.
+    if (dto.scheduleOnly === true && wp._count.boqLinks > 0) {
+      throw new BadRequestException(
+        'A schedule-only phase cannot have BOQ scope. Remove its BOQ allocations first, or leave it measurable.',
+      );
+    }
+
+    return this.repo.updateWorkPackage(prisma, workPackageId, {
+      ...(dto.name !== undefined ? { name: dto.name } : {}),
+      ...(dto.responsibleOwner !== undefined ? { responsibleOwner: dto.responsibleOwner } : {}),
+      ...(dto.progressWeight !== undefined ? { progressWeight: new Decimal(dto.progressWeight) } : {}),
+      ...(dto.plannedStart !== undefined
+        ? { plannedStart: dto.plannedStart ? new Date(dto.plannedStart) : null }
+        : {}),
+      ...(dto.plannedEnd !== undefined
+        ? { plannedEnd: dto.plannedEnd ? new Date(dto.plannedEnd) : null }
+        : {}),
+      ...(dto.durationDays !== undefined ? { durationDays: dto.durationDays } : {}),
+      ...(dto.forecastEnd !== undefined
+        ? { forecastEnd: dto.forecastEnd ? new Date(dto.forecastEnd) : null }
+        : {}),
+      ...(dto.scheduleOnly !== undefined ? { scheduleOnly: dto.scheduleOnly } : {}),
+    });
+  }
+
+  /**
+   * Project physical %: each package's progress is the **value-weighted** mean of its allocated BOQ
+   * leaves' verified % — Σ(leaf value × leaf %) ÷ Σ(leaf value) (`weightedPackagePercent`, the
+   * 2026-09-05 Option-A change; falls back to a plain average only when nothing in the package is
+   * priced). Packages roll up to the project by their `progressWeight`. Reports weightsTotal +
+   * weightsComplete so an incomplete plan (weights ≠ 100%) is visible.
+   *
+   * Master Schedule P1-a (ADR-029): each package line also carries its schedule window (planned
+   * dates / duration / forecast) and `percentComplete` — the master-schedule read model. A
+   * `scheduleOnly` phase (no BOQ scope, master-schedule §8.5) has no derivable %: its
+   * `percentComplete` is null and it is excluded from both the weighting numerator and denominator,
+   * tracked by dates alone rather than reported as a silent 0.
+   *
+   * Master Schedule P1-b (ADR-029): each line also carries DERIVED (never stored) schedule reads —
+   * `actualStart`/`actualFinish` from the package's APPROVED-DPR measurement dates, and a per-phase
+   * `scheduleStatus` from the planned window vs progress as-of `asOf` (default now; threaded like
+   * `getScheduleVariance` so the status is testable with a fixed date). See `deriveActualDates` and
+   * `derivePhaseScheduleStatus`.
+   */
+  async getRollup(identity: RequestIdentity, projectId: string, asOf?: string) {
     await this.projectAccess.assertMember(identity, projectId);
     const prisma = this.tenancy.getClient();
+
+    const at = asOf ? new Date(asOf) : new Date();
 
     const packages = await this.repo.findWorkPackages(prisma, identity.activeOrganizationId, projectId);
     const progressLines = await this.getProjectProgress(identity, projectId);
@@ -403,12 +468,56 @@ export class ProgressService {
       leafValues.map((v) => [v.id, new Decimal(v.totalAmount?.toString() ?? '0')] as const),
     );
 
+    // P1-b: one batched read of the APPROVED-DPR report dates across every allocated leaf, folded to
+    // per-node min/max. Each package then reads its own actual window from its leaves.
+    const reportDates = await this.repo.approvedReportDatesForLeaves(
+      prisma,
+      identity.activeOrganizationId,
+      allocatedLeafIds,
+    );
+    const rangeByNode = new Map<string, { min: Date; max: Date }>();
+    for (const { boqNodeId, reportDate } of reportDates) {
+      const cur = rangeByNode.get(boqNodeId);
+      if (!cur) {
+        rangeByNode.set(boqNodeId, { min: reportDate, max: reportDate });
+      } else {
+        if (reportDate.getTime() < cur.min.getTime()) cur.min = reportDate;
+        if (reportDate.getTime() > cur.max.getTime()) cur.max = reportDate;
+      }
+    }
+
     let weightsTotal = ZERO;
     let weighted = ZERO;
     const packageLines = packages.map((wp) => {
       const leaves = wp.boqLinks.map((b) => b.boqNodeId);
+      const { actualStart, actualFinishCandidate } = deriveActualDates(leaves, rangeByNode);
+      // A schedule-only phase has no measurable scope: no derived %, and it takes no part in the
+      // project weighting (master-schedule §8.5). Its own progressWeight should be 0, but exclude it
+      // from weightsTotal too so it never drags weightsComplete off 100%.
+      if (wp.scheduleOnly) {
+        return {
+          id: wp.id,
+          code: wp.code,
+          name: wp.name,
+          responsibleOwner: wp.responsibleOwner,
+          weight: new Decimal(wp.progressWeight.toString()).toString(),
+          percentComplete: null,
+          leafCount: leaves.length,
+          plannedStart: isoOrNull(wp.plannedStart),
+          plannedEnd: isoOrNull(wp.plannedEnd),
+          durationDays: wp.durationDays,
+          forecastEnd: isoOrNull(wp.forecastEnd),
+          scheduleOnly: true,
+          // A schedule-only phase has no measurable scope, so it never accrues APPROVED-DPR dates:
+          // actualStart/Finish stay null and its status is derived from the dates alone.
+          actualStart: null,
+          actualFinish: null,
+          scheduleStatus: deriveScheduleOnlyStatus(wp.plannedStart, wp.plannedEnd, at),
+        };
+      }
       // Value-weighted, not a plain average — see `progress-rollup.ts` for why.
       const pct = weightedPackagePercent(leaves, pctByNode, valueByNode);
+      const percentComplete = Math.round(pct);
       const weight = new Decimal(wp.progressWeight.toString());
       weightsTotal = weightsTotal.plus(weight);
       weighted = weighted.plus(weight.mul(pct));
@@ -418,8 +527,18 @@ export class ProgressService {
         name: wp.name,
         responsibleOwner: wp.responsibleOwner,
         weight: weight.toString(),
-        percentComplete: Math.round(pct),
+        percentComplete,
         leafCount: leaves.length,
+        plannedStart: isoOrNull(wp.plannedStart),
+        plannedEnd: isoOrNull(wp.plannedEnd),
+        durationDays: wp.durationDays,
+        forecastEnd: isoOrNull(wp.forecastEnd),
+        scheduleOnly: false,
+        actualStart: isoOrNull(actualStart),
+        // Approximation of "crossed 100%": the latest APPROVED-DPR date is a finish only once the
+        // package is fully verified. Exact-crossing replay (the day the last unit landed) is deferred.
+        actualFinish: percentComplete === 100 ? isoOrNull(actualFinishCandidate) : null,
+        scheduleStatus: derivePhaseScheduleStatus(wp.plannedStart, wp.plannedEnd, percentComplete, at),
       };
     });
 
@@ -910,11 +1029,104 @@ function plannedPercentAt(
   return Number(last.cumulativePercent);
 }
 
+/** A `@db.Date` column → ISO `YYYY-MM-DD`, or null. The date-only shape the read models use. */
+function isoOrNull(date: Date | null | undefined): string | null {
+  return date ? isoDate(date) : null;
+}
+
+/**
+ * Master Schedule P1-b (ADR-029): a package's DERIVED actual window from its leaves' APPROVED-DPR
+ * report dates. `actualStart` = the earliest such date across the package's leaves (null when the
+ * package has no verified progress). `actualFinishCandidate` = the latest such date — only a *finish*
+ * once the package reads 100% (that gate is applied by the caller); it is null when nothing is
+ * measured.
+ */
+function deriveActualDates(
+  leafIds: string[],
+  rangeByNode: Map<string, { min: Date; max: Date }>,
+): { actualStart: Date | null; actualFinishCandidate: Date | null } {
+  let start: Date | null = null;
+  let finish: Date | null = null;
+  for (const id of leafIds) {
+    const range = rangeByNode.get(id);
+    if (!range) continue;
+    if (start === null || range.min.getTime() < start.getTime()) start = range.min;
+    if (finish === null || range.max.getTime() > finish.getTime()) finish = range.max;
+  }
+  return { actualStart: start, actualFinishCandidate: finish };
+}
+
+/**
+ * The planned expected-to-date % for a phase at `asOf`: 0 at/before plannedStart, 100 at/after
+ * plannedEnd, linear in between. Day-grained (the columns are `@db.Date`). Null when either bound is
+ * missing — the phase then has no schedule baseline to judge against.
+ */
+function phaseExpectedPercentAt(
+  plannedStart: Date | null | undefined,
+  plannedEnd: Date | null | undefined,
+  asOf: Date,
+): number | null {
+  if (!plannedStart || !plannedEnd) return null;
+  const start = plannedStart.getTime();
+  const end = plannedEnd.getTime();
+  if (end <= start) return asOf.getTime() >= end ? 100 : 0;
+  const t = asOf.getTime();
+  if (t <= start) return 0;
+  if (t >= end) return 100;
+  return ((t - start) / (end - start)) * 100;
+}
+
+/**
+ * Master Schedule P1-b (ADR-029): per-phase schedule health for a MEASURABLE package. Expected-to-date
+ * % comes from the planned window vs `asOf`; the variance (actual − expected) maps through the same
+ * `scheduleStatusFor` bands as the project S-curve. INSUFFICIENT_DATA when the planned window is
+ * unset (mirrors `scheduleStatusFor(null)`).
+ */
+function derivePhaseScheduleStatus(
+  plannedStart: Date | null | undefined,
+  plannedEnd: Date | null | undefined,
+  actualPercent: number,
+  asOf: Date,
+): ProgressScheduleStatus {
+  const expected = phaseExpectedPercentAt(plannedStart, plannedEnd, asOf);
+  if (expected === null) return scheduleStatusFor(null);
+  return scheduleStatusFor(actualPercent - expected);
+}
+
+/**
+ * Master Schedule P1-b (ADR-029): per-phase schedule health for a SCHEDULE-ONLY package, which has no
+ * measurable % — so it is judged by dates alone (kept deliberately simple, §8.5):
+ * finished by plannedEnd is not knowable without a % signal, so past plannedEnd it reads BEHIND (the
+ * phase's window has lapsed and nothing marks it done); on or before plannedEnd it reads ON_TRACK;
+ * INSUFFICIENT_DATA when the planned window is unset.
+ */
+function deriveScheduleOnlyStatus(
+  plannedStart: Date | null | undefined,
+  plannedEnd: Date | null | undefined,
+  asOf: Date,
+): ProgressScheduleStatus {
+  if (!plannedStart || !plannedEnd) return 'INSUFFICIENT_DATA';
+  return asOf.getTime() > plannedEnd.getTime() ? 'BEHIND' : 'ON_TRACK';
+}
+
 export interface CreateWorkPackageDto {
   code: string;
   name: string;
   responsibleOwner?: string;
   progressWeight?: number;
+}
+
+// Master Schedule P1-a (ADR-029): partial WP update incl. the schedule window. Dates are ISO
+// strings (@db.Date). % complete + actual dates are derived on read, never accepted here.
+export interface UpdateWorkPackageDto {
+  name?: string;
+  responsibleOwner?: string | null;
+  progressWeight?: number;
+  plannedStart?: string | null;
+  plannedEnd?: string | null;
+  durationDays?: number | null;
+  forecastEnd?: string | null;
+  scheduleOnly?: boolean;
 }
 
 /** Maps a stored ProgressSnapshot row to its wire DTO (Decimals → numbers, Dates → ISO). */
