@@ -375,6 +375,82 @@
       "actual": "Derived actual (from approved reports)"
     }
   },
+  "scheduleWizard": {
+    "title": "Set up schedule",
+    "subtitle": "Build the master schedule in four steps: start, assign scope, set dates, then weights.",
+    "noBaseline": "The BOQ baseline was cleared. Baseline the BOQ before setting up the schedule.",
+    "gate": {
+      "noBaselineTitle": "Baseline the BOQ first",
+      "noBaseline": "A schedule is built from BOQ scope. Baseline the BOQ before setting up the schedule."
+    },
+    "cta": {
+      "title": "No schedule yet",
+      "description": "Set up the master schedule to see phases progress automatically from daily reports — no one types a % complete.",
+      "setUp": "Set up schedule",
+      "setTitle": "Master schedule",
+      "setDescription": "Phases, scope, dates and weights are set. Open the Schedule view for the live timeline.",
+      "edit": "Edit schedule"
+    },
+    "steps": {
+      "step1": "Start",
+      "step2": "Assign scope",
+      "step3": "Dates",
+      "step4": "Weights"
+    },
+    "start": {
+      "lead": "Start from ACCO's standard building schedule, or start blank and add phases yourself.",
+      "templateTitle": "ACCO standard building schedule",
+      "templateHint": "Pre-creates the nine standard phases so you edit rather than invent.",
+      "blankTitle": "Start blank",
+      "blankHint": "Add and name each phase yourself in the steps that follow.",
+      "alreadyHasPackages": "This project already has work packages, so the template cannot be applied. Continue to edit the existing phases.",
+      "applying": "Creating phases…",
+      "applyFailed": "Could not apply the template."
+    },
+    "scope": {
+      "lead": "Assign BOQ items to each phase. A phase with no measurable scope (Design, Mobilization) can be marked schedule-only and tracked by dates alone.",
+      "noPackages": "No phases yet. Go back and apply the template, or add work packages in the table below.",
+      "pickItem": "Choose a BOQ item",
+      "assign": "Assign",
+      "itemCount": "{count, plural, one {# item} other {# items}}",
+      "scheduleOnlyBadge": "Schedule-only",
+      "scheduleOnlyHint": "Tracked by dates only — no BOQ scope, no % complete.",
+      "makeMeasurable": "Make measurable",
+      "markScheduleOnly": "Mark as schedule-only",
+      "unassigned": "{count, plural, one {# BOQ item is not assigned to any phase} other {# BOQ items are not assigned to any phase}} — it counts towards nothing until assigned.",
+      "allAssigned": "Every BOQ item is assigned to a phase.",
+      "allocateFailed": "Could not assign the item.",
+      "scheduleOnlyFailed": "Could not change the phase. A schedule-only phase must have no assigned items."
+    },
+    "dates": {
+      "lead": "Set each phase's planned window. Auto-suggest sequences the phases back-to-back from the project start; adjust any row.",
+      "autoSuggest": "Auto-suggest dates",
+      "noProjectStart": "Set the project start date to auto-suggest the schedule. You can still set each phase's dates by hand.",
+      "start": "Planned start",
+      "end": "Planned end",
+      "pickDate": "Select a date",
+      "orderError": "End date must be on or after the start date.",
+      "saveFailed": "Could not save the dates.",
+      "nextWithUndated": "{count, plural, one {Continue (# phase still undated)} other {Continue (# phases still undated)}}"
+    },
+    "weights": {
+      "lead": "Give each phase a weight so the project figure reflects how much each phase is worth. Distribute by BOQ value so you don't have to guess.",
+      "distribute": "Distribute weights by BOQ value",
+      "totalLabel": "Weights total",
+      "complete": "Weights complete",
+      "remaining": "{remaining}% still to reach 100%.",
+      "missingScope": "{count, plural, one {# measurable phase has no BOQ scope} other {# measurable phases have no BOQ scope}} — go back to Assign scope.",
+      "missingDates": "{count, plural, one {# phase has no planned dates} other {# phases have no planned dates}} — they will not appear on the timeline.",
+      "suggestFailed": "Could not suggest weights.",
+      "saveFailed": "Could not save the weight."
+    },
+    "nav": {
+      "back": "Back",
+      "next": "Continue",
+      "cancel": "Cancel",
+      "finish": "Finish"
+    }
+  },
   "activity": {
     "title": "Activities",
     "subtitle": "The work breakdown under each package — planned dates and milestones. Dependencies are deliberately out of scope.",

@@ -3,18 +3,26 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { ProgrammeMilestoneResponse } from '@erp/types';
 
+import type { ScheduleTemplateKey } from '@erp/types';
+
+import { progressKeys } from '@/features/progress/hooks/use-progress';
+
 import {
+  applyScheduleTemplate,
   createActivity,
   createMilestone,
   deleteActivity,
   listActivities,
   listMilestones,
+  suggestWeights,
   updateActivity,
+  updateWorkPackage,
   verifyMilestone,
   type CreateActivityBody,
   type CreateMilestoneBody,
   type ProgrammeActivityResponse,
   type UpdateActivityBody,
+  type UpdateWorkPackageBody,
 } from '../api/programme-api';
 
 export const programmeKeys = {
@@ -93,6 +101,47 @@ export function useDeleteActivity(projectId: string) {
     mutationFn: (activityId: string) => deleteActivity(activityId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: programmeKeys.activities(projectId) });
+    },
+  });
+}
+
+// ── Master Schedule P1-d (ADR-029): the guided schedule builder ─────────────────────────────
+//
+// Applying the template creates the phase work packages; setting weights/dates/schedule-only via
+// the WP PATCH moves the roll-up (the project figure + the schedule window it draws). Both refresh
+// the progress roll-up and the work-package list so the Plan & Setup table and the Schedule view
+// update the moment the wizard writes. `suggest-weights` is read-only — no cache to invalidate.
+
+export function useApplyScheduleTemplate(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (templateKey: ScheduleTemplateKey) => applyScheduleTemplate(projectId, templateKey),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: progressKeys.rollup(projectId) }),
+        queryClient.invalidateQueries({ queryKey: progressKeys.workPackages(projectId) }),
+      ]);
+    },
+  });
+}
+
+export function useSuggestWeights(projectId: string) {
+  return useMutation({
+    mutationFn: () => suggestWeights(projectId),
+  });
+}
+
+export function useUpdateWorkPackage(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ workPackageId, body }: { workPackageId: string; body: UpdateWorkPackageBody }) =>
+      updateWorkPackage(workPackageId, body),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: progressKeys.rollup(projectId) }),
+        queryClient.invalidateQueries({ queryKey: progressKeys.workPackages(projectId) }),
+        queryClient.invalidateQueries({ queryKey: programmeKeys.activities(projectId) }),
+      ]);
     },
   });
 }
