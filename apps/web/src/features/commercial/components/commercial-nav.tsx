@@ -2,7 +2,14 @@
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { FileSignature, GitBranch, LayoutDashboard, ReceiptText, Stamp } from 'lucide-react';
+import {
+  CalendarClock,
+  FileSignature,
+  GitBranch,
+  LayoutDashboard,
+  ReceiptText,
+  Stamp,
+} from 'lucide-react';
 import { ViewSwitcher } from '@erp/ui';
 import type { BillingModel } from '@erp/types';
 
@@ -13,6 +20,7 @@ export type CommercialTab =
   | 'overview'
   | 'contract-security'
   | 'applications'
+  | 'payment-schedule'
   | 'variations'
   | 'billing-collection';
 
@@ -20,6 +28,7 @@ const ICONS: Record<CommercialTab, React.ReactNode> = {
   overview: <LayoutDashboard size={16} strokeWidth={1.9} />,
   'contract-security': <FileSignature size={16} strokeWidth={1.9} />,
   applications: <Stamp size={16} strokeWidth={1.9} />,
+  'payment-schedule': <CalendarClock size={16} strokeWidth={1.9} />,
   variations: <GitBranch size={16} strokeWidth={1.9} />,
   'billing-collection': <ReceiptText size={16} strokeWidth={1.9} />,
 };
@@ -27,11 +36,15 @@ const ICONS: Record<CommercialTab, React.ReactNode> = {
 /**
  * Which views this contract actually has.
  *
- * Applications & Certification is the IPA → IPC machinery, and a MILESTONE contract is billed
- * from its payment plan instead (ADR-023). Showing the tab anyway would put a permanently empty
- * workspace one click from Overview and invite a quantity surveyor to start an application the
- * server will refuse. A contract with no billing model yet (none, or still loading) keeps every
- * tab — hiding a view because data has not arrived is worse than showing one too many.
+ * The billing model chooses ONE of two mutually-exclusive views in the same slot: a MEASURED_IPC
+ * contract bills through Applications & Certification (the IPA → IPC machinery), a MILESTONE
+ * contract bills from its Payment Schedule instead (ADR-023). Only one applies, so only one is
+ * shown — the other would be a permanently empty workspace one click from Overview, inviting a
+ * user to start a document the server will refuse.
+ *
+ * A contract with no billing model yet (none, or still loading) shows Applications rather than
+ * hiding both — the measured chain is the historical default, and hiding a view because data has
+ * not arrived is worse than showing one too many.
  *
  * Exported so the route guard and the switcher agree on one rule rather than two copies of it.
  */
@@ -39,7 +52,8 @@ export function commercialTabsFor(
   billingModel: BillingModelValue | null | undefined,
 ): CommercialTab[] {
   const tabs: CommercialTab[] = ['overview', 'contract-security'];
-  if (billingModel !== 'MILESTONE') tabs.push('applications');
+  if (billingModel === 'MILESTONE') tabs.push('payment-schedule');
+  else tabs.push('applications');
   tabs.push('variations', 'billing-collection');
   return tabs;
 }

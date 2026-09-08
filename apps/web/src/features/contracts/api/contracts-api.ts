@@ -263,6 +263,26 @@ export function completeMilestone(contractId: string, milestoneId: string): Prom
 // ─── Payment-schedule installments (ADR-023 MILESTONE contracts) ───────────────────
 
 /**
+ * `PUT /contracts/:id/payment-plan` — replace a DRAFT MILESTONE contract's WHOLE payment schedule
+ * (commercial-billing-model-refinement §5 P1). The body is the complete installment list, same item
+ * shape as create's `paymentPlan`; the existing installments are removed and this set written in one
+ * transaction (Σ percentage = 1, audited).
+ *
+ * The server permits this ONLY while the contract is DRAFT and MILESTONE — a non-DRAFT contract 409s
+ * ("re-profile a committed schedule through a Variation"), and a non-MILESTONE contract 400s. There
+ * is no granular add/edit/delete for the schedule; this replace-all is the editor.
+ */
+export function replacePaymentPlan(
+  contractId: string,
+  payload: { installments: PaymentInstallmentPayload[] },
+): Promise<unknown> {
+  return apiClient(`/contracts/${contractId}/payment-plan`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
  * `PATCH /contracts/:id/installments/:installmentId/milestone` — link or unlink a programme
  * milestone as a payment installment's billing evidence (CONST-COM-011).
  *

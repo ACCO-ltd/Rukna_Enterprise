@@ -1772,6 +1772,7 @@
         "subtitle": "Define how the contract value is billed across installments. Percentages must total 100%. This can only be set now, at creation.",
         "empty": "No installments yet. Add the first to define the payment schedule.",
         "add": "Add installment",
+        "useAccoStandard": "Use ACCO standard schedule",
         "remove": "Remove",
         "name": "Installment",
         "namePlaceholder": "e.g. Mobilization advance",

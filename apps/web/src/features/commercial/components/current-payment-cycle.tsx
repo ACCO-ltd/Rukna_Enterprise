@@ -162,7 +162,7 @@ function MilestoneFocus({
         </Button>
       ) : (
         <Button asChild variant="outline" size="sm" className="min-h-11 shrink-0 self-start sm:min-h-0">
-          <Link href={`/projects/${projectId}/commercial/billing-collection`}>
+          <Link href={`/projects/${projectId}/commercial/payment-schedule`}>
             {t('milestone.view')}
           </Link>
         </Button>
