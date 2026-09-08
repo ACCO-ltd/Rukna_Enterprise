@@ -232,6 +232,8 @@ export class AuthService {
     user: {
       id: string;
       email: string;
+      firstName: string;
+      lastName: string;
       mustChangePassword?: boolean;
       sessionVersion: number;
     },
@@ -256,6 +258,9 @@ export class AuthService {
     return {
       sub: user.id,
       email: user.email,
+      // Display only. The UI addresses a person by name; it authorizes on roles and
+      // permissions, which are separate claims and stay that way.
+      name: `${user.firstName} ${user.lastName}`.trim() || undefined,
       orgId: membership.organizationId,
       tenantSlug,
       roles,

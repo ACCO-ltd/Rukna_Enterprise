@@ -23,7 +23,8 @@ import {
   TableRow,
   TableScroll,
 } from '@erp/ui';
-import { Columns, X } from '@phosphor-icons/react';
+import Link from 'next/link';
+import { ArrowsDownUp, Columns } from '@phosphor-icons/react';
 
 // ─── Column definition ────────────────────────────────────────────────────────
 
@@ -419,6 +420,64 @@ export interface PlatformDataGridProps<T> {
    * Return `null` for a non-financial list.
    */
   footerSummary?: (visibleRows: T[], allFilteredRows: T[]) => React.ReactNode;
+
+  // ── Row navigation ─────────────────────────────────────────────────────────
+
+  /**
+   * Makes the whole row navigable. Return the row's destination, or `undefined` for a row
+   * that has none.
+   *
+   * How it actually works, because the obvious reading is wrong: the grid renders **one real
+   * `<a>` in the primary column** — that is what a keyboard tabs to, what a screen reader
+   * announces, what shows a target in the status bar, and what open-in-new-tab acts on. The
+   * `<tr>` additionally carries a click handler that re-dispatches the click **onto that same
+   * anchor**, carrying the modifier keys across, so ctrl/cmd-clicking the row's whitespace
+   * opens a new tab exactly as clicking the name would. Nothing pushes a route directly, so
+   * the row and its link can never point at different places.
+   *
+   * The stretched-`::after` technique is deliberately not used: the primary column is usually
+   * `sticky`, which makes the cell a positioned ancestor, so the overlay would cover the cell
+   * rather than the row.
+   *
+   * Two gestures it does not serve, stated rather than implied: **middle-click** on row
+   * whitespace (an `auxclick`, never a `click`), and any gesture on a row whose primary column
+   * has been hidden. Both still work on the anchor itself.
+   *
+   * The handler stands aside for anything in the row that already does something — a
+   * drill-down link, the kebab, a checkbox — and for a drag that selects text, which is
+   * someone reading rather than navigating.
+   *
+   * **Callers must not render their own `<a>` in the primary column**: the grid wraps that
+   * cell's content, and an anchor inside an anchor is invalid.
+   */
+  rowHref?: (row: T) => string | undefined;
+
+  // ── Filters ────────────────────────────────────────────────────────────────
+
+  /**
+   * Resets the caller's own domain filters (status, category, date range).
+   *
+   * The grid owns text search and can always clear that itself; it cannot know what a
+   * "status" filter is. When this is provided the toolbar offers one "Clear filters" control
+   * that does both, so a reader who has narrowed a list into an empty state has a single way
+   * back out.
+   */
+  onClearFilters?: () => void;
+
+  /**
+   * Whether any caller-owned filter is currently narrowing the list. Drives whether the
+   * "Clear filters" control appears — offering to clear nothing is noise.
+   */
+  filtersActive?: boolean;
+
+  /**
+   * Suppresses the "Sort by" control in the list header.
+   *
+   * The control duplicates the sortable column headers on purpose: the headers are precise
+   * but only discoverable by hovering them, and they are unreachable at 375px where the
+   * table scrolls sideways. Pass `false` for a list whose order is fixed and meaningful.
+   */
+  sortControl?: boolean;
 }
 
 // ─── Destructure helpers ──────────────────────────────────────────────────────
@@ -467,6 +526,10 @@ export function PlatformDataGrid<T>({
   searchLabel,
   searchPlaceholder,
   resultLabel,
+  rowHref,
+  onClearFilters,
+  filtersActive,
+  sortControl = true,
 }: PlatformDataGridProps<T>) {
   const t = useTranslations('common.grid');
   const locale = useLocale() as 'en' | 'ar';
@@ -582,6 +645,72 @@ export function PlatformDataGrid<T>({
     ? resultLabel(sorted.length)
     : t('results', { count: sorted.length });
 
+  /**
+   * The column that carries the row's link.
+   *
+   * Keyed off the sticky primary column rather than "index 0": hiding a column would otherwise
+   * slide the link onto whichever column landed first, which for these lists is one that
+   * renders its own anchor — an `<a>` inside an `<a>`. Falls back to the leading visible column
+   * when nothing is sticky, and to nothing at all when there are no columns.
+   */
+  const primaryColumnKey =
+    visibleColumns.find((col) => col.sticky)?.key ?? visibleColumns[0]?.key;
+
+  /** Sortable columns currently on screen — a hidden column is not an offer worth making. */
+  const sortableColumns = visibleColumns.filter((col) => col.sortable);
+  const activeSortColumn = sort ? sortableColumns.find((col) => col.key === sort.key) : undefined;
+
+  /**
+   * One control undoes every narrowing in force: the grid's own text search, plus whatever
+   * the caller filters on. A reader who has narrowed a list to nothing needs a single way
+   * out, not one button for search and a set of selects to walk back to "All".
+   */
+  const canClear = hasSearch || Boolean(filtersActive);
+  const clearEverything = () => {
+    setSearch('');
+    setPage(1);
+    onClearFilters?.();
+  };
+
+  /**
+   * Pointer navigation for a whole row.
+   *
+   * This sits *alongside* the real link in the first cell rather than replacing it — the link
+   * is what keyboards, screen readers, middle-click and open-in-new-tab use. This only makes
+   * the rest of the row's width behave the way a reader expects when they aim at a name and
+   * hit the whitespace beside it.
+   *
+   * Two things it must not steal. Anything else in the row that already does something — a
+   * drill-down link, the kebab, a checkbox — keeps its own click. And a drag across a cell is
+   * someone selecting text to copy, not asking to leave the page.
+   */
+  // Deliberately not a `useCallback`: this sits below the loading/error/empty early returns,
+  // where a hook would change the hook count between renders.
+  const navigateRow = (event: React.MouseEvent<HTMLTableRowElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('a, button, input, select, textarea, label, [role="menuitem"]')) return;
+    if (window.getSelection()?.toString()) return;
+    // Activate the row's own link rather than pushing a route. It cannot drift from the href
+    // the row already advertises, it keeps everything `Link` does — prefetch, client-side
+    // transition, scroll restoration — and it leaves the grid with no dependency on a mounted
+    // router, which a table has no business requiring.
+    const anchor = event.currentTarget.querySelector<HTMLAnchorElement>('a[data-row-link]');
+    if (!anchor) return;
+    // Re-dispatch rather than `.click()`: a bare `.click()` synthesises a modifier-free event,
+    // so ctrl/cmd-clicking a row's whitespace would open in the current tab while doing the
+    // same thing to the name opens a new one. Same gesture, same result, wherever you aim.
+    anchor.dispatchEvent(
+      new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+      }),
+    );
+  };
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -647,6 +776,18 @@ export function PlatformDataGrid<T>({
           </DropdownMenu>
         ) : null}
 
+        {/* Clear — sits with the filters it undoes, not down beside the row count where it
+            used to be. Appears only once something is actually narrowing the list. */}
+        {canClear && visible.length > 0 ? (
+          <button
+            type="button"
+            onClick={clearEverything}
+            className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-control px-2 text-body-sm font-medium text-brand-primary transition-colors hover:text-brand-primary-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+          >
+            {onClearFilters ? t('clearFilters') : t('clearSearch')}
+          </button>
+        ) : null}
+
         {/* Right slot — create button etc. */}
         {actionsSlot ? <div className="shrink-0">{actionsSlot}</div> : null}
       </div>
@@ -661,189 +802,253 @@ export function PlatformDataGrid<T>({
         </div>
       ) : null}
 
-      {/* ── Result count / money summary / clear search ─────────────────── */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p
-          className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm text-muted-foreground"
-          role="status"
-          aria-live="polite"
-        >
-          <span>{countText}</span>
-          {/* Inside the same live region as the count: when a filter changes, "4 bills" and
-              "2 071 350.00 outstanding" are one announcement, not two. */}
-          {footerSummary ? footerSummary(visible, sorted) : null}
-        </p>
-        {hasSearch && visible.length > 0 ? (
-          <button
-            type="button"
-            onClick={() => { setSearch(''); setPage(1); }}
-            className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary rounded"
+      {/* ── The list panel ──────────────────────────────────────────────────
+          Count, rows and footer are one bordered surface rather than three things floating
+          on the page background. The rules that used to separate them were doing the work a
+          single container does better, and the count now reads as a property of the table
+          under it instead of a sentence stranded above it. */}
+      <section className="overflow-hidden rounded-panel border border-border bg-surface">
+        {/* ── Count / money summary / sort ──────────────────────────────── */}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border px-4 py-3">
+          <p
+            className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-body-sm text-muted-foreground"
+            role="status"
+            aria-live="polite"
           >
-            <X size={14} aria-hidden="true" />
-            {t('clearSearch')}
-          </button>
-        ) : null}
-      </div>
+            <span>{countText}</span>
+            {/* Inside the same live region as the count: when a filter changes, "4 bills" and
+                "2 071 350.00 outstanding" are one announcement, not two. */}
+            {footerSummary ? footerSummary(visible, sorted) : null}
+          </p>
+
+          {sortControl && sortableColumns.length > 1 ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-control px-2 text-body-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+                >
+                  <ArrowsDownUp size={14} aria-hidden="true" />
+                  <span>{t('sortBy', { column: activeSortColumn?.header ?? t('sortByDefault') })}</span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {sortableColumns.map((col) => (
+                  <DropdownMenuItem
+                    key={col.key}
+                    onSelect={() => {
+                      setSort(nextSort(sort, col.key));
+                      setPage(1);
+                    }}
+                  >
+                    <span className="flex-1">{col.header}</span>
+                    {sort?.key === col.key ? (
+                      // "A–Z" on an amount column is nonsense. Money and counts sort low-to-high.
+                      <span className="text-caption text-muted-foreground">
+                        {sort.direction === 'asc'
+                          ? t(col.numeric ? 'sortAscNumeric' : 'sortAsc')
+                          : t(col.numeric ? 'sortDescNumeric' : 'sortDesc')}
+                      </span>
+                    ) : null}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+        </div>
 
       {/* ── Mobile row renderer ──────────────────────────────────────────── */}
-      {mobileRow ? (
-        <div className="md:hidden">
-          {visible.length === 0 ? (
-            noMatchContent ?? (
-              <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-10 text-center">
-                <p className="text-sm text-muted-foreground">{noMatchMessage ?? t('noMatches')}</p>
-                {hasSearch ? (
-                  <div className="mt-4">
-                    <Button variant="outline" size="sm" onClick={() => { setSearch(''); setPage(1); }}>
-                      {clearFiltersLabel ?? t('clearSearch')}
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-            )
-          ) : (
-            <ul className="space-y-2" aria-label={label}>
-              {visible.map((row) => (
-                <li key={rowKey(row)}>{mobileRow(row, renderCtx)}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ) : null}
-
-      {/* ── Table ────────────────────────────────────────────────────────── */}
-      <TableScroll
-        aria-label={label}
-        className={mobileRow ? 'hidden md:block' : undefined}
-      >
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {/* Selection checkbox header */}
-              {hasSelection && selection ? (
-                <TableHead className="w-10">
-                  <Checkbox
-                    aria-label="Select all"
-                    checked={
-                      visible.length > 0 &&
-                      visible.every((row) => selection.selected.has(rowKey(row)))
-                    }
-                    // Some but not all: without this the header reads "nothing selected"
-                    // while rows below it are ticked.
-                    indeterminate={
-                      visible.some((row) => selection.selected.has(rowKey(row))) &&
-                      !visible.every((row) => selection.selected.has(rowKey(row)))
-                    }
-                    onChange={(e) => selection.onSelectAll(e.target.checked)}
-                  />
-                </TableHead>
-              ) : null}
-
-              {visibleColumns.map((col) => (
-                <TableHead
-                  key={col.key}
-                  numeric={col.numeric}
-                  aria-sort={col.sortable ? ariaSort(col.key) : undefined}
-                  className={cn(
-                    col.sticky &&
-                      'sticky start-0 z-10 bg-surface-subtle shadow-[1px_0_0_0] shadow-border',
-                  )}
-                >
-                  {col.sortable ? (
-                    <button
-                      type="button"
-                      className={cn(
-                        'inline-flex w-full items-center gap-1 text-start',
-                        'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
-                        col.numeric && 'flex-row-reverse',
-                      )}
-                      aria-label={sortButtonLabel(col)}
-                      onClick={() => { setSort((prev) => nextSort(prev, col.key)); setPage(1); }}
-                    >
-                      <span>{col.header}</span>
-                      <SortIcon direction={sort?.key === col.key ? sort.direction : null} />
-                    </button>
-                  ) : (
-                    col.header
-                  )}
-                </TableHead>
-              ))}
-
-              {hasActions ? (
-                <TableHead>
-                  <span className="sr-only">Actions</span>
-                </TableHead>
-              ) : null}
-            </TableRow>
-          </TableHeader>
-
-          <TableBody>
+        {mobileRow ? (
+          <div className="p-3 md:hidden">
             {visible.length === 0 ? (
-              <TableEmpty colSpan={colCount}>
-                {noMatchContent ?? (
-                  <>
-                    <p>{noMatchMessage ?? t('noMatches')}</p>
-                    {hasSearch ? (
-                      <div className="mt-4">
-                        <Button variant="outline" size="sm" onClick={() => { setSearch(''); setPage(1); }}>
-                          {clearFiltersLabel ?? t('clearSearch')}
-                        </Button>
-                      </div>
-                    ) : null}
-                  </>
-                )}
-              </TableEmpty>
+              noMatchContent ?? (
+                <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-10 text-center">
+                  <p className="text-sm text-muted-foreground">{noMatchMessage ?? t('noMatches')}</p>
+                  {canClear ? (
+                    <div className="mt-4">
+                      <Button variant="outline" size="sm" onClick={clearEverything}>
+                        {clearFiltersLabel ?? (onClearFilters ? t('clearFilters') : t('clearSearch'))}
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+              )
             ) : (
-              visible.map((row) => (
-                <TableRow key={rowKey(row)}>
-                  {/* Selection checkbox cell */}
-                  {hasSelection && selection ? (
-                    <TableCell className="w-10">
-                      <Checkbox
-                        aria-label={`Select ${rowKey(row)}`}
-                        checked={selection.selected.has(rowKey(row))}
-                        onChange={(e) => selection.onSelect(rowKey(row), e.target.checked)}
-                      />
-                    </TableCell>
-                  ) : null}
-
-                  {visibleColumns.map((col) => (
-                    <TableCell
-                      key={col.key}
-                      numeric={col.numeric}
-                      className={cn(
-                        col.sticky &&
-                          'sticky start-0 z-10 bg-surface shadow-[1px_0_0_0] shadow-border',
-                      )}
-                    >
-                      {col.render(row, renderCtx)}
-                    </TableCell>
-                  ))}
-
-                  {hasActions ? (
-                    <TableCell className="w-10 text-end">{rowActions!(row)}</TableCell>
-                  ) : null}
-                </TableRow>
-              ))
+              <ul className="space-y-2" aria-label={label}>
+                {visible.map((row) => (
+                  <li key={rowKey(row)}>{mobileRow(row, renderCtx)}</li>
+                ))}
+              </ul>
             )}
-          </TableBody>
-        </Table>
-      </TableScroll>
+          </div>
+        ) : null}
 
-      {/* ── Pagination ───────────────────────────────────────────────────── */}
-      {paginationConfig && sorted.length > 0 ? (
-        <PaginationBar
-          page={safePage}
-          totalPages={totalPages}
-          from={from}
-          to={to}
-          count={sorted.length}
-          pageSize={pageSize}
-          pageSizeOptions={pageSizeOptions}
-          onPageChange={setPage}
-          onPageSizeChange={handlePageSizeChange}
-        />
-      ) : null}
+        {/* ── Table ────────────────────────────────────────────────────────── */}
+        <TableScroll
+          aria-label={label}
+          // The panel around it already draws the frame; a second border here would read as a
+          // box inside a box, which is exactly what radius is supposed to encode and this is not.
+          className={cn('rounded-none border-0', mobileRow && 'hidden md:block')}
+        >
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {/* Selection checkbox header */}
+                {hasSelection && selection ? (
+                  <TableHead className="w-10">
+                    <Checkbox
+                      aria-label="Select all"
+                      checked={
+                        visible.length > 0 &&
+                        visible.every((row) => selection.selected.has(rowKey(row)))
+                      }
+                      // Some but not all: without this the header reads "nothing selected"
+                      // while rows below it are ticked.
+                      indeterminate={
+                        visible.some((row) => selection.selected.has(rowKey(row))) &&
+                        !visible.every((row) => selection.selected.has(rowKey(row)))
+                      }
+                      onChange={(e) => selection.onSelectAll(e.target.checked)}
+                    />
+                  </TableHead>
+                ) : null}
+
+                {visibleColumns.map((col) => (
+                  <TableHead
+                    key={col.key}
+                    numeric={col.numeric}
+                    aria-sort={col.sortable ? ariaSort(col.key) : undefined}
+                    className={cn(
+                      col.sticky &&
+                        'sticky start-0 z-10 bg-surface-subtle shadow-[1px_0_0_0] shadow-border',
+                    )}
+                  >
+                    {col.sortable ? (
+                      <button
+                        type="button"
+                        className={cn(
+                          'inline-flex w-full items-center gap-1 text-start',
+                          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
+                          col.numeric && 'flex-row-reverse',
+                        )}
+                        aria-label={sortButtonLabel(col)}
+                        onClick={() => { setSort((prev) => nextSort(prev, col.key)); setPage(1); }}
+                      >
+                        <span>{col.header}</span>
+                        <SortIcon direction={sort?.key === col.key ? sort.direction : null} />
+                      </button>
+                    ) : (
+                      col.header
+                    )}
+                  </TableHead>
+                ))}
+
+                {hasActions ? (
+                  <TableHead className="text-end">{t('actionsColumn')}</TableHead>
+                ) : null}
+              </TableRow>
+            </TableHeader>
+
+            <TableBody>
+              {visible.length === 0 ? (
+                <TableEmpty colSpan={colCount}>
+                  {noMatchContent ?? (
+                    <>
+                      <p>{noMatchMessage ?? t('noMatches')}</p>
+                      {canClear ? (
+                        <div className="mt-4">
+                          <Button variant="outline" size="sm" onClick={clearEverything}>
+                            {clearFiltersLabel ?? (onClearFilters ? t('clearFilters') : t('clearSearch'))}
+                          </Button>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+                </TableEmpty>
+              ) : (
+                visible.map((row) => {
+                  const href = rowHref?.(row);
+                  return (
+                    <TableRow
+                      key={rowKey(row)}
+                      className={cn(href && 'cursor-pointer hover:bg-surface-subtle')}
+                      onClick={href ? navigateRow : undefined}
+                    >
+                      {/* Selection checkbox cell */}
+                      {hasSelection && selection ? (
+                        <TableCell className="w-10">
+                          <Checkbox
+                            aria-label={`Select ${rowKey(row)}`}
+                            checked={selection.selected.has(rowKey(row))}
+                            onChange={(e) => selection.onSelect(rowKey(row), e.target.checked)}
+                          />
+                        </TableCell>
+                      ) : null}
+
+                      {visibleColumns.map((col, index) => (
+                        <TableCell
+                          key={col.key}
+                          numeric={col.numeric}
+                          className={cn(
+                            col.sticky &&
+                              'sticky start-0 z-10 bg-surface shadow-[1px_0_0_0] shadow-border',
+                          )}
+                        >
+                          {/* The row's one real link. The pointer gesture is the whole row, but
+                              a pointer is not the only way in: this is what a keyboard tabs to,
+                              what a screen reader announces, and what middle-click and
+                              open-in-new-tab act on. */}
+                          {href && col.key === primaryColumnKey ? (
+                            <Link
+                              href={href}
+                              data-row-link=""
+                              className="-my-2 flex min-h-11 items-center rounded-control focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
+                            >
+                              {col.render(row, renderCtx)}
+                            </Link>
+                          ) : (
+                            col.render(row, renderCtx)
+                          )}
+                        </TableCell>
+                      ))}
+
+                      {hasActions ? (
+                        <TableCell className="text-end">{rowActions!(row)}</TableCell>
+                      ) : null}
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </TableScroll>
+
+        {/* ── Footer ─────────────────────────────────────────────────────────
+            Paginated lists get the full control bar; an unpaginated one still says how much
+            of the data it is showing, because "1 result" at the top of a list you have
+            scrolled away from stops being visible exactly when you want it. */}
+        {paginationConfig && sorted.length > 0 ? (
+          <div className="border-t border-border px-4 py-3">
+            <PaginationBar
+              page={safePage}
+              totalPages={totalPages}
+              from={from}
+              to={to}
+              count={sorted.length}
+              pageSize={pageSize}
+              pageSizeOptions={pageSizeOptions}
+              onPageChange={setPage}
+              onPageSizeChange={handlePageSizeChange}
+            />
+          </div>
+        ) : visible.length > 0 ? (
+          <div className="border-t border-border px-4 py-3">
+            <p className="text-body-sm text-muted-foreground">
+              {t('showingOf', { shown: visible.length, total: sorted.length })}
+            </p>
+          </div>
+        ) : null}
+      </section>
     </div>
   );
 }

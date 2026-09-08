@@ -1,6 +1,14 @@
 export interface JwtPayload {
   sub: string;
   email: string;
+  /**
+   * Display name ("Amina Yusuf"), for addressing the person in the UI.
+   *
+   * Optional because a token minted before this claim existed is still valid until it
+   * refreshes, and the client must render something sensible in the meantime — it falls back
+   * to the email. It is display data, never an authorization input.
+   */
+  name?: string;
   orgId: string;
   tenantSlug: string;
   roles: string[];

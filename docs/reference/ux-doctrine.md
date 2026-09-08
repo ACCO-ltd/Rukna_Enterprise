@@ -72,8 +72,28 @@ metric strip at the top, then a prioritised action/exception queue, then an acti
 of counts. (This depends on a backend attention feed — see §6.)
 
 ### 2.4 Micro-labels
-11px uppercase tracked muted-foreground for table headers, nav section labels, and metric labels.
+11px uppercase tracked muted-foreground for nav section labels, metric labels and section eyebrows.
 Already in use; apply consistently.
+
+**Amended 2026-09-08 — table headers are excluded, and are sentence case.**
+
+They were in this list, and the rule could not survive contact with a sortable column.
+`text-transform` inherits, but a sortable header renders its label inside a `<button>`, and form
+controls do not take the inherited transform. So a real header row read
+
+> `Project · STAGE · CATEGORY · Project manager · PROGRAMME · Contract value · ATTENTION`
+
+— shouting at exactly the columns that happened not to sort. The casing was announcing
+sortability, which is the arrow's job.
+
+The fix could have gone in the sort button. It did not, because the rule was wrong on its own
+terms: a column header is *read as words* while scanning a grid, not glanced at as a label
+marking a region. Uppercase costs legibility where the eye moves fastest, and 13px sentence case
+measures about the same as 12px uppercase, so no dense table pays for the change.
+
+Micro-labels keep uppercase everywhere else — `DropdownMenuLabel`, nav section labels, metric
+labels, eyebrows. The distinction is: **a label naming a region shouts; a column header does
+not.**
 
 ### 2.5 Lifecycle as small dots + connectors
 Completed / current / upcoming / blocked / cancelled — small, never oversized. Use for project and
@@ -189,7 +209,24 @@ job: on a multi-panel page it is what lets the eye find a panel's start without 
 `RecordPanel`'s `icon` prop is the only sanctioned form, and it is deliberately narrow:
 
 - **One accent, one size.** The brand tint only — never a second hue, never a per-status colour.
-- **Region level only.** A panel header. Never per row, per fact, per metric or per status.
+- **Region level only, with one exception.** A panel header. Never per fact, per metric or per
+  status.
+
+  **Amended 2026-09-08 — an entity list's primary column may carry one.** Clients and Projects
+  put a single brand-tinted tile beside the record's name. It is the same tile doing the same
+  job one level down: it gives the eye a fixed left edge to run down a list of records, and it
+  binds the two-line name/code pair into one record rather than two rows. The conditions that
+  make it legitimate rather than the banned grid-of-tiles are strict, and all four must hold:
+
+  - **One accent, one size, one glyph for the whole column** — it marks *"a record starts
+    here"*, never what kind of record it is. The moment it varies by row it is encoding status
+    in colour, which is the original anti-pattern.
+  - **Primary column only**, and only in a list of records people navigate into.
+  - **`aria-hidden`** — the record's name is the accessible name.
+  - **Never alongside a per-row status tint.** The status column already carries that meaning.
+
+  A tile that varies per row, or a second one in another column, is the banned pattern returning
+  and the answer is still no.
 - **Decorative, so `aria-hidden`.** The `<h2>` beside it is the accessible name; the tile adds
   nothing a screen reader needs.
 

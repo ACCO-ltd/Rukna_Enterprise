@@ -12,6 +12,7 @@ export default async function ProjectsPage() {
     <>
       <PageHeader
         title={t('title')}
+        subtitle={t('subtitle')}
         actions={
           <Button asChild>
             <Link href="/projects/new">{t('newProject')}</Link>

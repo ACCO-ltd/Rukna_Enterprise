@@ -5,6 +5,8 @@ export type ClientWithContacts = Client & { contacts: ClientContact[] };
 
 export interface ClientListItem {
   id: string;
+  /** The human reference (CLI-001). What a person quotes on the phone; the id is for machines. */
+  code: string;
   name: string;
   status: Client['status'];
   primaryContact: Pick<ClientContact, 'name' | 'role'> | null;
@@ -31,6 +33,7 @@ export class ClientPrismaRepository {
       orderBy: { name: 'asc' },
       select: {
         id: true,
+        code: true,
         name: true,
         status: true,
         contacts: {
@@ -61,6 +64,7 @@ export class ClientPrismaRepository {
 
     return clients.map((client) => ({
       id: client.id,
+      code: client.code,
       name: client.name,
       status: client.status,
       primaryContact: client.contacts[0] ?? null,

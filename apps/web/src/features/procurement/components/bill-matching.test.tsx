@@ -98,6 +98,7 @@ beforeEach(() => {
     user: {
       id: 'user-1',
       email: 'controller@acco.test',
+      name: null,
       orgId: 'org-1',
       tenantSlug: 'acco',
       roles: ['FINANCE_CONTROLLER'],
@@ -248,6 +249,7 @@ describe('BillMatchSummary — exception (D6, Review differences)', () => {
       user: {
         id: 'user-2',
         email: 'clerk@acco.test',
+        name: null,
         orgId: 'org-1',
         tenantSlug: 'acco',
         roles: ['AP_CLERK'],

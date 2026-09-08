@@ -11,6 +11,7 @@ function makeUser(overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser
   return {
     id: 'user-1',
     email: 'engineer@acco.rukna.app',
+    name: 'Amina Yusuf',
     orgId: 'org-1',
     tenantSlug: 'acco',
     roles: ['site-engineer'],
