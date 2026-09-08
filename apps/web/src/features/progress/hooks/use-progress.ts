@@ -318,3 +318,22 @@ export function useAllocateBoqNode(projectId: string, workPackageId: string) {
     },
   });
 }
+
+/**
+ * Allocate a BOQ leaf to any work package (the target is chosen per call, not fixed at hook time).
+ * The guided schedule wizard assigns scope across several phases from one surface, so it needs to
+ * name the work package in the mutation rather than bind one hook per package.
+ */
+export function useAllocateToWorkPackage(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ workPackageId, boqNodeId }: { workPackageId: string; boqNodeId: string }) =>
+      allocateBoqNode(workPackageId, boqNodeId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: progressKeys.workPackages(projectId) }),
+        invalidateVerifiedDerived(queryClient, projectId),
+      ]);
+    },
+  });
+}

@@ -1,5 +1,11 @@
-import type { ProgrammeMilestoneResponse } from '@erp/types';
+import type {
+  ApplyScheduleTemplateResponse,
+  ProgrammeMilestoneResponse,
+  ScheduleTemplateKey,
+  SuggestWeightsResponse,
+} from '@erp/types';
 
+import type { WorkPackageResponse } from '@/features/progress/api/progress-api';
 import { apiClient } from '@/lib/api-client';
 
 /**
@@ -101,4 +107,57 @@ export function updateActivity(
 
 export function deleteActivity(activityId: string): Promise<void> {
   return apiClient<void>(`/programme/activities/${activityId}`, { method: 'DELETE' });
+}
+
+/**
+ * Master Schedule P1-d (ADR-029) — the two helpers that power the guided schedule builder.
+ *
+ * `apply-schedule-template` seeds a project's phases from a server-side template so the user edits
+ * rather than invents (409 when the project already has any work packages). `suggest-weights`
+ * derives each phase's progress weight from its assigned BOQ value so the user does not guess; it
+ * only suggests — the work-package PATCH persists a chosen weight.
+ */
+export function applyScheduleTemplate(
+  projectId: string,
+  templateKey: ScheduleTemplateKey,
+): Promise<ApplyScheduleTemplateResponse> {
+  return apiClient<ApplyScheduleTemplateResponse>(
+    `/projects/${projectId}/programme/apply-schedule-template`,
+    { method: 'POST', body: JSON.stringify({ templateKey }) },
+  );
+}
+
+export function suggestWeights(projectId: string): Promise<SuggestWeightsResponse> {
+  return apiClient<SuggestWeightsResponse>(
+    `/projects/${projectId}/programme/suggest-weights`,
+    { method: 'POST' },
+  );
+}
+
+/**
+ * Partially update a work package, including its master-schedule window (the work package IS the
+ * phase row). Dates are ISO `YYYY-MM-DD`; pass `null` to clear one. % complete and actual dates are
+ * derived on read and are never accepted here.
+ */
+export interface UpdateWorkPackageBody {
+  name?: string;
+  responsibleOwner?: string | null;
+  /** Fraction of project weight, 0..1 (≤ 4 dp). */
+  progressWeight?: number;
+  plannedStart?: string | null;
+  plannedEnd?: string | null;
+  durationDays?: number | null;
+  forecastEnd?: string | null;
+  /** A non-measurable phase (no BOQ scope); tracked by dates only. */
+  scheduleOnly?: boolean;
+}
+
+export function updateWorkPackage(
+  workPackageId: string,
+  body: UpdateWorkPackageBody,
+): Promise<WorkPackageResponse> {
+  return apiClient<WorkPackageResponse>(`/work-packages/${workPackageId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
 }
