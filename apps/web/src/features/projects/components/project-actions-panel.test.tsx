@@ -146,7 +146,7 @@ describe('ProjectActionsPanel — the primary control follows readiness', () => 
 
     expect(screen.getByRole('link', { name: /Continue setup/ })).toHaveAttribute(
       'href',
-      '/contracts/new?projectId=p1',
+      '/projects/p1/commercial/contract/new',
     );
 
     rerender(

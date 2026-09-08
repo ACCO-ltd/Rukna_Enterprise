@@ -253,6 +253,17 @@
     "guarantees": "Guarantees",
     "manageTerms": "Set contract terms"
   },
+  "contractAuthoring": {
+    "back": "Back to Contract & Security",
+    "newTitle": "New contract",
+    "newSubtitle": "Set the commercial baseline for this project — its value, billing model and payment terms.",
+    "editTitle": "Edit contract",
+    "editSubtitle": "Amend the draft contract before it is submitted for review.",
+    "noContractTitle": "No contract to edit",
+    "noContractHint": "This project has no main contract yet. Create one from Contract & Security.",
+    "createContract": "Create contract",
+    "loadFailed": "Could not load this project's contract."
+  },
   "billing": {
     "title": "Billing & Collection",
     "subtitle": "Posted client invoices, receipt allocations and the outstanding accounting balance.",

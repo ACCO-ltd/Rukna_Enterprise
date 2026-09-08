@@ -17,10 +17,17 @@ import { ContractForm } from './contract-form';
  * contract that has moved on — via a stale tab or a bookmark — should explain that rather
  * than present a form that cannot be saved.
  */
-export function ContractEdit({ id }: { id: string }) {
+export function ContractEdit({ id, projectId }: { id: string; projectId?: string }) {
   const t = useTranslations('platform.contracts.detail');
   const tCommon = useTranslations('common');
   const { data: contract, isPending, isError, error } = useContract(id);
+
+  // Inside the workspace the recovery back-links return to Contract & Security; the legacy
+  // standalone entry (no projectId) still falls back to the retired detail route, which itself
+  // redirects into the workspace.
+  const backHref = projectId
+    ? `/projects/${projectId}/commercial/contract-security`
+    : `/contracts/${id}`;
 
   if (isPending) {
     return (
@@ -40,7 +47,7 @@ export function ContractEdit({ id }: { id: string }) {
       <div className="space-y-4">
         <Alert variant="error" messages={[notFound ? t('notFound') : t('loadFailed')]} />
         <Button variant="outline" asChild>
-          <Link href="/contracts">{t('back')}</Link>
+          <Link href={projectId ? backHref : '/contracts'}>{t('back')}</Link>
         </Button>
       </div>
     );
@@ -51,11 +58,11 @@ export function ContractEdit({ id }: { id: string }) {
       <div className="space-y-4">
         <Alert variant="warning" messages={[t('editOnlyDraft')]} />
         <Button variant="outline" asChild>
-          <Link href={`/contracts/${id}`}>{t('back')}</Link>
+          <Link href={backHref}>{t('back')}</Link>
         </Button>
       </div>
     );
   }
 
-  return <ContractForm contract={contract} />;
+  return <ContractForm contract={contract} projectId={projectId} />;
 }

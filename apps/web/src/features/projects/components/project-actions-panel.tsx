@@ -49,7 +49,7 @@ const CONFIRM_KEY: Record<ProjectCommand, string> = {
 function nextSetupHref(projectId: string, setup: ProjectSetup): string | null {
   if (!setup.boqBaselined) return `/projects/${projectId}/boq`;
   if (setup.mainContractApplicable && !setup.mainContractExists) {
-    return `/contracts/new?projectId=${projectId}`;
+    return `/projects/${projectId}/commercial/contract/new`;
   }
   if (!setup.teamReady) return `/projects/${projectId}/members`;
   return null;
