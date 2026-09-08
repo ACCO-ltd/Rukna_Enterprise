@@ -153,6 +153,20 @@ describe('CommercialService.getSummary', () => {
     expect(res.attention.map((a) => a.kind)).toContain('NO_MAIN_CONTRACT');
   });
 
+  it('points NO_MAIN_CONTRACT at the project-scoped contract create route (P3 Slice B)', async () => {
+    const { service } = build({ contract: null });
+    const res = await service.getSummary(
+      identityWith([
+        PERMISSIONS.contractsView,
+        PERMISSIONS.financialPositionView,
+        PERMISSIONS.contractsCreate,
+      ]),
+      'p-1',
+    );
+    const noContract = res.attention.find((a) => a.kind === 'NO_MAIN_CONTRACT');
+    expect(noContract?.actionUrl).toBe('/projects/p-1/commercial/contract/new');
+  });
+
   describe('ADR-026 — derived Original/Approved/Governing/Pending contract value', () => {
     // Each VO is (status, lines[amount]); net price is Σ amount.
     const variationInputs = [
@@ -671,6 +685,50 @@ describe('CommercialService.getCurrentCycle', () => {
     expect(result.stage).toBe('AWAITING_PAYMENT');
     expect(result.nextAction).toBeNull();
     expect(result.blockers).toContain('RECEIPT_WORKFLOW_UNAVAILABLE');
+  });
+
+  // P3 Slice B — contract create/edit/advance now live in the project workspace, so the
+  // server-owned CTAs point at project-scoped routes rather than the old /contracts/* pages.
+  it('routes CREATE_CONTRACT to the project-scoped contract create page', async () => {
+    const { service } = build({ contract: null });
+    const result = await service.getCurrentCycle(
+      identityWith([PERMISSIONS.contractsView, PERMISSIONS.contractsCreate]),
+      'p-1',
+    );
+
+    expect(result.stage).toBe('NO_CONTRACT');
+    expect(result.nextAction).toMatchObject({
+      kind: 'CREATE_CONTRACT',
+      href: '/projects/p-1/commercial/contract/new',
+    });
+  });
+
+  it('routes EDIT_CONTRACT on a draft contract to the project-scoped edit page', async () => {
+    const { service } = build({ contract: { ...baseContract, status: 'DRAFT' } });
+    const result = await service.getCurrentCycle(
+      identityWith([PERMISSIONS.contractsView, PERMISSIONS.contractsManage]),
+      'p-1',
+    );
+
+    expect(result.stage).toBe('CONTRACT_DRAFT');
+    expect(result.nextAction).toMatchObject({
+      kind: 'EDIT_CONTRACT',
+      href: '/projects/p-1/commercial/contract/edit',
+    });
+  });
+
+  it('routes ADVANCE_CONTRACT (approver, no edit right) to the contract-security page', async () => {
+    const { service } = build({ contract: { ...baseContract, status: 'DRAFT' } });
+    const result = await service.getCurrentCycle(
+      identityWith([PERMISSIONS.contractsView, PERMISSIONS.contractsApprove]),
+      'p-1',
+    );
+
+    expect(result.stage).toBe('CONTRACT_DRAFT');
+    expect(result.nextAction).toMatchObject({
+      kind: 'ADVANCE_CONTRACT',
+      href: '/projects/p-1/commercial/contract-security',
+    });
   });
 });
 

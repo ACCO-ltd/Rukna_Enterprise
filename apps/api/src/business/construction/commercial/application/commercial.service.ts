@@ -227,7 +227,7 @@ export class CommercialService {
             severity: 'WARNING',
             kind: 'NO_MAIN_CONTRACT',
             actionUrl: identity.permissions.includes(PERMISSIONS.contractsCreate)
-              ? `/contracts/new?projectId=${projectId}`
+              ? `/projects/${projectId}/commercial/contract/new`
               : null,
             responsibleRole: 'CONTRACT_ADMINISTRATOR',
             contextId: null,
@@ -620,7 +620,7 @@ export class CommercialService {
         stage: 'NO_CONTRACT',
         application: null,
         nextAction: allowed
-          ? { kind: 'CREATE_CONTRACT', href: `/contracts/new?projectId=${projectId}` }
+          ? { kind: 'CREATE_CONTRACT', href: `/projects/${projectId}/commercial/contract/new` }
           : null,
         blockers: ['MAIN_CONTRACT_MISSING', ...(allowed ? [] : (['PERMISSION_REQUIRED'] as const))],
         capabilities: result.capabilities,
@@ -663,9 +663,9 @@ export class CommercialService {
         stage: 'CONTRACT_DRAFT',
         application: null,
         nextAction: mayEdit
-          ? { kind: 'EDIT_CONTRACT', href: `/contracts/${contract.id}/edit` }
+          ? { kind: 'EDIT_CONTRACT', href: `/projects/${projectId}/commercial/contract/edit` }
           : mayAdvance
-            ? { kind: 'ADVANCE_CONTRACT', href: `/contracts/${contract.id}` }
+            ? { kind: 'ADVANCE_CONTRACT', href: `/projects/${projectId}/commercial/contract-security` }
             : null,
         blockers: [
           'CONTRACT_NOT_ACTIVE',
