@@ -7,10 +7,10 @@ import {
   type FieldErrors,
   type UseFormRegister,
 } from 'react-hook-form';
-import { Trash2 } from 'lucide-react';
+import { Lock, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { PaymentTrigger } from '@erp/types';
-import { Button, FormField, Input, Select } from '@erp/ui';
+import { Badge, Button, FormField, Input, Select } from '@erp/ui';
 
 import type { ContractFormValues, PaymentPlanRow } from '../contract-form-payload';
 
@@ -144,6 +144,48 @@ export function PlanRowFields({
         <Button type="button" variant="ghost" size="sm" onClick={onRemove}>
           <Trash2 size={15} aria-hidden="true" /> {t('plan.remove')}
         </Button>
+      </div>
+    </li>
+  );
+}
+
+/**
+ * A frozen installment on an ACTIVE contract — one already invoiced (PAID / PARTIALLY_PAID /
+ * BILLED), which the server holds fixed (Q-B). Rendered read-only alongside the editable rows so the
+ * user sees the whole plan while only the un-invoiced tail is a form: no inputs, no remove control,
+ * a lock affordance and a "locked" badge, and its % counts toward 100 but is never submitted.
+ *
+ * Presentational only — it takes plain values, not form state, because a frozen row is not part of
+ * the field array the editable rows bind to.
+ */
+export function LockedPlanRow({
+  name,
+  percentLabel,
+  statusLabel,
+  lockedLabel,
+}: {
+  name: string;
+  /** The row's share, pre-formatted (e.g. "40%"). */
+  percentLabel: string;
+  /** The installment's bill status, human-readable (e.g. "Invoiced", "Paid"). */
+  statusLabel: string;
+  /** The "Locked" affordance label. */
+  lockedLabel: string;
+}) {
+  return (
+    <li className="rounded-panel border border-border border-dashed bg-muted/40 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Lock size={15} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span className="min-w-0 truncate font-medium text-foreground">{name}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="tabular-nums text-muted-foreground">{percentLabel}</span>
+          <Badge tone="historical">{statusLabel}</Badge>
+          <span className="text-caption uppercase tracking-[0.06em] text-muted-foreground">
+            {lockedLabel}
+          </span>
+        </div>
       </div>
     </li>
   );

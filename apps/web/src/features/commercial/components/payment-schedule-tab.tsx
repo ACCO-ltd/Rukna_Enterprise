@@ -4,10 +4,13 @@ import { useState } from 'react';
 import { useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { CalendarClock, Pencil, Plus } from 'lucide-react';
+import { CalendarClock, Lock, Pencil, Plus } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { PaymentTrigger } from '@erp/types';
-import type { CommercialSummaryResponse } from '@erp/types';
+import type {
+  CommercialPaymentScheduleInstallment,
+  CommercialSummaryResponse,
+} from '@erp/types';
 import { Alert, Button, FormSection, Skeleton, cn } from '@erp/ui';
 
 import { EmptyState } from '@/components/empty-state';
@@ -15,11 +18,14 @@ import { usePermissions } from '@/features/auth/permissions/can';
 import {
   buildPaymentPlan,
   EMPTY_PAYMENT_PLAN_ROW,
+  paymentPlanRowFromInstallment,
   paymentPlanTotalPercent,
   type ContractFormValues,
+  type PaymentPlanRow,
 } from '@/features/contracts/contract-form-payload';
 import {
   ACCO_STANDARD_PLAN,
+  LockedPlanRow,
   PlanRowFields,
 } from '@/features/contracts/components/payment-plan-fields';
 import { ApiError } from '@/lib/api-client';
@@ -27,8 +33,39 @@ import { formatMoney } from '@/lib/format';
 
 import { useCommercialCurrentCycle } from '../hooks/use-commercial';
 import { useReplacePaymentPlan } from '../hooks/use-replace-payment-plan';
+import { isBilledInstallment } from '../presentation';
 import { PaymentSchedulePanel } from './payment-schedule-panel';
 import { SectionCard } from './commercial-ui';
+
+/**
+ * Split the current schedule into the two halves Q-B treats differently:
+ *
+ *  - `frozen`   — already-invoiced installments (PAID / PARTIALLY_PAID / BILLED). The server holds
+ *                 these fixed; the UI shows them as locked rows and never submits them.
+ *  - `editable` — un-invoiced installments (NEXT / UPCOMING), pre-populated as the editable form.
+ *
+ * The order is the plan's own `sortOrder` so a re-profile reads top-to-bottom the way the ledger does.
+ */
+export function splitScheduleForEditing(installments: CommercialPaymentScheduleInstallment[]): {
+  frozen: CommercialPaymentScheduleInstallment[];
+  editable: CommercialPaymentScheduleInstallment[];
+} {
+  const ordered = [...installments].sort((a, b) => a.sortOrder - b.sortOrder);
+  return {
+    frozen: ordered.filter((i) => isBilledInstallment(i.status)),
+    editable: ordered.filter((i) => !isBilledInstallment(i.status)),
+  };
+}
+
+/**
+ * The frozen invoiced share, as a whole-percent rounded to 2 dp — the amount the editable rows must
+ * make up to 100. Percentages arrive as 0..1 fractions, so this sums fractions then scales; the 2-dp
+ * round mirrors the form's own percent precision so `frozen + editable` compares cleanly to 100.
+ */
+export function frozenPercentTotal(frozen: CommercialPaymentScheduleInstallment[]): number {
+  const fraction = frozen.reduce((sum, i) => sum + Number(i.percentage), 0);
+  return Number((fraction * 100).toFixed(2));
+}
 
 /**
  * The first-class Payment Schedule tab for a MILESTONE (payment-schedule) contract
@@ -158,13 +195,20 @@ function SummaryStrip({
 }
 
 /**
- * The DRAFT-only schedule editor (commercial-billing-model-refinement §5 P2).
+ * The payment-schedule editor (commercial-billing-model-refinement §5 P2 + spec Q-B).
  *
- * Editability is the server's rule mirrored: the whole plan is freely re-profiled while the
- * contract is DRAFT, and once committed a schedule is changed only through a Variation (the server
- * 409s any edit). On a non-DRAFT contract the editor is replaced with that explanation rather than
- * a disabled form — there is nothing to do here, and offering a control the server refuses is worse
- * than saying why it is gone. ACTIVE re-profiling (spec Q-B) is intentionally not built.
+ * Editability mirrors the server's rule (`PUT /contracts/:id/payment-plan`, DRAFT | ACTIVE):
+ *
+ *  - DRAFT — nothing is invoiced, so the whole plan is re-profiled and must total 100%.
+ *  - ACTIVE — the already-invoiced installments are FROZEN (Q-B). They render as locked rows the user
+ *    cannot touch; only the un-invoiced tail is a form, pre-populated from the current plan, and it
+ *    must make the schedule reconcile to 100% again (`editable = 100 − frozen%`). The save submits
+ *    ONLY the editable rows; the server keeps the frozen ones. Changing the contract value or an
+ *    already-invoiced stage still needs a Variation.
+ *
+ * A terminal / locked contract (UNDER_REVIEW, PENDING_SIGNATURE, CLOSED, CANCELLED, TERMINATED,
+ * FINAL_ACCOUNT_PENDING) is neither: the schedule is fixed and only a Variation reprofiles it, so the
+ * editor is replaced with that explanation rather than a control the server would 409.
  */
 function ScheduleEditor({
   projectId,
@@ -177,13 +221,16 @@ function ScheduleEditor({
 }) {
   const t = useTranslations('commercial.paymentScheduleTab');
   const { can } = usePermissions();
+  const cycle = useCommercialCurrentCycle(projectId);
   const [isEditing, setIsEditing] = useState(false);
 
   const canManage = can('manage:contract');
   const isDraft = status === 'DRAFT';
+  const isActive = status === 'ACTIVE';
+  const isReprofile = isActive; // ACTIVE = re-profile the un-invoiced tail; DRAFT = full replace.
 
-  // Committed schedule: the server refuses edits (409). Say so plainly and route to the real path.
-  if (!isDraft) {
+  // Neither DRAFT nor ACTIVE: the server refuses edits. Say so plainly and route to the real path.
+  if (!isDraft && !isActive) {
     return (
       <SectionCard title={t('editorTitle')}>
         <p className="py-1 text-body-sm text-muted-foreground">{t('reprofileNote')}</p>
@@ -199,6 +246,18 @@ function ScheduleEditor({
     );
   }
 
+  // The editor needs the current plan to pre-populate (and, on ACTIVE, to split off the frozen rows).
+  if (cycle.isPending) {
+    return (
+      <SectionCard title={t('editorTitle')}>
+        <Skeleton className="h-24 w-full" />
+      </SectionCard>
+    );
+  }
+
+  const installments = cycle.data?.paymentSchedule?.installments ?? [];
+  const { frozen, editable } = splitScheduleForEditing(installments);
+
   if (!isEditing) {
     return (
       <SectionCard
@@ -209,7 +268,15 @@ function ScheduleEditor({
           </Button>
         }
       >
-        <p className="py-1 text-body-sm text-muted-foreground">{t('draftHint')}</p>
+        <p className="py-1 text-body-sm text-muted-foreground">
+          {isReprofile ? t('reprofileHint') : t('draftHint')}
+        </p>
+        {isReprofile ? (
+          <p className="mt-2 flex items-start gap-2 text-caption text-muted-foreground">
+            <Lock size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <span>{t('variationNote')}</span>
+          </p>
+        ) : null}
       </SectionCard>
     );
   }
@@ -219,6 +286,9 @@ function ScheduleEditor({
       <ScheduleForm
         projectId={projectId}
         contractId={contractId}
+        isReprofile={isReprofile}
+        frozen={frozen}
+        editable={editable}
         onDone={() => setIsEditing(false)}
       />
     </SectionCard>
@@ -228,13 +298,32 @@ function ScheduleEditor({
 /** The editor form's values — only the payment plan matters, but `PlanRowFields` types the whole shape. */
 type EditorValues = Pick<ContractFormValues, 'billingModel' | 'paymentPlan'>;
 
+/**
+ * Seed the editable field array from the current plan.
+ *
+ * DRAFT and ACTIVE both open pre-populated from the un-invoiced installments so the user adjusts the
+ * existing tail, not a blank slate. A brand-new DRAFT with no plan yet still needs something to type
+ * into, so it falls back to a single blank row (the ACCO template and Add cover the rest).
+ */
+function seedEditableRows(editable: CommercialPaymentScheduleInstallment[]): PaymentPlanRow[] {
+  if (editable.length === 0) return [{ ...EMPTY_PAYMENT_PLAN_ROW }];
+  return editable.map((i) => paymentPlanRowFromInstallment(i));
+}
+
 function ScheduleForm({
   projectId,
   contractId,
+  isReprofile,
+  frozen,
+  editable,
   onDone,
 }: {
   projectId: string;
   contractId: string;
+  /** ACTIVE: frozen invoiced rows are shown locked and the editable tail totals `100 − frozen%`. */
+  isReprofile: boolean;
+  frozen: CommercialPaymentScheduleInstallment[];
+  editable: CommercialPaymentScheduleInstallment[];
   onDone: () => void;
 }) {
   const t = useTranslations('commercial.paymentScheduleTab');
@@ -242,9 +331,14 @@ function ScheduleForm({
   const tCommon = useTranslations('common');
   const save = useReplacePaymentPlan(projectId, contractId);
 
+  // The frozen invoiced share the editable rows must make up to 100. On DRAFT this is 0, so the
+  // target collapses to today's 100% rule.
+  const frozenPercent = frozenPercentTotal(frozen);
+  const targetPercent = Number((100 - frozenPercent).toFixed(2));
+
   // The plan validation, mirrored from the create form (ADR-023 CONST-COM-012): every row needs a
-  // name, a positive ≤2-dp percent, a TIME_BASED row needs a day offset, and the whole plan must
-  // total 100%. The replace-all route needs at least one installment (ArrayMinSize(1)).
+  // name, a positive ≤2-dp percent, a TIME_BASED row needs a day offset, and the editable rows must
+  // total `targetPercent`. The replace-all route needs at least one installment (ArrayMinSize(1)).
   const schema = z.object({
     billingModel: z.string(),
     paymentPlan: z.array(
@@ -287,26 +381,32 @@ function ScheduleForm({
           }
         });
         const total = paymentPlanTotalPercent(values.paymentPlan);
-        if (Math.abs(total - 100) > 0.001) {
-          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['paymentPlan'], message: tPlan('plan.totalMismatch', { total }) });
+        if (Math.abs(total - targetPercent) > 0.001) {
+          // On ACTIVE the target is the un-invoiced remainder; say so, not "100%".
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['paymentPlan'],
+            message: isReprofile
+              ? t('editableMismatch', { total, target: targetPercent })
+              : tPlan('plan.totalMismatch', { total }),
+          });
         }
       }),
     ),
-    // Start from a single blank row — the current plan is not repopulated (the read model returns
-    // fractions and derived status, not the editable form shape), so re-profiling is a fresh write.
-    // The ACCO template and Add-installment cover the common paths.
-    defaultValues: { billingModel: 'MILESTONE', paymentPlan: [{ ...EMPTY_PAYMENT_PLAN_ROW }] },
+    // Pre-populate from the current un-invoiced tail so the user adjusts the existing plan.
+    defaultValues: { billingModel: 'MILESTONE', paymentPlan: seedEditableRows(editable) },
   });
 
   const { fields, append, remove, replace } = useFieldArray({ control, name: 'paymentPlan' });
 
-  // The live running total drives the reconciliation indicator — the same 100% guard the create
-  // builder shows, so a re-profile is checked as it is typed, not only on submit.
+  // The live running total drives the reconciliation indicator — checked against the target as it is
+  // typed, not only on submit.
   const planRows = useWatch({ control, name: 'paymentPlan' }) ?? [];
   const total = paymentPlanTotalPercent(planRows);
-  const balanced = planRows.length > 0 && Math.abs(total - 100) <= 0.001;
+  const balanced = planRows.length > 0 && Math.abs(total - targetPercent) <= 0.001;
 
   const onSubmit = (values: EditorValues) => {
+    // Submit ONLY the editable rows; the server keeps the frozen invoiced installments (Q-B).
     save.mutate(buildPaymentPlan(values.paymentPlan), { onSuccess: onDone });
   };
 
@@ -330,8 +430,32 @@ function ScheduleForm({
       {serverError ? <Alert variant="error" messages={[serverError]} /> : null}
       {planError ? <Alert variant="error" messages={[planError]} /> : null}
 
-      <FormSection title={tPlan('plan.title')}>
-        <p className="text-xs text-muted-foreground">{tPlan('plan.subtitle')}</p>
+      {isReprofile ? (
+        <Alert variant="info" messages={[t('lockedStagesNote')]} />
+      ) : null}
+
+      {/* Frozen invoiced stages: shown so the user sees the whole plan, but locked and never submitted. */}
+      {frozen.length > 0 ? (
+        <FormSection title={t('frozenSectionTitle')}>
+          <p className="text-xs text-muted-foreground">{t('frozenSectionHint')}</p>
+          <ul className="mt-3 space-y-3">
+            {frozen.map((inst) => (
+              <LockedPlanRow
+                key={inst.id}
+                name={inst.name}
+                percentLabel={formatSchedulePercent(inst.percentage)}
+                statusLabel={t(`installmentStatus.${inst.status}`)}
+                lockedLabel={t('locked')}
+              />
+            ))}
+          </ul>
+        </FormSection>
+      ) : null}
+
+      <FormSection title={isReprofile ? t('editableSectionTitle') : tPlan('plan.title')}>
+        <p className="text-xs text-muted-foreground">
+          {isReprofile ? t('editableSectionHint', { target: targetPercent }) : tPlan('plan.subtitle')}
+        </p>
 
         <ul className="mt-3 space-y-3">
           {fields.map((field, index) => (
@@ -352,22 +476,36 @@ function ScheduleForm({
             <Button type="button" variant="outline" size="sm" onClick={() => append({ ...EMPTY_PAYMENT_PLAN_ROW })}>
               <Plus size={16} aria-hidden="true" /> {tPlan('plan.add')}
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => replace(ACCO_STANDARD_PLAN.map((row) => ({ ...row })))}
-            >
-              {tPlan('plan.useAccoStandard')}
-            </Button>
+            {/* The ACCO template is a full 100% plan; on a re-profile it would overshoot the
+                un-invoiced remainder, so it is offered only on DRAFT. */}
+            {!isReprofile ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => replace(ACCO_STANDARD_PLAN.map((row) => ({ ...row })))}
+              >
+                {tPlan('plan.useAccoStandard')}
+              </Button>
+            ) : null}
           </div>
           {planRows.length > 0 ? (
-            <p
-              className={`text-sm font-medium ${balanced ? 'text-success' : 'text-danger'}`}
-              aria-live="polite"
-            >
-              {balanced ? tPlan('plan.totalOk') : tPlan('plan.total', { total })}
-            </p>
+            <div className="text-end" aria-live="polite">
+              {isReprofile ? (
+                <p className="text-caption text-muted-foreground">
+                  {t('reconcileBreakdown', { frozen: frozenPercent, target: targetPercent })}
+                </p>
+              ) : null}
+              <p className={`text-sm font-medium ${balanced ? 'text-success' : 'text-danger'}`}>
+                {balanced
+                  ? isReprofile
+                    ? t('editableOk', { target: targetPercent })
+                    : tPlan('plan.totalOk')
+                  : isReprofile
+                    ? t('editableTotal', { total, target: targetPercent })
+                    : tPlan('plan.total', { total })}
+              </p>
+            </div>
           ) : null}
         </div>
       </FormSection>
