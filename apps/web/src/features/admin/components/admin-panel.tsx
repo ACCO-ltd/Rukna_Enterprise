@@ -12,6 +12,7 @@ export function AdminPanel({
   title,
   description,
   actions,
+  headingLevel = 2,
   children,
 }: {
   title: string;
@@ -19,13 +20,26 @@ export function AdminPanel({
   description?: string;
   /** Right-aligned control(s) — typically the screen's one primary action. */
   actions?: ReactNode;
+  /**
+   * The panel's heading level. `2` by default, because a screen inside the Administration
+   * workspace sits under the shell's `h1`.
+   *
+   * Pass `3` when the *screen* names itself above its panels — Workflows holds two panels, so
+   * its own name is an `h2` and each panel is one level under it. Without this a screen with
+   * two panels either has two peer headings and no name, or skips a level to acquire one.
+   */
+  headingLevel?: 2 | 3;
   children: ReactNode;
 }) {
   return (
     <section className="overflow-hidden rounded-panel border border-border bg-surface">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3 border-b border-border px-5 py-4">
         <div className="min-w-0">
-          <h2 className="text-h2 font-semibold text-foreground">{title}</h2>
+          {headingLevel === 3 ? (
+            <h3 className="text-h3 font-semibold text-foreground">{title}</h3>
+          ) : (
+            <h2 className="text-h2 font-semibold text-foreground">{title}</h2>
+          )}
           {description ? (
             <p className="mt-1 max-w-prose text-body-sm text-muted-foreground">{description}</p>
           ) : null}

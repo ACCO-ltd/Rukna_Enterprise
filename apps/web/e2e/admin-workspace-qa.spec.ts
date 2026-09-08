@@ -144,6 +144,11 @@ test.describe('Administration workspace', () => {
       for (const tab of TABS) {
         await app.goto(`/admin/${tab.slug}`);
         await expect(app.getByRole('heading', { level: 1, name: 'Administration' })).toBeVisible();
+
+        // Every screen names itself under the workspace. Workflows once did not — it holds two
+        // panels and opened straight into the first one, so nothing on the page said which tab
+        // you were on. Asserted for all six rather than for the one that broke.
+        await expect(app.getByRole('heading', { level: 2 }).first()).toBeVisible();
         await expect(app.locator('html')).toHaveAttribute('data-theme', theme);
         await expectNoHorizontalScroll(app);
         await app.screenshot({ path: `${OUT}/desktop-${theme}-${tab.slug}.png` });

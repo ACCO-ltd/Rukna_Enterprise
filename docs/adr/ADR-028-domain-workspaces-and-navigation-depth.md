@@ -79,6 +79,36 @@ bar. The parent workspace's chrome gets out of the way: two stacked tab bars is 
 reader can parse. This is decided against the tab list (`isAdminDeepRoute`), not against a named
 route, so the next deep route inherits the behaviour instead of rediscovering the bug.
 
+## Scope and known limits
+
+Written after review, because three of these read as contradictions in the first draft.
+
+**NAV-003 governs *route* tab bars, not in-page tab panels.** `WorkspaceTabs` is for bars whose
+items are destinations — the project workspaces and Administration. The governance builder's
+`Tabs` (Rules / SoD / Simulate / History) switches panels *within* one route and correctly stays
+a different component. Two of the product's three bars are the shared one; the third is not the
+same kind of thing.
+
+**NAV-005 does not strip breadcrumbs from deep routes.** The governance builder keeps
+`Administration › <policyKey>`, and that trail obeys the rule rather than breaking it: on a
+detail page the crumb is the way back out, and nothing else on the screen says where you are.
+What NAV-005 rejects is a trail that only restates the sidebar row, the `h1` and the lit tab —
+which is what the workspace's own trail was doing.
+
+**Deep routes carry their own `h1`.** `RecordHeader` renders one (`record-layout.tsx`), so the
+governance builder's `h1` is the policy key. `AdminShell` adding none there is the point, not a
+gap — two `h1`s on one document would be the defect.
+
+**`isAdminDeepRoute` is blunt on purpose, and that has a cost.** It treats any route below a tab
+as deep, so a future `/admin/users/:id` would lose the workspace chrome and would have to bring
+its own header, as the governance builder does. That is the right default — a detail page is a
+workspace of its own — but it fails quietly rather than loudly, so it is written down here.
+
+**`FlatDomainLink` and `StandaloneLink` are near-identical and stay separate for now.** They
+differ only in their hover-group name today. Merging them is right, and it is deliberately not
+done in this slice: `StandaloneLink` renders Dashboard on every screen in the product, and this
+change already moves the whole Administration domain. One structural change at a time.
+
 ## Consequences
 
 - The sidebar is one level deep for flat domains, and every screen in the product gets that column

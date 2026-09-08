@@ -42,7 +42,7 @@ import { PolicyVersionComparisonSheet } from './policy-version-comparison-sheet'
  * matching the fetch-everything read model — mirroring Users and Roles. A no-match `TableEmpty`
  * is distinct from the dashed "no policies yet" empty so the two states never read the same.
  */
-export function ApprovalPolicyInventory() {
+export function ApprovalPolicyInventory({ headingLevel = 2 }: { headingLevel?: 2 | 3 } = {}) {
   const t = useTranslations('platform.workflows.policies');
   const router = useRouter();
   const { can } = usePermissions();
@@ -75,6 +75,7 @@ export function ApprovalPolicyInventory() {
 
   return (
     <AdminPanel
+      headingLevel={headingLevel}
       title={t('heading')}
       description={t('subheading')}
       actions={

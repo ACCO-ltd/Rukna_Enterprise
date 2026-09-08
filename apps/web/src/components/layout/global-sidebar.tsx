@@ -338,7 +338,7 @@ function FlatDomainLink({ domain, pathname, t, onNavigate, collapsed }: FlatDoma
         <span className={cn('truncate', collapsed && 'sr-only')}>{label}</span>
       </Link>
       {collapsed ? (
-        <span className="pointer-events-none absolute start-[calc(100%+0.75rem)] top-1/2 z-50 -translate-y-1/2 translate-x-1 whitespace-nowrap rounded-md bg-foreground px-2.5 py-1.5 text-[11px] font-semibold text-background opacity-0 shadow-[var(--shadow-overlay)] transition-[opacity,transform] duration-150 group-hover/flat:translate-x-0 group-hover/flat:opacity-100 group-focus-within/flat:translate-x-0 group-focus-within/flat:opacity-100 rtl:-translate-x-1 rtl:group-hover/flat:translate-x-0 rtl:group-focus-within/flat:translate-x-0">
+        <span className="pointer-events-none absolute start-[calc(100%+0.75rem)] top-1/2 z-50 -translate-y-1/2 translate-x-1 whitespace-nowrap rounded-md bg-foreground px-2.5 py-1.5 text-[11px] font-semibold text-background opacity-0 shadow-[var(--shadow-overlay)] transition-[opacity,transform] duration-150 group-hover/flat:translate-x-0 group-hover/flat:opacity-100 group-focus-within/flat:translate-x-0 group-focus-within/flat:opacity-100">
           {label}
         </span>
       ) : null}
