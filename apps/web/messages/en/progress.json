@@ -353,6 +353,28 @@
       "actualDate": "Actual completion date"
     }
   },
+  "wpSchedule": {
+    "title": "Work package schedule",
+    "subtitle": "Each work package is a schedule phase — its planned window with the derived actual dates overlaid, plus verified progress and schedule health.",
+    "timeline": "Planned vs actual",
+    "planned": "Planned",
+    "actual": "Actual",
+    "noDates": "No planned dates",
+    "actualNone": "not started",
+    "actualOngoing": "started {start} — ongoing",
+    "scheduleOnly": "Schedule-only",
+    "percentLabel": "Verified progress",
+    "noBaselineTitle": "Baseline the BOQ first",
+    "noBaseline": "A schedule is built from BOQ scope. Baseline the BOQ before setting up the schedule.",
+    "emptyTitle": "No schedule yet",
+    "emptyNoPackages": "Create work packages and set their planned dates in Plan & Setup to build the schedule.",
+    "emptyNoDates": "No work package has planned dates yet. Set planned start and end dates in Plan & Setup to build the schedule.",
+    "partial": "{count, plural, one {# phase has no planned dates yet} other {# phases have no planned dates yet}} — they are listed without a bar.",
+    "legend": {
+      "planned": "Planned window",
+      "actual": "Derived actual (from approved reports)"
+    }
+  },
   "activity": {
     "title": "Activities",
     "subtitle": "The work breakdown under each package — planned dates and milestones. Dependencies are deliberately out of scope.",

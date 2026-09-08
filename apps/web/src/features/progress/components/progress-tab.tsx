@@ -6,6 +6,7 @@ import { ViewSwitcher } from '@erp/ui';
 import { CalendarDays, CircleCheck, Gauge, PenLine, Settings } from 'lucide-react';
 
 import { MilestonesSection } from '@/features/programme/components/milestones-section';
+import { WorkPackageScheduleSection } from '@/features/programme/components/work-package-schedule-section';
 import { ActivitiesSection } from '@/features/programme/components/activities-section';
 
 import { DailyReportsSection } from './daily-reports-section';
@@ -83,6 +84,7 @@ export function ProgressTab({ projectId }: { projectId: string }) {
         {view === 'schedule' ? (
           <div className="space-y-6">
             <MilestonesSection projectId={projectId} />
+            <WorkPackageScheduleSection projectId={projectId} />
             <ActivitiesSection projectId={projectId} />
           </div>
         ) : null}
