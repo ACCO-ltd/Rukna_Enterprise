@@ -21,7 +21,6 @@
     "action": {
       "createProject": "Create project",
       "newClient": "New client",
-      "newContract": "New contract",
       "newMaterialRequest": "New material request",
       "newPurchaseOrder": "New purchase order",
       "newGoodsReceipt": "New goods receipt",

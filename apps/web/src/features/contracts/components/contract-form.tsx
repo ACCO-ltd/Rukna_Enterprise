@@ -37,15 +37,26 @@ import { ACCO_STANDARD_PLAN, PlanRowFields } from './payment-plan-fields';
 interface ContractFormProps {
   /** Present in edit mode. The API accepts edits only while the contract is DRAFT. */
   contract?: Contract;
+  /**
+   * The workspace supplies the project from the `[id]` URL segment. When set, the project is
+   * fixed context — the picker is hidden and the value comes from here rather than `?projectId`,
+   * and Cancel returns to that project's Contract & Security tab instead of the org index.
+   */
+  projectId?: string;
 }
 
-export function ContractForm({ contract }: ContractFormProps = {}) {
+export function ContractForm({ contract, projectId }: ContractFormProps = {}) {
   const t = useTranslations('platform.contracts.create');
   const tContracts = useTranslations('platform.contracts');
   const tCommon = useTranslations('common');
   const isEdit = contract !== undefined;
   const searchParams = useSearchParams();
-  const requestedProjectId = searchParams.get('projectId') ?? '';
+  // The project can arrive two ways: pinned by the workspace route (`projectId` prop) or, on the
+  // legacy query-string entry, via `?projectId`. The prop wins — it is the project in context.
+  const requestedProjectId = projectId ?? searchParams.get('projectId') ?? '';
+  // When the workspace pins the project, the picker is replaced by a stated fact: the project is
+  // not a choice on this screen, it is the reason the screen is open.
+  const projectLocked = Boolean(projectId);
 
   const create = useCreateContract();
   const update = useUpdateContract(contract?.id ?? '');
@@ -145,6 +156,12 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
   const selectedProjectId = useWatch({ control, name: 'projectId' });
   const boq = useBoqWorkspace(selectedProjectId);
 
+  // The pinned project's display record, used to state it as a read-only fact when the workspace
+  // has locked the picker. Resolved from the same list the picker would have offered.
+  const lockedProject = projectLocked
+    ? (projects.data ?? []).find((item) => item.id === requestedProjectId)
+    : undefined;
+
   // The payment-plan builder is a MILESTONE-only, create-only affordance (there is no PATCH
   // for the plan). The running total drives a live indicator and the reconciliation guard.
   const startDate = useWatch({ control, name: 'startDate' });
@@ -185,6 +202,15 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
 
   const dataFailed = projects.isError || clients.isError;
 
+  // Where Cancel returns to. Inside the workspace (edit always, or a pinned create) that is the
+  // project's Contract & Security tab; the legacy query-string create still falls back to the org
+  // index. The edit form knows its project from the contract; a pinned create from the prop.
+  const cancelHref = isEdit
+    ? `/projects/${contract.projectId}/commercial/contract-security`
+    : projectLocked
+      ? `/projects/${requestedProjectId}/commercial/contract-security`
+      : '/contracts';
+
   return (
     <form
       onSubmit={(e) => {
@@ -204,6 +230,22 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
           <Alert variant="info" messages={[t('identityFixed')]} />
         ) : (
           <div className="grid gap-5 lg:grid-cols-2">
+          {projectLocked ? (
+            // Pinned by the workspace route: the project is the reason this screen is open, not a
+            // choice on it. Stated as a read-only fact (with the value carried by the hidden field)
+            // rather than a disabled dropdown the user cannot use.
+            <FormField htmlFor="contract-project" label={t('project')}>
+              <input type="hidden" {...register('projectId')} />
+              <p
+                id="contract-project"
+                className="rounded-control border border-border bg-surface-subtle px-3 py-2 text-sm text-foreground"
+              >
+                {lockedProject
+                  ? `${lockedProject.code} — ${lockedProject.name}`
+                  : (tCommon('loading') as string)}
+              </p>
+            </FormField>
+          ) : (
           <FormField htmlFor="contract-project" label={t('project')} error={errors.projectId?.message}>
             <Controller
               control={control}
@@ -224,6 +266,7 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
               {t('projectHint')}
             </p>
           </FormField>
+          )}
 
           <FormField htmlFor="contract-client" label={t('client')} error={errors.clientId?.message}>
             <Controller
@@ -433,7 +476,7 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
           {isPending ? tCommon('loading') : isEdit ? t('saveChanges') : t('submit')}
         </Button>
         <Button variant="outline" asChild>
-          <Link href={isEdit ? `/contracts/${contract.id}` : '/contracts'}>{t('cancel')}</Link>
+          <Link href={cancelHref}>{t('cancel')}</Link>
         </Button>
       </div>
     </form>

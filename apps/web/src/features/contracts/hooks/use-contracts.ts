@@ -41,6 +41,16 @@ export function useContract(id: string): UseQueryResult<ContractDetail, Error> {
   });
 }
 
+/**
+ * On success the user lands back in the project's Commercial workspace (P3 Slice B): the
+ * standalone `/contracts/:id` detail page is retired, so create/edit resolve to the project's
+ * Contract & Security tab. `contract.projectId` comes back on the response, so the destination
+ * is always known regardless of how the form was entered.
+ */
+function contractSecurityHref(projectId: string): string {
+  return `/projects/${projectId}/commercial/contract-security`;
+}
+
 export function useCreateContract() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -50,7 +60,7 @@ export function useCreateContract() {
     onSuccess: async (contract) => {
       await queryClient.invalidateQueries({ queryKey: contractKeys.all });
       await queryClient.invalidateQueries({ queryKey: projectKeys.detail(contract.projectId) });
-      router.push(`/contracts/${contract.id}`);
+      router.push(contractSecurityHref(contract.projectId));
     },
   });
 }
@@ -64,7 +74,7 @@ export function useUpdateContract(id: string) {
     onSuccess: async (contract) => {
       await queryClient.invalidateQueries({ queryKey: contractKeys.all });
       await queryClient.invalidateQueries({ queryKey: projectKeys.detail(contract.projectId) });
-      router.push(`/contracts/${id}`);
+      router.push(contractSecurityHref(contract.projectId));
     },
   });
 }

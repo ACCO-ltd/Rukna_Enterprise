@@ -145,7 +145,7 @@ function MainContractPanel({
       action={
         summary.capabilities.canEditContract ? (
           <Button asChild variant="outline" size="sm" className="min-h-11 sm:min-h-0">
-            <Link href={`/contracts/${contract.id}/edit`}>{t('actions.edit')}</Link>
+            <Link href={`/projects/${projectId}/commercial/contract/edit`}>{t('actions.edit')}</Link>
           </Button>
         ) : null
       }

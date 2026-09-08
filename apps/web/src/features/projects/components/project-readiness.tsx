@@ -70,7 +70,9 @@ export function ProjectReadiness({
             descKey: 'setupContractDesc' as const,
             complete: setup.mainContractExists,
             locked: !setup.boqBaselined,
-            href: setup.boqBaselined ? `/contracts/new?projectId=${project.id}` : undefined,
+            href: setup.boqBaselined
+              ? `/projects/${project.id}/commercial/contract/new`
+              : undefined,
             actionKey: 'createContract' as const,
           },
         ]
