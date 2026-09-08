@@ -177,25 +177,27 @@ export function ProjectsList() {
       searchPlaceholder={t('searchPlaceholder')}
       resultLabel={(count) => t('countLabel', { count })}
       noMatchMessage={t('noMatches')}
-      clearFiltersLabel={t('clearFilters')}
       emptyState={<EmptyState title={t('empty')} description={t('emptyHint')} action={mayCreate ? <Button asChild><Link href="/projects/new"><Plus className="me-2 h-4 w-4" aria-hidden="true" />{t('newProject')}</Link></Button> : undefined} />}
       toolbarFilters={statusFilter}
       // No create button here. The page header already carries one, and two identical primary
       // buttons a hundred pixels apart is not emphasis — it is a reader wondering whether they
       // do different things.
+      // The list opens in name order, and the sort control says so. It previously read
+      // "Sort by: Default", which named nothing and was not even true — the rows arrived in
+      // whatever order the API returned.
+      defaultSort={{ key: 'project', direction: 'asc' }}
       rowHref={(project) => `/projects/${project.id}`}
       onClearFilters={() => {
         setStatus('ALL');
         setCategory('ALL');
       }}
-      filtersActive={status !== 'ALL' || category !== 'ALL'}
       rowActions={(project) => (
         <RowActions
           overflow={
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="icon"
                   aria-label={t('rowMenu.label', { name: project.name })}
                 >

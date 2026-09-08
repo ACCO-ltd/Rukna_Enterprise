@@ -15,5 +15,12 @@ const STATUS_TONES: Record<ClientStatus, BadgeTone> = {
 export function ClientStatusBadge({ status }: { status: ClientStatus }) {
   const t = useTranslations('platform.clients.status');
 
-  return <Badge tone={STATUS_TONES[status] ?? 'neutral'}>{t(status)}</Badge>;
+  // Dotted: this reports whether the client is live right now, which is what someone scans a
+  // status column for. The category and stage badges elsewhere classify rather than report
+  // state, and deliberately carry no dot.
+  return (
+    <Badge dot tone={STATUS_TONES[status] ?? 'neutral'}>
+      {t(status)}
+    </Badge>
+  );
 }

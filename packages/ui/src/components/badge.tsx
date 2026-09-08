@@ -45,8 +45,27 @@ export type BadgeTone = NonNullable<VariantProps<typeof badgeVariants>['tone']>;
 
 export interface BadgeProps
   extends React.HTMLAttributes<HTMLSpanElement>,
-    VariantProps<typeof badgeVariants> {}
+    VariantProps<typeof badgeVariants> {
+  /**
+   * Prefixes the label with a filled dot in the badge's own colour.
+   *
+   * For a badge that reports **live state** — is this client active, is this account enabled —
+   * where the dot is the thing the eye finds when scanning a column of them, and the word is
+   * the confirmation. Not for a classification badge (a category, a type): those name what
+   * something *is*, and a status dot on one implies a liveness it does not have.
+   *
+   * Decorative: the label beside it carries the meaning, so it is `aria-hidden`.
+   */
+  dot?: boolean;
+}
 
-export function Badge({ className, tone, ...props }: BadgeProps) {
-  return <span className={cn(badgeVariants({ tone, className }))} {...props} />;
+export function Badge({ className, tone, dot, children, ...props }: BadgeProps) {
+  return (
+    <span className={cn(badgeVariants({ tone, className }), dot && 'gap-1.5')} {...props}>
+      {dot ? (
+        <span className="size-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
+      ) : null}
+      {children}
+    </span>
+  );
 }
