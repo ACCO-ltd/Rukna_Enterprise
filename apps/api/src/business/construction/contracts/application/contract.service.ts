@@ -196,26 +196,33 @@ export class ContractService {
   }
 
   /**
-   * ADR-023 / commercial-billing-model §5 P1 (§3.2 G2): replace-all editor for a contract's
-   * milestone payment schedule, permitted ONLY while the contract is DRAFT.
+   * ADR-023 / commercial-billing-model §5 P1 (§3.2 G2) + Q-B (Eng Ahmed, confirmed): the payment-plan
+   * editor for a MILESTONE contract. Permitted while the contract is DRAFT *or* ACTIVE.
    *
-   * Scope (deliberately tight): DRAFT + MILESTONE only. Re-profiling an ACTIVE/executed contract's
-   * un-invoiced installments (vs requiring a Variation) is decision Q-B, still pending — so an
-   * out-of-DRAFT contract is rejected here rather than guessed at.
+   * The submitted `installments` are the UN-INVOICED portion of the plan:
+   *  - On DRAFT nothing is invoiced, so this is the whole schedule — an ordinary full replace.
+   *  - On ACTIVE the already-invoiced installments are FROZEN (never changed or removed); the caller
+   *    re-profiles only the remaining un-invoiced stages (rename, shift dates, re-split %, add/remove).
    *
-   * Semantics: the body is the WHOLE new plan. In one transaction the existing installments are
-   * deleted and the new set written. This resets any programmeMilestoneId links; that is acceptable
-   * for a DRAFT contract (nothing has been billed) and links are re-established via the existing
-   * `PATCH …/installments/:id/milestone` route.
+   * Invariants (non-negotiable, Q-B): invoiced installments frozen; contract value unchanged (this
+   * endpoint accepts no value); frozen invoiced % + submitted un-invoiced % = 100%; the change is
+   * audited. Other statuses (UNDER_REVIEW, PENDING_SIGNATURE, FINAL_ACCOUNT_PENDING, CLOSED,
+   * CANCELLED, TERMINATED) are rejected — a payment schedule is only editable before signature
+   * (DRAFT) or during delivery (ACTIVE); a locked-down or closed contract changes through a Variation.
+   *
+   * Persistence (one transaction): keep every invoiced installment untouched; delete the current
+   * un-invoiced installments; write the submitted set as the new un-invoiced installments. The new
+   * rows carry no `programmeMilestoneId` — links are re-established via the existing
+   * `PATCH …/installments/:id/milestone` route (invoiced installments keep their links, untouched).
    */
   async replacePaymentPlan(identity: RequestIdentity, id: string, dto: ReplacePaymentPlanDto) {
     const prisma = this.tenancyService.getClient();
     const contract = await this.requireContract(prisma, identity, id);
 
-    if (contract.status !== 'DRAFT') {
+    if (contract.status !== 'DRAFT' && contract.status !== 'ACTIVE') {
       throw new ConflictException(
-        `A contract's payment plan can only be edited while it is DRAFT (current status: ` +
-        `'${contract.status}'). Change a committed schedule through a Variation, not by editing it.`,
+        `A contract's payment plan can only be edited while it is DRAFT or ACTIVE (current status: ` +
+        `'${contract.status}'). Change a locked-down or closed schedule through a Variation, not by editing it.`,
       );
     }
     if (contract.billingModel !== 'MILESTONE') {
@@ -223,31 +230,36 @@ export class ContractService {
         'A payment plan applies only to a MILESTONE (payment-schedule) contract.',
       );
     }
-    // Defensive: an invoiced installment must never be re-profiled. This cannot normally happen in
-    // DRAFT (billing needs an ACTIVE contract), but the invariant is guarded explicitly.
-    if (await this.repo.hasInvoicedInstallment(prisma, id)) {
-      throw new ConflictException(
-        'This payment plan cannot be replaced because at least one installment has already been ' +
-        'invoiced.',
-      );
-    }
 
-    this.assertPaymentPlanReconciles(dto.installments);
+    // Q-B: already-invoiced installments are the frozen part of the plan. Their % is held fixed and
+    // the submitted (un-invoiced) set must make the whole schedule reconcile to 100% again. On DRAFT
+    // this list is empty, so the frozen total is 0 and this collapses to today's full-replace rule.
+    const invoiced = await this.repo.findInvoicedInstallments(prisma, id);
+    const frozenTotal = invoiced.reduce((sum, i) => sum + i.percentage, 0);
+    const isReprofile = invoiced.length > 0;
+
+    this.assertPaymentPlanReconciles(dto.installments, frozenTotal);
 
     return prisma.$transaction(async (tx) => {
-      await this.repo.replacePaymentInstallments(tx, id, dto.installments);
+      await this.repo.reprofileUninvoicedInstallments(tx, id, dto.installments);
 
       await this.auditOutbox.record(tx, {
         organizationId: identity.activeOrganizationId,
         actorUserId: identity.userId,
-        action: 'REPLACE',
+        action: isReprofile ? 'REPROFILE' : 'REPLACE',
         resourceType: 'ContractPaymentPlan',
         resourceId: id,
         sourceCommand: 'contract.replacePaymentPlan',
-        eventType: 'CONTRACT_PAYMENT_PLAN_REPLACED',
-        idempotencyKey: `contract-payment-plan-replace-${id}-${Date.now()}`,
+        // Q-B requires the ACTIVE change to be auditable and distinguishable from a DRAFT replace.
+        eventType: isReprofile
+          ? 'CONTRACT_PAYMENT_PLAN_REPROFILED'
+          : 'CONTRACT_PAYMENT_PLAN_REPLACED',
+        idempotencyKey: `contract-payment-plan-${isReprofile ? 'reprofile' : 'replace'}-${id}-${Date.now()}`,
         after: {
           contractId: id,
+          status: contract.status,
+          frozenInvoicedCount: invoiced.length,
+          frozenInvoicedPercentage: frozenTotal,
           installmentCount: dto.installments.length,
         },
       });
@@ -258,11 +270,13 @@ export class ContractService {
 
   /**
    * ADR-023 CONST-COM-012: a payment schedule's percentages must reconcile to 100%.
-   * Percentages are fractions (0..1); Σ must equal 1 within a 4-dp tolerance. Each installment
-   * must be positive, and a TIME_BASED installment must carry a due offset or an explicit date.
+   * Percentages are fractions (0..1). `frozenTotal` is the summed % of the already-invoiced
+   * installments that are NOT part of `plan` (0 for a DRAFT contract / full replace); the submitted
+   * plan plus that frozen total must equal 1 within a 4-dp tolerance. Each submitted installment must
+   * be positive, and a TIME_BASED installment must carry a due offset or an explicit date.
    */
-  private assertPaymentPlanReconciles(plan: PaymentInstallmentDto[]): void {
-    let sum = 0;
+  private assertPaymentPlanReconciles(plan: PaymentInstallmentDto[], frozenTotal = 0): void {
+    let sum = frozenTotal;
     for (const line of plan) {
       if (!(line.percentage > 0)) {
         throw new BadRequestException(
@@ -282,8 +296,14 @@ export class ContractService {
     }
     // Round to 4 decimals before comparing so float error (0.1 + 0.2 …) does not fail a valid plan.
     if (Math.abs(Math.round(sum * 10000) / 10000 - 1) > 1e-4) {
+      const editable = (frozenTotal * 100).toFixed(2);
+      const detail =
+        frozenTotal > 0
+          ? ` (already-invoiced stages hold ${editable}%, so the editable stages must total ` +
+            `${(100 - frozenTotal * 100).toFixed(2)}%).`
+          : '.';
       throw new BadRequestException(
-        `Payment plan percentages must total 100%. Current total: ${(sum * 100).toFixed(2)}%.`,
+        `Payment plan percentages must total 100%. Current total: ${(sum * 100).toFixed(2)}%${detail}`,
       );
     }
   }

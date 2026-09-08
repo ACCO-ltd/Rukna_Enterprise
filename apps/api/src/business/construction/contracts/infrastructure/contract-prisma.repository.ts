@@ -142,33 +142,42 @@ export class ContractPrismaRepository {
   }
 
   /**
-   * ADR-023 / commercial-billing-model §5 P1 (replace-all editor).
-   * True if any of the contract's installments has already generated a ClientInvoice — the
-   * defensive backstop for the "never re-profile invoiced money" invariant. In DRAFT this should
-   * always be false (invoicing needs an ACTIVE contract), but the editor guards it anyway.
+   * ADR-023 / commercial-billing-model §5 P1 (payment-plan editor, ACTIVE re-profile, Q-B).
+   * The already-invoiced installments of a contract — the FROZEN portion of the schedule. Returns
+   * each id and its percentage as a plain number (0..1) so the application layer can sum the frozen
+   * total without importing Prisma's Decimal. On a DRAFT contract this is always empty (invoicing
+   * needs an ACTIVE contract).
    */
-  async hasInvoicedInstallment(prisma: TenantPrisma, contractId: string): Promise<boolean> {
-    const invoiced = await prisma.contractPaymentInstallment.findFirst({
+  async findInvoicedInstallments(
+    prisma: TenantPrisma,
+    contractId: string,
+  ): Promise<{ id: string; percentage: number }[]> {
+    const rows = await prisma.contractPaymentInstallment.findMany({
       where: { contractId, clientInvoice: { isNot: null } },
-      select: { id: true },
+      select: { id: true, percentage: true },
     });
-    return invoiced !== null;
+    return rows.map((r) => ({ id: r.id, percentage: r.percentage.toNumber() }));
   }
 
   /**
-   * ADR-023 / commercial-billing-model §5 P1 (replace-all editor).
-   * Replace a contract's whole payment schedule in one transaction: drop the existing installments
-   * and write the supplied set. NOTE: this resets any `programmeMilestoneId` links, which is
-   * acceptable for a DRAFT contract — links are re-established afterwards via the existing
-   * `PATCH …/installments/:id/milestone` route. Caller must pass a transaction client so the delete
-   * and the insert are atomic.
+   * ADR-023 / commercial-billing-model §5 P1 (payment-plan editor, Q-B).
+   * Re-profile the UN-INVOICED portion of a contract's payment schedule in one transaction: delete
+   * only the installments that have NOT generated a ClientInvoice, then write the supplied set in
+   * their place. Invoiced installments are never touched — they are the frozen part of the plan.
+   *
+   * On a DRAFT contract nothing is invoiced, so this is an identical full replace of the schedule.
+   * NOTE: the newly-written installments carry no `programmeMilestoneId`; links are (re-)established
+   * afterwards via the existing `PATCH …/installments/:id/milestone` route. Caller must pass a
+   * transaction client so the delete and the insert are atomic.
    */
-  async replacePaymentInstallments(
+  async reprofileUninvoicedInstallments(
     prisma: TenantPrisma,
     contractId: string,
     installments: PaymentInstallmentInput[],
   ) {
-    await prisma.contractPaymentInstallment.deleteMany({ where: { contractId } });
+    await prisma.contractPaymentInstallment.deleteMany({
+      where: { contractId, clientInvoice: { is: null } },
+    });
     return prisma.contractPaymentInstallment.createMany({
       data: installments.map((i) => ({
         contractId,
