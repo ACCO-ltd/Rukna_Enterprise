@@ -490,6 +490,23 @@ export interface DailyProgressReportResponse {
   approvedBy?: string;
 }
 
+// Master Schedule P2: a contract payment installment that a programme milestone RELEASES. Read-side
+// projection — the milestone→installment back-relation already exists (ContractPaymentInstallment
+// .programmeMilestoneId). `amount` is derived (percentage × contract value) with the same rounding as
+// the commercial payment schedule; `invoiced` is whether a ClientInvoice was generated from it.
+export interface MilestoneReleaseLine {
+  installmentId: string;
+  name: string;
+  /** Fraction string (0..1), e.g. "0.3000" — mirrors ContractPaymentInstallmentResponse.percentage. */
+  percentage: string;
+  triggerType: `${PaymentTrigger}`;
+  /** contractValue × percentage, fixed to 2 decimals (money). */
+  amount: string;
+  currency: string;
+  /** True when a ClientInvoice has been generated from this installment. */
+  invoiced: boolean;
+}
+
 // ADR-021 phase 2: a programme delivery milestone (baseline/forecast/actual dates, PLANNED -> VERIFIED).
 export interface ProgrammeMilestoneResponse {
   id: string;
@@ -504,6 +521,9 @@ export interface ProgrammeMilestoneResponse {
   contractMilestoneId: string | null;
   verifiedBy: string | null;
   verifiedAt: string | null;
+  // Master Schedule P2 — the contract payment installment(s) this milestone releases. `[]` when none
+  // link to it (ContractPaymentInstallment.programmeMilestoneId is null for every installment).
+  releases: MilestoneReleaseLine[];
 }
 
 // --- Documents (Phase 7A): the controlled project register ---------------------
