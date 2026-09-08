@@ -3,11 +3,14 @@ import { Decimal } from '@prisma/client/runtime/library';
 import {
   DprStatus,
   type RequestIdentity,
+  type ApplyScheduleTemplateResponse,
   type ProgressActualPoint,
   type ProgressCurveResponse,
   type ProgressPeriodComparisonResponse,
   type ProgressScheduleStatus,
   type ProgressSnapshotResponse,
+  type ScheduleTemplateKey,
+  type SuggestWeightsResponse,
 } from '@erp/types';
 
 import {
@@ -27,6 +30,7 @@ import {
   throwIfGated,
 } from '../../../../platform/workflows/application/command-governance.service.js';
 import { weightedPackagePercent } from '../domain/progress-rollup.js';
+import { scheduleTemplateCode, scheduleTemplatePhases } from '../domain/schedule-templates.js';
 
 const DIVERGENCE_THRESHOLD = 20; // percentage points before the signal flags a divergence (cf. ADR-023 CONST-COM-018)
 
@@ -380,6 +384,122 @@ export class ProgressService {
   async listWorkPackages(identity: RequestIdentity, projectId: string) {
     await this.projectAccess.assertMember(identity, projectId);
     return this.repo.findWorkPackages(this.tenancy.getClient(), identity.activeOrganizationId, projectId);
+  }
+
+  /**
+   * Master Schedule P1-d (ADR-029): seed a project's phases from a server-side schedule template so
+   * the guided setup wizard starts from a real programme, not an empty grid. Each template phase
+   * becomes a work package — reusing the same `repo.createWorkPackage` write the manual create uses,
+   * inside ONE transaction so a project's phases are all-or-nothing. Codes are auto-numbered
+   * WP-01…WP-09 in template order (that order IS the sequence, since the read model sorts by code);
+   * `durationDays` and `scheduleOnly` come from the template; `progressWeight` starts at 0 and the
+   * planned dates start null — the wizard fills those in later (weights via `suggestWeights`, dates
+   * via the WP PATCH).
+   *
+   * Guard: only a project with ZERO work packages may be seeded. A project that already has any
+   * returns 409 rather than silently duplicating a second set of phases (an "append" mode is a later
+   * option, per the spec).
+   */
+  async applyScheduleTemplate(
+    identity: RequestIdentity,
+    projectId: string,
+    templateKey: ScheduleTemplateKey,
+  ): Promise<ApplyScheduleTemplateResponse> {
+    await this.projectAccess.assertMember(identity, projectId);
+    const prisma = this.tenancy.getClient();
+
+    const phases = scheduleTemplatePhases(templateKey);
+    if (!phases) throw new BadRequestException(`Unknown schedule template '${templateKey}'`);
+
+    // Don't silently duplicate: seeding is only for a project that has no phases yet.
+    const existing = await this.repo.countWorkPackages(prisma, identity.activeOrganizationId, projectId);
+    if (existing > 0) {
+      throw new ConflictException(
+        'This project already has work packages. Applying a schedule template is only available on a project with none.',
+      );
+    }
+
+    const created = await prisma.$transaction(async (tx) =>
+      Promise.all(
+        phases.map((phase, index) =>
+          this.repo.createWorkPackage(tx as never, {
+            organizationId: identity.activeOrganizationId,
+            projectId,
+            code: scheduleTemplateCode(index),
+            name: phase.name,
+            responsibleOwner: null,
+            progressWeight: 0,
+            durationDays: phase.durationDays,
+            scheduleOnly: phase.scheduleOnly,
+            createdBy: identity.userId,
+          }),
+        ),
+      ),
+    );
+
+    return {
+      projectId,
+      templateKey,
+      workPackages: created.map((wp) => ({
+        id: wp.id,
+        code: wp.code,
+        name: wp.name,
+        durationDays: wp.durationDays,
+        scheduleOnly: wp.scheduleOnly,
+      })),
+    };
+  }
+
+  /**
+   * Master Schedule P1-d (ADR-029): suggest each work package's progress weight from the BOQ value
+   * assigned to it — so the wizard doesn't make the user guess weights. Read-only: it computes and
+   * returns suggestions; the WP PATCH is what persists a chosen weight.
+   *
+   * Each package's suggested weight = (Σ value of its allocated BOQ leaves) ÷ (Σ value across ALL
+   * packages), a 0..1 fraction. A `scheduleOnly` phase (no measurable scope) or a package with no
+   * priced/assigned value suggests 0. When nothing anywhere carries a value (all-unpriced / empty),
+   * every suggestion is 0 rather than a divide-by-zero. Reuses the same `findLeafValues` read the
+   * roll-up weights by, so a suggestion always agrees with the BOQ's own arithmetic.
+   */
+  async suggestWeights(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<SuggestWeightsResponse> {
+    await this.projectAccess.assertMember(identity, projectId);
+    const prisma = this.tenancy.getClient();
+
+    const packages = await this.repo.findWorkPackages(prisma, identity.activeOrganizationId, projectId);
+    const allocatedLeafIds = packages.flatMap((wp) => wp.boqLinks.map((b) => b.boqNodeId));
+    const leafValues = await this.repo.findLeafValues(prisma, projectId, allocatedLeafIds);
+    const valueByNode = new Map<string, Decimal>(
+      leafValues.map((v) => [v.id, new Decimal(v.totalAmount?.toString() ?? '0')] as const),
+    );
+
+    // Each package's assigned value; a scheduleOnly phase has no measurable scope so it contributes 0
+    // and never appears in the denominator.
+    const valueByPackage = new Map<string, Decimal>();
+    let totalValue = ZERO;
+    for (const wp of packages) {
+      const value = wp.scheduleOnly
+        ? ZERO
+        : wp.boqLinks.reduce(
+            (sum, b) => sum.plus(valueByNode.get(b.boqNodeId) ?? ZERO),
+            ZERO,
+          );
+      valueByPackage.set(wp.id, value);
+      totalValue = totalValue.plus(value);
+    }
+
+    const totalPositive = totalValue.greaterThan(ZERO);
+    return {
+      projectId,
+      weights: packages.map((wp) => {
+        const value = valueByPackage.get(wp.id) ?? ZERO;
+        // No total value anywhere (all-unpriced / empty) ⇒ every suggestion is 0, never ÷0.
+        const suggestedWeight = totalPositive ? value.div(totalValue).toNumber() : 0;
+        return { workPackageId: wp.id, suggestedWeight };
+      }),
+    };
   }
 
   /**

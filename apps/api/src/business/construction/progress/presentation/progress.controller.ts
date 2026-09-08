@@ -15,6 +15,7 @@ import {
   CreateWorkPackageDto,
   UpdateWorkPackageDto,
   AllocateBoqNodeDto,
+  ApplyScheduleTemplateDto,
   SetProgressTargetsDto,
   CreateProgrammeActivityDto,
   UpdateProgrammeActivityDto,
@@ -116,6 +117,40 @@ export class ProgressController {
     @Query('asOf') asOf?: string,
   ) {
     return this.service.getScheduleVariance(identity, projectId, asOf);
+  }
+
+  // ── Master Schedule P1-d (ADR-029): the guided schedule builder ────────────────
+
+  @Post('projects/:projectId/programme/apply-schedule-template')
+  @RequirePermissions(PERMISSIONS.projectsManage)
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({
+    summary:
+      'Seed the project phases from a schedule template (one transaction). 409 if the project ' +
+      'already has any work packages.',
+  })
+  applyScheduleTemplate(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Body() dto: ApplyScheduleTemplateDto,
+  ) {
+    return this.service.applyScheduleTemplate(identity, projectId, dto.templateKey);
+  }
+
+  @Post('projects/:projectId/programme/suggest-weights')
+  @RequirePermissions(PERMISSIONS.projectsManage)
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({
+    summary:
+      'Suggest each work package weight from its assigned BOQ value (read-only; the WP PATCH persists ' +
+      'a chosen weight).',
+  })
+  suggestWeights(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+  ) {
+    return this.service.suggestWeights(identity, projectId);
   }
 
   // ── Round-2 Progress-over-time (BE-1): snapshots + curve + period comparison ───

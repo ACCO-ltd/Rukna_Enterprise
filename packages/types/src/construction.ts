@@ -336,6 +336,53 @@ export interface ProjectRollupResponse {
   packages: WorkPackageRollupLine[];
 }
 
+// ─── Master Schedule P1-d (ADR-029): the guided schedule builder ───────────────────
+//
+// Two helper endpoints power the setup wizard. `apply-schedule-template` seeds a project's
+// phases from a server-side template so the user edits rather than invents; `suggest-weights`
+// derives each phase's progress weight from its assigned BOQ value so the user doesn't guess.
+
+/** The schedule templates the wizard can apply (single-tenant; more may be added later). */
+export type ScheduleTemplateKey = 'ACCO_STANDARD_BUILDING';
+
+/**
+ * One work package created by `apply-schedule-template`. A thin echo of the seeded rows so the
+ * wizard can render the freshly-created phases without a second round-trip. `progressWeight` and the
+ * planned dates start unset (0 / null) — the wizard fills them in via the WP PATCH.
+ */
+export interface AppliedScheduleWorkPackage {
+  id: string;
+  code: string;
+  name: string;
+  /** Suggested phase duration in days (from the template); the wizard sequences dates from it. */
+  durationDays: number | null;
+  /** A non-measurable phase (Design, Mobilization): no BOQ scope, tracked by dates only. */
+  scheduleOnly: boolean;
+}
+
+/** The result of applying a schedule template: the phases created, in sequence. */
+export interface ApplyScheduleTemplateResponse {
+  projectId: string;
+  templateKey: ScheduleTemplateKey;
+  workPackages: AppliedScheduleWorkPackage[];
+}
+
+/**
+ * A suggested progress weight for one work package = its assigned BOQ value ÷ the total assigned BOQ
+ * value across all packages (a 0..1 fraction). A `scheduleOnly` or no-scope package suggests 0. The
+ * endpoint only SUGGESTS; the WP PATCH persists a chosen weight.
+ */
+export interface SuggestedWeightLine {
+  workPackageId: string;
+  suggestedWeight: number;
+}
+
+/** The per-package weight suggestions for a project (read-only; nothing is persisted). */
+export interface SuggestWeightsResponse {
+  projectId: string;
+  weights: SuggestedWeightLine[];
+}
+
 // ─── Progress over time (Round-2 BE-1): snapshots + provisional planned baseline ──
 //
 // A ProgressSnapshot freezes what ADR-021 already computes (weighted physical roll-up,

@@ -149,6 +149,15 @@ export class ProgressRepository {
     return prisma.workPackage.create({ data });
   }
 
+  /**
+   * How many work packages a project already has — the zero-guard for applying a schedule template
+   * (P1-d): the template seeds a fresh project's phases, and refuses (409) rather than silently
+   * duplicate onto a project that already has any. A count, not a fetch: the guard only needs "any?".
+   */
+  countWorkPackages(prisma: TenantPrisma, organizationId: string, projectId: string) {
+    return prisma.workPackage.count({ where: { organizationId, projectId } });
+  }
+
   findWorkPackageById(prisma: TenantPrisma, organizationId: string, id: string) {
     return prisma.workPackage.findFirst({
       where: { id, organizationId },
