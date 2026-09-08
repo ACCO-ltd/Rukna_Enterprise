@@ -37,13 +37,19 @@ function buildColumns(
       sortable: true,
       // Searchable by code as well as name: the code is what someone reads off a document,
       // and a search box that cannot find it sends them back to the document.
-      plainValue: (client) => `${client.name} ${client.code}`,
+      plainValue: (client) => [client.name, client.code].filter(Boolean).join(' '),
       render: (client) => (
         <div className="flex items-center gap-3">
           <RecordTile />
           <span className="min-w-0">
             <span className="block truncate font-medium text-foreground">{client.name}</span>
-            <span className="block truncate text-caption text-muted-foreground">{client.code}</span>
+            {/* Only when the server sent one. An empty second line leaves the name floating
+                above a gap, which reads as a rendering fault rather than as missing data. */}
+            {client.code ? (
+              <span className="block truncate text-caption text-muted-foreground">
+                {client.code}
+              </span>
+            ) : null}
           </span>
         </div>
       ),
@@ -75,7 +81,7 @@ function buildColumns(
       render: (client) => (
         <Link
           href={`/clients/${client.id}?tab=projects`}
-          className="font-medium text-brand-primary underline-offset-4 hover:underline"
+          className="font-medium text-brand-primary underline underline-offset-4"
         >
           {client.activeProjectCount}
         </Link>
@@ -125,13 +131,12 @@ export function ClientsList() {
       // the client — and making them find the name to click was work with no purpose.
       rowHref={(client) => `/clients/${client.id}`}
       onClearFilters={() => setStatus('ALL')}
-      filtersActive={status !== 'ALL'}
       rowActions={(client) => (
         <RowActions
           overflow={
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label={t('rowMenu.label', { name: client.name })}>
+                <Button variant="outline" size="icon" aria-label={t('rowMenu.label', { name: client.name })}>
                   <OverflowGlyph />
                 </Button>
               </DropdownMenuTrigger>

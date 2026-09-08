@@ -378,7 +378,7 @@ export interface PlatformDataGridProps<T> {
   /**
    * Shown when domain-filtered data + grid search together produce no results
    * (data.length > 0 but visible.length === 0). When provided takes precedence
-   * over `noMatchMessage` and `clearFiltersLabel`.
+   * over `noMatchMessage`.
    */
   noMatchContent?: React.ReactNode;
 
@@ -389,12 +389,6 @@ export interface PlatformDataGridProps<T> {
    */
   noMatchMessage?: string;
 
-  /**
-   * Override the clear button label on the no-match state.
-   * Defaults to "Clear search". Pass "Clear filters" when the button
-   * should communicate that domain filters are also considered.
-   */
-  clearFiltersLabel?: string;
 
   // ── Customisation ──────────────────────────────────────────────────────────
 
@@ -465,12 +459,6 @@ export interface PlatformDataGridProps<T> {
   onClearFilters?: () => void;
 
   /**
-   * Whether any caller-owned filter is currently narrowing the list. Drives whether the
-   * "Clear filters" control appears — offering to clear nothing is noise.
-   */
-  filtersActive?: boolean;
-
-  /**
    * Suppresses the "Sort by" control in the list header.
    *
    * The control duplicates the sortable column headers on purpose: the headers are precise
@@ -478,6 +466,16 @@ export interface PlatformDataGridProps<T> {
    * table scrolls sideways. Pass `false` for a list whose order is fixed and meaningful.
    */
   sortControl?: boolean;
+
+  /**
+   * The order the list is in before anyone touches a header.
+   *
+   * Without it the grid claims "Sort by: Default", which names nothing a reader can act on and
+   * is not even true — the rows are in whatever order the API returned. Passing the order the
+   * list actually opens in makes the control honest and gives the reader a stated starting
+   * point to change.
+   */
+  defaultSort?: SortState;
 }
 
 // ─── Destructure helpers ──────────────────────────────────────────────────────
@@ -522,14 +520,13 @@ export function PlatformDataGrid<T>({
   emptyState,
   noMatchContent,
   noMatchMessage,
-  clearFiltersLabel,
   searchLabel,
   searchPlaceholder,
   resultLabel,
   rowHref,
   onClearFilters,
-  filtersActive,
   sortControl = true,
+  defaultSort,
 }: PlatformDataGridProps<T>) {
   const t = useTranslations('common.grid');
   const locale = useLocale() as 'en' | 'ar';
@@ -538,8 +535,16 @@ export function PlatformDataGrid<T>({
   // ── State ──────────────────────────────────────────────────────────────────
 
   const [search, setSearch] = useState('');
-  const [sort, setSort] = useState<SortState | null>(null);
+  const [sort, setSort] = useState<SortState | null>(defaultSort ?? null);
   const [page, setPage] = useState(1);
+  /**
+   * Whether the table is actually scrolled sideways.
+   *
+   * The sticky column's right-hand rule is what separates the pinned column from the content
+   * sliding under it. With nothing scrolled there is nothing to separate, and the rule reads as
+   * a stray box drawn around the first header cell — which is precisely how it looked.
+   */
+  const [scrolledX, setScrolledX] = useState(false);
 
   const DEFAULT_PAGE_SIZES = [10, 25, 50, 100];
   const defaultPageSize = paginationConfig?.defaultPageSize ?? 25;
@@ -665,7 +670,6 @@ export function PlatformDataGrid<T>({
    * the caller filters on. A reader who has narrowed a list to nothing needs a single way
    * out, not one button for search and a set of selects to walk back to "All".
    */
-  const canClear = hasSearch || Boolean(filtersActive);
   const clearEverything = () => {
     setSearch('');
     setPage(1);
@@ -778,7 +782,7 @@ export function PlatformDataGrid<T>({
 
         {/* Clear — sits with the filters it undoes, not down beside the row count where it
             used to be. Appears only once something is actually narrowing the list. */}
-        {canClear && visible.length > 0 ? (
+        {onClearFilters || hasSearch ? (
           <button
             type="button"
             onClick={clearEverything}
@@ -864,13 +868,7 @@ export function PlatformDataGrid<T>({
               noMatchContent ?? (
                 <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-10 text-center">
                   <p className="text-sm text-muted-foreground">{noMatchMessage ?? t('noMatches')}</p>
-                  {canClear ? (
-                    <div className="mt-4">
-                      <Button variant="outline" size="sm" onClick={clearEverything}>
-                        {clearFiltersLabel ?? (onClearFilters ? t('clearFilters') : t('clearSearch'))}
-                      </Button>
-                    </div>
-                  ) : null}
+
                 </div>
               )
             ) : (
@@ -889,6 +887,10 @@ export function PlatformDataGrid<T>({
           // The panel around it already draws the frame; a second border here would read as a
           // box inside a box, which is exactly what radius is supposed to encode and this is not.
           className={cn('rounded-none border-0', mobileRow && 'hidden md:block')}
+          onScroll={(event) => {
+            const next = event.currentTarget.scrollLeft > 0;
+            setScrolledX((current) => (current === next ? current : next));
+          }}
         >
           <Table>
             <TableHeader>
@@ -919,8 +921,8 @@ export function PlatformDataGrid<T>({
                     numeric={col.numeric}
                     aria-sort={col.sortable ? ariaSort(col.key) : undefined}
                     className={cn(
-                      col.sticky &&
-                        'sticky start-0 z-10 bg-surface-subtle shadow-[1px_0_0_0] shadow-border',
+                      col.sticky && 'sticky start-0 z-10 bg-surface-subtle',
+                      col.sticky && scrolledX && 'shadow-[1px_0_0_0] shadow-border',
                     )}
                   >
                     {col.sortable ? (
@@ -955,13 +957,7 @@ export function PlatformDataGrid<T>({
                   {noMatchContent ?? (
                     <>
                       <p>{noMatchMessage ?? t('noMatches')}</p>
-                      {canClear ? (
-                        <div className="mt-4">
-                          <Button variant="outline" size="sm" onClick={clearEverything}>
-                            {clearFiltersLabel ?? (onClearFilters ? t('clearFilters') : t('clearSearch'))}
-                          </Button>
-                        </div>
-                      ) : null}
+
                     </>
                   )}
                 </TableEmpty>
@@ -985,13 +981,13 @@ export function PlatformDataGrid<T>({
                         </TableCell>
                       ) : null}
 
-                      {visibleColumns.map((col, index) => (
+                      {visibleColumns.map((col) => (
                         <TableCell
                           key={col.key}
                           numeric={col.numeric}
                           className={cn(
-                            col.sticky &&
-                              'sticky start-0 z-10 bg-surface shadow-[1px_0_0_0] shadow-border',
+                            col.sticky && 'sticky start-0 z-10 bg-surface',
+                            col.sticky && scrolledX && 'shadow-[1px_0_0_0] shadow-border',
                           )}
                         >
                           {/* The row's one real link. The pointer gesture is the whole row, but

@@ -137,6 +137,23 @@ describe('ClientsList', () => {
     expect(document.querySelectorAll('a[data-row-link]')).toHaveLength(1);
   });
 
+  it('marks live status with a dot, and the drill-down number as a link', async () => {
+    vi.mocked(listClientSummaries).mockResolvedValue([
+      client({ id: '1', name: 'Baraka', activeProjectCount: 3 }),
+    ]);
+    renderWithProviders(<ClientsList />);
+
+    // The dot is what the eye finds scanning a status column; the word confirms it.
+    const badge = (await screen.findByText('Active')).closest('span');
+    expect(badge?.querySelector('span[aria-hidden="true"]')).not.toBeNull();
+
+    // Underlined at rest, not only on hover: the one drillable number in the row has to
+    // advertise itself, or it reads as plain text.
+    const count = screen.getByRole('link', { name: '3' });
+    expect(count.className).toContain('underline');
+    expect(count.className).not.toContain('hover:underline');
+  });
+
   it('offers view and edit behind the row menu, and nothing destructive', async () => {
     vi.mocked(listClientSummaries).mockResolvedValue([client({ id: '7', name: 'Baraka' })]);
     const user = userEvent.setup();

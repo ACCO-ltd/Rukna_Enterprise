@@ -15,7 +15,7 @@ import {
   RowActions,
   Select,
 } from '@erp/ui';
-import { AlertTriangle, CalendarDays, Filter, Plus } from 'lucide-react';
+import { CalendarDays, Filter, Plus } from 'lucide-react';
 
 import { EmptyState } from '@/components/empty-state';
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
@@ -35,17 +35,6 @@ function programme(project: Project, locale: 'en' | 'ar', notSet: string) {
   const end = formatDate(project.expectedEndDate, locale);
   if (!start && !end) return notSet;
   return [start ?? notSet, end ?? notSet].join(' - ');
-}
-
-function attention(project: Project, t: ReturnType<typeof useTranslations<'platform.projects'>>) {
-  if (project.isSuspended) return { label: t('attention.suspended'), urgent: true };
-  if (
-    project.expectedEndDate &&
-    new Date(project.expectedEndDate) < new Date() &&
-    ![ProjectStatus.CLOSED, ProjectStatus.CANCELLED].includes(project.status)
-  ) return { label: t('attention.overdue'), urgent: true };
-  if (project.status === ProjectStatus.DRAFT) return { label: t('attention.setup'), urgent: false };
-  return { label: t('attention.clear'), urgent: false };
 }
 
 function buildColumns(
@@ -106,19 +95,6 @@ function buildColumns(
       plainValue: (project) => project.contractValue ? Number(project.contractValue) : null,
       render: (project) => <span className="whitespace-nowrap font-medium tabular-nums">{formatMoney(project.contractValue, project.currency, locale) ?? t('restrictedOrNotSet')}</span>,
     },
-    {
-      key: 'attention',
-      header: t('columns.attention'),
-      render: (project) => {
-        const state = attention(project, t);
-        return (
-          <span className={state.urgent ? 'inline-flex items-center gap-1.5 text-sm font-medium text-warning-foreground' : 'text-sm text-muted-foreground'}>
-            {state.urgent ? <AlertTriangle className="h-4 w-4 text-warning" aria-hidden="true" /> : null}
-            {state.label}
-          </span>
-        );
-      },
-    },
   ];
 }
 
@@ -177,25 +153,27 @@ export function ProjectsList() {
       searchPlaceholder={t('searchPlaceholder')}
       resultLabel={(count) => t('countLabel', { count })}
       noMatchMessage={t('noMatches')}
-      clearFiltersLabel={t('clearFilters')}
       emptyState={<EmptyState title={t('empty')} description={t('emptyHint')} action={mayCreate ? <Button asChild><Link href="/projects/new"><Plus className="me-2 h-4 w-4" aria-hidden="true" />{t('newProject')}</Link></Button> : undefined} />}
       toolbarFilters={statusFilter}
       // No create button here. The page header already carries one, and two identical primary
       // buttons a hundred pixels apart is not emphasis — it is a reader wondering whether they
       // do different things.
+      // The list opens in name order, and the sort control says so. It previously read
+      // "Sort by: Default", which named nothing and was not even true — the rows arrived in
+      // whatever order the API returned.
+      defaultSort={{ key: 'project', direction: 'asc' }}
       rowHref={(project) => `/projects/${project.id}`}
       onClearFilters={() => {
         setStatus('ALL');
         setCategory('ALL');
       }}
-      filtersActive={status !== 'ALL' || category !== 'ALL'}
       rowActions={(project) => (
         <RowActions
           overflow={
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="icon"
                   aria-label={t('rowMenu.label', { name: project.name })}
                 >
