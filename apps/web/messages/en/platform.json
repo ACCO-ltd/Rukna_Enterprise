@@ -1646,7 +1646,6 @@
   },
   "contracts": {
     "title": "Contracts",
-    "newContract": "New contract",
     "searchLabel": "Search contracts",
     "searchPlaceholder": "Search by contract number",
     "filterByStatus": "Filter by status",
@@ -1681,13 +1680,6 @@
       "billing": "Billing",
       "status": "Status",
       "dates": "Start"
-    },
-    "projectSection": {
-      "heading": "Contracts",
-      "none": "No contracts on this project yet.",
-      "noneHint": "A contract needs a baselined BOQ version.",
-      "viewAll": "View all",
-      "add": "New contract"
     },
     "detail": {
       "back": "Back to contracts",

@@ -82,11 +82,6 @@ export function ContractsList({ projectId }: ContractsListProps = {}) {
       <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
         <p className="text-sm font-medium text-foreground">{t('empty')}</p>
         <p className="mt-1 text-sm text-muted-foreground">{t('emptyHint')}</p>
-        <div className="mt-4">
-          <Button asChild>
-            <Link href={projectId ? `/contracts/new?projectId=${projectId}` : '/contracts/new'}>{t('newContract')}</Link>
-          </Button>
-        </div>
       </div>
     );
   }
@@ -189,9 +184,13 @@ function ContractRow({ contract, locale }: { contract: Contract; locale: 'en' | 
     <TableRow className="group hover:bg-brand-active-subtle/60">
       <TableCell className="whitespace-nowrap">
         {/* The link sits on the number, not the row: a clickable <tr> is unreachable by
-            keyboard and breaks the table semantics screen readers rely on. */}
+            keyboard and breaks the table semantics screen readers rely on.
+
+            Points into the project workspace, not the retired standalone detail page: every
+            contract carries a non-null projectId, and the Contract aggregate now lives under
+            the project's Commercial workspace (P3 Q-C). */}
         <Link
-          href={`/contracts/${contract.id}`}
+          href={`/projects/${contract.projectId}/commercial/contract-security`}
           className="-my-3 flex min-h-11 items-center font-mono text-xs font-semibold text-brand-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
         >
           {contract.contractNumber}

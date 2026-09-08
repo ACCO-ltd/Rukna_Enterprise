@@ -416,7 +416,7 @@ describe('ProjectDetail — commercial foundation', () => {
     expect(within(section).getByText('Working · Not baselined')).toBeInTheDocument();
   });
 
-  it('links to the contract, and shows its value, once one exists', async () => {
+  it('links to the contract in the Commercial workspace, and shows its value, once one exists', async () => {
     vi.mocked(getProject).mockResolvedValue(project({ status: ProjectStatus.ACTIVE }));
     vi.mocked(getProjectWorkspaceSummary).mockResolvedValue(
       workspaceSummary({
@@ -439,7 +439,7 @@ describe('ProjectDetail — commercial foundation', () => {
     ).closest('section')!;
     expect(within(section).getByRole('link', { name: 'CTR-001' })).toHaveAttribute(
       'href',
-      '/contracts/contract-1',
+      '/projects/p1/commercial/contract-security',
     );
     expect(within(section).getByText('$12,500,000.00')).toBeInTheDocument();
   });
