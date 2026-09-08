@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Patch,
   Delete,
   Body,
@@ -41,6 +42,7 @@ import { UpdateGuaranteeDto } from './dto/update-guarantee.dto.js';
 import { AddMilestoneDto } from './dto/add-milestone.dto.js';
 import { AddRetentionTermsDto } from './dto/add-retention-terms.dto.js';
 import { SetInstallmentMilestoneDto } from './dto/set-installment-milestone.dto.js';
+import { ReplacePaymentPlanDto } from './dto/replace-payment-plan.dto.js';
 
 @ApiTags('Contracts')
 @ApiBearerAuth('access-token')
@@ -167,6 +169,27 @@ export class ContractsController {
   }
 
   // ─── Payment-schedule installments ─────────────────────────────────────────────
+
+  @Put(':id/payment-plan')
+  @RequirePermissions(PERMISSIONS.contractsManage)
+  @ApiOperation({
+    summary: "Replace a DRAFT MILESTONE contract's whole payment plan (commercial-billing §5 P1)",
+    description:
+      'Replace-all editor: the body is the complete installment list (Σ percentage = 1). Permitted ' +
+      'only while the contract is DRAFT and the billing model is MILESTONE; rejected once committed ' +
+      '(re-profile a live schedule through a Variation).',
+  })
+  @ApiParam({ name: 'id' })
+  @ApiResponse({ status: 200, description: 'Payment plan replaced' })
+  @ApiResponse({ status: 400, description: 'Plan does not total 100%, or contract is not MILESTONE' })
+  @ApiResponse({ status: 409, description: 'Contract is not DRAFT, or an installment is already invoiced' })
+  replacePaymentPlan(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: ReplacePaymentPlanDto,
+  ) {
+    return this.contractService.replacePaymentPlan(identity, id, dto);
+  }
 
   @Patch(':id/installments/:installmentId/milestone')
   @RequirePermissions(PERMISSIONS.contractsManage)
