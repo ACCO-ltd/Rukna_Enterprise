@@ -78,11 +78,9 @@ export function DistrictsManager() {
 
   return (
     <div className="space-y-6">
-      <p className="text-sm text-muted-foreground">{t('intro')}</p>
-
       {canManage ? (
         <div className="rounded-panel border border-border bg-surface p-4">
-          <h2 className="text-base font-semibold leading-6 text-foreground">{t('addTitle')}</h2>
+          <h3 className="text-base font-semibold leading-6 text-foreground">{t('addTitle')}</h3>
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <FormField htmlFor="district-code" label={t('codeLabel')} className="w-28">
               <Input

@@ -38,14 +38,11 @@ const CATEGORIES = Object.values(ProjectCategory);
  * (name only) and a "Deactivate" action. Gated by `manage:project-type`.
  */
 export function ProjectSubtypesManager() {
-  const t = useTranslations('projectTypes.manager');
   const { can } = usePermissions();
   const canManage = can('manage:project-type');
 
   return (
     <div className="space-y-8">
-      <p className="text-sm text-muted-foreground">{t('intro')}</p>
-
       {CATEGORIES.map((category) => (
         <CategoryGroup key={category} category={category} canManage={canManage} />
       ))}
@@ -96,12 +93,12 @@ function CategoryGroup({
 
   return (
     <section aria-labelledby={`subtype-group-${category}`} className="space-y-3">
-      <h2
+      <h3
         id={`subtype-group-${category}`}
         className="text-base font-semibold leading-6 text-foreground"
       >
         {tCategory(category)}
-      </h2>
+      </h3>
 
       {canManage ? (
         <div className="rounded-panel border border-border bg-surface p-4">

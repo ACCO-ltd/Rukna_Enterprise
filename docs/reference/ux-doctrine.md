@@ -359,9 +359,17 @@ sidebar collapse toggle   h-9  (36px)
 sidebar item control      h-9  (36px)
 breadcrumb project link   unconstrained, ~20px
 breadcrumb "Projects"     unconstrained, ~20px
+sidebar domain row        min-h-10 (40px)   ← added to this list 2026-09-08
 ```
 
 (The TanStack devtools button also fails and is dev-only — not debt, ignore it.)
+
+The sidebar domain row was added to the list on 2026-09-08 by the Administration workspace
+slice (ADR-028). That slice did not introduce the height — every row in the sidebar has been
+`min-h-10` — but it did make one of those rows the *only* way to reach Administration, since the
+six child rows underneath it are gone. Raising that one row to 44px was considered and rejected
+for the reason below: it would have made Administration 4px taller than its five siblings while
+leaving every one of them still unhittable.
 
 **Do not patch this from a feature branch.** These controls are rendered by `AppShell` and
 `ProjectWorkspaceShell` on *every* screen in the product. Fixing them inside Documents would make

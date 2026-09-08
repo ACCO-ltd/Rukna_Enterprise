@@ -145,7 +145,7 @@ export function RegisterDocumentDialog({
         onOpenChange(next);
       }}
     >
-      <DialogContent closeLabel={t('actions.cancel')} className="max-w-2xl">
+      <DialogContent closeLabel={t('actions.cancel')} className="sm:max-w-2xl">
         <DialogTitle>{t('form.registerTitle')}</DialogTitle>
         <DialogDescription>{t('form.registerHint')}</DialogDescription>
 

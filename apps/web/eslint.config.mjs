@@ -15,6 +15,22 @@ import nextTs from "eslint-config-next/typescript";
 // `Unexpected token Delim('*')` on the first attempt.
 const designScaleSelectors = [
   {
+    // A dialog width with no breakpoint prefix is silently discarded from the first
+    // breakpoint up: the primitive's own default width carries a prefix, tailwind-merge keys
+    // on utility AND variant so the two never compete, and the prefixed one wins on source
+    // order. The override reads as applied and is not. Prefix the width to match.
+    selector:
+      "JSXOpeningElement[name.name='DialogContent'] JSXAttribute[name.name='className'] Literal[value=/(^|\\s)max-w-/]",
+    message:
+      "Dialog width with no breakpoint prefix. The dialog primitive's default width is breakpoint-prefixed, so an unprefixed width never applies above the mobile sheet and the dialog silently keeps its default size. Prefix the width with the same breakpoint.",
+  },
+  {
+    selector:
+      "JSXOpeningElement[name.name='DialogContent'] JSXAttribute[name.name='className'] TemplateElement[value.raw=/(^|\\s)max-w-/]",
+    message:
+      "Dialog width with no breakpoint prefix. Prefix the width with the same breakpoint, or it never applies above the mobile sheet.",
+  },
+  {
     selector:
       "Literal[value=/(mx-auto[\s\S]*max-w-[3-7]xl|max-w-[3-7]xl[\s\S]*mx-auto)/]",
     message:

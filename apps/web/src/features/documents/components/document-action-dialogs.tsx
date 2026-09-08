@@ -730,7 +730,7 @@ function ActionDialog({
   const t = useTranslations('documents');
   return (
     <Dialog open onOpenChange={(next) => !next && onClose()}>
-      <DialogContent closeLabel={t('actions.cancel')} className="max-w-xl">
+      <DialogContent closeLabel={t('actions.cancel')} className="sm:max-w-xl">
         <DialogTitle>{title}</DialogTitle>
         {description ? <DialogDescription>{description}</DialogDescription> : null}
         {children}

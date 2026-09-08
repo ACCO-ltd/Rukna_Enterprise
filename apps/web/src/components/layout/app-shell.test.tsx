@@ -145,6 +145,46 @@ describe('AppShell — navigation', () => {
   });
 });
 
+describe('AppShell — flat domains', () => {
+  it('renders Administration as a single row, with its screens nowhere in the sidebar', () => {
+    renderShell();
+
+    const nav = screen.getAllByRole('navigation', { name: 'Main navigation' })[0]!;
+    const links = Array.from(nav.querySelectorAll('a')).map((a) => a.textContent?.trim());
+
+    expect(links).toContain('Administration');
+    // The six screens moved into the workspace's own tab bar. A person still reaches them in
+    // two clicks; the sidebar no longer pays for them on every other screen in the product.
+    expect(links).not.toContain('Users');
+    expect(links).not.toContain('Roles');
+    expect(links).not.toContain('Districts');
+    expect(links).not.toContain('Audit logs');
+  });
+
+  it('gives Administration no expand control, because there is nothing to expand', () => {
+    renderShell();
+
+    expect(screen.queryByRole('button', { name: 'Expand Administration' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Collapse Administration' })).toBeNull();
+    // Accounting still expands — this is one domain's behaviour, not a new sidebar.
+    expect(
+      screen.queryByRole('button', { name: /Accounting/ }),
+    ).toBeInTheDocument();
+  });
+
+  it('stays lit on every route beneath it', () => {
+    // The child rows used to say "you are in Administration". With them gone, the one row
+    // has to say it.
+    pathname = '/admin/audit-logs';
+    renderShell();
+
+    expect(screen.getAllByRole('link', { name: 'Administration' })[0]).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+  });
+});
+
 describe('AppShell — mobile drawer', () => {
   it('is closed until the menu button is pressed', () => {
     renderShell();

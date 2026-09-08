@@ -75,6 +75,17 @@ export interface NavDomain {
   moduleKey: string;
   /** Icon shown on the domain header button. */
   iconKey: NavIconKey;
+  /**
+   * Renders as a single link in the global sidebar — no chevron, no child rows, no
+   * collapsed-sidebar flyout. The domain's `items` still describe its destinations; they
+   * simply render somewhere else. Two consumers read them either way: the command menu, and
+   * the domain's own in-page tab bar (`AdminShell`).
+   *
+   * Used by Administration, whose six screens are one workspace a person moves around inside,
+   * not six unrelated destinations that happen to share a prefix. A tab bar says that; a
+   * nested sidebar column says the opposite, and costs a column of width on every screen.
+   */
+  flat?: boolean;
   /** Flat, direct destinations — no sub-groups inside. */
   items: NavItem[];
 }
@@ -145,13 +156,18 @@ export const NAV_DOMAINS: NavDomain[] = [
     href: '/admin',
     moduleKey: 'administration',
     iconKey: 'shield',
-    // The flat admin column mixed four different jobs — people, org data, approval
-    // governance, and evidence. They are grouped with the same `groupKey` mechanism
-    // Procurement's "Setup" uses: quiet micro-label dividers, not a second collapsible
-    // level. Every admin item carries a group so no ungrouped run leads (the sections
-    // read People → Organization → Approval governance → Evidence). Access reviews and a
-    // standalone SoD registry are DEFERRED (no backend) and deliberately absent — an item
-    // that 404s is worse than one documented in the design's deferred list.
+    flat: true,
+    // These six items no longer render in the sidebar. Clicking Administration opens the
+    // Administration workspace, and they are its tab bar (`AdminShell`) — the same move the
+    // project Finance workspace made. They stay declared here because this list is the single
+    // source of truth for the routes, their labels, their icons and their permission gates,
+    // read by the sidebar's active state, the command menu and the tab bar alike.
+    //
+    // The `groupKey`s survive the move but no longer draw anything. They record the four jobs
+    // this workspace does — people, org data, approval governance, evidence — and they fix the
+    // tab order, which is what the reader now perceives instead of the labels. Access reviews
+    // and a standalone SoD registry remain DEFERRED (no backend) and deliberately absent: a
+    // tab that 404s is worse than one documented in the design's deferred list.
     items: [
       { href: '/admin/users', labelKey: 'users', iconKey: 'users', groupKey: 'people' },
       { href: '/admin/roles', labelKey: 'roles', iconKey: 'user-gear', groupKey: 'people' },

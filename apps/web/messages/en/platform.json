@@ -50,7 +50,7 @@
     "roles": "Roles",
     "districts": "Districts",
     "projectSubtypes": "Project subtypes",
-    "auditLogs": "Audit Logs",
+    "auditLogs": "Audit logs",
     "settings": "Settings",
     "workflows": "Workflows",
     "comingSoon": "Coming soon",
@@ -91,6 +91,10 @@
       "governance": "Approval governance",
       "evidence": "Evidence"
     }
+  },
+  "admin": {
+    "title": "Administration",
+    "navLabel": "Administration sections"
   },
   "user": {
     "menuLabel": "Account menu",
@@ -903,6 +907,7 @@
   },
   "users": {
     "title": "Users",
+    "subtitle": "Manage user accounts, roles and access to the ERP system.",
     "addUser": "Add user",
     "editUser": "Edit User",
     "empty": "No users found.",
@@ -1016,7 +1021,8 @@
     }
   },
   "roles": {
-    "title": "Roles & Permissions",
+    "title": "Roles & permissions",
+    "subtitle": "Define roles and the permissions each one grants.",
     "addRole": "Add role",
     "editRole": "Edit Role",
     "empty": "No roles defined.",
@@ -1100,7 +1106,8 @@
     }
   },
   "auditLogs": {
-    "title": "Audit Logs",
+    "title": "Audit logs",
+    "subtitle": "The record of who changed what, and when.",
     "empty": "No audit log entries.",
     "loadFailed": "Could not load audit logs.",
     "retry": "Retry",
@@ -1110,7 +1117,8 @@
     "colResource": "Resource"
   },
   "workflows": {
-    "title": "Approval Workflows",
+    "title": "Approval workflows",
+    "subtitle": "Which state transitions require approval, and the policies that decide.",
     "governanceReference": "Governance reference",
     "governanceReferenceHint": "Read-only reference: which transitions require approval, and the workflow definitions behind them.",
     "bindings": {
