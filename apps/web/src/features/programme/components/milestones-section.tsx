@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import type { ProgrammeMilestoneResponse } from '@erp/types';
+import type { MilestoneReleaseLine, ProgrammeMilestoneResponse } from '@erp/types';
 import {
   Alert,
   Badge,
@@ -26,7 +26,7 @@ import {
 } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatMoney } from '@/lib/format';
 import { useDialogDismissGuard } from '@/lib/use-dialog-dismiss-guard';
 
 import { useCreateMilestone, useMilestones, useVerifyMilestone } from '../hooks/use-programme';
@@ -41,6 +41,25 @@ function varianceDays(baseline: string, actual: string | null): number | null {
   if (!actual) return null;
   const ms = new Date(actual).getTime() - new Date(baseline).getTime();
   return Math.round(ms / 86_400_000);
+}
+
+/**
+ * `percentage` is a 0..1 fraction string ("0.4000"). Format it as a percent the same way the
+ * commercial payment schedule does, so a milestone's "Releases 40%" matches the installment row
+ * it points at. Falls back to the raw string if it is not a finite number.
+ */
+function formatFraction(fraction: string, locale: 'en' | 'ar'): string {
+  const n = Number(fraction);
+  if (!Number.isFinite(n)) return fraction;
+  return new Intl.NumberFormat(locale === 'ar' ? 'ar-u-nu-latn' : locale, {
+    style: 'percent',
+    maximumFractionDigits: 2,
+  }).format(n);
+}
+
+/** Money for a release line, using the line's own currency (the contract's). */
+function releaseAmount(release: MilestoneReleaseLine, locale: 'en' | 'ar'): string {
+  return formatMoney(release.amount, release.currency, locale) ?? release.amount;
 }
 
 export function MilestonesSection({ projectId }: { projectId: string }) {
@@ -92,6 +111,7 @@ export function MilestonesSection({ projectId }: { projectId: string }) {
                 <TableHead>{t('programme.col.baseline')}</TableHead>
                 <TableHead>{t('programme.col.actual')}</TableHead>
                 <TableHead>{t('programme.col.variance')}</TableHead>
+                <TableHead>{t('programme.col.releases')}</TableHead>
                 <TableHead>{t('programme.col.status')}</TableHead>
                 <TableHead>
                   <span className="sr-only">{t('programme.col.actions')}</span>
@@ -110,6 +130,9 @@ export function MilestonesSection({ projectId }: { projectId: string }) {
                     {m.actualDate ? formatDate(m.actualDate, locale) : '—'}
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-muted-foreground">{variance(m)}</TableCell>
+                  <TableCell>
+                    <ReleasesCell releases={m.releases} locale={locale} t={t} />
+                  </TableCell>
                   <TableCell>
                     <Badge tone={STATUS_TONE[m.status]}>{t(`programme.status.${m.status}`)}</Badge>
                   </TableCell>
@@ -135,6 +158,47 @@ export function MilestonesSection({ projectId }: { projectId: string }) {
         />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * What a milestone RELEASES for invoicing (Master Schedule P2). Each line is the payment
+ * installment this milestone gates: "Releases 40% · Structure · $300,000", with a subtle
+ * "invoiced" tag once a client invoice has already been raised from it. Stacked chips keep it
+ * legible at 375px; an unlinked milestone (`releases: []`) shows a muted em dash.
+ */
+function ReleasesCell({
+  releases,
+  locale,
+  t,
+}: {
+  releases: MilestoneReleaseLine[];
+  locale: 'en' | 'ar';
+  t: ReturnType<typeof useTranslations>;
+}) {
+  if (releases.length === 0) {
+    return <span className="text-muted-foreground">{t('programme.releases.none')}</span>;
+  }
+
+  return (
+    <ul className="flex flex-col gap-1">
+      {releases.map((r) => (
+        <li key={r.installmentId} className="flex flex-wrap items-center gap-1.5">
+          <span className="text-body-sm text-foreground">
+            {t('programme.releases.line', {
+              percent: formatFraction(r.percentage, locale),
+              name: r.name,
+              amount: releaseAmount(r, locale),
+            })}
+          </span>
+          {r.invoiced ? (
+            <Badge tone="live" aria-label={t('programme.releases.invoicedLabel')}>
+              {t('programme.releases.invoiced')}
+            </Badge>
+          ) : null}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -209,16 +273,39 @@ function VerifyMilestoneDialog({
   onDismiss: () => void;
 }) {
   const t = useTranslations('progress');
+  const locale = useLocale() as 'en' | 'ar';
   const verify = useVerifyMilestone(projectId);
   const [actualDate, setActualDate] = useState(new Date().toISOString().slice(0, 10));
 
   const dismissGuard = useDialogDismissGuard(verify.isPending, onDismiss);
 
+  // Name the consequence: when this milestone gates payment installments, say which ones verifying
+  // will release for invoicing. Falls back to the generic hint when nothing is linked.
+  const releases = milestone.releases;
+  let verifyNote: string;
+  if (releases.length === 0) {
+    verifyNote = t('programme.verify.hint');
+  } else if (releases.length === 1) {
+    const r = releases[0]!;
+    verifyNote = t('programme.verify.hintReleaseOne', {
+      percent: formatFraction(r.percentage, locale),
+      name: r.name,
+      amount: releaseAmount(r, locale),
+    });
+  } else {
+    verifyNote = t('programme.verify.hintReleaseMany', {
+      count: releases.length,
+      list: releases
+        .map((r) => `${formatFraction(r.percentage, locale)} ${r.name} (${releaseAmount(r, locale)})`)
+        .join(', '),
+    });
+  }
+
   return (
     <Dialog open onOpenChange={dismissGuard.onOpenChange}>
       <DialogContent {...dismissGuard.contentProps}>
         <DialogTitle>{t('programme.verify.title', { name: milestone.name })}</DialogTitle>
-        <DialogDescription>{t('programme.verify.hint')}</DialogDescription>
+        <DialogDescription>{verifyNote}</DialogDescription>
 
         {verify.isError ? (
           <div className="mt-4">

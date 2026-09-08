@@ -283,6 +283,15 @@ function MilestoneCell({
 }) {
   const milestone = inst.programmeMilestone;
 
+  // An ADVANCE installment (the mobilization payment) is paid early and is not milestone-gated by
+  // design. Showing "Not linked / Link milestone" here would read as a forgotten link; instead say
+  // plainly that no milestone is required. MILESTONE/TIME_BASED rows keep the link affordance below.
+  if (inst.triggerType === 'ADVANCE') {
+    return (
+      <Badge tone="neutral">{t('paymentSchedule.milestone.ungatedAdvance')}</Badge>
+    );
+  }
+
   if (!milestone) {
     return canManageLink ? (
       <Button variant="ghost" size="sm" className="min-h-11 sm:min-h-0" onClick={onLink}>

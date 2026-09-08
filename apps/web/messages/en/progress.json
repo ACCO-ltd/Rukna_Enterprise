@@ -335,6 +335,7 @@
       "baseline": "Baseline",
       "actual": "Actual",
       "variance": "Variance",
+      "releases": "Releases",
       "status": "Status",
       "actions": "Actions"
     },
@@ -347,9 +348,17 @@
       "early": "{n, plural, one {# day early} other {# days early}}",
       "late": "{n, plural, one {# day late} other {# days late}}"
     },
+    "releases": {
+      "none": "—",
+      "line": "Releases {percent} · {name} · {amount}",
+      "invoiced": "invoiced",
+      "invoicedLabel": "already invoiced"
+    },
     "verify": {
       "title": "Verify {name}",
       "hint": "Confirm the stage is complete and record the date it actually finished. This becomes billing evidence for any linked payment installment.",
+      "hintReleaseOne": "Verifying this releases the {percent} {name} payment ({amount}) for invoicing.",
+      "hintReleaseMany": "Verifying this releases {count} payment installments for invoicing: {list}.",
       "actualDate": "Actual completion date"
     }
   },
