@@ -108,6 +108,34 @@ export class ProgressRepository {
     });
   }
 
+  /**
+   * Master Schedule P1-b (ADR-029): the APPROVED-DPR report dates on which a set of BOQ leaves were
+   * measured — the raw material for a work package's DERIVED actualStart/actualFinish. One batched
+   * query for every leaf across all packages (not N-per-WP): the service folds the rows into per-node
+   * min/max and then per-WP boundaries.
+   *
+   * `reportDate` is a `@db.Date` on the report, not the measurement, so it travels via the `dpr`
+   * relation. A single distinct (node, date) pair is enough — the earliest is the start, the latest
+   * the (candidate) finish — so several measurements on the same day collapse to one row.
+   */
+  async approvedReportDatesForLeaves(
+    prisma: TenantPrisma,
+    organizationId: string,
+    boqNodeIds: string[],
+  ): Promise<{ boqNodeId: string; reportDate: Date }[]> {
+    if (boqNodeIds.length === 0) return [];
+    const rows = await prisma.progressMeasurement.findMany({
+      where: {
+        organizationId,
+        boqNodeId: { in: boqNodeIds },
+        dpr: { status: 'APPROVED' },
+      },
+      select: { boqNodeId: true, dpr: { select: { reportDate: true } } },
+      distinct: ['boqNodeId', 'dprId'],
+    });
+    return rows.map((r) => ({ boqNodeId: r.boqNodeId, reportDate: r.dpr.reportDate }));
+  }
+
   findFileStatus(prisma: TenantPrisma, organizationId: string, fileId: string) {
     return prisma.platformFile.findFirst({
       where: { id: fileId, organizationId },

@@ -61,9 +61,14 @@ export class ProgressController {
 
   @Get('projects/:projectId/progress/rollup')
   @ApiParam({ name: 'projectId' })
-  @ApiOperation({ summary: 'Weighted project physical % (work-package roll-up)' })
-  rollup(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
-    return this.service.getRollup(identity, projectId);
+  @ApiQuery({ name: 'asOf', required: false, description: 'Evaluate per-phase scheduleStatus as of this date (default today)' })
+  @ApiOperation({ summary: 'Weighted project physical % (work-package roll-up) + per-phase schedule reads' })
+  rollup(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Query('asOf') asOf?: string,
+  ) {
+    return this.service.getRollup(identity, projectId, asOf);
   }
 
   @Get('projects/:projectId/progress/signal')
