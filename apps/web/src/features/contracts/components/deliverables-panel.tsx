@@ -19,29 +19,29 @@ import {
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { formatDate } from '@/lib/format';
 
-import { useAddMilestone, useCompleteMilestone } from '../hooks/use-contract-terms';
-import type { ContractMilestone } from '../types';
+import { useAddDeliverable, useCompleteDeliverable } from '../hooks/use-contract-terms';
+import type { ContractDeliverable } from '../types';
 
-interface MilestonesPanelProps {
+interface DeliverablesPanelProps {
   contractId: string;
-  milestones: ContractMilestone[];
+  deliverables: ContractDeliverable[];
   /** Today as `YYYY-MM-DD`, passed in rather than read from the clock during render. */
   today: string;
   canEdit: boolean;
 }
 
-export function MilestonesPanel({
+export function DeliverablesPanel({
   contractId,
-  milestones,
+  deliverables,
   today,
   canEdit,
-}: MilestonesPanelProps) {
+}: DeliverablesPanelProps) {
   const t = useTranslations('platform.contracts.terms.milestones');
   const locale = useLocale() as 'en' | 'ar';
   const [isAdding, setIsAdding] = useState(false);
-  const [pendingCompletion, setPendingCompletion] = useState<ContractMilestone | null>(null);
+  const [pendingCompletion, setPendingCompletion] = useState<ContractDeliverable | null>(null);
 
-  const complete = useCompleteMilestone(contractId);
+  const complete = useCompleteDeliverable(contractId);
 
   return (
     <section className="space-y-4">
@@ -59,42 +59,44 @@ export function MilestonesPanel({
         ) : null}
       </div>
 
-      {milestones.length === 0 ? (
+      {deliverables.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-8 text-center">
           <p className="text-sm font-medium text-foreground">{t('none')}</p>
           <p className="mt-1 text-sm text-muted-foreground">{t('noneHint')}</p>
         </div>
       ) : (
         <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
-          {milestones.map((milestone) => {
-            const isComplete = milestone.completedAt !== null;
+          {deliverables.map((deliverable) => {
+            const isComplete = deliverable.completedAt !== null;
             const isOverdue =
-              !isComplete && milestone.dueDate !== null && milestone.dueDate.slice(0, 10) < today;
+              !isComplete &&
+              deliverable.dueDate !== null &&
+              deliverable.dueDate.slice(0, 10) < today;
 
             return (
               <li
-                key={milestone.id}
+                key={deliverable.id}
                 className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-4"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium text-foreground">{milestone.name}</span>
+                    <span className="text-sm font-medium text-foreground">{deliverable.name}</span>
                     {isComplete ? <Badge tone="live">{t('completed')}</Badge> : null}
                     {isOverdue ? <Badge tone="warning">{t('overdue')}</Badge> : null}
                   </div>
-                  {milestone.description ? (
-                    <p className="text-xs text-muted-foreground">{milestone.description}</p>
+                  {deliverable.description ? (
+                    <p className="text-xs text-muted-foreground">{deliverable.description}</p>
                   ) : null}
                   <p className="mt-1 text-xs text-muted-foreground">
                     {isComplete
                       ? t('completedOn', {
-                          date: formatDate(milestone.completedAt, locale) ?? '',
+                          date: formatDate(deliverable.completedAt, locale) ?? '',
                         })
-                      : (formatDate(milestone.dueDate, locale) ?? t('noDueDate'))}
+                      : (formatDate(deliverable.dueDate, locale) ?? t('noDueDate'))}
                   </p>
                 </div>
 
-                {/* There is no un-complete: `completeMilestone` stamps completedAt and
+                {/* There is no un-complete: `completeDeliverable` stamps completedAt and
                     completedBy and nothing reverses it. So the control disappears once
                     used, and the action is confirmed before it fires. */}
                 {canEdit && !isComplete ? (
@@ -102,7 +104,7 @@ export function MilestonesPanel({
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      setPendingCompletion(milestone);
+                      setPendingCompletion(deliverable);
                     }}
                   >
                     {t('complete')}
@@ -115,9 +117,9 @@ export function MilestonesPanel({
       )}
 
       {isAdding ? (
-        <AddMilestoneDialog
+        <AddDeliverableDialog
           contractId={contractId}
-          nextSortOrder={milestones.length + 1}
+          nextSortOrder={deliverables.length + 1}
           onClose={() => {
             setIsAdding(false);
           }}
@@ -148,13 +150,13 @@ export function MilestonesPanel({
   );
 }
 
-interface MilestoneFormValues {
+interface DeliverableFormValues {
   name: string;
   description: string;
   dueDate: string;
 }
 
-function AddMilestoneDialog({
+function AddDeliverableDialog({
   contractId,
   nextSortOrder,
   onClose,
@@ -165,24 +167,24 @@ function AddMilestoneDialog({
 }) {
   const t = useTranslations('platform.contracts.terms.milestones');
   const tCommon = useTranslations('common');
-  const add = useAddMilestone(contractId);
+  const add = useAddDeliverable(contractId);
 
   const {
     register,
     control,
     handleSubmit,
     formState: { errors },
-  } = useForm<MilestoneFormValues>({
+  } = useForm<DeliverableFormValues>({
     defaultValues: { name: '', description: '', dueDate: '' },
   });
 
-  const onSubmit = (values: MilestoneFormValues) => {
+  const onSubmit = (values: DeliverableFormValues) => {
     add.mutate(
       {
         name: values.name.trim(),
         ...(values.description.trim() ? { description: values.description.trim() } : {}),
         ...(values.dueDate ? { dueDate: values.dueDate } : {}),
-        // The API defaults sortOrder to 0, so without this every milestone would share a
+        // The API defaults sortOrder to 0, so without this every deliverable would share a
         // position and the list order would be whatever Postgres returned.
         sortOrder: nextSortOrder,
       },
@@ -216,9 +218,9 @@ function AddMilestoneDialog({
         >
           {add.isError ? <Alert variant="error" messages={[t('failed')]} /> : null}
 
-          <FormField htmlFor="milestone-name" label={t('name')} error={errors.name?.message}>
+          <FormField htmlFor="deliverable-name" label={t('name')} error={errors.name?.message}>
             <Input
-              id="milestone-name"
+              id="deliverable-name"
               aria-invalid={Boolean(errors.name)}
               {...register('name', {
                 validate: (v) => v.trim() !== '' || t('nameRequired'),
@@ -226,16 +228,16 @@ function AddMilestoneDialog({
             />
           </FormField>
 
-          <FormField htmlFor="milestone-description" label={t('description')}>
-            <Input id="milestone-description" {...register('description')} />
+          <FormField htmlFor="deliverable-description" label={t('description')}>
+            <Input id="deliverable-description" {...register('description')} />
           </FormField>
 
-          <FormField htmlFor="milestone-due" label={t('dueDate')}>
+          <FormField htmlFor="deliverable-due" label={t('dueDate')}>
             <Controller
               control={control}
               name="dueDate"
               render={({ field }) => (
-                <DatePicker id="milestone-due" value={field.value} onChange={field.onChange} />
+                <DatePicker id="deliverable-due" value={field.value} onChange={field.onChange} />
               )}
             />
           </FormField>

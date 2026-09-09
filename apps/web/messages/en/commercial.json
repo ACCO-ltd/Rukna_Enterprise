@@ -603,8 +603,8 @@
       "setRetentionTerms": "set the retention terms",
       "addAdvanceTerm": "added an advance term",
       "removeAdvanceTerm": "removed an advance term",
-      "addMilestone": "added a milestone",
-      "completeMilestone": "completed a milestone"
+      "addDeliverable": "added a deliverable",
+      "completeDeliverable": "completed a deliverable"
     },
     "ipc": {
       "issue": "issued a certificate",
@@ -899,12 +899,12 @@
       "CLOSE": "Close contract"
     }
   },
-  "contractMilestones": {
-    "title": "Contractual milestones",
+  "contractDeliverables": {
+    "title": "Deliverables",
     "completed": "Completed",
     "open": "Open",
     "col": {
-      "milestone": "Milestone",
+      "deliverable": "Deliverable",
       "description": "Description",
       "target": "Target date",
       "status": "Status"

@@ -125,7 +125,7 @@ function ContractSecurityBody({
         </div>
       </div>
 
-      <ContractMilestonesPanel detail={detail.data ?? null} loading={detail.isPending} />
+      <ContractDeliverablesPanel detail={detail.data ?? null} loading={detail.isPending} />
     </div>
   );
 }
@@ -692,20 +692,20 @@ function toEditableGuarantee(guarantee: CommercialGuaranteeSummary): EditableGua
   };
 }
 
-function ContractMilestonesPanel({
+function ContractDeliverablesPanel({
   detail,
   loading,
 }: {
   detail: ContractDetail | null;
   loading: boolean;
 }) {
-  const t = useTranslations('commercial.contractMilestones');
+  const t = useTranslations('commercial.contractDeliverables');
   const locale = useLocale() as 'en' | 'ar';
 
   if (loading) return <Skeleton className="h-40 w-full" />;
 
-  const milestones = [...(detail?.milestones ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
-  if (milestones.length === 0) return null;
+  const deliverables = [...(detail?.deliverables ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
+  if (deliverables.length === 0) return null;
 
   return (
     <SectionCard title={t('title')} bodyClassName="px-0 py-0">
@@ -714,28 +714,28 @@ function ContractMilestonesPanel({
           <TableHeader>
             <TableRow>
               <TableHead className="w-10 text-end">#</TableHead>
-              <TableHead>{t('col.milestone')}</TableHead>
+              <TableHead>{t('col.deliverable')}</TableHead>
               <TableHead>{t('col.description')}</TableHead>
               <TableHead>{t('col.target')}</TableHead>
               <TableHead>{t('col.status')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {milestones.map((milestone, index) => (
-              <TableRow key={milestone.id}>
+            {deliverables.map((deliverable, index) => (
+              <TableRow key={deliverable.id}>
                 <TableCell className="text-end tabular-nums text-muted-foreground">
                   {index + 1}
                 </TableCell>
-                <TableCell className="font-medium text-foreground">{milestone.name}</TableCell>
+                <TableCell className="font-medium text-foreground">{deliverable.name}</TableCell>
                 <TableCell className="text-caption text-muted-foreground">
-                  {milestone.description ?? '—'}
+                  {deliverable.description ?? '—'}
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-muted-foreground">
-                  {formatDate(milestone.dueDate, locale) ?? '—'}
+                  {formatDate(deliverable.dueDate, locale) ?? '—'}
                 </TableCell>
                 <TableCell>
-                  <Badge tone={milestone.completedAt ? 'live' : 'neutral'}>
-                    {milestone.completedAt ? t('completed') : t('open')}
+                  <Badge tone={deliverable.completedAt ? 'live' : 'neutral'}>
+                    {deliverable.completedAt ? t('completed') : t('open')}
                   </Badge>
                 </TableCell>
               </TableRow>

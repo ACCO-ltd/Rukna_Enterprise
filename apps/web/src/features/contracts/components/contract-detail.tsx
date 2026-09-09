@@ -14,7 +14,7 @@ import { AdvanceTermsPanel } from './advance-terms-panel';
 import { ContractActionsPanel } from './contract-actions-panel';
 import { ContractStatusBadge } from './contract-status-badge';
 import { GuaranteesPanel } from './guarantees-panel';
-import { MilestonesPanel } from './milestones-panel';
+import { DeliverablesPanel } from './deliverables-panel';
 import { RetentionTermsPanel } from './retention-terms-panel';
 
 import { IpaList } from '@/features/ipa/components/ipa-list';
@@ -221,9 +221,9 @@ export function ContractDetail({ contractId }: { contractId: string }) {
         </TabsContent>
 
         <TabsContent value="milestones" className="p-4 sm:p-6">
-          <MilestonesPanel
+          <DeliverablesPanel
             contractId={contract.id}
-            milestones={contract.milestones}
+            deliverables={contract.deliverables}
             today={today}
             canEdit={termsEditable}
           />

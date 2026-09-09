@@ -38,7 +38,7 @@ function milestone(overrides: Partial<ProgrammeMilestoneResponse> = {}): Program
     forecastDate: null,
     actualDate: null,
     sortOrder: 0,
-    contractMilestoneId: null,
+    contractDeliverableId: null,
     verifiedBy: null,
     verifiedAt: null,
     releases: [],

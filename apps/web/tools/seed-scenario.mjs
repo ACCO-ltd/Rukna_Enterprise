@@ -315,7 +315,7 @@ async function main() {
   });
   ok('450,000 USD at 10% recovery');
 
-  step('add guarantee and milestone');
+  step('add guarantee and deliverable');
   await post(`/contracts/${contract.id}/guarantees`, {
     guaranteeType: 'PERFORMANCE',
     amount: '450000.00',
@@ -325,7 +325,7 @@ async function main() {
     issueDate: '2026-02-01',
     expiryDate: '2027-12-31',
   });
-  await post(`/contracts/${contract.id}/milestones`, {
+  await post(`/contracts/${contract.id}/deliverables`, {
     name: 'Substructure complete',
     dueDate: '2026-06-30',
     sortOrder: 1,
