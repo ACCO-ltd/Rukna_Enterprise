@@ -710,7 +710,10 @@ export class CommercialService {
         stage: 'READY_FOR_APPLICATION',
         application: null,
         nextAction: allowed
-          ? { kind: 'CREATE_APPLICATION', href: `/contracts/${contract.id}/applications/new` }
+          ? {
+              kind: 'CREATE_APPLICATION',
+              href: `/projects/${projectId}/commercial/applications/new`,
+            }
           : null,
         blockers: allowed ? [] : ['PERMISSION_REQUIRED'],
         capabilities: result.capabilities,
@@ -719,12 +722,7 @@ export class CommercialService {
       };
     }
 
-    const projection = this.projectCycleAction(
-      application,
-      contract.id,
-      projectId,
-      result.capabilities,
-    );
+    const projection = this.projectCycleAction(application, projectId, result.capabilities);
     return {
       projectId,
       contract: identitySummary,
@@ -1163,11 +1161,10 @@ export class CommercialService {
 
   private projectCycleAction(
     row: CommercialApplicationRow,
-    contractId: string,
     projectId: string,
     capabilities: CommercialCapabilities,
   ): Pick<CommercialCurrentCycleResponse, 'stage' | 'nextAction' | 'blockers' | 'responsibleRole'> {
-    const applicationHref = `/contracts/${contractId}/applications/${row.ipaId}`;
+    const applicationHref = `/projects/${projectId}/commercial/applications/${row.ipaId}`;
     const applicationsHref = `/projects/${projectId}/commercial/applications`;
     const denied = (
       stage: CommercialCurrentCycleResponse['stage'],
