@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 
 import { ProgressService } from './progress.service.js';
@@ -9,8 +9,9 @@ import { ProgressService } from './progress.service.js';
  * planned-today % against the verified physical roll-up.
  *
  * Master Schedule P3 (ADR-029): the planned side now resolves through resolvePlannedCurve — the
- * governing frozen ProgrammeBaseline first, then the live targets, then the provisional ramp — and
- * setTargets is locked once a baseline is approved (the plan then moves by re-baseline).
+ * governing frozen ProgrammeBaseline first, then the live targets, then the provisional ramp. The
+ * working curve stays editable (setTargets stages the next baseline); it becomes governing only when
+ * published via approve/re-baseline, and variance always measures against the frozen baseline.
  */
 const identity = { userId: 'u1', activeOrganizationId: 'o1' } as never;
 
@@ -114,21 +115,20 @@ describe('ProgressService — planned targets (ADR-021 CONST-PROG-011)', () => {
     expect(rows[0].cumulativePercent.equals(new Decimal(25))).toBe(true); // earliest first
   });
 
-  // ── Master Schedule P3 (ADR-029): the working curve locks once a baseline is approved ──
+  // ── Master Schedule P3 (ADR-029): the working curve stays editable; the frozen baseline drives
+  //    variance, and the working curve becomes governing only when published via approve/re-baseline ──
 
-  it('setTargets is rejected (409) once a governing baseline is approved — plan moves by re-baseline', async () => {
+  it('setTargets still edits the working curve even when a baseline governs (it stages the next one)', async () => {
     const { svc, repo } = build({
       governingBaseline: { version: 1, points: [T('2026-09-30', 40)] },
     });
-    await expect(
-      svc.setTargets(identity, 'p1', [{ targetDate: '2026-09-30', cumulativePercent: 50 }]),
-    ).rejects.toBeInstanceOf(ConflictException);
-    // The curve is never touched while a baseline governs.
-    expect(repo.deleteTargetsForProject).not.toHaveBeenCalled();
-    expect(repo.createTargets).not.toHaveBeenCalled();
+    await svc.setTargets(identity, 'p1', [{ targetDate: '2026-09-30', cumulativePercent: 50 }]);
+    // The working curve is replaced; variance still measures against the frozen baseline (see below).
+    expect(repo.deleteTargetsForProject).toHaveBeenCalledWith(expect.anything(), 'p1');
+    expect(repo.createTargets).toHaveBeenCalled();
   });
 
-  it('setTargets still edits the working curve before the first baseline is approved', async () => {
+  it('setTargets edits the working curve before the first baseline is approved', async () => {
     const { svc, repo } = build({ governingBaseline: null });
     await svc.setTargets(identity, 'p1', [{ targetDate: '2026-09-30', cumulativePercent: 25 }]);
     expect(repo.deleteTargetsForProject).toHaveBeenCalledWith(expect.anything(), 'p1');

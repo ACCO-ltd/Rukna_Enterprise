@@ -834,20 +834,14 @@ export class ProgressService {
    * that the cumulative percentages are in [0, 100], the dates are unique, and the curve is
    * non-decreasing over time (cumulative progress cannot go backwards).
    *
-   * Master Schedule P3 (ADR-029): the working curve is editable only *before* the first baseline is
-   * approved. Once a governing APPROVED baseline exists it is the plan the project is measured
-   * against, so moving it is not an edit — it is a re-baseline (a new governed version). This method
-   * therefore rejects while a baseline governs; the plan changes through the re-baseline path instead.
+   * Master Schedule P3 (ADR-029): this edits the *working* curve, which the PM stages freely. It is
+   * NOT the governing plan — once a baseline is approved the frozen `ProgrammeBaseline` drives
+   * variance (see `resolvePlannedCurve`), and the working curve becomes governing only when it is
+   * published via approve/re-baseline (a governed version, senior + Variation). Editing here never
+   * moves the approved baseline; it just stages the next one.
    */
   async setTargets(identity: RequestIdentity, projectId: string, targets: ProgressTargetInput[]) {
     await this.projectAccess.assertMember(identity, projectId);
-
-    const governing = await this.findGoverningBaseline(identity.activeOrganizationId, projectId);
-    if (governing) {
-      throw new ConflictException(
-        `The baseline is approved (version ${governing.version}); change the plan by re-baselining.`,
-      );
-    }
 
     const sorted = [...targets].sort(
       (a, b) => new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime(),
