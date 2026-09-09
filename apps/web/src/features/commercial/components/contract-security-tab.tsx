@@ -282,15 +282,12 @@ function ContractStatusPanel({ summary }: { summary: CommercialSummaryResponse }
             {t(`contractStatus.${contract.status}`)}
           </Badge>
         </FactRow>
+        {/* The lifecycle transition is stated, not linked: the standalone contract detail page that
+            used to host the advance action is retired (P3 Slice C), and the in-workspace transition
+            affordance is not part of this fold. Showing the pending transition as a label keeps the
+            reader oriented without dangling a link into a route that only redirects back here. */}
         <FactRow label={t('contractStatus_.next')}>
-          {next && summary.capabilities.canAdvanceContract ? (
-            <Link
-              href={`/contracts/${contract.id}`}
-              className="font-medium text-brand-primary hover:underline"
-            >
-              {t(`contractStatus_.transition.${next}`)}
-            </Link>
-          ) : next ? (
+          {next ? (
             <span className="font-normal text-muted-foreground">
               {t(`contractStatus_.transition.${next}`)}
             </span>
