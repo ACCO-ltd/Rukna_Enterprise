@@ -12,6 +12,18 @@ export class ApplyScheduleTemplateDto {
   templateKey!: ScheduleTemplateKey;
 }
 
+// Master Schedule P3 (ADR-029) — re-baseline the frozen programme plan (v>=2). A Variation is
+// required as the justification for moving the plan the project is measured against (Q-4).
+export class RebaselineProgrammeDto {
+  @ApiProperty({ description: 'The Variation that justifies moving the frozen plan' })
+  @IsString() @IsNotEmpty()
+  variationOrderId!: string;
+
+  @ApiPropertyOptional({ description: 'Why the plan is being re-baselined' })
+  @IsString() @IsOptional() @MaxLength(500)
+  note?: string;
+}
+
 // ADR-021 CONST-PROG-005 — programme activity (time layer under a work package).
 export class CreateProgrammeActivityDto {
   @ApiProperty()

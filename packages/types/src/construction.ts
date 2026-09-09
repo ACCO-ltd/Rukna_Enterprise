@@ -454,6 +454,39 @@ export interface ProgressPeriodComparisonResponse {
   verified: { previous: number; current: number; delta: number } | null;
 }
 
+// ─── Master Schedule P3 (ADR-029): the frozen, versioned programme baseline ───────
+//
+// A ProgrammeBaseline freezes the live planned-target curve at the moment it is approved, so
+// actuals are measured against a plan that cannot silently drift. One governing (APPROVED) version
+// per project at a time; re-baselining creates the next version and supersedes the last (Q-1). The
+// initial baseline (v1) is a PM act; re-baselining (v>=2) is senior/governed and cites a Variation
+// (Q-4). The variance engine is anchored to the APPROVED baseline in a later pass.
+
+export type ProgrammeBaselineStatusType = 'DRAFT' | 'APPROVED' | 'SUPERSEDED';
+
+/** One frozen point on a baseline curve: the cumulative planned % due by a target date. */
+export interface ProgrammeBaselinePointResponse {
+  /** ISO calendar date (YYYY-MM-DD). */
+  targetDate: string;
+  cumulativePercent: number;
+}
+
+/** A frozen programme baseline version with the target curve snapshotted at approval. */
+export interface ProgrammeBaselineResponse {
+  id: string;
+  projectId: string;
+  version: number;
+  status: ProgrammeBaselineStatusType;
+  approvedBy: string;
+  approvedAt: string;
+  /** The Variation this re-baseline cited; null for the initial baseline (v1). */
+  variationOrderId: string | null;
+  note: string | null;
+  createdAt: string;
+  /** The frozen target curve, ordered by targetDate. */
+  points: ProgrammeBaselinePointResponse[];
+}
+
 // ADR-021 Progress: a verified-progress line per BOQ leaf (from approved DPRs).
 export interface ProjectProgressLine {
   boqNodeId: string;
