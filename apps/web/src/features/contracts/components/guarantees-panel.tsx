@@ -1,31 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
 import { useLocale, useTranslations } from 'next-intl';
 import { GuaranteeStatus } from '@erp/types';
-import {
-  Alert,
-  Badge,
-  Button,
-  DatePicker,
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogTitle,
-  FormField,
-  Input,
-  MoneyInput,
-  Select,
-  type BadgeTone,
-} from '@erp/ui';
+import { Alert, Badge, Button, Select, type BadgeTone } from '@erp/ui';
 
 import { formatDate, formatMoney } from '@/lib/format';
 
-import { toDecimalString } from '../contract-form-payload';
 import { isLapsed, lapsedGuarantees } from '../contract-terms';
-import { useAddGuarantee, useUpdateGuarantee } from '../hooks/use-contract-terms';
+import { useUpdateGuarantee } from '../hooks/use-contract-terms';
 import type { ContractGuarantee } from '../types';
+import { GuaranteeFormDialog } from './guarantee-form-dialog';
 
 const GUARANTEE_STATUSES: GuaranteeStatus[] = [
   GuaranteeStatus.ACTIVE,
@@ -104,7 +89,7 @@ export function GuaranteesPanel({
       )}
 
       {isAdding ? (
-        <AddGuaranteeDialog
+        <GuaranteeFormDialog
           contractId={contractId}
           onClose={() => {
             setIsAdding(false);
@@ -209,213 +194,5 @@ function GuaranteeCard({
         </div>
       ) : null}
     </li>
-  );
-}
-
-interface GuaranteeFormValues {
-  guaranteeType: string;
-  amount: string;
-  issuer: string;
-  beneficiary: string;
-  issueDate: string;
-  expiryDate: string;
-  notes: string;
-}
-
-function AddGuaranteeDialog({
-  contractId,
-  onClose,
-}: {
-  contractId: string;
-  onClose: () => void;
-}) {
-  const t = useTranslations('platform.contracts.terms.guarantees');
-  const tCommon = useTranslations('common');
-  const add = useAddGuarantee(contractId);
-
-  const {
-    control,
-    register,
-    handleSubmit,
-    getValues,
-    formState: { errors },
-  } = useForm<GuaranteeFormValues>({
-    defaultValues: {
-      guaranteeType: 'PERFORMANCE',
-      amount: '',
-      issuer: '',
-      beneficiary: '',
-      issueDate: '',
-      expiryDate: '',
-      notes: '',
-    },
-  });
-
-  const onSubmit = (values: GuaranteeFormValues) => {
-    add.mutate(
-      {
-        guaranteeType: values.guaranteeType.trim(),
-        amount: toDecimalString(values.amount),
-        // Single-currency platform (ADR-024): USD is implicit, never entered.
-        currency: 'USD',
-        issuer: values.issuer.trim(),
-        beneficiary: values.beneficiary.trim(),
-        issueDate: values.issueDate,
-        expiryDate: values.expiryDate,
-        ...(values.notes.trim() ? { notes: values.notes.trim() } : {}),
-      },
-      { onSuccess: onClose },
-    );
-  };
-
-  const required = { validate: (v: string) => v.trim() !== '' || t('required') };
-
-  return (
-    <Dialog
-      open
-      onOpenChange={(next) => {
-        if (!next && !add.isPending) onClose();
-      }}
-    >
-      <DialogContent
-        onEscapeKeyDown={(e) => {
-          if (add.isPending) e.preventDefault();
-        }}
-        onInteractOutside={(e) => {
-          if (add.isPending) e.preventDefault();
-        }}
-      >
-        <DialogTitle>{t('add')}</DialogTitle>
-
-        <form
-          onSubmit={(e) => {
-            void handleSubmit(onSubmit)(e);
-          }}
-          className="mt-4 space-y-4"
-          noValidate
-        >
-          {add.isError ? <Alert variant="error" messages={[t('failed')]} /> : null}
-
-          <FormField
-            htmlFor="guarantee-type"
-            label={t('type')}
-            error={errors.guaranteeType?.message}
-          >
-            <Input
-              id="guarantee-type"
-              aria-describedby="guarantee-type-hint"
-              aria-invalid={Boolean(errors.guaranteeType)}
-              {...register('guaranteeType', required)}
-            />
-            <p id="guarantee-type-hint" className="text-xs text-muted-foreground">
-              {t('typeHint')}
-            </p>
-          </FormField>
-
-          <div className="grid gap-4">
-            <FormField htmlFor="guarantee-amount" label={t('amount')} error={errors.amount?.message}>
-              <Controller
-                name="amount"
-                control={control}
-                rules={{
-                  validate: (v) =>
-                    (v.trim() !== '' && Number.isFinite(Number(v))) || t('required'),
-                }}
-                render={({ field }) => (
-                  <MoneyInput
-                    id="guarantee-amount"
-                    dir="ltr"
-                    aria-invalid={Boolean(errors.amount)}
-                    value={field.value}
-                    onValueChange={field.onChange}
-                    onBlur={field.onBlur}
-                    ref={field.ref}
-                    name={field.name}
-                  />
-                )}
-              />
-            </FormField>
-          </div>
-
-          <FormField htmlFor="guarantee-issuer" label={t('issuer')} error={errors.issuer?.message}>
-            <Input
-              id="guarantee-issuer"
-              aria-invalid={Boolean(errors.issuer)}
-              {...register('issuer', required)}
-            />
-          </FormField>
-
-          <FormField
-            htmlFor="guarantee-beneficiary"
-            label={t('beneficiary')}
-            error={errors.beneficiary?.message}
-          >
-            <Input
-              id="guarantee-beneficiary"
-              aria-invalid={Boolean(errors.beneficiary)}
-              {...register('beneficiary', required)}
-            />
-          </FormField>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormField
-              htmlFor="guarantee-issue"
-              label={t('issueDate')}
-              error={errors.issueDate?.message}
-            >
-              <Controller
-                control={control}
-                name="issueDate"
-                rules={required}
-                render={({ field }) => (
-                  <DatePicker id="guarantee-issue" value={field.value} onChange={field.onChange} />
-                )}
-              />
-            </FormField>
-
-            <FormField
-              htmlFor="guarantee-expiry"
-              label={t('expiryDate')}
-              error={errors.expiryDate?.message}
-            >
-              <Controller
-                control={control}
-                name="expiryDate"
-                rules={{
-                  validate: (v) => {
-                    if (v.trim() === '') return t('required');
-                    const issue = getValues('issueDate');
-                    // A guarantee that expires before it was issued is a data-entry error
-                    // the API does not catch — both dates are only @IsDateString().
-                    return !issue || v >= issue || t('expiryBeforeIssue');
-                  },
-                }}
-                render={({ field }) => (
-                  <DatePicker
-                    id="guarantee-expiry"
-                    value={field.value}
-                    onChange={field.onChange}
-                    min={getValues('issueDate') || undefined}
-                  />
-                )}
-              />
-            </FormField>
-          </div>
-
-          <FormField htmlFor="guarantee-notes" label={t('notes')}>
-            <Input id="guarantee-notes" {...register('notes')} />
-          </FormField>
-
-          <DialogFooter>
-            <Button type="submit" disabled={add.isPending}>
-              {add.isPending ? tCommon('loading') : t('save')}
-            </Button>
-            <Button type="button" variant="outline" onClick={onClose} disabled={add.isPending}>
-              {tCommon('cancel')}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }

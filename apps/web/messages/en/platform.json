@@ -1848,6 +1848,7 @@
         "none": "No guarantees recorded.",
         "noneHint": "Record performance, advance payment and retention guarantees here.",
         "add": "Add guarantee",
+        "editTitle": "Edit guarantee",
         "type": "Guarantee type",
         "typeHint": "For example PERFORMANCE, ADVANCE_PAYMENT or RETENTION.",
         "amount": "Amount",
