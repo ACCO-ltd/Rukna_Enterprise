@@ -9,7 +9,12 @@ export default async function IpcDetailPage({
 
   return (
     <div className="w-full max-w-5xl">
-      <IpcDetail contractId={id} ipaId={ipaId} ipcId={ipcId} />
+      <IpcDetail
+        contractId={id}
+        ipaId={ipaId}
+        ipcId={ipcId}
+        basePath={`/contracts/${id}/applications`}
+      />
     </div>
   );
 }

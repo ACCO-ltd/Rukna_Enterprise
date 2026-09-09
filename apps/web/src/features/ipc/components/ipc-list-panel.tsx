@@ -25,8 +25,13 @@ import { IpcSupersessionDrawer } from './ipc-supersession-drawer';
 
 interface IpcListPanelProps {
   applicationId: string;
-  contractId: string;
   currency: string;
+  /**
+   * The applications list this panel's certificates belong to (e.g.
+   * `/projects/:id/commercial/applications`). Certificate row links append
+   * `/${applicationId}/certificates/${cert.id}` to it so they open inside the workspace.
+   */
+  basePath: string;
 }
 
 /** A cert is a candidate for supersession when it is non-effective, non-superseded, and not rejected. */
@@ -34,7 +39,7 @@ function isSupersessionCandidate(cert: Ipc): boolean {
   return !cert.isEffective && !cert.supersededAt && cert.status !== 'REJECTED';
 }
 
-export function IpcListPanel({ applicationId, contractId, currency }: IpcListPanelProps) {
+export function IpcListPanel({ applicationId, currency, basePath }: IpcListPanelProps) {
   const t = useTranslations('platform.ipc');
   const tList = useTranslations('platform.ipc.list');
   const locale = useLocale() as 'en' | 'ar';
@@ -78,7 +83,7 @@ export function IpcListPanel({ applicationId, contractId, currency }: IpcListPan
                   {/* Ref + status badges */}
                   <TableCell>
                     <Link
-                      href={`/contracts/${contractId}/applications/${applicationId}/certificates/${cert.id}`}
+                      href={`${basePath}/${applicationId}/certificates/${cert.id}`}
                       className="font-medium text-brand-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
                     >
                       {cert.certificateRef ?? `#${cert.certificateNumber}`}

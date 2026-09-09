@@ -20,11 +20,15 @@ interface IpaFormValues {
  *
  * Deliberately minimal: an application starts empty and is built up from claimed lines.
  * The platform is single-currency (USD, ADR-024), so there are no exchange-rate fields.
+ *
+ * `basePath` is the applications list this form lives under (e.g.
+ * `/projects/:id/commercial/applications`). It anchors both the cancel link and the
+ * post-create redirect so the whole flow stays inside the project workspace.
  */
-export function IpaForm({ contractId }: { contractId: string }) {
+export function IpaForm({ contractId, basePath }: { contractId: string; basePath: string }) {
   const t = useTranslations('platform.ipa.create');
   const tCommon = useTranslations('common');
-  const create = useCreateIpa(contractId);
+  const create = useCreateIpa(contractId, basePath);
 
   const {
     register,
@@ -120,7 +124,7 @@ export function IpaForm({ contractId }: { contractId: string }) {
           {create.isPending ? tCommon('loading') : t('submit')}
         </Button>
         <Button variant="outline" asChild>
-          <Link href={`/contracts/${contractId}`}>{t('cancel')}</Link>
+          <Link href={basePath}>{t('cancel')}</Link>
         </Button>
       </div>
     </form>

@@ -6,5 +6,5 @@ interface Props {
 
 export default async function IssueCertificatePage({ params }: Props) {
   const { id, ipaId } = await params;
-  return <IpcWizard contractId={id} ipaId={ipaId} />;
+  return <IpcWizard contractId={id} ipaId={ipaId} basePath={`/contracts/${id}/applications`} />;
 }

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, screen } from '@testing-library/react';
 
 import { renderWithProviders } from '@/test/render';
 
@@ -27,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   useIpcs: vi.fn(),
   useIssueIpc: vi.fn(),
   useBoqTree: vi.fn(),
+  push: vi.fn(),
 }));
 
 vi.mock('@/features/ipa/hooks/use-ipa', () => ({ useIpa: mocks.useIpa }));
@@ -36,12 +38,15 @@ vi.mock('../hooks/use-ipc', () => ({
   useIpcs: mocks.useIpcs,
   useIssueIpc: mocks.useIssueIpc,
 }));
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), back: vi.fn() }) }));
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: mocks.push, back: vi.fn() }),
+}));
 
 import { emptyContext, loadDraft, saveDraft, type WizardDraft } from './draft';
 import { IpcWizard } from './ipc-wizard';
 
 const IPA_ID = 'ipa-1';
+const BASE_PATH = '/projects/p-1/commercial/applications';
 
 const IPA = {
   id: IPA_ID,
@@ -75,7 +80,9 @@ afterEach(() => {
 });
 
 function render() {
-  return renderWithProviders(<IpcWizard contractId="c-1" ipaId={IPA_ID} />);
+  return renderWithProviders(
+    <IpcWizard contractId="c-1" ipaId={IPA_ID} basePath={BASE_PATH} />,
+  );
 }
 
 /** The draft the wizard has written, read back through the module that owns the format. */
@@ -165,7 +172,7 @@ describe('IpcWizard — restoring a saved draft', () => {
     const { rerender } = render();
 
     mocks.useIpa.mockReturnValue(loaded(IPA));
-    rerender(<IpcWizard contractId="c-1" ipaId={IPA_ID} />);
+    rerender(<IpcWizard contractId="c-1" ipaId={IPA_ID} basePath={BASE_PATH} />);
 
     await vi.waitFor(() => {
       expect(persisted()?.rows[0]!.certifiedQuantity).toBe('18');
@@ -217,7 +224,7 @@ describe('IpcWizard — persistence', () => {
 
     const OTHER = { ...IPA, id: 'ipa-2', items: [{ ...IPA.items[0]!, cumulativeClaimed: '99' }] };
     mocks.useIpa.mockReturnValue(loaded(OTHER));
-    rerender(<IpcWizard contractId="c-1" ipaId="ipa-2" />);
+    rerender(<IpcWizard contractId="c-1" ipaId="ipa-2" basePath={BASE_PATH} />);
 
     await vi.waitFor(() => {
       expect(loadDraft('ipa-2')?.rows).toEqual([
@@ -227,5 +234,49 @@ describe('IpcWizard — persistence', () => {
 
     // And the first application's draft is untouched.
     expect(loadDraft(IPA_ID)?.rows[0]!.certifiedQuantity).toBe('18');
+  });
+});
+
+describe('IpcWizard — workspace redirect on issue (P3 Slice C)', () => {
+  /**
+   * After a successful issue the wizard must return to the application **inside the project
+   * workspace**, `${basePath}/${ipaId}`, not the retired `/contracts/:id/applications/:ipaId`
+   * route. `basePath` is passed by the project-scoped route wrapper.
+   *
+   * The REJECTED outcome is the shortest path to issue: it skips the items step, so step 1's
+   * "next" lands straight on the review step where the certificate is issued.
+   */
+  it('redirects to the project-scoped application after issuing', async () => {
+    // A mutation whose success synchronously fires the caller's onSuccess, so the redirect runs.
+    mocks.useIssueIpc.mockReturnValue({
+      mutate: (_payload: unknown, opts?: { onSuccess?: () => void }) => opts?.onSuccess?.(),
+      isPending: false,
+      error: null,
+    });
+
+    // Restoring a REJECTED draft puts the wizard's outcome in state on first render — the
+    // certificate-outcome control is a Radix Select that cannot be driven in jsdom, and a
+    // rejected certificate skips the items step, so step 1 → step 3 is a single click.
+    saveDraft(IPA_ID, {
+      context: { status: 'REJECTED', notes: 'Out of scope' },
+      rows: [],
+      adHocDeductions: [],
+    });
+
+    render();
+
+    // Step 1 — advance straight to review (rejected skips items).
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue to Review' }));
+
+    // Step 3 — reject the application, which runs the issue path.
+    fireEvent.click(await screen.findByRole('button', { name: 'Reject Application' }));
+
+    await vi.waitFor(() => {
+      expect(mocks.push).toHaveBeenCalledWith(`${BASE_PATH}/${IPA_ID}`);
+    });
+    // Specifically: never the retired /contracts/* route.
+    expect(mocks.push).not.toHaveBeenCalledWith(
+      expect.stringContaining('/contracts/'),
+    );
   });
 });

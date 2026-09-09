@@ -11,7 +11,7 @@ export default async function NewIpaPage({ params }: { params: Promise<{ id: str
       <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
 
       <div className="mt-6 rounded-lg border border-border bg-surface p-5 sm:p-6">
-        <IpaForm contractId={id} />
+        <IpaForm contractId={id} basePath={`/contracts/${id}/applications`} />
       </div>
     </div>
   );

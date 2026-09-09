@@ -29,6 +29,12 @@ import { Step3Review } from './step-3-review';
 interface IpcWizardProps {
   contractId: string;
   ipaId: string;
+  /**
+   * The applications list this certificate's application belongs to (e.g.
+   * `/projects/:id/commercial/applications`). After a successful issue the wizard returns to
+   * `${basePath}/${ipaId}` so the flow stays inside the project workspace.
+   */
+  basePath: string;
 }
 
 type Step = 1 | 2 | 3;
@@ -118,7 +124,7 @@ function ProgressBar({ step, isRejected }: { step: Step; isRejected: boolean }) 
 
 // ─── Main wizard ──────────────────────────────────────────────────────────────
 
-export function IpcWizard({ contractId, ipaId }: IpcWizardProps) {
+export function IpcWizard({ contractId, ipaId, basePath }: IpcWizardProps) {
   const t = useTranslations('platform.ipc.wizard');
   const router = useRouter();
 
@@ -350,7 +356,7 @@ export function IpcWizard({ contractId, ipaId }: IpcWizardProps) {
     issue.mutate(payload, {
       onSuccess: () => {
         clearDraft(ipaId);
-        router.push(`/contracts/${contractId}/applications/${ipaId}`);
+        router.push(`${basePath}/${ipaId}`);
       },
     });
   }

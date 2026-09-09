@@ -9,7 +9,7 @@ export default async function IpaDetailPage({
 
   return (
     <div className="w-full max-w-5xl">
-      <IpaDetail contractId={id} ipaId={ipaId} />
+      <IpaDetail contractId={id} ipaId={ipaId} basePath={`/contracts/${id}/applications`} />
     </div>
   );
 }

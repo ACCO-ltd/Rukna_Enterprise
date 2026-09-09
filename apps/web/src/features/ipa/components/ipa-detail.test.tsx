@@ -118,7 +118,13 @@ beforeEach(() => {
 });
 
 function renderDetail() {
-  return renderWithProviders(<IpaDetail contractId="con-1" ipaId="ipa-1" />);
+  return renderWithProviders(
+    <IpaDetail
+      contractId="con-1"
+      ipaId="ipa-1"
+      basePath="/projects/proj-1/commercial/applications"
+    />,
+  );
 }
 
 describe('IpaDetail', () => {

@@ -220,7 +220,14 @@ beforeEach(() => {
 });
 
 function renderDetail() {
-  return renderWithProviders(<IpcDetail contractId="con-1" ipaId="ipa-1" ipcId="ipc-1" />);
+  return renderWithProviders(
+    <IpcDetail
+      contractId="con-1"
+      ipaId="ipa-1"
+      ipcId="ipc-1"
+      basePath="/projects/proj-1/commercial/applications"
+    />,
+  );
 }
 
 describe('IpcDetail', () => {
