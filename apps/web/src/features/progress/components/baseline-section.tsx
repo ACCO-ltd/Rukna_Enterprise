@@ -1,16 +1,26 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Badge, Button, DatePicker, Input, Label, SectionHeader, useToast } from '@erp/ui';
-import { X } from 'lucide-react';
+import { AlertTriangle, ShieldCheck, X } from 'lucide-react';
+
+import type { ProgrammeBaselineResponse } from '@erp/types';
 
 import { ApiError } from '@/lib/api-client';
+import { formatDate } from '@/lib/format';
+import { usePermissions } from '@/features/auth/permissions/can';
 import { useProject } from '@/features/projects/hooks/use-project';
 import { useMilestones } from '@/features/programme/hooks/use-programme';
 
-import { useProgressTargets, useSetProgressTargets } from '../hooks/use-progress';
+import {
+  useApproveBaseline,
+  useProgrammeBaseline,
+  useProgressTargets,
+  useSetProgressTargets,
+} from '../hooks/use-progress';
 import type { ProgressTargetItem } from '../api/progress-api';
+import { RebaselineDialog } from './rebaseline-dialog';
 
 interface Row {
   date: string;
@@ -48,17 +58,22 @@ function monthlyLinearPoints(startIso: string, endIso: string): Row[] {
  */
 export function BaselineSection({ projectId }: { projectId: string }) {
   const t = useTranslations('progress');
+  const locale = useLocale() as 'en' | 'ar';
   const { toast } = useToast();
+  const { can } = usePermissions();
 
   const targetsQuery = useProgressTargets(projectId);
+  const baselineQuery = useProgrammeBaseline(projectId);
   const project = useProject(projectId);
   const milestones = useMilestones(projectId);
   const save = useSetProgressTargets(projectId);
+  const approve = useApproveBaseline(projectId);
 
   // `rows === null` means "not yet edited" — mirror the server. Any edit makes it a concrete array
   // that the server no longer overwrites (until a save re-syncs it).
   const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [rebaselineOpen, setRebaselineOpen] = useState(false);
 
   const serverRows: Row[] = useMemo(
     () =>
@@ -67,6 +82,33 @@ export function BaselineSection({ projectId }: { projectId: string }) {
   );
   const current = rows ?? serverRows;
   const isSet = serverRows.length > 0;
+
+  const governingBaseline = baselineQuery.data ?? null;
+  const canApprove = can('manage:project');
+  const canRebaseline = can('approve:project');
+
+  // Does the saved working curve differ from the governing baseline's frozen points? Compared on
+  // the *server truth* (serverRows), not the in-progress edit — an unsaved edit is not yet a staged
+  // change, and an unpublished-changes hint driven by keystrokes would flicker. Both sides are
+  // canonicalised (sorted by date, `date|percent`) so ordering never produces a false positive.
+  const hasUnpublishedChanges = useMemo(() => {
+    if (!governingBaseline) return false;
+    const canon = (pts: Array<{ date: string; percent: number }>) =>
+      pts
+        .map((p) => `${p.date}|${p.percent}`)
+        .sort()
+        .join(',');
+    const savedKey = canon(
+      serverRows.map((r) => ({ date: r.date, percent: Number(r.percent) })),
+    );
+    const baselineKey = canon(
+      governingBaseline.points.map((p) => ({
+        date: p.targetDate,
+        percent: p.cumulativePercent,
+      })),
+    );
+    return savedKey !== baselineKey;
+  }, [governingBaseline, serverRows]);
 
   // Project dates arrive from @db.Date columns as full ISO datetimes; slice to yyyy-MM-dd so the
   // DatePicker bounds (and the linear generator) get the calendar-date format they expect.
@@ -131,6 +173,15 @@ export function BaselineSection({ projectId }: { projectId: string }) {
     });
   }
 
+  function onApprove() {
+    setError(null);
+    approve.mutate(undefined, {
+      onSuccess: () => toast({ tone: 'success', title: t('baseline.governing.approved') }),
+      onError: (e) =>
+        setError(e instanceof ApiError ? e.message : t('baseline.governing.approveFailed')),
+    });
+  }
+
   const previewPoints = useMemo(() => {
     return current
       .filter((r) => r.date && r.percent !== '' && !Number.isNaN(Number(r.percent)))
@@ -151,6 +202,15 @@ export function BaselineSection({ projectId }: { projectId: string }) {
           )}
         </p>
       </div>
+
+      <GoverningBaselineCard
+        baseline={governingBaseline}
+        loading={baselineQuery.isPending}
+        hasUnpublishedChanges={hasUnpublishedChanges}
+        locale={locale}
+      />
+
+      <p className="text-caption text-muted-foreground">{t('baseline.workingCurveNote')}</p>
 
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" size="sm" onClick={generateLinear} disabled={!canLinear}>
@@ -212,12 +272,125 @@ export function BaselineSection({ projectId }: { projectId: string }) {
         {previewPoints.length >= 2 ? <BaselinePreview points={previewPoints} /> : null}
       </div>
 
-      <div>
+      <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
         <Button onClick={onSave} disabled={save.isPending}>
           {t('baseline.save')}
         </Button>
+
+        {/* Publish path: with no governing baseline this is the initial PM approve; once one exists
+            it becomes the senior re-baseline that must cite a Variation. Each control is present
+            only for the permission its endpoint enforces — an actor never sees a button that would
+            only 403 (honesty §4). */}
+        {!governingBaseline && canApprove ? (
+          <Button
+            variant="outline"
+            onClick={onApprove}
+            disabled={!isSet || approve.isPending}
+            title={!isSet ? t('baseline.governing.approveNeedsCurve') : undefined}
+          >
+            {t('baseline.governing.approve')}
+          </Button>
+        ) : null}
+
+        {governingBaseline && canRebaseline ? (
+          <Button variant="outline" onClick={() => setRebaselineOpen(true)}>
+            {t('baseline.governing.rebaseline')}
+          </Button>
+        ) : null}
       </div>
+
+      {rebaselineOpen ? (
+        <RebaselineDialog
+          projectId={projectId}
+          open={rebaselineOpen}
+          onOpenChange={setRebaselineOpen}
+        />
+      ) : null}
     </section>
+  );
+}
+
+/**
+ * The governing-baseline card: the frozen, variance-driving plan (Master Schedule P3, ADR-029).
+ * Distinct from the working-curve editor below it — that stages the next plan; this is what actuals
+ * are currently measured against. Shows the version, who approved it and when, the cited Variation
+ * (v≥2) and note, and a shape summary of the frozen curve. When the saved working curve has drifted
+ * from these frozen points, a subtle "unpublished changes" hint says the plan is staged but not yet
+ * governing — so nobody mistakes an edited-but-unpublished curve for the one driving variance.
+ */
+function GoverningBaselineCard({
+  baseline,
+  loading,
+  hasUnpublishedChanges,
+  locale,
+}: {
+  baseline: ProgrammeBaselineResponse | null;
+  loading: boolean;
+  hasUnpublishedChanges: boolean;
+  locale: 'en' | 'ar';
+}) {
+  const t = useTranslations('progress');
+
+  if (loading) return null;
+
+  if (!baseline) {
+    return (
+      <div className="rounded-panel border border-dashed border-border bg-surface-subtle px-4 py-3">
+        <p className="text-body-sm text-muted-foreground">{t('baseline.governing.none')}</p>
+      </div>
+    );
+  }
+
+  const points = baseline.points.map((p) => ({
+    date: p.targetDate,
+    percent: p.cumulativePercent,
+  }));
+
+  return (
+    <div className="rounded-panel border border-border bg-surface-subtle px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <ShieldCheck size={16} className="text-success" aria-hidden="true" />
+          <span className="text-body-sm font-semibold text-foreground">
+            {t('baseline.governing.versionLabel', { version: baseline.version })}
+          </span>
+        </div>
+        {hasUnpublishedChanges ? (
+          <Badge tone="warning">
+            <AlertTriangle size={12} className="me-1 inline" aria-hidden="true" />
+            {t('baseline.governing.unpublished')}
+          </Badge>
+        ) : null}
+      </div>
+
+      <p className="mt-1 text-caption text-muted-foreground">
+        {t('baseline.governing.approvedBy', {
+          who: baseline.approvedBy,
+          date: formatDate(baseline.approvedAt, locale) ?? '—',
+        })}
+      </p>
+
+      {baseline.variationOrderId ? (
+        <p className="mt-0.5 text-caption text-muted-foreground">
+          {t('baseline.governing.variationRef', { ref: baseline.variationOrderId })}
+        </p>
+      ) : null}
+
+      {baseline.note ? (
+        <p className="mt-1 text-body-sm text-foreground">{baseline.note}</p>
+      ) : null}
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {points.length >= 2 ? <BaselinePreview points={points} /> : null}
+        <span className="text-caption text-muted-foreground">
+          {t('baseline.governing.pointCount', { count: points.length })}
+        </span>
+      </div>
+
+      {hasUnpublishedChanges ? (
+        <p className="mt-2 text-caption text-warning">{t('baseline.governing.unpublishedHint')}</p>
+      ) : null}
+    </div>
   );
 }
 

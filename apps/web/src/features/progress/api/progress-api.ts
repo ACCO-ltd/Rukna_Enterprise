@@ -2,6 +2,7 @@ import type {
   CollectionProgressSignalResponse,
   DailyProgressReportResponse,
   PhysicalFinancialSignalResponse,
+  ProgrammeBaselineResponse,
   ProgressCurveResponse,
   ProgressMeasurementResponse,
   ProgressPeriodComparisonResponse,
@@ -211,6 +212,55 @@ export function setProgressTargets(
     method: 'PUT',
     body: JSON.stringify({ targets }),
   });
+}
+
+// ─── Programme baseline — the frozen, governing curve (Master Schedule P3, ADR-029) ────────
+//
+// Two distinct axes: the working curve (`setProgressTargets` above) stages the next plan and is
+// always editable; the governing baseline is a frozen snapshot that drives variance. Publishing
+// the working curve into the governing baseline is either an initial approve (v1, PM) or a
+// re-baseline (v2+, senior, citing a Variation) — never a silent side effect of editing targets.
+
+/** The current governing programme baseline, or `null` when none has been approved yet. */
+export function getProgrammeBaseline(projectId: string): Promise<ProgrammeBaselineResponse | null> {
+  return apiClient<ProgrammeBaselineResponse | null>(`/projects/${projectId}/programme/baseline`);
+}
+
+/**
+ * Approve the initial baseline (v1). Snapshots the current working targets into the frozen,
+ * governing baseline. Permission `manage:project` (the PM act). Idempotency and the "already has a
+ * baseline" case are enforced server-side; the caller surfaces the server error.
+ */
+export function approveProgrammeBaseline(
+  projectId: string,
+): Promise<ProgrammeBaselineResponse> {
+  return apiClient<ProgrammeBaselineResponse>(`/projects/${projectId}/programme/baseline/approve`, {
+    method: 'POST',
+  });
+}
+
+export interface RebaselineBody {
+  /** The Variation this re-baseline cites (required — a re-baseline needs a Variation, Q-4). */
+  variationOrderId: string;
+  note?: string;
+}
+
+/**
+ * Re-baseline (v2+). Snapshots the current working targets into a new governing version and
+ * supersedes the prior one. Permission `approve:project` (the senior/governed act). Must cite a
+ * Variation.
+ */
+export function rebaselineProgramme(
+  projectId: string,
+  body: RebaselineBody,
+): Promise<ProgrammeBaselineResponse> {
+  return apiClient<ProgrammeBaselineResponse>(
+    `/projects/${projectId}/programme/baseline/rebaseline`,
+    {
+      method: 'POST',
+      body: JSON.stringify(body),
+    },
+  );
 }
 
 // ─── Work packages ────────────────────────────────────────────────────────────────────────

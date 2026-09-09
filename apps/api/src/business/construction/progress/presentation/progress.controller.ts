@@ -6,6 +6,7 @@ import { RequirePermissions } from '../../../../common/decorators/require-permis
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { ProgressService } from '../application/progress.service.js';
+import { ProgrammeBaselineService } from '../application/programme-baseline.service.js';
 import {
   CreateDprDto,
   AddMeasurementDto,
@@ -17,6 +18,7 @@ import {
   AllocateBoqNodeDto,
   ApplyScheduleTemplateDto,
   SetProgressTargetsDto,
+  RebaselineProgrammeDto,
   CreateProgrammeActivityDto,
   UpdateProgrammeActivityDto,
   CaptureProgressSnapshotDto,
@@ -32,7 +34,10 @@ import {
 @RequirePermissions(PERMISSIONS.projectsView)
 @Controller()
 export class ProgressController {
-  constructor(private readonly service: ProgressService) {}
+  constructor(
+    private readonly service: ProgressService,
+    private readonly baseline: ProgrammeBaselineService,
+  ) {}
 
   @Post('projects/:projectId/progress/reports')
   @RequirePermissions(PERMISSIONS.projectsManage)
@@ -117,6 +122,45 @@ export class ProgressController {
     @Query('asOf') asOf?: string,
   ) {
     return this.service.getScheduleVariance(identity, projectId, asOf);
+  }
+
+  // ── Master Schedule P3 (ADR-029): frozen, versioned programme baseline ─────────
+
+  @Get('projects/:projectId/programme/baseline')
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({
+    summary: 'The governing (APPROVED) programme baseline with its frozen curve, or null if none',
+  })
+  getBaseline(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
+    return this.baseline.getGoverning(identity, projectId);
+  }
+
+  @Post('projects/:projectId/programme/baseline/approve')
+  @RequirePermissions(PERMISSIONS.projectsManage)
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({
+    summary:
+      'Approve the INITIAL programme baseline (v1) — freeze the live target curve. 409 if an ' +
+      'approved baseline already exists (re-baseline instead); 400 if the curve is empty.',
+  })
+  approveBaseline(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
+    return this.baseline.approve(identity, projectId);
+  }
+
+  @Post('projects/:projectId/programme/baseline/rebaseline')
+  @RequirePermissions(PERMISSIONS.projectsApprove)
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({
+    summary:
+      'Re-baseline (v>=2, senior) — supersede the approved baseline and freeze a new version from ' +
+      'the current curve. Requires a Variation belonging to this project as justification (Q-4).',
+  })
+  rebaseline(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Body() dto: RebaselineProgrammeDto,
+  ) {
+    return this.baseline.rebaseline(identity, projectId, dto);
   }
 
   // ── Master Schedule P1-d (ADR-029): the guided schedule builder ────────────────

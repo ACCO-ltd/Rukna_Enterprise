@@ -7,6 +7,11 @@ import { ProgressService } from './progress.service.js';
  * ADR-021 CONST-PROG-011 — the planned baseline curve + schedule variance. setTargets validates the
  * curve (0–100, unique dates, non-decreasing); getScheduleVariance compares the interpolated
  * planned-today % against the verified physical roll-up.
+ *
+ * Master Schedule P3 (ADR-029): the planned side now resolves through resolvePlannedCurve — the
+ * governing frozen ProgrammeBaseline first, then the live targets, then the provisional ramp. The
+ * working curve stays editable (setTargets stages the next baseline); it becomes governing only when
+ * published via approve/re-baseline, and variance always measures against the frozen baseline.
  */
 const identity = { userId: 'u1', activeOrganizationId: 'o1' } as never;
 
@@ -19,7 +24,17 @@ function files() {
   };
 }
 
-function build(over: { targets?: { targetDate: Date; cumulativePercent: unknown }[] } = {}) {
+function build(
+  over: {
+    targets?: { targetDate: Date; cumulativePercent: unknown }[];
+    projectDates?: { startDate: Date | null; expectedEndDate: Date | null } | null;
+    // The governing (APPROVED) ProgrammeBaseline, if one exists (P3). Its `points` are the frozen curve.
+    governingBaseline?: {
+      version: number;
+      points: { targetDate: Date; cumulativePercent: Decimal }[];
+    } | null;
+  } = {},
+) {
   const captured: { created?: unknown[] } = {};
   const prisma = {
     $transaction: async (cb: (tx: unknown) => unknown) => cb(prisma),
@@ -36,6 +51,14 @@ function build(over: { targets?: { targetDate: Date; cumulativePercent: unknown 
     findLeafValues: jest.fn().mockResolvedValue([]),
     approvedMeasurementsForProject: jest.fn().mockResolvedValue([]),
     approvedReportDatesForLeaves: jest.fn().mockResolvedValue([]),
+    // P3: the provisional-ramp fallback reads the project's start/end dates.
+    findProjectDates: jest
+      .fn()
+      .mockResolvedValue(over.projectDates === undefined ? null : over.projectDates),
+  };
+  // P3: the governing frozen baseline lives behind its own repo; null ⇒ the live targets govern.
+  const baselineRepo = {
+    findApproved: jest.fn().mockResolvedValue(over.governingBaseline ?? null),
   };
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
   const svc = new ProgressService(
@@ -45,8 +68,9 @@ function build(over: { targets?: { targetDate: Date; cumulativePercent: unknown 
     {} as never, // financialPosition — not used here
     {} as never, // commandGovernance — not used here
     files() as never,
+    baselineRepo as never,
   );
-  return { svc, repo, captured };
+  return { svc, repo, baselineRepo, captured };
 }
 
 const T = (date: string, pct: number) => ({ targetDate: new Date(date), cumulativePercent: new Decimal(pct) });
@@ -90,6 +114,26 @@ describe('ProgressService — planned targets (ADR-021 CONST-PROG-011)', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0].cumulativePercent.equals(new Decimal(25))).toBe(true); // earliest first
   });
+
+  // ── Master Schedule P3 (ADR-029): the working curve stays editable; the frozen baseline drives
+  //    variance, and the working curve becomes governing only when published via approve/re-baseline ──
+
+  it('setTargets still edits the working curve even when a baseline governs (it stages the next one)', async () => {
+    const { svc, repo } = build({
+      governingBaseline: { version: 1, points: [T('2026-09-30', 40)] },
+    });
+    await svc.setTargets(identity, 'p1', [{ targetDate: '2026-09-30', cumulativePercent: 50 }]);
+    // The working curve is replaced; variance still measures against the frozen baseline (see below).
+    expect(repo.deleteTargetsForProject).toHaveBeenCalledWith(expect.anything(), 'p1');
+    expect(repo.createTargets).toHaveBeenCalled();
+  });
+
+  it('setTargets edits the working curve before the first baseline is approved', async () => {
+    const { svc, repo } = build({ governingBaseline: null });
+    await svc.setTargets(identity, 'p1', [{ targetDate: '2026-09-30', cumulativePercent: 25 }]);
+    expect(repo.deleteTargetsForProject).toHaveBeenCalledWith(expect.anything(), 'p1');
+    expect(repo.createTargets).toHaveBeenCalled();
+  });
 });
 
 describe('ProgressService.getScheduleVariance (ADR-021 CONST-PROG-011)', () => {
@@ -120,5 +164,22 @@ describe('ProgressService.getScheduleVariance (ADR-021 CONST-PROG-011)', () => {
     const { svc } = build({ targets: [T('2026-09-30', 80)] });
     const r = await svc.getScheduleVariance(identity, 'p1', '2027-01-01');
     expect(r.plannedPercent).toBe(80);
+  });
+
+  it('measures against the governing baseline snapshot, not the live targets (P3)', async () => {
+    // The live targets say 0% due at 2026-10-15; the frozen baseline says 100% by then. The variance
+    // engine must read the frozen plan, so planned ≈ 50 at the midpoint — not the drifted live curve.
+    const { svc, repo } = build({
+      targets: [T('2026-09-30', 0), T('2026-10-30', 0)], // drifted-flat live curve
+      governingBaseline: {
+        version: 2,
+        points: [T('2026-09-30', 0), T('2026-10-30', 100)],
+      },
+    });
+    const r = await svc.getScheduleVariance(identity, 'p1', '2026-10-15');
+    expect(r.plannedPercent).toBeGreaterThan(45);
+    expect(r.plannedPercent).toBeLessThan(55);
+    // The live targets were never consulted for the planned side.
+    expect(repo.findTargets).not.toHaveBeenCalled();
   });
 });

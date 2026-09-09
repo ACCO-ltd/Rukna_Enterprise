@@ -433,6 +433,14 @@ export interface ProgressActualPoint {
  * without changing this contract. `status`/`scheduleVariancePercent` compare the latest actual
  * physical % to the planned % at that date.
  */
+/**
+ * Where the planned curve came from (Master Schedule P3, ADR-029):
+ * - `baseline` — the frozen, APPROVED `ProgrammeBaseline` snapshot (the governing plan).
+ * - `targets` — the live, editable `ProgressTarget` curve (no baseline approved yet).
+ * - `provisional` — the Option-C linear ramp placeholder (no baseline and no targets set).
+ */
+export type ProgressCurveSource = 'baseline' | 'targets' | 'provisional';
+
 export interface ProgressCurveResponse {
   projectId: string;
   baseline: ProgressCurvePoint[];
@@ -440,8 +448,15 @@ export interface ProgressCurveResponse {
   /** latest actual physical − planned at that date; null when there is insufficient data. */
   scheduleVariancePercent: number | null;
   status: ProgressScheduleStatus;
-  /** True while the baseline is the Option-C provisional placeholder (BE-1). */
+  /**
+   * True while the baseline is the Option-C provisional placeholder — i.e. `baselineSource === 'provisional'`.
+   * Kept for backward-compatibility; prefer `baselineSource` for the three-way distinction (P3).
+   */
   baselineProvisional: boolean;
+  /** Master Schedule P3 (ADR-029): which producer the planned curve was resolved from. */
+  baselineSource: ProgressCurveSource;
+  /** The governing `ProgrammeBaseline` version when `baselineSource === 'baseline'`, else null. */
+  baselineVersion: number | null;
 }
 
 /** Overall (project-level) period-over-period comparison from the two most-recent snapshots. */
@@ -452,6 +467,39 @@ export interface ProgressPeriodComparisonResponse {
   /** Null when fewer than two snapshots exist. */
   physical: { previous: number; current: number; delta: number } | null;
   verified: { previous: number; current: number; delta: number } | null;
+}
+
+// ─── Master Schedule P3 (ADR-029): the frozen, versioned programme baseline ───────
+//
+// A ProgrammeBaseline freezes the live planned-target curve at the moment it is approved, so
+// actuals are measured against a plan that cannot silently drift. One governing (APPROVED) version
+// per project at a time; re-baselining creates the next version and supersedes the last (Q-1). The
+// initial baseline (v1) is a PM act; re-baselining (v>=2) is senior/governed and cites a Variation
+// (Q-4). The variance engine is anchored to the APPROVED baseline in a later pass.
+
+export type ProgrammeBaselineStatusType = 'DRAFT' | 'APPROVED' | 'SUPERSEDED';
+
+/** One frozen point on a baseline curve: the cumulative planned % due by a target date. */
+export interface ProgrammeBaselinePointResponse {
+  /** ISO calendar date (YYYY-MM-DD). */
+  targetDate: string;
+  cumulativePercent: number;
+}
+
+/** A frozen programme baseline version with the target curve snapshotted at approval. */
+export interface ProgrammeBaselineResponse {
+  id: string;
+  projectId: string;
+  version: number;
+  status: ProgrammeBaselineStatusType;
+  approvedBy: string;
+  approvedAt: string;
+  /** The Variation this re-baseline cited; null for the initial baseline (v1). */
+  variationOrderId: string | null;
+  note: string | null;
+  createdAt: string;
+  /** The frozen target curve, ordered by targetDate. */
+  points: ProgrammeBaselinePointResponse[];
 }
 
 // ADR-021 Progress: a verified-progress line per BOQ leaf (from approved DPRs).

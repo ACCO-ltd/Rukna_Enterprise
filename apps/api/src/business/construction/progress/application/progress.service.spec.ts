@@ -72,6 +72,8 @@ function build(over: Over = {}) {
   // ADR-022 DPR governance seam: with no active binding the gate returns null (approval proceeds).
   const commandGovernance = { gateStateTransition: jest.fn().mockResolvedValue(null) };
   const fileService = files();
+  // Master Schedule P3 (ADR-029): no governing baseline in these MVP paths ⇒ live curve behaviour.
+  const baselineRepo = { findApproved: jest.fn().mockResolvedValue(null) };
   const service = new ProgressService(
     tenancy as never,
     repo as never,
@@ -79,8 +81,9 @@ function build(over: Over = {}) {
     financialPosition as never,
     commandGovernance as never,
     fileService as never,
+    baselineRepo as never,
   );
-  return { repo, service, commandGovernance, fileService };
+  return { repo, service, commandGovernance, fileService, baselineRepo };
 }
 
 describe('ProgressService (ADR-021 MVP)', () => {

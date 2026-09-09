@@ -11,6 +11,7 @@ import type {
   CollectionProgressSignalResponse,
   DailyProgressReportResponse,
   PhysicalFinancialSignalResponse,
+  ProgrammeBaselineResponse,
   ProgressCurveResponse,
   ProgressPeriodComparisonResponse,
   ProgressSnapshotResponse,
@@ -22,6 +23,7 @@ import {
   addMeasurement,
   allocateBoqNode,
   approveDpr,
+  approveProgrammeBaseline,
   attachEvidence,
   captureProgressSnapshot,
   createDpr,
@@ -29,6 +31,7 @@ import {
   getCollectionProgressSignal,
   getDpr,
   getPhysicalFinancialSignal,
+  getProgrammeBaseline,
   getProgressCurve,
   getProgressPeriodComparison,
   getProgressTargets,
@@ -36,6 +39,7 @@ import {
   getProjectRollup,
   listDprs,
   listWorkPackages,
+  rebaselineProgramme,
   returnDpr,
   setProgressTargets,
   submitDpr,
@@ -45,6 +49,7 @@ import {
   type CreateWorkPackageBody,
   type DailyProgressReportDetail,
   type ProgressTargetItem,
+  type RebaselineBody,
   type WorkPackageResponse,
 } from '../api/progress-api';
 
@@ -60,6 +65,7 @@ export const progressKeys = {
   periodComparison: (projectId: string) =>
     [...progressKeys.all(projectId), 'period-comparison'] as const,
   targets: (projectId: string) => [...progressKeys.all(projectId), 'targets'] as const,
+  baseline: (projectId: string) => [...progressKeys.all(projectId), 'baseline'] as const,
   workPackages: (projectId: string) => [...progressKeys.all(projectId), 'work-packages'] as const,
   /** A DPR detail is keyed by its own id, not the project. */
   report: (dprId: string) => ['progress-report', dprId] as const,
@@ -171,6 +177,21 @@ export function useProgressTargets(projectId: string): UseQueryResult<ProgressTa
   return useQuery({
     queryKey: progressKeys.targets(projectId),
     queryFn: () => getProgressTargets(projectId),
+    enabled: Boolean(projectId),
+  });
+}
+
+/**
+ * The governing programme baseline (Master Schedule P3, ADR-029). `null` — not an error — is the
+ * "no baseline approved yet" state the Plan & Setup card renders. Distinct from `useProgressTargets`:
+ * that is the editable working curve; this is the frozen snapshot that drives variance.
+ */
+export function useProgrammeBaseline(
+  projectId: string,
+): UseQueryResult<ProgrammeBaselineResponse | null, Error> {
+  return useQuery({
+    queryKey: progressKeys.baseline(projectId),
+    queryFn: () => getProgrammeBaseline(projectId),
     enabled: Boolean(projectId),
   });
 }
@@ -287,6 +308,41 @@ export function useSetProgressTargets(projectId: string) {
         queryClient.invalidateQueries({ queryKey: progressKeys.curve(projectId) }),
       ]);
     },
+  });
+}
+
+// ─── Programme baseline freeze (Master Schedule P3, ADR-029) ───────────────────────────────
+/**
+ * Publishing a governing baseline re-anchors what actuals are measured against, so it moves the
+ * baseline record, the S-curve (its `baselineSource`/`baselineVersion` and drawn planned line) and
+ * the variance-bearing reads. Both approve (v1) and re-baseline (v2+) invalidate the same set.
+ */
+function invalidateBaselineDerived(
+  queryClient: QueryClient,
+  projectId: string,
+): Promise<void> {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: progressKeys.baseline(projectId) }),
+    queryClient.invalidateQueries({ queryKey: progressKeys.curve(projectId) }),
+    invalidateVerifiedDerived(queryClient, projectId),
+  ]).then(() => undefined);
+}
+
+/** Approve the initial governing baseline (v1). PM act (`manage:project`). */
+export function useApproveBaseline(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<ProgrammeBaselineResponse, Error, void>({
+    mutationFn: () => approveProgrammeBaseline(projectId),
+    onSuccess: () => invalidateBaselineDerived(queryClient, projectId),
+  });
+}
+
+/** Re-baseline (v2+), citing a Variation. Senior/governed act (`approve:project`). */
+export function useRebaseline(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<ProgrammeBaselineResponse, Error, RebaselineBody>({
+    mutationFn: (body: RebaselineBody) => rebaselineProgramme(projectId, body),
+    onSuccess: () => invalidateBaselineDerived(queryClient, projectId),
   });
 }
 
