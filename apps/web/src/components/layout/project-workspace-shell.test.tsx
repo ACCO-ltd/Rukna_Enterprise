@@ -11,6 +11,7 @@ import { openSelect } from '@/test/choose-option';
 const push = vi.fn();
 const useProject = vi.fn();
 const useProjectWorkspaceSummary = vi.fn();
+const useProjectReadiness = vi.fn();
 
 let pathname = '/projects/project-1';
 
@@ -43,6 +44,7 @@ const inertMutation = () => ({
 vi.mock('@/features/projects/hooks/use-project', () => ({
   useProject: (...args: unknown[]) => useProject(...args),
   useProjectWorkspaceSummary: (...args: unknown[]) => useProjectWorkspaceSummary(...args),
+  useProjectReadiness: (...args: unknown[]) => useProjectReadiness(...args),
   useAdvanceProject: () => inertMutation(),
   useCancelProject: () => inertMutation(),
   useSuspendProject: () => inertMutation(),
@@ -87,9 +89,29 @@ const readySetup = {
   totalSteps: 4,
 };
 
+/**
+ * The action panel calls `useProjectReadiness` directly and reads `.data?.conditions`,
+ * `.isPending` and `.isError`. The default is a fully-satisfied readiness so no false
+ * blocker is surfaced; the unfinished-draft test overrides `conditions` with a mandatory
+ * blocker of its own.
+ */
+const readyReadiness = {
+  data: {
+    command: 'start' as const,
+    targetStatus: 'ACTIVE',
+    ready: true,
+    conditions: [],
+    deferred: [],
+  },
+  isPending: false,
+  isError: false,
+  refetch: vi.fn(),
+};
+
 beforeEach(() => {
   push.mockReset();
   useProject.mockReturnValue({ data: project, isPending: false, isError: false, refetch: vi.fn() });
+  useProjectReadiness.mockReturnValue(readyReadiness);
   useProjectWorkspaceSummary.mockReturnValue({
     data: {
       projectId: 'project-1',
@@ -227,12 +249,15 @@ describe('ProjectWorkspaceShell — identity', () => {
 });
 
 /**
- * The action set used to be portalled up from the Overview page, so the other seven tabs had
- * a header with nothing in it. It belongs to the shell.
+ * Lifecycle actions belong on Overview, not above every working tab: repeating the same
+ * control on all eight tabs cost a row of vertical space each time, and someone editing a BOQ
+ * is not deciding whether to close the project. The shell therefore renders the actions panel
+ * on Overview only — a working tab shows the workspace, not the lifecycle controls. (A live
+ * suspension is the one exception, covered by its own test below.)
  */
 describe('ProjectWorkspaceShell — actions', () => {
-  it('offers the project actions on a working tab, not only on Overview', () => {
-    pathname = '/projects/project-1/boq';
+  it('offers the project actions on Overview', () => {
+    pathname = '/projects/project-1';
 
     renderWithProviders(
       <ProjectWorkspaceShell id="project-1">
@@ -245,6 +270,22 @@ describe('ProjectWorkspaceShell — actions', () => {
     expect(screen.getByRole('button', { name: 'Actions' })).toBeInTheDocument();
   });
 
+  it('does not repeat the lifecycle actions on a working tab', () => {
+    pathname = '/projects/project-1/boq';
+
+    renderWithProviders(
+      <ProjectWorkspaceShell id="project-1">
+        <p>Workspace content</p>
+      </ProjectWorkspaceShell>,
+      MANAGER,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'Record practical completion' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Actions' })).not.toBeInTheDocument();
+  });
+
   it('hands readiness to the action panel, so an unfinished draft is offered its next step', () => {
     useProject.mockReturnValue({
       data: { ...project, status: ProjectStatus.DRAFT },
@@ -252,18 +293,28 @@ describe('ProjectWorkspaceShell — actions', () => {
       isError: false,
       refetch: vi.fn(),
     });
-    useProjectWorkspaceSummary.mockReturnValue({
+    // Server readiness — not the old workspace-summary `setup` — now gates commencement. A
+    // mandatory unsatisfied condition keeps the draft in preparation: the panel offers
+    // "Continue setup" pointing at the readiness section on Overview rather than "Start
+    // project". Mirrors the action-panel suite's own readiness case.
+    useProjectReadiness.mockReturnValue({
       data: {
-        projectId: 'project-1',
-        setup: { ...readySetup, boqBaselined: false, completedSteps: 1 },
-        responsibility: { projectManager: null, teamCount: 1 },
-        programme: { startDate: null, expectedEndDate: null, daysRemaining: null },
-        mainContract: null,
-        financialsVisible: true,
-        recentActivity: [],
+        command: 'start' as const,
+        targetStatus: 'ACTIVE',
+        ready: false,
+        conditions: [
+          {
+            code: 'ACTIVE_MAIN_CONTRACT',
+            severity: 'MANDATORY',
+            satisfied: false,
+            detail: 'Execute the contract',
+          },
+        ],
+        deferred: [],
       },
       isPending: false,
       isError: false,
+      refetch: vi.fn(),
     });
 
     renderWithProviders(
@@ -275,7 +326,7 @@ describe('ProjectWorkspaceShell — actions', () => {
 
     expect(screen.getByRole('link', { name: /Continue setup/ })).toHaveAttribute(
       'href',
-      '/projects/project-1/boq',
+      '/projects/project-1#project-readiness-title',
     );
     expect(screen.queryByRole('button', { name: 'Start project' })).not.toBeInTheDocument();
   });

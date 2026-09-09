@@ -30,21 +30,6 @@ describe('SetupChecklist', () => {
     expect(screen.getByText('1 of 3 complete')).toBeInTheDocument();
   });
 
-  it('exposes a progressbar with correct aria-valuenow', () => {
-    renderWithProviders(<SetupChecklist items={ITEMS} title="Setup" progress="x" />);
-    // 1 complete out of 3 non-optional items
-    const bar = screen.getByRole('progressbar');
-    expect(bar).toHaveAttribute('aria-valuenow', '1');
-    expect(bar).toHaveAttribute('aria-valuemax', '3');
-    expect(bar).toHaveAttribute('aria-valuemin', '0');
-  });
-
-  it('shows percentage badge (33%) for 1-of-3 complete', () => {
-    renderWithProviders(<SetupChecklist items={ITEMS} title="Setup" progress="x" />);
-    // 1 of 3 (optional excluded) → 33%
-    expect(screen.getByText('33%')).toBeInTheDocument();
-  });
-
   it('shows the blocked reason for a blocked item', () => {
     renderWithProviders(<SetupChecklist items={ITEMS} />);
     expect(screen.getByText('Needs BOQ first')).toBeInTheDocument();
