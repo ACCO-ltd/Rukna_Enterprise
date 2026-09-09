@@ -81,6 +81,7 @@ export function DocumentRegisterView({ projectId }: { projectId: string }) {
   const summary = query.data?.summary;
   const items = query.data?.items ?? [];
   const total = query.data?.total ?? 0;
+  const pristineEmpty = query.isSuccess && total === 0 && !hasFilters && (summary?.controlledDocuments ?? 0) === 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
@@ -89,7 +90,7 @@ export function DocumentRegisterView({ projectId }: { projectId: string }) {
         <div className="min-w-0">
           <h2 className="text-h2 font-bold text-foreground">{t('views.register')}</h2>
         </div>
-        {capabilities.data?.canCreate ? (
+        {capabilities.data?.canCreate && !pristineEmpty ? (
           <Button onClick={() => setRegisterOpen(true)}>
             <Plus size={16} strokeWidth={2} aria-hidden="true" />
             {t('actions.register')}
@@ -99,7 +100,7 @@ export function DocumentRegisterView({ projectId }: { projectId: string }) {
 
       {/* The summary band. Server-derived, whole-project, and never recomputed from the page —
           a control figure that moves when someone types in a search box is not a control figure. */}
-      {summary ? (
+      {summary && !pristineEmpty ? (
         <dl className="grid grid-cols-2 overflow-hidden rounded-panel border border-border bg-surface sm:grid-cols-4">
           <SummaryFigure
             label={t('summary.controlledDocuments')}
@@ -122,7 +123,7 @@ export function DocumentRegisterView({ projectId }: { projectId: string }) {
 
       {/* Filters collapse behind a toggle at 375px rather than stacking six controls above the
           table, which would push the register itself off the first screen. */}
-      <div className="space-y-3">
+      {!pristineEmpty ? <div className="space-y-3">
         <div className="flex items-center gap-2 sm:hidden">
           <Button variant="outline" onClick={() => setFiltersOpen((open) => !open)}>
             <SlidersHorizontal size={16} strokeWidth={1.9} aria-hidden="true" />
@@ -235,6 +236,8 @@ export function DocumentRegisterView({ projectId }: { projectId: string }) {
           ) : null}
         </div>
       </div>
+
+      : null}
 
       {query.isPending ? (
         <SkeletonTable columns={9} rows={6} label={t('states.loading')} />

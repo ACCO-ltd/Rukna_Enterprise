@@ -102,122 +102,43 @@ function ItemIndicator({ status }: { status: ChecklistItemStatus }) {
  * />
  */
 export function SetupChecklist({ title, progress, items, className }: SetupChecklistProps) {
-  const doneCount = items.filter((i) => i.status === 'complete').length;
-  const total = items.filter((i) => i.status !== 'optional').length;
-  const progressPct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
-
+  const headingId = React.useId();
   return (
     <section
-      aria-labelledby={title ? 'setup-checklist-heading' : undefined}
-      className={cn(
-        'overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]',
-        className,
-      )}
+      aria-labelledby={title ? headingId : undefined}
+      className={cn('rounded-panel border border-border bg-surface p-5 sm:p-6', className)}
     >
-      {/* Header */}
-      {(title || progress) ? (
-        <div className="border-b border-border px-4 py-3 sm:px-5">
-          <div className="flex items-center justify-between gap-4">
-            {title ? (
-              <h2
-                id="setup-checklist-heading"
-                className="text-[13px] font-semibold text-foreground"
-              >
-                {title}
-              </h2>
-            ) : null}
-            {progress ? (
-              <div className="flex shrink-0 items-center gap-2">
-                <span className="rounded-full bg-brand-primary/10 px-2 py-0.5 text-[11px] font-bold tabular-nums text-brand-primary">
-                  {progressPct}%
-                </span>
-                <span className="text-[12px] font-medium text-muted-foreground">{progress}</span>
-              </div>
-            ) : null}
-          </div>
-          {/* Hidden progress bar for SR */}
-          <span
-            role="progressbar"
-            aria-valuenow={doneCount}
-            aria-valuemin={0}
-            aria-valuemax={total}
-            className="sr-only"
-          />
+      {title || progress ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {title ? (
+            <h2 id={headingId} className="text-body font-semibold text-foreground">
+              {title}
+            </h2>
+          ) : null}
+          {progress ? <span className="text-caption text-muted-foreground">{progress}</span> : null}
         </div>
       ) : null}
-
-      {/* Item list */}
-      <ol className="flex min-w-max overflow-x-auto px-4 py-4 [-webkit-overflow-scrolling:touch] lg:min-w-0 lg:overflow-visible lg:px-5">
-        {items.map((item, index) => {
-          const isLast = index === items.length - 1;
-
-          return (
-            <li
-              key={item.id}
-              className="relative flex w-56 shrink-0 gap-3 pe-5 last:pe-0 lg:w-auto lg:min-w-0 lg:flex-1"
-            >
-              {/* Left column: indicator + connector */}
-              <div className="flex flex-col items-center">
-                <ItemIndicator status={item.status} />
-                {!isLast ? (
-                  <div
-                    aria-hidden="true"
-                    className={cn(
-                      'absolute start-6 top-3 h-px w-[calc(100%-1.5rem)]',
-                      item.status === 'complete' ? 'bg-success/40' : 'bg-border',
-                    )}
-                  />
-                ) : null}
-              </div>
-
-              {/* Right column: content */}
-              <div className="relative z-10 min-w-0 flex-1 bg-surface pe-2">
-                <p
-                  className={cn(
-                    'truncate text-[12.5px] font-semibold leading-5',
-                    item.status === 'blocked' || item.status === 'optional'
-                      ? 'text-muted-foreground/60'
-                      : 'text-foreground',
-                  )}
-                >
-                  {item.label}
-                </p>
-
-                {/* Status text */}
+      <ol className="mt-3 divide-y divide-border">
+        {items.map((item) => (
+          <li key={item.id} className="flex items-start gap-3 py-3">
+            <ItemIndicator status={item.status} />
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-body-sm font-medium text-foreground">{item.label}</p>
                 <StatusLabel status={item.status} />
-
-                {/* Description (only when not complete) */}
-                {item.status !== 'complete' && item.description ? (
-                  <p
-                    className={cn(
-                      'mt-0.5 line-clamp-1 text-[11.5px] leading-4',
-                      item.status === 'blocked' || item.status === 'optional'
-                        ? 'text-muted-foreground/50'
-                        : 'text-muted-foreground',
-                    )}
-                  >
-                    {item.description}
-                  </p>
-                ) : null}
-
-                {/* Blocked reason */}
-                {item.status === 'blocked' && item.blockedReason ? (
-                  <p
-                    className="mt-1 line-clamp-1 text-[10.5px] font-medium text-warning"
-                    title={item.blockedReason}
-                  >
-                    {item.blockedReason}
-                  </p>
-                ) : null}
-
-                {/* Action — only on actionable items */}
-                {item.action && item.status !== 'complete' && item.status !== 'blocked' ? (
-                  <div className="mt-1.5">{item.action}</div>
-                ) : null}
               </div>
-            </li>
-          );
-        })}
+              {item.status !== 'complete' && item.description ? (
+                <p className="mt-1 text-body-sm text-muted-foreground">{item.description}</p>
+              ) : null}
+              {item.status === 'blocked' && item.blockedReason ? (
+                <p className="mt-1 text-caption text-muted-foreground">{item.blockedReason}</p>
+              ) : null}
+              {item.action && item.status !== 'complete' && item.status !== 'blocked' ? (
+                <div className="mt-3">{item.action}</div>
+              ) : null}
+            </div>
+          </li>
+        ))}
       </ol>
     </section>
   );
@@ -233,14 +154,14 @@ function StatusLabel({ status }: { status: ChecklistItemStatus }) {
       case 'blocked':
         return [t('blocked'), 'text-warning'];
       case 'optional':
-        return [t('optional'), 'text-muted-foreground/50'];
+        return [t('optional'), 'text-muted-foreground'];
       default:
         return [t('incomplete'), 'text-muted-foreground'];
     }
   })();
 
   return (
-    <p className={cn('mt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.06em]', colorClass)}>
+    <p className={cn('mt-0.5 text-micro font-semibold uppercase tracking-[0.06em]', colorClass)}>
       {label}
     </p>
   );

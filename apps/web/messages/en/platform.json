@@ -193,7 +193,7 @@
     "create": {
       "title": "New project",
       "breadcrumb": "Projects",
-      "subtitle": "A project starts as a draft. You can edit it until it is approved.",
+      "subtitle": "Created in Preparation. Complete setup before starting work.",
       "codeLabel": "Project code",
       "codeHint": "Cannot be changed after the project is created.",
       "codePlaceholder": "ACCO-2026-001",
@@ -256,7 +256,11 @@
         "editStep": "Edit",
         "backToClients": "Back to clients",
         "codeImmutableWarning": "The project code cannot be changed after creation."
-      }
+      },
+      "deliveryArrangement": "Delivery arrangement",
+      "newClient": "New client",
+      "selectClient": "Select a client",
+      "clientsLoadFailed": "Clients could not be loaded. Reload this page to try again."
     },
     "detail": {
       "notFound": "This project does not exist, or you do not have access to it.",
@@ -412,7 +416,7 @@
       "everyoneAdded": "Everyone in the organisation is already on this project.",
       "add": "Add to project",
       "addTitle": "Add a member",
-      "addHint": "Choose at least one role. Roles cannot be changed afterwards — correcting one means removing the member and adding them again.",
+      "addHint": "Choose a team member and assign at least one role. Roles can be updated later.",
       "remove": "Remove",
       "removeTitle": "Remove {name} from this project?",
       "removeBody": "They keep their account and stay in the organisation. Their history on this project is retained. They can be added back by anyone still on the project.",
@@ -427,7 +431,8 @@
         "SITE_ENGINEER": "Site engineer",
         "FINANCE_REVIEWER": "Finance reviewer",
         "VIEWER": "Viewer"
-      }
+      },
+      "memberActions": "Actions for {name}"
     },
     "actions": {
       "start": "Start project",
@@ -481,7 +486,61 @@
       "noCertificates": "No certificate issued",
       "issueCertificate": "Issue Certificate",
       "supersedeCertificate": "Supersede"
-    }
+    },
+    "preparation": {
+      "title": "Project preparation",
+      "hint": "Complete the required conditions before starting this project. Tasks can be prepared in parallel.",
+      "ready": "The current start conditions are satisfied. Record commencement to start the project.",
+      "remaining": "{count, plural, =0 {Ready for commencement} one {# condition remaining} other {# conditions remaining}}",
+      "completed": "{count} conditions completed",
+      "resolve": "Open task",
+      "loadFailed": "Readiness could not be checked. Try again before starting.",
+      "projectManager": "Project manager",
+      "commercialTeam": "Commercial team",
+      "quantitySurveyor": "Quantity surveyor",
+      "waivable": "Complete this condition or record an authorized exception when starting.",
+      "ownerAction": "Owner action needed",
+      "deferred": "Some requirements are not checked automatically. Review them before commencement.",
+      "conditions": {
+        "CLIENT_ACTIVE": "Assign an active client",
+        "BOQ_BASELINED": "Baseline the BOQ",
+        "ACTIVE_MAIN_CONTRACT": "Execute the main contract",
+        "CONTRACT_START_DATE": "Set the contractual start date",
+        "PROGRAMME_DATES": "Set planned project dates",
+        "DELIVERY_TEAM": "Assign the delivery team"
+      }
+    },
+    "transition": {
+      "description": {
+        "start": "Record actual commencement. Required approvals still apply.",
+        "close": "Record the closure decision and review obligations that are not checked automatically.",
+        "closeout": "Begin closeout. Review outstanding commercial and project obligations.",
+        "practical-completion": "Record practical completion. Active contracts will move to final account preparation."
+      },
+      "actualStartDate": "Actual commencement date",
+      "closureDate": "Closure date",
+      "closureSummary": "Closure summary",
+      "commencementNote": "Commencement note (optional)",
+      "dateRequired": "Choose a date.",
+      "summaryRequired": "Explain the closure decision.",
+      "waiverHint": "Record the reason for an authorized exception to this condition. It will be audited.",
+      "waiverRequired": "Provide an exception reason or complete the condition first.",
+      "deferred": "Conditions requiring separate review",
+      "awaitingApproval": "Awaiting approval. The project has not changed stage.",
+      "retryApproval": "After the required approvers have acted, complete this action to apply the recorded decision.",
+      "complete": "Complete approved action",
+      "checks": {
+        "CONTRACT_PC_CERTIFICATE": "Practical completion certificate",
+        "FINAL_ACCOUNT_AGREED": "Final account agreement",
+        "FINAL_ACCOUNT_SETTLED": "Final account settlement",
+        "OPEN_COMMITMENTS_CLEARED": "Outstanding commitments",
+        "INVENTORY_RECONCILED": "Inventory reconciliation",
+        "RETENTION_RELEASED": "Retention release",
+        "PROJECT_DOCUMENTS_COMPLETE": "Project documents",
+        "INTERNAL_AUTHORIZATION": "Internal funding authorization"
+      }
+    },
+    "restricted": "Restricted"
   },
   "boq": {
     "import": {
@@ -594,7 +653,8 @@
       "startRevision": "Create revision",
       "discardDraft": "Discard draft",
       "submitForBaseline": "Submit for baseline",
-      "more": "More actions"
+      "more": "More actions",
+      "createContract": "Create contract"
     },
     "summary": {
       "pricingCompleteness": "Pricing completeness",
@@ -1760,7 +1820,7 @@
       "loadFailed": "Could not load the form data.",
       "plan": {
         "title": "Payment schedule",
-        "subtitle": "Define how the contract value is billed across installments. Percentages must total 100%. This can only be set now, at creation.",
+        "subtitle": "Define how the contract value is billed across installments. Percentages must total 100%.",
         "empty": "No installments yet. Add the first to define the payment schedule.",
         "add": "Add installment",
         "useAccoStandard": "Use ACCO standard schedule",
@@ -1782,7 +1842,8 @@
           "MILESTONE": "Milestone",
           "ADVANCE": "Advance",
           "TIME_BASED": "Time-based"
-        }
+        },
+        "createOnly": "Set the payment plan before creating this contract. The plan cannot be changed afterwards."
       }
     },
     "terms": {

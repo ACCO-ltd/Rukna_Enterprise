@@ -37,7 +37,12 @@ vi.mock('@/features/districts/hooks/use-districts', () => ({
 // is required and rides in the payload.
 vi.mock('@/features/project-types/hooks/use-project-subtypes', () => ({
   useProjectSubtypes: () => ({ data: [], isPending: false }),
-  useCreateProjectSubtype: () => ({ mutate: vi.fn(), isPending: false, isError: false, error: null }),
+  useCreateProjectSubtype: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+  }),
   useDeactivateProjectSubtype: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
@@ -66,7 +71,7 @@ function renderForm() {
 
 // ── Wizard navigation helpers ──────────────────────────────────────────────────
 
-async function fillStep1(
+async function fillIdentity(
   user: ReturnType<typeof userEvent.setup>,
   {
     name = 'Tower',
@@ -84,11 +89,7 @@ async function fillStep1(
   if (location) await user.type(screen.getByRole('textbox', { name: /^site address/i }), location);
 }
 
-async function goToStep2(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('button', { name: 'Next' }));
-}
-
-async function fillStep2(
+async function fillDetails(
   user: ReturnType<typeof userEvent.setup>,
   {
     startDate,
@@ -101,11 +102,7 @@ async function fillStep2(
   if (description) await user.type(screen.getByLabelText('Description'), description);
 }
 
-async function goToStep3(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('button', { name: 'Review & create' }));
-}
-
-async function submitWizard(user: ReturnType<typeof userEvent.setup>) {
+async function submitProject(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('button', { name: 'Create project' }));
 }
 
@@ -118,39 +115,39 @@ beforeEach(() => {
 // ── Validation ────────────────────────────────────────────────────────────────
 
 describe('ProjectForm — validation', () => {
-  it('validates step 1 fields when Next is clicked on an empty form', async () => {
+  it('validates required fields when the single form is submitted', async () => {
     const user = userEvent.setup();
     renderForm();
 
-    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await user.click(screen.getByRole('button', { name: 'Create project' }));
 
-    expect(screen.getByText('Enter a project name')).toBeInTheDocument();
-    expect(screen.getByText('Select a client')).toBeInTheDocument();
+    expect(screen.getAllByText('Enter a project name')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Select a client')[0]).toBeInTheDocument();
     expect(createProject).not.toHaveBeenCalled();
   });
 
-  it('requires a client before advancing from step 1', async () => {
+  it('requires a client before creating a project', async () => {
     const user = userEvent.setup();
     renderForm();
 
     await user.type(screen.getByRole('textbox', { name: /^project name/i }), 'Tower');
-    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await user.click(screen.getByRole('button', { name: 'Create project' }));
 
-    expect(await screen.findByText('Select a client')).toBeInTheDocument();
+    expect((await screen.findAllByText('Select a client'))[0]).toBeInTheDocument();
     expect(createProject).not.toHaveBeenCalled();
   });
 
-  it('requires a category before advancing from step 1 (PTD1-PTD5)', async () => {
+  it('requires a category before creating a project (PTD1-PTD5)', async () => {
     const user = userEvent.setup();
     renderForm();
 
     await user.type(screen.getByRole('textbox', { name: /^project name/i }), 'Tower');
     await chooseOption(user, screen.getByRole('combobox', { name: /^district/i }), 'd-wbr');
     await chooseOption(user, screen.getByRole('combobox', { name: /^client/i }), 'client-1');
-    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await user.click(screen.getByRole('button', { name: 'Create project' }));
 
     // The category field surfaces its required error (a role="alert"); the wizard stays on step 1.
-    expect(await screen.findByRole('alert')).toHaveTextContent('Select a category');
+    expect((await screen.findAllByText('Select a category'))[0]).toBeInTheDocument();
     expect(createProject).not.toHaveBeenCalled();
   });
 
@@ -158,15 +155,18 @@ describe('ProjectForm — validation', () => {
     const user = userEvent.setup();
     renderForm();
 
-    await fillStep1(user);
-    await goToStep2(user);
-    await fillStep2(user, { startDate: '2028-03-31' });
+    await fillIdentity(user);
+    await fillDetails(user, { startDate: '2028-03-31' });
 
     // The rule used to be caught on submit, by the schema. The completion picker is now floored
     // at the start date, so the wrong value cannot be entered at all — the day before it is
     // disabled, and the calendar does not even offer an earlier year. The schema check stays as
     // the backstop for the edit form and for anything posting to the API directly.
-    const cell = await findDayCell(user, screen.getByLabelText('Expected completion'), '2028-03-30');
+    const cell = await findDayCell(
+      user,
+      screen.getByLabelText('Expected completion'),
+      '2028-03-30',
+    );
     expect(cell).toHaveAttribute('data-disabled');
     expect(createProject).not.toHaveBeenCalled();
   });
@@ -181,10 +181,8 @@ describe('ProjectForm — submission', () => {
 
     renderForm();
 
-    await fillStep1(user, { name: 'Al-Baraka Tower' });
-    await goToStep2(user);
-    await goToStep3(user);
-    await submitWizard(user);
+    await fillIdentity(user, { name: 'Al-Baraka Tower' });
+    await submitProject(user);
 
     await waitFor(() => {
       expect(createProject).toHaveBeenCalledWith({
@@ -207,11 +205,9 @@ describe('ProjectForm — submission', () => {
 
     renderForm();
 
-    await fillStep1(user, { location: 'Mogadishu' });
-    await goToStep2(user);
-    await fillStep2(user, { startDate: '2026-09-01', description: 'Mixed-use tower' });
-    await goToStep3(user);
-    await submitWizard(user);
+    await fillIdentity(user, { location: 'Mogadishu' });
+    await fillDetails(user, { startDate: '2026-09-01', description: 'Mixed-use tower' });
+    await submitProject(user);
 
     await waitFor(() => {
       expect(createProject).toHaveBeenCalledWith({
@@ -231,17 +227,13 @@ describe('ProjectForm — submission', () => {
   it('lists server validation messages individually', async () => {
     const user = userEvent.setup();
     vi.mocked(createProject).mockRejectedValue(
-      new ApiError(400, 'invalid', 'INTERNAL_ERROR', [
-        'name should not be empty',
-      ]),
+      new ApiError(400, 'invalid', 'INTERNAL_ERROR', ['name should not be empty']),
     );
 
     renderForm();
 
-    await fillStep1(user);
-    await goToStep2(user);
-    await goToStep3(user);
-    await submitWizard(user);
+    await fillIdentity(user);
+    await submitProject(user);
 
     expect(await screen.findByText('name should not be empty')).toBeInTheDocument();
   });
@@ -261,7 +253,7 @@ describe('ProjectForm — client preselection', () => {
         'The client in the URL was not found. It may have been deactivated or does not exist.',
       ),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Next' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create project' })).not.toBeInTheDocument();
   });
 
   it('preselects and locks the client when a valid clientId param is provided', async () => {
@@ -279,9 +271,23 @@ describe('ProjectForm — client preselection', () => {
     await user.type(screen.getByRole('textbox', { name: /^project name/i }), 'Tower');
     await chooseOption(user, screen.getByRole('combobox', { name: /^district/i }), 'd-wbr');
     await chooseOption(user, screen.getByRole('combobox', { name: /^category/i }), 'COMMERCIAL');
-    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await user.click(screen.getByRole('button', { name: 'Create project' }));
 
-    // Step 2 should be shown.
-    expect(screen.getByLabelText('Start date')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(createProject).toHaveBeenCalledWith(expect.objectContaining({ clientId: 'client-1' })),
+    );
+  });
+});
+
+describe('Project form client handoff', () => {
+  it('retains project details while opening and cancelling client creation', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ProjectForm />, { permissions: ['manage:client'], withToast: true });
+    await user.type(screen.getByRole('textbox', { name: /^project name/i }), 'Preserved tower');
+    await user.click(screen.getByRole('button', { name: 'New client' }));
+    expect(screen.getByRole('button', { name: 'Create client' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('textbox', { name: /^project name/i })).toHaveValue('Preserved tower');
+    expect(createProject).not.toHaveBeenCalled();
   });
 });

@@ -19,7 +19,7 @@ import { EMPTY_CLIENT_FORM, toClientFormValues, toCreateClientPayload, toUpdateC
 import { useCreateClient, useUpdateClient } from '../hooks/use-client';
 import type { Client } from '../types';
 
-interface ClientFormProps { client?: Client }
+interface ClientFormProps { client?: Client; onCreated?: (client: Client) => void; onCancel?: () => void }
 
 /**
  * Create and edit a client.
@@ -39,7 +39,7 @@ interface ClientFormProps { client?: Client }
  * not by a box around every group), and one action bar joined to the panel's foot. The
  * identity of the record comes first, then who we talk to, then anything optional.
  */
-export function ClientForm({ client }: ClientFormProps = {}) {
+export function ClientForm({ client, onCreated, onCancel }: ClientFormProps = {}) {
   const t = useTranslations('platform.clients.create');
   const tCommon = useTranslations('common');
   const router = useRouter();
@@ -52,12 +52,12 @@ export function ClientForm({ client }: ClientFormProps = {}) {
     name: z.string().trim().min(1, t('nameRequired')).max(255, t('nameTooLong')),
     type: z.enum(['COMPANY', 'GOVERNMENT', 'NGO', 'INDIVIDUAL', 'OTHER']).optional(),
     taxNumber: z.string(), defaultCurrency: z.string(), address: z.string().optional(), notes: z.string().optional(),
-    contactName: z.string().trim().min(1, t('contactNameRequired')).max(255, t('nameTooLong')),
+    contactName: z.string().trim().max(255, t('nameTooLong')),
     contactRole: z.string().trim().max(100, t('contactRoleTooLong')),
     contactPhone: z.string().trim().max(50, t('contactPhoneTooLong')),
     contactEmail: z.string().trim().email(t('contactEmailInvalid')).or(z.literal('')),
   }).superRefine((values, ctx) => {
-    if ((values.contactPhone || values.contactEmail || values.contactRole) && !values.contactName) {
+    if (!isEdit && !values.contactName) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['contactName'], message: t('contactNameRequired') });
     }
   });
@@ -93,10 +93,13 @@ export function ClientForm({ client }: ClientFormProps = {}) {
   const apiErrors = mutation.error ? [mutation.error instanceof ApiError ? mutation.error.message : t('failed')] : [];
   const hasSummary = fieldErrors.length > 0 || apiErrors.length > 0;
 
+  const leave = () => onCancel ? onCancel() : router.push('/clients');
   const submit = (values: ClientFormValues) => {
+    if (mutation.isPending) return;
     if (isEdit && client) return update.mutate(toUpdateClientPayload(values));
     create.mutate(toCreateClientPayload(values), {
       onSuccess: (created) => {
+        if (onCreated) { onCreated(created); return; }
         toast({
           tone: 'success', title: t('createdToast'), description: `${created.name} · ${created.code}`, duration: 9000,
           action: { label: t('createProject'), onClick: () => router.push(`/projects/new?clientId=${created.id}`) },
@@ -124,12 +127,7 @@ export function ClientForm({ client }: ClientFormProps = {}) {
                 <ClientTypeSelect control={control} t={t} />
               </FormField>
 
-              {/* The code is a read-only field rather than a notice above the form: a value the
-                  system assigns still has a place in the record, and giving it one shows the user
-                  where it will appear instead of only telling them that it exists. */}
-              <FormField htmlFor="client-code" label={t('code')} hint={isEdit ? undefined : t('codeAutoHint')}>
-                <Input id="client-code" readOnly value={client?.code ?? t('codeAuto')} />
-              </FormField>
+              {isEdit ? <FormField htmlFor="client-code" label={t('code')}><Input id="client-code" readOnly value={client?.code ?? ''} /></FormField> : null}
             </div>
 
             {candidates.length > 0 ? <DuplicateWarning candidates={candidates} onContinue={() => setAllowDuplicate(true)} t={t} /> : null}
@@ -149,11 +147,11 @@ export function ClientForm({ client }: ClientFormProps = {}) {
             </FormSection>
           )}
 
-          <FormSection title={t('notesSection')} description={t('notesDescription')} variant="plain">
+          <details open={isEdit || undefined}><summary className="cursor-pointer text-body-sm font-medium text-foreground">{t('notesSection')}</summary><div className="pt-4">
             <FormField htmlFor="client-notes" label={t('notes')} hint={t('notesHint')}>
               <Textarea id="client-notes" placeholder={t('notesPlaceholder')} {...register('notes')} />
             </FormField>
-          </FormSection>
+          </div></details>
         </FormPanel>
 
         <FormActionBar
@@ -161,12 +159,12 @@ export function ClientForm({ client }: ClientFormProps = {}) {
           pendingLabel={isEdit ? undefined : t('creating')}
           isPending={mutation.isPending}
           cancelHref={isEdit ? `/clients/${client!.id}` : undefined}
-          onCancel={isEdit ? undefined : () => (isDirty ? setShowLeaveConfirm(true) : router.push('/clients'))}
+          onCancel={isEdit ? undefined : () => (isDirty ? setShowLeaveConfirm(true) : leave())}
           cancelLabel={t('cancel')}
         />
       </form>
 
-      {showLeaveConfirm ? <ConfirmActionDialog title={tCommon('unsavedChanges.title')} description={tCommon('unsavedChanges.body')} confirmLabel={tCommon('unsavedChanges.leave')} isPending={false} onConfirm={() => router.push('/clients')} onDismiss={() => setShowLeaveConfirm(false)} /> : null}
+      {showLeaveConfirm ? <ConfirmActionDialog title={tCommon('unsavedChanges.title')} description={tCommon('unsavedChanges.body')} confirmLabel={tCommon('unsavedChanges.leave')} isPending={false} onConfirm={leave} onDismiss={() => setShowLeaveConfirm(false)} /> : null}
     </>
   );
 }
@@ -178,14 +176,14 @@ export function ClientForm({ client }: ClientFormProps = {}) {
 
 function FormPanel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-t-panel border border-b-0 border-border bg-surface px-5 py-6 shadow-e1 sm:px-8">
+    <div className="rounded-t-panel border border-b-0 border-border bg-surface px-5 py-6  sm:px-8">
       <div className="space-y-8">{children}</div>
     </div>
   );
 }
 
 function FormActionBar(props: React.ComponentProps<typeof FormActions>) {
-  return <FormActions {...props} className="rounded-b-panel border border-border shadow-e1 sm:px-8" />;
+  return <FormActions {...props} className="rounded-b-panel border border-border  sm:px-8" />;
 }
 
 // ─── Fields ───────────────────────────────────────────────────────────────────

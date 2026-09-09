@@ -750,7 +750,14 @@
       "viewCost": "View project cost",
       "viewCostHint": "Drill down by BOQ, supplier or cost category",
       "openProcurement": "Open Procurement",
-      "openProcurementHint": "Orders, receipts and bills live in the buyer workspace"
+      "openProcurementHint": "Orders, receipts and bills live in the buyer workspace",
+      "empty": {
+        "title": "Start with what the site needs",
+        "description": "Raise a requirement for materials or services. Track its purchasing and cost here as procurement progresses.",
+        "pipeline": "Requirements → Purchase orders → Goods received → Supplier bills → Payments",
+        "action": "Open requirements",
+        "owner": "Your project team can raise requirements when the site needs them."
+      }
     },
     "requirements": {
       "title": "Project requirements",

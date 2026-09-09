@@ -54,12 +54,15 @@
     },
     "weights": {
       "label": "Assign weights to 100%",
-      "blocked": "Create a work package first"
+      "blocked": "Create a work package first",
+      "action": "Set weights"
     },
     "baseline": {
       "label": "Set the planned baseline",
-      "description": "Optional — gives the progress curve a real planned line instead of an estimate."
-    }
+      "description": "Optional — gives the progress curve a real planned line instead of an estimate.",
+      "action": "Set planned baseline"
+    },
+    "loadFailed": "Progress setup could not be loaded. Reload this page to try again."
   },
   "actions": {
     "newReport": "New daily report",

@@ -130,7 +130,7 @@ export function ClientsList() {
       // The whole row navigates. A client row has exactly one thing a reader wants from it —
       // the client — and making them find the name to click was work with no purpose.
       rowHref={(client) => `/clients/${client.id}`}
-      onClearFilters={() => setStatus('ALL')}
+      onClearFilters={status !== 'ALL' ? () => setStatus('ALL') : undefined}
       rowActions={(client) => (
         <RowActions
           overflow={

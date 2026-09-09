@@ -3,16 +3,19 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 
 import { useLifecycleCommand } from '@/features/lifecycle/use-lifecycle-command';
+import type { ProjectLifecycleCommand } from '@erp/types';
 
 import {
   cancelProject,
   getProject,
   getProjectWorkspaceSummary,
+  getProjectReadiness,
+  getProjectGuidance,
+  type ProjectTransition,
   resumeProject,
   runProjectCommand,
   suspendProject,
 } from '../api/projects-api';
-import type { ProjectCommand } from '../project-actions';
 import type { ProjectDetail, ProjectWorkspaceSummary } from '../types';
 import { projectKeys } from './use-projects';
 
@@ -44,9 +47,17 @@ export function useProjectWorkspaceSummary(
  */
 export function useAdvanceProject(id: string) {
   return useLifecycleCommand(
-    (command: ProjectCommand) => runProjectCommand(id, command),
+    (transition: ProjectTransition) => runProjectCommand(id, transition),
     projectKeys.all,
   );
+}
+
+export function useProjectReadiness(id: string, command: ProjectLifecycleCommand = 'start', enabled = true) {
+  return useQuery({ queryKey: [...projectKeys.detail(id), 'readiness', command], queryFn: () => getProjectReadiness(id, command), enabled });
+}
+
+export function useProjectGuidance(id: string) {
+  return useQuery({ queryKey: [...projectKeys.detail(id), 'guidance'], queryFn: () => getProjectGuidance(id) });
 }
 
 export function useCancelProject(id: string) {

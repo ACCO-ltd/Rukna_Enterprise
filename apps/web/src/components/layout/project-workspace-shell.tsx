@@ -19,7 +19,7 @@ import {
 import { ProjectActionsPanel } from '@/features/projects/components/project-actions-panel';
 import { ProjectStatusBadge } from '@/features/projects/components/project-status-badge';
 import { useDistricts } from '@/features/districts/hooks/use-districts';
-import { useProject, useProjectWorkspaceSummary } from '@/features/projects/hooks/use-project';
+import { useProject } from '@/features/projects/hooks/use-project';
 import { getAvailableActions } from '@/features/projects/project-actions';
 import { formatDate } from '@/lib/format';
 
@@ -59,7 +59,6 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
   const pathname = usePathname();
   const locale = useLocale() as 'en' | 'ar';
   const projectQuery = useProject(id);
-  const summaryQuery = useProjectWorkspaceSummary(id);
   const project = projectQuery.data;
 
   // The project carries `districtId`, not the district's name, so the site line is composed
@@ -237,10 +236,9 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
               {/* One primary control and an overflow for everything else. These used to be
                   portalled up from the Overview page, which left the other seven tabs with a
                   header that had no actions in it at all. */}
-              <ProjectActionsPanel
+              {(pathname === `/projects/${id}` || advanceBlockedBySuspension) ? <ProjectActionsPanel
                 project={project}
-                setup={summaryQuery.isPending ? undefined : (summaryQuery.data?.setup ?? null)}
-              />
+              /> : project.status === 'DRAFT' ? <Button variant="ghost" size="sm" asChild><Link href={`/projects/${id}#project-readiness-title`}>{t('preparation.title')}</Link></Button> : null}
             </div>
           ) : null}
         </div>
@@ -277,11 +275,7 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
         </div>
       ) : null}
 
-      {summaryQuery.isError ? (
-        <div className="mb-4">
-          <Alert variant="warning" messages={[t('workspace.contractSummaryUnavailable')]} />
-        </div>
-      ) : null}
+
       {children}
     </div>
   );

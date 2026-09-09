@@ -116,6 +116,7 @@ function mount(data: ProjectDocumentListResponse | undefined, over: { canCreate?
   docMocks.useProjectDocuments.mockReturnValue({
     data,
     isPending: data === undefined,
+    isSuccess: data !== undefined,
     isError: false,
     refetch: vi.fn(),
   });

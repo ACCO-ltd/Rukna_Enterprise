@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { Button, Skeleton } from '@erp/ui';
+import { Alert, Button, Skeleton } from '@erp/ui';
 
 import { SetupChecklist, type ChecklistItem } from '@/components/setup-checklist';
 
@@ -31,13 +31,15 @@ export function ProgressOverviewHeader({
     return <Skeleton className="h-24 w-full" aria-hidden="true" />;
   }
 
+  if (rollup.isError || workPackages.isError) return <Alert variant="error" messages={[t('setup.loadFailed')]} />;
+
   const packages = rollup.data?.packages ?? [];
   const hasPackages = (workPackages.data?.length ?? 0) > 0;
   const hasAllocation = packages.some((p) => p.leafCount > 0);
   const weightsComplete = rollup.data?.weightsComplete ?? false;
 
   // A meaningful figure needs at least one work package with allocated BOQ items.
-  if (hasPackages && hasAllocation) {
+  if (hasPackages && hasAllocation && weightsComplete) {
     return <ProgressHeadline projectId={projectId} />;
   }
 
@@ -74,12 +76,14 @@ export function ProgressOverviewHeader({
         : t('rollup.weightsIncomplete', { total: rollup.data?.weightsTotal ?? '0' }),
       status: weightsComplete ? 'complete' : hasPackages ? 'incomplete' : 'blocked',
       blockedReason: hasPackages ? undefined : t('setup.weights.blocked'),
+      action: hasPackages ? <Button size="sm" variant="outline" onClick={() => onGoTo('planSetup')}>{t('setup.weights.action')}</Button> : undefined,
     },
     {
       id: 'baseline',
       label: t('setup.baseline.label'),
       description: t('setup.baseline.description'),
       status: 'optional',
+      action: <Button size="sm" variant="ghost" onClick={() => onGoTo('planSetup')}>{t('setup.baseline.action')}</Button>,
     },
   ];
 

@@ -4,13 +4,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
 import { ApiError } from '@/lib/api-client';
-import { getProject, getProjectWorkspaceSummary } from '@/features/projects/api/projects-api';
+import { getProject, getProjectWorkspaceSummary, getProjectReadiness } from '@/features/projects/api/projects-api';
 import type { ProjectDetail as ProjectDetailModel, ProjectWorkspaceSummary } from '../types';
 
 import { ProjectDetail } from './project-detail';
 
 vi.mock('@/features/projects/api/projects-api', () => ({
   getProject: vi.fn(),
+  getProjectReadiness: vi.fn(),
   getProjectWorkspaceSummary: vi.fn(),
   runProjectCommand: vi.fn(),
   cancelProject: vi.fn(),
@@ -78,6 +79,7 @@ function workspaceSummary(
 }
 
 beforeEach(() => {
+  vi.mocked(getProjectReadiness).mockResolvedValue({command: 'start', targetStatus: 'ACTIVE', ready: false, conditions: [{code: 'BOQ_BASELINED', severity: 'MANDATORY', satisfied: false, detail: 'Baseline BOQ'}, {code: 'ACTIVE_MAIN_CONTRACT', severity: 'MANDATORY', satisfied: false, detail: 'Execute contract'}, {code: 'DELIVERY_TEAM', severity: 'WAIVABLE', satisfied: false, detail: 'Assign team'}], deferred: []});
   vi.mocked(getProject).mockReset();
   vi.mocked(getProjectWorkspaceSummary).mockReset();
   vi.mocked(getProjectWorkspaceSummary).mockResolvedValue(workspaceSummary());
@@ -136,7 +138,7 @@ describe('ProjectDetail — project lifecycle', () => {
     ]);
 
     const active = within(rail).getByText('Active');
-    expect(active).toHaveClass('text-brand-primary');
+    expect(active).toHaveClass('text-foreground');
     expect(active.closest('[aria-current="step"]')).not.toBeNull();
     // A passed stage carries the success colour, not the brand; an upcoming one is muted.
     expect(within(rail).getByText('Preparation')).toHaveClass('text-success');
@@ -161,7 +163,7 @@ describe('ProjectDetail — project lifecycle', () => {
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
-    await screen.findByRole('heading', { name: 'Project lifecycle' });
+    await screen.findByRole('list', { name: 'Project lifecycle' });
     expect(screen.queryByText(/View history/i)).not.toBeInTheDocument();
   });
 });
@@ -172,7 +174,7 @@ describe('ProjectDetail — project readiness', () => {
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
-    const readiness = await screen.findByRole('heading', { name: 'Project readiness' });
+    const readiness = await screen.findByRole('heading', { name: 'Project preparation' });
     const information = await screen.findByRole('heading', { name: 'Project information' });
 
     expect(readiness.compareDocumentPosition(information)).toBe(
@@ -184,66 +186,21 @@ describe('ProjectDetail — project readiness', () => {
    * The steps are not peers — the contract is gated behind a baselined BOQ — so they read as
    * a checklist in dependency order, and the blocked one says so on its own row.
    */
-  it('states each step, its action, and the one thing that is blocked', async () => {
+  it('shows server conditions and their owner when the reader cannot act', async () => {
     vi.mocked(getProject).mockResolvedValue(project());
-
     renderWithProviders(<ProjectDetail id="p1" />);
-
-    const section = (await screen.findByRole('heading', { name: 'Project readiness' })).closest(
-      'section',
-    )!;
-    const steps = within(section).getAllByRole('listitem');
-    expect(steps).toHaveLength(4);
-
-    expect(within(section).getByText('1 of 4 complete')).toBeInTheDocument();
-    expect(within(section).getByText('25%')).toBeInTheDocument();
-
-    expect(within(section).getByRole('link', { name: /Open BOQ/ })).toHaveAttribute(
-      'href',
-      '/projects/p1/boq',
-    );
-    expect(within(section).getByRole('link', { name: /Add members/ })).toHaveAttribute(
-      'href',
-      '/projects/p1/members',
-    );
-
-    // The contract is blocked, and there is no link to a screen that would reject the work.
-    expect(within(section).getByText('Blocked')).toBeInTheDocument();
-    expect(within(section).queryByRole('link', { name: /Create contract/ })).toBeNull();
-
-    // The recommended next step and a later open step are both reachable — the server imposes
-    // no dependency between them — but they are not offered with equal emphasis.
-    expect(within(section).getByRole('link', { name: /Open BOQ/ }).className).not.toEqual(
-      within(section).getByRole('link', { name: /Add members/ }).className,
-    );
-
-    // The dependency is explained once, not once per step (§23).
-    expect(
-      within(section).getAllByText('The main contract becomes available once the BOQ is baselined.'),
-    ).toHaveLength(1);
+    const section = (await screen.findByRole('heading', {name: 'Project preparation'})).closest('section')!;
+    expect(within(section).getAllByRole('listitem')).toHaveLength(3);
+    expect(within(section).queryByText('25%')).not.toBeInTheDocument();
+    expect(within(section).getAllByText('Owner action needed')).toHaveLength(3);
+    expect(within(section).queryByRole('link')).not.toBeInTheDocument();
   });
 
-  it('says it is ready once every step is done, and stops explaining the dependency', async () => {
+  it('uses the readiness response instead of the legacy completed-step count', async () => {
     vi.mocked(getProject).mockResolvedValue(project());
-    vi.mocked(getProjectWorkspaceSummary).mockResolvedValue(
-      workspaceSummary({
-        setup: {
-          identityComplete: true,
-          boqExists: true,
-          boqBaselined: true,
-          mainContractApplicable: true,
-          mainContractExists: true,
-          teamReady: true,
-          completedSteps: 4,
-          totalSteps: 4,
-        },
-      }),
-    );
-
+    vi.mocked(getProjectReadiness).mockResolvedValue({command: 'start', targetStatus: 'ACTIVE', ready: true, conditions: [], deferred: []});
     renderWithProviders(<ProjectDetail id="p1" />);
-
-    expect(await screen.findByText('Ready to start')).toBeInTheDocument();
-    expect(screen.queryByText('Blocked')).not.toBeInTheDocument();
+    expect(await screen.findByText('The current start conditions are satisfied. Record commencement to start the project.')).toBeInTheDocument();
   });
 
   /**
@@ -256,7 +213,7 @@ describe('ProjectDetail — project readiness', () => {
     renderWithProviders(<ProjectDetail id="p1" />);
 
     await screen.findByRole('heading', { name: 'Project information' });
-    expect(screen.queryByRole('heading', { name: 'Project readiness' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Project preparation' })).not.toBeInTheDocument();
   });
 });
 
@@ -496,7 +453,7 @@ describe('ProjectDetail — actions belong to the shell', () => {
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
-    await screen.findByRole('heading', { name: 'Project readiness' });
+    await screen.findByRole('heading', { name: 'Project preparation' });
     expect(screen.queryByRole('button', { name: 'Start project' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Actions' })).not.toBeInTheDocument();
   });

@@ -14,6 +14,8 @@ export interface FormActionsProps {
   pendingLabel?: string;
   /** When true the submit button shows the pending state and is disabled. */
   isPending: boolean;
+  /** Unavailable for a known prerequisite, without implying a request is running. */
+  disabled?: boolean;
   /** Render the cancel button as a link to this path. Prefer this over `onCancel`. */
   cancelHref?: string;
   /** Cancel click handler (used when the cancel action requires logic). */
@@ -47,6 +49,7 @@ export function FormActions({
   submitLabel,
   pendingLabel,
   isPending,
+  disabled = false,
   cancelHref,
   onCancel,
   cancelLabel,
@@ -73,7 +76,7 @@ export function FormActions({
 
         {/* Primary and cancel — end of bar */}
         <div className="flex flex-col gap-2.5 sm:flex-row-reverse sm:items-center">
-          <Button type="submit" disabled={isPending}>
+          <Button type="submit" disabled={isPending || disabled}>
             {isPending ? resolvedPending : submitLabel}
           </Button>
 

@@ -150,7 +150,7 @@ describe('ProjectsList', () => {
 
     expect(await screen.findByText('No projects match your search.')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+    await user.click(screen.getByRole('button', { name: 'Clear search' }));
     expect(await screen.findByRole('link', { name: /Al-Baraka/ })).toBeInTheDocument();
   });
 

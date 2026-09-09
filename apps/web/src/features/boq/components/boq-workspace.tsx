@@ -22,6 +22,7 @@ import { ApiError } from '@/lib/api-client';
 import { fromMinorUnits, sumMinorUnits, MONEY_SCALE } from '@/lib/money';
 import { EmptyState } from '@/components/empty-state';
 import { LifecycleCommandDrawer } from '@/components/lifecycle-command-drawer';
+import { useProjectGuidance } from '@/features/projects/hooks/use-project';
 import { usePermissions } from '@/features/auth/permissions/can';
 
 import {
@@ -87,6 +88,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const { can } = usePermissions();
   const { toast } = useToast();
 
+  const guidance = useProjectGuidance(projectId);
   const workspaceQuery = useBoqWorkspace(projectId);
   const workspace = workspaceQuery.data;
 
@@ -316,6 +318,9 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
       }
     : null;
 
+  const contractAction = !workspace.draft && selected?.id === workspace.approved?.id ? guidance.data?.find((item) => item.kind === 'MAIN_CONTRACT_REQUIRED' && item.actionUrl) : undefined;
+  const primaryAction = contractAction?.actionUrl ? <Button asChild><Link href={contractAction.actionUrl}>{t('actions.createContract')}</Link></Button> : <NextStepButton step={nextStep} onRun={runNextStep} />;
+
   const handleExportTree = () => {
     downloadCsv(
       `BOQ-v${selected?.versionNumber ?? 1}.csv`,
@@ -344,7 +349,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
           actions={
             <>
               {/* Exactly one primary, and it is never disabled — see boq-next-step.ts. */}
-              <NextStepButton step={nextStep} onRun={runNextStep} />
+              {primaryAction}
 
               {workspace.revision ? (
                 <Button
@@ -377,7 +382,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
                   <DropdownMenuItem onSelect={handleExportTree}>
                     {t('toolbar.export')}
                   </DropdownMenuItem>
-                  {actions.canCreateDraft && nextStep.kind !== 'START_REVISION' ? (
+                  {actions.canCreateDraft && (nextStep.kind !== 'START_REVISION' || Boolean(contractAction)) ? (
                     <DropdownMenuItem onSelect={() => setCommand('revise')}>
                       {t('actions.startRevision')}
                     </DropdownMenuItem>
@@ -409,7 +414,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         totalAmount={selected?.totalAmount ?? null}
         currency={workspace.currency}
         canViewCommercials={canViewCommercials}
-        action={<NextStepButton step={nextStep} onRun={runNextStep} />}
+        action={primaryAction}
       />
 
       {workspace.readiness && isDraft ? (

@@ -41,6 +41,7 @@ function buildColumns(
   t: ReturnType<typeof useTranslations<'platform.projects'>>,
   tTypes: ReturnType<typeof useTranslations<'projectTypes'>>,
   locale: 'en' | 'ar',
+  canViewFinancials: boolean,
 ): GridColumn<Project>[] {
   return [
     {
@@ -93,7 +94,7 @@ function buildColumns(
       numeric: true,
       sortable: true,
       plainValue: (project) => project.contractValue ? Number(project.contractValue) : null,
-      render: (project) => <span className="whitespace-nowrap font-medium tabular-nums">{formatMoney(project.contractValue, project.currency, locale) ?? t('restrictedOrNotSet')}</span>,
+      render: (project) => <span className="whitespace-nowrap font-medium tabular-nums">{formatMoney(project.contractValue, project.currency, locale) ?? t(canViewFinancials ? 'notSet' : 'restricted')}</span>,
     },
   ];
 }
@@ -104,6 +105,7 @@ export function ProjectsList() {
   const locale = useLocale() as 'en' | 'ar';
   const { data, isPending, isError, refetch } = useProjects();
   const { can } = usePermissions();
+  const canViewFinancials = can('view:financial-position');
   const mayCreate = can('create:project');
   const canManage = can(PROJECT_PERMISSIONS.manage);
   const [status, setStatus] = useState<ProjectStatus | 'ALL'>('ALL');
@@ -112,7 +114,7 @@ export function ProjectsList() {
     () => filterProjects(data ?? [], { search: '', status, category }),
     [data, status, category],
   );
-  const columns = useMemo(() => buildColumns(t, tTypes, locale), [t, tTypes, locale]);
+  const columns = useMemo(() => buildColumns(t, tTypes, locale, canViewFinancials), [t, tTypes, locale, canViewFinancials]);
 
   const statusFilter = (
     <div className="flex flex-wrap gap-2">
@@ -163,10 +165,11 @@ export function ProjectsList() {
       // whatever order the API returned.
       defaultSort={{ key: 'project', direction: 'asc' }}
       rowHref={(project) => `/projects/${project.id}`}
-      onClearFilters={() => {
+      sortControl={false}
+      onClearFilters={status !== 'ALL' || category !== 'ALL' ? () => {
         setStatus('ALL');
         setCategory('ALL');
-      }}
+      } : undefined}
       rowActions={(project) => (
         <RowActions
           overflow={

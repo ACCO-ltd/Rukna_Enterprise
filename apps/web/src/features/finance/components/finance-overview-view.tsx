@@ -90,7 +90,7 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
         </div>
         <div className="min-w-0 space-y-6">
           <ControlStatus data={data} />
-          <NeedsAttention items={data.attention} />
+          <NeedsAttention items={data.attention.filter((item) => accounting.available || item.code !== 'ACCOUNTING_SETUP_INCOMPLETE')} />
         </div>
       </div>
 
@@ -183,8 +183,9 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
                   ? t('accountingPosition.unavailableReason')
                   : tc('restrictedReason')
               }
-              items={accounting.blockers.map((b) => ({ label: b.label, detail: b.detail }))}
             />
+            {accounting.blockers.length > 0 ? <details className="mt-3"><summary className="cursor-pointer text-body-sm font-medium">{t('accountingPosition.setupDetails')}</summary><ul className="mt-3 space-y-2 text-caption text-muted-foreground">{accounting.blockers.map((blocker) => <li key={blocker.code}><span className="font-medium text-foreground">{blocker.label}</span> {blocker.detail}</li>)}</ul></details> : null}
+            {data.attention.find((item) => item.code === 'ACCOUNTING_SETUP_INCOMPLETE')?.href ? <Button asChild variant="outline" size="sm" className="mt-4"><Link href={data.attention.find((item) => item.code === 'ACCOUNTING_SETUP_INCOMPLETE')!.href!}>{t('accountingPosition.configure')}</Link></Button> : null}
           </div>
         </SectionPanel>
       );
@@ -302,16 +303,7 @@ export function FinanceOverviewView({ projectId }: { projectId: string }) {
   }
 
   function NeedsAttention({ items }: { items: FinanceAttentionItem[] }) {
-    if (items.length === 0) {
-      return (
-        <SectionPanel title={t('attention.title')}>
-          <p className="px-4 py-5 text-body-sm text-muted-foreground sm:px-5">
-            {t('attention.empty')}
-          </p>
-        </SectionPanel>
-      );
-    }
-
+    if (items.length === 0) return null;
     const ICON = {
       CRITICAL: TriangleAlert,
       WARNING: AlertTriangle,

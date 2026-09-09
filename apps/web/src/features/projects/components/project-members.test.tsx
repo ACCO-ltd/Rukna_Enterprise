@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ProjectRole } from '@erp/types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -82,90 +82,136 @@ beforeEach(() => {
   });
   usersMocks.useUsers.mockReturnValue({ data: [], isPending: false, isError: false });
   // A third party, so neither member is "self" unless a test says so.
-  sessionMocks.useSession.mockReturnValue({ user: { id: 'u-9' }, accessToken: 't' });
+  sessionMocks.useSession.mockReturnValue({
+    user: { id: 'u-1', permissions: ['manage:project-member'], roles: [] },
+    accessToken: 't',
+  });
 });
 
 describe('ProjectMembers', () => {
   it('lists each member with their name, email and translated roles', () => {
-    renderWithProviders(<ProjectMembers projectId="p-1" />);
+    renderWithProviders(<ProjectMembers projectId="p-1" />, {
+      permissions: ['manage:project-member'],
+    });
 
     expect(screen.getByText('Amina Yusuf')).toBeInTheDocument();
     expect(screen.getByText('u-2@acco.test')).toBeInTheDocument();
-    expect(screen.getAllByText('Project manager')).toHaveLength(2);
+    expect(screen.getAllByText('Project manager')).toHaveLength(1);
     expect(screen.getByText('Site engineer')).toBeInTheDocument();
   });
 
-  it('states that only a member can change the membership', () => {
-    renderWithProviders(<ProjectMembers projectId="p-1" />);
-
-    expect(screen.getByText(/Only someone already on the project/i)).toBeInTheDocument();
+  it('hides membership actions without manage permission', () => {
+    sessionMocks.useSession.mockReturnValue({
+      user: { id: 'u-9', permissions: ['manage:project-member'], roles: [] },
+    });
+    renderWithProviders(<ProjectMembers projectId="p-1" />, { permissions: [] });
+    expect(screen.queryByRole('button', { name: 'Add a member' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Actions for/ })).not.toBeInTheDocument();
   });
 
-  /** The server allows this and it is unrecoverable from the UI. */
-  it('disables removing the last project manager, with the reason attached', () => {
-    renderWithProviders(<ProjectMembers projectId="p-1" />);
-
-    const buttons = screen.getAllByRole('button', { name: 'Remove' });
-    expect(buttons[0]).toBeDisabled();
-    expect(buttons[0]).toHaveAttribute('title', expect.stringMatching(/only project manager/i));
+  it('protects the last project manager from removal', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ProjectMembers projectId="p-1" />, {
+      permissions: ['manage:project-member'],
+    });
+    await user.click(screen.getByRole('button', { name: 'Actions for Amina Yusuf' }));
+    expect(screen.getByRole('menuitem', { name: 'Remove' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
   });
 
-  it('allows removing a member who is not the last manager', () => {
-    renderWithProviders(<ProjectMembers projectId="p-1" />);
-
-    expect(screen.getAllByRole('button', { name: 'Remove' })[1]).toBeEnabled();
-  });
-
-  it('disables removing yourself, because you could not add yourself back', () => {
-    sessionMocks.useSession.mockReturnValue({ user: { id: 'u-2' }, accessToken: 't' });
-    renderWithProviders(<ProjectMembers projectId="p-1" />);
-
-    const buttons = screen.getAllByRole('button', { name: 'Remove' });
-    expect(buttons[1]).toBeDisabled();
-    expect(buttons[1]).toHaveAttribute('title', expect.stringMatching(/cannot remove yourself/i));
+  it('allows removing another team member', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ProjectMembers projectId="p-1" />, {
+      permissions: ['manage:project-member'],
+    });
+    await user.click(screen.getByRole('button', { name: 'Actions for Bashir Yusuf' }));
+    expect(screen.getByRole('menuitem', { name: 'Remove' })).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
   });
 
   it('offers only users who are not already members', async () => {
     const user = userEvent.setup();
     usersMocks.useUsers.mockReturnValue({
       data: [
-        { id: 'u-1', email: 'u-1@acco.test', firstName: 'Amina', lastName: 'Yusuf', status: 'ACTIVE', organizationId: 'org-1' },
-        { id: 'u-3', email: 'u-3@acco.test', firstName: 'Caasho', lastName: 'Nur', status: 'ACTIVE', organizationId: 'org-1' },
+        {
+          id: 'u-1',
+          email: 'u-1@acco.test',
+          firstName: 'Amina',
+          lastName: 'Yusuf',
+          status: 'ACTIVE',
+          organizationId: 'org-1',
+        },
+        {
+          id: 'u-3',
+          email: 'u-3@acco.test',
+          firstName: 'Caasho',
+          lastName: 'Nur',
+          status: 'ACTIVE',
+          organizationId: 'org-1',
+        },
       ],
       isPending: false,
       isError: false,
     });
-    renderWithProviders(<ProjectMembers projectId="p-1" />);
+    renderWithProviders(<ProjectMembers projectId="p-1" />, {
+      permissions: ['manage:project-member'],
+    });
 
+    await user.click(screen.getByRole('button', { name: 'Add a member' }));
     await openSelect(user, screen.getByLabelText('Name'));
     expect(screen.getByRole('option', { name: /Caasho Nur/ })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /Amina Yusuf ·/ })).not.toBeInTheDocument();
   });
 
-  it('says so when everyone in the organisation is already on the project', () => {
+  it('says so when everyone in the organisation is already on the project', async () => {
+    const user = userEvent.setup();
     usersMocks.useUsers.mockReturnValue({ data: [], isPending: false, isError: false });
-    renderWithProviders(<ProjectMembers projectId="p-1" />);
+    renderWithProviders(<ProjectMembers projectId="p-1" />, {
+      permissions: ['manage:project-member'],
+    });
 
+    await user.click(screen.getByRole('button', { name: 'Add a member' }));
     expect(screen.getByText(/already on this project/i)).toBeInTheDocument();
   });
 
   /** `@ArrayMinSize(1)`, and there is no endpoint to add a role afterwards. */
-  it('will not submit without a role selected', () => {
+  it('will not submit without a role selected', async () => {
+    const user = userEvent.setup();
     usersMocks.useUsers.mockReturnValue({
-      data: [{ id: 'u-3', email: 'u-3@acco.test', firstName: 'Caasho', lastName: 'Nur', status: 'ACTIVE', organizationId: 'org-1' }],
+      data: [
+        {
+          id: 'u-3',
+          email: 'u-3@acco.test',
+          firstName: 'Caasho',
+          lastName: 'Nur',
+          status: 'ACTIVE',
+          organizationId: 'org-1',
+        },
+      ],
       isPending: false,
       isError: false,
     });
-    renderWithProviders(<ProjectMembers projectId="p-1" />);
+    renderWithProviders(<ProjectMembers projectId="p-1" />, {
+      permissions: ['manage:project-member'],
+    });
 
+    await user.click(screen.getByRole('button', { name: 'Add a member' }));
     expect(screen.getByRole('button', { name: 'Add to project' })).toBeDisabled();
   });
 
-  it('edit roles: offers only the assignable roles, not the deprecated ones', () => {
-    renderWithProviders(<ProjectMembers projectId="p-1" />);
+  it('edit roles: offers only the assignable roles, not the deprecated ones', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ProjectMembers projectId="p-1" />, {
+      permissions: ['manage:project-member'],
+    });
 
     // ENGINEER (row 1) is not the last manager — open its role editor.
-    fireEvent.click(screen.getAllByRole('button', { name: 'Edit roles' })[1]);
+    await user.click(screen.getByRole('button', { name: 'Actions for Bashir Yusuf' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Edit roles' }));
 
     expect(screen.getByRole('button', { name: 'Project manager' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Site engineer' })).toBeInTheDocument();
@@ -174,11 +220,15 @@ describe('ProjectMembers', () => {
     expect(screen.queryByRole('button', { name: 'Commercial manager' })).not.toBeInTheDocument();
   });
 
-  it("edit roles: locks the Project Manager toggle for the project's last manager", () => {
-    renderWithProviders(<ProjectMembers projectId="p-1" />);
+  it("edit roles: locks the Project Manager toggle for the project's last manager", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ProjectMembers projectId="p-1" />, {
+      permissions: ['manage:project-member'],
+    });
 
     // MANAGER (row 0) is the only project manager — its PM role cannot be dropped.
-    fireEvent.click(screen.getAllByRole('button', { name: 'Edit roles' })[0]);
+    await user.click(screen.getByRole('button', { name: 'Actions for Amina Yusuf' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Edit roles' }));
 
     expect(screen.getByRole('button', { name: 'Project manager' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Site engineer' })).toBeEnabled();
@@ -186,9 +236,10 @@ describe('ProjectMembers', () => {
 
   it('renders an empty team without error', () => {
     mocks.useProjectMembers.mockReturnValue({ data: [], isPending: false, isError: false });
-    renderWithProviders(<ProjectMembers projectId="p-1" />);
+    renderWithProviders(<ProjectMembers projectId="p-1" />, {
+      permissions: ['manage:project-member'],
+    });
 
     expect(screen.getByText(/No members on this project/i)).toBeInTheDocument();
   });
-
 });

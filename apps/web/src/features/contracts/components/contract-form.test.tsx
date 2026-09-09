@@ -1,99 +1,64 @@
-import { screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
+import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
-
-/**
- * ContractForm has two ways to learn its project (P3 Slice B):
- *
- *  - The workspace create route passes `projectId` as a prop. The project is fixed context, so
- *    the picker is replaced by a read-only fact and the value is carried in a hidden field — the
- *    user cannot (and need not) choose a project on a screen opened from inside one.
- *  - The legacy query-string entry reads `?projectId` and still shows the picker.
- *
- * These pin the lock behaviour and the workspace Cancel destination.
- */
-
+import { ContractForm } from './contract-form';
 const mocks = vi.hoisted(() => ({
-  useProjects: vi.fn(),
-  useClients: vi.fn(),
-  useBoqWorkspace: vi.fn(),
-  useCreateContract: vi.fn(),
-  useUpdateContract: vi.fn(),
-  searchParamsGet: vi.fn(),
-}));
-
-vi.mock('@/features/projects/hooks/use-projects', () => ({ useProjects: mocks.useProjects }));
-vi.mock('@/features/clients/hooks/use-clients', () => ({ useClients: mocks.useClients }));
-vi.mock('@/features/boq/hooks/use-boq', () => ({ useBoqWorkspace: mocks.useBoqWorkspace }));
-vi.mock('../hooks/use-contracts', () => ({
-  useCreateContract: mocks.useCreateContract,
-  useUpdateContract: mocks.useUpdateContract,
+  create: vi.fn(),
+  versions: [{ id: 'b1', status: 'BASELINED', versionNumber: 1 }],
+  projects: [{ id: 'p1', name: 'Office tower', code: 'ACCO-001', clientId: 'c1' }],
+  clients: [{ id: 'c1', name: 'Ministry of Works', code: 'CL-001' }],
 }));
 vi.mock('next/navigation', () => ({
-  useSearchParams: () => ({ get: mocks.searchParamsGet }),
+  useSearchParams: () => new URLSearchParams({ projectId: 'p1' }),
 }));
-vi.mock('next/link', () => ({
-  default: ({
-    href,
-    children,
-    ...props
-  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
-    <a href={href} {...props}>
-      {children}
-    </a>
-  ),
+vi.mock('@/features/projects/hooks/use-projects', () => ({
+  useProjects: () => ({ data: mocks.projects, isPending: false, isError: false }),
 }));
-
-import { ContractForm } from './contract-form';
-
-function loaded<T>(data: T) {
-  return { data, isPending: false, isError: false, isFetching: false, refetch: vi.fn() };
-}
-
-const PROJECT = { id: 'p-77', code: 'ACCO-WBR-26-0065', name: 'Waberi School', clientId: 'client-1' };
-const CLIENT = { id: 'client-1', code: 'CL-01', name: 'Ministry of Education' };
-const idle = { mutate: vi.fn(), isPending: false, error: null };
-
+vi.mock('@/features/clients/hooks/use-clients', () => ({
+  useClients: () => ({ data: mocks.clients, isPending: false, isError: false }),
+}));
+vi.mock('@/features/boq/hooks/use-boq', () => ({
+  useBoqWorkspace: () => ({ data: { versions: mocks.versions }, isPending: false, isError: false }),
+}));
+vi.mock('../hooks/use-contracts', () => ({
+  useCreateContract: () => ({ mutate: mocks.create, isPending: false, error: null }),
+  useUpdateContract: () => ({ mutate: vi.fn(), isPending: false, error: null }),
+}));
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.searchParamsGet.mockReturnValue(null);
-  mocks.useProjects.mockReturnValue(loaded([PROJECT]));
-  mocks.useClients.mockReturnValue(loaded([CLIENT]));
-  mocks.useBoqWorkspace.mockReturnValue(loaded({ versions: [] }));
-  mocks.useCreateContract.mockReturnValue(idle);
-  mocks.useUpdateContract.mockReturnValue(idle);
+  mocks.versions = [{ id: 'b1', status: 'BASELINED', versionNumber: 1 }];
 });
-
-afterEach(() => {
-  vi.clearAllMocks();
-});
-
-describe('ContractForm project lock (workspace create)', () => {
-  it('hides the project picker and states the project when projectId is passed', () => {
-    renderWithProviders(<ContractForm projectId="p-77" />);
-
-    // No project dropdown — the project is fixed context, not a choice.
-    expect(screen.queryByRole('combobox', { name: 'Project' })).toBeNull();
-    // The project is stated as a read-only fact instead.
-    expect(screen.getByText(`${PROJECT.code} — ${PROJECT.name}`)).toBeInTheDocument();
-  });
-
-  it('routes Cancel back to the project Contract & Security tab when locked', () => {
-    renderWithProviders(<ContractForm projectId="p-77" />);
-
-    expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
-      'href',
-      '/projects/p-77/commercial/contract-security',
+describe('Contract creation context', () => {
+  it('inherits the project and client and selects the only eligible baseline', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ContractForm />);
+    expect(screen.getByText('Office tower')).toBeInTheDocument();
+    expect(screen.getByText('Ministry of Works')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Client' })).not.toBeInTheDocument();
+    await user.type(screen.getByRole('textbox', { name: 'Contract number' }), 'CT-001');
+    await user.type(screen.getByRole('textbox', { name: 'Contract value' }), '1000');
+    await user.click(screen.getByRole('button', { name: 'Create contract' }));
+    await waitFor(() =>
+      expect(mocks.create).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId: 'p1', clientId: 'c1', boqVersionId: 'b1' }),
+      ),
     );
   });
-
-  it('still shows the project picker on the legacy query-string entry', () => {
-    mocks.searchParamsGet.mockReturnValue('p-77');
-
+  it('requires an explicit BOQ choice when multiple baselines are eligible', async () => {
+    mocks.versions.push({ id: 'b2', status: 'BASELINED', versionNumber: 2 });
+    const user = userEvent.setup();
     renderWithProviders(<ContractForm />);
-
-    expect(screen.getByRole('combobox', { name: 'Project' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute('href', '/contracts');
+    await user.type(screen.getByRole('textbox', { name: 'Contract number' }), 'CT-002');
+    await user.type(screen.getByRole('textbox', { name: 'Contract value' }), '1000');
+    await user.click(screen.getByRole('button', { name: 'Create contract' }));
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+  it('returns cancellation to the current project commercial workspace', () => {
+    renderWithProviders(<ContractForm />);
+    expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
+      'href',
+      '/projects/p1/commercial/contract-security',
+    );
   });
 });
