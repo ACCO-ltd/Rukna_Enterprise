@@ -55,6 +55,8 @@ function build(over: Over = {}) {
     findLeafValues: jest.fn().mockResolvedValue(over.leafValues ?? []),
   };
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
+  // Master Schedule P3 (ADR-029): the baseline repo — unused by the template path, no baseline here.
+  const baselineRepo = { findApproved: jest.fn().mockResolvedValue(null) };
   const service = new ProgressService(
     { getClient: () => prisma } as never,
     repo as never,
@@ -62,6 +64,7 @@ function build(over: Over = {}) {
     {} as never, // financialPosition — unused here
     {} as never, // commandGovernance — unused here
     files() as never,
+    baselineRepo as never,
   );
   return { repo, service };
 }

@@ -5,7 +5,9 @@ import {
   type RequestIdentity,
   type ApplyScheduleTemplateResponse,
   type ProgressActualPoint,
+  type ProgressCurvePoint,
   type ProgressCurveResponse,
+  type ProgressCurveSource,
   type ProgressPeriodComparisonResponse,
   type ProgressScheduleStatus,
   type ProgressSnapshotResponse,
@@ -13,16 +15,12 @@ import {
   type SuggestWeightsResponse,
 } from '@erp/types';
 
-import {
-  computeProvisionalBaseline,
-  isoDate,
-  plannedPercentAtDate,
-  scheduleStatusFor,
-} from '../domain/progress-curve.js';
+import { isoDate, scheduleStatusFor } from '../domain/progress-curve.js';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { ProgressRepository } from '../infrastructure/progress.repository.js';
+import { ProgrammeBaselineRepository } from '../infrastructure/programme-baseline.repository.js';
 import { PlatformFileService } from '../../../../platform/files/application/platform-file.service.js';
 import { ProjectFinancialPositionService } from '../../../accounting/financial-position/application/project-financial-position.service.js';
 import {
@@ -90,6 +88,10 @@ export class ProgressService {
     private readonly financialPosition: ProjectFinancialPositionService,
     private readonly commandGovernance: CommandGovernanceService,
     private readonly files: PlatformFileService,
+    // Master Schedule P3 (ADR-029): the read-side source of the governing frozen baseline. The
+    // variance engine measures against this once a baseline is approved; before that it reads the
+    // live targets. Prisma stays behind the repo (Clean Architecture).
+    private readonly baselineRepo: ProgrammeBaselineRepository,
   ) {}
 
   async createDpr(identity: RequestIdentity, projectId: string, dto: CreateDprDto) {
@@ -756,12 +758,97 @@ export class ProgressService {
   // ── ADR-021 CONST-PROG-011: planned baseline + schedule variance ──────────────
 
   /**
-   * Replaces the project's approved planned-progress curve (ACCO's monthly milestones). Validates
+   * The governing (APPROVED) programme baseline's frozen curve for a project, or null when none has
+   * been approved yet. Master Schedule P3 (ADR-029): read directly through the baseline repo so the
+   * variance engine can source the frozen plan without reaching for Prisma.
+   */
+  private async findGoverningBaseline(orgId: string, projectId: string) {
+    const prisma = this.tenancy.getClient();
+    return this.baselineRepo.findApproved(prisma as never, orgId, projectId);
+  }
+
+  /**
+   * Master Schedule P3 (ADR-029): the single planned-curve source of truth for the variance engine.
+   * The plan is resolved in one place, three-way:
+   *  - a governing APPROVED `ProgrammeBaseline` exists → its frozen snapshot (`source:'baseline'`, `version`);
+   *  - else the live `ProgressTarget` curve, if any (`source:'targets'`, `version:null`);
+   *  - else the provisional linear ramp Project.startDate → expectedEndDate (`source:'provisional'`).
+   *
+   * Points are returned in the interpolatable `{targetDate, cumulativePercent}` shape so
+   * `plannedPercentAt` reads all three sources uniformly. The provisional ramp is expressed as its two
+   * endpoints (0% at start, 100% at end); it is empty when the project has no usable dates — the read
+   * then reports INSUFFICIENT_DATA, exactly as before.
+   */
+  private async resolvePlannedCurve(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<{
+    points: { targetDate: Date; cumulativePercent: number }[];
+    source: ProgressCurveSource;
+    version: number | null;
+  }> {
+    const orgId = identity.activeOrganizationId;
+    const prisma = this.tenancy.getClient();
+
+    const baseline = await this.findGoverningBaseline(orgId, projectId);
+    if (baseline) {
+      return {
+        points: baseline.points.map((p) => ({
+          targetDate: p.targetDate,
+          cumulativePercent: Number(p.cumulativePercent),
+        })),
+        source: 'baseline',
+        version: baseline.version,
+      };
+    }
+
+    const targets = await this.repo.findTargets(prisma, projectId);
+    if (targets.length > 0) {
+      return {
+        points: targets.map((t) => ({
+          targetDate: t.targetDate,
+          cumulativePercent: Number(t.cumulativePercent),
+        })),
+        source: 'targets',
+        version: null,
+      };
+    }
+
+    const dates = await this.repo.findProjectDates(prisma, orgId, projectId);
+    const startDate = dates?.startDate ?? null;
+    const expectedEndDate = dates?.expectedEndDate ?? null;
+    // The provisional ramp is the two endpoints; empty when the project has no usable dates (missing,
+    // or end ≤ start) — mirrors computeProvisionalBaseline returning [] so the read stays INSUFFICIENT_DATA.
+    const points =
+      startDate && expectedEndDate && expectedEndDate.getTime() > startDate.getTime()
+        ? [
+            { targetDate: startDate, cumulativePercent: 0 },
+            { targetDate: expectedEndDate, cumulativePercent: 100 },
+          ]
+        : [];
+    return { points, source: 'provisional', version: null };
+  }
+
+  /**
+   * Replaces the project's live planned-progress curve (ACCO's monthly milestones). Validates
    * that the cumulative percentages are in [0, 100], the dates are unique, and the curve is
    * non-decreasing over time (cumulative progress cannot go backwards).
+   *
+   * Master Schedule P3 (ADR-029): the working curve is editable only *before* the first baseline is
+   * approved. Once a governing APPROVED baseline exists it is the plan the project is measured
+   * against, so moving it is not an edit — it is a re-baseline (a new governed version). This method
+   * therefore rejects while a baseline governs; the plan changes through the re-baseline path instead.
    */
   async setTargets(identity: RequestIdentity, projectId: string, targets: ProgressTargetInput[]) {
     await this.projectAccess.assertMember(identity, projectId);
+
+    const governing = await this.findGoverningBaseline(identity.activeOrganizationId, projectId);
+    if (governing) {
+      throw new ConflictException(
+        `The baseline is approved (version ${governing.version}); change the plan by re-baselining.`,
+      );
+    }
+
     const sorted = [...targets].sort(
       (a, b) => new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime(),
     );
@@ -813,16 +900,18 @@ export class ProgressService {
 
   /**
    * Planned-vs-verified schedule variance: the planned cumulative % due today (interpolated from the
-   * target curve) against the verified physical % (the weighted roll-up). A large negative gap means
-   * the project is behind schedule; positive means ahead. Null when no baseline curve is set.
+   * planned curve) against the verified physical % (the weighted roll-up). A large negative gap means
+   * the project is behind schedule; positive means ahead. Null when no planned curve resolves.
+   *
+   * Master Schedule P3 (ADR-029): the planned side comes from `resolvePlannedCurve` — the governing
+   * frozen baseline when one is approved, else the live targets, else the provisional ramp.
    */
   async getScheduleVariance(identity: RequestIdentity, projectId: string, asOf?: string) {
     await this.projectAccess.assertMember(identity, projectId);
-    const prisma = this.tenancy.getClient();
-    const targets = await this.repo.findTargets(prisma, projectId);
+    const planned = await this.resolvePlannedCurve(identity, projectId);
     const at = asOf ? new Date(asOf) : new Date();
 
-    const plannedPercent = plannedPercentAt(targets, at);
+    const plannedPercent = plannedPercentAt(planned.points, at);
     const rollup = await this.getRollup(identity, projectId);
     const physicalPercent = rollup.physicalPercent;
 
@@ -929,45 +1018,46 @@ export class ProgressService {
   }
 
   /**
-   * The planned-vs-actual S-curve. Actual = the snapshot series ordered by period. Baseline = the
-   * provisional Option-C linear ramp from Project.startDate → expectedEndDate, sampled at the actual
-   * period dates (empty when the project has no usable dates). Status/variance compare the latest
-   * actual physical % to the planned % at that date. All math lives in the pure progress-curve module.
+   * The planned-vs-actual S-curve. Actual = the snapshot series ordered by period. The planned line
+   * comes from `resolvePlannedCurve` (Master Schedule P3, ADR-029): the governing frozen baseline when
+   * one is approved, else the live targets, else the provisional Option-C ramp. Status/variance compare
+   * the latest actual physical % to the planned % at that date. All interpolation is the pure
+   * progress-curve math.
+   *
+   * The baseline output array is source-shaped, preserving the pre-P3 contract: an entered plan
+   * (baseline/targets) is returned as its own points; the provisional ramp is sampled at the actual
+   * period dates (so the drawn planned line lines up with the actual line).
    */
   async getCurve(identity: RequestIdentity, projectId: string): Promise<ProgressCurveResponse> {
     await this.projectAccess.assertMember(identity, projectId);
-    const prisma = this.tenancy.getClient();
 
     const { actual } = await this.loadActualSeries(identity, projectId);
-    const dates = await this.repo.findProjectDates(prisma, identity.activeOrganizationId, projectId);
-    const startDate = dates?.startDate ?? null;
-    const expectedEndDate = dates?.expectedEndDate ?? null;
+    const planned = await this.resolvePlannedCurve(identity, projectId);
+    const isProvisional = planned.source === 'provisional';
 
-    // Prefer the approved target curve (CONST-PROG-011) when one is set; otherwise fall back to the
-    // provisional Option-C ramp. Setting a baseline is exactly what un-provisions the S-curve: the
-    // planned line becomes the entered plan and `baselineProvisional` flips to false.
-    const targets = await this.repo.findTargets(prisma, projectId);
-    const hasTargets = targets.length > 0;
+    // An entered plan (baseline/targets) is returned as its own points; the provisional ramp is
+    // sampled at the actual period dates (empty when the ramp has no usable dates → INSUFFICIENT_DATA).
+    const baseline: ProgressCurvePoint[] = isProvisional
+      ? planned.points.length === 0
+        ? []
+        : actual.map((a) => {
+            const at = new Date(a.periodEndDate);
+            return {
+              periodEndDate: isoDate(at),
+              plannedPercent: plannedPercentAt(planned.points, at) ?? 0,
+            };
+          })
+      : planned.points.map((p) => ({
+          periodEndDate: isoDate(p.targetDate),
+          plannedPercent: p.cumulativePercent,
+        }));
 
-    const baseline = hasTargets
-      ? targets.map((r) => ({
-          periodEndDate: isoDate(r.targetDate),
-          plannedPercent: Number(r.cumulativePercent),
-        }))
-      : computeProvisionalBaseline(
-          startDate,
-          expectedEndDate,
-          actual.map((a) => new Date(a.periodEndDate)),
-        );
-
-    // Variance = latest actual physical − planned at that date, from the same source as the baseline.
+    // Variance = latest actual physical − planned at that date, interpolated from the resolved curve.
     let scheduleVariancePercent: number | null = null;
     let status: ProgressCurveResponse['status'] = 'INSUFFICIENT_DATA';
-    if (actual.length > 0 && baseline.length > 0) {
+    if (actual.length > 0 && planned.points.length > 0) {
       const latest = actual[actual.length - 1];
-      const plannedAtLatest = hasTargets
-        ? plannedPercentAt(targets, new Date(latest.periodEndDate))
-        : plannedPercentAtDate(startDate, expectedEndDate, new Date(latest.periodEndDate));
+      const plannedAtLatest = plannedPercentAt(planned.points, new Date(latest.periodEndDate));
       if (plannedAtLatest !== null) {
         scheduleVariancePercent = Math.round((latest.physicalPercent - plannedAtLatest) * 100) / 100;
         status = scheduleStatusFor(scheduleVariancePercent);
@@ -980,7 +1070,9 @@ export class ProgressService {
       actual,
       scheduleVariancePercent,
       status,
-      baselineProvisional: !hasTargets,
+      baselineProvisional: isProvisional,
+      baselineSource: planned.source,
+      baselineVersion: planned.version,
     };
   }
 

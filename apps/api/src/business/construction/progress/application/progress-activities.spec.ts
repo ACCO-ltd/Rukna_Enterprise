@@ -42,6 +42,8 @@ function build(over: { workPackage?: unknown; activity?: unknown } = {}) {
     findActivitiesForProject: jest.fn().mockResolvedValue([]),
   };
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
+  // Master Schedule P3 (ADR-029): the baseline repo — unused by the activity paths, no baseline here.
+  const baselineRepo = { findApproved: jest.fn().mockResolvedValue(null) };
   const svc = new ProgressService(
     { getClient: () => ({}) } as never,
     repo as never,
@@ -49,6 +51,7 @@ function build(over: { workPackage?: unknown; activity?: unknown } = {}) {
     {} as never,
     {} as never,
     files() as never,
+    baselineRepo as never,
   );
   return { svc, repo, projectAccess, captured };
 }

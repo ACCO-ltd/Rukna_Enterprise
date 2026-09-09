@@ -433,6 +433,14 @@ export interface ProgressActualPoint {
  * without changing this contract. `status`/`scheduleVariancePercent` compare the latest actual
  * physical % to the planned % at that date.
  */
+/**
+ * Where the planned curve came from (Master Schedule P3, ADR-029):
+ * - `baseline` — the frozen, APPROVED `ProgrammeBaseline` snapshot (the governing plan).
+ * - `targets` — the live, editable `ProgressTarget` curve (no baseline approved yet).
+ * - `provisional` — the Option-C linear ramp placeholder (no baseline and no targets set).
+ */
+export type ProgressCurveSource = 'baseline' | 'targets' | 'provisional';
+
 export interface ProgressCurveResponse {
   projectId: string;
   baseline: ProgressCurvePoint[];
@@ -440,8 +448,15 @@ export interface ProgressCurveResponse {
   /** latest actual physical − planned at that date; null when there is insufficient data. */
   scheduleVariancePercent: number | null;
   status: ProgressScheduleStatus;
-  /** True while the baseline is the Option-C provisional placeholder (BE-1). */
+  /**
+   * True while the baseline is the Option-C provisional placeholder — i.e. `baselineSource === 'provisional'`.
+   * Kept for backward-compatibility; prefer `baselineSource` for the three-way distinction (P3).
+   */
   baselineProvisional: boolean;
+  /** Master Schedule P3 (ADR-029): which producer the planned curve was resolved from. */
+  baselineSource: ProgressCurveSource;
+  /** The governing `ProgrammeBaseline` version when `baselineSource === 'baseline'`, else null. */
+  baselineVersion: number | null;
 }
 
 /** Overall (project-level) period-over-period comparison from the two most-recent snapshots. */

@@ -27,9 +27,11 @@ function round2(n: number): number {
  * planned line lines up with the actual line the UI draws). Returns [] when the project has no
  * usable dates (missing, or end ≤ start) — the read then reports INSUFFICIENT_DATA.
  *
- * BE-2 SEAM: this whole function is the swappable baseline source. Option-A derives the curve from
- * work-package planned start/finish + weights and freezes it; Option-B stores entered points. Both
- * replace only this producer — the ProgressCurvePoint[] contract and everything downstream stay put.
+ * BASELINE SOURCE SEAM: this producer is the provisional fallback only. The swap the seam anticipated
+ * has landed — Master Schedule P3 (ADR-029) added `ProgressService.resolvePlannedCurve`, which prefers
+ * the frozen `ProgrammeBaseline` snapshot, then the live `ProgressTarget` curve, and falls back to this
+ * ramp last. The `ProgressCurvePoint[]` contract and everything downstream stayed put, exactly as the
+ * seam intended; this function keeps owning the no-baseline / no-targets provisional case.
  */
 export function computeProvisionalBaseline(
   startDate: Date | null,

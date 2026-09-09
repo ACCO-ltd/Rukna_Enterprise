@@ -61,6 +61,8 @@ const CURVE: ProgressCurveResponse = {
   scheduleVariancePercent: -8,
   status: 'BEHIND',
   baselineProvisional: true,
+  baselineSource: 'provisional',
+  baselineVersion: null,
 };
 
 const INSUFFICIENT_CURVE: ProgressCurveResponse = {
@@ -70,6 +72,8 @@ const INSUFFICIENT_CURVE: ProgressCurveResponse = {
   scheduleVariancePercent: null,
   status: 'INSUFFICIENT_DATA',
   baselineProvisional: true,
+  baselineSource: 'provisional',
+  baselineVersion: null,
 };
 
 const loaded = <T,>(data: T) => ({ data, isPending: false, isError: false, isFetching: false });
