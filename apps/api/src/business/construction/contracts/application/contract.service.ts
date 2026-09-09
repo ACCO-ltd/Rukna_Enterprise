@@ -20,7 +20,7 @@ import type { UpdateContractDto } from '../presentation/dto/update-contract.dto.
 import type { AddAdvanceTermDto } from '../presentation/dto/add-advance-term.dto.js';
 import type { AddGuaranteeDto } from '../presentation/dto/add-guarantee.dto.js';
 import type { UpdateGuaranteeDto } from '../presentation/dto/update-guarantee.dto.js';
-import type { AddMilestoneDto } from '../presentation/dto/add-milestone.dto.js';
+import type { AddDeliverableDto } from '../presentation/dto/add-deliverable.dto.js';
 import type { AddRetentionTermsDto } from '../presentation/dto/add-retention-terms.dto.js';
 import type { SetInstallmentMilestoneDto } from '../presentation/dto/set-installment-milestone.dto.js';
 import { RecordAttachmentService } from '../../../../platform/files/application/record-attachment.service.js';
@@ -673,13 +673,13 @@ export class ContractService {
     return guarantee;
   }
 
-  async addMilestone(identity: RequestIdentity, id: string, dto: AddMilestoneDto) {
+  async addDeliverable(identity: RequestIdentity, id: string, dto: AddDeliverableDto) {
     const prisma = this.tenancyService.getClient();
     const contract = await this.requireContract(prisma, identity, id);
-    this.assertTermMutationAllowed(contract.status, 'MILESTONE_TERM');
+    this.assertTermMutationAllowed(contract.status, 'DELIVERABLE_TERM');
 
     return prisma.$transaction(async (tx) => {
-      const milestone = await this.repo.addMilestone(tx, id, {
+      const deliverable = await this.repo.addDeliverable(tx, id, {
         name: dto.name,
         description: dto.description,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
@@ -690,49 +690,51 @@ export class ContractService {
         organizationId: identity.activeOrganizationId,
         actorUserId: identity.userId,
         action: 'CREATE',
-        resourceType: 'ContractMilestone',
-        resourceId: milestone.id,
-        sourceCommand: 'contract.addMilestone',
-        eventType: 'CONTRACT_MILESTONE_ADDED',
-        idempotencyKey: `contract-milestone-add-${milestone.id}`,
+        resourceType: 'ContractDeliverable',
+        resourceId: deliverable.id,
+        sourceCommand: 'contract.addDeliverable',
+        eventType: 'CONTRACT_DELIVERABLE_ADDED',
+        idempotencyKey: `contract-deliverable-add-${deliverable.id}`,
         after: { contractId: id, name: dto.name, dueDate: dto.dueDate ?? null },
       });
 
-      return milestone;
+      return deliverable;
     });
   }
 
-  async completeMilestone(identity: RequestIdentity, contractId: string, milestoneId: string) {
+  async completeDeliverable(identity: RequestIdentity, contractId: string, deliverableId: string) {
     const prisma = this.tenancyService.getClient();
     const contract = await this.requireContract(prisma, identity, contractId);
-    this.assertTermMutationAllowed(contract.status, 'MILESTONE_COMPLETE');
+    this.assertTermMutationAllowed(contract.status, 'DELIVERABLE_COMPLETE');
 
-    // CONST-COM-002: verify the milestone belongs to THIS contract before touching it.
-    const before = await this.repo.findMilestoneOwned(prisma, contractId, milestoneId);
+    // CONST-COM-002: verify the deliverable belongs to THIS contract before touching it.
+    const before = await this.repo.findDeliverableOwned(prisma, contractId, deliverableId);
     if (!before) {
-      throw new NotFoundException(`Milestone ${milestoneId} not found on contract ${contractId}`);
+      throw new NotFoundException(
+        `Deliverable ${deliverableId} not found on contract ${contractId}`,
+      );
     }
     if (before.completedAt) {
-      throw new BadRequestException(`Milestone ${milestoneId} is already complete`);
+      throw new BadRequestException(`Deliverable ${deliverableId} is already complete`);
     }
 
     return prisma.$transaction(async (tx) => {
-      await this.repo.completeMilestone(tx, contractId, milestoneId, identity.userId);
+      await this.repo.completeDeliverable(tx, contractId, deliverableId, identity.userId);
 
       await this.auditOutbox.record(tx, {
         organizationId: identity.activeOrganizationId,
         actorUserId: identity.userId,
         action: 'COMPLETE',
-        resourceType: 'ContractMilestone',
-        resourceId: milestoneId,
-        sourceCommand: 'contract.completeMilestone',
-        eventType: 'CONTRACT_MILESTONE_COMPLETED',
-        idempotencyKey: `contract-milestone-complete-${milestoneId}`,
+        resourceType: 'ContractDeliverable',
+        resourceId: deliverableId,
+        sourceCommand: 'contract.completeDeliverable',
+        eventType: 'CONTRACT_DELIVERABLE_COMPLETED',
+        idempotencyKey: `contract-deliverable-complete-${deliverableId}`,
         before: { completedAt: null },
         after: { completedAt: new Date().toISOString(), completedBy: identity.userId },
       });
 
-      return this.repo.findMilestoneById(tx, milestoneId);
+      return this.repo.findDeliverableById(tx, deliverableId);
     });
   }
 

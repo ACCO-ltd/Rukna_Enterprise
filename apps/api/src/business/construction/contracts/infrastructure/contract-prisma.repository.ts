@@ -7,7 +7,7 @@ export type ContractFull = Contract & {
   guarantees: (ContractGuarantee & {
     attachments: import('@prisma/client').GuaranteeAttachment[];
   })[];
-  milestones: import('@prisma/client').ContractMilestone[];
+  deliverables: import('@prisma/client').ContractDeliverable[];
   attachments: import('@prisma/client').ContractAttachment[];
   paymentInstallments: import('@prisma/client').ContractPaymentInstallment[];
   client: { id: string; name: string; taxNumber: string | null };
@@ -47,7 +47,7 @@ export class ContractPrismaRepository {
         retentionTerms: true,
         advanceTerms: true,
         guarantees: { include: { attachments: true } },
-        milestones: { orderBy: { sortOrder: 'asc' } },
+        deliverables: { orderBy: { sortOrder: 'asc' } },
         attachments: true,
         paymentInstallments: { orderBy: { sortOrder: 'asc' } },
         client: { select: { id: true, name: true, taxNumber: true } },
@@ -333,7 +333,7 @@ export class ContractPrismaRepository {
     });
   }
 
-  addMilestone(
+  addDeliverable(
     prisma: TenantPrisma,
     contractId: string,
     data: {
@@ -343,25 +343,25 @@ export class ContractPrismaRepository {
       sortOrder?: number;
     },
   ) {
-    return prisma.contractMilestone.create({
+    return prisma.contractDeliverable.create({
       data: { contractId, ...data, sortOrder: data.sortOrder ?? 0 },
     });
   }
 
   /** Scoped read — the security guard for CONST-COM-002. */
-  findMilestoneOwned(prisma: TenantPrisma, contractId: string, milestoneId: string) {
-    return prisma.contractMilestone.findFirst({ where: { id: milestoneId, contractId } });
+  findDeliverableOwned(prisma: TenantPrisma, contractId: string, deliverableId: string) {
+    return prisma.contractDeliverable.findFirst({ where: { id: deliverableId, contractId } });
   }
 
-  /** Scoped completion: only mutates the milestone if it belongs to `contractId`. Returns { count }. */
-  completeMilestone(
+  /** Scoped completion: only mutates the deliverable if it belongs to `contractId`. Returns { count }. */
+  completeDeliverable(
     prisma: TenantPrisma,
     contractId: string,
-    milestoneId: string,
+    deliverableId: string,
     completedBy: string,
   ) {
-    return prisma.contractMilestone.updateMany({
-      where: { id: milestoneId, contractId },
+    return prisma.contractDeliverable.updateMany({
+      where: { id: deliverableId, contractId },
       data: { completedAt: new Date(), completedBy },
     });
   }
@@ -370,8 +370,8 @@ export class ContractPrismaRepository {
     return prisma.contractGuarantee.findUnique({ where: { id: guaranteeId } });
   }
 
-  findMilestoneById(prisma: TenantPrisma, milestoneId: string) {
-    return prisma.contractMilestone.findUnique({ where: { id: milestoneId } });
+  findDeliverableById(prisma: TenantPrisma, deliverableId: string) {
+    return prisma.contractDeliverable.findUnique({ where: { id: deliverableId } });
   }
 
   moveActiveContractsToFinalAccount(prisma: TenantPrisma, projectId: string) {

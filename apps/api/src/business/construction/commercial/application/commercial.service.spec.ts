@@ -34,7 +34,7 @@ const baseContract = {
   retentionTerms: null,
   advanceTerms: [],
   guarantees: [],
-  milestones: [],
+  deliverables: [],
 };
 
 function build(overrides: {

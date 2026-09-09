@@ -93,7 +93,7 @@ interface StoredMilestoneWithReleases {
   forecastDate: Date | null;
   actualDate: Date | null;
   sortOrder: number;
-  contractMilestoneId: string | null;
+  contractDeliverableId: string | null;
   verifiedBy: string | null;
   verifiedAt: Date | null;
   installments: IncludedReleaseInstallment[];
@@ -135,7 +135,7 @@ function toMilestoneResponse(m: StoredMilestoneWithReleases): ProgrammeMilestone
     forecastDate: isoDate(m.forecastDate),
     actualDate: isoDate(m.actualDate),
     sortOrder: m.sortOrder,
-    contractMilestoneId: m.contractMilestoneId,
+    contractDeliverableId: m.contractDeliverableId,
     verifiedBy: m.verifiedBy,
     verifiedAt: m.verifiedAt ? m.verifiedAt.toISOString() : null,
     // Installments are already ordered by (sortOrder, name) in the repo query.
