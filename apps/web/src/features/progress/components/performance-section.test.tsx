@@ -106,6 +106,30 @@ describe('PerformanceSection', () => {
     expect(screen.getByText(/planned line is an estimate/i)).toBeInTheDocument();
   });
 
+  it('badges the S-curve source as Provisional for a provisional curve', () => {
+    renderWithProviders(<PerformanceSection projectId="proj-1" onGoTo={() => {}} />, { withToast: true });
+
+    expect(screen.getByText('Provisional')).toBeInTheDocument();
+  });
+
+  it('badges the S-curve source as the draft plan when it comes from targets', () => {
+    mocks.useProgressCurve.mockReturnValue(
+      loaded({ ...CURVE, baselineSource: 'targets', baselineProvisional: true, baselineVersion: null }),
+    );
+    renderWithProviders(<PerformanceSection projectId="proj-1" onGoTo={() => {}} />, { withToast: true });
+
+    expect(screen.getByText('Draft plan (not approved)')).toBeInTheDocument();
+  });
+
+  it('badges the S-curve source with the governing baseline version', () => {
+    mocks.useProgressCurve.mockReturnValue(
+      loaded({ ...CURVE, baselineSource: 'baseline', baselineProvisional: false, baselineVersion: 3 }),
+    );
+    renderWithProviders(<PerformanceSection projectId="proj-1" onGoTo={() => {}} />, { withToast: true });
+
+    expect(screen.getByText('Baseline v3')).toBeInTheDocument();
+  });
+
   it('shows an honest insufficient-data state instead of a fabricated curve', () => {
     mocks.useProgressCurve.mockReturnValue(loaded(INSUFFICIENT_CURVE));
     renderWithProviders(<PerformanceSection projectId="proj-1" onGoTo={() => {}} />, {
