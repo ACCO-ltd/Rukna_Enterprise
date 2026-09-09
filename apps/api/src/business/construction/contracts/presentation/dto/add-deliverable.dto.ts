@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsDateString, IsOptional, IsInt, Min, MaxLength } from 'class-validator';
 
-export class AddMilestoneDto {
+export class AddDeliverableDto {
   @ApiProperty()
   @IsString()
   @MaxLength(255)

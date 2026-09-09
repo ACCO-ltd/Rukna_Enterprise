@@ -6,14 +6,14 @@ import type { GuaranteeStatus } from '@erp/types';
 import {
   addAdvanceTerm,
   addGuarantee,
-  addMilestone,
-  completeMilestone,
+  addDeliverable,
+  completeDeliverable,
   removeAdvanceTerm,
   setRetentionTerms,
   updateGuarantee,
   type AddAdvanceTermPayload,
   type AddGuaranteePayload,
-  type AddMilestonePayload,
+  type AddDeliverablePayload,
   type SetRetentionTermsPayload,
 } from '../api/contracts-api';
 import { contractKeys } from './use-contracts';
@@ -66,14 +66,14 @@ export function useUpdateGuarantee(contractId: string) {
   );
 }
 
-export function useAddMilestone(contractId: string) {
-  return useTermMutation(contractId, (payload: AddMilestonePayload) =>
-    addMilestone(contractId, payload),
+export function useAddDeliverable(contractId: string) {
+  return useTermMutation(contractId, (payload: AddDeliverablePayload) =>
+    addDeliverable(contractId, payload),
   );
 }
 
-export function useCompleteMilestone(contractId: string) {
-  return useTermMutation(contractId, (milestoneId: string) =>
-    completeMilestone(contractId, milestoneId),
+export function useCompleteDeliverable(contractId: string) {
+  return useTermMutation(contractId, (deliverableId: string) =>
+    completeDeliverable(contractId, deliverableId),
   );
 }

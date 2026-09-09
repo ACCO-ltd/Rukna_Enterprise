@@ -354,7 +354,7 @@ export class CommercialService {
       contract.id,
       ...contract.guarantees.map((g) => g.id),
       ...contract.advanceTerms.map((a) => a.id),
-      ...contract.milestones.map((m) => m.id),
+      ...contract.deliverables.map((d) => d.id),
       ...certs.map((c) => c.id),
       ...invoices.map((i) => i.id),
     ];

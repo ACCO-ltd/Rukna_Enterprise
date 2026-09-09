@@ -191,7 +191,7 @@ export interface ContractGuaranteeResponse {
   notes?: string;
 }
 
-export interface ContractMilestoneResponse {
+export interface ContractDeliverableResponse {
   id: string;
   contractId: string;
   name: string;
@@ -566,7 +566,7 @@ export interface ProgrammeMilestoneResponse {
   forecastDate: string | null;
   actualDate: string | null;
   sortOrder: number;
-  contractMilestoneId: string | null;
+  contractDeliverableId: string | null;
   verifiedBy: string | null;
   verifiedAt: string | null;
   // Master Schedule P2 — the contract payment installment(s) this milestone releases. `[]` when none
@@ -744,7 +744,7 @@ export interface ContractResponse {
   retentionTerms?: ContractRetentionTermsResponse;
   advanceTerms: ContractAdvanceTermResponse[];
   guarantees: ContractGuaranteeResponse[];
-  milestones: ContractMilestoneResponse[];
+  deliverables: ContractDeliverableResponse[];
   paymentInstallments: ContractPaymentInstallmentResponse[];
 }
 

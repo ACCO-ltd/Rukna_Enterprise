@@ -236,26 +236,26 @@ export function updateGuarantee(
   });
 }
 
-export interface AddMilestonePayload {
+export interface AddDeliverablePayload {
   name: string;
   description?: string;
   dueDate?: string;
   sortOrder?: number;
 }
 
-export function addMilestone(
+export function addDeliverable(
   contractId: string,
-  payload: AddMilestonePayload,
+  payload: AddDeliverablePayload,
 ): Promise<unknown> {
-  return apiClient(`/contracts/${contractId}/milestones`, {
+  return apiClient(`/contracts/${contractId}/deliverables`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 }
 
 /** Stamps `completedAt` and `completedBy` from the token. There is no un-complete. */
-export function completeMilestone(contractId: string, milestoneId: string): Promise<unknown> {
-  return apiClient(`/contracts/${contractId}/milestones/${milestoneId}/complete`, {
+export function completeDeliverable(contractId: string, deliverableId: string): Promise<unknown> {
+  return apiClient(`/contracts/${contractId}/deliverables/${deliverableId}/complete`, {
     method: 'POST',
   });
 }

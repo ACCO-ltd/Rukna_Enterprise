@@ -39,7 +39,7 @@ import { TerminateContractDto } from './dto/terminate-contract.dto.js';
 import { AddAdvanceTermDto } from './dto/add-advance-term.dto.js';
 import { AddGuaranteeDto } from './dto/add-guarantee.dto.js';
 import { UpdateGuaranteeDto } from './dto/update-guarantee.dto.js';
-import { AddMilestoneDto } from './dto/add-milestone.dto.js';
+import { AddDeliverableDto } from './dto/add-deliverable.dto.js';
 import { AddRetentionTermsDto } from './dto/add-retention-terms.dto.js';
 import { SetInstallmentMilestoneDto } from './dto/set-installment-milestone.dto.js';
 import { ReplacePaymentPlanDto } from './dto/replace-payment-plan.dto.js';
@@ -261,30 +261,30 @@ export class ContractsController {
     return this.contractService.updateGuarantee(identity, id, guaranteeId, dto);
   }
 
-  // ─── Milestones ───────────────────────────────────────────────────────────────
+  // ─── Deliverables ─────────────────────────────────────────────────────────────
 
-  @Post(':id/milestones')
+  @Post(':id/deliverables')
   @RequirePermissions(PERMISSIONS.contractsManage)
-  @ApiOperation({ summary: 'Add a contract milestone' })
+  @ApiOperation({ summary: 'Add a contract deliverable' })
   @ApiParam({ name: 'id' })
-  addMilestone(
+  addDeliverable(
     @CurrentUser() identity: RequestIdentity,
     @Param('id') id: string,
-    @Body() dto: AddMilestoneDto,
+    @Body() dto: AddDeliverableDto,
   ) {
-    return this.contractService.addMilestone(identity, id, dto);
+    return this.contractService.addDeliverable(identity, id, dto);
   }
 
-  @Post(':id/milestones/:milestoneId/complete')
+  @Post(':id/deliverables/:deliverableId/complete')
   @RequirePermissions(PERMISSIONS.contractsManage)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Mark a contract milestone as complete' })
-  completeMilestone(
+  @ApiOperation({ summary: 'Mark a contract deliverable as complete' })
+  completeDeliverable(
     @CurrentUser() identity: RequestIdentity,
     @Param('id') id: string,
-    @Param('milestoneId') milestoneId: string,
+    @Param('deliverableId') deliverableId: string,
   ) {
-    return this.contractService.completeMilestone(identity, id, milestoneId);
+    return this.contractService.completeDeliverable(identity, id, deliverableId);
   }
 
   // --- Evidence (Phase 7A) ------------------------------------------------------

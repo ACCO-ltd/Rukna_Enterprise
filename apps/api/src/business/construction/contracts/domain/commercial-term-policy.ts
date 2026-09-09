@@ -11,20 +11,20 @@ import type { ContractStatus } from '@prisma/client';
  *
  *  - SUBSTANTIVE (baseline) mutations change the immutable commercial baseline
  *    (contract header, retention terms, advance terms, adding a guarantee, adding a
- *    milestone). Allowed only while the contract is DRAFT. Once it leaves DRAFT the
+ *    deliverable). Allowed only while the contract is DRAFT. Once it leaves DRAFT the
  *    baseline is frozen; material change must eventually flow through Variations
  *    (deferred — not part of this delivery).
  *
  *  - OPERATIONAL mutations record real-world events against a live contract and are an
  *    explicit exception to the baseline freeze:
- *      · GUARANTEE_STATUS   — marking a bond DISCHARGED/CALLED/etc. Allowed in any
- *                             non-terminal status.
- *      · MILESTONE_COMPLETE — recording that a commercial milestone was achieved.
- *                             Only meaningful once the contract is executing, so allowed
- *                             in ACTIVE and FINAL_ACCOUNT_PENDING.
+ *      · GUARANTEE_STATUS     — marking a bond DISCHARGED/CALLED/etc. Allowed in any
+ *                               non-terminal status.
+ *      · DELIVERABLE_COMPLETE — recording that a contract deliverable was achieved.
+ *                               Only meaningful once the contract is executing, so allowed
+ *                               in ACTIVE and FINAL_ACCOUNT_PENDING.
  *
  * PROVISIONAL: the operational carve-outs (which statuses permit guarantee-status and
- * milestone-completion changes) are provisional pending confirmation from Eng Ahmed
+ * deliverable-completion changes) are provisional pending confirmation from Eng Ahmed
  * Shirie. Documented in ADR-017.
  */
 
@@ -33,9 +33,9 @@ export type CommercialMutationKind =
   | 'RETENTION_TERMS'
   | 'ADVANCE_TERM'
   | 'GUARANTEE_TERM'
-  | 'MILESTONE_TERM'
+  | 'DELIVERABLE_TERM'
   | 'GUARANTEE_STATUS'
-  | 'MILESTONE_COMPLETE';
+  | 'DELIVERABLE_COMPLETE';
 
 export interface TermPolicyDecision {
   allowed: boolean;
@@ -54,10 +54,10 @@ const SUBSTANTIVE_KINDS: ReadonlySet<CommercialMutationKind> = new Set<Commercia
   'RETENTION_TERMS',
   'ADVANCE_TERM',
   'GUARANTEE_TERM',
-  'MILESTONE_TERM',
+  'DELIVERABLE_TERM',
 ]);
 
-const MILESTONE_COMPLETE_STATUSES: ReadonlySet<ContractStatus> = new Set<ContractStatus>([
+const DELIVERABLE_COMPLETE_STATUSES: ReadonlySet<ContractStatus> = new Set<ContractStatus>([
   'ACTIVE',
   'FINAL_ACCOUNT_PENDING',
 ]);
@@ -89,8 +89,8 @@ export const CommercialTermPolicy = {
       return { allowed: true };
     }
 
-    // MILESTONE_COMPLETE
-    if (MILESTONE_COMPLETE_STATUSES.has(status)) return { allowed: true };
+    // DELIVERABLE_COMPLETE
+    if (DELIVERABLE_COMPLETE_STATUSES.has(status)) return { allowed: true };
     return {
       allowed: false,
       reason: TERMINAL_STATUSES.has(status) ? 'CONTRACT_TERMINAL' : 'CONTRACT_NOT_EXECUTING',

@@ -7,7 +7,7 @@ const SUBSTANTIVE: CommercialMutationKind[] = [
   'RETENTION_TERMS',
   'ADVANCE_TERM',
   'GUARANTEE_TERM',
-  'MILESTONE_TERM',
+  'DELIVERABLE_TERM',
 ];
 
 const ALL_STATUSES: ContractStatus[] = [
@@ -67,19 +67,19 @@ describe('CommercialTermPolicy — guarantee status (operational exception)', ()
   });
 });
 
-describe('CommercialTermPolicy — milestone completion (operational)', () => {
+describe('CommercialTermPolicy — deliverable completion (operational)', () => {
   it('is allowed only while the contract is executing', () => {
-    expect(CommercialTermPolicy.evaluate('ACTIVE', 'MILESTONE_COMPLETE').allowed).toBe(true);
-    expect(CommercialTermPolicy.evaluate('FINAL_ACCOUNT_PENDING', 'MILESTONE_COMPLETE').allowed).toBe(
-      true,
-    );
+    expect(CommercialTermPolicy.evaluate('ACTIVE', 'DELIVERABLE_COMPLETE').allowed).toBe(true);
+    expect(
+      CommercialTermPolicy.evaluate('FINAL_ACCOUNT_PENDING', 'DELIVERABLE_COMPLETE').allowed,
+    ).toBe(true);
   });
 
   it('is blocked before execution and in terminal statuses', () => {
-    expect(CommercialTermPolicy.evaluate('DRAFT', 'MILESTONE_COMPLETE').reason).toBe(
+    expect(CommercialTermPolicy.evaluate('DRAFT', 'DELIVERABLE_COMPLETE').reason).toBe(
       'CONTRACT_NOT_EXECUTING',
     );
-    expect(CommercialTermPolicy.evaluate('TERMINATED', 'MILESTONE_COMPLETE').reason).toBe(
+    expect(CommercialTermPolicy.evaluate('TERMINATED', 'DELIVERABLE_COMPLETE').reason).toBe(
       'CONTRACT_TERMINAL',
     );
   });

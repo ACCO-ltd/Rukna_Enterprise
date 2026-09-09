@@ -943,13 +943,13 @@ enum DprStatus {
 // A WorkPackage carries a responsible owner and a progressWeight; the project's weights should total
 // 1.0 (100%). Physical progress rolls up by these weights, never by BOQ money (CONST-PROG-007).
 model WorkPackage {
-  id               String   @id @default(cuid())
-  organizationId   String   @map("organization_id")
-  projectId        String   @map("project_id")
+  id               String    @id @default(cuid())
+  organizationId   String    @map("organization_id")
+  projectId        String    @map("project_id")
   code             String
   name             String
-  responsibleOwner String?  @map("responsible_owner")
-  progressWeight   Decimal  @default(0) @map("progress_weight") @db.Decimal(5, 4)
+  responsibleOwner String?   @map("responsible_owner")
+  progressWeight   Decimal   @default(0) @map("progress_weight") @db.Decimal(5, 4)
   // Master-schedule (P1-a): the WorkPackage IS the schedule/phase row (ADR-029, master-schedule §8).
   // A time window makes it a Gantt-lite row; % complete and actual dates are DERIVED on read, never
   // stored. `scheduleOnly` marks a non-measurable phase (Mobilization, Design) tracked by dates only,
@@ -959,8 +959,8 @@ model WorkPackage {
   durationDays     Int?      @map("duration_days")
   forecastEnd      DateTime? @map("forecast_end") @db.Date
   scheduleOnly     Boolean   @default(false) @map("schedule_only")
-  createdBy        String   @map("created_by")
-  createdAt        DateTime @default(now()) @map("created_at")
+  createdBy        String    @map("created_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
 
   project    Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
   boqLinks   WorkPackageBoqNode[]
@@ -1022,28 +1022,28 @@ enum ProgrammeMilestoneStatus {
 // ADR-021 phase 2: a programme delivery milestone — a named construction stage on the project's
 // programme, with baseline / forecast / actual dates. An authorized member verifies it when the stage
 // is complete; a MILESTONE payment installment may reference a VERIFIED milestone as its billing
-// evidence (ADR-023 CONST-COM-011). Optionally links to a ContractMilestone; the two lifecycles stay
+// evidence (ADR-023 CONST-COM-011). Optionally links to a ContractDeliverable; the two lifecycles stay
 // separate.
 model ProgrammeMilestone {
-  id                  String                   @id @default(cuid())
-  organizationId      String                   @map("organization_id")
-  projectId           String                   @map("project_id")
-  code                String
-  name                String
-  status              ProgrammeMilestoneStatus @default(PLANNED)
-  baselineDate        DateTime                 @map("baseline_date") @db.Date
-  forecastDate        DateTime?                @map("forecast_date") @db.Date
-  actualDate          DateTime?                @map("actual_date") @db.Date
-  sortOrder           Int                      @default(0) @map("sort_order")
-  contractMilestoneId String?                  @map("contract_milestone_id")
-  verifiedBy          String?                  @map("verified_by")
-  verifiedAt          DateTime?                @map("verified_at")
-  createdBy           String                   @map("created_by")
-  createdAt           DateTime                 @default(now()) @map("created_at")
+  id                    String                   @id @default(cuid())
+  organizationId        String                   @map("organization_id")
+  projectId             String                   @map("project_id")
+  code                  String
+  name                  String
+  status                ProgrammeMilestoneStatus @default(PLANNED)
+  baselineDate          DateTime                 @map("baseline_date") @db.Date
+  forecastDate          DateTime?                @map("forecast_date") @db.Date
+  actualDate            DateTime?                @map("actual_date") @db.Date
+  sortOrder             Int                      @default(0) @map("sort_order")
+  contractDeliverableId String?                  @map("contract_deliverable_id")
+  verifiedBy            String?                  @map("verified_by")
+  verifiedAt            DateTime?                @map("verified_at")
+  createdBy             String                   @map("created_by")
+  createdAt             DateTime                 @default(now()) @map("created_at")
 
-  project           Project                      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  contractMilestone ContractMilestone?           @relation(fields: [contractMilestoneId], references: [id], onDelete: SetNull)
-  installments      ContractPaymentInstallment[]
+  project             Project                      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contractDeliverable ContractDeliverable?         @relation(fields: [contractDeliverableId], references: [id], onDelete: SetNull)
+  installments        ContractPaymentInstallment[]
 
   @@unique([projectId, code])
   @@index([projectId])
@@ -1412,7 +1412,7 @@ model Contract {
   retentionTerms      ContractRetentionTerms?
   advanceTerms        ContractAdvanceTerm[]
   guarantees          ContractGuarantee[]
-  milestones          ContractMilestone[]
+  deliverables        ContractDeliverable[]
   attachments         ContractAttachment[]
   applications        InterimPaymentApplication[]
   paymentInstallments ContractPaymentInstallment[]
@@ -1510,7 +1510,12 @@ model ContractGuarantee {
   @@map("contract_guarantees")
 }
 
-model ContractMilestone {
+// A contract deliverable is a named checklist item on a contract — a stage of scope that gets
+// marked complete (name / description / due date / completed-at). It carries NO money and is NOT a
+// billing artefact: the payment schedule lives in ContractPaymentInstallment. Keep the two apart —
+// a "deliverable" is contractual scope to track; an "installment" is a slice of the value to bill.
+// (Renamed from ContractMilestone; the table was renamed in place, preserving rows.)
+model ContractDeliverable {
   id          String    @id @default(cuid())
   contractId  String    @map("contract_id")
   name        String
@@ -1525,7 +1530,7 @@ model ContractMilestone {
   programmeMilestones ProgrammeMilestone[]
 
   @@index([contractId])
-  @@map("contract_milestones")
+  @@map("contract_deliverables")
 }
 
 // ADR-026 (Variations Phase 1) — CONST-VAR-001/-002/-003/-004/-010.

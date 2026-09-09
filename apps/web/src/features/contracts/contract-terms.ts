@@ -58,7 +58,7 @@ export function isValidPercent(percent: string): boolean {
  * ─── Where terms can still be changed ───────────────────────────────────────────
  *
  * The API enforces NO status gate on any of these operations — `setRetentionTerms`,
- * `addAdvanceTerm`, `addGuarantee` and `addMilestone` all call `requireContract` and
+ * `addAdvanceTerm`, `addGuarantee` and `addDeliverable` all call `requireContract` and
  * nothing else, so the server would happily attach a new advance term to a contract that
  * was cancelled last year.
  *

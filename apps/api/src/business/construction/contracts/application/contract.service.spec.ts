@@ -31,10 +31,10 @@ function build(contract: Record<string, unknown> | null): Mocks {
     findGuaranteeOwned: jest.fn(),
     updateGuarantee: jest.fn().mockResolvedValue({ count: 1 }),
     findGuaranteeById: jest.fn().mockResolvedValue({ id: 'g-1', status: 'DISCHARGED' }),
-    addMilestone: jest.fn().mockResolvedValue({ id: 'm-1' }),
-    findMilestoneOwned: jest.fn(),
-    completeMilestone: jest.fn().mockResolvedValue({ count: 1 }),
-    findMilestoneById: jest.fn().mockResolvedValue({ id: 'm-1' }),
+    addDeliverable: jest.fn().mockResolvedValue({ id: 'd-1' }),
+    findDeliverableOwned: jest.fn(),
+    completeDeliverable: jest.fn().mockResolvedValue({ count: 1 }),
+    findDeliverableById: jest.fn().mockResolvedValue({ id: 'd-1' }),
     // Payment-plan editor (commercial-billing §5 P1 + Q-B ACTIVE re-profile).
     findInvoicedInstallments: jest.fn().mockResolvedValue([]),
     reprofileUninvoicedInstallments: jest.fn().mockResolvedValue({ count: 0 }),
@@ -138,13 +138,13 @@ describe('A1 — parent-scoped child mutation security (CONST-COM-002)', () => {
     expect(repo.removeAdvanceTerm).not.toHaveBeenCalled();
   });
 
-  it('rejects completing a milestone that does not belong to the contract', async () => {
+  it('rejects completing a deliverable that does not belong to the contract', async () => {
     const { service, repo } = build(active);
-    repo.findMilestoneOwned.mockResolvedValue(null);
+    repo.findDeliverableOwned.mockResolvedValue(null);
     await expect(
-      service.completeMilestone(identity, 'c-1', 'foreign-milestone'),
+      service.completeDeliverable(identity, 'c-1', 'foreign-deliverable'),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(repo.completeMilestone).not.toHaveBeenCalled();
+    expect(repo.completeDeliverable).not.toHaveBeenCalled();
   });
 
   it('scopes the delete by contractId when the term is validly owned', async () => {
@@ -227,19 +227,19 @@ describe('Cross-tenant / organization isolation (CONST-COM-002)', () => {
     expect(update.repo.updateGuarantee).not.toHaveBeenCalled();
   });
 
-  it('cannot add or complete a milestone through a foreign-organization contract', async () => {
+  it('cannot add or complete a deliverable through a foreign-organization contract', async () => {
     const add = build(foreignOrgContract);
     await expect(
-      add.service.addMilestone(identity, 'contract-in-org-2', { name: 'Milestone' } as never),
+      add.service.addDeliverable(identity, 'contract-in-org-2', { name: 'Deliverable' } as never),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(add.repo.addMilestone).not.toHaveBeenCalled();
+    expect(add.repo.addDeliverable).not.toHaveBeenCalled();
 
     const complete = build(foreignOrgContract);
     await expect(
-      complete.service.completeMilestone(identity, 'contract-in-org-2', 'milestone-in-org-2'),
+      complete.service.completeDeliverable(identity, 'contract-in-org-2', 'deliverable-in-org-2'),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(complete.repo.findMilestoneOwned).not.toHaveBeenCalled();
-    expect(complete.repo.completeMilestone).not.toHaveBeenCalled();
+    expect(complete.repo.findDeliverableOwned).not.toHaveBeenCalled();
+    expect(complete.repo.completeDeliverable).not.toHaveBeenCalled();
   });
 
   it('honours the project-access gate: a rejected assertContract blocks any child mutation', async () => {
@@ -290,18 +290,18 @@ describe('Same-organization wrong-parent contract id (CONST-COM-002)', () => {
     expect(repo.updateGuarantee).not.toHaveBeenCalled();
   });
 
-  it('completeMilestone: a milestone of contract-B requested via contract-A fails, scoped by A', async () => {
+  it('completeDeliverable: a deliverable of contract-B requested via contract-A fails, scoped by A', async () => {
     const { service, repo } = build(contractA);
-    repo.findMilestoneOwned.mockResolvedValue(null);
+    repo.findDeliverableOwned.mockResolvedValue(null);
     await expect(
-      service.completeMilestone(identity, 'contract-A', 'milestone-of-contract-B'),
+      service.completeDeliverable(identity, 'contract-A', 'deliverable-of-contract-B'),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(repo.findMilestoneOwned).toHaveBeenCalledWith(
+    expect(repo.findDeliverableOwned).toHaveBeenCalledWith(
       expect.anything(),
       'contract-A',
-      'milestone-of-contract-B',
+      'deliverable-of-contract-B',
     );
-    expect(repo.completeMilestone).not.toHaveBeenCalled();
+    expect(repo.completeDeliverable).not.toHaveBeenCalled();
   });
 });
 

@@ -73,7 +73,7 @@ function contract(): ContractDetail {
     retentionTerms: null,
     advanceTerms: [],
     guarantees: [],
-    milestones: [],
+    deliverables: [],
     paymentInstallments: [],
     attachments: [],
     client: { id: 'cli-1', name: 'Baraka Real Estate LLC', taxNumber: 'SO-123456' },
