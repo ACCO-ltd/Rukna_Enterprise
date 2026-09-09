@@ -1,6 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
+import { useQueryClient } from '@tanstack/react-query';
 import { Info, Lock, ShieldCheck } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
@@ -17,14 +19,19 @@ import {
   TableScroll,
   cn,
 } from '@erp/ui';
-import type { CommercialSummaryResponse } from '@erp/types';
+import type { CommercialGuaranteeSummary, CommercialSummaryResponse } from '@erp/types';
 
 import { EmptyState } from '@/components/empty-state';
 import { formatDate, formatMoney } from '@/lib/format';
 import { useContract } from '@/features/contracts/hooks/use-contracts';
+import {
+  GuaranteeFormDialog,
+  type EditableGuarantee,
+} from '@/features/contracts/components/guarantee-form-dialog';
 import type { ContractDetail } from '@/features/contracts/types';
 import type { ContractPaymentInstallmentResponse } from '@erp/types';
 
+import { commercialKeys } from '../hooks/use-commercial';
 import { contractStatusTone, guaranteeAttentionTone, guaranteeStatusTone } from '../presentation';
 import { formatPercent } from './current-payment-cycle';
 import { FactRow, SectionCard } from './commercial-ui';
@@ -114,7 +121,7 @@ function ContractSecurityBody({
         <div className="min-w-0 space-y-4">
           <ContractStatusPanel summary={summary} />
           <AdvancePanel summary={summary} />
-          <GuaranteesPanel summary={summary} />
+          <GuaranteesPanel projectId={projectId} summary={summary} />
         </div>
       </div>
 
@@ -526,19 +533,52 @@ function AdvancePanel({ summary }: { summary: CommercialSummaryResponse }) {
 
 // ─── Guarantees & milestones ────────────────────────────────────────────────────
 
-function GuaranteesPanel({ summary }: { summary: CommercialSummaryResponse }) {
+/**
+ * The instruments that secure the contract, plus the authoring that keeps them current.
+ *
+ * Add and edit happen in a dialog mounted here (`GuaranteeFormDialog`), against the existing
+ * `POST/PATCH /contracts/:id/guarantees` endpoints — the P3 fold-in removed the old contract page
+ * that used to host the form, so authoring lives inside the workspace now. Both actions are gated
+ * on `canManageGuarantee`; the backend commands still enforce.
+ */
+function GuaranteesPanel({
+  projectId,
+  summary,
+}: {
+  projectId: string;
+  summary: CommercialSummaryResponse;
+}) {
   const t = useTranslations('commercial.guarantees');
   const tRoot = useTranslations('commercial');
+  const tActions = useTranslations('commercial.actions');
   const locale = useLocale() as 'en' | 'ar';
+  const qc = useQueryClient();
   const contract = summary.mainContract!;
+  const contractId = contract.id;
+  const canManage = summary.capabilities.canManageGuarantee;
+
+  // `null` = closed, `'add'` = add dialog, an object = edit that guarantee.
+  const [dialog, setDialog] = useState<'add' | CommercialGuaranteeSummary | null>(null);
+
+  // The mutations already refresh the contract-detail query; the workspace reads the guarantee
+  // table off the commercial summary, so it must be invalidated too or the table would go stale.
+  const refreshSummary = () => qc.invalidateQueries({ queryKey: commercialKeys.summary(projectId) });
 
   return (
     <SectionCard
       title={t('title')}
       action={
-        summary.capabilities.canManageGuarantee ? (
-          <Button asChild variant="outline" size="sm" className="min-h-11 sm:min-h-0">
-            <Link href={`/contracts/${contract.id}`}>{t('add')}</Link>
+        canManage ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="min-h-11 sm:min-h-0"
+            onClick={() => {
+              setDialog('add');
+            }}
+          >
+            {t('add')}
           </Button>
         ) : null
       }
@@ -559,6 +599,11 @@ function GuaranteesPanel({ summary }: { summary: CommercialSummaryResponse }) {
                 <TableHead className="text-end">{t('col.value')}</TableHead>
                 <TableHead>{t('col.expiry')}</TableHead>
                 <TableHead>{t('col.status')}</TableHead>
+                {canManage ? (
+                  <TableHead className="text-end">
+                    <span className="sr-only">{tActions('edit')}</span>
+                  </TableHead>
+                ) : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -591,14 +636,60 @@ function GuaranteesPanel({ summary }: { summary: CommercialSummaryResponse }) {
                       ) : null}
                     </div>
                   </TableCell>
+                  {canManage ? (
+                    <TableCell className="text-end">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="min-h-11 sm:min-h-0"
+                        onClick={() => {
+                          setDialog(guarantee);
+                        }}
+                      >
+                        {tActions('edit')}
+                      </Button>
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </TableScroll>
       )}
+
+      {canManage && dialog !== null ? (
+        <GuaranteeFormDialog
+          contractId={contractId}
+          guarantee={dialog === 'add' ? undefined : toEditableGuarantee(dialog)}
+          onClose={() => {
+            setDialog(null);
+          }}
+          onSuccess={refreshSummary}
+        />
+      ) : null}
     </SectionCard>
   );
+}
+
+/**
+ * The commercial summary row carries every commercial fact the edit dialog shows, but not the
+ * guarantee's notes — only the contract-detail shape does. Leaving `notes` `undefined` tells the
+ * dialog to start blank and to omit `notes` from the PATCH unless the user types, so an existing
+ * note the workspace never loaded is not silently cleared.
+ */
+function toEditableGuarantee(guarantee: CommercialGuaranteeSummary): EditableGuarantee {
+  return {
+    id: guarantee.id,
+    guaranteeType: guarantee.guaranteeType,
+    amount: guarantee.amount,
+    currency: guarantee.currency,
+    issuer: guarantee.issuer,
+    beneficiary: guarantee.beneficiary,
+    issueDate: guarantee.issueDate,
+    expiryDate: guarantee.expiryDate,
+    status: guarantee.status,
+  };
 }
 
 function ContractMilestonesPanel({
