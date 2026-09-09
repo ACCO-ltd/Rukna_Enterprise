@@ -101,7 +101,7 @@ describe('ClientsList', () => {
     expect(await screen.findByText('No results match your search.')).toBeInTheDocument();
     // "Clear filters", not "Clear search": the control now also resets the status filter, so
     // it names the whole thing it undoes rather than only the half it used to.
-    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+    await user.click(screen.getByRole('button', { name: 'Clear search' }));
     expect(await screen.findByRole('link', { name: /Baraka/ })).toBeInTheDocument();
   });
 

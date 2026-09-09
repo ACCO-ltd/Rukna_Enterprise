@@ -1,39 +1,21 @@
 'use client';
 
-/**
- * The project team (`/projects/:id/members`).
- *
- * This page was a dashed "not available yet" placeholder from Sprint 2 until now, on the
- * strength of B1 and B2 — no project could be given a first member, and no endpoint listed
- * users. Both were fixed in `e85bab9`, and the placeholder outlived them by a week because
- * the register still said they were open. It was the 2026-08-11 sweep that noticed.
- *
- * Three endpoints back it, and all three carry constraints worth knowing before reading the
- * markup:
- *
- *  - **Only a member can change the membership.** `assertMember` guards add and remove, so an
- *    organisation administrator who is not on the project gets a 403. B1's fix auto-enrols the
- *    creator as PROJECT_MANAGER, which is what stops that being a deadlock.
- *  - **Roles are set once.** There is no endpoint that changes a member's roles; correcting
- *    one means removing the member and adding them back.
- *  - **Removal is unguarded.** Nothing stops the last project manager being removed, and
- *    because adding requires membership, that can leave a project nobody can administer.
- *    `removeBlockReason` refuses it here.
- */
-
 import { useId, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ProjectRole } from '@erp/types';
-import { Plus, UsersThree } from '@phosphor-icons/react';
+import { DotsThree, Plus } from '@phosphor-icons/react';
 import {
   Alert,
-  Badge,
   Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Select,
   Table,
   TableBody,
@@ -46,6 +28,7 @@ import {
 } from '@erp/ui';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { usePermissions } from '@/features/auth/permissions/can';
 import { useSession } from '@/features/auth/session/use-session';
 import { useUsers } from '@/features/users/hooks/use-users';
 import { ApiError } from '@/lib/api-client';
@@ -76,11 +59,15 @@ export function ProjectMembers({ projectId }: { projectId: string }) {
   const remove = useRemoveProjectMember(projectId);
   const setRoles = useSetProjectMemberRoles(projectId);
   const { user } = useSession();
+  const { can } = usePermissions();
+  const [adding, setAdding] = useState(false);
 
   const [pending, setPending] = useState<ProjectMember | null>(null);
   const [editing, setEditing] = useState<ProjectMember | null>(null);
 
   const rawRows = members.data ?? [];
+  const canManage =
+    can('manage:project-member') && Boolean(members.data) && !members.isError;
   // Project managers appear first; all other members follow in their original order.
   const rows = [...rawRows].sort((a, b) => {
     const aIsPm = memberRoles(a).includes(ProjectRole.PROJECT_MANAGER);
@@ -92,23 +79,24 @@ export function ProjectMembers({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3 shadow-[var(--shadow-panel)]">
-        <div className="min-w-0">
-          <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-primary"><UsersThree size={18} weight="duotone" aria-hidden="true" /></span>
-            {t('title')}
-          </h2>
-          <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-h2 font-semibold text-foreground">{t('title')}</h2>
+          <p className="mt-1 text-body-sm text-muted-foreground">{t('subtitle')}</p>
         </div>
+        {canManage ? (
+          <Button onClick={() => setAdding(true)}>
+            <Plus size={16} aria-hidden="true" />
+            {t('addTitle')}
+          </Button>
+        ) : null}
       </div>
-
-      <Alert variant="info" messages={[t('membershipNotice')]} />
 
       {members.isPending ? (
         <div role="status" aria-live="polite">
           <span className="sr-only">{tCommon('loading')}</span>
           <div
-            className="h-48 animate-pulse rounded-lg border border-border bg-muted"
+            className="h-48 animate-pulse rounded-panel border border-border bg-muted"
             aria-hidden="true"
           />
         </div>
@@ -116,7 +104,7 @@ export function ProjectMembers({ projectId }: { projectId: string }) {
         <Alert variant="error" messages={[t('loadFailed')]} />
       ) : (
         <>
-          <TableScroll aria-label={t('title')} className="rounded-xl border-border shadow-[var(--shadow-panel)]">
+          <TableScroll aria-label={t('title')} className="rounded-panel border-border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -139,9 +127,6 @@ export function ProjectMembers({ projectId }: { projectId: string }) {
                         <TableCell className="text-sm text-foreground">
                           <div className="flex flex-wrap items-center gap-2">
                             {memberName(member)}
-                            {memberRoles(member).includes(ProjectRole.PROJECT_MANAGER) ? (
-                              <Badge tone="info">{t('role.PROJECT_MANAGER')}</Badge>
-                            ) : null}
                           </div>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
@@ -155,12 +140,19 @@ export function ProjectMembers({ projectId }: { projectId: string }) {
                               {memberRoles(member).map((role, index) => (
                                 <span key={role} className="inline-flex items-center">
                                   {index > 0 ? (
-                                    <span className="mx-1.5 text-muted-foreground/40" aria-hidden="true">
+                                    <span
+                                      className="mx-1.5 text-muted-foreground/40"
+                                      aria-hidden="true"
+                                    >
                                       ·
                                     </span>
                                   ) : null}
                                   <span
-                                    className={isAssignableRole(role) ? undefined : 'italic text-muted-foreground/70'}
+                                    className={
+                                      isAssignableRole(role)
+                                        ? undefined
+                                        : 'italic text-muted-foreground/70'
+                                    }
                                     title={isAssignableRole(role) ? undefined : t('roleDeprecated')}
                                   >
                                     {t(`role.${role}`)}
@@ -171,24 +163,34 @@ export function ProjectMembers({ projectId }: { projectId: string }) {
                           )}
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center justify-end gap-4">
-                            <button
-                              type="button"
-                              onClick={() => setEditing(member)}
-                              className="min-h-11 text-sm font-medium text-brand-primary underline-offset-2 hover:underline"
-                            >
-                              {t('editRoles')}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setPending(member)}
-                              disabled={blocked !== null}
-                              title={blocked ? t(`removeBlocked.${blocked}`) : undefined}
-                              className="min-h-11 text-sm font-medium text-danger underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
-                            >
-                              {t('remove')}
-                            </button>
-                          </div>
+                          {canManage ? (
+                            <div className="flex justify-end">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    aria-label={t('memberActions', { name: memberName(member) })}
+                                  >
+                                    <DotsThree size={20} aria-hidden="true" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onSelect={() => setEditing(member)}>
+                                    {t('editRoles')}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    destructive
+                                    disabled={blocked !== null}
+                                    title={blocked ? t(`removeBlocked.${blocked}`) : undefined}
+                                    onSelect={() => setPending(member)}
+                                  >
+                                    {t('remove')}
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          ) : null}
                         </TableCell>
                       </TableRow>
                     );
@@ -198,7 +200,13 @@ export function ProjectMembers({ projectId }: { projectId: string }) {
             </Table>
           </TableScroll>
 
-          <AddMemberForm projectId={projectId} members={rows} />
+          {adding && canManage ? (
+            <AddMemberForm
+              projectId={projectId}
+              members={rows}
+              onDismiss={() => setAdding(false)}
+            />
+          ) : null}
         </>
       )}
 
@@ -208,12 +216,8 @@ export function ProjectMembers({ projectId }: { projectId: string }) {
           description={t('removeBody')}
           confirmLabel={t('remove')}
           isPending={remove.isPending}
-          errorMessage={
-            remove.error instanceof ApiError ? remove.error.message : undefined
-          }
-          onConfirm={() =>
-            remove.mutate(pending.userId, { onSuccess: () => setPending(null) })
-          }
+          errorMessage={remove.error instanceof ApiError ? remove.error.message : undefined}
+          onConfirm={() => remove.mutate(pending.userId, { onSuccess: () => setPending(null) })}
           onDismiss={() => setPending(null)}
         />
       ) : null}
@@ -322,7 +326,7 @@ function EditRolesDialog({
                   type="button"
                   aria-pressed={selected}
                   onClick={() => toggle(role)}
-                  disabled={locked}
+                  disabled={locked || isPending}
                   title={locked ? t('lastManagerLocked') : undefined}
                   className={
                     selected
@@ -355,9 +359,11 @@ function EditRolesDialog({
 function AddMemberForm({
   projectId,
   members,
+  onDismiss,
 }: {
   projectId: string;
   members: readonly ProjectMember[];
+  onDismiss: () => void;
 }) {
   const t = useTranslations('platform.projects.members');
 
@@ -369,10 +375,7 @@ function AddMemberForm({
 
   const ids = { user: useId() };
 
-  const candidates = useMemo(
-    () => addableUsers(users.data ?? [], members),
-    [users.data, members],
-  );
+  const candidates = useMemo(() => addableUsers(users.data ?? [], members), [users.data, members]);
 
   const serverError = add.error instanceof ApiError ? add.error.message : null;
   // `@ArrayMinSize(1)` — a member cannot be added without a role, and there is no endpoint
@@ -380,89 +383,108 @@ function AddMemberForm({
   const complete = Boolean(userId) && roles.length > 0;
 
   function toggle(role: ProjectRole) {
-    setRoles((prev) =>
-      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role],
-    );
+    setRoles((prev) => (prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]));
   }
 
   function handleAdd() {
-    if (!complete) return;
+    if (!complete || add.isPending) return;
     add.mutate(
       { userId, roles },
       {
         onSuccess: () => {
           setUserId('');
           setRoles([]);
+          onDismiss();
         },
       },
     );
   }
 
-  if (users.isError) {
-    return <Alert variant="error" messages={[t('usersLoadFailed')]} />;
-  }
-
-  if (!users.isPending && candidates.length === 0) {
-    return <Alert variant="info" messages={[t('everyoneAdded')]} />;
-  }
-
+  const preventPending = (event: Event) => {
+    if (add.isPending) event.preventDefault();
+  };
   return (
-    <section className="space-y-4 rounded-xl border border-border bg-surface p-4 shadow-[var(--shadow-panel)]">
-      <div className="min-w-0">
-        <h3 className="text-sm font-semibold text-foreground">{t('addTitle')}</h3>
-        <p className="mt-1 max-w-prose text-xs text-muted-foreground">{t('addHint')}</p>
-      </div>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !add.isPending) onDismiss();
+      }}
+    >
+      <DialogContent
+        onEscapeKeyDown={preventPending}
+        onPointerDownOutside={preventPending}
+        onInteractOutside={preventPending}
+      >
+        <DialogTitle>{t('addTitle')}</DialogTitle>
+        <DialogDescription>{t('addHint')}</DialogDescription>
+        {users.isError ? <Alert variant="error" messages={[t('usersLoadFailed')]} /> : null}
+        {!users.isPending && !users.isError && candidates.length === 0 ? (
+          <Alert variant="info" messages={[t('everyoneAdded')]} />
+        ) : null}
+        <div className="mt-4 space-y-4">
+          <div className="max-w-md space-y-1.5">
+            <label htmlFor={ids.user} className="block text-xs font-medium text-muted-foreground">
+              {t('colName')}
+            </label>
+            <Select
+              disabled={users.isPending || users.isError || add.isPending}
+              id={ids.user}
+              value={userId}
+              onChange={(value) => setUserId(value)}
+            >
+              <option value="" disabled>
+                —
+              </option>
+              {candidates.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {userName(candidate)} · {candidate.email}
+                </option>
+              ))}
+            </Select>
+          </div>
 
-      <div className="max-w-md space-y-1.5">
-        <label htmlFor={ids.user} className="block text-xs font-medium text-muted-foreground">
-          {t('colName')}
-        </label>
-        <Select
-          id={ids.user}
-          value={userId}
-          onChange={(value) => setUserId(value)}
-        >
-          <option value="" disabled>
-            —
-          </option>
-          {candidates.map((candidate) => (
-            <option key={candidate.id} value={candidate.id}>
-              {userName(candidate)} · {candidate.email}
-            </option>
-          ))}
-        </Select>
-      </div>
+          <fieldset className="space-y-2">
+            <legend className="text-xs font-medium text-muted-foreground">{t('colRoles')}</legend>
+            <div className="flex flex-wrap gap-2">
+              {ASSIGNABLE_PROJECT_ROLES.map((role) => {
+                const selected = roles.includes(role);
+                return (
+                  <button
+                    key={role}
+                    type="button"
+                    disabled={add.isPending}
+                    aria-pressed={selected}
+                    onClick={() => toggle(role)}
+                    className={
+                      selected
+                        ? 'min-h-11 rounded-control border border-brand-primary bg-brand-primary px-3 text-sm font-medium text-white'
+                        : 'min-h-11 rounded-control border border-border bg-surface px-3 text-sm text-foreground'
+                    }
+                  >
+                    {t(`role.${role}`)}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
 
-      <fieldset className="space-y-2">
-        <legend className="text-xs font-medium text-muted-foreground">{t('colRoles')}</legend>
-        <div className="flex flex-wrap gap-2">
-          {ASSIGNABLE_PROJECT_ROLES.map((role) => {
-            const selected = roles.includes(role);
-            return (
-              <button
-                key={role}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => toggle(role)}
-                className={
-                  selected
-                    ? 'min-h-11 rounded-md border border-brand-primary bg-brand-primary px-3 text-sm font-medium text-white'
-                    : 'min-h-11 rounded-md border border-border bg-surface px-3 text-sm text-foreground'
-                }
-              >
-                {t(`role.${role}`)}
-              </button>
-            );
-          })}
+          {serverError ? <Alert variant="error" messages={[serverError]} /> : null}
         </div>
-      </fieldset>
-
-      {serverError ? <Alert variant="error" messages={[serverError]} /> : null}
-
-      <Button type="button" className="gap-2" onClick={handleAdd} disabled={!complete || add.isPending}>
-        <Plus size={16} aria-hidden="true" />
-        {t('add')}
-      </Button>
-    </section>
+        <DialogFooter>
+          <Button variant="outline" onClick={onDismiss} disabled={add.isPending}>
+            {t('cancel')}
+          </Button>
+          <Button
+            type="button"
+            className="gap-2"
+            onClick={handleAdd}
+            disabled={!complete || add.isPending || users.isError || users.isPending}
+          >
+            <Plus size={16} aria-hidden="true" />
+            {t('add')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

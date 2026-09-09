@@ -12,16 +12,25 @@ import {
 } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import Link from 'next/link';
 import { Plus, Trash2 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { BoqVersionStatus, PaymentTrigger } from '@erp/types';
-import { Alert, Button, DatePicker, FormField, FormSection, Input, MoneyInput, Select } from '@erp/ui';
+import {
+  Alert,
+  Button,
+  DatePicker,
+  FormField,
+  FormSection,
+  Input,
+  MoneyInput,
+  Select,
+} from '@erp/ui';
 
 import { useBoqWorkspace } from '@/features/boq/hooks/use-boq';
 import { useClients } from '@/features/clients/hooks/use-clients';
 import { useProjects } from '@/features/projects/hooks/use-projects';
+import { FormActions } from '@/components/form-actions';
 import { ApiError } from '@/lib/api-client';
 
 import {
@@ -97,20 +106,36 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
 
     values.paymentPlan.forEach((row, i) => {
       if (!row.name.trim()) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['paymentPlan', i, 'name'], message: t('plan.nameRequired') });
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['paymentPlan', i, 'name'],
+          message: t('plan.nameRequired'),
+        });
       }
       const pct = row.percentage.trim();
       if (!/^\d+(\.\d{1,2})?$/.test(pct) || Number(pct) <= 0) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['paymentPlan', i, 'percentage'], message: t('plan.percentInvalid') });
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['paymentPlan', i, 'percentage'],
+          message: t('plan.percentInvalid'),
+        });
       }
       if (row.triggerType === PaymentTrigger.TIME_BASED && !row.dueOffsetDays.trim()) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['paymentPlan', i, 'dueOffsetDays'], message: t('plan.offsetRequired') });
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['paymentPlan', i, 'dueOffsetDays'],
+          message: t('plan.offsetRequired'),
+        });
       }
     });
 
     const total = paymentPlanTotalPercent(values.paymentPlan);
     if (Math.abs(total - 100) > 0.001) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['paymentPlan'], message: t('plan.totalMismatch', { total }) });
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['paymentPlan'],
+        message: t('plan.totalMismatch', { total }),
+      });
     }
   };
 
@@ -137,7 +162,11 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
       : { ...EMPTY_CONTRACT_FORM, projectId: requestedProjectId },
   });
 
-  const { fields: planFields, append: appendPlan, remove: removePlan } = useFieldArray({
+  const {
+    fields: planFields,
+    append: appendPlan,
+    remove: removePlan,
+  } = useFieldArray({
     control,
     name: 'paymentPlan',
   });
@@ -146,6 +175,10 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
   // than read once. `useWatch` rather than `watch()` — the latter opts the component out
   // of React Compiler memoization.
   const selectedProjectId = useWatch({ control, name: 'projectId' });
+  const selectedBoqId = useWatch({ control, name: 'boqVersionId' });
+  const inheritedProject = requestedProjectId
+    ? projects.data?.find((project) => project.id === requestedProjectId)
+    : undefined;
   const boq = useBoqWorkspace(selectedProjectId);
 
   // The payment-plan builder is a MILESTONE-only, create-only affordance (there is no PATCH
@@ -174,7 +207,22 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
     (version) => version.status === BoqVersionStatus.BASELINED,
   );
 
+  const onlyBaselineId = baselinedVersions.length === 1 ? baselinedVersions[0]!.id : null;
+  useEffect(() => {
+    if (!isEdit && !selectedBoqId && onlyBaselineId) setValue('boqVersionId', onlyBaselineId);
+  }, [isEdit, selectedBoqId, onlyBaselineId, setValue]);
+
   const onSubmit = (values: ContractFormValues) => {
+    if (
+      isPending ||
+      projects.isPending ||
+      clients.isPending ||
+      (!isEdit && boq.isPending) ||
+      projects.isError ||
+      clients.isError ||
+      boq.isError
+    )
+      return;
     if (isEdit) update.mutate(toUpdateContractPayload(values));
     else create.mutate(toCreateContractPayload(values));
   };
@@ -186,14 +234,14 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
       ? [error instanceof ApiError && error.messages.length > 0 ? error.message : t('failed')]
       : [];
 
-  const dataFailed = projects.isError || clients.isError;
+  const dataFailed = projects.isError || clients.isError || boq.isError;
 
   return (
     <form
       onSubmit={(e) => {
         void handleSubmit(onSubmit)(e);
       }}
-      className="space-y-5"
+      className="space-y-7 rounded-panel border border-border bg-surface p-5 sm:p-8"
       noValidate
     >
       {errorMessages.length > 0 ? <Alert variant="error" messages={errorMessages} /> : null}
@@ -202,90 +250,127 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
       {/* What a contract is FOR cannot change after creation — UpdateContractDto declares
           none of these three. In edit mode they are shown read-only rather than hidden, so
           the user can still see what the contract is against. */}
-      <FormSection title={t('project')}>
+      <FormSection variant="plain" title={t('project')}>
         {isEdit ? (
           <Alert variant="info" messages={[t('identityFixed')]} />
         ) : (
           <div className="grid gap-5 lg:grid-cols-2">
-          <FormField htmlFor="contract-project" label={t('project')} error={errors.projectId?.message}>
-            <Controller
-              control={control}
-              name="projectId"
-              render={({ field }) => (
-                <Select id="contract-project"
-              aria-describedby="contract-project-hint" value={field.value} onChange={field.onChange}>
-                  <option value="">{tCommon('required')}</option>
-                  {(projects.data ?? []).map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.code} — {project.name}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            />
-            <p id="contract-project-hint" className="text-xs text-muted-foreground">
-              {t('projectHint')}
-            </p>
-          </FormField>
+            {inheritedProject ? (
+              <div className="sm:col-span-2 border-b border-border pb-4">
+                <p className="text-body-sm font-medium">{inheritedProject.name}</p>
+                <p className="mt-1 text-body-sm text-muted-foreground">
+                  {clients.data?.find((client) => client.id === inheritedProject.clientId)?.name ??
+                    tCommon('loading')}
+                </p>
+              </div>
+            ) : (
+              <>
+                <FormField
+                  htmlFor="contract-project"
+                  label={t('project')}
+                  error={errors.projectId?.message}
+                >
+                  <Controller
+                    control={control}
+                    name="projectId"
+                    render={({ field }) => (
+                      <Select
+                        id="contract-project"
+                        aria-describedby="contract-project-hint"
+                        value={field.value}
+                        onChange={(value) => {
+                          field.onChange(value);
+                          setValue('boqVersionId', '');
+                          setValue(
+                            'clientId',
+                            projects.data?.find((project) => project.id === value)?.clientId ?? '',
+                          );
+                        }}
+                      >
+                        <option value="">{tCommon('required')}</option>
+                        {(projects.data ?? []).map((project) => (
+                          <option key={project.id} value={project.id}>
+                            {project.code} — {project.name}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  />
+                  <p id="contract-project-hint" className="text-xs text-muted-foreground">
+                    {t('projectHint')}
+                  </p>
+                </FormField>
 
-          <FormField htmlFor="contract-client" label={t('client')} error={errors.clientId?.message}>
-            <Controller
-              control={control}
-              name="clientId"
-              render={({ field }) => (
-                <Select id="contract-client" value={field.value} onChange={field.onChange}>
-                  <option value="">{tCommon('required')}</option>
-                  {(clients.data ?? []).map((client) => (
-                    <option key={client.id} value={client.id}>
-                      {client.code} — {client.name}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            />
-          </FormField>
-
-          <FormField
-            htmlFor="contract-boq-version"
-            label={t('boqVersion')}
-            error={errors.boqVersionId?.message}
-          >
-            <Controller
-              control={control}
-              name="boqVersionId"
-              render={({ field }) => (
-                <Select id="contract-boq-version"
-              aria-describedby="contract-boq-hint"
-              disabled={!selectedProjectId || boq.isPending} value={field.value} onChange={field.onChange}>
-                  <option value="">{tCommon('required')}</option>
-                  {baselinedVersions.map((version) => (
-                    <option key={version.id} value={version.id}>
-                      v{version.versionNumber}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            />
-            <p id="contract-boq-hint" className="text-xs text-muted-foreground">
-              {!selectedProjectId
-                ? t('boqVersionNoProject')
-                : boq.isPending
-                  ? tCommon('loading')
-                  : baselinedVersions.length === 0
-                    ? t('boqVersionNone')
-                    : t('boqVersionHint')}
-            </p>
-          </FormField>
+                <FormField
+                  htmlFor="contract-client"
+                  label={t('client')}
+                  error={errors.clientId?.message}
+                >
+                  <Controller
+                    control={control}
+                    name="clientId"
+                    render={({ field }) => (
+                      <Select id="contract-client" value={field.value} onChange={field.onChange}>
+                        <option value="">{tCommon('required')}</option>
+                        {(clients.data ?? []).map((client) => (
+                          <option key={client.id} value={client.id}>
+                            {client.code} — {client.name}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  />
+                </FormField>
+              </>
+            )}
+            <FormField
+              htmlFor="contract-boq-version"
+              label={t('boqVersion')}
+              error={errors.boqVersionId?.message}
+            >
+              <Controller
+                control={control}
+                name="boqVersionId"
+                render={({ field }) => (
+                  <Select
+                    id="contract-boq-version"
+                    aria-describedby="contract-boq-hint"
+                    disabled={!selectedProjectId || boq.isPending}
+                    value={field.value}
+                    onChange={field.onChange}
+                  >
+                    <option value="">{tCommon('required')}</option>
+                    {baselinedVersions.map((version) => (
+                      <option key={version.id} value={version.id}>
+                        v{version.versionNumber}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              />
+              <p id="contract-boq-hint" className="text-xs text-muted-foreground">
+                {!selectedProjectId
+                  ? t('boqVersionNoProject')
+                  : boq.isPending
+                    ? tCommon('loading')
+                    : baselinedVersions.length === 0
+                      ? t('boqVersionNone')
+                      : t('boqVersionHint')}
+              </p>
+            </FormField>
           </div>
         )}
       </FormSection>
 
-      <FormSection title={t('billingModel')}>
+      <FormSection variant="plain" title={t('billingModel')}>
         <div className="grid gap-5 lg:grid-cols-2">
           <FormField
             htmlFor="contract-number"
             label={t('number')}
-            error={errors.contractNumber?.message ?? (isDuplicateNumber ? t('duplicateNumber') : undefined)}
+            error={
+              errors.contractNumber?.message ??
+              (isDuplicateNumber ? t('duplicateNumber') : undefined)
+            }
           >
             <Input
               id="contract-number"
@@ -294,52 +379,53 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
             />
           </FormField>
 
-      <div className="grid gap-5">
-        <FormField
-          htmlFor="contract-value"
-          label={t('value')}
-          error={errors.contractValue?.message}
-        >
-          <Controller
-            name="contractValue"
-            control={control}
-            render={({ field }) => (
-              <MoneyInput
-                id="contract-value"
-                dir="ltr"
-                aria-invalid={Boolean(errors.contractValue)}
-                value={field.value}
-                onValueChange={field.onChange}
-                onBlur={field.onBlur}
-                ref={field.ref}
-                name={field.name}
+          <div className="grid gap-5">
+            <FormField
+              htmlFor="contract-value"
+              label={t('value')}
+              error={errors.contractValue?.message}
+            >
+              <Controller
+                name="contractValue"
+                control={control}
+                render={({ field }) => (
+                  <MoneyInput
+                    id="contract-value"
+                    dir="ltr"
+                    aria-invalid={Boolean(errors.contractValue)}
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    onBlur={field.onBlur}
+                    ref={field.ref}
+                    name={field.name}
+                  />
+                )}
               />
-            )}
-          />
-        </FormField>
-      </div>
+            </FormField>
+          </div>
 
-      <FormField htmlFor="contract-billing" label={t('billingModel')}>
-        <Controller
-          control={control}
-          name="billingModel"
-          render={({ field }) => (
-            <Select id="contract-billing" value={field.value} onChange={field.onChange}>
-              {BILLING_MODELS.map((model) => (
-                <option key={model} value={model}>
-                  {tContracts(`billingModel.${model}`)}
-                </option>
-              ))}
-            </Select>
-          )}
-        />
-      </FormField>
+          <FormField htmlFor="contract-billing" label={t('billingModel')}>
+            <Controller
+              control={control}
+              name="billingModel"
+              render={({ field }) => (
+                <Select id="contract-billing" value={field.value} onChange={field.onChange}>
+                  {BILLING_MODELS.map((model) => (
+                    <option key={model} value={model}>
+                      {tContracts(`billingModel.${model}`)}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            />
+          </FormField>
         </div>
       </FormSection>
 
       {showPaymentPlan ? (
-        <FormSection title={t('plan.title')}>
+        <FormSection variant="plain" title={t('plan.title')}>
           <p className="text-xs text-muted-foreground">{t('plan.subtitle')}</p>
+          <p className="mt-2 text-caption text-muted-foreground">{t('plan.createOnly')}</p>
 
           {planFields.length === 0 ? (
             <p className="mt-3 rounded-panel border border-dashed border-border bg-surface px-4 py-6 text-center text-sm text-muted-foreground">
@@ -382,49 +468,56 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
         </FormSection>
       ) : null}
 
-      <FormSection title={t('startDate')}>
+      <FormSection variant="plain" title={t('startDate')}>
         <div className="grid gap-5 sm:grid-cols-2">
-        <FormField htmlFor="contract-start" label={t('startDate')}>
-          <Controller
-            control={control}
-            name="startDate"
-            render={({ field }) => (
-              <DatePicker id="contract-start" value={field.value} onChange={field.onChange} />
-            )}
-          />
-        </FormField>
+          <FormField htmlFor="contract-start" label={t('startDate')}>
+            <Controller
+              control={control}
+              name="startDate"
+              render={({ field }) => (
+                <DatePicker id="contract-start" value={field.value} onChange={field.onChange} />
+              )}
+            />
+          </FormField>
 
-        <FormField
-          htmlFor="contract-end"
-          label={t('expectedEnd')}
-          error={errors.expectedEndDate?.message}
-        >
-          <Controller
-            control={control}
-            name="expectedEndDate"
-            render={({ field }) => (
-              // The end of a contract cannot precede its start; constraining the calendar stops
-              // the wrong value before validation has to explain it.
-              <DatePicker
-                id="contract-end"
-                value={field.value}
-                onChange={field.onChange}
-                min={startDate || undefined}
-              />
-            )}
-          />
-        </FormField>
+          <FormField
+            htmlFor="contract-end"
+            label={t('expectedEnd')}
+            error={errors.expectedEndDate?.message}
+          >
+            <Controller
+              control={control}
+              name="expectedEndDate"
+              render={({ field }) => (
+                // The end of a contract cannot precede its start; constraining the calendar stops
+                // the wrong value before validation has to explain it.
+                <DatePicker
+                  id="contract-end"
+                  value={field.value}
+                  onChange={field.onChange}
+                  min={startDate || undefined}
+                />
+              )}
+            />
+          </FormField>
         </div>
       </FormSection>
 
-      <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4 shadow-sm sm:flex-row-reverse sm:justify-start">
-        <Button type="submit" disabled={isPending}>
-          {isPending ? tCommon('loading') : isEdit ? t('saveChanges') : t('submit')}
-        </Button>
-        <Button variant="outline" asChild>
-          <Link href={isEdit ? `/contracts/${contract.id}` : '/contracts'}>{t('cancel')}</Link>
-        </Button>
-      </div>
+      <FormActions
+        isPending={isPending}
+        disabled={
+          dataFailed || projects.isPending || clients.isPending || (!isEdit && boq.isPending)
+        }
+        submitLabel={isEdit ? t('saveChanges') : t('submit')}
+        cancelLabel={t('cancel')}
+        cancelHref={
+          isEdit
+            ? `/contracts/${contract.id}`
+            : requestedProjectId
+              ? `/projects/${requestedProjectId}/commercial/contract-security`
+              : '/contracts'
+        }
+      />
     </form>
   );
 }
@@ -455,7 +548,11 @@ function PlanRowFields({
   return (
     <li className="rounded-panel border border-border bg-surface p-4">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <FormField htmlFor={`plan-${index}-name`} label={t('plan.name')} error={rowErrors?.name?.message}>
+        <FormField
+          htmlFor={`plan-${index}-name`}
+          label={t('plan.name')}
+          error={rowErrors?.name?.message}
+        >
           <Input
             id={`plan-${index}-name`}
             placeholder={t('plan.namePlaceholder')}
@@ -483,11 +580,7 @@ function PlanRowFields({
             control={control}
             name={`paymentPlan.${index}.triggerType`}
             render={({ field }) => (
-              <Select
-                id={`plan-${index}-trigger`}
-                value={field.value}
-                onChange={field.onChange}
-              >
+              <Select id={`plan-${index}-trigger`} value={field.value} onChange={field.onChange}>
                 {PAYMENT_TRIGGERS.map((tr) => (
                   <option key={tr} value={tr}>
                     {t(`plan.triggerType.${tr}`)}

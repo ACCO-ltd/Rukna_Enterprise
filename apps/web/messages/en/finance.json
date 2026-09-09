@@ -61,7 +61,9 @@
       "margin": "Margin",
       "marginBasis": "Gross profit / revenue",
       "unavailableTitle": "Accounting position unavailable",
-      "unavailableReason": "The general ledger cannot accept postings yet, so this project has no accounting position. Cost budget, commitments and accruals above are unaffected."
+      "unavailableReason": "The general ledger cannot accept postings yet, so this project has no accounting position. Cost budget, commitments and accruals above are unaffected.",
+      "setupDetails": "Accounting setup details",
+      "configure": "Open accounting setup"
     },
     "controls": {
       "title": "Data & control status",

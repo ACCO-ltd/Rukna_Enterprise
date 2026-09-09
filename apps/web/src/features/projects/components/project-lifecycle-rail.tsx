@@ -2,8 +2,8 @@
 
 import { useTranslations } from 'next-intl';
 import { ProjectStatus } from '@erp/types';
-import { cn, RecordPanel } from '@erp/ui';
-import { Check, Route } from 'lucide-react';
+import { cn } from '@erp/ui';
+import { Check } from 'lucide-react';
 
 const LIFECYCLE_STAGES: ProjectStatus[] = [
   ProjectStatus.DRAFT,
@@ -36,11 +36,7 @@ export function ProjectLifecycleRail({ status }: { status: ProjectStatus }) {
   if (current < 0) return null;
 
   return (
-    <RecordPanel
-      title={tDetail('lifecycle')}
-      meta={tDetail('lifecycleHint')}
-      icon={<Route size={17} strokeWidth={1.9} />}
-    >
+    <section className="border-b border-border pb-4">
       {/* Scrolls rather than wraps on a narrow screen: a stepper that wraps stops reading as
           a sequence, and this one row serves 375px too. */}
       <div className="overflow-x-auto [-webkit-overflow-scrolling:touch]">
@@ -64,7 +60,7 @@ export function ProjectLifecycleRail({ status }: { status: ProjectStatus }) {
                     aria-hidden="true"
                     className={cn(
                       'flex h-4 w-4 shrink-0 items-center justify-center rounded-full',
-                      active && 'bg-brand-primary ring-4 ring-brand-primary/15',
+                      active && 'bg-foreground',
                       complete && 'bg-success',
                       !complete && !active && 'border border-border/70 bg-surface',
                     )}
@@ -79,7 +75,7 @@ export function ProjectLifecycleRail({ status }: { status: ProjectStatus }) {
                   <span
                     className={cn(
                       'whitespace-nowrap text-caption font-medium leading-none',
-                      active && 'font-semibold text-brand-primary',
+                      active && 'font-semibold text-foreground',
                       complete && 'text-success',
                       // What has not happened yet is the quietest thing on the rail. It used to
                       // sit at full muted-foreground, which put five equally-weighted labels in
@@ -107,6 +103,6 @@ export function ProjectLifecycleRail({ status }: { status: ProjectStatus }) {
           })}
         </ol>
       </div>
-    </RecordPanel>
+    </section>
   );
 }

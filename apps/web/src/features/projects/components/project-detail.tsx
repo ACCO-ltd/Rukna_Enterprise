@@ -84,7 +84,6 @@ export function ProjectDetail({ id }: { id: string }) {
         project={project}
         locale={locale}
         summary={summary.data}
-        summaryPending={summary.isPending}
         summaryError={summary.isError}
       />
     </div>
@@ -113,13 +112,11 @@ function Overview({
   project,
   locale,
   summary,
-  summaryPending,
   summaryError,
 }: {
   project: ProjectDetailModel;
   locale: 'en' | 'ar';
   summary: ProjectWorkspaceSummary | undefined;
-  summaryPending: boolean;
   summaryError: boolean;
 }) {
   const t = useTranslations('platform.projects.detail');
@@ -149,24 +146,13 @@ function Overview({
           to spare for. */}
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-5">
-          {isDraft ? (
-            summaryPending ? (
-              <div
-                className="h-56 animate-pulse rounded-panel border border-border bg-muted"
-                aria-hidden="true"
-              />
-            ) : summary ? (
-              <ProjectReadiness project={project} setup={summary.setup} />
-            ) : null
-          ) : (
-            <ProjectProgressCard projectId={project.id} />
-          )}
+          {isDraft ? <ProjectReadiness project={project} /> : <ProjectProgressCard projectId={project.id} />}
 
-          <ProjectCommitmentsCard
+          {!isDraft ? <ProjectCommitmentsCard
             projectId={project.id}
             currencyCode={summary?.mainContract?.currency ?? project.currency ?? null}
             presentation="overview"
-          />
+          /> : null}
         </div>
 
         <div className="flex min-w-0 flex-col gap-5">

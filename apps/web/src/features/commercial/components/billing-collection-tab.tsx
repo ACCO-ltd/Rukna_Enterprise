@@ -430,7 +430,7 @@ function UnappliedPanel({ billing }: { billing: CommercialBillingResponse }) {
         // Accounting — Commercial reports the balance and hands over rather than owning a second
         // allocation interaction that would have to stay in step with the first.
         !none && billing.capabilities.canAllocateReceipt ? (
-          <PanelLink href="/finance/accounting/receipts">{t('allocate')}</PanelLink>
+          <PanelLink href="/receipts">{t('allocate')}</PanelLink>
         ) : null
       }
     >

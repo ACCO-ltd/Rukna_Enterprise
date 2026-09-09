@@ -74,6 +74,13 @@ export function ProcurementOverviewView({
   }
 
   const data = query.data;
+  const isEmpty = data.pipeline.every((stage) => stage.count === 0) && data.attention.length === 0 && data.recentActivity.length === 0 && data.costByBoq.length === 0;
+  if (isEmpty) return <section className="rounded-panel border border-border bg-surface p-6 sm:p-8">
+    <h3 className="text-h2 font-semibold">{t('empty.title')}</h3>
+    <p className="mt-2 max-w-prose text-body-sm text-muted-foreground">{t('empty.description')}</p>
+    <p className="mt-4 text-caption text-muted-foreground">{t('empty.pipeline')}</p>
+    {data.capabilities.canRaiseRequirement ? <Button className="mt-5" onClick={() => onGoTo('requirements')}>{t('empty.action')}</Button> : <p className="mt-4 text-body-sm text-muted-foreground">{t('empty.owner')}</p>}
+  </section>;
 
   return (
     <div className="space-y-4">

@@ -6,14 +6,6 @@ import { renderWithProviders } from '@/test/render';
 
 import type { WorkflowStep } from '../types';
 
-/**
- * The approval panel.
- *
- * The assertion that matters most is that the panel says its role check is its own. The server
- * records who acted and never verifies they hold the step's `roleRequired` (#45), so a screen
- * that looked authoritative would be worse than one that admits what it is.
- */
-
 const approvalMocks = vi.hoisted(() => ({
   useApprovalStep: vi.fn(),
   useApprovalAction: vi.fn(),
@@ -87,12 +79,9 @@ describe('ApprovalPanel', () => {
     expect(screen.getByText('Waiting on COMMERCIAL_MANAGER — step 2 of 3.')).toBeInTheDocument();
   });
 
-  /** #45. The whole point of the panel being honest about itself. */
-  it('states that the role check is the browser’s own, not the server’s', () => {
+  it('does not show the obsolete browser-only authorization warning', () => {
     render();
-
-    expect(screen.getByText(/checked here, in the browser, only/i)).toBeInTheDocument();
-    expect(screen.getByText(/issue #45/i)).toBeInTheDocument();
+    expect(screen.queryByText(/checked here, in the browser, only/i)).not.toBeInTheDocument();
   });
 
   it('offers both decisions to the holder of the required role', () => {

@@ -1,4 +1,4 @@
-import type { ProjectCategory, ProjectRole, ProjectStatus } from '@erp/types';
+import type { ProjectCategory, ProjectRole, ProjectStatus, ProjectReadinessResponse, ProjectLifecycleCommand, ProjectWorkspaceGuidanceItemResponse } from '@erp/types';
 
 import { apiClient } from '@/lib/api-client';
 
@@ -107,8 +107,25 @@ export function updateProject(id: string, payload: UpdateProjectPayload): Promis
 }
 
 /** Advances the project one step. Returns the updated project. */
-export function runProjectCommand(id: string, command: ProjectCommand): Promise<Project> {
-  return apiClient<Project>(`/projects/${id}/${command}`, { method: 'POST' });
+export interface ProjectWaiver { condition: string; reason: string }
+export type ProjectTransition =
+  | { command: 'start'; evidence: { actualStartDate: string; commencementNote?: string; overrides?: ProjectWaiver[] } }
+  | { command: 'close'; evidence: { closureDate: string; closureSummary: string; overrides?: ProjectWaiver[] } }
+  | { command: Exclude<ProjectCommand, 'start' | 'close'>; evidence?: never };
+
+export function getProjectReadiness(id: string, command: ProjectLifecycleCommand): Promise<ProjectReadinessResponse> {
+  return apiClient<ProjectReadinessResponse>(`/projects/${id}/readiness`, { params: { command } });
+}
+
+export function getProjectGuidance(id: string): Promise<ProjectWorkspaceGuidanceItemResponse[]> {
+  return apiClient<ProjectWorkspaceGuidanceItemResponse[]>(`/projects/${id}/workspace-guidance`);
+}
+
+export function runProjectCommand(id: string, transition: ProjectTransition): Promise<Project> {
+  return apiClient<Project>(`/projects/${id}/${transition.command}`, {
+    method: 'POST',
+    ...(transition.evidence ? { body: JSON.stringify(transition.evidence) } : {}),
+  });
 }
 
 export function cancelProject(id: string, reason: string): Promise<Project> {

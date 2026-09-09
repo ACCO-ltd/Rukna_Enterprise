@@ -1,26 +1,6 @@
 'use client';
 
-/**
- * The approval panel: the pending step of a document's DOA chain, and the decision on it.
- *
- * Hangs off a document detail page rather than standing alone, because **an approval inbox is
- * not buildable**. No endpoint lists approval instances — not by approver, not at all — so an
- * `instanceId` can only be discovered by already looking at the document that owns it.
- * `approvalInstanceId` is a scalar on `MaterialRequest` and `PurchaseOrder`, and both
- * repositories `include` without `select`, so it arrives on the payload.
- *
- * ─── This panel offers a control the server does not have ───────────────────────
- *
- * `WorkflowStep.roleRequired` names the role a step is reserved for. `approval.service.ts`
- * never reads it: it checks the instance is PENDING, records the action, and advances. The
- * controller documents a `403 Actor is not authorized` that the service cannot produce
- * ([#45](https://github.com/ACCO-ltd/Rukna_Enterprise/issues/45)). The lookup is not
- * organization-scoped either.
- *
- * So the panel checks `roleRequired` itself, and says plainly that the check is its own. An
- * approval screen that looked authoritative would be worse than one that admits what it is —
- * the endpoint is callable directly by anyone with a token.
- */
+/** Decisions use the server's organization-scoped role and segregation-of-duties checks. */
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
@@ -41,7 +21,7 @@ export function ApprovalPanel({
 }: {
   /** From the document payload. Null when the document has not been submitted for approval. */
   instanceId: string | null;
-  transactionType: WorkflowTransactionType;
+  transactionType?: WorkflowTransactionType;
 }) {
   const t = useTranslations('platform.approval');
   const tCommon = useTranslations('common');
@@ -58,7 +38,7 @@ export function ApprovalPanel({
 
   if (step.isPending) {
     return (
-      <section className="rounded-lg border border-border bg-surface p-4" aria-busy="true">
+      <section className="rounded-panel border border-border bg-surface p-4" aria-busy="true">
         <span className="sr-only">{tCommon('loading')}</span>
         <div className="h-16 animate-pulse rounded bg-muted" aria-hidden="true" />
       </section>
@@ -76,7 +56,7 @@ export function ApprovalPanel({
 
   return (
     <>
-      <section className="space-y-4 rounded-lg border border-brand-primary/20 bg-surface p-5 shadow-sm sm:p-6">
+      <section className="space-y-4 rounded-panel border border-brand-primary/20 bg-surface p-5 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-lg font-semibold text-foreground">{t('title')}</h2>
@@ -99,10 +79,6 @@ export function ApprovalPanel({
             </Badge>
           ) : null}
         </div>
-
-        {/* #45. Said at the point of the decision, not in a footnote: the role check above is
-            the frontend's own, and the endpoint behind these buttons enforces nothing. */}
-        <Alert variant="warning" messages={[t('advisoryNotice')]} />
 
         {blocked === 'wrong-role' ? (
           <Alert variant="info" messages={[t('wrongRole', { role: current!.roleRequired })]} />

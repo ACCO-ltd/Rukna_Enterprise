@@ -20,7 +20,7 @@ import { useClientSummaries } from '../hooks/use-clients';
 import { ClientContacts } from './client-contacts';
 import { ClientStatusBadge } from './client-status-badge';
 
-type Section = 'overview' | 'projects' | 'activity';
+type Section = 'overview' | 'projects';
 
 export function ClientDetail({ clientId }: { clientId: string }) {
   const t = useTranslations('platform.clients.detail');
@@ -62,7 +62,7 @@ export function ClientDetail({ clientId }: { clientId: string }) {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            {can('create:project') ? <Button asChild><Link href={`/projects/new?clientId=${client.id}`}>{t('newProject')}</Link></Button> : null}
+            {can('create:project') && isActive ? <Button asChild><Link href={`/projects/new?clientId=${client.id}`}>{t('newProject')}</Link></Button> : null}
             {can('manage:client') ? <Button variant="outline" asChild><Link href={`/clients/${client.id}/edit`}>{t('edit')}</Link></Button> : null}
             {can('manage:client') ? <DropdownMenu>
               <DropdownMenuTrigger asChild><Button variant="outline" size="icon" aria-label={t('more')}><DotsThreeVertical size={20} aria-hidden="true" /></Button></DropdownMenuTrigger>
@@ -83,7 +83,6 @@ export function ClientDetail({ clientId }: { clientId: string }) {
         <nav className="flex gap-5 overflow-x-auto border-b border-border" aria-label={t('sections')}>
           <TabButton active={section === 'overview'} onClick={() => setSection('overview')}>{t('overview')}</TabButton>
           <TabButton active={section === 'projects'} onClick={() => setSection('projects')}>{t('projects')}</TabButton>
-          <TabButton active={section === 'activity'} onClick={() => setSection('activity')}>{t('activity')}</TabButton>
         </nav>
         <div className="py-5">
           {section === 'overview' ? (
@@ -96,7 +95,7 @@ export function ClientDetail({ clientId }: { clientId: string }) {
                 {client.notes ? <div className="sm:col-span-3"><dt className="text-xs text-muted-foreground">{t('notes')}</dt><dd className="mt-1 whitespace-pre-line text-sm text-foreground">{client.notes}</dd></div> : null}
               </dl>
             </div>
-          ) : section === 'projects' ? <ClientProjects clientId={client.id} /> : <p className="text-sm text-muted-foreground">{t('activityEmpty')}</p>}
+          ) : <ClientProjects clientId={client.id} />}
         </div>
       </section>
 
