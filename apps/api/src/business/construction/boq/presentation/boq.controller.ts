@@ -67,6 +67,30 @@ export class BoqController {
     return this.workspaceService.getWorkspace(identity, projectId);
   }
 
+  @Get('compare-to-signed')
+  // ADR-029 R-2 — the meaningful diff: the live operational version vs the frozen as-committed
+  // SNAPSHOT, classifying each change money-neutral vs value-changing. Replaces peer-version compare.
+  @ApiOperation({
+    summary:
+      'Diff the live BOQ against the as-committed (signed) snapshot; empty until the BOQ is committed',
+  })
+  @ApiParam({ name: 'projectId' })
+  compareToSigned(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+  ) {
+    return this.workspaceService.compareToSigned(identity, projectId);
+  }
+
+  @Get('timeline')
+  // ADR-029 R-3 — the BOQ's notable events (commit, variation adopts, notable line changes),
+  // newest-first, with tier-gated amounts.
+  @ApiOperation({ summary: 'The BOQ timeline: commit, variation snapshots and notable changes, newest-first' })
+  @ApiParam({ name: 'projectId' })
+  timeline(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
+    return this.workspaceService.timeline(identity, projectId);
+  }
+
   @Get('versions/:leftId/compare/:rightId')
   @ApiOperation({ summary: 'Diff two versions, paired on originNodeId lineage' })
   @ApiParam({ name: 'projectId' })

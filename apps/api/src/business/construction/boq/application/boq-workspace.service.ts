@@ -2,9 +2,17 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import type { BoqNode, BoqVersion } from '@prisma/client';
 import {
   PERMISSIONS,
+  type BoqChangeAction,
   type BoqCompareResponse,
+  type BoqCompareToSignedChange,
+  type BoqCompareToSignedChangeClass,
+  type BoqCompareToSignedResponse,
+  type BoqLifeStage,
+  type BoqMoneyBand,
   type BoqNodeChange,
   type BoqChangeKind,
+  type BoqTimelineEntry,
+  type BoqTimelineResponse,
   type BoqVersionSummary,
   type BoqWorkspaceResponse,
   type RequestIdentity,
@@ -14,6 +22,11 @@ import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js'
 import { BoqPrismaRepository } from '../infrastructure/boq-prisma.repository.js';
 import { formatAmount, sumAmounts, toDecimal } from '../domain/boq-money.js';
 import { evaluateReadiness } from '../domain/boq-readiness.policy.js';
+import {
+  inContractBillableTotal,
+  contingencyRemaining,
+  separateChargeTotal,
+} from '../domain/boq-contract-value.policy.js';
 import { resolveBoqVisibility, canEditBoq } from '../domain/boq-visibility.policy.js';
 import { BoqVersioningService } from './boq-versioning.service.js';
 
@@ -75,6 +88,9 @@ export class BoqWorkspaceService {
         versions: [],
         readiness: null,
         revision: null,
+        // No BOQ yet → no money band and nothing signed to compare against.
+        moneyBand: null,
+        compareToSignedAvailable: false,
         capabilities,
       };
     }
@@ -94,10 +110,15 @@ export class BoqWorkspaceService {
     // most recent one names the Contract Baseline. It may be older than `approved` — a
     // revision can be baselined without the contract moving to it, and conflating the two
     // is how a screen shows a client the wrong contractual scope.
+    // R-1 — the contract-sourced money figures (base & current value) are read from the Contract
+    // table directly through the tenant Prisma client, exactly as the contract-baseline lookup below
+    // already does. This is a direct tenant-scoped read, NOT a foreign repo or a service call, so
+    // BoqModule gains no dependency on Contract/Commercial and the read stays cycle-free (the reverse
+    // direction — Commercial→BOQ — is what goes through the BOQ read port).
     const contract = await prisma.contract.findFirst({
       where: { projectId },
       orderBy: { createdAt: 'desc' },
-      select: { boqVersionId: true },
+      select: { boqVersionId: true, contractValue: true, baseContractValue: true },
     });
 
     const summaries = boq.versions.map((version) =>
@@ -117,6 +138,30 @@ export class BoqWorkspaceService {
           enforceVariationOrigin: false,
         })
       : null;
+
+    // R-1 — the life-stage + tier-gated money band, all assembled here so the frontend renders it
+    // rather than re-summing. The operational version is `currentVersionId` (fall back to the legacy
+    // draft pointer for a BOQ initialized before R2 backfilled it), matching `commit`/`appendVariationNodes`.
+    const operationalVersionId = boq.currentVersionId ?? boq.currentDraftVersionId ?? null;
+    const operationalVersion = operationalVersionId
+      ? boq.versions.find((version) => version.id === operationalVersionId) ?? null
+      : null;
+    const operationalNodes = operationalVersionId
+      ? byVersion.get(operationalVersionId) ?? []
+      : [];
+    const snapshotNodes = boq.committedSnapshotVersionId
+      ? byVersion.get(boq.committedSnapshotVersionId) ?? []
+      : [];
+
+    const moneyBand = this.buildMoneyBand(
+      boq.currency,
+      operationalVersion,
+      operationalNodes,
+      snapshotNodes,
+      contract,
+      canViewCost,
+      canViewMargin,
+    );
 
     return {
       projectId,
@@ -144,6 +189,9 @@ export class BoqWorkspaceService {
             ? { ...readiness, totalAmount: null }
             : null,
       revision: this.revisionSummary(draft, byVersion, boq.versions, canViewCost),
+      moneyBand,
+      // R-2 — there is something to compare against exactly when an as-committed snapshot exists.
+      compareToSignedAvailable: boq.committedSnapshotVersionId !== null,
       capabilities,
     };
   }
@@ -202,6 +250,191 @@ export class BoqWorkspaceService {
     };
   }
 
+  /**
+   * R-2 — compare-to-signed. The meaningful BOQ diff under the in-place model: the live operational
+   * version against the frozen as-committed SNAPSHOT (`Boq.committedSnapshotVersionId`, the "what we
+   * signed" record). REPLACES the old peer-version compare.
+   *
+   * Reuses the existing `diffNodes` (paired on lineage), then classifies each change as
+   * money-neutral (description/code/reorder, a reallocation that held the in-contract total) or
+   * value-changing (added/removed in-contract scope, a rate/qty move that shifted the in-contract
+   * total). The value-changing judgement is made against the NET in-contract delta: when the whole
+   * diff nets to zero on the in-contract total (a contingency reallocation, or absorbed scope funded
+   * net-zero), the amount-moving lines are a reallocation and read money-neutral; when the net is
+   * non-zero, those lines are value-changing.
+   *
+   * Returns gracefully (`available: false`, empty changes) when nothing has been committed yet — the
+   * screen renders "nothing signed to compare against", never an error. Totals are `canViewCost`-gated.
+   */
+  async compareToSigned(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<BoqCompareToSignedResponse> {
+    const prisma = this.tenancyService.getClient();
+    const boq = await this.versioning.getBoq(identity, projectId);
+    const { canViewCost } = resolveBoqVisibility(identity);
+
+    const signedVersionId = boq.committedSnapshotVersionId ?? null;
+    const liveVersionId = boq.currentVersionId ?? boq.currentDraftVersionId ?? null;
+
+    // Nothing committed yet, or no operational version to compare: an empty, non-error result.
+    if (!signedVersionId || !liveVersionId) {
+      return {
+        available: false,
+        currency: boq.currency,
+        signedVersionId,
+        liveVersionId,
+        signedInContractTotal: null,
+        liveInContractTotal: null,
+        inContractDelta: null,
+        moneyNeutralCount: 0,
+        valueChangingCount: 0,
+        changes: [],
+      };
+    }
+
+    const [signedNodes, liveNodes] = await Promise.all([
+      this.repo.findNodesByVersion(prisma, signedVersionId),
+      this.repo.findNodesByVersion(prisma, liveVersionId),
+    ]);
+
+    // The signed snapshot is the LEFT (as-was), the live version the RIGHT (as-is) — so an ADDED
+    // change is scope added since signing and a REMOVED change is scope taken out.
+    const rawChanges = diffNodes(signedNodes, liveNodes);
+
+    // The net move of the in-contract billable total between signed and live. When it is zero, any
+    // amount-moving change is part of a reallocation (money-neutral); when non-zero, amount movers
+    // are value-changing.
+    const signedInContract = inContractBillableTotal(signedNodes);
+    const liveInContract = inContractBillableTotal(liveNodes);
+    const inContractDelta = subtract(liveInContract, signedInContract);
+    const inContractMoved = inContractDelta !== null && !inContractDelta.isZero();
+
+    const changes: BoqCompareToSignedChange[] = rawChanges.map((change) => ({
+      ...change,
+      changeClass: classifyChange(change, inContractMoved),
+    }));
+
+    return {
+      available: true,
+      currency: boq.currency,
+      signedVersionId,
+      liveVersionId,
+      signedInContractTotal: canViewCost ? formatAmount(signedInContract) : null,
+      liveInContractTotal: canViewCost ? formatAmount(liveInContract) : null,
+      inContractDelta: canViewCost ? formatAmount(inContractDelta) : null,
+      moneyNeutralCount: changes.filter((c) => c.changeClass === 'MONEY_NEUTRAL').length,
+      valueChangingCount: changes.filter((c) => c.changeClass === 'VALUE_CHANGING').length,
+      changes: changes.map((change) => this.redactChange(change, canViewCost)),
+    };
+  }
+
+  /**
+   * R-3 — the BOQ timeline: the notable events of the one living BOQ, newest-first. Three sources,
+   * merged and sorted by timestamp:
+   *
+   *  - the COMMIT — the operational version's `baselinedAt` stamp (reused as the commit stamp by
+   *    `commit`), rendered "Committed to contract";
+   *  - each variation-adopt SNAPSHOT — the `BoqVersionStatus.SNAPSHOT` rows, whose `notes` name the
+   *    variation and whose `createdAt`/`createdBy` are the adopt;
+   *  - notable per-line `BoqChangeEvent`s on the operational version.
+   *
+   * Every entry carries a tier-gated amount: a change event surfaces its line amount delta
+   * (`canViewCost`); commit/variation entries carry no line amount in this iteration (the tie-out is
+   * read via compare-to-signed / the money band), so their amount is null. All actor ids are resolved
+   * to names in one query.
+   */
+  async timeline(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<BoqTimelineResponse> {
+    const prisma = this.tenancyService.getClient();
+    const boq = await this.versioning.getBoq(identity, projectId);
+    const { canViewCost } = resolveBoqVisibility(identity);
+
+    const operationalVersionId = boq.currentVersionId ?? boq.currentDraftVersionId ?? null;
+
+    const entries: BoqTimelineEntry[] = [];
+
+    // 1 — the commit. The operational version's `baselinedAt` is the commit stamp (`commit` writes it).
+    const operationalVersion = operationalVersionId
+      ? boq.versions.find((version) => version.id === operationalVersionId) ?? null
+      : null;
+    if (
+      operationalVersion &&
+      operationalVersion.status === 'COMMITTED' &&
+      operationalVersion.baselinedAt
+    ) {
+      entries.push({
+        id: `commit:${operationalVersion.id}`,
+        kind: 'COMMITTED',
+        label: 'Committed to contract',
+        versionId: operationalVersion.id,
+        actorUserId: operationalVersion.baselinedBy ?? null,
+        actorName: null,
+        occurredAt: operationalVersion.baselinedAt.toISOString(),
+        amount: null,
+      });
+    }
+
+    // 2 — each variation-adopt snapshot. Every SNAPSHOT row EXCEPT the as-committed one (which is the
+    // commit itself, already represented above) is a variation adopt; its notes name the variation.
+    for (const version of boq.versions) {
+      if (version.status !== 'SNAPSHOT') continue;
+      // The first snapshot is the as-committed record; skip it here (the commit entry covers it).
+      const isCommitSnapshot = version.notes?.startsWith('As-committed snapshot of version');
+      if (isCommitSnapshot) continue;
+      entries.push({
+        id: `snapshot:${version.id}`,
+        kind: 'VARIATION_SNAPSHOT',
+        label: version.notes ?? 'Variation adopted',
+        versionId: version.id,
+        actorUserId: version.createdBy ?? null,
+        actorName: null,
+        occurredAt: version.createdAt.toISOString(),
+        amount: null,
+      });
+    }
+
+    // 3 — notable per-line change events on the operational version.
+    if (operationalVersionId) {
+      const events = await this.repo.findHistory(prisma, operationalVersionId, {
+        take: 100,
+        skip: 0,
+      });
+      for (const event of events) {
+        // A line amount delta is derivable only for a value edit that carries both old/new on an
+        // amount field; otherwise the entry has no amount. Gated by `canViewCost`.
+        const amount =
+          canViewCost && event.field === 'totalAmount' && event.newValue !== null
+            ? formatAmount(subtract(toDecimal(event.newValue), toDecimal(event.oldValue)))
+            : null;
+        entries.push({
+          id: `event:${event.id}`,
+          kind: 'CHANGE_EVENT',
+          label: event.detail ?? changeEventLabel(event.action, event.code),
+          versionId: event.versionId,
+          actorUserId: event.actorUserId,
+          actorName: null,
+          occurredAt: event.createdAt.toISOString(),
+          amount,
+        });
+      }
+    }
+
+    // Newest-first, then resolve every actor id to a name in one query.
+    entries.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+    const actorIds = [
+      ...new Set(entries.map((entry) => entry.actorUserId).filter((id): id is string => id !== null)),
+    ];
+    const names = await this.repo.findActorNames(prisma, actorIds);
+    for (const entry of entries) {
+      entry.actorName = entry.actorUserId ? names.get(entry.actorUserId) ?? null : null;
+    }
+
+    return { projectId, entries };
+  }
+
   // ─── Private helpers ──────────────────────────────────────────────────────────
 
   private summarise(
@@ -240,6 +473,106 @@ export class BoqWorkspaceService {
     return canViewCost ? summary : { ...summary, totalAmount: null };
   }
 
+  /**
+   * Withholds the rate/amount fields of a compare change from a caller without the cost tier — the
+   * same server-side redaction the version totals get (§8 A-2). The structural facts (which node,
+   * what kinds, quantity) stay; only the money is nulled. `changeClass` is a structural
+   * money-neutral-vs-value fact, not a figure, so it is NOT withheld.
+   */
+  private redactChange(
+    change: BoqCompareToSignedChange,
+    canViewCost: boolean,
+  ): BoqCompareToSignedChange {
+    if (canViewCost) return change;
+    return {
+      ...change,
+      oldUnitRate: null,
+      newUnitRate: null,
+      oldAmount: null,
+      newAmount: null,
+      amountDelta: null,
+      amountDeltaPercent: null,
+    };
+  }
+
+  /**
+   * R-1 — the money band, assembled once server-side and tier-gated by the SINGLE
+   * `resolveBoqVisibility` result (`canViewCost` / `canViewMargin` are passed in).
+   *
+   * Every figure reuses a shared policy — nothing is re-summed here:
+   *  - `inContractTotal` / `separateChargeTotal` come from `inContractBillableTotal` /
+   *    `separateChargeTotal` over the operational nodes (cost tier).
+   *  - `contingencyRemaining` from `contingencyRemaining` over the operational nodes; the
+   *    `contingencyReserve` is the same function over the FROZEN snapshot nodes (the original
+   *    allowance), falling back to the operational figure pre-commit when there is no snapshot
+   *    (they are equal until the first draw). Margin tier.
+   *  - `baseContractValue` / `contractValue` come straight from the Contract row (margin tier);
+   *    `totalClientRevenue = contractValue + Σ separate charges`, the same definition the
+   *    Commercial read model uses — separate charges feed revenue, never the contract value.
+   *
+   * A figure whose tier the caller does not meet is null (omitted server-side); a figure that does
+   * not exist yet (no contract, no contingency line) is likewise null.
+   */
+  private buildMoneyBand(
+    currency: string,
+    operationalVersion: BoqVersion | null,
+    operationalNodes: BoqNode[],
+    snapshotNodes: BoqNode[],
+    contract: { contractValue: unknown; baseContractValue: unknown } | null,
+    canViewCost: boolean,
+    canViewMargin: boolean,
+  ): BoqMoneyBand {
+    // Life-stage is structural — never gated. WORKING while the operational version is a pre-commit
+    // DRAFT; COMMITTED once it has been committed. A missing operational version reads WORKING (an
+    // uninitialized/first-draft BOQ has not been committed).
+    const lifeStage: BoqLifeStage =
+      operationalVersion?.status === 'COMMITTED' ? 'COMMITTED' : 'WORKING';
+
+    const inContract = formatAmount(inContractBillableTotal(operationalNodes));
+    const separateCharge = formatAmount(separateChargeTotal(operationalNodes));
+
+    // Reserve = the frozen original allowance (snapshot); remaining = the live allowance. Pre-commit
+    // there is no snapshot, so the reserve mirrors the live figure (they are equal until a draw).
+    const remaining = formatAmount(contingencyRemaining(operationalNodes));
+    const reserve = snapshotNodes.length
+      ? formatAmount(contingencyRemaining(snapshotNodes))
+      : remaining;
+
+    const baseContractValue =
+      contract?.baseContractValue != null
+        ? formatAmount(toDecimal(contract.baseContractValue as never))
+        : null;
+    const contractValue =
+      contract?.contractValue != null
+        ? formatAmount(toDecimal(contract.contractValue as never))
+        : null;
+
+    // Total client revenue = current contract value + Σ separate charges. Only meaningful once there
+    // is a current value to add to; null when there is no contract. Uses the separate-charge total
+    // even when the caller lacks the cost tier — the figure itself is a margin-tier figure.
+    const contractValueDecimal =
+      contract?.contractValue != null ? toDecimal(contract.contractValue as never) : null;
+    const separateChargeDecimal = separateChargeTotal(operationalNodes);
+    const totalClientRevenue =
+      contractValueDecimal === null
+        ? null
+        : formatAmount(contractValueDecimal.plus(separateChargeDecimal ?? toDecimal('0')!));
+
+    return {
+      lifeStage,
+      currency,
+      // Cost tier.
+      inContractTotal: canViewCost ? inContract : null,
+      separateChargeTotal: canViewCost ? separateCharge : null,
+      // Margin tier.
+      baseContractValue: canViewMargin ? baseContractValue : null,
+      contractValue: canViewMargin ? contractValue : null,
+      contingencyReserve: canViewMargin ? reserve : null,
+      contingencyRemaining: canViewMargin ? remaining : null,
+      totalClientRevenue: canViewMargin ? totalClientRevenue : null,
+    };
+  }
+
   private revisionSummary(
     draft: BoqVersionSummary | null,
     byVersion: Map<string, BoqNode[]>,
@@ -273,6 +606,50 @@ function subtract(
 ): ReturnType<typeof toDecimal> {
   if (right === null && left === null) return null;
   return (right ?? toDecimal('0')!).minus(left ?? toDecimal('0')!);
+}
+
+/**
+ * R-2 — classifies one compare-to-signed change as money-neutral vs value-changing.
+ *
+ * A change is VALUE_CHANGING when it moved the in-contract billable total:
+ *  - added or removed scope (`ADDED` / `REMOVED`), OR
+ *  - an amount move (`AMOUNT_CHANGED`, which a rate/qty change produces) AND the whole diff nets to a
+ *    NON-zero in-contract delta (`inContractMoved`). When the net is zero the amount move is part of a
+ *    reallocation (contingency → work, or absorbed scope funded net-zero) and reads MONEY_NEUTRAL.
+ *
+ * Everything else — a pure description/code/reorder edit, or an amount move that netted to zero — is
+ * MONEY_NEUTRAL: the document changed, what the client owes did not.
+ */
+export function classifyChange(
+  change: BoqNodeChange,
+  inContractMoved: boolean,
+): BoqCompareToSignedChangeClass {
+  if (change.kinds.includes('ADDED') || change.kinds.includes('REMOVED')) {
+    return 'VALUE_CHANGING';
+  }
+  if (change.kinds.includes('AMOUNT_CHANGED') && inContractMoved) {
+    return 'VALUE_CHANGING';
+  }
+  return 'MONEY_NEUTRAL';
+}
+
+/** A human label for a change event that carries no `detail` (e.g. a value edit). */
+function changeEventLabel(action: BoqChangeAction, code: string | null): string {
+  const target = code ? ` ${code}` : '';
+  switch (action) {
+    case 'CREATE':
+      return `Added${target}`;
+    case 'UPDATE':
+      return `Updated${target}`;
+    case 'DELETE':
+      return `Deleted${target}`;
+    case 'MOVE':
+      return `Moved${target}`;
+    case 'IMPORT':
+      return 'Imported items';
+    default:
+      return `Changed${target}`;
+  }
 }
 
 /**
