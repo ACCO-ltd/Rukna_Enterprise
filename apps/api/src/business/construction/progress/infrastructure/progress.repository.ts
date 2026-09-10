@@ -148,7 +148,10 @@ export class ProgressRepository {
     if (boqNodeIds.length === 0) return [];
     return prisma.boqNode.findMany({
       where: { id: { in: boqNodeIds }, version: { boq: { projectId } } },
-      select: { id: true, totalAmount: true },
+      // `nodeRole` lets the roll-up drop CONTINGENCY leaves from the value weighting (ADR-029
+      // CONST-BOQ-028 / spec P-1): a held reserve is money, not physical work, so it must carry
+      // zero progress weight while still counting toward the contract value elsewhere.
+      select: { id: true, totalAmount: true, nodeRole: true },
     });
   }
 

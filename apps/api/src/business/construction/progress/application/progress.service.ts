@@ -399,8 +399,16 @@ export class ProgressService {
     // value, and leaving it out would make a package look complete as soon as its first item was.
     const allocatedLeafIds = packages.flatMap((wp) => wp.boqLinks.map((b) => b.boqNodeId));
     const leafValues = await this.repo.findLeafValues(prisma, projectId, allocatedLeafIds);
+    // ADR-029 CONST-BOQ-028 / spec P-1: a CONTINGENCY leaf is a held reserve, not physical work,
+    // so it carries zero progress weight — a project with a large contingency line must show the
+    // same physical % as one without it. Dropping it from the value map lets `weightedPackagePercent`
+    // treat it as an absent (zero-value) leaf, and a package that is *only* contingency falls through
+    // to the existing unpriced-package plain-average fallback rather than reading 0%. SEPARATE_CHARGE
+    // and ABSORBED leaves are `nodeRole = WORK`, so they keep their value and roll up normally (P-2).
     const valueByNode = new Map<string, Decimal>(
-      leafValues.map((v) => [v.id, new Decimal(v.totalAmount?.toString() ?? '0')] as const),
+      leafValues
+        .filter((v) => v.nodeRole !== 'CONTINGENCY')
+        .map((v) => [v.id, new Decimal(v.totalAmount?.toString() ?? '0')] as const),
     );
 
     let weightsTotal = ZERO;

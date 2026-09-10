@@ -308,6 +308,93 @@ describe('ProgressService (ADR-021 MVP)', () => {
   });
 
   /**
+   * ADR-029 CONST-BOQ-028 / spec P-1: a CONTINGENCY leaf is money held in reserve, not physical
+   * work, so it must carry zero progress weight. A large contingency line must not drag the
+   * physical % up or down — the number must equal the one you'd get without any contingency line.
+   */
+  it('getRollup (P-1): a CONTINGENCY leaf contributes zero weight — % matches a project without it', async () => {
+    // Baseline: one real work leaf at 40% and nothing else.
+    const withoutContingency = build({
+      workPackages: [
+        {
+          id: 'a',
+          code: 'WP-A',
+          name: 'Structure',
+          responsibleOwner: null,
+          progressWeight: '1',
+          boqLinks: [{ boqNodeId: 'work' }],
+        },
+      ],
+      measurements: [
+        { boqNodeId: 'work', quantity: 400, boqNode: { id: 'work', code: '1', description: 'RC', quantity: 1000 } }, // 40%
+      ],
+      leafValues: [{ id: 'work', totalAmount: '500000.00', nodeRole: 'WORK' }],
+    });
+
+    // Same package, plus a large CONTINGENCY leaf allocated to it (0% measured, big value).
+    const withContingency = build({
+      workPackages: [
+        {
+          id: 'a',
+          code: 'WP-A',
+          name: 'Structure',
+          responsibleOwner: null,
+          progressWeight: '1',
+          boqLinks: [{ boqNodeId: 'work' }, { boqNodeId: 'contingency' }],
+        },
+      ],
+      measurements: [
+        { boqNodeId: 'work', quantity: 400, boqNode: { id: 'work', code: '1', description: 'RC', quantity: 1000 } }, // 40%
+      ],
+      leafValues: [
+        { id: 'work', totalAmount: '500000.00', nodeRole: 'WORK' },
+        // A huge reserve; if it counted, at 0% it would crush the package % toward zero.
+        { id: 'contingency', totalAmount: '5000000.00', nodeRole: 'CONTINGENCY' },
+      ],
+    });
+
+    const base = await withoutContingency.service.getRollup(identity, 'p-1');
+    const withC = await withContingency.service.getRollup(identity, 'p-1');
+
+    expect(base.packages[0]!.percentComplete).toBe(40);
+    // Identical — the 5M contingency line added zero weight (P-1), not dragged it toward 3.6%.
+    expect(withC.packages[0]!.percentComplete).toBe(40);
+    expect(withC.physicalPercent).toBe(base.physicalPercent);
+  });
+
+  /**
+   * Spec P-2: SEPARATE_CHARGE and ABSORBED leaves are real work (`nodeRole = WORK`), so they must
+   * still be value-weighted into the roll-up exactly like any in-contract work line.
+   */
+  it('getRollup (P-2): SEPARATE_CHARGE and ABSORBED leaves are real work and still roll up', async () => {
+    const { service } = build({
+      workPackages: [
+        {
+          id: 'a',
+          code: 'WP-A',
+          name: 'Mixed',
+          responsibleOwner: null,
+          progressWeight: '1',
+          boqLinks: [{ boqNodeId: 'separate' }, { boqNodeId: 'absorbed' }],
+        },
+      ],
+      measurements: [
+        { boqNodeId: 'separate', quantity: 1000, boqNode: { id: 'separate', code: '1', description: 'Pay-now extra', quantity: 1000 } }, // 100%
+        { boqNodeId: 'absorbed', quantity: 0, boqNode: { id: 'absorbed', code: '2', description: 'Absorbed extra', quantity: 1000 } }, // 0%
+      ],
+      // Both classified as extra work but are `nodeRole = WORK` (only the treatment differs).
+      leafValues: [
+        { id: 'separate', totalAmount: '30000.00', nodeRole: 'WORK' },
+        { id: 'absorbed', totalAmount: '10000.00', nodeRole: 'WORK' },
+      ],
+    });
+
+    const res = await service.getRollup(identity, 'p-1');
+    // (30,000×100 + 10,000×0) ÷ 40,000 = 75 — both leaves counted, not dropped.
+    expect(res.packages[0]!.percentComplete).toBe(75);
+  });
+
+  /**
    * A leaf with no rate is worth nothing, so a package where nothing is priced has no values to
    * weight by. Falling back to the plain average beats reporting 0% for work that happened.
    */
