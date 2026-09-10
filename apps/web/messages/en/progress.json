@@ -541,5 +541,10 @@
     "progress": "Progress",
     "empty": "No work packages yet.",
     "noVsPlan": "Planned progress is tracked for the project as a whole, not per work package."
+  },
+  "masterSchedule": {
+    "download": "Download PDF",
+    "downloading": "Generating…",
+    "downloadFailed": "Could not generate the master schedule PDF. Please try again."
   }
 }
