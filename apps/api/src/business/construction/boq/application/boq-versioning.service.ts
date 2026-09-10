@@ -19,6 +19,8 @@ import {
   evaluateReadiness,
   type BoqBaselineReadiness,
 } from '../domain/boq-readiness.policy.js';
+import { inContractBillableTotal } from '../domain/boq-contract-value.policy.js';
+import { formatAmount, type DecimalString } from '../domain/boq-money.js';
 
 /**
  * CONST-BOQ-001 enforcement switch — see `ReadinessContext.enforceVariationOrigin`.
@@ -96,7 +98,13 @@ export class BoqVersioningService {
       preparedBy: identity.userId,
     });
 
-    await this.repo.updateBoq(prisma, boq.id, { currentDraftVersionId: firstVersion.id });
+    // ADR-029 L-1 — the one long-lived operational version. `currentVersionId` is the pointer
+    // R2+ reads (DRAFT pre-commit, COMMITTED after); `currentDraftVersionId` is kept in step for
+    // the read models the old pointers still feed until R3 retires them.
+    await this.repo.updateBoq(prisma, boq.id, {
+      currentDraftVersionId: firstVersion.id,
+      currentVersionId: firstVersion.id,
+    });
 
     return (await this.repo.findById(prisma, boq.id))!;
   }
@@ -225,6 +233,125 @@ export class BoqVersioningService {
     });
 
     return (await this.repo.findById(prisma, boq.id))!;
+  }
+
+  /**
+   * Commit to contract — ADR-029 §2 L-1..L-4, CONST-BOQ-027.
+   *
+   * Fixes the contract value on the one operational version. `DRAFT → COMMITTED` in place (stable
+   * ids — L-6), and a frozen `SNAPSHOT` *copy* of the whole tree is written as the as-committed
+   * legal record (new ids; nothing operational references it). `Boq.currentVersionId` keeps
+   * pointing at the operational version and `Boq.committedSnapshotVersionId` at the snapshot.
+   *
+   * This is the successor to `baseline` under the in-place model. It does NOT touch the Contract
+   * module or `Contract.baseContractValue` — R3 reads the tie-out via `getInContractTotal`.
+   */
+  async commit(
+    identity: RequestIdentity,
+    projectId: string,
+    versionId: string,
+  ): Promise<BoqWithVersions> {
+    const prisma = this.tenancyService.getClient();
+    const boq = await this.requireBoq(prisma, projectId, identity.activeOrganizationId);
+
+    // L-1 — the operational version is the one `currentVersionId` names (fall back to the legacy
+    // draft pointer for a BOQ initialized before R2 backfilled it).
+    const operationalVersionId = boq.currentVersionId ?? boq.currentDraftVersionId;
+    if (operationalVersionId !== versionId) {
+      throw new BadRequestException('Only the operational BOQ version can be committed to contract.');
+    }
+
+    const version = await this.repo.findVersion(prisma, versionId);
+    if (!version || version.status !== 'DRAFT') {
+      throw new BadRequestException('This BOQ is not in a pre-commit DRAFT state.');
+    }
+
+    // L-3 — the SAME readiness the `readiness` query renders and `baseline` enforced. Baseline-Ready
+    // already requires every leaf to be pricing-complete (missing unit/quantity/rate are blockers),
+    // so this one evaluation covers both preconditions.
+    const nodes = await this.repo.findNodesByVersion(prisma, versionId);
+    const readiness = evaluateReadiness(nodes, {
+      boqCurrency: boq.currency,
+      isPostAward: boq.originalBaselineVersionId !== null,
+      enforceVariationOrigin: ENFORCE_VARIATION_ORIGIN,
+    });
+    if (!readiness.ready) {
+      throw new BadRequestException({
+        message: 'This BOQ is not ready to be committed to contract.',
+        details: { blockers: readiness.blockers },
+      });
+    }
+
+    // L-2 / ADR-011 — commit is the governed transition a contract is signed against, on the same
+    // seam `baseline` used. With no binding configured this resolves to null and commit proceeds;
+    // a binding turns on four-eyes (preparer ≠ approver) without touching this code. Gated → 409.
+    throwIfGated(
+      await this.commandGovernance.gateStateTransition(
+        identity,
+        'BoqVersion',
+        'DRAFT',
+        'COMMITTED',
+        versionId,
+      ),
+      'Committing this BOQ to contract requires workflow approval.',
+    );
+
+    // L-4 — one transaction: flip the operational version to COMMITTED (in place, ids intact) and
+    // write the frozen SNAPSHOT copy, then repoint the BOQ.
+    await prisma.$transaction(async (tx) => {
+      await this.repo.updateVersion(tx as never, versionId, {
+        status: 'COMMITTED',
+        // Reuse the baseline attribution columns as the commit stamp (who/when).
+        baselinedAt: new Date(),
+        baselinedBy: identity.userId,
+      });
+
+      const snapshotNumber = (await this.repo.maxVersionNumber(tx as never, boq.id)) + 1;
+      const snapshot = await this.repo.createVersion(tx as never, {
+        boqId: boq.id,
+        versionNumber: snapshotNumber,
+        status: 'SNAPSHOT',
+        notes: `As-committed snapshot of version ${version.versionNumber}`,
+        createdBy: identity.userId,
+        preparedBy: identity.userId,
+        derivedFromVersionId: versionId,
+      });
+      if (nodes.length > 0) {
+        await this.copyNodes(tx as never, boq.id, snapshot.id, nodes);
+      }
+
+      await this.repo.updateBoq(tx as never, boq.id, {
+        currentVersionId: versionId,
+        committedSnapshotVersionId: snapshot.id,
+        // Keep the legacy read-model pointers coherent until R3 retires them: the operational
+        // version is now the approved one, and there is no open pre-commit draft.
+        currentDraftVersionId: null,
+        currentApprovedVersionId: versionId,
+        ...(boq.originalBaselineVersionId ? {} : { originalBaselineVersionId: versionId }),
+      });
+    });
+
+    return (await this.repo.findById(prisma, boq.id))!;
+  }
+
+  /**
+   * BOQ read port (spec I-1 / T-1) — the in-contract billable total of a version, the figure R3's
+   * contract tie-out (`Contract.baseContractValue`) is checked against. Reuses the one shared
+   * `inContractBillableTotal` policy so the contract can never tie out to a different rule than the
+   * one the commit snapshot was frozen under. Serialized as a decimal string (CONST-BOQ-014).
+   */
+  async getInContractTotal(
+    identity: RequestIdentity,
+    projectId: string,
+    versionId: string,
+  ): Promise<DecimalString | null> {
+    const prisma = this.tenancyService.getClient();
+    const boq = await this.requireBoq(prisma, projectId, identity.activeOrganizationId);
+    if (!boq.versions.some((candidate) => candidate.id === versionId)) {
+      throw new NotFoundException(`Version ${versionId} does not belong to this BOQ`);
+    }
+    const nodes = await this.repo.findNodesByVersion(prisma, versionId);
+    return formatAmount(inContractBillableTotal(nodes));
   }
 
   /**
@@ -451,6 +578,12 @@ export class BoqVersioningService {
         pricingBasis: node.pricingBasis,
         sourceType: node.sourceType,
         sourceChangeOrderId: node.sourceChangeOrderId ?? undefined,
+        // ADR-029 — a snapshot is the frozen legal record, so the tie-out must copy exactly.
+        // Dropping these would reset a CONTINGENCY / SEPARATE_CHARGE line to WORK / IN_CONTRACT
+        // and silently change the in-contract total the copy reports — the same class of defect
+        // that once dropped measurementMethod/pricingBasis above.
+        nodeRole: node.nodeRole,
+        commercialTreatment: node.commercialTreatment,
         isActive: node.isActive,
         originNodeId: node.id,
       };

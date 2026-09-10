@@ -34,6 +34,8 @@ export const PERMISSIONS = {
   boqView: 'view:boq',
   boqManage: 'manage:boq',
   boqBaseline: 'baseline:boq',
+  // ADR-029 CONST-BOQ-034 — commit-to-contract replaces baseline as the governed fix-the-value act.
+  boqCommit: 'commit:boq',
 
   contractsView: 'view:contract',
   contractsCreate: 'create:contract',
@@ -148,6 +150,7 @@ const DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.boqView]: 'View bills of quantities',
   [PERMISSIONS.boqManage]: 'Create and edit BOQ drafts',
   [PERMISSIONS.boqBaseline]: 'Baseline BOQ versions',
+  [PERMISSIONS.boqCommit]: 'Commit a BOQ to contract',
   [PERMISSIONS.contractsView]: 'View contracts',
   [PERMISSIONS.contractsCreate]: 'Create contracts',
   [PERMISSIONS.contractsManage]: 'Update contract terms and operational state',

@@ -67,6 +67,7 @@ const ROLES: TeamRoleSpec[] = [
       P.goodsReceiptExceptionsApprove,
       P.matchingExceptionsApprove,
       P.boqBaseline,
+      P.boqCommit,
     ],
   },
   {

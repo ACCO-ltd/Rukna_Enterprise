@@ -9,6 +9,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Redirect,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -172,27 +173,49 @@ export class BoqController {
     return this.versioningService.getReadiness(identity, projectId, versionId);
   }
 
-  @Post('versions/:versionId/baseline')
-  @RequirePermissions(PERMISSIONS.boqBaseline)
+  @Post('versions/:versionId/commit')
+  // ADR-029 CONST-BOQ-034 — commit-to-contract governs DRAFT → COMMITTED (replaces baseline).
+  @RequirePermissions(PERMISSIONS.boqCommit)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Baseline the current DRAFT version → BASELINED. Sets it as the approved version.' })
+  @ApiOperation({
+    summary:
+      'Commit the operational DRAFT version to contract → COMMITTED, freezing an as-committed SNAPSHOT copy.',
+  })
   @ApiParam({ name: 'projectId' })
   @ApiParam({ name: 'versionId' })
   @ApiResponse({
     status: 400,
     description:
-      'Not the current draft, not DRAFT status, or not Baseline Ready — details.blockers lists why',
+      'Not the operational version, not DRAFT, or not ready to commit — details.blockers lists why',
   })
   @ApiResponse({
     status: 409,
     description: 'Approval required — details.approvalInstanceId identifies the instance',
   })
-  baseline(
+  commit(
     @CurrentUser() identity: RequestIdentity,
     @Param('projectId') projectId: string,
     @Param('versionId') versionId: string,
   ) {
-    return this.versioningService.baseline(identity, projectId, versionId);
+    return this.versioningService.commit(identity, projectId, versionId);
+  }
+
+  // ADR-029 M-5 / BOUND-002 — the old baseline route is retained for one release and 308-redirects
+  // to commit (a 308 preserves the POST method and empty body). New clients call /commit directly.
+  @Post('versions/:versionId/baseline')
+  @RequirePermissions(PERMISSIONS.boqCommit)
+  @Redirect(undefined, HttpStatus.PERMANENT_REDIRECT)
+  @ApiOperation({ summary: 'Deprecated — 308-redirects to POST …/commit.' })
+  @ApiParam({ name: 'projectId' })
+  @ApiParam({ name: 'versionId' })
+  baseline(
+    @Param('projectId') projectId: string,
+    @Param('versionId') versionId: string,
+  ): { url: string; statusCode: number } {
+    return {
+      url: `/projects/${projectId}/boq/versions/${versionId}/commit`,
+      statusCode: HttpStatus.PERMANENT_REDIRECT,
+    };
   }
 
   @Post('versions/:versionId/cancel')

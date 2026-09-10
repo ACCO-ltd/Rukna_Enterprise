@@ -6,6 +6,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { BoqNode, MeasurementMethod, PricingBasis, BoqSourceType, Prisma } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
 import type { BoqChangeEventResponse, RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
@@ -22,6 +23,7 @@ import {
   toDecimal,
   type DecimalString,
 } from '../domain/boq-money.js';
+import { contributesToInContractTotal } from '../domain/boq-contract-value.policy.js';
 import { MAX_DEPTH, validateNodeWrite } from '../domain/boq-node.policy.js';
 import { proposeNodeCode } from '../domain/boq-code.policy.js';
 import type { CreateNodeDto } from '../presentation/dto/create-node.dto.js';
@@ -94,11 +96,14 @@ export class BoqTreeService {
     projectId: string,
     versionId: string,
     dto: CreateNodeDto,
+    // L-5 seam: only the variation command (R6) may raise the committed total. Not on the DTO —
+    // an ordinary caller can never set it.
+    options: { allowContractValueChange?: boolean } = {},
   ): Promise<BoqNode> {
     const prisma = this.tenancyService.getClient();
     const boq = await this.requireBoqForProject(prisma, projectId, identity.activeOrganizationId);
     this.requireVersionBelongsToBoq(versionId, boq);
-    await this.requireDraftVersion(prisma, versionId);
+    const status = await this.requireWritableVersion(prisma, versionId);
 
     let parentPath: string | null = null;
     let parentDepth = -1;
@@ -118,6 +123,22 @@ export class BoqTreeService {
 
     const isLeaf = dto.isLeaf ?? false;
     const overrideCode = dto.code?.trim();
+
+    // L-5 — a new node defaults to WORK / IN_CONTRACT (schema defaults; the classifier that mints
+    // SEPARATE_CHARGE/ABSORBED lines is R5), so on a COMMITTED version adding a priced leaf raises
+    // the in-contract total and is pinned. A section, an unpriced leaf, or a zero-amount leaf adds
+    // nothing and is allowed. The prospective total goes from 0 to the leaf's own contribution.
+    const addedAmount = formatAmount(lineAmount(dto.quantity, dto.unitRate, isLeaf));
+    const addedContribution = this.inContractContribution(
+      { isLeaf, commercialTreatment: 'IN_CONTRACT' },
+      addedAmount,
+    );
+    this.assertPinAllows(
+      status,
+      toDecimal('0'),
+      addedContribution,
+      options.allowContractValueChange ?? false,
+    );
 
     // Position: append unless the caller asked for a specific slot. Sibling order is dense
     // and server-owned (CONST-BOQ-017), so an out-of-range request is clamped, not rejected.
@@ -202,11 +223,12 @@ export class BoqTreeService {
     versionId: string,
     nodeId: string,
     dto: UpdateNodeDto,
+    options: { allowContractValueChange?: boolean } = {},
   ): Promise<BoqNode> {
     const prisma = this.tenancyService.getClient();
     const boq = await this.requireBoqForProject(prisma, projectId, identity.activeOrganizationId);
     this.requireVersionBelongsToBoq(versionId, boq);
-    await this.requireDraftVersion(prisma, versionId);
+    const status = await this.requireWritableVersion(prisma, versionId);
 
     const node = await this.requireNode(prisma, nodeId, versionId);
     const childCount = await this.repo.countChildren(prisma, nodeId, versionId);
@@ -229,6 +251,23 @@ export class BoqTreeService {
           hasChildren: childCount > 0,
         },
       ),
+    );
+
+    // L-5 — the pin compares this leaf's in-contract contribution before and after the patch.
+    // A description/code/measurement edit leaves quantity×rate untouched, so before == after and
+    // the write is money-neutral; a rate or quantity change that moves the leaf's amount is pinned
+    // on a COMMITTED version. `commercialTreatment` is not editable through this DTO, so it stays
+    // the node's own — turning a line into SEPARATE_CHARGE/ABSORBED is the R5 classifier, not here.
+    const beforeContribution = this.inContractContribution(node, formatAmount(toDecimal(node.totalAmount)));
+    const afterContribution = this.inContractContribution(
+      { isLeaf, commercialTreatment: node.commercialTreatment },
+      formatAmount(lineAmount(quantity, unitRate, isLeaf)),
+    );
+    this.assertPinAllows(
+      status,
+      beforeContribution,
+      afterContribution,
+      options.allowContractValueChange ?? false,
     );
 
     const events = this.buildUpdateEvents(identity, boq, node, dto, {
@@ -268,7 +307,9 @@ export class BoqTreeService {
     const prisma = this.tenancyService.getClient();
     const boq = await this.requireBoqForProject(prisma, projectId, identity.activeOrganizationId);
     this.requireVersionBelongsToBoq(versionId, boq);
-    await this.requireDraftVersion(prisma, versionId);
+    // A move only reorders/reparents — it never touches an amount, so it is always money-neutral
+    // and needs no pin check (L-5). It stays legal on a COMMITTED version (L-6).
+    await this.requireWritableVersion(prisma, versionId);
 
     const node = await this.requireNode(prisma, nodeId, versionId);
 
@@ -330,11 +371,12 @@ export class BoqTreeService {
     projectId: string,
     versionId: string,
     nodeId: string,
+    options: { allowContractValueChange?: boolean } = {},
   ): Promise<void> {
     const prisma = this.tenancyService.getClient();
     const boq = await this.requireBoqForProject(prisma, projectId, identity.activeOrganizationId);
     this.requireVersionBelongsToBoq(versionId, boq);
-    await this.requireDraftVersion(prisma, versionId);
+    const status = await this.requireWritableVersion(prisma, versionId);
 
     const node = await this.requireNode(prisma, nodeId, versionId);
 
@@ -344,6 +386,16 @@ export class BoqTreeService {
         'Cannot delete a section that has children. Delete or re-parent them first.',
       );
     }
+
+    // L-5 — deleting an IN_CONTRACT leaf removes its contribution and so lowers the total; on a
+    // COMMITTED version that is pinned. Deleting an empty section or a non-contributing leaf is
+    // money-neutral (after == 0 == before).
+    this.assertPinAllows(
+      status,
+      this.inContractContribution(node, formatAmount(toDecimal(node.totalAmount))),
+      toDecimal('0'),
+      options.allowContractValueChange ?? false,
+    );
 
     // CONST-BOQ-003. Claims, orders and postings reference nodes by plain string columns,
     // so nothing in the database stops this delete — losing the row would orphan a claimed
@@ -517,15 +569,69 @@ export class BoqTreeService {
     if (!belongs) throw new NotFoundException(`Version ${versionId} does not belong to this BOQ`);
   }
 
-  private async requireDraftVersion(
+  /**
+   * The write guard — ADR-029 §2 L-6.
+   *
+   * A node write is legal in-place on the one operational version, whether it is still a
+   * pre-commit `DRAFT` or a live `COMMITTED` one; the operational version's ids are stable
+   * (L-6) and its edits are immediately real downstream, which is the whole point of the
+   * in-place model. A `SNAPSHOT` is a frozen legal record (403 — L-4). `SUPERSEDED` /
+   * `CANCELLED` are dead pre-commit drafts and never editable.
+   *
+   * Returns the version's status so the caller can apply the post-commit value pin (L-5) only
+   * when it is `COMMITTED`.
+   */
+  private async requireWritableVersion(
     prisma: ReturnType<TenancyService['getClient']>,
     versionId: string,
-  ): Promise<void> {
+  ): Promise<'DRAFT' | 'COMMITTED'> {
     const version = await this.repo.findVersion(prisma, versionId);
     if (!version) throw new NotFoundException(`Version ${versionId} not found`);
-    if (version.status !== 'DRAFT') {
-      throw new ForbiddenException('BOQ nodes can only be modified in a DRAFT version.');
+    if (version.status === 'DRAFT' || version.status === 'COMMITTED') return version.status;
+    if (version.status === 'SNAPSHOT') {
+      throw new ForbiddenException('A committed snapshot is an immutable record and cannot be edited.');
     }
+    throw new ForbiddenException('BOQ nodes can only be modified on the operational version.');
+  }
+
+  /**
+   * The post-commit contract-value pin — ADR-029 §2 L-5.
+   *
+   * On a `COMMITTED` version, a write that would change the in-contract billable total is
+   * refused (409, `CONTRACT_VALUE_LOCKED`); only the variation command (R6) may raise it, and
+   * it passes `allowContractValueChange`. Money-neutral writes — descriptions, codes, reorders,
+   * and reallocations that keep the total constant — are unaffected (their prospective delta is
+   * zero). The delta is judged *before* the write from the leaf's own IN_CONTRACT contribution,
+   * so a rejected write never touches the database.
+   */
+  private assertPinAllows(
+    status: 'DRAFT' | 'COMMITTED',
+    before: Decimal | null,
+    after: Decimal | null,
+    allowContractValueChange: boolean,
+  ): void {
+    if (status !== 'COMMITTED' || allowContractValueChange) return;
+    const changed = before === null || after === null ? before !== after : !before.equals(after);
+    if (!changed) return;
+    throw new ConflictException({
+      message:
+        'This BOQ is committed; changing the contract value requires an approved variation.',
+      errorCode: 'CONTRACT_VALUE_LOCKED',
+      details: {
+        before: formatAmount(before),
+        after: formatAmount(after),
+      },
+    });
+  }
+
+  /** A leaf's signed contribution to the in-contract total; zero for anything that does not count. */
+  private inContractContribution(
+    node: Pick<BoqNode, 'isLeaf' | 'commercialTreatment'>,
+    amount: DecimalString | null,
+  ): Decimal {
+    const zero = toDecimal('0')!;
+    if (!contributesToInContractTotal(node)) return zero;
+    return toDecimal(amount) ?? zero;
   }
 
   private async requireNode(
