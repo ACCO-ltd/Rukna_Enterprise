@@ -1,4 +1,9 @@
-import { inContractBillableTotal, contributesToInContractTotal } from '../domain/boq-contract-value.policy.js';
+import {
+  inContractBillableTotal,
+  contributesToInContractTotal,
+  contingencyRemaining,
+  isContingencyLeaf,
+} from '../domain/boq-contract-value.policy.js';
 
 /**
  * The in-contract billable total (ADR-029 T-1 / L-5) — the one figure a committed BOQ ties out
@@ -67,5 +72,50 @@ describe('inContractBillableTotal — ADR-029 T-1', () => {
     expect(contributesToInContractTotal(leaf('1.00', 'SEPARATE_CHARGE') as never)).toBe(false);
     expect(contributesToInContractTotal(leaf('1.00', 'ABSORBED') as never)).toBe(true);
     expect(contributesToInContractTotal(section() as never)).toBe(false);
+  });
+});
+
+/**
+ * Contingency remaining (ADR-029 CONST-BOQ-028 / spec C-2) — Σ totalAmount over CONTINGENCY-role
+ * leaves, derived from the live amounts (a draw lowers the leaf, so the live sum IS what is left).
+ */
+describe('contingencyRemaining — ADR-029 C-2', () => {
+  it('sums only CONTINGENCY-role leaves', () => {
+    const total = contingencyRemaining([
+      leaf('1000.00'),
+      leaf('500.00', 'IN_CONTRACT', 'CONTINGENCY'),
+      leaf('250.00', 'IN_CONTRACT', 'CONTINGENCY'),
+    ] as never);
+    expect(total?.toFixed(2)).toBe('750.00');
+  });
+
+  it('ignores WORK, SEPARATE_CHARGE and ABSORBED leaves and sections', () => {
+    const total = contingencyRemaining([
+      section(),
+      leaf('1000.00'),
+      leaf('500.00', 'SEPARATE_CHARGE', 'CONTINGENCY'), // still a CONTINGENCY leaf → counts
+      leaf('40.00', 'ABSORBED'),
+    ] as never);
+    // Only the SEPARATE_CHARGE line carries nodeRole CONTINGENCY here, so it is the sole contributor.
+    expect(total?.toFixed(2)).toBe('500.00');
+  });
+
+  it('reflects a draw: the remaining is the live post-draw allowance amount', () => {
+    // 500 allowance after a 500 draw is a 0.00 line — a real fact, not "no allowance".
+    const total = contingencyRemaining([
+      leaf('0.00', 'IN_CONTRACT', 'CONTINGENCY'),
+    ] as never);
+    expect(total?.toFixed(2)).toBe('0.00');
+  });
+
+  it('returns null when there is no contingency line — never a false zero', () => {
+    expect(contingencyRemaining([leaf('1000.00'), section()] as never)).toBeNull();
+  });
+
+  it('isContingencyLeaf marks only CONTINGENCY-role leaves', () => {
+    expect(isContingencyLeaf(leaf('1.00', 'IN_CONTRACT', 'CONTINGENCY') as never)).toBe(true);
+    expect(isContingencyLeaf(leaf('1.00') as never)).toBe(false);
+    // A section marked CONTINGENCY carries no amount, so it is not a contributor.
+    expect(isContingencyLeaf({ isLeaf: false, nodeRole: 'CONTINGENCY' } as never)).toBe(false);
   });
 });

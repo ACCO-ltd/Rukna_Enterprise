@@ -68,6 +68,8 @@ const ROLES: TeamRoleSpec[] = [
       P.matchingExceptionsApprove,
       P.boqBaseline,
       P.boqCommit,
+      // Drawing down the contingency allowance is a commercial-authority act (ADR-029 A-4).
+      P.boqManageContingency,
     ],
   },
   {

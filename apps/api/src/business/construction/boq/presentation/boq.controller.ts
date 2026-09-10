@@ -36,6 +36,7 @@ import { CreateNodeDto } from './dto/create-node.dto.js';
 import { UpdateNodeDto } from './dto/update-node.dto.js';
 import { MoveNodeDto } from './dto/move-node.dto.js';
 import { ImportBoqDto } from './dto/import-boq.dto.js';
+import { DrawContingencyDto } from './dto/draw-contingency.dto.js';
 
 @ApiTags('BOQ')
 @ApiBearerAuth('access-token')
@@ -171,6 +172,50 @@ export class BoqController {
     @Param('versionId') versionId: string,
   ) {
     return this.versioningService.getReadiness(identity, projectId, versionId);
+  }
+
+  @Get('versions/:versionId/contingency')
+  // ADR-029 CONST-BOQ-028 / spec C-2 — contingency remaining, derived from the live allowance
+  // leaves. Read behind the base `view:boq`; the tiered money-visibility redaction is R10.
+  @ApiOperation({ summary: 'Contingency remaining on a version (derived, decimal string)' })
+  @ApiParam({ name: 'projectId' })
+  @ApiParam({ name: 'versionId' })
+  contingency(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Param('versionId') versionId: string,
+  ) {
+    return this.versioningService.getContingencyRemaining(identity, projectId, versionId);
+  }
+
+  @Post('versions/:versionId/contingency/draw')
+  // ADR-029 CONST-BOQ-028 / spec C-3, A-4 — drawing down the allowance is a commercial-authority act.
+  @RequirePermissions(PERMISSIONS.boqManageContingency)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Draw budget from the contingency allowance onto a target item, keeping the contract value constant.',
+  })
+  @ApiParam({ name: 'projectId' })
+  @ApiParam({ name: 'versionId' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Over-draw (errorCode CONTINGENCY_EXCEEDED), no/ambiguous contingency line, or a target that would take a distorted rate',
+  })
+  drawContingency(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Param('versionId') versionId: string,
+    @Body() dto: DrawContingencyDto,
+  ) {
+    return this.treeService.drawContingency(
+      identity,
+      projectId,
+      versionId,
+      dto.toNodeId,
+      dto.amount,
+    );
   }
 
   @Post('versions/:versionId/commit')

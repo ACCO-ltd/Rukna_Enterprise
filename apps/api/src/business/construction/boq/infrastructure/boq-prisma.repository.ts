@@ -123,6 +123,27 @@ export class BoqPrismaRepository {
   }
 
   /**
+   * A contingency reallocation — ADR-029 CONST-BOQ-028 / spec C-3.
+   *
+   * The two coordinated leaf writes (the contingency source loses `amount`, the target gains it)
+   * and the single `MOVE` change event commit together, so a reallocation is atomic: the
+   * in-contract total is never briefly wrong between the two writes, and there is no draw without
+   * its audit event. Each node is written by id; the service has already validated both.
+   */
+  async reallocateBetweenNodes(
+    prisma: PrismaClient,
+    source: { id: string; data: Prisma.BoqNodeUncheckedUpdateInput },
+    target: { id: string; data: Prisma.BoqNodeUncheckedUpdateInput },
+    event: BoqChangeEventInput,
+  ): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      await tx.boqNode.update({ where: { id: source.id }, data: source.data });
+      await tx.boqNode.update({ where: { id: target.id }, data: target.data });
+      await tx.boqChangeEvent.create({ data: event });
+    });
+  }
+
+  /**
    * Creates a node at a specific position among its siblings, opening a gap first.
    *
    * Both statements run in one transaction because `(version_id, parent_id, sort_order)` is

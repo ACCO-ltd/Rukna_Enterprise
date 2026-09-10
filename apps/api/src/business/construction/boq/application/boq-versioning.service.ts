@@ -19,7 +19,10 @@ import {
   evaluateReadiness,
   type BoqBaselineReadiness,
 } from '../domain/boq-readiness.policy.js';
-import { inContractBillableTotal } from '../domain/boq-contract-value.policy.js';
+import {
+  inContractBillableTotal,
+  contingencyRemaining,
+} from '../domain/boq-contract-value.policy.js';
 import { formatAmount, type DecimalString } from '../domain/boq-money.js';
 
 /**
@@ -352,6 +355,28 @@ export class BoqVersioningService {
     }
     const nodes = await this.repo.findNodesByVersion(prisma, versionId);
     return formatAmount(inContractBillableTotal(nodes));
+  }
+
+  /**
+   * BOQ read port (spec C-2) — contingency remaining on a version, derived from the live CONTINGENCY
+   * leaf amounts, never stored. Reuses the one shared `contingencyRemaining` policy so the figure
+   * the workspace shows and the figure a draw checks against can never diverge. Serialized as a
+   * decimal string (CONST-BOQ-014); null when the version carries no contingency line.
+   *
+   * This is the read port, NOT the workspace read-model shaping — assembling the money band is R10.
+   */
+  async getContingencyRemaining(
+    identity: RequestIdentity,
+    projectId: string,
+    versionId: string,
+  ): Promise<DecimalString | null> {
+    const prisma = this.tenancyService.getClient();
+    const boq = await this.requireBoq(prisma, projectId, identity.activeOrganizationId);
+    if (!boq.versions.some((candidate) => candidate.id === versionId)) {
+      throw new NotFoundException(`Version ${versionId} does not belong to this BOQ`);
+    }
+    const nodes = await this.repo.findNodesByVersion(prisma, versionId);
+    return formatAmount(contingencyRemaining(nodes));
   }
 
   /**

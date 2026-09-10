@@ -54,3 +54,39 @@ export function formatInContractBillableTotal(
 ): DecimalString | null {
   return formatAmount(inContractBillableTotal(nodes));
 }
+
+/**
+ * True when this node is a piece of the named contingency allowance — a CONTINGENCY-role leaf.
+ * A section marked CONTINGENCY carries no amount, so it never contributes; the rule is leaf-only,
+ * matching how every other total in this module is summed over leaves.
+ */
+export function isContingencyLeaf(node: Pick<BoqNode, 'isLeaf' | 'nodeRole'>): boolean {
+  return node.isLeaf && node.nodeRole === 'CONTINGENCY';
+}
+
+/**
+ * Contingency remaining — ADR-029 CONST-BOQ-028 / spec C-2.
+ *
+ * `Σ leaf.totalAmount over nodeRole = CONTINGENCY leaves`. Derived, never stored: under the
+ * reallocation model (spec C-3), a draw lowers the contingency leaf's own amount, so the live sum
+ * of the allowance lines *is* what is left — there is no separate "draws to date" ledger to net
+ * off, and there can never be one to drift from. Null when there is no contingency line at all
+ * (never a false `0`, so the workspace can tell "no allowance" from "allowance fully drawn").
+ *
+ * Same shape and reuse discipline as {@link inContractBillableTotal}: one definition of the figure,
+ * pure and synchronous, the caller supplies the nodes.
+ */
+export function contingencyRemaining(
+  nodes: Pick<BoqNode, 'isLeaf' | 'nodeRole' | 'totalAmount'>[],
+): Decimal | null {
+  return sumAmounts(
+    nodes.filter((node) => isContingencyLeaf(node)).map((node) => toDecimal(node.totalAmount)),
+  );
+}
+
+/** The wire-serialized form of {@link contingencyRemaining}. */
+export function formatContingencyRemaining(
+  nodes: Pick<BoqNode, 'isLeaf' | 'nodeRole' | 'totalAmount'>[],
+): DecimalString | null {
+  return formatAmount(contingencyRemaining(nodes));
+}

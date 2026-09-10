@@ -36,6 +36,10 @@ export const PERMISSIONS = {
   boqBaseline: 'baseline:boq',
   // ADR-029 CONST-BOQ-034 — commit-to-contract replaces baseline as the governed fix-the-value act.
   boqCommit: 'commit:boq',
+  // ADR-029 CONST-BOQ-028 / spec C-3 / A-4 — drawing down the named contingency allowance is a
+  // commercial-authority act. Money-neutral to the contract value (it only reallocates budget),
+  // but it decides how the buffer is spent, so it is gated separately from ordinary BOQ edits.
+  boqManageContingency: 'manage-contingency:boq',
 
   contractsView: 'view:contract',
   contractsCreate: 'create:contract',
@@ -115,7 +119,9 @@ const DOMAIN_BY_RESOURCE: Record<string, string> = {
 
 function riskFor(action: string): PermissionDefinition['riskClass'] {
   if (['approve', 'issue', 'post', 'baseline', 'supersede'].includes(action)) return 'CRITICAL';
-  if (['manage', 'allocate', 'submit'].includes(action)) return 'HIGH';
+  // `manage-contingency` decides how the internal buffer is spent — a commercial-authority act, so
+  // it carries the same review weight as a plain `manage`.
+  if (['manage', 'manage-contingency', 'allocate', 'submit'].includes(action)) return 'HIGH';
   if (['create'].includes(action)) return 'MEDIUM';
   return 'LOW';
 }
@@ -151,6 +157,7 @@ const DESCRIPTIONS: Record<PermissionKey, string> = {
   [PERMISSIONS.boqManage]: 'Create and edit BOQ drafts',
   [PERMISSIONS.boqBaseline]: 'Baseline BOQ versions',
   [PERMISSIONS.boqCommit]: 'Commit a BOQ to contract',
+  [PERMISSIONS.boqManageContingency]: 'Draw down the BOQ contingency allowance to fund work',
   [PERMISSIONS.contractsView]: 'View contracts',
   [PERMISSIONS.contractsCreate]: 'Create contracts',
   [PERMISSIONS.contractsManage]: 'Update contract terms and operational state',

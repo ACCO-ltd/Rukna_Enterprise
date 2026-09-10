@@ -16,6 +16,7 @@ import {
   type BoqChangeEventInput,
 } from '../infrastructure/boq-prisma.repository.js';
 import {
+  AMOUNT_SCALE,
   formatAmount,
   formatQuantity,
   lineAmount,
@@ -23,7 +24,10 @@ import {
   toDecimal,
   type DecimalString,
 } from '../domain/boq-money.js';
-import { contributesToInContractTotal } from '../domain/boq-contract-value.policy.js';
+import {
+  contributesToInContractTotal,
+  isContingencyLeaf,
+} from '../domain/boq-contract-value.policy.js';
 import { MAX_DEPTH, validateNodeWrite } from '../domain/boq-node.policy.js';
 import { proposeNodeCode } from '../domain/boq-code.policy.js';
 import type { CreateNodeDto } from '../presentation/dto/create-node.dto.js';
@@ -416,6 +420,170 @@ export class BoqTreeService {
       action: 'DELETE',
       detail: node.isLeaf ? `Deleted item ${node.code}` : `Deleted section ${node.code}`,
     });
+  }
+
+  /**
+   * Draw down the contingency allowance — ADR-029 CONST-BOQ-028 / spec C-3, C-4.
+   *
+   * Moves `amount` of budget from a CONTINGENCY leaf onto `toNodeId`, in ONE transaction that emits
+   * exactly one `MOVE` change event carrying the amount. The in-contract billable total is held
+   * EXACTLY constant (contingency −amount, target +amount), so on a COMMITTED version this is a
+   * legal money-neutral reallocation (L-5): it reuses the R2 `allowContractValueChange` seam, but
+   * the net delta is *asserted* zero here rather than trusted to the flag.
+   *
+   * Modeling (see the ticket's nuance): a leaf's `totalAmount` is `quantity × unitRate` everywhere
+   * in this module, and the tie-out/progress/compare all read that product — a `totalAmount` that
+   * disagreed with `quantity × unitRate` would be a visible, machine-detectable lie. To move
+   * `amount` onto a target without fabricating a rate or a quantity, both the source contingency
+   * leaf and the target MUST be **allowance-style** (`quantity = 1`), so the whole amount lives in
+   * `unitRate` and the move is `unitRate ± amount` with no division and no rounding. A measured
+   * UNIT_RATE target (quantity ≠ 1) is rejected — there is no distortion-free rate/qty for it, and
+   * inventing one is exactly the write this refuses to make. C-4 is served because an ABSORBED line
+   * is a lump-sum (quantity = 1) leaf; adding the ABSORBED line itself is the R5 classifier.
+   */
+  async drawContingency(
+    identity: RequestIdentity,
+    projectId: string,
+    versionId: string,
+    toNodeId: string,
+    amount: string,
+  ): Promise<{ contingencyRemaining: DecimalString | null; inContractTotal: DecimalString | null }> {
+    const prisma = this.tenancyService.getClient();
+    const boq = await this.requireBoqForProject(prisma, projectId, identity.activeOrganizationId);
+    this.requireVersionBelongsToBoq(versionId, boq);
+    const status = await this.requireWritableVersion(prisma, versionId);
+
+    const drawAmount = toDecimal(amount);
+    // `isPositive()` treats zero as positive in decimal.js, so test strictly greater than zero.
+    if (drawAmount === null || drawAmount.isNaN() || !drawAmount.greaterThan(0)) {
+      throw new BadRequestException('The draw amount must be a positive number.');
+    }
+
+    // The target leaf the draw funds.
+    const target = await this.requireNode(prisma, toNodeId, versionId);
+    if (!target.isLeaf) {
+      throw new BadRequestException('Contingency can only be drawn onto a billable item, not a section.');
+    }
+    if (isContingencyLeaf(target)) {
+      throw new BadRequestException('Cannot draw contingency onto the contingency line itself.');
+    }
+    if (target.commercialTreatment === 'SEPARATE_CHARGE') {
+      // A separate charge is billed outside the contract; funding it from contingency would move
+      // the in-contract total down by `amount` with no matching rise, breaking the tie-out.
+      throw new BadRequestException(
+        'Contingency funds in-contract work; a separate charge is billed outside the contract.',
+      );
+    }
+
+    // The named allowance. Exactly one contingency leaf is the simple, unambiguous case R4 supports;
+    // more than one would need the caller to name the source, which the command deliberately does
+    // not expose yet.
+    const nodes = await this.repo.findNodesByVersion(prisma, versionId);
+    const contingencyLeaves = nodes.filter((node) => isContingencyLeaf(node));
+    if (contingencyLeaves.length === 0) {
+      throw new BadRequestException('This BOQ has no contingency allowance to draw from.');
+    }
+    if (contingencyLeaves.length > 1) {
+      throw new BadRequestException(
+        'This BOQ has more than one contingency line; drawing from a specific pool is not yet supported.',
+      );
+    }
+    const source = contingencyLeaves[0]!;
+
+    // Both sides must be allowance-style (quantity = 1) so `amount` lands exactly on `unitRate`
+    // without distorting a rate or a quantity (the modeling nuance above).
+    const one = toDecimal('1')!;
+    const sourceQty = toDecimal(source.quantity);
+    const targetQty = toDecimal(target.quantity);
+    if (sourceQty === null || !sourceQty.equals(one)) {
+      throw new BadRequestException(
+        'The contingency line must be an allowance (quantity 1) to draw from it.',
+      );
+    }
+    if (targetQty === null || !targetQty.equals(one)) {
+      throw new BadRequestException(
+        'Contingency can only fund an allowance-style item (quantity 1); a measured item would take a distorted rate.',
+      );
+    }
+
+    // C-3 — over-draw beyond what the allowance holds → 400 CONTINGENCY_EXCEEDED.
+    const sourceAmount = toDecimal(source.totalAmount) ?? toDecimal('0')!;
+    if (drawAmount.greaterThan(sourceAmount)) {
+      throw new BadRequestException({
+        message: 'The draw exceeds the contingency remaining on this line.',
+        errorCode: 'CONTINGENCY_EXCEEDED',
+        details: {
+          requested: formatAmount(drawAmount),
+          remaining: formatAmount(sourceAmount),
+        },
+      });
+    }
+
+    // The two coordinated leaf amounts after the move — quantity stays 1 on both, so totalAmount
+    // tracks unitRate and stays self-consistent.
+    const sourceRate = toDecimal(source.unitRate) ?? toDecimal('0')!;
+    const targetRate = toDecimal(target.unitRate) ?? toDecimal('0')!;
+    const newSourceRate = sourceRate.minus(drawAmount).toDecimalPlaces(AMOUNT_SCALE);
+    const newTargetRate = targetRate.plus(drawAmount).toDecimalPlaces(AMOUNT_SCALE);
+    const newSourceAmount = lineAmount('1', newSourceRate, true)!;
+    const newTargetAmount = lineAmount('1', newTargetRate, true)!;
+
+    // L-5 — ASSERT the reallocation is net-zero to the in-contract total before trusting the seam.
+    // Both leaves count in-contract (CONTINGENCY and IN_CONTRACT/ABSORBED all contribute), so the
+    // signed delta is `(newTarget − oldTarget) + (newSource − oldSource)` and MUST be exactly zero.
+    const sourceDelta = this.inContractContribution(source, formatAmount(newSourceAmount)).minus(
+      this.inContractContribution(source, formatAmount(sourceAmount)),
+    );
+    const targetDelta = this.inContractContribution(
+      target,
+      formatAmount(newTargetAmount),
+    ).minus(this.inContractContribution(target, formatAmount(toDecimal(target.totalAmount))));
+    const netDelta = sourceDelta.plus(targetDelta);
+    if (!netDelta.isZero()) {
+      // Defensive: with quantity = 1 on both sides this can never fire, but the pin is only as safe
+      // as this check — never trust `allowContractValueChange` blindly.
+      throw new ConflictException({
+        message: 'A contingency draw must not change the contract value.',
+        errorCode: 'CONTRACT_VALUE_LOCKED',
+        details: { netDelta: formatAmount(netDelta) },
+      });
+    }
+    // The seam is reused only for the COMMITTED pin; the assertion above is the real guard. On a
+    // pre-commit DRAFT the pin is a no-op anyway (status !== COMMITTED).
+    this.assertPinAllows(status, toDecimal('0'), toDecimal('0'), true);
+
+    await this.repo.reallocateBetweenNodes(
+      prisma,
+      { id: source.id, data: { unitRate: newSourceRate, totalAmount: newSourceAmount } },
+      { id: target.id, data: { unitRate: newTargetRate, totalAmount: newTargetAmount } },
+      {
+        ...this.changeBase(identity, boq, versionId),
+        nodeId: target.id,
+        code: target.code,
+        action: 'MOVE',
+        field: 'totalAmount',
+        oldValue: formatAmount(toDecimal(target.totalAmount)),
+        newValue: formatAmount(newTargetAmount),
+        detail: `Drew ${formatAmount(drawAmount)} from contingency ${source.code} to ${target.code}`,
+      },
+    );
+
+    // Re-read so the returned figures reflect the committed rows (C-2 derived remaining).
+    const after = await this.repo.findNodesByVersion(prisma, versionId);
+    return {
+      contingencyRemaining: formatAmount(
+        sumAmounts(
+          after.filter((node) => isContingencyLeaf(node)).map((node) => toDecimal(node.totalAmount)),
+        ),
+      ),
+      inContractTotal: formatAmount(
+        sumAmounts(
+          after
+            .filter((node) => contributesToInContractTotal(node))
+            .map((node) => toDecimal(node.totalAmount)),
+        ),
+      ),
+    };
   }
 
   /**
