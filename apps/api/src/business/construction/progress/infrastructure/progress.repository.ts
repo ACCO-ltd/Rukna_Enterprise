@@ -261,6 +261,27 @@ export class ProgressRepository {
     });
   }
 
+  /**
+   * Master Schedule P4 (ADR-029): the project + org identity for the branded PDF header, in one
+   * tenant-scoped read. Resolves the client name from the linked Client (falling back to the
+   * free-text clientName) and the org branding (name + logoUrl) via the project→organization
+   * relation. Prisma stays behind the repo (Clean Architecture).
+   */
+  findProjectHeader(prisma: TenantPrisma, organizationId: string, projectId: string) {
+    return prisma.project.findFirst({
+      where: { id: projectId, organizationId },
+      select: {
+        code: true,
+        name: true,
+        clientName: true,
+        startDate: true,
+        expectedEndDate: true,
+        client: { select: { name: true } },
+        organization: { select: { name: true, logoUrl: true } },
+      },
+    });
+  }
+
   // ── ADR-021 CONST-PROG-005: programme activities (time layer under a work package) ──
   createActivity(prisma: TenantPrisma, data: Prisma.ProgrammeActivityUncheckedCreateInput) {
     return prisma.programmeActivity.create({ data });

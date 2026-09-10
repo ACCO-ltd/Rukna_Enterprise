@@ -16,6 +16,10 @@ model Organization {
   // ADR-025: the company segment of a project code (e.g. "ACCO" in ACCO-WBR-26-0065).
   // Editable in org settings; required at project-create time.
   shortCode String?            @map("short_code") @db.VarChar(8)
+  // Master Schedule P4 (ADR-029): the org logo shown on the server-generated, branded Master
+  // Schedule PDF header. Additive, nullable — the PDF falls back to the org `name` (text) when null.
+  // Set via a script/seed (no org-settings/upload UI in this pass).
+  logoUrl   String?            @map("logo_url")
   status    OrganizationStatus @default(ACTIVE)
   createdAt DateTime           @default(now()) @map("created_at")
   updatedAt DateTime           @updatedAt @map("updated_at")

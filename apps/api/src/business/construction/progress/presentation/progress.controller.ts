@@ -1,5 +1,5 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus, UseGuards, StreamableFile } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiProduces } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
@@ -7,6 +7,7 @@ import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { ProgressService } from '../application/progress.service.js';
 import { ProgrammeBaselineService } from '../application/programme-baseline.service.js';
+import { MasterSchedulePdfService } from '../application/master-schedule-pdf.service.js';
 import {
   CreateDprDto,
   AddMeasurementDto,
@@ -37,6 +38,7 @@ export class ProgressController {
   constructor(
     private readonly service: ProgressService,
     private readonly baseline: ProgrammeBaselineService,
+    private readonly masterSchedulePdf: MasterSchedulePdfService,
   ) {}
 
   @Post('projects/:projectId/progress/reports')
@@ -161,6 +163,34 @@ export class ProgressController {
     @Body() dto: RebaselineProgrammeDto,
   ) {
     return this.baseline.rebaseline(identity, projectId, dto);
+  }
+
+  // ── Master Schedule P4 (ADR-029): the branded, server-generated PDF report ─────
+
+  @Get('projects/:projectId/programme/master-schedule.pdf')
+  @ApiParam({ name: 'projectId' })
+  @ApiQuery({ name: 'asOf', required: false, description: 'Report "as of" date (default today) — drives per-phase status, the header, and the filename' })
+  @ApiProduces('application/pdf')
+  @ApiOperation({
+    summary:
+      'Generate the branded Master Schedule PDF (header + activity table + plan-vs-actual S-curve + ' +
+      'milestones/releases). Streams application/pdf as an attachment.',
+  })
+  async masterSchedulePdfReport(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Query('asOf') asOf?: string,
+  ): Promise<StreamableFile> {
+    // First binary/streaming route on the API. There is no global response interceptor/serializer that
+    // wraps the body (the only APP_INTERCEPTOR, AuditInterceptor, short-circuits GET/HEAD/OPTIONS), so
+    // returning a StreamableFile streams the raw PDF; NestJS applies the Content-Type / -Disposition /
+    // -Length from the options below (no raw @Res needed).
+    const { buffer, filename } = await this.masterSchedulePdf.generate(identity, projectId, asOf);
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${filename}"`,
+      length: buffer.length,
+    });
   }
 
   // ── Master Schedule P1-d (ADR-029): the guided schedule builder ────────────────
