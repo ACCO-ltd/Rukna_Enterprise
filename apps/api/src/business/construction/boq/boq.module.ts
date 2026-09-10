@@ -23,6 +23,9 @@ import { BoqItemLibraryRepository } from './infrastructure/boq-item-library.repo
     BoqPrismaRepository,
     BoqItemLibraryRepository,
   ],
-  exports: [BoqVersioningService],
+  // BoqTreeService is exported for the R5 extra-work classifier, which lives in VariationsModule
+  // (VariationsModule → BoqModule already exists; BOQ must not depend on Variations — that would be
+  // a cycle). The classifier's ABSORB/SEPARATE branches call BoqTreeService directly.
+  exports: [BoqVersioningService, BoqTreeService],
 })
 export class BoqModule {}

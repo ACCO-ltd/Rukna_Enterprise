@@ -5,7 +5,14 @@ import {
   ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
-import { BoqNode, MeasurementMethod, PricingBasis, BoqSourceType, Prisma } from '@prisma/client';
+import {
+  BoqNode,
+  MeasurementMethod,
+  PricingBasis,
+  BoqSourceType,
+  CommercialTreatment,
+  Prisma,
+} from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import type { BoqChangeEventResponse, RequestIdentity } from '@erp/types';
 
@@ -93,6 +100,21 @@ export class BoqTreeService {
     return buildTree(nodes, boq.currency);
   }
 
+  /**
+   * The one live operational version for a project's BOQ — ADR-029 L-1. The extra-work classifier
+   * (R5) resolves it so the caller names only the project, not an internal version id. Falls back to
+   * the legacy draft pointer for a BOQ initialized before R2 backfilled `currentVersionId`.
+   */
+  async getOperationalVersionId(identity: RequestIdentity, projectId: string): Promise<string> {
+    const prisma = this.tenancyService.getClient();
+    const boq = await this.requireBoqForProject(prisma, projectId, identity.activeOrganizationId);
+    const operationalVersionId = boq.currentVersionId ?? boq.currentDraftVersionId;
+    if (!operationalVersionId) {
+      throw new NotFoundException(`Project ${projectId} has no operational BOQ version.`);
+    }
+    return operationalVersionId;
+  }
+
   // ─── Commands ────────────────────────────────────────────────────────────────
 
   async addNode(
@@ -101,8 +123,13 @@ export class BoqTreeService {
     versionId: string,
     dto: CreateNodeDto,
     // L-5 seam: only the variation command (R6) may raise the committed total. Not on the DTO —
-    // an ordinary caller can never set it.
-    options: { allowContractValueChange?: boolean } = {},
+    // an ordinary caller can never set it. `commercialTreatment` is a second server-only seam:
+    // the R5 classifier mints SEPARATE_CHARGE / ABSORBED leaves through it (E-1/E-3); it is never
+    // on the DTO either, so a plain `manage:boq` add is always IN_CONTRACT (the schema default).
+    options: {
+      allowContractValueChange?: boolean;
+      commercialTreatment?: CommercialTreatment;
+    } = {},
   ): Promise<BoqNode> {
     const prisma = this.tenancyService.getClient();
     const boq = await this.requireBoqForProject(prisma, projectId, identity.activeOrganizationId);
@@ -128,13 +155,16 @@ export class BoqTreeService {
     const isLeaf = dto.isLeaf ?? false;
     const overrideCode = dto.code?.trim();
 
-    // L-5 — a new node defaults to WORK / IN_CONTRACT (schema defaults; the classifier that mints
-    // SEPARATE_CHARGE/ABSORBED lines is R5), so on a COMMITTED version adding a priced leaf raises
-    // the in-contract total and is pinned. A section, an unpriced leaf, or a zero-amount leaf adds
-    // nothing and is allowed. The prospective total goes from 0 to the leaf's own contribution.
+    // L-5 — a new node defaults to WORK / IN_CONTRACT (schema defaults). The R5 classifier passes a
+    // server-only `commercialTreatment` to mint SEPARATE_CHARGE / ABSORBED leaves (E-1/E-3). On a
+    // COMMITTED version adding an IN_CONTRACT (or ABSORBED) priced leaf raises the in-contract total
+    // and is pinned; a SEPARATE_CHARGE leaf never contributes (contributesToInContractTotal is false
+    // for it), so its prospective delta is 0 and it is inherently pin-neutral. A section, an unpriced
+    // leaf, or a zero-amount leaf adds nothing and is allowed.
+    const commercialTreatment = options.commercialTreatment ?? 'IN_CONTRACT';
     const addedAmount = formatAmount(lineAmount(dto.quantity, dto.unitRate, isLeaf));
     const addedContribution = this.inContractContribution(
-      { isLeaf, commercialTreatment: 'IN_CONTRACT' },
+      { isLeaf, commercialTreatment },
       addedAmount,
     );
     this.assertPinAllows(
@@ -204,6 +234,9 @@ export class BoqTreeService {
             // the IPA rate snapshot self-describing without walking back up to the aggregate.
             currency: isLeaf ? boq.currency : null,
             totalAmount: formatAmount(lineAmount(dto.quantity, dto.unitRate, isLeaf)),
+            // Server-only: IN_CONTRACT unless the R5 classifier asked for SEPARATE_CHARGE (E-3).
+            // ABSORBED is added through addExtraWork, not this path (it needs a funding draw).
+            commercialTreatment,
           },
           parentPath,
           targetOrder,
@@ -584,6 +617,222 @@ export class BoqTreeService {
         ),
       ),
     };
+  }
+
+  /**
+   * Add a SEPARATE_CHARGE line in place — ADR-029 CONST-BOQ-033 / spec E-3.
+   *
+   * A separate charge is a real BOQ node (cost-coded, progress-tracked) that is EXCLUDED from the
+   * in-contract total (contributesToInContractTotal is false for SEPARATE_CHARGE). Adding it is
+   * therefore inherently pin-neutral on a COMMITTED version — its prospective delta is 0 — so no
+   * `allowContractValueChange` is needed; the pin passes because the total does not move. This is a
+   * thin wrapper over `addNode` with the server-only `commercialTreatment` seam set, so it reuses the
+   * full add path (code auto-numbering, node validation, dense positioning, the CREATE change event).
+   *
+   * The one-off Commercial billing object for a separate charge (a ClientInvoice with a null
+   * sourceInstallmentId feeding totalClientRevenue — spec R-4/R-7) is NOT built here. It is R7.
+   * TODO(R7): raise the separate-charge billing line in Commercial when this node is added.
+   */
+  async addSeparateChargeLine(
+    identity: RequestIdentity,
+    projectId: string,
+    versionId: string,
+    dto: CreateNodeDto,
+  ): Promise<BoqNode> {
+    return this.addNode(identity, projectId, versionId, dto, {
+      commercialTreatment: 'SEPARATE_CHARGE',
+    });
+  }
+
+  /**
+   * Add an ABSORBED leaf funded net-zero by an equal contingency reduction — ADR-029 CONST-BOQ-030
+   * / spec E-1, C-4.
+   *
+   * ACCO funds this extra itself: no client charge, contract value unchanged. An ABSORBED leaf
+   * COUNTS toward the in-contract total (the shared policy), so its +amount must be matched by an
+   * equal −amount contingency reduction for the total to stay constant and the L-5 pin to pass. This
+   * is the R4 net-zero reallocation shape, except the target is the ABSORBED leaf created in the same
+   * transaction rather than an existing line — so the whole thing (create the leaf + draw the funding
+   * + both change events) is one atomic write via `addAbsorbedFundedByContingency`.
+   *
+   * The funded scope is a lump-sum: `amount` lands entirely on the leaf (quantity 1, rate = amount),
+   * mirroring the allowance-style shape the contingency draw requires, so no rate/quantity is
+   * distorted. The contingency source is decremented by the same amount with quantity kept at 1.
+   */
+  async addAbsorbedScope(
+    identity: RequestIdentity,
+    projectId: string,
+    versionId: string,
+    dto: { parentId?: string; code?: string; description: string; unit?: string; amount: string },
+  ): Promise<BoqNode> {
+    const prisma = this.tenancyService.getClient();
+    const boq = await this.requireBoqForProject(prisma, projectId, identity.activeOrganizationId);
+    this.requireVersionBelongsToBoq(versionId, boq);
+    const status = await this.requireWritableVersion(prisma, versionId);
+
+    const amount = toDecimal(dto.amount);
+    if (amount === null || amount.isNaN() || !amount.greaterThan(0)) {
+      throw new BadRequestException('The absorbed scope amount must be a positive number.');
+    }
+
+    // Parent (optional) — an ABSORBED leaf may sit under a section like any other item.
+    let parentPath: string | null = null;
+    let parentDepth = -1;
+    let parentIsItem = false;
+    let parentCode: string | null = null;
+    if (dto.parentId) {
+      const parent = await this.repo.findNodeById(prisma, dto.parentId);
+      if (!parent || parent.versionId !== versionId) {
+        throw new NotFoundException(`Parent node ${dto.parentId} not found in this version`);
+      }
+      parentPath = parent.path;
+      parentDepth = parent.depth;
+      parentIsItem = parent.isLeaf;
+      parentCode = parent.code;
+    }
+
+    // The named allowance to fund from — the same single-source, allowance-shape rule the R4 draw
+    // enforces (drawing from a specific pool of several is not yet supported).
+    const nodes = await this.repo.findNodesByVersion(prisma, versionId);
+    const contingencyLeaves = nodes.filter((node) => isContingencyLeaf(node));
+    if (contingencyLeaves.length === 0) {
+      throw new BadRequestException('This BOQ has no contingency allowance to absorb scope against.');
+    }
+    if (contingencyLeaves.length > 1) {
+      throw new BadRequestException(
+        'This BOQ has more than one contingency line; absorbing against a specific pool is not yet supported.',
+      );
+    }
+    const source = contingencyLeaves[0]!;
+    const one = toDecimal('1')!;
+    const sourceQty = toDecimal(source.quantity);
+    if (sourceQty === null || !sourceQty.equals(one)) {
+      throw new BadRequestException(
+        'The contingency line must be an allowance (quantity 1) to fund absorbed scope.',
+      );
+    }
+    const sourceAmount = toDecimal(source.totalAmount) ?? toDecimal('0')!;
+    if (amount.greaterThan(sourceAmount)) {
+      throw new BadRequestException({
+        message: 'The absorbed scope exceeds the contingency remaining on this line.',
+        errorCode: 'CONTINGENCY_EXCEEDED',
+        details: { requested: formatAmount(amount), remaining: formatAmount(sourceAmount) },
+      });
+    }
+
+    // The ABSORBED leaf is a lump-sum: quantity 1, rate = amount, so totalAmount == amount with no
+    // distortion (the same allowance shape the funding draw uses).
+    const addedTotal = lineAmount('1', amount, true)!;
+    // L-5 — ASSERT net-zero before trusting the pin seam: +addedTotal (ABSORBED counts) and
+    // −amount off the contingency leaf (which also counts) must sum to zero.
+    const newSourceRate = (toDecimal(source.unitRate) ?? toDecimal('0')!)
+      .minus(amount)
+      .toDecimalPlaces(AMOUNT_SCALE);
+    const newSourceAmount = lineAmount('1', newSourceRate, true)!;
+    const addedContribution = this.inContractContribution(
+      { isLeaf: true, commercialTreatment: 'ABSORBED' },
+      formatAmount(addedTotal),
+    );
+    const sourceDelta = this.inContractContribution(source, formatAmount(newSourceAmount)).minus(
+      this.inContractContribution(source, formatAmount(sourceAmount)),
+    );
+    const netDelta = addedContribution.plus(sourceDelta);
+    if (!netDelta.isZero()) {
+      throw new ConflictException({
+        message: 'Absorbing scope must not change the contract value.',
+        errorCode: 'CONTRACT_VALUE_LOCKED',
+        details: { netDelta: formatAmount(netDelta) },
+      });
+    }
+    // The seam is reused only for the COMMITTED pin; the assertion above is the real guard.
+    this.assertPinAllows(status, toDecimal('0'), toDecimal('0'), true);
+
+    const overrideCode = dto.code?.trim();
+    const targetOrder = await this.repo.countSiblings(prisma, versionId, dto.parentId ?? null);
+
+    for (let attempt = 1; ; attempt += 1) {
+      const code =
+        overrideCode && overrideCode.length > 0
+          ? overrideCode
+          : proposeNodeCode(
+              'item',
+              parentCode,
+              await this.repo.findChildCodes(prisma, versionId, dto.parentId ?? null),
+            );
+
+      this.assertValid(
+        validateNodeWrite(
+          {
+            code,
+            isLeaf: true,
+            unit: dto.unit,
+            quantity: '1',
+            unitRate: amount.toString(),
+            currency: undefined,
+            depth: parentDepth + 1,
+          },
+          {
+            boqCurrency: boq.currency,
+            siblingCodes: await this.repo.findCodesInVersion(prisma, versionId),
+            parentIsItem,
+            hasChildren: false,
+          },
+        ),
+      );
+
+      try {
+        return await this.repo.addAbsorbedFundedByContingency(
+          prisma,
+          {
+            data: {
+              boqId: boq.id,
+              versionId,
+              parentId: dto.parentId ?? null,
+              path: '',
+              depth: parentDepth + 1,
+              sortOrder: targetOrder,
+              code,
+              description: dto.description,
+              isLeaf: true,
+              measurementMethod: MeasurementMethod.QUANTITY,
+              pricingBasis: PricingBasis.LUMP_SUM,
+              unit: dto.unit ?? null,
+              quantity: '1',
+              unitRate: amount.toString(),
+              currency: boq.currency,
+              totalAmount: formatAmount(addedTotal),
+              nodeRole: 'WORK',
+              commercialTreatment: 'ABSORBED',
+            },
+            parentPath,
+            targetOrder,
+          },
+          {
+            id: source.id,
+            data: { unitRate: newSourceRate, totalAmount: newSourceAmount },
+          },
+          {
+            ...this.changeBase(identity, boq, versionId),
+            code,
+            action: 'CREATE',
+            detail: `Absorbed scope ${code} funded from contingency ${source.code}`,
+          },
+          {
+            ...this.changeBase(identity, boq, versionId),
+            nodeId: source.id,
+            code: source.code,
+            action: 'MOVE',
+            field: 'totalAmount',
+            oldValue: formatAmount(sourceAmount),
+            newValue: formatAmount(newSourceAmount),
+            detail: `Drew ${formatAmount(amount)} from contingency ${source.code} to absorb ${code}`,
+          },
+        );
+      } catch (error) {
+        if (!overrideCode && attempt < 4 && isDuplicateCodeConflict(error)) continue;
+        throw error;
+      }
+    }
   }
 
   /**
