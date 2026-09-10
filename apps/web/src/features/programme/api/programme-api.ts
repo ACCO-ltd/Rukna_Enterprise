@@ -6,7 +6,9 @@ import type {
 } from '@erp/types';
 
 import type { WorkPackageResponse } from '@/features/progress/api/progress-api';
-import { apiClient } from '@/lib/api-client';
+import { apiClient, ApiError, endSession } from '@/lib/api-client';
+import { sessionStore } from '@/features/auth/session/session-store';
+import { getApiBaseUrl } from '@/lib/tenant';
 
 /**
  * Programme milestones (ADR-021 phase 2). A milestone is a named construction stage with a baseline
@@ -160,4 +162,82 @@ export function updateWorkPackage(
     method: 'PATCH',
     body: JSON.stringify(body),
   });
+}
+
+/**
+ * Master Schedule P4 (ADR-029) — download the branded, server-generated PDF.
+ *
+ * The endpoint returns a `StreamableFile` (a binary `application/pdf` attachment), not JSON, so
+ * `apiClient` cannot carry it — that pipeline reads every body as text/JSON. And the endpoint is
+ * bearer-authenticated, so a plain `<a href>` would not carry the token. This helper therefore
+ * fetches the URL directly with the Authorization header (mirroring `executeRequest` in
+ * `api-client.ts`), reads the response as a blob, and hands the browser a file via a temporary
+ * `<a download>` click. The object URL is revoked immediately after the click so a leaked blob
+ * does not pin the whole PDF in memory.
+ *
+ * The attachment filename is read from the response's `Content-Disposition` header when the browser
+ * exposes it (`master-schedule-<code>-<asOf>.pdf`); otherwise it falls back to a sensible default
+ * built from the project code the caller passes in.
+ */
+export async function downloadMasterSchedule(
+  projectId: string,
+  fallbackProjectCode: string,
+): Promise<void> {
+  const token = sessionStore.getState().accessToken;
+
+  const res = await fetch(`${getApiBaseUrl()}/projects/${projectId}/programme/master-schedule.pdf`, {
+    method: 'GET',
+    credentials: 'include',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  // A read the user is not (or no longer) authorized for. Match the JSON pipeline: a 401 tears the
+  // session down and routes to login rather than surfacing a confusing "download failed".
+  if (res.status === 401) {
+    endSession();
+    throw new ApiError(401, 'Session expired', 'SESSION_EXPIRED');
+  }
+
+  if (!res.ok) {
+    throw new ApiError(res.status, 'Could not generate the master schedule PDF');
+  }
+
+  const blob = await res.blob();
+  const filename =
+    filenameFromContentDisposition(res.headers.get('Content-Disposition')) ??
+    `master-schedule-${fallbackProjectCode}.pdf`;
+
+  triggerBlobDownload(blob, filename);
+}
+
+/**
+ * Pull the filename out of a `Content-Disposition: attachment; filename="…"` header. Returns null
+ * when the header is absent (a cross-origin fetch can hide it unless the API sets
+ * `Access-Control-Expose-Headers`) or unparseable, so the caller can fall back to a default.
+ */
+export function filenameFromContentDisposition(header: string | null): string | null {
+  if (!header) return null;
+  // Prefer RFC 5987 `filename*=UTF-8''…` when present, else the plain quoted/bare `filename=`.
+  const extended = /filename\*=(?:UTF-8'')?([^;]+)/i.exec(header);
+  if (extended?.[1]) {
+    try {
+      return decodeURIComponent(extended[1].trim().replace(/^"|"$/g, ''));
+    } catch {
+      // Malformed percent-encoding — fall through to the plain form.
+    }
+  }
+  const plain = /filename="?([^";]+)"?/i.exec(header);
+  return plain?.[1]?.trim() || null;
+}
+
+/** Hand the browser a file from a blob, then revoke the object URL so it is not pinned in memory. */
+function triggerBlobDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
