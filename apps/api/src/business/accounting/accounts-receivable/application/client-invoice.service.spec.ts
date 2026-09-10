@@ -231,3 +231,112 @@ describe('ADR-023 — generateFromInstallment (milestone billing)', () => {
     expect(repo.create).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('ADR-029 R-4 — generateFromSeparateCharge (one-off separate-charge billing)', () => {
+  const scDto = { boqNodeId: 'node-1', invoiceDate: '2026-06-05', dueDate: '2026-07-05' };
+  const contract = {
+    id: 'c-1',
+    projectId: 'p-1',
+    clientId: 'client-1',
+    currency: 'USD',
+    client: { name: 'ACCO' },
+  };
+  // The node as `findSeparateChargeForBilling` returns it: a SEPARATE_CHARGE leaf whose version → boq →
+  // project carries the one active client contract.
+  const separateChargeNode = {
+    id: 'node-1',
+    code: 'SC-01',
+    description: 'Client-requested extra fence',
+    totalAmount: '20000.00',
+    commercialTreatment: 'SEPARATE_CHARGE',
+    isLeaf: true,
+    version: { boq: { project: { contracts: [contract] } } },
+  };
+
+  function buildSeparateCharge(node: unknown) {
+    const repo = {
+      findByBoqNode: jest.fn().mockResolvedValue(null),
+      findSeparateChargeForBilling: jest.fn().mockResolvedValue(node),
+      create: jest.fn(),
+    };
+    const tenancy = { getClient: () => ({}) };
+    const service = new ClientInvoiceService(
+      tenancy as never,
+      repo as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    return { repo, service };
+  }
+
+  it('creates ONE draft invoice tagged by the node, with a null sourceInstallmentId', async () => {
+    const { repo, service } = buildSeparateCharge(separateChargeNode);
+    repo.create.mockResolvedValue({ id: 'inv-new' });
+    await service.generateFromSeparateCharge(identity, scDto);
+    expect(repo.create).toHaveBeenCalledTimes(1);
+    const data = repo.create.mock.calls[0][1];
+    // The source tag: sourceBoqNodeId set, sourceInstallmentId absent (installment path untouched).
+    expect(data.sourceBoqNodeId).toBe('node-1');
+    expect(data.sourceInstallmentId).toBeUndefined();
+    expect(data.sourceIpcId).toBeUndefined();
+    // Amount is the leaf's own totalAmount (20,000) + 5% VAT — never re-keyed.
+    expect(data.subtotal.toString()).toBe('20000');
+    expect(data.vatAmount.toString()).toBe('1000');
+    expect(data.totalAmount.toString()).toBe('21000');
+    // Client + contract come from the project's one active client contract.
+    expect(data.clientId).toBe('client-1');
+    expect(data.contractId).toBe('c-1');
+    expect(data.currencyCode).toBe('USD');
+  });
+
+  it('is idempotent — returns the existing invoice, no second create', async () => {
+    const { repo, service } = buildSeparateCharge(separateChargeNode);
+    const existing = { id: 'inv-existing' };
+    repo.findByBoqNode.mockResolvedValue(existing);
+    const result = await service.generateFromSeparateCharge(identity, scDto);
+    expect(result).toBe(existing);
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('resolves a concurrent race to the winner (P2002 on unique source_boq_node_id)', async () => {
+    const { repo, service } = buildSeparateCharge(separateChargeNode);
+    const winner = { id: 'inv-winner' };
+    repo.findByBoqNode.mockResolvedValueOnce(null).mockResolvedValueOnce(winner);
+    repo.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    );
+    const result = await service.generateFromSeparateCharge(identity, scDto);
+    expect(result).toBe(winner);
+  });
+
+  it('rejects when the node is not a billable SEPARATE_CHARGE leaf', async () => {
+    const { repo, service } = buildSeparateCharge(null);
+    await expect(service.generateFromSeparateCharge(identity, scDto)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects when the project has no active client contract to bill against', async () => {
+    const { repo, service } = buildSeparateCharge({
+      ...separateChargeNode,
+      version: { boq: { project: { contracts: [] } } },
+    });
+    await expect(service.generateFromSeparateCharge(identity, scDto)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unpriced separate-charge line (no amount to bill)', async () => {
+    const { repo, service } = buildSeparateCharge({ ...separateChargeNode, totalAmount: null });
+    await expect(service.generateFromSeparateCharge(identity, scDto)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+});

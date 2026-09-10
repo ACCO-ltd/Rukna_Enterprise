@@ -3,6 +3,8 @@ import {
   contributesToInContractTotal,
   contingencyRemaining,
   isContingencyLeaf,
+  separateChargeTotal,
+  isSeparateChargeLeaf,
 } from '../domain/boq-contract-value.policy.js';
 
 /**
@@ -117,5 +119,60 @@ describe('contingencyRemaining — ADR-029 C-2', () => {
     expect(isContingencyLeaf(leaf('1.00') as never)).toBe(false);
     // A section marked CONTINGENCY carries no amount, so it is not a contributor.
     expect(isContingencyLeaf({ isLeaf: false, nodeRole: 'CONTINGENCY' } as never)).toBe(false);
+  });
+});
+
+/**
+ * Separate-charge total (ADR-029 CONST-BOQ-030/033 / spec T-5) — Σ totalAmount over SEPARATE_CHARGE
+ * leaves. The exact complement of the SEPARATE_CHARGE exclusion in inContractBillableTotal: the
+ * leaves that leave the in-contract tie-out are the leaves that enter total client revenue.
+ */
+describe('separateChargeTotal — ADR-029 T-5', () => {
+  it('sums only SEPARATE_CHARGE leaves', () => {
+    const total = separateChargeTotal([
+      section(),
+      leaf('1000.00'),
+      leaf('500.00', 'SEPARATE_CHARGE'),
+      leaf('250.00', 'SEPARATE_CHARGE'),
+    ] as never);
+    expect(total?.toFixed(2)).toBe('750.00');
+  });
+
+  it('ignores IN_CONTRACT, CONTINGENCY and ABSORBED leaves and sections', () => {
+    const total = separateChargeTotal([
+      section(),
+      leaf('1000.00'),
+      leaf('40.00', 'IN_CONTRACT', 'CONTINGENCY'),
+      leaf('25.00', 'ABSORBED'),
+      leaf('500.00', 'SEPARATE_CHARGE'),
+    ] as never);
+    expect(total?.toFixed(2)).toBe('500.00');
+  });
+
+  it('is the exact complement of the in-contract total over leaves', () => {
+    // Every leaf is counted exactly once: in-contract OR separate charge, never both, never neither.
+    const nodes = [
+      leaf('100.00'),
+      leaf('40.00', 'IN_CONTRACT', 'CONTINGENCY'),
+      leaf('25.00', 'ABSORBED'),
+      leaf('500.00', 'SEPARATE_CHARGE'),
+    ] as never;
+    const inContract = inContractBillableTotal(nodes)!; // 165
+    const separate = separateChargeTotal(nodes)!; // 500
+    expect(inContract.plus(separate).toFixed(2)).toBe('665.00');
+  });
+
+  it('returns null when there is no separate charge — never a false zero', () => {
+    expect(separateChargeTotal([leaf('1000.00'), section()] as never)).toBeNull();
+  });
+
+  it('isSeparateChargeLeaf marks only SEPARATE_CHARGE leaves', () => {
+    expect(isSeparateChargeLeaf(leaf('1.00', 'SEPARATE_CHARGE') as never)).toBe(true);
+    expect(isSeparateChargeLeaf(leaf('1.00') as never)).toBe(false);
+    expect(isSeparateChargeLeaf(leaf('1.00', 'ABSORBED') as never)).toBe(false);
+    // A section marked SEPARATE_CHARGE carries no amount, so it is not a contributor.
+    expect(isSeparateChargeLeaf({ isLeaf: false, commercialTreatment: 'SEPARATE_CHARGE' } as never)).toBe(
+      false,
+    );
   });
 });

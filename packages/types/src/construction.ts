@@ -1135,6 +1135,15 @@ export interface CommercialContractSummary {
   expectedEndDate: string | null;
   /** Withheld (null) without financial visibility, exactly as the metrics are. */
   contractValue: string | null;
+  /**
+   * ADR-029 CONST-BOQ-030 / spec T-5 — total client revenue: the CURRENT `contractValue` plus the
+   * sum of SEPARATE_CHARGE BOQ leaves (billed one-off, outside the contract). A DISTINCT figure —
+   * separate charges feed this, never `contractValue`. Equal to `contractValue` when the project
+   * has no separate charges. Withheld (null) without financial visibility, exactly as
+   * `contractValue` is. Null too when the read of the BOQ separate-charge total fails, so a lookup
+   * error is never rendered as a silently-lower revenue.
+   */
+  totalClientRevenue: string | null;
   currency: string;
   billingModel: `${BillingModel}`;
   /** The baselined BOQ version this contract is measured against. */
@@ -1507,8 +1516,12 @@ export type ArPostingStatus =
   | 'REVERSED'
   | 'OPENING_BALANCE';
 
-/** Where a client invoice came from. `NONE` = a migration-loaded invoice with no source document. */
-export type ClientInvoiceSourceKind = 'INSTALLMENT' | 'IPC' | 'NONE';
+/**
+ * Where a client invoice came from. `NONE` = a migration-loaded invoice with no source document.
+ * `SEPARATE_CHARGE` (ADR-029 R-4) = a one-off invoice for a SEPARATE_CHARGE BOQ leaf, billed outside
+ * the milestone schedule; it feeds total client revenue, never the contract value (CONST-BOQ-030).
+ */
+export type ClientInvoiceSourceKind = 'INSTALLMENT' | 'IPC' | 'SEPARATE_CHARGE' | 'NONE';
 
 export interface ClientInvoiceSource {
   kind: ClientInvoiceSourceKind;

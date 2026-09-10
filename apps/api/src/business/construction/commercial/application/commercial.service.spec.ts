@@ -50,6 +50,7 @@ function build(overrides: {
   billingInvoices?: unknown;
   receipts?: unknown;
   clientUnapplied?: Decimal;
+  separateChargeTotal?: string | null;
 }) {
   const repo = {
     findMainContract: jest
@@ -76,13 +77,20 @@ function build(overrides: {
   const variationRepo = {
     findValuationInputs: jest.fn().mockResolvedValue(overrides.variationInputs ?? []),
   };
+  // ADR-029 T-5: the BOQ read port supplying the separate-charge total. Default to none (null).
+  const boqVersioning = {
+    getSeparateChargeTotal: jest
+      .fn()
+      .mockResolvedValue('separateChargeTotal' in overrides ? overrides.separateChargeTotal : null),
+  };
   const service = new CommercialService(
     tenancy as never,
     projectAccess as never,
     repo as never,
     variationRepo as never,
+    boqVersioning as never,
   );
-  return { repo, service };
+  return { repo, boqVersioning, service };
 }
 
 describe('ADR-023 — getCurrentCycle for a MILESTONE contract', () => {
@@ -240,6 +248,39 @@ describe('CommercialService.getSummary', () => {
     expect(res.metrics.contractValue.state).toBe('UNAVAILABLE');
     expect(res.metrics.certifiedGross.state).toBe('UNAVAILABLE');
     expect(res.attention.map((a) => a.kind)).toContain('NO_MAIN_CONTRACT');
+  });
+
+  describe('ADR-029 T-5 — total client revenue = current contract value + Σ separate charges', () => {
+    it('equals the contract value when there are no separate charges', async () => {
+      const { service, boqVersioning } = build({ separateChargeTotal: null });
+      const res = await service.getSummary(financeIdentity, 'p-1');
+      // 1,000,000 current + nothing separate → revenue equals contract value, as a fixed(2) string.
+      expect(res.mainContract?.totalClientRevenue).toBe('1000000.00');
+      expect(res.mainContract?.contractValue).toBe('1000000');
+      expect(boqVersioning.getSeparateChargeTotal).toHaveBeenCalledWith(financeIdentity, 'p-1', 'boq-v-1');
+    });
+
+    it('adds the separate-charge total to the current value WITHOUT moving the contract value', async () => {
+      const { service } = build({ separateChargeTotal: '250000.00' });
+      const res = await service.getSummary(financeIdentity, 'p-1');
+      // Revenue rises to 1,250,000; the contract value stays 1,000,000 (CONST-BOQ-030).
+      expect(res.mainContract?.totalClientRevenue).toBe('1250000.00');
+      expect(res.mainContract?.contractValue).toBe('1000000');
+    });
+
+    it('withholds total client revenue without financial visibility', async () => {
+      const { service } = build({ separateChargeTotal: '250000.00' });
+      const res = await service.getSummary(noFinanceIdentity, 'p-1');
+      expect(res.mainContract?.totalClientRevenue).toBeNull();
+      expect(res.mainContract?.contractValue).toBeNull();
+    });
+
+    it('falls back to the contract value (not a silently-lower revenue) when the BOQ read fails', async () => {
+      // The service `.catch(() => null)`s the port; null means "unknown", so revenue = current value.
+      const { service } = build({ separateChargeTotal: null });
+      const res = await service.getSummary(financeIdentity, 'p-1');
+      expect(res.mainContract?.totalClientRevenue).toBe('1000000.00');
+    });
   });
 
   describe('ADR-026 — derived Original/Approved/Governing/Pending contract value', () => {
@@ -786,6 +827,8 @@ function billingInvoice(overrides: Record<string, unknown> = {}) {
     sourceInstallment: null,
     sourceIpcId: null,
     sourceIpc: null,
+    sourceBoqNodeId: null,
+    sourceBoqNode: null,
     allocations: [],
     ...overrides,
   };
@@ -905,6 +948,12 @@ describe('getBilling — the invoice-total settlement basis', () => {
             application: { id: 'ipa-6', applicationRef: 'IPA-006', applicationNumber: 6 },
           },
         }),
+        // ADR-029 R-4 — a one-off separate-charge invoice, tagged by its SEPARATE_CHARGE BOQ leaf.
+        billingInvoice({
+          id: 'inv-sc',
+          sourceBoqNodeId: 'node-9',
+          sourceBoqNode: { id: 'node-9', code: 'SC-01', description: 'Client-requested extra fence' },
+        }),
         billingInvoice({ id: 'inv-migrated' }),
       ],
     });
@@ -918,6 +967,8 @@ describe('getBilling — the invoice-total settlement basis', () => {
       id: 'inst-3',
     });
     expect(byId.get('inv-c')).toEqual({ kind: 'IPC', label: 'IPA-006', id: 'ipc-6' });
+    // A separate charge is distinguishable from installment/IPC/NONE, labelled by its BOQ code.
+    expect(byId.get('inv-sc')).toEqual({ kind: 'SEPARATE_CHARGE', label: 'SC-01', id: 'node-9' });
     // A migration-loaded invoice says it has no source rather than borrowing one.
     expect(byId.get('inv-migrated')).toEqual({ kind: 'NONE', label: null, id: null });
   });

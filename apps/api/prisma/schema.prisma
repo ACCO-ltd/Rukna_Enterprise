@@ -1194,17 +1194,20 @@ model BoqNode {
   createdAt           DateTime            @default(now()) @map("created_at")
   updatedAt           DateTime            @updatedAt @map("updated_at")
 
-  version              BoqVersion              @relation(fields: [versionId], references: [id])
-  parent               BoqNode?                @relation("BoqNodeChildren", fields: [parentId], references: [id], onDelete: Restrict)
-  children             BoqNode[]               @relation("BoqNodeChildren")
+  version               BoqVersion              @relation(fields: [versionId], references: [id])
+  parent                BoqNode?                @relation("BoqNodeChildren", fields: [parentId], references: [id], onDelete: Restrict)
+  children              BoqNode[]               @relation("BoqNodeChildren")
   // ADR-026 CONST-VAR-007 — the VariationOrder that introduced this node (null for BASELINE scope).
   // SetNull, not Restrict: a baselined node is immutable and outlives its source; if a VO were ever
   // removed (only via contract cascade), the historical node keeps its scope and loses only the link.
-  sourceChangeOrder    VariationOrder?         @relation("VariationOrderBoqNodes", fields: [sourceChangeOrderId], references: [id], onDelete: SetNull)
-  progressMeasurements ProgressMeasurement[]
-  workPackageLinks     WorkPackageBoqNode[]
-  purchaseOrderLines   PurchaseOrderLine[]
-  costBudgetLines      ProjectCostBudgetLine[]
+  sourceChangeOrder     VariationOrder?         @relation("VariationOrderBoqNodes", fields: [sourceChangeOrderId], references: [id], onDelete: SetNull)
+  progressMeasurements  ProgressMeasurement[]
+  workPackageLinks      WorkPackageBoqNode[]
+  purchaseOrderLines    PurchaseOrderLine[]
+  costBudgetLines       ProjectCostBudgetLine[]
+  // ADR-029 R-4 — the one-off ClientInvoice raised for this leaf when it is a SEPARATE_CHARGE (nullable
+  // 1:1). Null for every in-contract/contingency/absorbed node and for any un-billed separate charge.
+  separateChargeInvoice ClientInvoice?          @relation("BoqNodeSeparateChargeInvoice")
 
   // CONST-BOQ-015 — codes address lines in a contract; two nodes answering to "02.01.002"
   // makes every downstream reference ambiguous.
@@ -2421,6 +2424,12 @@ model ClientInvoice {
   // ADR-023: the payment-schedule installment that generated this invoice (MILESTONE contracts).
   // Unique → one invoice per installment (idempotent billing). Mutually exclusive with sourceIpcId.
   sourceInstallmentId    String?          @unique @map("source_installment_id")
+  // ADR-029 CONST-BOQ-030/033 (R-4): the SEPARATE_CHARGE BOQ leaf this one-off invoice bills. A
+  // separate charge carries neither an IPC nor an installment, so this is the source tag that
+  // distinguishes it from installment/IPC/migration-loaded invoices (and from a future VO invoice).
+  // Unique → one invoice per separate-charge node (idempotent billing). Null for every other invoice
+  // (additive-only, no backfill flip). Separate charges feed total client revenue, never contract value.
+  sourceBoqNodeId        String?          @unique @map("source_boq_node_id")
   projectId              String?          @map("project_id")
   contractId             String?          @map("contract_id")
   currencyCode           String           @map("currency_code") @db.VarChar(3)
@@ -2455,6 +2464,10 @@ model ClientInvoice {
   client            Client                      @relation(fields: [clientId], references: [id])
   sourceIpc         InterimPaymentCertificate?  @relation(fields: [sourceIpcId], references: [id])
   sourceInstallment ContractPaymentInstallment? @relation(fields: [sourceInstallmentId], references: [id])
+  // ADR-029 R-4 — the SEPARATE_CHARGE BOQ leaf a one-off invoice bills. SetNull, not Restrict: the
+  // invoice is the durable billing record and outlives the node; a node is deactivated not deleted
+  // (CONST-BOQ-003), so this only ever nulls under a full BOQ cascade, never orphaning the invoice.
+  sourceBoqNode     BoqNode?                    @relation("BoqNodeSeparateChargeInvoice", fields: [sourceBoqNodeId], references: [id], onDelete: SetNull)
   allocations       ClientReceiptAllocation[]
 
   @@unique([organizationId, invoiceNumber])

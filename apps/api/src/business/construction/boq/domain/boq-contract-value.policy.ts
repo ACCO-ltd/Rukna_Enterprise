@@ -90,3 +90,45 @@ export function formatContingencyRemaining(
 ): DecimalString | null {
   return formatAmount(contingencyRemaining(nodes));
 }
+
+/**
+ * True when this node is a separate charge — a SEPARATE_CHARGE-treatment leaf. Sections carry no
+ * amount, so the rule is leaf-only, exactly like {@link contributesToInContractTotal} and
+ * {@link isContingencyLeaf}. This is the precise complement of the SEPARATE_CHARGE exclusion in
+ * {@link contributesToInContractTotal}: a leaf is either in the in-contract total or a separate
+ * charge, never both.
+ */
+export function isSeparateChargeLeaf(
+  node: Pick<BoqNode, 'isLeaf' | 'commercialTreatment'>,
+): boolean {
+  return node.isLeaf && node.commercialTreatment === 'SEPARATE_CHARGE';
+}
+
+/**
+ * Separate-charge total — ADR-029 CONST-BOQ-030 / CONST-BOQ-033, spec T-5 / R-4.
+ *
+ * `Σ leaf.totalAmount over commercialTreatment = SEPARATE_CHARGE leaves`. These are the exact leaves
+ * {@link inContractBillableTotal} *excludes* (they are billed one-off, outside the contract), so
+ * this is its complement over leaves. It is the Σ term in
+ * `totalClientRevenue = currentContractValue + Σ separate charges` (CONST-BOQ-030): separate charges
+ * feed total client revenue and NEVER the contract value.
+ *
+ * Same shape and reuse discipline as {@link contingencyRemaining} / {@link inContractBillableTotal}:
+ * one definition of the figure, pure and synchronous, the caller supplies the nodes. Null when there
+ * is no separate-charge line at all (never a false `0`, so a caller can tell "no separate charges"
+ * from "separate charges summing to zero").
+ */
+export function separateChargeTotal(
+  nodes: Pick<BoqNode, 'isLeaf' | 'commercialTreatment' | 'totalAmount'>[],
+): Decimal | null {
+  return sumAmounts(
+    nodes.filter((node) => isSeparateChargeLeaf(node)).map((node) => toDecimal(node.totalAmount)),
+  );
+}
+
+/** The wire-serialized form of {@link separateChargeTotal}. */
+export function formatSeparateChargeTotal(
+  nodes: Pick<BoqNode, 'isLeaf' | 'commercialTreatment' | 'totalAmount'>[],
+): DecimalString | null {
+  return formatAmount(separateChargeTotal(nodes));
+}

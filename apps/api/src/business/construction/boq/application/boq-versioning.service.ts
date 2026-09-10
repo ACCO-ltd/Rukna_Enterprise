@@ -22,6 +22,7 @@ import {
 import {
   inContractBillableTotal,
   contingencyRemaining,
+  separateChargeTotal,
 } from '../domain/boq-contract-value.policy.js';
 import { formatAmount, type DecimalString } from '../domain/boq-money.js';
 
@@ -377,6 +378,36 @@ export class BoqVersioningService {
     }
     const nodes = await this.repo.findNodesByVersion(prisma, versionId);
     return formatAmount(contingencyRemaining(nodes));
+  }
+
+  /**
+   * BOQ read port (spec T-5 / R-4, CONST-BOQ-030/033) — the separate-charge total on a version:
+   * `Σ leaf.totalAmount over commercialTreatment = SEPARATE_CHARGE leaves`. This is the Σ term the
+   * Commercial read model adds to the current contract value to derive `totalClientRevenue`
+   * (`totalClientRevenue = currentContractValue + Σ separate charges`); it NEVER moves the contract
+   * value (CONST-BOQ-030).
+   *
+   * Reuses the one shared `separateChargeTotal` policy — the exact complement of the SEPARATE_CHARGE
+   * exclusion in `inContractBillableTotal`, so the figure that leaves the in-contract tie-out is the
+   * same figure that enters total client revenue; one leaf can never be double-counted or dropped.
+   * Serialized as a decimal string (CONST-BOQ-014); null when the version carries no separate charge.
+   *
+   * The exact sibling of `getContingencyRemaining` / `getInContractTotal`: this is the read port, NOT
+   * the workspace read-model shaping (that is R10). Financial-visibility redaction is the caller's
+   * (Commercial `mayViewFinancials`), matching how `getInContractTotal` leaves gating to the caller.
+   */
+  async getSeparateChargeTotal(
+    identity: RequestIdentity,
+    projectId: string,
+    versionId: string,
+  ): Promise<DecimalString | null> {
+    const prisma = this.tenancyService.getClient();
+    const boq = await this.requireBoq(prisma, projectId, identity.activeOrganizationId);
+    if (!boq.versions.some((candidate) => candidate.id === versionId)) {
+      throw new NotFoundException(`Version ${versionId} does not belong to this BOQ`);
+    }
+    const nodes = await this.repo.findNodesByVersion(prisma, versionId);
+    return formatAmount(separateChargeTotal(nodes));
   }
 
   /**

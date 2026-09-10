@@ -37,6 +37,7 @@ import { CommercialTermPolicy } from '../../contracts/domain/commercial-term-pol
 import { deriveGuaranteeAttention } from '../../contracts/domain/guarantee-attention-policy.js';
 import { CommercialPrismaRepository } from '../infrastructure/commercial-prisma.repository.js';
 import { VariationOrderPrismaRepository } from '../../variations/infrastructure/variation-order-prisma.repository.js';
+import { BoqVersioningService } from '../../boq/application/boq-versioning.service.js';
 import {
   deriveContractValue,
   netPrice as computeVoNetPrice,
@@ -107,6 +108,8 @@ function invoiceSource(inv: {
     id: string;
     application: { id: string; applicationRef: string | null; applicationNumber: number | null } | null;
   } | null;
+  sourceBoqNodeId: string | null;
+  sourceBoqNode: { id: string; code: string; description: string } | null;
 }): ClientInvoiceSource {
   if (inv.sourceInstallmentId) {
     return {
@@ -123,6 +126,16 @@ function invoiceSource(inv: {
         ? `IPA ${application.applicationNumber}`
         : null);
     return { kind: 'IPC', label, id: inv.sourceIpcId };
+  }
+  // ADR-029 R-4 — a one-off separate-charge invoice: tagged by its SEPARATE_CHARGE BOQ leaf, so it is
+  // distinguishable from installment / IPC / migration-loaded (NONE) invoices. The leaf's code is the
+  // human reference; it feeds total client revenue, never the contract value (CONST-BOQ-030).
+  if (inv.sourceBoqNodeId) {
+    return {
+      kind: 'SEPARATE_CHARGE',
+      label: inv.sourceBoqNode?.code ?? null,
+      id: inv.sourceBoqNodeId,
+    };
   }
   return { kind: 'NONE', label: null, id: null };
 }
@@ -162,6 +175,8 @@ export class CommercialService {
     private readonly repo: CommercialPrismaRepository,
     // ADR-026: the VO set the four derived contract-value figures are computed from.
     private readonly variationRepo: VariationOrderPrismaRepository,
+    // ADR-029 T-5: the BOQ read port for the separate-charge total that feeds total client revenue.
+    private readonly boqVersioning: BoqVersioningService,
   ) {}
 
   // ─── B2 — Project commercial summary ───────────────────────────────────────────
@@ -359,19 +374,37 @@ export class CommercialService {
       ...certs.map((c) => c.id),
       ...invoices.map((i) => i.id),
     ];
-    const [activity, boqVersionNumber, applicationCount, variationInputs] = await Promise.all([
-      this.repo.findRecentActivity(prisma, orgId, resourceIds).catch(() => []),
-      this.repo.findBoqVersionNumber(prisma, contract.boqVersionId).catch(() => null),
-      this.repo.countSubmittedApplications(prisma, orgId, contract.id).catch(() => 0),
-      // ADR-026 CONST-VAR-005/006: the VO set for the derived contract-value figures.
-      this.variationRepo.findValuationInputs(prisma, orgId, contract.id).catch(() => []),
-    ]);
+    const [activity, boqVersionNumber, applicationCount, variationInputs, separateChargeTotal] =
+      await Promise.all([
+        this.repo.findRecentActivity(prisma, orgId, resourceIds).catch(() => []),
+        this.repo.findBoqVersionNumber(prisma, contract.boqVersionId).catch(() => null),
+        this.repo.countSubmittedApplications(prisma, orgId, contract.id).catch(() => 0),
+        // ADR-026 CONST-VAR-005/006: the VO set for the derived contract-value figures.
+        this.variationRepo.findValuationInputs(prisma, orgId, contract.id).catch(() => []),
+        // ADR-029 T-5 (CONST-BOQ-030/033): Σ SEPARATE_CHARGE leaves on the contract's BOQ version, via
+        // the shared BOQ read port — the Σ term of total client revenue. `.catch(() => null)` matches
+        // the other reads: a lookup failure never renders as a silently-lower revenue.
+        this.boqVersioning
+          .getSeparateChargeTotal(identity, projectId, contract.boqVersionId)
+          .catch(() => null),
+      ]);
 
     const contractValueFigures = this.deriveContractValueFigures(
       new Decimal(contract.contractValue.toString()),
       variationInputs,
       mayViewFinancials,
     );
+
+    // ADR-029 CONST-BOQ-030 / T-5 — total client revenue = CURRENT contract value + Σ separate charges.
+    // A DISTINCT figure: separate charges NEVER move `contractValue`. Withheld exactly like every other
+    // money figure (RESTRICTED one card away). Equal to the contract value when there are no separate
+    // charges; when the BOQ read failed (`separateChargeTotal === null`) we surface null rather than
+    // silently dropping the separate-charge contribution.
+    const totalClientRevenue = !mayViewFinancials
+      ? null
+      : new Decimal(contract.contractValue.toString())
+          .plus(separateChargeTotal === null ? ZERO : new Decimal(separateChargeTotal))
+          .toFixed(2);
 
     return {
       projectId,
@@ -388,14 +421,12 @@ export class CommercialService {
         // on the screen, and leaking it through the identity panel would defeat the metric's
         // RESTRICTED state one card away.
         //
-        // ADR-029 T-5 (SEAM, partial): `contract.contractValue` is now the CURRENT value
-        // (base + Σ adopted on-contract variations — R6 owns the raise). Total client revenue =
-        // currentContractValue + Σ separate charges. The separate-charge source is R7 (ClientInvoice
-        // with a null sourceInstallmentId + a source tag, R-4); there is no separate-charge source to
-        // read yet, so total client revenue is NOT surfaced here. When R7 lands, aggregate those
-        // charges and add a `totalClientRevenue` field alongside this current value — do not fold them
-        // into `contractValue` (CONST-BOQ-030: contract value and total client revenue are distinct).
+        // ADR-029 T-5 (CONST-BOQ-030): `contract.contractValue` is the CURRENT value (base + Σ adopted
+        // on-contract variations — R6 owns the raise). `totalClientRevenue` below is the DISTINCT
+        // second figure = currentContractValue + Σ separate charges (SEPARATE_CHARGE BOQ leaves, read
+        // via the shared BOQ port). Separate charges feed revenue, NEVER `contractValue`.
         contractValue: mayViewFinancials ? contract.contractValue.toString() : null,
+        totalClientRevenue,
         currency,
         billingModel: contract.billingModel,
         boqVersionNumber,
