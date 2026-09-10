@@ -4,12 +4,14 @@ import {
   ConflictException,
   BadRequestException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type { RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ContractPrismaRepository, ContractFull } from '../infrastructure/contract-prisma.repository.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
+import { BoqVersioningService } from '../../boq/application/boq-versioning.service.js';
 import {
   CommercialTermPolicy,
   type CommercialMutationKind,
@@ -26,6 +28,12 @@ import { RecordAttachmentService } from '../../../../platform/files/application/
 
 const CANCEL_ALLOWED_FROM = new Set(['DRAFT', 'UNDER_REVIEW', 'PENDING_SIGNATURE']);
 
+// ADR-029 §2 — the operational (committed) BOQ version a contract may be signed against. R2 introduced
+// COMMITTED as the in-place operational status; BASELINED still exists until the R2 contract-phase
+// migration flips it, so both are accepted as a valid "committed" reference. Anything else
+// (DRAFT / SNAPSHOT / SUPERSEDED / CANCELLED) is a version a contract must never anchor to.
+const COMMITTED_BOQ_STATUSES = new Set(['COMMITTED', 'BASELINED']);
+
 const TRANSITIONS: Record<string, { from: string; to: string }> = {
   submit:           { from: 'DRAFT',                to: 'UNDER_REVIEW' },
   'approve-review': { from: 'UNDER_REVIEW',         to: 'PENDING_SIGNATURE' },
@@ -41,6 +49,9 @@ export class ContractService {
     private readonly projectAccess: ProjectAccessService,
     private readonly auditOutbox: TransactionalAuditOutboxService,
     private readonly attachments: RecordAttachmentService,
+    // ADR-029 I-1 / T-4 — the BOQ read port. The contract ties out to the priced scope; the tie-out
+    // total is computed here via the one shared `inContractBillableTotal` policy, never re-implemented.
+    private readonly boqVersioning: BoqVersioningService,
   ) {}
 
   async findAll(identity: RequestIdentity, projectId?: string) {
@@ -102,7 +113,9 @@ export class ContractService {
     await this.projectAccess.assertMember(identity, dto.projectId);
     const prisma = this.tenancyService.getClient();
 
-    // Validate BOQ version exists for this project and is BASELINED.
+    // Validate the BOQ version exists for this project and is a committed operational version.
+    // ADR-029 §2 accepts both COMMITTED (R2 in-place) and BASELINED (pre-migration) — see
+    // COMMITTED_BOQ_STATUSES.
     const boqVersion = await prisma.boqVersion.findFirst({
       where: { id: dto.boqVersionId, boq: { projectId: dto.projectId } },
       select: { status: true },
@@ -112,11 +125,26 @@ export class ContractService {
         `BOQ version ${dto.boqVersionId} not found for project ${dto.projectId}`,
       );
     }
-    if (boqVersion.status !== 'BASELINED') {
+    if (!COMMITTED_BOQ_STATUSES.has(boqVersion.status)) {
       throw new BadRequestException(
-        `A contract can only reference a BASELINED BOQ version. Current status: ${boqVersion.status}`,
+        `A contract can only reference a committed BOQ version. Current status: ${boqVersion.status}`,
       );
     }
+
+    const contractKind = dto.contractKind ?? 'CLIENT_CONTRACT';
+
+    // ADR-029 T-1/T-4 — tie out to the priced scope. `getInContractTotal` reuses the one shared
+    // `inContractBillableTotal` policy (every leaf except SEPARATE_CHARGE), so the contract can never
+    // be signed against a different rule than the commit snapshot was frozen under. D3: the contract
+    // reads from the BOQ; it can never be set below/away from that total.
+    //
+    // The tie-out is the CLIENT contract sum (CONST-BOQ-026 / D3: "the client sees only the contract
+    // sum"; milestone billing is client-facing). A SUBCONTRACT's value is the subcontractor's price,
+    // not the client BOQ total, so it is NOT tied out — it keeps its supplied value, base = current.
+    const tieOutTotal =
+      contractKind === 'CLIENT_CONTRACT'
+        ? await this.deriveTieOutValue(identity, dto)
+        : new Prisma.Decimal(dto.contractValue).toFixed(2);
 
     const duplicate = await this.repo.findByNumber(
       prisma,
@@ -126,8 +154,6 @@ export class ContractService {
     if (duplicate) {
       throw new ConflictException(`Contract number '${dto.contractNumber}' already exists`);
     }
-
-    const contractKind = dto.contractKind ?? 'CLIENT_CONTRACT';
 
     // ADR-023: a payment schedule belongs only to a MILESTONE (payment-schedule) contract,
     // and must reconcile to 100% before it is written.
@@ -161,7 +187,10 @@ export class ContractService {
         clientId: dto.clientId,
         boqVersionId: dto.boqVersionId,
         contractNumber: dto.contractNumber,
-        contractValue: dto.contractValue,
+        // ADR-029 T-2/T-3/T-4 — base is frozen from the tie-out at creation and drives the milestone %;
+        // current starts equal to base and is what R6 later increments per adopted on-contract variation.
+        baseContractValue: tieOutTotal,
+        contractValue: tieOutTotal,
         currency: dto.currency,
         billingModel: dto.billingModel,
         contractKind,
@@ -192,6 +221,55 @@ export class ContractService {
 
       return contract;
     });
+  }
+
+  /**
+   * ADR-029 T-1/T-4 — the tie-out value a contract is created with.
+   *
+   * Reads the in-contract billable total of the referenced (committed) BOQ version through the BOQ
+   * read port — the single `inContractBillableTotal` rule, never a second sum. That total becomes the
+   * contract's `baseContractValue` (and its initial `contractValue`). If the caller still supplied a
+   * `contractValue`, it must EQUAL the total to the money scale (18,2) or the create is rejected with
+   * 400 `TIEOUT_MISMATCH` and the delta — the contract can never be set below or away from the priced
+   * scope (D3). Returned as a fixed-scale decimal string so it stores verbatim on the paired-currency
+   * money columns (CONST-BOQ-014).
+   */
+  private async deriveTieOutValue(
+    identity: RequestIdentity,
+    dto: CreateContractDto,
+  ): Promise<string> {
+    const total = await this.boqVersioning.getInContractTotal(
+      identity,
+      dto.projectId,
+      dto.boqVersionId,
+    );
+    if (total === null) {
+      throw new BadRequestException(
+        `BOQ version ${dto.boqVersionId} has no priced in-contract scope to tie the contract value out to.`,
+      );
+    }
+    const tieOut = new Prisma.Decimal(total);
+
+    // A client-supplied value (the DTO still carries one) must match the tie-out to the cent.
+    if (dto.contractValue !== undefined && dto.contractValue !== null) {
+      const supplied = new Prisma.Decimal(dto.contractValue);
+      if (!supplied.equals(tieOut)) {
+        throw new BadRequestException({
+          message:
+            'Contract value must tie out to the in-contract BOQ total. ' +
+            'The BOQ is the priced scope; the contract cannot be set below or away from it.',
+          code: 'TIEOUT_MISMATCH',
+          details: {
+            boqVersionId: dto.boqVersionId,
+            tieOutTotal: tieOut.toFixed(2),
+            suppliedContractValue: supplied.toFixed(2),
+            delta: supplied.minus(tieOut).toFixed(2),
+          },
+        });
+      }
+    }
+
+    return tieOut.toFixed(2);
   }
 
   /**

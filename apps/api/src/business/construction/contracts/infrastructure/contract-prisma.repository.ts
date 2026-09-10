@@ -95,6 +95,8 @@ export class ContractPrismaRepository {
       boqVersionId: string;
       contractNumber: string;
       contractValue: string;
+      // ADR-029 CONST-BOQ-032 / T-2 — base value frozen at creation; drives the milestone % schedule.
+      baseContractValue: string;
       currency: string;
       billingModel?: string;
       contractKind?: ContractKind;
@@ -111,6 +113,7 @@ export class ContractPrismaRepository {
         boqVersionId: data.boqVersionId,
         contractNumber: data.contractNumber,
         contractValue: data.contractValue,
+        baseContractValue: data.baseContractValue,
         currency: data.currency,
         billingModel: (data.billingModel ?? 'MEASURED_IPC') as never,
         contractKind: data.contractKind ?? 'CLIENT_CONTRACT',

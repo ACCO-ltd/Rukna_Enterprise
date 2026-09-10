@@ -44,12 +44,17 @@ function build(contract: Record<string, unknown> | null): Mocks {
   // Phase 7A: evidence freezes when the contract executes and when a guarantee leaves ACTIVE.
   const attachments = { freezeFor: jest.fn().mockResolvedValue(0) };
 
+  // ADR-029 T-4: the BOQ read port used by contract create for the tie-out. Not exercised by the
+  // term/lifecycle suites, so a default stub is enough here.
+  const boqVersioning = { getInContractTotal: jest.fn().mockResolvedValue(null) };
+
   const service = new ContractService(
     tenancy as never,
     repo as never,
     projectAccess as never,
     audit as never,
     attachments as never,
+    boqVersioning as never,
   );
   return { repo, projectAccess, audit, attachments, service };
 }
@@ -303,7 +308,9 @@ describe('Same-organization wrong-parent contract id (CONST-COM-002)', () => {
 });
 
 describe('ADR-023 — payment schedule on contract create (CONST-COM-012)', () => {
-  function buildForCreate() {
+  function buildForCreate(
+    opts: { boqStatus?: string; tieOutTotal?: string | null } = {},
+  ) {
     const repo = {
       findByNumber: jest.fn().mockResolvedValue(null),
       findEffectiveClientContract: jest.fn().mockResolvedValue(null),
@@ -313,19 +320,28 @@ describe('ADR-023 — payment schedule on contract create (CONST-COM-012)', () =
     const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
     const audit = { record: jest.fn().mockResolvedValue(undefined) };
     const prisma = {
-      boqVersion: { findFirst: jest.fn().mockResolvedValue({ status: 'BASELINED' }) },
+      boqVersion: {
+        findFirst: jest.fn().mockResolvedValue({ status: opts.boqStatus ?? 'COMMITTED' }),
+      },
       $transaction: (fn: (tx: unknown) => unknown) => fn({}),
     };
     const tenancy = { getClient: () => prisma };
     const attachments = { freezeFor: jest.fn().mockResolvedValue(0) };
+    // ADR-029 T-4: by default the BOQ ties out to the DTO's contractValue so the schedule tests pass.
+    const boqVersioning = {
+      getInContractTotal: jest
+        .fn()
+        .mockResolvedValue(opts.tieOutTotal === undefined ? '1000000.00' : opts.tieOutTotal),
+    };
     const service = new ContractService(
       tenancy as never,
       repo as never,
       projectAccess as never,
       audit as never,
       attachments as never,
+      boqVersioning as never,
     );
-    return { repo, attachments, service };
+    return { repo, attachments, boqVersioning, prisma, service };
   }
 
   const base = {
@@ -379,5 +395,125 @@ describe('ADR-023 — payment schedule on contract create (CONST-COM-012)', () =
       } as never),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(repo.createPaymentInstallments).not.toHaveBeenCalled();
+  });
+});
+
+// ADR-029 §3 — BOQ↔Contract tie-out + three-layer contract value (R3, GitHub #193).
+// UNRUN in this ticket by direction (no migrated DB); pure-logic assertions only, wired the same
+// way as the ADR-023 create suite above (all deps mocked, $transaction runs the callback inline).
+describe('R3 — tie-out & three-layer contract value (T-1..T-4)', () => {
+  function buildForCreate(
+    opts: { boqStatus?: string; tieOutTotal?: string | null } = {},
+  ) {
+    const repo = {
+      findByNumber: jest.fn().mockResolvedValue(null),
+      findEffectiveClientContract: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({ id: 'c-1' }),
+      createPaymentInstallments: jest.fn().mockResolvedValue({ count: 0 }),
+    };
+    const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const prisma = {
+      boqVersion: {
+        findFirst: jest.fn().mockResolvedValue({ status: opts.boqStatus ?? 'COMMITTED' }),
+      },
+      $transaction: (fn: (tx: unknown) => unknown) => fn({}),
+    };
+    const tenancy = { getClient: () => prisma };
+    const attachments = { freezeFor: jest.fn().mockResolvedValue(0) };
+    const boqVersioning = {
+      getInContractTotal: jest
+        .fn()
+        .mockResolvedValue(opts.tieOutTotal === undefined ? '750000.00' : opts.tieOutTotal),
+    };
+    const service = new ContractService(
+      tenancy as never,
+      repo as never,
+      projectAccess as never,
+      audit as never,
+      attachments as never,
+      boqVersioning as never,
+    );
+    return { repo, attachments, boqVersioning, prisma, service };
+  }
+
+  const base = {
+    projectId: 'p-1',
+    clientId: 'cl-1',
+    boqVersionId: 'bv-1',
+    contractNumber: 'ACCO-1',
+    currency: 'USD',
+  };
+
+  it('T-1/T-4: derives base = current = the shared in-contract tie-out total', async () => {
+    const { service, repo, boqVersioning } = buildForCreate({ tieOutTotal: '750000.00' });
+    await service.create(identity, { ...base, contractValue: '750000.00' } as never);
+    // Reuses the BOQ read port (never a second sum) with org+project+version scoping.
+    expect(boqVersioning.getInContractTotal).toHaveBeenCalledWith(identity, 'p-1', 'bv-1');
+    // Base is FROZEN from the tie-out; current starts EQUAL to base (T-2/T-3).
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ baseContractValue: '750000.00', contractValue: '750000.00' }),
+    );
+  });
+
+  it('T-4: a client-supplied contractValue below the tie-out is rejected 400 TIEOUT_MISMATCH with the delta', async () => {
+    const { service, repo } = buildForCreate({ tieOutTotal: '750000.00' });
+    // 700k against a 750k priced scope — the contract can never be set below the BOQ (D3).
+    const err = await service
+      .create(identity, { ...base, contractValue: '700000.00' } as never)
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
+    const response = (err as BadRequestException).getResponse() as {
+      code: string;
+      details: { tieOutTotal: string; suppliedContractValue: string; delta: string };
+    };
+    expect(response.code).toBe('TIEOUT_MISMATCH');
+    expect(response.details).toMatchObject({
+      tieOutTotal: '750000.00',
+      suppliedContractValue: '700000.00',
+      delta: '-50000.00',
+    });
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('T-4: a client-supplied contractValue above the tie-out is rejected with a positive delta', async () => {
+    const { service } = buildForCreate({ tieOutTotal: '750000.00' });
+    const err = await service
+      .create(identity, { ...base, contractValue: '800000.00' } as never)
+      .catch((e) => e);
+    const response = (err as BadRequestException).getResponse() as { details: { delta: string } };
+    expect(response.details.delta).toBe('50000.00');
+  });
+
+  it('committed-status acceptance: a COMMITTED version is a valid reference', async () => {
+    const { service, repo } = buildForCreate({ boqStatus: 'COMMITTED', tieOutTotal: '750000.00' });
+    await service.create(identity, { ...base, contractValue: '750000.00' } as never);
+    expect(repo.create).toHaveBeenCalled();
+  });
+
+  it('committed-status acceptance: a BASELINED version is still accepted pre-migration', async () => {
+    const { service, repo } = buildForCreate({ boqStatus: 'BASELINED', tieOutTotal: '750000.00' });
+    await service.create(identity, { ...base, contractValue: '750000.00' } as never);
+    expect(repo.create).toHaveBeenCalled();
+  });
+
+  it('committed-status acceptance: a DRAFT / SNAPSHOT version is rejected, tie-out never computed', async () => {
+    for (const status of ['DRAFT', 'SNAPSHOT', 'SUPERSEDED', 'CANCELLED']) {
+      const { service, repo, boqVersioning } = buildForCreate({ boqStatus: status });
+      await expect(
+        service.create(identity, { ...base, contractValue: '750000.00' } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(boqVersioning.getInContractTotal).not.toHaveBeenCalled();
+      expect(repo.create).not.toHaveBeenCalled();
+    }
+  });
+
+  it('rejects when the referenced BOQ version has no priced in-contract scope (tie-out null)', async () => {
+    const { service, repo } = buildForCreate({ tieOutTotal: null });
+    await expect(
+      service.create(identity, { ...base, contractValue: '750000.00' } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.create).not.toHaveBeenCalled();
   });
 });

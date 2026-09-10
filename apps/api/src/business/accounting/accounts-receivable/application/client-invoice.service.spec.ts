@@ -153,6 +153,30 @@ describe('ADR-023 — generateFromInstallment (milestone billing)', () => {
     expect(data.totalAmount.toString()).toBe('315000');
   });
 
+  // ADR-029 T-6 — the invoice amount derives from the FROZEN baseContractValue. A variation that raised
+  // the current contractValue to 1.2M must not change the milestone invoice (still 30% of the 1M base).
+  it('T-6: derives the invoice from baseContractValue, not the raised current value', async () => {
+    const { repo, service } = buildInstallment({
+      ...structureInstallment,
+      contract: { ...milestoneContract, contractValue: '1200000', baseContractValue: '1000000' },
+    });
+    repo.create.mockResolvedValue({ id: 'inv-new' });
+    await service.generateFromInstallment(identity, instDto);
+    const data = repo.create.mock.calls[0][1];
+    expect(data.subtotal.toString()).toBe('300000'); // 30% of the 1M base, not 1.2M current
+  });
+
+  // ADR-029 M-4 — a legacy contract with a null base falls back to contractValue; never fails.
+  it('M-4: a legacy contract with a null base falls back to contractValue', async () => {
+    const { repo, service } = buildInstallment({
+      ...structureInstallment,
+      contract: { ...milestoneContract, baseContractValue: null },
+    });
+    repo.create.mockResolvedValue({ id: 'inv-new' });
+    await service.generateFromInstallment(identity, instDto);
+    expect(repo.create.mock.calls[0][1].subtotal.toString()).toBe('300000');
+  });
+
   it('is idempotent — returns the existing invoice, no second create', async () => {
     const { repo, service } = buildInstallment(structureInstallment);
     const existing = { id: 'inv-existing' };

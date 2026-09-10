@@ -123,8 +123,12 @@ export class ClientInvoiceService {
    *
    * Idempotent, exactly like generateFromIpc: one installment maps to at most one invoice, enforced by
    * the unique index on ClientInvoice.sourceInstallmentId. The amount is derived from
-   * contract value × installment percentage — never re-keyed, so the invoice cannot drift from the plan.
-   * This is ADR-023's BillableEntitlement → guarded invoice for the payment-schedule model.
+   * base contract value × installment percentage — never re-keyed, so the invoice cannot drift from
+   * the plan. This is ADR-023's BillableEntitlement → guarded invoice for the payment-schedule model.
+   *
+   * ADR-029 CONST-BOQ-032 / T-6 — the schedule derives from the **frozen** `baseContractValue`, so a
+   * variation that raises the current `contractValue` (R6) never re-spreads the milestone amounts. A
+   * legacy contract with a null base (M-4) falls back to `contractValue`.
    */
   async generateFromInstallment(identity: RequestIdentity, dto: GenerateInvoiceFromInstallmentDto) {
     const prisma = this.tenancyService.getClient();
@@ -158,7 +162,8 @@ export class ClientInvoiceService {
       );
     }
 
-    const subtotal = new Decimal(contract.contractValue.toString())
+    const scheduleBase = contract.baseContractValue ?? contract.contractValue;
+    const subtotal = new Decimal(scheduleBase.toString())
       .mul(new Decimal(installment.percentage.toString()))
       .toDecimalPlaces(2);
     const vatRate = new Decimal('0.05');

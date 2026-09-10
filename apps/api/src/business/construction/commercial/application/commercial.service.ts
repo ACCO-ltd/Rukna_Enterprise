@@ -386,6 +386,14 @@ export class CommercialService {
         // Withheld like every other figure — the contract value is the most sensitive number
         // on the screen, and leaking it through the identity panel would defeat the metric's
         // RESTRICTED state one card away.
+        //
+        // ADR-029 T-5 (SEAM, partial): `contract.contractValue` is now the CURRENT value
+        // (base + Σ adopted on-contract variations — R6 owns the raise). Total client revenue =
+        // currentContractValue + Σ separate charges. The separate-charge source is R7 (ClientInvoice
+        // with a null sourceInstallmentId + a source tag, R-4); there is no separate-charge source to
+        // read yet, so total client revenue is NOT surfaced here. When R7 lands, aggregate those
+        // charges and add a `totalClientRevenue` field alongside this current value — do not fold them
+        // into `contractValue` (CONST-BOQ-030: contract value and total client revenue are distinct).
         contractValue: mayViewFinancials ? contract.contractValue.toString() : null,
         currency,
         billingModel: contract.billingModel,
@@ -918,8 +926,12 @@ export class CommercialService {
    * derived from its **own linked invoice** (ClientInvoice.sourceInstallmentId): un-invoiced →
    * NEXT (the first one, where "Generate invoice" lives) / UPCOMING; invoiced but uncollected →
    * BILLED; posted with partial/full receipts → PARTIALLY_PAID / PAID. Amounts stay on the plan
-   * (ex-VAT) basis: `amount = percentage × contractValue`, `amountPaid = amount × collected-fraction`
+   * (ex-VAT) basis: `amount = percentage × baseContractValue`, `amountPaid = amount × collected-fraction`
    * of the linked invoice, so the header % and the rows stay coherent.
+   *
+   * ADR-029 CONST-BOQ-032 / T-6 — the milestone schedule derives from the **frozen** `baseContractValue`,
+   * not the current `contractValue`, so raising the current value via a variation (R6) never re-spreads
+   * the schedule. Legacy contracts predate the split (M-4): a null base means "= contractValue".
    */
   private async buildPaymentSchedule(
     identity: RequestIdentity,
@@ -933,7 +945,11 @@ export class CommercialService {
     const byInstallment = new Map(
       invoices.filter((inv) => inv.sourceInstallmentId).map((inv) => [inv.sourceInstallmentId, inv]),
     );
-    const contractValue = new Decimal(contract.contractValue.toString());
+    // T-6 — the schedule is frozen against the base value. Fall back to contractValue for a legacy
+    // contract whose base was never set (M-4: never fail a legacy contract).
+    const baseValue = new Decimal(
+      (contract.baseContractValue ?? contract.contractValue).toString(),
+    );
 
     // Fraction of a posted invoice already collected (0..1). Non-posted invoices count as 0.
     const collectedFraction = (inv: InvoiceRow): Decimal => {
@@ -946,7 +962,7 @@ export class CommercialService {
     let collected = ZERO;
     let nextAssigned = false;
     const lines: CommercialPaymentScheduleInstallment[] = installments.map((inst) => {
-      const amount = contractValue.mul(new Decimal(inst.percentage.toString()));
+      const amount = baseValue.mul(new Decimal(inst.percentage.toString()));
       const inv = byInstallment.get(inst.id);
 
       let status: PaymentInstallmentBillStatus;
@@ -990,7 +1006,9 @@ export class CommercialService {
     return {
       schedule: {
         currency: contract.currency,
-        contractValue: mayViewFinancials ? contractValue.toFixed(2) : null,
+        // The schedule spreads the frozen base (Σ installment amounts = base), so the header value
+        // the % are read against is the base, not the variation-inflated current value (T-6).
+        contractValue: mayViewFinancials ? baseValue.toFixed(2) : null,
         totalCollected: mayViewFinancials ? collected.toFixed(2) : null,
         installments: lines,
       },

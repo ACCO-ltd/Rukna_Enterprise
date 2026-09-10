@@ -130,6 +130,29 @@ describe('ADR-023 — getCurrentCycle for a MILESTONE contract', () => {
     expect(s.map((i) => i.status)).toEqual(['PAID', 'BILLED', 'NEXT', 'UPCOMING']);
   });
 
+  // ADR-029 T-6 — the milestone schedule derives from the FROZEN baseContractValue. A variation that
+  // raised the current contractValue to 1.2M must NOT re-spread the 1M schedule.
+  it('T-6: derives installment amounts from baseContractValue, not the raised current value', async () => {
+    const varied = { ...milestoneContract, contractValue: new Decimal('1200000'), baseContractValue: new Decimal('1000000') };
+    const { service } = build({ contract: varied, installments: accoPlan, invoices: [] });
+    const res = await service.getCurrentCycle(financeIdentity, 'p-1');
+    const s = res.paymentSchedule!.installments;
+    // 40/30/20/10 of the 1M BASE — unchanged by the +200k on the current value.
+    expect(s.map((i) => i.amount)).toEqual(['400000.00', '300000.00', '200000.00', '100000.00']);
+    // The header value the % are read against is the base too, so Σ amounts = header.
+    expect(res.paymentSchedule?.contractValue).toBe('1000000.00');
+  });
+
+  // ADR-029 M-4 — a legacy contract predates the split (null base). It must never fail; the schedule
+  // falls back to contractValue.
+  it('M-4: a legacy contract with a null base falls back to contractValue for the schedule', async () => {
+    const legacy = { ...milestoneContract, baseContractValue: null };
+    const { service } = build({ contract: legacy, installments: accoPlan, invoices: [] });
+    const res = await service.getCurrentCycle(financeIdentity, 'p-1');
+    expect(res.paymentSchedule!.installments[0].amount).toBe('400000.00');
+    expect(res.paymentSchedule?.contractValue).toBe('1000000.00');
+  });
+
   it('hides money but keeps the plan structure without financial permission', async () => {
     const { service } = build({ contract: milestoneContract, installments: accoPlan, invoices: advancePaidInvoices });
     const res = await service.getCurrentCycle(noFinanceIdentity, 'p-1');
