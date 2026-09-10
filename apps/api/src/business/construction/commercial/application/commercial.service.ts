@@ -38,6 +38,7 @@ import { deriveGuaranteeAttention } from '../../contracts/domain/guarantee-atten
 import { CommercialPrismaRepository } from '../infrastructure/commercial-prisma.repository.js';
 import { VariationOrderPrismaRepository } from '../../variations/infrastructure/variation-order-prisma.repository.js';
 import { BoqVersioningService } from '../../boq/application/boq-versioning.service.js';
+import { resolveBoqVisibility } from '../../boq/domain/boq-visibility.policy.js';
 import {
   deriveContractValue,
   netPrice as computeVoNetPrice,
@@ -188,7 +189,10 @@ export class CommercialService {
     await this.projectAccess.assertMember(identity, projectId);
     const prisma = this.tenancyService.getClient();
     const orgId = identity.activeOrganizationId;
-    const mayViewFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
+    // ADR-029 §8 A-2 — money visibility comes from the single shared BOQ helper (margin tier). The
+    // legacy `financialPositionView` gate is carried onto that tier, so existing finance/exec roles
+    // keep exactly the visibility they had; the definition now lives in one place for both surfaces.
+    const { canViewMargin: mayViewFinancials } = resolveBoqVisibility(identity);
     const asOf = new Date();
     const asOfIso = asOf.toISOString();
 
@@ -539,7 +543,10 @@ export class CommercialService {
     await this.projectAccess.assertMember(identity, projectId);
     const prisma = this.tenancyService.getClient();
     const orgId = identity.activeOrganizationId;
-    const mayViewFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
+    // ADR-029 §8 A-2 — money visibility comes from the single shared BOQ helper (margin tier). The
+    // legacy `financialPositionView` gate is carried onto that tier, so existing finance/exec roles
+    // keep exactly the visibility they had; the definition now lives in one place for both surfaces.
+    const { canViewMargin: mayViewFinancials } = resolveBoqVisibility(identity);
     const asOfIso = new Date().toISOString();
 
     const contract = await this.repo.findMainContract(prisma, orgId, projectId);
@@ -797,7 +804,10 @@ export class CommercialService {
     await this.projectAccess.assertMember(identity, projectId);
     const prisma = this.tenancyService.getClient();
     const orgId = identity.activeOrganizationId;
-    const mayViewFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
+    // ADR-029 §8 A-2 — money visibility comes from the single shared BOQ helper (margin tier). The
+    // legacy `financialPositionView` gate is carried onto that tier, so existing finance/exec roles
+    // keep exactly the visibility they had; the definition now lives in one place for both surfaces.
+    const { canViewMargin: mayViewFinancials } = resolveBoqVisibility(identity);
     const asOf = new Date();
     const asOfIso = asOf.toISOString();
 
@@ -970,7 +980,10 @@ export class CommercialService {
     contract: MainContract,
   ): Promise<{ schedule: CommercialPaymentSchedule; hasFocus: boolean }> {
     const prisma = this.tenancyService.getClient();
-    const mayViewFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
+    // ADR-029 §8 A-2 — money visibility comes from the single shared BOQ helper (margin tier). The
+    // legacy `financialPositionView` gate is carried onto that tier, so existing finance/exec roles
+    // keep exactly the visibility they had; the definition now lives in one place for both surfaces.
+    const { canViewMargin: mayViewFinancials } = resolveBoqVisibility(identity);
 
     const installments = await this.repo.findPaymentInstallments(prisma, contract.id);
     const invoices = await this.repo.findInvoices(prisma, identity.activeOrganizationId, contract.id);

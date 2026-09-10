@@ -868,8 +868,17 @@ export interface BoqCapabilities {
   canView: boolean;
   canManage: boolean;
   canBaseline: boolean;
-  /** False when rate and amount fields are omitted from this response. */
+  /**
+   * @deprecated ADR-029 §8 A-2 replaced the single money boolean with two visibility tiers.
+   * Retained (mirrors `canViewCost`) so pre-tier clients keep compiling for one release.
+   */
   canViewCommercials: boolean;
+  /** Cost tier: false when rate/amount/line-budget fields are omitted from this response. */
+  canViewCost: boolean;
+  /** Margin tier: false when contract-value/contingency/margin fields are omitted. */
+  canViewMargin: boolean;
+  /** True when the caller may edit the BOQ (edit-scope OR edit-cost OR the manage umbrella). */
+  canEdit: boolean;
 }
 
 export interface BoqVersionSummary extends BoqVersionResponse {

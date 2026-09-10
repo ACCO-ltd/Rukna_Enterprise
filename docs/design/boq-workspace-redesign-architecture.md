@@ -257,6 +257,15 @@ node. ACCO tracks cost and progress on pay-now extras, so they must be real node
 requiring a distinct approver (four-eyes). Contingency draw is a **commercial-authority** act
 (PM surfaces the overrun, commercial releases the reserve).
 
+> **R8 wiring note (2026-09-10).** Distinct-approver is the DOA chain's design, not BOQ code:
+> the seeded fixed chain `BOQ_COMMIT` (Construction Director → CFO → CEO, CONST-DOA-009) plus the
+> SoD engine at approval time enforce it. R8 repointed that chain from the retired
+> `BoqVersion DRAFT → BASELINED` to the governed `DRAFT → COMMITTED` (reusing the
+> `BOQ_BASELINE` transaction type — no new enum, no migration), and added `DRAFT:COMMITTED` to the
+> policy-transition registry, so four-eyes actually fires on the commit path. `CommandGovernanceService
+> .gateStateTransition` records the preparer as `initiatedBy`; the approval engine then requires a
+> different actor to complete the chain. Chains remain inactive until a deliberate per-org activation.
+
 **Controls (defense in depth):** RBAC capability → project membership (`ProjectAccessService`)
 → approval policy (DOA) → server-side read-model field omission → audit
 (`TransactionalAuditOutbox` + `BoqChangeEvent`).

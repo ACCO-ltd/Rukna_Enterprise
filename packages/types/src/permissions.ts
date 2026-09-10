@@ -34,12 +34,24 @@ export const PERMISSIONS = {
   boqView: 'view:boq',
   boqManage: 'manage:boq',
   boqBaseline: 'baseline:boq',
+  // ADR-029 §8 A-1 — the two edit capabilities. Technically separate, co-assignable. `manage:boq`
+  // stays a backward-compatible UMBRELLA: a holder of `manage:boq` may still do both scope and cost
+  // edits, so an edit is authorized by `edit-scope:boq` OR `edit-cost:boq` OR the umbrella. Splitting
+  // them lets a role edit descriptions/quantities (scope) without touching rates/budgets (cost).
+  boqEditScope: 'edit-scope:boq',
+  boqEditCost: 'edit-cost:boq',
   // ADR-029 CONST-BOQ-034 — commit-to-contract replaces baseline as the governed fix-the-value act.
   boqCommit: 'commit:boq',
   // ADR-029 CONST-BOQ-028 / spec C-3 / A-4 — drawing down the named contingency allowance is a
   // commercial-authority act. Money-neutral to the contract value (it only reallocates budget),
   // but it decides how the buffer is spent, so it is gated separately from ordinary BOQ edits.
   boqManageContingency: 'manage-contingency:boq',
+  // ADR-029 §8 A-2 — the two money-visibility tiers, server-enforced by OMITTING fields from the
+  // read model (never a UI hide). `view:boq` alone is the operational tier (scope/qty/unit/progress,
+  // no money). `view-cost:boq` adds line budgets/rates/amounts/cost-coding. `view-margin:boq` adds
+  // contract value, contingency reserve/remaining, margin — and implies cost (see resolveBoqVisibility).
+  boqViewCost: 'view-cost:boq',
+  boqViewMargin: 'view-margin:boq',
 
   contractsView: 'view:contract',
   contractsCreate: 'create:contract',
@@ -120,9 +132,18 @@ const DOMAIN_BY_RESOURCE: Record<string, string> = {
 function riskFor(action: string): PermissionDefinition['riskClass'] {
   if (['approve', 'issue', 'post', 'baseline', 'supersede'].includes(action)) return 'CRITICAL';
   // `manage-contingency` decides how the internal buffer is spent — a commercial-authority act, so
-  // it carries the same review weight as a plain `manage`.
-  if (['manage', 'manage-contingency', 'allocate', 'submit'].includes(action)) return 'HIGH';
+  // it carries the same review weight as a plain `manage`. `edit-scope`/`edit-cost` are the split
+  // halves of `manage` (ADR-029 A-1), and mutate the BOQ, so they carry the same weight.
+  if (
+    ['manage', 'manage-contingency', 'edit-scope', 'edit-cost', 'allocate', 'submit'].includes(
+      action,
+    )
+  )
+    return 'HIGH';
   if (['create'].includes(action)) return 'MEDIUM';
+  // `view-margin` exposes profitability — a read, but a commercially sensitive one, so it is a
+  // review signal above an ordinary view (`view-cost`/`view` stay LOW).
+  if (action === 'view-margin') return 'MEDIUM';
   return 'LOW';
 }
 
@@ -153,11 +174,16 @@ const DESCRIPTIONS: Record<PermissionKey, string> = {
     'Register controlled project documents, draft revisions and replace draft files',
   [PERMISSIONS.projectDocumentsIssue]:
     'Issue, withdraw, supersede and archive controlled project documents',
-  [PERMISSIONS.boqView]: 'View bills of quantities',
+  [PERMISSIONS.boqView]: 'View bills of quantities (scope, quantities, progress — no money)',
   [PERMISSIONS.boqManage]: 'Create and edit BOQ drafts',
   [PERMISSIONS.boqBaseline]: 'Baseline BOQ versions',
+  [PERMISSIONS.boqEditScope]: 'Edit BOQ scope: descriptions, quantities, units, structure',
+  [PERMISSIONS.boqEditCost]: 'Edit BOQ cost lines: rates, line budgets and cost-coding',
   [PERMISSIONS.boqCommit]: 'Commit a BOQ to contract',
   [PERMISSIONS.boqManageContingency]: 'Draw down the BOQ contingency allowance to fund work',
+  [PERMISSIONS.boqViewCost]: 'View BOQ cost figures: line budgets, rates, amounts and cost-coding',
+  [PERMISSIONS.boqViewMargin]:
+    'View BOQ commercial figures: contract value, contingency reserve, margin and profitability',
   [PERMISSIONS.contractsView]: 'View contracts',
   [PERMISSIONS.contractsCreate]: 'Create contracts',
   [PERMISSIONS.contractsManage]: 'Update contract terms and operational state',

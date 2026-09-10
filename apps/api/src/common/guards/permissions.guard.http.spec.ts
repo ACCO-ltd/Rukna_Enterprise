@@ -14,7 +14,10 @@ import request from 'supertest';
 import { PERMISSIONS } from '@erp/types';
 
 import { PermissionsGuard } from './permissions.guard.js';
-import { RequirePermissions } from '../decorators/require-permissions.decorator.js';
+import {
+  RequirePermissions,
+  RequireAnyPermission,
+} from '../decorators/require-permissions.decorator.js';
 
 /**
  * End-to-end proof for #25 (A2) / #28 (P5): the global PermissionsGuard actually
@@ -44,6 +47,22 @@ class ProbeController {
   @HttpCode(200)
   @RequirePermissions(PERMISSIONS.purchaseOrdersApprove)
   approve() {
+    return { ok: true };
+  }
+
+  // ADR-029 §8 A-1 — same shape as boq.controller.ts edit endpoints: any one of the OR set admits.
+  @Post('edit')
+  @HttpCode(200)
+  @RequireAnyPermission(PERMISSIONS.boqEditScope, PERMISSIONS.boqEditCost, PERMISSIONS.boqManage)
+  edit() {
+    return { ok: true };
+  }
+
+  // ADR-029 §8 A-4 — same shape as boq.controller.ts contingency draw: manage-contingency required.
+  @Post('draw-contingency')
+  @HttpCode(200)
+  @RequirePermissions(PERMISSIONS.boqManageContingency)
+  drawContingency() {
     return { ok: true };
   }
 }
@@ -82,6 +101,52 @@ describe('PermissionsGuard — HTTP end-to-end as a global APP_GUARD', () => {
     await request(app.getHttpServer())
       .post('/probe/approve')
       .set('x-perms', PERMISSIONS.purchaseOrdersApprove)
+      .expect(200);
+  });
+
+  // ─── ADR-029 §8 A-1 — RequireAnyPermission (OR) ─────────────────────────────────
+
+  it('A-1: 403 when the caller holds none of the any-of edit caps', async () => {
+    await request(app.getHttpServer())
+      .post('/probe/edit')
+      .set('x-perms', PERMISSIONS.boqView)
+      .expect(403);
+  });
+
+  it('A-1: 200 with edit-scope:boq alone', async () => {
+    await request(app.getHttpServer())
+      .post('/probe/edit')
+      .set('x-perms', PERMISSIONS.boqEditScope)
+      .expect(200);
+  });
+
+  it('A-1: 200 with edit-cost:boq alone', async () => {
+    await request(app.getHttpServer())
+      .post('/probe/edit')
+      .set('x-perms', PERMISSIONS.boqEditCost)
+      .expect(200);
+  });
+
+  it('A-1: 200 under the backward-compatible manage:boq umbrella', async () => {
+    await request(app.getHttpServer())
+      .post('/probe/edit')
+      .set('x-perms', PERMISSIONS.boqManage)
+      .expect(200);
+  });
+
+  // ─── ADR-029 §8 A-4 — contingency draw authority ─────────────────────────────────
+
+  it('A-4: 403 for a contingency draw without manage-contingency:boq (even with edit/view caps)', async () => {
+    await request(app.getHttpServer())
+      .post('/probe/draw-contingency')
+      .set('x-perms', [PERMISSIONS.boqView, PERMISSIONS.boqEditScope, PERMISSIONS.boqManage].join(','))
+      .expect(403);
+  });
+
+  it('A-4: 200 for a contingency draw with manage-contingency:boq', async () => {
+    await request(app.getHttpServer())
+      .post('/probe/draw-contingency')
+      .set('x-perms', PERMISSIONS.boqManageContingency)
       .expect(200);
   });
 });

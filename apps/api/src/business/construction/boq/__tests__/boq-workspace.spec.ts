@@ -140,11 +140,15 @@ describe('BOQ workspace read models', () => {
     expect(result.revision?.netDelta).toBe('4250.00');
   });
 
-  it('withholds every monetary field from a caller without commercial visibility', async () => {
-    const restricted: RequestIdentity = { ...identity, permissions: [PERMISSIONS.boqManage] };
+  it('withholds every monetary field from an operational-tier caller (view:boq only)', async () => {
+    // ADR-029 §8 A-2: `view:boq` alone is the operational tier — scope/qty/progress, no money.
+    // (`boqManage` is the edit umbrella and now grants the cost tier, so it is NOT restricted.)
+    const restricted: RequestIdentity = { ...identity, permissions: [PERMISSIONS.boqView] };
 
     const result = await workspace.getWorkspace(restricted, projectId);
 
+    expect(result.capabilities.canViewCost).toBe(false);
+    expect(result.capabilities.canViewMargin).toBe(false);
     expect(result.capabilities.canViewCommercials).toBe(false);
     expect(result.approved?.totalAmount).toBeNull();
     expect(result.draft?.totalAmount).toBeNull();

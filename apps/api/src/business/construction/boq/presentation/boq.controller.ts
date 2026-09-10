@@ -22,7 +22,10 @@ import {
 
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
-import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import {
+  RequirePermissions,
+  RequireAnyPermission,
+} from '../../../../common/decorators/require-permissions.decorator.js';
 import { ProjectScoped } from '../../../../common/decorators/project-scoped.decorator.js';
 import { ProjectAccessGuard } from '../../../../platform/project-access/project-access.guard.js';
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
@@ -292,7 +295,8 @@ export class BoqController {
   }
 
   @Post('versions/:versionId/nodes')
-  @RequirePermissions(PERMISSIONS.boqManage)
+  // ADR-029 §8 A-1 — a BOQ edit is authorized by edit-scope OR edit-cost OR the manage umbrella.
+  @RequireAnyPermission(PERMISSIONS.boqEditScope, PERMISSIONS.boqEditCost, PERMISSIONS.boqManage)
   @ApiOperation({ summary: 'Add a node to the BOQ tree (DRAFT only)' })
   @ApiParam({ name: 'projectId' })
   @ApiParam({ name: 'versionId' })
@@ -306,7 +310,7 @@ export class BoqController {
   }
 
   @Patch('versions/:versionId/nodes/:nodeId')
-  @RequirePermissions(PERMISSIONS.boqManage)
+  @RequireAnyPermission(PERMISSIONS.boqEditScope, PERMISSIONS.boqEditCost, PERMISSIONS.boqManage)
   @ApiOperation({ summary: 'Update node description, quantities, or rates (DRAFT only)' })
   @ApiParam({ name: 'projectId' })
   @ApiParam({ name: 'versionId' })
@@ -322,7 +326,7 @@ export class BoqController {
   }
 
   @Post('versions/:versionId/nodes/:nodeId/move')
-  @RequirePermissions(PERMISSIONS.boqManage)
+  @RequireAnyPermission(PERMISSIONS.boqEditScope, PERMISSIONS.boqEditCost, PERMISSIONS.boqManage)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
@@ -343,7 +347,7 @@ export class BoqController {
   }
 
   @Delete('versions/:versionId/nodes/:nodeId')
-  @RequirePermissions(PERMISSIONS.boqManage)
+  @RequireAnyPermission(PERMISSIONS.boqEditScope, PERMISSIONS.boqEditCost, PERMISSIONS.boqManage)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Delete a node (DRAFT only — must have no children and no references)' })
   @ApiParam({ name: 'projectId' })

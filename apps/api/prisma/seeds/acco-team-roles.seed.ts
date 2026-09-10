@@ -70,6 +70,9 @@ const ROLES: TeamRoleSpec[] = [
       P.boqCommit,
       // Drawing down the contingency allowance is a commercial-authority act (ADR-029 A-4).
       P.boqManageContingency,
+      // ADR-029 §8 A-2 — executive oversight sees the full commercial picture (contract value,
+      // contingency, margin). Margin implies cost, so no separate view-cost grant is needed.
+      P.boqViewMargin,
     ],
   },
   {
@@ -84,6 +87,11 @@ const ROLES: TeamRoleSpec[] = [
       P.districtsManage,
       P.boqView,
       P.boqManage,
+      // ADR-029 §8 A-1/A-2 — Engineering (PM/QS) runs the BOQ: both edit halves plus the
+      // cost-control visibility tier (line budgets, rates, cost-coding). Not margin.
+      P.boqEditScope,
+      P.boqEditCost,
+      P.boqViewCost,
       P.contractsView,
       P.contractsCreate,
       P.contractsManage,
@@ -133,6 +141,9 @@ const ROLES: TeamRoleSpec[] = [
       P.projectsView,
       P.financialPositionView,
       P.accountingView,
+      // ADR-029 §8 A-2 — commercial sees the BOQ margin tier (contract value, contingency, margin).
+      P.boqView,
+      P.boqViewMargin,
     ],
   },
   {

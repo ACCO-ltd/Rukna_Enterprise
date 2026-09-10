@@ -125,3 +125,81 @@ describe('CommandGovernanceService.gateStateTransition — decision snapshot (AD
     );
   });
 });
+
+/**
+ * ADR-029 §8 A-3 — four-eyes on commit-to-contract (prepare ≠ approve).
+ *
+ * The distinct-approver rule is NOT hardcoded here: it is the DOA chain's design (CONST-DOA-009 /
+ * the seeded `BOQ_COMMIT` chain: Construction Director → CFO → CEO, a multi-role chain the preparer
+ * cannot single-handedly clear) plus the SoD engine at approval time. What this seam MUST do — and
+ * what these tests pin — is (1) route the governed `BoqVersion DRAFT → COMMITTED` commit through the
+ * gate, (2) stamp the *preparer* as `initiatedBy` so the approval engine can require a different
+ * approver, and (3) never treat the preparer's own PENDING request as approval (it stays gated).
+ */
+describe('CommandGovernanceService — BOQ commit four-eyes (ADR-029 A-3)', () => {
+  const boqBinding = {
+    workflowDefinitionId: 'wd-boq',
+    definition: { transactionType: 'BOQ_BASELINE' },
+  };
+
+  it('routes the commit transition through the gate and stamps the preparer as initiator', async () => {
+    const { svc, triggerResolver, repo } = build();
+    triggerResolver.resolveForStateTransition.mockResolvedValue(boqBinding);
+    repo.findLatestInstanceForTransaction.mockResolvedValue(null);
+
+    const gate = await svc.gateStateTransition(
+      { userId: 'preparer-1', activeOrganizationId: 'o1' } as never,
+      'BoqVersion',
+      'DRAFT',
+      'COMMITTED',
+      'boq-v-1',
+    );
+
+    // Gated → the caller must stop and surface the approval instance (409 upstream): no self-commit.
+    expect(gate).toEqual({ gated: true, approvalInstanceId: 'new-inst' });
+    // The preparer is recorded as initiator; the approval engine requires a DIFFERENT approver.
+    expect(repo.createInstance).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transactionType: 'BOQ_BASELINE',
+        transactionId: 'boq-v-1',
+        initiatedBy: 'preparer-1',
+      }),
+    );
+  });
+
+  it("a preparer's own PENDING approval stays gated — it never self-approves", async () => {
+    const { svc, triggerResolver, repo } = build();
+    triggerResolver.resolveForStateTransition.mockResolvedValue(boqBinding);
+    // Preparer already opened the request; re-driving returns the SAME pending instance, still gated.
+    repo.findLatestInstanceForTransaction.mockResolvedValue({ id: 'pending-boq', status: 'PENDING' });
+
+    const gate = await svc.gateStateTransition(
+      { userId: 'preparer-1', activeOrganizationId: 'o1' } as never,
+      'BoqVersion',
+      'DRAFT',
+      'COMMITTED',
+      'boq-v-1',
+    );
+
+    expect(gate).toEqual({ gated: true, approvalInstanceId: 'pending-boq' });
+    expect(repo.markInstanceConsumed).not.toHaveBeenCalled();
+  });
+
+  it('proceeds only once a DISTINCT approver has driven the instance to APPROVED', async () => {
+    const { svc, triggerResolver, repo } = build();
+    triggerResolver.resolveForStateTransition.mockResolvedValue(boqBinding);
+    // A distinct approver completed the chain; the gate consumes it and lets the commit proceed.
+    repo.findLatestInstanceForTransaction.mockResolvedValue({ id: 'appr-boq', status: 'APPROVED' });
+
+    const gate = await svc.gateStateTransition(
+      { userId: 'preparer-1', activeOrganizationId: 'o1' } as never,
+      'BoqVersion',
+      'DRAFT',
+      'COMMITTED',
+      'boq-v-1',
+    );
+
+    expect(gate).toBeNull();
+    expect(repo.markInstanceConsumed).toHaveBeenCalledWith('appr-boq');
+  });
+});

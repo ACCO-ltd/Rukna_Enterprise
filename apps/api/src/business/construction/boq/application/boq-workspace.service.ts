@@ -14,6 +14,7 @@ import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js'
 import { BoqPrismaRepository } from '../infrastructure/boq-prisma.repository.js';
 import { formatAmount, sumAmounts, toDecimal } from '../domain/boq-money.js';
 import { evaluateReadiness } from '../domain/boq-readiness.policy.js';
+import { resolveBoqVisibility, canEditBoq } from '../domain/boq-visibility.policy.js';
 import { BoqVersioningService } from './boq-versioning.service.js';
 
 /**
@@ -44,12 +45,20 @@ export class BoqWorkspaceService {
     projectId: string,
   ): Promise<BoqWorkspaceResponse> {
     const prisma = this.tenancyService.getClient();
-    const canViewCommercials = identity.permissions.includes(PERMISSIONS.boqView);
+    // ADR-029 §8 A-2 — money visibility is TWO tiers resolved by the single shared helper, not the
+    // old `has(view:boq)` boolean. `canViewCost` gates rate/amount/line-budget fields (all this old
+    // read model exposes); `canViewMargin` gates contract-value/contingency/margin (surfaced in the
+    // R10 read model). Both are published in `capabilities` so the frontend renders per tier.
+    const { canViewCost, canViewMargin } = resolveBoqVisibility(identity);
     const capabilities = {
-      canView: canViewCommercials,
+      canView: identity.permissions.includes(PERMISSIONS.boqView),
       canManage: identity.permissions.includes(PERMISSIONS.boqManage),
       canBaseline: identity.permissions.includes(PERMISSIONS.boqBaseline),
-      canViewCommercials,
+      canEdit: canEditBoq(identity),
+      canViewCost,
+      canViewMargin,
+      // Deprecated mirror of the cost tier — kept for one release so pre-tier clients keep working.
+      canViewCommercials: canViewCost,
     };
 
     const boq = await this.repo.findByProject(prisma, projectId);
@@ -124,17 +133,17 @@ export class BoqWorkspaceService {
         versions: summaries,
       },
       currency: boq.currency,
-      draft: this.redact(draft, canViewCommercials),
-      approved: this.redact(approved, canViewCommercials),
-      contractBaseline: this.redact(find(contract?.boqVersionId ?? null), canViewCommercials),
-      versions: summaries.map((summary) => this.redact(summary, canViewCommercials)!),
+      draft: this.redact(draft, canViewCost),
+      approved: this.redact(approved, canViewCost),
+      contractBaseline: this.redact(find(contract?.boqVersionId ?? null), canViewCost),
+      versions: summaries.map((summary) => this.redact(summary, canViewCost)!),
       readiness:
-        readiness && canViewCommercials
+        readiness && canViewCost
           ? readiness
           : readiness
             ? { ...readiness, totalAmount: null }
             : null,
-      revision: this.revisionSummary(draft, byVersion, boq.versions, canViewCommercials),
+      revision: this.revisionSummary(draft, byVersion, boq.versions, canViewCost),
       capabilities,
     };
   }
@@ -225,17 +234,17 @@ export class BoqWorkspaceService {
   /** Financial visibility is a server concern — the value is withheld, not hidden in the UI. */
   private redact(
     summary: BoqVersionSummary | null,
-    canViewCommercials: boolean,
+    canViewCost: boolean,
   ): BoqVersionSummary | null {
     if (!summary) return null;
-    return canViewCommercials ? summary : { ...summary, totalAmount: null };
+    return canViewCost ? summary : { ...summary, totalAmount: null };
   }
 
   private revisionSummary(
     draft: BoqVersionSummary | null,
     byVersion: Map<string, BoqNode[]>,
     versions: BoqVersion[],
-    canViewCommercials: boolean,
+    canViewCost: boolean,
   ): BoqWorkspaceResponse['revision'] {
     if (!draft?.derivedFromVersionId) return null;
     const basedOn = versions.find((version) => version.id === draft.derivedFromVersionId);
@@ -253,7 +262,7 @@ export class BoqWorkspaceService {
       basedOnVersionId: basedOn.id,
       basedOnVersionNumber: basedOn.versionNumber,
       changedItemCount: changes.length,
-      netDelta: canViewCommercials ? netDelta : null,
+      netDelta: canViewCost ? netDelta : null,
     };
   }
 }
