@@ -346,6 +346,65 @@ export class ContractService {
     });
   }
 
+  /**
+   * ADR-029 T-3 / V-2 — raise the CURRENT contract value by an adopted on-contract variation's net.
+   *
+   * The Contract-side seam the Variations adopt command (R6) calls to move `Contract.contractValue`
+   * when a CLIENT_APPROVED VO is appended in place to the committed BOQ. It runs INSIDE the caller's
+   * adopt transaction (`tx`) so the value raise commits atomically with the BOQ append, the frozen
+   * SNAPSHOT copy, and the VO applied-stamp — there is never a state where the scope was appended but
+   * the contract value did not move, or vice versa.
+   *
+   * `baseContractValue` is NEVER touched here (T-2): the milestone % schedule derives from the frozen
+   * base (T-6), so a variation raises only the current value and never re-spreads the schedule. The
+   * new current value is `contractValue + netDelta` — additive, so several adopts accumulate. Money is
+   * decimal throughout and stored as a fixed-scale string on the paired-currency column (CONST-BOQ-014).
+   *
+   * Reached through this service (not a cross-module Contract repo) so the module boundary holds:
+   * VariationsModule → ContractsModule is acyclic (ContractsModule never imports Variations).
+   */
+  async raiseCurrentValueForVariation(
+    tx: Prisma.TransactionClient,
+    identity: RequestIdentity,
+    contractId: string,
+    variation: { id: string; reference: string; netDelta: Prisma.Decimal },
+  ): Promise<{ previousContractValue: string; newContractValue: string; baseContractValue: string | null }> {
+    const orgId = identity.activeOrganizationId;
+    const contract = await this.repo.findValueForRaise(tx, orgId, contractId);
+    if (!contract) throw new NotFoundException(`Contract ${contractId} not found`);
+
+    const previous = new Prisma.Decimal(contract.contractValue.toString());
+    const next = previous.plus(variation.netDelta);
+    const previousStr = previous.toFixed(2);
+    const newStr = next.toFixed(2);
+
+    await this.repo.raiseCurrentContractValue(tx, contractId, newStr);
+
+    await this.auditOutbox.record(tx, {
+      organizationId: orgId,
+      actorUserId: identity.userId,
+      action: 'UPDATE',
+      resourceType: 'Contract',
+      resourceId: contractId,
+      sourceCommand: 'contract.raiseCurrentValueForVariation',
+      eventType: 'CONTRACT_VALUE_RAISED_BY_VARIATION',
+      idempotencyKey: `contract-value-raise-${contractId}-${variation.id}`,
+      before: { contractValue: previousStr },
+      after: {
+        contractValue: newStr,
+        variationId: variation.id,
+        variationReference: variation.reference,
+        netDelta: variation.netDelta.toFixed(2),
+      },
+    });
+
+    return {
+      previousContractValue: previousStr,
+      newContractValue: newStr,
+      baseContractValue: contract.baseContractValue ? contract.baseContractValue.toString() : null,
+    };
+  }
+
   // ─── Lifecycle commands ───────────────────────────────────────────────────────
 
   async transition(identity: RequestIdentity, id: string, command: string) {

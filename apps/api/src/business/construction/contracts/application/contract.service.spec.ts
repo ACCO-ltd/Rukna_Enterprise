@@ -35,6 +35,9 @@ function build(contract: Record<string, unknown> | null): Mocks {
     findMilestoneOwned: jest.fn(),
     completeMilestone: jest.fn().mockResolvedValue({ count: 1 }),
     findMilestoneById: jest.fn().mockResolvedValue({ id: 'm-1' }),
+    // ADR-029 V-2 — the variation current-value raise seam.
+    findValueForRaise: jest.fn(),
+    raiseCurrentContractValue: jest.fn().mockResolvedValue({}),
   };
   const projectAccess = { assertContract: jest.fn().mockResolvedValue(undefined) };
   const audit = { record: jest.fn().mockResolvedValue(undefined) };
@@ -515,5 +518,78 @@ describe('R3 — tie-out & three-layer contract value (T-1..T-4)', () => {
       service.create(identity, { ...base, contractValue: '750000.00' } as never),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(repo.create).not.toHaveBeenCalled();
+  });
+});
+
+// ADR-029 V-2 / T-2 / T-3 — the variation current-value raise seam the adopt command drives.
+describe('V-2 — raiseCurrentValueForVariation (current rises by net, base frozen)', () => {
+  const { Decimal } = require('@prisma/client/runtime/library');
+
+  it('raises current by the VO net and leaves the frozen base untouched', async () => {
+    const { service, repo, audit } = build(null);
+    // Base 1,000,000 frozen; current currently at base.
+    repo.findValueForRaise.mockResolvedValue({
+      id: 'c-1',
+      projectId: 'p-1',
+      contractValue: new Decimal('1000000'),
+      baseContractValue: new Decimal('1000000'),
+      currency: 'USD',
+    });
+
+    const res = await service.raiseCurrentValueForVariation({} as never, identity, 'c-1', {
+      id: 'vo-1',
+      reference: 'VO-001',
+      netDelta: new Decimal('900'),
+    });
+
+    // Current moves to base + net; ONLY contractValue is written — baseContractValue is never touched.
+    expect(repo.raiseCurrentContractValue).toHaveBeenCalledWith({}, 'c-1', '1000900.00');
+    expect(res).toMatchObject({
+      previousContractValue: '1000000.00',
+      newContractValue: '1000900.00',
+      baseContractValue: '1000000',
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        eventType: 'CONTRACT_VALUE_RAISED_BY_VARIATION',
+        before: { contractValue: '1000000.00' },
+        after: expect.objectContaining({ contractValue: '1000900.00', netDelta: '900.00' }),
+      }),
+    );
+  });
+
+  it('accumulates: a second adopt raises from the already-raised current, base still frozen', async () => {
+    const { service, repo } = build(null);
+    // Current already raised once to 1,000,900; base still 1,000,000.
+    repo.findValueForRaise.mockResolvedValue({
+      id: 'c-1',
+      projectId: 'p-1',
+      contractValue: new Decimal('1000900'),
+      baseContractValue: new Decimal('1000000'),
+      currency: 'USD',
+    });
+
+    const res = await service.raiseCurrentValueForVariation({} as never, identity, 'c-1', {
+      id: 'vo-2',
+      reference: 'VO-002',
+      netDelta: new Decimal('2000'),
+    });
+
+    expect(repo.raiseCurrentContractValue).toHaveBeenCalledWith({}, 'c-1', '1002900.00');
+    expect(res.baseContractValue).toBe('1000000');
+  });
+
+  it('404s when the contract is not found (org-scoped)', async () => {
+    const { service, repo } = build(null);
+    repo.findValueForRaise.mockResolvedValue(null);
+    await expect(
+      service.raiseCurrentValueForVariation({} as never, identity, 'missing', {
+        id: 'vo-1',
+        reference: 'VO-001',
+        netDelta: new Decimal('900'),
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(repo.raiseCurrentContractValue).not.toHaveBeenCalled();
   });
 });

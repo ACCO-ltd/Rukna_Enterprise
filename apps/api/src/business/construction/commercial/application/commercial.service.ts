@@ -23,6 +23,7 @@ import {
   type CommercialNextAction,
   type CommercialPaymentSchedule,
   type CommercialPaymentScheduleInstallment,
+  type CommercialPaymentScheduleVariationLine,
   type CommercialSecurityPosition,
   type CommercialSettlementState,
   type CommercialSummaryResponse,
@@ -942,6 +943,15 @@ export class CommercialService {
 
     const installments = await this.repo.findPaymentInstallments(prisma, contract.id);
     const invoices = await this.repo.findInvoices(prisma, identity.activeOrganizationId, contract.id);
+    // ADR-029 V-3 — adopted on-contract variations are billed as their OWN lines, outside the
+    // Σ%=1.0 schedule. A DB failure here must not take the schedule down (same defensive posture as
+    // the summary): a missing VO line is a missing separate component, not a broken payment plan.
+    type ValuationInput = Awaited<
+      ReturnType<VariationOrderPrismaRepository['findValuationInputs']>
+    >[number];
+    const variationInputs: ValuationInput[] = await this.variationRepo
+      .findValuationInputs(prisma, identity.activeOrganizationId, contract.id)
+      .catch((): ValuationInput[] => []);
     const byInstallment = new Map(
       invoices.filter((inv) => inv.sourceInstallmentId).map((inv) => [inv.sourceInstallmentId, inv]),
     );
@@ -1003,6 +1013,26 @@ export class CommercialService {
       };
     });
 
+    // ADR-029 V-3 / CONST-BOQ-032 — each ADOPTED on-contract variation (boqAppliedAt set — the raise
+    // has happened) is a distinct billing line, amount-based (its net Σ line amount), OUTSIDE the
+    // Σ%=1.0 milestone `installments` above and NEVER merged into a milestone figure. Stage attachment
+    // (which certificate the VO rides) is the R7 seam — `stageInstallmentId` is null in this cut.
+    const variationLines: CommercialPaymentScheduleVariationLine[] = variationInputs
+      .filter((vo) => vo.status === 'CLIENT_APPROVED' && vo.boqAppliedAt != null)
+      .map((vo) => {
+        const net = vo.lines.reduce(
+          (sum, l) => sum.plus(new Decimal(l.amount.toString())),
+          ZERO,
+        );
+        return {
+          variationId: vo.id,
+          reference: vo.reference,
+          title: vo.title,
+          amount: mayViewFinancials ? net.toFixed(2) : null,
+          stageInstallmentId: null,
+        };
+      });
+
     return {
       schedule: {
         currency: contract.currency,
@@ -1011,6 +1041,7 @@ export class CommercialService {
         contractValue: mayViewFinancials ? baseValue.toFixed(2) : null,
         totalCollected: mayViewFinancials ? collected.toFixed(2) : null,
         installments: lines,
+        variationLines,
       },
       // Focus = there is a first un-invoiced installment (where "Generate invoice" points).
       hasFocus: !nextAssigned ? false : lines.some((l) => l.status === 'NEXT'),

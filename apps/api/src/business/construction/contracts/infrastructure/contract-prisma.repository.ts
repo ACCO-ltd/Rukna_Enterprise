@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { PrismaClient, Contract, ContractGuarantee, ContractKind, PaymentTrigger } from '@prisma/client';
+import type { Prisma, PrismaClient, Contract, ContractGuarantee, ContractKind, PaymentTrigger } from '@prisma/client';
 
 export type ContractFull = Contract & {
   retentionTerms: import('@prisma/client').ContractRetentionTerms | null;
@@ -183,6 +183,40 @@ export class ContractPrismaRepository {
     return prisma.contract.update({
       where: { id },
       data: data as never,
+    });
+  }
+
+  /**
+   * ADR-029 T-3 / V-2 — the contract's frozen base + current value, org-scoped, for the variation
+   * raise. Only the two money columns + currency are needed to compute the new current value and to
+   * guard tenancy; nothing else is read into the adopt transaction.
+   */
+  findValueForRaise(prisma: TenantPrisma, organizationId: string, contractId: string) {
+    return prisma.contract.findFirst({
+      where: { id: contractId, organizationId },
+      select: {
+        id: true,
+        projectId: true,
+        contractValue: true,
+        baseContractValue: true,
+        currency: true,
+      },
+    });
+  }
+
+  /**
+   * ADR-029 T-3 / V-2 — set the current `contractValue` to `newContractValue` (base + Σ adopted
+   * on-contract variations). Writes ONLY `contractValue`; `baseContractValue` stays frozen (T-2).
+   * Runs inside the caller's adopt transaction so the raise commits with the BOQ append + snapshot.
+   */
+  raiseCurrentContractValue(
+    prisma: Prisma.TransactionClient,
+    contractId: string,
+    newContractValue: string,
+  ) {
+    return prisma.contract.update({
+      where: { id: contractId },
+      data: { contractValue: newContractValue },
     });
   }
 

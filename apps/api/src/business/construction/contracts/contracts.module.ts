@@ -12,6 +12,9 @@ import { ContractsController } from './presentation/contracts.controller.js';
   imports: [TenancyModule, AuditLogsModule, FilesModule, BoqModule],
   providers: [ContractPrismaRepository, ContractService],
   controllers: [ContractsController],
-  exports: [ContractPrismaRepository],
+  // ADR-029 V-2 — ContractService exposes `raiseCurrentValueForVariation`, the seam the Variations
+  // adopt command (R6) calls to move the current contract value in the adopt transaction. Exported so
+  // VariationsModule can reach the Contract through a service (not a cross-module repo).
+  exports: [ContractPrismaRepository, ContractService],
 })
 export class ContractsModule {}

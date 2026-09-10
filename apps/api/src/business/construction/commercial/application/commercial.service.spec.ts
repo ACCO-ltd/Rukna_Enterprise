@@ -163,6 +163,72 @@ describe('ADR-023 — getCurrentCycle for a MILESTONE contract', () => {
     expect(res.paymentSchedule?.installments[0].percentage).toBe('0.4');
     expect(res.paymentSchedule?.installments[0].status).toBe('PAID');
   });
+
+  // ADR-029 V-3 / CONST-BOQ-032 — an ADOPTED on-contract variation is billed as its OWN line, OUTSIDE
+  // the Σ%=1.0 milestone schedule, and NEVER merged into a milestone figure.
+  const adoptedVo = {
+    id: 'vo-1', reference: 'VO-001', title: 'Extra lift shaft', status: 'CLIENT_APPROVED',
+    boqAppliedAt: new Date('2026-09-10T00:00:00Z'), lines: [{ amount: new Decimal('20000') }],
+  };
+  // A client-approved but NOT-yet-adopted VO (no boqAppliedAt) has not raised the value → no line.
+  const unadoptedVo = {
+    id: 'vo-2', reference: 'VO-002', title: 'Pending scope', status: 'CLIENT_APPROVED',
+    boqAppliedAt: null, lines: [{ amount: new Decimal('5000') }],
+  };
+
+  it('V-3: the schedule shows the milestones AND the adopted VO as two separate components', async () => {
+    const { service } = build({
+      contract: milestoneContract,
+      installments: accoPlan,
+      invoices: [],
+      variationInputs: [adoptedVo, unadoptedVo],
+    });
+    const res = await service.getCurrentCycle(financeIdentity, 'p-1');
+    const sched = res.paymentSchedule!;
+
+    // The Σ%=1.0 milestones are untouched — four installments, the VO is NOT folded into any of them.
+    expect(sched.installments).toHaveLength(4);
+    expect(sched.installments.map((i) => i.amount)).toEqual([
+      '400000.00', '300000.00', '200000.00', '100000.00',
+    ]);
+    // The adopted VO is its OWN amount-based line, separate from the installments (never merged).
+    expect(sched.variationLines).toHaveLength(1);
+    expect(sched.variationLines[0]).toMatchObject({
+      variationId: 'vo-1',
+      reference: 'VO-001',
+      title: 'Extra lift shaft',
+      amount: '20000.00',
+      stageInstallmentId: null, // R7 seam
+    });
+    // Two components that sum correctly, and the header value is still the FROZEN base (not base+VO).
+    const milestoneTotal = sched.installments.reduce((s, i) => s + Number(i.amount), 0);
+    expect(milestoneTotal + Number(sched.variationLines[0].amount)).toBe(1020000);
+    expect(sched.contractValue).toBe('1000000.00');
+  });
+
+  it('V-3: only ADOPTED on-contract VOs appear as billing lines (unadopted is excluded)', async () => {
+    const { service } = build({
+      contract: milestoneContract,
+      installments: accoPlan,
+      invoices: [],
+      variationInputs: [unadoptedVo],
+    });
+    const res = await service.getCurrentCycle(financeIdentity, 'p-1');
+    expect(res.paymentSchedule?.variationLines).toHaveLength(0);
+  });
+
+  it('V-3: VO line amount is withheld without financial visibility, structure stays', async () => {
+    const { service } = build({
+      contract: milestoneContract,
+      installments: accoPlan,
+      invoices: [],
+      variationInputs: [adoptedVo],
+    });
+    const res = await service.getCurrentCycle(noFinanceIdentity, 'p-1');
+    const line = res.paymentSchedule!.variationLines[0];
+    expect(line.reference).toBe('VO-001');
+    expect(line.amount).toBeNull();
+  });
 });
 
 describe('CommercialService.getSummary', () => {

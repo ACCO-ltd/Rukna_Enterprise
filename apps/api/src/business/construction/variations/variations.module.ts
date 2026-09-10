@@ -4,6 +4,7 @@ import { TenancyModule } from '../../../platform/tenancy/tenancy.module.js';
 import { WorkflowsModule } from '../../../platform/workflows/workflows.module.js';
 import { AuditLogsModule } from '../../../platform/audit-logs/audit-logs.module.js';
 import { BoqModule } from '../boq/boq.module.js';
+import { ContractsModule } from '../contracts/contracts.module.js';
 import { VariationOrderPrismaRepository } from './infrastructure/variation-order-prisma.repository.js';
 import { VariationOrderService } from './application/variation-order.service.js';
 import { ApplyVariationToBoqService } from './application/apply-variation-to-boq.service.js';
@@ -27,9 +28,13 @@ import { ExtraWorkController } from './presentation/extra-work.controller.js';
  * here, NOT in BoqModule: VariationsModule → BoqModule already exists, so BOQ must not depend on
  * Variations (a cycle). The classifier calls BoqTreeService (exported from BoqModule) for
  * ABSORB/SEPARATE and VariationOrderService (local) for VARIATION.
+ *
+ * ADR-029 R6/V-2 — ContractsModule is imported for ContractService.raiseCurrentValueForVariation, the
+ * seam ApplyVariationToBoqService calls to move the current contract value in the adopt transaction.
+ * VariationsModule → ContractsModule is acyclic (ContractsModule imports BoqModule, never Variations).
  */
 @Module({
-  imports: [TenancyModule, WorkflowsModule, AuditLogsModule, BoqModule],
+  imports: [TenancyModule, WorkflowsModule, AuditLogsModule, BoqModule, ContractsModule],
   providers: [
     VariationOrderPrismaRepository,
     VariationOrderService,

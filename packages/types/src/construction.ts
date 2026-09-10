@@ -1393,6 +1393,25 @@ export interface PaymentInstallmentMilestoneLink {
   status: `${ProgrammeMilestoneStatus}`;
 }
 
+/**
+ * ADR-029 V-3 / CONST-BOQ-032 — an adopted on-contract variation billed as its OWN line, OUTSIDE the
+ * `Σ% = 1.0` milestone schedule. Amount-based (the VO net), never a percentage of the base, and never
+ * merged into a milestone figure. A distinct billable component the invoice path renders on its own.
+ *
+ * Stage attachment (which milestone/certificate the varied work rides) is a documented R7 seam:
+ * `stageInstallmentId` is reserved for it and is null in this iteration.
+ */
+export interface CommercialPaymentScheduleVariationLine {
+  variationId: string;
+  /** e.g. "VO-001" — the identifiable billing line reference. */
+  reference: string;
+  title: string;
+  /** The VO net (amount-based). Null when the caller cannot view financials. */
+  amount: string | null;
+  /** R7 seam — the milestone/stage this VO's certificate attaches to. Null until R7 models it. */
+  stageInstallmentId: string | null;
+}
+
 export interface CommercialPaymentSchedule {
   currency: string;
   /** Null when the caller cannot view financials. */
@@ -1400,6 +1419,12 @@ export interface CommercialPaymentSchedule {
   /** Null when the caller cannot view financials. */
   totalCollected: string | null;
   installments: CommercialPaymentScheduleInstallment[];
+  /**
+   * ADR-029 V-3 — adopted on-contract variations billed as their own lines, separate from the
+   * `Σ% = 1.0` milestone `installments`. Empty when there are no adopted variations. Never folded
+   * into an installment amount (CONST-BOQ-032).
+   */
+  variationLines: CommercialPaymentScheduleVariationLine[];
 }
 
 export type CommercialCycleAction =
@@ -1987,18 +2012,24 @@ export interface VariationOrderListResponse {
 }
 
 /**
- * ADR-026 CONST-VAR-007 (Phase 2) — the result of scoping a client-approved VO into the BOQ. The
- * revision the nodes landed on still follows the normal governed baseline command; this response
- * does NOT imply the Contract Baseline moved (that is the separate adopt-baseline act, OQ-2).
+ * ADR-029 V-1/V-2 (was ADR-026 CONST-VAR-007) — the result of adopting a client-approved on-contract
+ * VO into the BOQ. Under the internal-budget redesign the VARIATION leaves are appended IN PLACE on
+ * the operational COMMITTED version (stable ids), a fresh frozen SNAPSHOT is cut, and the current
+ * contract value is raised by the VO net — all in one transaction. `baseContractValue` stays frozen,
+ * so the milestone schedule is untouched.
  */
 export interface ApplyVariationToBoqResponse {
   variationId: string;
   reference: string;
   projectId: string;
-  /** The DRAFT BOQ revision the VARIATION nodes were appended to. */
+  /** The operational COMMITTED BOQ version the VARIATION leaves were appended to (stable ids). */
   boqVersionId: string;
   /** How many VARIATION leaf nodes were created (one per VO line). */
   nodeCount: number;
+  /** V-2 — the fresh as-committed SNAPSHOT cut after the variation (the legal record). */
+  snapshotVersionId?: string;
+  /** V-2 — the current contract value after the raise (base + Σ adopted on-contract variations). */
+  newContractValue?: string;
   appliedAt: string;
 }
 

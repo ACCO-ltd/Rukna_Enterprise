@@ -102,13 +102,22 @@ export class VariationOrderPrismaRepository {
   }
 
   /**
-   * CONST-VAR-005/-006: the VO figures the commercial summary derives contract value from. Only
-   * status + the line amounts are needed (net price is Σ amount), so this stays a narrow read.
+   * CONST-VAR-005/-006: the VO figures the commercial summary derives contract value from, plus the
+   * ADR-029 V-3 fields the payment schedule needs to render an adopted on-contract VO as its own
+   * billing line: `reference`/`title` name the line and `boqAppliedAt` marks it adopted (only an
+   * adopted VO has moved the contract value and become billable). Net price is Σ line amount.
    */
   findValuationInputs(prisma: TenantPrisma, organizationId: string, contractId: string) {
     return prisma.variationOrder.findMany({
       where: { organizationId, contractId },
-      select: { id: true, status: true, lines: { select: { amount: true } } },
+      select: {
+        id: true,
+        reference: true,
+        title: true,
+        status: true,
+        boqAppliedAt: true,
+        lines: { select: { amount: true } },
+      },
     });
   }
 
