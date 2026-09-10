@@ -69,11 +69,29 @@ export enum ProjectRole {
   VIEWER = 'VIEWER',
 }
 
+// ADR-029 — one long-lived operational version (COMMITTED) edited in place, with immutable
+// frozen copies (SNAPSHOT) at commit and each variation adopt. BASELINED retained through the
+// expand phase; the contract phase (with R2) flips it to COMMITTED + a SNAPSHOT copy.
 export enum BoqVersionStatus {
   DRAFT = 'DRAFT',
   BASELINED = 'BASELINED',
+  COMMITTED = 'COMMITTED',
+  SNAPSHOT = 'SNAPSHOT',
   SUPERSEDED = 'SUPERSEDED',
   CANCELLED = 'CANCELLED',
+}
+
+// ADR-029 CONST-BOQ-028 — real WORK vs the named CONTINGENCY / Preliminaries allowance.
+export enum NodeRole {
+  WORK = 'WORK',
+  CONTINGENCY = 'CONTINGENCY',
+}
+
+// ADR-029 CONST-BOQ-029/030/033 — a node's relation to the client's money.
+export enum CommercialTreatment {
+  IN_CONTRACT = 'IN_CONTRACT',
+  SEPARATE_CHARGE = 'SEPARATE_CHARGE',
+  ABSORBED = 'ABSORBED',
 }
 
 export enum CommercialModel {
