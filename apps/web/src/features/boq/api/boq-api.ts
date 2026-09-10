@@ -2,10 +2,12 @@ import type {
   BoqBaselineReadinessResponse,
   BoqChangeEventResponse,
   BoqCompareResponse,
+  BoqCompareToSignedResponse,
   BoqImportPreview,
   BoqImportRequest,
   BoqImportResult,
   BoqResponse,
+  BoqTimelineResponse,
   BoqTreeNodeResponse,
   BoqWorkspaceResponse,
 } from '@erp/types';
@@ -37,6 +39,55 @@ export function initializeBoq(projectId: string): Promise<BoqResponse> {
  */
 export function getBoqWorkspace(projectId: string): Promise<BoqWorkspaceResponse> {
   return apiClient<BoqWorkspaceResponse>(`/projects/${projectId}/boq/workspace`);
+}
+
+/**
+ * ADR-029 R-2 — the live operational version diffed against the frozen as-committed snapshot.
+ * `available` is false (and `changes` empty) before anything is committed; the caller reads
+ * `workspace.compareToSignedAvailable` first to decide whether to offer the lens at all.
+ */
+export function getBoqCompareToSigned(
+  projectId: string,
+): Promise<BoqCompareToSignedResponse> {
+  return apiClient<BoqCompareToSignedResponse>(
+    `/projects/${projectId}/boq/compare-to-signed`,
+  );
+}
+
+/**
+ * ADR-029 R-3 — the BOQ's notable events (commit, variation snapshots, notable changes),
+ * newest-first. One flat feed the timeline drawer renders; no version numbers.
+ */
+export function getBoqTimeline(projectId: string): Promise<BoqTimelineResponse> {
+  return apiClient<BoqTimelineResponse>(`/projects/${projectId}/boq/timeline`);
+}
+
+/**
+ * Commit the operational DRAFT to contract (WORKING → COMMITTED). Replaces the old baseline
+ * command. Refused with `400`/`details.blockers` when not ready, `409`/`details.approvalInstanceId`
+ * when a workflow gates it — approve the instance, then call this again (ADR-015 re-drive).
+ */
+export function commitVersion(projectId: string, versionId: string): Promise<BoqResponse> {
+  return apiClient<BoqResponse>(
+    `/projects/${projectId}/boq/versions/${versionId}/commit`,
+    { method: 'POST' },
+  );
+}
+
+/**
+ * Draw budget from the contingency allowance onto a target item, holding the contract value
+ * constant (ADR-029 CONST-BOQ-028). Refused with `400`/`errorCode CONTINGENCY_EXCEEDED` on an
+ * over-draw, or when there is no/ambiguous contingency line.
+ */
+export function drawContingency(
+  projectId: string,
+  versionId: string,
+  payload: { toNodeId: string; amount: string },
+): Promise<unknown> {
+  return apiClient(
+    `/projects/${projectId}/boq/versions/${versionId}/contingency/draw`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
 }
 
 /** Full recursive tree for one version, with server-computed section totals. */

@@ -2,7 +2,8 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, ClipboardList, FileSpreadsheet, GitCompare, Lock, MoreHorizontal, Plus } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ArrowRight, ClipboardList, FileSpreadsheet, GitCompare, History, Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
@@ -19,6 +20,7 @@ import {
 import type { BoqTreeNodeResponse } from '@erp/types';
 
 import { ApiError } from '@/lib/api-client';
+import { formatMoney } from '@/lib/format';
 import { fromMinorUnits, sumMinorUnits, MONEY_SCALE } from '@/lib/money';
 import { EmptyState } from '@/components/empty-state';
 import { LifecycleCommandDrawer } from '@/components/lifecycle-command-drawer';
@@ -34,14 +36,15 @@ import {
   type PricingFilter,
 } from '../boq-rows';
 import { computeRollup } from '../boq-totals';
-import { compareToCsv, downloadCsv, treeToCsv } from '../boq-export';
+import { treeToCsv, downloadCsv } from '../boq-export';
 import { resolveNextStep, type BoqNextStep } from '../boq-next-step';
 import {
-  useBaselineVersion,
-  useBoqCompare,
+  useBoqCompareToSigned,
+  useBoqTimeline,
   useBoqTree,
   useBoqWorkspace,
   useCancelDraftVersion,
+  useCommitVersion,
   useCreateDraftVersion,
   useDeleteNode,
   useInitializeBoq,
@@ -61,94 +64,83 @@ import {
 } from '../node-form';
 import { BOQ_PERMISSIONS } from '../permissions';
 import { getVersionActions } from '../version-actions';
-import { BoqComparePanel } from './boq-compare-panel';
+import { BoqClassifierDrawer, type ClassifierResult } from './boq-classifier-drawer';
+import { BoqCompareSignedPanel } from './boq-compare-signed-panel';
 import { BoqGrid, type BoqRowCommands } from './boq-grid';
-import { BoqHistoryPanel } from './boq-history-panel';
 import { BoqImportDialog } from './boq-import-dialog';
 import { BoqItemDrawer, type DrawerTarget, type LibraryIntent } from './boq-item-drawer';
+import { BoqMoneyStrip } from './boq-money-strip';
 import { BoqReadinessBanner } from './boq-readiness-banner';
-import { BoqStatusBar } from './boq-status-bar';
-import { BoqStickyBar, useIsOffScreen } from './boq-sticky-bar';
+import { BoqTimelineDrawer } from './boq-timeline-drawer';
 import { BoqToolbar } from './boq-toolbar';
-import { BoqVersionPanel } from './boq-version-panel';
 
-type Command = 'baseline' | 'discard' | 'revise' | null;
+type Command = 'commit' | 'discard' | 'revise' | null;
 
 /**
- * The BOQ workspace.
+ * The BOQ workspace (R11 redesign).
  *
- * Composition follows the Project Workspace Overview: header, facts strip, an attention
- * banner, then the working surface. Everything commercial is decided server-side — the
- * workspace query withholds rates and totals from a user without commercial visibility, and
- * returns the readiness verdict rather than the raw facts to re-derive it from.
+ * Composition follows the "Excel-level speed, ERP-level control" principle: a compact sticky
+ * money strip on top, then the grid as the dominant surface, with the compare-to-signed lens and
+ * the timeline summoned on demand. The two life-stages — WORKING and COMMITTED — are genuinely
+ * different modes, driven off `moneyBand.lifeStage` (never re-derived). Everything commercial is
+ * decided server-side: the workspace query withholds figures a tier cannot see, and this screen
+ * renders what is present rather than re-summing anything.
  */
 export function BoqWorkspace({ projectId }: { projectId: string }) {
   const t = useTranslations('platform.boq');
   const tCommon = useTranslations('common');
   const { can } = usePermissions();
   const { toast } = useToast();
+  const router = useRouter();
 
   const guidance = useProjectGuidance(projectId);
   const workspaceQuery = useBoqWorkspace(projectId);
   const workspace = workspaceQuery.data;
 
-  const [chosenVersionId, setChosenVersionId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [pricing, setPricing] = useState<PricingFilter>('all');
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [highlighted, setHighlighted] = useState<ReadonlySet<string>>(new Set());
   const [drawer, setDrawer] = useState<DrawerTarget | null>(null);
   const [command, setCommand] = useState<Command>(null);
-  const [comparing, setComparing] = useState<{ left: string; right: string } | null>(null);
-  const [versionsOpen, setVersionsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [historyFilter, setHistoryFilter] = useState<{ id: string; code: string } | null>(null);
-  const [stickyRef, stickyOffScreen] = useIsOffScreen();
+  const [classifierOpen, setClassifierOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  // Draft variations raised in this session but not yet adopted — the H1 pending affordance.
+  const [pendingVariations, setPendingVariations] = useState(0);
 
-  // Derived during render rather than synchronised in an effect: a cancelled draft or a
-  // version baselined in another tab disappears from the list, and an effect would render
-  // one frame pointing at a version that no longer exists.
-  const defaultVersionId =
+  // The one operational version the redesign works on: prefer the working draft, else the
+  // approved/committed one. No user-facing version switching (Decision 9).
+  const operationalVersionId =
     workspace?.draft?.id ?? workspace?.approved?.id ?? workspace?.versions[0]?.id ?? null;
-  const selectedVersionId =
-    chosenVersionId && workspace?.versions.some((v) => v.id === chosenVersionId)
-      ? chosenVersionId
-      : defaultVersionId;
 
-  const treeQuery = useBoqTree(projectId, selectedVersionId);
-  const compareQuery = useBoqCompare(projectId, comparing?.left ?? null, comparing?.right ?? null);
+  const treeQuery = useBoqTree(projectId, operationalVersionId);
+  const compareQuery = useBoqCompareToSigned(projectId, compareOpen);
+  const timelineQuery = useBoqTimeline(projectId, timelineOpen);
 
   const initialize = useInitializeBoq(projectId);
-  const addNode = useAddNode(projectId, selectedVersionId ?? '');
-  const updateNode = useUpdateNode(projectId, selectedVersionId ?? '');
-  const deleteNode = useDeleteNode(projectId, selectedVersionId ?? '');
-  const moveNode = useMoveNode(projectId, selectedVersionId ?? '');
-  const baseline = useBaselineVersion(projectId);
+  const addNode = useAddNode(projectId, operationalVersionId ?? '');
+  const updateNode = useUpdateNode(projectId, operationalVersionId ?? '');
+  const deleteNode = useDeleteNode(projectId, operationalVersionId ?? '');
+  const moveNode = useMoveNode(projectId, operationalVersionId ?? '');
+  const commit = useCommitVersion(projectId);
   const discard = useCancelDraftVersion(projectId);
   const revise = useCreateDraftVersion(projectId);
-  // Library side-effects of an item add (ADR-020). Both are assistance and run best-effort:
-  // recording the used rate and saving a manual entry never gate or fail the node add itself.
   const recordLibraryUsage = useRecordLibraryUsage();
   const saveLibraryItem = useCreateLibraryItem();
 
   const nodes = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
   const counts = useMemo(() => countTree(nodes), [nodes]);
-  // Whether any line was scoped in by a variation (Phase 6) — gates the provenance filter.
   const hasVariations = useMemo(
     () => flattenTree(nodes).some((node) => node.sourceType === 'VARIATION'),
     [nodes],
   );
-
-  // Codes already under a given parent, so the drawer can propose the next one. The tree is
-  // flat here, so a node's parent is `parentId` — nothing needs walking.
   const siblingCodesUnder = useCallback(
     (parentId: string | null) =>
       nodes.filter((node) => node.parentId === parentId).map((node) => node.code),
     [nodes],
   );
-  // The headline total and every section subtotal, in one memoized pass over the tree. Keyed
-  // on the tree reference so a large BOQ is walked once per load, not per render.
   const rollup = useMemo(() => computeRollup(nodes), [nodes]);
   const rows = useMemo(
     () => buildRows(nodes, { collapsed, search, pricing, pinned: highlighted }),
@@ -169,8 +161,13 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
 
   if (!workspace) return null;
 
-  // A project with no BOQ is a starting state, not a failure. Two clear doors, no jargon: bring
-  // in a priced bill, or start a blank one. Import creates the BOQ itself; "Start blank" does too.
+  const capabilities = workspace.capabilities;
+  const canEdit = capabilities.canEdit;
+  const canViewCost = capabilities.canViewCost;
+  const canViewMargin = capabilities.canViewMargin;
+
+  // Empty BOQ (H2): two doors, only when the user can edit. Import creates the BOQ; Start blank
+  // does too. A read-only user with no BOQ sees a plain "nothing here yet".
   if (!workspace.boq) {
     return (
       <>
@@ -180,7 +177,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
           title={t('empty.title')}
           description={t('empty.description')}
           action={
-            workspace.capabilities.canManage ? (
+            canEdit ? (
               <div className="flex flex-wrap items-center justify-center gap-2">
                 <Button className="gap-2" onClick={() => setImportOpen(true)}>
                   <FileSpreadsheet size={16} aria-hidden="true" />
@@ -212,39 +209,31 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
     );
   }
 
-  const selected = workspace.versions.find((version) => version.id === selectedVersionId) ?? null;
-  const isDraft = selected !== null && selected.id === workspace.draft?.id;
-  const canManage = can(BOQ_PERMISSIONS.manage) && workspace.capabilities.canManage && isDraft;
-  // Import creates or opens a draft itself, so — unlike node editing — it is not gated on the
-  // currently-viewed version being the draft.
-  // `isDraft`, like `canManage`. `BoqImportService` always writes into an editable DRAFT —
-  // it either uses `currentDraftVersionId` or refuses with "The BOQ has no editable draft to
-  // import into." So an Import button next to a frozen baseline either 409s or silently opens
-  // a draft the reader never asked for, and neither is what the button appears to promise.
-  const canImport = can(BOQ_PERMISSIONS.manage) && workspace.capabilities.canManage && isDraft;
-  const canViewCommercials = workspace.capabilities.canViewCommercials;
-  const actions = getVersionActions(workspace, selectedVersionId);
+  const band = workspace.moneyBand;
+  const committed = band?.lifeStage === 'COMMITTED';
+  // The working draft is what free-editing acts on; a committed version pins value cells.
+  const onDraft = operationalVersionId === workspace.draft?.id;
+  // Edit affordances need edit permission AND an editable draft (the server refuses otherwise).
+  const canManage = can(BOQ_PERMISSIONS.manage) && canEdit && onDraft;
+  const canImport = canManage;
+  const actions = getVersionActions(workspace, operationalVersionId);
 
   const allSectionIds = collectSectionIds(nodes);
   const allExpanded = collapsed.size === 0;
   const isFiltered = search.trim().length > 0 || pricing !== 'all';
-  const nextStep = resolveNextStep(workspace, selectedVersionId);
+  const nextStep = resolveNextStep(workspace, operationalVersionId);
 
-  /** Narrows the grid to specific rows and scrolls them into view. */
+  const pricedPercent = counts.items === 0 ? 0 : Math.round((counts.priced / counts.items) * 100);
+  const unpricedCount = Math.max(0, counts.items - counts.priced);
+
   const showNodes = (nodeIds: string[]) => {
     setHighlighted(new Set(nodeIds));
     setSearch('');
     setPricing('all');
-    // Expand everything: a blocker inside a collapsed section would otherwise be filtered
-    // to and then not shown, which reads as the button doing nothing.
     setCollapsed(new Set());
     document.getElementById('boq-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  /**
-   * Runs whatever `resolveNextStep` decided. Fix steps navigate; transitions open their
-   * lifecycle drawer. The button is the instruction and the navigation both.
-   */
   const runNextStep = () => {
     switch (nextStep.kind) {
       case 'INITIALIZE':
@@ -258,7 +247,8 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         showNodes(nextStep.targetNodeIds ?? []);
         return;
       case 'SUBMIT_BASELINE':
-        setCommand('baseline');
+        // WORKING → the forward move is commit-to-contract.
+        setCommand('commit');
         return;
       case 'START_REVISION':
         setCommand('revise');
@@ -268,11 +258,9 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
     }
   };
 
-  // The sum of what is on screen, so a filtered footer does not show a count and a total
-  // that describe different sets of rows.
   const visibleAmount = isFiltered
     ? sumVisibleItems(rows.map((row) => row.node))
-    : (selected?.totalAmount ?? null);
+    : (workspace.draft?.totalAmount ?? workspace.approved?.totalAmount ?? null);
 
   const toggleCollapsed = (nodeId: string) =>
     setCollapsed((current) => {
@@ -291,26 +279,19 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         onAddSection: (parent) =>
           setDrawer({ mode: 'add', kind: 'section', parent, node: null, siblingCodes: siblingCodesUnder(parent.id) }),
         onDelete: (node) => {
-          if (!selectedVersionId) return;
+          if (!operationalVersionId) return;
           deleteNode.mutate(node.id);
         },
         onMove: (node, direction) => {
-          if (!selectedVersionId) return;
+          if (!operationalVersionId) return;
           moveNode.mutate({
             nodeId: node.id,
             ...(node.parentId ? { newParentId: node.parentId } : {}),
             newSortOrder: Math.max(0, node.sortOrder + direction),
           });
         },
-        onViewHistory: (node) => {
-          setHistoryFilter({ id: node.id, code: node.code });
-          setHistoryOpen(true);
-          document.getElementById('boq-history')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        },
-        // Inline edit (Phase 5): one changed field, built onto the node's current values so the
-        // rest is unchanged, awaited so the cell can surface a failure and stay open for a retry.
         onEditField: async (node, field, value) => {
-          if (!selectedVersionId) return;
+          if (!operationalVersionId) return;
           const values = { ...toNodeFormValues(node), [field]: value };
           const payload = toUpdateNodePayload(values, { kind: node.isLeaf ? 'item' : 'section' });
           await updateNode.mutateAsync({ nodeId: node.id, payload });
@@ -318,14 +299,46 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
       }
     : null;
 
-  const contractAction = !workspace.draft && selected?.id === workspace.approved?.id ? guidance.data?.find((item) => item.kind === 'MAIN_CONTRACT_REQUIRED' && item.actionUrl) : undefined;
-  const primaryAction = contractAction?.actionUrl ? <Button asChild><Link href={contractAction.actionUrl}>{t('actions.createContract')}</Link></Button> : <NextStepButton step={nextStep} onRun={runNextStep} />;
+  // The primary action is life-stage-aware and never a disabled dead button (next-step doctrine).
+  const contractAction =
+    !workspace.draft && !committed
+      ? guidance.data?.find((item) => item.kind === 'MAIN_CONTRACT_REQUIRED' && item.actionUrl)
+      : undefined;
+
+  const primaryAction = committed ? (
+    canEdit ? (
+      <Button size="sm" className="gap-2" onClick={() => setClassifierOpen(true)}>
+        <Plus size={16} aria-hidden="true" />
+        {t('mode.addExtraWork')}
+      </Button>
+    ) : null
+  ) : contractAction?.actionUrl ? (
+    <Button asChild size="sm">
+      <Link href={contractAction.actionUrl}>{t('actions.createContract')}</Link>
+    </Button>
+  ) : (
+    <NextStepButton step={nextStep} onRun={runNextStep} />
+  );
+
+  const compareAffordance = workspace.compareToSignedAvailable ? (
+    <Button variant="outline" size="sm" className="gap-2" onClick={() => setCompareOpen(true)}>
+      <GitCompare size={16} aria-hidden="true" />
+      {t('compareToSigned.action')}
+    </Button>
+  ) : null;
+
+  const timelineAffordance = (
+    <Button variant="outline" size="sm" className="gap-2" onClick={() => setTimelineOpen(true)}>
+      <History size={16} aria-hidden="true" />
+      {t('timeline.action')}
+    </Button>
+  );
 
   const handleExportTree = () => {
     downloadCsv(
-      `BOQ-v${selected?.versionNumber ?? 1}.csv`,
+      `BOQ.csv`,
       treeToCsv(nodes, workspace.currency, {
-        includePricing: canViewCommercials,
+        includePricing: canViewCost,
         headers: exportHeaders(t),
       }),
     );
@@ -333,109 +346,58 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-3">
-      <div ref={stickyRef}>
-        <BoqStatusBar
-          version={selected}
-          revision={isDraft ? workspace.revision : null}
-          currency={workspace.currency}
-          sectionCount={counts.sections}
-          itemCount={counts.items}
-          pricedCount={counts.priced}
-          contractBaseline={workspace.contractBaseline}
-          contractMatchesApproved={
-            workspace.contractBaseline?.id === workspace.approved?.id
-          }
-          canViewCommercials={canViewCommercials}
-          actions={
-            <>
-              {/* Exactly one primary, and it is never disabled — see boq-next-step.ts. */}
-              {primaryAction}
-
-              {workspace.revision ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2"
-                  onClick={() =>
-                    setComparing({
-                      left: workspace.revision!.basedOnVersionId,
-                      right: workspace.draft!.id,
-                    })
-                  }
-                >
-                  <GitCompare size={16} aria-hidden="true" />
-                  {t('actions.reviewChanges')}
-                </Button>
-              ) : null}
-
-              {/* Everything else moves behind the overflow. Four peer buttons is a toolbar,
-                  not a decision. */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon" aria-label={t('actions.more')}>
-                    <MoreHorizontal size={16} aria-hidden="true" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {/* Export lives here — reading a BOQ out is rare next to building it. Add
-                      section + Import are in the toolbar, always visible. */}
-                  <DropdownMenuItem onSelect={handleExportTree}>
-                    {t('toolbar.export')}
-                  </DropdownMenuItem>
-                  {actions.canCreateDraft && (nextStep.kind !== 'START_REVISION' || Boolean(contractAction)) ? (
-                    <DropdownMenuItem onSelect={() => setCommand('revise')}>
-                      {t('actions.startRevision')}
-                    </DropdownMenuItem>
-                  ) : null}
-                  {actions.canBaseline && nextStep.kind !== 'SUBMIT_BASELINE' ? (
-                    <DropdownMenuItem onSelect={() => setCommand('baseline')}>
-                      {t('actions.submitForBaseline')}
-                    </DropdownMenuItem>
-                  ) : null}
-                  {actions.canCancelDraft ? (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onSelect={() => setCommand('discard')}>
-                        {t('actions.discardDraft')}
-                      </DropdownMenuItem>
-                    </>
-                  ) : null}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </>
-          }
-        />
-      </div>
-
-      <BoqStickyBar
-        visible={stickyOffScreen}
-        versionNumber={selected?.versionNumber ?? null}
-        status={selected?.status ?? 'DRAFT'}
-        totalAmount={selected?.totalAmount ?? null}
+      <BoqMoneyStrip
+        band={band}
         currency={workspace.currency}
-        canViewCommercials={canViewCommercials}
-        action={primaryAction}
+        pricedPercent={pricedPercent}
+        unpricedCount={unpricedCount}
+        signedContractValue={band?.baseContractValue ?? null}
+        pendingVariationCount={pendingVariations}
+        onReviewVariations={() => router.push(`/projects/${projectId}/commercial/variations`)}
+        primaryAction={primaryAction}
+        secondaryActions={
+          <>
+            {compareAffordance}
+            {timelineAffordance}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  {t('actions.more')}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={handleExportTree}>{t('toolbar.export')}</DropdownMenuItem>
+                {actions.canCreateDraft && nextStep.kind !== 'START_REVISION' ? (
+                  <DropdownMenuItem onSelect={() => setCommand('revise')}>
+                    {t('actions.startRevision')}
+                  </DropdownMenuItem>
+                ) : null}
+                {actions.canCancelDraft ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onSelect={() => setCommand('discard')}>
+                      {t('actions.discardDraft')}
+                    </DropdownMenuItem>
+                  </>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        }
       />
 
-      {workspace.readiness && isDraft ? (
+      {workspace.readiness && onDraft && !committed ? (
         <BoqReadinessBanner
           readiness={workspace.readiness}
-          // Not dismissible while it is the thing standing between the user and a
-          // baseline — closing it would leave a screen with nothing to act on.
           dismissible={workspace.readiness.ready}
           onShowNodes={showNodes}
         />
       ) : null}
 
-      {/* Post-contract, the locked BOQ is not edited — scope changes go through a Variation
-          (Phase 6). This is the answer to "how do I add to a signed BOQ", pointing at the built
-          Variations flow rather than letting anyone edit a frozen bill. */}
-      {selected?.status === 'BASELINED' && workspace.contractBaseline ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-panel border border-border bg-surface-subtle px-4 py-3">
-          <span className="flex items-center gap-2 text-body-sm text-muted-foreground">
-            <Lock size={15} aria-hidden="true" />
-            {t('contractLocked.note')}
-          </span>
+      {/* COMMITTED teaches the pin at the cell (grid), but a one-line note names the rule once. */}
+      {committed && canEdit ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-panel border border-border bg-surface-subtle px-4 py-2.5">
+          <span className="text-body-sm text-muted-foreground">{t('mode.committedHint')}</span>
           <Link
             href={`/projects/${projectId}/commercial/variations`}
             className="inline-flex items-center gap-1 text-body-sm font-medium text-brand-primary hover:underline"
@@ -456,9 +418,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
             if (next === 'all') setHighlighted(new Set());
           }}
           allExpanded={allExpanded}
-          onToggleExpandAll={() =>
-            setCollapsed(allExpanded ? new Set(allSectionIds) : new Set())
-          }
+          onToggleExpandAll={() => setCollapsed(allExpanded ? new Set(allSectionIds) : new Set())}
           onAddSection={() =>
             setDrawer({ mode: 'add', kind: 'section', parent: null, node: null, siblingCodes: siblingCodesUnder(null) })
           }
@@ -479,19 +439,21 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
             rows={rows}
             totalRows={counts.sections + counts.items}
             currency={workspace.currency}
-            totalAmount={selected?.totalAmount ?? null}
+            totalAmount={workspace.draft?.totalAmount ?? workspace.approved?.totalAmount ?? null}
             visibleAmount={visibleAmount}
             sectionTotals={rollup.sectionTotals}
             isFiltered={isFiltered}
             canManage={canManage}
-            canViewCommercials={canViewCommercials}
-            showSource={hasVariations}
+            canViewCommercials={canViewCost}
+            committed={committed}
+            showSource={hasVariations || committed}
             highlighted={highlighted}
             collapsed={collapsed}
             onToggle={toggleCollapsed}
+            onPinnedCellEdit={committed && canEdit ? () => setClassifierOpen(true) : undefined}
             onSelect={(node) =>
               setDrawer({
-                mode: canManage ? 'edit' : 'edit',
+                mode: 'edit',
                 kind: node.isLeaf ? 'item' : 'section',
                 parent: null,
                 node,
@@ -501,39 +463,12 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
             emptyMessage={
               search || pricing !== 'all'
                 ? t('grid.noMatches')
-                : isDraft
+                : onDraft
                   ? t('grid.emptyDraft')
                   : t('grid.empty')
             }
           />
         )}
-      </div>
-
-      <BoqVersionPanel
-        versions={workspace.versions}
-        selectedId={selectedVersionId}
-        currency={workspace.currency}
-        canViewCommercials={canViewCommercials}
-        open={versionsOpen}
-        onToggle={() => setVersionsOpen((current) => !current)}
-        onSelect={setChosenVersionId}
-        onCompare={(left, right) => setComparing({ left, right })}
-      />
-
-      {/* The change log — "who changed what, and what was it before". Collapsed by default (it
-          does not fetch until opened); the row menu's "View history" opens it filtered to a line. */}
-      <div id="boq-history" className="scroll-mt-4">
-        <BoqHistoryPanel
-          projectId={projectId}
-          versionId={selectedVersionId}
-          currency={workspace.currency}
-          canViewCommercials={canViewCommercials}
-          open={historyOpen}
-          onToggle={() => setHistoryOpen((current) => !current)}
-          filterCode={historyFilter?.code ?? null}
-          filterNodeId={historyFilter?.id ?? null}
-          onClearFilter={() => setHistoryFilter(null)}
-        />
       </div>
 
       {importOpen ? (
@@ -547,8 +482,6 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
       ) : null}
 
       <BoqItemDrawer
-        // Remount when the drawer points somewhere else, so the form seeds from the new
-        // node instead of syncing itself in an effect.
         key={
           drawer
             ? `${drawer.mode}-${drawer.kind}-${drawer.node?.id ?? drawer.parent?.id ?? 'root'}`
@@ -558,10 +491,8 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         currency={workspace.currency}
         readOnly={!canManage}
         isPending={addNode.isPending || updateNode.isPending}
-        // Library assistance rides on the same permission as managing the BOQ (both the
-        // controller's create/record-usage need `manage:boq`, which `canManage` implies).
         libraryEnabled={canManage}
-        canViewCommercials={canViewCommercials}
+        canViewCommercials={canViewCost}
         canSaveToLibrary={canManage}
         errorMessage={
           addNode.error || updateNode.error
@@ -576,28 +507,43 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         onSubmit={(values, target, library) => handleSave(values, target, library)}
       />
 
-      {comparing ? (
-        <BoqComparePanel
-          diff={compareQuery.data}
+      {classifierOpen ? (
+        <BoqClassifierDrawer
+          open
+          currency={workspace.currency}
+          contingencyRemaining={band?.contingencyRemaining ?? null}
+          contractValue={band?.contractValue ?? null}
+          totalClientRevenue={band?.totalClientRevenue ?? null}
+          // Absorb (add new ABSORBED scope) and Separate (add a SEPARATE_CHARGE leaf) have no
+          // committed HTTP route yet (R11 backend reality) — the drawer previews them but the CTA
+          // stays honest. Variation is reachable via the Commercial variations flow.
+          absorbEnabled={false}
+          separateEnabled={false}
+          isPending={false}
+          onSubmit={handleClassify}
+          onClose={() => setClassifierOpen(false)}
+        />
+      ) : null}
+
+      {compareOpen ? (
+        <BoqCompareSignedPanel
+          data={compareQuery.data}
+          currency={workspace.currency}
+          canViewCost={canViewCost}
           isPending={compareQuery.isPending}
           isError={compareQuery.isError}
-          canViewCommercials={canViewCommercials}
-          onExport={() => {
-            if (!compareQuery.data) return;
-            downloadCsv(
-              `BOQ-compare-v${compareQuery.data.leftVersionNumber}-v${compareQuery.data.rightVersionNumber}.csv`,
-              compareToCsv(compareQuery.data, {
-                includePricing: canViewCommercials,
-                headers: exportHeaders(t),
-                changeHeaders: {
-                  kind: t('compare.change'),
-                  delta: t('compare.delta'),
-                  percent: t('compare.percent'),
-                },
-              }),
-            );
-          }}
-          onClose={() => setComparing(null)}
+          onClose={() => setCompareOpen(false)}
+        />
+      ) : null}
+
+      {timelineOpen ? (
+        <BoqTimelineDrawer
+          data={timelineQuery.data}
+          currency={workspace.currency}
+          canViewMargin={canViewMargin}
+          isPending={timelineQuery.isPending}
+          isError={timelineQuery.isError}
+          onClose={() => setTimelineOpen(false)}
         />
       ) : null}
 
@@ -605,7 +551,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         <LifecycleCommandDrawer
           open
           onClose={() => {
-            baseline.reset();
+            commit.reset();
             discard.reset();
             revise.reset();
             setCommand(null);
@@ -613,9 +559,9 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
           commandName={t(`commands.${command}.name`)}
           currentStatus={command === 'revise' ? 'BASELINED' : 'DRAFT'}
           nextStatus={
-            command === 'baseline' ? 'BASELINED' : command === 'discard' ? 'CANCELLED' : 'DRAFT'
+            command === 'commit' ? 'BASELINED' : command === 'discard' ? 'CANCELLED' : 'DRAFT'
           }
-          businessImpact={businessImpact(command, actions, t)}
+          businessImpact={businessImpact(command, workspace, t)}
           reason={
             command === 'revise'
               ? { required: false, label: t('commands.revise.notes'), hint: t('commands.revise.notesHint') }
@@ -623,7 +569,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
           }
           confirmLabel={t(`commands.${command}.confirm`)}
           isDestructive={command === 'discard'}
-          isPending={baseline.isPending || discard.isPending || revise.isPending}
+          isPending={commit.isPending || discard.isPending || revise.isPending}
           errorMessage={commandError(command, t)}
           onConfirm={(reason) => runCommand(command, reason)}
         />
@@ -634,7 +580,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   // ─── Handlers ────────────────────────────────────────────────────────────────
 
   function handleSave(values: NodeFormValues, target: DrawerTarget, library: LibraryIntent) {
-    if (!selectedVersionId) return;
+    if (!operationalVersionId) return;
 
     if (target.mode === 'edit' && target.node) {
       updateNode.mutate(
@@ -654,8 +600,6 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
 
     addNode.mutate(payload, {
       onSuccess: () => {
-        // Library side-effects run AFTER the node is saved and never block it — a failure
-        // here must not undo or surface an error on the add the user actually asked for.
         runLibrarySideEffects(values, library, payload.unitRate ?? null);
         setDrawer(null);
       },
@@ -663,10 +607,21 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   }
 
   /**
-   * Records a picked item's used rate and/or saves a manual entry to the library. Fire-and-
-   * forget: the library is assistance (ADR-020 CONST-BOQ-021), so neither call gates the add,
-   * and a `409` on save (code already exists) is swallowed rather than shown as a failure.
+   * The who-pays classifier's decision. VARIATION is the only route with a committed write path
+   * today: it is raised in the Commercial variations flow. Rather than fabricate a success on a
+   * route the backend cannot fulfil, this hands the user to Commercial to raise the draft VO and
+   * records the pending affordance (H1) so the moment never dead-ends. Absorb/Separate are disabled
+   * in the drawer (no route yet) and never reach here.
    */
+  function handleClassify(result: ClassifierResult) {
+    setClassifierOpen(false);
+    if (result.route === 'VARIATION') {
+      setPendingVariations((n) => n + 1);
+      toast({ title: t('classifier.variationCreated') });
+      router.push(`/projects/${projectId}/commercial/variations`);
+    }
+  }
+
   function runLibrarySideEffects(
     values: NodeFormValues,
     library: LibraryIntent,
@@ -694,43 +649,31 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   function runCommand(current: Exclude<Command, null>, reason: string) {
     const close = { onSuccess: () => setCommand(null) };
 
-    if (current === 'baseline' && selectedVersionId) baseline.mutate(selectedVersionId, close);
-    else if (current === 'discard' && selectedVersionId) discard.mutate(selectedVersionId, close);
+    if (current === 'commit' && operationalVersionId) commit.mutate(operationalVersionId, close);
+    else if (current === 'discard' && operationalVersionId) discard.mutate(operationalVersionId, close);
     else if (current === 'revise') revise.mutate(reason, close);
   }
 
   function commandError(current: Exclude<Command, null>, translate: (key: string) => string) {
-    const mutation = current === 'baseline' ? baseline : current === 'discard' ? discard : revise;
+    const mutation = current === 'commit' ? commit : current === 'discard' ? discard : revise;
     if (!mutation.error) return undefined;
 
-    // A 409 on baseline is the governance gate, not a failure — the version is now waiting
-    // on an approver, and saying "failed" would be wrong (ADR-011/015).
+    // A 409 on commit is the governance gate — sent for sign-off, not a failure (ADR-011/015).
     if (
-      current === 'baseline' &&
+      current === 'commit' &&
       mutation.error instanceof ApiError &&
       mutation.error.status === 409
     ) {
-      return translate('commands.baseline.awaitingApproval');
+      return translate('commit.awaitingApproval');
     }
 
     return errorText(mutation.error, translate(`commands.${current}.failed`));
   }
 }
 
-
 /**
- * The single primary action. Always `brand-primary`.
- *
- * A first attempt filled this with `warning` when the step was a fix, on the theory that an
- * amber button would read as urgency. Two things were wrong with that. `--warning` is
- * `#9a5b13` — a token sized for *text* contrast on a light surface, so as a fill it renders
- * brown and looks like a disabled or broken control rather than an invitation. And it
- * contradicts the rule in `frontend-theme.md`: brand is the interactive colour and nothing
- * else, status colours sit on status.
- *
- * Urgency is already carried where it belongs — the amber banner above and the amber row
- * edges below. The button's job is to be the one obvious thing to press, and it is never
- * rendered disabled: `resolveNextStep` returns something doable, or nothing at all.
+ * The single primary action for the WORKING flow. Always `brand-primary`, never disabled:
+ * `resolveNextStep` returns something doable or nothing at all.
  */
 function NextStepButton({ step, onRun }: { step: BoqNextStep; onRun: () => void }) {
   const t = useTranslations('platform.boq.nextStep');
@@ -754,17 +697,20 @@ function sumVisibleItems(nodes: BoqTreeNodeResponse[]): string | null {
   return fromMinorUnits(minor, MONEY_SCALE);
 }
 
+/**
+ * The commit consequence copy (M3) carries the weight of the transition — fixing the contract
+ * value and setting the milestone schedule, after which money changes go through a variation.
+ */
 function businessImpact(
   command: Exclude<Command, null>,
-  actions: ReturnType<typeof getVersionActions>,
-  t: (key: string) => string,
+  workspace: NonNullable<ReturnType<typeof useBoqWorkspace>['data']>,
+  t: (key: string, values?: Record<string, string>) => string,
 ): string {
-  if (command !== 'baseline') return t(`commands.${command}.impact`);
+  if (command !== 'commit') return t(`commands.${command}.impact`);
 
-  // Baselining the first version fixes the original contract BOQ, which is immutable
-  // thereafter — a materially different consequence from superseding a later revision.
-  if (actions.isFirstBaseline) return t('commands.baseline.impactFirst');
-  return t('commands.baseline.impactRevision');
+  const value = workspace.draft?.totalAmount ?? workspace.moneyBand?.inContractTotal ?? null;
+  const formatted = formatMoney(value, workspace.currency, 'en');
+  return formatted ? t('commit.impact', { amount: formatted }) : t('commit.impactNoValue');
 }
 
 function exportHeaders(t: (key: string, values?: Record<string, string>) => string) {
@@ -789,12 +735,10 @@ function errorText(error: unknown, fallback: string): string {
 
 function WorkspaceSkeleton({ label }: { label: string }) {
   return (
-    <div className="space-y-5" role="status" aria-live="polite">
+    <div className="space-y-3" role="status" aria-live="polite">
       <span className="sr-only">{label}</span>
-      {/* Skeletons mirror the final layout — a generic grey block teaches the reader
-          nothing about what is arriving. */}
-      <Skeleton className="h-20 w-full" aria-hidden="true" />
-      <Skeleton className="h-24 w-full" aria-hidden="true" />
+      {/* Skeletons mirror the final layout: a compact strip, then the dominant grid. */}
+      <Skeleton className="h-12 w-full" aria-hidden="true" />
       <Skeleton className="h-96 w-full" aria-hidden="true" />
     </div>
   );

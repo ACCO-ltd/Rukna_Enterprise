@@ -14,10 +14,21 @@ import type { PermissionKey } from '@/features/auth/permissions/can';
  * shown a blank — the figures never reach the browser.
  */
 export const BOQ_PERMISSIONS = {
-  /** Any BOQ screen, and the commercial figures on it. */
+  /** Any BOQ screen (scope, quantities, progress — no money). */
   view: 'view:boq',
-  /** Create and edit nodes, start and discard revisions. */
+  /** Create and edit nodes, start and discard revisions (the manage umbrella). */
   manage: 'manage:boq',
-  /** Baseline a version — the transition a contract is signed against. */
+  /**
+   * @deprecated ADR-029 M-5 — the baseline transition is now `commit:boq`. Retained so any
+   * pre-commit `can()` call keeps compiling for one release; new code gates on `commit`.
+   */
   baseline: 'baseline:boq',
+  /**
+   * ADR-029 CONST-BOQ-034 — commit the working draft to contract (WORKING → COMMITTED). The
+   * server still enforces; this only decides whether the primary "Commit to contract" affordance
+   * is offered. Prefer `workspace.capabilities.canCommit` when the read model carries it.
+   */
+  commit: 'commit:boq',
+  /** ADR-029 CONST-BOQ-028 — draw down the contingency allowance to fund work. */
+  manageContingency: 'manage-contingency:boq',
 } as const satisfies Record<string, PermissionKey>;

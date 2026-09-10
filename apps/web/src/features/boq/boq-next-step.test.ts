@@ -77,7 +77,17 @@ function workspace(overrides: Partial<BoqWorkspaceResponse> = {}): BoqWorkspaceR
     versions: [draft, approved],
     readiness: readiness(),
     revision: null,
-    capabilities: { canView: true, canManage: true, canBaseline: true, canViewCommercials: true },
+    moneyBand: null,
+    compareToSignedAvailable: false,
+    capabilities: {
+      canView: true,
+      canManage: true,
+      canBaseline: true,
+      canViewCommercials: true,
+      canViewCost: true,
+      canViewMargin: true,
+      canEdit: true,
+    },
     ...overrides,
   };
 }
