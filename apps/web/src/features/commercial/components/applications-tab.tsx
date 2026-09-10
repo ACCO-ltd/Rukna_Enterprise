@@ -56,7 +56,6 @@ export function ApplicationsTab({
         description={t('overview.noContractHint')}
       />
     );
-  const contractId = data.contractId;
   if (data.applications.length === 0)
     return (
       <EmptyState
@@ -67,7 +66,7 @@ export function ApplicationsTab({
         action={
           data.capabilities.canCreateApplication && data.contractId ? (
             <Button asChild>
-              <Link href={`/contracts/${data.contractId}/applications/new`}>
+              <Link href={`/projects/${projectId}/commercial/applications/new`}>
                 {t('applications.create')}
               </Link>
             </Button>
@@ -122,7 +121,7 @@ export function ApplicationsTab({
               {data.applications.map((row) => (
                 <ApplicationRow
                   key={row.ipaId}
-                  contractId={contractId}
+                  projectId={projectId}
                   row={row}
                   money={money}
                   t={t}
@@ -147,13 +146,13 @@ function Count({ label, value }: { label: string; value: number }) {
 }
 
 function ApplicationRow({
-  contractId,
+  projectId,
   row,
   money,
   t,
   locale,
 }: {
-  contractId: string;
+  projectId: string;
   row: CommercialApplicationRow;
   money: (value: string | null) => string | null;
   t: (key: string) => string;
@@ -185,7 +184,7 @@ function ApplicationRow({
       <TableCell className="text-end font-medium tabular-nums">{money(row.certifiedNet)}</TableCell>
       <TableCell className="whitespace-nowrap text-caption text-muted-foreground">
         <Button asChild variant="ghost" size="sm">
-          <Link href={`/contracts/${contractId}/applications/${row.ipaId}`}>
+          <Link href={`/projects/${projectId}/commercial/applications/${row.ipaId}`}>
             {row.nextAction === 'NONE' ? t('actions.open') : t(`nextAction.${row.nextAction}`)}
           </Link>
         </Button>

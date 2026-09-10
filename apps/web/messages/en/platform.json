@@ -164,8 +164,6 @@
       "progress": "Progress",
       "commercial": "Commercial",
       "documents": "Documents",
-      "contracts": "Contracts",
-      "applicationsCertificates": "Applications & certificates",
       "finance": "Finance",
       "procurement": "Procurement",
       "members": "Members",
@@ -187,8 +185,7 @@
       "loadingValue": "Loading...",
       "loadingProject": "Loading project",
       "loadFailedHint": "Check your connection or try loading the project again.",
-      "contractSummaryUnavailable": "The contract summary is temporarily unavailable. Other project information remains usable.",
-      "ipc": "IPC"
+      "contractSummaryUnavailable": "The contract summary is temporarily unavailable. Other project information remains usable."
     },
     "create": {
       "title": "New project",

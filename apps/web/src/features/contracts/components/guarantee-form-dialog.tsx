@@ -70,8 +70,9 @@ interface EditFormValues {
  * Add/edit a contract guarantee in a dialog, wired to the existing
  * `POST/PATCH /contracts/:id/guarantees` endpoints.
  *
- * Extracted from `guarantees-panel.tsx` so both the dead `ContractDetail` view and the Commercial
- * workspace mount the same form. Two shapes, one instrument:
+ * Originally extracted from the retired `guarantees-panel.tsx` so the standalone contract view and
+ * the Commercial workspace could share one form; that standalone view is now gone (P3 Slice C), so
+ * the Commercial workspace's Contract & Security tab is its sole caller. Two shapes, one instrument:
  *  - **add** — the full form; every commercial fact is captured (POST).
  *  - **edit** — only `status` and `notes` are mutable (PATCH); the rest is shown for context.
  *

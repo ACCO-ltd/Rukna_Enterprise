@@ -1,18 +1,17 @@
-import { getTranslations } from 'next-intl/server';
+import { ContractApplicationRedirect } from '@/features/contracts/components/contract-application-redirect';
 
-import { IpaForm } from '@/features/ipa/components/ipa-form';
-
+/**
+ * The standalone "new payment application" page is folded into the project Commercial workspace
+ * (P3 Slice C). This route now only catches legacy deep-links and forwards them to
+ * `/projects/:projectId/commercial/applications/new`; the client boundary resolves the contract's
+ * projectId and replaces the URL.
+ */
 export default async function NewIpaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const t = await getTranslations('platform.ipa.create');
 
   return (
     <div className="w-full max-w-4xl">
-      <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
-
-      <div className="mt-6 rounded-lg border border-border bg-surface p-5 sm:p-6">
-        <IpaForm contractId={id} />
-      </div>
+      <ContractApplicationRedirect contractId={id} target="application-new" />
     </div>
   );
 }

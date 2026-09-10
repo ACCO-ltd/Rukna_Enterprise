@@ -608,7 +608,7 @@ describe('CommercialService.getCurrentCycle', () => {
       responsibleRole: 'QUANTITY_SURVEYOR',
       nextAction: {
         kind: 'CREATE_APPLICATION',
-        href: '/contracts/c-1/applications/new',
+        href: '/projects/p-1/commercial/applications/new',
       },
     });
   });
@@ -635,7 +635,34 @@ describe('CommercialService.getCurrentCycle', () => {
 
     expect(result.nextAction).toMatchObject({
       kind: 'SUBMIT_APPLICATION',
-      href: '/contracts/c-1/applications/ipa-1',
+      href: '/projects/p-1/commercial/applications/ipa-1',
+    });
+  });
+
+  it('routes ISSUE_CERTIFICATE to the project-scoped application certificate page', async () => {
+    const { service } = build({
+      applications: [
+        {
+          id: 'ipa-1',
+          applicationNumber: 1,
+          applicationRef: 'IPA-001',
+          status: 'SUBMITTED',
+          periodFrom: null,
+          periodTo: null,
+          items: [],
+          certificates: [],
+        },
+      ],
+    });
+    const result = await service.getCurrentCycle(
+      identityWith([PERMISSIONS.contractsView, PERMISSIONS.ipcIssue]),
+      'p-1',
+    );
+
+    expect(result.stage).toBe('AWAITING_CERTIFICATION');
+    expect(result.nextAction).toMatchObject({
+      kind: 'ISSUE_CERTIFICATE',
+      href: '/projects/p-1/commercial/applications/ipa-1/certificates/new',
     });
   });
 

@@ -37,6 +37,12 @@ interface IpcDetailProps {
   contractId: string;
   ipaId: string;
   ipcId: string;
+  /**
+   * The applications list this certificate belongs to (e.g.
+   * `/projects/:id/commercial/applications`). The back link and the "open application" link
+   * resolve to `${basePath}/${ipaId}` so both stay inside the project workspace.
+   */
+  basePath: string;
 }
 
 /** Flattens a BOQ tree into an id→node map. */
@@ -52,7 +58,7 @@ function flattenTree(nodes: BoqTreeNode[]): Record<string, BoqTreeNode> {
   return map;
 }
 
-export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
+export function IpcDetail({ contractId, ipaId, ipcId, basePath }: IpcDetailProps) {
   const t = useTranslations('platform.ipc.detail');
   const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
@@ -88,7 +94,7 @@ export function IpcDetail({ contractId, ipaId, ipcId }: IpcDetailProps) {
 
   const nodeMap = useMemo(() => (boqTree.data ? flattenTree(boqTree.data) : {}), [boqTree.data]);
 
-  const backHref = `/contracts/${contractId}/applications/${ipaId}`;
+  const backHref = `${basePath}/${ipaId}`;
 
   if (certificate.isPending || contract.isPending) {
     return (
