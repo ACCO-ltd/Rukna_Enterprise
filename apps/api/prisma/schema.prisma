@@ -731,7 +731,10 @@ model ProjectDocument {
 
   createdBy String   @map("created_by")
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  // `@default(now())` matches the CURRENT_TIMESTAMP default the original 20260818 migration put on
+  // this column; declared here so migrate-dev stops re-proposing it as drift (Prisma still owns the
+  // value on every write via @updatedAt).
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
   project         Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   revisions       ProjectDocumentRevision[] @relation("DocumentRevisions")
@@ -740,6 +743,9 @@ model ProjectDocument {
   supersedes      ProjectDocument[]         @relation("DocumentSupersession")
 
   @@unique([projectId, documentNumberNormalized])
+  // Standalone project_id index carried from the original 20260818 migration; declared so the schema
+  // matches the deployed DB (Prisma names it exactly project_documents_project_id_idx).
+  @@index([projectId])
   @@index([projectId, status])
   @@index([projectId, category])
   // The expiring/expired attention query, which is org-wide as often as it is project-wide.
@@ -788,7 +794,10 @@ model ProjectDocumentRevision {
   currentFor   ProjectDocument? @relation("CurrentRevision")
   platformFile PlatformFile     @relation(fields: [platformFileId], references: [id])
 
-  @@unique([projectDocumentId, revisionNumber])
+  // Named to the 63-char identifier Postgres produced when the 20260907140000 migration created it
+  // (the literal "..._revision_number_key" was truncated); pins the schema to the deployed index name
+  // so it is never re-proposed as drift.
+  @@unique([projectDocumentId, revisionNumber], map: "project_document_revisions_project_document_id_revision_number_")
   @@index([projectDocumentId, status])
   @@index([platformFileId])
   @@map("project_document_revisions")
