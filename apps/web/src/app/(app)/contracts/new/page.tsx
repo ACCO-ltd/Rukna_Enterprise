@@ -1,20 +1,26 @@
-import { getTranslations } from 'next-intl/server';
+import { redirect } from 'next/navigation';
 
-import { PageHeader } from '@/components/layout/page-header';
-import { ContractForm } from '@/features/contracts/components/contract-form';
+/**
+ * The standalone `/contracts/new` page is retired (P3 Slice B): contract creation now lives in
+ * the project's Commercial workspace. This route only catches legacy links.
+ *
+ *  - `?projectId=…` present → forward into that project's workspace create page.
+ *  - absent → a contract cannot be created without a project, so land the user on Projects to
+ *    pick one rather than opening a create form with no context.
+ *
+ * A server `redirect()` (not a client boundary) because the destination is decided entirely from
+ * the query string the URL already carries.
+ */
+export default async function LegacyNewContractPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ projectId?: string }>;
+}) {
+  const { projectId } = await searchParams;
 
-export default async function NewContractPage() {
-  const t = await getTranslations('platform.contracts');
+  if (projectId) {
+    redirect(`/projects/${projectId}/commercial/contract/new`);
+  }
 
-  return (
-    <div className="w-full max-w-4xl">
-      <PageHeader
-        breadcrumbs={[{ label: t('title'), href: '/contracts' }]}
-        title={t('create.title')}
-      />
-      <div className="rounded-lg border border-border bg-surface p-5 sm:p-6">
-        <ContractForm />
-      </div>
-    </div>
-  );
+  redirect('/projects');
 }

@@ -351,7 +351,7 @@ export interface ContractGuarantee {
   attachments: GuaranteeAttachment[];
 }
 
-export interface ContractMilestone {
+export interface ContractDeliverable {
   id: string;
   contractId: string;
   name: string;
@@ -377,13 +377,13 @@ export interface ContractAttachment {
  * `client` is a narrow projection — `{ id, name, taxNumber }` only. For anything else
  * about the client, fetch `GET /clients/:id`.
  *
- * `milestones` arrives ordered by `sortOrder`; the other collections are unordered.
+ * `deliverables` arrives ordered by `sortOrder`; the other collections are unordered.
  */
 export interface ContractDetail extends Contract {
   retentionTerms: ContractRetentionTerms | null;
   advanceTerms: ContractAdvanceTerm[];
   guarantees: ContractGuarantee[];
-  milestones: ContractMilestone[];
+  deliverables: ContractDeliverable[];
   /**
    * ADR-023: the negotiated payment schedule of a MILESTONE contract. The installments *are*
    * the plan (no separate header), and only the fraction is stored — the money is derived as

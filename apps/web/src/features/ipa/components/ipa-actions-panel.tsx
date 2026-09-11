@@ -22,7 +22,18 @@ import type { IpaDetail } from '../types';
 
 type Pending = { kind: 'command'; command: IpaCommand } | { kind: 'cancel' } | null;
 
-export function IpaActionsPanel({ ipa, contractId }: { ipa: IpaDetail; contractId: string }) {
+/**
+ * `basePath` is the applications list this panel's application belongs to (e.g.
+ * `/projects/:id/commercial/applications`). The certificate CTA appends
+ * `/${ipa.id}/certificates/new` to it so issuing a certificate stays in the workspace.
+ */
+export function IpaActionsPanel({
+  ipa,
+  basePath,
+}: {
+  ipa: IpaDetail;
+  basePath: string;
+}) {
   const t = useTranslations('platform.ipa.actions');
   const tDetail = useTranslations('platform.ipa.detail');
   const tPlatform = useTranslations('platform');
@@ -68,7 +79,7 @@ export function IpaActionsPanel({ ipa, contractId }: { ipa: IpaDetail; contractI
       {ipa.status === IpaStatus.SUBMITTED ? (
         <div>
           <Button asChild>
-            <Link href={`/contracts/${contractId}/applications/${ipa.id}/certificates/new`}>
+            <Link href={`${basePath}/${ipa.id}/certificates/new`}>
               {/* `tIpc` is already bound to `platform.ipc.wizard`; the keys are `issueCta`
                   and `supersedeCta` directly under it. This read `wizard.supersedeCta`,
                   resolving to `platform.ipc.wizard.wizard.supersedeCta`, which does not

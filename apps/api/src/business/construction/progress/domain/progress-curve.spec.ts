@@ -7,6 +7,13 @@ import {
   SCHEDULE_ON_TRACK_BAND,
 } from './progress-curve.js';
 
+/**
+ * Pure curve/status/variance math. Master Schedule P3 (ADR-029) moved the *sourcing* choice up into
+ * ProgressService.resolvePlannedCurve (frozen baseline → live targets → this provisional ramp); these
+ * functions are unchanged and still own the provisional (no-baseline, no-targets) producer + the
+ * interpolation/status bands the service reuses across all three sources.
+ */
+
 const d = (s: string) => new Date(`${s}T00:00:00.000Z`);
 const actual = (periodEndDate: string, physicalPercent: number): ProgressActualPoint => ({
   periodEndDate,

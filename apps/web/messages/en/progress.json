@@ -188,6 +188,11 @@
     "insufficient": "The progress curve begins once progress is recorded.",
     "provisionalChip": "Provisional baseline",
     "provisionalNote": "The planned line is an estimate until a baseline is set in Plan & Setup.",
+    "source": {
+      "baseline": "Baseline v{version}",
+      "targets": "Draft plan (not approved)",
+      "provisional": "Provisional"
+    },
     "lastSnapshot": "Last snapshot {date}",
     "status": {
       "AHEAD": "Ahead of schedule",
@@ -259,6 +264,33 @@
     "subtitle": "The planned progress curve the S-curve compares actuals against. Without one, the planned line is only an estimate.",
     "currentSet": "Baseline set",
     "currentNone": "Estimate only",
+    "workingCurveNote": "This is the working curve — edit it freely. It stages the next baseline but does not change variance until you approve or re-baseline below.",
+    "governing": {
+      "none": "No baseline is governing yet. The S-curve compares against an estimate until you approve one.",
+      "versionLabel": "Baseline v{version}",
+      "approvedBy": "Approved by {who} on {date}",
+      "variationRef": "Variation: {ref}",
+      "pointCount": "{count, plural, one {# frozen point} other {# frozen points}}",
+      "unpublished": "Unpublished changes",
+      "unpublishedHint": "The working curve differs from the governing baseline. These staged changes do not affect variance until you re-baseline.",
+      "approve": "Approve baseline",
+      "approveNeedsCurve": "Enter a working curve before approving a baseline.",
+      "approved": "Baseline approved.",
+      "approveFailed": "Could not approve the baseline.",
+      "rebaseline": "Re-baseline",
+      "rebaselineTitle": "Re-baseline the programme",
+      "rebaselineSubtitle": "Snapshot the current working curve as a new governing baseline. This supersedes the previous version and must cite a Variation.",
+      "variationLabel": "Variation",
+      "variationPlaceholder": "Select a variation",
+      "variationHint": "A re-baseline must be justified by an approved change to scope or time.",
+      "noteLabel": "Note (optional)",
+      "noteHint": "Recorded on the new baseline version for the audit trail.",
+      "rebaselineConfirm": "Re-baseline",
+      "rebaselined": "Programme re-baselined.",
+      "rebaselineFailed": "Could not re-baseline the programme.",
+      "noContract": "This project has no main contract yet, so there are no variations to cite. A re-baseline needs a variation.",
+      "noVariations": "This contract has no variations to cite. Raise a variation before re-baselining."
+    },
     "generateLinear": "Generate monthly (linear)",
     "deriveMilestones": "Derive from milestones",
     "noDates": "Set the project start and end dates to generate a linear baseline.",
@@ -338,6 +370,7 @@
       "baseline": "Baseline",
       "actual": "Actual",
       "variance": "Variance",
+      "releases": "Releases",
       "status": "Status",
       "actions": "Actions"
     },
@@ -350,10 +383,116 @@
       "early": "{n, plural, one {# day early} other {# days early}}",
       "late": "{n, plural, one {# day late} other {# days late}}"
     },
+    "releases": {
+      "none": "—",
+      "line": "Releases {percent} · {name} · {amount}",
+      "invoiced": "invoiced",
+      "invoicedLabel": "already invoiced"
+    },
     "verify": {
       "title": "Verify {name}",
       "hint": "Confirm the stage is complete and record the date it actually finished. This becomes billing evidence for any linked payment installment.",
+      "hintReleaseOne": "Verifying this releases the {percent} {name} payment ({amount}) for invoicing.",
+      "hintReleaseMany": "Verifying this releases {count} payment installments for invoicing: {list}.",
       "actualDate": "Actual completion date"
+    }
+  },
+  "wpSchedule": {
+    "title": "Work package schedule",
+    "subtitle": "Each work package is a schedule phase — its planned window with the derived actual dates overlaid, plus verified progress and schedule health.",
+    "timeline": "Planned vs actual",
+    "planned": "Planned",
+    "actual": "Actual",
+    "noDates": "No planned dates",
+    "actualNone": "not started",
+    "actualOngoing": "started {start} — ongoing",
+    "scheduleOnly": "Schedule-only",
+    "percentLabel": "Verified progress",
+    "noBaselineTitle": "Baseline the BOQ first",
+    "noBaseline": "A schedule is built from BOQ scope. Baseline the BOQ before setting up the schedule.",
+    "emptyTitle": "No schedule yet",
+    "emptyNoPackages": "Create work packages and set their planned dates in Plan & Setup to build the schedule.",
+    "emptyNoDates": "No work package has planned dates yet. Set planned start and end dates in Plan & Setup to build the schedule.",
+    "partial": "{count, plural, one {# phase has no planned dates yet} other {# phases have no planned dates yet}} — they are listed without a bar.",
+    "legend": {
+      "planned": "Planned window",
+      "actual": "Derived actual (from approved reports)"
+    }
+  },
+  "scheduleWizard": {
+    "title": "Set up schedule",
+    "subtitle": "Build the master schedule in four steps: start, assign scope, set dates, then weights.",
+    "noBaseline": "The BOQ baseline was cleared. Baseline the BOQ before setting up the schedule.",
+    "gate": {
+      "noBaselineTitle": "Baseline the BOQ first",
+      "noBaseline": "A schedule is built from BOQ scope. Baseline the BOQ before setting up the schedule."
+    },
+    "cta": {
+      "title": "No schedule yet",
+      "description": "Set up the master schedule to see phases progress automatically from daily reports — no one types a % complete.",
+      "setUp": "Set up schedule",
+      "setTitle": "Master schedule",
+      "setDescription": "Phases, scope, dates and weights are set. Open the Schedule view for the live timeline.",
+      "edit": "Edit schedule"
+    },
+    "steps": {
+      "step1": "Start",
+      "step2": "Assign scope",
+      "step3": "Dates",
+      "step4": "Weights"
+    },
+    "start": {
+      "lead": "Start from ACCO's standard building schedule, or start blank and add phases yourself.",
+      "templateTitle": "ACCO standard building schedule",
+      "templateHint": "Pre-creates the nine standard phases so you edit rather than invent.",
+      "blankTitle": "Start blank",
+      "blankHint": "Add and name each phase yourself in the steps that follow.",
+      "alreadyHasPackages": "This project already has work packages, so the template cannot be applied. Continue to edit the existing phases.",
+      "applying": "Creating phases…",
+      "applyFailed": "Could not apply the template."
+    },
+    "scope": {
+      "lead": "Assign BOQ items to each phase. A phase with no measurable scope (Design, Mobilization) can be marked schedule-only and tracked by dates alone.",
+      "noPackages": "No phases yet. Go back and apply the template, or add work packages in the table below.",
+      "pickItem": "Choose a BOQ item",
+      "assign": "Assign",
+      "itemCount": "{count, plural, one {# item} other {# items}}",
+      "scheduleOnlyBadge": "Schedule-only",
+      "scheduleOnlyHint": "Tracked by dates only — no BOQ scope, no % complete.",
+      "makeMeasurable": "Make measurable",
+      "markScheduleOnly": "Mark as schedule-only",
+      "unassigned": "{count, plural, one {# BOQ item is not assigned to any phase} other {# BOQ items are not assigned to any phase}} — it counts towards nothing until assigned.",
+      "allAssigned": "Every BOQ item is assigned to a phase.",
+      "allocateFailed": "Could not assign the item.",
+      "scheduleOnlyFailed": "Could not change the phase. A schedule-only phase must have no assigned items."
+    },
+    "dates": {
+      "lead": "Set each phase's planned window. Auto-suggest sequences the phases back-to-back from the project start; adjust any row.",
+      "autoSuggest": "Auto-suggest dates",
+      "noProjectStart": "Set the project start date to auto-suggest the schedule. You can still set each phase's dates by hand.",
+      "start": "Planned start",
+      "end": "Planned end",
+      "pickDate": "Select a date",
+      "orderError": "End date must be on or after the start date.",
+      "saveFailed": "Could not save the dates.",
+      "nextWithUndated": "{count, plural, one {Continue (# phase still undated)} other {Continue (# phases still undated)}}"
+    },
+    "weights": {
+      "lead": "Give each phase a weight so the project figure reflects how much each phase is worth. Distribute by BOQ value so you don't have to guess.",
+      "distribute": "Distribute weights by BOQ value",
+      "totalLabel": "Weights total",
+      "complete": "Weights complete",
+      "remaining": "{remaining}% still to reach 100%.",
+      "missingScope": "{count, plural, one {# measurable phase has no BOQ scope} other {# measurable phases have no BOQ scope}} — go back to Assign scope.",
+      "missingDates": "{count, plural, one {# phase has no planned dates} other {# phases have no planned dates}} — they will not appear on the timeline.",
+      "suggestFailed": "Could not suggest weights.",
+      "saveFailed": "Could not save the weight."
+    },
+    "nav": {
+      "back": "Back",
+      "next": "Continue",
+      "cancel": "Cancel",
+      "finish": "Finish"
     }
   },
   "activity": {

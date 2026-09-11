@@ -191,7 +191,7 @@ export interface ContractGuaranteeResponse {
   notes?: string;
 }
 
-export interface ContractMilestoneResponse {
+export interface ContractDeliverableResponse {
   id: string;
   contractId: string;
   name: string;
@@ -283,6 +283,8 @@ export interface CollectionProgressSignalResponse {
 }
 
 // ADR-021 CONST-PROG-007: work-package roll-up → weighted project physical %.
+// Master Schedule P1-a (ADR-029): the WorkPackage IS the master-schedule phase row, so each line also
+// carries its planned schedule window. % complete and actual dates are DERIVED on read, never stored.
 export interface WorkPackageRollupLine {
   id: string;
   code: string;
@@ -290,8 +292,39 @@ export interface WorkPackageRollupLine {
   responsibleOwner: string | null;
   /** Fraction of project weight (0..1). */
   weight: string;
-  percentComplete: number;
+  /**
+   * Value-weighted verified % for the package (0..100). Null for a `scheduleOnly` phase, which has no
+   * measurable BOQ scope and is tracked by dates alone (master-schedule §8.5) — never a silent 0.
+   */
+  percentComplete: number | null;
   leafCount: number;
+  /** Planned schedule window (ISO `YYYY-MM-DD`), null until dates are set. */
+  plannedStart: string | null;
+  plannedEnd: string | null;
+  /** Planned duration in days, null until set. */
+  durationDays: number | null;
+  /** Optional PM forecast finish (ISO `YYYY-MM-DD`), null until set. */
+  forecastEnd: string | null;
+  /** A non-measurable phase (Mobilization, Design): no BOQ scope, tracked by dates only. */
+  scheduleOnly: boolean;
+  /**
+   * Master Schedule P1-b (ADR-029) — DERIVED, never stored. The earliest APPROVED-DPR report date on
+   * which any of the package's allocated BOQ leaves were measured (ISO `YYYY-MM-DD`); null until the
+   * package has verified progress.
+   */
+  actualStart: string | null;
+  /**
+   * The latest such APPROVED-DPR report date, but ONLY once the package is complete
+   * (`percentComplete === 100`) — otherwise null. A documented approximation of "crossed 100%"; the
+   * exact-crossing replay is deferred.
+   */
+  actualFinish: string | null;
+  /**
+   * Per-phase schedule health from the planned window vs progress as-of the read date (same
+   * AHEAD/ON_TRACK/BEHIND bands as the project S-curve, `scheduleStatusFor`). INSUFFICIENT_DATA when
+   * the planned dates are missing.
+   */
+  scheduleStatus: ProgressScheduleStatus;
 }
 export interface ProjectRollupResponse {
   projectId: string;
@@ -301,6 +334,53 @@ export interface ProjectRollupResponse {
   /** True when the package weights total 100%. */
   weightsComplete: boolean;
   packages: WorkPackageRollupLine[];
+}
+
+// ─── Master Schedule P1-d (ADR-029): the guided schedule builder ───────────────────
+//
+// Two helper endpoints power the setup wizard. `apply-schedule-template` seeds a project's
+// phases from a server-side template so the user edits rather than invents; `suggest-weights`
+// derives each phase's progress weight from its assigned BOQ value so the user doesn't guess.
+
+/** The schedule templates the wizard can apply (single-tenant; more may be added later). */
+export type ScheduleTemplateKey = 'ACCO_STANDARD_BUILDING';
+
+/**
+ * One work package created by `apply-schedule-template`. A thin echo of the seeded rows so the
+ * wizard can render the freshly-created phases without a second round-trip. `progressWeight` and the
+ * planned dates start unset (0 / null) — the wizard fills them in via the WP PATCH.
+ */
+export interface AppliedScheduleWorkPackage {
+  id: string;
+  code: string;
+  name: string;
+  /** Suggested phase duration in days (from the template); the wizard sequences dates from it. */
+  durationDays: number | null;
+  /** A non-measurable phase (Design, Mobilization): no BOQ scope, tracked by dates only. */
+  scheduleOnly: boolean;
+}
+
+/** The result of applying a schedule template: the phases created, in sequence. */
+export interface ApplyScheduleTemplateResponse {
+  projectId: string;
+  templateKey: ScheduleTemplateKey;
+  workPackages: AppliedScheduleWorkPackage[];
+}
+
+/**
+ * A suggested progress weight for one work package = its assigned BOQ value ÷ the total assigned BOQ
+ * value across all packages (a 0..1 fraction). A `scheduleOnly` or no-scope package suggests 0. The
+ * endpoint only SUGGESTS; the WP PATCH persists a chosen weight.
+ */
+export interface SuggestedWeightLine {
+  workPackageId: string;
+  suggestedWeight: number;
+}
+
+/** The per-package weight suggestions for a project (read-only; nothing is persisted). */
+export interface SuggestWeightsResponse {
+  projectId: string;
+  weights: SuggestedWeightLine[];
 }
 
 // ─── Progress over time (Round-2 BE-1): snapshots + provisional planned baseline ──
@@ -353,6 +433,14 @@ export interface ProgressActualPoint {
  * without changing this contract. `status`/`scheduleVariancePercent` compare the latest actual
  * physical % to the planned % at that date.
  */
+/**
+ * Where the planned curve came from (Master Schedule P3, ADR-029):
+ * - `baseline` — the frozen, APPROVED `ProgrammeBaseline` snapshot (the governing plan).
+ * - `targets` — the live, editable `ProgressTarget` curve (no baseline approved yet).
+ * - `provisional` — the Option-C linear ramp placeholder (no baseline and no targets set).
+ */
+export type ProgressCurveSource = 'baseline' | 'targets' | 'provisional';
+
 export interface ProgressCurveResponse {
   projectId: string;
   baseline: ProgressCurvePoint[];
@@ -360,8 +448,15 @@ export interface ProgressCurveResponse {
   /** latest actual physical − planned at that date; null when there is insufficient data. */
   scheduleVariancePercent: number | null;
   status: ProgressScheduleStatus;
-  /** True while the baseline is the Option-C provisional placeholder (BE-1). */
+  /**
+   * True while the baseline is the Option-C provisional placeholder — i.e. `baselineSource === 'provisional'`.
+   * Kept for backward-compatibility; prefer `baselineSource` for the three-way distinction (P3).
+   */
   baselineProvisional: boolean;
+  /** Master Schedule P3 (ADR-029): which producer the planned curve was resolved from. */
+  baselineSource: ProgressCurveSource;
+  /** The governing `ProgrammeBaseline` version when `baselineSource === 'baseline'`, else null. */
+  baselineVersion: number | null;
 }
 
 /** Overall (project-level) period-over-period comparison from the two most-recent snapshots. */
@@ -372,6 +467,39 @@ export interface ProgressPeriodComparisonResponse {
   /** Null when fewer than two snapshots exist. */
   physical: { previous: number; current: number; delta: number } | null;
   verified: { previous: number; current: number; delta: number } | null;
+}
+
+// ─── Master Schedule P3 (ADR-029): the frozen, versioned programme baseline ───────
+//
+// A ProgrammeBaseline freezes the live planned-target curve at the moment it is approved, so
+// actuals are measured against a plan that cannot silently drift. One governing (APPROVED) version
+// per project at a time; re-baselining creates the next version and supersedes the last (Q-1). The
+// initial baseline (v1) is a PM act; re-baselining (v>=2) is senior/governed and cites a Variation
+// (Q-4). The variance engine is anchored to the APPROVED baseline in a later pass.
+
+export type ProgrammeBaselineStatusType = 'DRAFT' | 'APPROVED' | 'SUPERSEDED';
+
+/** One frozen point on a baseline curve: the cumulative planned % due by a target date. */
+export interface ProgrammeBaselinePointResponse {
+  /** ISO calendar date (YYYY-MM-DD). */
+  targetDate: string;
+  cumulativePercent: number;
+}
+
+/** A frozen programme baseline version with the target curve snapshotted at approval. */
+export interface ProgrammeBaselineResponse {
+  id: string;
+  projectId: string;
+  version: number;
+  status: ProgrammeBaselineStatusType;
+  approvedBy: string;
+  approvedAt: string;
+  /** The Variation this re-baseline cited; null for the initial baseline (v1). */
+  variationOrderId: string | null;
+  note: string | null;
+  createdAt: string;
+  /** The frozen target curve, ordered by targetDate. */
+  points: ProgrammeBaselinePointResponse[];
 }
 
 // ADR-021 Progress: a verified-progress line per BOQ leaf (from approved DPRs).
@@ -410,6 +538,23 @@ export interface DailyProgressReportResponse {
   approvedBy?: string;
 }
 
+// Master Schedule P2: a contract payment installment that a programme milestone RELEASES. Read-side
+// projection — the milestone→installment back-relation already exists (ContractPaymentInstallment
+// .programmeMilestoneId). `amount` is derived (percentage × contract value) with the same rounding as
+// the commercial payment schedule; `invoiced` is whether a ClientInvoice was generated from it.
+export interface MilestoneReleaseLine {
+  installmentId: string;
+  name: string;
+  /** Fraction string (0..1), e.g. "0.3000" — mirrors ContractPaymentInstallmentResponse.percentage. */
+  percentage: string;
+  triggerType: `${PaymentTrigger}`;
+  /** contractValue × percentage, fixed to 2 decimals (money). */
+  amount: string;
+  currency: string;
+  /** True when a ClientInvoice has been generated from this installment. */
+  invoiced: boolean;
+}
+
 // ADR-021 phase 2: a programme delivery milestone (baseline/forecast/actual dates, PLANNED -> VERIFIED).
 export interface ProgrammeMilestoneResponse {
   id: string;
@@ -421,9 +566,12 @@ export interface ProgrammeMilestoneResponse {
   forecastDate: string | null;
   actualDate: string | null;
   sortOrder: number;
-  contractMilestoneId: string | null;
+  contractDeliverableId: string | null;
   verifiedBy: string | null;
   verifiedAt: string | null;
+  // Master Schedule P2 — the contract payment installment(s) this milestone releases. `[]` when none
+  // link to it (ContractPaymentInstallment.programmeMilestoneId is null for every installment).
+  releases: MilestoneReleaseLine[];
 }
 
 // --- Documents (Phase 7A): the controlled project register ---------------------
@@ -596,7 +744,7 @@ export interface ContractResponse {
   retentionTerms?: ContractRetentionTermsResponse;
   advanceTerms: ContractAdvanceTermResponse[];
   guarantees: ContractGuaranteeResponse[];
-  milestones: ContractMilestoneResponse[];
+  deliverables: ContractDeliverableResponse[];
   paymentInstallments: ContractPaymentInstallmentResponse[];
 }
 

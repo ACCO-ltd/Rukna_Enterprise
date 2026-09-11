@@ -17,7 +17,21 @@ import { IpaDeductionsPanel } from './ipa-deductions-panel';
 import { IpaItemsPanel } from './ipa-items-panel';
 import { IpaStatusBadge } from './ipa-status-badge';
 
-export function IpaDetail({ contractId, ipaId }: { contractId: string; ipaId: string }) {
+/**
+ * `basePath` is the applications list this detail lives under (e.g.
+ * `/projects/:id/commercial/applications`). It anchors the back links here and is threaded
+ * down to the actions panel (certificate CTA) and the certificate list (row links) so every
+ * link stays inside the project workspace.
+ */
+export function IpaDetail({
+  contractId,
+  ipaId,
+  basePath,
+}: {
+  contractId: string;
+  ipaId: string;
+  basePath: string;
+}) {
   const t = useTranslations('platform.ipa.detail');
   const tIpa = useTranslations('platform.ipa');
   const tCommon = useTranslations('common');
@@ -44,7 +58,7 @@ export function IpaDetail({ contractId, ipaId }: { contractId: string; ipaId: st
       <div className="space-y-4">
         <Alert variant="error" messages={[notFound ? t('notFound') : t('loadFailed')]} />
         <Button variant="outline" asChild>
-          <Link href={`/contracts/${contractId}`}>{t('back')}</Link>
+          <Link href={basePath}>{t('back')}</Link>
         </Button>
       </div>
     );
@@ -60,7 +74,7 @@ export function IpaDetail({ contractId, ipaId }: { contractId: string; ipaId: st
       {/* ── Back link — outside the header card ─────────────────────────── */}
       <div className="mb-5">
         <Link
-          href={`/contracts/${contractId}`}
+          href={basePath}
           className="inline-flex min-h-9 items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary focus-visible:rounded"
         >
           <CaretLeftIcon size={14} aria-hidden="true" />
@@ -91,7 +105,7 @@ export function IpaDetail({ contractId, ipaId }: { contractId: string; ipaId: st
         </div>
       </div>
 
-      <IpaActionsPanel ipa={ipa.data} contractId={contractId} />
+      <IpaActionsPanel ipa={ipa.data} basePath={basePath} />
 
       {/* ── Summary ─────────────────────────────────────────────────────────
           Mixed key-value facts on a hairline definition list, not headline
@@ -114,7 +128,12 @@ export function IpaDetail({ contractId, ipaId }: { contractId: string; ipaId: st
             {from && to ? `${from} – ${to}` : (from ?? to ?? t('noPeriod'))}
           </DefinitionRow>
           <DefinitionRow label={t('contract')}>
-            <Link href={`/contracts/${contractId}`} className="underline-offset-4 hover:underline">
+            {/* The standalone contract page is retired; the workspace equivalent is Contract
+                & Security, keyed by the project the contract belongs to. */}
+            <Link
+              href={`/projects/${contract.data.projectId}/commercial/contract-security`}
+              className="underline-offset-4 hover:underline"
+            >
               {contract.data.contractNumber}
             </Link>
           </DefinitionRow>
@@ -138,7 +157,7 @@ export function IpaDetail({ contractId, ipaId }: { contractId: string; ipaId: st
         canEdit={actions.canEditLines}
       />
 
-      <IpcListPanel applicationId={ipa.data.id} contractId={contractId} currency={currency} />
+      <IpcListPanel applicationId={ipa.data.id} currency={currency} basePath={basePath} />
     </div>
   );
 }

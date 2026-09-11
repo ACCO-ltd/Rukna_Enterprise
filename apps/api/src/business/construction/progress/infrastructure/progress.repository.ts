@@ -108,6 +108,34 @@ export class ProgressRepository {
     });
   }
 
+  /**
+   * Master Schedule P1-b (ADR-029): the APPROVED-DPR report dates on which a set of BOQ leaves were
+   * measured — the raw material for a work package's DERIVED actualStart/actualFinish. One batched
+   * query for every leaf across all packages (not N-per-WP): the service folds the rows into per-node
+   * min/max and then per-WP boundaries.
+   *
+   * `reportDate` is a `@db.Date` on the report, not the measurement, so it travels via the `dpr`
+   * relation. A single distinct (node, date) pair is enough — the earliest is the start, the latest
+   * the (candidate) finish — so several measurements on the same day collapse to one row.
+   */
+  async approvedReportDatesForLeaves(
+    prisma: TenantPrisma,
+    organizationId: string,
+    boqNodeIds: string[],
+  ): Promise<{ boqNodeId: string; reportDate: Date }[]> {
+    if (boqNodeIds.length === 0) return [];
+    const rows = await prisma.progressMeasurement.findMany({
+      where: {
+        organizationId,
+        boqNodeId: { in: boqNodeIds },
+        dpr: { status: 'APPROVED' },
+      },
+      select: { boqNodeId: true, dpr: { select: { reportDate: true } } },
+      distinct: ['boqNodeId', 'dprId'],
+    });
+    return rows.map((r) => ({ boqNodeId: r.boqNodeId, reportDate: r.dpr.reportDate }));
+  }
+
   findFileStatus(prisma: TenantPrisma, organizationId: string, fileId: string) {
     return prisma.platformFile.findFirst({
       where: { id: fileId, organizationId },
@@ -121,6 +149,15 @@ export class ProgressRepository {
     return prisma.workPackage.create({ data });
   }
 
+  /**
+   * How many work packages a project already has — the zero-guard for applying a schedule template
+   * (P1-d): the template seeds a fresh project's phases, and refuses (409) rather than silently
+   * duplicate onto a project that already has any. A count, not a fetch: the guard only needs "any?".
+   */
+  countWorkPackages(prisma: TenantPrisma, organizationId: string, projectId: string) {
+    return prisma.workPackage.count({ where: { organizationId, projectId } });
+  }
+
   findWorkPackageById(prisma: TenantPrisma, organizationId: string, id: string) {
     return prisma.workPackage.findFirst({
       where: { id, organizationId },
@@ -128,10 +165,28 @@ export class ProgressRepository {
     });
   }
 
+  /**
+   * A work package with its BOQ-link count, for the update path: the schedule-only guard
+   * (a non-measurable phase must own no BOQ scope, master-schedule §8.5) needs to know whether the
+   * package has any allocations before it is flagged schedule-only.
+   */
+  findWorkPackageForUpdate(prisma: TenantPrisma, organizationId: string, id: string) {
+    return prisma.workPackage.findFirst({
+      where: { id, organizationId },
+      select: { id: true, projectId: true, _count: { select: { boqLinks: true } } },
+    });
+  }
+
+  updateWorkPackage(prisma: TenantPrisma, id: string, data: Prisma.WorkPackageUncheckedUpdateInput) {
+    return prisma.workPackage.update({ where: { id }, data });
+  }
+
   findWorkPackages(prisma: TenantPrisma, organizationId: string, projectId: string) {
     return prisma.workPackage.findMany({
       where: { organizationId, projectId },
       orderBy: { code: 'asc' },
+      // The schedule window (P1-a) travels with the roll-up so the master-schedule read model has the
+      // planned dates alongside the derived %. boqLinks stays included for the value-weighted roll-up.
       include: { boqLinks: { select: { boqNodeId: true } } },
     });
   }

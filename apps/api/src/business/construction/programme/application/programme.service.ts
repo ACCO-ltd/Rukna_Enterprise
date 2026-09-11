@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import type { RequestIdentity } from '@erp/types';
+import { Decimal } from '@prisma/client/runtime/library';
+import type { MilestoneReleaseLine, ProgrammeMilestoneResponse, RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
@@ -35,13 +36,17 @@ export class ProgrammeService {
     });
   }
 
-  async listMilestones(identity: RequestIdentity, projectId: string) {
+  async listMilestones(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<ProgrammeMilestoneResponse[]> {
     await this.projectAccess.assertMember(identity, projectId);
-    return this.repo.findMilestones(
+    const milestones = await this.repo.findMilestones(
       this.tenancy.getClient(),
       identity.activeOrganizationId,
       projectId,
     );
+    return milestones.map((m) => toMilestoneResponse(m));
   }
 
   /** Verify a milestone — the stage is complete. Only a PLANNED milestone can be verified. */
@@ -59,4 +64,81 @@ export class ProgrammeService {
     }
     return this.repo.verifyMilestone(prisma, milestoneId, new Date(dto.actualDate), identity.userId);
   }
+}
+
+// ─── Read-model mapping (Master Schedule P2) ────────────────────────────────────────
+//
+// Shape a stored milestone (with its included release installments) into the wire response. Only the
+// fields the release projection needs are read; the input type is structural so the mapper stays
+// decoupled from the generated Prisma payload type.
+
+/** One included installment as selected by ProgrammeRepository.findMilestones. */
+interface IncludedReleaseInstallment {
+  id: string;
+  name: string;
+  percentage: Decimal;
+  triggerType: MilestoneReleaseLine['triggerType'];
+  contract: { contractValue: Decimal; currency: string };
+  clientInvoice: { id: string } | null;
+}
+
+/** A stored milestone row with its included installments (structural, from the repo select). */
+interface StoredMilestoneWithReleases {
+  id: string;
+  projectId: string;
+  code: string;
+  name: string;
+  status: ProgrammeMilestoneResponse['status'];
+  baselineDate: Date;
+  forecastDate: Date | null;
+  actualDate: Date | null;
+  sortOrder: number;
+  contractDeliverableId: string | null;
+  verifiedBy: string | null;
+  verifiedAt: Date | null;
+  installments: IncludedReleaseInstallment[];
+}
+
+/** A `@db.Date` column as an ISO calendar date (YYYY-MM-DD); a timestamp as full ISO. Null passes through. */
+function isoDate(value: Date | null): string | null {
+  return value ? value.toISOString().slice(0, 10) : null;
+}
+
+/**
+ * Derive one release line. `amount` = contractValue × percentage, fixed to 2 decimals with Decimal —
+ * identical rounding to the commercial payment schedule (buildPaymentSchedule). `invoiced` reflects
+ * whether a ClientInvoice was generated from this installment (the 1:1 clientInvoice relation exists).
+ */
+function toReleaseLine(inst: IncludedReleaseInstallment): MilestoneReleaseLine {
+  const amount = new Decimal(inst.contract.contractValue.toString()).mul(
+    new Decimal(inst.percentage.toString()),
+  );
+  return {
+    installmentId: inst.id,
+    name: inst.name,
+    percentage: inst.percentage.toString(),
+    triggerType: inst.triggerType,
+    amount: amount.toFixed(2),
+    currency: inst.contract.currency,
+    invoiced: inst.clientInvoice !== null,
+  };
+}
+
+function toMilestoneResponse(m: StoredMilestoneWithReleases): ProgrammeMilestoneResponse {
+  return {
+    id: m.id,
+    projectId: m.projectId,
+    code: m.code,
+    name: m.name,
+    status: m.status,
+    baselineDate: m.baselineDate.toISOString().slice(0, 10),
+    forecastDate: isoDate(m.forecastDate),
+    actualDate: isoDate(m.actualDate),
+    sortOrder: m.sortOrder,
+    contractDeliverableId: m.contractDeliverableId,
+    verifiedBy: m.verifiedBy,
+    verifiedAt: m.verifiedAt ? m.verifiedAt.toISOString() : null,
+    // Installments are already ordered by (sortOrder, name) in the repo query.
+    releases: m.installments.map(toReleaseLine),
+  };
 }

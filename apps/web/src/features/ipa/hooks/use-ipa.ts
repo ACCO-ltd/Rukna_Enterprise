@@ -52,7 +52,13 @@ export function useIpa(id: string): UseQueryResult<IpaDetail, Error> {
   });
 }
 
-export function useCreateIpa(contractId: string) {
+/**
+ * `basePath` is the applications list the created application belongs to (e.g.
+ * `/projects/:id/commercial/applications`). The redirect appends the new id to it so a
+ * freshly created application lands on its detail page inside the workspace, not on the
+ * retired `/contracts/*` route.
+ */
+export function useCreateIpa(contractId: string, basePath: string) {
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -60,7 +66,7 @@ export function useCreateIpa(contractId: string) {
     mutationFn: (payload: CreateIpaPayload) => createIpa(payload),
     onSuccess: async (created) => {
       await queryClient.invalidateQueries({ queryKey: ipaKeys.all });
-      router.push(`/contracts/${contractId}/applications/${created.id}`);
+      router.push(`${basePath}/${created.id}`);
     },
   });
 }

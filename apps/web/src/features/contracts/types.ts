@@ -10,7 +10,7 @@ export type {
   ContractDetail,
   ContractAdvanceTerm,
   ContractGuarantee,
-  ContractMilestone,
+  ContractDeliverable,
   ContractRetentionTerms,
 } from '@/lib/api-types';
 

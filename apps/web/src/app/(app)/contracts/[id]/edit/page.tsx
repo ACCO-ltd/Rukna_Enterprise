@@ -1,21 +1,20 @@
-import { getTranslations } from 'next-intl/server';
+import { ContractEditRedirect } from '@/features/contracts/components/contract-edit-redirect';
 
-import { PageHeader } from '@/components/layout/page-header';
-import { ContractEdit } from '@/features/contracts/components/contract-edit';
-
-export default async function EditContractPage({ params }: { params: Promise<{ id: string }> }) {
+/**
+ * The standalone contract edit page is retired (P3 Slice B). This route now only catches legacy
+ * deep-links and forwards them into the project's Commercial workspace edit route; the client
+ * boundary resolves the contract's projectId and replaces the URL.
+ */
+export default async function LegacyEditContractPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = await params;
-  const t = await getTranslations('platform.contracts');
 
   return (
     <div className="w-full max-w-4xl">
-      <PageHeader
-        breadcrumbs={[{ label: t('detail.back'), href: `/contracts/${id}` }]}
-        title={t('create.editTitle')}
-      />
-      <div className="rounded-lg border border-border bg-surface p-5 sm:p-6">
-        <ContractEdit id={id} />
-      </div>
+      <ContractEditRedirect contractId={id} />
     </div>
   );
 }

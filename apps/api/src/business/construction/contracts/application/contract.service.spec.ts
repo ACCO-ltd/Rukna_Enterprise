@@ -31,10 +31,13 @@ function build(contract: Record<string, unknown> | null): Mocks {
     findGuaranteeOwned: jest.fn(),
     updateGuarantee: jest.fn().mockResolvedValue({ count: 1 }),
     findGuaranteeById: jest.fn().mockResolvedValue({ id: 'g-1', status: 'DISCHARGED' }),
-    addMilestone: jest.fn().mockResolvedValue({ id: 'm-1' }),
-    findMilestoneOwned: jest.fn(),
-    completeMilestone: jest.fn().mockResolvedValue({ count: 1 }),
-    findMilestoneById: jest.fn().mockResolvedValue({ id: 'm-1' }),
+    addDeliverable: jest.fn().mockResolvedValue({ id: 'd-1' }),
+    findDeliverableOwned: jest.fn(),
+    completeDeliverable: jest.fn().mockResolvedValue({ count: 1 }),
+    findDeliverableById: jest.fn().mockResolvedValue({ id: 'd-1' }),
+    // Payment-plan editor (commercial-billing §5 P1 + Q-B ACTIVE re-profile).
+    findInvoicedInstallments: jest.fn().mockResolvedValue([]),
+    reprofileUninvoicedInstallments: jest.fn().mockResolvedValue({ count: 0 }),
     // ADR-029 V-2 — the variation current-value raise seam.
     findValueForRaise: jest.fn(),
     raiseCurrentContractValue: jest.fn().mockResolvedValue({}),
@@ -46,10 +49,8 @@ function build(contract: Record<string, unknown> | null): Mocks {
 
   // Phase 7A: evidence freezes when the contract executes and when a guarantee leaves ACTIVE.
   const attachments = { freezeFor: jest.fn().mockResolvedValue(0) };
-
-  // ADR-029 T-4: the BOQ read port used by contract create for the tie-out. Not exercised by the
-  // term/lifecycle suites, so a default stub is enough here.
-  const boqVersioning = { getInContractTotal: jest.fn().mockResolvedValue(null) };
+  // ADR-029 R3/R6 — the BOQ read port used by the tie-out and the variation raise.
+  const boqVersioning = { getInContractTotal: jest.fn().mockResolvedValue('750000.00') };
 
   const service = new ContractService(
     tenancy as never,
@@ -143,13 +144,13 @@ describe('A1 — parent-scoped child mutation security (CONST-COM-002)', () => {
     expect(repo.removeAdvanceTerm).not.toHaveBeenCalled();
   });
 
-  it('rejects completing a milestone that does not belong to the contract', async () => {
+  it('rejects completing a deliverable that does not belong to the contract', async () => {
     const { service, repo } = build(active);
-    repo.findMilestoneOwned.mockResolvedValue(null);
+    repo.findDeliverableOwned.mockResolvedValue(null);
     await expect(
-      service.completeMilestone(identity, 'c-1', 'foreign-milestone'),
+      service.completeDeliverable(identity, 'c-1', 'foreign-deliverable'),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(repo.completeMilestone).not.toHaveBeenCalled();
+    expect(repo.completeDeliverable).not.toHaveBeenCalled();
   });
 
   it('scopes the delete by contractId when the term is validly owned', async () => {
@@ -232,19 +233,19 @@ describe('Cross-tenant / organization isolation (CONST-COM-002)', () => {
     expect(update.repo.updateGuarantee).not.toHaveBeenCalled();
   });
 
-  it('cannot add or complete a milestone through a foreign-organization contract', async () => {
+  it('cannot add or complete a deliverable through a foreign-organization contract', async () => {
     const add = build(foreignOrgContract);
     await expect(
-      add.service.addMilestone(identity, 'contract-in-org-2', { name: 'Milestone' } as never),
+      add.service.addDeliverable(identity, 'contract-in-org-2', { name: 'Deliverable' } as never),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(add.repo.addMilestone).not.toHaveBeenCalled();
+    expect(add.repo.addDeliverable).not.toHaveBeenCalled();
 
     const complete = build(foreignOrgContract);
     await expect(
-      complete.service.completeMilestone(identity, 'contract-in-org-2', 'milestone-in-org-2'),
+      complete.service.completeDeliverable(identity, 'contract-in-org-2', 'deliverable-in-org-2'),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(complete.repo.findMilestoneOwned).not.toHaveBeenCalled();
-    expect(complete.repo.completeMilestone).not.toHaveBeenCalled();
+    expect(complete.repo.findDeliverableOwned).not.toHaveBeenCalled();
+    expect(complete.repo.completeDeliverable).not.toHaveBeenCalled();
   });
 
   it('honours the project-access gate: a rejected assertContract blocks any child mutation', async () => {
@@ -295,25 +296,23 @@ describe('Same-organization wrong-parent contract id (CONST-COM-002)', () => {
     expect(repo.updateGuarantee).not.toHaveBeenCalled();
   });
 
-  it('completeMilestone: a milestone of contract-B requested via contract-A fails, scoped by A', async () => {
+  it('completeDeliverable: a deliverable of contract-B requested via contract-A fails, scoped by A', async () => {
     const { service, repo } = build(contractA);
-    repo.findMilestoneOwned.mockResolvedValue(null);
+    repo.findDeliverableOwned.mockResolvedValue(null);
     await expect(
-      service.completeMilestone(identity, 'contract-A', 'milestone-of-contract-B'),
+      service.completeDeliverable(identity, 'contract-A', 'deliverable-of-contract-B'),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(repo.findMilestoneOwned).toHaveBeenCalledWith(
+    expect(repo.findDeliverableOwned).toHaveBeenCalledWith(
       expect.anything(),
       'contract-A',
-      'milestone-of-contract-B',
+      'deliverable-of-contract-B',
     );
-    expect(repo.completeMilestone).not.toHaveBeenCalled();
+    expect(repo.completeDeliverable).not.toHaveBeenCalled();
   });
 });
 
 describe('ADR-023 — payment schedule on contract create (CONST-COM-012)', () => {
-  function buildForCreate(
-    opts: { boqStatus?: string; tieOutTotal?: string | null } = {},
-  ) {
+  function buildForCreate() {
     const repo = {
       findByNumber: jest.fn().mockResolvedValue(null),
       findEffectiveClientContract: jest.fn().mockResolvedValue(null),
@@ -323,19 +322,14 @@ describe('ADR-023 — payment schedule on contract create (CONST-COM-012)', () =
     const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
     const audit = { record: jest.fn().mockResolvedValue(undefined) };
     const prisma = {
-      boqVersion: {
-        findFirst: jest.fn().mockResolvedValue({ status: opts.boqStatus ?? 'COMMITTED' }),
-      },
+      boqVersion: { findFirst: jest.fn().mockResolvedValue({ status: 'BASELINED' }) },
       $transaction: (fn: (tx: unknown) => unknown) => fn({}),
     };
     const tenancy = { getClient: () => prisma };
     const attachments = { freezeFor: jest.fn().mockResolvedValue(0) };
-    // ADR-029 T-4: by default the BOQ ties out to the DTO's contractValue so the schedule tests pass.
-    const boqVersioning = {
-      getInContractTotal: jest
-        .fn()
-        .mockResolvedValue(opts.tieOutTotal === undefined ? '1000000.00' : opts.tieOutTotal),
-    };
+    // ADR-029 T-1/T-4 — create() ties the contract out to the priced scope. The mock returns a tie-out
+    // equal to base.contractValue so these payment-plan tests exercise the plan path, not the tie-out gate.
+    const boqVersioning = { getInContractTotal: jest.fn().mockResolvedValue('1000000.00') };
     const service = new ContractService(
       tenancy as never,
       repo as never,
@@ -344,7 +338,7 @@ describe('ADR-023 — payment schedule on contract create (CONST-COM-012)', () =
       attachments as never,
       boqVersioning as never,
     );
-    return { repo, attachments, boqVersioning, prisma, service };
+    return { repo, attachments, service };
   }
 
   const base = {
@@ -401,13 +395,142 @@ describe('ADR-023 — payment schedule on contract create (CONST-COM-012)', () =
   });
 });
 
+describe('commercial-billing §5 P1 + Q-B — payment-plan editor (DRAFT replace / ACTIVE re-profile)', () => {
+  const draftMilestone = { id: 'c-1', status: 'DRAFT', billingModel: 'MILESTONE', retentionTerms: null };
+  const activeMilestone = { id: 'c-1', status: 'ACTIVE', billingModel: 'MILESTONE', retentionTerms: null };
+  const draftMeasured = { id: 'c-1', status: 'DRAFT', billingModel: 'MEASURED_IPC', retentionTerms: null };
+  const closedMilestone = { id: 'c-1', status: 'CLOSED', billingModel: 'MILESTONE', retentionTerms: null };
+
+  // Advance 40 / Structure 35 / Finish 25 = 100%.
+  const newPlan = [
+    { sortOrder: 0, name: 'Advance', percentage: 0.4, triggerType: 'ADVANCE' as const },
+    { sortOrder: 1, name: 'Structure', percentage: 0.35, triggerType: 'MILESTONE' as const },
+    { sortOrder: 2, name: 'Finish', percentage: 0.25, triggerType: 'MILESTONE' as const },
+  ];
+
+  // ── DRAFT: unchanged full-replace behaviour ────────────────────────────────────────────────
+  it('DRAFT: replaces the whole plan and audits it as a REPLACE', async () => {
+    const { service, repo, audit } = build(draftMilestone);
+    await service.replacePaymentPlan(identity, 'c-1', { installments: newPlan } as never);
+
+    // No invoiced installments on a DRAFT contract → the submitted set IS the whole plan.
+    expect(repo.findInvoicedInstallments).toHaveBeenCalledWith(expect.anything(), 'c-1');
+    expect(repo.reprofileUninvoicedInstallments).toHaveBeenCalledWith(expect.anything(), 'c-1', newPlan);
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ eventType: 'CONTRACT_PAYMENT_PLAN_REPLACED', action: 'REPLACE' }),
+    );
+  });
+
+  it('DRAFT: rejects a plan that does not total 100% and writes nothing', async () => {
+    const { service, repo } = build(draftMilestone);
+    await expect(
+      service.replacePaymentPlan(identity, 'c-1', { installments: newPlan.slice(0, 2) } as never), // 75%
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.reprofileUninvoicedInstallments).not.toHaveBeenCalled();
+  });
+
+  // ── ACTIVE: previously-409 path is now allowed, invoiced stages frozen ──────────────────────
+  it('ACTIVE: re-profiles the un-invoiced tail when invoiced% + submitted% = 100 and audits a REPROFILE', async () => {
+    const { service, repo, audit } = build(activeMilestone);
+    // 40% + 30% already invoiced → frozen 70%; the editable tail must total 30%.
+    repo.findInvoicedInstallments.mockResolvedValue([
+      { id: 'inv-1', percentage: 0.4 },
+      { id: 'inv-2', percentage: 0.3 },
+    ]);
+    const tail = [
+      { sortOrder: 2, name: 'Second fix', percentage: 0.2, triggerType: 'MILESTONE' as const },
+      { sortOrder: 3, name: 'Handover', percentage: 0.1, triggerType: 'MILESTONE' as const },
+    ];
+
+    await service.replacePaymentPlan(identity, 'c-1', { installments: tail } as never);
+
+    expect(repo.reprofileUninvoicedInstallments).toHaveBeenCalledWith(expect.anything(), 'c-1', tail);
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        eventType: 'CONTRACT_PAYMENT_PLAN_REPROFILED',
+        action: 'REPROFILE',
+        after: expect.objectContaining({
+          status: 'ACTIVE',
+          frozenInvoicedCount: 2,
+          frozenInvoicedPercentage: expect.closeTo(0.7, 5),
+        }),
+      }),
+    );
+  });
+
+  it('ACTIVE: rejects when the submitted tail ≠ 100 − invoiced and writes nothing', async () => {
+    const { service, repo } = build(activeMilestone);
+    repo.findInvoicedInstallments.mockResolvedValue([
+      { id: 'inv-1', percentage: 0.4 },
+      { id: 'inv-2', percentage: 0.3 },
+    ]);
+    // Frozen 70% needs an editable 30%, but this tail totals 40% → 110% overall.
+    const tooMuch = [
+      { sortOrder: 2, name: 'Second fix', percentage: 0.25, triggerType: 'MILESTONE' as const },
+      { sortOrder: 3, name: 'Handover', percentage: 0.15, triggerType: 'MILESTONE' as const },
+    ];
+    await expect(
+      service.replacePaymentPlan(identity, 'c-1', { installments: tooMuch } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.reprofileUninvoicedInstallments).not.toHaveBeenCalled();
+  });
+
+  it('ACTIVE: preserves the invoiced installments — never deletes or alters them', async () => {
+    const { service, repo } = build(activeMilestone);
+    repo.findInvoicedInstallments.mockResolvedValue([
+      { id: 'inv-1', percentage: 0.4 },
+      { id: 'inv-2', percentage: 0.3 },
+    ]);
+    const tail = [
+      { sortOrder: 2, name: 'Finish', percentage: 0.3, triggerType: 'MILESTONE' as const },
+    ];
+    await service.replacePaymentPlan(identity, 'c-1', { installments: tail } as never);
+
+    // The service delegates the "delete only un-invoiced, keep invoiced" swap to the repo. The
+    // frozen set is passed to reprofile ONLY as the new un-invoiced rows — the invoiced ids are
+    // never handed to any delete/replace path.
+    expect(repo.reprofileUninvoicedInstallments).toHaveBeenCalledTimes(1);
+    expect(repo.reprofileUninvoicedInstallments).toHaveBeenCalledWith(expect.anything(), 'c-1', tail);
+    const [, , submitted] = repo.reprofileUninvoicedInstallments.mock.calls[0];
+    expect(submitted).toEqual(tail);
+    expect(submitted).not.toContainEqual(expect.objectContaining({ id: 'inv-1' }));
+    expect(submitted).not.toContainEqual(expect.objectContaining({ id: 'inv-2' }));
+  });
+
+  // ── Guards ─────────────────────────────────────────────────────────────────────────────────
+  it('rejects editing a CLOSED contract with a 409 and the use-a-Variation message', async () => {
+    const { service, repo } = build(closedMilestone);
+    await expect(
+      service.replacePaymentPlan(identity, 'c-1', { installments: newPlan } as never),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(repo.findInvoicedInstallments).not.toHaveBeenCalled();
+    expect(repo.reprofileUninvoicedInstallments).not.toHaveBeenCalled();
+  });
+
+  it('rejects editing a non-MILESTONE (MEASURED_IPC) contract', async () => {
+    const { service, repo } = build(draftMeasured);
+    await expect(
+      service.replacePaymentPlan(identity, 'c-1', { installments: newPlan } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.reprofileUninvoicedInstallments).not.toHaveBeenCalled();
+  });
+
+  it('cannot edit a plan through a foreign-organization contract (parent gate blocks first)', async () => {
+    const { service, repo } = build(null);
+    await expect(
+      service.replacePaymentPlan(identity, 'contract-in-org-2', { installments: newPlan } as never),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(repo.findInvoicedInstallments).not.toHaveBeenCalled();
+    expect(repo.reprofileUninvoicedInstallments).not.toHaveBeenCalled();
+  });
+});
+
 // ADR-029 §3 — BOQ↔Contract tie-out + three-layer contract value (R3, GitHub #193).
-// UNRUN in this ticket by direction (no migrated DB); pure-logic assertions only, wired the same
-// way as the ADR-023 create suite above (all deps mocked, $transaction runs the callback inline).
+// Pure-logic assertions; all deps mocked, $transaction runs the callback inline.
 describe('R3 — tie-out & three-layer contract value (T-1..T-4)', () => {
-  function buildForCreate(
-    opts: { boqStatus?: string; tieOutTotal?: string | null } = {},
-  ) {
+  function buildForCreate(opts: { boqStatus?: string; tieOutTotal?: string | null } = {}) {
     const repo = {
       findByNumber: jest.fn().mockResolvedValue(null),
       findEffectiveClientContract: jest.fn().mockResolvedValue(null),
@@ -451,18 +574,15 @@ describe('R3 — tie-out & three-layer contract value (T-1..T-4)', () => {
   it('T-1/T-4: derives base = current = the shared in-contract tie-out total', async () => {
     const { service, repo, boqVersioning } = buildForCreate({ tieOutTotal: '750000.00' });
     await service.create(identity, { ...base, contractValue: '750000.00' } as never);
-    // Reuses the BOQ read port (never a second sum) with org+project+version scoping.
     expect(boqVersioning.getInContractTotal).toHaveBeenCalledWith(identity, 'p-1', 'bv-1');
-    // Base is FROZEN from the tie-out; current starts EQUAL to base (T-2/T-3).
     expect(repo.create).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ baseContractValue: '750000.00', contractValue: '750000.00' }),
     );
   });
 
-  it('T-4: a client-supplied contractValue below the tie-out is rejected 400 TIEOUT_MISMATCH with the delta', async () => {
+  it('T-4: a contractValue below the tie-out is rejected 400 TIEOUT_MISMATCH with the delta', async () => {
     const { service, repo } = buildForCreate({ tieOutTotal: '750000.00' });
-    // 700k against a 750k priced scope — the contract can never be set below the BOQ (D3).
     const err = await service
       .create(identity, { ...base, contractValue: '700000.00' } as never)
       .catch((e) => e);
@@ -480,7 +600,7 @@ describe('R3 — tie-out & three-layer contract value (T-1..T-4)', () => {
     expect(repo.create).not.toHaveBeenCalled();
   });
 
-  it('T-4: a client-supplied contractValue above the tie-out is rejected with a positive delta', async () => {
+  it('T-4: a contractValue above the tie-out is rejected with a positive delta', async () => {
     const { service } = buildForCreate({ tieOutTotal: '750000.00' });
     const err = await service
       .create(identity, { ...base, contractValue: '800000.00' } as never)
@@ -501,7 +621,7 @@ describe('R3 — tie-out & three-layer contract value (T-1..T-4)', () => {
     expect(repo.create).toHaveBeenCalled();
   });
 
-  it('committed-status acceptance: a DRAFT / SNAPSHOT version is rejected, tie-out never computed', async () => {
+  it('committed-status: a DRAFT/SNAPSHOT/SUPERSEDED/CANCELLED version is rejected, tie-out never computed', async () => {
     for (const status of ['DRAFT', 'SNAPSHOT', 'SUPERSEDED', 'CANCELLED']) {
       const { service, repo, boqVersioning } = buildForCreate({ boqStatus: status });
       await expect(
@@ -527,7 +647,6 @@ describe('V-2 — raiseCurrentValueForVariation (current rises by net, base froz
 
   it('raises current by the VO net and leaves the frozen base untouched', async () => {
     const { service, repo, audit } = build(null);
-    // Base 1,000,000 frozen; current currently at base.
     repo.findValueForRaise.mockResolvedValue({
       id: 'c-1',
       projectId: 'p-1',
@@ -542,7 +661,6 @@ describe('V-2 — raiseCurrentValueForVariation (current rises by net, base froz
       netDelta: new Decimal('900'),
     });
 
-    // Current moves to base + net; ONLY contractValue is written — baseContractValue is never touched.
     expect(repo.raiseCurrentContractValue).toHaveBeenCalledWith({}, 'c-1', '1000900.00');
     expect(res).toMatchObject({
       previousContractValue: '1000000.00',
@@ -561,7 +679,6 @@ describe('V-2 — raiseCurrentValueForVariation (current rises by net, base froz
 
   it('accumulates: a second adopt raises from the already-raised current, base still frozen', async () => {
     const { service, repo } = build(null);
-    // Current already raised once to 1,000,900; base still 1,000,000.
     repo.findValueForRaise.mockResolvedValue({
       id: 'c-1',
       projectId: 'p-1',

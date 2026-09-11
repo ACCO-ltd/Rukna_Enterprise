@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Patch,
   Delete,
   Body,
@@ -38,9 +39,10 @@ import { TerminateContractDto } from './dto/terminate-contract.dto.js';
 import { AddAdvanceTermDto } from './dto/add-advance-term.dto.js';
 import { AddGuaranteeDto } from './dto/add-guarantee.dto.js';
 import { UpdateGuaranteeDto } from './dto/update-guarantee.dto.js';
-import { AddMilestoneDto } from './dto/add-milestone.dto.js';
+import { AddDeliverableDto } from './dto/add-deliverable.dto.js';
 import { AddRetentionTermsDto } from './dto/add-retention-terms.dto.js';
 import { SetInstallmentMilestoneDto } from './dto/set-installment-milestone.dto.js';
+import { ReplacePaymentPlanDto } from './dto/replace-payment-plan.dto.js';
 
 @ApiTags('Contracts')
 @ApiBearerAuth('access-token')
@@ -168,6 +170,29 @@ export class ContractsController {
 
   // ─── Payment-schedule installments ─────────────────────────────────────────────
 
+  @Put(':id/payment-plan')
+  @RequirePermissions(PERMISSIONS.contractsManage)
+  @ApiOperation({
+    summary: "Edit a MILESTONE contract's payment plan — DRAFT replace or ACTIVE re-profile (commercial-billing §5 P1, Q-B)",
+    description:
+      'The body is the un-invoiced portion of the schedule. On a DRAFT contract it is the whole plan ' +
+      '(a full replace). On an ACTIVE contract the already-invoiced installments are frozen and left ' +
+      'untouched, and this set re-profiles the remaining stages; Σ(invoiced %) + Σ(this set %) must ' +
+      'equal 1. Permitted only for MILESTONE contracts in DRAFT or ACTIVE — other statuses change ' +
+      'through a Variation.',
+  })
+  @ApiParam({ name: 'id' })
+  @ApiResponse({ status: 200, description: 'Payment plan replaced (DRAFT) or re-profiled (ACTIVE)' })
+  @ApiResponse({ status: 400, description: 'Plan does not reconcile to 100%, or contract is not MILESTONE' })
+  @ApiResponse({ status: 409, description: 'Contract is not DRAFT or ACTIVE' })
+  replacePaymentPlan(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: ReplacePaymentPlanDto,
+  ) {
+    return this.contractService.replacePaymentPlan(identity, id, dto);
+  }
+
   @Patch(':id/installments/:installmentId/milestone')
   @RequirePermissions(PERMISSIONS.contractsManage)
   @ApiOperation({
@@ -236,30 +261,30 @@ export class ContractsController {
     return this.contractService.updateGuarantee(identity, id, guaranteeId, dto);
   }
 
-  // ─── Milestones ───────────────────────────────────────────────────────────────
+  // ─── Deliverables ─────────────────────────────────────────────────────────────
 
-  @Post(':id/milestones')
+  @Post(':id/deliverables')
   @RequirePermissions(PERMISSIONS.contractsManage)
-  @ApiOperation({ summary: 'Add a contract milestone' })
+  @ApiOperation({ summary: 'Add a contract deliverable' })
   @ApiParam({ name: 'id' })
-  addMilestone(
+  addDeliverable(
     @CurrentUser() identity: RequestIdentity,
     @Param('id') id: string,
-    @Body() dto: AddMilestoneDto,
+    @Body() dto: AddDeliverableDto,
   ) {
-    return this.contractService.addMilestone(identity, id, dto);
+    return this.contractService.addDeliverable(identity, id, dto);
   }
 
-  @Post(':id/milestones/:milestoneId/complete')
+  @Post(':id/deliverables/:deliverableId/complete')
   @RequirePermissions(PERMISSIONS.contractsManage)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Mark a contract milestone as complete' })
-  completeMilestone(
+  @ApiOperation({ summary: 'Mark a contract deliverable as complete' })
+  completeDeliverable(
     @CurrentUser() identity: RequestIdentity,
     @Param('id') id: string,
-    @Param('milestoneId') milestoneId: string,
+    @Param('deliverableId') deliverableId: string,
   ) {
-    return this.contractService.completeMilestone(identity, id, milestoneId);
+    return this.contractService.completeDeliverable(identity, id, deliverableId);
   }
 
   // --- Evidence (Phase 7A) ------------------------------------------------------

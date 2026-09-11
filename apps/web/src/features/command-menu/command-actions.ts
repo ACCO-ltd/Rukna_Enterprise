@@ -37,7 +37,11 @@ export interface CommandAction {
 export const COMMAND_ACTIONS: CommandAction[] = [
   { id: 'createProject', href: '/projects/new', moduleKey: 'portfolio', permissionKey: 'create:project' },
   { id: 'newClient', href: '/clients/new', moduleKey: 'portfolio' },
-  { id: 'newContract', href: '/contracts/new', moduleKey: 'portfolio' },
+  // "New contract" is intentionally absent (P3 Slice B). A contract is always project-scoped and
+  // is now created from inside a project's Commercial workspace (`/projects/:id/commercial/
+  // contract/new`); there is no org-level create route to point a command at. Listing one that
+  // detoured through `/projects` would be a "New contract" action that does not create a contract
+  // — the honesty rule (ux-doctrine §4) says don't offer it.
   {
     id: 'newMaterialRequest',
     href: '/procurement/requests/new',

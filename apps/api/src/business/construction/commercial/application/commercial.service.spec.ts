@@ -34,7 +34,7 @@ const baseContract = {
   retentionTerms: null,
   advanceTerms: [],
   guarantees: [],
-  milestones: [],
+  deliverables: [],
 };
 
 function build(overrides: {
@@ -248,6 +248,20 @@ describe('CommercialService.getSummary', () => {
     expect(res.metrics.contractValue.state).toBe('UNAVAILABLE');
     expect(res.metrics.certifiedGross.state).toBe('UNAVAILABLE');
     expect(res.attention.map((a) => a.kind)).toContain('NO_MAIN_CONTRACT');
+  });
+
+  it('points NO_MAIN_CONTRACT at the project-scoped contract create route (P3 Slice B)', async () => {
+    const { service } = build({ contract: null });
+    const res = await service.getSummary(
+      identityWith([
+        PERMISSIONS.contractsView,
+        PERMISSIONS.financialPositionView,
+        PERMISSIONS.contractsCreate,
+      ]),
+      'p-1',
+    );
+    const noContract = res.attention.find((a) => a.kind === 'NO_MAIN_CONTRACT');
+    expect(noContract?.actionUrl).toBe('/projects/p-1/commercial/contract/new');
   });
 
   describe('ADR-029 T-5 — total client revenue = current contract value + Σ separate charges', () => {
@@ -724,7 +738,7 @@ describe('CommercialService.getCurrentCycle', () => {
       responsibleRole: 'QUANTITY_SURVEYOR',
       nextAction: {
         kind: 'CREATE_APPLICATION',
-        href: '/contracts/c-1/applications/new',
+        href: '/projects/p-1/commercial/applications/new',
       },
     });
   });
@@ -751,7 +765,34 @@ describe('CommercialService.getCurrentCycle', () => {
 
     expect(result.nextAction).toMatchObject({
       kind: 'SUBMIT_APPLICATION',
-      href: '/contracts/c-1/applications/ipa-1',
+      href: '/projects/p-1/commercial/applications/ipa-1',
+    });
+  });
+
+  it('routes ISSUE_CERTIFICATE to the project-scoped application certificate page', async () => {
+    const { service } = build({
+      applications: [
+        {
+          id: 'ipa-1',
+          applicationNumber: 1,
+          applicationRef: 'IPA-001',
+          status: 'SUBMITTED',
+          periodFrom: null,
+          periodTo: null,
+          items: [],
+          certificates: [],
+        },
+      ],
+    });
+    const result = await service.getCurrentCycle(
+      identityWith([PERMISSIONS.contractsView, PERMISSIONS.ipcIssue]),
+      'p-1',
+    );
+
+    expect(result.stage).toBe('AWAITING_CERTIFICATION');
+    expect(result.nextAction).toMatchObject({
+      kind: 'ISSUE_CERTIFICATE',
+      href: '/projects/p-1/commercial/applications/ipa-1/certificates/new',
     });
   });
 
@@ -801,6 +842,50 @@ describe('CommercialService.getCurrentCycle', () => {
     expect(result.stage).toBe('AWAITING_PAYMENT');
     expect(result.nextAction).toBeNull();
     expect(result.blockers).toContain('RECEIPT_WORKFLOW_UNAVAILABLE');
+  });
+
+  // P3 Slice B — contract create/edit/advance now live in the project workspace, so the
+  // server-owned CTAs point at project-scoped routes rather than the old /contracts/* pages.
+  it('routes CREATE_CONTRACT to the project-scoped contract create page', async () => {
+    const { service } = build({ contract: null });
+    const result = await service.getCurrentCycle(
+      identityWith([PERMISSIONS.contractsView, PERMISSIONS.contractsCreate]),
+      'p-1',
+    );
+
+    expect(result.stage).toBe('NO_CONTRACT');
+    expect(result.nextAction).toMatchObject({
+      kind: 'CREATE_CONTRACT',
+      href: '/projects/p-1/commercial/contract/new',
+    });
+  });
+
+  it('routes EDIT_CONTRACT on a draft contract to the project-scoped edit page', async () => {
+    const { service } = build({ contract: { ...baseContract, status: 'DRAFT' } });
+    const result = await service.getCurrentCycle(
+      identityWith([PERMISSIONS.contractsView, PERMISSIONS.contractsManage]),
+      'p-1',
+    );
+
+    expect(result.stage).toBe('CONTRACT_DRAFT');
+    expect(result.nextAction).toMatchObject({
+      kind: 'EDIT_CONTRACT',
+      href: '/projects/p-1/commercial/contract/edit',
+    });
+  });
+
+  it('routes ADVANCE_CONTRACT (approver, no edit right) to the contract-security page', async () => {
+    const { service } = build({ contract: { ...baseContract, status: 'DRAFT' } });
+    const result = await service.getCurrentCycle(
+      identityWith([PERMISSIONS.contractsView, PERMISSIONS.contractsApprove]),
+      'p-1',
+    );
+
+    expect(result.stage).toBe('CONTRACT_DRAFT');
+    expect(result.nextAction).toMatchObject({
+      kind: 'ADVANCE_CONTRACT',
+      href: '/projects/p-1/commercial/contract-security',
+    });
   });
 });
 
@@ -948,13 +1033,13 @@ describe('getBilling — the invoice-total settlement basis', () => {
             application: { id: 'ipa-6', applicationRef: 'IPA-006', applicationNumber: 6 },
           },
         }),
+        billingInvoice({ id: 'inv-migrated' }),
         // ADR-029 R-4 — a one-off separate-charge invoice, tagged by its SEPARATE_CHARGE BOQ leaf.
         billingInvoice({
           id: 'inv-sc',
           sourceBoqNodeId: 'node-9',
           sourceBoqNode: { id: 'node-9', code: 'SC-01', description: 'Client-requested extra fence' },
         }),
-        billingInvoice({ id: 'inv-migrated' }),
       ],
     });
 
@@ -967,10 +1052,10 @@ describe('getBilling — the invoice-total settlement basis', () => {
       id: 'inst-3',
     });
     expect(byId.get('inv-c')).toEqual({ kind: 'IPC', label: 'IPA-006', id: 'ipc-6' });
-    // A separate charge is distinguishable from installment/IPC/NONE, labelled by its BOQ code.
-    expect(byId.get('inv-sc')).toEqual({ kind: 'SEPARATE_CHARGE', label: 'SC-01', id: 'node-9' });
     // A migration-loaded invoice says it has no source rather than borrowing one.
     expect(byId.get('inv-migrated')).toEqual({ kind: 'NONE', label: null, id: null });
+    // A separate charge is distinguishable from installment/IPC/NONE, labelled by its BOQ code.
+    expect(byId.get('inv-sc')).toEqual({ kind: 'SEPARATE_CHARGE', label: 'SC-01', id: 'node-9' });
   });
 
   /**

@@ -247,7 +247,7 @@ export class CommercialService {
             severity: 'WARNING',
             kind: 'NO_MAIN_CONTRACT',
             actionUrl: identity.permissions.includes(PERMISSIONS.contractsCreate)
-              ? `/contracts/new?projectId=${projectId}`
+              ? `/projects/${projectId}/commercial/contract/new`
               : null,
             responsibleRole: 'CONTRACT_ADMINISTRATOR',
             contextId: null,
@@ -374,7 +374,7 @@ export class CommercialService {
       contract.id,
       ...contract.guarantees.map((g) => g.id),
       ...contract.advanceTerms.map((a) => a.id),
-      ...contract.milestones.map((m) => m.id),
+      ...contract.deliverables.map((d) => d.id),
       ...certs.map((c) => c.id),
       ...invoices.map((i) => i.id),
     ];
@@ -667,7 +667,7 @@ export class CommercialService {
         stage: 'NO_CONTRACT',
         application: null,
         nextAction: allowed
-          ? { kind: 'CREATE_CONTRACT', href: `/contracts/new?projectId=${projectId}` }
+          ? { kind: 'CREATE_CONTRACT', href: `/projects/${projectId}/commercial/contract/new` }
           : null,
         blockers: ['MAIN_CONTRACT_MISSING', ...(allowed ? [] : (['PERMISSION_REQUIRED'] as const))],
         capabilities: result.capabilities,
@@ -710,9 +710,9 @@ export class CommercialService {
         stage: 'CONTRACT_DRAFT',
         application: null,
         nextAction: mayEdit
-          ? { kind: 'EDIT_CONTRACT', href: `/contracts/${contract.id}/edit` }
+          ? { kind: 'EDIT_CONTRACT', href: `/projects/${projectId}/commercial/contract/edit` }
           : mayAdvance
-            ? { kind: 'ADVANCE_CONTRACT', href: `/contracts/${contract.id}` }
+            ? { kind: 'ADVANCE_CONTRACT', href: `/projects/${projectId}/commercial/contract-security` }
             : null,
         blockers: [
           'CONTRACT_NOT_ACTIVE',
@@ -757,7 +757,10 @@ export class CommercialService {
         stage: 'READY_FOR_APPLICATION',
         application: null,
         nextAction: allowed
-          ? { kind: 'CREATE_APPLICATION', href: `/contracts/${contract.id}/applications/new` }
+          ? {
+              kind: 'CREATE_APPLICATION',
+              href: `/projects/${projectId}/commercial/applications/new`,
+            }
           : null,
         blockers: allowed ? [] : ['PERMISSION_REQUIRED'],
         capabilities: result.capabilities,
@@ -766,12 +769,7 @@ export class CommercialService {
       };
     }
 
-    const projection = this.projectCycleAction(
-      application,
-      contract.id,
-      projectId,
-      result.capabilities,
-    );
+    const projection = this.projectCycleAction(application, projectId, result.capabilities);
     return {
       projectId,
       contract: identitySummary,
@@ -1256,11 +1254,10 @@ export class CommercialService {
 
   private projectCycleAction(
     row: CommercialApplicationRow,
-    contractId: string,
     projectId: string,
     capabilities: CommercialCapabilities,
   ): Pick<CommercialCurrentCycleResponse, 'stage' | 'nextAction' | 'blockers' | 'responsibleRole'> {
-    const applicationHref = `/contracts/${contractId}/applications/${row.ipaId}`;
+    const applicationHref = `/projects/${projectId}/commercial/applications/${row.ipaId}`;
     const applicationsHref = `/projects/${projectId}/commercial/applications`;
     const denied = (
       stage: CommercialCurrentCycleResponse['stage'],

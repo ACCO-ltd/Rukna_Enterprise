@@ -132,7 +132,12 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
                     </TableCell>
                     <TableCell numeric className="tabular-nums">{p.leafCount}</TableCell>
                     <TableCell>
-                      <PercentCompleteBar percent={p.percentComplete} label={t('workPackage.col.percent')} />
+                      {/* Schedule-only phases have no derived % — dash, not a misleading 0%. */}
+                      {p.percentComplete === null ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <PercentCompleteBar percent={p.percentComplete} label={t('workPackage.col.percent')} />
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

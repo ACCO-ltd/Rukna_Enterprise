@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { Alert, Badge, Button, RecordPanel, SectionHeader, Skeleton, type BadgeProps } from '@erp/ui';
 import { TrendingUp } from 'lucide-react';
-import type { ProgressScheduleStatus } from '@erp/types';
+import type { ProgressCurveSource, ProgressScheduleStatus } from '@erp/types';
 
 import { MetricStrip } from '@/components/widget/metric-strip';
 import { formatDate } from '@/lib/format';
@@ -27,6 +27,18 @@ const SCHEDULE_TONE: Record<ProgressScheduleStatus, BadgeProps['tone']> = {
   ON_TRACK: 'info',
   BEHIND: 'warning',
   INSUFFICIENT_DATA: 'neutral',
+};
+
+/**
+ * Where the planned line came from (Master Schedule P3, ADR-029). A frozen, governing baseline is
+ * the trustworthy state (`live`); an unapproved draft plan or the provisional ramp are both "not
+ * yet governing" and read as `accent`, so a reader never mistakes an estimate for the plan. This is
+ * the source of the line, NOT the schedule verdict — the AHEAD/ON_TRACK/BEHIND chip is separate.
+ */
+const SOURCE_TONE: Record<ProgressCurveSource, BadgeProps['tone']> = {
+  baseline: 'live',
+  targets: 'accent',
+  provisional: 'accent',
 };
 
 /**
@@ -163,9 +175,11 @@ function ProgressCurvePanel({
       icon={<TrendingUp size={17} strokeWidth={1.9} />}
       action={
         <div className="flex flex-wrap items-center gap-2.5">
-          {curve.baselineProvisional ? (
-            <Badge tone="accent">{t('curve.provisionalChip')}</Badge>
-          ) : null}
+          <Badge tone={SOURCE_TONE[curve.baselineSource]}>
+            {curve.baselineSource === 'baseline'
+              ? t('curve.source.baseline', { version: curve.baselineVersion ?? 0 })
+              : t(`curve.source.${curve.baselineSource}`)}
+          </Badge>
           <Badge tone={SCHEDULE_TONE[status]}>
             {varianceLabel === null
               ? t(`curve.status.${status}`)

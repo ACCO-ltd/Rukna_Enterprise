@@ -16,6 +16,22 @@ export class ProgrammeRepository {
     return prisma.programmeMilestone.findMany({
       where: { organizationId, projectId },
       orderBy: [{ sortOrder: 'asc' }, { baselineDate: 'asc' }],
+      // Master Schedule P2 — the payment installments this milestone RELEASES, one query. Only the
+      // read-side fields the release projection needs: identity, percentage/trigger, the parent
+      // contract's value + currency (to derive the amount), and whether an invoice was generated.
+      include: {
+        installments: {
+          orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+          select: {
+            id: true,
+            name: true,
+            percentage: true,
+            triggerType: true,
+            contract: { select: { contractValue: true, currency: true } },
+            clientInvoice: { select: { id: true } },
+          },
+        },
+      },
     });
   }
 

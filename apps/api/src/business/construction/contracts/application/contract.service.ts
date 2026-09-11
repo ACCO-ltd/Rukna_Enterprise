@@ -17,11 +17,12 @@ import {
   type CommercialMutationKind,
 } from '../domain/commercial-term-policy.js';
 import type { CreateContractDto, PaymentInstallmentDto } from '../presentation/dto/create-contract.dto.js';
+import type { ReplacePaymentPlanDto } from '../presentation/dto/replace-payment-plan.dto.js';
 import type { UpdateContractDto } from '../presentation/dto/update-contract.dto.js';
 import type { AddAdvanceTermDto } from '../presentation/dto/add-advance-term.dto.js';
 import type { AddGuaranteeDto } from '../presentation/dto/add-guarantee.dto.js';
 import type { UpdateGuaranteeDto } from '../presentation/dto/update-guarantee.dto.js';
-import type { AddMilestoneDto } from '../presentation/dto/add-milestone.dto.js';
+import type { AddDeliverableDto } from '../presentation/dto/add-deliverable.dto.js';
 import type { AddRetentionTermsDto } from '../presentation/dto/add-retention-terms.dto.js';
 import type { SetInstallmentMilestoneDto } from '../presentation/dto/set-installment-milestone.dto.js';
 import { RecordAttachmentService } from '../../../../platform/files/application/record-attachment.service.js';
@@ -273,12 +274,87 @@ export class ContractService {
   }
 
   /**
-   * ADR-023 CONST-COM-012: a payment schedule's percentages must reconcile to 100%.
-   * Percentages are fractions (0..1); Σ must equal 1 within a 4-dp tolerance. Each installment
-   * must be positive, and a TIME_BASED installment must carry a due offset or an explicit date.
+   * ADR-023 / commercial-billing-model §5 P1 (§3.2 G2) + Q-B (Eng Ahmed, confirmed): the payment-plan
+   * editor for a MILESTONE contract. Permitted while the contract is DRAFT *or* ACTIVE.
+   *
+   * The submitted `installments` are the UN-INVOICED portion of the plan:
+   *  - On DRAFT nothing is invoiced, so this is the whole schedule — an ordinary full replace.
+   *  - On ACTIVE the already-invoiced installments are FROZEN (never changed or removed); the caller
+   *    re-profiles only the remaining un-invoiced stages (rename, shift dates, re-split %, add/remove).
+   *
+   * Invariants (non-negotiable, Q-B): invoiced installments frozen; contract value unchanged (this
+   * endpoint accepts no value); frozen invoiced % + submitted un-invoiced % = 100%; the change is
+   * audited. Other statuses (UNDER_REVIEW, PENDING_SIGNATURE, FINAL_ACCOUNT_PENDING, CLOSED,
+   * CANCELLED, TERMINATED) are rejected — a payment schedule is only editable before signature
+   * (DRAFT) or during delivery (ACTIVE); a locked-down or closed contract changes through a Variation.
+   *
+   * Persistence (one transaction): keep every invoiced installment untouched; delete the current
+   * un-invoiced installments; write the submitted set as the new un-invoiced installments. The new
+   * rows carry no `programmeMilestoneId` — links are re-established via the existing
+   * `PATCH …/installments/:id/milestone` route (invoiced installments keep their links, untouched).
    */
-  private assertPaymentPlanReconciles(plan: PaymentInstallmentDto[]): void {
-    let sum = 0;
+  async replacePaymentPlan(identity: RequestIdentity, id: string, dto: ReplacePaymentPlanDto) {
+    const prisma = this.tenancyService.getClient();
+    const contract = await this.requireContract(prisma, identity, id);
+
+    if (contract.status !== 'DRAFT' && contract.status !== 'ACTIVE') {
+      throw new ConflictException(
+        `A contract's payment plan can only be edited while it is DRAFT or ACTIVE (current status: ` +
+        `'${contract.status}'). Change a locked-down or closed schedule through a Variation, not by editing it.`,
+      );
+    }
+    if (contract.billingModel !== 'MILESTONE') {
+      throw new BadRequestException(
+        'A payment plan applies only to a MILESTONE (payment-schedule) contract.',
+      );
+    }
+
+    // Q-B: already-invoiced installments are the frozen part of the plan. Their % is held fixed and
+    // the submitted (un-invoiced) set must make the whole schedule reconcile to 100% again. On DRAFT
+    // this list is empty, so the frozen total is 0 and this collapses to today's full-replace rule.
+    const invoiced = await this.repo.findInvoicedInstallments(prisma, id);
+    const frozenTotal = invoiced.reduce((sum, i) => sum + i.percentage, 0);
+    const isReprofile = invoiced.length > 0;
+
+    this.assertPaymentPlanReconciles(dto.installments, frozenTotal);
+
+    return prisma.$transaction(async (tx) => {
+      await this.repo.reprofileUninvoicedInstallments(tx, id, dto.installments);
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: isReprofile ? 'REPROFILE' : 'REPLACE',
+        resourceType: 'ContractPaymentPlan',
+        resourceId: id,
+        sourceCommand: 'contract.replacePaymentPlan',
+        // Q-B requires the ACTIVE change to be auditable and distinguishable from a DRAFT replace.
+        eventType: isReprofile
+          ? 'CONTRACT_PAYMENT_PLAN_REPROFILED'
+          : 'CONTRACT_PAYMENT_PLAN_REPLACED',
+        idempotencyKey: `contract-payment-plan-${isReprofile ? 'reprofile' : 'replace'}-${id}-${Date.now()}`,
+        after: {
+          contractId: id,
+          status: contract.status,
+          frozenInvoicedCount: invoiced.length,
+          frozenInvoicedPercentage: frozenTotal,
+          installmentCount: dto.installments.length,
+        },
+      });
+
+      return this.repo.findById(tx, identity.activeOrganizationId, id);
+    });
+  }
+
+  /**
+   * ADR-023 CONST-COM-012: a payment schedule's percentages must reconcile to 100%.
+   * Percentages are fractions (0..1). `frozenTotal` is the summed % of the already-invoiced
+   * installments that are NOT part of `plan` (0 for a DRAFT contract / full replace); the submitted
+   * plan plus that frozen total must equal 1 within a 4-dp tolerance. Each submitted installment must
+   * be positive, and a TIME_BASED installment must carry a due offset or an explicit date.
+   */
+  private assertPaymentPlanReconciles(plan: PaymentInstallmentDto[], frozenTotal = 0): void {
+    let sum = frozenTotal;
     for (const line of plan) {
       if (!(line.percentage > 0)) {
         throw new BadRequestException(
@@ -298,8 +374,14 @@ export class ContractService {
     }
     // Round to 4 decimals before comparing so float error (0.1 + 0.2 …) does not fail a valid plan.
     if (Math.abs(Math.round(sum * 10000) / 10000 - 1) > 1e-4) {
+      const editable = (frozenTotal * 100).toFixed(2);
+      const detail =
+        frozenTotal > 0
+          ? ` (already-invoiced stages hold ${editable}%, so the editable stages must total ` +
+            `${(100 - frozenTotal * 100).toFixed(2)}%).`
+          : '.';
       throw new BadRequestException(
-        `Payment plan percentages must total 100%. Current total: ${(sum * 100).toFixed(2)}%.`,
+        `Payment plan percentages must total 100%. Current total: ${(sum * 100).toFixed(2)}%${detail}`,
       );
     }
   }
@@ -728,13 +810,13 @@ export class ContractService {
     return guarantee;
   }
 
-  async addMilestone(identity: RequestIdentity, id: string, dto: AddMilestoneDto) {
+  async addDeliverable(identity: RequestIdentity, id: string, dto: AddDeliverableDto) {
     const prisma = this.tenancyService.getClient();
     const contract = await this.requireContract(prisma, identity, id);
-    this.assertTermMutationAllowed(contract.status, 'MILESTONE_TERM');
+    this.assertTermMutationAllowed(contract.status, 'DELIVERABLE_TERM');
 
     return prisma.$transaction(async (tx) => {
-      const milestone = await this.repo.addMilestone(tx, id, {
+      const deliverable = await this.repo.addDeliverable(tx, id, {
         name: dto.name,
         description: dto.description,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
@@ -745,49 +827,51 @@ export class ContractService {
         organizationId: identity.activeOrganizationId,
         actorUserId: identity.userId,
         action: 'CREATE',
-        resourceType: 'ContractMilestone',
-        resourceId: milestone.id,
-        sourceCommand: 'contract.addMilestone',
-        eventType: 'CONTRACT_MILESTONE_ADDED',
-        idempotencyKey: `contract-milestone-add-${milestone.id}`,
+        resourceType: 'ContractDeliverable',
+        resourceId: deliverable.id,
+        sourceCommand: 'contract.addDeliverable',
+        eventType: 'CONTRACT_DELIVERABLE_ADDED',
+        idempotencyKey: `contract-deliverable-add-${deliverable.id}`,
         after: { contractId: id, name: dto.name, dueDate: dto.dueDate ?? null },
       });
 
-      return milestone;
+      return deliverable;
     });
   }
 
-  async completeMilestone(identity: RequestIdentity, contractId: string, milestoneId: string) {
+  async completeDeliverable(identity: RequestIdentity, contractId: string, deliverableId: string) {
     const prisma = this.tenancyService.getClient();
     const contract = await this.requireContract(prisma, identity, contractId);
-    this.assertTermMutationAllowed(contract.status, 'MILESTONE_COMPLETE');
+    this.assertTermMutationAllowed(contract.status, 'DELIVERABLE_COMPLETE');
 
-    // CONST-COM-002: verify the milestone belongs to THIS contract before touching it.
-    const before = await this.repo.findMilestoneOwned(prisma, contractId, milestoneId);
+    // CONST-COM-002: verify the deliverable belongs to THIS contract before touching it.
+    const before = await this.repo.findDeliverableOwned(prisma, contractId, deliverableId);
     if (!before) {
-      throw new NotFoundException(`Milestone ${milestoneId} not found on contract ${contractId}`);
+      throw new NotFoundException(
+        `Deliverable ${deliverableId} not found on contract ${contractId}`,
+      );
     }
     if (before.completedAt) {
-      throw new BadRequestException(`Milestone ${milestoneId} is already complete`);
+      throw new BadRequestException(`Deliverable ${deliverableId} is already complete`);
     }
 
     return prisma.$transaction(async (tx) => {
-      await this.repo.completeMilestone(tx, contractId, milestoneId, identity.userId);
+      await this.repo.completeDeliverable(tx, contractId, deliverableId, identity.userId);
 
       await this.auditOutbox.record(tx, {
         organizationId: identity.activeOrganizationId,
         actorUserId: identity.userId,
         action: 'COMPLETE',
-        resourceType: 'ContractMilestone',
-        resourceId: milestoneId,
-        sourceCommand: 'contract.completeMilestone',
-        eventType: 'CONTRACT_MILESTONE_COMPLETED',
-        idempotencyKey: `contract-milestone-complete-${milestoneId}`,
+        resourceType: 'ContractDeliverable',
+        resourceId: deliverableId,
+        sourceCommand: 'contract.completeDeliverable',
+        eventType: 'CONTRACT_DELIVERABLE_COMPLETED',
+        idempotencyKey: `contract-deliverable-complete-${deliverableId}`,
         before: { completedAt: null },
         after: { completedAt: new Date().toISOString(), completedBy: identity.userId },
       });
 
-      return this.repo.findMilestoneById(tx, milestoneId);
+      return this.repo.findDeliverableById(tx, deliverableId);
     });
   }
 

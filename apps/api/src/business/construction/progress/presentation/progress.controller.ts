@@ -6,6 +6,7 @@ import { RequirePermissions } from '../../../../common/decorators/require-permis
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { ProgressService } from '../application/progress.service.js';
+import { ProgrammeBaselineService } from '../application/programme-baseline.service.js';
 import {
   CreateDprDto,
   AddMeasurementDto,
@@ -13,8 +14,11 @@ import {
   ReturnDprDto,
   ReopenDprDto,
   CreateWorkPackageDto,
+  UpdateWorkPackageDto,
   AllocateBoqNodeDto,
+  ApplyScheduleTemplateDto,
   SetProgressTargetsDto,
+  RebaselineProgrammeDto,
   CreateProgrammeActivityDto,
   UpdateProgrammeActivityDto,
   CaptureProgressSnapshotDto,
@@ -30,7 +34,10 @@ import {
 @RequirePermissions(PERMISSIONS.projectsView)
 @Controller()
 export class ProgressController {
-  constructor(private readonly service: ProgressService) {}
+  constructor(
+    private readonly service: ProgressService,
+    private readonly baseline: ProgrammeBaselineService,
+  ) {}
 
   @Post('projects/:projectId/progress/reports')
   @RequirePermissions(PERMISSIONS.projectsManage)
@@ -60,9 +67,14 @@ export class ProgressController {
 
   @Get('projects/:projectId/progress/rollup')
   @ApiParam({ name: 'projectId' })
-  @ApiOperation({ summary: 'Weighted project physical % (work-package roll-up)' })
-  rollup(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
-    return this.service.getRollup(identity, projectId);
+  @ApiQuery({ name: 'asOf', required: false, description: 'Evaluate per-phase scheduleStatus as of this date (default today)' })
+  @ApiOperation({ summary: 'Weighted project physical % (work-package roll-up) + per-phase schedule reads' })
+  rollup(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Query('asOf') asOf?: string,
+  ) {
+    return this.service.getRollup(identity, projectId, asOf);
   }
 
   @Get('projects/:projectId/progress/signal')
@@ -110,6 +122,79 @@ export class ProgressController {
     @Query('asOf') asOf?: string,
   ) {
     return this.service.getScheduleVariance(identity, projectId, asOf);
+  }
+
+  // ── Master Schedule P3 (ADR-029): frozen, versioned programme baseline ─────────
+
+  @Get('projects/:projectId/programme/baseline')
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({
+    summary: 'The governing (APPROVED) programme baseline with its frozen curve, or null if none',
+  })
+  getBaseline(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
+    return this.baseline.getGoverning(identity, projectId);
+  }
+
+  @Post('projects/:projectId/programme/baseline/approve')
+  @RequirePermissions(PERMISSIONS.projectsManage)
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({
+    summary:
+      'Approve the INITIAL programme baseline (v1) — freeze the live target curve. 409 if an ' +
+      'approved baseline already exists (re-baseline instead); 400 if the curve is empty.',
+  })
+  approveBaseline(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
+    return this.baseline.approve(identity, projectId);
+  }
+
+  @Post('projects/:projectId/programme/baseline/rebaseline')
+  @RequirePermissions(PERMISSIONS.projectsApprove)
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({
+    summary:
+      'Re-baseline (v>=2, senior) — supersede the approved baseline and freeze a new version from ' +
+      'the current curve. Requires a Variation belonging to this project as justification (Q-4).',
+  })
+  rebaseline(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Body() dto: RebaselineProgrammeDto,
+  ) {
+    return this.baseline.rebaseline(identity, projectId, dto);
+  }
+
+  // ── Master Schedule P1-d (ADR-029): the guided schedule builder ────────────────
+
+  @Post('projects/:projectId/programme/apply-schedule-template')
+  @RequirePermissions(PERMISSIONS.projectsManage)
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({
+    summary:
+      'Seed the project phases from a schedule template (one transaction). 409 if the project ' +
+      'already has any work packages.',
+  })
+  applyScheduleTemplate(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Body() dto: ApplyScheduleTemplateDto,
+  ) {
+    return this.service.applyScheduleTemplate(identity, projectId, dto.templateKey);
+  }
+
+  @Post('projects/:projectId/programme/suggest-weights')
+  @RequirePermissions(PERMISSIONS.projectsManage)
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({
+    summary:
+      'Suggest each work package weight from its assigned BOQ value (read-only; the WP PATCH persists ' +
+      'a chosen weight).',
+  })
+  suggestWeights(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+  ) {
+    return this.service.suggestWeights(identity, projectId);
   }
 
   // ── Round-2 Progress-over-time (BE-1): snapshots + curve + period comparison ───
@@ -207,6 +292,22 @@ export class ProgressController {
   @ApiOperation({ summary: 'List the project work packages' })
   listWorkPackages(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
     return this.service.listWorkPackages(identity, projectId);
+  }
+
+  @Patch('work-packages/:workPackageId')
+  @RequirePermissions(PERMISSIONS.projectsManage)
+  @ApiParam({ name: 'workPackageId' })
+  @ApiOperation({
+    summary:
+      'Update a work package incl. its master-schedule window (planned dates / duration / forecast / ' +
+      'schedule-only). % complete and actual dates are derived, never set here.',
+  })
+  updateWorkPackage(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('workPackageId') workPackageId: string,
+    @Body() dto: UpdateWorkPackageDto,
+  ) {
+    return this.service.updateWorkPackage(identity, workPackageId, dto);
   }
 
   @Post('work-packages/:workPackageId/boq-nodes')

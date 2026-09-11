@@ -38,8 +38,14 @@ function build(
     snapshots?: SnapshotRow[];
     existingForPeriod?: { id: string } | null;
     projectDates?: { startDate: Date | null; expectedEndDate: Date | null } | null;
-    // The approved planned-progress curve (CONST-PROG-011). Empty ⇒ provisional Option-C baseline.
+    // The live planned-progress curve (CONST-PROG-011). Empty + no baseline ⇒ provisional Option-C ramp.
     targets?: Array<{ targetDate: Date; cumulativePercent: Decimal }>;
+    // Master Schedule P3 (ADR-029): the governing (APPROVED) frozen baseline, if any. Governs the
+    // planned curve ahead of the live targets when present.
+    governingBaseline?: {
+      version: number;
+      points: Array<{ targetDate: Date; cumulativePercent: Decimal }>;
+    } | null;
     // Drives getRollup (weighted physical) + getProjectProgress (verified per leaf).
     workPackages?: unknown[];
     leafValues?: unknown[];
@@ -53,6 +59,7 @@ function build(
     findWorkPackages: jest.fn().mockResolvedValue(over.workPackages ?? []),
     findLeafValues: jest.fn().mockResolvedValue(over.leafValues ?? []),
     approvedMeasurementsForProject: jest.fn().mockResolvedValue(over.approvedMeasurements ?? []),
+    approvedReportDatesForLeaves: jest.fn().mockResolvedValue([]),
     findSnapshotForPeriod: jest.fn().mockResolvedValue(over.existingForPeriod ?? null),
     findSnapshotsForProject: jest.fn().mockResolvedValue(over.snapshots ?? []),
     findTargets: jest.fn().mockResolvedValue(over.targets ?? []),
@@ -82,6 +89,10 @@ function build(
       .fn()
       .mockResolvedValue(over.financialPosition ?? { actualCost: '0', budgetTotal: null }),
   };
+  // P3: the governing frozen baseline; null ⇒ the live targets (or provisional ramp) drive the curve.
+  const baselineRepo = {
+    findApproved: jest.fn().mockResolvedValue(over.governingBaseline ?? null),
+  };
   const svc = new ProgressService(
     { getClient: () => ({}) } as never,
     repo as never,
@@ -89,8 +100,9 @@ function build(
     financialPosition as never,
     {} as never,
     files() as never,
+    baselineRepo as never,
   );
-  return { svc, repo, projectAccess, created };
+  return { svc, repo, projectAccess, baselineRepo, created };
 }
 
 const snap = (
@@ -162,7 +174,10 @@ describe('ProgressService.getCurve (BE-1)', () => {
     const curve = await svc.getCurve(identity, 'p1');
     expect(curve.actual).toHaveLength(2);
     expect(curve.baseline).toHaveLength(2); // sampled at the two snapshot dates
+    // No baseline approved and no targets set ⇒ the provisional ramp still governs (back-compat).
     expect(curve.baselineProvisional).toBe(true);
+    expect(curve.baselineSource).toBe('provisional');
+    expect(curve.baselineVersion).toBeNull();
     // Mid-year planned ≈ 50, actual 20 → BEHIND.
     expect(curve.status).toBe('BEHIND');
     expect(curve.scheduleVariancePercent).toBeLessThan(0);
@@ -180,11 +195,46 @@ describe('ProgressService.getCurve (BE-1)', () => {
     const curve = await svc.getCurve(identity, 'p1');
     // Planned line is the entered plan, not the snapshot-sampled ramp.
     expect(curve.baselineProvisional).toBe(false);
+    expect(curve.baselineSource).toBe('targets');
+    expect(curve.baselineVersion).toBeNull();
     expect(curve.baseline).toEqual([
       { periodEndDate: '2026-03-31', plannedPercent: 10 },
       { periodEndDate: '2026-09-30', plannedPercent: 60 },
     ]);
     // Planned at 2026-06-30 interpolates to ≈ 34.9; actual physical 20 → BEHIND.
+    expect(curve.status).toBe('BEHIND');
+    expect(curve.scheduleVariancePercent).toBeLessThan(0);
+  });
+
+  it('measures against the governing frozen baseline, not the live targets, when one is approved (P3)', async () => {
+    // The live targets drifted flat (0% by Sep) but the frozen baseline still demands 60% by Sep.
+    // getCurve must draw and judge against the frozen snapshot, and report source/version.
+    const { svc } = build({
+      snapshots: [snap('s1', '2026-06-30', 20, 18)],
+      projectDates: { startDate: new Date('2026-01-01'), expectedEndDate: new Date('2026-12-31') },
+      targets: [
+        { targetDate: new Date('2026-03-31'), cumulativePercent: new Decimal(0) },
+        { targetDate: new Date('2026-09-30'), cumulativePercent: new Decimal(0) },
+      ],
+      governingBaseline: {
+        version: 3,
+        points: [
+          { targetDate: new Date('2026-03-31'), cumulativePercent: new Decimal(10) },
+          { targetDate: new Date('2026-09-30'), cumulativePercent: new Decimal(60) },
+        ],
+      },
+    });
+    const curve = await svc.getCurve(identity, 'p1');
+    expect(curve.baselineProvisional).toBe(false);
+    expect(curve.baselineSource).toBe('baseline');
+    expect(curve.baselineVersion).toBe(3);
+    // The frozen plan, not the drifted live curve.
+    expect(curve.baseline).toEqual([
+      { periodEndDate: '2026-03-31', plannedPercent: 10 },
+      { periodEndDate: '2026-09-30', plannedPercent: 60 },
+    ]);
+    // Planned at 2026-06-30 ≈ 34.9 (frozen); actual physical 20 → BEHIND. The flat live curve would
+    // have read ON_TRACK — proving the frozen baseline governed.
     expect(curve.status).toBe('BEHIND');
     expect(curve.scheduleVariancePercent).toBeLessThan(0);
   });

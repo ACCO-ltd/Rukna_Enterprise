@@ -7,7 +7,7 @@ export type ContractFull = Contract & {
   guarantees: (ContractGuarantee & {
     attachments: import('@prisma/client').GuaranteeAttachment[];
   })[];
-  milestones: import('@prisma/client').ContractMilestone[];
+  deliverables: import('@prisma/client').ContractDeliverable[];
   attachments: import('@prisma/client').ContractAttachment[];
   paymentInstallments: import('@prisma/client').ContractPaymentInstallment[];
   client: { id: string; name: string; taxNumber: string | null };
@@ -47,7 +47,7 @@ export class ContractPrismaRepository {
         retentionTerms: true,
         advanceTerms: true,
         guarantees: { include: { attachments: true } },
-        milestones: { orderBy: { sortOrder: 'asc' } },
+        deliverables: { orderBy: { sortOrder: 'asc' } },
         attachments: true,
         paymentInstallments: { orderBy: { sortOrder: 'asc' } },
         client: { select: { id: true, name: true, taxNumber: true } },
@@ -130,6 +130,57 @@ export class ContractPrismaRepository {
     contractId: string,
     installments: PaymentInstallmentInput[],
   ) {
+    return prisma.contractPaymentInstallment.createMany({
+      data: installments.map((i) => ({
+        contractId,
+        sortOrder: i.sortOrder,
+        name: i.name,
+        percentage: i.percentage,
+        triggerType: i.triggerType,
+        dueOffsetDays: i.dueOffsetDays ?? null,
+        dueDate: i.dueDate ? new Date(i.dueDate) : null,
+        milestoneLabel: i.milestoneLabel ?? null,
+      })),
+    });
+  }
+
+  /**
+   * ADR-023 / commercial-billing-model §5 P1 (payment-plan editor, ACTIVE re-profile, Q-B).
+   * The already-invoiced installments of a contract — the FROZEN portion of the schedule. Returns
+   * each id and its percentage as a plain number (0..1) so the application layer can sum the frozen
+   * total without importing Prisma's Decimal. On a DRAFT contract this is always empty (invoicing
+   * needs an ACTIVE contract).
+   */
+  async findInvoicedInstallments(
+    prisma: TenantPrisma,
+    contractId: string,
+  ): Promise<{ id: string; percentage: number }[]> {
+    const rows = await prisma.contractPaymentInstallment.findMany({
+      where: { contractId, clientInvoice: { isNot: null } },
+      select: { id: true, percentage: true },
+    });
+    return rows.map((r) => ({ id: r.id, percentage: r.percentage.toNumber() }));
+  }
+
+  /**
+   * ADR-023 / commercial-billing-model §5 P1 (payment-plan editor, Q-B).
+   * Re-profile the UN-INVOICED portion of a contract's payment schedule in one transaction: delete
+   * only the installments that have NOT generated a ClientInvoice, then write the supplied set in
+   * their place. Invoiced installments are never touched — they are the frozen part of the plan.
+   *
+   * On a DRAFT contract nothing is invoiced, so this is an identical full replace of the schedule.
+   * NOTE: the newly-written installments carry no `programmeMilestoneId`; links are (re-)established
+   * afterwards via the existing `PATCH …/installments/:id/milestone` route. Caller must pass a
+   * transaction client so the delete and the insert are atomic.
+   */
+  async reprofileUninvoicedInstallments(
+    prisma: TenantPrisma,
+    contractId: string,
+    installments: PaymentInstallmentInput[],
+  ) {
+    await prisma.contractPaymentInstallment.deleteMany({
+      where: { contractId, clientInvoice: { is: null } },
+    });
     return prisma.contractPaymentInstallment.createMany({
       data: installments.map((i) => ({
         contractId,
@@ -319,7 +370,7 @@ export class ContractPrismaRepository {
     });
   }
 
-  addMilestone(
+  addDeliverable(
     prisma: TenantPrisma,
     contractId: string,
     data: {
@@ -329,25 +380,25 @@ export class ContractPrismaRepository {
       sortOrder?: number;
     },
   ) {
-    return prisma.contractMilestone.create({
+    return prisma.contractDeliverable.create({
       data: { contractId, ...data, sortOrder: data.sortOrder ?? 0 },
     });
   }
 
   /** Scoped read — the security guard for CONST-COM-002. */
-  findMilestoneOwned(prisma: TenantPrisma, contractId: string, milestoneId: string) {
-    return prisma.contractMilestone.findFirst({ where: { id: milestoneId, contractId } });
+  findDeliverableOwned(prisma: TenantPrisma, contractId: string, deliverableId: string) {
+    return prisma.contractDeliverable.findFirst({ where: { id: deliverableId, contractId } });
   }
 
-  /** Scoped completion: only mutates the milestone if it belongs to `contractId`. Returns { count }. */
-  completeMilestone(
+  /** Scoped completion: only mutates the deliverable if it belongs to `contractId`. Returns { count }. */
+  completeDeliverable(
     prisma: TenantPrisma,
     contractId: string,
-    milestoneId: string,
+    deliverableId: string,
     completedBy: string,
   ) {
-    return prisma.contractMilestone.updateMany({
-      where: { id: milestoneId, contractId },
+    return prisma.contractDeliverable.updateMany({
+      where: { id: deliverableId, contractId },
       data: { completedAt: new Date(), completedBy },
     });
   }
@@ -356,8 +407,8 @@ export class ContractPrismaRepository {
     return prisma.contractGuarantee.findUnique({ where: { id: guaranteeId } });
   }
 
-  findMilestoneById(prisma: TenantPrisma, milestoneId: string) {
-    return prisma.contractMilestone.findUnique({ where: { id: milestoneId } });
+  findDeliverableById(prisma: TenantPrisma, deliverableId: string) {
+    return prisma.contractDeliverable.findUnique({ where: { id: deliverableId } });
   }
 
   moveActiveContractsToFinalAccount(prisma: TenantPrisma, projectId: string) {

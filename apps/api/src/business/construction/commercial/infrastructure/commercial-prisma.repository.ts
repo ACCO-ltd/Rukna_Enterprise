@@ -29,7 +29,7 @@ export class CommercialPrismaRepository {
         retentionTerms: true,
         advanceTerms: true,
         guarantees: { orderBy: { expiryDate: 'asc' } },
-        milestones: { orderBy: { sortOrder: 'asc' } },
+        deliverables: { orderBy: { sortOrder: 'asc' } },
       },
     });
   }
@@ -272,7 +272,7 @@ export class CommercialPrismaRepository {
   /**
    * Recent commercial audit activity. Child mutations are audited by child id (CONST-COM-005),
    * so the caller passes the full set of relevant resource ids (contract + guarantees +
-   * advance terms + milestones + certificates) gathered from the already-loaded aggregate.
+   * advance terms + deliverables + certificates) gathered from the already-loaded aggregate.
    */
   async findRecentActivity(prisma: TenantPrisma, organizationId: string, resourceIds: string[]) {
     if (resourceIds.length === 0) return [];
@@ -285,6 +285,9 @@ export class CommercialPrismaRepository {
             'ContractGuarantee',
             'ContractAdvanceTerm',
             'ContractRetentionTerms',
+            'ContractDeliverable',
+            // Historical events audited before the ContractMilestone → ContractDeliverable rename
+            // (P0) keep the old resource type. Include both so the activity feed still surfaces them.
             'ContractMilestone',
             'InterimPaymentCertificate',
             // The settlement half of the story. Without these the feed reports certification

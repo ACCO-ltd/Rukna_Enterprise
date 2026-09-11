@@ -79,6 +79,43 @@ export function paymentPlanTotalPercent(rows: PaymentPlanRow[]): number {
 }
 
 /**
+ * Turns a stored 0..1 fraction back into the form's whole-percent string — the inverse of
+ * `percentToFraction`. `"0.4000"` → `"40"`, `"0.3333"` → `"33.33"`. Trailing zeros are dropped so a
+ * pre-populated row reads the way a user would type it, and a non-number degrades to `""` (a blank
+ * the validator then flags) rather than `"NaN"`.
+ */
+export function fractionToPercentString(fraction: string | number): string {
+  const n = typeof fraction === 'number' ? fraction : Number(String(fraction).trim());
+  if (!Number.isFinite(n)) return '';
+  // 2 dp mirrors the form's own ≤2-dp percent rule; `Number()` then strips trailing zeros.
+  return String(Number((n * 100).toFixed(2)));
+}
+
+/**
+ * Rebuilds an editable {@link PaymentPlanRow} from a read-model installment so the Payment Schedule
+ * editor opens pre-populated from the current plan (the user adjusts the existing tail, not a blank
+ * slate). The read model carries fractions and a nullable trigger label / day offset; this maps them
+ * back to the string-per-field shape HTML inputs need. Structural fields only — the milestone *link*
+ * is re-established through the dedicated link route, not this form.
+ */
+export function paymentPlanRowFromInstallment(installment: {
+  name: string;
+  percentage: string;
+  triggerType: string;
+  milestoneLabel: string | null;
+  dueOffsetDays: number | null;
+}): PaymentPlanRow {
+  return {
+    name: installment.name,
+    percentage: fractionToPercentString(installment.percentage),
+    triggerType: installment.triggerType,
+    milestoneLabel: installment.milestoneLabel ?? '',
+    dueOffsetDays:
+      installment.dueOffsetDays === null ? '' : String(installment.dueOffsetDays),
+  };
+}
+
+/**
  * Maps the form's plan rows to `POST /contracts` installment bodies.
  *
  * `sortOrder` is the row's position (1-based). `percentage` becomes a 0..1 fraction. Optional

@@ -54,15 +54,17 @@ const PAYMENT_TRIGGERS = [
 interface ContractFormProps {
   /** Present in edit mode. The API accepts edits only while the contract is DRAFT. */
   contract?: Contract;
+  /** Project workspace context. The project and its client are inherited rather than reselected. */
+  projectId?: string;
 }
 
-export function ContractForm({ contract }: ContractFormProps = {}) {
+export function ContractForm({ contract, projectId }: ContractFormProps = {}) {
   const t = useTranslations('platform.contracts.create');
   const tContracts = useTranslations('platform.contracts');
   const tCommon = useTranslations('common');
   const isEdit = contract !== undefined;
   const searchParams = useSearchParams();
-  const requestedProjectId = searchParams.get('projectId') ?? '';
+  const requestedProjectId = projectId ?? searchParams.get('projectId') ?? '';
 
   const create = useCreateContract();
   const update = useUpdateContract(contract?.id ?? '');
@@ -512,7 +514,9 @@ export function ContractForm({ contract }: ContractFormProps = {}) {
         cancelLabel={t('cancel')}
         cancelHref={
           isEdit
-            ? `/contracts/${contract.id}`
+            ? projectId
+              ? `/projects/${projectId}/commercial/contract-security`
+              : `/contracts/${contract.id}`
             : requestedProjectId
               ? `/projects/${requestedProjectId}/commercial/contract-security`
               : '/contracts'

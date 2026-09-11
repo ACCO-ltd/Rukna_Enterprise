@@ -76,7 +76,7 @@ function contract(): ContractDetail {
     retentionTerms: null,
     advanceTerms: [],
     guarantees: [],
-    milestones: [],
+    deliverables: [],
     paymentInstallments: [],
     attachments: [],
     client: { id: 'cli-1', name: 'Baraka Real Estate LLC', taxNumber: 'SO-123456' },
@@ -222,7 +222,14 @@ beforeEach(() => {
 });
 
 function renderDetail() {
-  return renderWithProviders(<IpcDetail contractId="con-1" ipaId="ipa-1" ipcId="ipc-1" />);
+  return renderWithProviders(
+    <IpcDetail
+      contractId="con-1"
+      ipaId="ipa-1"
+      ipcId="ipc-1"
+      basePath="/projects/proj-1/commercial/applications"
+    />,
+  );
 }
 
 describe('IpcDetail', () => {

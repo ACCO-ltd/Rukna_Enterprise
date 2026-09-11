@@ -24,6 +24,7 @@
     "overview": "Overview",
     "main-contract": "Main Contract",
     "applications": "Applications & Certification",
+    "payment-schedule": "Payment Schedule",
     "variations": "Variations",
     "retention-advances": "Retention & Advances",
     "guarantees": "Guarantees"
@@ -252,6 +253,17 @@
     "guarantees": "Guarantees",
     "manageTerms": "Set contract terms"
   },
+  "contractAuthoring": {
+    "back": "Back to Contract & Security",
+    "newTitle": "New contract",
+    "newSubtitle": "Set the commercial baseline for this project — its value, billing model and payment terms.",
+    "editTitle": "Edit contract",
+    "editSubtitle": "Amend the draft contract before it is submitted for review.",
+    "noContractTitle": "No contract to edit",
+    "noContractHint": "This project has no main contract yet. Create one from Contract & Security.",
+    "createContract": "Create contract",
+    "loadFailed": "Could not load this project's contract."
+  },
   "billing": {
     "title": "Billing & Collection",
     "subtitle": "Posted client invoices, receipt allocations and the outstanding accounting balance.",
@@ -372,6 +384,7 @@
     "milestone": {
       "linked": "Linked to {code}",
       "none": "Not linked",
+      "ungatedAdvance": "Paid on mobilization — no milestone required",
       "link": "Link milestone",
       "change": "Change",
       "unlink": "Unlink",
@@ -387,6 +400,41 @@
       "cancel": "Cancel",
       "failed": "Could not update the milestone link"
     }
+  },
+  "paymentScheduleTab": {
+    "title": "Payment schedule",
+    "subtitle": "This contract is billed from a negotiated milestone schedule. Each stage is invoiced from its own document as the schedule advances.",
+    "contractValue": "Contract value",
+    "planTotal": "Plan total",
+    "valueNotSet": "Not set",
+    "restricted": "Restricted",
+    "editorTitle": "Edit schedule",
+    "edit": "Edit schedule",
+    "draftHint": "The contract is still a draft, so the whole schedule can be re-profiled. Percentages must total 100%.",
+    "reprofileHint": "This contract is active. The stages that have already been invoiced are locked; you can re-profile only the stages that have not been billed yet.",
+    "reprofileNote": "This contract is committed, so its schedule is fixed. Re-profile a committed schedule through a Variation.",
+    "variationNote": "Invoiced stages are locked. Changing the contract value or an already-invoiced stage requires a Variation.",
+    "lockedStagesNote": "Invoiced stages are locked and left untouched. Only the un-invoiced stages below are editable. Changing the contract value or an already-invoiced stage requires a Variation.",
+    "frozenSectionTitle": "Invoiced stages (locked)",
+    "frozenSectionHint": "These stages have been billed, so their percentage is fixed. They stay in the schedule and cannot be edited or removed here.",
+    "editableSectionTitle": "Un-invoiced stages",
+    "editableSectionHint": "Adjust the stages that have not been billed yet. These must total {target}% so the whole schedule still reconciles to 100%.",
+    "reconcileBreakdown": "Invoiced (locked): {frozen}% · remaining to allocate: {target}%",
+    "editableOk": "Totals {target}%",
+    "editableTotal": "Total: {total}% — must equal {target}%",
+    "editableMismatch": "Un-invoiced stages must total {target}% (currently {total}%)",
+    "locked": "Locked",
+    "installmentStatus": {
+      "PAID": "Paid",
+      "PARTIALLY_PAID": "Partly paid",
+      "BILLED": "Invoiced",
+      "NEXT": "Next",
+      "UPCOMING": "Upcoming"
+    },
+    "noPermission": "You do not have permission to edit this contract's payment schedule.",
+    "notReconciled": "The plan does not total 100% — the contract cannot be billed in full until it does.",
+    "save": "Save schedule",
+    "saveFailed": "Could not save the payment schedule."
   },
   "cycle": {
     "title": "Current Payment Cycle",
@@ -555,8 +603,8 @@
       "setRetentionTerms": "set the retention terms",
       "addAdvanceTerm": "added an advance term",
       "removeAdvanceTerm": "removed an advance term",
-      "addMilestone": "added a milestone",
-      "completeMilestone": "completed a milestone"
+      "addDeliverable": "added a deliverable",
+      "completeDeliverable": "completed a deliverable"
     },
     "ipc": {
       "issue": "issued a certificate",
@@ -851,12 +899,12 @@
       "CLOSE": "Close contract"
     }
   },
-  "contractMilestones": {
-    "title": "Contractual milestones",
+  "contractDeliverables": {
+    "title": "Deliverables",
     "completed": "Completed",
     "open": "Open",
     "col": {
-      "milestone": "Milestone",
+      "deliverable": "Deliverable",
       "description": "Description",
       "target": "Target date",
       "status": "Status"

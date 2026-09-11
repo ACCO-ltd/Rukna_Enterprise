@@ -609,6 +609,7 @@ model Project {
   programmeMilestones  ProgrammeMilestone[]
   progressTargets      ProgressTarget[]
   progressSnapshots    ProgressSnapshot[]
+  programmeBaselines   ProgrammeBaseline[]
   purchaseOrderLines   PurchaseOrderLine[]
   client               Client?               @relation(fields: [clientId], references: [id], onDelete: SetNull)
   district             District?             @relation(fields: [districtId], references: [id], onDelete: Restrict)
@@ -942,15 +943,24 @@ enum DprStatus {
 // A WorkPackage carries a responsible owner and a progressWeight; the project's weights should total
 // 1.0 (100%). Physical progress rolls up by these weights, never by BOQ money (CONST-PROG-007).
 model WorkPackage {
-  id               String   @id @default(cuid())
-  organizationId   String   @map("organization_id")
-  projectId        String   @map("project_id")
+  id               String    @id @default(cuid())
+  organizationId   String    @map("organization_id")
+  projectId        String    @map("project_id")
   code             String
   name             String
-  responsibleOwner String?  @map("responsible_owner")
-  progressWeight   Decimal  @default(0) @map("progress_weight") @db.Decimal(5, 4)
-  createdBy        String   @map("created_by")
-  createdAt        DateTime @default(now()) @map("created_at")
+  responsibleOwner String?   @map("responsible_owner")
+  progressWeight   Decimal   @default(0) @map("progress_weight") @db.Decimal(5, 4)
+  // Master-schedule (P1-a): the WorkPackage IS the schedule/phase row (ADR-029, master-schedule §8).
+  // A time window makes it a Gantt-lite row; % complete and actual dates are DERIVED on read, never
+  // stored. `scheduleOnly` marks a non-measurable phase (Mobilization, Design) tracked by dates only,
+  // excluded from the physical-% weighting (master-schedule §8.5) — it must carry no BOQ scope.
+  plannedStart     DateTime? @map("planned_start") @db.Date
+  plannedEnd       DateTime? @map("planned_end") @db.Date
+  durationDays     Int?      @map("duration_days")
+  forecastEnd      DateTime? @map("forecast_end") @db.Date
+  scheduleOnly     Boolean   @default(false) @map("schedule_only")
+  createdBy        String    @map("created_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
 
   project    Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
   boqLinks   WorkPackageBoqNode[]
@@ -1012,28 +1022,28 @@ enum ProgrammeMilestoneStatus {
 // ADR-021 phase 2: a programme delivery milestone — a named construction stage on the project's
 // programme, with baseline / forecast / actual dates. An authorized member verifies it when the stage
 // is complete; a MILESTONE payment installment may reference a VERIFIED milestone as its billing
-// evidence (ADR-023 CONST-COM-011). Optionally links to a ContractMilestone; the two lifecycles stay
+// evidence (ADR-023 CONST-COM-011). Optionally links to a ContractDeliverable; the two lifecycles stay
 // separate.
 model ProgrammeMilestone {
-  id                  String                   @id @default(cuid())
-  organizationId      String                   @map("organization_id")
-  projectId           String                   @map("project_id")
-  code                String
-  name                String
-  status              ProgrammeMilestoneStatus @default(PLANNED)
-  baselineDate        DateTime                 @map("baseline_date") @db.Date
-  forecastDate        DateTime?                @map("forecast_date") @db.Date
-  actualDate          DateTime?                @map("actual_date") @db.Date
-  sortOrder           Int                      @default(0) @map("sort_order")
-  contractMilestoneId String?                  @map("contract_milestone_id")
-  verifiedBy          String?                  @map("verified_by")
-  verifiedAt          DateTime?                @map("verified_at")
-  createdBy           String                   @map("created_by")
-  createdAt           DateTime                 @default(now()) @map("created_at")
+  id                    String                   @id @default(cuid())
+  organizationId        String                   @map("organization_id")
+  projectId             String                   @map("project_id")
+  code                  String
+  name                  String
+  status                ProgrammeMilestoneStatus @default(PLANNED)
+  baselineDate          DateTime                 @map("baseline_date") @db.Date
+  forecastDate          DateTime?                @map("forecast_date") @db.Date
+  actualDate            DateTime?                @map("actual_date") @db.Date
+  sortOrder             Int                      @default(0) @map("sort_order")
+  contractDeliverableId String?                  @map("contract_deliverable_id")
+  verifiedBy            String?                  @map("verified_by")
+  verifiedAt            DateTime?                @map("verified_at")
+  createdBy             String                   @map("created_by")
+  createdAt             DateTime                 @default(now()) @map("created_at")
 
-  project           Project                      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  contractMilestone ContractMilestone?           @relation(fields: [contractMilestoneId], references: [id], onDelete: SetNull)
-  installments      ContractPaymentInstallment[]
+  project             Project                      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  contractDeliverable ContractDeliverable?         @relation(fields: [contractDeliverableId], references: [id], onDelete: SetNull)
+  installments        ContractPaymentInstallment[]
 
   @@unique([projectId, code])
   @@index([projectId])
@@ -1274,6 +1284,57 @@ enum ProgressSnapshotSource {
   PERIOD_CLOSE
 }
 
+// Master Schedule P3 (ADR-029) — the frozen, versioned programme baseline. A snapshot of the
+// planned target curve at the moment it was approved, against which actuals are measured. Follows
+// the BOQ / cost-budget pattern: one governing (APPROVED) version at a time, re-baselining creates
+// the next version and supersedes the last rather than overwriting it. The initial baseline (v1) is
+// approved by the PM; re-baselining (v>=2) is a senior/governed act linked to a Variation (Q-4).
+// The variance engine (getCurve / getScheduleVariance) is anchored to the APPROVED baseline in a
+// later pass — this pass owns only the freeze aggregate.
+model ProgrammeBaseline {
+  id               String                  @id @default(cuid())
+  organizationId   String                  @map("organization_id")
+  projectId        String                  @map("project_id")
+  version          Int
+  status           ProgrammeBaselineStatus @default(APPROVED)
+  approvedBy       String                  @map("approved_by")
+  approvedAt       DateTime                @map("approved_at")
+  // Q-4: required for a re-baseline (v>=2), null for the initial baseline (v1). The Variation is the
+  // justification for moving the plan the project is measured against.
+  variationOrderId String?                 @map("variation_order_id")
+  note             String?
+  createdAt        DateTime                @default(now()) @map("created_at")
+
+  project        Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  variationOrder VariationOrder?          @relation(fields: [variationOrderId], references: [id], onDelete: SetNull)
+  points         ProgrammeBaselinePoint[]
+
+  @@unique([projectId, version])
+  @@index([projectId, status])
+  @@map("programme_baselines")
+}
+
+// One point on a frozen baseline curve — the cumulative planned % due by a target date, snapshotted
+// from the live ProgressTarget curve at approval. Append-only relative to its baseline; a re-baseline
+// snapshots a fresh set onto the next version rather than mutating these.
+model ProgrammeBaselinePoint {
+  id                String   @id @default(cuid())
+  baselineId        String   @map("baseline_id")
+  targetDate        DateTime @map("target_date") @db.Date
+  cumulativePercent Decimal  @map("cumulative_percent") @db.Decimal(6, 3)
+
+  baseline ProgrammeBaseline @relation(fields: [baselineId], references: [id], onDelete: Cascade)
+
+  @@unique([baselineId, targetDate])
+  @@map("programme_baseline_points")
+}
+
+enum ProgrammeBaselineStatus {
+  DRAFT
+  APPROVED
+  SUPERSEDED
+}
+
 // ADR-020 CONST-BOQ-020 — an org-level catalogue of reusable BOQ *work items* (scope, e.g. "Supply
 // and cast RC C25 — m³"). Distinct from the procurement Material catalogue (procurable goods). Grows
 // just-in-time as real work is entered. CONST-BOQ-021: it holds no authoritative rate — only a
@@ -1371,7 +1432,7 @@ model Contract {
   retentionTerms      ContractRetentionTerms?
   advanceTerms        ContractAdvanceTerm[]
   guarantees          ContractGuarantee[]
-  milestones          ContractMilestone[]
+  deliverables        ContractDeliverable[]
   attachments         ContractAttachment[]
   applications        InterimPaymentApplication[]
   paymentInstallments ContractPaymentInstallment[]
@@ -1469,7 +1530,12 @@ model ContractGuarantee {
   @@map("contract_guarantees")
 }
 
-model ContractMilestone {
+// A contract deliverable is a named checklist item on a contract — a stage of scope that gets
+// marked complete (name / description / due date / completed-at). It carries NO money and is NOT a
+// billing artefact: the payment schedule lives in ContractPaymentInstallment. Keep the two apart —
+// a "deliverable" is contractual scope to track; an "installment" is a slice of the value to bill.
+// (Renamed from ContractMilestone; the table was renamed in place, preserving rows.)
+model ContractDeliverable {
   id          String    @id @default(cuid())
   contractId  String    @map("contract_id")
   name        String
@@ -1484,7 +1550,7 @@ model ContractMilestone {
   programmeMilestones ProgrammeMilestone[]
 
   @@index([contractId])
-  @@map("contract_milestones")
+  @@map("contract_deliverables")
 }
 
 // ADR-026 (Variations Phase 1) — CONST-VAR-001/-002/-003/-004/-010.
@@ -1544,6 +1610,10 @@ model VariationOrder {
   // this VO — audited records that CD+CFO (+CEO above the cap) sanctioned starting the work before
   // CLIENT_APPROVED. They change NEITHER contract value NOR the BOQ.
   atRiskAuthorisations VariationOrderAtRiskAuthorisation[]
+  // Master Schedule P3 (ADR-029): the programme re-baselines this VO justified. A re-baseline (v>=2)
+  // cites a Variation as the reason the frozen plan moved; SetNull keeps the baseline history if the
+  // VO is ever removed.
+  programmeBaselines   ProgrammeBaseline[]
 
   // A VO reference is unique within its contract (CONST-VAR-001, per-parent numbering).
   @@unique([contractId, reference])

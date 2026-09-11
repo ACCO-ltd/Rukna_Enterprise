@@ -83,7 +83,7 @@ export function PaymentPlanPanel({
     <SectionCard
       title={t('title')}
       action={
-        <PanelLink href={`/projects/${projectId}/commercial/billing-collection`}>
+        <PanelLink href={`/projects/${projectId}/commercial/payment-schedule`}>
           {t('viewFull')}
         </PanelLink>
       }

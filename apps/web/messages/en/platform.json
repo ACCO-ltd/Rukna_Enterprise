@@ -21,7 +21,6 @@
     "action": {
       "createProject": "Create project",
       "newClient": "New client",
-      "newContract": "New contract",
       "newMaterialRequest": "New material request",
       "newPurchaseOrder": "New purchase order",
       "newGoodsReceipt": "New goods receipt",
@@ -165,8 +164,6 @@
       "progress": "Progress",
       "commercial": "Commercial",
       "documents": "Documents",
-      "contracts": "Contracts",
-      "applicationsCertificates": "Applications & certificates",
       "finance": "Finance",
       "procurement": "Procurement",
       "members": "Members",
@@ -188,8 +185,7 @@
       "loadingValue": "Loading...",
       "loadingProject": "Loading project",
       "loadFailedHint": "Check your connection or try loading the project again.",
-      "contractSummaryUnavailable": "The contract summary is temporarily unavailable. Other project information remains usable.",
-      "ipc": "IPC"
+      "contractSummaryUnavailable": "The contract summary is temporarily unavailable. Other project information remains usable."
     },
     "create": {
       "title": "New project",
@@ -1815,7 +1811,6 @@
   },
   "contracts": {
     "title": "Contracts",
-    "newContract": "New contract",
     "searchLabel": "Search contracts",
     "searchPlaceholder": "Search by contract number",
     "filterByStatus": "Filter by status",
@@ -1850,13 +1845,6 @@
       "billing": "Billing",
       "status": "Status",
       "dates": "Start"
-    },
-    "projectSection": {
-      "heading": "Contracts",
-      "none": "No contracts on this project yet.",
-      "noneHint": "A contract needs a baselined BOQ version.",
-      "viewAll": "View all",
-      "add": "New contract"
     },
     "detail": {
       "back": "Back to contracts",
@@ -1941,6 +1929,7 @@
         "subtitle": "Define how the contract value is billed across installments. Percentages must total 100%.",
         "empty": "No installments yet. Add the first to define the payment schedule.",
         "add": "Add installment",
+        "useAccoStandard": "Use ACCO standard schedule",
         "remove": "Remove",
         "name": "Installment",
         "namePlaceholder": "e.g. Mobilization advance",
@@ -2026,6 +2015,7 @@
         "none": "No guarantees recorded.",
         "noneHint": "Record performance, advance payment and retention guarantees here.",
         "add": "Add guarantee",
+        "editTitle": "Edit guarantee",
         "type": "Guarantee type",
         "typeHint": "For example PERFORMANCE, ADVANCE_PAYMENT or RETENTION.",
         "amount": "Amount",

@@ -3,22 +3,24 @@ import { Decimal } from '@prisma/client/runtime/library';
 import {
   DprStatus,
   type RequestIdentity,
+  type ApplyScheduleTemplateResponse,
   type ProgressActualPoint,
+  type ProgressCurvePoint,
   type ProgressCurveResponse,
+  type ProgressCurveSource,
   type ProgressPeriodComparisonResponse,
+  type ProgressScheduleStatus,
   type ProgressSnapshotResponse,
+  type ScheduleTemplateKey,
+  type SuggestWeightsResponse,
 } from '@erp/types';
 
-import {
-  computeProvisionalBaseline,
-  isoDate,
-  plannedPercentAtDate,
-  scheduleStatusFor,
-} from '../domain/progress-curve.js';
+import { isoDate, scheduleStatusFor } from '../domain/progress-curve.js';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { ProgressRepository } from '../infrastructure/progress.repository.js';
+import { ProgrammeBaselineRepository } from '../infrastructure/programme-baseline.repository.js';
 import { PlatformFileService } from '../../../../platform/files/application/platform-file.service.js';
 import { ProjectFinancialPositionService } from '../../../accounting/financial-position/application/project-financial-position.service.js';
 import {
@@ -26,6 +28,7 @@ import {
   throwIfGated,
 } from '../../../../platform/workflows/application/command-governance.service.js';
 import { weightedPackagePercent } from '../domain/progress-rollup.js';
+import { scheduleTemplateCode, scheduleTemplatePhases } from '../domain/schedule-templates.js';
 
 const DIVERGENCE_THRESHOLD = 20; // percentage points before the signal flags a divergence (cf. ADR-023 CONST-COM-018)
 
@@ -85,6 +88,10 @@ export class ProgressService {
     private readonly financialPosition: ProjectFinancialPositionService,
     private readonly commandGovernance: CommandGovernanceService,
     private readonly files: PlatformFileService,
+    // Master Schedule P3 (ADR-029): the read-side source of the governing frozen baseline. The
+    // variance engine measures against this once a baseline is approved; before that it reads the
+    // live targets. Prisma stays behind the repo (Clean Architecture).
+    private readonly baselineRepo: ProgrammeBaselineRepository,
   ) {}
 
   async createDpr(identity: RequestIdentity, projectId: string, dto: CreateDprDto) {
@@ -382,13 +389,193 @@ export class ProgressService {
   }
 
   /**
-   * Project physical %: each package's progress is the simple mean of its allocated BOQ leaves'
-   * verified % (not money-weighted, CONST-PROG-007), rolled up by the package `progressWeight`.
-   * Reports weightsTotal + weightsComplete so an incomplete plan (weights ≠ 100%) is visible.
+   * Master Schedule P1-d (ADR-029): seed a project's phases from a server-side schedule template so
+   * the guided setup wizard starts from a real programme, not an empty grid. Each template phase
+   * becomes a work package — reusing the same `repo.createWorkPackage` write the manual create uses,
+   * inside ONE transaction so a project's phases are all-or-nothing. Codes are auto-numbered
+   * WP-01…WP-09 in template order (that order IS the sequence, since the read model sorts by code);
+   * `durationDays` and `scheduleOnly` come from the template; `progressWeight` starts at 0 and the
+   * planned dates start null — the wizard fills those in later (weights via `suggestWeights`, dates
+   * via the WP PATCH).
+   *
+   * Guard: only a project with ZERO work packages may be seeded. A project that already has any
+   * returns 409 rather than silently duplicating a second set of phases (an "append" mode is a later
+   * option, per the spec).
    */
-  async getRollup(identity: RequestIdentity, projectId: string) {
+  async applyScheduleTemplate(
+    identity: RequestIdentity,
+    projectId: string,
+    templateKey: ScheduleTemplateKey,
+  ): Promise<ApplyScheduleTemplateResponse> {
     await this.projectAccess.assertMember(identity, projectId);
     const prisma = this.tenancy.getClient();
+
+    const phases = scheduleTemplatePhases(templateKey);
+    if (!phases) throw new BadRequestException(`Unknown schedule template '${templateKey}'`);
+
+    // Don't silently duplicate: seeding is only for a project that has no phases yet.
+    const existing = await this.repo.countWorkPackages(prisma, identity.activeOrganizationId, projectId);
+    if (existing > 0) {
+      throw new ConflictException(
+        'This project already has work packages. Applying a schedule template is only available on a project with none.',
+      );
+    }
+
+    const created = await prisma.$transaction(async (tx) =>
+      Promise.all(
+        phases.map((phase, index) =>
+          this.repo.createWorkPackage(tx as never, {
+            organizationId: identity.activeOrganizationId,
+            projectId,
+            code: scheduleTemplateCode(index),
+            name: phase.name,
+            responsibleOwner: null,
+            progressWeight: 0,
+            durationDays: phase.durationDays,
+            scheduleOnly: phase.scheduleOnly,
+            createdBy: identity.userId,
+          }),
+        ),
+      ),
+    );
+
+    return {
+      projectId,
+      templateKey,
+      workPackages: created.map((wp) => ({
+        id: wp.id,
+        code: wp.code,
+        name: wp.name,
+        durationDays: wp.durationDays,
+        scheduleOnly: wp.scheduleOnly,
+      })),
+    };
+  }
+
+  /**
+   * Master Schedule P1-d (ADR-029): suggest each work package's progress weight from the BOQ value
+   * assigned to it — so the wizard doesn't make the user guess weights. Read-only: it computes and
+   * returns suggestions; the WP PATCH is what persists a chosen weight.
+   *
+   * Each package's suggested weight = (Σ value of its allocated BOQ leaves) ÷ (Σ value across ALL
+   * packages), a 0..1 fraction. A `scheduleOnly` phase (no measurable scope) or a package with no
+   * priced/assigned value suggests 0. When nothing anywhere carries a value (all-unpriced / empty),
+   * every suggestion is 0 rather than a divide-by-zero. Reuses the same `findLeafValues` read the
+   * roll-up weights by, so a suggestion always agrees with the BOQ's own arithmetic.
+   */
+  async suggestWeights(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<SuggestWeightsResponse> {
+    await this.projectAccess.assertMember(identity, projectId);
+    const prisma = this.tenancy.getClient();
+
+    const packages = await this.repo.findWorkPackages(prisma, identity.activeOrganizationId, projectId);
+    const allocatedLeafIds = packages.flatMap((wp) => wp.boqLinks.map((b) => b.boqNodeId));
+    const leafValues = await this.repo.findLeafValues(prisma, projectId, allocatedLeafIds);
+    const valueByNode = new Map<string, Decimal>(
+      leafValues.map((v) => [v.id, new Decimal(v.totalAmount?.toString() ?? '0')] as const),
+    );
+
+    // Each package's assigned value; a scheduleOnly phase has no measurable scope so it contributes 0
+    // and never appears in the denominator.
+    const valueByPackage = new Map<string, Decimal>();
+    let totalValue = ZERO;
+    for (const wp of packages) {
+      const value = wp.scheduleOnly
+        ? ZERO
+        : wp.boqLinks.reduce(
+            (sum, b) => sum.plus(valueByNode.get(b.boqNodeId) ?? ZERO),
+            ZERO,
+          );
+      valueByPackage.set(wp.id, value);
+      totalValue = totalValue.plus(value);
+    }
+
+    const totalPositive = totalValue.greaterThan(ZERO);
+    return {
+      projectId,
+      weights: packages.map((wp) => {
+        const value = valueByPackage.get(wp.id) ?? ZERO;
+        // No total value anywhere (all-unpriced / empty) ⇒ every suggestion is 0, never ÷0.
+        const suggestedWeight = totalPositive ? value.div(totalValue).toNumber() : 0;
+        return { workPackageId: wp.id, suggestedWeight };
+      }),
+    };
+  }
+
+  /**
+   * Master Schedule P1-a (ADR-029): partial update of a work package + its schedule window (the WP
+   * IS the master-schedule phase row). Project-scoped like every other WP mutation. Enforces the new
+   * schedule invariants: `plannedEnd ≥ plannedStart` and `durationDays ≥ 0` (reusing
+   * `validateActivityDates`), and a `scheduleOnly` phase must own no BOQ scope (§8.5). % complete and
+   * actual dates are DERIVED on read — never accepted here.
+   */
+  async updateWorkPackage(identity: RequestIdentity, workPackageId: string, dto: UpdateWorkPackageDto) {
+    const prisma = this.tenancy.getClient();
+    const wp = await this.repo.findWorkPackageForUpdate(prisma, identity.activeOrganizationId, workPackageId);
+    if (!wp) throw new NotFoundException(`Work package ${workPackageId} not found`);
+    await this.projectAccess.assertMember(identity, wp.projectId);
+
+    // Validate the effective (post-update) schedule window. Only-one-side edits are checked against
+    // the value that would remain — but the update DTO carries no read of the stored dates, so when
+    // only one bound is supplied we validate the pair only if both are present in this request.
+    this.validateActivityDates(
+      dto.plannedStart ?? undefined,
+      dto.plannedEnd ?? undefined,
+      dto.durationDays ?? undefined,
+    );
+
+    // §8.5: a non-measurable (schedule-only) phase is tracked by dates only and must carry no BOQ
+    // scope, so its derived % stays honestly null rather than a silent 0.
+    if (dto.scheduleOnly === true && wp._count.boqLinks > 0) {
+      throw new BadRequestException(
+        'A schedule-only phase cannot have BOQ scope. Remove its BOQ allocations first, or leave it measurable.',
+      );
+    }
+
+    return this.repo.updateWorkPackage(prisma, workPackageId, {
+      ...(dto.name !== undefined ? { name: dto.name } : {}),
+      ...(dto.responsibleOwner !== undefined ? { responsibleOwner: dto.responsibleOwner } : {}),
+      ...(dto.progressWeight !== undefined ? { progressWeight: new Decimal(dto.progressWeight) } : {}),
+      ...(dto.plannedStart !== undefined
+        ? { plannedStart: dto.plannedStart ? new Date(dto.plannedStart) : null }
+        : {}),
+      ...(dto.plannedEnd !== undefined
+        ? { plannedEnd: dto.plannedEnd ? new Date(dto.plannedEnd) : null }
+        : {}),
+      ...(dto.durationDays !== undefined ? { durationDays: dto.durationDays } : {}),
+      ...(dto.forecastEnd !== undefined
+        ? { forecastEnd: dto.forecastEnd ? new Date(dto.forecastEnd) : null }
+        : {}),
+      ...(dto.scheduleOnly !== undefined ? { scheduleOnly: dto.scheduleOnly } : {}),
+    });
+  }
+
+  /**
+   * Project physical %: each package's progress is the **value-weighted** mean of its allocated BOQ
+   * leaves' verified % — Σ(leaf value × leaf %) ÷ Σ(leaf value) (`weightedPackagePercent`, the
+   * 2026-09-05 Option-A change; falls back to a plain average only when nothing in the package is
+   * priced). Packages roll up to the project by their `progressWeight`. Reports weightsTotal +
+   * weightsComplete so an incomplete plan (weights ≠ 100%) is visible.
+   *
+   * Master Schedule P1-a (ADR-029): each package line also carries its schedule window (planned
+   * dates / duration / forecast) and `percentComplete` — the master-schedule read model. A
+   * `scheduleOnly` phase (no BOQ scope, master-schedule §8.5) has no derivable %: its
+   * `percentComplete` is null and it is excluded from both the weighting numerator and denominator,
+   * tracked by dates alone rather than reported as a silent 0.
+   *
+   * Master Schedule P1-b (ADR-029): each line also carries DERIVED (never stored) schedule reads —
+   * `actualStart`/`actualFinish` from the package's APPROVED-DPR measurement dates, and a per-phase
+   * `scheduleStatus` from the planned window vs progress as-of `asOf` (default now; threaded like
+   * `getScheduleVariance` so the status is testable with a fixed date). See `deriveActualDates` and
+   * `derivePhaseScheduleStatus`.
+   */
+  async getRollup(identity: RequestIdentity, projectId: string, asOf?: string) {
+    await this.projectAccess.assertMember(identity, projectId);
+    const prisma = this.tenancy.getClient();
+
+    const at = asOf ? new Date(asOf) : new Date();
 
     const packages = await this.repo.findWorkPackages(prisma, identity.activeOrganizationId, projectId);
     const progressLines = await this.getProjectProgress(identity, projectId);
@@ -411,12 +598,56 @@ export class ProgressService {
         .map((v) => [v.id, new Decimal(v.totalAmount?.toString() ?? '0')] as const),
     );
 
+    // P1-b: one batched read of the APPROVED-DPR report dates across every allocated leaf, folded to
+    // per-node min/max. Each package then reads its own actual window from its leaves.
+    const reportDates = await this.repo.approvedReportDatesForLeaves(
+      prisma,
+      identity.activeOrganizationId,
+      allocatedLeafIds,
+    );
+    const rangeByNode = new Map<string, { min: Date; max: Date }>();
+    for (const { boqNodeId, reportDate } of reportDates) {
+      const cur = rangeByNode.get(boqNodeId);
+      if (!cur) {
+        rangeByNode.set(boqNodeId, { min: reportDate, max: reportDate });
+      } else {
+        if (reportDate.getTime() < cur.min.getTime()) cur.min = reportDate;
+        if (reportDate.getTime() > cur.max.getTime()) cur.max = reportDate;
+      }
+    }
+
     let weightsTotal = ZERO;
     let weighted = ZERO;
     const packageLines = packages.map((wp) => {
       const leaves = wp.boqLinks.map((b) => b.boqNodeId);
+      const { actualStart, actualFinishCandidate } = deriveActualDates(leaves, rangeByNode);
+      // A schedule-only phase has no measurable scope: no derived %, and it takes no part in the
+      // project weighting (master-schedule §8.5). Its own progressWeight should be 0, but exclude it
+      // from weightsTotal too so it never drags weightsComplete off 100%.
+      if (wp.scheduleOnly) {
+        return {
+          id: wp.id,
+          code: wp.code,
+          name: wp.name,
+          responsibleOwner: wp.responsibleOwner,
+          weight: new Decimal(wp.progressWeight.toString()).toString(),
+          percentComplete: null,
+          leafCount: leaves.length,
+          plannedStart: isoOrNull(wp.plannedStart),
+          plannedEnd: isoOrNull(wp.plannedEnd),
+          durationDays: wp.durationDays,
+          forecastEnd: isoOrNull(wp.forecastEnd),
+          scheduleOnly: true,
+          // A schedule-only phase has no measurable scope, so it never accrues APPROVED-DPR dates:
+          // actualStart/Finish stay null and its status is derived from the dates alone.
+          actualStart: null,
+          actualFinish: null,
+          scheduleStatus: deriveScheduleOnlyStatus(wp.plannedStart, wp.plannedEnd, at),
+        };
+      }
       // Value-weighted, not a plain average — see `progress-rollup.ts` for why.
       const pct = weightedPackagePercent(leaves, pctByNode, valueByNode);
+      const percentComplete = Math.round(pct);
       const weight = new Decimal(wp.progressWeight.toString());
       weightsTotal = weightsTotal.plus(weight);
       weighted = weighted.plus(weight.mul(pct));
@@ -426,8 +657,18 @@ export class ProgressService {
         name: wp.name,
         responsibleOwner: wp.responsibleOwner,
         weight: weight.toString(),
-        percentComplete: Math.round(pct),
+        percentComplete,
         leafCount: leaves.length,
+        plannedStart: isoOrNull(wp.plannedStart),
+        plannedEnd: isoOrNull(wp.plannedEnd),
+        durationDays: wp.durationDays,
+        forecastEnd: isoOrNull(wp.forecastEnd),
+        scheduleOnly: false,
+        actualStart: isoOrNull(actualStart),
+        // Approximation of "crossed 100%": the latest APPROVED-DPR date is a finish only once the
+        // package is fully verified. Exact-crossing replay (the day the last unit landed) is deferred.
+        actualFinish: percentComplete === 100 ? isoOrNull(actualFinishCandidate) : null,
+        scheduleStatus: derivePhaseScheduleStatus(wp.plannedStart, wp.plannedEnd, percentComplete, at),
       };
     });
 
@@ -525,12 +766,91 @@ export class ProgressService {
   // ── ADR-021 CONST-PROG-011: planned baseline + schedule variance ──────────────
 
   /**
-   * Replaces the project's approved planned-progress curve (ACCO's monthly milestones). Validates
+   * The governing (APPROVED) programme baseline's frozen curve for a project, or null when none has
+   * been approved yet. Master Schedule P3 (ADR-029): read directly through the baseline repo so the
+   * variance engine can source the frozen plan without reaching for Prisma.
+   */
+  private async findGoverningBaseline(orgId: string, projectId: string) {
+    const prisma = this.tenancy.getClient();
+    return this.baselineRepo.findApproved(prisma as never, orgId, projectId);
+  }
+
+  /**
+   * Master Schedule P3 (ADR-029): the single planned-curve source of truth for the variance engine.
+   * The plan is resolved in one place, three-way:
+   *  - a governing APPROVED `ProgrammeBaseline` exists → its frozen snapshot (`source:'baseline'`, `version`);
+   *  - else the live `ProgressTarget` curve, if any (`source:'targets'`, `version:null`);
+   *  - else the provisional linear ramp Project.startDate → expectedEndDate (`source:'provisional'`).
+   *
+   * Points are returned in the interpolatable `{targetDate, cumulativePercent}` shape so
+   * `plannedPercentAt` reads all three sources uniformly. The provisional ramp is expressed as its two
+   * endpoints (0% at start, 100% at end); it is empty when the project has no usable dates — the read
+   * then reports INSUFFICIENT_DATA, exactly as before.
+   */
+  private async resolvePlannedCurve(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<{
+    points: { targetDate: Date; cumulativePercent: number }[];
+    source: ProgressCurveSource;
+    version: number | null;
+  }> {
+    const orgId = identity.activeOrganizationId;
+    const prisma = this.tenancy.getClient();
+
+    const baseline = await this.findGoverningBaseline(orgId, projectId);
+    if (baseline) {
+      return {
+        points: baseline.points.map((p) => ({
+          targetDate: p.targetDate,
+          cumulativePercent: Number(p.cumulativePercent),
+        })),
+        source: 'baseline',
+        version: baseline.version,
+      };
+    }
+
+    const targets = await this.repo.findTargets(prisma, projectId);
+    if (targets.length > 0) {
+      return {
+        points: targets.map((t) => ({
+          targetDate: t.targetDate,
+          cumulativePercent: Number(t.cumulativePercent),
+        })),
+        source: 'targets',
+        version: null,
+      };
+    }
+
+    const dates = await this.repo.findProjectDates(prisma, orgId, projectId);
+    const startDate = dates?.startDate ?? null;
+    const expectedEndDate = dates?.expectedEndDate ?? null;
+    // The provisional ramp is the two endpoints; empty when the project has no usable dates (missing,
+    // or end ≤ start) — mirrors computeProvisionalBaseline returning [] so the read stays INSUFFICIENT_DATA.
+    const points =
+      startDate && expectedEndDate && expectedEndDate.getTime() > startDate.getTime()
+        ? [
+            { targetDate: startDate, cumulativePercent: 0 },
+            { targetDate: expectedEndDate, cumulativePercent: 100 },
+          ]
+        : [];
+    return { points, source: 'provisional', version: null };
+  }
+
+  /**
+   * Replaces the project's live planned-progress curve (ACCO's monthly milestones). Validates
    * that the cumulative percentages are in [0, 100], the dates are unique, and the curve is
    * non-decreasing over time (cumulative progress cannot go backwards).
+   *
+   * Master Schedule P3 (ADR-029): this edits the *working* curve, which the PM stages freely. It is
+   * NOT the governing plan — once a baseline is approved the frozen `ProgrammeBaseline` drives
+   * variance (see `resolvePlannedCurve`), and the working curve becomes governing only when it is
+   * published via approve/re-baseline (a governed version, senior + Variation). Editing here never
+   * moves the approved baseline; it just stages the next one.
    */
   async setTargets(identity: RequestIdentity, projectId: string, targets: ProgressTargetInput[]) {
     await this.projectAccess.assertMember(identity, projectId);
+
     const sorted = [...targets].sort(
       (a, b) => new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime(),
     );
@@ -582,16 +902,18 @@ export class ProgressService {
 
   /**
    * Planned-vs-verified schedule variance: the planned cumulative % due today (interpolated from the
-   * target curve) against the verified physical % (the weighted roll-up). A large negative gap means
-   * the project is behind schedule; positive means ahead. Null when no baseline curve is set.
+   * planned curve) against the verified physical % (the weighted roll-up). A large negative gap means
+   * the project is behind schedule; positive means ahead. Null when no planned curve resolves.
+   *
+   * Master Schedule P3 (ADR-029): the planned side comes from `resolvePlannedCurve` — the governing
+   * frozen baseline when one is approved, else the live targets, else the provisional ramp.
    */
   async getScheduleVariance(identity: RequestIdentity, projectId: string, asOf?: string) {
     await this.projectAccess.assertMember(identity, projectId);
-    const prisma = this.tenancy.getClient();
-    const targets = await this.repo.findTargets(prisma, projectId);
+    const planned = await this.resolvePlannedCurve(identity, projectId);
     const at = asOf ? new Date(asOf) : new Date();
 
-    const plannedPercent = plannedPercentAt(targets, at);
+    const plannedPercent = plannedPercentAt(planned.points, at);
     const rollup = await this.getRollup(identity, projectId);
     const physicalPercent = rollup.physicalPercent;
 
@@ -698,45 +1020,46 @@ export class ProgressService {
   }
 
   /**
-   * The planned-vs-actual S-curve. Actual = the snapshot series ordered by period. Baseline = the
-   * provisional Option-C linear ramp from Project.startDate → expectedEndDate, sampled at the actual
-   * period dates (empty when the project has no usable dates). Status/variance compare the latest
-   * actual physical % to the planned % at that date. All math lives in the pure progress-curve module.
+   * The planned-vs-actual S-curve. Actual = the snapshot series ordered by period. The planned line
+   * comes from `resolvePlannedCurve` (Master Schedule P3, ADR-029): the governing frozen baseline when
+   * one is approved, else the live targets, else the provisional Option-C ramp. Status/variance compare
+   * the latest actual physical % to the planned % at that date. All interpolation is the pure
+   * progress-curve math.
+   *
+   * The baseline output array is source-shaped, preserving the pre-P3 contract: an entered plan
+   * (baseline/targets) is returned as its own points; the provisional ramp is sampled at the actual
+   * period dates (so the drawn planned line lines up with the actual line).
    */
   async getCurve(identity: RequestIdentity, projectId: string): Promise<ProgressCurveResponse> {
     await this.projectAccess.assertMember(identity, projectId);
-    const prisma = this.tenancy.getClient();
 
     const { actual } = await this.loadActualSeries(identity, projectId);
-    const dates = await this.repo.findProjectDates(prisma, identity.activeOrganizationId, projectId);
-    const startDate = dates?.startDate ?? null;
-    const expectedEndDate = dates?.expectedEndDate ?? null;
+    const planned = await this.resolvePlannedCurve(identity, projectId);
+    const isProvisional = planned.source === 'provisional';
 
-    // Prefer the approved target curve (CONST-PROG-011) when one is set; otherwise fall back to the
-    // provisional Option-C ramp. Setting a baseline is exactly what un-provisions the S-curve: the
-    // planned line becomes the entered plan and `baselineProvisional` flips to false.
-    const targets = await this.repo.findTargets(prisma, projectId);
-    const hasTargets = targets.length > 0;
+    // An entered plan (baseline/targets) is returned as its own points; the provisional ramp is
+    // sampled at the actual period dates (empty when the ramp has no usable dates → INSUFFICIENT_DATA).
+    const baseline: ProgressCurvePoint[] = isProvisional
+      ? planned.points.length === 0
+        ? []
+        : actual.map((a) => {
+            const at = new Date(a.periodEndDate);
+            return {
+              periodEndDate: isoDate(at),
+              plannedPercent: plannedPercentAt(planned.points, at) ?? 0,
+            };
+          })
+      : planned.points.map((p) => ({
+          periodEndDate: isoDate(p.targetDate),
+          plannedPercent: p.cumulativePercent,
+        }));
 
-    const baseline = hasTargets
-      ? targets.map((r) => ({
-          periodEndDate: isoDate(r.targetDate),
-          plannedPercent: Number(r.cumulativePercent),
-        }))
-      : computeProvisionalBaseline(
-          startDate,
-          expectedEndDate,
-          actual.map((a) => new Date(a.periodEndDate)),
-        );
-
-    // Variance = latest actual physical − planned at that date, from the same source as the baseline.
+    // Variance = latest actual physical − planned at that date, interpolated from the resolved curve.
     let scheduleVariancePercent: number | null = null;
     let status: ProgressCurveResponse['status'] = 'INSUFFICIENT_DATA';
-    if (actual.length > 0 && baseline.length > 0) {
+    if (actual.length > 0 && planned.points.length > 0) {
       const latest = actual[actual.length - 1];
-      const plannedAtLatest = hasTargets
-        ? plannedPercentAt(targets, new Date(latest.periodEndDate))
-        : plannedPercentAtDate(startDate, expectedEndDate, new Date(latest.periodEndDate));
+      const plannedAtLatest = plannedPercentAt(planned.points, new Date(latest.periodEndDate));
       if (plannedAtLatest !== null) {
         scheduleVariancePercent = Math.round((latest.physicalPercent - plannedAtLatest) * 100) / 100;
         status = scheduleStatusFor(scheduleVariancePercent);
@@ -749,7 +1072,9 @@ export class ProgressService {
       actual,
       scheduleVariancePercent,
       status,
-      baselineProvisional: !hasTargets,
+      baselineProvisional: isProvisional,
+      baselineSource: planned.source,
+      baselineVersion: planned.version,
     };
   }
 
@@ -918,11 +1243,104 @@ function plannedPercentAt(
   return Number(last.cumulativePercent);
 }
 
+/** A `@db.Date` column → ISO `YYYY-MM-DD`, or null. The date-only shape the read models use. */
+function isoOrNull(date: Date | null | undefined): string | null {
+  return date ? isoDate(date) : null;
+}
+
+/**
+ * Master Schedule P1-b (ADR-029): a package's DERIVED actual window from its leaves' APPROVED-DPR
+ * report dates. `actualStart` = the earliest such date across the package's leaves (null when the
+ * package has no verified progress). `actualFinishCandidate` = the latest such date — only a *finish*
+ * once the package reads 100% (that gate is applied by the caller); it is null when nothing is
+ * measured.
+ */
+function deriveActualDates(
+  leafIds: string[],
+  rangeByNode: Map<string, { min: Date; max: Date }>,
+): { actualStart: Date | null; actualFinishCandidate: Date | null } {
+  let start: Date | null = null;
+  let finish: Date | null = null;
+  for (const id of leafIds) {
+    const range = rangeByNode.get(id);
+    if (!range) continue;
+    if (start === null || range.min.getTime() < start.getTime()) start = range.min;
+    if (finish === null || range.max.getTime() > finish.getTime()) finish = range.max;
+  }
+  return { actualStart: start, actualFinishCandidate: finish };
+}
+
+/**
+ * The planned expected-to-date % for a phase at `asOf`: 0 at/before plannedStart, 100 at/after
+ * plannedEnd, linear in between. Day-grained (the columns are `@db.Date`). Null when either bound is
+ * missing — the phase then has no schedule baseline to judge against.
+ */
+function phaseExpectedPercentAt(
+  plannedStart: Date | null | undefined,
+  plannedEnd: Date | null | undefined,
+  asOf: Date,
+): number | null {
+  if (!plannedStart || !plannedEnd) return null;
+  const start = plannedStart.getTime();
+  const end = plannedEnd.getTime();
+  if (end <= start) return asOf.getTime() >= end ? 100 : 0;
+  const t = asOf.getTime();
+  if (t <= start) return 0;
+  if (t >= end) return 100;
+  return ((t - start) / (end - start)) * 100;
+}
+
+/**
+ * Master Schedule P1-b (ADR-029): per-phase schedule health for a MEASURABLE package. Expected-to-date
+ * % comes from the planned window vs `asOf`; the variance (actual − expected) maps through the same
+ * `scheduleStatusFor` bands as the project S-curve. INSUFFICIENT_DATA when the planned window is
+ * unset (mirrors `scheduleStatusFor(null)`).
+ */
+function derivePhaseScheduleStatus(
+  plannedStart: Date | null | undefined,
+  plannedEnd: Date | null | undefined,
+  actualPercent: number,
+  asOf: Date,
+): ProgressScheduleStatus {
+  const expected = phaseExpectedPercentAt(plannedStart, plannedEnd, asOf);
+  if (expected === null) return scheduleStatusFor(null);
+  return scheduleStatusFor(actualPercent - expected);
+}
+
+/**
+ * Master Schedule P1-b (ADR-029): per-phase schedule health for a SCHEDULE-ONLY package, which has no
+ * measurable % — so it is judged by dates alone (kept deliberately simple, §8.5):
+ * finished by plannedEnd is not knowable without a % signal, so past plannedEnd it reads BEHIND (the
+ * phase's window has lapsed and nothing marks it done); on or before plannedEnd it reads ON_TRACK;
+ * INSUFFICIENT_DATA when the planned window is unset.
+ */
+function deriveScheduleOnlyStatus(
+  plannedStart: Date | null | undefined,
+  plannedEnd: Date | null | undefined,
+  asOf: Date,
+): ProgressScheduleStatus {
+  if (!plannedStart || !plannedEnd) return 'INSUFFICIENT_DATA';
+  return asOf.getTime() > plannedEnd.getTime() ? 'BEHIND' : 'ON_TRACK';
+}
+
 export interface CreateWorkPackageDto {
   code: string;
   name: string;
   responsibleOwner?: string;
   progressWeight?: number;
+}
+
+// Master Schedule P1-a (ADR-029): partial WP update incl. the schedule window. Dates are ISO
+// strings (@db.Date). % complete + actual dates are derived on read, never accepted here.
+export interface UpdateWorkPackageDto {
+  name?: string;
+  responsibleOwner?: string | null;
+  progressWeight?: number;
+  plannedStart?: string | null;
+  plannedEnd?: string | null;
+  durationDays?: number | null;
+  forecastEnd?: string | null;
+  scheduleOnly?: boolean;
 }
 
 /** Maps a stored ProgressSnapshot row to its wire DTO (Decimals → numbers, Dates → ISO). */

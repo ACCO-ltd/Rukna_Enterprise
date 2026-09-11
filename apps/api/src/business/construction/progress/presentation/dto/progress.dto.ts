@@ -1,6 +1,28 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsInt, IsNumber, IsBoolean, Min, Max, IsDateString, MaxLength, ValidateNested, ArrayMaxSize } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsInt, IsNumber, IsBoolean, IsIn, Min, Max, IsDateString, MaxLength, ValidateNested, ArrayMaxSize } from 'class-validator';
 import { Type } from 'class-transformer';
+import type { ScheduleTemplateKey } from '@erp/types';
+
+// Master Schedule P1-d (ADR-029) — apply a server-side schedule template to seed the project phases.
+const SCHEDULE_TEMPLATE_KEYS: ScheduleTemplateKey[] = ['ACCO_STANDARD_BUILDING'];
+
+export class ApplyScheduleTemplateDto {
+  @ApiProperty({ enum: SCHEDULE_TEMPLATE_KEYS, example: 'ACCO_STANDARD_BUILDING' })
+  @IsIn(SCHEDULE_TEMPLATE_KEYS)
+  templateKey!: ScheduleTemplateKey;
+}
+
+// Master Schedule P3 (ADR-029) — re-baseline the frozen programme plan (v>=2). A Variation is
+// required as the justification for moving the plan the project is measured against (Q-4).
+export class RebaselineProgrammeDto {
+  @ApiProperty({ description: 'The Variation that justifies moving the frozen plan' })
+  @IsString() @IsNotEmpty()
+  variationOrderId!: string;
+
+  @ApiPropertyOptional({ description: 'Why the plan is being re-baselined' })
+  @IsString() @IsOptional() @MaxLength(500)
+  note?: string;
+}
 
 // ADR-021 CONST-PROG-005 — programme activity (time layer under a work package).
 export class CreateProgrammeActivityDto {
@@ -173,4 +195,41 @@ export class AllocateBoqNodeDto {
   @ApiProperty({ description: 'A BOQ leaf node id' })
   @IsString() @IsNotEmpty()
   boqNodeId!: string;
+}
+
+// Master Schedule P1-a (ADR-029) — partial update of a work package, including its schedule window
+// (the WorkPackage IS the master-schedule phase row). Dates are ISO strings (@db.Date). % complete
+// and actual dates are DERIVED on read, never accepted here.
+export class UpdateWorkPackageDto {
+  @ApiPropertyOptional({ example: 'Substructure' })
+  @IsOptional() @IsString() @IsNotEmpty() @MaxLength(255)
+  name?: string;
+
+  @ApiPropertyOptional({ example: 'Ahmed Ali', nullable: true })
+  @IsOptional() @IsString() @MaxLength(255)
+  responsibleOwner?: string | null;
+
+  @ApiPropertyOptional({ example: 0.35, description: 'Fraction of project weight (0..1)' })
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Max(1)
+  progressWeight?: number;
+
+  @ApiPropertyOptional({ example: '2026-09-01', nullable: true })
+  @IsOptional() @IsDateString()
+  plannedStart?: string | null;
+
+  @ApiPropertyOptional({ example: '2026-09-30', nullable: true })
+  @IsOptional() @IsDateString()
+  plannedEnd?: string | null;
+
+  @ApiPropertyOptional({ minimum: 0, nullable: true })
+  @IsOptional() @IsInt() @Min(0)
+  durationDays?: number | null;
+
+  @ApiPropertyOptional({ example: '2026-10-15', nullable: true, description: 'Optional PM forecast finish' })
+  @IsOptional() @IsDateString()
+  forecastEnd?: string | null;
+
+  @ApiPropertyOptional({ description: 'Non-measurable phase (no BOQ scope); tracked by dates only' })
+  @IsOptional() @IsBoolean()
+  scheduleOnly?: boolean;
 }

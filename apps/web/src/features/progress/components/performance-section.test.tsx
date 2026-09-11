@@ -61,6 +61,8 @@ const CURVE: ProgressCurveResponse = {
   scheduleVariancePercent: -8,
   status: 'BEHIND',
   baselineProvisional: true,
+  baselineSource: 'provisional',
+  baselineVersion: null,
 };
 
 const INSUFFICIENT_CURVE: ProgressCurveResponse = {
@@ -70,6 +72,8 @@ const INSUFFICIENT_CURVE: ProgressCurveResponse = {
   scheduleVariancePercent: null,
   status: 'INSUFFICIENT_DATA',
   baselineProvisional: true,
+  baselineSource: 'provisional',
+  baselineVersion: null,
 };
 
 const loaded = <T,>(data: T) => ({ data, isPending: false, isError: false, isFetching: false });
@@ -100,6 +104,30 @@ describe('PerformanceSection', () => {
     renderWithProviders(<PerformanceSection projectId="proj-1" onGoTo={() => {}} />, { withToast: true });
 
     expect(screen.getByText(/planned line is an estimate/i)).toBeInTheDocument();
+  });
+
+  it('badges the S-curve source as Provisional for a provisional curve', () => {
+    renderWithProviders(<PerformanceSection projectId="proj-1" onGoTo={() => {}} />, { withToast: true });
+
+    expect(screen.getByText('Provisional')).toBeInTheDocument();
+  });
+
+  it('badges the S-curve source as the draft plan when it comes from targets', () => {
+    mocks.useProgressCurve.mockReturnValue(
+      loaded({ ...CURVE, baselineSource: 'targets', baselineProvisional: true, baselineVersion: null }),
+    );
+    renderWithProviders(<PerformanceSection projectId="proj-1" onGoTo={() => {}} />, { withToast: true });
+
+    expect(screen.getByText('Draft plan (not approved)')).toBeInTheDocument();
+  });
+
+  it('badges the S-curve source with the governing baseline version', () => {
+    mocks.useProgressCurve.mockReturnValue(
+      loaded({ ...CURVE, baselineSource: 'baseline', baselineProvisional: false, baselineVersion: 3 }),
+    );
+    renderWithProviders(<PerformanceSection projectId="proj-1" onGoTo={() => {}} />, { withToast: true });
+
+    expect(screen.getByText('Baseline v3')).toBeInTheDocument();
   });
 
   it('shows an honest insufficient-data state instead of a fabricated curve', () => {

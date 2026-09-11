@@ -323,7 +323,7 @@ function CommercialFoundation({
             t('notApplicable')
           ) : mainContract ? (
             <Link
-              href={`/contracts/${mainContract.id}`}
+              href={`/projects/${project.id}/commercial/contract-security`}
               className="font-medium text-brand-primary hover:underline"
             >
               {mainContract.contractNumber}
