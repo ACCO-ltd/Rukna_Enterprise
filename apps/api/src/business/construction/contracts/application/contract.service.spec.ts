@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Decimal } from '@prisma/client/runtime/library';
 import type { RequestIdentity } from '@erp/types';
 
 import { ContractService } from './contract.service.js';
@@ -643,8 +644,6 @@ describe('R3 — tie-out & three-layer contract value (T-1..T-4)', () => {
 
 // ADR-029 V-2 / T-2 / T-3 — the variation current-value raise seam the adopt command drives.
 describe('V-2 — raiseCurrentValueForVariation (current rises by net, base frozen)', () => {
-  const { Decimal } = require('@prisma/client/runtime/library');
-
   it('raises current by the VO net and leaves the frozen base untouched', async () => {
     const { service, repo, audit } = build(null);
     repo.findValueForRaise.mockResolvedValue({

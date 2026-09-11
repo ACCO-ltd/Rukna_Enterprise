@@ -5,10 +5,7 @@ import { Reflector } from '@nestjs/core';
 import { PERMISSIONS, type JwtPayload, type PermissionKey } from '@erp/types';
 
 import { PermissionsGuard } from './permissions.guard.js';
-import {
-  REQUIRED_PERMISSIONS_KEY,
-  REQUIRED_ANY_PERMISSION_KEY,
-} from '../decorators/require-permissions.decorator.js';
+import { REQUIRED_ANY_PERMISSION_KEY } from '../decorators/require-permissions.decorator.js';
 
 const contextWith = (user?: JwtPayload): ExecutionContext =>
   ({
