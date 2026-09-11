@@ -11,9 +11,9 @@ describe('ACCO approval chains (ADR-022 CONST-DOA-006..009)', () => {
   const chains = accoApprovalChains();
   const byKey = (key: string) => chains.find((c) => c.key === key)!;
 
-  it('covers exactly the Start, Closeout, BOQ-baseline and DPR chains', () => {
+  it('covers exactly the Start, Closeout, BOQ-commit and DPR chains', () => {
     expect(chains.map((c) => c.key).sort()).toEqual(
-      ['BOQ_BASELINE', 'DPR_APPROVAL', 'PROJECT_CLOSEOUT', 'PROJECT_START'].sort(),
+      ['BOQ_COMMIT', 'DPR_APPROVAL', 'PROJECT_CLOSEOUT', 'PROJECT_START'].sort(),
     );
     for (const c of chains) expect(c.steps.length).toBeGreaterThan(0);
   });
@@ -34,9 +34,11 @@ describe('ACCO approval chains (ADR-022 CONST-DOA-006..009)', () => {
     ]);
   });
 
-  it('CONST-DOA-009 BOQ baseline: BoqVersion DRAFT → BASELINED, preparer ≠ sole approver', () => {
-    const c = byKey('BOQ_BASELINE');
-    expect([c.entityType, c.fromState, c.toState]).toEqual(['BoqVersion', 'DRAFT', 'BASELINED']);
+  it('CONST-DOA-009 + ADR-029 A-3: BoqVersion DRAFT → COMMITTED, preparer ≠ sole approver', () => {
+    // ADR-029 CONST-BOQ-034 replaced baseline with commit-to-contract; the four-eyes chain follows
+    // the governed transition to `COMMITTED` so the preparer still cannot self-approve the commit.
+    const c = byKey('BOQ_COMMIT');
+    expect([c.entityType, c.fromState, c.toState]).toEqual(['BoqVersion', 'DRAFT', 'COMMITTED']);
     // The Construction Director prepares scope+cost, so CFO and CEO must also sign.
     expect(c.steps).toEqual([ACCO_ROLES.CONSTRUCTION_DIRECTOR, ACCO_ROLES.CFO, ACCO_ROLES.CEO]);
   });

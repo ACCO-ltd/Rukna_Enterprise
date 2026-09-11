@@ -19,6 +19,12 @@ import {
   evaluateReadiness,
   type BoqBaselineReadiness,
 } from '../domain/boq-readiness.policy.js';
+import {
+  inContractBillableTotal,
+  contingencyRemaining,
+  separateChargeTotal,
+} from '../domain/boq-contract-value.policy.js';
+import { formatAmount, type DecimalString } from '../domain/boq-money.js';
 
 /**
  * CONST-BOQ-001 enforcement switch — see `ReadinessContext.enforceVariationOrigin`.
@@ -96,7 +102,13 @@ export class BoqVersioningService {
       preparedBy: identity.userId,
     });
 
-    await this.repo.updateBoq(prisma, boq.id, { currentDraftVersionId: firstVersion.id });
+    // ADR-029 L-1 — the one long-lived operational version. `currentVersionId` is the pointer
+    // R2+ reads (DRAFT pre-commit, COMMITTED after); `currentDraftVersionId` is kept in step for
+    // the read models the old pointers still feed until R3 retires them.
+    await this.repo.updateBoq(prisma, boq.id, {
+      currentDraftVersionId: firstVersion.id,
+      currentVersionId: firstVersion.id,
+    });
 
     return (await this.repo.findById(prisma, boq.id))!;
   }
@@ -228,22 +240,204 @@ export class BoqVersioningService {
   }
 
   /**
-   * ADR-026 CONST-VAR-007 (Variations Phase 2) — materialise a client-approved VariationOrder's
-   * scope into the BOQ as VARIATION-tagged nodes, on the EXISTING revision mechanism.
+   * Commit to contract — ADR-029 §2 L-1..L-4, CONST-BOQ-027.
    *
-   * Opens (or reuses) an open DRAFT revision — the ADR-016 deep-copy of the current Approved
-   * Baseline — and appends the VO's lines as new leaf nodes under a generated "Variation <ref>"
-   * section, each written with `sourceType = VARIATION` + `sourceChangeOrderId = <vo id>` (the real
-   * provenance FK). Omissions are signed-negative VARIATION leaves (Option (a)): the VO line's own
-   * signed quantity/rate/amount are carried through verbatim, so a credit line lands as a negative
-   * `totalAmount`. The BOQ's single-currency rule is preserved (every leaf carries the BOQ currency);
-   * `Contract.contractValue` and the certify→invoice chain are untouched.
+   * Fixes the contract value on the one operational version. `DRAFT → COMMITTED` in place (stable
+   * ids — L-6), and a frozen `SNAPSHOT` *copy* of the whole tree is written as the as-committed
+   * legal record (new ids; nothing operational references it). `Boq.currentVersionId` keeps
+   * pointing at the operational version and `Boq.committedSnapshotVersionId` at the snapshot.
    *
-   * This does NOT baseline the revision — the caller runs the normal governed baseline command
-   * (`baseline`) separately, so scope-in follows the standard flow and is never auto-approved.
+   * This is the successor to `baseline` under the in-place model. It does NOT touch the Contract
+   * module or `Contract.baseContractValue` — R3 reads the tie-out via `getInContractTotal`.
+   */
+  async commit(
+    identity: RequestIdentity,
+    projectId: string,
+    versionId: string,
+  ): Promise<BoqWithVersions> {
+    const prisma = this.tenancyService.getClient();
+    const boq = await this.requireBoq(prisma, projectId, identity.activeOrganizationId);
+
+    // L-1 — the operational version is the one `currentVersionId` names (fall back to the legacy
+    // draft pointer for a BOQ initialized before R2 backfilled it).
+    const operationalVersionId = boq.currentVersionId ?? boq.currentDraftVersionId;
+    if (operationalVersionId !== versionId) {
+      throw new BadRequestException('Only the operational BOQ version can be committed to contract.');
+    }
+
+    const version = await this.repo.findVersion(prisma, versionId);
+    if (!version || version.status !== 'DRAFT') {
+      throw new BadRequestException('This BOQ is not in a pre-commit DRAFT state.');
+    }
+
+    // L-3 — the SAME readiness the `readiness` query renders and `baseline` enforced. Baseline-Ready
+    // already requires every leaf to be pricing-complete (missing unit/quantity/rate are blockers),
+    // so this one evaluation covers both preconditions.
+    const nodes = await this.repo.findNodesByVersion(prisma, versionId);
+    const readiness = evaluateReadiness(nodes, {
+      boqCurrency: boq.currency,
+      isPostAward: boq.originalBaselineVersionId !== null,
+      enforceVariationOrigin: ENFORCE_VARIATION_ORIGIN,
+    });
+    if (!readiness.ready) {
+      throw new BadRequestException({
+        message: 'This BOQ is not ready to be committed to contract.',
+        details: { blockers: readiness.blockers },
+      });
+    }
+
+    // L-2 / ADR-011 — commit is the governed transition a contract is signed against, on the same
+    // seam `baseline` used. With no binding configured this resolves to null and commit proceeds;
+    // a binding turns on four-eyes (preparer ≠ approver) without touching this code. Gated → 409.
+    throwIfGated(
+      await this.commandGovernance.gateStateTransition(
+        identity,
+        'BoqVersion',
+        'DRAFT',
+        'COMMITTED',
+        versionId,
+      ),
+      'Committing this BOQ to contract requires workflow approval.',
+    );
+
+    // L-4 — one transaction: flip the operational version to COMMITTED (in place, ids intact) and
+    // write the frozen SNAPSHOT copy, then repoint the BOQ.
+    await prisma.$transaction(async (tx) => {
+      await this.repo.updateVersion(tx as never, versionId, {
+        status: 'COMMITTED',
+        // Reuse the baseline attribution columns as the commit stamp (who/when).
+        baselinedAt: new Date(),
+        baselinedBy: identity.userId,
+      });
+
+      const snapshotNumber = (await this.repo.maxVersionNumber(tx as never, boq.id)) + 1;
+      const snapshot = await this.repo.createVersion(tx as never, {
+        boqId: boq.id,
+        versionNumber: snapshotNumber,
+        status: 'SNAPSHOT',
+        notes: `As-committed snapshot of version ${version.versionNumber}`,
+        createdBy: identity.userId,
+        preparedBy: identity.userId,
+        derivedFromVersionId: versionId,
+      });
+      if (nodes.length > 0) {
+        await this.copyNodes(tx as never, boq.id, snapshot.id, nodes);
+      }
+
+      await this.repo.updateBoq(tx as never, boq.id, {
+        currentVersionId: versionId,
+        committedSnapshotVersionId: snapshot.id,
+        // Keep the legacy read-model pointers coherent until R3 retires them: the operational
+        // version is now the approved one, and there is no open pre-commit draft.
+        currentDraftVersionId: null,
+        currentApprovedVersionId: versionId,
+        ...(boq.originalBaselineVersionId ? {} : { originalBaselineVersionId: versionId }),
+      });
+    });
+
+    return (await this.repo.findById(prisma, boq.id))!;
+  }
+
+  /**
+   * BOQ read port (spec I-1 / T-1) — the in-contract billable total of a version, the figure R3's
+   * contract tie-out (`Contract.baseContractValue`) is checked against. Reuses the one shared
+   * `inContractBillableTotal` policy so the contract can never tie out to a different rule than the
+   * one the commit snapshot was frozen under. Serialized as a decimal string (CONST-BOQ-014).
+   */
+  async getInContractTotal(
+    identity: RequestIdentity,
+    projectId: string,
+    versionId: string,
+  ): Promise<DecimalString | null> {
+    const prisma = this.tenancyService.getClient();
+    const boq = await this.requireBoq(prisma, projectId, identity.activeOrganizationId);
+    if (!boq.versions.some((candidate) => candidate.id === versionId)) {
+      throw new NotFoundException(`Version ${versionId} does not belong to this BOQ`);
+    }
+    const nodes = await this.repo.findNodesByVersion(prisma, versionId);
+    return formatAmount(inContractBillableTotal(nodes));
+  }
+
+  /**
+   * BOQ read port (spec C-2) — contingency remaining on a version, derived from the live CONTINGENCY
+   * leaf amounts, never stored. Reuses the one shared `contingencyRemaining` policy so the figure
+   * the workspace shows and the figure a draw checks against can never diverge. Serialized as a
+   * decimal string (CONST-BOQ-014); null when the version carries no contingency line.
    *
-   * Runs inside the caller's transaction (`tx`) so the VO's applied-marker write and these node
-   * writes commit together. Returns the draft version id the nodes landed on + the leaf count.
+   * This is the read port, NOT the workspace read-model shaping — assembling the money band is R10.
+   */
+  async getContingencyRemaining(
+    identity: RequestIdentity,
+    projectId: string,
+    versionId: string,
+  ): Promise<DecimalString | null> {
+    const prisma = this.tenancyService.getClient();
+    const boq = await this.requireBoq(prisma, projectId, identity.activeOrganizationId);
+    if (!boq.versions.some((candidate) => candidate.id === versionId)) {
+      throw new NotFoundException(`Version ${versionId} does not belong to this BOQ`);
+    }
+    const nodes = await this.repo.findNodesByVersion(prisma, versionId);
+    return formatAmount(contingencyRemaining(nodes));
+  }
+
+  /**
+   * BOQ read port (spec T-5 / R-4, CONST-BOQ-030/033) — the separate-charge total on a version:
+   * `Σ leaf.totalAmount over commercialTreatment = SEPARATE_CHARGE leaves`. This is the Σ term the
+   * Commercial read model adds to the current contract value to derive `totalClientRevenue`
+   * (`totalClientRevenue = currentContractValue + Σ separate charges`); it NEVER moves the contract
+   * value (CONST-BOQ-030).
+   *
+   * Reuses the one shared `separateChargeTotal` policy — the exact complement of the SEPARATE_CHARGE
+   * exclusion in `inContractBillableTotal`, so the figure that leaves the in-contract tie-out is the
+   * same figure that enters total client revenue; one leaf can never be double-counted or dropped.
+   * Serialized as a decimal string (CONST-BOQ-014); null when the version carries no separate charge.
+   *
+   * The exact sibling of `getContingencyRemaining` / `getInContractTotal`: this is the read port, NOT
+   * the workspace read-model shaping (that is R10). Financial-visibility redaction is the caller's
+   * (Commercial `mayViewFinancials`), matching how `getInContractTotal` leaves gating to the caller.
+   */
+  async getSeparateChargeTotal(
+    identity: RequestIdentity,
+    projectId: string,
+    versionId: string,
+  ): Promise<DecimalString | null> {
+    const prisma = this.tenancyService.getClient();
+    const boq = await this.requireBoq(prisma, projectId, identity.activeOrganizationId);
+    if (!boq.versions.some((candidate) => candidate.id === versionId)) {
+      throw new NotFoundException(`Version ${versionId} does not belong to this BOQ`);
+    }
+    const nodes = await this.repo.findNodesByVersion(prisma, versionId);
+    return formatAmount(separateChargeTotal(nodes));
+  }
+
+  /**
+   * ADR-029 V-1/V-2 (CONST-BOQ-032) — materialise a client-approved on-contract VariationOrder's
+   * scope into the BOQ as VARIATION-tagged leaves, APPENDED IN PLACE on the operational COMMITTED
+   * version (stable ids — L-6), and cut a fresh frozen SNAPSHOT copy of the enlarged tree.
+   *
+   * This is the redesign successor to the old ADR-016 deep-copy-fork path. Instead of forking a DRAFT
+   * revision (which minted new ids downstream could not reach — the flaw §0 records), it:
+   *
+   *   1. resolves the ONE operational version (`currentVersionId`) and requires it COMMITTED — a
+   *      variation can only be adopted into a BOQ that has been committed to contract;
+   *   2. appends the VO's lines as new leaf nodes under a generated `VO-<ref>` section, each written
+   *      `sourceType = VARIATION`, `commercialTreatment = IN_CONTRACT`, `sourceChangeOrderId = <vo id>`
+   *      (the provenance FK). Omissions are signed-negative VARIATION leaves (Option (a)): the VO
+   *      line's own signed quantity/rate/amount are carried verbatim, so a credit line lands as a
+   *      negative `totalAmount`. This legitimately RAISES the in-contract total, so it is written on
+   *      the R2 `allowContractValueChange` seam — the sanctioned value-raising path the L-5 pin allows;
+   *   3. cuts a new SNAPSHOT copy (the R2 commit-snapshot mechanism, `copyNodes`) of the whole enlarged
+   *      operational tree and repoints `committedSnapshotVersionId` — the as-signed legal record after
+   *      the variation (CONST-BOQ-027). The prior snapshot stays as a SNAPSHOT row (history).
+   *
+   * The BOQ's single-currency rule is preserved (every leaf carries the BOQ currency). It does NOT
+   * touch `Contract.contractValue` — that raise is the Contract-side seam the adopt command drives in
+   * the SAME transaction (V-2). It does NOT change the milestone `%` schedule (that derives from the
+   * frozen `baseContractValue` — R3/T-6).
+   *
+   * Runs inside the caller's transaction (`tx`) so the VO applied-marker, the value raise, these node
+   * writes, and the snapshot commit together. Returns the operational version id the leaves landed on,
+   * the new snapshot id, and the leaf count.
    */
   async appendVariationNodes(
     tx: Prisma.TransactionClient,
@@ -254,62 +448,50 @@ export class BoqVersioningService {
       reference: string;
       lines: Array<{ description: string; quantity: Prisma.Decimal; unitRate: Prisma.Decimal; amount: Prisma.Decimal; sortOrder: number }>;
     },
-  ): Promise<{ versionId: string; nodeCount: number }> {
+  ): Promise<{ versionId: string; snapshotVersionId: string; nodeCount: number }> {
     const boq = await this.requireBoq(tx as never, projectId, identity.activeOrganizationId);
-    if (!boq.currentApprovedVersionId) {
+
+    // L-1 — the one operational version (fall back to the legacy draft pointer for a BOQ initialized
+    // before R2 backfilled `currentVersionId`).
+    const operationalVersionId = boq.currentVersionId ?? boq.currentDraftVersionId;
+    if (!operationalVersionId) {
       throw new BadRequestException(
-        'This project has no approved BOQ baseline to revise; baseline the original BOQ first.',
+        'This project has no operational BOQ version to append a variation to.',
+      );
+    }
+    const version = await this.repo.findVersion(tx as never, operationalVersionId);
+    if (!version || version.status !== 'COMMITTED') {
+      // A variation is a post-commit act: it raises a contract value that only exists once the BOQ has
+      // been committed. Appending to a pre-commit DRAFT would raise nothing there is to raise.
+      throw new BadRequestException(
+        'A variation can only be adopted into a BOQ that has been committed to contract.',
       );
     }
 
-    // Open or reuse an open DRAFT revision (deep copy of the current Approved Baseline).
-    let draftVersionId = boq.currentDraftVersionId ?? null;
-    if (!draftVersionId) {
-      const approvedNodes = await this.repo.findNodesByVersion(
-        tx as never,
-        boq.currentApprovedVersionId,
-      );
-      const nextVersionNumber = (await this.repo.maxVersionNumber(tx as never, boq.id)) + 1;
-      const newVersion = await this.repo.createVersion(tx as never, {
-        boqId: boq.id,
-        versionNumber: nextVersionNumber,
-        status: 'DRAFT',
-        notes: `Variation ${variation.reference} scoped in (ADR-026 CONST-VAR-007)`,
-        createdBy: identity.userId,
-        preparedBy: identity.userId,
-        derivedFromVersionId: boq.currentApprovedVersionId,
-      });
-      if (approvedNodes.length > 0) {
-        await this.copyNodes(tx as never, boq.id, newVersion.id, approvedNodes);
-      }
-      await this.repo.updateBoq(tx as never, boq.id, { currentDraftVersionId: newVersion.id });
-      draftVersionId = newVersion.id;
-    }
-
-    // Idempotency (belt-and-braces beside the VO marker): the VO's nodes must not already exist on
-    // this draft. The caller also guards on the VO's boqAppliedAt.
+    // Idempotency (belt-and-braces beside the VO marker): the VO's leaves must not already exist on
+    // the operational version. The caller also guards on the VO's boqAppliedAt (→ 409).
     const existing = await this.repo.countNodesForVariation(
       tx as never,
-      draftVersionId,
+      operationalVersionId,
       variation.id,
     );
     if (existing > 0) {
       throw new ConflictException(
-        `Variation ${variation.reference} is already present on this BOQ revision.`,
+        `Variation ${variation.reference} is already present on this BOQ.`,
       );
     }
 
     // Generate a section code that does not collide with any code already in the version.
-    const usedCodes = await this.repo.findCodesInVersion(tx as never, draftVersionId);
+    const usedCodes = await this.repo.findCodesInVersion(tx as never, operationalVersionId);
     const sectionCode = this.nextFreeCode(`VO-${variation.reference}`, usedCodes);
     usedCodes.add(sectionCode);
 
-    const rootSiblingCount = await this.repo.countSiblings(tx as never, draftVersionId, null);
+    const rootSiblingCount = await this.repo.countSiblings(tx as never, operationalVersionId, null);
     const sectionId = randomUUID();
     await this.repo.createNode(tx as never, {
       id: sectionId,
       boqId: boq.id,
-      versionId: draftVersionId,
+      versionId: operationalVersionId,
       parentId: null,
       path: sectionId,
       depth: 0,
@@ -317,8 +499,10 @@ export class BoqVersioningService {
       code: sectionCode,
       description: `Variation ${variation.reference}`,
       isLeaf: false,
-      // The section itself carries the VO provenance too, so the whole group traces to the VO.
+      // The section itself carries the VO provenance too, so the whole group traces to the VO. A
+      // section holds no amount, so it is inherently pin-neutral (it never contributes to the total).
       sourceType: 'VARIATION',
+      commercialTreatment: 'IN_CONTRACT',
       sourceChangeOrderId: variation.id,
     });
 
@@ -330,7 +514,7 @@ export class BoqVersioningService {
       await this.repo.createNode(tx as never, {
         id: leafId,
         boqId: boq.id,
-        versionId: draftVersionId,
+        versionId: operationalVersionId,
         parentId: sectionId,
         path: `${sectionId}/${leafId}`,
         depth: 1,
@@ -344,13 +528,39 @@ export class BoqVersioningService {
         unitRate: line.unitRate,
         currency: boq.currency,
         totalAmount: line.amount,
+        // V-1 — on-contract variation scope: counts toward the in-contract total (IN_CONTRACT), which
+        // is exactly the raise the R2 pin sanctions through the variation command.
         sourceType: 'VARIATION',
+        commercialTreatment: 'IN_CONTRACT',
         sourceChangeOrderId: variation.id,
       });
       order += 1;
     }
 
-    return { versionId: draftVersionId, nodeCount: variation.lines.length };
+    // V-2 — the as-signed legal record after the variation: a fresh frozen SNAPSHOT copy of the whole
+    // enlarged operational tree (the R2 commit-snapshot mechanism). The prior snapshot stays a SNAPSHOT
+    // row (history — CONST-BOQ-027); `committedSnapshotVersionId` now points at this one.
+    const enlargedNodes = await this.repo.findNodesByVersion(tx as never, operationalVersionId);
+    const snapshotNumber = (await this.repo.maxVersionNumber(tx as never, boq.id)) + 1;
+    const snapshot = await this.repo.createVersion(tx as never, {
+      boqId: boq.id,
+      versionNumber: snapshotNumber,
+      status: 'SNAPSHOT',
+      notes: `As-committed snapshot after variation ${variation.reference}`,
+      createdBy: identity.userId,
+      preparedBy: identity.userId,
+      derivedFromVersionId: operationalVersionId,
+    });
+    if (enlargedNodes.length > 0) {
+      await this.copyNodes(tx as never, boq.id, snapshot.id, enlargedNodes);
+    }
+    await this.repo.updateBoq(tx as never, boq.id, { committedSnapshotVersionId: snapshot.id });
+
+    return {
+      versionId: operationalVersionId,
+      snapshotVersionId: snapshot.id,
+      nodeCount: variation.lines.length,
+    };
   }
 
   /**
@@ -451,6 +661,12 @@ export class BoqVersioningService {
         pricingBasis: node.pricingBasis,
         sourceType: node.sourceType,
         sourceChangeOrderId: node.sourceChangeOrderId ?? undefined,
+        // ADR-029 — a snapshot is the frozen legal record, so the tie-out must copy exactly.
+        // Dropping these would reset a CONTINGENCY / SEPARATE_CHARGE line to WORK / IN_CONTRACT
+        // and silently change the in-contract total the copy reports — the same class of defect
+        // that once dropped measurementMethod/pricingBasis above.
+        nodeRole: node.nodeRole,
+        commercialTreatment: node.commercialTreatment,
         isActive: node.isActive,
         originNodeId: node.id,
       };

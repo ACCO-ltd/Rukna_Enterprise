@@ -9,6 +9,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Redirect,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -21,7 +22,10 @@ import {
 
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
-import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
+import {
+  RequirePermissions,
+  RequireAnyPermission,
+} from '../../../../common/decorators/require-permissions.decorator.js';
 import { ProjectScoped } from '../../../../common/decorators/project-scoped.decorator.js';
 import { ProjectAccessGuard } from '../../../../platform/project-access/project-access.guard.js';
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
@@ -35,6 +39,7 @@ import { CreateNodeDto } from './dto/create-node.dto.js';
 import { UpdateNodeDto } from './dto/update-node.dto.js';
 import { MoveNodeDto } from './dto/move-node.dto.js';
 import { ImportBoqDto } from './dto/import-boq.dto.js';
+import { DrawContingencyDto } from './dto/draw-contingency.dto.js';
 
 @ApiTags('BOQ')
 @ApiBearerAuth('access-token')
@@ -60,6 +65,30 @@ export class BoqController {
   @ApiParam({ name: 'projectId' })
   workspace(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
     return this.workspaceService.getWorkspace(identity, projectId);
+  }
+
+  @Get('compare-to-signed')
+  // ADR-029 R-2 — the meaningful diff: the live operational version vs the frozen as-committed
+  // SNAPSHOT, classifying each change money-neutral vs value-changing. Replaces peer-version compare.
+  @ApiOperation({
+    summary:
+      'Diff the live BOQ against the as-committed (signed) snapshot; empty until the BOQ is committed',
+  })
+  @ApiParam({ name: 'projectId' })
+  compareToSigned(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+  ) {
+    return this.workspaceService.compareToSigned(identity, projectId);
+  }
+
+  @Get('timeline')
+  // ADR-029 R-3 — the BOQ's notable events (commit, variation adopts, notable line changes),
+  // newest-first, with tier-gated amounts.
+  @ApiOperation({ summary: 'The BOQ timeline: commit, variation snapshots and notable changes, newest-first' })
+  @ApiParam({ name: 'projectId' })
+  timeline(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
+    return this.workspaceService.timeline(identity, projectId);
   }
 
   @Get('versions/:leftId/compare/:rightId')
@@ -172,27 +201,93 @@ export class BoqController {
     return this.versioningService.getReadiness(identity, projectId, versionId);
   }
 
-  @Post('versions/:versionId/baseline')
-  @RequirePermissions(PERMISSIONS.boqBaseline)
+  @Get('versions/:versionId/contingency')
+  // ADR-029 CONST-BOQ-028 / spec C-2 — contingency remaining, derived from the live allowance
+  // leaves. Read behind the base `view:boq`; the tiered money-visibility redaction is R10.
+  @ApiOperation({ summary: 'Contingency remaining on a version (derived, decimal string)' })
+  @ApiParam({ name: 'projectId' })
+  @ApiParam({ name: 'versionId' })
+  contingency(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Param('versionId') versionId: string,
+  ) {
+    return this.versioningService.getContingencyRemaining(identity, projectId, versionId);
+  }
+
+  @Post('versions/:versionId/contingency/draw')
+  // ADR-029 CONST-BOQ-028 / spec C-3, A-4 — drawing down the allowance is a commercial-authority act.
+  @RequirePermissions(PERMISSIONS.boqManageContingency)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Baseline the current DRAFT version → BASELINED. Sets it as the approved version.' })
+  @ApiOperation({
+    summary:
+      'Draw budget from the contingency allowance onto a target item, keeping the contract value constant.',
+  })
   @ApiParam({ name: 'projectId' })
   @ApiParam({ name: 'versionId' })
   @ApiResponse({
     status: 400,
     description:
-      'Not the current draft, not DRAFT status, or not Baseline Ready — details.blockers lists why',
+      'Over-draw (errorCode CONTINGENCY_EXCEEDED), no/ambiguous contingency line, or a target that would take a distorted rate',
+  })
+  drawContingency(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Param('versionId') versionId: string,
+    @Body() dto: DrawContingencyDto,
+  ) {
+    return this.treeService.drawContingency(
+      identity,
+      projectId,
+      versionId,
+      dto.toNodeId,
+      dto.amount,
+    );
+  }
+
+  @Post('versions/:versionId/commit')
+  // ADR-029 CONST-BOQ-034 — commit-to-contract governs DRAFT → COMMITTED (replaces baseline).
+  @RequirePermissions(PERMISSIONS.boqCommit)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Commit the operational DRAFT version to contract → COMMITTED, freezing an as-committed SNAPSHOT copy.',
+  })
+  @ApiParam({ name: 'projectId' })
+  @ApiParam({ name: 'versionId' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Not the operational version, not DRAFT, or not ready to commit — details.blockers lists why',
   })
   @ApiResponse({
     status: 409,
     description: 'Approval required — details.approvalInstanceId identifies the instance',
   })
-  baseline(
+  commit(
     @CurrentUser() identity: RequestIdentity,
     @Param('projectId') projectId: string,
     @Param('versionId') versionId: string,
   ) {
-    return this.versioningService.baseline(identity, projectId, versionId);
+    return this.versioningService.commit(identity, projectId, versionId);
+  }
+
+  // ADR-029 M-5 / BOUND-002 — the old baseline route is retained for one release and 308-redirects
+  // to commit (a 308 preserves the POST method and empty body). New clients call /commit directly.
+  @Post('versions/:versionId/baseline')
+  @RequirePermissions(PERMISSIONS.boqCommit)
+  @Redirect(undefined, HttpStatus.PERMANENT_REDIRECT)
+  @ApiOperation({ summary: 'Deprecated — 308-redirects to POST …/commit.' })
+  @ApiParam({ name: 'projectId' })
+  @ApiParam({ name: 'versionId' })
+  baseline(
+    @Param('projectId') projectId: string,
+    @Param('versionId') versionId: string,
+  ): { url: string; statusCode: number } {
+    return {
+      url: `/projects/${projectId}/boq/versions/${versionId}/commit`,
+      statusCode: HttpStatus.PERMANENT_REDIRECT,
+    };
   }
 
   @Post('versions/:versionId/cancel')
@@ -224,7 +319,8 @@ export class BoqController {
   }
 
   @Post('versions/:versionId/nodes')
-  @RequirePermissions(PERMISSIONS.boqManage)
+  // ADR-029 §8 A-1 — a BOQ edit is authorized by edit-scope OR edit-cost OR the manage umbrella.
+  @RequireAnyPermission(PERMISSIONS.boqEditScope, PERMISSIONS.boqEditCost, PERMISSIONS.boqManage)
   @ApiOperation({ summary: 'Add a node to the BOQ tree (DRAFT only)' })
   @ApiParam({ name: 'projectId' })
   @ApiParam({ name: 'versionId' })
@@ -238,7 +334,7 @@ export class BoqController {
   }
 
   @Patch('versions/:versionId/nodes/:nodeId')
-  @RequirePermissions(PERMISSIONS.boqManage)
+  @RequireAnyPermission(PERMISSIONS.boqEditScope, PERMISSIONS.boqEditCost, PERMISSIONS.boqManage)
   @ApiOperation({ summary: 'Update node description, quantities, or rates (DRAFT only)' })
   @ApiParam({ name: 'projectId' })
   @ApiParam({ name: 'versionId' })
@@ -254,7 +350,7 @@ export class BoqController {
   }
 
   @Post('versions/:versionId/nodes/:nodeId/move')
-  @RequirePermissions(PERMISSIONS.boqManage)
+  @RequireAnyPermission(PERMISSIONS.boqEditScope, PERMISSIONS.boqEditCost, PERMISSIONS.boqManage)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
@@ -275,7 +371,7 @@ export class BoqController {
   }
 
   @Delete('versions/:versionId/nodes/:nodeId')
-  @RequirePermissions(PERMISSIONS.boqManage)
+  @RequireAnyPermission(PERMISSIONS.boqEditScope, PERMISSIONS.boqEditCost, PERMISSIONS.boqManage)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Delete a node (DRAFT only — must have no children and no references)' })
   @ApiParam({ name: 'projectId' })

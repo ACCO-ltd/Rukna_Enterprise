@@ -35,6 +35,13 @@ export interface GenerateInvoiceFromInstallmentDto {
   paymentTerms?: string;
 }
 
+export interface GenerateInvoiceFromSeparateChargeDto {
+  boqNodeId: string;
+  invoiceDate: string;
+  dueDate: string;
+  paymentTerms?: string;
+}
+
 export interface ApproveInvoiceDto {
   invoiceId: string;
 }
@@ -123,8 +130,12 @@ export class ClientInvoiceService {
    *
    * Idempotent, exactly like generateFromIpc: one installment maps to at most one invoice, enforced by
    * the unique index on ClientInvoice.sourceInstallmentId. The amount is derived from
-   * contract value × installment percentage — never re-keyed, so the invoice cannot drift from the plan.
-   * This is ADR-023's BillableEntitlement → guarded invoice for the payment-schedule model.
+   * base contract value × installment percentage — never re-keyed, so the invoice cannot drift from
+   * the plan. This is ADR-023's BillableEntitlement → guarded invoice for the payment-schedule model.
+   *
+   * ADR-029 CONST-BOQ-032 / T-6 — the schedule derives from the **frozen** `baseContractValue`, so a
+   * variation that raises the current `contractValue` (R6) never re-spreads the milestone amounts. A
+   * legacy contract with a null base (M-4) falls back to `contractValue`.
    */
   async generateFromInstallment(identity: RequestIdentity, dto: GenerateInvoiceFromInstallmentDto) {
     const prisma = this.tenancyService.getClient();
@@ -158,7 +169,8 @@ export class ClientInvoiceService {
       );
     }
 
-    const subtotal = new Decimal(contract.contractValue.toString())
+    const scheduleBase = contract.baseContractValue ?? contract.contractValue;
+    const subtotal = new Decimal(scheduleBase.toString())
       .mul(new Decimal(installment.percentage.toString()))
       .toDecimalPlaces(2);
     const vatRate = new Decimal('0.05');
@@ -186,6 +198,94 @@ export class ClientInvoiceService {
       // Concurrent generation lost the race on unique(source_installment_id): return the winner's invoice.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         const winner = await this.repo.findByInstallment(prisma, orgId, dto.installmentId);
+        if (winner) return winner;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * ADR-029 CONST-BOQ-030/033 / spec R-4 — generate a draft one-off ClientInvoice for a SEPARATE_CHARGE
+   * BOQ leaf (an extra billed OUTSIDE the milestone schedule).
+   *
+   * Modelled analogously to {@link generateFromInstallment}: it produces the SAME billable document at
+   * the SAME lifecycle stage (DRAFT / NOT_POSTED). The invoice is tagged `sourceBoqNodeId = <leaf id>`
+   * with `sourceInstallmentId` and `sourceIpcId` null, so it is distinguishable from installment,
+   * IPC, migration-loaded (NONE) and a future VO invoice. The subtotal is the leaf's own
+   * `totalAmount` — never re-keyed, so the invoice cannot drift from the priced scope.
+   *
+   * Idempotent exactly like the installment path: one SEPARATE_CHARGE node maps to at most one invoice,
+   * enforced by the unique index on `ClientInvoice.sourceBoqNodeId`; a racing insert fails P2002 and we
+   * return the winner's invoice — still exactly one receivable.
+   *
+   * SCOPE (spec §"SCOPE GUARD"): this creates the billable document ONLY. It does NOT post to GL/AR
+   * (no journal entries, no control accounts, no receipt allocation) — that is `approve` → `post`, the
+   * same downstream path an installment invoice takes, and is out of scope for R-4. The separate charge
+   * contributes to TOTAL CLIENT REVENUE (T-5), never to the contract value (CONST-BOQ-030).
+   */
+  async generateFromSeparateCharge(
+    identity: RequestIdentity,
+    dto: GenerateInvoiceFromSeparateChargeDto,
+  ) {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId, userId } = identity;
+
+    const existing = await this.repo.findByBoqNode(prisma, orgId, dto.boqNodeId);
+    if (existing) return existing;
+
+    const node = await this.repo.findSeparateChargeForBilling(prisma, orgId, dto.boqNodeId);
+    if (!node) {
+      throw new NotFoundException(
+        `Separate-charge BOQ line ${dto.boqNodeId} not found (or not a billable SEPARATE_CHARGE leaf).`,
+      );
+    }
+
+    const contract = node.version.boq.project.contracts[0];
+    if (!contract) {
+      throw new BadRequestException(
+        'This project has no active client contract to bill the separate charge against.',
+      );
+    }
+    // A separate charge is a priced leaf; an unpriced one has nothing to bill.
+    if (node.totalAmount === null) {
+      throw new BadRequestException(
+        `Separate-charge line ${node.code} has no amount to bill.`,
+      );
+    }
+
+    const subtotal = new Decimal(node.totalAmount.toString()).toDecimalPlaces(2);
+    const vatRate = new Decimal('0.05');
+    const vatAmount = subtotal.mul(vatRate).toDecimalPlaces(2);
+    const totalAmount = subtotal.plus(vatAmount);
+
+    try {
+      return await this.repo.create(prisma, {
+        organizationId: orgId,
+        clientId: contract.clientId,
+        sourceBoqNodeId: dto.boqNodeId,
+        projectId: contract.projectId,
+        contractId: contract.id,
+        invoiceDate: new Date(dto.invoiceDate),
+        dueDate: new Date(dto.dueDate),
+        // The BOQ is single-currency (CONST-BOQ-013); a separate charge bills in that currency, which
+        // matches the contract currency for the project. Prefer the contract currency for the AR
+        // document, consistent with the installment path.
+        currencyCode: contract.currency,
+        subtotal,
+        vatAmount,
+        totalAmount,
+        paymentTerms: dto.paymentTerms,
+        billingAddressSnapshot: {
+          clientName: contract.client.name,
+          separateCharge: node.description,
+          boqCode: node.code,
+        },
+        createdBy: userId,
+      });
+    } catch (err) {
+      // Concurrent generation lost the race on unique(source_boq_node_id): return the winner's invoice.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const winner = await this.repo.findByBoqNode(prisma, orgId, dto.boqNodeId);
         if (winner) return winner;
       }
       throw err;

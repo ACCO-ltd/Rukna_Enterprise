@@ -11,15 +11,21 @@ import { BoqTreeService } from '../../boq/application/boq-tree.service.js';
 import { BoqVersioningService } from '../../boq/application/boq-versioning.service.js';
 
 /**
- * ADR-026 CONST-VAR-007 (Variations Phase 2) — integration proof that a client-approved VO's lines
- * become BOQ nodes on a revision via the EXISTING deep-copy mechanism, tagged sourceType = VARIATION
- * with the real sourceChangeOrderId FK, and that a signed-negative omission lands as a negative leaf.
+ * ADR-029 V-1/V-2 (was ADR-026 CONST-VAR-007) — integration proof that a client-approved on-contract
+ * VO's lines become BOQ nodes APPENDED IN PLACE on the operational COMMITTED version (stable ids, no
+ * deep-copy fork), tagged sourceType = VARIATION / commercialTreatment = IN_CONTRACT with the real
+ * sourceChangeOrderId FK, that a signed-negative omission lands as a negative leaf, and that a fresh
+ * frozen SNAPSHOT of the enlarged tree is cut.
  *
  * This drives the BOQ side (BoqVersioningService.appendVariationNodes) against a live DB, the same
- * way the BOQ workspace integration spec does — the orchestration + guards are covered by the
- * ApplyVariationToBoqService unit spec.
+ * way the BOQ commit integration spec does — the orchestration + the contract-value raise + guards
+ * are covered by the ApplyVariationToBoqService unit spec.
+ *
+ * NOTE (R6): DB-backed — NOT run in the R6 gate (which is DB-free unit tests + type-check). Reworked
+ * here to the in-place COMMITTED behavior so it no longer encodes the retired deep-copy path; it is
+ * ready to run once a test database is available.
  */
-describe('appendVariationNodes → BOQ (CONST-VAR-007)', () => {
+describe('appendVariationNodes → BOQ (ADR-029 V-1/V-2)', () => {
   const prisma = new PrismaClient();
   const suffix = randomUUID().slice(0, 12);
   const orgId = `vp2-org-${suffix}`;
@@ -60,7 +66,8 @@ describe('appendVariationNodes → BOQ (CONST-VAR-007)', () => {
     const tree = new BoqTreeService(tenancy, repo);
     versioning = new BoqVersioningService(tenancy, repo, ungoverned);
 
-    // A baselined original BOQ (one priced leaf under one section).
+    // A COMMITTED original BOQ (one priced leaf under one section) — the operational version a
+    // variation is adopted into under the redesign.
     const boq = await versioning.initialize(identity, projectId);
     const v1Id = boq.versions[0]!.id;
     const section = await tree.addNode(identity, projectId, v1Id, { code: '01', description: 'Original' });
@@ -73,7 +80,7 @@ describe('appendVariationNodes → BOQ (CONST-VAR-007)', () => {
       quantity: '100',
       unitRate: '10',
     });
-    await versioning.baseline(identity, projectId, v1Id);
+    await versioning.commit(identity, projectId, v1Id);
 
     // A minimal contract + a client-approved VO with an addition and a signed-negative omission.
     const client = await prisma.client.create({
@@ -125,7 +132,14 @@ describe('appendVariationNodes → BOQ (CONST-VAR-007)', () => {
     await prisma.$disconnect();
   });
 
-  it('appends VARIATION-tagged leaf nodes with the real FK, and negates an omission', async () => {
+  it('V-1: appends VARIATION-tagged IN_CONTRACT leaves IN PLACE with the real FK, and negates an omission', async () => {
+    // The operational COMMITTED version + its node ids BEFORE the append.
+    const before = await repo.findByProject(prisma, projectId);
+    const operationalId = before!.currentVersionId!;
+    const beforeIds = new Set(
+      (await prisma.boqNode.findMany({ where: { versionId: operationalId }, select: { id: true } })).map((n) => n.id),
+    );
+
     const result = await prisma.$transaction((tx) =>
       versioning.appendVariationNodes(tx, identity, projectId, {
         id: voId,
@@ -138,16 +152,27 @@ describe('appendVariationNodes → BOQ (CONST-VAR-007)', () => {
     );
 
     expect(result.nodeCount).toBe(2);
+    // The leaves landed on the SAME operational version (in place, stable ids — L-6).
+    expect(result.versionId).toBe(operationalId);
+    expect(result.snapshotVersionId).toBeTruthy();
+    expect(result.snapshotVersionId).not.toBe(operationalId);
 
     const variationNodes = await prisma.boqNode.findMany({
-      where: { versionId: result.versionId, sourceChangeOrderId: voId },
+      where: { versionId: operationalId, sourceChangeOrderId: voId },
       orderBy: [{ depth: 'asc' }, { sortOrder: 'asc' }],
     });
 
-    // A group section + two leaves, all tagged VARIATION and all pointing at the VO (the FK).
+    // A group section + two leaves, all tagged VARIATION / IN_CONTRACT and all pointing at the VO (FK).
     expect(variationNodes).toHaveLength(3);
     expect(variationNodes.every((n) => n.sourceType === 'VARIATION')).toBe(true);
+    expect(variationNodes.every((n) => n.commercialTreatment === 'IN_CONTRACT')).toBe(true);
     expect(variationNodes.every((n) => n.sourceChangeOrderId === voId)).toBe(true);
+    // Pre-existing nodes kept their ids (no fork): the id set only GREW.
+    for (const id of beforeIds) {
+      expect(variationNodes.some((n) => n.id === id)).toBe(false);
+    }
+    const stillThere = await prisma.boqNode.findMany({ where: { id: { in: [...beforeIds] } } });
+    expect(stillThere).toHaveLength(beforeIds.size);
 
     const leaves = variationNodes.filter((n) => n.isLeaf);
     expect(leaves).toHaveLength(2);
@@ -164,16 +189,27 @@ describe('appendVariationNodes → BOQ (CONST-VAR-007)', () => {
       include: { sourceChangeOrder: { select: { reference: true } } },
     });
     expect(withVo?.sourceChangeOrder?.reference).toBe('VO-001');
-
-    // The original baseline is untouched (immutability): its nodes are still BASELINE.
-    const boq = await repo.findByProject(prisma, projectId);
-    const approvedId = boq!.currentApprovedVersionId!;
-    const baselineNodes = await prisma.boqNode.findMany({ where: { versionId: approvedId } });
-    expect(baselineNodes.every((n) => n.sourceType === 'BASELINE')).toBe(true);
-    expect(baselineNodes.some((n) => n.sourceChangeOrderId === voId)).toBe(false);
   });
 
-  it('is idempotent on the same draft — re-appending the same VO is rejected', async () => {
+  it('V-2: cuts a fresh frozen SNAPSHOT of the enlarged tree and repoints committedSnapshotVersionId', async () => {
+    const boq = await repo.findByProject(prisma, projectId);
+    const operationalId = boq!.currentVersionId!;
+    const snapshotId = boq!.committedSnapshotVersionId!;
+    expect(snapshotId).not.toBe(operationalId);
+
+    // The snapshot copies the WHOLE enlarged operational tree (original + variation), with NEW ids.
+    const operationalNodes = await prisma.boqNode.findMany({ where: { versionId: operationalId } });
+    const snapshotNodes = await prisma.boqNode.findMany({ where: { versionId: snapshotId } });
+    expect(snapshotNodes).toHaveLength(operationalNodes.length);
+    const opIds = new Set(operationalNodes.map((n) => n.id));
+    expect(snapshotNodes.every((n) => !opIds.has(n.id))).toBe(true);
+    // The variation scope is present in the snapshot (the legal record includes the varied scope).
+    expect(snapshotNodes.some((n) => n.sourceChangeOrderId === voId)).toBe(true);
+    const snapshotVersion = await prisma.boqVersion.findUniqueOrThrow({ where: { id: snapshotId } });
+    expect(snapshotVersion.status).toBe('SNAPSHOT');
+  });
+
+  it('idempotent — re-appending the same VO to the operational version is rejected', async () => {
     await expect(
       prisma.$transaction((tx) =>
         versioning.appendVariationNodes(tx, identity, projectId, {

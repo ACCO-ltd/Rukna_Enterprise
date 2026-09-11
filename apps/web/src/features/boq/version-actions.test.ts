@@ -72,11 +72,16 @@ function workspace(overrides: Partial<BoqWorkspaceResponse> = {}): BoqWorkspaceR
     versions: [draft, approved],
     readiness: readiness(true),
     revision: null,
+    moneyBand: null,
+    compareToSignedAvailable: false,
     capabilities: {
       canView: true,
       canManage: true,
-      canBaseline: true,
+      canCommit: true,
       canViewCommercials: true,
+      canViewCost: true,
+      canViewMargin: true,
+      canEdit: true,
     },
     ...overrides,
   };
@@ -109,7 +114,7 @@ describe('getVersionActions — baseline', () => {
   it('withholds baseline without baseline:boq', () => {
     const base = workspace();
     const actions = getVersionActions(
-      { ...base, capabilities: { ...base.capabilities, canBaseline: false } },
+      { ...base, capabilities: { ...base.capabilities, canCommit: false } },
       'v2',
     );
 
@@ -220,11 +225,16 @@ describe('getVersionActions — no BOQ', () => {
         versions: [],
         readiness: null,
         revision: null,
+        moneyBand: null,
+        compareToSignedAvailable: false,
         capabilities: {
           canView: true,
           canManage: true,
-          canBaseline: true,
+          canCommit: true,
           canViewCommercials: true,
+          canViewCost: true,
+          canViewMargin: true,
+          canEdit: true,
         },
       },
       null,

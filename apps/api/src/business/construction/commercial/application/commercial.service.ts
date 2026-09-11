@@ -23,6 +23,7 @@ import {
   type CommercialNextAction,
   type CommercialPaymentSchedule,
   type CommercialPaymentScheduleInstallment,
+  type CommercialPaymentScheduleVariationLine,
   type CommercialSecurityPosition,
   type CommercialSettlementState,
   type CommercialSummaryResponse,
@@ -36,6 +37,8 @@ import { CommercialTermPolicy } from '../../contracts/domain/commercial-term-pol
 import { deriveGuaranteeAttention } from '../../contracts/domain/guarantee-attention-policy.js';
 import { CommercialPrismaRepository } from '../infrastructure/commercial-prisma.repository.js';
 import { VariationOrderPrismaRepository } from '../../variations/infrastructure/variation-order-prisma.repository.js';
+import { BoqVersioningService } from '../../boq/application/boq-versioning.service.js';
+import { resolveBoqVisibility } from '../../boq/domain/boq-visibility.policy.js';
 import {
   deriveContractValue,
   netPrice as computeVoNetPrice,
@@ -106,6 +109,8 @@ function invoiceSource(inv: {
     id: string;
     application: { id: string; applicationRef: string | null; applicationNumber: number | null } | null;
   } | null;
+  sourceBoqNodeId: string | null;
+  sourceBoqNode: { id: string; code: string; description: string } | null;
 }): ClientInvoiceSource {
   if (inv.sourceInstallmentId) {
     return {
@@ -122,6 +127,16 @@ function invoiceSource(inv: {
         ? `IPA ${application.applicationNumber}`
         : null);
     return { kind: 'IPC', label, id: inv.sourceIpcId };
+  }
+  // ADR-029 R-4 — a one-off separate-charge invoice: tagged by its SEPARATE_CHARGE BOQ leaf, so it is
+  // distinguishable from installment / IPC / migration-loaded (NONE) invoices. The leaf's code is the
+  // human reference; it feeds total client revenue, never the contract value (CONST-BOQ-030).
+  if (inv.sourceBoqNodeId) {
+    return {
+      kind: 'SEPARATE_CHARGE',
+      label: inv.sourceBoqNode?.code ?? null,
+      id: inv.sourceBoqNodeId,
+    };
   }
   return { kind: 'NONE', label: null, id: null };
 }
@@ -161,6 +176,8 @@ export class CommercialService {
     private readonly repo: CommercialPrismaRepository,
     // ADR-026: the VO set the four derived contract-value figures are computed from.
     private readonly variationRepo: VariationOrderPrismaRepository,
+    // ADR-029 T-5: the BOQ read port for the separate-charge total that feeds total client revenue.
+    private readonly boqVersioning: BoqVersioningService,
   ) {}
 
   // ─── B2 — Project commercial summary ───────────────────────────────────────────
@@ -172,7 +189,10 @@ export class CommercialService {
     await this.projectAccess.assertMember(identity, projectId);
     const prisma = this.tenancyService.getClient();
     const orgId = identity.activeOrganizationId;
-    const mayViewFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
+    // ADR-029 §8 A-2 — money visibility comes from the single shared BOQ helper (margin tier). The
+    // legacy `financialPositionView` gate is carried onto that tier, so existing finance/exec roles
+    // keep exactly the visibility they had; the definition now lives in one place for both surfaces.
+    const { canViewMargin: mayViewFinancials } = resolveBoqVisibility(identity);
     const asOf = new Date();
     const asOfIso = asOf.toISOString();
 
@@ -358,19 +378,37 @@ export class CommercialService {
       ...certs.map((c) => c.id),
       ...invoices.map((i) => i.id),
     ];
-    const [activity, boqVersionNumber, applicationCount, variationInputs] = await Promise.all([
-      this.repo.findRecentActivity(prisma, orgId, resourceIds).catch(() => []),
-      this.repo.findBoqVersionNumber(prisma, contract.boqVersionId).catch(() => null),
-      this.repo.countSubmittedApplications(prisma, orgId, contract.id).catch(() => 0),
-      // ADR-026 CONST-VAR-005/006: the VO set for the derived contract-value figures.
-      this.variationRepo.findValuationInputs(prisma, orgId, contract.id).catch(() => []),
-    ]);
+    const [activity, boqVersionNumber, applicationCount, variationInputs, separateChargeTotal] =
+      await Promise.all([
+        this.repo.findRecentActivity(prisma, orgId, resourceIds).catch(() => []),
+        this.repo.findBoqVersionNumber(prisma, contract.boqVersionId).catch(() => null),
+        this.repo.countSubmittedApplications(prisma, orgId, contract.id).catch(() => 0),
+        // ADR-026 CONST-VAR-005/006: the VO set for the derived contract-value figures.
+        this.variationRepo.findValuationInputs(prisma, orgId, contract.id).catch(() => []),
+        // ADR-029 T-5 (CONST-BOQ-030/033): Σ SEPARATE_CHARGE leaves on the contract's BOQ version, via
+        // the shared BOQ read port — the Σ term of total client revenue. `.catch(() => null)` matches
+        // the other reads: a lookup failure never renders as a silently-lower revenue.
+        this.boqVersioning
+          .getSeparateChargeTotal(identity, projectId, contract.boqVersionId)
+          .catch(() => null),
+      ]);
 
     const contractValueFigures = this.deriveContractValueFigures(
       new Decimal(contract.contractValue.toString()),
       variationInputs,
       mayViewFinancials,
     );
+
+    // ADR-029 CONST-BOQ-030 / T-5 — total client revenue = CURRENT contract value + Σ separate charges.
+    // A DISTINCT figure: separate charges NEVER move `contractValue`. Withheld exactly like every other
+    // money figure (RESTRICTED one card away). Equal to the contract value when there are no separate
+    // charges; when the BOQ read failed (`separateChargeTotal === null`) we surface null rather than
+    // silently dropping the separate-charge contribution.
+    const totalClientRevenue = !mayViewFinancials
+      ? null
+      : new Decimal(contract.contractValue.toString())
+          .plus(separateChargeTotal === null ? ZERO : new Decimal(separateChargeTotal))
+          .toFixed(2);
 
     return {
       projectId,
@@ -386,7 +424,13 @@ export class CommercialService {
         // Withheld like every other figure — the contract value is the most sensitive number
         // on the screen, and leaking it through the identity panel would defeat the metric's
         // RESTRICTED state one card away.
+        //
+        // ADR-029 T-5 (CONST-BOQ-030): `contract.contractValue` is the CURRENT value (base + Σ adopted
+        // on-contract variations — R6 owns the raise). `totalClientRevenue` below is the DISTINCT
+        // second figure = currentContractValue + Σ separate charges (SEPARATE_CHARGE BOQ leaves, read
+        // via the shared BOQ port). Separate charges feed revenue, NEVER `contractValue`.
         contractValue: mayViewFinancials ? contract.contractValue.toString() : null,
+        totalClientRevenue,
         currency,
         billingModel: contract.billingModel,
         boqVersionNumber,
@@ -499,7 +543,10 @@ export class CommercialService {
     await this.projectAccess.assertMember(identity, projectId);
     const prisma = this.tenancyService.getClient();
     const orgId = identity.activeOrganizationId;
-    const mayViewFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
+    // ADR-029 §8 A-2 — money visibility comes from the single shared BOQ helper (margin tier). The
+    // legacy `financialPositionView` gate is carried onto that tier, so existing finance/exec roles
+    // keep exactly the visibility they had; the definition now lives in one place for both surfaces.
+    const { canViewMargin: mayViewFinancials } = resolveBoqVisibility(identity);
     const asOfIso = new Date().toISOString();
 
     const contract = await this.repo.findMainContract(prisma, orgId, projectId);
@@ -755,7 +802,10 @@ export class CommercialService {
     await this.projectAccess.assertMember(identity, projectId);
     const prisma = this.tenancyService.getClient();
     const orgId = identity.activeOrganizationId;
-    const mayViewFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
+    // ADR-029 §8 A-2 — money visibility comes from the single shared BOQ helper (margin tier). The
+    // legacy `financialPositionView` gate is carried onto that tier, so existing finance/exec roles
+    // keep exactly the visibility they had; the definition now lives in one place for both surfaces.
+    const { canViewMargin: mayViewFinancials } = resolveBoqVisibility(identity);
     const asOf = new Date();
     const asOfIso = asOf.toISOString();
 
@@ -916,22 +966,42 @@ export class CommercialService {
    * derived from its **own linked invoice** (ClientInvoice.sourceInstallmentId): un-invoiced →
    * NEXT (the first one, where "Generate invoice" lives) / UPCOMING; invoiced but uncollected →
    * BILLED; posted with partial/full receipts → PARTIALLY_PAID / PAID. Amounts stay on the plan
-   * (ex-VAT) basis: `amount = percentage × contractValue`, `amountPaid = amount × collected-fraction`
+   * (ex-VAT) basis: `amount = percentage × baseContractValue`, `amountPaid = amount × collected-fraction`
    * of the linked invoice, so the header % and the rows stay coherent.
+   *
+   * ADR-029 CONST-BOQ-032 / T-6 — the milestone schedule derives from the **frozen** `baseContractValue`,
+   * not the current `contractValue`, so raising the current value via a variation (R6) never re-spreads
+   * the schedule. Legacy contracts predate the split (M-4): a null base means "= contractValue".
    */
   private async buildPaymentSchedule(
     identity: RequestIdentity,
     contract: MainContract,
   ): Promise<{ schedule: CommercialPaymentSchedule; hasFocus: boolean }> {
     const prisma = this.tenancyService.getClient();
-    const mayViewFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
+    // ADR-029 §8 A-2 — money visibility comes from the single shared BOQ helper (margin tier). The
+    // legacy `financialPositionView` gate is carried onto that tier, so existing finance/exec roles
+    // keep exactly the visibility they had; the definition now lives in one place for both surfaces.
+    const { canViewMargin: mayViewFinancials } = resolveBoqVisibility(identity);
 
     const installments = await this.repo.findPaymentInstallments(prisma, contract.id);
     const invoices = await this.repo.findInvoices(prisma, identity.activeOrganizationId, contract.id);
+    // ADR-029 V-3 — adopted on-contract variations are billed as their OWN lines, outside the
+    // Σ%=1.0 schedule. A DB failure here must not take the schedule down (same defensive posture as
+    // the summary): a missing VO line is a missing separate component, not a broken payment plan.
+    type ValuationInput = Awaited<
+      ReturnType<VariationOrderPrismaRepository['findValuationInputs']>
+    >[number];
+    const variationInputs: ValuationInput[] = await this.variationRepo
+      .findValuationInputs(prisma, identity.activeOrganizationId, contract.id)
+      .catch((): ValuationInput[] => []);
     const byInstallment = new Map(
       invoices.filter((inv) => inv.sourceInstallmentId).map((inv) => [inv.sourceInstallmentId, inv]),
     );
-    const contractValue = new Decimal(contract.contractValue.toString());
+    // T-6 — the schedule is frozen against the base value. Fall back to contractValue for a legacy
+    // contract whose base was never set (M-4: never fail a legacy contract).
+    const baseValue = new Decimal(
+      (contract.baseContractValue ?? contract.contractValue).toString(),
+    );
 
     // Fraction of a posted invoice already collected (0..1). Non-posted invoices count as 0.
     const collectedFraction = (inv: InvoiceRow): Decimal => {
@@ -944,7 +1014,7 @@ export class CommercialService {
     let collected = ZERO;
     let nextAssigned = false;
     const lines: CommercialPaymentScheduleInstallment[] = installments.map((inst) => {
-      const amount = contractValue.mul(new Decimal(inst.percentage.toString()));
+      const amount = baseValue.mul(new Decimal(inst.percentage.toString()));
       const inv = byInstallment.get(inst.id);
 
       let status: PaymentInstallmentBillStatus;
@@ -985,12 +1055,35 @@ export class CommercialService {
       };
     });
 
+    // ADR-029 V-3 / CONST-BOQ-032 — each ADOPTED on-contract variation (boqAppliedAt set — the raise
+    // has happened) is a distinct billing line, amount-based (its net Σ line amount), OUTSIDE the
+    // Σ%=1.0 milestone `installments` above and NEVER merged into a milestone figure. Stage attachment
+    // (which certificate the VO rides) is the R7 seam — `stageInstallmentId` is null in this cut.
+    const variationLines: CommercialPaymentScheduleVariationLine[] = variationInputs
+      .filter((vo) => vo.status === 'CLIENT_APPROVED' && vo.boqAppliedAt != null)
+      .map((vo) => {
+        const net = vo.lines.reduce(
+          (sum, l) => sum.plus(new Decimal(l.amount.toString())),
+          ZERO,
+        );
+        return {
+          variationId: vo.id,
+          reference: vo.reference,
+          title: vo.title,
+          amount: mayViewFinancials ? net.toFixed(2) : null,
+          stageInstallmentId: null,
+        };
+      });
+
     return {
       schedule: {
         currency: contract.currency,
-        contractValue: mayViewFinancials ? contractValue.toFixed(2) : null,
+        // The schedule spreads the frozen base (Σ installment amounts = base), so the header value
+        // the % are read against is the base, not the variation-inflated current value (T-6).
+        contractValue: mayViewFinancials ? baseValue.toFixed(2) : null,
         totalCollected: mayViewFinancials ? collected.toFixed(2) : null,
         installments: lines,
+        variationLines,
       },
       // Focus = there is a first un-invoiced installment (where "Generate invoice" points).
       hasFocus: !nextAssigned ? false : lines.some((l) => l.status === 'NEXT'),

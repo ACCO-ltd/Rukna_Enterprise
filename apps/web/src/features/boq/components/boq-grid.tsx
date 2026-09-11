@@ -2,7 +2,16 @@
 
 import { useRef, useState } from 'react';
 import type { BoqTreeNodeResponse } from '@erp/types';
-import { ChevronRight, LockKeyhole, MoreHorizontal, Plus } from 'lucide-react';
+import {
+  ChevronRight,
+  CircleDollarSign,
+  Diamond,
+  Lock,
+  LockKeyhole,
+  MoreHorizontal,
+  Plus,
+  Receipt,
+} from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Badge,
@@ -71,11 +80,13 @@ export function BoqGrid({
   isFiltered,
   canManage,
   canViewCommercials,
+  committed = false,
   showSource,
   highlighted,
   collapsed,
   onToggle,
   onSelect,
+  onPinnedCellEdit,
   commands,
   emptyMessage,
 }: {
@@ -95,6 +106,12 @@ export function BoqGrid({
   canManage: boolean;
   canViewCommercials: boolean;
   /**
+   * COMMITTED mode (R11 Decision 3/4). Value cells (Qty/Rate) are PINNED: they show 🔒 and do not
+   * accept a direct overwrite — the attempt opens the who-pays classifier (`onPinnedCellEdit`).
+   * Money-neutral cells (description) stay freely editable. Driven off `moneyBand.lifeStage`.
+   */
+  committed?: boolean;
+  /**
    * Whether provenance is worth a column. False while every line came in with the original
    * scope, which is every BOQ until a Variation adds one — a column reading "Baseline" on all
    * 400 rows spends horizontal space to say nothing. `sourceType` is never dropped from the
@@ -106,6 +123,8 @@ export function BoqGrid({
   collapsed: ReadonlySet<string>;
   onToggle: (nodeId: string) => void;
   onSelect: (node: BoqTreeNodeResponse) => void;
+  /** COMMITTED only — a click on a pinned value cell opens the who-pays classifier. */
+  onPinnedCellEdit?: () => void;
   commands: BoqRowCommands | null;
   emptyMessage: string;
 }) {
@@ -199,6 +218,7 @@ export function BoqGrid({
                   locale={locale}
                   canManage={canManage}
                   canViewCommercials={canViewCommercials}
+                  committed={committed}
                   showSource={showSource}
                   sectionTotal={
                     row.node.isLeaf ? undefined : (sectionTotals.get(row.node.id) ?? null)
@@ -209,6 +229,7 @@ export function BoqGrid({
                   onFocus={() => setFocusIndex(index)}
                   onToggle={onToggle}
                   onSelect={onSelect}
+                  onPinnedCellEdit={onPinnedCellEdit}
                   commands={commands}
                 />
               ))
@@ -262,6 +283,7 @@ function GridRow({
   locale,
   canManage,
   canViewCommercials,
+  committed,
   showSource,
   sectionTotal,
   highlighted,
@@ -270,6 +292,7 @@ function GridRow({
   onFocus,
   onToggle,
   onSelect,
+  onPinnedCellEdit,
   commands,
 }: {
   row: BoqRow;
@@ -277,6 +300,7 @@ function GridRow({
   locale: 'en' | 'ar';
   canManage: boolean;
   canViewCommercials: boolean;
+  committed: boolean;
   showSource: boolean;
   /** A section's client-rolled-up subtotal. `undefined` for a leaf (which uses computedTotal). */
   sectionTotal?: string | null;
@@ -287,6 +311,7 @@ function GridRow({
   onFocus: () => void;
   onToggle: (nodeId: string) => void;
   onSelect: (node: BoqTreeNodeResponse) => void;
+  onPinnedCellEdit?: () => void;
   commands: BoqRowCommands | null;
 }) {
   const t = useTranslations('platform.boq.grid');
@@ -295,6 +320,9 @@ function GridRow({
   // Present only on an editable draft (the workspace withholds it otherwise), so its presence is
   // the signal that cells accept inline edits.
   const edit = commands?.onEditField;
+  // COMMITTED: a leaf's value cells (Qty/Rate) are pinned — no direct overwrite. A money-neutral
+  // SEPARATE_CHARGE / ABSORBED leaf stays editable, but the common case is the in-contract pin.
+  const pinned = committed && node.isLeaf;
 
   // The sticky cell needs its own opaque background or the columns scrolling underneath
   // show through it. It has to track the row's state, not just default to the surface.
@@ -388,41 +416,69 @@ function GridRow({
       </TableCell>
 
       <TableCell numeric>
-        <EditableCell
-          editable={Boolean(edit) && node.isLeaf}
-          value={node.quantity}
-          kind="quantity"
-          numeric
-          ariaLabel={t('editQuantity', { code: node.code })}
-          onCommit={edit ? (next) => edit(node, 'quantity', next) : async () => {}}
-          display={
-            node.quantity ? (
-              <LtrValue>{formatNumber(Number(node.quantity), locale, 3)}</LtrValue>
-            ) : (
-              <span className="text-muted-foreground">{node.isLeaf ? '—' : ''}</span>
-            )
-          }
-        />
+        {pinned ? (
+          <PinnedCell
+            value={
+              node.quantity ? (
+                <LtrValue>{formatNumber(Number(node.quantity), locale, 3)}</LtrValue>
+              ) : (
+                <span className="text-muted-foreground">—</span>
+              )
+            }
+            ariaLabel={t('editQuantity', { code: node.code })}
+            onEdit={onPinnedCellEdit}
+          />
+        ) : (
+          <EditableCell
+            editable={Boolean(edit) && node.isLeaf}
+            value={node.quantity}
+            kind="quantity"
+            numeric
+            ariaLabel={t('editQuantity', { code: node.code })}
+            onCommit={edit ? (next) => edit(node, 'quantity', next) : async () => {}}
+            display={
+              node.quantity ? (
+                <LtrValue>{formatNumber(Number(node.quantity), locale, 3)}</LtrValue>
+              ) : (
+                <span className="text-muted-foreground">{node.isLeaf ? '—' : ''}</span>
+              )
+            }
+          />
+        )}
       </TableCell>
 
       {canViewCommercials ? (
         <>
           <TableCell numeric>
-            <EditableCell
-              editable={Boolean(edit) && node.isLeaf}
-              value={node.unitRate}
-              kind="rate"
-              numeric
-              ariaLabel={t('editRate', { code: node.code })}
-              onCommit={edit ? (next) => edit(node, 'unitRate', next) : async () => {}}
-              display={
-                node.unitRate ? (
-                  <LtrValue>{formatNumber(Number(node.unitRate), locale, 2)}</LtrValue>
-                ) : (
-                  <span className="text-muted-foreground">{node.isLeaf ? '—' : ''}</span>
-                )
-              }
-            />
+            {pinned ? (
+              <PinnedCell
+                value={
+                  node.unitRate ? (
+                    <LtrValue>{formatNumber(Number(node.unitRate), locale, 2)}</LtrValue>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )
+                }
+                ariaLabel={t('editRate', { code: node.code })}
+                onEdit={onPinnedCellEdit}
+              />
+            ) : (
+              <EditableCell
+                editable={Boolean(edit) && node.isLeaf}
+                value={node.unitRate}
+                kind="rate"
+                numeric
+                ariaLabel={t('editRate', { code: node.code })}
+                onCommit={edit ? (next) => edit(node, 'unitRate', next) : async () => {}}
+                display={
+                  node.unitRate ? (
+                    <LtrValue>{formatNumber(Number(node.unitRate), locale, 2)}</LtrValue>
+                  ) : (
+                    <span className="text-muted-foreground">{node.isLeaf ? '—' : ''}</span>
+                  )
+                }
+              />
+            )}
           </TableCell>
           {/* A section shows its client-rolled-up subtotal — the sum of its own descendant
               leaves — computed once in the workspace and memoized. A leaf shows its own
@@ -457,18 +513,63 @@ function GridRow({
 }
 
 /**
- * Where this line came from.
+ * A pinned value cell (COMMITTED mode, R11 Decision 4).
  *
- * `sourceType` and `sourceChangeOrderId` have been on `BoqNode` since Sprint 5, unread.
- * Rendering them now means the column is already correct when Variations ships — the
- * variation reference just becomes a link.
+ * A committed Qty/Rate cell does not accept a direct overwrite — the pin is taught at the cell,
+ * not by a banner. It shows the value with a 🔒 affordance; activating it opens the who-pays
+ * classifier rather than an inline editor. When no `onEdit` is supplied (read-only), it is a
+ * plain read-only cell with the lock glyph.
+ */
+function PinnedCell({
+  value,
+  ariaLabel,
+  onEdit,
+}: {
+  value: React.ReactNode;
+  ariaLabel: string;
+  onEdit?: () => void;
+}) {
+  const t = useTranslations('platform.boq.mode');
+
+  if (!onEdit) {
+    return (
+      <span className="inline-flex items-center justify-end gap-1 text-muted-foreground">
+        {value}
+        <Lock size={11} aria-hidden="true" className="text-border-strong" />
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onEdit();
+      }}
+      aria-label={`${ariaLabel} — ${t('pinnedCell')}`}
+      title={t('pinnedCell')}
+      className="inline-flex items-center justify-end gap-1 rounded-control px-1 py-0.5 transition-colors hover:bg-surface-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
+    >
+      {value}
+      <Lock size={11} aria-hidden="true" className="text-muted-foreground" />
+    </button>
+  );
+}
+
+/**
+ * The Source tag — where this line's scope came from (R11 M4). DISTINCT from the ⚑ validity flag:
+ * this answers "who authorised this scope", validity answers "is the line ready". `sourceType`
+ * marks a VARIATION line; `commercialTreatment` marks an Absorb (⊙, funded from contingency) or a
+ * Separate charge (↗, billed outside the contract). Ordinary in-contract WORK carries no tag.
  */
 function SourceCell({ node }: { node: BoqTreeNodeResponse }) {
   const t = useTranslations('platform.boq.grid');
 
   if (node.sourceType === 'VARIATION') {
     return (
-      <Badge tone="info">
+      <Badge tone="info" className="gap-1">
+        <Diamond size={10} aria-hidden="true" />
         {node.sourceChangeOrderId
           ? t('sourceVariationRef', { ref: node.sourceChangeOrderId })
           : t('sourceVariation')}
@@ -476,7 +577,25 @@ function SourceCell({ node }: { node: BoqTreeNodeResponse }) {
     );
   }
 
-  return <span className="text-caption text-muted-foreground">{t('sourceBaseline')}</span>;
+  if (node.commercialTreatment === 'ABSORBED') {
+    return (
+      <Badge tone="neutral" className="gap-1">
+        <CircleDollarSign size={10} aria-hidden="true" />
+        {t('sourceAbsorbed')}
+      </Badge>
+    );
+  }
+
+  if (node.commercialTreatment === 'SEPARATE_CHARGE') {
+    return (
+      <Badge tone="neutral" className="gap-1">
+        <Receipt size={10} aria-hidden="true" />
+        {t('sourceSeparate')}
+      </Badge>
+    );
+  }
+
+  return <span className="text-caption text-muted-foreground">—</span>;
 }
 
 /**

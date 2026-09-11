@@ -540,6 +540,116 @@
     "restricted": "Restricted"
   },
   "boq": {
+    "moneyStrip": {
+      "workingLabel": "Working · draft",
+      "committedLabel": "Committed",
+      "plannedTotal": "Planned",
+      "workingTotal": "Working total",
+      "contractValue": "Contract",
+      "signedValue": "signed {amount}",
+      "deltaVsSigned": "{amount} vs signed",
+      "priced": "{percent}% priced",
+      "unpriced": "{count, plural, one {# unpriced} other {# unpriced}}",
+      "contingency": "Contingency {amount}",
+      "contingencyLeft": "Contingency {amount} left",
+      "revenue": "Rev {amount}",
+      "revenueLabel": "Revenue",
+      "separateCharges": "Separate {amount}",
+      "restricted": "Money restricted",
+      "variationsPending": "{count, plural, one {# variation pending approval} other {# variations pending approval}}",
+      "viewVariations": "Review",
+      "lifeStage": "BOQ state"
+    },
+    "mode": {
+      "commitToContract": "Commit to contract",
+      "addExtraWork": "Add extra work",
+      "committedHint": "Committed — value cells are pinned. To change what the client owes, add extra work.",
+      "pinnedCell": "Committed value — opens the who-pays decision",
+      "pendingRow": "Pending {ref}",
+      "pendingExcluded": "Excluded from totals until adopted"
+    },
+    "classifier": {
+      "title": "Add extra work",
+      "subtitle": "Who pays for this?",
+      "descriptionLabel": "What is the work?",
+      "descriptionPlaceholder": "e.g. Steel canopy over entrance",
+      "amountLabel": "Amount ({currency})",
+      "absorb": {
+        "name": "Absorb",
+        "tagline": "We cover it from contingency",
+        "detail": "Adds the scope funded net-zero from the contingency allowance. The contract value does not move.",
+        "consequence": "Contingency → {amount} left",
+        "cta": "Absorb from contingency"
+      },
+      "variation": {
+        "name": "Variation",
+        "tagline": "The client pays — raise the contract",
+        "detail": "Creates a draft variation for approval. Once the client approves and it is adopted, the line appears and the contract value moves.",
+        "consequence": "Contract {from} → {to}",
+        "cta": "Create variation"
+      },
+      "separate": {
+        "name": "Separate charge",
+        "tagline": "Bill it one-off, outside the contract",
+        "detail": "Adds a separately-billed line. The contract value is unchanged; total client revenue rises.",
+        "consequence": "Client revenue → {amount}",
+        "cta": "Add separate charge"
+      },
+      "variationCreated": "Draft variation created — sent to Commercial for approval",
+      "absorbed": "Extra work absorbed from contingency.",
+      "separateAdded": "Separate charge added.",
+      "unavailable": "This route is not available yet.",
+      "cancel": "Cancel"
+    },
+    "draw": {
+      "title": "Draw from contingency",
+      "intro": "Move budget from the contingency allowance onto a line. The contract value stays the same.",
+      "targetLabel": "Fund which line?",
+      "amountLabel": "Amount ({currency})",
+      "reasonLabel": "Reason",
+      "confirm": "Draw contingency",
+      "failed": "Could not draw from contingency.",
+      "exceeded": "That is more than the contingency has left."
+    },
+    "commit": {
+      "title": "Commit to contract",
+      "impact": "This fixes the contract value at {amount} and sets the milestone schedule. After committing, changes that move the client's money must go through a variation.",
+      "impactNoValue": "This fixes the contract value and sets the milestone schedule. After committing, changes that move the client's money must go through a variation.",
+      "tieOutReady": "Ready to commit — {count, plural, one {# item} other {# items}} priced.",
+      "tieOutBlocked": "{count, plural, one {# item still needs} other {# items still need}} attention before committing.",
+      "confirm": "Commit to contract",
+      "failed": "Could not commit this BOQ.",
+      "awaitingApproval": "This commit now requires sign-off. It will complete once the approvers have signed off."
+    },
+    "compareToSigned": {
+      "action": "Compare to signed",
+      "exit": "Exit compare",
+      "heading": "Live vs signed",
+      "dormant": "Available after you sign",
+      "changedOnly": "Changed only",
+      "moneyNeutral": "{count, plural, one {# tidy-up} other {# tidy-ups}}",
+      "valueChanging": "{count, plural, one {# value change} other {# value changes}}",
+      "delta": "{amount} vs signed",
+      "noChanges": "Nothing has changed since it was signed.",
+      "unavailable": "Nothing signed to compare against yet.",
+      "loadFailed": "Could not load the comparison.",
+      "viewSigned": "View signed BOQ",
+      "classNeutral": "Tidy-up",
+      "classValue": "Value change"
+    },
+    "timeline": {
+      "action": "Timeline",
+      "heading": "Timeline",
+      "close": "Close timeline",
+      "empty": "Nothing has happened on this BOQ yet.",
+      "loadFailed": "Could not load the timeline.",
+      "kind": {
+        "COMMITTED": "Committed to contract",
+        "VARIATION_SNAPSHOT": "Variation adopted",
+        "CHANGE_EVENT": "Change"
+      },
+      "by": "by {name}"
+    },
     "import": {
       "action": "Import from spreadsheet",
       "title": "Import BOQ from a spreadsheet",
@@ -746,6 +856,8 @@
       "sourceBaseline": "Baseline",
       "sourceVariation": "Variation",
       "sourceVariationRef": "Variation {ref}",
+      "sourceAbsorbed": "Absorbed",
+      "sourceSeparate": "Separate charge",
       "expand": "Expand section",
       "collapse": "Collapse section",
       "incomplete": "Incomplete pricing",
@@ -895,27 +1007,24 @@
       "amount": "Amount"
     },
     "commands": {
-      "baseline": {
-        "name": "Baseline BOQ version",
-        "confirm": "Baseline",
-        "impactFirst": "This fixes the original contract BOQ. It becomes permanently immutable and every later variation is measured against it.",
-        "impactRevision": "This approves the revision and supersedes the current baseline. The contract keeps referencing its own version until it is updated.",
-        "failed": "Could not baseline this version.",
-        "awaitingApproval": "This baseline now requires approval. It will complete once the approvers have signed off."
+      "commit": {
+        "name": "Commit to contract",
+        "confirm": "Commit to contract",
+        "failed": "Could not commit this BOQ."
       },
       "discard": {
         "name": "Discard draft",
         "confirm": "Discard draft",
-        "impact": "Every change made in this draft is lost. The approved BOQ is untouched.",
+        "impact": "Every change made in this draft is lost. The committed BOQ is untouched.",
         "failed": "Could not discard this draft."
       },
       "revise": {
-        "name": "Start revision",
-        "confirm": "Start revision",
-        "impact": "Copies every item from the approved BOQ into a new editable draft. The approved version stays in force until the revision is baselined.",
-        "notes": "Revision notes",
-        "notesHint": "Why this revision is being raised. Shown in version history.",
-        "failed": "Could not start a revision."
+        "name": "Start changes",
+        "confirm": "Start changes",
+        "impact": "Copies every item from the signed BOQ into a new editable draft. The signed version stays in force until the changes are committed.",
+        "notes": "Notes",
+        "notesHint": "Why these changes are being raised. Shown in the timeline.",
+        "failed": "Could not start changes."
       }
     },
     "versionShort": "V{number}",
@@ -924,8 +1033,8 @@
       "ADD_ITEMS": "Add the first section",
       "PRICE_ITEMS": "{count, plural, one {Price # item} other {Price # items}}",
       "FIX_BLOCKERS": "{count, plural, one {Resolve # issue} other {Resolve # issues}}",
-      "SUBMIT_BASELINE": "Submit for baseline",
-      "START_REVISION": "Create revision",
+      "SUBMIT_BASELINE": "Commit to contract",
+      "START_REVISION": "Start changes",
       "VIEW_ONLY": ""
     }
   },

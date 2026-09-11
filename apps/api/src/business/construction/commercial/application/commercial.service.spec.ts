@@ -50,6 +50,7 @@ function build(overrides: {
   billingInvoices?: unknown;
   receipts?: unknown;
   clientUnapplied?: Decimal;
+  separateChargeTotal?: string | null;
 }) {
   const repo = {
     findMainContract: jest
@@ -76,13 +77,20 @@ function build(overrides: {
   const variationRepo = {
     findValuationInputs: jest.fn().mockResolvedValue(overrides.variationInputs ?? []),
   };
+  // ADR-029 T-5: the BOQ read port supplying the separate-charge total. Default to none (null).
+  const boqVersioning = {
+    getSeparateChargeTotal: jest
+      .fn()
+      .mockResolvedValue('separateChargeTotal' in overrides ? overrides.separateChargeTotal : null),
+  };
   const service = new CommercialService(
     tenancy as never,
     projectAccess as never,
     repo as never,
     variationRepo as never,
+    boqVersioning as never,
   );
-  return { repo, service };
+  return { repo, boqVersioning, service };
 }
 
 describe('ADR-023 — getCurrentCycle for a MILESTONE contract', () => {
@@ -130,6 +138,29 @@ describe('ADR-023 — getCurrentCycle for a MILESTONE contract', () => {
     expect(s.map((i) => i.status)).toEqual(['PAID', 'BILLED', 'NEXT', 'UPCOMING']);
   });
 
+  // ADR-029 T-6 — the milestone schedule derives from the FROZEN baseContractValue. A variation that
+  // raised the current contractValue to 1.2M must NOT re-spread the 1M schedule.
+  it('T-6: derives installment amounts from baseContractValue, not the raised current value', async () => {
+    const varied = { ...milestoneContract, contractValue: new Decimal('1200000'), baseContractValue: new Decimal('1000000') };
+    const { service } = build({ contract: varied, installments: accoPlan, invoices: [] });
+    const res = await service.getCurrentCycle(financeIdentity, 'p-1');
+    const s = res.paymentSchedule!.installments;
+    // 40/30/20/10 of the 1M BASE — unchanged by the +200k on the current value.
+    expect(s.map((i) => i.amount)).toEqual(['400000.00', '300000.00', '200000.00', '100000.00']);
+    // The header value the % are read against is the base too, so Σ amounts = header.
+    expect(res.paymentSchedule?.contractValue).toBe('1000000.00');
+  });
+
+  // ADR-029 M-4 — a legacy contract predates the split (null base). It must never fail; the schedule
+  // falls back to contractValue.
+  it('M-4: a legacy contract with a null base falls back to contractValue for the schedule', async () => {
+    const legacy = { ...milestoneContract, baseContractValue: null };
+    const { service } = build({ contract: legacy, installments: accoPlan, invoices: [] });
+    const res = await service.getCurrentCycle(financeIdentity, 'p-1');
+    expect(res.paymentSchedule!.installments[0].amount).toBe('400000.00');
+    expect(res.paymentSchedule?.contractValue).toBe('1000000.00');
+  });
+
   it('hides money but keeps the plan structure without financial permission', async () => {
     const { service } = build({ contract: milestoneContract, installments: accoPlan, invoices: advancePaidInvoices });
     const res = await service.getCurrentCycle(noFinanceIdentity, 'p-1');
@@ -139,6 +170,72 @@ describe('ADR-023 — getCurrentCycle for a MILESTONE contract', () => {
     // Structure (percentage + status) stays visible.
     expect(res.paymentSchedule?.installments[0].percentage).toBe('0.4');
     expect(res.paymentSchedule?.installments[0].status).toBe('PAID');
+  });
+
+  // ADR-029 V-3 / CONST-BOQ-032 — an ADOPTED on-contract variation is billed as its OWN line, OUTSIDE
+  // the Σ%=1.0 milestone schedule, and NEVER merged into a milestone figure.
+  const adoptedVo = {
+    id: 'vo-1', reference: 'VO-001', title: 'Extra lift shaft', status: 'CLIENT_APPROVED',
+    boqAppliedAt: new Date('2026-09-10T00:00:00Z'), lines: [{ amount: new Decimal('20000') }],
+  };
+  // A client-approved but NOT-yet-adopted VO (no boqAppliedAt) has not raised the value → no line.
+  const unadoptedVo = {
+    id: 'vo-2', reference: 'VO-002', title: 'Pending scope', status: 'CLIENT_APPROVED',
+    boqAppliedAt: null, lines: [{ amount: new Decimal('5000') }],
+  };
+
+  it('V-3: the schedule shows the milestones AND the adopted VO as two separate components', async () => {
+    const { service } = build({
+      contract: milestoneContract,
+      installments: accoPlan,
+      invoices: [],
+      variationInputs: [adoptedVo, unadoptedVo],
+    });
+    const res = await service.getCurrentCycle(financeIdentity, 'p-1');
+    const sched = res.paymentSchedule!;
+
+    // The Σ%=1.0 milestones are untouched — four installments, the VO is NOT folded into any of them.
+    expect(sched.installments).toHaveLength(4);
+    expect(sched.installments.map((i) => i.amount)).toEqual([
+      '400000.00', '300000.00', '200000.00', '100000.00',
+    ]);
+    // The adopted VO is its OWN amount-based line, separate from the installments (never merged).
+    expect(sched.variationLines).toHaveLength(1);
+    expect(sched.variationLines[0]).toMatchObject({
+      variationId: 'vo-1',
+      reference: 'VO-001',
+      title: 'Extra lift shaft',
+      amount: '20000.00',
+      stageInstallmentId: null, // R7 seam
+    });
+    // Two components that sum correctly, and the header value is still the FROZEN base (not base+VO).
+    const milestoneTotal = sched.installments.reduce((s, i) => s + Number(i.amount), 0);
+    expect(milestoneTotal + Number(sched.variationLines[0].amount)).toBe(1020000);
+    expect(sched.contractValue).toBe('1000000.00');
+  });
+
+  it('V-3: only ADOPTED on-contract VOs appear as billing lines (unadopted is excluded)', async () => {
+    const { service } = build({
+      contract: milestoneContract,
+      installments: accoPlan,
+      invoices: [],
+      variationInputs: [unadoptedVo],
+    });
+    const res = await service.getCurrentCycle(financeIdentity, 'p-1');
+    expect(res.paymentSchedule?.variationLines).toHaveLength(0);
+  });
+
+  it('V-3: VO line amount is withheld without financial visibility, structure stays', async () => {
+    const { service } = build({
+      contract: milestoneContract,
+      installments: accoPlan,
+      invoices: [],
+      variationInputs: [adoptedVo],
+    });
+    const res = await service.getCurrentCycle(noFinanceIdentity, 'p-1');
+    const line = res.paymentSchedule!.variationLines[0];
+    expect(line.reference).toBe('VO-001');
+    expect(line.amount).toBeNull();
   });
 });
 
@@ -165,6 +262,39 @@ describe('CommercialService.getSummary', () => {
     );
     const noContract = res.attention.find((a) => a.kind === 'NO_MAIN_CONTRACT');
     expect(noContract?.actionUrl).toBe('/projects/p-1/commercial/contract/new');
+  });
+
+  describe('ADR-029 T-5 — total client revenue = current contract value + Σ separate charges', () => {
+    it('equals the contract value when there are no separate charges', async () => {
+      const { service, boqVersioning } = build({ separateChargeTotal: null });
+      const res = await service.getSummary(financeIdentity, 'p-1');
+      // 1,000,000 current + nothing separate → revenue equals contract value, as a fixed(2) string.
+      expect(res.mainContract?.totalClientRevenue).toBe('1000000.00');
+      expect(res.mainContract?.contractValue).toBe('1000000');
+      expect(boqVersioning.getSeparateChargeTotal).toHaveBeenCalledWith(financeIdentity, 'p-1', 'boq-v-1');
+    });
+
+    it('adds the separate-charge total to the current value WITHOUT moving the contract value', async () => {
+      const { service } = build({ separateChargeTotal: '250000.00' });
+      const res = await service.getSummary(financeIdentity, 'p-1');
+      // Revenue rises to 1,250,000; the contract value stays 1,000,000 (CONST-BOQ-030).
+      expect(res.mainContract?.totalClientRevenue).toBe('1250000.00');
+      expect(res.mainContract?.contractValue).toBe('1000000');
+    });
+
+    it('withholds total client revenue without financial visibility', async () => {
+      const { service } = build({ separateChargeTotal: '250000.00' });
+      const res = await service.getSummary(noFinanceIdentity, 'p-1');
+      expect(res.mainContract?.totalClientRevenue).toBeNull();
+      expect(res.mainContract?.contractValue).toBeNull();
+    });
+
+    it('falls back to the contract value (not a silently-lower revenue) when the BOQ read fails', async () => {
+      // The service `.catch(() => null)`s the port; null means "unknown", so revenue = current value.
+      const { service } = build({ separateChargeTotal: null });
+      const res = await service.getSummary(financeIdentity, 'p-1');
+      expect(res.mainContract?.totalClientRevenue).toBe('1000000.00');
+    });
   });
 
   describe('ADR-026 — derived Original/Approved/Governing/Pending contract value', () => {
@@ -782,6 +912,8 @@ function billingInvoice(overrides: Record<string, unknown> = {}) {
     sourceInstallment: null,
     sourceIpcId: null,
     sourceIpc: null,
+    sourceBoqNodeId: null,
+    sourceBoqNode: null,
     allocations: [],
     ...overrides,
   };
@@ -902,6 +1034,12 @@ describe('getBilling — the invoice-total settlement basis', () => {
           },
         }),
         billingInvoice({ id: 'inv-migrated' }),
+        // ADR-029 R-4 — a one-off separate-charge invoice, tagged by its SEPARATE_CHARGE BOQ leaf.
+        billingInvoice({
+          id: 'inv-sc',
+          sourceBoqNodeId: 'node-9',
+          sourceBoqNode: { id: 'node-9', code: 'SC-01', description: 'Client-requested extra fence' },
+        }),
       ],
     });
 
@@ -916,6 +1054,8 @@ describe('getBilling — the invoice-total settlement basis', () => {
     expect(byId.get('inv-c')).toEqual({ kind: 'IPC', label: 'IPA-006', id: 'ipc-6' });
     // A migration-loaded invoice says it has no source rather than borrowing one.
     expect(byId.get('inv-migrated')).toEqual({ kind: 'NONE', label: null, id: null });
+    // A separate charge is distinguishable from installment/IPC/NONE, labelled by its BOQ code.
+    expect(byId.get('inv-sc')).toEqual({ kind: 'SEPARATE_CHARGE', label: 'SC-01', id: 'node-9' });
   });
 
   /**

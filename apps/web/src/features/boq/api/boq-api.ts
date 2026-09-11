@@ -2,10 +2,12 @@ import type {
   BoqBaselineReadinessResponse,
   BoqChangeEventResponse,
   BoqCompareResponse,
+  BoqCompareToSignedResponse,
   BoqImportPreview,
   BoqImportRequest,
   BoqImportResult,
   BoqResponse,
+  BoqTimelineResponse,
   BoqTreeNodeResponse,
   BoqWorkspaceResponse,
 } from '@erp/types';
@@ -37,6 +39,55 @@ export function initializeBoq(projectId: string): Promise<BoqResponse> {
  */
 export function getBoqWorkspace(projectId: string): Promise<BoqWorkspaceResponse> {
   return apiClient<BoqWorkspaceResponse>(`/projects/${projectId}/boq/workspace`);
+}
+
+/**
+ * ADR-029 R-2 — the live operational version diffed against the frozen as-committed snapshot.
+ * `available` is false (and `changes` empty) before anything is committed; the caller reads
+ * `workspace.compareToSignedAvailable` first to decide whether to offer the lens at all.
+ */
+export function getBoqCompareToSigned(
+  projectId: string,
+): Promise<BoqCompareToSignedResponse> {
+  return apiClient<BoqCompareToSignedResponse>(
+    `/projects/${projectId}/boq/compare-to-signed`,
+  );
+}
+
+/**
+ * ADR-029 R-3 — the BOQ's notable events (commit, variation snapshots, notable changes),
+ * newest-first. One flat feed the timeline drawer renders; no version numbers.
+ */
+export function getBoqTimeline(projectId: string): Promise<BoqTimelineResponse> {
+  return apiClient<BoqTimelineResponse>(`/projects/${projectId}/boq/timeline`);
+}
+
+/**
+ * Commit the operational DRAFT to contract (WORKING → COMMITTED). Replaces the old baseline
+ * command. Refused with `400`/`details.blockers` when not ready, `409`/`details.approvalInstanceId`
+ * when a workflow gates it — approve the instance, then call this again (ADR-015 re-drive).
+ */
+export function commitVersion(projectId: string, versionId: string): Promise<BoqResponse> {
+  return apiClient<BoqResponse>(
+    `/projects/${projectId}/boq/versions/${versionId}/commit`,
+    { method: 'POST' },
+  );
+}
+
+/**
+ * Draw budget from the contingency allowance onto a target item, holding the contract value
+ * constant (ADR-029 CONST-BOQ-028). Refused with `400`/`errorCode CONTINGENCY_EXCEEDED` on an
+ * over-draw, or when there is no/ambiguous contingency line.
+ */
+export function drawContingency(
+  projectId: string,
+  versionId: string,
+  payload: { toNodeId: string; amount: string },
+): Promise<unknown> {
+  return apiClient(
+    `/projects/${projectId}/boq/versions/${versionId}/contingency/draw`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
 }
 
 /** Full recursive tree for one version, with server-computed section totals. */
@@ -212,6 +263,43 @@ export function previewBoqImport(
 
 export function importBoq(projectId: string, body: BoqImportRequest): Promise<BoqImportResult> {
   return apiClient<BoqImportResult>(`/projects/${projectId}/boq/import`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * One post-commit extra-work line, mirroring `ExtraWorkLineDto`. `amount` is a decimal string
+ * (2dp, CONST-BOQ-014). `parentId`/`code` place the ABSORBED/SEPARATE_CHARGE leaf; both are
+ * ignored for VARIATION.
+ */
+export interface ExtraWorkLinePayload {
+  description: string;
+  amount: string;
+  unit?: string;
+  parentId?: string;
+  code?: string;
+}
+
+/**
+ * Body for `POST .../boq/extra-work`, mirroring `AddExtraWorkDto` (ADR-029 R5, the who-pays
+ * classifier). `contractId`/`variationTitle` apply to VARIATION only.
+ */
+export interface AddExtraWorkPayload {
+  treatment: 'ABSORB' | 'VARIATION' | 'SEPARATE';
+  lines: ExtraWorkLinePayload[];
+  contractId?: string;
+  variationTitle?: string;
+}
+
+/**
+ * Classify post-commit extra work (ADR-029 R5). ABSORB adds an ABSORBED leaf funded net-zero from
+ * contingency; SEPARATE adds a SEPARATE_CHARGE leaf; VARIATION creates a DRAFT VariationOrder.
+ * Refused with `400` (over-draw `CONTINGENCY_EXCEEDED`, missing contractId, invalid line), `403`
+ * (missing the per-treatment permission), or `409` (committed pin).
+ */
+export function addExtraWork(projectId: string, body: AddExtraWorkPayload): Promise<unknown> {
+  return apiClient(`/projects/${projectId}/boq/extra-work`, {
     method: 'POST',
     body: JSON.stringify(body),
   });

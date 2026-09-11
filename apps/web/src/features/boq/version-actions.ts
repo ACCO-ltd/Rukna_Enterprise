@@ -40,7 +40,7 @@ export function getVersionActions(
   const ready = readiness?.ready ?? false;
 
   return {
-    canBaseline: isOpenDraft && capabilities.canBaseline && ready,
+    canBaseline: isOpenDraft && capabilities.canCommit && ready,
     canCancelDraft: isOpenDraft && capabilities.canManage,
     // Both conditions matter: without an approved version there is nothing to copy (400),
     // and with a draft already open the API refuses a second one (409).
@@ -51,7 +51,7 @@ export function getVersionActions(
       boq.currentDraftVersionId === undefined,
     blockedReason: !isOpenDraft
       ? null
-      : !capabilities.canBaseline
+      : !capabilities.canCommit
         ? 'NO_PERMISSION'
         : !ready
           ? 'NOT_READY'

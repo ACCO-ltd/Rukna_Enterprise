@@ -4,7 +4,9 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 import type {
   BoqChangeEventResponse,
   BoqCompareResponse,
+  BoqCompareToSignedResponse,
   BoqImportRequest,
+  BoqTimelineResponse,
   BoqTreeNodeResponse,
   BoqWorkspaceResponse,
 } from '@erp/types';
@@ -13,12 +15,17 @@ import { projectKeys } from '@/features/projects/hooks/use-projects';
 
 import {
   addBoqNode,
+  addExtraWork,
   baselineVersion,
   cancelDraftVersion,
+  commitVersion,
   compareBoqVersions,
   createDraftVersion,
   deleteBoqNode,
+  drawContingency,
+  getBoqCompareToSigned,
   getBoqHistory,
+  getBoqTimeline,
   getBoqTree,
   getBoqWorkspace,
   importBoq,
@@ -26,6 +33,7 @@ import {
   moveBoqNode,
   previewBoqImport,
   updateBoqNode,
+  type AddExtraWorkPayload,
   type CreateNodePayload,
   type UpdateNodePayload,
 } from '../api/boq-api';
@@ -37,6 +45,9 @@ export const boqKeys = {
     [...boqKeys.all(projectId), 'tree', versionId] as const,
   compare: (projectId: string, leftId: string, rightId: string) =>
     [...boqKeys.all(projectId), 'compare', leftId, rightId] as const,
+  compareToSigned: (projectId: string) =>
+    [...boqKeys.all(projectId), 'compare-to-signed'] as const,
+  timeline: (projectId: string) => [...boqKeys.all(projectId), 'timeline'] as const,
   history: (projectId: string, versionId: string, nodeId: string) =>
     [...boqKeys.all(projectId), 'history', versionId, nodeId] as const,
 };
@@ -99,6 +110,38 @@ export function useBoqCompare(
 }
 
 /**
+ * ADR-029 R-2 — the compare-to-signed diff lens (live vs the as-committed snapshot). Gated by
+ * the caller (the lens is summoned on demand, so it does not fetch until opened) and by
+ * `compareToSignedAvailable` — before a commit there is nothing signed to compare against.
+ */
+export function useBoqCompareToSigned(
+  projectId: string,
+  enabled: boolean,
+): UseQueryResult<BoqCompareToSignedResponse, Error> {
+  return useQuery({
+    queryKey: boqKeys.compareToSigned(projectId),
+    queryFn: () => getBoqCompareToSigned(projectId),
+    enabled,
+  });
+}
+
+/**
+ * ADR-029 R-3 — the BOQ timeline feed. Enabled by the caller (the drawer is closed by default,
+ * so it does not fetch until opened). Keyed under `boqKeys.all`, so any mutation's invalidation
+ * refreshes it.
+ */
+export function useBoqTimeline(
+  projectId: string,
+  enabled: boolean,
+): UseQueryResult<BoqTimelineResponse, Error> {
+  return useQuery({
+    queryKey: boqKeys.timeline(projectId),
+    queryFn: () => getBoqTimeline(projectId),
+    enabled,
+  });
+}
+
+/**
  * Every versioning command reshuffles which version is draft and which is approved, and can
  * change node membership (creating a draft copies the approved nodes). Invalidating the
  * whole BOQ key rather than patching the cache keeps the workspace, the version list and
@@ -123,6 +166,26 @@ export function useInitializeBoq(projectId: string) {
 
 export function useBaselineVersion(projectId: string) {
   return useBoqMutation(projectId, (versionId: string) => baselineVersion(projectId, versionId));
+}
+
+/**
+ * ADR-029 CONST-BOQ-034 — commit the working draft to contract (WORKING → COMMITTED). Replaces
+ * baseline as the primary WORKING action. A `409` is the governance gate ("sent for sign-off"),
+ * not a failure; the caller reads `ApiError.status` to phrase it.
+ */
+export function useCommitVersion(projectId: string) {
+  return useBoqMutation(projectId, (versionId: string) => commitVersion(projectId, versionId));
+}
+
+/**
+ * ADR-029 CONST-BOQ-028 — draw contingency budget onto a chosen target line, holding the
+ * contract value constant. Initiated from the contingency line (M1/M2), not from a fabricated
+ * overrun signal.
+ */
+export function useDrawContingency(projectId: string, versionId: string) {
+  return useBoqMutation(projectId, (args: { toNodeId: string; amount: string }) =>
+    drawContingency(projectId, versionId, args),
+  );
 }
 
 export function useCancelDraftVersion(projectId: string) {
@@ -195,5 +258,17 @@ export function useMoveNode(projectId: string, versionId: string) {
         ...(args.newParentId ? { newParentId: args.newParentId } : {}),
         newSortOrder: args.newSortOrder,
       }),
+  );
+}
+
+/**
+ * ADR-029 R5 — the who-pays extra-work classifier (`POST .../boq/extra-work`). ABSORB adds an
+ * ABSORBED leaf funded net-zero from contingency; SEPARATE adds a SEPARATE_CHARGE leaf; VARIATION
+ * creates a DRAFT VariationOrder. Invalidates the BOQ so the money band, tree and tags refresh. A
+ * `400` (e.g. contingency insufficient) / `403` / `409` surfaces via the caller's error handling.
+ */
+export function useAddExtraWork(projectId: string) {
+  return useBoqMutation(projectId, (payload: AddExtraWorkPayload) =>
+    addExtraWork(projectId, payload),
   );
 }

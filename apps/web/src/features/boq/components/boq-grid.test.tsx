@@ -211,3 +211,39 @@ describe('BoqGrid — reading the rows', () => {
     expect(screen.queryByText(/11,470\.00/)).not.toBeInTheDocument();
   });
 });
+
+/**
+ * WORKING vs COMMITTED are genuinely different modes (R11 Decision 3/4). In COMMITTED, a leaf's
+ * value cells (Qty/Rate) are PINNED: they do not accept a direct overwrite; the attempt opens the
+ * who-pays classifier instead. Money-neutral cells stay editable. The rule is taught at the cell.
+ */
+describe('BoqGrid — COMMITTED mode pin', () => {
+  const editCommands = {
+    onEdit: vi.fn(),
+    onAddSection: vi.fn(),
+    onAddItem: vi.fn(),
+    onDelete: vi.fn(),
+    onMove: vi.fn(),
+    onEditField: vi.fn(async () => {}),
+  };
+
+  it('pins a committed leaf value cell — a click opens the classifier, not an inline editor', () => {
+    const onPinnedCellEdit = vi.fn();
+    render({ committed: true, commands: editCommands, onPinnedCellEdit });
+
+    // The rate cell is now a pinned button announcing the who-pays decision, not a text input.
+    const pinned = screen.getByRole('button', {
+      name: /Edit rate of 01\.001 — Committed value/i,
+    });
+    fireEvent.click(pinned);
+    expect(onPinnedCellEdit).toHaveBeenCalledTimes(1);
+    expect(editCommands.onEditField).not.toHaveBeenCalled();
+  });
+
+  it('leaves value cells free-editing in WORKING mode (no pin)', () => {
+    render({ committed: false, commands: editCommands });
+    expect(
+      screen.queryByRole('button', { name: /Committed value/i }),
+    ).not.toBeInTheDocument();
+  });
+});

@@ -9,6 +9,8 @@ export interface CreateClientInvoiceData {
   clientId: string;
   sourceIpcId?: string | null;
   sourceInstallmentId?: string | null;
+  // ADR-029 R-4 — the SEPARATE_CHARGE BOQ leaf a one-off invoice bills (the source tag).
+  sourceBoqNodeId?: string | null;
   projectId?: string;
   contractId?: string;
   invoiceDate: Date;
@@ -43,6 +45,62 @@ export class ClientInvoiceRepository {
     });
   }
 
+  // ADR-029 R-4: one invoice per SEPARATE_CHARGE BOQ leaf (idempotent one-off billing).
+  findByBoqNode(
+    prisma: TenantPrisma,
+    organizationId: string,
+    boqNodeId: string,
+  ): Promise<ClientInvoice | null> {
+    return prisma.clientInvoice.findFirst({
+      where: { sourceBoqNodeId: boqNodeId, organizationId },
+    });
+  }
+
+  /**
+   * ADR-029 R-4: the SEPARATE_CHARGE BOQ leaf being billed, with its version → BOQ → project and that
+   * project's main client contract (+ client) — everything generateFromSeparateCharge needs to derive
+   * the amount and the client/contract. Scoped to the org through the version → boq relation (BoqNode
+   * carries no direct `boq` navigation). Returns null if the node is not a SEPARATE_CHARGE leaf, if the
+   * project has no BOQ, or if there is no billable client contract.
+   */
+  findSeparateChargeForBilling(
+    prisma: TenantPrisma,
+    organizationId: string,
+    boqNodeId: string,
+  ) {
+    return prisma.boqNode.findFirst({
+      where: {
+        id: boqNodeId,
+        isLeaf: true,
+        commercialTreatment: 'SEPARATE_CHARGE',
+        version: { boq: { organizationId } },
+      },
+      include: {
+        version: {
+          include: {
+            boq: {
+              include: {
+                project: {
+                  include: {
+                    contracts: {
+                      where: {
+                        contractKind: 'CLIENT_CONTRACT',
+                        status: { notIn: ['CANCELLED', 'TERMINATED'] as never[] },
+                      },
+                      orderBy: { createdAt: 'desc' },
+                      take: 1,
+                      include: { client: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
   // ADR-023: the installment being billed, with its contract (+ client) and linked programme
   // milestone — everything generateFromInstallment needs to derive the amount and apply the
   // CONST-COM-011 gate. Scoped to the org through the contract relation.
@@ -73,6 +131,7 @@ export class ClientInvoiceRepository {
         clientId: data.clientId,
         sourceIpcId: data.sourceIpcId,
         sourceInstallmentId: data.sourceInstallmentId ?? null,
+        sourceBoqNodeId: data.sourceBoqNodeId ?? null,
         projectId: data.projectId ?? null,
         contractId: data.contractId ?? null,
         invoiceDate: data.invoiceDate,

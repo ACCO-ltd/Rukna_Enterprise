@@ -59,7 +59,7 @@ export function resolveNextStep(
 
   // Read-only users get no call to action. Showing them one and refusing it is the same
   // dead end in a different costume.
-  if (!capabilities.canManage && !capabilities.canBaseline) {
+  if (!capabilities.canManage && !capabilities.canCommit) {
     return { kind: 'VIEW_ONLY', tone: 'none' };
   }
 

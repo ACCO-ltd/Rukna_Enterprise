@@ -123,6 +123,69 @@ export class BoqPrismaRepository {
   }
 
   /**
+   * A contingency reallocation — ADR-029 CONST-BOQ-028 / spec C-3.
+   *
+   * The two coordinated leaf writes (the contingency source loses `amount`, the target gains it)
+   * and the single `MOVE` change event commit together, so a reallocation is atomic: the
+   * in-contract total is never briefly wrong between the two writes, and there is no draw without
+   * its audit event. Each node is written by id; the service has already validated both.
+   */
+  async reallocateBetweenNodes(
+    prisma: PrismaClient,
+    source: { id: string; data: Prisma.BoqNodeUncheckedUpdateInput },
+    target: { id: string; data: Prisma.BoqNodeUncheckedUpdateInput },
+    event: BoqChangeEventInput,
+  ): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      await tx.boqNode.update({ where: { id: source.id }, data: source.data });
+      await tx.boqNode.update({ where: { id: target.id }, data: target.data });
+      await tx.boqChangeEvent.create({ data: event });
+    });
+  }
+
+  /**
+   * Add an ABSORBED leaf funded net-zero by an equal contingency reduction — ADR-029 CONST-BOQ-030
+   * / spec E-1, C-4.
+   *
+   * The whole operation is atomic: the new ABSORBED leaf (its full `amount`), the matching decrement
+   * of the contingency source leaf, and the two change events (one CREATE for the added scope, one
+   * MOVE for the draw that funds it) commit together. The added leaf counts toward the in-contract
+   * total (+amount) and the contingency leaf drops by the same amount (−amount), so the total is held
+   * exactly constant — the same net-zero shape as `reallocateBetweenNodes`, but the target is a leaf
+   * created in the same transaction rather than an existing one. Sibling order is opened for the new
+   * leaf exactly as `createNodeAtPosition` does. The service has already validated both sides.
+   */
+  async addAbsorbedFundedByContingency(
+    prisma: PrismaClient,
+    added: {
+      data: Prisma.BoqNodeUncheckedCreateInput;
+      parentPath: string | null;
+      targetOrder: number;
+    },
+    source: { id: string; data: Prisma.BoqNodeUncheckedUpdateInput },
+    createdEvent: BoqChangeEventInput,
+    drawEvent: BoqChangeEventInput,
+  ): Promise<BoqNode> {
+    return prisma.$transaction(async (tx) => {
+      // 1 — the funding draw: lower the contingency source leaf.
+      await tx.boqNode.update({ where: { id: source.id }, data: source.data });
+      await tx.boqChangeEvent.create({ data: drawEvent });
+
+      // 2 — the absorbed leaf, landed in a freshly-opened sibling slot (same as createNodeAtPosition).
+      await this.shiftSiblingsUp(tx, added.data.versionId, added.data.parentId ?? null, added.targetOrder);
+      const created = await tx.boqNode.create({
+        data: { ...added.data, sortOrder: added.targetOrder, path: '__pending__' },
+      });
+      const node = await tx.boqNode.update({
+        where: { id: created.id },
+        data: { path: added.parentPath ? `${added.parentPath}/${created.id}` : created.id },
+      });
+      await tx.boqChangeEvent.create({ data: { ...createdEvent, nodeId: created.id } });
+      return node;
+    });
+  }
+
+  /**
    * Creates a node at a specific position among its siblings, opening a gap first.
    *
    * Both statements run in one transaction because `(version_id, parent_id, sort_order)` is

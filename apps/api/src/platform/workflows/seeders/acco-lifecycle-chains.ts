@@ -44,15 +44,19 @@ export function accoApprovalChains(): ApprovalChain[] {
       toState: 'CLOSED',
       steps: [R.PROJECT_MANAGER, R.FINANCE_OFFICER, R.CEO],
     },
-    // CONST-DOA-009 — BOQ baseline is preparer ≠ sole approver: the Construction Director
-    // prepares scope + cost, so baselining routes technical prep → CFO budget/commercial
-    // confirmation → CEO authorization. (BoqVersion DRAFT → BASELINED is already gated.)
+    // CONST-DOA-009 + ADR-029 §8 A-3 / CONST-BOQ-034 — commit-to-contract is preparer ≠ sole
+    // approver: the Construction Director prepares scope + cost, so committing routes technical
+    // prep → CFO budget/commercial confirmation → CEO authorization. ADR-029 replaced the
+    // `DRAFT → BASELINED` transition with the governed `DRAFT → COMMITTED` commit, so this chain
+    // is repointed to `COMMITTED` — otherwise four-eyes would not fire on the new commit path.
+    // The `BOQ_BASELINE` transaction type is reused (no new enum → no migration): commit is the
+    // successor of baseline, and the type only keys the gate's loop-back reconciliation.
     {
-      key: 'BOQ_BASELINE',
-      name: 'BOQ Baseline Approval',
+      key: 'BOQ_COMMIT',
+      name: 'BOQ Commit-to-Contract Approval',
       entityType: 'BoqVersion',
       fromState: 'DRAFT',
-      toState: 'BASELINED',
+      toState: 'COMMITTED',
       transactionType: WorkflowTransactionType.BOQ_BASELINE,
       steps: [R.CONSTRUCTION_DIRECTOR, R.CFO, R.CEO],
     },

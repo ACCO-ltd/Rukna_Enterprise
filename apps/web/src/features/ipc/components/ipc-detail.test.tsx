@@ -148,6 +148,8 @@ function boqNode(): BoqTreeNode {
     originNodeId: null,
     sourceType: 'BASELINE',
     sourceChangeOrderId: null,
+    nodeRole: 'WORK',
+    commercialTreatment: 'IN_CONTRACT',
     isActive: true,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',

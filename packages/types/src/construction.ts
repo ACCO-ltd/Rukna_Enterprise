@@ -962,6 +962,8 @@ export interface BoqTreeNodeResponse {
   originNodeId: string | null;
   sourceType: 'BASELINE' | 'VARIATION';
   sourceChangeOrderId: string | null;
+  nodeRole: 'WORK' | 'CONTINGENCY';
+  commercialTreatment: 'IN_CONTRACT' | 'SEPARATE_CHARGE' | 'ABSORBED';
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -1015,9 +1017,18 @@ export interface BoqBaselineReadinessResponse {
 export interface BoqCapabilities {
   canView: boolean;
   canManage: boolean;
-  canBaseline: boolean;
-  /** False when rate and amount fields are omitted from this response. */
+  canCommit: boolean;
+  /**
+   * @deprecated ADR-029 §8 A-2 replaced the single money boolean with two visibility tiers.
+   * Retained (mirrors `canViewCost`) so pre-tier clients keep compiling for one release.
+   */
   canViewCommercials: boolean;
+  /** Cost tier: false when rate/amount/line-budget fields are omitted from this response. */
+  canViewCost: boolean;
+  /** Margin tier: false when contract-value/contingency/margin fields are omitted. */
+  canViewMargin: boolean;
+  /** True when the caller may edit the BOQ (edit-scope OR edit-cost OR the manage umbrella). */
+  canEdit: boolean;
 }
 
 export interface BoqVersionSummary extends BoqVersionResponse {
@@ -1033,6 +1044,69 @@ export interface BoqRevisionSummary {
   changedItemCount: number;
   /** Signed: positive is an increase against the baseline it derives from. */
   netDelta: string | null;
+}
+
+/**
+ * ADR-029 R-1 — the life-stage of the one operational BOQ version. `WORKING` while the
+ * operational version is still a pre-commit `DRAFT`; `COMMITTED` once it has been committed to
+ * contract. This is the plain-language axis the money band switches on (working = allocate;
+ * committed = the value is locked) — the frontend never re-derives it from the version status.
+ */
+export type BoqLifeStage = 'WORKING' | 'COMMITTED';
+
+/**
+ * ADR-029 R-1 / §8 A-2 — the money band above the BOQ tree, assembled server-side and tier-gated
+ * by the SINGLE `resolveBoqVisibility` helper. Every figure is a decimal string or null; a null is
+ * either "the caller's tier does not admit this figure" (omitted server-side, never hidden in the
+ * UI) or "the figure does not exist yet" (e.g. no contract, no contingency line). The frontend
+ * renders whatever is present and never re-sums a total.
+ *
+ * Tier map (per field):
+ *  - `inContractTotal` / `separateChargeTotal` — the BOQ's own tie-out figures; `canViewCost`.
+ *  - `baseContractValue` / `contractValue` / `contingencyReserve` / `contingencyRemaining` /
+ *    `totalClientRevenue` — commercial figures; `canViewMargin`.
+ *
+ * `contingencyReserve` is the original allowance frozen in the as-committed snapshot;
+ * `contingencyRemaining` is what is left on the live operational version after draws (they are equal
+ * until the first draw). Both null when the BOQ carries no contingency line.
+ */
+export interface BoqMoneyBand {
+  /** WORKING while the operational version is a pre-commit DRAFT; COMMITTED after commit. */
+  lifeStage: BoqLifeStage;
+  currency: string;
+  /**
+   * Σ in-contract billable leaves on the operational version — the figure the contract ties out
+   * to. `canViewCost`. Null when withheld or when nothing contributes yet.
+   */
+  inContractTotal: string | null;
+  /** Σ SEPARATE_CHARGE leaves on the operational version. `canViewCost`. Null when withheld/none. */
+  separateChargeTotal: string | null;
+  /**
+   * `Contract.baseContractValue` — the value frozen at commit, driving the milestone schedule.
+   * `canViewMargin`. Null when withheld, or when there is no contract yet (pre-commit / WORKING).
+   */
+  baseContractValue: string | null;
+  /**
+   * `Contract.contractValue` — the CURRENT value (base + Σ adopted on-contract variations).
+   * `canViewMargin`. Null when withheld, or when there is no contract yet.
+   */
+  contractValue: string | null;
+  /**
+   * The original contingency allowance (from the as-committed snapshot, or the live figure
+   * pre-commit). `canViewMargin`. Null when withheld or when there is no contingency line.
+   */
+  contingencyReserve: string | null;
+  /**
+   * Contingency left on the live operational version after draws (derived, never stored).
+   * `canViewMargin`. Null when withheld or when there is no contingency line.
+   */
+  contingencyRemaining: string | null;
+  /**
+   * `contractValue + Σ separate charges` — the DISTINCT total client revenue (separate charges feed
+   * this, never the contract value). `canViewMargin`. Null when withheld, or when there is no
+   * contract yet (there is no current value to add the separate charges to).
+   */
+  totalClientRevenue: string | null;
 }
 
 /**
@@ -1054,7 +1128,94 @@ export interface BoqWorkspaceResponse {
   /** Readiness of the draft, or of the approved version when there is no draft. */
   readiness: BoqBaselineReadinessResponse | null;
   revision: BoqRevisionSummary | null;
+  /**
+   * ADR-029 R-1 — life-stage + the tier-gated money band. Null only when the project has no BOQ
+   * yet (the "not initialized" state). Every figure inside is assembled server-side and gated by
+   * `resolveBoqVisibility`; a figure the caller's tier does not admit is null, never hidden in UI.
+   */
+  moneyBand: BoqMoneyBand | null;
+  /**
+   * ADR-029 R-2 — true when there is an as-committed snapshot to compare the live operational
+   * version against (i.e. the BOQ has been committed). The frontend uses this to enable
+   * "Compare to signed" without a second round trip; false pre-commit.
+   */
+  compareToSignedAvailable: boolean;
   capabilities: BoqCapabilities;
+}
+
+// ─── BOQ compare-to-signed (ADR-029 R-2) ─────────────────────────────────────────
+//
+// The meaningful BOQ diff under the in-place model: the live operational version against the
+// frozen as-committed SNAPSHOT (`Boq.committedSnapshotVersionId`). It REPLACES the old
+// peer-version compare. Every change is classified as money-neutral (description/code/reorder,
+// a reallocation that held the in-contract total) or value-changing (added/removed scope, a
+// rate/qty move that shifted the in-contract total) so the screen can separate "we tidied the
+// document" from "we changed what the client owes".
+
+export type BoqCompareToSignedChangeClass = 'MONEY_NEUTRAL' | 'VALUE_CHANGING';
+
+/** One node-level change between the signed snapshot and the live version, plus its class. */
+export interface BoqCompareToSignedChange extends BoqNodeChange {
+  changeClass: BoqCompareToSignedChangeClass;
+}
+
+/**
+ * The compare-to-signed result. `available` is false (and `changes` empty) when nothing has been
+ * committed yet — the screen renders "nothing signed to compare against", never an error. Totals
+ * are `canViewCost`-gated decimal strings (null when withheld). `signedVersionId` is the snapshot,
+ * `liveVersionId` the operational version the diff walks toward.
+ */
+export interface BoqCompareToSignedResponse {
+  available: boolean;
+  currency: string;
+  signedVersionId: string | null;
+  liveVersionId: string | null;
+  /** Σ in-contract billable leaves on the signed snapshot. `canViewCost`; null when withheld. */
+  signedInContractTotal: string | null;
+  /** Σ in-contract billable leaves on the live version. `canViewCost`; null when withheld. */
+  liveInContractTotal: string | null;
+  /** live − signed in-contract total. `canViewCost`; null when withheld. */
+  inContractDelta: string | null;
+  moneyNeutralCount: number;
+  valueChangingCount: number;
+  changes: BoqCompareToSignedChange[];
+}
+
+// ─── BOQ timeline (ADR-029 R-3) ──────────────────────────────────────────────────
+//
+// The BOQ's notable events, newest-first: the commit, each variation-adopt snapshot, and notable
+// per-line change events. One flat feed the history screen renders. Money amounts are tier-gated
+// (`canViewMargin` for contract-value-scale amounts, `canViewCost` for line amounts) and null when
+// withheld or when the event carries no amount.
+
+export type BoqTimelineEntryKind =
+  | 'COMMITTED'
+  | 'VARIATION_SNAPSHOT'
+  | 'CHANGE_EVENT';
+
+export interface BoqTimelineEntry {
+  id: string;
+  kind: BoqTimelineEntryKind;
+  /** Plain-language label, e.g. "Committed to contract", "Variation VO-003 adopted". */
+  label: string;
+  /** The version this entry concerns (the operational version for a commit, the snapshot for a VO). */
+  versionId: string | null;
+  /** The acting user's id; null when the source event carries no actor. */
+  actorUserId: string | null;
+  /** Resolved "First Last" for display; null when unknown. */
+  actorName: string | null;
+  occurredAt: string;
+  /**
+   * A tier-gated money amount for the entry, or null (withheld, or the entry carries no amount).
+   * For a change event this is the line amount delta; for a commit/variation it is left null in
+   * this iteration (the snapshot's tie-out is read via compare-to-signed / the money band).
+   */
+  amount: string | null;
+}
+
+export interface BoqTimelineResponse {
+  projectId: string;
+  entries: BoqTimelineEntry[];
 }
 
 // ─── BOQ import (ADR-016, Phase 2) ──────────────────────────────────────────────
@@ -1283,6 +1444,15 @@ export interface CommercialContractSummary {
   expectedEndDate: string | null;
   /** Withheld (null) without financial visibility, exactly as the metrics are. */
   contractValue: string | null;
+  /**
+   * ADR-029 CONST-BOQ-030 / spec T-5 — total client revenue: the CURRENT `contractValue` plus the
+   * sum of SEPARATE_CHARGE BOQ leaves (billed one-off, outside the contract). A DISTINCT figure —
+   * separate charges feed this, never `contractValue`. Equal to `contractValue` when the project
+   * has no separate charges. Withheld (null) without financial visibility, exactly as
+   * `contractValue` is. Null too when the read of the BOQ separate-charge total fails, so a lookup
+   * error is never rendered as a silently-lower revenue.
+   */
+  totalClientRevenue: string | null;
   currency: string;
   billingModel: `${BillingModel}`;
   /** The baselined BOQ version this contract is measured against. */
@@ -1541,6 +1711,25 @@ export interface PaymentInstallmentMilestoneLink {
   status: `${ProgrammeMilestoneStatus}`;
 }
 
+/**
+ * ADR-029 V-3 / CONST-BOQ-032 — an adopted on-contract variation billed as its OWN line, OUTSIDE the
+ * `Σ% = 1.0` milestone schedule. Amount-based (the VO net), never a percentage of the base, and never
+ * merged into a milestone figure. A distinct billable component the invoice path renders on its own.
+ *
+ * Stage attachment (which milestone/certificate the varied work rides) is a documented R7 seam:
+ * `stageInstallmentId` is reserved for it and is null in this iteration.
+ */
+export interface CommercialPaymentScheduleVariationLine {
+  variationId: string;
+  /** e.g. "VO-001" — the identifiable billing line reference. */
+  reference: string;
+  title: string;
+  /** The VO net (amount-based). Null when the caller cannot view financials. */
+  amount: string | null;
+  /** R7 seam — the milestone/stage this VO's certificate attaches to. Null until R7 models it. */
+  stageInstallmentId: string | null;
+}
+
 export interface CommercialPaymentSchedule {
   currency: string;
   /** Null when the caller cannot view financials. */
@@ -1548,6 +1737,12 @@ export interface CommercialPaymentSchedule {
   /** Null when the caller cannot view financials. */
   totalCollected: string | null;
   installments: CommercialPaymentScheduleInstallment[];
+  /**
+   * ADR-029 V-3 — adopted on-contract variations billed as their own lines, separate from the
+   * `Σ% = 1.0` milestone `installments`. Empty when there are no adopted variations. Never folded
+   * into an installment amount (CONST-BOQ-032).
+   */
+  variationLines: CommercialPaymentScheduleVariationLine[];
 }
 
 export type CommercialCycleAction =
@@ -1630,8 +1825,12 @@ export type ArPostingStatus =
   | 'REVERSED'
   | 'OPENING_BALANCE';
 
-/** Where a client invoice came from. `NONE` = a migration-loaded invoice with no source document. */
-export type ClientInvoiceSourceKind = 'INSTALLMENT' | 'IPC' | 'NONE';
+/**
+ * Where a client invoice came from. `NONE` = a migration-loaded invoice with no source document.
+ * `SEPARATE_CHARGE` (ADR-029 R-4) = a one-off invoice for a SEPARATE_CHARGE BOQ leaf, billed outside
+ * the milestone schedule; it feeds total client revenue, never the contract value (CONST-BOQ-030).
+ */
+export type ClientInvoiceSourceKind = 'INSTALLMENT' | 'IPC' | 'SEPARATE_CHARGE' | 'NONE';
 
 export interface ClientInvoiceSource {
   kind: ClientInvoiceSourceKind;
@@ -2135,18 +2334,24 @@ export interface VariationOrderListResponse {
 }
 
 /**
- * ADR-026 CONST-VAR-007 (Phase 2) — the result of scoping a client-approved VO into the BOQ. The
- * revision the nodes landed on still follows the normal governed baseline command; this response
- * does NOT imply the Contract Baseline moved (that is the separate adopt-baseline act, OQ-2).
+ * ADR-029 V-1/V-2 (was ADR-026 CONST-VAR-007) — the result of adopting a client-approved on-contract
+ * VO into the BOQ. Under the internal-budget redesign the VARIATION leaves are appended IN PLACE on
+ * the operational COMMITTED version (stable ids), a fresh frozen SNAPSHOT is cut, and the current
+ * contract value is raised by the VO net — all in one transaction. `baseContractValue` stays frozen,
+ * so the milestone schedule is untouched.
  */
 export interface ApplyVariationToBoqResponse {
   variationId: string;
   reference: string;
   projectId: string;
-  /** The DRAFT BOQ revision the VARIATION nodes were appended to. */
+  /** The operational COMMITTED BOQ version the VARIATION leaves were appended to (stable ids). */
   boqVersionId: string;
   /** How many VARIATION leaf nodes were created (one per VO line). */
   nodeCount: number;
+  /** V-2 — the fresh as-committed SNAPSHOT cut after the variation (the legal record). */
+  snapshotVersionId?: string;
+  /** V-2 — the current contract value after the raise (base + Σ adopted on-contract variations). */
+  newContractValue?: string;
   appliedAt: string;
 }
 

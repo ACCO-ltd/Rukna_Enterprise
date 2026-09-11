@@ -56,6 +56,7 @@ function summary(overrides: Partial<CommercialSummaryResponse> = {}): Commercial
       startDate: '2026-01-01T00:00:00.000Z',
       expectedEndDate: '2026-12-31T00:00:00.000Z',
       contractValue: '1000000.00',
+      totalClientRevenue: '1000000.00',
       currency: 'USD',
       billingModel: 'MEASURED_IPC',
       boqVersionNumber: 3,

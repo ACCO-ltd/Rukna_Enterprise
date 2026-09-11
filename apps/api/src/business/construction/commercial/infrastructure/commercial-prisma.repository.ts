@@ -177,8 +177,9 @@ export class CommercialPrismaRepository {
         outstandingAmount: true,
         documentStatus: true,
         postingStatus: true,
-        // The two mutually-exclusive provenance links (ADR-023). Names, not ids, are what a
-        // reader recognises, so each carries the human reference of its source document.
+        // The mutually-exclusive provenance links (ADR-023 installment/IPC; ADR-029 R-4 separate
+        // charge). Names, not ids, are what a reader recognises, so each carries the human reference
+        // of its source document.
         sourceInstallmentId: true,
         sourceInstallment: { select: { id: true, name: true, sortOrder: true } },
         sourceIpcId: true,
@@ -188,6 +189,10 @@ export class CommercialPrismaRepository {
             application: { select: { id: true, applicationRef: true, applicationNumber: true } },
           },
         },
+        // ADR-029 R-4 — the SEPARATE_CHARGE BOQ leaf a one-off invoice bills; its code/description is
+        // the human reference the read model surfaces.
+        sourceBoqNodeId: true,
+        sourceBoqNode: { select: { id: true, code: true, description: true } },
         allocations: {
           where: { postingStatus: 'POSTED' },
           orderBy: { allocationDate: 'desc' },

@@ -11,6 +11,7 @@ import type { RequestIdentity } from '@erp/types';
 import { ClientInvoiceService } from '../application/client-invoice.service.js';
 import { GenerateInvoiceFromIpcDto } from './dto/generate-invoice-from-ipc.dto.js';
 import { GenerateInvoiceFromInstallmentDto } from './dto/generate-invoice-from-installment.dto.js';
+import { GenerateInvoiceFromSeparateChargeDto } from './dto/generate-invoice-from-separate-charge.dto.js';
 import { PostInvoiceDto } from './dto/post-invoice.dto.js';
 import { ReverseInvoiceDto } from './dto/reverse-invoice.dto.js';
 
@@ -49,6 +50,20 @@ export class ClientInvoiceController {
     @Body() dto: GenerateInvoiceFromInstallmentDto,
   ) {
     return this.clientInvoiceService.generateFromInstallment(identity, dto);
+  }
+
+  @Post('from-separate-charge')
+  @ApiOperation({
+    summary:
+      'ADR-029 R-4: generate a one-off invoice for a SEPARATE_CHARGE BOQ leaf (one per node, outside the milestone schedule)',
+  })
+  @ApiResponse({ status: 400, description: 'No active client contract, or the line has no amount' })
+  @ApiResponse({ status: 404, description: 'BOQ line not found or not a billable SEPARATE_CHARGE leaf' })
+  generateFromSeparateCharge(
+    @CurrentUser() identity: RequestIdentity,
+    @Body() dto: GenerateInvoiceFromSeparateChargeDto,
+  ) {
+    return this.clientInvoiceService.generateFromSeparateCharge(identity, dto);
   }
 
   @Get(':id')

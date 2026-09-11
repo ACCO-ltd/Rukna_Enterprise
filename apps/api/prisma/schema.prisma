@@ -731,7 +731,10 @@ model ProjectDocument {
 
   createdBy String   @map("created_by")
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  // `@default(now())` matches the CURRENT_TIMESTAMP default the original 20260818 migration put on
+  // this column; declared here so migrate-dev stops re-proposing it as drift (Prisma still owns the
+  // value on every write via @updatedAt).
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
   project         Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   revisions       ProjectDocumentRevision[] @relation("DocumentRevisions")
@@ -740,6 +743,9 @@ model ProjectDocument {
   supersedes      ProjectDocument[]         @relation("DocumentSupersession")
 
   @@unique([projectId, documentNumberNormalized])
+  // Standalone project_id index carried from the original 20260818 migration; declared so the schema
+  // matches the deployed DB (Prisma names it exactly project_documents_project_id_idx).
+  @@index([projectId])
   @@index([projectId, status])
   @@index([projectId, category])
   // The expiring/expired attention query, which is org-wide as often as it is project-wide.
@@ -788,7 +794,10 @@ model ProjectDocumentRevision {
   currentFor   ProjectDocument? @relation("CurrentRevision")
   platformFile PlatformFile     @relation(fields: [platformFileId], references: [id])
 
-  @@unique([projectDocumentId, revisionNumber])
+  // Named to the 63-char identifier Postgres produced when the 20260907140000 migration created it
+  // (the literal "..._revision_number_key" was truncated); pins the schema to the deployed index name
+  // so it is never re-proposed as drift.
+  @@unique([projectDocumentId, revisionNumber], map: "project_document_revisions_project_document_id_revision_number_")
   @@index([projectDocumentId, status])
   @@index([platformFileId])
   @@map("project_document_revisions")
@@ -1116,18 +1125,26 @@ model ProjectMemberRole {
 // ─── BOQ ─────────────────────────────────────────────────────────────────────
 
 model Boq {
-  id                        String   @id @default(cuid())
-  projectId                 String   @unique @map("project_id")
-  organizationId            String   @map("organization_id")
+  id                         String   @id @default(cuid())
+  projectId                  String   @unique @map("project_id")
+  organizationId             String   @map("organization_id")
   // CONST-BOQ-013 — the BOQ's unit of account. Seeded from Project.currency at
   // initialization. Every node either carries this currency or none; the aggregate sums
   // amounts, so it cannot hold two.
-  currency                  String   @default("USD") @db.VarChar(3)
-  originalBaselineVersionId String?  @map("original_baseline_version_id")
-  currentApprovedVersionId  String?  @map("current_approved_version_id")
-  currentDraftVersionId     String?  @map("current_draft_version_id")
-  createdAt                 DateTime @default(now()) @map("created_at")
-  updatedAt                 DateTime @updatedAt @map("updated_at")
+  currency                   String   @default("USD") @db.VarChar(3)
+  originalBaselineVersionId  String?  @map("original_baseline_version_id")
+  currentApprovedVersionId   String?  @map("current_approved_version_id")
+  currentDraftVersionId      String?  @map("current_draft_version_id")
+  // ADR-029 — the single long-lived operational version (DRAFT pre-commit, COMMITTED after) that
+  // is edited in place and that downstream references. Nullable through the expand phase; backfilled
+  // = COALESCE(currentDraftVersionId, currentApprovedVersionId). The old three pointers are retired
+  // in the contract phase (with R2).
+  currentVersionId           String?  @map("current_version_id")
+  // ADR-029 CONST-BOQ-027 — the frozen as-committed SNAPSHOT (the legal "what we signed" record).
+  // Backfilled = currentApprovedVersionId. Null until a BOQ is committed.
+  committedSnapshotVersionId String?  @map("committed_snapshot_version_id")
+  createdAt                  DateTime @default(now()) @map("created_at")
+  updatedAt                  DateTime @updatedAt @map("updated_at")
 
   project  Project      @relation(fields: [projectId], references: [id])
   versions BoqVersion[]
@@ -1164,45 +1181,52 @@ model BoqVersion {
 }
 
 model BoqNode {
-  id                  String            @id @default(cuid())
-  boqId               String            @map("boq_id")
-  versionId           String            @map("version_id")
-  parentId            String?           @map("parent_id")
-  path                String            @map("path")
-  depth               Int               @default(0)
-  sortOrder           Int               @default(0) @map("sort_order")
-  code                String            @db.VarChar(50)
+  id                  String              @id @default(cuid())
+  boqId               String              @map("boq_id")
+  versionId           String              @map("version_id")
+  parentId            String?             @map("parent_id")
+  path                String              @map("path")
+  depth               Int                 @default(0)
+  sortOrder           Int                 @default(0) @map("sort_order")
+  code                String              @db.VarChar(50)
   description         String
-  measurementMethod   MeasurementMethod @default(QUANTITY) @map("measurement_method")
-  pricingBasis        PricingBasis      @default(UNIT_RATE) @map("pricing_basis")
-  unit                String?           @db.VarChar(20)
-  quantity            Decimal?          @db.Decimal(18, 3)
-  unitRate            Decimal?          @map("unit_rate") @db.Decimal(18, 2)
-  currency            String?           @db.VarChar(3)
-  totalAmount         Decimal?          @map("total_amount") @db.Decimal(18, 2)
-  isLeaf              Boolean           @default(false) @map("is_leaf")
-  originNodeId        String?           @map("origin_node_id")
+  measurementMethod   MeasurementMethod   @default(QUANTITY) @map("measurement_method")
+  pricingBasis        PricingBasis        @default(UNIT_RATE) @map("pricing_basis")
+  unit                String?             @db.VarChar(20)
+  quantity            Decimal?            @db.Decimal(18, 3)
+  unitRate            Decimal?            @map("unit_rate") @db.Decimal(18, 2)
+  currency            String?             @db.VarChar(3)
+  totalAmount         Decimal?            @map("total_amount") @db.Decimal(18, 2)
+  isLeaf              Boolean             @default(false) @map("is_leaf")
+  originNodeId        String?             @map("origin_node_id")
   // ADR-026 CONST-VAR-007 (Variations Phase 2) — provenance. BASELINE nodes are original scope;
   // VARIATION nodes are scoped in from a client-approved VariationOrder (P2). sourceChangeOrderId
   // is now a REAL FK to VariationOrder (was a bare string, Sprint 5) — see `sourceChangeOrder`.
-  sourceType          BoqSourceType     @default(BASELINE) @map("source_type")
-  sourceChangeOrderId String?           @map("source_change_order_id")
+  sourceType          BoqSourceType       @default(BASELINE) @map("source_type")
+  sourceChangeOrderId String?             @map("source_change_order_id")
+  // ADR-029 CONST-BOQ-028 — WORK vs the named CONTINGENCY allowance.
+  nodeRole            NodeRole            @default(WORK) @map("node_role")
+  // ADR-029 CONST-BOQ-029/030/033 — the node's relation to the client's money (tie-out + revenue).
+  commercialTreatment CommercialTreatment @default(IN_CONTRACT) @map("commercial_treatment")
   // CONST-BOQ-003 — a node referenced by a downstream record is deactivated, never deleted.
-  isActive            Boolean           @default(true) @map("is_active")
-  createdAt           DateTime          @default(now()) @map("created_at")
-  updatedAt           DateTime          @updatedAt @map("updated_at")
+  isActive            Boolean             @default(true) @map("is_active")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
 
-  version              BoqVersion              @relation(fields: [versionId], references: [id])
-  parent               BoqNode?                @relation("BoqNodeChildren", fields: [parentId], references: [id], onDelete: Restrict)
-  children             BoqNode[]               @relation("BoqNodeChildren")
+  version               BoqVersion              @relation(fields: [versionId], references: [id])
+  parent                BoqNode?                @relation("BoqNodeChildren", fields: [parentId], references: [id], onDelete: Restrict)
+  children              BoqNode[]               @relation("BoqNodeChildren")
   // ADR-026 CONST-VAR-007 — the VariationOrder that introduced this node (null for BASELINE scope).
   // SetNull, not Restrict: a baselined node is immutable and outlives its source; if a VO were ever
   // removed (only via contract cascade), the historical node keeps its scope and loses only the link.
-  sourceChangeOrder    VariationOrder?         @relation("VariationOrderBoqNodes", fields: [sourceChangeOrderId], references: [id], onDelete: SetNull)
-  progressMeasurements ProgressMeasurement[]
-  workPackageLinks     WorkPackageBoqNode[]
-  purchaseOrderLines   PurchaseOrderLine[]
-  costBudgetLines      ProjectCostBudgetLine[]
+  sourceChangeOrder     VariationOrder?         @relation("VariationOrderBoqNodes", fields: [sourceChangeOrderId], references: [id], onDelete: SetNull)
+  progressMeasurements  ProgressMeasurement[]
+  workPackageLinks      WorkPackageBoqNode[]
+  purchaseOrderLines    PurchaseOrderLine[]
+  costBudgetLines       ProjectCostBudgetLine[]
+  // ADR-029 R-4 — the one-off ClientInvoice raised for this leaf when it is a SEPARATE_CHARGE (nullable
+  // 1:1). Null for every in-contract/contingency/absorbed node and for any un-billed separate charge.
+  separateChargeInvoice ClientInvoice?          @relation("BoqNodeSeparateChargeInvoice")
 
   // CONST-BOQ-015 — codes address lines in a contract; two nodes answering to "02.01.002"
   // makes every downstream reference ambiguous.
@@ -1393,7 +1417,12 @@ model Contract {
   clientId           String         @map("client_id")
   boqVersionId       String         @map("boq_version_id")
   contractNumber     String         @map("contract_number") @db.VarChar(50)
+  // ADR-029 CONST-BOQ-032 — the CURRENT contract value: base + Σ adopted on-contract variations.
   contractValue      Decimal        @map("contract_value") @db.Decimal(18, 2)
+  // ADR-029 CONST-BOQ-032 — the BASE contract value, frozen at commit. Drives the milestone %
+  // schedule (which never re-spreads on a variation). Nullable through the expand phase; backfilled
+  // = contractValue and made the derivation base when R3/Commercial switch over.
+  baseContractValue  Decimal?       @map("base_contract_value") @db.Decimal(18, 2)
   currency           String         @db.VarChar(3)
   billingModel       BillingModel   @default(MEASURED_IPC) @map("billing_model")
   contractKind       ContractKind   @default(CLIENT_CONTRACT) @map("contract_kind")
@@ -2474,6 +2503,12 @@ model ClientInvoice {
   // ADR-023: the payment-schedule installment that generated this invoice (MILESTONE contracts).
   // Unique → one invoice per installment (idempotent billing). Mutually exclusive with sourceIpcId.
   sourceInstallmentId    String?          @unique @map("source_installment_id")
+  // ADR-029 CONST-BOQ-030/033 (R-4): the SEPARATE_CHARGE BOQ leaf this one-off invoice bills. A
+  // separate charge carries neither an IPC nor an installment, so this is the source tag that
+  // distinguishes it from installment/IPC/migration-loaded invoices (and from a future VO invoice).
+  // Unique → one invoice per separate-charge node (idempotent billing). Null for every other invoice
+  // (additive-only, no backfill flip). Separate charges feed total client revenue, never contract value.
+  sourceBoqNodeId        String?          @unique @map("source_boq_node_id")
   projectId              String?          @map("project_id")
   contractId             String?          @map("contract_id")
   currencyCode           String           @map("currency_code") @db.VarChar(3)
@@ -2508,6 +2543,10 @@ model ClientInvoice {
   client            Client                      @relation(fields: [clientId], references: [id])
   sourceIpc         InterimPaymentCertificate?  @relation(fields: [sourceIpcId], references: [id])
   sourceInstallment ContractPaymentInstallment? @relation(fields: [sourceInstallmentId], references: [id])
+  // ADR-029 R-4 — the SEPARATE_CHARGE BOQ leaf a one-off invoice bills. SetNull, not Restrict: the
+  // invoice is the durable billing record and outlives the node; a node is deactivated not deleted
+  // (CONST-BOQ-003), so this only ever nulls under a full BOQ cascade, never orphaning the invoice.
+  sourceBoqNode     BoqNode?                    @relation("BoqNodeSeparateChargeInvoice", fields: [sourceBoqNodeId], references: [id], onDelete: SetNull)
   allocations       ClientReceiptAllocation[]
 
   @@unique([organizationId, invoiceNumber])
@@ -3179,9 +3218,15 @@ enum WorkflowAmountBasis {
 
 // ─── Enums — Construction ─────────────────────────────────────────────────────
 
+// ADR-029 — the BOQ becomes one long-lived operational version edited in place (COMMITTED),
+// with immutable frozen COPIES (SNAPSHOT) taken at commit and each variation adopt. DRAFT is
+// the pre-commit working version. BASELINED is retained through the expand phase; the
+// contract phase (with R2) flips existing BASELINED → COMMITTED + a SNAPSHOT copy and retires it.
 enum BoqVersionStatus {
   DRAFT
   BASELINED
+  COMMITTED
+  SNAPSHOT
   SUPERSEDED
   CANCELLED
 }
@@ -3228,6 +3273,24 @@ enum MeasurementMethod {
 enum PricingBasis {
   UNIT_RATE
   LUMP_SUM
+}
+
+// ADR-029 CONST-BOQ-028 — a node is either real WORK or the named CONTINGENCY / Preliminaries
+// allowance. Contingency counts toward the contract value but is excluded from progress
+// value-weighting (ADR-021) so the cushion never inflates % complete.
+enum NodeRole {
+  WORK
+  CONTINGENCY
+}
+
+// ADR-029 CONST-BOQ-029/030/033 — how a node relates to the client's money. IN_CONTRACT counts
+// toward the (base or current) contract value; SEPARATE_CHARGE is billed one-off outside the
+// contract (excluded from the tie-out, feeds total client revenue); ABSORBED is contingency-funded
+// extra work, not billed to the client.
+enum CommercialTreatment {
+  IN_CONTRACT
+  SEPARATE_CHARGE
+  ABSORBED
 }
 
 enum ClientStatus {
