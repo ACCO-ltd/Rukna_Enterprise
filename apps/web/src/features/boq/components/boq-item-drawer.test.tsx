@@ -157,6 +157,8 @@ describe('BoqItemDrawer — library fast entry', () => {
         originNodeId: null,
         sourceType: 'BASELINE',
         sourceChangeOrderId: null,
+        nodeRole: 'WORK',
+        commercialTreatment: 'IN_CONTRACT',
         isActive: true,
         children: [],
         computedTotal: '120.00',

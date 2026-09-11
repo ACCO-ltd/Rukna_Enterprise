@@ -66,7 +66,7 @@ export class BoqWorkspaceService {
     const capabilities = {
       canView: identity.permissions.includes(PERMISSIONS.boqView),
       canManage: identity.permissions.includes(PERMISSIONS.boqManage),
-      canBaseline: identity.permissions.includes(PERMISSIONS.boqBaseline),
+      canCommit: identity.permissions.includes(PERMISSIONS.boqCommit),
       canEdit: canEditBoq(identity),
       canViewCost,
       canViewMargin,

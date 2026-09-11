@@ -82,7 +82,7 @@ function workspace(overrides: Partial<BoqWorkspaceResponse> = {}): BoqWorkspaceR
     capabilities: {
       canView: true,
       canManage: true,
-      canBaseline: true,
+      canCommit: true,
       canViewCommercials: true,
       canViewCost: true,
       canViewMargin: true,
@@ -270,7 +270,7 @@ describe('resolveNextStep — permissions', () => {
     const step = resolveNextStep(
       {
         ...base,
-        capabilities: { ...base.capabilities, canManage: false, canBaseline: false },
+        capabilities: { ...base.capabilities, canManage: false, canCommit: false },
       },
       'v2',
     );
@@ -282,7 +282,7 @@ describe('resolveNextStep — permissions', () => {
   it('offers nothing to an editor who may not baseline a ready draft', () => {
     const base = workspace();
     const step = resolveNextStep(
-      { ...base, capabilities: { ...base.capabilities, canBaseline: false } },
+      { ...base, capabilities: { ...base.capabilities, canCommit: false } },
       'v2',
     );
 
@@ -294,7 +294,7 @@ describe('resolveNextStep — permissions', () => {
     const step = resolveNextStep(
       {
         ...base,
-        capabilities: { ...base.capabilities, canBaseline: false },
+        capabilities: { ...base.capabilities, canCommit: false },
         readiness: readiness({ ready: false, blockers: [blocker({})] }),
       },
       'v2',

@@ -66,6 +66,8 @@ function treeNode(over: Record<string, unknown>) {
     originNodeId: null,
     sourceType: 'BASELINE',
     sourceChangeOrderId: null,
+    nodeRole: 'WORK',
+    commercialTreatment: 'IN_CONTRACT',
     isActive: true,
     createdAt: '',
     updatedAt: '',

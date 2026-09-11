@@ -269,6 +269,43 @@ export function importBoq(projectId: string, body: BoqImportRequest): Promise<Bo
 }
 
 /**
+ * One post-commit extra-work line, mirroring `ExtraWorkLineDto`. `amount` is a decimal string
+ * (2dp, CONST-BOQ-014). `parentId`/`code` place the ABSORBED/SEPARATE_CHARGE leaf; both are
+ * ignored for VARIATION.
+ */
+export interface ExtraWorkLinePayload {
+  description: string;
+  amount: string;
+  unit?: string;
+  parentId?: string;
+  code?: string;
+}
+
+/**
+ * Body for `POST .../boq/extra-work`, mirroring `AddExtraWorkDto` (ADR-029 R5, the who-pays
+ * classifier). `contractId`/`variationTitle` apply to VARIATION only.
+ */
+export interface AddExtraWorkPayload {
+  treatment: 'ABSORB' | 'VARIATION' | 'SEPARATE';
+  lines: ExtraWorkLinePayload[];
+  contractId?: string;
+  variationTitle?: string;
+}
+
+/**
+ * Classify post-commit extra work (ADR-029 R5). ABSORB adds an ABSORBED leaf funded net-zero from
+ * contingency; SEPARATE adds a SEPARATE_CHARGE leaf; VARIATION creates a DRAFT VariationOrder.
+ * Refused with `400` (over-draw `CONTINGENCY_EXCEEDED`, missing contractId, invalid line), `403`
+ * (missing the per-treatment permission), or `409` (committed pin).
+ */
+export function addExtraWork(projectId: string, body: AddExtraWorkPayload): Promise<unknown> {
+  return apiClient(`/projects/${projectId}/boq/extra-work`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+/**
  * The version's change log — "who changed what, and what was it before" — newest first.
  * `nodeId` narrows it to one line's history; the values are decimal strings for display only.
  */

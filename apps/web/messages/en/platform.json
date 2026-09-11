@@ -600,6 +600,8 @@
         "cta": "Add separate charge"
       },
       "variationCreated": "Draft variation created — sent to Commercial for approval",
+      "absorbed": "Extra work absorbed from contingency.",
+      "separateAdded": "Separate charge added.",
       "unavailable": "This route is not available yet.",
       "cancel": "Cancel"
     },
@@ -858,6 +860,8 @@
       "sourceBaseline": "Baseline",
       "sourceVariation": "Variation",
       "sourceVariationRef": "Variation {ref}",
+      "sourceAbsorbed": "Absorbed",
+      "sourceSeparate": "Separate charge",
       "expand": "Expand section",
       "collapse": "Collapse section",
       "incomplete": "Incomplete pricing",

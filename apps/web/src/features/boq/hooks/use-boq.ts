@@ -15,6 +15,7 @@ import { projectKeys } from '@/features/projects/hooks/use-projects';
 
 import {
   addBoqNode,
+  addExtraWork,
   baselineVersion,
   cancelDraftVersion,
   commitVersion,
@@ -32,6 +33,7 @@ import {
   moveBoqNode,
   previewBoqImport,
   updateBoqNode,
+  type AddExtraWorkPayload,
   type CreateNodePayload,
   type UpdateNodePayload,
 } from '../api/boq-api';
@@ -256,5 +258,17 @@ export function useMoveNode(projectId: string, versionId: string) {
         ...(args.newParentId ? { newParentId: args.newParentId } : {}),
         newSortOrder: args.newSortOrder,
       }),
+  );
+}
+
+/**
+ * ADR-029 R5 — the who-pays extra-work classifier (`POST .../boq/extra-work`). ABSORB adds an
+ * ABSORBED leaf funded net-zero from contingency; SEPARATE adds a SEPARATE_CHARGE leaf; VARIATION
+ * creates a DRAFT VariationOrder. Invalidates the BOQ so the money band, tree and tags refresh. A
+ * `400` (e.g. contingency insufficient) / `403` / `409` surfaces via the caller's error handling.
+ */
+export function useAddExtraWork(projectId: string) {
+  return useBoqMutation(projectId, (payload: AddExtraWorkPayload) =>
+    addExtraWork(projectId, payload),
   );
 }

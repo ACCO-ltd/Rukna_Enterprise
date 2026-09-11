@@ -44,6 +44,7 @@ import {
   useBoqTree,
   useBoqWorkspace,
   useCancelDraftVersion,
+  useAddExtraWork,
   useCommitVersion,
   useCreateDraftVersion,
   useDeleteNode,
@@ -124,6 +125,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const updateNode = useUpdateNode(projectId, operationalVersionId ?? '');
   const deleteNode = useDeleteNode(projectId, operationalVersionId ?? '');
   const moveNode = useMoveNode(projectId, operationalVersionId ?? '');
+  const addExtraWork = useAddExtraWork(projectId);
   const commit = useCommitVersion(projectId);
   const discard = useCancelDraftVersion(projectId);
   const revise = useCreateDraftVersion(projectId);
@@ -514,14 +516,19 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
           contingencyRemaining={band?.contingencyRemaining ?? null}
           contractValue={band?.contractValue ?? null}
           totalClientRevenue={band?.totalClientRevenue ?? null}
-          // Absorb (add new ABSORBED scope) and Separate (add a SEPARATE_CHARGE leaf) have no
-          // committed HTTP route yet (R11 backend reality) — the drawer previews them but the CTA
-          // stays honest. Variation is reachable via the Commercial variations flow.
-          absorbEnabled={false}
-          separateEnabled={false}
-          isPending={false}
+          // Absorb (an ABSORBED leaf funded from contingency) and Separate (a SEPARATE_CHARGE leaf)
+          // write via POST .../boq/extra-work (R5); Variation routes to the Commercial flow.
+          absorbEnabled
+          separateEnabled
+          isPending={addExtraWork.isPending}
+          errorMessage={
+            addExtraWork.isError ? (addExtraWork.error as Error | undefined)?.message : undefined
+          }
           onSubmit={handleClassify}
-          onClose={() => setClassifierOpen(false)}
+          onClose={() => {
+            addExtraWork.reset();
+            setClassifierOpen(false);
+          }}
         />
       ) : null}
 
@@ -607,19 +614,33 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   }
 
   /**
-   * The who-pays classifier's decision. VARIATION is the only route with a committed write path
-   * today: it is raised in the Commercial variations flow. Rather than fabricate a success on a
-   * route the backend cannot fulfil, this hands the user to Commercial to raise the draft VO and
-   * records the pending affordance (H1) so the moment never dead-ends. Absorb/Separate are disabled
-   * in the drawer (no route yet) and never reach here.
+   * The who-pays classifier's decision (R5). ABSORB and SEPARATE write immediately via the
+   * extra-work route; the drawer stays open until success so a 400 (e.g. contingency insufficient)
+   * shows in place. VARIATION raises a DRAFT VO in the Commercial flow and records the pending
+   * affordance (H1) so the moment never dead-ends.
    */
   function handleClassify(result: ClassifierResult) {
-    setClassifierOpen(false);
     if (result.route === 'VARIATION') {
+      setClassifierOpen(false);
       setPendingVariations((n) => n + 1);
       toast({ title: t('classifier.variationCreated') });
       router.push(`/projects/${projectId}/commercial/variations`);
+      return;
     }
+
+    addExtraWork.mutate(
+      { treatment: result.route, lines: [{ description: result.description, amount: result.amount }] },
+      {
+        onSuccess: () => {
+          setClassifierOpen(false);
+          toast({
+            title: t(
+              result.route === 'ABSORB' ? 'classifier.absorbed' : 'classifier.separateAdded',
+            ),
+          });
+        },
+      },
+    );
   }
 
   function runLibrarySideEffects(

@@ -2,7 +2,16 @@
 
 import { useRef, useState } from 'react';
 import type { BoqTreeNodeResponse } from '@erp/types';
-import { ChevronRight, Diamond, Lock, LockKeyhole, MoreHorizontal, Plus } from 'lucide-react';
+import {
+  ChevronRight,
+  CircleDollarSign,
+  Diamond,
+  Lock,
+  LockKeyhole,
+  MoreHorizontal,
+  Plus,
+  Receipt,
+} from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Badge,
@@ -550,9 +559,9 @@ function PinnedCell({
 
 /**
  * The Source tag — where this line's scope came from (R11 M4). DISTINCT from the ⚑ validity flag:
- * this answers "who authorised this scope", validity answers "is the line ready". Today the public
- * tree projection distinguishes only BASELINE vs VARIATION; the Absorb (⊙) / Separate (↗) tags need
- * `commercialTreatment` on the read model, which is not yet exposed — see R11 report.
+ * this answers "who authorised this scope", validity answers "is the line ready". `sourceType`
+ * marks a VARIATION line; `commercialTreatment` marks an Absorb (⊙, funded from contingency) or a
+ * Separate charge (↗, billed outside the contract). Ordinary in-contract WORK carries no tag.
  */
 function SourceCell({ node }: { node: BoqTreeNodeResponse }) {
   const t = useTranslations('platform.boq.grid');
@@ -564,6 +573,24 @@ function SourceCell({ node }: { node: BoqTreeNodeResponse }) {
         {node.sourceChangeOrderId
           ? t('sourceVariationRef', { ref: node.sourceChangeOrderId })
           : t('sourceVariation')}
+      </Badge>
+    );
+  }
+
+  if (node.commercialTreatment === 'ABSORBED') {
+    return (
+      <Badge tone="neutral" className="gap-1">
+        <CircleDollarSign size={10} aria-hidden="true" />
+        {t('sourceAbsorbed')}
+      </Badge>
+    );
+  }
+
+  if (node.commercialTreatment === 'SEPARATE_CHARGE') {
+    return (
+      <Badge tone="neutral" className="gap-1">
+        <Receipt size={10} aria-hidden="true" />
+        {t('sourceSeparate')}
       </Badge>
     );
   }

@@ -11,6 +11,7 @@ import {
   PricingBasis,
   BoqSourceType,
   CommercialTreatment,
+  NodeRole,
   Prisma,
 } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -70,6 +71,8 @@ export interface BoqTreeNodeView {
   originNodeId: string | null;
   sourceType: BoqSourceType;
   sourceChangeOrderId: string | null;
+  nodeRole: NodeRole;
+  commercialTreatment: CommercialTreatment;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -1107,6 +1110,8 @@ export function buildTree(nodes: BoqNode[], boqCurrency: string): BoqTreeNodeVie
       originNodeId: node.originNodeId,
       sourceType: node.sourceType,
       sourceChangeOrderId: node.sourceChangeOrderId,
+      nodeRole: node.nodeRole,
+      commercialTreatment: node.commercialTreatment,
       isActive: node.isActive,
       createdAt: node.createdAt,
       updatedAt: node.updatedAt,

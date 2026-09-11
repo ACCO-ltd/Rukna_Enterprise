@@ -814,6 +814,8 @@ export interface BoqTreeNodeResponse {
   originNodeId: string | null;
   sourceType: 'BASELINE' | 'VARIATION';
   sourceChangeOrderId: string | null;
+  nodeRole: 'WORK' | 'CONTINGENCY';
+  commercialTreatment: 'IN_CONTRACT' | 'SEPARATE_CHARGE' | 'ABSORBED';
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -867,7 +869,7 @@ export interface BoqBaselineReadinessResponse {
 export interface BoqCapabilities {
   canView: boolean;
   canManage: boolean;
-  canBaseline: boolean;
+  canCommit: boolean;
   /**
    * @deprecated ADR-029 §8 A-2 replaced the single money boolean with two visibility tiers.
    * Retained (mirrors `canViewCost`) so pre-tier clients keep compiling for one release.
