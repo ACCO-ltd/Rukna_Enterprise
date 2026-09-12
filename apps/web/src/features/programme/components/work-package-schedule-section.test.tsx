@@ -75,7 +75,7 @@ describe('WorkPackageScheduleSection', () => {
     mocks.useBoqLeaves.mockReturnValue({ leaves: [], isPending: false, hasBaseline: false });
     renderWithProviders(<WorkPackageScheduleSection projectId="proj-1" />);
 
-    expect(screen.getByText('Baseline the BOQ first')).toBeInTheDocument();
+    expect(screen.getByText('Commit the BOQ first')).toBeInTheDocument();
     // No timeline is drawn without a baseline.
     expect(screen.queryByText('Planned vs actual')).not.toBeInTheDocument();
   });

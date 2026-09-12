@@ -130,7 +130,7 @@ describe('ScheduleSetupWizard', () => {
   it('warns when the baseline was cleared while open (no broken flow)', () => {
     mocks.useBoqLeaves.mockReturnValue({ leaves: [], hasBaseline: false, isPending: false });
     open();
-    expect(screen.getByText(/BOQ baseline was cleared/i)).toBeInTheDocument();
+    expect(screen.getByText(/no longer committed/i)).toBeInTheDocument();
     // No start options are offered without a baseline.
     expect(screen.queryByText('ACCO standard building schedule')).not.toBeInTheDocument();
   });

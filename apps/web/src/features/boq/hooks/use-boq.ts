@@ -16,7 +16,6 @@ import { projectKeys } from '@/features/projects/hooks/use-projects';
 import {
   addBoqNode,
   addExtraWork,
-  baselineVersion,
   cancelDraftVersion,
   commitVersion,
   compareBoqVersions,
@@ -162,10 +161,6 @@ function useBoqMutation<TArgs>(projectId: string, run: (args: TArgs) => Promise<
 export function useInitializeBoq(projectId: string) {
   // `void` so callers can write `mutate()` — this command takes no variables.
   return useBoqMutation<void>(projectId, () => initializeBoq(projectId));
-}
-
-export function useBaselineVersion(projectId: string) {
-  return useBoqMutation(projectId, (versionId: string) => baselineVersion(projectId, versionId));
 }
 
 /**

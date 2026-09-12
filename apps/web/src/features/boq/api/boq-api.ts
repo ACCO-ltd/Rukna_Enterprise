@@ -1,5 +1,4 @@
 import type {
-  BoqBaselineReadinessResponse,
   BoqChangeEventResponse,
   BoqCompareResponse,
   BoqCompareToSignedResponse,
@@ -100,16 +99,6 @@ export function getBoqTree(
   );
 }
 
-/** Baseline readiness — the same evaluation the baseline command enforces. */
-export function getBoqReadiness(
-  projectId: string,
-  versionId: string,
-): Promise<BoqBaselineReadinessResponse> {
-  return apiClient<BoqBaselineReadinessResponse>(
-    `/projects/${projectId}/boq/versions/${versionId}/readiness`,
-  );
-}
-
 /** Diffs two versions. Paired on `originNodeId`, so a renumbered line reads as a change. */
 export function compareBoqVersions(
   projectId: string,
@@ -206,19 +195,6 @@ export function moveBoqNode(
     `/projects/${projectId}/boq/versions/${versionId}/nodes/${nodeId}/move`,
     { method: 'POST', body: JSON.stringify(payload) },
   );
-}
-
-/**
- * Locks the open draft in as the approved BOQ.
- *
- * Refused with `400` and `details.blockers` when the version is not Baseline Ready, and
- * with `409` and `details.approvalInstanceId` when a workflow binding gates it — approve
- * the instance, then call this again (ADR-015 re-drive).
- */
-export function baselineVersion(projectId: string, versionId: string): Promise<BoqResponse> {
-  return apiClient<BoqResponse>(`/projects/${projectId}/boq/versions/${versionId}/baseline`, {
-    method: 'POST',
-  });
 }
 
 /** Discards the open draft. The approved version is untouched. */

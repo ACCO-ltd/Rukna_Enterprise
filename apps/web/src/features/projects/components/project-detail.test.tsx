@@ -370,7 +370,7 @@ describe('ProjectDetail — commercial foundation', () => {
     const section = (
       await screen.findByRole('heading', { name: 'Commercial foundation' })
     ).closest('section')!;
-    expect(within(section).getByText('Working · Not baselined')).toBeInTheDocument();
+    expect(within(section).getByText('Working')).toBeInTheDocument();
   });
 
   it('links to the contract in the Commercial workspace, and shows its value, once one exists', async () => {
