@@ -204,6 +204,6 @@ describe('PoCostTargetPicker — BOQ node select', () => {
     });
     mocks.useBoqTree.mockReturnValue({ data: undefined, isLoading: false, isError: false });
     setup({ notChargeable: false, projectId: 'proj-1', boqNodeId: null, spendCategoryId: null });
-    expect(screen.getByText(/no baselined BOQ yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/no committed BOQ yet/i)).toBeInTheDocument();
   });
 });

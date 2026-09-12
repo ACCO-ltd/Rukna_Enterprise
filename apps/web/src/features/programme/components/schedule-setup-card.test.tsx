@@ -73,7 +73,7 @@ describe('ScheduleSetupCard', () => {
     mocks.useBoqLeaves.mockReturnValue({ leaves: [], hasBaseline: false, isPending: false });
     renderWithProviders(<ScheduleSetupCard projectId="proj-1" />, { permissions: MANAGE });
 
-    expect(screen.getByText('Baseline the BOQ first')).toBeInTheDocument();
+    expect(screen.getByText('Commit the BOQ first')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Set up schedule' })).toBeDisabled();
   });
 

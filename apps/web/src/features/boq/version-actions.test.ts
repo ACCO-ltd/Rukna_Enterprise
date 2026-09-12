@@ -49,7 +49,7 @@ function readiness(ready: boolean): BoqBaselineReadinessResponse {
 
 function workspace(overrides: Partial<BoqWorkspaceResponse> = {}): BoqWorkspaceResponse {
   const draft = version({ id: 'v2', versionNumber: 2, status: 'DRAFT' });
-  const approved = version({ id: 'v1', versionNumber: 1, status: 'BASELINED' });
+  const approved = version({ id: 'v1', versionNumber: 1, status: 'COMMITTED' });
 
   return {
     projectId: 'p1',

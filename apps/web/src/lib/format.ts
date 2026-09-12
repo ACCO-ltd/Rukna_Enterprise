@@ -195,6 +195,7 @@ const GLOBAL_STATUS_MAP: Record<string, StatusPresentation> = {
   // Success
   ACTIVE:                      { token: 'SUCCESS',     muted: false },
   BASELINED:                   { token: 'SUCCESS',     muted: false },
+  COMMITTED:                   { token: 'SUCCESS',     muted: false },
   EXECUTED:                    { token: 'SUCCESS',     muted: false },
   CERTIFIED:                   { token: 'SUCCESS',     muted: false },
   PAID:                        { token: 'SUCCESS',     muted: false },
