@@ -61,6 +61,69 @@ export class ContractPrismaRepository {
     });
   }
 
+  /**
+   * ADR-030 CONST-COM-020 / S-CC-1 — resolve the project's SINGLE committed BOQ version server-side
+   * (no client-supplied id, no picker). There is at most one BOQ per project (`Boq.projectId @unique`),
+   * so this reads the versions in COMMITTED_BOQ_STATUSES for that BOQ.
+   *
+   * Returns every candidate (with its status + the project code, needed downstream for the contract
+   * number) so the application layer can apply the R2 tie-break — prefer COMMITTED (R2 in-place)
+   * over a legacy BASELINED version — and gate when there is none. Kept as a plain read; the
+   * COMMITTED-vs-BASELINED precedence is a business rule and lives in the service.
+   */
+  async findCommittedBoqVersionsForProject(
+    prisma: TenantPrisma,
+    projectId: string,
+  ): Promise<{ id: string; status: string }[]> {
+    const rows = await prisma.boqVersion.findMany({
+      where: {
+        boq: { projectId },
+        status: { in: ['COMMITTED', 'BASELINED'] as never[] },
+      },
+      select: { id: true, status: true },
+    });
+    return rows.map((r) => ({ id: r.id, status: r.status }));
+  }
+
+  /**
+   * ADR-030 CONST-COM-022 — the project code (`ACCO-WBR-26-0065`) the contract number is built from.
+   * Org-scoped so a caller cannot mint a number off another tenant's project code.
+   */
+  findProjectCode(
+    prisma: TenantPrisma,
+    organizationId: string,
+    projectId: string,
+  ): Promise<{ code: string } | null> {
+    return prisma.project.findFirst({
+      where: { id: projectId, organizationId },
+      select: { code: true },
+    });
+  }
+
+  /**
+   * ADR-030 CONST-COM-022 / S-CC-3 — mint the next client contract number `{projectCode}-C{n}` for a
+   * project. Mirrors ADR-025 `allocateCode`: the per-project counter is incremented atomically via an
+   * upsert (`nextValue: { increment: 1 }`), so two concurrent creates can never be handed the same n.
+   *
+   * MUST run inside the create `$transaction` (pass the transaction client) so the number is minted
+   * with the contract row. A rolled-back create burns a number (a tolerated gap, exactly like project
+   * codes); the `@@unique([organizationId, contractNumber])` on Contract is the collision backstop.
+   */
+  async nextContractNumber(
+    prisma: Prisma.TransactionClient,
+    projectId: string,
+    projectCode: string,
+  ): Promise<string> {
+    const sequence = await prisma.contractNumberSequence.upsert({
+      where: { projectId },
+      create: { projectId, nextValue: 2 },
+      update: { nextValue: { increment: 1 } },
+      select: { nextValue: true },
+    });
+    const allocated = sequence.nextValue - 1;
+    return `${projectCode}-C${allocated}`;
+  }
+
   findActiveByProject(prisma: TenantPrisma, projectId: string) {
     return prisma.contract.findMany({
       where: { projectId, status: 'ACTIVE' },

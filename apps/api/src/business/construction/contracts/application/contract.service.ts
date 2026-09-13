@@ -114,51 +114,50 @@ export class ContractService {
     await this.projectAccess.assertMember(identity, dto.projectId);
     const prisma = this.tenancyService.getClient();
 
-    // Validate the BOQ version exists for this project and is a committed operational version.
-    // ADR-029 §2 accepts both COMMITTED (R2 in-place) and BASELINED (pre-migration) — see
-    // COMMITTED_BOQ_STATUSES.
-    const boqVersion = await prisma.boqVersion.findFirst({
-      where: { id: dto.boqVersionId, boq: { projectId: dto.projectId } },
-      select: { status: true },
-    });
-    if (!boqVersion) {
-      throw new NotFoundException(
-        `BOQ version ${dto.boqVersionId} not found for project ${dto.projectId}`,
-      );
-    }
-    if (!COMMITTED_BOQ_STATUSES.has(boqVersion.status)) {
-      throw new BadRequestException(
-        `A contract can only reference a committed BOQ version. Current status: ${boqVersion.status}`,
-      );
-    }
-
     const contractKind = dto.contractKind ?? 'CLIENT_CONTRACT';
+
+    // ADR-030 CONST-COM-020 / S-CC-1 — resolve the BOQ version the contract binds to. For a
+    // CLIENT_CONTRACT the server resolves the project's SINGLE committed BOQ (no picker); a
+    // SUBCONTRACT still anchors an explicitly-supplied committed version. Both paths end with a
+    // `boqVersionId` that is guaranteed to be a committed operational version.
+    const boqVersionId = await this.resolveBoqVersionId(identity, prisma, dto, contractKind);
 
     // ADR-029 T-1/T-4 — tie out to the priced scope. `getInContractTotal` reuses the one shared
     // `inContractBillableTotal` policy (every leaf except SEPARATE_CHARGE), so the contract can never
     // be signed against a different rule than the commit snapshot was frozen under. D3: the contract
     // reads from the BOQ; it can never be set below/away from that total.
     //
-    // The tie-out is the CLIENT contract sum (CONST-BOQ-026 / D3: "the client sees only the contract
-    // sum"; milestone billing is client-facing). A SUBCONTRACT's value is the subcontractor's price,
-    // not the client BOQ total, so it is NOT tied out — it keeps its supplied value, base = current.
-    const tieOutTotal =
-      contractKind === 'CLIENT_CONTRACT'
-        ? await this.deriveTieOutValue(identity, dto)
-        : new Prisma.Decimal(dto.contractValue).toFixed(2);
+    // CONST-COM-021: the tie-out is the CLIENT contract sum and is READ-ONLY — a supplied value is
+    // validated (TIEOUT_MISMATCH) but never required and never overrides. A SUBCONTRACT's value is the
+    // subcontractor's price, not the client BOQ total, so it is NOT tied out — it keeps its supplied
+    // value (still required for a SUBCONTRACT), base = current.
+    let tieOutTotal: string;
+    if (contractKind === 'CLIENT_CONTRACT') {
+      tieOutTotal = await this.deriveTieOutValue(identity, dto, boqVersionId);
+    } else {
+      if (dto.contractValue === undefined || dto.contractValue === null) {
+        throw new BadRequestException('A SUBCONTRACT requires an explicit contract value.');
+      }
+      tieOutTotal = new Prisma.Decimal(dto.contractValue).toFixed(2);
+    }
 
-    const duplicate = await this.repo.findByNumber(
-      prisma,
-      identity.activeOrganizationId,
-      dto.contractNumber,
-    );
-    if (duplicate) {
-      throw new ConflictException(`Contract number '${dto.contractNumber}' already exists`);
+    // CONST-COM-022 / S-CC-3 — the contract number is system-generated when omitted (the minimal
+    // form path). When the caller supplies one (the old form), the existing duplicate guard still
+    // applies before we open the transaction.
+    if (dto.contractNumber) {
+      const duplicate = await this.repo.findByNumber(
+        prisma,
+        identity.activeOrganizationId,
+        dto.contractNumber,
+      );
+      if (duplicate) {
+        throw new ConflictException(`Contract number '${dto.contractNumber}' already exists`);
+      }
     }
 
     // ADR-023: a payment schedule belongs only to a MILESTONE (payment-schedule) contract,
-    // and must reconcile to 100% before it is written.
-    const billingModel = dto.billingModel ?? 'MEASURED_IPC';
+    // and must reconcile to 100% before it is written. S-CC-4: MILESTONE is the default when omitted.
+    const billingModel = dto.billingModel ?? 'MILESTONE';
     if (dto.paymentPlan && dto.paymentPlan.length > 0) {
       if (billingModel !== 'MILESTONE') {
         throw new BadRequestException(
@@ -166,6 +165,21 @@ export class ContractService {
         );
       }
       this.assertPaymentPlanReconciles(dto.paymentPlan);
+    }
+
+    // When the number is auto-generated it is minted from the project code inside the transaction
+    // (below). Read the code up-front (org-scoped) so a missing project fails before we open the tx.
+    let projectCode: string | undefined;
+    if (!dto.contractNumber) {
+      const project = await this.repo.findProjectCode(
+        prisma,
+        identity.activeOrganizationId,
+        dto.projectId,
+      );
+      if (!project) {
+        throw new NotFoundException(`Project ${dto.projectId} not found`);
+      }
+      projectCode = project.code;
     }
 
     return prisma.$transaction(async (tx) => {
@@ -182,18 +196,25 @@ export class ContractService {
         }
       }
 
+      // CONST-COM-022 — mint `{projectCode}-C{n}` from the atomic per-project sequence inside the
+      // transaction, exactly like ADR-025 project codes. The increment is atomic, so concurrent
+      // creates get distinct numbers; the unique index is the final backstop.
+      const contractNumber = dto.contractNumber
+        ? dto.contractNumber
+        : await this.repo.nextContractNumber(tx, dto.projectId, projectCode!);
+
       const contract = await this.repo.create(tx, {
         organizationId: identity.activeOrganizationId,
         projectId: dto.projectId,
         clientId: dto.clientId,
-        boqVersionId: dto.boqVersionId,
-        contractNumber: dto.contractNumber,
+        boqVersionId,
+        contractNumber,
         // ADR-029 T-2/T-3/T-4 — base is frozen from the tie-out at creation and drives the milestone %;
         // current starts equal to base and is what R6 later increments per adopted on-contract variation.
         baseContractValue: tieOutTotal,
         contractValue: tieOutTotal,
         currency: dto.currency,
-        billingModel: dto.billingModel,
+        billingModel,
         contractKind,
         startDate: dto.startDate ? new Date(dto.startDate) : undefined,
         expectedEndDate: dto.expectedEndDate ? new Date(dto.expectedEndDate) : undefined,
@@ -215,13 +236,82 @@ export class ContractService {
         idempotencyKey: `contract-create-${contract.id}`,
         after: {
           projectId: dto.projectId,
-          contractNumber: dto.contractNumber,
+          contractNumber,
           status: 'DRAFT',
         },
       });
 
       return contract;
     });
+  }
+
+  /**
+   * ADR-030 CONST-COM-020 / S-CC-1..2 — resolve the committed BOQ version a contract binds to.
+   *
+   * CLIENT_CONTRACT: the server resolves the project's SINGLE committed BOQ (no client picker).
+   *  - Zero committed versions ⇒ gate with `BOQ_NOT_COMMITTED` (the "Commit the BOQ first" dead-end
+   *    replacement); no contract row is written.
+   *  - Tie-break (the R2/ADR-029 transitional overlap): prefer a `COMMITTED` (R2 in-place operational)
+   *    version over a legacy `BASELINED` one. In steady state there is exactly one; the preference only
+   *    disambiguates the migration window.
+   *  - If the caller still supplied `boqVersionId` (the old form), it MUST equal the resolved committed
+   *    version, else 400 — the caller can never anchor a different version than the server would.
+   *
+   * SUBCONTRACT: keeps the pre-existing behaviour — an explicit `boqVersionId` is required and must be
+   * a committed operational version (COMMITTED_BOQ_STATUSES), verified for this project.
+   */
+  private async resolveBoqVersionId(
+    identity: RequestIdentity,
+    prisma: ReturnType<TenancyService['getClient']>,
+    dto: CreateContractDto,
+    contractKind: import('@prisma/client').ContractKind,
+  ): Promise<string> {
+    if (contractKind === 'CLIENT_CONTRACT') {
+      const committed = await this.repo.findCommittedBoqVersionsForProject(prisma, dto.projectId);
+      if (committed.length === 0) {
+        throw new BadRequestException({
+          message:
+            'This project has no committed BOQ. Commit the BOQ before creating a contract — the ' +
+            'contract value ties out to the committed scope.',
+          code: 'BOQ_NOT_COMMITTED',
+          details: { projectId: dto.projectId },
+        });
+      }
+      // Prefer COMMITTED (R2 in-place) over legacy BASELINED during the ADR-029 transitional overlap.
+      const resolved =
+        committed.find((v) => v.status === 'COMMITTED') ?? committed[0]!;
+
+      if (dto.boqVersionId && dto.boqVersionId !== resolved.id) {
+        throw new BadRequestException({
+          message:
+            'A client contract binds to the project\'s committed BOQ, which the server resolves. ' +
+            'The supplied BOQ version does not match the committed version.',
+          code: 'BOQ_VERSION_MISMATCH',
+          details: { supplied: dto.boqVersionId, committed: resolved.id },
+        });
+      }
+      return resolved.id;
+    }
+
+    // SUBCONTRACT — an explicit committed version is required.
+    if (!dto.boqVersionId) {
+      throw new BadRequestException('A SUBCONTRACT requires an explicit BOQ version.');
+    }
+    const boqVersion = await prisma.boqVersion.findFirst({
+      where: { id: dto.boqVersionId, boq: { projectId: dto.projectId } },
+      select: { status: true },
+    });
+    if (!boqVersion) {
+      throw new NotFoundException(
+        `BOQ version ${dto.boqVersionId} not found for project ${dto.projectId}`,
+      );
+    }
+    if (!COMMITTED_BOQ_STATUSES.has(boqVersion.status)) {
+      throw new BadRequestException(
+        `A contract can only reference a committed BOQ version. Current status: ${boqVersion.status}`,
+      );
+    }
+    return dto.boqVersionId;
   }
 
   /**
@@ -238,20 +328,22 @@ export class ContractService {
   private async deriveTieOutValue(
     identity: RequestIdentity,
     dto: CreateContractDto,
+    boqVersionId: string,
   ): Promise<string> {
     const total = await this.boqVersioning.getInContractTotal(
       identity,
       dto.projectId,
-      dto.boqVersionId,
+      boqVersionId,
     );
     if (total === null) {
       throw new BadRequestException(
-        `BOQ version ${dto.boqVersionId} has no priced in-contract scope to tie the contract value out to.`,
+        `BOQ version ${boqVersionId} has no priced in-contract scope to tie the contract value out to.`,
       );
     }
     const tieOut = new Prisma.Decimal(total);
 
-    // A client-supplied value (the DTO still carries one) must match the tie-out to the cent.
+    // CONST-COM-021: the value is derived-only and never required. If the caller still supplied one
+    // (the old form), it must match the tie-out to the cent — validated, never overridden silently.
     if (dto.contractValue !== undefined && dto.contractValue !== null) {
       const supplied = new Prisma.Decimal(dto.contractValue);
       if (!supplied.equals(tieOut)) {
@@ -261,7 +353,7 @@ export class ContractService {
             'The BOQ is the priced scope; the contract cannot be set below or away from it.',
           code: 'TIEOUT_MISMATCH',
           details: {
-            boqVersionId: dto.boqVersionId,
+            boqVersionId,
             tieOutTotal: tieOut.toFixed(2),
             suppliedContractValue: supplied.toFixed(2),
             delta: supplied.minus(tieOut).toFixed(2),

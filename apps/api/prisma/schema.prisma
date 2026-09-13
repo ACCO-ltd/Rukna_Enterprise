@@ -602,6 +602,7 @@ model Project {
   suspensions          ProjectSuspension[]
   boq                  Boq?
   contracts            Contract[]
+  contractNumberSeq    ContractNumberSequence?
   costBudgets          ProjectCostBudget[]
   documents            ProjectDocument[]
   dailyProgressReports DailyProgressReport[]
@@ -1069,6 +1070,23 @@ model ProjectCodeSequence {
 
   @@id([organizationId, year])
   @@map("project_code_sequences")
+}
+
+// ADR-030 CONST-COM-022 — the per-project monotonic counter that mints a client contract number
+// `{project.code}-C{n}` (e.g. `ACCO-WBR-26-0065-C1`). Mirrors ProjectCodeSequence: the increment is
+// atomic (upsert), so two concurrent creates on one project can never be handed the same n. Keyed by
+// project so the number is stable across the project's lifetime — CLOSED/CANCELLED predecessors do
+// not reset it, so a successor is never "always C1". Gaps are tolerated (a rolled-back create burns a
+// number), exactly as project codes tolerate gaps; the `@@unique([organizationId, contractNumber])`
+// on Contract is the collision backstop.
+model ContractNumberSequence {
+  projectId String   @id @map("project_id")
+  nextValue Int      @default(1) @map("next_value")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("contract_number_sequences")
 }
 
 model ProjectSuspension {
