@@ -18,10 +18,9 @@
     "notSet": "Not set"
   },
   "tabs": {
-    "contract-security": "Contract & Security",
+    "contract-security": "Contract",
     "billing-collection": "Billing & Collection",
     "label": "Commercial sections",
-    "overview": "Overview",
     "main-contract": "Main Contract",
     "applications": "Applications & Certification",
     "payment-schedule": "Payment Schedule",
@@ -248,19 +247,19 @@
     "hiddenAction": "Go to Billing & Collection"
   },
   "contractSecurity": {
-    "title": "Contract & Security",
+    "title": "Contract",
     "subtitle": "The commercial baseline, contractual terms and instruments that protect performance.",
     "guarantees": "Guarantees",
     "manageTerms": "Set contract terms"
   },
   "contractAuthoring": {
-    "back": "Back to Contract & Security",
+    "back": "Back to Contract",
     "newTitle": "New contract",
     "newSubtitle": "Set the commercial baseline for this project — its value, billing model and payment terms.",
     "editTitle": "Edit contract",
     "editSubtitle": "Amend the draft contract before it is submitted for review.",
     "noContractTitle": "No contract to edit",
-    "noContractHint": "This project has no main contract yet. Create one from Contract & Security.",
+    "noContractHint": "This project has no main contract yet. Create one from Contract.",
     "createContract": "Create contract",
     "loadFailed": "Could not load this project's contract."
   },

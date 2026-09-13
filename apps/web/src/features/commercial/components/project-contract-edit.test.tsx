@@ -91,7 +91,7 @@ describe('ProjectContractEdit', () => {
     renderWithProviders(<ProjectContractEdit projectId={PROJECT_ID} />);
 
     expect(mocks.ContractEdit).not.toHaveBeenCalled();
-    expect(screen.getByRole('link', { name: /back to contract & security/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /back to contract/i })).toHaveAttribute(
       'href',
       `/projects/${PROJECT_ID}/commercial/contract-security`,
     );

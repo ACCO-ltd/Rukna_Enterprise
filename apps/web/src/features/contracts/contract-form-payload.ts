@@ -201,6 +201,43 @@ export function toCreateContractPayload(values: ContractFormValues): CreateContr
 }
 
 /**
+ * The minimal create form's values (ADR-030 S-CC-5). The BOQ version, contract value and number are
+ * no longer collected — C1 resolves the committed BOQ, ties the value out to it, and mints the
+ * number server-side — so the browser sends only who the contract is with and when it runs.
+ */
+export interface MinimalCreateContractValues {
+  projectId: string;
+  clientId: string;
+  billingModel: string;
+  startDate: string;
+  expectedEndDate: string;
+}
+
+/**
+ * Builds the minimal `POST /contracts` body (S-CC-5). Only project, client and currency are always
+ * sent; `boqVersionId`, `contractValue` and `contractNumber` are deliberately ABSENT so the server
+ * resolves the committed BOQ, ties the value out and mints the number (CONST-COM-020..022). Empty
+ * optional dates are omitted rather than sent as `""` (`@IsDateString()` 400s on an empty string).
+ */
+export function toMinimalCreateContractPayload(
+  values: MinimalCreateContractValues,
+): CreateContractPayload {
+  const payload: CreateContractPayload = {
+    projectId: values.projectId,
+    clientId: values.clientId,
+    // ACCO operates in USD only; the value ties out to the committed BOQ, but currency is still a
+    // required field on the DTO.
+    currency: 'USD',
+  };
+
+  if (values.billingModel) payload.billingModel = values.billingModel as BillingModel;
+  if (values.startDate.trim()) payload.startDate = values.startDate.trim();
+  if (values.expectedEndDate.trim()) payload.expectedEndDate = values.expectedEndDate.trim();
+
+  return payload;
+}
+
+/**
  * Converts form values into a `PATCH /contracts/:id` body.
  *
  * Unlike clients, a cleared date is OMITTED rather than sent as `null`, because on this

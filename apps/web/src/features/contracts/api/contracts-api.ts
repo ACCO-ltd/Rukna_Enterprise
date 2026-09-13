@@ -8,22 +8,26 @@ import type { Contract, ContractDetail } from '../types';
 /**
  * Body accepted by `POST /contracts`, mirroring CreateContractDto.
  *
+ * ADR-030 C1 (CONST-COM-020..022) made three fields OPTIONAL, and the minimal create form (S-CC-5)
+ * omits all three: for a CLIENT_CONTRACT the server resolves the project's single committed BOQ
+ * (`boqVersionId`), ties the value out to it (`contractValue`) and mints the number from the project
+ * code (`contractNumber`). When supplied — the old form, or a SUBCONTRACT anchoring an explicit
+ * version — the server still honours them, but a supplied value/version must EQUAL the resolved
+ * tie-out/committed version or the create is rejected.
+ *
  * `contractValue` is a STRING here, unlike the project form where it is a number.
  * `CreateProjectDto` declares `@IsNumber` while `CreateContractDto` declares `@IsDecimal`.
  * The endpoint would in fact accept a number too — the ValidationPipe's
  * `enableImplicitConversion` coerces it first, verified against the running server — but
  * a string is the right shape for money regardless: the value never passes through a JS
  * `double` on its way to a Decimal(18,2) column.
- *
- * `boqVersionId` must reference a BASELINED version belonging to `projectId` — the server
- * checks both (`contract.service.ts:50-63`) and the picker filters to match.
  */
 export interface CreateContractPayload {
   projectId: string;
   clientId: string;
-  boqVersionId: string;
-  contractNumber: string;
-  contractValue: string;
+  boqVersionId?: string;
+  contractNumber?: string;
+  contractValue?: string;
   currency: string;
   billingModel?: BillingModel;
   startDate?: string;

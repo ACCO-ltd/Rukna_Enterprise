@@ -6,7 +6,6 @@ import {
   CalendarClock,
   FileSignature,
   GitBranch,
-  LayoutDashboard,
   ReceiptText,
   Stamp,
 } from 'lucide-react';
@@ -17,7 +16,6 @@ import type { BillingModel } from '@erp/types';
 type BillingModelValue = `${BillingModel}`;
 
 export type CommercialTab =
-  | 'overview'
   | 'contract-security'
   | 'applications'
   | 'payment-schedule'
@@ -25,7 +23,6 @@ export type CommercialTab =
   | 'billing-collection';
 
 const ICONS: Record<CommercialTab, React.ReactNode> = {
-  overview: <LayoutDashboard size={16} strokeWidth={1.9} />,
   'contract-security': <FileSignature size={16} strokeWidth={1.9} />,
   applications: <Stamp size={16} strokeWidth={1.9} />,
   'payment-schedule': <CalendarClock size={16} strokeWidth={1.9} />,
@@ -34,13 +31,17 @@ const ICONS: Record<CommercialTab, React.ReactNode> = {
 };
 
 /**
- * Which views this contract actually has.
+ * Which views this contract actually has (ADR-030 CONST-COM-026, S-SH-1).
+ *
+ * Four tabs, not five: Overview is retired (C2). Its live-cycle content moved onto the Payment
+ * Schedule tab and its money bands are reachable on Billing, so nothing was lost by removing the
+ * landing pad that duplicated them.
  *
  * The billing model chooses ONE of two mutually-exclusive views in the same slot: a MEASURED_IPC
  * contract bills through Applications & Certification (the IPA → IPC machinery), a MILESTONE
  * contract bills from its Payment Schedule instead (ADR-023). Only one applies, so only one is
- * shown — the other would be a permanently empty workspace one click from Overview, inviting a
- * user to start a document the server will refuse.
+ * shown — the other would be a permanently empty workspace inviting a user to start a document the
+ * server will refuse.
  *
  * A contract with no billing model yet (none, or still loading) shows Applications rather than
  * hiding both — the measured chain is the historical default, and hiding a view because data has
@@ -51,16 +52,30 @@ const ICONS: Record<CommercialTab, React.ReactNode> = {
 export function commercialTabsFor(
   billingModel: BillingModelValue | null | undefined,
 ): CommercialTab[] {
-  const tabs: CommercialTab[] = ['overview', 'contract-security'];
+  const tabs: CommercialTab[] = ['contract-security'];
   if (billingModel === 'MILESTONE') tabs.push('payment-schedule');
   else tabs.push('applications');
   tabs.push('variations', 'billing-collection');
   return tabs;
 }
 
+/**
+ * The tab the workspace lands on (S-SH-1). With Overview gone, a MILESTONE contract opens on its
+ * Payment Schedule — the operational home where billing happens — and everything else opens on
+ * Contract. When there is no contract yet the only meaningful destination is Contract, whatever the
+ * (absent) billing model would otherwise say, so the reader lands on the create affordance rather
+ * than an empty schedule.
+ */
+export function commercialLandingTab(
+  billingModel: BillingModelValue | null | undefined,
+  hasContract: boolean,
+): CommercialTab {
+  if (!hasContract) return 'contract-security';
+  return billingModel === 'MILESTONE' ? 'payment-schedule' : 'contract-security';
+}
+
 export function commercialTabHref(projectId: string, tab: CommercialTab): string {
-  const base = `/projects/${projectId}/commercial`;
-  return tab === 'overview' ? base : `${base}/${tab}`;
+  return `/projects/${projectId}/commercial/${tab}`;
 }
 
 /**

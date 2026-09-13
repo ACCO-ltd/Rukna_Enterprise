@@ -79,6 +79,9 @@ function summary(
       boqVersionNumber: 1,
       ...contract,
     },
+    // The relocated current-cycle card + attention/activity (S-SH-5) read these off the summary.
+    attention: [],
+    recentActivity: [],
     ...overrides,
   } as unknown as CommercialSummaryResponse;
 }
@@ -88,6 +91,10 @@ function stubCycle(installments: CommercialPaymentScheduleInstallment[]) {
     isPending: false,
     isError: false,
     data: {
+      // `stage` drives the relocated current-cycle card (S-SH-5): a MILESTONE plan reports
+      // MILESTONE_SCHEDULE, and the card renders the NEXT installment focus from that.
+      stage: 'MILESTONE_SCHEDULE',
+      nextAction: null,
       paymentSchedule: {
         currency: 'USD',
         contractValue: '750000.00',

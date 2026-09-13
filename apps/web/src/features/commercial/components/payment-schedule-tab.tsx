@@ -34,8 +34,10 @@ import { formatMoney } from '@/lib/format';
 import { useCommercialCurrentCycle } from '../hooks/use-commercial';
 import { useReplacePaymentPlan } from '../hooks/use-replace-payment-plan';
 import { isBilledInstallment } from '../presentation';
+import { CommercialActivity } from './commercial-activity';
+import { CurrentPaymentCycle } from './current-payment-cycle';
 import { PaymentSchedulePanel } from './payment-schedule-panel';
-import { SectionCard } from './commercial-ui';
+import { AttentionList, SectionCard } from './commercial-ui';
 
 /**
  * Split the current schedule into the two halves Q-B treats differently:
@@ -107,10 +109,24 @@ export function PaymentScheduleTab({
     <div className="space-y-4">
       <SummaryStrip projectId={projectId} summary={summary} />
 
+      {/* Relocated from the retired Overview (S-SH-5): the live "what happens next to get paid"
+          card. It is an interim home — C3 lifts this into a persistent cycle ribbon across all four
+          tabs — but keeping it here means the operational cue is never lost when Overview goes. */}
+      <CurrentPaymentCycle projectId={projectId} summary={summary} />
+
       {/* The ledger + generate-invoice + link-milestone + CONST-COM-011 gate, reused verbatim. */}
       <PaymentSchedulePanel projectId={projectId} contractId={contract.id} summary={summary} />
 
       <ScheduleEditor projectId={projectId} contractId={contract.id} status={contract.status} />
+
+      {/* Attention + activity also lived on Overview. They stay reachable here so nothing
+          disappears before C3/C8 give them permanent homes. */}
+      <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+        <SectionCard title={t('overview.attention')}>
+          <AttentionList items={summary.attention} />
+        </SectionCard>
+        <CommercialActivity items={summary.recentActivity} />
+      </div>
     </div>
   );
 }

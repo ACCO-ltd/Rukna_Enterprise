@@ -10,8 +10,10 @@ import {
   toContractFormValues,
   toCreateContractPayload,
   toDecimalString,
+  toMinimalCreateContractPayload,
   toUpdateContractPayload,
   type ContractFormValues,
+  type MinimalCreateContractValues,
   type PaymentPlanRow,
 } from './contract-form-payload';
 import type { Contract } from './types';
@@ -83,6 +85,42 @@ describe('toCreateContractPayload', () => {
   it('omits the billing model when the form has none', () => {
     const payload = toCreateContractPayload({ ...EMPTY_CONTRACT_FORM, billingModel: '' });
     expect(payload).not.toHaveProperty('billingModel');
+  });
+});
+
+describe('toMinimalCreateContractPayload', () => {
+  const minimal: MinimalCreateContractValues = {
+    projectId: 'p1',
+    clientId: 'cl1',
+    billingModel: BillingModel.MILESTONE,
+    startDate: '2026-02-01',
+    expectedEndDate: '2027-08-31',
+  };
+
+  it('sends only project, client, currency, billing model and the dates', () => {
+    expect(toMinimalCreateContractPayload(minimal)).toEqual({
+      projectId: 'p1',
+      clientId: 'cl1',
+      currency: 'USD',
+      billingModel: BillingModel.MILESTONE,
+      startDate: '2026-02-01',
+      expectedEndDate: '2027-08-31',
+    });
+  });
+
+  // The three server-derived fields must never be sent (CONST-COM-020..022).
+  it.each(['contractValue', 'contractNumber', 'boqVersionId'])('never sends %s', (field) => {
+    expect(toMinimalCreateContractPayload(minimal)).not.toHaveProperty(field);
+  });
+
+  it('omits empty dates rather than sending empty strings', () => {
+    const payload = toMinimalCreateContractPayload({
+      ...minimal,
+      startDate: '',
+      expectedEndDate: '',
+    });
+    expect(payload).not.toHaveProperty('startDate');
+    expect(payload).not.toHaveProperty('expectedEndDate');
   });
 });
 
