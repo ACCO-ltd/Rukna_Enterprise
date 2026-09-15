@@ -23,19 +23,19 @@ describe('AtRiskCommencementPolicy (ADR-026 CONST-VAR-011, Route 7B)', () => {
     it('below the cap: CD + CFO only, no CEO', () => {
       const r = AtRiskCommencementPolicy.requiredSignatories(new Decimal('18000'), cap);
       expect(r.ceoRequired).toBe(false);
-      expect(r.requiredRoles).toEqual(['CONSTRUCTION_DIRECTOR', 'CFO']);
+      expect(r.requiredRoles).toEqual(['Construction Director', 'CFO']);
     });
 
     it('exactly at the cap: still CD + CFO (cap is inclusive — CEO only strictly above)', () => {
       const r = AtRiskCommencementPolicy.requiredSignatories(new Decimal('25000'), cap);
       expect(r.ceoRequired).toBe(false);
-      expect(r.requiredRoles).toEqual(['CONSTRUCTION_DIRECTOR', 'CFO']);
+      expect(r.requiredRoles).toEqual(['Construction Director', 'CFO']);
     });
 
     it('above the cap: adds the CEO', () => {
       const r = AtRiskCommencementPolicy.requiredSignatories(new Decimal('25000.01'), cap);
       expect(r.ceoRequired).toBe(true);
-      expect(r.requiredRoles).toEqual(['CONSTRUCTION_DIRECTOR', 'CFO', 'CEO']);
+      expect(r.requiredRoles).toEqual(['Construction Director', 'CFO', 'CEO']);
     });
 
     it('honours a different (config-driven) cap value', () => {
