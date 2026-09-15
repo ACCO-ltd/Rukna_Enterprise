@@ -47,6 +47,9 @@ import { ExtraWorkController } from './presentation/extra-work.controller.js';
     ExtraWorkClassifierService,
   ],
   controllers: [VariationsController, ExtraWorkController],
-  exports: [VariationOrderPrismaRepository],
+  // ADR-030 CONST-COM-028 (Commercial redesign P1) — export VariationOrderService too, so the
+  // Commercial bill-stage orchestrator can realize variation billing (allocateVariationBilling)
+  // inside its own transaction. The repository stays exported for the read models.
+  exports: [VariationOrderPrismaRepository, VariationOrderService],
 })
 export class VariationsModule {}

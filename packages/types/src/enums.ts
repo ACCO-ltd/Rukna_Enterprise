@@ -319,6 +319,15 @@ export enum VariationOrderStatus {
   WITHDRAWN = 'WITHDRAWN',
 }
 
+// ADR-030 CONST-COM-028 — how a slice of a VariationOrder's net is realized into the billing ledger.
+// INVOICE bills a positive addition on its own standalone invoice; STAGE_REDUCTION nets a negative
+// omission into an un-invoiced milestone stage; CREDIT_NOTE is declared for Phase 2 and unused in P1.
+export enum VariationAllocationTreatment {
+  INVOICE = 'INVOICE',
+  STAGE_REDUCTION = 'STAGE_REDUCTION',
+  CREDIT_NOTE = 'CREDIT_NOTE',
+}
+
 export type GovernedEntity =
   | 'Project'
   | 'InterimPaymentApplication'

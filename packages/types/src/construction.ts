@@ -20,6 +20,7 @@ import type {
   MeasurementMethod,
   PricingBasis,
   VariationOrderStatus,
+  VariationAllocationTreatment,
 } from './enums.js';
 
 // ADR-025: district registry — org-scoped reference data, the site segment of a project code.
@@ -1743,6 +1744,75 @@ export interface CommercialPaymentSchedule {
    * into an installment amount (CONST-BOQ-032).
    */
   variationLines: CommercialPaymentScheduleVariationLine[];
+}
+
+/**
+ * ADR-030 CONST-COM-028 / S-VB-7 (Commercial redesign P1) — the Billing Package read model.
+ *
+ * A Billing Package is a PROJECTION, not a table: it groups the invoices raised for one milestone
+ * installment (the milestone `ClientInvoice` plus one standalone `ClientInvoice` per included
+ * variation) so the operator sees the whole "Milestone N Billing" story in one place while each
+ * invoice remains an independently-payable receivable.
+ *
+ * Money fields are null when the caller lacks `financialPositionView` (RESTRICTED, never $0),
+ * mirroring every other commercial money surface.
+ */
+export interface CommercialBillingPackageInvoice {
+  id: string;
+  invoiceNumber: string | null;
+  /** Ex-tax subtotal. Null when the caller cannot view financials. */
+  subtotal: string | null;
+  /** Tax-inclusive total. Null when the caller cannot view financials. */
+  totalAmount: string | null;
+  documentStatus: ClientInvoiceDocStatus;
+  postingStatus: ArPostingStatus;
+}
+
+/**
+ * One variation line inside a Billing Package. `allocationAmount` is the signed slice realized this
+ * stage (positive INVOICE addition, negative STAGE_REDUCTION omission). `invoice` is the standalone
+ * VO invoice for an addition; for an omission it is null (the reduction lives on the milestone
+ * invoice, so counting a separate invoice would double-count the value).
+ */
+export interface CommercialBillingPackageLine {
+  variationId: string;
+  reference: string;
+  title: string;
+  /** Signed 2dp money string. Null when the caller cannot view financials. */
+  allocationAmount: string | null;
+  treatment: `${VariationAllocationTreatment}`;
+  invoice: CommercialBillingPackageInvoice | null;
+}
+
+/**
+ * The Billing Package for one milestone installment (S-VB-7). `presentedTotal` = the milestone
+ * invoice total + Σ addition-VO invoice totals; omissions already reduced the milestone subtotal and
+ * are NOT counted again. Null money when the caller cannot view financials.
+ */
+export interface CommercialBillingPackage {
+  installmentId: string;
+  installmentName: string;
+  milestoneInvoice: CommercialBillingPackageInvoice | null;
+  variationLines: CommercialBillingPackageLine[];
+  /** Milestone total + Σ addition-VO invoice totals. Null when the caller cannot view financials. */
+  presentedTotal: string | null;
+}
+
+/**
+ * The result of "bill this stage" — the freshly-composed Billing Package for the installment that
+ * was billed. Identical shape to a package read back from {@link CommercialBillingPackage}.
+ */
+export type CommercialBillStageResult = CommercialBillingPackage;
+
+/**
+ * The list of Billing Packages for a contract (S-VB-7), one per installment that has a milestone
+ * invoice OR at least one variation allocation, ordered by installment sort order.
+ */
+export interface CommercialBillingPackagesResponse {
+  contractId: string;
+  /** True when the caller has `financialPositionView`; false ⇒ every money field is null. */
+  financialsVisible: boolean;
+  packages: CommercialBillingPackage[];
 }
 
 export type CommercialCycleAction =

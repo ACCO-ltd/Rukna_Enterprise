@@ -249,8 +249,13 @@ export class VariationOrderService {
       clientInvoiceId?: string | null;
       installmentId?: string | null;
     },
+    // ADR-030 P1 — when the commercial bill-stage orchestrator passes its transaction client, the
+    // guards + policy read AND the ledger write run inside it, so the milestone invoice, the VO
+    // invoice and this allocation commit atomically. Absent, the ledger write opens its own tx
+    // (the standalone C4 behaviour — the existing DB tests exercise exactly this path).
+    tx?: Prisma.TransactionClient,
   ): Promise<VariationBillingAllocationResult> {
-    const prisma = this.tenancy.getClient();
+    const prisma = tx ?? this.tenancy.getClient();
     const vo = await this.requireVo(prisma, identity, id);
     const orgId = identity.activeOrganizationId;
 
@@ -289,35 +294,29 @@ export class VariationOrderService {
       );
     }
 
-    const created = await prisma.$transaction(async (tx) => {
-      const row = await this.repo.createAllocation(tx, {
-        organizationId: orgId,
-        variationId: id,
-        amount,
-        treatment: input.treatment,
-        clientInvoiceId: input.clientInvoiceId ?? null,
-        installmentId: input.installmentId ?? null,
-        createdBy: identity.userId,
-      });
-      await this.auditOutbox.record(tx, {
-        organizationId: orgId,
-        actorUserId: identity.userId,
-        action: 'CREATE',
-        resourceType: 'VariationOrder',
-        resourceId: id,
-        sourceCommand: 'variation.allocateBilling',
-        eventType: 'VARIATION_BILLING_ALLOCATED',
-        idempotencyKey: `variation-billing-alloc-${row.id}`,
-        after: {
-          allocationId: row.id,
-          amount: amount.toFixed(2),
+    // The write (ledger row + business audit) is atomic with whatever transaction owns it: the
+    // orchestrator's `tx` when present, otherwise a fresh one this call opens (standalone C4 path).
+    const created = tx
+      ? await this.writeAllocation(tx, {
+          orgId,
+          variationId: id,
+          amount,
           treatment: input.treatment,
           clientInvoiceId: input.clientInvoiceId ?? null,
           installmentId: input.installmentId ?? null,
-        },
-      });
-      return row;
-    });
+          actorUserId: identity.userId,
+        })
+      : await this.tenancy.getClient().$transaction((innerTx) =>
+          this.writeAllocation(innerTx, {
+            orgId,
+            variationId: id,
+            amount,
+            treatment: input.treatment,
+            clientInvoiceId: input.clientInvoiceId ?? null,
+            installmentId: input.installmentId ?? null,
+            actorUserId: identity.userId,
+          }),
+        );
 
     const remainingAfter = validation.remainingAfter ?? new Decimal(0);
     return {
@@ -608,6 +607,52 @@ export class VariationOrderService {
     }, 'variation.withdraw', 'VARIATION_ORDER_WITHDRAWN', undefined, dto.reason);
   }
 
+  /**
+   * ADR-030 P1 — append one realization row + its business audit event on the given transaction
+   * client. Extracted so both the orchestrator's shared-tx path and the standalone `$transaction`
+   * path write identically; the invariant is already validated by the caller before this runs.
+   */
+  private async writeAllocation(
+    client: Prisma.TransactionClient,
+    data: {
+      orgId: string;
+      variationId: string;
+      amount: Decimal;
+      treatment: VariationAllocationTreatment;
+      clientInvoiceId: string | null;
+      installmentId: string | null;
+      actorUserId: string;
+    },
+  ) {
+    const row = await this.repo.createAllocation(client, {
+      organizationId: data.orgId,
+      variationId: data.variationId,
+      amount: data.amount,
+      treatment: data.treatment,
+      clientInvoiceId: data.clientInvoiceId,
+      installmentId: data.installmentId,
+      createdBy: data.actorUserId,
+    });
+    await this.auditOutbox.record(client, {
+      organizationId: data.orgId,
+      actorUserId: data.actorUserId,
+      action: 'CREATE',
+      resourceType: 'VariationOrder',
+      resourceId: data.variationId,
+      sourceCommand: 'variation.allocateBilling',
+      eventType: 'VARIATION_BILLING_ALLOCATED',
+      idempotencyKey: `variation-billing-alloc-${row.id}`,
+      after: {
+        allocationId: row.id,
+        amount: data.amount.toFixed(2),
+        treatment: data.treatment,
+        clientInvoiceId: data.clientInvoiceId,
+        installmentId: data.installmentId,
+      },
+    });
+    return row;
+  }
+
   // ─── Internal helpers ─────────────────────────────────────────────────────────
 
   private async applyTransition(
@@ -687,7 +732,9 @@ export class VariationOrderService {
   }
 
   private async requireVo(
-    prisma: ReturnType<TenancyService['getClient']>,
+    // Accepts either the tenant client or an in-flight transaction client (ADR-030 P1: the
+    // bill-stage orchestrator resolves the VO inside its own tx). Both satisfy the repo's read shape.
+    prisma: ReturnType<TenancyService['getClient']> | Prisma.TransactionClient,
     identity: RequestIdentity,
     id: string,
   ): Promise<VariationOrderWithLines> {
