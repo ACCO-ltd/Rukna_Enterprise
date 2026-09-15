@@ -44,6 +44,7 @@
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/schedule": "^12.0.2",
     "@nestjs/swagger": "^11.4.6",
     "@prisma/client": "^6.19.3",
     "bcrypt": "^5.1.1",
@@ -100,6 +101,7 @@
       ]
     },
     "moduleNameMapper": {
+      "^@nestjs/schedule$": "<rootDir>/../test/mocks/nestjs-schedule.stub.ts",
       "^(\\.{1,2}/.*)\\.js$": "$1"
     },
     "collectCoverageFrom": [

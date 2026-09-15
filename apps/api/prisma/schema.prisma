@@ -261,6 +261,55 @@ model AuditOutboxEvent {
   @@map("audit_outbox_events")
 }
 
+// ─── In-app notifications (ADR-031) ─────────────────────────────────────────────
+
+enum NotificationKind {
+  STAGE_PAYMENT_DUE
+  STAGE_PAYMENT_OVERDUE
+  CLIENT_INVOICE_OVERDUE
+}
+
+enum NotificationSeverity {
+  INFO
+  WARNING
+  URGENT
+}
+
+/// ADR-031: a persistent, per-recipient in-app notification. One row per (recipient, condition),
+/// generated idempotently by the daily generator and keyed on `dedupeKey`. Deliberately holds NO
+/// foreign keys to its source (installment / invoice / user): the record must outlive a soft-delete
+/// or a payment-plan re-profile that removes the un-invoiced installment it points at (same intent
+/// as ClientInvoice's SetNull source links). `contextData` carries only interpolation values — the
+/// user-facing strings are rendered client-side via next-intl. `resolvedAt` is set by the generator
+/// when the underlying condition clears (stage billed / invoice paid); resolved rows never leave the
+/// server.
+model Notification {
+  id              String               @id @default(cuid())
+  organizationId  String               @map("organization_id")
+  recipientUserId String               @map("recipient_user_id")
+  kind            NotificationKind
+  severity        NotificationSeverity
+  dedupeKey       String               @map("dedupe_key")
+  projectId       String?              @map("project_id")
+  contractId      String?              @map("contract_id")
+  resourceType    String               @map("resource_type")
+  resourceId      String               @map("resource_id")
+  contextData     Json?                @map("context_data")
+  actionUrl       String?              @map("action_url")
+  readAt          DateTime?            @map("read_at")
+  resolvedAt      DateTime?            @map("resolved_at")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  // Idempotency: one row per (recipient, condition). The generator UPSERTs on this key.
+  @@unique([organizationId, recipientUserId, dedupeKey], map: "notifications_org_recipient_dedupe_key")
+  // Feed + unread-count for a recipient.
+  @@index([organizationId, recipientUserId, readAt, resolvedAt], map: "notifications_org_recipient_read_resolved_idx")
+  // Auto-resolve sweep by source.
+  @@index([organizationId, resourceType, resourceId], map: "notifications_org_resource_idx")
+  @@map("notifications")
+}
+
 // ─── Multi-Currency ───────────────────────────────────────────────────────────
 
 // ─── DOA / Workflow Engine ────────────────────────────────────────────────────

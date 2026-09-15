@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl';
 import { cn } from '@erp/ui';
 
 import { CommandMenuTrigger } from '@/features/command-menu/command-menu-trigger';
+import { NotificationBell } from '@/features/notifications/components/notification-bell';
 
 import { UserMenu } from './user-menu';
 
@@ -18,11 +19,11 @@ interface TopBarProps {
  * Contains, left to right:
  *  - Mobile hamburger trigger
  *  - Command-menu (⌘K) trigger — the leading affordance
+ *  - Notification bell — the live indicator (ADR-031), before the user menu
  *  - User avatar menu (theme selection lives inside it — one home)
  *
- * There is no notification bell: `GET /attention-items` does not exist, and a disabled stub
- * for an unbuilt feature is forbidden (ux-doctrine §4). It returns as a live indicator when
- * the endpoint ships. There is no separate theme toggle either — the account menu owns theme.
+ * The notification bell is the persistent in-app notification center (ADR-031): a polled unread
+ * badge that opens the recent feed. There is no separate theme toggle — the account menu owns theme.
  *
  * When a project workspace is active the breadcrumbs and page title live in the `PageHeader`
  * component below this bar, not in the bar itself. This bar is intentionally
@@ -55,6 +56,8 @@ export function TopBar({ onOpenMenu }: TopBarProps) {
 
       {/* Right cluster */}
       <div className="ms-auto flex shrink-0 items-center gap-1.5">
+        {/* Notification bell — live unread indicator, before the user menu */}
+        <NotificationBell />
         {/* User / org menu — also the single home for theme selection */}
         <UserMenu />
       </div>
