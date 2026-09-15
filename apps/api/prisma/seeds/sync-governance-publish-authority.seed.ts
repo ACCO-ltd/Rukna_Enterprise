@@ -1,12 +1,15 @@
 /**
- * Synchronize publish:workflow authority to an already-provisioned tenant (ADR-027, item 6).
+ * Synchronize the governed leadership roles + publish:workflow authority to an already-provisioned
+ * tenant (ADR-027, item 6).
  *
- * New tenants get the governed CFO + Governance Publisher SYSTEM roles at provision time
- * (tenant-provision.ts). An ALREADY-provisioned database (the live ACCO tenant) only has ADMIN,
- * so publish:workflow is held by nobody but ADMIN. This back-fill:
+ * New tenants get the governed SYSTEM roles at provision time (tenant-provision.ts). An ALREADY-
+ * provisioned database (the live ACCO tenant) only has ADMIN, so publish:workflow is held by nobody
+ * but ADMIN and CEO does not exist as a role. This back-fill:
  *
- *   1. Upserts the two governed SYSTEM roles (CFO, GOVERNANCE_PUBLISHER) and links their permission
- *      sets — including publish:workflow — via the same idempotent seeder used at provision.
+ *   1. Upserts the governed SYSTEM roles for ACCO — { CFO, CEO } — and links their permission sets
+ *      (CFO's includes publish:workflow) via the same idempotent seeder used at provision.
+ *      GOVERNANCE_PUBLISHER is deliberately EXCLUDED: its policy-authoring feature is off, so the
+ *      role is not seeded into ACCO (its definition is kept in governed-roles.ts for later).
  *   2. Ensures the ADMIN role also has publish:workflow + view:governance-impact linked (ADMIN gets
  *      the whole catalogue, but a tenant provisioned before these rows existed may be missing them
  *      until refresh-admin-permissions runs; this makes the publish authority explicit regardless).
@@ -60,7 +63,9 @@ async function main() {
   const org = await prisma.organization.findFirst({ where: { slug: ORG_SLUG } });
   if (!org) throw new Error(`Organization with slug "${ORG_SLUG}" not found.`);
 
-  const governed = await seedGovernedSystemRoles(prisma, org.id);
+  const governed = await seedGovernedSystemRoles(prisma, org.id, {
+    exclude: ['GOVERNANCE_PUBLISHER'],
+  });
   for (const role of governed) {
     console.log(
       `  ✓ ${role.roleName} (${ORG_SLUG}): ${role.grantsAdded} new grant(s); ` +

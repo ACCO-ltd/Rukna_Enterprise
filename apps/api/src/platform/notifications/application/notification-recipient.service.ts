@@ -11,28 +11,29 @@ import type { PrismaClient, ProjectRole } from '@prisma/client';
  *   - active project members holding a finance/commercial PROJECT role (`MONEY_NOTIFICATION_PROJECT_ROLES`).
  * Site engineers, project managers, quantity surveyors and viewers no longer receive money pings.
  *
- * These two lists are INDEPENDENT of `ProjectAccessService`'s access-bypass set — do NOT keep them in
- * sync. Who-can-open-a-project (authorization) and who-gets-pinged-about-its-money (this) are different
- * questions; narrowing the audience must never touch authorization. Under-notifying is the safe direction.
+ * These two lists are INDEPENDENT of `ProjectAccessService`'s access-bypass set in CODE — do NOT
+ * couple them. Who-can-open-a-project (authorization) and who-gets-pinged-about-its-money (this) are
+ * different questions; narrowing the audience must never touch authorization. Under-notifying is the
+ * safe direction.
  *
- * Caveat: an org finance/leadership holder who is neither in the access-bypass set nor a project member
- * (e.g. Finance & Commercial, Accounting, Management, CFO) may receive an alert linking to a project
- * screen they cannot open. That is an access-config follow-up, not a leak here — the notification
- * carries only a contract number, stage name and day count, never an amount.
+ * Note: under the revised role scheme every org-role recipient here (Finance Officer, CFO, CEO,
+ * ADMIN) also happens to be in the access-bypass set, so they can open any project the alert links
+ * to — the earlier "alert to a screen you can't open" caveat no longer applies to org roles. The
+ * project-role recipients are project members by definition, so they can open their project too.
  */
-// ACCO's ACTUAL configured Role.name values (verified against the rukna_acco tenant 2026-09-15): the
-// finance function (Finance & Commercial = receivables/collections, Accounting, CFO) + leadership
-// oversight (Management, ADMIN). Engineering / Procurement / Viewer / Governance Publisher excluded.
-// ⚠ These are CUSTOM, admin-editable names — renaming a role in Admin → Roles silently stops this filter
-// matching it. A permission-based audience (holders of receivables-management / financial-position
-// visibility) would be rename-proof; deferred as a future robustness step.
+// ACCO's configured Role.name values under the revised role scheme (2026-09-15): the finance
+// function is now the single `Finance Officer` (merged Finance & Commercial + Accounting), plus
+// finance/exec leadership (CFO, CEO — governed roles) and platform ADMIN. Construction / Procurement
+// / Site roles are excluded: overdue money is a finance concern.
+// ⚠ `Finance Officer` is a CUSTOM, admin-editable name — renaming it in Admin → Roles silently stops
+// this filter matching it. A permission-based audience (holders of receivables-management /
+// financial-position visibility) would be rename-proof; deferred as a future robustness step.
 const MONEY_NOTIFICATION_ORG_ROLES = [
   // finance function
-  'Finance & Commercial',
-  'Accounting',
+  'Finance Officer',
+  // finance / exec leadership + platform admin
   'CFO',
-  // leadership / oversight
-  'Management',
+  'CEO',
   'ADMIN',
 ];
 

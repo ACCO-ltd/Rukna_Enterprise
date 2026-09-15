@@ -52,7 +52,7 @@ export const ACCO_POLICY_MATRIX: Record<string, PolicyMatrixEntry> = {
     fromState: 'DRAFT',
     toState: 'SUBMITTED',
     basis: 'Gross payable USD',
-    chain: 'Finance Manager → CFO · CEO above the approved CFO band',
+    chain: 'Finance Officer → CFO · CEO above the approved CFO band',
   },
   BOQ_BASELINE: {
     label: 'BOQ baseline',
@@ -60,7 +60,7 @@ export const ACCO_POLICY_MATRIX: Record<string, PolicyMatrixEntry> = {
     fromState: 'DRAFT',
     toState: 'BASELINED',
     basis: null,
-    chain: 'QS Manager → Commercial Manager',
+    chain: 'Construction Director → CFO → CEO',
   },
 };
 
