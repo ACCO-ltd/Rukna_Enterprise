@@ -27,9 +27,8 @@ export interface ClientInvoiceOverdueCondition {
  *
  * "Live" for auto-resolve = still outstanding & posted & uncancelled & past due. When the invoice is
  * paid (`outstandingAmount = 0`), cancelled, or reversed, it drops out here → the generator closes any
- * open row for it. A row keyed to an OLD bucket that the invoice has aged past also drops out (its
- * resourceId is still live, but under a NEW bucket key), so auto-resolve — which keys on resourceId,
- * not dedupeKey — leaves the superseded band's row alone; the newer band's row is what the user sees.
+ * open row for it. When the invoice ages into a NEW band its dedupeKey changes; auto-resolve keys on
+ * the live dedupeKeys, so the superseded band's row is closed and only the current band's row remains.
  */
 @Injectable()
 export class ClientInvoiceOverdueSource implements NotificationSource<ClientInvoiceOverdueCondition> {
@@ -81,6 +80,10 @@ export class ClientInvoiceOverdueSource implements NotificationSource<ClientInvo
     return conditions;
   }
 
+  toDedupeKey(condition: ClientInvoiceOverdueCondition): string {
+    return dedupeKey.invoiceOverdue(condition.resourceId, condition.bucket);
+  }
+
   toRow(
     condition: ClientInvoiceOverdueCondition,
     recipientUserId: string,
@@ -91,7 +94,7 @@ export class ClientInvoiceOverdueSource implements NotificationSource<ClientInvo
       recipientUserId,
       kind: 'CLIENT_INVOICE_OVERDUE',
       severity: deriveNotificationSeverity('CLIENT_INVOICE_OVERDUE', condition.bucket),
-      dedupeKey: dedupeKey.invoiceOverdue(condition.resourceId, condition.bucket),
+      dedupeKey: this.toDedupeKey(condition),
       projectId: condition.projectId,
       contractId: condition.contractId,
       resourceType: this.resourceType,

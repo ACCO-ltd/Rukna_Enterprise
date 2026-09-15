@@ -17,14 +17,17 @@ export interface INotificationRepository {
   upsertByDedupeKey(data: UpsertNotificationData): Promise<void>;
 
   /**
-   * Resolve every un-resolved row of `resourceType` in the org whose `resourceId` is NOT in
-   * `liveResourceIds` — the condition cleared (stage billed, invoice paid/cancelled), so the row is
-   * closed with `resolvedAt = now()`. A no-op when nothing has gone stale.
+   * Resolve every un-resolved row of `resourceType` in the org whose `dedupeKey` is NOT in
+   * `liveDedupeKeys` — the condition cleared (stage billed, invoice paid/cancelled) OR the resource
+   * changed key (stage slipped DUE→OVERDUE, invoice aged into a new band), so the stale row is closed
+   * with `resolvedAt = now()`. Keying on dedupeKey (not resourceId) is what prevents a still-live
+   * resource from stacking a superseded row alongside its current one. An empty `liveDedupeKeys` closes
+   * every open row of the type (the "condition fully cleared" case).
    */
   autoResolveMissing(
     organizationId: string,
     resourceType: string,
-    liveResourceIds: string[],
+    liveDedupeKeys: string[],
   ): Promise<number>;
 
   /** Recipient's feed, newest first, excluding resolved rows; `unread` narrows to `readAt IS NULL`. */

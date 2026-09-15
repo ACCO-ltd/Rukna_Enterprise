@@ -12,14 +12,14 @@
   "loadMore": "Load more",
   "STAGE_PAYMENT_DUE": {
     "title": "Stage due soon: {stageName}",
-    "impact": "{contractNumber} · due in {dueInDays} days"
+    "impact": "{contractNumber} · {dueInDays, plural, =0 {due today} one {due in # day} other {due in # days}}"
   },
   "STAGE_PAYMENT_OVERDUE": {
     "title": "Stage overdue: {stageName}",
-    "impact": "{contractNumber} · {dueInDays} days overdue"
+    "impact": "{contractNumber} · {dueInDays, plural, one {# day overdue} other {# days overdue}}"
   },
   "CLIENT_INVOICE_OVERDUE": {
     "title": "Invoice overdue: {invoiceNumber}",
-    "impact": "{daysOverdue} days overdue"
+    "impact": "{daysOverdue, plural, one {# day overdue} other {# days overdue}}"
   }
 }

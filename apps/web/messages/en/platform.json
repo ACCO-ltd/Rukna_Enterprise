@@ -1904,6 +1904,8 @@
       "billingModel": "Billing model",
       "startDate": "Start date",
       "expectedEnd": "Expected completion",
+      "dateNotSet": "Not set",
+      "completionMissingHint": "This project has no completion date — add one on the contract after creating (used for delay tracking and extension-of-time).",
       "currencyPlaceholder": "Select a currency",
       "currencyFixed": "Contracts are billed in USD.",
       "projectRequired": "Choose a project",

@@ -76,15 +76,19 @@ export class NotificationPrismaRepository implements INotificationRepository {
   async autoResolveMissing(
     organizationId: string,
     resourceType: string,
-    liveResourceIds: string[],
+    liveDedupeKeys: string[],
   ): Promise<number> {
     const prisma = this.tenancyService.getClient();
+    // Key on dedupeKey, not resourceId: a still-live resource whose key changed (a stage that slipped
+    // DUE→OVERDUE, an invoice that aged into a new band) leaves its OLD key absent from
+    // `liveDedupeKeys`, so its superseded row is closed here rather than stacking. Prisma treats
+    // `notIn: []` as "match every row", so a source with nothing live closes all of its open rows.
     const result = await prisma.notification.updateMany({
       where: {
         organizationId,
         resourceType,
         resolvedAt: null,
-        resourceId: { notIn: liveResourceIds },
+        dedupeKey: { notIn: liveDedupeKeys },
       },
       data: { resolvedAt: new Date() },
     });

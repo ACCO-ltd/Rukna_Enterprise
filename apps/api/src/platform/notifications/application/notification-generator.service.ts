@@ -93,9 +93,12 @@ export class NotificationGeneratorService {
     for (const source of this.sources) {
       const conditions = await source.findLiveConditions(prisma, organizationId, now);
 
-      // (1) AUTO-RESOLVE — close any open row of this resourceType whose resource is no longer live.
-      const liveResourceIds = [...new Set(conditions.map((condition) => condition.resourceId))];
-      await this.repository.autoResolveMissing(organizationId, source.resourceType, liveResourceIds);
+      // (1) AUTO-RESOLVE — close any open row of this resourceType whose dedupeKey is no longer live.
+      // Keying on the live dedupeKeys (not resourceIds) also closes a SUPERSEDED row when a still-live
+      // resource changes key (a stage that slips DUE→OVERDUE, an invoice that ages into a new band), so
+      // the same condition never stacks two open notifications.
+      const liveDedupeKeys = [...new Set(conditions.map((condition) => source.toDedupeKey(condition)))];
+      await this.repository.autoResolveMissing(organizationId, source.resourceType, liveDedupeKeys);
 
       // (2) GENERATE — one idempotent upsert per recipient per live condition.
       for (const condition of conditions) {

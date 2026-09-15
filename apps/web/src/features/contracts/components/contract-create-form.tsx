@@ -14,7 +14,7 @@ import { useProjects } from '@/features/projects/hooks/use-projects';
 import { EmptyState } from '@/components/empty-state';
 import { FormActions } from '@/components/form-actions';
 import { ApiError } from '@/lib/api-client';
-import { formatMoney } from '@/lib/format';
+import { formatDate, formatMoney } from '@/lib/format';
 
 import {
   paymentPlanTotalPercent,
@@ -227,13 +227,32 @@ export function ContractCreateForm({ projectId }: { projectId: string }) {
       {errorMessages.length > 0 ? <Alert variant="error" messages={errorMessages} /> : null}
 
       {/* The contract's subject — project and client — is inherited, not chosen. The project is the
-          route; its client follows from the project record. */}
+          route; its client follows from the project record. The contract's dates are inherited from
+          the project too (no pickers); they are shown read-only so the inheritance is visible, with a
+          hint when the project has no completion date for Extension-of-Time to extend later. */}
       <FormSection variant="plain" title={t('project')}>
         <div className="border-b border-border pb-4">
           <p className="text-body-sm font-medium">{project?.name ?? projectId}</p>
           <p className="mt-1 text-body-sm text-muted-foreground">
             {clientName ?? (clientId ? tCommon('loading') : t('clientRequired'))}
           </p>
+          <dl className="mt-3 flex flex-wrap gap-x-8 gap-y-1">
+            <div>
+              <dt className="text-caption text-muted-foreground">{t('startDate')}</dt>
+              <dd className="text-body-sm tabular-nums text-foreground">
+                {formatDate(project?.startDate ?? null, 'en') ?? t('dateNotSet')}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-caption text-muted-foreground">{t('expectedEnd')}</dt>
+              <dd className="text-body-sm tabular-nums text-foreground">
+                {formatDate(project?.expectedEndDate ?? null, 'en') ?? t('dateNotSet')}
+              </dd>
+            </div>
+          </dl>
+          {!project?.expectedEndDate ? (
+            <p className="mt-2 text-caption text-warning">{t('completionMissingHint')}</p>
+          ) : null}
         </div>
       </FormSection>
 

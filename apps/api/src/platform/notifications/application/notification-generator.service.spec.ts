@@ -29,6 +29,27 @@ function dueStageInstallmentRow() {
   };
 }
 
+/** The SAME installment, now 5 days past due (→ STAGE_PAYMENT_OVERDUE, key stage-overdue:inst_due). */
+function overdueStageInstallmentRow() {
+  return {
+    id: 'inst_due',
+    name: 'Structure',
+    dueDate: new Date(Date.UTC(2026, 8, 10)), // 2026-09-10, 5 days past NOW
+    contract: { id: 'contract_1', projectId: 'project_1', contractNumber: 'ACCO-001' },
+  };
+}
+
+/** An overdue invoice due 2026-08-01 → 45 days overdue vs NOW → bucket 30 (key invoice-overdue:inv_1:30). */
+function overdueInvoiceRow() {
+  return {
+    id: 'inv_1',
+    invoiceNumber: 'INV-0001',
+    dueDate: new Date(Date.UTC(2026, 7, 1)),
+    projectId: 'project_1',
+    contractId: 'contract_1',
+  };
+}
+
 function makeRepo(): jest.Mocked<INotificationRepository> {
   return {
     upsertByDedupeKey: jest.fn().mockResolvedValue(undefined),
@@ -139,14 +160,58 @@ describe('NotificationGeneratorService.runOrgCycle', () => {
     expect(repo.upsertByDedupeKey).not.toHaveBeenCalled();
   });
 
-  it('passes the live installment id to autoResolveMissing when a stage is still live', async () => {
+  it('passes the live DEDUPE KEY (not the resourceId) to autoResolveMissing for a live stage', async () => {
     const repo = makeRepo();
     const generator = makeGenerator(repo);
     const prisma = makePrisma({ installments: [dueStageInstallmentRow()], members: [{ userId: 'u1' }] });
 
     await runOrgCycle(generator, prisma);
 
-    expect(repo.autoResolveMissing).toHaveBeenCalledWith(ORG, STAGE_PAYMENT_RESOURCE_TYPE, ['inst_due']);
+    // Resolve keys on the dedupeKey so a stale key for this installment (e.g. a prior stage-overdue)
+    // is closed while the live stage-due row is kept — resolving by resourceId could not do this.
+    expect(repo.autoResolveMissing).toHaveBeenCalledWith(ORG, STAGE_PAYMENT_RESOURCE_TYPE, [
+      'stage-due:inst_due',
+    ]);
+  });
+
+  it('DUE→OVERDUE: only the overdue key is live, so the stale stage-due row is closed (no double alert)', async () => {
+    const repo = makeRepo();
+    const generator = makeGenerator(repo);
+    const prisma = makePrisma({ installments: [overdueStageInstallmentRow()], members: [{ userId: 'u1' }] });
+
+    await runOrgCycle(generator, prisma);
+
+    // The prior `stage-due:inst_due` key is absent from the live set → the repo's notIn(dedupeKey)
+    // closes it, leaving only the current overdue row (this is the H1 regression guard).
+    expect(repo.autoResolveMissing).toHaveBeenCalledWith(ORG, STAGE_PAYMENT_RESOURCE_TYPE, [
+      'stage-overdue:inst_due',
+    ]);
+    const stageUpserts = repo.upsertByDedupeKey.mock.calls.filter(
+      ([data]) => data.resourceType === STAGE_PAYMENT_RESOURCE_TYPE,
+    );
+    expect(stageUpserts).toHaveLength(1);
+    expect(stageUpserts[0][0]).toMatchObject({
+      kind: 'STAGE_PAYMENT_OVERDUE',
+      dedupeKey: 'stage-overdue:inst_due',
+    });
+  });
+
+  it('aging invoice: resolves on the CURRENT band key, so a superseded band row is closed', async () => {
+    const repo = makeRepo();
+    const generator = makeGenerator(repo);
+    const prisma = makePrisma({ invoices: [overdueInvoiceRow()], members: [{ userId: 'u1' }] });
+
+    await runOrgCycle(generator, prisma);
+
+    // 45 days overdue → band 30. Only :30 is live; a prior :1 band row is not in the set and is closed.
+    expect(repo.autoResolveMissing).toHaveBeenCalledWith(ORG, CLIENT_INVOICE_RESOURCE_TYPE, [
+      'invoice-overdue:inv_1:30',
+    ]);
+    const invoiceUpserts = repo.upsertByDedupeKey.mock.calls.filter(
+      ([data]) => data.resourceType === CLIENT_INVOICE_RESOURCE_TYPE,
+    );
+    expect(invoiceUpserts).toHaveLength(1);
+    expect(invoiceUpserts[0][0].dedupeKey).toBe('invoice-overdue:inv_1:30');
   });
 
   it('skips generation when a project-scoped condition has no recipients (under-notify, do not crash)', async () => {

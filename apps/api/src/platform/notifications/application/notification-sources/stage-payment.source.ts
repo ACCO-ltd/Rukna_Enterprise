@@ -90,15 +90,18 @@ export class StagePaymentSource implements NotificationSource<StagePaymentCondit
     return conditions;
   }
 
+  toDedupeKey(condition: StagePaymentCondition): string {
+    return condition.kind === 'STAGE_PAYMENT_OVERDUE'
+      ? dedupeKey.stageOverdue(condition.resourceId)
+      : dedupeKey.stageDue(condition.resourceId);
+  }
+
   toRow(
     condition: StagePaymentCondition,
     recipientUserId: string,
     organizationId: string,
   ): UpsertNotificationData {
-    const key =
-      condition.kind === 'STAGE_PAYMENT_OVERDUE'
-        ? dedupeKey.stageOverdue(condition.resourceId)
-        : dedupeKey.stageDue(condition.resourceId);
+    const key = this.toDedupeKey(condition);
 
     return {
       organizationId,
