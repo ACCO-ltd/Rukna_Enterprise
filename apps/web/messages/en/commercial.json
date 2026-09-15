@@ -318,6 +318,27 @@
       "overdueInvoices": "{n} invoices past due",
       "nothingOverdue": "Nothing past due"
     },
+    "story": {
+      "title": "Money story",
+      "contractValue": "Contract value",
+      "governingHint": "Original contract plus approved variations.",
+      "invoiced": "Invoiced",
+      "collected": "Collected",
+      "outstanding": "Outstanding",
+      "postedInvoices": "{n} posted invoices",
+      "ofInvoiced": "{percent}% of invoiced",
+      "vatInclusive": "VAT inclusive",
+      "approvedVariations": "Approved variations",
+      "approvedVariationsHint": "Client-approved entitlement, shown separately from the billed chain until each variation is invoiced."
+    },
+    "cashflow": {
+      "title": "Cashflow",
+      "invoiced": "Cumulative invoiced",
+      "collected": "Cumulative collected",
+      "empty": "The cashflow curve begins once the first client invoice is posted.",
+      "restricted": "Cashflow figures are restricted for your role.",
+      "ariaSummary": "Cumulative invoiced vs collected over {points, plural, one {# invoice} other {# invoices}}. Latest cumulative invoiced {invoiced}, latest cumulative collected {collected}."
+    },
     "source": {
       "INSTALLMENT": "Installment",
       "IPC": "Certificate",
