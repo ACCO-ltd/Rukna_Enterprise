@@ -364,6 +364,25 @@ describe('CommercialBillingService.billStage (CONST-COM-028)', () => {
     expect(allocsAfter).toBe(allocsBefore);
   });
 
+  it('enforces the DB unique index: a duplicate allocation for the same (variation, installment) is rejected', async () => {
+    // additionVoId already carries an INVOICE allocation on instAddition (billed in the first test).
+    // A second allocation for the same (variation, installment) — the concurrent double-submit shape the
+    // orchestrator's read-then-write guard cannot catch under a race — must fail on the unique index
+    // (migration 20260915130000), which is the exactly-once backstop. Proven here by a direct insert.
+    await expect(
+      prisma.variationBillingAllocation.create({
+        data: {
+          organizationId: orgId,
+          variationId: additionVoId,
+          amount: new Decimal('1.00'),
+          treatment: 'INVOICE',
+          installmentId: instAddition,
+          createdBy: 'u1',
+        },
+      }),
+    ).rejects.toThrow(/Unique constraint|P2002/i);
+  });
+
   it('leaves the contract entitlement (contractValue) unchanged by billing', async () => {
     const contract = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
     expect((contract.contractValue as Decimal).toFixed(2)).toBe(contractValueBefore);

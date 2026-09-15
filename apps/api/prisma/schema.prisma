@@ -1715,6 +1715,12 @@ model VariationBillingAllocation {
   clientInvoice ClientInvoice?              @relation(fields: [clientInvoiceId], references: [id], onDelete: SetNull)
   installment   ContractPaymentInstallment? @relation(fields: [installmentId], references: [id], onDelete: SetNull)
 
+  // ADR-030 CONST-COM-028 (C5 hardening) — the concurrency backstop for the exactly-once invariant: at
+  // most ONE allocation per (variation, installment). A VO's net is one sign, so it is billed at most
+  // once onto a given stage; a racing double-submit of "bill this stage" hits this and its whole
+  // transaction rolls back (no duplicate invoice). NULL installment_id rows (pre-C5 / standalone
+  // allocations) are DISTINCT in Postgres, so this never constrains an off-stage allocation.
+  @@unique([variationId, installmentId])
   @@index([variationId])
   @@index([organizationId])
   @@index([clientInvoiceId])
