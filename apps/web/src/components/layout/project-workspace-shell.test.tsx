@@ -51,8 +51,14 @@ vi.mock('@/features/projects/hooks/use-project', () => ({
   useResumeProject: () => inertMutation(),
 }));
 
-/** The header's controls all call `manage:project` routes; seed it where they matter. */
-const MANAGER = { permissions: ['manage:project'] };
+/**
+ * The header's controls all call `manage:project` routes; seed it where they matter. The shell
+ * now gates the money tabs (Commercial / Procurement / Finance) on read permissions, so a
+ * full-access manager also holds those views — otherwise the eight-tab layout would collapse.
+ */
+const MANAGER = {
+  permissions: ['manage:project', 'view:contract', 'view:procurement', 'view:financial-position'],
+};
 
 const project = {
   id: 'project-1',
@@ -435,5 +441,48 @@ describe('ProjectWorkspaceShell — navigation', () => {
       .find((link) => link.getAttribute('href') === '/projects/project-1/commercial');
     expect(commercial).toBeDefined();
     expect(screen.queryByRole('button', { name: /Commercial/ })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Project money is for finance + leadership only (Eng Ahmed, 2026-09-15). A money-blind role —
+ * a Site Engineer or Project Manager — must not even see the Commercial, Procurement or Finance
+ * tabs, so it never lands on a screen that 403s. The server stays the boundary; this removes the
+ * dead-end. Each money tab is gated on its own read permission.
+ */
+describe('ProjectWorkspaceShell — financial tab gating', () => {
+  it('hides Commercial, Procurement and Finance from a money-blind role', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <ProjectWorkspaceShell id="project-1">
+        <p>Workspace content</p>
+      </ProjectWorkspaceShell>,
+      { permissions: ['view:project', 'view:boq'] }, // a Site Engineer / money-blind Project Manager
+    );
+
+    await openSelect(user, screen.getByRole('combobox'));
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Overview',
+      'BOQ',
+      'Progress',
+      'Documents',
+      'Team',
+    ]);
+  });
+
+  it('shows each money tab only to the permission that opens it', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <ProjectWorkspaceShell id="project-1">
+        <p>Workspace content</p>
+      </ProjectWorkspaceShell>,
+      { permissions: ['view:project', 'view:contract'] }, // Commercial only, no Procurement/Finance
+    );
+
+    await openSelect(user, screen.getByRole('combobox'));
+    const labels = screen.getAllByRole('option').map((option) => option.textContent);
+    expect(labels).toContain('Commercial');
+    expect(labels).not.toContain('Procurement');
+    expect(labels).not.toContain('Finance');
   });
 });

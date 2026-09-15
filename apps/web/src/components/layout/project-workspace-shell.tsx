@@ -15,7 +15,9 @@ import {
   Users,
   Wallet,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
+import { usePermissions, type PermissionKey } from '@/features/auth/permissions/can';
 import { ProjectActionsPanel } from '@/features/projects/components/project-actions-panel';
 import { ProjectStatusBadge } from '@/features/projects/components/project-status-badge';
 import { useDistricts } from '@/features/districts/hooks/use-districts';
@@ -60,6 +62,7 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
   const locale = useLocale() as 'en' | 'ar';
   const projectQuery = useProject(id);
   const project = projectQuery.data;
+  const { can } = usePermissions();
 
   // The project carries `districtId`, not the district's name, so the site line is composed
   // here from the registry the picker has already fetched and cached. All districts rather than
@@ -75,7 +78,16 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
   // Procurement sits before Finance because procurement *creates* the commitments, accruals and
   // actuals that Finance then interprets; Documents before Team because project evidence is
   // read daily and membership is changed rarely.
-  const primaryTabs = [
+  const allTabs: Array<{
+    key: string;
+    label: string;
+    href: string;
+    icon: LucideIcon;
+    // A money tab the user must hold the matching read permission to see. Gating these keeps
+    // money-blind roles (Project Manager / Site Engineer) off dead tabs that would 403 when
+    // clicked — the server stays the boundary; this only removes the dead-end.
+    requires?: PermissionKey;
+  }> = [
     {
       key: 'overview',
       label: t('workspace.overview'),
@@ -103,12 +115,14 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
       label: t('workspace.commercial'),
       href: `/projects/${id}/commercial`,
       icon: BriefcaseBusiness,
+      requires: 'view:contract',
     },
     {
       key: 'procurement',
       label: t('workspace.procurement'),
       href: `/projects/${id}/procurement`,
       icon: ShoppingCart,
+      requires: 'view:procurement',
     },
     // The Finance tab used to land on the Project Actual P&L alone — a subset presented as the
     // whole. It now opens the Finance workspace: cost position and control status first, with
@@ -118,6 +132,7 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
       label: t('workspace.finance'),
       href: `/projects/${id}/finance`,
       icon: Wallet,
+      requires: 'view:financial-position',
     },
     {
       key: 'documents',
@@ -127,6 +142,10 @@ export function ProjectWorkspaceShell({ id, children }: ProjectWorkspaceShellPro
     },
     { key: 'team', label: t('workspace.team'), href: `/projects/${id}/members`, icon: Users },
   ];
+
+  // Drop the money tabs the current user cannot open, so a money-blind role never lands on a
+  // 403 dead-end. Overview / BOQ / Progress / Documents / Team are always available.
+  const primaryTabs = allTabs.filter((tab) => !tab.requires || can(tab.requires));
 
   function isActive(href: string): boolean {
     if (href === `/projects/${id}`) return pathname === href || pathname === `${href}/edit`;
