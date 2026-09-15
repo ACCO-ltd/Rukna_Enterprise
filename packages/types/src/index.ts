@@ -7,3 +7,4 @@ export * from './pagination';
 export * from './construction';
 export * from './permissions';
 export * from './admin';
+export * from './notifications';

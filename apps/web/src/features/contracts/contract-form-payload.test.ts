@@ -5,6 +5,7 @@ import {
   buildPaymentPlan,
   EMPTY_CONTRACT_FORM,
   EMPTY_PAYMENT_PLAN_ROW,
+  installmentAmount,
   paymentPlanTotalPercent,
   percentToFraction,
   toContractFormValues,
@@ -122,6 +123,29 @@ describe('toMinimalCreateContractPayload', () => {
     expect(payload).not.toHaveProperty('startDate');
     expect(payload).not.toHaveProperty('expectedEndDate');
   });
+
+  it('attaches the inline plan for a MILESTONE contract, mapping the chosen advance to ADVANCE', () => {
+    const payload = toMinimalCreateContractPayload({
+      ...minimal,
+      paymentPlan: [
+        planRow({ name: 'Structure', percentage: '40', isAdvance: true }),
+        planRow({ name: 'Handover', percentage: '60' }),
+      ],
+    });
+    expect(payload.paymentPlan).toEqual([
+      { sortOrder: 1, name: 'Structure', percentage: 0.4, triggerType: 'ADVANCE' },
+      { sortOrder: 2, name: 'Handover', percentage: 0.6, triggerType: 'MILESTONE' },
+    ]);
+  });
+
+  it('omits the plan for a non-MILESTONE contract even when rows are present', () => {
+    const payload = toMinimalCreateContractPayload({
+      ...minimal,
+      billingModel: BillingModel.MEASURED_IPC,
+      paymentPlan: [planRow({ name: 'Structure', percentage: '100' })],
+    });
+    expect(payload).not.toHaveProperty('paymentPlan');
+  });
 });
 
 describe('toUpdateContractPayload', () => {
@@ -220,27 +244,64 @@ describe('paymentPlanTotalPercent', () => {
 });
 
 describe('buildPaymentPlan', () => {
-  it('maps rows to installment bodies: 1-based sortOrder, fraction percentage, trimmed name', () => {
+  it('maps rows to installment bodies (1-based sortOrder, fraction percentage, trimmed name); the row marked isAdvance becomes ADVANCE, the rest MILESTONE', () => {
     const rows = [
-      planRow({ name: ' Mobilization ', percentage: '20', triggerType: 'ADVANCE' }),
-      planRow({ name: 'Foundation', percentage: '30', triggerType: 'MILESTONE', milestoneLabel: ' Foundation done ' }),
+      planRow({ name: ' Mobilization ', percentage: '20', isAdvance: true }),
+      planRow({ name: 'Foundation', percentage: '30' }),
     ];
+    // The trigger is the row's explicit choice, not a position rule.
     expect(buildPaymentPlan(rows)).toEqual([
       { sortOrder: 1, name: 'Mobilization', percentage: 0.2, triggerType: 'ADVANCE' },
-      { sortOrder: 2, name: 'Foundation', percentage: 0.3, triggerType: 'MILESTONE', milestoneLabel: 'Foundation done' },
+      { sortOrder: 2, name: 'Foundation', percentage: 0.3, triggerType: 'MILESTONE' },
     ]);
   });
 
-  it('carries dueOffsetDays only for a TIME_BASED trigger', () => {
-    const timeBased = buildPaymentPlan([
-      planRow({ name: 'Handover', percentage: '50', triggerType: 'TIME_BASED', dueOffsetDays: '30' }),
+  it('honours the chosen advance at any position, and allows zero advances (all milestones)', () => {
+    // Advance designated on the 2nd row, not the first.
+    const chosen = buildPaymentPlan([
+      planRow({ name: 'Down payment', percentage: '50' }),
+      planRow({ name: 'Advance', percentage: '50', isAdvance: true }),
     ]);
-    expect(timeBased[0]).toMatchObject({ triggerType: 'TIME_BASED', dueOffsetDays: 30 });
+    expect(chosen.map((i) => i.triggerType)).toEqual(['MILESTONE', 'ADVANCE']);
 
-    const milestone = buildPaymentPlan([
-      planRow({ name: 'Stage', percentage: '50', triggerType: 'MILESTONE', dueOffsetDays: '30' }),
+    // No row marked → a valid no-advance plan.
+    const none = buildPaymentPlan([
+      planRow({ name: 'Stage 1', percentage: '50' }),
+      planRow({ name: 'Stage 2', percentage: '50' }),
     ]);
-    expect(milestone[0]).not.toHaveProperty('dueOffsetDays');
+    expect(none.every((i) => i.triggerType === 'MILESTONE')).toBe(true);
+  });
+
+  it('carries an explicit calendar dueDate when set, and omits it when blank', () => {
+    const withDue = buildPaymentPlan([
+      planRow({ name: 'Handover', percentage: '50', dueDate: '2026-11-06' }),
+    ]);
+    expect(withDue[0]).toMatchObject({ dueDate: '2026-11-06' });
+
+    const noDue = buildPaymentPlan([planRow({ name: 'Stage', percentage: '50' })]);
+    expect(noDue[0]).not.toHaveProperty('dueDate');
+  });
+
+  it('forces every row to milestone when the advance is frozen elsewhere (allowAdvance = false)', () => {
+    const rows = [
+      planRow({ name: 'Fit-out', percentage: '60', isAdvance: true }),
+      planRow({ name: 'Handover', percentage: '40' }),
+    ];
+    // Even a stale isAdvance flag is ignored on a re-profile whose advance is already invoiced.
+    expect(buildPaymentPlan(rows, false).every((i) => i.triggerType === 'MILESTONE')).toBe(true);
+  });
+});
+
+describe('installmentAmount', () => {
+  it('returns percent × contract value rounded to 2dp', () => {
+    expect(installmentAmount('40', '63131')).toBe(25252.4);
+    expect(installmentAmount('10', 63131)).toBe(6313.1);
+  });
+
+  it('returns null (never 0) when the percent or the value is not usable', () => {
+    expect(installmentAmount('', '63131')).toBeNull();
+    expect(installmentAmount('40', null)).toBeNull();
+    expect(installmentAmount('40', 'abc')).toBeNull();
   });
 });
 
@@ -249,8 +310,8 @@ describe('toCreateContractPayload — payment plan', () => {
     ...filled,
     billingModel: BillingModel.MILESTONE,
     paymentPlan: [
-      planRow({ name: 'Advance', percentage: '40', triggerType: 'ADVANCE' }),
-      planRow({ name: 'Completion', percentage: '60', triggerType: 'MILESTONE' }),
+      planRow({ name: 'Advance', percentage: '40' }),
+      planRow({ name: 'Completion', percentage: '60' }),
     ],
   };
 

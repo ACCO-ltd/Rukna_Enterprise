@@ -9,45 +9,44 @@ import {
 } from 'react-hook-form';
 import { Lock, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { PaymentTrigger } from '@erp/types';
-import { Badge, Button, FormField, Input, Select } from '@erp/ui';
+import { Badge, Button, Checkbox, DatePicker, FormField, Input } from '@erp/ui';
 
-import type { ContractFormValues, PaymentPlanRow } from '../contract-form-payload';
+import { formatMoney } from '@/lib/format';
 
-/**
- * The trigger options a payment-plan row offers, in the create form's order. Shared by the
- * create-time builder and the DRAFT-only editor on the Payment Schedule tab so the two stay
- * identical (a divergence would let one surface offer a trigger the other refuses).
- */
-export const PAYMENT_TRIGGERS = [
-  PaymentTrigger.MILESTONE,
-  PaymentTrigger.ADVANCE,
-  PaymentTrigger.TIME_BASED,
-] as const;
+import {
+  installmentAmount,
+  type ContractFormValues,
+  type PaymentPlanRow,
+} from '../contract-form-payload';
 
 /**
  * ACCO's canonical milestone schedule (commercial-billing-model-refinement §4.2): Structure 40%
- * paid as the ADVANCE, then three MILESTONE stages of 30/20/10 that sum to 100%. Offered as a
- * one-click quick-fill so a user profiling a milestone contract does not retype the house standard.
+ * paid as the advance, then three stages of 30/20/10 that sum to 100%. Offered as a one-click
+ * quick-fill so a user profiling a milestone contract does not retype the house standard.
  *
  * A plain data constant so both the create builder and the tab editor seed the exact same rows;
  * the `%` are whole percents (the form's on-screen unit) and reconcile to 100 via
- * `paymentPlanTotalPercent`.
+ * `paymentPlanTotalPercent`. The house standard marks the Structure stage as the advance
+ * (`isAdvance`); the user can re-designate which stage is the advance, so this is only the default.
  */
 export const ACCO_STANDARD_PLAN: PaymentPlanRow[] = [
-  { name: 'Structure', percentage: '40', triggerType: PaymentTrigger.ADVANCE, milestoneLabel: '', dueOffsetDays: '' },
-  { name: 'Partition & Plastering', percentage: '30', triggerType: PaymentTrigger.MILESTONE, milestoneLabel: '', dueOffsetDays: '' },
-  { name: 'Installation & Paint', percentage: '20', triggerType: PaymentTrigger.MILESTONE, milestoneLabel: '', dueOffsetDays: '' },
-  { name: 'Inspection & Handover', percentage: '10', triggerType: PaymentTrigger.MILESTONE, milestoneLabel: '', dueOffsetDays: '' },
+  { name: 'Structure', percentage: '40', isAdvance: true, dueDate: '' },
+  { name: 'Partition & Plastering', percentage: '30', isAdvance: false, dueDate: '' },
+  { name: 'Installation & Paint', percentage: '20', isAdvance: false, dueDate: '' },
+  { name: 'Inspection & Handover', percentage: '10', isAdvance: false, dueDate: '' },
 ];
 
 /**
- * One payment-plan installment row. Extracted from the contract form so both the create-time
- * builder and the DRAFT-only Payment Schedule editor render an identical row — a copy-paste would
- * let the two drift on validation, trigger set, or field order.
+ * One payment-plan installment row (ADR-030 payment-schedule redesign). Extracted from the contract
+ * form so both the create-time builder and the Payment Schedule editor render an identical row — a
+ * copy-paste would let the two drift on validation, field set, or order.
  *
- * Each row watches its own trigger so a TIME_BASED installment shows a day-offset field and
- * everything else shows the free-text milestone label, without re-rendering the whole form.
+ * The row is deliberately spare: a stage **name**, a **percent**, the **money** that percent is of
+ * (live, read-only), an optional **due date**, and a single **Advance** checkbox that classifies the
+ * stage. There is no trigger picker and no milestone-label field — ACCO bills only on verified
+ * stages, and the stage name is its own label. Exactly one stage may be the advance (the builder
+ * enforces the single-choice by clearing the others); when `allowAdvance` is false — an ACTIVE
+ * re-profile whose advance is already frozen — the row is a plain milestone with no control.
  */
 export function PlanRowFields({
   index,
@@ -56,6 +55,12 @@ export function PlanRowFields({
   errors,
   onRemove,
   t,
+  isAdvance,
+  allowAdvance,
+  onTypeChange,
+  contractValue,
+  currency,
+  locale,
 }: {
   index: number;
   control: Control<ContractFormValues>;
@@ -63,12 +68,47 @@ export function PlanRowFields({
   errors: FieldErrors<ContractFormValues>;
   onRemove: () => void;
   t: ReturnType<typeof useTranslations>;
+  /** Whether this stage is currently the advance. */
+  isAdvance: boolean;
+  /** Whether the advance may be (re)designated on this plan at all (false on a frozen re-profile). */
+  allowAdvance: boolean;
+  /** Designate/undesignate this stage as the advance; the builder clears the others. */
+  onTypeChange: (isAdvance: boolean) => void;
+  /** The contract value the percent is a share of, for the live money cell. Null → dash. */
+  contractValue: string | number | null;
+  currency: string | null | undefined;
+  locale: 'en' | 'ar';
 }) {
-  const trigger = useWatch({ control, name: `paymentPlan.${index}.triggerType` });
   const rowErrors = errors.paymentPlan?.[index];
+  // Watch this row's percent so the money cell tracks it as the user types.
+  const percent = useWatch({ control, name: `paymentPlan.${index}.percentage` }) ?? '';
+  const amount = installmentAmount(percent, contractValue);
+  const amountLabel = amount === null ? '—' : (formatMoney(amount, currency, locale) ?? '—');
 
   return (
     <li className="rounded-panel border border-border bg-surface p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        {/* The advance/milestone classification. When the advance can be designated it is a single
+            checkbox (ticking one clears the others in the builder); otherwise a plain milestone tag. */}
+        {allowAdvance ? (
+          <label className="inline-flex cursor-pointer items-center gap-2 text-body-sm font-medium text-foreground">
+            <Checkbox
+              checked={isAdvance}
+              onChange={(e) => onTypeChange(e.target.checked)}
+              aria-label={t('plan.advanceTag')}
+            />
+            <span className={isAdvance ? 'text-brand-primary' : 'text-muted-foreground'}>
+              {isAdvance ? t('plan.advanceTag') : t('plan.milestoneTag')}
+            </span>
+          </label>
+        ) : (
+          <Badge tone="neutral">{t('plan.milestoneTag')}</Badge>
+        )}
+        <Button type="button" variant="ghost" size="sm" onClick={onRemove}>
+          <Trash2 size={15} aria-hidden="true" /> {t('plan.remove')}
+        </Button>
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <FormField htmlFor={`plan-${index}-name`} label={t('plan.name')} error={rowErrors?.name?.message}>
           <Input
@@ -93,57 +133,26 @@ export function PlanRowFields({
           />
         </FormField>
 
-        <FormField htmlFor={`plan-${index}-trigger`} label={t('plan.trigger')}>
+        {/* The live money the percent works out to — read-only; the server owns the authoritative
+            figure at billing time, so this is labelled as indicative by the builder footer. */}
+        <FormField htmlFor={`plan-${index}-amount`} label={t('plan.amount')}>
+          <div
+            id={`plan-${index}-amount`}
+            className="flex min-h-11 items-center rounded-control border border-border bg-muted/40 px-3 text-body-sm font-medium tabular-nums text-foreground"
+          >
+            {amountLabel}
+          </div>
+        </FormField>
+
+        <FormField htmlFor={`plan-${index}-due`} label={t('plan.dueDate')}>
           <Controller
             control={control}
-            name={`paymentPlan.${index}.triggerType`}
+            name={`paymentPlan.${index}.dueDate`}
             render={({ field }) => (
-              <Select
-                id={`plan-${index}-trigger`}
-                value={field.value}
-                onChange={field.onChange}
-              >
-                {PAYMENT_TRIGGERS.map((tr) => (
-                  <option key={tr} value={tr}>
-                    {t(`plan.triggerType.${tr}`)}
-                  </option>
-                ))}
-              </Select>
+              <DatePicker id={`plan-${index}-due`} value={field.value} onChange={field.onChange} />
             )}
           />
         </FormField>
-
-        {trigger === PaymentTrigger.TIME_BASED ? (
-          <FormField
-            htmlFor={`plan-${index}-offset`}
-            label={t('plan.offsetDays')}
-            error={rowErrors?.dueOffsetDays?.message}
-          >
-            <Input
-              id={`plan-${index}-offset`}
-              type="number"
-              min="0"
-              inputMode="numeric"
-              dir="ltr"
-              aria-invalid={Boolean(rowErrors?.dueOffsetDays)}
-              {...register(`paymentPlan.${index}.dueOffsetDays`)}
-            />
-          </FormField>
-        ) : (
-          <FormField htmlFor={`plan-${index}-label`} label={t('plan.milestoneLabel')}>
-            <Input
-              id={`plan-${index}-label`}
-              placeholder={t('plan.milestoneLabelPlaceholder')}
-              {...register(`paymentPlan.${index}.milestoneLabel`)}
-            />
-          </FormField>
-        )}
-      </div>
-
-      <div className="mt-3 flex justify-end">
-        <Button type="button" variant="ghost" size="sm" onClick={onRemove}>
-          <Trash2 size={15} aria-hidden="true" /> {t('plan.remove')}
-        </Button>
       </div>
     </li>
   );

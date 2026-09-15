@@ -398,6 +398,11 @@
       "NEXT": "Ready to invoice",
       "UPCOMING": "Upcoming"
     },
+    "due": {
+      "overdue": "Overdue by {days}d",
+      "today": "Due today",
+      "soon": "Due in {days}d"
+    },
     "emptyTitle": "No payment schedule",
     "emptyHint": "This milestone contract has no installments yet.",
     "billStage": "Bill this stage",

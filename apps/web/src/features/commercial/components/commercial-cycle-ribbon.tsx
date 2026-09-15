@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { AlertTriangle, ArrowRight, CircleDot } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CalendarClock, CircleDot } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Button, Skeleton, cn } from '@erp/ui';
 import type {
@@ -11,6 +11,7 @@ import type {
 } from '@erp/types';
 
 import { useCommercialCurrentCycle } from '../hooks/use-commercial';
+import { dueStatus } from '../presentation';
 
 /**
  * The persistent cycle ribbon (ADR-030 CONST-COM-025, S-SH-2).
@@ -57,12 +58,17 @@ function Ribbon({
   cycle: CommercialCurrentCycleResponse;
 }) {
   const t = useTranslations('commercial.cycle');
+  const tSchedule = useTranslations('commercial.paymentSchedule');
   const isMilestone = cycle.stage === 'MILESTONE_SCHEDULE';
 
   const focus = isMilestone ? nextInstallment(cycle) : null;
   const blocked = cycle.blockers.includes('MILESTONE_NOT_VERIFIED');
   // The blocker's evidence is the NEXT installment's linked programme milestone.
   const gatedMilestone = blocked ? (focus?.programmeMilestone ?? null) : null;
+  // A due-date cue for the NEXT stage — "due in 5 days" / "overdue" — so the ribbon prompts billing
+  // before a stage slips, not only when it is already blocked. `upcoming` (>1 week) shows nothing.
+  const due = focus ? dueStatus(focus.dueDate) : null;
+  const showDue = due !== null && due.key !== 'upcoming';
 
   return (
     <section
@@ -90,6 +96,22 @@ function Ribbon({
             )}
             <StageLabel cycle={cycle} focus={focus} isMilestone={isMilestone} t={t} />
           </span>
+
+          {/* The due-date cue for the NEXT stage, inline after the stage. */}
+          {showDue && due ? (
+            <>
+              <Dot />
+              <span
+                className={cn(
+                  'inline-flex shrink-0 items-center gap-1 text-caption font-medium',
+                  due.tone === 'danger' ? 'text-danger' : 'text-warning',
+                )}
+              >
+                <CalendarClock size={12} aria-hidden="true" />
+                {tSchedule(`due.${due.key}`, { days: Math.abs(due.days) })}
+              </span>
+            </>
+          ) : null}
 
           {/* The blocker reason, inline, with a link to go clear it. */}
           {blocked ? (

@@ -63,6 +63,11 @@ function installment(
   };
 }
 
+/** A UTC calendar date `days` from today — for deterministic due-date cue assertions. */
+function isoInDays(days: number): string {
+  return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+}
+
 function summary(overrides: Partial<CommercialSummaryResponse> = {}): CommercialSummaryResponse {
   return {
     currency: 'USD',
@@ -419,5 +424,28 @@ describe('PaymentSchedulePanel — BillStageDialog (S-VB-11)', () => {
         'This stage is already invoiced — an omission against it requires a credit note.',
       ),
     ).toBeInTheDocument();
+  });
+});
+
+describe('PaymentSchedulePanel — due-date cue on the row', () => {
+  it('shows a "due in Nd" chip on an un-billed stage that is due within the week', () => {
+    renderPanel([installment({ status: 'NEXT', programmeMilestone: null, dueDate: isoInDays(3) })]);
+    expect(screen.getByText('Due in 3d')).toBeInTheDocument();
+  });
+
+  it('shows an overdue chip on an un-billed stage past its due date', () => {
+    renderPanel([installment({ status: 'NEXT', programmeMilestone: null, dueDate: isoInDays(-4) })]);
+    expect(screen.getByText('Overdue by 4d')).toBeInTheDocument();
+  });
+
+  it('shows no due chip once the stage is billed — an overdue date on a paid stage is noise', () => {
+    renderPanel([installment({ status: 'BILLED', dueDate: isoInDays(-4) })]);
+    expect(screen.queryByText(/Overdue/)).not.toBeInTheDocument();
+  });
+
+  it('shows no chip for a due date more than a week out (the date column already states it)', () => {
+    renderPanel([installment({ status: 'NEXT', programmeMilestone: null, dueDate: isoInDays(20) })]);
+    expect(screen.queryByText(/Due in/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Overdue/)).not.toBeInTheDocument();
   });
 });

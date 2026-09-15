@@ -70,9 +70,8 @@ export function ContractForm({ contract, projectId }: ContractFormProps) {
       z.object({
         name: z.string(),
         percentage: z.string(),
-        triggerType: z.string(),
-        milestoneLabel: z.string(),
-        dueOffsetDays: z.string(),
+        isAdvance: z.boolean(),
+        dueDate: z.string(),
       }),
     ),
   });

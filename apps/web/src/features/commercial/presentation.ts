@@ -187,3 +187,42 @@ export function attentionSeverityTone(severity: 'URGENT' | 'WARNING' | 'INFO'): 
       return 'info';
   }
 }
+
+export interface DueStatus {
+  tone: BadgeTone;
+  /** i18n key suffix under `commercial.paymentSchedule.due.*`. */
+  key: 'overdue' | 'today' | 'soon' | 'upcoming';
+  /** Whole calendar days until due — negative when overdue. */
+  days: number;
+}
+
+/**
+ * A payment installment's due-date urgency, derived client-side from its calendar `dueDate`.
+ *
+ * Returns null when there is no due date (most stages carry none). Otherwise the whole-day
+ * difference from today drives a tone + label key: past due is danger, due today or within a week is
+ * a warning, anything further out is a quiet `upcoming` (callers render no chip for it — the date
+ * column already states it). Days are counted on UTC calendar dates to match how the API stores and
+ * `formatDate` renders them, so the count never drifts a day by timezone.
+ *
+ * This is a UI cue only — no reminder is sent (there is no notification service). `now` is injectable
+ * so the mapping is deterministically unit-testable.
+ */
+export function dueStatus(
+  dueDate: string | null | undefined,
+  now: Date = new Date(),
+): DueStatus | null {
+  if (!dueDate) return null;
+  const due = new Date(dueDate);
+  if (Number.isNaN(due.getTime())) return null;
+
+  const MS_PER_DAY = 86_400_000;
+  const dueUtc = Date.UTC(due.getUTCFullYear(), due.getUTCMonth(), due.getUTCDate());
+  const nowUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const days = Math.round((dueUtc - nowUtc) / MS_PER_DAY);
+
+  if (days < 0) return { tone: 'danger', key: 'overdue', days };
+  if (days === 0) return { tone: 'warning', key: 'today', days };
+  if (days <= 7) return { tone: 'warning', key: 'soon', days };
+  return { tone: 'neutral', key: 'upcoming', days };
+}

@@ -19,6 +19,7 @@ export default getRequestConfig(async () => {
     progress,
     projectTypes,
     finance,
+    notifications,
   ] = await Promise.all([
     import(`../../messages/${locale}/common.json`).then((m) => m.default),
     import(`../../messages/${locale}/auth.json`).then((m) => m.default),
@@ -30,6 +31,7 @@ export default getRequestConfig(async () => {
     import(`../../messages/${locale}/progress.json`).then((m) => m.default),
     import(`../../messages/${locale}/project-types.json`).then((m) => m.default),
     import(`../../messages/${locale}/finance.json`).then((m) => m.default),
+    import(`../../messages/${locale}/notifications.json`).then((m) => m.default),
   ]);
 
   return {
@@ -45,6 +47,7 @@ export default getRequestConfig(async () => {
       progress,
       projectTypes,
       finance,
+      notifications,
     },
   };
 });

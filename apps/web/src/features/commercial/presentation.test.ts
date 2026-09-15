@@ -3,6 +3,7 @@ import type { CommercialMetric } from '@erp/types';
 
 import {
   contractStatusTone,
+  dueStatus,
   guaranteeAttentionTone,
   isBilledInstallment,
   metricDisplay,
@@ -95,5 +96,33 @@ describe('isBilledInstallment', () => {
     expect(isBilledInstallment('PAID')).toBe(true);
     expect(isBilledInstallment('NEXT')).toBe(false);
     expect(isBilledInstallment('UPCOMING')).toBe(false);
+  });
+});
+
+describe('dueStatus — a stage due-date cue, derived on UTC calendar days', () => {
+  // A fixed "now" so the day maths is deterministic regardless of when the suite runs.
+  const now = new Date('2026-11-06T09:00:00Z');
+
+  it('returns null when there is no (or an unparseable) due date', () => {
+    expect(dueStatus(null, now)).toBeNull();
+    expect(dueStatus(undefined, now)).toBeNull();
+    expect(dueStatus('not-a-date', now)).toBeNull();
+  });
+
+  it('flags an overdue date as danger with the (negative) day count', () => {
+    expect(dueStatus('2026-11-03', now)).toEqual({ tone: 'danger', key: 'overdue', days: -3 });
+  });
+
+  it('flags today as a warning', () => {
+    expect(dueStatus('2026-11-06', now)).toEqual({ tone: 'warning', key: 'today', days: 0 });
+  });
+
+  it('flags within a week as a warning, and counts the days', () => {
+    expect(dueStatus('2026-11-11', now)).toEqual({ tone: 'warning', key: 'soon', days: 5 });
+    expect(dueStatus('2026-11-13', now)).toEqual({ tone: 'warning', key: 'soon', days: 7 });
+  });
+
+  it('treats more than a week out as a quiet upcoming (callers render no chip)', () => {
+    expect(dueStatus('2026-11-20', now)).toEqual({ tone: 'neutral', key: 'upcoming', days: 14 });
   });
 });
