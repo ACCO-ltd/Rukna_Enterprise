@@ -6,7 +6,7 @@ import { z } from 'zod';
 import Link from 'next/link';
 import { ArrowRight, Lock } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, DatePicker, FormField, FormSection, Select } from '@erp/ui';
+import { Alert, Button, FormField, FormSection, Select } from '@erp/ui';
 
 import { useBoqWorkspace } from '@/features/boq/hooks/use-boq';
 import { useClients } from '@/features/clients/hooks/use-clients';
@@ -16,29 +16,39 @@ import { FormActions } from '@/components/form-actions';
 import { ApiError } from '@/lib/api-client';
 import { formatMoney } from '@/lib/format';
 
-import { toMinimalCreateContractPayload } from '../contract-form-payload';
+import {
+  paymentPlanTotalPercent,
+  toMinimalCreateContractPayload,
+  type PaymentPlanRow,
+} from '../contract-form-payload';
+import { ACCO_STANDARD_PLAN } from './payment-plan-fields';
+import { PaymentPlanBuilder } from './payment-plan-builder';
 import { useCreateContract } from '../hooks/use-contracts';
 import { BILLING_MODELS, BillingModel } from '../types';
 
 /**
  * The user-editable slice of the create form. Project and client are context (the route and the
- * project record), not inputs, so they are threaded in at submit time rather than held as fields —
- * which keeps a client that loads after mount from ever being submitted blank.
+ * project record), not inputs, so they are threaded in at submit time. Dates are no longer fields at
+ * all (ADR-030): they are inherited from the project on submit. What the user sets is the billing
+ * model and — for a MILESTONE contract — the payment schedule, right here.
  */
 interface CreateContractFields {
   billingModel: string;
-  startDate: string;
-  expectedEndDate: string;
+  paymentPlan: PaymentPlanRow[];
 }
 
 /**
- * The minimal contract-create form (ADR-030 S-CC-5).
+ * The contract-create form (ADR-030 S-CC-5 + inline payment schedule).
  *
- * A new contract now collects only who it is with and when it runs: the client (inherited from the
- * project) plus start and expected-completion dates, and the billing model (MILESTONE by default).
- * The three fields the old form asked for are gone — the server resolves the project's committed
- * BOQ, ties the value out to it, and mints the contract number (C1 / CONST-COM-020..022). So the
- * value is shown read-only from the live tie-out and the number reads "assigned on create".
+ * A new contract collects only who it is with (client, inherited from the project), its billing
+ * model (MILESTONE by default), and — for a MILESTONE contract — its payment schedule, pre-seeded
+ * with ACCO's 40/30/20/10 standard and edited inline so contract + schedule are created in one save.
+ * The server resolves the project's committed BOQ, ties the value out to it (shown read-only), and
+ * mints the contract number (C1 / CONST-COM-020..022).
+ *
+ * There are no date pickers: the contract's start and expected-completion dates are inherited from
+ * the project. The contract still carries its own completion date (so Extension-of-Time has a
+ * baseline to extend) — the form just does not ask the user to retype what the project already knows.
  *
  * The whole flow is gated on a committed BOQ: with nothing committed there is no value to tie out
  * to, so the form is replaced with a dead-end that sends the user to commit the BOQ first. The gate
@@ -69,31 +79,64 @@ export function ContractCreateForm({ projectId }: { projectId: string }) {
   const tieOut = moneyBand?.inContractTotal ?? null;
   const tieOutCurrency = moneyBand?.currency ?? 'USD';
 
-  const schema = z.object({
-    billingModel: z.string(),
-    startDate: z.string(),
-    expectedEndDate: z.string(),
-  });
+  const schema = z
+    .object({
+      billingModel: z.string(),
+      paymentPlan: z.array(
+        z.object({
+          name: z.string(),
+          percentage: z.string(),
+          isAdvance: z.boolean(),
+          dueDate: z.string(),
+        }),
+      ),
+    })
+    // The payment plan is only meaningful for a MILESTONE contract; validate it exactly as the
+    // server's `assertPaymentPlanReconciles` does (every row named, a positive ≤2-dp percent, and
+    // the whole plan totalling 100%) so a plan the server would 400 can never leave the form.
+    .superRefine((values, ctx) => {
+      if (values.billingModel !== BillingModel.MILESTONE) return;
+      if (values.paymentPlan.length === 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['paymentPlan'], message: t('plan.empty') });
+        return;
+      }
+      values.paymentPlan.forEach((row, i) => {
+        if (!row.name.trim()) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['paymentPlan', i, 'name'], message: t('plan.nameRequired') });
+        }
+        const pct = row.percentage.trim();
+        if (!/^\d+(\.\d{1,2})?$/.test(pct) || Number(pct) <= 0) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['paymentPlan', i, 'percentage'], message: t('plan.percentInvalid') });
+        }
+      });
+      const total = paymentPlanTotalPercent(values.paymentPlan);
+      if (Math.abs(total - 100) > 0.001) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['paymentPlan'], message: t('plan.totalMismatch', { total }) });
+      }
+    });
 
   const {
     control,
+    register,
+    setValue,
     handleSubmit,
     formState: { errors },
   } = useForm<CreateContractFields>({
-    resolver: zodResolver(
-      schema.refine(
-        (values) =>
-          !values.startDate ||
-          !values.expectedEndDate ||
-          values.expectedEndDate >= values.startDate,
-        { message: t('endBeforeStart'), path: ['expectedEndDate'] },
-      ),
-    ),
-    // S-CC-4: MILESTONE (payment-schedule) is ACCO's default billing model.
-    defaultValues: { billingModel: BillingModel.MILESTONE, startDate: '', expectedEndDate: '' },
+    resolver: zodResolver(schema),
+    // S-CC-4: MILESTONE (payment-schedule) is ACCO's default. Seed the plan with the house standard
+    // so the schedule appears pre-filled and reconciled, ready to adjust rather than build blank.
+    defaultValues: {
+      billingModel: BillingModel.MILESTONE,
+      paymentPlan: ACCO_STANDARD_PLAN.map((row) => ({ ...row })),
+    },
   });
 
-  const startDate = useWatch({ control, name: 'startDate' });
+  const billingModel = useWatch({ control, name: 'billingModel' });
+  const planRows = useWatch({ control, name: 'paymentPlan' }) ?? [];
+  const isMilestone = billingModel === BillingModel.MILESTONE;
+  // Mirror the builder's hard-stop: a milestone plan must reconcile to 100% before Save is allowed.
+  const planBalanced =
+    !isMilestone || (planRows.length > 0 && Math.abs(100 - paymentPlanTotalPercent(planRows)) <= 0.001);
 
   // The server's own gate: if the BOQ was uncommitted between load and submit, the create is
   // refused with BOQ_NOT_COMMITTED — surfaced as the same dead-end rather than a raw error.
@@ -143,7 +186,16 @@ export function ContractCreateForm({ projectId }: { projectId: string }) {
   const onSubmit = (values: CreateContractFields) => {
     if (create.isPending || !clientId) return;
     create.mutate(
-      toMinimalCreateContractPayload({ ...values, projectId, clientId }),
+      toMinimalCreateContractPayload({
+        projectId,
+        clientId,
+        billingModel: values.billingModel,
+        // Dates are inherited from the project — no date pickers on the form (ADR-030).
+        startDate: project?.startDate ?? '',
+        expectedEndDate: project?.expectedEndDate ?? '',
+        paymentPlan:
+          values.billingModel === BillingModel.MILESTONE ? values.paymentPlan : undefined,
+      }),
     );
   };
 
@@ -157,7 +209,12 @@ export function ContractCreateForm({ projectId }: { projectId: string }) {
       : [];
 
   const readonlyValue =
-    tieOut !== null ? (formatMoney(tieOut, tieOutCurrency, 'en') ?? t('valueFromBoqUnknown')) : t('valueFromBoqUnknown');
+    tieOut !== null
+      ? (formatMoney(tieOut, tieOutCurrency, 'en') ?? t('valueFromBoqUnknown'))
+      : t('valueFromBoqUnknown');
+
+  // The array-level plan error (empty, or does-not-total-100) — row errors render on their fields.
+  const planError = typeof errors.paymentPlan?.message === 'string' ? errors.paymentPlan.message : undefined;
 
   return (
     <form
@@ -222,42 +279,37 @@ export function ContractCreateForm({ projectId }: { projectId: string }) {
         </div>
       </FormSection>
 
-      <FormSection variant="plain" title={t('startDate')}>
-        <div className="grid gap-5 sm:grid-cols-2">
-          <FormField htmlFor="contract-start" label={t('startDate')}>
-            <Controller
-              control={control}
-              name="startDate"
-              render={({ field }) => (
-                <DatePicker id="contract-start" value={field.value} onChange={field.onChange} />
-              )}
+      {/* The inline payment schedule (ADR-030) — only for a MILESTONE contract. Pre-seeded with the
+          ACCO standard; the value each percent works out to is shown live against the tie-out. */}
+      {isMilestone ? (
+        <FormSection variant="plain" title={t('plan.title')}>
+          <p className="text-xs text-muted-foreground">{t('plan.subtitle')}</p>
+          {planError ? (
+            <div className="mt-3">
+              <Alert variant="error" messages={[planError]} />
+            </div>
+          ) : null}
+          <div className="mt-3">
+            <PaymentPlanBuilder
+              control={control as never}
+              register={register as never}
+              setValue={setValue as never}
+              errors={errors as never}
+              t={t}
+              contractValue={tieOut}
+              currency={tieOutCurrency}
+              locale="en"
+              targetPercent={100}
+              allowAdvance
+              showAccoStandard
             />
-          </FormField>
-
-          <FormField
-            htmlFor="contract-end"
-            label={t('expectedEnd')}
-            error={errors.expectedEndDate?.message}
-          >
-            <Controller
-              control={control}
-              name="expectedEndDate"
-              render={({ field }) => (
-                <DatePicker
-                  id="contract-end"
-                  value={field.value}
-                  onChange={field.onChange}
-                  min={startDate || undefined}
-                />
-              )}
-            />
-          </FormField>
-        </div>
-      </FormSection>
+          </div>
+        </FormSection>
+      ) : null}
 
       <FormActions
         isPending={create.isPending}
-        disabled={!clientId}
+        disabled={!clientId || !planBalanced}
         submitLabel={t('submit')}
         cancelLabel={t('cancel')}
         cancelHref={`/projects/${projectId}/commercial/contract-security`}

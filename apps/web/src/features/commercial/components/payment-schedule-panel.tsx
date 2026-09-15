@@ -43,7 +43,7 @@ import { useDialogDismissGuard } from '@/lib/use-dialog-dismiss-guard';
 
 import { useBillingPackages, useCommercialCurrentCycle, useVariations } from '../hooks/use-commercial';
 import { useBillStage, useSetInstallmentMilestone } from '../hooks/use-payment-schedule';
-import { isBilledInstallment, paymentInstallmentTone } from '../presentation';
+import { dueStatus, isBilledInstallment, paymentInstallmentTone } from '../presentation';
 import { errorText } from './commercial-workspace';
 
 type Installment = CommercialPaymentScheduleInstallment;
@@ -225,6 +225,10 @@ function InstallmentRow({
   t: ReturnType<typeof useTranslations>;
 }) {
   const blocked = isGateBlocked(inst);
+  // Due-date urgency is only a cue for an un-billed stage — an "overdue" chip on a paid stage is
+  // noise. `upcoming` (more than a week out) shows no chip; the date column already states it.
+  const due = isBilledInstallment(inst.status) ? null : dueStatus(inst.dueDate);
+  const showDueChip = due !== null && due.key !== 'upcoming';
 
   return (
     <TableRow>
@@ -237,7 +241,14 @@ function InstallmentRow({
         {money(inst.amountPaid)}
       </TableCell>
       <TableCell className="whitespace-nowrap text-muted-foreground">
-        {inst.dueDate ? formatDate(inst.dueDate, locale) : '—'}
+        <div className="flex flex-col items-start gap-1">
+          <span>{inst.dueDate ? formatDate(inst.dueDate, locale) : '—'}</span>
+          {showDueChip && due ? (
+            <Badge tone={due.tone}>
+              {t(`paymentSchedule.due.${due.key}`, { days: Math.abs(due.days) })}
+            </Badge>
+          ) : null}
+        </div>
       </TableCell>
       <TableCell>
         <Badge tone={paymentInstallmentTone(inst.status)}>

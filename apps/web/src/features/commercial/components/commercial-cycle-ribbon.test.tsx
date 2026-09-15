@@ -35,6 +35,11 @@ function installment(
   };
 }
 
+/** A UTC calendar date `days` from today — for deterministic due-date cue assertions. */
+function isoInDays(days: number): string {
+  return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+}
+
 /** A resolved (loaded, not-error) cycle query the ribbon reads. */
 function stubCycle(cycle: Partial<CommercialCurrentCycleResponse>) {
   vi.mocked(commercialHooks.useCommercialCurrentCycle).mockReturnValue({
@@ -211,6 +216,44 @@ describe('CommercialCycleRibbon — restricted money is withheld', () => {
     expect(screen.getByText('Milestone 1 of 1 · Partition & Plastering')).toBeInTheDocument();
     expect(screen.queryByText(/\$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/0\.00/)).not.toBeInTheDocument();
+  });
+});
+
+describe('CommercialCycleRibbon — due-date cue for the NEXT stage', () => {
+  function stubDue(dueDate: string) {
+    stubCycle({
+      stage: 'MILESTONE_SCHEDULE',
+      nextAction: { kind: 'GENERATE_INVOICE', href: '/projects/p-1/commercial/payment-schedule' },
+      blockers: [],
+      paymentSchedule: {
+        currency: 'USD',
+        contractValue: '750000.00',
+        totalCollected: '0.00',
+        variationLines: [],
+        installments: [
+          installment({ id: 'b', status: 'NEXT', name: 'Partition & Plastering', dueDate }),
+        ],
+      },
+    } as Partial<CommercialCurrentCycleResponse>);
+  }
+
+  it('shows a "due in Nd" cue when the NEXT stage is due within the week', () => {
+    stubDue(isoInDays(5));
+    renderWithProviders(<CommercialCycleRibbon projectId="p-1" />);
+    expect(screen.getByText('Due in 5d')).toBeInTheDocument();
+  });
+
+  it('shows an overdue cue when the NEXT stage is past due', () => {
+    stubDue(isoInDays(-2));
+    renderWithProviders(<CommercialCycleRibbon projectId="p-1" />);
+    expect(screen.getByText('Overdue by 2d')).toBeInTheDocument();
+  });
+
+  it('shows no due cue for a stage more than a week out', () => {
+    stubDue(isoInDays(20));
+    renderWithProviders(<CommercialCycleRibbon projectId="p-1" />);
+    expect(screen.queryByText(/Due in/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Overdue/)).not.toBeInTheDocument();
   });
 });
 

@@ -8,23 +8,31 @@ import type {
 import type { Contract } from './types';
 import { BillingModel } from './types';
 
-/** One payment-plan row as the form holds it — every field a string, as HTML inputs produce. */
+/**
+ * One payment-plan row as the form holds it — every field a string, as HTML inputs produce.
+ *
+ * ADR-030 payment-schedule redesign: the row carries no trigger dropdown and no milestone
+ * label (ACCO bills only on verified stages, and the stage `name` is its own label). Instead
+ * the advance/milestone classification is a single explicit choice — `isAdvance` marks THE one
+ * stage paid as the mobilization advance (at most one; zero is allowed for a no-advance
+ * contract). `buildPaymentPlan` maps it to `triggerType` on the wire. What the user sets per
+ * stage is the name, the percent, whether it is the advance, and an optional calendar `dueDate`.
+ */
 export interface PaymentPlanRow {
   name: string;
   /** Whole percent, e.g. "40" for 40%. Converted to a 0..1 fraction on the wire. */
   percentage: string;
-  triggerType: string;
-  milestoneLabel: string;
-  /** Days from contract start; only meaningful for a TIME_BASED trigger. */
-  dueOffsetDays: string;
+  /** This stage is the mobilization advance (→ ADVANCE trigger). At most one row is true. */
+  isAdvance: boolean;
+  /** Calendar date (`YYYY-MM-DD`) the stage is expected to be billed by. Optional. */
+  dueDate: string;
 }
 
 export const EMPTY_PAYMENT_PLAN_ROW: PaymentPlanRow = {
   name: '',
   percentage: '',
-  triggerType: PaymentTrigger.MILESTONE,
-  milestoneLabel: '',
-  dueOffsetDays: '',
+  isAdvance: false,
+  dueDate: '',
 };
 
 /** What the form holds — every field a string, as HTML inputs produce. */
@@ -79,6 +87,29 @@ export function paymentPlanTotalPercent(rows: PaymentPlanRow[]): number {
 }
 
 /**
+ * The indicative money value of one installment for the live preview: `percent × contractValue`.
+ *
+ * Display-only — the server computes the authoritative amount from the frozen base value at
+ * billing time. Returns `null` when the percent or the value is not a usable number (so the
+ * caller shows a dash, not `$NaN`). A JS number is acceptable here precisely because it never
+ * reaches the wire: the plan's percentages, not this figure, are what is sent.
+ */
+export function installmentAmount(
+  percent: string,
+  contractValue: string | number | null,
+): number | null {
+  const fraction = percentToFraction(percent);
+  if (fraction === null) return null;
+  // A blank / whitespace value trims to '' and would coerce to 0 (a finite number) — treat it as
+  // "no value" (null) rather than a real zero, so the row shows a dash, not `$0.00`.
+  const str = typeof contractValue === 'number' ? String(contractValue) : (contractValue ?? '').trim();
+  if (str === '') return null;
+  const value = Number(str);
+  if (!Number.isFinite(value)) return null;
+  return Math.round(fraction * value * 100) / 100;
+}
+
+/**
  * Turns a stored 0..1 fraction back into the form's whole-percent string — the inverse of
  * `percentToFraction`. `"0.4000"` → `"40"`, `"0.3333"` → `"33.33"`. Trailing zeros are dropped so a
  * pre-populated row reads the way a user would type it, and a non-number degrades to `""` (a blank
@@ -94,51 +125,51 @@ export function fractionToPercentString(fraction: string | number): string {
 /**
  * Rebuilds an editable {@link PaymentPlanRow} from a read-model installment so the Payment Schedule
  * editor opens pre-populated from the current plan (the user adjusts the existing tail, not a blank
- * slate). The read model carries fractions and a nullable trigger label / day offset; this maps them
- * back to the string-per-field shape HTML inputs need. Structural fields only — the milestone *link*
- * is re-established through the dedicated link route, not this form.
+ * slate). The read model carries a fraction and a nullable calendar due date; this maps them back to
+ * the string-per-field shape HTML inputs need. Structural fields only — the milestone *link* is
+ * re-established through the dedicated link route, not this form, and the trigger is re-derived on
+ * save from row position.
  */
 export function paymentPlanRowFromInstallment(installment: {
   name: string;
   percentage: string;
   triggerType: string;
-  milestoneLabel: string | null;
-  dueOffsetDays: number | null;
+  dueDate: string | null;
 }): PaymentPlanRow {
   return {
     name: installment.name,
     percentage: fractionToPercentString(installment.percentage),
-    triggerType: installment.triggerType,
-    milestoneLabel: installment.milestoneLabel ?? '',
-    dueOffsetDays:
-      installment.dueOffsetDays === null ? '' : String(installment.dueOffsetDays),
+    isAdvance: installment.triggerType === 'ADVANCE',
+    dueDate: toDateInputValue(installment.dueDate),
   };
 }
 
 /**
- * Maps the form's plan rows to `POST /contracts` installment bodies.
+ * Maps the form's plan rows to `POST /contracts` (and `PUT /payment-plan`) installment bodies.
  *
- * `sortOrder` is the row's position (1-based). `percentage` becomes a 0..1 fraction. Optional
- * text/number fields are omitted when blank rather than sent empty — `@IsOptional()` on the DTO
- * treats a missing field and an absent one the same, and an empty `dueDate`/`dueOffsetDays`
- * would 400. `dueOffsetDays` is only carried for a TIME_BASED trigger.
+ * `sortOrder` is the row's position (1-based). `percentage` becomes a 0..1 fraction. The trigger
+ * is the row's explicit `isAdvance` choice, not a position rule: the stage the user marks as the
+ * advance becomes ADVANCE, every other stage is a MILESTONE — ACCO never bills on a time trigger, so
+ * TIME_BASED is never produced. `allowAdvance` gates whether these rows may designate an advance at
+ * all: true on a create or DRAFT full-replace; false on an ACTIVE re-profile, where the advance is
+ * already invoiced and frozen, so the editable tail is entirely milestones regardless of any stale
+ * flag. An empty `dueDate` is omitted rather than sent as `""` (`@IsDateString()` 400s on empty).
  */
-export function buildPaymentPlan(rows: PaymentPlanRow[]): PaymentInstallmentPayload[] {
+export function buildPaymentPlan(
+  rows: PaymentPlanRow[],
+  allowAdvance = true,
+): PaymentInstallmentPayload[] {
   return rows.map((row, index) => {
+    const isAdvance = row.isAdvance && allowAdvance;
     const installment: PaymentInstallmentPayload = {
       sortOrder: index + 1,
       name: row.name.trim(),
       percentage: percentToFraction(row.percentage) ?? 0,
-      triggerType: row.triggerType as PaymentInstallmentPayload['triggerType'],
+      triggerType: isAdvance ? PaymentTrigger.ADVANCE : PaymentTrigger.MILESTONE,
     };
 
-    const label = row.milestoneLabel.trim();
-    if (label) installment.milestoneLabel = label;
-
-    if (row.triggerType === PaymentTrigger.TIME_BASED && row.dueOffsetDays.trim()) {
-      const offset = Number(row.dueOffsetDays.trim());
-      if (Number.isFinite(offset)) installment.dueOffsetDays = offset;
-    }
+    const dueDate = row.dueDate.trim();
+    if (dueDate) installment.dueDate = dueDate;
 
     return installment;
   });
@@ -209,15 +240,28 @@ export interface MinimalCreateContractValues {
   projectId: string;
   clientId: string;
   billingModel: string;
+  /** Inherited from the project on submit — the create form no longer collects dates (ADR-030). */
   startDate: string;
   expectedEndDate: string;
+  /**
+   * ADR-030 inline schedule — the MILESTONE plan seeded and edited in the create form. Sent only
+   * for a MILESTONE contract (the server 400s a plan on any other model); this is the one chance to
+   * seed the installments, as the plan has no PATCH (only a DRAFT-only replace).
+   */
+  paymentPlan?: PaymentPlanRow[];
 }
 
 /**
- * Builds the minimal `POST /contracts` body (S-CC-5). Only project, client and currency are always
- * sent; `boqVersionId`, `contractValue` and `contractNumber` are deliberately ABSENT so the server
- * resolves the committed BOQ, ties the value out and mints the number (CONST-COM-020..022). Empty
- * optional dates are omitted rather than sent as `""` (`@IsDateString()` 400s on an empty string).
+ * Builds the minimal `POST /contracts` body (S-CC-5 + ADR-030 inline schedule). Only project, client
+ * and currency are always sent; `boqVersionId`, `contractValue` and `contractNumber` are deliberately
+ * ABSENT so the server resolves the committed BOQ, ties the value out and mints the number
+ * (CONST-COM-020..022).
+ *
+ * Dates are INHERITED from the project: the create form no longer shows date pickers, but the
+ * contract still carries its own completion date for Extension-of-Time to extend. Empty inherited
+ * dates are omitted rather than sent as `""` (`@IsDateString()` 400s on an empty string).
+ *
+ * The payment plan is carried only for a MILESTONE contract and only when rows were seeded.
  */
 export function toMinimalCreateContractPayload(
   values: MinimalCreateContractValues,
@@ -233,6 +277,10 @@ export function toMinimalCreateContractPayload(
   if (values.billingModel) payload.billingModel = values.billingModel as BillingModel;
   if (values.startDate.trim()) payload.startDate = values.startDate.trim();
   if (values.expectedEndDate.trim()) payload.expectedEndDate = values.expectedEndDate.trim();
+
+  if (values.billingModel === BillingModel.MILESTONE && (values.paymentPlan?.length ?? 0) > 0) {
+    payload.paymentPlan = buildPaymentPlan(values.paymentPlan ?? []);
+  }
 
   return payload;
 }

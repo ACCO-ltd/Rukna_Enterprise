@@ -1,12 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { useFieldArray, useForm, useWatch } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { CalendarClock, Lock, Pencil, Plus } from 'lucide-react';
+import { CalendarClock, Lock, Pencil } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { PaymentTrigger } from '@erp/types';
 import type {
   CommercialPaymentScheduleInstallment,
   CommercialSummaryResponse,
@@ -23,11 +22,8 @@ import {
   type ContractFormValues,
   type PaymentPlanRow,
 } from '@/features/contracts/contract-form-payload';
-import {
-  ACCO_STANDARD_PLAN,
-  LockedPlanRow,
-  PlanRowFields,
-} from '@/features/contracts/components/payment-plan-fields';
+import { LockedPlanRow } from '@/features/contracts/components/payment-plan-fields';
+import { PaymentPlanBuilder } from '@/features/contracts/components/payment-plan-builder';
 import { ApiError } from '@/lib/api-client';
 import { formatMoney } from '@/lib/format';
 
@@ -269,7 +265,10 @@ function ScheduleEditor({
     );
   }
 
-  const installments = cycle.data?.paymentSchedule?.installments ?? [];
+  const schedule = cycle.data?.paymentSchedule ?? null;
+  const installments = schedule?.installments ?? [];
+  const contractValue = schedule?.contractValue ?? null;
+  const currency = schedule?.currency ?? 'USD';
   const { frozen, editable } = splitScheduleForEditing(installments);
 
   if (!isEditing) {
@@ -303,6 +302,8 @@ function ScheduleEditor({
         isReprofile={isReprofile}
         frozen={frozen}
         editable={editable}
+        contractValue={contractValue}
+        currency={currency}
         onDone={() => setIsEditing(false)}
       />
     </SectionCard>
@@ -330,6 +331,8 @@ function ScheduleForm({
   isReprofile,
   frozen,
   editable,
+  contractValue,
+  currency,
   onDone,
 }: {
   projectId: string;
@@ -338,11 +341,15 @@ function ScheduleForm({
   isReprofile: boolean;
   frozen: CommercialPaymentScheduleInstallment[];
   editable: CommercialPaymentScheduleInstallment[];
+  /** The contract value the percents are a share of, for the builder's live money cells. */
+  contractValue: string | null;
+  currency: string;
   onDone: () => void;
 }) {
   const t = useTranslations('commercial.paymentScheduleTab');
   const tPlan = useTranslations('platform.contracts.create');
   const tCommon = useTranslations('common');
+  const locale = useLocale() as 'en' | 'ar';
   const save = useReplacePaymentPlan(projectId, contractId);
 
   // The frozen invoiced share the editable rows must make up to 100. On DRAFT this is 0, so the
@@ -351,17 +358,16 @@ function ScheduleForm({
   const targetPercent = Number((100 - frozenPercent).toFixed(2));
 
   // The plan validation, mirrored from the create form (ADR-023 CONST-COM-012): every row needs a
-  // name, a positive ≤2-dp percent, a TIME_BASED row needs a day offset, and the editable rows must
-  // total `targetPercent`. The replace-all route needs at least one installment (ArrayMinSize(1)).
+  // name and a positive ≤2-dp percent, and the editable rows must total `targetPercent`. The trigger
+  // is derived on save (no field to validate), and the replace-all route needs at least one row.
   const schema = z.object({
     billingModel: z.string(),
     paymentPlan: z.array(
       z.object({
         name: z.string(),
         percentage: z.string(),
-        triggerType: z.string(),
-        milestoneLabel: z.string(),
-        dueOffsetDays: z.string(),
+        isAdvance: z.boolean(),
+        dueDate: z.string(),
       }),
     ),
   });
@@ -369,6 +375,7 @@ function ScheduleForm({
   const {
     control,
     register,
+    setValue,
     handleSubmit,
     formState: { errors },
   } = useForm<EditorValues>({
@@ -390,9 +397,6 @@ function ScheduleForm({
           if (!/^\d+(\.\d{1,2})?$/.test(pct) || Number(pct) <= 0) {
             ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['paymentPlan', i, 'percentage'], message: tPlan('plan.percentInvalid') });
           }
-          if (row.triggerType === PaymentTrigger.TIME_BASED && !row.dueOffsetDays.trim()) {
-            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['paymentPlan', i, 'dueOffsetDays'], message: tPlan('plan.offsetRequired') });
-          }
         });
         const total = paymentPlanTotalPercent(values.paymentPlan);
         if (Math.abs(total - targetPercent) > 0.001) {
@@ -411,22 +415,19 @@ function ScheduleForm({
     defaultValues: { billingModel: 'MILESTONE', paymentPlan: seedEditableRows(editable) },
   });
 
-  const { fields, append, remove, replace } = useFieldArray({ control, name: 'paymentPlan' });
-
-  // The live running total drives the reconciliation indicator — checked against the target as it is
-  // typed, not only on submit. This MIRRORS the server's `assertPaymentPlanReconciles` exactly: the
-  // submitted (editable) rows plus the frozen invoiced share must equal 100%, i.e. the editable rows
-  // must equal `targetPercent` (= 100 − frozen%). The client hard-stops Save on this so a plan the
-  // server would 400 can never leave the form; the server error stays wired as the backstop.
+  // The live running total hard-stops Save exactly as the server's `assertPaymentPlanReconciles`
+  // does — the editable rows plus the frozen invoiced share must equal 100%, i.e. the editable rows
+  // must equal `targetPercent`. The builder shows the live delta; this drives the Save button.
   const planRows = useWatch({ control, name: 'paymentPlan' }) ?? [];
   const total = paymentPlanTotalPercent(planRows);
-  // Signed remainder against the target: positive = short (needs more), negative = over.
   const delta = Number((targetPercent - total).toFixed(2));
   const balanced = planRows.length > 0 && Math.abs(delta) <= 0.001;
 
   const onSubmit = (values: EditorValues) => {
-    // Submit ONLY the editable rows; the server keeps the frozen invoiced installments (Q-B).
-    save.mutate(buildPaymentPlan(values.paymentPlan), { onSuccess: onDone });
+    // Submit ONLY the editable rows; the server keeps the frozen invoiced installments (Q-B). The
+    // advance is only row 0 when there is no frozen head (a DRAFT full-replace); on a re-profile the
+    // advance is already invoiced and frozen, so the editable tail is entirely milestones.
+    save.mutate(buildPaymentPlan(values.paymentPlan, frozen.length === 0), { onSuccess: onDone });
   };
 
   const planError =
@@ -482,71 +483,29 @@ function ScheduleForm({
           {isReprofile ? t('editableSectionHint', { target: targetPercent }) : tPlan('plan.subtitle')}
         </p>
 
-        <ul className="mt-3 space-y-3">
-          {fields.map((field, index) => (
-            <PlanRowFields
-              key={field.id}
-              index={index}
-              control={control as never}
-              register={register as never}
-              errors={errors as never}
-              onRemove={() => remove(index)}
-              t={tPlan}
-            />
-          ))}
-        </ul>
-
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => append({ ...EMPTY_PAYMENT_PLAN_ROW })}>
-              <Plus size={16} aria-hidden="true" /> {tPlan('plan.add')}
-            </Button>
-            {/* The ACCO template is a full 100% plan; on a re-profile it would overshoot the
-                un-invoiced remainder, so it is offered only on DRAFT. */}
-            {!isReprofile ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => replace(ACCO_STANDARD_PLAN.map((row) => ({ ...row })))}
-              >
-                {tPlan('plan.useAccoStandard')}
-              </Button>
-            ) : null}
-          </div>
-          {planRows.length > 0 ? (
-            <div className="text-end" aria-live="polite">
-              {isReprofile ? (
-                <p className="text-caption text-muted-foreground">
-                  {t('reconcileBreakdown', { frozen: frozenPercent, target: targetPercent })}
-                </p>
-              ) : null}
-              <p className={`text-sm font-medium ${balanced ? 'text-success' : 'text-danger'}`}>
-                {balanced
-                  ? isReprofile
-                    ? t('editableOk', { target: targetPercent })
-                    : tPlan('plan.totalOk')
-                  : /* The live delta: "Total N% · needs X% more" (short) or "· over by Y%" (over),
-                       so the reader sees exactly how far the plan is from the required total and in
-                       which direction — not just that it is wrong. */
-                    t('reconcileDelta', {
-                      total,
-                      remedy:
-                        delta > 0
-                          ? t('reconcileShort', { amount: Number(delta.toFixed(2)) })
-                          : t('reconcileOver', { amount: Number(Math.abs(delta).toFixed(2)) }),
-                    })}
-              </p>
-            </div>
-          ) : null}
+        <div className="mt-3">
+          <PaymentPlanBuilder
+            control={control as never}
+            register={register as never}
+            setValue={setValue as never}
+            errors={errors as never}
+            t={tPlan}
+            contractValue={contractValue}
+            currency={currency}
+            locale={locale}
+            targetPercent={targetPercent}
+            frozenPercent={frozenPercent}
+            allowAdvance={frozen.length === 0}
+            showAccoStandard={!isReprofile}
+          />
         </div>
       </FormSection>
 
       <div className="flex flex-col gap-3 sm:flex-row-reverse sm:justify-start">
         {/* S-PS-2 / CONST-COM-024: Save is hard-stopped whenever the editable rows do not reconcile
             to the required total (100% DRAFT; 100 − invoiced% ACTIVE). This mirrors the server's
-            `assertPaymentPlanReconciles` so a broken plan never reaches the wire; the live delta above
-            says how far off it is, and the server error remains the backstop. */}
+            `assertPaymentPlanReconciles` so a broken plan never reaches the wire; the live delta in
+            the builder says how far off it is, and the server error remains the backstop. */}
         <Button type="submit" disabled={save.isPending || !balanced}>
           {save.isPending ? tCommon('loading') : t('save')}
         </Button>
