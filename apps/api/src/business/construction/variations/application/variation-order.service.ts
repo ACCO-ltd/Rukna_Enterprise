@@ -1,6 +1,11 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
-import type { Prisma, VariationOrderStatus } from '@prisma/client';
+import type { Prisma, VariationOrderStatus, VariationAllocationTreatment } from '@prisma/client';
 import {
   PERMISSIONS,
   type RequestIdentity,
@@ -29,6 +34,7 @@ import {
   type VariationOrderCommand,
   type VariationOrderStatusValue,
 } from '../domain/variation-order.policy.js';
+import { VariationBillingAllocationPolicy } from '../domain/variation-billing-allocation.policy.js';
 import type { CreateVariationDto } from '../presentation/dto/create-variation.dto.js';
 import type { UpdateVariationDto } from '../presentation/dto/update-variation.dto.js';
 import type {
@@ -40,6 +46,22 @@ import type {
   RejectVariationDto,
   WithdrawVariationDto,
 } from '../presentation/dto/lifecycle.dto.js';
+
+/**
+ * ADR-030 CONST-COM-028 — the result of realizing one slice of a VO's net into the billing ledger.
+ * Backend-internal (C5's billing flow consumes it); not a wire type. All money is a 2dp string.
+ */
+export interface VariationBillingAllocationResult {
+  allocationId: string;
+  variationId: string;
+  amount: string;
+  treatment: VariationAllocationTreatment;
+  /** The VO's signed net value (Σ line amount) — the ceiling the ledger sums toward. */
+  netValue: string;
+  /** Signed headroom still unrealized after this allocation; '0.00' ⇔ the VO is fully realized. */
+  remainingUnallocated: string;
+  fullyRealized: boolean;
+}
 
 /**
  * ADR-026 (Variations Phase 1) — the VariationOrder aggregate + guarded-command lifecycle.
@@ -198,6 +220,114 @@ export class VariationOrderService {
       byVariation,
       totalCertifiedToDate: money(totalCertified),
       totalInvoicedToDate: money(totalInvoiced),
+    };
+  }
+
+  // ─── ADR-030 CONST-COM-028 (Commercial redesign P1): variation billing realization ─────────────
+
+  /**
+   * Realize one slice of a variation's net value into the billing ledger — the "exactly once" write.
+   *
+   * ENTITLEMENT (the current contract value, raised at VO adoption via raiseCurrentValueForVariation)
+   * and billing REALIZATION (this ledger) are separate layers: this method NEVER touches the contract
+   * value or the frozen %-schedule. It only records that a slice of the VO's net was billed a way
+   * (INVOICE, or STAGE_REDUCTION for an omission). The pure policy guarantees the running sum moves
+   * monotonically toward `netValue`, never overshoots it in magnitude, and stays sign-consistent — so a
+   * VO dollar can be billed once and only once.
+   *
+   * C5 calls this from the "bill this stage" / Billing-Package flow; it is not yet controller-exposed.
+   * Guards: the VO must be CLIENT_APPROVED (real entitlement — CONST-VAR-005), the treatment/sign must
+   * agree (INVOICE positive, STAGE_REDUCTION negative; CREDIT_NOTE is Phase 2), and the slice must pass
+   * the invariant. Writes the row + a business audit event in one transaction.
+   */
+  async allocateVariationBilling(
+    identity: RequestIdentity,
+    id: string,
+    input: {
+      amount: Decimal | string | number;
+      treatment: VariationAllocationTreatment;
+      clientInvoiceId?: string | null;
+      installmentId?: string | null;
+    },
+  ): Promise<VariationBillingAllocationResult> {
+    const prisma = this.tenancy.getClient();
+    const vo = await this.requireVo(prisma, identity, id);
+    const orgId = identity.activeOrganizationId;
+
+    // Only a CLIENT_APPROVED VO is real entitlement (CONST-VAR-005) — you cannot realize billing
+    // against scope the client has not approved.
+    if (!VariationOrderPolicy.countsTowardGoverning(vo.status as VariationOrderStatusValue)) {
+      throw new ConflictException(
+        `Variation ${vo.reference} is not client-approved (status '${vo.status}') — only a ` +
+          `client-approved variation can be billed (CONST-COM-028).`,
+      );
+    }
+
+    const amount = new Decimal(input.amount).toDecimalPlaces(2);
+
+    // P1 realizations are INVOICE (a positive amount billed) and STAGE_REDUCTION (a negative omission
+    // that reduces an un-invoiced stage). CREDIT_NOTE is declared for Phase 2 and is never written here.
+    if (input.treatment === 'CREDIT_NOTE') {
+      throw new BadRequestException(
+        'CREDIT_NOTE realization is Phase 2 and is not supported in P1 (CONST-COM-028).',
+      );
+    }
+    if (input.treatment === 'INVOICE' && !amount.greaterThan(0)) {
+      throw new BadRequestException('An INVOICE allocation must be a positive amount.');
+    }
+    if (input.treatment === 'STAGE_REDUCTION' && !amount.lessThan(0)) {
+      throw new BadRequestException('A STAGE_REDUCTION allocation must be a negative amount.');
+    }
+
+    const netValue = this.netPrice(vo);
+    const existing = await this.repo.findAllocationsByVariation(prisma, orgId, id);
+    const validation = VariationBillingAllocationPolicy.validateAllocation(netValue, existing, amount);
+    if (!validation.ok) {
+      throw new ConflictException(
+        `Cannot allocate ${amount.toFixed(2)} to variation ${vo.reference}: ${validation.reason} ` +
+          `(net ${netValue.toFixed(2)}, remaining ${validation.remainingBefore.toFixed(2)}).`,
+      );
+    }
+
+    const created = await prisma.$transaction(async (tx) => {
+      const row = await this.repo.createAllocation(tx, {
+        organizationId: orgId,
+        variationId: id,
+        amount,
+        treatment: input.treatment,
+        clientInvoiceId: input.clientInvoiceId ?? null,
+        installmentId: input.installmentId ?? null,
+        createdBy: identity.userId,
+      });
+      await this.auditOutbox.record(tx, {
+        organizationId: orgId,
+        actorUserId: identity.userId,
+        action: 'CREATE',
+        resourceType: 'VariationOrder',
+        resourceId: id,
+        sourceCommand: 'variation.allocateBilling',
+        eventType: 'VARIATION_BILLING_ALLOCATED',
+        idempotencyKey: `variation-billing-alloc-${row.id}`,
+        after: {
+          allocationId: row.id,
+          amount: amount.toFixed(2),
+          treatment: input.treatment,
+          clientInvoiceId: input.clientInvoiceId ?? null,
+          installmentId: input.installmentId ?? null,
+        },
+      });
+      return row;
+    });
+
+    const remainingAfter = validation.remainingAfter ?? new Decimal(0);
+    return {
+      allocationId: created.id,
+      variationId: id,
+      amount: amount.toFixed(2),
+      treatment: input.treatment,
+      netValue: netValue.toFixed(2),
+      remainingUnallocated: remainingAfter.toFixed(2),
+      fullyRealized: remainingAfter.isZero(),
     };
   }
 

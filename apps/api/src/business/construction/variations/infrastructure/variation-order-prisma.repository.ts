@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import type { Prisma, PrismaClient, VariationOrderStatus } from '@prisma/client';
+import type {
+  Prisma,
+  PrismaClient,
+  VariationOrderStatus,
+  VariationAllocationTreatment,
+} from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 
 type TenantPrisma = Omit<
@@ -325,5 +330,54 @@ export class VariationOrderPrismaRepository {
       isEffective: it.certificate.isEffective,
       invoicePosted: it.certificate.clientInvoice?.postingStatus === 'POSTED',
     }));
+  }
+
+  // ─── ADR-030 CONST-COM-028 (Commercial redesign P1): the variation-billing realization ledger ────
+
+  /**
+   * The signed allocation amounts already recorded against a VO, org-scoped. This is the running set
+   * the domain policy sums to compute remaining headroom before a new allocation — so a VO dollar can
+   * be billed exactly once. Ordered oldest-first for a stable, auditable read.
+   */
+  findAllocationsByVariation(
+    prisma: TenantPrisma,
+    organizationId: string,
+    variationId: string,
+  ): Promise<Array<{ id: string; amount: Decimal; treatment: VariationAllocationTreatment }>> {
+    return prisma.variationBillingAllocation.findMany({
+      where: { organizationId, variationId },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, amount: true, treatment: true },
+    }) as Promise<Array<{ id: string; amount: Decimal; treatment: VariationAllocationTreatment }>>;
+  }
+
+  /**
+   * Append one realization row to a VO's ledger. Called only inside the allocate transaction, AFTER the
+   * domain policy has validated the slice against the VO's net and existing allocations — the invariant
+   * is enforced in the service, never here (infrastructure carries no business rule).
+   */
+  createAllocation(
+    prisma: Prisma.TransactionClient,
+    data: {
+      organizationId: string;
+      variationId: string;
+      amount: Decimal;
+      treatment: VariationAllocationTreatment;
+      clientInvoiceId?: string | null;
+      installmentId?: string | null;
+      createdBy: string;
+    },
+  ) {
+    return prisma.variationBillingAllocation.create({
+      data: {
+        organizationId: data.organizationId,
+        variationId: data.variationId,
+        amount: data.amount,
+        treatment: data.treatment,
+        clientInvoiceId: data.clientInvoiceId ?? null,
+        installmentId: data.installmentId ?? null,
+        createdBy: data.createdBy,
+      },
+    });
   }
 }
