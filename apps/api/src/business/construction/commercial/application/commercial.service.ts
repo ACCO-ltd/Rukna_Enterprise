@@ -728,6 +728,14 @@ export class CommercialService {
     // chain. Branch before the application path so we never force IPA ceremony onto it.
     if (contract.billingModel === 'MILESTONE') {
       const built = await this.buildPaymentSchedule(identity, contract);
+      // CONST-COM-011 / S-SH-3: the NEXT installment's billing is gated on its linked programme
+      // milestone. When that milestone is present but not VERIFIED, "Generate invoice" is blocked —
+      // surface it as a cycle blocker (the ribbon renders the reason + a verify link derived from the
+      // installment) instead of offering a next action the API would refuse.
+      const nextInstallment = built.schedule.installments.find((i) => i.status === 'NEXT');
+      const milestoneBlocked =
+        nextInstallment?.programmeMilestone != null &&
+        nextInstallment.programmeMilestone.status !== 'VERIFIED';
       return {
         projectId,
         contract: identitySummary,
@@ -735,13 +743,13 @@ export class CommercialService {
         application: null,
         paymentSchedule: built.schedule,
         nextAction:
-          built.hasFocus && result.capabilities.canGenerateInvoice
+          built.hasFocus && result.capabilities.canGenerateInvoice && !milestoneBlocked
             ? {
                 kind: 'GENERATE_INVOICE',
                 href: `/projects/${projectId}/commercial/billing-collection`,
               }
             : null,
-        blockers: [],
+        blockers: milestoneBlocked ? ['MILESTONE_NOT_VERIFIED'] : [],
         capabilities: result.capabilities,
         responsibleRole: 'COMMERCIAL_MANAGER',
         asOf,

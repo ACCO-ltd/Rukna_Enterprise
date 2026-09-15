@@ -495,6 +495,14 @@
       "allBilledTitle": "Every installment is invoiced",
       "allBilledHint": "All {total} installments have been billed. Collection is tracked in Billing & Collection."
     },
+    "ribbon": {
+      "label": "Current commercial cycle",
+      "milestoneStage": "Milestone {n} of {total} · {name}",
+      "blocked": "Blocked: the linked milestone must be verified first",
+      "blockedNamed": "Blocked: verify “{name}”",
+      "goVerify": "Go verify",
+      "restricted": "Restricted"
+    },
     "restricted": "Restricted",
     "application": "Application {n}",
     "claimed": "Claimed",

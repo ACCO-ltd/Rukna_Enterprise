@@ -1769,6 +1769,9 @@ export type CommercialCycleBlocker =
   | 'CERTIFICATE_MISSING'
   | 'INVOICE_NOT_POSTED'
   | 'RECEIPT_WORKFLOW_UNAVAILABLE'
+  // CONST-COM-011 / ADR-030 S-SH-3: a MILESTONE contract's NEXT installment is billing-gated on a
+  // linked programme milestone that is not yet VERIFIED. The ribbon shows the reason + a verify link.
+  | 'MILESTONE_NOT_VERIFIED'
   | 'PERMISSION_REQUIRED';
 
 export interface CommercialCurrentCycleResponse {

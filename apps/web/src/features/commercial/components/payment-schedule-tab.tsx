@@ -35,7 +35,6 @@ import { useCommercialCurrentCycle } from '../hooks/use-commercial';
 import { useReplacePaymentPlan } from '../hooks/use-replace-payment-plan';
 import { isBilledInstallment } from '../presentation';
 import { CommercialActivity } from './commercial-activity';
-import { CurrentPaymentCycle } from './current-payment-cycle';
 import { PaymentSchedulePanel } from './payment-schedule-panel';
 import { AttentionList, SectionCard } from './commercial-ui';
 
@@ -109,10 +108,9 @@ export function PaymentScheduleTab({
     <div className="space-y-4">
       <SummaryStrip projectId={projectId} summary={summary} />
 
-      {/* Relocated from the retired Overview (S-SH-5): the live "what happens next to get paid"
-          card. It is an interim home — C3 lifts this into a persistent cycle ribbon across all four
-          tabs — but keeping it here means the operational cue is never lost when Overview goes. */}
-      <CurrentPaymentCycle projectId={projectId} summary={summary} />
+      {/* The interim CurrentPaymentCycle card C2 relocated here is gone (S-SH-2): the persistent
+          cycle ribbon in the workspace shell now carries "what happens next to get paid" across all
+          four tabs, so keeping a per-tab copy would duplicate the cue and let the two drift. */}
 
       {/* The ledger + generate-invoice + link-milestone + CONST-COM-011 gate, reused verbatim. */}
       <PaymentSchedulePanel projectId={projectId} contractId={contract.id} summary={summary} />

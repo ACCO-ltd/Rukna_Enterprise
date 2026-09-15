@@ -79,7 +79,8 @@ function summary(
       boqVersionNumber: 1,
       ...contract,
     },
-    // The relocated current-cycle card + attention/activity (S-SH-5) read these off the summary.
+    // The attention list + activity relocated here (S-SH-5) read these off the summary. The
+    // interim current-cycle card is gone (S-SH-2 — the workspace cycle ribbon now carries it).
     attention: [],
     recentActivity: [],
     ...overrides,
@@ -91,8 +92,8 @@ function stubCycle(installments: CommercialPaymentScheduleInstallment[]) {
     isPending: false,
     isError: false,
     data: {
-      // `stage` drives the relocated current-cycle card (S-SH-5): a MILESTONE plan reports
-      // MILESTONE_SCHEDULE, and the card renders the NEXT installment focus from that.
+      // A MILESTONE plan reports MILESTONE_SCHEDULE. The tab's summary strip + editor read the
+      // schedule off this; the "what next" cue itself now lives on the workspace cycle ribbon.
       stage: 'MILESTONE_SCHEDULE',
       nextAction: null,
       paymentSchedule: {

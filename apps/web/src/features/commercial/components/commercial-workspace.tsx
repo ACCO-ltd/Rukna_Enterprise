@@ -17,6 +17,7 @@ import {
   commercialTabsFor,
   type CommercialTab,
 } from './commercial-nav';
+import { CommercialCycleRibbon } from './commercial-cycle-ribbon';
 import { ContractSecurityTab } from './contract-security-tab';
 import { ApplicationsTab } from './applications-tab';
 import { PaymentScheduleTab } from './payment-schedule-tab';
@@ -103,6 +104,10 @@ export function CommercialWorkspace({
   return (
     <div className="space-y-5" data-commercial-root>
       <Heading />
+      {/* The persistent cycle ribbon (S-SH-2). It mounts here — once, above the view switch — so
+          "what happens next to get paid" reads the same on all four tabs. It supersedes the interim
+          CurrentPaymentCycle card C2 placed on Payment Schedule. */}
+      <CommercialCycleRibbon projectId={projectId} />
       <CommercialNav projectId={projectId} active={resolved} billingModel={billingModel} />
 
       <div>
@@ -175,9 +180,10 @@ function WorkspaceSkeleton({ label }: { label: string }) {
     <div className="space-y-5" role="status" aria-live="polite">
       <span className="sr-only">{label}</span>
       <Skeleton className="h-12 w-64" aria-hidden="true" />
+      {/* Skeletons mirror the final layout: the heading, the cycle ribbon, the view switch, then
+          the body. The slim ribbon band matches the resolved ribbon's height so nothing janks. */}
+      <Skeleton className="h-11 w-full rounded-panel" aria-hidden="true" />
       <Skeleton className="h-11 w-full" aria-hidden="true" />
-      {/* Skeletons mirror the final layout: the position strip, the cycle card, then the body. */}
-      <Skeleton className="h-24 w-full" aria-hidden="true" />
       <div className="grid gap-4 lg:grid-cols-2">
         <Skeleton className="h-64 w-full" aria-hidden="true" />
         <Skeleton className="h-64 w-full" aria-hidden="true" />
