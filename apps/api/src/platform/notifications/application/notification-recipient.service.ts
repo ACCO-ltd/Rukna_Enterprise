@@ -16,21 +16,24 @@ import type { PrismaClient, ProjectRole } from '@prisma/client';
  * questions; narrowing the audience must never touch authorization. Under-notifying is the safe direction.
  *
  * Caveat: an org finance/leadership holder who is neither in the access-bypass set nor a project member
- * (e.g. FINANCE_OFFICER, ACCOUNTANT, CFO, CEO) may receive an alert linking to a project screen they
- * cannot open. That is an access-config follow-up, not a leak here — the notification carries only a
- * contract number, stage name and day count, never an amount.
+ * (e.g. Finance & Commercial, Accounting, Management, CFO) may receive an alert linking to a project
+ * screen they cannot open. That is an access-config follow-up, not a leak here — the notification
+ * carries only a contract number, stage name and day count, never an amount.
  */
+// ACCO's ACTUAL configured Role.name values (verified against the rukna_acco tenant 2026-09-15): the
+// finance function (Finance & Commercial = receivables/collections, Accounting, CFO) + leadership
+// oversight (Management, ADMIN). Engineering / Procurement / Viewer / Governance Publisher excluded.
+// ⚠ These are CUSTOM, admin-editable names — renaming a role in Admin → Roles silently stops this filter
+// matching it. A permission-based audience (holders of receivables-management / financial-position
+// visibility) would be rename-proof; deferred as a future robustness step.
 const MONEY_NOTIFICATION_ORG_ROLES = [
-  // finance team
+  // finance function
+  'Finance & Commercial',
+  'Accounting',
   'CFO',
-  'FINANCE_OFFICER',
-  'ACCOUNTANT',
-  'FINANCE_CONTROLLER',
   // leadership / oversight
-  'CEO',
+  'Management',
   'ADMIN',
-  'ORGANIZATION_ADMINISTRATOR',
-  'EXECUTIVE_PORTFOLIO_VIEWER',
 ];
 
 const MONEY_NOTIFICATION_PROJECT_ROLES: ProjectRole[] = ['COMMERCIAL_MANAGER', 'FINANCE_REVIEWER'];
