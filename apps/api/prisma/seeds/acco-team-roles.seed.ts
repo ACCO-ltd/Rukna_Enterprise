@@ -15,8 +15,10 @@ import { PERMISSIONS, type PermissionKey } from '@erp/types';
  * project-access.service.ts `PROJECT_MEMBERSHIP_BYPASS_ROLES`), NOT through permissions:
  *   - Construction Director — runs EVERY project end-to-end (org-wide); holds construction approval
  *     authority (projects / contracts / IPA / BOQ commit). Absorbs the old Engineering + QS scope.
- *   - Project Manager — the same delivery work but ONLY on assigned projects; prepares, does not approve.
- *   - Site Engineer — execution on assigned projects; no commercial authority, no cost visibility.
+ *     Sees delivery COSTS but NOT profit/margin (Eng Ahmed, 2026-09-15).
+ *   - Project Manager — the same delivery work but ONLY on assigned projects; prepares, does not
+ *     approve. MONEY-BLIND — no contracts / IPAs / budgets / cost figures (Eng Ahmed, 2026-09-15).
+ *   - Site Engineer — execution on assigned projects; FULLY money-blind (scope + progress only).
  *   - Procurement Manager — company-wide procurement (org-wide); prepares MRs/POs/GRs, does not approve.
  *   - Finance Officer — the whole finance function (certificates, receipts, receivables, journals,
  *     accounts payable, fiscal periods, year-end); merges the old Finance & Commercial + Accounting.
@@ -57,14 +59,15 @@ const ROLES: TeamRoleSpec[] = [
       P.projectMembersManage,
       P.projectTypeManage,
       P.districtsManage,
-      // BOQ — owns it (absorbs QS): both edit halves, the cost + margin visibility tiers, and the
-      // commercial-authority acts (baseline, commit-to-contract, contingency drawdown).
+      // BOQ — owns it (absorbs QS): both edit halves, the COST visibility tier, and the
+      // commercial-authority acts (baseline, commit-to-contract, contingency drawdown). Per Eng
+      // Ahmed 2026-09-15 the Construction Director sees costs but NOT profit, so `boqViewMargin`
+      // (contract value / margin / profitability) is deliberately withheld.
       P.boqView,
       P.boqManage,
       P.boqEditScope,
       P.boqEditCost,
       P.boqViewCost,
-      P.boqViewMargin,
       P.boqBaseline,
       P.boqCommit,
       P.boqManageContingency,
@@ -77,55 +80,42 @@ const ROLES: TeamRoleSpec[] = [
       P.ipaCreate,
       P.ipaManage,
       P.ipaApprove,
-      // Cost-control context.
+      // Cost-control context (cost / budget / commitment — NOT the project P&L: `financialPositionView`
+      // is withheld because it surfaces revenue vs cost = profit; see the margin note above).
       P.projectBudgetManage,
       P.projectBudgetBaseline,
       P.clientsView,
       P.commitmentsView,
       P.procurementView,
-      P.financialPositionView,
     ],
   },
   {
     name: 'Project Manager',
-    description: 'Runs assigned projects: scope, BOQ, contracts and IPAs. Prepares — approvals sit above.',
+    description: 'Runs assigned projects: scope and progress. Money-blind — no contracts, IPAs, budgets or cost figures.',
     permissions: [
-      // Same delivery work as Construction Director but ONLY on assigned projects (NOT in the
-      // access-bypass set) and WITHOUT approval/commit authority.
+      // Delivery work on ONLY assigned projects (NOT in the access-bypass set). Per Eng Ahmed
+      // 2026-09-15 the Project Manager is MONEY-BLIND: no contracts / IPAs, no budgets, no cost or
+      // margin visibility. BOQ is scope-only — `boqView` returns quantities with money omitted, and
+      // `manage:boq` is deliberately withheld because `resolveBoqVisibility` treats it as cost view.
       P.projectsView,
       P.projectsCreate,
       P.projectsManage,
       P.projectMembersManage,
       P.boqView,
-      P.boqManage,
       P.boqEditScope,
-      P.boqEditCost,
-      P.boqViewCost,
-      P.contractsView,
-      P.contractsCreate,
-      P.contractsManage,
-      P.ipaView,
-      P.ipaCreate,
-      P.ipaManage,
-      P.projectBudgetManage,
       P.clientsView,
-      P.commitmentsView,
-      P.procurementView,
-      P.financialPositionView,
     ],
   },
   {
     name: 'Site Engineer',
-    description: 'Execution on assigned projects: records scope/progress. No commercial authority.',
+    description: 'Execution on assigned projects: records scope/progress. Money-blind — no commercial or cost visibility.',
     permissions: [
+      // Per Eng Ahmed 2026-09-15 the Site Engineer is FULLY money-blind: scope + progress only. No
+      // contracts, IPAs, commitments or procurement (all expose prices). BOQ is scope-only
+      // (`boqView` omits money server-side); scope edits only, no create/approve.
       P.projectsView,
-      // Scope/progress edits only — deliberately no cost/margin visibility and no create/approve.
       P.boqView,
       P.boqEditScope,
-      P.ipaView,
-      P.contractsView,
-      P.commitmentsView,
-      P.procurementView,
     ],
   },
   {
