@@ -1,59 +1,80 @@
 import { Injectable } from '@nestjs/common';
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient, ProjectRole } from '@prisma/client';
 
 /**
- * ADR-031 — recipient resolution for a project-scoped notification.
+ * ADR-031 — recipient resolution for a project-scoped "money you're owed" notification.
  *
- * A notification must never reach someone who could not open the screen it points at, so this reuses
- * the SAME access model as `ProjectAccessService`: a project's audience is its active members UNION the
- * holders of an org-wide bypass role (finance controller, org admin, auditor, …) who can see every
- * project without an explicit membership. Under-notifying is the safe direction; a person who can act
- * on a due stage but is not on the recipient list simply does not get a bell item — they never get one
- * for a project they cannot access.
+ * This is a NOTIFICATION AUDIENCE, not an authorization check. The alerts (stage due/overdue, client
+ * invoice overdue) are a finance concern, so the audience is deliberately narrowed to FINANCE +
+ * LEADERSHIP:
+ *   - active org-role holders in `MONEY_NOTIFICATION_ORG_ROLES` (finance team + leadership oversight), ∪
+ *   - active project members holding a finance/commercial PROJECT role (`MONEY_NOTIFICATION_PROJECT_ROLES`).
+ * Site engineers, project managers, quantity surveyors and viewers no longer receive money pings.
  *
- * The bypass set is intentionally duplicated from `ProjectAccessService` (it is a private const there).
- * Keep the two in sync — if a role is added to the authorization bypass, add it here or that role stops
- * receiving portfolio-wide notifications.
+ * These two lists are INDEPENDENT of `ProjectAccessService`'s access-bypass set — do NOT keep them in
+ * sync. Who-can-open-a-project (authorization) and who-gets-pinged-about-its-money (this) are different
+ * questions; narrowing the audience must never touch authorization. Under-notifying is the safe direction.
+ *
+ * Caveat: an org finance/leadership holder who is neither in the access-bypass set nor a project member
+ * (e.g. FINANCE_OFFICER, ACCOUNTANT, CFO, CEO) may receive an alert linking to a project screen they
+ * cannot open. That is an access-config follow-up, not a leak here — the notification carries only a
+ * contract number, stage name and day count, never an amount.
  */
-const PROJECT_MEMBERSHIP_BYPASS_ROLES = [
+const MONEY_NOTIFICATION_ORG_ROLES = [
+  // finance team
+  'CFO',
+  'FINANCE_OFFICER',
+  'ACCOUNTANT',
+  'FINANCE_CONTROLLER',
+  // leadership / oversight
+  'CEO',
   'ADMIN',
   'ORGANIZATION_ADMINISTRATOR',
   'EXECUTIVE_PORTFOLIO_VIEWER',
-  'INTERNAL_AUDITOR',
-  'FINANCE_CONTROLLER',
-  'SYSTEM_SUPPORT',
 ];
+
+const MONEY_NOTIFICATION_PROJECT_ROLES: ProjectRole[] = ['COMMERCIAL_MANAGER', 'FINANCE_REVIEWER'];
 
 @Injectable()
 export class NotificationRecipientService {
   /**
-   * The set of userIds that should receive a notification about `projectId` in `organizationId`:
-   * active project members ∪ active org bypass-role holders. `prisma` is passed in (not read from
-   * TenancyService) so the generator can call this inside its own tenant `AsyncLocalStorage` context.
+   * The set of userIds that should receive a money notification about `projectId` in `organizationId`:
+   * active project members holding a finance/commercial project role ∪ active org finance/leadership
+   * holders. `prisma` is passed in (not read from TenancyService) so the generator can call this inside
+   * its own tenant `AsyncLocalStorage` context.
    */
   async resolveForProject(
     prisma: PrismaClient,
     organizationId: string,
     projectId: string,
   ): Promise<string[]> {
-    const [members, bypassHolders] = await Promise.all([
+    const [members, orgHolders] = await Promise.all([
       prisma.projectMember.findMany({
-        where: { projectId, removedAt: null },
+        where: {
+          projectId,
+          removedAt: null,
+          roles: {
+            some: {
+              removedAt: null,
+              role: { in: MONEY_NOTIFICATION_PROJECT_ROLES },
+            },
+          },
+        },
         select: { userId: true },
       }),
-      this.resolveBypassRoleHolders(prisma, organizationId),
+      this.resolveOrgRoleHolders(prisma, organizationId),
     ]);
 
-    const recipients = new Set<string>(bypassHolders);
+    const recipients = new Set<string>(orgHolders);
     for (const member of members) recipients.add(member.userId);
     return [...recipients];
   }
 
   /**
-   * Org users holding a bypass role via an ACTIVE membership (the same authorization path login uses:
+   * Org users holding a finance/leadership role via an ACTIVE membership (the same path login uses:
    * OrganizationMembership → OrganizationMembershipRole → Role.name). Returns userIds.
    */
-  private async resolveBypassRoleHolders(
+  private async resolveOrgRoleHolders(
     prisma: PrismaClient,
     organizationId: string,
   ): Promise<string[]> {
@@ -65,7 +86,7 @@ export class NotificationRecipientService {
         roles: {
           some: {
             removedAt: null,
-            role: { name: { in: PROJECT_MEMBERSHIP_BYPASS_ROLES } },
+            role: { name: { in: MONEY_NOTIFICATION_ORG_ROLES } },
           },
         },
       },

@@ -4,9 +4,10 @@ Status: accepted
 
 <!-- ACCEPTED 2026-09-15. Owner-approved (Abdulsalam) as the "build a real notification center" option
 during the payment-schedule follow-up. First driver: payment-stage due/overdue + client-invoice
-overdue. Ships dark behind NOTIFICATIONS_GENERATION_ENABLED=false. Owed: Eng Ahmed confirms the
-recipient audience for "money you're owed" (default = project members ∪ bypass roles); production
-enablement of the flag; browser QA of the populated bell/feed against real data. -->
+overdue. DEPLOYED to prod 2026-09-15 (migration applied to rukna_acco) but ships dark behind
+NOTIFICATIONS_GENERATION_ENABLED=false. Recipient scope DECIDED 2026-09-15 (owner): finance +
+leadership, not all project members — see Decision 4. Owed: production enablement of the flag;
+browser QA of the populated bell/feed against real data. -->
 
 # In-app notifications: per-recipient persistence and scheduled derivation
 
@@ -59,13 +60,21 @@ from the platform DB, calls `resolveTenant(slug)`, and runs each org's cycle ins
 A single prod api instance (docker compose) means no multi-node cron contention, so no distributed
 lock is needed.
 
-**4. Recipients reuse the existing access model.** A project's notification fans out to the project's
-active members (`ProjectMember.removedAt IS NULL`) ∪ org holders of `PROJECT_MEMBERSHIP_BYPASS_ROLES`
-— the exact set `ProjectAccessService` already authorizes — so a notification never reaches someone
-who could not already open its source screen. The precise narrowing (all members vs. finance function
-only) for "money you're owed" is an **open domain decision for Eng Ahmed**; the safe default ships and
-narrowing later is a pure filter with no schema impact. A project-less overdue invoice has no project
-audience and is skipped rather than fanned out org-wide (under-notifying is the safe direction).
+**4. Recipients = finance + leadership, an audience independent of the access model.** A project's
+"money you're owed" notification fans out to active org holders of finance/leadership roles (`CFO`,
+`FINANCE_OFFICER`, `ACCOUNTANT`, `FINANCE_CONTROLLER`, `CEO`, `ADMIN`, `ORGANIZATION_ADMINISTRATOR`,
+`EXECUTIVE_PORTFOLIO_VIEWER`) ∪ active project members holding a finance/commercial **project** role
+(`COMMERCIAL_MANAGER`, `FINANCE_REVIEWER`); site engineers, PMs, quantity surveyors and viewers are
+excluded. This **replaced** the initial "all active members ∪ access-bypass" default (owner decision
+2026-09-15, done before the flag was ever enabled): overdue money is a finance concern, not something
+the site team needs pinged about. The two role lists live in `NotificationRecipientService` and are
+deliberately **independent** of `ProjectAccessService`'s access-bypass set — who-can-open-a-project
+(authorization) and who-is-pinged-about-its-money (this) are different questions, so they are *not*
+kept in sync. Caveat: an org finance/leadership holder who is neither in the access-bypass set nor a
+project member (e.g. `FINANCE_OFFICER`, `ACCOUNTANT`, `CFO`, `CEO`) may receive an alert linking to a
+project screen they cannot open — an access-config follow-up, not a leak (the row carries only a
+contract number, stage name and day count, never an amount). A project-less overdue invoice has no
+project audience and is skipped rather than fanned out org-wide (under-notifying is the safe direction).
 
 **5. Kinds are pluggable.** The generator loops an array of `NotificationSource` strategies. V1 covers
 `STAGE_PAYMENT_DUE` / `STAGE_PAYMENT_OVERDUE` (an ACTIVE MILESTONE installment with a `dueDate`, still
@@ -86,9 +95,10 @@ returns 404, never a 403 existence leak. Owning your own notifications is not ga
   cannot be parsed by the unit Jest config, so tests redirect `@nestjs/schedule` to a small CJS stub
   via `moduleNameMapper`; production builds use the real package and the generator body is exercised
   directly through `generateAllTenants()`.
-- **Owed:** Eng Ahmed's recipient-scope decision; enabling the flag in production; browser QA of the
-  populated bell/feed (the operational states are unit-covered, but no run has been observed against
-  real data). Guarantee-expiry and approval-assignment kinds are natural follow-ons.
+- **Owed:** enabling the flag in production; browser QA of the populated bell/feed (the operational
+  states are unit-covered, but no run has been observed against real data); the access-config
+  follow-up for org finance roles that lack project access (Decision 4 caveat). Guarantee-expiry and
+  approval-assignment kinds are natural follow-ons.
 - **Not chosen:** a shared-event/read-join model (worse hot-path queries), lazy on-read generation
   (defeats a persistent unread badge and cross-project aggregation), and building on the audit outbox
   (would require first implementing its consumer).
