@@ -1,24 +1,27 @@
 /**
  * ADR-022 — ACCO Authority Matrix, expressed as data.
  *
- * These are the role names the seeded approval chains reference. They are a **starting set**, not a
- * fixed list: roles live in the per-org Role registry and more can be added in Settings when the
- * org needs them. Role *assignment* (who holds CFO) is org data, not seeded here.
+ * These are the role names the seeded approval chains reference. The string VALUES are the friendly
+ * `Role.name` values of ACCO's assignable roles (revised 2026-09-15), so an approval step's
+ * `roleRequired` resolves against a real holder's JWT roles once the (currently dormant) engine is
+ * activated. Keys stay SCREAMING_SNAKE for stable references; only the values are the display names.
+ * Role *assignment* (who holds CFO) is org data, not seeded here.
  *
- * Confirmed with ACCO 2026-08-22 (revises the original CONST-DOA-001 list): the procurement role is
- * **Procurement Manager** (not Officer); there is **no Store Keeper** and **no Quantity Surveyor**
- * role; the apex is **CEO** (not Group CEO) with **no Board Chairman**.
+ * Revised scheme: the old `ACCOUNTANT` tier is merged into `Finance Officer` (removed here), and the
+ * seeds' former `COMMERCIAL_MANAGER` step maps to `Construction Director` (which absorbs the QS /
+ * commercial function) — both PROVISIONAL pending Eng Ahmed's confirmation of the final chains.
+ * Because the engine is dormant they change no live decision; a renamed step may leave two adjacent
+ * identical approvers until the chain is re-cut.
  */
 export const ACCO_ROLES = {
-  CONSTRUCTION_DIRECTOR: 'CONSTRUCTION_DIRECTOR', // org-wide construction lead + Department Head; owns BOQ (absorbs QS)
-  PROJECT_MANAGER: 'PROJECT_MANAGER', // single project authority (Project Engineer / Manager / Coordinator)
-  SITE_ENGINEER: 'SITE_ENGINEER',
-  PROCUREMENT_MANAGER: 'PROCUREMENT_MANAGER', // runs procurement (also covers stores — no separate Store Keeper role)
-  ACCOUNTANT: 'ACCOUNTANT',
-  FINANCE_OFFICER: 'FINANCE_OFFICER', // the Finance ladder's middle tier (Accountant → Finance Officer → CFO)
+  CONSTRUCTION_DIRECTOR: 'Construction Director', // org-wide construction lead; owns BOQ (absorbs QS/commercial)
+  PROJECT_MANAGER: 'Project Manager', // single-project authority
+  SITE_ENGINEER: 'Site Engineer',
+  PROCUREMENT_MANAGER: 'Procurement Manager', // runs company-wide procurement (also covers stores)
+  FINANCE_OFFICER: 'Finance Officer', // the whole finance function (merges the old Accountant + Finance Officer)
   CFO: 'CFO',
   CEO: 'CEO', // apex approver
-  SYSTEM_ADMINISTRATOR: 'SYSTEM_ADMINISTRATOR', // no business-transaction approval authority
+  SYSTEM_ADMINISTRATOR: 'SYSTEM_ADMINISTRATOR', // sentinel — no approval authority; never assigned to a holder
 } as const;
 
 export type AccoRole = (typeof ACCO_ROLES)[keyof typeof ACCO_ROLES];

@@ -52,15 +52,17 @@ describe('ProjectAccessService authorization policy', () => {
   });
 
   describe('scopedUserId', () => {
-    it('returns undefined for bypass roles', () => {
+    it('returns undefined for org-wide bypass roles (leadership + finance/procurement)', () => {
       expect(service.scopedUserId(identity(['ADMIN']))).toBeUndefined();
-      expect(service.scopedUserId(identity(['FINANCE_CONTROLLER']))).toBeUndefined();
-      expect(service.scopedUserId(identity(['INTERNAL_AUDITOR']))).toBeUndefined();
+      expect(service.scopedUserId(identity(['Finance Officer']))).toBeUndefined();
+      expect(service.scopedUserId(identity(['Construction Director']))).toBeUndefined();
+      expect(service.scopedUserId(identity(['Procurement Manager']))).toBeUndefined();
     });
 
-    it('returns the userId for regular users', () => {
+    it('returns the userId for assigned-only roles (Project Manager, Site Engineer)', () => {
       expect(service.scopedUserId(identity())).toBe('user-1');
-      expect(service.scopedUserId(identity(['PROJECT_MANAGER']))).toBe('user-1');
+      expect(service.scopedUserId(identity(['Project Manager']))).toBe('user-1');
+      expect(service.scopedUserId(identity(['Site Engineer']))).toBe('user-1');
     });
   });
 });

@@ -46,13 +46,10 @@ export interface FileOwnership {
   owners: FileOwner[];
 }
 
-/** Roles that already bypass project membership elsewhere may also reach an unowned upload. */
-const UNOWNED_FILE_BYPASS_ROLES = new Set([
-  'ADMIN',
-  'ORGANIZATION_ADMINISTRATOR',
-  'SYSTEM_SUPPORT',
-  'INTERNAL_AUDITOR',
-]);
+// An unowned upload is a temporary file not yet bound to any record. Reaching one that isn't yours
+// is an administrative/support act, so this stays deliberately narrow — only platform ADMIN, not
+// the broader project-membership bypass set. (The old dev-vocabulary names matched no real role.)
+const UNOWNED_FILE_BYPASS_ROLES = new Set(['ADMIN']);
 
 @Injectable()
 export class FileAuthorizationService {

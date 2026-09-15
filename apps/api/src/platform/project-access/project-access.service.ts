@@ -3,13 +3,19 @@ import type { RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../tenancy/tenancy.service.js';
 
+// Org roles that see EVERY project (no project-membership filter): platform admin, leadership, and
+// the org-wide finance/procurement functions. Everyone else (Project Manager, Site Engineer) is
+// scoped to the projects they are a member of. These are the friendly `Role.name` values of ACCO's
+// scheme — the "manages all vs assigned" distinction is THIS set, not a permission. ⚠ renaming one
+// of these roles in Admin → Roles silently drops it from the bypass; a permission-based check would
+// be rename-proof (deferred). Keep in step with the notification audience only by intent, not code.
 const PROJECT_MEMBERSHIP_BYPASS_ROLES = new Set([
   'ADMIN',
-  'ORGANIZATION_ADMINISTRATOR',
-  'EXECUTIVE_PORTFOLIO_VIEWER',
-  'INTERNAL_AUDITOR',
-  'FINANCE_CONTROLLER',
-  'SYSTEM_SUPPORT',
+  'CEO',
+  'CFO',
+  'Construction Director',
+  'Procurement Manager',
+  'Finance Officer',
 ]);
 
 @Injectable()
