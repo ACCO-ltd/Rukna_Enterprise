@@ -46,14 +46,12 @@ const AUTO_MAP: Record<string, string> = {
   Accounting: 'Finance Officer',
 };
 
-// Old roles whose successor differs per person — an explicit `--mapping` is required for each holder.
-const AMBIGUOUS: Record<string, string[]> = {
-  Engineering: ['Construction Director', 'Project Manager', 'Site Engineer'],
-  Management: ['CEO', 'CFO', 'Construction Director'],
-  Viewer: ['Site Engineer'], // or dropped entirely via --drop-viewers
-};
+// Old roles whose successor differs per person — an explicit `--mapping` is required for each holder
+// (the valid successors are documented in the header above); Viewer may instead be dropped via
+// --drop-viewers. Only the names matter here — they gate which held roles are treated as deprecated.
+const AMBIGUOUS = new Set(['Engineering', 'Management', 'Viewer']);
 
-const DEPRECATED_ROLES = new Set([...Object.keys(AUTO_MAP), ...Object.keys(AMBIGUOUS)]);
+const DEPRECATED_ROLES = new Set([...Object.keys(AUTO_MAP), ...AMBIGUOUS]);
 
 // Every valid destination role name (the 5 custom + governed ADMIN/CEO/CFO). Guards typos in --mapping.
 const NEW_ROLE_NAMES = new Set([
@@ -253,7 +251,7 @@ async function main(): Promise<void> {
 
       console.log(`\nDone — re-mapped ${moved} user(s).`);
       console.log(
-        'The superseded roles (Management/Engineering/Accounting/Finance & Commercial/Viewer) should now ' +
+        `The superseded roles (${[...DEPRECATED_ROLES].join(', ')}) should now ` +
           'have zero live assignments and can be deleted.',
       );
     } finally {
