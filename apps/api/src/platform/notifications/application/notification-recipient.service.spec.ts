@@ -45,20 +45,19 @@ describe('NotificationRecipientService.resolveForProject', () => {
     const where = organizationMembershipFindMany.mock.calls[0][0].where;
     expect(where).toMatchObject({ organizationId: ORG, status: 'ACTIVE', removedAt: null });
     expect(where.roles.some.removedAt).toBeNull();
+    // ACCO's ACTUAL configured Role.name values (verified against the rukna_acco tenant), NOT the
+    // dev-seed vocabulary — matching these exactly is what keeps finance from silently getting nothing.
     expect(where.roles.some.role.name.in).toEqual([
+      'Finance & Commercial',
+      'Accounting',
       'CFO',
-      'FINANCE_OFFICER',
-      'ACCOUNTANT',
-      'FINANCE_CONTROLLER',
-      'CEO',
+      'Management',
       'ADMIN',
-      'ORGANIZATION_ADMINISTRATOR',
-      'EXECUTIVE_PORTFOLIO_VIEWER',
     ]);
-    // The narrowing's whole point: operational roles are excluded org-wide too.
-    expect(where.roles.some.role.name.in).not.toContain('SITE_ENGINEER');
-    expect(where.roles.some.role.name.in).not.toContain('PROCUREMENT_MANAGER');
-    expect(where.roles.some.role.name.in).not.toContain('CONSTRUCTION_DIRECTOR');
+    // The narrowing's whole point: operational / non-finance roles are excluded org-wide too.
+    expect(where.roles.some.role.name.in).not.toContain('Engineering');
+    expect(where.roles.some.role.name.in).not.toContain('Procurement');
+    expect(where.roles.some.role.name.in).not.toContain('Viewer');
   });
 
   it('returns the deduped union of project members and org holders', async () => {
