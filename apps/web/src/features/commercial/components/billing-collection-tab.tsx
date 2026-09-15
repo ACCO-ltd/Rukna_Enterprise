@@ -20,6 +20,8 @@ import {
 } from '@erp/ui';
 import type {
   CommercialAgingBucket,
+  CommercialBillingPackage,
+  CommercialBillingPackageInvoice,
   CommercialBillingResponse,
   CommercialInvoiceRow,
   CommercialReceiptRow,
@@ -29,7 +31,7 @@ import type {
 import { EmptyState } from '@/components/empty-state';
 import { formatDate, formatMoney } from '@/lib/format';
 
-import { useCommercialBilling } from '../hooks/use-commercial';
+import { useBillingPackages, useCommercialBilling } from '../hooks/use-commercial';
 import { invoiceStatusTone } from '../presentation';
 import { PositionBand, type PositionFigure } from './contract-position';
 import { CashflowChart } from './cashflow-chart';
@@ -112,6 +114,15 @@ export function BillingCollectionTab({
         <AgingPanel billing={billing} />
         <UnappliedPanel billing={billing} />
       </div>
+
+      {/* The grouped stage story (S-VB-7): each milestone stage with its milestone invoice and the
+          variations billed alongside it. It precedes the flat invoice/receipt audit tables below
+          because the reader wants "what did this stage bill" before the document-by-document list. */}
+      <BillingPackagesPanel
+        projectId={projectId}
+        contractId={contract.id}
+        currency={summary.currency ?? contract.currency}
+      />
 
       <InvoicesPanel billing={billing} />
       <ReceiptsPanel billing={billing} />
@@ -239,6 +250,154 @@ function CashflowPanel({ billing }: { billing: CommercialBillingResponse }) {
         />
       )}
     </SectionCard>
+  );
+}
+
+// ─── Billing Packages (S-VB-7) ────────────────────────────────────────────────────
+
+/**
+ * Stage billing — each milestone stage told as a group.
+ *
+ * A Billing Package answers "what did this stage bill" in one block: the milestone invoice, then
+ * every variation billed alongside it (an addition on its own invoice; an omission netted into the
+ * stage, so it has no separate invoice), then the presented total (milestone + Σ addition invoices;
+ * an omission is not counted again). The panel is absent entirely when there are no packages — a
+ * MEASURED_IPC contract has none, and an empty "Stage billing" card would be noise, not information.
+ *
+ * Money is redacted (RESTRICTED, never $0) whenever `financialsVisible === false`, mirroring the
+ * money-null pattern the rest of this screen uses.
+ */
+function BillingPackagesPanel({
+  projectId,
+  contractId,
+  currency,
+}: {
+  projectId: string;
+  contractId: string;
+  currency: string | null;
+}) {
+  const t = useTranslations('commercial.billing.packages');
+  const query = useBillingPackages(projectId, contractId);
+
+  // Silent while loading and on error — this is a supplementary grouping over invoices that are
+  // already shown in full in the audit tables below, so it must never take the screen down.
+  const data = query.data;
+  if (!data || data.packages.length === 0) return null;
+
+  return (
+    <SectionCard title={t('title')} bodyClassName="px-0 py-0">
+      <ul className="divide-y divide-border">
+        {data.packages.map((pkg) => (
+          <BillingPackageBlock
+            key={pkg.installmentId}
+            pkg={pkg}
+            financialsVisible={data.financialsVisible}
+            currency={currency}
+          />
+        ))}
+      </ul>
+    </SectionCard>
+  );
+}
+
+function BillingPackageBlock({
+  pkg,
+  financialsVisible,
+  currency,
+}: {
+  pkg: CommercialBillingPackage;
+  financialsVisible: boolean;
+  currency: string | null;
+}) {
+  const t = useTranslations('commercial.billing.packages');
+  const tState = useTranslations('commercial.metricState');
+  const locale = useLocale() as 'en' | 'ar';
+
+  // Money is redacted (RESTRICTED, never $0) when the caller cannot view financials.
+  const money = (value: string | null) =>
+    !financialsVisible
+      ? tState('RESTRICTED')
+      : value === null
+        ? '—'
+        : (formatMoney(value, currency, locale) ?? '—');
+
+  return (
+    <li className="px-4 py-3 sm:px-5">
+      <p className="text-body-sm font-semibold text-foreground">
+        {t('stageTitle', { name: pkg.installmentName })}
+      </p>
+
+      <ul className="mt-2 space-y-1.5">
+        {/* The milestone invoice line — always the first line of the stage story. */}
+        {pkg.milestoneInvoice ? (
+          <PackageLine
+            label={t('milestone')}
+            invoice={pkg.milestoneInvoice}
+            amount={pkg.milestoneInvoice.totalAmount}
+            money={money}
+            statusLabel={pkg.milestoneInvoice.invoiceNumber ?? t('unnumbered')}
+          />
+        ) : null}
+
+        {/* Then each variation billed alongside it. An addition links to its own invoice; an
+            omission has no separate invoice (it lives on the milestone stage), so it shows its
+            treatment label instead of a number. */}
+        {pkg.variationLines.map((line) => (
+          <PackageLine
+            key={line.variationId}
+            label={`${line.reference} — ${line.title}`}
+            invoice={line.treatment === 'INVOICE' ? line.invoice : null}
+            amount={line.allocationAmount}
+            money={money}
+            statusLabel={
+              line.treatment === 'INVOICE'
+                ? (line.invoice?.invoiceNumber ?? t('unnumbered'))
+                : t(`treatment.${line.treatment}`)
+            }
+          />
+        ))}
+      </ul>
+
+      <p className="mt-2 flex items-baseline justify-between gap-3 border-t border-border/70 pt-2">
+        <span className="text-caption font-medium text-muted-foreground">{t('presentedTotal')}</span>
+        <LtrValue className="text-body-sm font-semibold tabular-nums text-foreground">
+          {money(pkg.presentedTotal)}
+        </LtrValue>
+      </p>
+    </li>
+  );
+}
+
+function PackageLine({
+  label,
+  invoice,
+  amount,
+  money,
+  statusLabel,
+}: {
+  label: string;
+  invoice: CommercialBillingPackageInvoice | null;
+  amount: string | null;
+  money: (value: string | null) => string;
+  statusLabel: string;
+}) {
+  return (
+    <li className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-caption">
+      <span className="min-w-0 flex-1 truncate text-muted-foreground">{label}</span>
+      <span className="flex shrink-0 items-baseline gap-2">
+        {invoice ? (
+          <Link
+            href={`/finance/accounting/invoices/${invoice.id}`}
+            className="font-medium text-brand-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
+          >
+            <LtrValue>{statusLabel}</LtrValue>
+          </Link>
+        ) : (
+          <span className="text-muted-foreground">{statusLabel}</span>
+        )}
+        <LtrValue className="tabular-nums text-foreground">{money(amount)}</LtrValue>
+      </span>
+    </li>
   );
 }
 

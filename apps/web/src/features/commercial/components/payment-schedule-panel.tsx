@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, CalendarClock, Ban } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
@@ -8,11 +8,13 @@ import type {
   CommercialPaymentScheduleInstallment,
   CommercialSummaryResponse,
   ProgrammeMilestoneResponse,
+  VariationOrderListItem,
 } from '@erp/types';
 import {
   Alert,
   Badge,
   Button,
+  Checkbox,
   DatePicker,
   Dialog,
   DialogContent,
@@ -39,11 +41,8 @@ import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 import { useDialogDismissGuard } from '@/lib/use-dialog-dismiss-guard';
 
-import { useCommercialCurrentCycle } from '../hooks/use-commercial';
-import {
-  useGenerateInvoiceFromInstallment,
-  useSetInstallmentMilestone,
-} from '../hooks/use-payment-schedule';
+import { useBillingPackages, useCommercialCurrentCycle, useVariations } from '../hooks/use-commercial';
+import { useBillStage, useSetInstallmentMilestone } from '../hooks/use-payment-schedule';
 import { isBilledInstallment, paymentInstallmentTone } from '../presentation';
 import { errorText } from './commercial-workspace';
 
@@ -181,8 +180,10 @@ export function PaymentSchedulePanel({
       )}
 
       {invoicing ? (
-        <GenerateInvoiceDialog
+        <BillStageDialog
           projectId={projectId}
+          contractId={contractId}
+          summary={summary}
           installment={invoicing}
           onDismiss={() => setInvoicing(null)}
         />
@@ -259,7 +260,7 @@ function InstallmentRow({
               // the disabled state is self-explanatory rather than a bare, unexplained control.
               title={blocked ? t('paymentSchedule.milestone.blockedHint') : undefined}
             >
-              {t('paymentSchedule.generate')}
+              {t('paymentSchedule.billStage')}
             </Button>
             {/* CONST-COM-025 / S-PS-1: the gate's reason and its remediation live on the row itself —
                 "⛔ Verify "<milestone>" →" links straight into Programme & Progress (the same target
@@ -339,17 +340,42 @@ function MilestoneCell({
   );
 }
 
-function GenerateInvoiceDialog({
+/**
+ * "Bill this stage" (S-VB-11 / ADR-030 CD10).
+ *
+ * One billing path. It always bills the milestone installment; when the contract has eligible
+ * client-approved variations it also offers to bill each of them in the same command — additions
+ * on their own standalone invoice, an omission netted into this stage.
+ *
+ * **Eligible VO** = `CLIENT_APPROVED` AND not already allocated on any prior stage. The
+ * already-allocated set is every VO that appears in the Billing Packages read — a VO billed on an
+ * earlier stage is done and must not be offered again (the server would idempotently skip it, but
+ * showing it would misrepresent it as still-billable).
+ *
+ * The summary is **indicative**: a running sum of the server's own decimal strings
+ * (`installment.amount` + Σ included VO `netPrice`, omissions subtract via their negative net),
+ * before Sales Tax. It exists to make the include/defer toggles legible, not to assert a figure —
+ * the authoritative numbers live on the generated invoices, so it is labelled as indicative and
+ * the frontend computes no tax.
+ */
+function BillStageDialog({
   projectId,
+  contractId,
+  summary,
   installment,
   onDismiss,
 }: {
   projectId: string;
+  contractId: string;
+  summary: CommercialSummaryResponse;
   installment: Installment;
   onDismiss: () => void;
 }) {
   const t = useTranslations('commercial');
-  const generate = useGenerateInvoiceFromInstallment(projectId);
+  const locale = useLocale() as 'en' | 'ar';
+  const bill = useBillStage(projectId);
+  const variationsQuery = useVariations(contractId);
+  const packagesQuery = useBillingPackages(projectId, contractId);
 
   const today = new Date().toISOString().slice(0, 10);
   const [invoiceDate, setInvoiceDate] = useState(today);
@@ -361,73 +387,166 @@ function GenerateInvoiceDialog({
   });
   const [paymentTerms, setPaymentTerms] = useState('');
 
-  const dismissGuard = useDialogDismissGuard(generate.isPending, onDismiss);
+  // The VOs that are still available to bill on this stage. A VO already present in ANY billing
+  // package (with any allocation) has been realized on a prior stage and is excluded.
+  const eligible = useMemo<VariationOrderListItem[]>(() => {
+    const variations = variationsQuery.data?.variations ?? [];
+    const allocated = new Set(
+      (packagesQuery.data?.packages ?? [])
+        .flatMap((p) => p.variationLines)
+        .map((l) => l.variationId),
+    );
+    return variations.filter((vo) => vo.status === 'CLIENT_APPROVED' && !allocated.has(vo.id));
+  }, [variationsQuery.data, packagesQuery.data]);
+
+  // Include/defer per eligible VO — default INCLUDE. Keyed by id; unknown ids (none yet fetched)
+  // fall back to included, so the summary is correct before the first toggle.
+  const [included, setIncluded] = useState<Record<string, boolean>>({});
+  const isIncluded = (id: string) => included[id] ?? true;
+
+  // Indicative running sum of the server's decimal strings. NOT a re-derivation of a money rule —
+  // just the stage amount plus each included VO's signed net, for the reader to see the direction.
+  const includedVos = eligible.filter((vo) => isIncluded(vo.id));
+  const deferredCount = eligible.length - includedVos.length;
+  const indicativeTotal =
+    Number(installment.amount ?? 0) +
+    includedVos.reduce((sum, vo) => sum + Number(vo.netPrice ?? 0), 0);
+  const indicativeText = summary.financialsVisible
+    ? (formatMoney(String(indicativeTotal), summary.currency, locale) ?? '—')
+    : t('metricState.restricted');
+
+  const dismissGuard = useDialogDismissGuard(bill.isPending, onDismiss);
+
+  const submit = () =>
+    bill.mutate(
+      {
+        installmentId: installment.id,
+        invoiceDate,
+        dueDate,
+        ...(paymentTerms.trim() ? { paymentTerms: paymentTerms.trim() } : {}),
+        variations: eligible.map((vo) => ({ variationId: vo.id, include: isIncluded(vo.id) })),
+      },
+      { onSuccess: onDismiss },
+    );
 
   return (
     <Dialog open onOpenChange={dismissGuard.onOpenChange}>
       <DialogContent {...dismissGuard.contentProps}>
-        <DialogTitle>
-          {t('paymentSchedule.generateDialog.title', { name: installment.name })}
-        </DialogTitle>
-        <DialogDescription>{t('paymentSchedule.generateDialog.hint')}</DialogDescription>
+        <DialogTitle>{t('paymentSchedule.billDialog.title', { name: installment.name })}</DialogTitle>
+        <DialogDescription>{t('paymentSchedule.billDialog.hint')}</DialogDescription>
 
-        {generate.isError ? (
+        {bill.isError ? (
           <div className="mt-4">
             <Alert
               variant="error"
               messages={[
-                generate.error instanceof ApiError
-                  ? generate.error.message
-                  : t('paymentSchedule.generateDialog.failed'),
+                bill.error instanceof ApiError
+                  ? bill.error.message
+                  : t('paymentSchedule.billDialog.failed'),
               ]}
             />
           </div>
         ) : null}
 
         <div className="mt-4 space-y-3">
-          <FormField htmlFor="inst-invoice-date" label={t('paymentSchedule.generateDialog.invoiceDate')}>
+          <FormField htmlFor="inst-invoice-date" label={t('paymentSchedule.billDialog.invoiceDate')}>
             <DatePicker
               id="inst-invoice-date"
               value={invoiceDate}
               onChange={(value) => setInvoiceDate(value)}
             />
           </FormField>
-          <FormField htmlFor="inst-due-date" label={t('paymentSchedule.generateDialog.dueDate')}>
-            <DatePicker
-              id="inst-due-date"
-              value={dueDate}
-              onChange={(value) => setDueDate(value)}
-            />
+          <FormField htmlFor="inst-due-date" label={t('paymentSchedule.billDialog.dueDate')}>
+            <DatePicker id="inst-due-date" value={dueDate} onChange={(value) => setDueDate(value)} />
           </FormField>
-          <FormField htmlFor="inst-terms" label={t('paymentSchedule.generateDialog.paymentTerms')}>
+          <FormField htmlFor="inst-terms" label={t('paymentSchedule.billDialog.paymentTerms')}>
             <Input
               id="inst-terms"
               value={paymentTerms}
-              placeholder={t('paymentSchedule.generateDialog.paymentTermsPlaceholder')}
+              placeholder={t('paymentSchedule.billDialog.paymentTermsPlaceholder')}
               onChange={(e) => setPaymentTerms(e.target.value)}
             />
           </FormField>
         </div>
 
+        {/* Eligible variations. Absent this section the dialog is exactly the old single-invoice
+            flow — one billing path, degrading gracefully when there is nothing extra to bill. */}
+        {eligible.length > 0 ? (
+          <div className="mt-4 space-y-2 rounded-panel border border-border p-3">
+            <p className="text-body-sm font-semibold text-foreground">
+              {t('paymentSchedule.billDialog.variationsTitle')}
+            </p>
+            <p className="text-caption text-muted-foreground">
+              {t('paymentSchedule.billDialog.variationsHint')}
+            </p>
+            <ul className="divide-y divide-border/70">
+              {eligible.map((vo) => {
+                const isOmission = Number(vo.netPrice ?? 0) < 0;
+                return (
+                  <li
+                    key={vo.id}
+                    className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2"
+                  >
+                    <label
+                      htmlFor={`bill-vo-${vo.id}`}
+                      className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-start gap-2.5 sm:min-h-0"
+                    >
+                      <Checkbox
+                        id={`bill-vo-${vo.id}`}
+                        className="mt-0.5"
+                        checked={isIncluded(vo.id)}
+                        onChange={(e) =>
+                          setIncluded((prev) => ({ ...prev, [vo.id]: e.target.checked }))
+                        }
+                      />
+                      <span className="min-w-0">
+                        <span className="flex flex-wrap items-baseline gap-x-2">
+                          <span className="font-mono text-caption text-muted-foreground">
+                            {vo.reference}
+                          </span>
+                          <span className="text-body-sm font-medium text-foreground">{vo.title}</span>
+                        </span>
+                        <span className="mt-0.5 block text-caption text-muted-foreground">
+                          {isOmission
+                            ? t('paymentSchedule.billDialog.omissionCaption')
+                            : t('paymentSchedule.billDialog.additionCaption')}
+                        </span>
+                      </span>
+                    </label>
+                    <span className="shrink-0 tabular-nums text-body-sm text-foreground">
+                      {summary.financialsVisible
+                        ? (formatMoney(vo.netPrice, summary.currency, locale) ?? '—')
+                        : t('metricState.restricted')}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="border-t border-border pt-2">
+              <p className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                <span className="text-caption text-muted-foreground">
+                  {t('paymentSchedule.billDialog.indicativeLabel')}
+                </span>
+                <span className="tabular-nums text-body-sm font-semibold text-foreground">
+                  {indicativeText}
+                </span>
+              </p>
+              <p className="mt-0.5 text-caption text-muted-foreground">
+                {t('paymentSchedule.billDialog.indicativeNote')}
+                {deferredCount > 0
+                  ? ` · ${t('paymentSchedule.billDialog.deferred', { n: deferredCount })}`
+                  : ''}
+              </p>
+            </div>
+          </div>
+        ) : null}
+
         <DialogFooter>
-          <Button
-            onClick={() =>
-              generate.mutate(
-                {
-                  installmentId: installment.id,
-                  invoiceDate,
-                  dueDate,
-                  ...(paymentTerms.trim() ? { paymentTerms: paymentTerms.trim() } : {}),
-                },
-                { onSuccess: onDismiss },
-              )
-            }
-            disabled={generate.isPending || !invoiceDate || !dueDate}
-          >
-            {t('paymentSchedule.generateDialog.submit')}
+          <Button onClick={submit} disabled={bill.isPending || !invoiceDate || !dueDate}>
+            {t('paymentSchedule.billDialog.submit')}
           </Button>
-          <Button variant="outline" onClick={onDismiss} disabled={generate.isPending}>
-            {t('paymentSchedule.generateDialog.cancel')}
+          <Button variant="outline" onClick={onDismiss} disabled={bill.isPending}>
+            {t('paymentSchedule.billDialog.cancel')}
           </Button>
         </DialogFooter>
       </DialogContent>

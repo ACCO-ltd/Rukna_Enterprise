@@ -87,12 +87,12 @@ describe('CertifiedInvoicedByVariationSection — base + per-VO + total', () => 
     expect(screen.queryByText('Restricted')).not.toBeInTheDocument();
   });
 
-  it('labels the figures ex-VAT so they are not read as the invoice total', () => {
+  it('labels the figures before Sales Tax so they are not read as the invoice total', () => {
     stub(response());
     renderWithProviders(<CertifiedInvoicedByVariationSection contractId="c-1" />, {
       permissions: ['view:contract', 'view:financial-position'],
     });
-    expect(screen.getByText(/ex-VAT/i)).toBeInTheDocument();
+    expect(screen.getByText(/before tax/i)).toBeInTheDocument();
   });
 });
 

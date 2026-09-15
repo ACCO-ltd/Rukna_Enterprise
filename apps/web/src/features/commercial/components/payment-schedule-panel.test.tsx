@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type {
+  CommercialBillingPackagesResponse,
   CommercialCurrentCycleResponse,
   CommercialPaymentScheduleInstallment,
   CommercialSummaryResponse,
+  VariationOrderListItem,
+  VariationOrderListResponse,
 } from '@erp/types';
 
 import { renderWithProviders } from '@/test/render';
+import { ApiError } from '@/lib/api-client';
 import * as commercialHooks from '../hooks/use-commercial';
 import * as scheduleHooks from '../hooks/use-payment-schedule';
 import * as programmeHooks from '@/features/programme/hooks/use-programme';
@@ -15,13 +20,27 @@ import { PaymentSchedulePanel } from './payment-schedule-panel';
 
 vi.mock('../hooks/use-commercial', () => ({
   useCommercialCurrentCycle: vi.fn(),
+  useVariations: vi.fn(),
+  useBillingPackages: vi.fn(),
 }));
 vi.mock('../hooks/use-payment-schedule', () => ({
-  useGenerateInvoiceFromInstallment: vi.fn(),
+  useBillStage: vi.fn(),
   useSetInstallmentMilestone: vi.fn(),
 }));
 vi.mock('@/features/programme/hooks/use-programme', () => ({
   useMilestones: vi.fn(),
+}));
+
+vi.mock('next/link', () => ({
+  default: ({
+    href,
+    children,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
 }));
 
 function installment(
@@ -82,22 +101,77 @@ function stubCycle(installments: CommercialPaymentScheduleInstallment[]) {
   } as unknown as ReturnType<typeof commercialHooks.useCommercialCurrentCycle>);
 }
 
+function variation(overrides: Partial<VariationOrderListItem> = {}): VariationOrderListItem {
+  return {
+    id: 'vo-1',
+    contractId: 'c-1',
+    reference: 'VO-001',
+    status: 'CLIENT_APPROVED',
+    title: 'Additional foundations',
+    description: null,
+    proposedTimeImpactDays: null,
+    netPrice: '50000.00',
+    lineCount: 1,
+    atRiskAuthorisationCount: 0,
+    atRiskExposure: '0.00',
+    createdBy: 'u-1',
+    submittedBy: null,
+    submittedAt: null,
+    internalApprovedBy: null,
+    internalApprovedAt: null,
+    clientApprovedBy: null,
+    clientApprovedAt: null,
+    clientApprovalReference: null,
+    rejectedBy: null,
+    rejectedAt: null,
+    reason: null,
+    appliedToBoq: false,
+    boqNodeCount: 0,
+    boqAppliedAt: null,
+    boqAppliedVersionId: null,
+    createdAt: '2026-08-01T00:00:00.000Z',
+    updatedAt: '2026-08-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+/** Stub the two dialog reads: eligible variations come from the list minus anything already packaged. */
+function stubBillStageReads(
+  variations: VariationOrderListItem[] = [],
+  packages: CommercialBillingPackagesResponse['packages'] = [],
+) {
+  vi.mocked(commercialHooks.useVariations).mockReturnValue({
+    isPending: false,
+    isError: false,
+    data: { contractId: 'c-1', variations } as VariationOrderListResponse,
+    refetch: vi.fn(),
+  } as unknown as ReturnType<typeof commercialHooks.useVariations>);
+  vi.mocked(commercialHooks.useBillingPackages).mockReturnValue({
+    isPending: false,
+    isError: false,
+    data: { contractId: 'c-1', financialsVisible: true, packages },
+    refetch: vi.fn(),
+  } as unknown as ReturnType<typeof commercialHooks.useBillingPackages>);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(programmeHooks.useMilestones).mockReturnValue({
     isPending: false,
     data: [],
   } as unknown as ReturnType<typeof programmeHooks.useMilestones>);
-  vi.mocked(scheduleHooks.useGenerateInvoiceFromInstallment).mockReturnValue({
+  vi.mocked(scheduleHooks.useBillStage).mockReturnValue({
     mutate: vi.fn(),
     isPending: false,
     isError: false,
-  } as unknown as ReturnType<typeof scheduleHooks.useGenerateInvoiceFromInstallment>);
+  } as unknown as ReturnType<typeof scheduleHooks.useBillStage>);
   vi.mocked(scheduleHooks.useSetInstallmentMilestone).mockReturnValue({
     mutate: vi.fn(),
     isPending: false,
     isError: false,
   } as unknown as ReturnType<typeof scheduleHooks.useSetInstallmentMilestone>);
+  // Default: no eligible variations, no prior packages — the dialog degrades to date fields only.
+  stubBillStageReads([], []);
 });
 
 function renderPanel(
@@ -182,7 +256,7 @@ describe('PaymentSchedulePanel — row-level milestone gate (S-PS-1 / CONST-COM-
       }),
     ]);
 
-    const generate = screen.getByRole('button', { name: 'Generate invoice' });
+    const generate = screen.getByRole('button', { name: 'Bill this stage' });
     expect(generate).toBeDisabled();
     // The disabled control is not bare: the reason (with its remediation link) sits on the same row.
     expect(screen.getByRole('link', { name: /Verify “Partition complete”/i })).toBeInTheDocument();
@@ -198,7 +272,7 @@ describe('PaymentSchedulePanel — row-level milestone gate (S-PS-1 / CONST-COM-
       }),
     ]);
 
-    expect(screen.getByRole('button', { name: 'Generate invoice' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Bill this stage' })).toBeEnabled();
     expect(screen.queryByRole('link', { name: /^Verify/i })).not.toBeInTheDocument();
   });
 
@@ -207,7 +281,143 @@ describe('PaymentSchedulePanel — row-level milestone gate (S-PS-1 / CONST-COM-
       installment({ id: 'unlinked', status: 'NEXT', triggerType: 'MILESTONE', programmeMilestone: null }),
     ]);
 
-    expect(screen.getByRole('button', { name: 'Generate invoice' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Bill this stage' })).toBeEnabled();
     expect(screen.queryByRole('link', { name: /^Verify/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('PaymentSchedulePanel — BillStageDialog (S-VB-11)', () => {
+  /** A NEXT, ungated installment whose "Bill this stage" button opens the dialog. */
+  function nextInstallment() {
+    return installment({
+      id: 'next',
+      name: 'Structure payment',
+      status: 'NEXT',
+      triggerType: 'MILESTONE',
+      amount: '300000.00',
+      programmeMilestone: null,
+    });
+  }
+
+  async function openDialog(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('button', { name: 'Bill this stage' }));
+    return within(await screen.findByRole('dialog'));
+  }
+
+  it('degrades to just the date fields when the contract has no eligible variations', async () => {
+    const user = userEvent.setup();
+    stubBillStageReads([], []);
+    renderPanel([nextInstallment()]);
+
+    const dialog = await openDialog(user);
+    expect(dialog.getByLabelText('Invoice date')).toBeInTheDocument();
+    expect(dialog.getByLabelText('Due date')).toBeInTheDocument();
+    // No variations section, so no indicative summary either.
+    expect(
+      dialog.queryByText('Approved variations to bill with this stage'),
+    ).not.toBeInTheDocument();
+    expect(dialog.queryByText(/indicative/i)).not.toBeInTheDocument();
+  });
+
+  it('excludes a variation already allocated on a prior stage from the eligible list', async () => {
+    const user = userEvent.setup();
+    stubBillStageReads(
+      [
+        variation({ id: 'vo-1', reference: 'VO-001', title: 'Extra piling' }),
+        variation({ id: 'vo-2', reference: 'VO-002', title: 'Already billed' }),
+      ],
+      // VO-002 appears in a prior package → it is done and must not be offered again.
+      [
+        {
+          installmentId: 'inst-0',
+          installmentName: 'Advance',
+          milestoneInvoice: null,
+          variationLines: [
+            {
+              variationId: 'vo-2',
+              reference: 'VO-002',
+              title: 'Already billed',
+              allocationAmount: '10000.00',
+              treatment: 'INVOICE',
+              invoice: null,
+            },
+          ],
+          presentedTotal: null,
+        },
+      ],
+    );
+    renderPanel([nextInstallment()]);
+
+    const dialog = await openDialog(user);
+    expect(dialog.getByText('VO-001')).toBeInTheDocument();
+    expect(dialog.queryByText('VO-002')).not.toBeInTheDocument();
+  });
+
+  it('updates the indicative total as a VO is toggled off, and defers it', async () => {
+    const user = userEvent.setup();
+    stubBillStageReads([variation({ id: 'vo-1', reference: 'VO-001', netPrice: '50000.00' })], []);
+    renderPanel([nextInstallment()]);
+
+    const dialog = await openDialog(user);
+    // Default INCLUDE: 300,000 stage + 50,000 VO = 350,000.
+    expect(dialog.getByText('$350,000.00')).toBeInTheDocument();
+
+    // Toggle the VO off → back to the bare stage amount, and one variation deferred.
+    await user.click(dialog.getByRole('checkbox'));
+    expect(dialog.getByText('$300,000.00')).toBeInTheDocument();
+    expect(dialog.getByText(/1 variation deferred/i)).toBeInTheDocument();
+  });
+
+  it('bills the stage with the right per-VO include flags', async () => {
+    const user = userEvent.setup();
+    const mutate = vi.fn();
+    vi.mocked(scheduleHooks.useBillStage).mockReturnValue({
+      mutate,
+      isPending: false,
+      isError: false,
+    } as unknown as ReturnType<typeof scheduleHooks.useBillStage>);
+    stubBillStageReads(
+      [
+        variation({ id: 'vo-1', reference: 'VO-001', netPrice: '50000.00' }),
+        variation({ id: 'vo-2', reference: 'VO-002', netPrice: '20000.00' }),
+      ],
+      [],
+    );
+    renderPanel([nextInstallment()]);
+
+    const dialog = await openDialog(user);
+    // Defer VO-001 (first checkbox), keep VO-002 included.
+    await user.click(dialog.getAllByRole('checkbox')[0]!);
+    await user.click(dialog.getByRole('button', { name: 'Bill this stage' }));
+
+    await waitFor(() => expect(mutate).toHaveBeenCalledTimes(1));
+    const payload = mutate.mock.calls[0]![0];
+    expect(payload.installmentId).toBe('next');
+    expect(payload.variations).toEqual([
+      { variationId: 'vo-1', include: false },
+      { variationId: 'vo-2', include: true },
+    ]);
+  });
+
+  it('surfaces the already-invoiced 400 message verbatim', async () => {
+    const user = userEvent.setup();
+    vi.mocked(scheduleHooks.useBillStage).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: true,
+      error: new ApiError(
+        400,
+        'This stage is already invoiced — an omission against it requires a credit note.',
+      ),
+    } as unknown as ReturnType<typeof scheduleHooks.useBillStage>);
+    stubBillStageReads([], []);
+    renderPanel([nextInstallment()]);
+
+    const dialog = await openDialog(user);
+    expect(
+      dialog.getByText(
+        'This stage is already invoiced — an omission against it requires a credit note.',
+      ),
+    ).toBeInTheDocument();
   });
 });
