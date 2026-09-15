@@ -16,13 +16,18 @@ import {
   TableRow,
   TableScroll,
 } from '@erp/ui';
-import type { CommercialSummaryResponse, VariationOrderListItem } from '@erp/types';
+import type {
+  CommercialBillingPackageInvoice,
+  CommercialSummaryResponse,
+  VariationAllocationTreatment,
+  VariationOrderListItem,
+} from '@erp/types';
 
 import { EmptyState } from '@/components/empty-state';
 import { formatMoney } from '@/lib/format';
 import { usePermissions } from '@/features/auth/permissions/can';
 
-import { useVariations } from '../hooks/use-commercial';
+import { useBillingPackages, useVariations } from '../hooks/use-commercial';
 import { summariseVariations, variationClientApproval, variationKind } from '../variations-summary';
 import { variationStatusTone } from '../presentation';
 import { PositionBand, type PositionFigure } from './contract-position';
@@ -58,9 +63,20 @@ export function VariationsTab({
 
   const contract = summary.mainContract;
   const variationsQuery = useVariations(contract?.id);
+  const packagesQuery = useBillingPackages(projectId, contract?.id);
 
   const [createOpen, setCreateOpen] = React.useState(false);
   const [detailId, setDetailId] = React.useState<string | null>(null);
+
+  // The per-VO billing lookup (S-VB-12): a VO appears in at most one package line (its single
+  // allocation), so flattening every package's lines yields one entry per variation.
+  const billingLookup = React.useMemo<VariationBillingLookup>(() => {
+    const map = new Map<string, VariationBilling>();
+    for (const line of (packagesQuery.data?.packages ?? []).flatMap((p) => p.variationLines)) {
+      map.set(line.variationId, { treatment: line.treatment, invoice: line.invoice });
+    }
+    return map;
+  }, [packagesQuery.data]);
 
   if (!contract) {
     return <EmptyState variant="page" title={t('noContractTitle')} description={t('noContractHint')} />;
@@ -143,6 +159,7 @@ export function VariationsTab({
                     <TableHead className="text-end">{t('col.timeImpact')}</TableHead>
                     <TableHead>{t('col.internalStatus')}</TableHead>
                     <TableHead>{t('col.clientApproval')}</TableHead>
+                    <TableHead>{t('col.billing')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -152,6 +169,7 @@ export function VariationsTab({
                       vo={vo}
                       currency={currency}
                       locale={locale}
+                      billing={billingLookup.get(vo.id) ?? null}
                       onOpen={() => setDetailId(vo.id)}
                     />
                   ))}
@@ -266,15 +284,24 @@ function VariationSummaryBand({
   );
 }
 
+/** One VO's single billing allocation, projected from the Billing Packages read (S-VB-12). */
+interface VariationBilling {
+  treatment: `${VariationAllocationTreatment}`;
+  invoice: CommercialBillingPackageInvoice | null;
+}
+type VariationBillingLookup = Map<string, VariationBilling>;
+
 function VariationRow({
   vo,
   currency,
   locale,
+  billing,
   onOpen,
 }: {
   vo: VariationOrderListItem;
   currency: string | null;
   locale: 'en' | 'ar';
+  billing: VariationBilling | null;
   onOpen: () => void;
 }) {
   const t = useTranslations('commercial.variations');
@@ -327,6 +354,48 @@ function VariationRow({
       <TableCell className="whitespace-nowrap text-caption text-muted-foreground">
         {t(`clientApproval.${approval}`)}
       </TableCell>
+      <TableCell className="whitespace-nowrap">
+        <VariationBillingChip vo={vo} billing={billing} />
+      </TableCell>
     </TableRow>
   );
+}
+
+/**
+ * The "invoiced?" chip (S-VB-12).
+ *
+ * A VO that carries a billing allocation reports how it was realized; a client-approved VO with no
+ * allocation yet reads "Approved · not billed"; anything not yet approved shows nothing (an em
+ * dash), because "not billed" is only meaningful once the client has agreed to the change. The chip
+ * never fabricates an invoice link — the number as text is the whole message.
+ */
+function VariationBillingChip({
+  vo,
+  billing,
+}: {
+  vo: VariationOrderListItem;
+  billing: VariationBilling | null;
+}) {
+  const t = useTranslations('commercial.variations.billing');
+
+  if (billing) {
+    if (billing.treatment === 'STAGE_REDUCTION') {
+      return <Badge tone="neutral">{t('omissionBilled')}</Badge>;
+    }
+    if (billing.treatment === 'INVOICE') {
+      return billing.invoice?.invoiceNumber ? (
+        <Badge tone="live">{t('invoiced', { number: billing.invoice.invoiceNumber })}</Badge>
+      ) : (
+        <Badge tone="neutral">{t('invoicedDraft')}</Badge>
+      );
+    }
+    // CREDIT_NOTE (declared for Phase 2, not produced in P1) falls through to the neutral posture.
+    return <Badge tone="neutral">{t('invoicedDraft')}</Badge>;
+  }
+
+  if (vo.status === 'CLIENT_APPROVED') {
+    return <Badge tone="warning">{t('approvedNotBilled')}</Badge>;
+  }
+
+  return <span className="text-caption text-muted-foreground">—</span>;
 }

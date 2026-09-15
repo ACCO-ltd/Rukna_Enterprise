@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type {
+  CommercialBillingPackage,
   CommercialContractValue,
   CommercialSummaryResponse,
   VariationOrderListItem,
@@ -16,6 +17,7 @@ import { VariationsTab } from './variations-tab';
 vi.mock('../hooks/use-commercial', () => ({
   useVariations: vi.fn(),
   useVariation: vi.fn(),
+  useBillingPackages: vi.fn(),
   useExtensionsOfTime: vi.fn(),
   useCertifiedInvoicedByVariation: vi.fn(),
   useAtRiskCommencements: vi.fn(),
@@ -129,6 +131,8 @@ function summary(overrides: Partial<CommercialSummaryResponse> = {}): Commercial
 /** Default all hooks to a benign resolved/idle shape; individual tests override what they need. */
 function stubHooks(options: {
   variations?: VariationOrderListItem[];
+  packages?: CommercialBillingPackage[];
+  financialsVisible?: boolean;
   createMutate?: ReturnType<typeof vi.fn>;
 } = {}) {
   vi.mocked(hooks.useVariations).mockReturnValue({
@@ -137,6 +141,18 @@ function stubHooks(options: {
     data: { contractId: 'c-1', variations: options.variations ?? [listItem()] },
     refetch: vi.fn(),
   } as unknown as ReturnType<typeof hooks.useVariations>);
+
+  // The billing-packages read feeds the per-VO "invoiced?" chip (S-VB-12).
+  vi.mocked(hooks.useBillingPackages).mockReturnValue({
+    isPending: false,
+    isError: false,
+    data: {
+      contractId: 'c-1',
+      financialsVisible: options.financialsVisible ?? true,
+      packages: options.packages ?? [],
+    },
+    refetch: vi.fn(),
+  } as unknown as ReturnType<typeof hooks.useBillingPackages>);
 
   vi.mocked(hooks.useExtensionsOfTime).mockReturnValue({
     isPending: false,
@@ -306,6 +322,108 @@ describe('VariationsTab — list + status mapping', () => {
       withToast: true,
     });
     expect(screen.getByText('No variations yet')).toBeInTheDocument();
+  });
+});
+
+// ─── S-VB-12 "invoiced?" chip ─────────────────────────────────────────────────────
+
+/** A Billing Package carrying a single VO allocation line, for driving the chip. */
+function packageWithLine(
+  line: CommercialBillingPackage['variationLines'][number],
+): CommercialBillingPackage {
+  return {
+    installmentId: 'inst-1',
+    installmentName: 'Structure payment',
+    milestoneInvoice: null,
+    variationLines: [line],
+    presentedTotal: null,
+  };
+}
+
+describe('VariationsTab — the "invoiced?" chip (S-VB-12)', () => {
+  it('shows ✓ Invoiced with the invoice number for a billed addition', () => {
+    stubHooks({
+      variations: [listItem({ id: 'vo-1', reference: 'VO-001', status: 'CLIENT_APPROVED' })],
+      packages: [
+        packageWithLine({
+          variationId: 'vo-1',
+          reference: 'VO-001',
+          title: 'Additional foundations',
+          allocationAmount: '25000.00',
+          treatment: 'INVOICE',
+          invoice: {
+            id: 'inv-9',
+            invoiceNumber: 'INV-0007',
+            subtotal: '25000.00',
+            totalAmount: '26250.00',
+            documentStatus: 'APPROVED',
+            postingStatus: 'POSTED',
+          },
+        }),
+      ],
+    });
+    renderWithProviders(<VariationsTab projectId="p-1" summary={summary()} />, {
+      permissions: MANAGE,
+      withToast: true,
+    });
+
+    expect(screen.getByText('✓ Invoiced (INV-0007)')).toBeInTheDocument();
+  });
+
+  it('shows "Omission billed" for a stage-reduction allocation', () => {
+    stubHooks({
+      variations: [
+        listItem({ id: 'vo-2', reference: 'VO-002', status: 'CLIENT_APPROVED', netPrice: '-8000.00' }),
+      ],
+      packages: [
+        packageWithLine({
+          variationId: 'vo-2',
+          reference: 'VO-002',
+          title: 'Omit landscaping',
+          allocationAmount: '-8000.00',
+          treatment: 'STAGE_REDUCTION',
+          invoice: null,
+        }),
+      ],
+    });
+    renderWithProviders(<VariationsTab projectId="p-1" summary={summary()} />, {
+      permissions: MANAGE,
+      withToast: true,
+    });
+
+    expect(screen.getByText('Omission billed')).toBeInTheDocument();
+  });
+
+  it('shows "Approved · not billed" for a client-approved VO with no allocation yet', () => {
+    stubHooks({
+      variations: [listItem({ id: 'vo-3', reference: 'VO-003', status: 'CLIENT_APPROVED' })],
+      packages: [],
+    });
+    renderWithProviders(<VariationsTab projectId="p-1" summary={summary()} />, {
+      permissions: MANAGE,
+      withToast: true,
+    });
+
+    expect(screen.getByText('Approved · not billed')).toBeInTheDocument();
+  });
+
+  it('renders no chip (an em dash) for a variation that is not yet client-approved', () => {
+    stubHooks({
+      variations: [listItem({ id: 'vo-4', reference: 'VO-004', status: 'DRAFT' })],
+      packages: [],
+    });
+    renderWithProviders(<VariationsTab projectId="p-1" summary={summary()} />, {
+      permissions: MANAGE,
+      withToast: true,
+    });
+
+    expect(screen.queryByText('Approved · not billed')).not.toBeInTheDocument();
+    // No billing chip renders for a not-yet-approved VO (the chip texts, not the trace header).
+    expect(screen.queryByText(/✓ Invoiced/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Invoiced (draft)')).not.toBeInTheDocument();
+    expect(screen.queryByText('Omission billed')).not.toBeInTheDocument();
+    // The billing cell renders an em dash for a not-yet-approved VO.
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 });
 

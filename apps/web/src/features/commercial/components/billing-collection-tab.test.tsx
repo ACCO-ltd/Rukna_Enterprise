@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen, within } from '@testing-library/react';
 import type {
   CommercialAgingBucket,
+  CommercialBillingPackagesResponse,
   CommercialBillingResponse,
   CommercialInvoiceRow,
   CommercialReceiptRow,
@@ -16,6 +17,19 @@ import { toCumulativeSeries } from './cashflow-chart';
 
 vi.mock('../hooks/use-commercial', () => ({
   useCommercialBilling: vi.fn(),
+  useBillingPackages: vi.fn(),
+}));
+
+vi.mock('next/link', () => ({
+  default: ({
+    href,
+    children,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
 }));
 
 // ─── Fixtures ───────────────────────────────────────────────────────────────────
@@ -135,11 +149,23 @@ function stub(data: CommercialBillingResponse) {
   } as unknown as ReturnType<typeof commercialHooks.useCommercialBilling>);
 }
 
+/** Stub the S-VB-7 billing-packages read; defaults to no packages (panel absent). */
+function stubPackages(data?: CommercialBillingPackagesResponse) {
+  vi.mocked(commercialHooks.useBillingPackages).mockReturnValue({
+    isPending: false,
+    isError: false,
+    data,
+    refetch: vi.fn(),
+  } as unknown as ReturnType<typeof commercialHooks.useBillingPackages>);
+}
+
 function renderTab(
   billingData: CommercialBillingResponse,
   summaryData: CommercialSummaryResponse = summary(),
+  packagesData?: CommercialBillingPackagesResponse,
 ) {
   stub(billingData);
+  if (packagesData !== undefined) stubPackages(packagesData);
   return renderWithProviders(
     <BillingCollectionTab projectId="p-1" summary={summaryData} />,
     { permissions: [] },
@@ -148,6 +174,8 @@ function renderTab(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Default: no billing packages, so the Stage-billing panel is absent unless a test provides one.
+  stubPackages(undefined);
 });
 
 // ─── S-BL-1 money story ─────────────────────────────────────────────────────────
@@ -314,5 +342,109 @@ describe('BillingCollectionTab — aging (S-BL-3)', () => {
     // The buckets sum to the server's outstanding figure — the invariant the aging view must hold.
     const bucketSum = data.aging.reduce((total, b) => total + Number(b.amount ?? 0), 0);
     expect(bucketSum).toBe(Number(data.position.outstanding));
+  });
+});
+
+// ─── S-VB-7 billing packages ──────────────────────────────────────────────────────
+
+function packages(
+  overrides: Partial<CommercialBillingPackagesResponse> = {},
+): CommercialBillingPackagesResponse {
+  return {
+    contractId: 'c-1',
+    financialsVisible: true,
+    packages: [
+      {
+        installmentId: 'inst-1',
+        installmentName: 'Structure payment',
+        milestoneInvoice: {
+          id: 'inv-1',
+          invoiceNumber: 'INV-0001',
+          subtotal: '400000.00',
+          totalAmount: '420000.00',
+          documentStatus: 'APPROVED',
+          postingStatus: 'POSTED',
+        },
+        variationLines: [
+          {
+            variationId: 'vo-1',
+            reference: 'VO-001',
+            title: 'Extra piling',
+            allocationAmount: '50000.00',
+            treatment: 'INVOICE',
+            invoice: {
+              id: 'inv-2',
+              invoiceNumber: 'INV-0002',
+              subtotal: '50000.00',
+              totalAmount: '52500.00',
+              documentStatus: 'APPROVED',
+              postingStatus: 'POSTED',
+            },
+          },
+        ],
+        presentedTotal: '472500.00',
+      },
+    ],
+    ...overrides,
+  };
+}
+
+describe('BillingCollectionTab — stage billing packages (S-VB-7)', () => {
+  it('renders a package with its milestone line, VO line and presented total', () => {
+    renderTab(billing(), summary(), packages());
+
+    const panel = screen.getByRole('heading', { name: 'Stage billing' }).closest('section')!;
+    const scope = within(panel);
+    expect(scope.getByText('Structure payment — billing')).toBeInTheDocument();
+    // Milestone line: label, its invoice number (a link) and its total.
+    expect(scope.getByText('Milestone')).toBeInTheDocument();
+    expect(scope.getByRole('link', { name: 'INV-0001' })).toHaveAttribute(
+      'href',
+      '/finance/accounting/invoices/inv-1',
+    );
+    expect(scope.getByText('$420,000.00')).toBeInTheDocument();
+    // The addition VO line: its own invoice link + allocation.
+    expect(scope.getByText('VO-001 — Extra piling')).toBeInTheDocument();
+    expect(scope.getByRole('link', { name: 'INV-0002' })).toBeInTheDocument();
+    // Presented total.
+    expect(scope.getByText('Presented total')).toBeInTheDocument();
+    expect(scope.getByText('$472,500.00')).toBeInTheDocument();
+  });
+
+  it('redacts money (RESTRICTED, never $0) when financials are withheld', () => {
+    renderTab(
+      billing({ financialsVisible: false }),
+      summary({ financialsVisible: false }),
+      packages({
+        financialsVisible: false,
+        packages: [
+          {
+            installmentId: 'inst-1',
+            installmentName: 'Structure payment',
+            milestoneInvoice: {
+              id: 'inv-1',
+              invoiceNumber: 'INV-0001',
+              subtotal: null,
+              totalAmount: null,
+              documentStatus: 'APPROVED',
+              postingStatus: 'POSTED',
+            },
+            variationLines: [],
+            presentedTotal: null,
+          },
+        ],
+      }),
+    );
+
+    const panel = screen.getByRole('heading', { name: 'Stage billing' }).closest('section')!;
+    const scope = within(panel);
+    expect(scope.getAllByText('Restricted').length).toBeGreaterThan(0);
+    expect(scope.queryByText('$0.00')).not.toBeInTheDocument();
+  });
+
+  it('omits the Stage-billing panel entirely when there are no packages', () => {
+    renderTab(billing(), summary(), packages({ packages: [] }));
+
+    expect(screen.queryByRole('heading', { name: 'Stage billing' })).not.toBeInTheDocument();
   });
 });

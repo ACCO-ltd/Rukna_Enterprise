@@ -11,6 +11,7 @@ import type {
   CertifiedInvoicedByVariationResponse,
   CommercialApplicationsResponse,
   CommercialBillingResponse,
+  CommercialBillingPackagesResponse,
   CommercialCurrentCycleResponse,
   CommercialSummaryResponse,
   ExtensionOfTimeListResponse,
@@ -27,6 +28,7 @@ import {
   getCertifiedInvoicedByVariation,
   getCommercialApplications,
   getCommercialBilling,
+  getCommercialBillingPackages,
   getCommercialCurrentCycle,
   getCommercialSummary,
   getVariation,
@@ -53,6 +55,9 @@ export const commercialKeys = {
   applications: (projectId: string) => [...commercialKeys.all(projectId), 'applications'] as const,
   currentCycle: (projectId: string) => [...commercialKeys.all(projectId), 'current-cycle'] as const,
   billing: (projectId: string) => [...commercialKeys.all(projectId), 'billing'] as const,
+  /** Grouped stage-billing story (S-VB-7), contract-scoped under the project's commercial tree. */
+  billingPackages: (projectId: string, contractId: string) =>
+    [...commercialKeys.all(projectId), 'billing-packages', contractId] as const,
 };
 
 /** Variations are contract-scoped, so their cache is keyed by contract, not project. */
@@ -111,6 +116,24 @@ export function useCommercialBilling(
   return useQuery({
     queryKey: commercialKeys.billing(projectId),
     queryFn: () => getCommercialBilling(projectId),
+  });
+}
+
+/**
+ * The grouped stage-billing story (S-VB-7). Contract-scoped and `enabled` only when there is a
+ * contract, so a project with no main contract does not fire a call with an empty id. Feeds the
+ * "invoiced?" chip on Variations, the Billing Package view, and the eligible-VO exclusion set in
+ * the "Bill this stage" dialog — one read, three consumers, one cache entry. Money fields are
+ * nulled server-side (`financialsVisible === false`) for a withheld-money role.
+ */
+export function useBillingPackages(
+  projectId: string,
+  contractId: string | null | undefined,
+): UseQueryResult<CommercialBillingPackagesResponse, Error> {
+  return useQuery({
+    queryKey: commercialKeys.billingPackages(projectId, contractId ?? 'none'),
+    queryFn: () => getCommercialBillingPackages(projectId, contractId as string),
+    enabled: Boolean(projectId) && Boolean(contractId),
   });
 }
 

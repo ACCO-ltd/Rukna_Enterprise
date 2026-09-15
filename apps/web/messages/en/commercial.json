@@ -293,7 +293,7 @@
     "collectionProgress": "Collection progress",
     "collectedOf": "{collected} of {invoiced}",
     "nothingInvoiced": "Nothing has been invoiced yet.",
-    "basisNote": "Measured against invoice totals, VAT included.",
+    "basisNote": "Measured against invoice totals, Sales Tax included.",
     "receipts": "Client receipts",
     "noInvoices": "No client invoices have been raised against this contract yet.",
     "noReceipts": "No client payments have been allocated to this contract yet.",
@@ -305,7 +305,7 @@
     "unappliedHint": "Client-level, not project-level: this cash has not been attributed to any contract yet.",
     "allocate": "Allocate",
     "overdueBy": "{days} days overdue",
-    "vatNote": "Totals are VAT-inclusive. Settlement is measured against the invoice total, never against a pre-VAT certified amount.",
+    "vatNote": "Totals include Sales Tax (5%). Settlement is measured against the invoice total, never against a pre-tax certified amount.",
     "position": {
       "title": "Billing position",
       "invoiced": "Invoiced",
@@ -314,7 +314,7 @@
       "overdue": "Overdue",
       "postedInvoices": "{n} posted invoices",
       "ofInvoiced": "{percent}% of invoiced",
-      "vatInclusive": "VAT inclusive",
+      "vatInclusive": "Sales Tax included",
       "overdueInvoices": "{n} invoices past due",
       "nothingOverdue": "Nothing past due"
     },
@@ -327,9 +327,20 @@
       "outstanding": "Outstanding",
       "postedInvoices": "{n} posted invoices",
       "ofInvoiced": "{percent}% of invoiced",
-      "vatInclusive": "VAT inclusive",
+      "vatInclusive": "Sales Tax included",
       "approvedVariations": "Approved variations",
       "approvedVariationsHint": "Client-approved entitlement, shown separately from the billed chain until each variation is invoiced."
+    },
+    "packages": {
+      "title": "Stage billing",
+      "stageTitle": "{name} — billing",
+      "milestone": "Milestone",
+      "presentedTotal": "Presented total",
+      "unnumbered": "Unnumbered draft",
+      "treatment": {
+        "STAGE_REDUCTION": "Omission",
+        "CREDIT_NOTE": "Credit note"
+      }
     },
     "cashflow": {
       "title": "Cashflow",
@@ -389,17 +400,24 @@
     },
     "emptyTitle": "No payment schedule",
     "emptyHint": "This milestone contract has no installments yet.",
-    "generate": "Generate invoice",
-    "generateDialog": {
-      "title": "Generate invoice — {name}",
-      "hint": "Raise a client invoice for this installment. It is created as a draft and numbered when posted.",
+    "billStage": "Bill this stage",
+    "billDialog": {
+      "title": "Bill this stage — {name}",
+      "hint": "Raise the client invoice for this installment. Each invoice is created as a draft and numbered when posted.",
       "invoiceDate": "Invoice date",
       "dueDate": "Due date",
       "paymentTerms": "Payment terms",
       "paymentTermsPlaceholder": "e.g. Net 30",
-      "submit": "Generate invoice",
+      "variationsTitle": "Approved variations to bill with this stage",
+      "variationsHint": "Client-approved variations that have not been billed yet. Included variations are billed with this stage; deferred ones stay available for a later stage.",
+      "additionCaption": "Billed as its own invoice",
+      "omissionCaption": "Reduces this stage",
+      "indicativeLabel": "Billing now (indicative, before Sales Tax)",
+      "indicativeNote": "Indicative only — the authoritative figures are on the generated invoices.",
+      "deferred": "{n, plural, one {# variation deferred} other {# variations deferred}}",
+      "submit": "Bill this stage",
       "cancel": "Cancel",
-      "failed": "Could not generate the invoice"
+      "failed": "Could not bill this stage"
     },
     "milestone": {
       "linked": "Linked to {code}",
@@ -673,7 +691,14 @@
       "timeImpact": "Time impact",
       "type": "Type",
       "internalStatus": "Internal status",
-      "clientApproval": "Client approval"
+      "clientApproval": "Client approval",
+      "billing": "Billing"
+    },
+    "billing": {
+      "invoiced": "✓ Invoiced ({number})",
+      "invoicedDraft": "Invoiced (draft)",
+      "omissionBilled": "Omission billed",
+      "approvedNotBilled": "Approved · not billed"
     },
     "status": {
       "DRAFT": "Draft",
@@ -771,7 +796,7 @@
       "baseScopeHint": "Baseline contract, before any variation",
       "total": "Total",
       "restricted": "Restricted",
-      "exVatNote": "Figures are gross of VAT and certificate deductions (ex-VAT). They are not the invoice or VAT-inclusive total.",
+      "exVatNote": "Figures are gross of Sales Tax and certificate deductions (before tax). They are not the invoice or tax-inclusive total.",
       "loadFailed": "Could not load the certified & invoiced trace",
       "loadFailedHint": "Something went wrong loading it. Try again.",
       "retry": "Retry",

@@ -1,6 +1,8 @@
 import type {
   AtRiskCommencementResponse,
   CommercialBillingResponse,
+  CommercialBillingPackagesResponse,
+  CommercialBillStageResult,
   CertifiedInvoicedByVariationResponse,
   CommercialApplicationsResponse,
   CommercialCurrentCycleResponse,
@@ -52,6 +54,47 @@ export function getCommercialApplications(
 ): Promise<CommercialApplicationsResponse> {
   return apiClient<CommercialApplicationsResponse>(
     `/projects/${projectId}/commercial/applications`,
+  );
+}
+
+// ─── Stage billing & Billing Packages (ADR-030 CD10 / C5–C6) ────────────────────
+//
+// "Bill this stage" bills a milestone installment and, in the same command, each included
+// client-approved variation's REMAINING net — additions on their own standalone invoice, an
+// omission netted into the milestone stage. The server owns every money rule (idempotent skip of
+// already-realized VOs, the "already invoiced ⇒ credit note required" 400): the UI carries the
+// installment/date fields and the include flags, and surfaces the server's verdict verbatim.
+
+export interface BillStagePayload {
+  installmentId: string;
+  invoiceDate: string;
+  dueDate: string;
+  paymentTerms?: string;
+  variations: Array<{ variationId: string; include: boolean }>;
+}
+
+/** Bill a milestone stage plus its included variations. Returns the freshly-composed Billing Package. */
+export function billStage(
+  projectId: string,
+  payload: BillStagePayload,
+): Promise<CommercialBillStageResult> {
+  return apiClient<CommercialBillStageResult>(`/projects/${projectId}/commercial/bill-stage`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * The grouped stage-billing story for a contract (S-VB-7): one Billing Package per installment that
+ * has a milestone invoice or at least one variation allocation. Money fields are null when the
+ * caller lacks financial visibility (`financialsVisible === false`) — RESTRICTED, never $0.
+ */
+export function getCommercialBillingPackages(
+  projectId: string,
+  contractId: string,
+): Promise<CommercialBillingPackagesResponse> {
+  return apiClient<CommercialBillingPackagesResponse>(
+    `/projects/${projectId}/commercial/billing-packages?contractId=${encodeURIComponent(contractId)}`,
   );
 }
 
