@@ -3,15 +3,16 @@ import { ArrowLeft } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 import { PageHeader } from '@/components/layout/page-header';
-import { ContractForm } from '@/features/contracts/components/contract-form';
+import { ContractCreateForm } from '@/features/contracts/components/contract-create-form';
 
 /**
- * Create a project's main contract, inside the Commercial workspace (P3 Slice B).
+ * Create a project's main contract, inside the Commercial workspace (P3 Slice B / ADR-030 S-CC-5).
  *
  * The standalone `/contracts/new` page is folded away: the project is known from the `[id]`
  * segment, so it is pinned into the form rather than chosen from a dropdown. This is a focused
- * authoring page — a workspace-idiom heading and a return path to Contract & Security — not the
- * tab shell, because the form is a full-height task the tabs would only crowd.
+ * authoring page — a workspace-idiom heading and a return path to Contract — not the tab shell,
+ * because the form is a full-height task the tabs would only crowd. The form itself is now minimal:
+ * client + dates, with value/number/BOQ version derived server-side.
  */
 export default async function NewProjectContractPage({
   params,
@@ -36,7 +37,7 @@ export default async function NewProjectContractPage({
       <PageHeader title={t('newTitle')} subtitle={t('newSubtitle')} />
 
       <div className="rounded-lg border border-border bg-surface p-5 sm:p-6">
-        <ContractForm projectId={id} />
+        <ContractCreateForm projectId={id} />
       </div>
     </div>
   );

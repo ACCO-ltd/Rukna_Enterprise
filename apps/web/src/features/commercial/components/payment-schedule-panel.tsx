@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { CalendarClock } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowRight, CalendarClock, Ban } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import type {
   CommercialPaymentScheduleInstallment,
@@ -163,6 +164,7 @@ export function PaymentSchedulePanel({
                   <InstallmentRow
                     key={inst.id}
                     inst={inst}
+                    projectId={projectId}
                     locale={locale}
                     money={money}
                     canInvoice={canInvoice}
@@ -202,6 +204,7 @@ export function PaymentSchedulePanel({
 
 function InstallmentRow({
   inst,
+  projectId,
   locale,
   money,
   canInvoice,
@@ -211,6 +214,7 @@ function InstallmentRow({
   t,
 }: {
   inst: Installment;
+  projectId: string;
   locale: 'en' | 'ar';
   money: (value: string | null) => string | null;
   canInvoice: boolean;
@@ -251,13 +255,28 @@ function InstallmentRow({
               className="min-h-11 sm:min-h-0"
               onClick={onInvoice}
               disabled={blocked}
+              // The reason is not on this button alone — it is rendered adjacent below (S-PS-1), so
+              // the disabled state is self-explanatory rather than a bare, unexplained control.
+              title={blocked ? t('paymentSchedule.milestone.blockedHint') : undefined}
             >
               {t('paymentSchedule.generate')}
             </Button>
-            {blocked ? (
-              <span className="max-w-48 text-caption text-warning">
-                {t('paymentSchedule.milestone.blockedHint')}
-              </span>
+            {/* CONST-COM-025 / S-PS-1: the gate's reason and its remediation live on the row itself —
+                "⛔ Verify "<milestone>" →" links straight into Programme & Progress (the same target
+                the cycle ribbon uses), so a blocked control is never bare. */}
+            {blocked && inst.programmeMilestone ? (
+              <Link
+                href={`/projects/${projectId}/progress`}
+                className="inline-flex max-w-56 items-center justify-end gap-1 text-caption font-medium text-warning underline underline-offset-2 hover:text-warning/80"
+              >
+                <Ban size={13} className="shrink-0" aria-hidden="true" />
+                <span className="min-w-0">
+                  {t('paymentSchedule.milestone.blockedRow', {
+                    name: inst.programmeMilestone.name,
+                  })}
+                </span>
+                <ArrowRight size={12} className="shrink-0" aria-hidden="true" />
+              </Link>
             ) : null}
           </div>
         ) : isBilledInstallment(inst.status) ? (

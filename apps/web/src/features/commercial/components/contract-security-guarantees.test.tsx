@@ -204,3 +204,58 @@ describe('Commercial workspace — guarantee authoring', () => {
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
   });
 });
+
+/**
+ * S-SH-4: the retention and advance panels appear only when the contract actually carries those
+ * terms; the guarantees panel is always present. A MILESTONE contract holds no retention and no
+ * standalone advance, so an empty "not applicable" card was noise, not information.
+ */
+describe('Contract tab — retention/advance shown only when configured (S-SH-4)', () => {
+  it('hides the retention and advance panels when the contract has no such terms', () => {
+    // The base summary already has retention: null, advances: [].
+    renderTab();
+
+    expect(screen.queryByRole('heading', { name: 'Retention' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Advances' })).not.toBeInTheDocument();
+    // Guarantees stays regardless.
+    expect(screen.getByRole('heading', { name: 'Guarantees' })).toBeInTheDocument();
+  });
+
+  it('renders the retention panel when the contract carries retention terms', () => {
+    renderTab({
+      retention: { retentionRate: '0.05', retentionCap: '0.10', retentionSplitOnPC: '0.5' },
+      securityPosition: {
+        applicable: true,
+        retentionHeld: '25000.00',
+        advanceRecovered: null,
+        advanceOutstanding: null,
+      },
+    });
+
+    expect(screen.getByRole('heading', { name: 'Retention' })).toBeInTheDocument();
+    expect(screen.getByText('Retention rate')).toBeInTheDocument();
+  });
+
+  it('renders the advance panel when the contract carries advance terms', () => {
+    renderTab({
+      advances: [
+        {
+          id: 'a-1',
+          advanceType: 'MOBILIZATION',
+          description: null,
+          amount: '100000.00',
+          percentage: null,
+          recoveryRate: '0.1000',
+        },
+      ],
+      securityPosition: {
+        applicable: true,
+        retentionHeld: null,
+        advanceRecovered: '10000.00',
+        advanceOutstanding: '90000.00',
+      },
+    });
+
+    expect(screen.getByRole('heading', { name: 'Advances' })).toBeInTheDocument();
+  });
+});

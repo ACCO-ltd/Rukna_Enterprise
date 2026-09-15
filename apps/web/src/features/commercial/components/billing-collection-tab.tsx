@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ReceiptText } from 'lucide-react';
+import { LockKeyhole, ReceiptText } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -32,6 +32,7 @@ import { formatDate, formatMoney } from '@/lib/format';
 import { useCommercialBilling } from '../hooks/use-commercial';
 import { invoiceStatusTone } from '../presentation';
 import { PositionBand, type PositionFigure } from './contract-position';
+import { CashflowChart } from './cashflow-chart';
 import { PanelLink, SectionCard } from './commercial-ui';
 import { errorText } from './commercial-workspace';
 
@@ -47,6 +48,12 @@ import { errorText } from './commercial-workspace';
  * For a MILESTONE contract the schedule now lives on its own Payment Schedule tab (§5 P2), which
  * hosts the ledger, "Generate invoice" and the CONST-COM-011 gate; this screen keeps the invoices,
  * receipts and ageing that follow from it.
+ *
+ * C8 (ADR-030 CD13/CD14) gave the screen a top-down money surface: the **money story** —
+ * `Contract value → Invoiced → Collected → Outstanding` composed from the summary's contract value
+ * and billing's settlement figures, with approved variations stated distinctly as entitlement — then
+ * the **cashflow chart** (cumulative invoiced vs collected) as the hero, then the compact
+ * collection/aging/unapplied panels, then the invoice and receipt tables as the audit trail.
  */
 export function BillingCollectionTab({
   projectId,
@@ -88,11 +95,18 @@ export function BillingCollectionTab({
 
   return (
     <div className="space-y-4">
-      <BillingPositionBand billing={billing} />
+      {/* The money story reads Contract value → Invoiced → Collected → Outstanding as one chain,
+          composed from the summary's contract value and billing's settlement figures, with approved
+          variations stated distinctly beneath it (entitlement, never missing revenue). */}
+      <MoneyStory billing={billing} summary={summary} />
 
-      {/* Three small readings across, then the tables full width. A sidebar looked tidier in a
-          wireframe and cost the invoice table three of its eight columns at 1440 — the header
-          scrolled out of the container before the balance did. Tables get the whole width. */}
+      {/* The hero: a collected-vs-invoiced cumulative curve. It sits above the tables because the
+          shape of the gap is the first read; the per-document figures below are the audit trail. */}
+      <CashflowPanel billing={billing} />
+
+      {/* Two small readings beside the aging bars. A sidebar looked tidier in a wireframe and cost
+          the invoice table three of its eight columns at 1440 — so the tables below get the whole
+          width, and these compact panels sit under the chart instead. */}
       <div className="grid min-w-0 gap-4 lg:grid-cols-3">
         <CollectionProgressPanel billing={billing} />
         <AgingPanel billing={billing} />
@@ -105,10 +119,31 @@ export function BillingCollectionTab({
   );
 }
 
-// ─── Position ───────────────────────────────────────────────────────────────────
+// ─── Money story (S-BL-1) ─────────────────────────────────────────────────────────
 
-function BillingPositionBand({ billing }: { billing: CommercialBillingResponse }) {
-  const t = useTranslations('commercial.billing.position');
+/**
+ * Contract value → Invoiced → Collected → Outstanding, as one coherent chain.
+ *
+ * Composed, not re-computed: `contractValue` (the governing value) comes from the commercial
+ * summary; invoiced / collected / outstanding come from the billing position. The frontend adds
+ * nothing up — each figure is a server figure, formatted at the render step. The four together are
+ * a sentence read left to right, which is why they share one band rather than four cards.
+ *
+ * Approved variations sit on their own line below the chain, stated as entitlement. A
+ * client-approved-but-not-yet-billed variation is real revenue the client has agreed to; showing it
+ * inside "Invoiced" would claim it is billed, and omitting it would read as a leak. The precise
+ * per-VO billed/unbilled split arrives with C4–C6 — here we show the approved-variations total
+ * distinctly so the reader knows the entitlement exists and is not yet in the billed chain.
+ */
+function MoneyStory({
+  billing,
+  summary,
+}: {
+  billing: CommercialBillingResponse;
+  summary: CommercialSummaryResponse;
+}) {
+  const t = useTranslations('commercial.billing.story');
+  const tState = useTranslations('commercial.metricState');
   const locale = useLocale() as 'en' | 'ar';
   const { position, currency, financialsVisible } = billing;
 
@@ -116,47 +151,109 @@ function BillingPositionBand({ billing }: { billing: CommercialBillingResponse }
     !financialsVisible || value === null ? null : (formatMoney(value, currency, locale) ?? null);
   const blank: PositionFigure['blank'] = financialsVisible ? 'unavailable' : 'restricted';
 
+  // The governing contract value (original + approved variations, ADR-026), or the executed
+  // baseline when the variation-derived figure is absent. Either way it is the summary's, not ours.
+  const contractValue =
+    summary.contractValue?.governingContractValue ?? summary.mainContract?.contractValue ?? null;
+  const approvedVariations = summary.contractValue?.approvedVariationsTotal ?? null;
+  // Only assert an approved-variations line when there is a non-zero entitlement to state. A
+  // restricted user still sees the line (as RESTRICTED); a visible-but-zero one does not, because
+  // "approved variations $0" is noise, not information.
+  const hasApprovedVariations =
+    !financialsVisible || (approvedVariations !== null && Number(approvedVariations) > 0);
+
   return (
-    <PositionBand
-      title={t('title')}
-      currency={currency}
-      figures={[
-        {
-          label: t('invoiced'),
-          value: money(position.invoiced),
-          blank,
-          support: t('postedInvoices', { n: position.postedInvoiceCount }),
-        },
-        {
-          label: t('collected'),
-          value: money(position.collected),
-          blank,
-          support:
-            position.collectionRate === null
-              ? t('vatInclusive')
-              : t('ofInvoiced', { percent: position.collectionRate }),
-        },
-        { label: t('outstanding'), value: money(position.outstanding), blank },
-        {
-          label: t('overdue'),
-          value: money(position.overdue),
-          blank,
-          // Overdue is a count of late claims, not a coloured number. The badge on each invoice
-          // row is where lateness is asserted; here it is stated plainly with its cause.
-          support:
-            position.overdueInvoiceCount > 0
-              ? t('overdueInvoices', { n: position.overdueInvoiceCount })
-              : t('nothingOverdue'),
-        },
-      ]}
-    />
+    <div className="space-y-3">
+      <PositionBand
+        title={t('title')}
+        currency={currency}
+        figures={[
+          {
+            label: t('contractValue'),
+            value: money(contractValue),
+            blank,
+            support: t('governingHint'),
+          },
+          {
+            label: t('invoiced'),
+            value: money(position.invoiced),
+            blank,
+            support: t('postedInvoices', { n: position.postedInvoiceCount }),
+          },
+          {
+            label: t('collected'),
+            value: money(position.collected),
+            blank,
+            support:
+              position.collectionRate === null
+                ? t('vatInclusive')
+                : t('ofInvoiced', { percent: position.collectionRate }),
+          },
+          { label: t('outstanding'), value: money(position.outstanding), blank },
+        ]}
+      />
+
+      {hasApprovedVariations ? (
+        <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-panel border border-border bg-surface px-4 py-2.5 text-caption text-muted-foreground sm:px-5">
+          <span className="font-medium text-foreground">{t('approvedVariations')}</span>
+          <LtrValue className="font-semibold tabular-nums text-foreground">
+            {money(approvedVariations) ?? (
+              <span className="inline-flex items-center gap-1 font-medium text-muted-foreground">
+                <LockKeyhole size={13} aria-hidden="true" />
+                {tState('RESTRICTED')}
+              </span>
+            )}
+          </LtrValue>
+          <span>· {t('approvedVariationsHint')}</span>
+        </p>
+      ) : null}
+    </div>
   );
 }
 
+// ─── Cashflow chart (S-BL-2) ────────────────────────────────────────────────────
+
+/**
+ * The hero panel: the cumulative invoiced-vs-collected curve, or an honest empty-state.
+ *
+ * The chart itself refuses to draw without invoices (it returns null), so the empty-state lives
+ * here in the panel rather than as a broken axis. A withheld-money user sees the empty-state's
+ * restricted note, never a chart plotted from nulls.
+ */
+function CashflowPanel({ billing }: { billing: CommercialBillingResponse }) {
+  const t = useTranslations('commercial.billing.cashflow');
+
+  const empty = !billing.financialsVisible || billing.invoices.length === 0;
+
+  return (
+    <SectionCard title={t('title')}>
+      {empty ? (
+        <p className="py-2 text-body-sm text-muted-foreground">
+          {!billing.financialsVisible ? t('restricted') : t('empty')}
+        </p>
+      ) : (
+        <CashflowChart
+          invoices={billing.invoices}
+          receipts={billing.receipts}
+          currency={billing.currency}
+        />
+      )}
+    </SectionCard>
+  );
+}
+
+// ─── Collection progress ──────────────────────────────────────────────────────────
+
 function CollectionProgressPanel({ billing }: { billing: CommercialBillingResponse }) {
   const t = useTranslations('commercial.billing');
+  const tPos = useTranslations('commercial.billing.position');
   const locale = useLocale() as 'en' | 'ar';
   const rate = billing.position.collectionRate;
+  const { overdue, overdueInvoiceCount } = billing.position;
+  const overdueAmount =
+    billing.financialsVisible && overdue !== null
+      ? formatMoney(overdue, billing.currency, locale)
+      : null;
 
   return (
     <SectionCard title={t('collectionProgress')}>
@@ -198,6 +295,19 @@ function CollectionProgressPanel({ billing }: { billing: CommercialBillingRespon
             />
           </span>
           <p className="mt-2 text-caption text-muted-foreground">{t('basisNote')}</p>
+          {/* Overdue lives here rather than as a fifth link in the money-story chain — it is a
+              signal about the outstanding balance, not a new stage in Contract→Invoiced→Collected.
+              Stated plainly with its count; the alarm colour is carried per-invoice, not on a total. */}
+          {overdueInvoiceCount > 0 ? (
+            <p className="mt-2 flex items-baseline justify-between gap-3 border-t border-border/70 pt-2 text-caption">
+              <span className="text-muted-foreground">
+                {tPos('overdueInvoices', { n: overdueInvoiceCount })}
+              </span>
+              <LtrValue className="font-medium tabular-nums text-danger">
+                {overdueAmount ?? '—'}
+              </LtrValue>
+            </p>
+          ) : null}
         </>
       )}
     </SectionCard>

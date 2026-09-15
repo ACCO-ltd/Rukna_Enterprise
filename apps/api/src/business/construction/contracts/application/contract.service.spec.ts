@@ -319,6 +319,12 @@ describe('ADR-023 — payment schedule on contract create (CONST-COM-012)', () =
       findEffectiveClientContract: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({ id: 'c-1' }),
       createPaymentInstallments: jest.fn().mockResolvedValue({ count: 0 }),
+      // ADR-030 S-CC-1/3 — the committed-BOQ resolver + the number sequence the CLIENT_CONTRACT path uses.
+      findCommittedBoqVersionsForProject: jest
+        .fn()
+        .mockResolvedValue([{ id: 'bv-1', status: 'BASELINED' }]),
+      findProjectCode: jest.fn().mockResolvedValue({ code: 'ACCO-WBR-26-0065' }),
+      nextContractNumber: jest.fn().mockResolvedValue('ACCO-WBR-26-0065-C1'),
     };
     const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
     const audit = { record: jest.fn().mockResolvedValue(undefined) };
@@ -531,19 +537,29 @@ describe('commercial-billing §5 P1 + Q-B — payment-plan editor (DRAFT replace
 // ADR-029 §3 — BOQ↔Contract tie-out + three-layer contract value (R3, GitHub #193).
 // Pure-logic assertions; all deps mocked, $transaction runs the callback inline.
 describe('R3 — tie-out & three-layer contract value (T-1..T-4)', () => {
-  function buildForCreate(opts: { boqStatus?: string; tieOutTotal?: string | null } = {}) {
+  // `committed` models what the server resolves for a CLIENT_CONTRACT (ADR-030 S-CC-1): the committed
+  // versions for the project's BOQ. A DRAFT-only project resolves to [] → BOQ_NOT_COMMITTED gate.
+  function buildForCreate(
+    opts: {
+      committed?: { id: string; status: string }[];
+      tieOutTotal?: string | null;
+    } = {},
+  ) {
     const repo = {
       findByNumber: jest.fn().mockResolvedValue(null),
       findEffectiveClientContract: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({ id: 'c-1' }),
       createPaymentInstallments: jest.fn().mockResolvedValue({ count: 0 }),
+      findCommittedBoqVersionsForProject: jest
+        .fn()
+        .mockResolvedValue(opts.committed ?? [{ id: 'bv-1', status: 'COMMITTED' }]),
+      findProjectCode: jest.fn().mockResolvedValue({ code: 'ACCO-WBR-26-0065' }),
+      nextContractNumber: jest.fn().mockResolvedValue('ACCO-WBR-26-0065-C1'),
     };
     const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
     const audit = { record: jest.fn().mockResolvedValue(undefined) };
     const prisma = {
-      boqVersion: {
-        findFirst: jest.fn().mockResolvedValue({ status: opts.boqStatus ?? 'COMMITTED' }),
-      },
+      boqVersion: { findFirst: jest.fn().mockResolvedValue({ status: 'COMMITTED' }) },
       $transaction: (fn: (tx: unknown) => unknown) => fn({}),
     };
     const tenancy = { getClient: () => prisma };
@@ -564,6 +580,8 @@ describe('R3 — tie-out & three-layer contract value (T-1..T-4)', () => {
     return { repo, attachments, boqVersioning, prisma, service };
   }
 
+  // Base for the OLD full-payload path: a caller still POSTing boqVersionId + contractValue. The
+  // server resolves the committed version to the same id, so a matching supplied id is honoured.
   const base = {
     projectId: 'p-1',
     clientId: 'cl-1',
@@ -610,27 +628,39 @@ describe('R3 — tie-out & three-layer contract value (T-1..T-4)', () => {
     expect(response.details.delta).toBe('50000.00');
   });
 
-  it('committed-status acceptance: a COMMITTED version is a valid reference', async () => {
-    const { service, repo } = buildForCreate({ boqStatus: 'COMMITTED', tieOutTotal: '750000.00' });
+  it('committed-status acceptance: a COMMITTED version is the resolved reference', async () => {
+    const { service, repo } = buildForCreate({
+      committed: [{ id: 'bv-1', status: 'COMMITTED' }],
+      tieOutTotal: '750000.00',
+    });
     await service.create(identity, { ...base, contractValue: '750000.00' } as never);
     expect(repo.create).toHaveBeenCalled();
   });
 
-  it('committed-status acceptance: a BASELINED version is still accepted pre-migration', async () => {
-    const { service, repo } = buildForCreate({ boqStatus: 'BASELINED', tieOutTotal: '750000.00' });
+  it('committed-status acceptance: a BASELINED version is still resolved pre-migration', async () => {
+    const { service, repo } = buildForCreate({
+      committed: [{ id: 'bv-1', status: 'BASELINED' }],
+      tieOutTotal: '750000.00',
+    });
     await service.create(identity, { ...base, contractValue: '750000.00' } as never);
     expect(repo.create).toHaveBeenCalled();
   });
 
-  it('committed-status: a DRAFT/SNAPSHOT/SUPERSEDED/CANCELLED version is rejected, tie-out never computed', async () => {
-    for (const status of ['DRAFT', 'SNAPSHOT', 'SUPERSEDED', 'CANCELLED']) {
-      const { service, repo, boqVersioning } = buildForCreate({ boqStatus: status });
-      await expect(
-        service.create(identity, { ...base, contractValue: '750000.00' } as never),
-      ).rejects.toBeInstanceOf(BadRequestException);
-      expect(boqVersioning.getInContractTotal).not.toHaveBeenCalled();
-      expect(repo.create).not.toHaveBeenCalled();
-    }
+  it('R2 overlap tie-break: prefers the COMMITTED version over a legacy BASELINED one', async () => {
+    const { service, boqVersioning } = buildForCreate({
+      committed: [
+        { id: 'bv-baselined', status: 'BASELINED' },
+        { id: 'bv-committed', status: 'COMMITTED' },
+      ],
+      tieOutTotal: '750000.00',
+    });
+    // No supplied boqVersionId → server resolves; the COMMITTED id must be the one tied out to.
+    await service.create(identity, {
+      projectId: 'p-1',
+      clientId: 'cl-1',
+      currency: 'USD',
+    } as never);
+    expect(boqVersioning.getInContractTotal).toHaveBeenCalledWith(identity, 'p-1', 'bv-committed');
   });
 
   it('rejects when the referenced BOQ version has no priced in-contract scope (tie-out null)', async () => {
@@ -638,6 +668,153 @@ describe('R3 — tie-out & three-layer contract value (T-1..T-4)', () => {
     await expect(
       service.create(identity, { ...base, contractValue: '750000.00' } as never),
     ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+});
+
+// ADR-030 CONST-COM-020/021/022 — contract-create simplification (S-CC-1..4). The minimal form posts
+// only client + dates; the server resolves the committed BOQ, derives the value, and mints the number.
+describe('C1 — contract-create simplification (S-CC-1..4)', () => {
+  function buildForCreate(
+    opts: {
+      committed?: { id: string; status: string }[] | undefined;
+      tieOutTotal?: string | null;
+      projectCode?: string;
+    } = {},
+  ) {
+    const repo = {
+      findByNumber: jest.fn().mockResolvedValue(null),
+      findEffectiveClientContract: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({ id: 'c-1' }),
+      createPaymentInstallments: jest.fn().mockResolvedValue({ count: 0 }),
+      findCommittedBoqVersionsForProject: jest
+        .fn()
+        .mockResolvedValue(opts.committed ?? [{ id: 'bv-1', status: 'COMMITTED' }]),
+      findProjectCode: jest
+        .fn()
+        .mockResolvedValue({ code: opts.projectCode ?? 'ACCO-WBR-26-0065' }),
+      // Mirrors the atomic sequence: n=1 on the first mint. The DB-backed spec proves concurrency.
+      nextContractNumber: jest
+        .fn()
+        .mockImplementation((_tx: unknown, _projectId: string, code: string) =>
+          Promise.resolve(`${code}-C1`),
+        ),
+    };
+    const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    const prisma = {
+      boqVersion: { findFirst: jest.fn().mockResolvedValue({ status: 'COMMITTED' }) },
+      $transaction: (fn: (tx: unknown) => unknown) => fn({}),
+    };
+    const tenancy = { getClient: () => prisma };
+    const attachments = { freezeFor: jest.fn().mockResolvedValue(0) };
+    const boqVersioning = {
+      getInContractTotal: jest
+        .fn()
+        .mockResolvedValue(opts.tieOutTotal === undefined ? '750000.00' : opts.tieOutTotal),
+    };
+    const service = new ContractService(
+      tenancy as never,
+      repo as never,
+      projectAccess as never,
+      audit as never,
+      attachments as never,
+      boqVersioning as never,
+    );
+    return { repo, audit, boqVersioning, service };
+  }
+
+  const minimal = { projectId: 'p-1', clientId: 'cl-1', currency: 'USD', startDate: '2026-01-15' };
+
+  it('S-CC-1: minimal payload (no boq/value/number) → base==current==tie-out, bound to committed version', async () => {
+    const { service, repo, boqVersioning } = buildForCreate({ tieOutTotal: '750000.00' });
+    await service.create(identity, minimal as never);
+
+    // The committed version is resolved server-side and tied out against.
+    expect(repo.findCommittedBoqVersionsForProject).toHaveBeenCalledWith(expect.anything(), 'p-1');
+    expect(boqVersioning.getInContractTotal).toHaveBeenCalledWith(identity, 'p-1', 'bv-1');
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        boqVersionId: 'bv-1',
+        baseContractValue: '750000.00',
+        contractValue: '750000.00',
+      }),
+    );
+  });
+
+  it('S-CC-3: an omitted number is minted `{projectCode}-C{n}` from the atomic sequence', async () => {
+    const { service, repo } = buildForCreate({ projectCode: 'ACCO-WBR-26-0065' });
+    await service.create(identity, minimal as never);
+
+    expect(repo.nextContractNumber).toHaveBeenCalledWith(
+      expect.anything(),
+      'p-1',
+      'ACCO-WBR-26-0065',
+    );
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ contractNumber: 'ACCO-WBR-26-0065-C1' }),
+    );
+    // No duplicate check when the number is auto-generated.
+    expect(repo.findByNumber).not.toHaveBeenCalled();
+  });
+
+  it('S-CC-2: no committed BOQ (DRAFT-only) → BOQ_NOT_COMMITTED, no row, tie-out never computed', async () => {
+    const { service, repo, boqVersioning } = buildForCreate({ committed: [] });
+    const err = await service.create(identity, minimal as never).catch((e) => e);
+
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as BadRequestException).getResponse()).toMatchObject({ code: 'BOQ_NOT_COMMITTED' });
+    expect(boqVersioning.getInContractTotal).not.toHaveBeenCalled();
+    expect(repo.nextContractNumber).not.toHaveBeenCalled();
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('S-CC-4: billingModel defaults to MILESTONE when omitted', async () => {
+    const { service, repo } = buildForCreate();
+    await service.create(identity, minimal as never);
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ billingModel: 'MILESTONE' }),
+    );
+  });
+
+  it('a supplied contractValue that differs from the tie-out still 400s TIEOUT_MISMATCH', async () => {
+    const { service, repo } = buildForCreate({ tieOutTotal: '750000.00' });
+    const err = await service
+      .create(identity, { ...minimal, contractValue: '700000.00' } as never)
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as BadRequestException).getResponse()).toMatchObject({ code: 'TIEOUT_MISMATCH' });
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('non-breaking: the old full payload (boqVersionId+value+number) still succeeds and honours the number', async () => {
+    const { service, repo } = buildForCreate({ tieOutTotal: '750000.00' });
+    await service.create(identity, {
+      ...minimal,
+      boqVersionId: 'bv-1',
+      contractValue: '750000.00',
+      contractNumber: 'ACCO-LEGACY-1',
+    } as never);
+
+    // Supplied number is checked for duplicates and used verbatim; the sequence is NOT consulted.
+    expect(repo.findByNumber).toHaveBeenCalledWith(expect.anything(), 'org-1', 'ACCO-LEGACY-1');
+    expect(repo.nextContractNumber).not.toHaveBeenCalled();
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ contractNumber: 'ACCO-LEGACY-1', contractValue: '750000.00' }),
+    );
+  });
+
+  it('a supplied boqVersionId that is NOT the committed version is rejected (BOQ_VERSION_MISMATCH)', async () => {
+    const { service, repo } = buildForCreate({ committed: [{ id: 'bv-committed', status: 'COMMITTED' }] });
+    const err = await service
+      .create(identity, { ...minimal, boqVersionId: 'bv-stale' } as never)
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as BadRequestException).getResponse()).toMatchObject({ code: 'BOQ_VERSION_MISMATCH' });
     expect(repo.create).not.toHaveBeenCalled();
   });
 });

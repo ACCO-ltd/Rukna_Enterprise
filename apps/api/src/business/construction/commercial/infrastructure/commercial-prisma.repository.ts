@@ -110,6 +110,126 @@ export class CommercialPrismaRepository {
     });
   }
 
+  /**
+   * ADR-030 CONST-COM-028 (Commercial redesign P1) — the single installment the bill-stage
+   * orchestrator is billing, with its owning contract and its already-generated milestone invoice (if
+   * any). Org-scoped through `contract.organizationId`. Carries exactly what `billStage` needs to
+   * derive the stage amount, resolve VOs, and route the milestone-invoice / omission handling:
+   *   - the contract's client/project/currency/billing-model/status and both value columns (the
+   *     schedule spreads `baseContractValue ?? contractValue`);
+   *   - the installment percentage + its linked programme milestone status (the CONST-COM-011 gate);
+   *   - the existing `clientInvoice` (the milestone invoice) so an already-invoiced stage is detected.
+   * Returns null when the installment is not found in this org (404).
+   */
+  findInstallmentWithContract(
+    prisma: TenantPrisma,
+    organizationId: string,
+    installmentId: string,
+  ) {
+    return prisma.contractPaymentInstallment.findFirst({
+      where: { id: installmentId, contract: { organizationId } },
+      select: {
+        id: true,
+        name: true,
+        percentage: true,
+        sortOrder: true,
+        programmeMilestoneId: true,
+        programmeMilestone: { select: { id: true, code: true, name: true, status: true } },
+        clientInvoice: {
+          select: {
+            id: true,
+            invoiceNumber: true,
+            subtotal: true,
+            totalAmount: true,
+            documentStatus: true,
+            postingStatus: true,
+          },
+        },
+        contract: {
+          select: {
+            id: true,
+            organizationId: true,
+            projectId: true,
+            clientId: true,
+            currency: true,
+            billingModel: true,
+            status: true,
+            contractNumber: true,
+            baseContractValue: true,
+            contractValue: true,
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * ADR-030 S-VB-7 — all payment installments of a contract with their milestone invoice (if any), in
+   * plan order, for the Billing-Package read model. Org-scoped through `contract.organizationId`.
+   * Distinct from `findPaymentInstallments` (the cycle read, which carries the milestone link but not
+   * the invoice) so neither read carries fields the other never uses.
+   */
+  findInstallmentsWithInvoiceForContract(
+    prisma: TenantPrisma,
+    organizationId: string,
+    contractId: string,
+  ) {
+    return prisma.contractPaymentInstallment.findMany({
+      where: { contractId, contract: { organizationId } },
+      orderBy: { sortOrder: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        sortOrder: true,
+        clientInvoice: {
+          select: {
+            id: true,
+            invoiceNumber: true,
+            subtotal: true,
+            totalAmount: true,
+            documentStatus: true,
+            postingStatus: true,
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * ADR-030 S-VB-7 — every variation-billing allocation recorded against a contract's variations, with
+   * the linked standalone invoice (for INVOICE additions) and the variation's reference/title, so the
+   * Billing-Package read can group VO lines under their installment. Org-scoped; ordered oldest-first.
+   */
+  findVariationAllocationsForContract(
+    prisma: TenantPrisma,
+    organizationId: string,
+    contractId: string,
+  ) {
+    return prisma.variationBillingAllocation.findMany({
+      where: { organizationId, variation: { contractId } },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        variationId: true,
+        amount: true,
+        treatment: true,
+        installmentId: true,
+        clientInvoiceId: true,
+        variation: { select: { reference: true, title: true } },
+        clientInvoice: {
+          select: {
+            id: true,
+            invoiceNumber: true,
+            subtotal: true,
+            totalAmount: true,
+            documentStatus: true,
+            postingStatus: true,
+          },
+        },
+      },
+    });
+  }
+
   /** ADR-023: the payment-schedule installments for a MILESTONE contract, in plan order. */
   findPaymentInstallments(prisma: TenantPrisma, contractId: string) {
     return prisma.contractPaymentInstallment.findMany({

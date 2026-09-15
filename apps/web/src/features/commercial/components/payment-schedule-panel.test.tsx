@@ -155,3 +155,59 @@ describe('PaymentSchedulePanel — MilestoneCell (P2 payment-schedule side)', ()
     expect(screen.getByRole('button', { name: 'Link milestone' })).toBeInTheDocument();
   });
 });
+
+describe('PaymentSchedulePanel — row-level milestone gate (S-PS-1 / CONST-COM-025)', () => {
+  it('shows the reason + a working verify link on a NEXT row gated by an unverified milestone', () => {
+    renderPanel([
+      installment({
+        id: 'gated',
+        status: 'NEXT',
+        triggerType: 'MILESTONE',
+        programmeMilestone: { id: 'ms-2', code: 'MS-02', name: 'Partition complete', status: 'PLANNED' },
+      }),
+    ]);
+
+    // The reason names the gating milestone and links straight into Programme & Progress.
+    const verify = screen.getByRole('link', { name: /Verify “Partition complete”/i });
+    expect(verify).toHaveAttribute('href', '/projects/p-1/progress');
+  });
+
+  it('disables the Generate control on a gated row — never a bare disabled button', () => {
+    renderPanel([
+      installment({
+        id: 'gated',
+        status: 'NEXT',
+        triggerType: 'MILESTONE',
+        programmeMilestone: { id: 'ms-2', code: 'MS-02', name: 'Partition complete', status: 'PLANNED' },
+      }),
+    ]);
+
+    const generate = screen.getByRole('button', { name: 'Generate invoice' });
+    expect(generate).toBeDisabled();
+    // The disabled control is not bare: the reason (with its remediation link) sits on the same row.
+    expect(screen.getByRole('link', { name: /Verify “Partition complete”/i })).toBeInTheDocument();
+  });
+
+  it('leaves a NEXT row whose milestone is VERIFIED fully actionable (no block, no reason)', () => {
+    renderPanel([
+      installment({
+        id: 'clear',
+        status: 'NEXT',
+        triggerType: 'MILESTONE',
+        programmeMilestone: { id: 'ms-1', code: 'MS-01', name: 'Substructure', status: 'VERIFIED' },
+      }),
+    ]);
+
+    expect(screen.getByRole('button', { name: 'Generate invoice' })).toBeEnabled();
+    expect(screen.queryByRole('link', { name: /^Verify/i })).not.toBeInTheDocument();
+  });
+
+  it('leaves an unlinked NEXT row unaffected (no milestone to gate on)', () => {
+    renderPanel([
+      installment({ id: 'unlinked', status: 'NEXT', triggerType: 'MILESTONE', programmeMilestone: null }),
+    ]);
+
+    expect(screen.getByRole('button', { name: 'Generate invoice' })).toBeEnabled();
+    expect(screen.queryByRole('link', { name: /^Verify/i })).not.toBeInTheDocument();
+  });
+});

@@ -1,6 +1,8 @@
 'use client';
 
+import { useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Alert, Button, Skeleton } from '@erp/ui';
 
@@ -8,13 +10,27 @@ import { ApiError } from '@/lib/api-client';
 import { EmptyState } from '@/components/empty-state';
 
 import { useCommercialSummary } from '../hooks/use-commercial';
-import { CommercialNav, commercialTabsFor, type CommercialTab } from './commercial-nav';
-import { OverviewTab } from './overview-tab';
+import {
+  CommercialNav,
+  commercialLandingTab,
+  commercialTabHref,
+  commercialTabsFor,
+  type CommercialTab,
+} from './commercial-nav';
+import { CommercialCycleRibbon } from './commercial-cycle-ribbon';
 import { ContractSecurityTab } from './contract-security-tab';
 import { ApplicationsTab } from './applications-tab';
 import { PaymentScheduleTab } from './payment-schedule-tab';
 import { VariationsTab } from './variations-tab';
 import { BillingCollectionTab } from './billing-collection-tab';
+
+/**
+ * The old `/commercial` (Overview) route no longer has a tab of its own (S-SH-5). A page hitting
+ * it passes `active="overview"` and the workspace resolves the real landing tab — Payment Schedule
+ * for a MILESTONE contract, Contract otherwise — and replaces the URL with it, so a bookmark or a
+ * stale link never dead-ends on a retired view.
+ */
+type WorkspaceIntent = CommercialTab | 'overview';
 
 /**
  * The Commercial workspace.
@@ -35,13 +51,30 @@ export function CommercialWorkspace({
   active,
 }: {
   projectId: string;
-  active: CommercialTab;
+  active: WorkspaceIntent;
 }) {
   const t = useTranslations('commercial');
   const tCommon = useTranslations('common');
+  const router = useRouter();
   const query = useCommercialSummary(projectId);
 
-  if (query.isPending) return <WorkspaceSkeleton label={tCommon('loading')} />;
+  const billingModel = query.data?.mainContract?.billingModel ?? null;
+  const hasContract = query.data?.mainContract != null;
+
+  // The retired Overview route lands here as `active="overview"` and is bounced to the real landing
+  // tab once the summary tells us the billing model. The redirect runs in an effect (not during
+  // render) so it never fires against half-loaded data. The skeleton below covers the interim.
+  const isOverviewRedirect = active === 'overview';
+  const landing = commercialLandingTab(billingModel, hasContract);
+  useEffect(() => {
+    if (isOverviewRedirect && query.isSuccess) {
+      router.replace(commercialTabHref(projectId, landing));
+    }
+  }, [isOverviewRedirect, query.isSuccess, router, projectId, landing]);
+
+  if (query.isPending || isOverviewRedirect) {
+    return <WorkspaceSkeleton label={tCommon('loading')} />;
+  }
 
   if (query.isError) {
     return (
@@ -61,37 +94,40 @@ export function CommercialWorkspace({
   }
 
   const summary = query.data;
-  const billingModel = summary.mainContract?.billingModel ?? null;
   // A MILESTONE contract has no Applications view (ADR-023). Someone who deep-links or
   // back-buttons into it gets the explanation rather than a blank screen: the tab is gone
   // because this contract is billed from its payment plan, and the plan is one click away.
   const available = commercialTabsFor(billingModel);
-  const resolved: CommercialTab = available.includes(active) ? active : 'overview';
+  const tab = active as CommercialTab;
+  const resolved: CommercialTab = available.includes(tab) ? tab : landing;
 
   return (
     <div className="space-y-5" data-commercial-root>
       <Heading />
+      {/* The persistent cycle ribbon (S-SH-2). It mounts here — once, above the view switch — so
+          "what happens next to get paid" reads the same on all four tabs. It supersedes the interim
+          CurrentPaymentCycle card C2 placed on Payment Schedule. */}
+      <CommercialCycleRibbon projectId={projectId} />
       <CommercialNav projectId={projectId} active={resolved} billingModel={billingModel} />
 
       <div>
-        {!available.includes(active) ? (
+        {!available.includes(tab) ? (
           <UnavailableView projectId={projectId} />
         ) : (
           <>
-            {active === 'overview' ? <OverviewTab projectId={projectId} summary={summary} /> : null}
-            {active === 'contract-security' ? (
+            {tab === 'contract-security' ? (
               <ContractSecurityTab projectId={projectId} summary={summary} />
             ) : null}
-            {active === 'applications' ? (
+            {tab === 'applications' ? (
               <ApplicationsTab projectId={projectId} summary={summary} />
             ) : null}
-            {active === 'payment-schedule' ? (
+            {tab === 'payment-schedule' ? (
               <PaymentScheduleTab projectId={projectId} summary={summary} />
             ) : null}
-            {active === 'variations' ? (
+            {tab === 'variations' ? (
               <VariationsTab projectId={projectId} summary={summary} />
             ) : null}
-            {active === 'billing-collection' ? (
+            {tab === 'billing-collection' ? (
               <BillingCollectionTab projectId={projectId} summary={summary} />
             ) : null}
           </>
@@ -144,9 +180,10 @@ function WorkspaceSkeleton({ label }: { label: string }) {
     <div className="space-y-5" role="status" aria-live="polite">
       <span className="sr-only">{label}</span>
       <Skeleton className="h-12 w-64" aria-hidden="true" />
+      {/* Skeletons mirror the final layout: the heading, the cycle ribbon, the view switch, then
+          the body. The slim ribbon band matches the resolved ribbon's height so nothing janks. */}
+      <Skeleton className="h-11 w-full rounded-panel" aria-hidden="true" />
       <Skeleton className="h-11 w-full" aria-hidden="true" />
-      {/* Skeletons mirror the final layout: the position strip, the cycle card, then the body. */}
-      <Skeleton className="h-24 w-full" aria-hidden="true" />
       <div className="grid gap-4 lg:grid-cols-2">
         <Skeleton className="h-64 w-full" aria-hidden="true" />
         <Skeleton className="h-64 w-full" aria-hidden="true" />

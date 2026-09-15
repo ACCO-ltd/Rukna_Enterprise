@@ -34,8 +34,9 @@ import { formatMoney } from '@/lib/format';
 import { useCommercialCurrentCycle } from '../hooks/use-commercial';
 import { useReplacePaymentPlan } from '../hooks/use-replace-payment-plan';
 import { isBilledInstallment } from '../presentation';
+import { CommercialActivity } from './commercial-activity';
 import { PaymentSchedulePanel } from './payment-schedule-panel';
-import { SectionCard } from './commercial-ui';
+import { AttentionList, SectionCard } from './commercial-ui';
 
 /**
  * Split the current schedule into the two halves Q-B treats differently:
@@ -107,10 +108,23 @@ export function PaymentScheduleTab({
     <div className="space-y-4">
       <SummaryStrip projectId={projectId} summary={summary} />
 
+      {/* The interim CurrentPaymentCycle card C2 relocated here is gone (S-SH-2): the persistent
+          cycle ribbon in the workspace shell now carries "what happens next to get paid" across all
+          four tabs, so keeping a per-tab copy would duplicate the cue and let the two drift. */}
+
       {/* The ledger + generate-invoice + link-milestone + CONST-COM-011 gate, reused verbatim. */}
       <PaymentSchedulePanel projectId={projectId} contractId={contract.id} summary={summary} />
 
       <ScheduleEditor projectId={projectId} contractId={contract.id} status={contract.status} />
+
+      {/* Attention + activity also lived on Overview. They stay reachable here so nothing
+          disappears before C3/C8 give them permanent homes. */}
+      <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+        <SectionCard title={t('overview.attention')}>
+          <AttentionList items={summary.attention} />
+        </SectionCard>
+        <CommercialActivity items={summary.recentActivity} />
+      </div>
     </div>
   );
 }
@@ -400,10 +414,15 @@ function ScheduleForm({
   const { fields, append, remove, replace } = useFieldArray({ control, name: 'paymentPlan' });
 
   // The live running total drives the reconciliation indicator — checked against the target as it is
-  // typed, not only on submit.
+  // typed, not only on submit. This MIRRORS the server's `assertPaymentPlanReconciles` exactly: the
+  // submitted (editable) rows plus the frozen invoiced share must equal 100%, i.e. the editable rows
+  // must equal `targetPercent` (= 100 − frozen%). The client hard-stops Save on this so a plan the
+  // server would 400 can never leave the form; the server error stays wired as the backstop.
   const planRows = useWatch({ control, name: 'paymentPlan' }) ?? [];
   const total = paymentPlanTotalPercent(planRows);
-  const balanced = planRows.length > 0 && Math.abs(total - targetPercent) <= 0.001;
+  // Signed remainder against the target: positive = short (needs more), negative = over.
+  const delta = Number((targetPercent - total).toFixed(2));
+  const balanced = planRows.length > 0 && Math.abs(delta) <= 0.001;
 
   const onSubmit = (values: EditorValues) => {
     // Submit ONLY the editable rows; the server keeps the frozen invoiced installments (Q-B).
@@ -437,7 +456,13 @@ function ScheduleForm({
       {/* Frozen invoiced stages: shown so the user sees the whole plan, but locked and never submitted. */}
       {frozen.length > 0 ? (
         <FormSection title={t('frozenSectionTitle')}>
-          <p className="text-xs text-muted-foreground">{t('frozenSectionHint')}</p>
+          {/* S-PS-3: state up front how much is already billed and what remains editable, so the
+              locked rows below are read as "the past" and the target the editable tail must hit is
+              obvious. `targetPercent` is exactly 100 − frozen%, the un-invoiced remainder. */}
+          <p className="text-body-sm font-medium text-foreground">
+            {t('alreadyBilledHeader', { billed: frozenPercent, remaining: targetPercent })}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">{t('frozenSectionHint')}</p>
           <ul className="mt-3 space-y-3">
             {frozen.map((inst) => (
               <LockedPlanRow
@@ -501,9 +526,16 @@ function ScheduleForm({
                   ? isReprofile
                     ? t('editableOk', { target: targetPercent })
                     : tPlan('plan.totalOk')
-                  : isReprofile
-                    ? t('editableTotal', { total, target: targetPercent })
-                    : tPlan('plan.total', { total })}
+                  : /* The live delta: "Total N% · needs X% more" (short) or "· over by Y%" (over),
+                       so the reader sees exactly how far the plan is from the required total and in
+                       which direction — not just that it is wrong. */
+                    t('reconcileDelta', {
+                      total,
+                      remedy:
+                        delta > 0
+                          ? t('reconcileShort', { amount: Number(delta.toFixed(2)) })
+                          : t('reconcileOver', { amount: Number(Math.abs(delta).toFixed(2)) }),
+                    })}
               </p>
             </div>
           ) : null}
@@ -511,7 +543,11 @@ function ScheduleForm({
       </FormSection>
 
       <div className="flex flex-col gap-3 sm:flex-row-reverse sm:justify-start">
-        <Button type="submit" disabled={save.isPending}>
+        {/* S-PS-2 / CONST-COM-024: Save is hard-stopped whenever the editable rows do not reconcile
+            to the required total (100% DRAFT; 100 − invoiced% ACTIVE). This mirrors the server's
+            `assertPaymentPlanReconciles` so a broken plan never reaches the wire; the live delta above
+            says how far off it is, and the server error remains the backstop. */}
+        <Button type="submit" disabled={save.isPending || !balanced}>
           {save.isPending ? tCommon('loading') : t('save')}
         </Button>
         <Button type="button" variant="outline" onClick={onDone} disabled={save.isPending}>

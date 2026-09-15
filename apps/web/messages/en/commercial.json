@@ -18,10 +18,9 @@
     "notSet": "Not set"
   },
   "tabs": {
-    "contract-security": "Contract & Security",
+    "contract-security": "Contract",
     "billing-collection": "Billing & Collection",
     "label": "Commercial sections",
-    "overview": "Overview",
     "main-contract": "Main Contract",
     "applications": "Applications & Certification",
     "payment-schedule": "Payment Schedule",
@@ -248,19 +247,19 @@
     "hiddenAction": "Go to Billing & Collection"
   },
   "contractSecurity": {
-    "title": "Contract & Security",
+    "title": "Contract",
     "subtitle": "The commercial baseline, contractual terms and instruments that protect performance.",
     "guarantees": "Guarantees",
     "manageTerms": "Set contract terms"
   },
   "contractAuthoring": {
-    "back": "Back to Contract & Security",
+    "back": "Back to Contract",
     "newTitle": "New contract",
     "newSubtitle": "Set the commercial baseline for this project — its value, billing model and payment terms.",
     "editTitle": "Edit contract",
     "editSubtitle": "Amend the draft contract before it is submitted for review.",
     "noContractTitle": "No contract to edit",
-    "noContractHint": "This project has no main contract yet. Create one from Contract & Security.",
+    "noContractHint": "This project has no main contract yet. Create one from Contract.",
     "createContract": "Create contract",
     "loadFailed": "Could not load this project's contract."
   },
@@ -318,6 +317,27 @@
       "vatInclusive": "VAT inclusive",
       "overdueInvoices": "{n} invoices past due",
       "nothingOverdue": "Nothing past due"
+    },
+    "story": {
+      "title": "Money story",
+      "contractValue": "Contract value",
+      "governingHint": "Original contract plus approved variations.",
+      "invoiced": "Invoiced",
+      "collected": "Collected",
+      "outstanding": "Outstanding",
+      "postedInvoices": "{n} posted invoices",
+      "ofInvoiced": "{percent}% of invoiced",
+      "vatInclusive": "VAT inclusive",
+      "approvedVariations": "Approved variations",
+      "approvedVariationsHint": "Client-approved entitlement, shown separately from the billed chain until each variation is invoiced."
+    },
+    "cashflow": {
+      "title": "Cashflow",
+      "invoiced": "Cumulative invoiced",
+      "collected": "Cumulative collected",
+      "empty": "The cashflow curve begins once the first client invoice is posted.",
+      "restricted": "Cashflow figures are restricted for your role.",
+      "ariaSummary": "Cumulative invoiced vs collected over {points, plural, one {# invoice} other {# invoices}}. Latest cumulative invoiced {invoiced}, latest cumulative collected {collected}."
     },
     "source": {
       "INSTALLMENT": "Installment",
@@ -391,6 +411,7 @@
       "verified": "Verified",
       "planned": "Awaiting verification",
       "blockedHint": "The linked milestone must be verified before this installment can be invoiced.",
+      "blockedRow": "Verify “{name}”",
       "dialogTitle": "Link programme milestone",
       "dialogHint": "Billing this installment will be blocked until the linked milestone is verified (CONST-COM-011).",
       "picker": "Programme milestone",
@@ -421,8 +442,11 @@
     "editableSectionHint": "Adjust the stages that have not been billed yet. These must total {target}% so the whole schedule still reconciles to 100%.",
     "reconcileBreakdown": "Invoiced (locked): {frozen}% · remaining to allocate: {target}%",
     "editableOk": "Totals {target}%",
-    "editableTotal": "Total: {total}% — must equal {target}%",
     "editableMismatch": "Un-invoiced stages must total {target}% (currently {total}%)",
+    "reconcileDelta": "Total {total}% · {remedy}",
+    "reconcileShort": "needs {amount}% more",
+    "reconcileOver": "over by {amount}%",
+    "alreadyBilledHeader": "{billed}% already billed — editing the remaining {remaining}%",
     "locked": "Locked",
     "installmentStatus": {
       "PAID": "Paid",
@@ -495,6 +519,14 @@
       "evidenceVerified": "Milestone {code} is verified",
       "allBilledTitle": "Every installment is invoiced",
       "allBilledHint": "All {total} installments have been billed. Collection is tracked in Billing & Collection."
+    },
+    "ribbon": {
+      "label": "Current commercial cycle",
+      "milestoneStage": "Milestone {n} of {total} · {name}",
+      "blocked": "Blocked: the linked milestone must be verified first",
+      "blockedNamed": "Blocked: verify “{name}”",
+      "goVerify": "Go verify",
+      "restricted": "Restricted"
     },
     "restricted": "Restricted",
     "application": "Application {n}",

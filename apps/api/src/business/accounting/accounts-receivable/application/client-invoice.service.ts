@@ -33,6 +33,33 @@ export interface GenerateInvoiceFromInstallmentDto {
   invoiceDate: string;
   dueDate: string;
   paymentTerms?: string;
+  /**
+   * ADR-030 CONST-COM-029 (Commercial redesign P1) — a signed money-string adjustment applied to the
+   * stage subtotal BEFORE tax, used to net an omission variation (STAGE_REDUCTION) into a stage that
+   * has NOT yet been invoiced. Defaults to `'0'` (no adjustment; the legacy path is unchanged). Must
+   * be ≤ 0 in practice (an omission reduces the stage); a value that would drive the subtotal below
+   * zero is refused. Additions are billed as their own invoice, never through this field.
+   */
+  subtotalAdjustment?: string;
+}
+
+/**
+ * ADR-030 CONST-COM-028 (Commercial redesign P1) — the primitive-driven DTO for a variation's OWN
+ * standalone invoice, composed by the commercial bill-stage orchestrator (never idempotent, never
+ * controller-exposed: the orchestrator owns the exactly-once guard through the allocation ledger).
+ */
+export interface GenerateStandaloneChargeDto {
+  clientId: string;
+  projectId: string;
+  contractId: string;
+  currencyCode: string;
+  /** The positive ex-tax charge (2dp money string). */
+  subtotal: string;
+  /** Human label snapshotted onto the invoice (`VO-001 — Extra scope`). */
+  label: string;
+  invoiceDate: string;
+  dueDate: string;
+  paymentTerms?: string;
 }
 
 export interface GenerateInvoiceFromSeparateChargeDto {
@@ -137,8 +164,15 @@ export class ClientInvoiceService {
    * variation that raises the current `contractValue` (R6) never re-spreads the milestone amounts. A
    * legacy contract with a null base (M-4) falls back to `contractValue`.
    */
-  async generateFromInstallment(identity: RequestIdentity, dto: GenerateInvoiceFromInstallmentDto) {
-    const prisma = this.tenancyService.getClient();
+  async generateFromInstallment(
+    identity: RequestIdentity,
+    dto: GenerateInvoiceFromInstallmentDto,
+    // ADR-030 P1 — when the commercial bill-stage orchestrator passes its own transaction client, the
+    // idempotency read AND the create run inside it, so the milestone invoice + its VO
+    // invoices/allocations commit atomically. Absent, the legacy standalone path is unchanged.
+    tx?: Prisma.TransactionClient,
+  ) {
+    const prisma = tx ?? this.tenancyService.getClient();
     const { activeOrganizationId: orgId, userId } = identity;
 
     const existing = await this.repo.findByInstallment(prisma, orgId, dto.installmentId);
@@ -170,9 +204,19 @@ export class ClientInvoiceService {
     }
 
     const scheduleBase = contract.baseContractValue ?? contract.contractValue;
-    const subtotal = new Decimal(scheduleBase.toString())
+    // ADR-030 CONST-COM-029 — the stage entitlement (pct × frozen base), then a signed adjustment for
+    // omission variations netted into this un-invoiced stage. GUARD: never produce a negative subtotal.
+    const stageBase = new Decimal(scheduleBase.toString())
       .mul(new Decimal(installment.percentage.toString()))
       .toDecimalPlaces(2);
+    const adjustment = new Decimal(dto.subtotalAdjustment ?? '0').toDecimalPlaces(2);
+    const subtotal = stageBase.plus(adjustment).toDecimalPlaces(2);
+    if (subtotal.lessThan(0)) {
+      throw new BadRequestException(
+        `The stage subtotal after adjustment is negative (${subtotal.toFixed(2)}); an omission cannot ` +
+          'exceed the stage value. Reduce the omission or bill it as a credit note.',
+      );
+    }
     const vatRate = new Decimal('0.05');
     const vatAmount = subtotal.mul(vatRate).toDecimalPlaces(2);
     const totalAmount = subtotal.plus(vatAmount);
@@ -290,6 +334,54 @@ export class ClientInvoiceService {
       }
       throw err;
     }
+  }
+
+  /**
+   * ADR-030 CONST-COM-028 (Commercial redesign P1) — compose a variation's OWN standalone DRAFT
+   * ClientInvoice from primitives.
+   *
+   * A variation is an independently-billable unit (design §7): an approved addition is billed on its
+   * own receivable, grouped into the milestone's Billing Package but individually payable. This method
+   * builds that document from primitives the commercial orchestrator already holds — it does NOT read
+   * the VO or the contract itself (Accounting never imports Variations; the orchestration/authorization
+   * lives in Commercial). It is INTERNAL-only: NOT idempotent (a VO invoice carries no source column, so
+   * there is nothing to key on) and NOT controller-exposed — the orchestrator owns the exactly-once
+   * guard via the allocation ledger before it calls this. Same lifecycle as every other AR document:
+   * DRAFT / NOT_POSTED, VAT at the same 5% engine, no GL posting here.
+   */
+  async generateStandaloneCharge(
+    identity: RequestIdentity,
+    dto: GenerateStandaloneChargeDto,
+    tx?: Prisma.TransactionClient,
+  ) {
+    const prisma = tx ?? this.tenancyService.getClient();
+    const { activeOrganizationId: orgId, userId } = identity;
+
+    const subtotal = new Decimal(dto.subtotal).toDecimalPlaces(2);
+    const vatRate = new Decimal('0.05');
+    const vatAmount = subtotal.mul(vatRate).toDecimalPlaces(2);
+    const totalAmount = subtotal.plus(vatAmount);
+
+    return this.repo.create(prisma, {
+      organizationId: orgId,
+      clientId: dto.clientId,
+      // A VO invoice is neither an installment nor an IPC nor a separate-charge BOQ leaf — every source
+      // tag is null. Its provenance is the VariationBillingAllocation row that links it to the VO.
+      sourceIpcId: null,
+      sourceInstallmentId: null,
+      sourceBoqNodeId: null,
+      projectId: dto.projectId,
+      contractId: dto.contractId,
+      invoiceDate: new Date(dto.invoiceDate),
+      dueDate: new Date(dto.dueDate),
+      currencyCode: dto.currencyCode,
+      subtotal,
+      vatAmount,
+      totalAmount,
+      paymentTerms: dto.paymentTerms,
+      billingAddressSnapshot: { separateCharge: dto.label },
+      createdBy: userId,
+    });
   }
 
   async approve(identity: RequestIdentity, invoiceId: string) {

@@ -114,6 +114,32 @@ describe('ADR-023 — getCurrentCycle for a MILESTONE contract', () => {
     expect(res.paymentSchedule?.installments).toHaveLength(4);
   });
 
+  // ADR-030 S-SH-3 / CONST-COM-011 — the ribbon's blocker. i0 (advance) is paid so i1 (Structure) is
+  // NEXT; gate it on a programme milestone that isn't VERIFIED yet.
+  it('S-SH-3: a NEXT installment gated on an un-verified milestone is blocked MILESTONE_NOT_VERIFIED', async () => {
+    const gatedPlan = accoPlan.map((i) =>
+      i.id === 'i1'
+        ? { ...i, programmeMilestone: { id: 'pm-1', code: 'M-STR', name: 'Structure', status: 'PLANNED' } }
+        : i,
+    );
+    const { service } = build({ contract: milestoneContract, installments: gatedPlan, invoices: advancePaidInvoices });
+    const res = await service.getCurrentCycle(financeIdentity, 'p-1');
+    expect(res.stage).toBe('MILESTONE_SCHEDULE');
+    expect(res.blockers).toContain('MILESTONE_NOT_VERIFIED');
+    expect(res.nextAction).toBeNull(); // no dead "Generate invoice" while the gate is closed
+  });
+
+  it('S-SH-3: the same NEXT installment with a VERIFIED milestone is not blocked', async () => {
+    const verifiedPlan = accoPlan.map((i) =>
+      i.id === 'i1'
+        ? { ...i, programmeMilestone: { id: 'pm-1', code: 'M-STR', name: 'Structure', status: 'VERIFIED' } }
+        : i,
+    );
+    const { service } = build({ contract: milestoneContract, installments: verifiedPlan, invoices: advancePaidInvoices });
+    const res = await service.getCurrentCycle(financeIdentity, 'p-1');
+    expect(res.blockers).not.toContain('MILESTONE_NOT_VERIFIED');
+  });
+
   it('derives status per installment from its own invoice: advance PAID, structure NEXT, rest UPCOMING', async () => {
     const { service } = build({ contract: milestoneContract, installments: accoPlan, invoices: advancePaidInvoices });
     const res = await service.getCurrentCycle(financeIdentity, 'p-1');

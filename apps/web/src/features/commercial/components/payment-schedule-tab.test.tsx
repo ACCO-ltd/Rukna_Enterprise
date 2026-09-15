@@ -79,6 +79,10 @@ function summary(
       boqVersionNumber: 1,
       ...contract,
     },
+    // The attention list + activity relocated here (S-SH-5) read these off the summary. The
+    // interim current-cycle card is gone (S-SH-2 — the workspace cycle ribbon now carries it).
+    attention: [],
+    recentActivity: [],
     ...overrides,
   } as unknown as CommercialSummaryResponse;
 }
@@ -88,6 +92,10 @@ function stubCycle(installments: CommercialPaymentScheduleInstallment[]) {
     isPending: false,
     isError: false,
     data: {
+      // A MILESTONE plan reports MILESTONE_SCHEDULE. The tab's summary strip + editor read the
+      // schedule off this; the "what next" cue itself now lives on the workspace cycle ribbon.
+      stage: 'MILESTONE_SCHEDULE',
+      nextAction: null,
       paymentSchedule: {
         currency: 'USD',
         contractValue: '750000.00',
@@ -266,6 +274,101 @@ describe('PaymentScheduleTab — ACCO standard template quick-fill (§4.2/§5 P2
   });
 });
 
+// ─── S-PS-2: the editor hard-stops Save until the plan reconciles, with a live delta ────────────
+
+describe('PaymentScheduleTab — editor Save hard-stop (S-PS-2 / CONST-COM-024)', () => {
+  it('keeps Save disabled while a DRAFT plan does not total 100%, and states how far short', async () => {
+    const user = userEvent.setup();
+    stubCycle([installment()]);
+    renderWithProviders(
+      <PaymentScheduleTab projectId="p-1" summary={summary({}, { status: 'DRAFT' })} />,
+      { permissions: ['manage:contract'] },
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
+
+    // Seeded from a single 40% installment → 60% short of 100%. Save is hard-stopped.
+    expect(screen.getByRole('button', { name: 'Save schedule' })).toBeDisabled();
+    expect(screen.getByText('Total 40% · needs 60% more')).toBeInTheDocument();
+  });
+
+  it('reports "over by" when a DRAFT plan exceeds 100%', async () => {
+    const user = userEvent.setup();
+    stubCycle([installment()]);
+    renderWithProviders(
+      <PaymentScheduleTab projectId="p-1" summary={summary({}, { status: 'DRAFT' })} />,
+      { permissions: ['manage:contract'] },
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
+
+    const percent = screen.getByLabelText('Percent (%)');
+    await user.clear(percent);
+    await user.type(percent, '103');
+    expect(await screen.findByText('Total 103% · over by 3%')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save schedule' })).toBeDisabled();
+  });
+
+  it('enables Save only once the DRAFT plan reconciles to exactly 100%', async () => {
+    const user = userEvent.setup();
+    stubCycle([installment()]);
+    renderWithProviders(
+      <PaymentScheduleTab projectId="p-1" summary={summary({}, { status: 'DRAFT' })} />,
+      { permissions: ['manage:contract'] },
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
+
+    // 40% seed is short — disabled. Correct it to 100% — enabled, balanced affordance shows.
+    expect(screen.getByRole('button', { name: 'Save schedule' })).toBeDisabled();
+    const percent = screen.getByLabelText('Percent (%)');
+    await user.clear(percent);
+    await user.type(percent, '100');
+
+    expect(await screen.findByText('Totals 100%')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save schedule' })).toBeEnabled();
+  });
+
+  it('never submits a broken plan: the disabled Save cannot fire the replace-all mutation', async () => {
+    const user = userEvent.setup();
+    stubCycle([installment()]);
+    renderWithProviders(
+      <PaymentScheduleTab projectId="p-1" summary={summary({}, { status: 'DRAFT' })} />,
+      { permissions: ['manage:contract'] },
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
+    // 40% ≠ 100% → the button is disabled; clicking it is a no-op, so the mutation never runs.
+    await user.click(screen.getByRole('button', { name: 'Save schedule' }));
+    expect(replaceMutate).not.toHaveBeenCalled();
+  });
+});
+
+// ─── S-PS-3: invoiced rows are locked under an "N% already billed" header ────────────────────────
+
+describe('PaymentScheduleTab — invoiced-billed header (S-PS-3)', () => {
+  it('states how much is already billed and what remains editable above the locked rows', async () => {
+    const user = userEvent.setup();
+    // 40% PAID + 30% BILLED = 70% frozen; the editable tail must make up the remaining 30%.
+    stubCycle([
+      installment({ id: 'a', sortOrder: 1, name: 'Advance', status: 'PAID', percentage: '0.4000', triggerType: 'ADVANCE' }),
+      installment({ id: 'b', sortOrder: 2, name: 'Structure', status: 'BILLED', percentage: '0.3000', triggerType: 'MILESTONE' }),
+      installment({ id: 'c', sortOrder: 3, name: 'Fit-out', status: 'NEXT', percentage: '0.2000', triggerType: 'MILESTONE' }),
+      installment({ id: 'd', sortOrder: 4, name: 'Handover', status: 'UPCOMING', percentage: '0.1000', triggerType: 'MILESTONE' }),
+    ]);
+    renderWithProviders(
+      <PaymentScheduleTab projectId="p-1" summary={summary({}, { status: 'ACTIVE' })} />,
+      { permissions: ['manage:contract'] },
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Edit schedule' }));
+
+    expect(
+      screen.getByText('70% already billed — editing the remaining 30%'),
+    ).toBeInTheDocument();
+  });
+});
+
 // ─── Q-B: split frozen (invoiced) from editable (un-invoiced) + the reconcile math ─────────────
 
 describe('splitScheduleForEditing / frozenPercentTotal (Q-B)', () => {
@@ -344,11 +447,12 @@ describe('PaymentScheduleTab — ACTIVE re-profile editor (Q-B)', () => {
     // The pre-populated 20 + 10 already reconciles to the 30% remainder.
     expect(screen.getByText('Totals 30%')).toBeInTheDocument();
 
-    // Push a row off target → the live footer measures against 30, not 100.
+    // Push a row off target → the live footer measures against 30, not 100, and states the signed
+    // delta: 25 + 10 = 35 against a 30% target is 5% over.
     const percentInputs = screen.getAllByLabelText('Percent (%)');
     await user.clear(percentInputs[0]!);
     await user.type(percentInputs[0]!, '25');
-    expect(await screen.findByText(/must equal 30%/i)).toBeInTheDocument();
+    expect(await screen.findByText('Total 35% · over by 5%')).toBeInTheDocument();
   });
 
   it('submits ONLY the editable un-invoiced rows on save (the server keeps the frozen ones)', async () => {

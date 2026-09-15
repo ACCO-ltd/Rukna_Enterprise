@@ -422,35 +422,24 @@ function RetentionPanel({ summary }: { summary: CommercialSummaryResponse }) {
   const locale = useLocale() as 'en' | 'ar';
   const { retention, securityPosition, currency } = summary;
 
-  // ADR-023 CONST-COM-013: a payment-schedule contract deducts no retention at all. Saying that
-  // is a different — and true — statement, where "0.00 held" would imply a term that is working.
-  if (!securityPosition.applicable && !retention) {
-    return (
-      <SectionCard title={t('title')}>
-        <p className="py-2 text-body-sm text-muted-foreground">{t('notApplicable')}</p>
-      </SectionCard>
-    );
-  }
+  // S-SH-4: the retention panel appears only when the contract actually carries retention terms.
+  // ACCO's MILESTONE contracts hold no retention (ADR-023 CONST-COM-013), so on those there is
+  // nothing to show — an empty "not applicable" card was noise on the section, not information.
+  if (!retention) return null;
 
   return (
     <SectionCard title={t('title')}>
       <dl>
-        {retention ? (
-          <>
-            <FactRow label={t('rate')}>{percentOfFraction(retention.retentionRate)}</FactRow>
-            <FactRow label={t('cap')}>
-              {t('capOfValue', { percent: percentOfFraction(retention.retentionCap) })}
-            </FactRow>
-            <FactRow label={t('releaseAtPc')}>
-              {percentOfFraction(retention.retentionSplitOnPC)}
-            </FactRow>
-            <FactRow label={t('releaseAtFinal')}>
-              {percentOfFraction(String(1 - Number(retention.retentionSplitOnPC)))}
-            </FactRow>
-          </>
-        ) : (
-          <FactRow label={t('rate')}>{t('none')}</FactRow>
-        )}
+        <FactRow label={t('rate')}>{percentOfFraction(retention.retentionRate)}</FactRow>
+        <FactRow label={t('cap')}>
+          {t('capOfValue', { percent: percentOfFraction(retention.retentionCap) })}
+        </FactRow>
+        <FactRow label={t('releaseAtPc')}>
+          {percentOfFraction(retention.retentionSplitOnPC)}
+        </FactRow>
+        <FactRow label={t('releaseAtFinal')}>
+          {percentOfFraction(String(1 - Number(retention.retentionSplitOnPC)))}
+        </FactRow>
         <FactRow label={t('held')}>
           {securityPosition.retentionHeld !== null ? (
             <LtrValue>
@@ -467,7 +456,7 @@ function RetentionPanel({ summary }: { summary: CommercialSummaryResponse }) {
       </dl>
       {/* Configured terms the billing model never exercises. Saying so once is kinder than
           leaving a reader to reconcile a 5% rate against a "not applicable" balance. */}
-      {retention && !securityPosition.applicable ? (
+      {!securityPosition.applicable ? (
         <p className="mt-2 text-caption text-muted-foreground">{t('notApplicable')}</p>
       ) : null}
     </SectionCard>
@@ -479,13 +468,10 @@ function AdvancePanel({ summary }: { summary: CommercialSummaryResponse }) {
   const locale = useLocale() as 'en' | 'ar';
   const { advances, securityPosition, currency } = summary;
 
-  if (advances.length === 0) {
-    return (
-      <SectionCard title={t('title')}>
-        <p className="py-2 text-body-sm text-muted-foreground">{t('none')}</p>
-      </SectionCard>
-    );
-  }
+  // S-SH-4: the advance panel appears only when the contract carries advance terms. A MILESTONE
+  // contract folds its advance into the first installment (no standalone advance recovery), so
+  // there is nothing to show and an empty "none" card was just noise.
+  if (advances.length === 0) return null;
 
   return (
     <SectionCard title={t('title')}>

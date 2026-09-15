@@ -602,6 +602,7 @@ model Project {
   suspensions          ProjectSuspension[]
   boq                  Boq?
   contracts            Contract[]
+  contractNumberSeq    ContractNumberSequence?
   costBudgets          ProjectCostBudget[]
   documents            ProjectDocument[]
   dailyProgressReports DailyProgressReport[]
@@ -1071,6 +1072,23 @@ model ProjectCodeSequence {
   @@map("project_code_sequences")
 }
 
+// ADR-030 CONST-COM-022 — the per-project monotonic counter that mints a client contract number
+// `{project.code}-C{n}` (e.g. `ACCO-WBR-26-0065-C1`). Mirrors ProjectCodeSequence: the increment is
+// atomic (upsert), so two concurrent creates on one project can never be handed the same n. Keyed by
+// project so the number is stable across the project's lifetime — CLOSED/CANCELLED predecessors do
+// not reset it, so a successor is never "always C1". Gaps are tolerated (a rolled-back create burns a
+// number), exactly as project codes tolerate gaps; the `@@unique([organizationId, contractNumber])`
+// on Contract is the collision backstop.
+model ContractNumberSequence {
+  projectId String   @id @map("project_id")
+  nextValue Int      @default(1) @map("next_value")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("contract_number_sequences")
+}
+
 model ProjectSuspension {
   id          String    @id @default(cuid())
   projectId   String    @map("project_id")
@@ -1509,6 +1527,10 @@ model ContractPaymentInstallment {
   contract           Contract            @relation(fields: [contractId], references: [id], onDelete: Cascade)
   clientInvoice      ClientInvoice? // ADR-023: the invoice generated from this installment, if any
   programmeMilestone ProgrammeMilestone? @relation(fields: [programmeMilestoneId], references: [id], onDelete: SetNull)
+  // ADR-030 CONST-COM-028 (Commercial redesign P1): the variation-billing realization rows that billed
+  // with this milestone stage (the Billing-Package grouping key C5 uses). SetNull on the allocation
+  // side keeps the ledger row when a re-profile removes an un-invoiced installment.
+  variationBillingAllocations VariationBillingAllocation[]
 
   @@index([contractId])
   @@map("contract_payment_installments")
@@ -1604,11 +1626,21 @@ model VariationOrder {
   boqAppliedBy        String?   @map("boq_applied_by")
   boqAppliedVersionId String?   @map("boq_applied_version_id")
 
+  // ADR-030 CONST-COM-027 (Commercial redesign P1): the intended billing treatment for this variation
+  // (WITH_STAGE alongside its milestone stage, or STANDALONE). Intent only — chosen at billing time and
+  // overridable; it does NOT move the contract value (entitlement) or the frozen %-schedule. Existing
+  // rows backfill to WITH_STAGE (the migration default). Realization is the allocation ledger below.
+  billingTreatment    VariationBillingTreatment @default(WITH_STAGE) @map("billing_treatment")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   contract             Contract                            @relation(fields: [contractId], references: [id], onDelete: Cascade)
   lines                VariationOrderLine[]
+  // ADR-030 CONST-COM-028 (Commercial redesign P1): the realization ledger — each row ties one slice of
+  // this VO's net to how it was billed (INVOICE / STAGE_REDUCTION). Invariant: Σ allocation.amount ==
+  // netValue once fully realized, and the sum never overshoots netValue in magnitude or crosses its sign.
+  billingAllocations   VariationBillingAllocation[]
   // ADR-026 CONST-VAR-007 (Phase 2): the BOQ nodes this VO scoped into the project (its provenance
   // fields). Every such node carries sourceType = VARIATION + sourceChangeOrderId = this VO's id.
   boqNodes             BoqNode[]                           @relation("VariationOrderBoqNodes")
@@ -1651,6 +1683,49 @@ model VariationOrderLine {
 
   @@index([variationOrderId])
   @@map("variation_order_lines")
+}
+
+// ADR-030 CONST-COM-028 (Commercial redesign, variation billing P1) — the billing REALIZATION ledger.
+// Entitlement (Contract.contractValue raised at VO adoption via raiseCurrentValueForVariation) and
+// billing realization are separate layers; this table is the realization side. One row records that a
+// slice of a variation's net value was billed a particular way. The exactly-once invariant (CONST-COM-028)
+// is enforced in the domain: Σ amount over a VO moves monotonically toward VO.netValue, never overshoots
+// it in magnitude, and stays sign-consistent with netValue; a fully-realized VO has Σ amount == netValue.
+//
+// clientInvoiceId / installmentId are the trace links (which invoice this landed on, which milestone stage
+// it billed with). Both are nullable and use SetNull — the allocation is the durable ledger record and
+// outlives a cancelled invoice or a re-profiled installment (it must never be orphaned into deletion).
+// CREDIT_NOTE is declared in the treatment enum for Phase 2 and is never written in P1/C5.
+model VariationBillingAllocation {
+  id             String                       @id @default(cuid())
+  organizationId String                       @map("organization_id")
+  variationId    String                       @map("variation_id")
+  // Signed slice of the VO net realized by this row. Positive for INVOICE, negative for STAGE_REDUCTION.
+  amount         Decimal                      @db.Decimal(18, 2)
+  treatment      VariationAllocationTreatment
+  // Trace: the ClientInvoice this slice was billed on (INVOICE) or reduced (STAGE_REDUCTION). Null until
+  // C5 wires the billing flow, or when the source document is cancelled (SetNull keeps the ledger row).
+  clientInvoiceId String?                     @map("client_invoice_id")
+  // Trace: the milestone installment this slice billed with (the Billing-Package grouping key in C5).
+  installmentId   String?                     @map("installment_id")
+  createdBy       String                      @map("created_by")
+  createdAt       DateTime                     @default(now()) @map("created_at")
+
+  variation     VariationOrder              @relation(fields: [variationId], references: [id], onDelete: Cascade)
+  clientInvoice ClientInvoice?              @relation(fields: [clientInvoiceId], references: [id], onDelete: SetNull)
+  installment   ContractPaymentInstallment? @relation(fields: [installmentId], references: [id], onDelete: SetNull)
+
+  // ADR-030 CONST-COM-028 (C5 hardening) — the concurrency backstop for the exactly-once invariant: at
+  // most ONE allocation per (variation, installment). A VO's net is one sign, so it is billed at most
+  // once onto a given stage; a racing double-submit of "bill this stage" hits this and its whole
+  // transaction rolls back (no duplicate invoice). NULL installment_id rows (pre-C5 / standalone
+  // allocations) are DISTINCT in Postgres, so this never constrains an off-stage allocation.
+  @@unique([variationId, installmentId])
+  @@index([variationId])
+  @@index([organizationId])
+  @@index([clientInvoiceId])
+  @@index([installmentId])
+  @@map("variation_billing_allocations")
 }
 
 // ADR-026 CONST-VAR-009 (Variations Phase 4) — an Extension of Time: the audited history of every
@@ -2548,6 +2623,9 @@ model ClientInvoice {
   // (CONST-BOQ-003), so this only ever nulls under a full BOQ cascade, never orphaning the invoice.
   sourceBoqNode     BoqNode?                    @relation("BoqNodeSeparateChargeInvoice", fields: [sourceBoqNodeId], references: [id], onDelete: SetNull)
   allocations       ClientReceiptAllocation[]
+  // ADR-030 CONST-COM-028 (Commercial redesign P1): the variation-billing realization rows that name
+  // this invoice as where a VO slice was billed. Read/trace only — the invoice header is unchanged.
+  variationBillingAllocations VariationBillingAllocation[]
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, clientId, postingStatus])
@@ -3346,6 +3424,26 @@ enum VariationOrderStatus {
   CLIENT_APPROVED
   REJECTED
   WITHDRAWN
+}
+
+// ADR-030 CONST-COM-027 (Commercial redesign, variation billing P1) — where a variation is intended to
+// bill. WITH_STAGE (default): billed alongside its milestone stage as part of the Billing Package.
+// STANDALONE: billed on its own, independent of any milestone. This is INTENT (chosen at billing time),
+// not realization — realization is the VariationBillingAllocation ledger below. Entitlement (the current
+// contract value raised at adoption) is a separate layer and is untouched by this enum.
+enum VariationBillingTreatment {
+  WITH_STAGE
+  STANDALONE
+}
+
+// ADR-030 CONST-COM-028 (Commercial redesign, variation billing P1) — how one variation dollar was
+// REALIZED. INVOICE: a positive VO amount billed as a ClientInvoice line/document. STAGE_REDUCTION: a
+// negative (omission) amount that reduced an un-invoiced stage's invoice. CREDIT_NOTE is declared for
+// Phase 2 (an omission against an already-invoiced stage) and is UNUSED in P1 — see design §7 / spec §8.
+enum VariationAllocationTreatment {
+  INVOICE
+  STAGE_REDUCTION
+  CREDIT_NOTE
 }
 
 // ADR-023: how a payment-schedule installment becomes billable.
