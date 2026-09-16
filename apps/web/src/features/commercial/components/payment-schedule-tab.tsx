@@ -32,7 +32,7 @@ import { useReplacePaymentPlan } from '../hooks/use-replace-payment-plan';
 import { isBilledInstallment } from '../presentation';
 import { CommercialActivity } from './commercial-activity';
 import { PaymentSchedulePanel } from './payment-schedule-panel';
-import { AttentionList, SectionCard } from './commercial-ui';
+import { SectionCard } from './commercial-ui';
 
 /**
  * Split the current schedule into the two halves Q-B treats differently:
@@ -113,14 +113,11 @@ export function PaymentScheduleTab({
 
       <ScheduleEditor projectId={projectId} contractId={contract.id} status={contract.status} />
 
-      {/* Attention + activity also lived on Overview. They stay reachable here so nothing
-          disappears before C3/C8 give them permanent homes. */}
-      <div className="grid min-w-0 gap-4 lg:grid-cols-2">
-        <SectionCard title={t('overview.attention')}>
-          <AttentionList items={summary.attention} />
-        </SectionCard>
-        <CommercialActivity items={summary.recentActivity} />
-      </div>
+      {/* Attention moved to Billing & Collection (RECONCILIATION_FAILED / UNINVOICED_CERTIFICATE)
+          and to the Guarantees panel (guarantee expiry, already shown per-row there) — the
+          sticky cycle ribbon above already owns "what's next" on every tab, so a second,
+          often-empty "Attention & Next Action" card here was competing with it for nothing. */}
+      <CommercialActivity items={summary.recentActivity} />
     </div>
   );
 }

@@ -50,6 +50,8 @@ interface FileRow {
     certificateId: string;
     certificate: { application: { contract: { projectId: string } } };
   }[];
+  organizationLogoFor: { id: string }[];
+  invoiceDocumentFor: { id: string }[];
 }
 
 /** A revision binding on the given project — the register's owner shape, in one place. */
@@ -70,6 +72,8 @@ function fileRow(over: Partial<FileRow> = {}): FileRow {
     guaranteeAttachments: [],
     ipaAttachments: [],
     ipcAttachments: [],
+    organizationLogoFor: [],
+    invoiceDocumentFor: [],
     ...over,
   };
 }
@@ -345,6 +349,69 @@ describe('FileAuthorizationService', () => {
     it.each(cases)('$name evidence is never deletable through the file API', async ({ row }) => {
       const { service } = build(fileRow({ lifecycle: 'BOUND', ...row }), ['project-b']);
       await expect(service.assertCanDelete(BOB, 'file-1')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+    });
+  });
+
+  /**
+   * The first owner with no project — reachable by an organization permission instead of
+   * membership, exactly as the class doc predicted for a future organization-scoped owner.
+   */
+  describe('organization logo', () => {
+    const logo = fileRow({
+      uploadedBy: 'someone-else',
+      lifecycle: 'BOUND',
+      organizationLogoFor: [{ id: 'org-1' }],
+    });
+
+    it('is readable by any org member with view:organization, without project membership', async () => {
+      const { service } = build(logo, []);
+      const orgViewer = { ...BOB, permissions: [PERMISSIONS.organizationsView] };
+      await expect(service.assertCanRead(orgViewer, 'file-1')).resolves.toMatchObject({
+        owners: [{ kind: 'ORGANIZATION_LOGO', organizationId: 'org-1' }],
+      });
+    });
+
+    it('denies a caller without view:organization', async () => {
+      const { service } = build(logo, []);
+      const noPermission = { ...BOB, permissions: [] };
+      await expect(service.assertCanRead(noPermission, 'file-1')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+    });
+
+    it('is never deletable or writable through the file API once bound as the logo', async () => {
+      const { service } = build(logo, []);
+      await expect(service.assertCanDelete(ALICE, 'file-1')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      await expect(service.assertCanWrite(ALICE, 'file-1')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+    });
+  });
+
+  /** The other organization-scoped owner: a generated invoice PDF, gated on receivablesManage. */
+  describe('invoice document', () => {
+    const document = fileRow({
+      uploadedBy: 'someone-else',
+      lifecycle: 'IMMUTABLE',
+      invoiceDocumentFor: [{ id: 'inv-1' }],
+    });
+
+    it('is readable by anyone with manage:accounts-receivable, without project membership', async () => {
+      const { service } = build(document, []);
+      const arUser = { ...BOB, permissions: [PERMISSIONS.receivablesManage] };
+      await expect(service.assertCanRead(arUser, 'file-1')).resolves.toMatchObject({
+        owners: [{ kind: 'INVOICE_DOCUMENT', invoiceId: 'inv-1' }],
+      });
+    });
+
+    it('denies a caller without manage:accounts-receivable', async () => {
+      const { service } = build(document, []);
+      const noPermission = { ...BOB, permissions: [] };
+      await expect(service.assertCanRead(noPermission, 'file-1')).rejects.toBeInstanceOf(
         ForbiddenException,
       );
     });

@@ -35,4 +35,18 @@ export interface IFileStoragePort {
   statObject(bucket: string, key: string): Promise<StoredObjectStat>;
   /** Remove the bytes. Must succeed silently when the object is already gone. */
   deleteObject(bucket: string, key: string): Promise<void>;
+  /**
+   * Write bytes the API already holds directly to storage — server-generated content (a rendered
+   * invoice PDF), never a client's own upload. The presign/PUT/confirm dance exists so the API
+   * never has to handle a browser's bytes; a document the server rendered itself has no browser
+   * leg to skip past.
+   */
+  putObject(bucket: string, key: string, body: Buffer, mimeType: string): Promise<void>;
+  /**
+   * Read bytes directly, server-side — for composing one document from another (embedding the
+   * org's logo into a rendered invoice), never for serving a user a download. A user-facing read
+   * always goes through `presignDownload` + {@link FileAuthorizationService}; this has no caller
+   * identity to check because it is not a response to a request, it is an ingredient in one.
+   */
+  getObject(bucket: string, key: string): Promise<Buffer>;
 }

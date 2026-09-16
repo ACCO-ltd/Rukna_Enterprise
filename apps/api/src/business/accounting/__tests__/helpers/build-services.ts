@@ -106,7 +106,12 @@ export function buildServices(prisma: PrismaClient): AccountingServices {
   const postingAccountResolver = new PostingAccountResolver(accountRepo);
   const clientInvoiceRepo = new ClientInvoiceRepository();
   const receiptRepo       = new PaymentReceiptArRepository();
-  const clientInvoiceService   = new ClientInvoiceService(tenancy, clientInvoiceRepo, sequenceRepo, postingAccountResolver, postingService);
+  // Commercial round-3: document generation is exercised in ClientInvoiceService's own spec, not
+  // here — these fixtures never call getOrGenerateDocument, so inert stubs are enough to satisfy
+  // the constructor.
+  const invoiceDocumentServiceStub = {} as unknown as import('../../accounts-receivable/application/invoice-document.service.js').InvoiceDocumentService;
+  const platformFileServiceStub = {} as unknown as import('../../../../platform/files/application/platform-file.service.js').PlatformFileService;
+  const clientInvoiceService   = new ClientInvoiceService(tenancy, clientInvoiceRepo, sequenceRepo, postingAccountResolver, postingService, invoiceDocumentServiceStub, platformFileServiceStub);
   const customerReceiptService = new CustomerReceiptService(tenancy, receiptRepo, clientInvoiceRepo, accountRepo, postingAccountResolver, postingService);
 
   // AP

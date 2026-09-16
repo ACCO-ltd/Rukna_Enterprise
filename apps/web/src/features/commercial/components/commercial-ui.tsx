@@ -100,12 +100,17 @@ const SEVERITY_ACCENT: Record<CommercialAttentionItem['severity'], string> = {
 };
 
 /**
- * What needs doing, as one operational list.
+ * What needs doing, as one operational list — self-contained, not a SectionCard body.
  *
  * A list, not three stacked alert cards: these are peers competing for the same attention,
  * and giving each its own panel makes the third look less important than the first purely
  * because of where it landed. Severity is carried by a small coloured marker rather than a
  * badge — the row already says what happened, and a row of badges reads as decoration.
+ *
+ * Renders nothing when there is nothing to flag. This used to render "Nothing needs attention
+ * right now" inside its own always-visible card — a permanently-empty card competing with the
+ * cycle ribbon for the same "what's next" attention, on the common path where there is, in fact,
+ * nothing to flag. A caller mounts this directly; it brings its own border.
  *
  * `actionUrl` is null server-side when the user cannot act, so a disabled control is never
  * rendered.
@@ -113,12 +118,13 @@ const SEVERITY_ACCENT: Record<CommercialAttentionItem['severity'], string> = {
 export function AttentionList({ items }: { items: CommercialAttentionItem[] }) {
   const t = useTranslations('commercial.attention');
 
-  if (items.length === 0) {
-    return <p className="py-2 text-body-sm text-muted-foreground">{t('none')}</p>;
-  }
+  if (items.length === 0) return null;
 
   return (
-    <ul className="divide-y divide-border/70">
+    <ul
+      aria-label={t('title')}
+      className="divide-y divide-border/70 rounded-panel border border-border bg-surface px-4 sm:px-5"
+    >
       {items.map((item) => (
         <li
           key={item.id}

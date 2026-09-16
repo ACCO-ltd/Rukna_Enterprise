@@ -35,6 +35,7 @@ import {
 } from '@erp/ui';
 
 import { EmptyState } from '@/components/empty-state';
+import { getInvoiceDocument } from '@/features/accounting/api/invoices-api';
 import { usePermissions } from '@/features/auth/permissions/can';
 import { useMilestones } from '@/features/programme/hooks/use-programme';
 import { ApiError } from '@/lib/api-client';
@@ -428,7 +429,13 @@ function BillStageDialog({
 
   const dismissGuard = useDialogDismissGuard(bill.isPending, onDismiss);
 
-  const submit = () =>
+  // Opens the generated invoice document as soon as billing succeeds — this used to end with a
+  // toast and nothing else, which is the "I clicked Bill this stage and saw nothing" complaint.
+  // The tab opens synchronously on click (before either async step resolves) so the browser
+  // never treats the eventual navigation as an unrequested popup; it starts on `about:blank` and
+  // is redirected once the milestone invoice's document URL comes back.
+  const submit = () => {
+    const tab = window.open('', '_blank', 'noopener');
     bill.mutate(
       {
         installmentId: installment.id,
@@ -437,8 +444,24 @@ function BillStageDialog({
         ...(paymentTerms.trim() ? { paymentTerms: paymentTerms.trim() } : {}),
         variations: eligible.map((vo) => ({ variationId: vo.id, include: isIncluded(vo.id) })),
       },
-      { onSuccess: onDismiss },
+      {
+        onSuccess: (result) => {
+          onDismiss();
+          const invoiceId = result.milestoneInvoice?.id;
+          if (!invoiceId) {
+            tab?.close();
+            return;
+          }
+          getInvoiceDocument(invoiceId)
+            .then((doc) => {
+              if (tab) tab.location.href = doc.url;
+            })
+            .catch(() => tab?.close());
+        },
+        onError: () => tab?.close(),
+      },
     );
+  };
 
   return (
     <Dialog open onOpenChange={dismissGuard.onOpenChange}>

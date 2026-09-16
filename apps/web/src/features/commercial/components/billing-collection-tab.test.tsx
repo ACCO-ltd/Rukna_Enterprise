@@ -120,6 +120,10 @@ function summary(overrides: Partial<CommercialSummaryResponse> = {}): Commercial
     projectId: 'p-1',
     currency: 'USD',
     financialsVisible: true,
+    // Billing & Collection now renders the relocated RECONCILIATION_FAILED /
+    // UNINVOICED_CERTIFICATE items (from the retired Payment Schedule "Attention" card) — empty
+    // by default so existing fixtures don't need to know about it.
+    attention: [],
     mainContract: {
       id: 'c-1',
       contractNumber: 'CT-01',
@@ -198,6 +202,30 @@ describe('BillingCollectionTab — money story (S-BL-1)', () => {
 
     expect(screen.getByText('Approved variations')).toBeInTheDocument();
     expect(screen.getByText('$150,000.00')).toBeInTheDocument();
+  });
+
+  it('renders relocated attention items (RECONCILIATION_FAILED / UNINVOICED_CERTIFICATE) and stays silent when there are none', () => {
+    const { rerender } = renderTab(billing(), summary({ attention: [] }));
+    expect(screen.queryByText('Figures could not be reconciled')).not.toBeInTheDocument();
+
+    rerender(
+      <BillingCollectionTab
+        projectId="p-1"
+        summary={summary({
+          attention: [
+            {
+              id: 'reconciliation-failed',
+              severity: 'URGENT',
+              kind: 'RECONCILIATION_FAILED',
+              actionUrl: null,
+              responsibleRole: 'COMMERCIAL_MANAGER',
+              contextId: null,
+            },
+          ],
+        })}
+      />,
+    );
+    expect(screen.getByText('Figures could not be reconciled')).toBeInTheDocument();
   });
 
   it('omits the approved-variations line when there are no approved variations (not a $0 leak)', () => {

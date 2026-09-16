@@ -459,7 +459,7 @@ describe('CommercialService.getSummary', () => {
     expect(res.attention.map((a) => a.kind)).toContain('RECONCILIATION_FAILED');
   });
 
-  it('derives guarantee attention and raises an expiry item', async () => {
+  it('derives guarantee attention per row, without duplicating it into the attention list', async () => {
     const soon = new Date();
     soon.setUTCDate(soon.getUTCDate() + 10);
     const { service } = build({
@@ -482,7 +482,10 @@ describe('CommercialService.getSummary', () => {
     });
     const res = await service.getSummary(financeIdentity, 'p-1');
     expect(res.guarantees[0].attention).toBe('EXPIRING_SOON');
-    expect(res.attention.map((a) => a.kind)).toContain('GUARANTEE_EXPIRING');
+    // The Guarantees panel renders this per-row badge directly — a second, page-level
+    // GUARANTEE_EXPIRING attention item would only restate it.
+    expect(res.attention.map((a) => a.kind)).not.toContain('GUARANTEE_EXPIRING');
+    expect(res.attention.map((a) => a.kind)).not.toContain('GUARANTEE_EXPIRED');
   });
 
   it('flags an effective certificate with no invoice as UNINVOICED_CERTIFICATE', async () => {

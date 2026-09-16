@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 import {
   generateInvoiceFromIpc,
+  getInvoiceDocument,
   listInvoices,
 } from '@/features/accounting/api/invoices-api';
 import type { ClientInvoice } from '@/features/accounting/types';
@@ -15,6 +16,7 @@ import { findDayCell } from '@/test/pick-date';
 vi.mock('@/features/accounting/api/invoices-api', () => ({
   listInvoices: vi.fn(),
   getInvoice: vi.fn(),
+  getInvoiceDocument: vi.fn(),
   generateInvoiceFromIpc: vi.fn(),
   approveInvoice: vi.fn(),
   postInvoice: vi.fn(),
@@ -58,6 +60,16 @@ function invoice(overrides: Partial<ClientInvoice> = {}): ClientInvoice {
 beforeEach(() => {
   vi.mocked(listInvoices).mockResolvedValue([]);
   vi.mocked(generateInvoiceFromIpc).mockResolvedValue(invoice());
+  // Generating opens the document immediately (Commercial round-3) — stub the fetch so that
+  // path resolves instead of hitting the real, unmocked apiClient.
+  vi.mocked(getInvoiceDocument).mockResolvedValue({
+    url: 'https://signed.example/invoice.pdf',
+    originalName: 'invoice.pdf',
+    mimeType: 'application/pdf',
+  });
+  // jsdom does not implement window.open; the component already tolerates a null return, and
+  // stubbing it here keeps that (expected, harmless) path quiet under test.
+  vi.spyOn(window, 'open').mockReturnValue(null);
 });
 
 describe('IpcBillingCard', () => {

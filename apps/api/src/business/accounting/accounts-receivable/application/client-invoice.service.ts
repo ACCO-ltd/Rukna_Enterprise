@@ -20,6 +20,19 @@ import {
   type ResolvedAccount,
 } from '../../accounting-core/application/posting-account-resolver.service.js';
 import { ClientInvoiceRepository } from '../infrastructure/client-invoice.repository.js';
+import { PlatformFileService } from '../../../../platform/files/application/platform-file.service.js';
+import { InvoiceDocumentService } from './invoice-document.service.js';
+
+/** `billingAddressSnapshot.org` — see {@link ClientInvoiceService.snapshotOrgBranding}. */
+interface OrgBrandingSnapshot {
+  name: string;
+  logoFileId: string | null;
+  legalAddress: string | null;
+  taxRegistrationNumber: string | null;
+  brandColorHex: string | null;
+  invoiceFooterNote: string | null;
+  invoiceTemplate: string;
+}
 
 export interface GenerateInvoiceFromIpcDto {
   ipcId: string;
@@ -92,7 +105,32 @@ export class ClientInvoiceService {
     private readonly resolver: PostingAccountResolver,
     @Inject(ACCOUNTING_POSTING_PORT)
     private readonly postingPort: IAccountingPostingPort,
+    private readonly documentService: InvoiceDocumentService,
+    private readonly files: PlatformFileService,
   ) {}
+
+  /**
+   * The org's invoice branding, captured at invoice-creation time and frozen into
+   * `billingAddressSnapshot.org`. Never re-read live once the invoice exists — that is the whole
+   * point: editing the org's logo next month must never change an already-issued invoice.
+   */
+  private async snapshotOrgBranding(
+    prisma: Prisma.TransactionClient,
+    organizationId: string,
+  ): Promise<OrgBrandingSnapshot | null> {
+    return prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: {
+        name: true,
+        logoFileId: true,
+        legalAddress: true,
+        taxRegistrationNumber: true,
+        brandColorHex: true,
+        invoiceFooterNote: true,
+        invoiceTemplate: true,
+      },
+    });
+  }
 
   /**
    * Generate a draft ClientInvoice from an effective IPC.
@@ -123,6 +161,7 @@ export class ClientInvoiceService {
     const vatRate = new Decimal('0.05');
     const vatAmount = subtotal.mul(vatRate).toDecimalPlaces(2);
     const totalAmount = subtotal.plus(vatAmount);
+    const org = await this.snapshotOrgBranding(prisma, orgId);
 
     try {
       return await this.repo.create(prisma, {
@@ -138,7 +177,15 @@ export class ClientInvoiceService {
         vatAmount,
         totalAmount,
         paymentTerms: dto.paymentTerms,
-        billingAddressSnapshot: { clientName: contract.client.name },
+        billingAddressSnapshot: {
+          client: {
+            name: contract.client.name,
+            address: contract.client.address,
+            taxNumber: contract.client.taxNumber,
+          },
+          description: `Interim Certificate ${ipc.certificateRef ?? `#${ipc.certificateNumber}`}`,
+          org,
+        },
         createdBy: userId,
       });
     } catch (err) {
@@ -220,6 +267,7 @@ export class ClientInvoiceService {
     const vatRate = new Decimal('0.05');
     const vatAmount = subtotal.mul(vatRate).toDecimalPlaces(2);
     const totalAmount = subtotal.plus(vatAmount);
+    const org = await this.snapshotOrgBranding(prisma, orgId);
 
     try {
       return await this.repo.create(prisma, {
@@ -235,7 +283,15 @@ export class ClientInvoiceService {
         vatAmount,
         totalAmount,
         paymentTerms: dto.paymentTerms,
-        billingAddressSnapshot: { clientName: contract.client.name, installment: installment.name },
+        billingAddressSnapshot: {
+          client: {
+            name: contract.client.name,
+            address: contract.client.address,
+            taxNumber: contract.client.taxNumber,
+          },
+          description: installment.name,
+          org,
+        },
         createdBy: userId,
       });
     } catch (err) {
@@ -301,6 +357,7 @@ export class ClientInvoiceService {
     const vatRate = new Decimal('0.05');
     const vatAmount = subtotal.mul(vatRate).toDecimalPlaces(2);
     const totalAmount = subtotal.plus(vatAmount);
+    const org = await this.snapshotOrgBranding(prisma, orgId);
 
     try {
       return await this.repo.create(prisma, {
@@ -320,9 +377,13 @@ export class ClientInvoiceService {
         totalAmount,
         paymentTerms: dto.paymentTerms,
         billingAddressSnapshot: {
-          clientName: contract.client.name,
-          separateCharge: node.description,
-          boqCode: node.code,
+          client: {
+            name: contract.client.name,
+            address: contract.client.address,
+            taxNumber: contract.client.taxNumber,
+          },
+          description: `${node.code} — ${node.description}`,
+          org,
         },
         createdBy: userId,
       });
@@ -361,6 +422,15 @@ export class ClientInvoiceService {
     const vatRate = new Decimal('0.05');
     const vatAmount = subtotal.mul(vatRate).toDecimalPlaces(2);
     const totalAmount = subtotal.plus(vatAmount);
+    // Client is looked up by id only, deliberately — this method must not read the VO or the
+    // contract (Accounting never imports Variations); Client is Accounting's own domain.
+    const [org, client] = await Promise.all([
+      this.snapshotOrgBranding(prisma, orgId),
+      prisma.client.findUnique({
+        where: { id: dto.clientId },
+        select: { name: true, address: true, taxNumber: true },
+      }),
+    ]);
 
     return this.repo.create(prisma, {
       organizationId: orgId,
@@ -379,7 +449,13 @@ export class ClientInvoiceService {
       vatAmount,
       totalAmount,
       paymentTerms: dto.paymentTerms,
-      billingAddressSnapshot: { separateCharge: dto.label },
+      billingAddressSnapshot: {
+        client: client
+          ? { name: client.name, address: client.address, taxNumber: client.taxNumber }
+          : null,
+        description: dto.label,
+        org,
+      },
       createdBy: userId,
     });
   }
@@ -601,5 +677,93 @@ export class ClientInvoiceService {
     const invoice = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!invoice) throw new NotFoundException(`ClientInvoice ${id} not found`);
     return invoice;
+  }
+
+  /**
+   * The branded invoice PDF's signed download URL — generating it on first request, from
+   * whatever the invoice already holds, rather than at each of the four creation call sites. One
+   * lazy path covers IPC, installment, separate-charge and VO-standalone invoices alike, with
+   * nothing to keep in sync across them (Commercial round-3).
+   *
+   * Once `documentFileId` is set it is never regenerated: the PDF a later view produces is still
+   * the invoice as it stood at creation, because `billingAddressSnapshot` already froze the
+   * client and org-branding facts then, not now.
+   */
+  async getOrGenerateDocument(identity: RequestIdentity, id: string) {
+    const prisma = this.tenancyService.getClient();
+    const invoice = await this.repo.findById(prisma, identity.activeOrganizationId, id);
+    if (!invoice) throw new NotFoundException(`ClientInvoice ${id} not found`);
+
+    if (invoice.documentFileId) {
+      return this.files.getDownloadUrl(identity, invoice.documentFileId);
+    }
+
+    const snapshot = (invoice.billingAddressSnapshot ?? {}) as {
+      client?: { name: string; address: string | null; taxNumber: string | null } | null;
+      description?: string;
+      org?: OrgBrandingSnapshot | null;
+      // Pre-round-3 shapes (see the other billingAddressSnapshot writers) — read only as a
+      // best-effort fallback for invoices generated before this feature existed.
+      clientName?: string;
+      installment?: string;
+      separateCharge?: string;
+    };
+
+    // Old invoices never captured a client/org snapshot — fall back to a live lookup rather than
+    // rendering a document with no identity at all. Not "frozen" for these, but there is nothing
+    // to freeze: the feature that freezes them did not exist when they were created.
+    const [fallbackClient, fallbackOrg] = await Promise.all([
+      snapshot.client !== undefined
+        ? null
+        : prisma.client.findUnique({
+            where: { id: invoice.clientId },
+            select: { name: true, address: true, taxNumber: true },
+          }),
+      snapshot.org !== undefined ? null : this.snapshotOrgBranding(prisma, invoice.organizationId),
+    ]);
+    const client = snapshot.client ?? fallbackClient;
+    const org = snapshot.org ?? fallbackOrg;
+    const description =
+      snapshot.description ??
+      snapshot.installment ??
+      snapshot.separateCharge ??
+      `Invoice ${invoice.invoiceNumber ?? id}`;
+
+    const logo = org ? await this.files.readBytesForRendering(org.logoFileId) : null;
+
+    const pdf = await this.documentService.render({
+      invoiceNumber: invoice.invoiceNumber,
+      invoiceDate: invoice.invoiceDate,
+      dueDate: invoice.dueDate,
+      currencyCode: invoice.currencyCode,
+      subtotal: invoice.subtotal.toString(),
+      vatAmount: invoice.vatAmount.toString(),
+      totalAmount: invoice.totalAmount.toString(),
+      paymentTerms: invoice.paymentTerms,
+      clientName: client?.name ?? snapshot.clientName ?? 'Client',
+      clientAddress: client?.address ?? null,
+      clientTaxNumber: client?.taxNumber ?? null,
+      lineDescription: description,
+      org: {
+        name: org?.name ?? 'Invoice',
+        legalAddress: org?.legalAddress ?? null,
+        taxRegistrationNumber: org?.taxRegistrationNumber ?? null,
+        brandColorHex: org?.brandColorHex ?? null,
+        invoiceFooterNote: org?.invoiceFooterNote ?? null,
+        template: org?.invoiceTemplate === 'COMPACT' ? 'COMPACT' : 'STANDARD',
+        logo,
+      },
+    });
+
+    const file = await this.files.storeGenerated(identity, {
+      originalName: `invoice-${invoice.invoiceNumber ?? id}.pdf`,
+      mimeType: 'application/pdf',
+      body: pdf,
+    });
+    await this.files.bind(file.id, `invoice document for ${id}`);
+    await this.files.markImmutable(file.id, `invoice document for ${id}`);
+    await this.repo.setDocumentFileId(prisma, id, file.id);
+
+    return this.files.getDownloadUrl(identity, file.id);
   }
 }

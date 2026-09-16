@@ -190,4 +190,8 @@ export class ClientInvoiceRepository {
   updateOutstandingAmount(prisma: TenantPrisma, id: string, outstandingAmount: Decimal) {
     return prisma.clientInvoice.update({ where: { id }, data: { outstandingAmount } });
   }
+
+  setDocumentFileId(prisma: TenantPrisma, id: string, documentFileId: string) {
+    return prisma.clientInvoice.update({ where: { id }, data: { documentFileId } });
+  }
 }

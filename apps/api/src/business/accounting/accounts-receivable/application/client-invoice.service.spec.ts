@@ -29,6 +29,11 @@ const effectiveIpc = {
   },
 };
 
+/** Every ClientInvoiceService test needs this — snapshotOrgBranding reads it unconditionally. */
+function orgMock() {
+  return { findUnique: jest.fn().mockResolvedValue(null) };
+}
+
 function build(ipc: unknown) {
   const repo = {
     findByIpc: jest.fn(),
@@ -36,11 +41,14 @@ function build(ipc: unknown) {
   };
   const prisma = {
     interimPaymentCertificate: { findFirst: jest.fn().mockResolvedValue(ipc) },
+    organization: orgMock(),
   };
   const tenancy = { getClient: () => prisma };
   const service = new ClientInvoiceService(
     tenancy as never,
     repo as never,
+    {} as never,
+    {} as never,
     {} as never,
     {} as never,
     {} as never,
@@ -129,11 +137,13 @@ describe('ADR-023 — generateFromInstallment (milestone billing)', () => {
       findInstallmentForBilling: jest.fn().mockResolvedValue(inst),
       create: jest.fn(),
     };
-    const prisma = {};
+    const prisma = { organization: orgMock() };
     const tenancy = { getClient: () => prisma };
     const service = new ClientInvoiceService(
       tenancy as never,
       repo as never,
+      {} as never,
+      {} as never,
       {} as never,
       {} as never,
       {} as never,
@@ -259,10 +269,12 @@ describe('ADR-029 R-4 — generateFromSeparateCharge (one-off separate-charge bi
       findSeparateChargeForBilling: jest.fn().mockResolvedValue(node),
       create: jest.fn(),
     };
-    const tenancy = { getClient: () => ({}) };
+    const tenancy = { getClient: () => ({ organization: orgMock() }) };
     const service = new ClientInvoiceService(
       tenancy as never,
       repo as never,
+      {} as never,
+      {} as never,
       {} as never,
       {} as never,
       {} as never,
@@ -338,5 +350,112 @@ describe('ADR-029 R-4 — generateFromSeparateCharge (one-off separate-charge bi
       BadRequestException,
     );
     expect(repo.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('Commercial round-3 — getOrGenerateDocument (lazy invoice PDF)', () => {
+  const baseInvoice = {
+    id: 'inv-1',
+    organizationId: 'org-1',
+    clientId: 'client-1',
+    invoiceNumber: 'INV-0001',
+    invoiceDate: new Date('2026-06-05'),
+    dueDate: new Date('2026-07-05'),
+    currencyCode: 'USD',
+    subtotal: { toString: () => '23092.40' },
+    vatAmount: { toString: () => '1154.62' },
+    totalAmount: { toString: () => '24247.02' },
+    paymentTerms: null,
+    documentFileId: null,
+    billingAddressSnapshot: {
+      client: { name: 'Hayat Market', address: null, taxNumber: null },
+      description: 'Structure',
+      org: {
+        name: 'ACCO',
+        logoFileId: null,
+        legalAddress: null,
+        taxRegistrationNumber: null,
+        brandColorHex: null,
+        invoiceFooterNote: null,
+        invoiceTemplate: 'STANDARD',
+      },
+    },
+  };
+
+  function buildDocument(invoice: unknown) {
+    const repo = {
+      findById: jest.fn().mockResolvedValue(invoice),
+      setDocumentFileId: jest.fn(),
+    };
+    const tenancy = { getClient: () => ({ organization: orgMock(), client: { findUnique: jest.fn() } }) };
+    const documentService = { render: jest.fn().mockResolvedValue(Buffer.from('pdf-bytes')) };
+    const files = {
+      getDownloadUrl: jest.fn().mockResolvedValue({ url: 'https://signed.example/x', originalName: 'x', mimeType: 'application/pdf' }),
+      readBytesForRendering: jest.fn().mockResolvedValue(null),
+      storeGenerated: jest.fn().mockResolvedValue({ id: 'file-new' }),
+      bind: jest.fn(),
+      markImmutable: jest.fn(),
+    };
+    const service = new ClientInvoiceService(
+      tenancy as never,
+      repo as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      documentService as never,
+      files as never,
+    );
+    return { repo, documentService, files, service };
+  }
+
+  it('returns the existing document URL without rendering again once documentFileId is set', async () => {
+    const { documentService, files, service } = buildDocument({ ...baseInvoice, documentFileId: 'file-existing' });
+
+    const result = await service.getOrGenerateDocument(identity, 'inv-1');
+
+    expect(documentService.render).not.toHaveBeenCalled();
+    expect(files.getDownloadUrl).toHaveBeenCalledWith(identity, 'file-existing');
+    expect(result.url).toBe('https://signed.example/x');
+  });
+
+  it('renders, stores, binds, freezes and persists the file on first request', async () => {
+    const { repo, documentService, files, service } = buildDocument(baseInvoice);
+
+    await service.getOrGenerateDocument(identity, 'inv-1');
+
+    expect(documentService.render).toHaveBeenCalledTimes(1);
+    const rendered = documentService.render.mock.calls[0][0];
+    expect(rendered.clientName).toBe('Hayat Market');
+    expect(rendered.lineDescription).toBe('Structure');
+    expect(rendered.org.name).toBe('ACCO');
+
+    expect(files.storeGenerated).toHaveBeenCalledTimes(1);
+    expect(files.bind).toHaveBeenCalledWith('file-new', expect.stringContaining('inv-1'));
+    expect(files.markImmutable).toHaveBeenCalledWith('file-new', expect.stringContaining('inv-1'));
+    expect(repo.setDocumentFileId).toHaveBeenCalledWith(expect.anything(), 'inv-1', 'file-new');
+    expect(files.getDownloadUrl).toHaveBeenCalledWith(identity, 'file-new');
+  });
+
+  it('falls back to a live client/org lookup for a pre-round-3 invoice with no snapshot', async () => {
+    const legacyInvoice = {
+      ...baseInvoice,
+      billingAddressSnapshot: { clientName: 'Legacy Co', installment: 'Advance' },
+    };
+    const { documentService, service } = buildDocument(legacyInvoice);
+
+    await service.getOrGenerateDocument(identity, 'inv-1');
+
+    const rendered = documentService.render.mock.calls[0][0];
+    // No `client`/`org` keys in the old snapshot shape → falls back to a live lookup (mocked to
+    // return nothing here) and then to the old flat keys / a generic label, never a crash.
+    expect(rendered.clientName).toBe('Legacy Co');
+    expect(rendered.lineDescription).toBe('Advance');
+  });
+
+  it('throws NotFoundException for an invoice outside the caller tenant', async () => {
+    const { service } = buildDocument(null);
+    await expect(service.getOrGenerateDocument(identity, 'inv-x')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });

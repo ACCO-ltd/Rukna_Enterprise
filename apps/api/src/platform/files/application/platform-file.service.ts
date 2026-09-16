@@ -1,6 +1,6 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { RequestIdentity } from '@erp/types';
 
 import { TenancyService } from '../../tenancy/tenancy.service.js';
@@ -120,6 +120,58 @@ export class PlatformFileService {
     }
 
     return this.repo.markReady(prisma, fileId, stat.sizeBytes);
+  }
+
+  /**
+   * Store bytes the API rendered itself (an invoice PDF) — no client leg, no presign, no confirm.
+   * The row lands READY immediately: the bytes are already on their way to storage by the time
+   * this returns, unlike `initiateUpload`, where "created" only means "a client may now PUT".
+   *
+   * Not gated through {@link FileAuthorizationService} — there is no caller-supplied fileId to
+   * validate here, only server-generated content the caller (application-layer code, never a
+   * controller taking this straight from a request body) already decided to produce.
+   */
+  async storeGenerated(
+    identity: RequestIdentity,
+    dto: { originalName: string; mimeType: string; body: Buffer },
+  ) {
+    const prisma = this.tenancy.getClient();
+    const checksum = createHash('sha256').update(dto.body).digest('hex');
+    const storageKey = `${identity.tenantSlug}/${identity.activeOrganizationId}/${randomUUID()}`;
+
+    const file = await this.repo.create(prisma, {
+      organizationId: identity.activeOrganizationId,
+      originalName: dto.originalName,
+      mimeType: dto.mimeType,
+      checksumSha256: checksum,
+      storageBucket: this.bucket,
+      storageKey,
+      uploadedBy: identity.userId,
+    });
+
+    await this.storage.putObject(this.bucket, storageKey, dto.body, dto.mimeType);
+    return this.repo.markReady(prisma, file.id, dto.body.length);
+  }
+
+  /**
+   * Read a file's raw bytes directly — for embedding one file inside another the API is
+   * rendering (the org logo, inside an invoice PDF), never for serving a download response.
+   *
+   * Deliberately un-gated by {@link FileAuthorizationService}: the caller here is a trusted
+   * internal renderer, not a user's request for the bytes themselves, and gating it on the
+   * *viewer's* permissions would fail to embed a logo for a receivables user who happens not to
+   * also hold `view:organization`. Returns `null` rather than throwing when there is nothing to
+   * embed (no logo set, or the file somehow isn't READY) — a missing logo is not a rendering error.
+   */
+  async readBytesForRendering(
+    fileId: string | null,
+  ): Promise<{ buffer: Buffer; mimeType: string } | null> {
+    if (!fileId) return null;
+    const prisma = this.tenancy.getClient();
+    const file = await prisma.platformFile.findUnique({ where: { id: fileId } });
+    if (!file || file.status !== 'READY') return null;
+    const buffer = await this.storage.getObject(file.storageBucket, file.storageKey);
+    return { buffer, mimeType: file.mimeType };
   }
 
   /** Authorization-gated, short-lived signed URL to download the bytes (ADR-014). */

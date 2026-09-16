@@ -152,4 +152,21 @@ export class MinioFileStorageAdapter implements IFileStoragePort, OnModuleInit {
   async deleteObject(bucket: string, key: string): Promise<void> {
     await this.client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
   }
+
+  /** Direct server-side write — over the internal network, like every other non-presign call. */
+  async putObject(bucket: string, key: string, body: Buffer, mimeType: string): Promise<void> {
+    await this.client.send(
+      new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: mimeType }),
+    );
+  }
+
+  /** Direct server-side read — over the internal network, for composing one document from another. */
+  async getObject(bucket: string, key: string): Promise<Buffer> {
+    const res = await this.client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+    const chunks: Buffer[] = [];
+    for await (const chunk of res.Body as AsyncIterable<Buffer>) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array));
+    }
+    return Buffer.concat(chunks);
+  }
 }

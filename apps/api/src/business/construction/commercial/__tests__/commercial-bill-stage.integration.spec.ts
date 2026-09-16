@@ -11,6 +11,8 @@ import type { CommandGovernanceService } from '../../../../platform/workflows/ap
 import type { DocumentSequenceRepository } from '../../../accounting/accounting-core/infrastructure/document-sequence.repository.js';
 import type { PostingAccountResolver } from '../../../accounting/accounting-core/application/posting-account-resolver.service.js';
 import type { IAccountingPostingPort } from '../../../accounting/accounting-core/application/ports/accounting-posting.port.js';
+import type { InvoiceDocumentService } from '../../../accounting/accounts-receivable/application/invoice-document.service.js';
+import type { PlatformFileService } from '../../../../platform/files/application/platform-file.service.js';
 import { ClientInvoiceRepository } from '../../../accounting/accounts-receivable/infrastructure/client-invoice.repository.js';
 import { ClientInvoiceService } from '../../../accounting/accounts-receivable/application/client-invoice.service.js';
 import { VariationOrderPrismaRepository } from '../../variations/infrastructure/variation-order-prisma.repository.js';
@@ -66,6 +68,10 @@ describe('CommercialBillingService.billStage (CONST-COM-028)', () => {
     const sequenceRepo = {} as unknown as DocumentSequenceRepository;
     const resolver = {} as unknown as PostingAccountResolver;
     const postingPort = {} as unknown as IAccountingPostingPort;
+    // Commercial round-3: document generation is exercised in ClientInvoiceService's own spec —
+    // billStage never calls getOrGenerateDocument, so inert stubs satisfy the constructor.
+    const documentService = {} as unknown as InvoiceDocumentService;
+    const files = {} as unknown as PlatformFileService;
 
     const clientInvoiceService = new ClientInvoiceService(
       tenancy,
@@ -73,6 +79,8 @@ describe('CommercialBillingService.billStage (CONST-COM-028)', () => {
       sequenceRepo,
       resolver,
       postingPort,
+      documentService,
+      files,
     );
     const variationRepo = new VariationOrderPrismaRepository();
     const variationService = new VariationOrderService(

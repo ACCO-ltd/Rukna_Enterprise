@@ -6,6 +6,7 @@ import {
   approveInvoice,
   generateInvoiceFromIpc,
   getInvoice,
+  getInvoiceDocument,
   listInvoices,
   postInvoice,
   reverseInvoice,
@@ -75,6 +76,30 @@ export function useGenerateInvoice() {
     mutationFn: (payload: GenerateInvoicePayload) => generateInvoiceFromIpc(payload),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: invoiceKeys.all });
+    },
+  });
+}
+
+/**
+ * Fetches the branded PDF's signed URL and opens it in a new tab — the fix for "I clicked
+ * Generate invoice / Bill this stage and saw nothing" (Commercial round-3). The tab is opened
+ * synchronously on click (before the async fetch resolves) so browsers do not treat the later
+ * navigation as an unrequested popup; it starts on `about:blank` and is redirected once the URL
+ * comes back.
+ */
+export function useOpenInvoiceDocument() {
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const tab = window.open('', '_blank', 'noopener');
+      try {
+        const doc = await getInvoiceDocument(id);
+        if (tab) tab.location.href = doc.url;
+        else window.open(doc.url, '_blank', 'noopener');
+        return doc;
+      } catch (error) {
+        tab?.close();
+        throw error;
+      }
     },
   });
 }

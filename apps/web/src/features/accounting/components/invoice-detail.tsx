@@ -11,7 +11,7 @@ import { lifecycleErrorKey, toLifecycleError } from '@/features/lifecycle/lifecy
 import { formatDate, formatMoney } from '@/lib/format';
 
 import { useAccounts } from '../hooks/use-accounting';
-import { useInvoice, useInvoiceAction } from '../hooks/use-invoices';
+import { useInvoice, useInvoiceAction, useOpenInvoiceDocument } from '../hooks/use-invoices';
 import { canApprove, canPost, canReverse, invoiceBlockReason } from '../invoice-actions';
 import type { ClientInvoice, PostInvoicePayload } from '../types';
 import { InvoiceStatusBadges } from './invoice-status-badges';
@@ -30,6 +30,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   const accounts = useAccounts();
   const clients = useClients();
   const action = useInvoiceAction(invoiceId);
+  const openDocument = useOpenInvoiceDocument();
 
   const [dialog, setDialog] = useState<OpenDialog>(null);
 
@@ -83,26 +84,40 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
           />
         </div>
 
-        {mayManage ? (
-          <div className="flex flex-wrap gap-2">
-            {canApprove(data) ? (
-              <Button onClick={() => setDialog('approve')}>{t('approve')}</Button>
-            ) : null}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={() => openDocument.mutate(invoiceId)}
+            disabled={openDocument.isPending}
+          >
+            {openDocument.isPending ? tCommon('loading') : t('viewDocument')}
+          </Button>
 
-            {canPost(data) ? (
-              <Button onClick={() => setDialog('post')}>{t('postAction')}</Button>
-            ) : (
-              <BlockedHint invoice={data} />
-            )}
+          {mayManage ? (
+            <>
+              {canApprove(data) ? (
+                <Button onClick={() => setDialog('approve')}>{t('approve')}</Button>
+              ) : null}
 
-            {canReverse(data) ? (
-              <Button variant="outline" onClick={() => setDialog('reverse')}>
-                {t('reverse')}
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
+              {canPost(data) ? (
+                <Button onClick={() => setDialog('post')}>{t('postAction')}</Button>
+              ) : (
+                <BlockedHint invoice={data} />
+              )}
+
+              {canReverse(data) ? (
+                <Button variant="outline" onClick={() => setDialog('reverse')}>
+                  {t('reverse')}
+                </Button>
+              ) : null}
+            </>
+          ) : null}
+        </div>
       </header>
+
+      {openDocument.isError ? (
+        <Alert variant="error" messages={[t('viewDocumentFailed')]} />
+      ) : null}
 
       {action.isError && dialog === null ? (
         <Alert variant="error" messages={[errorMessage ?? t('actionFailed')]} />

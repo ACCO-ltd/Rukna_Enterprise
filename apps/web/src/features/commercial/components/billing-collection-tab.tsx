@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { LockKeyhole, ReceiptText } from 'lucide-react';
+import { FileText, LockKeyhole, ReceiptText } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -29,13 +29,14 @@ import type {
 } from '@erp/types';
 
 import { EmptyState } from '@/components/empty-state';
+import { useOpenInvoiceDocument } from '@/features/accounting/hooks/use-invoices';
 import { formatDate, formatMoney } from '@/lib/format';
 
 import { useBillingPackages, useCommercialBilling } from '../hooks/use-commercial';
 import { invoiceStatusTone } from '../presentation';
 import { PositionBand, type PositionFigure } from './contract-position';
 import { CashflowChart } from './cashflow-chart';
-import { PanelLink, SectionCard } from './commercial-ui';
+import { AttentionList, PanelLink, SectionCard } from './commercial-ui';
 import { errorText } from './commercial-workspace';
 
 /**
@@ -97,6 +98,12 @@ export function BillingCollectionTab({
 
   return (
     <div className="space-y-4">
+      {/* Relocated from the retired "Attention & Next Action" card (Payment Schedule): a failed
+          reconciliation or an uninvoiced certificate is a billing/collection fact, so it belongs
+          on the screen that already owns invoices, receipts and the money position — not on a
+          second page-level list competing with the cycle ribbon. Renders nothing when empty. */}
+      <AttentionList items={summary.attention} />
+
       {/* The money story reads Contract value → Invoiced → Collected → Outstanding as one chain,
           composed from the summary's contract value and billing's settlement figures, with approved
           variations stated distinctly beneath it (entitlement, never missing revenue). */}
@@ -528,27 +535,41 @@ function InvoiceRow({
   locale: 'en' | 'ar';
 }) {
   const t = useTranslations('commercial.billing');
+  const openDocument = useOpenInvoiceDocument();
   const money = (value: string | null) =>
     value === null ? '—' : (formatMoney(value, invoice.currency, locale) ?? '—');
 
   return (
     <TableRow>
       <TableCell className="font-medium text-foreground">
-        {/* `invoiceNumber` is drawn inside the posting transaction, so every draft is
-            unnumbered. Nothing may key a row on it, and the reader is told why it is blank. */}
-        <Link
-          href={`/finance/accounting/invoices/${invoice.id}`}
-          className={cn(
-            'inline-flex min-h-11 items-center hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary sm:min-h-0',
-            !invoice.invoiceNumber && 'text-muted-foreground',
-          )}
-        >
-          {invoice.invoiceNumber ? (
-            <LtrValue>{invoice.invoiceNumber}</LtrValue>
-          ) : (
-            t('unnumbered')
-          )}
-        </Link>
+        <div className="flex items-center gap-1.5">
+          {/* `invoiceNumber` is drawn inside the posting transaction, so every draft is
+              unnumbered. Nothing may key a row on it, and the reader is told why it is blank. */}
+          <Link
+            href={`/finance/accounting/invoices/${invoice.id}`}
+            className={cn(
+              'inline-flex min-h-11 items-center hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary sm:min-h-0',
+              !invoice.invoiceNumber && 'text-muted-foreground',
+            )}
+          >
+            {invoice.invoiceNumber ? (
+              <LtrValue>{invoice.invoiceNumber}</LtrValue>
+            ) : (
+              t('unnumbered')
+            )}
+          </Link>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={t('viewDocument')}
+            className="shrink-0"
+            disabled={openDocument.isPending}
+            onClick={() => openDocument.mutate(invoice.id)}
+          >
+            <FileText size={14} aria-hidden="true" />
+          </Button>
+        </div>
       </TableCell>
       <TableCell className="text-caption text-muted-foreground">
         {invoice.source.label ??

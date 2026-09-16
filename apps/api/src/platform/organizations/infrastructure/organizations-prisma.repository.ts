@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 
-import { OrganizationStatus } from '@erp/types';
+import { InvoiceTemplate, OrganizationStatus } from '@erp/types';
 
 import { TenancyService } from '../../tenancy/tenancy.service.js';
 import type {
   IOrganizationsRepository,
   CreateOrganizationData,
+  OrganizationBrandingPatch,
 } from '../domain/interfaces/organizations-repository.interface.js';
 import { OrganizationEntity } from '../domain/entities/organization.entity.js';
 
@@ -37,6 +38,12 @@ export class OrganizationsPrismaRepository implements IOrganizationsRepository {
     return this.toDomain(org);
   }
 
+  async updateBranding(id: string, patch: OrganizationBrandingPatch): Promise<OrganizationEntity> {
+    const prisma = this.tenancyService.getClient();
+    const org = await prisma.organization.update({ where: { id }, data: patch });
+    return this.toDomain(org);
+  }
+
   private toDomain(raw: {
     id: string;
     name: string;
@@ -44,6 +51,12 @@ export class OrganizationsPrismaRepository implements IOrganizationsRepository {
     status: string;
     createdAt: Date;
     updatedAt: Date;
+    logoFileId: string | null;
+    legalAddress: string | null;
+    taxRegistrationNumber: string | null;
+    brandColorHex: string | null;
+    invoiceFooterNote: string | null;
+    invoiceTemplate: string;
   }): OrganizationEntity {
     return new OrganizationEntity(
       raw.id,
@@ -52,6 +65,12 @@ export class OrganizationsPrismaRepository implements IOrganizationsRepository {
       raw.status as OrganizationStatus,
       raw.createdAt,
       raw.updatedAt,
+      raw.logoFileId,
+      raw.legalAddress,
+      raw.taxRegistrationNumber,
+      raw.brandColorHex,
+      raw.invoiceFooterNote,
+      raw.invoiceTemplate as InvoiceTemplate,
     );
   }
 }

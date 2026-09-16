@@ -47,6 +47,7 @@
     "@nestjs/schedule": "^12.0.2",
     "@nestjs/swagger": "^11.4.6",
     "@prisma/client": "^6.19.3",
+    "@react-pdf/renderer": "^4.9.0",
     "bcrypt": "^5.1.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.4",
@@ -54,6 +55,8 @@
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.14.1",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },
@@ -102,6 +105,7 @@
     },
     "moduleNameMapper": {
       "^@nestjs/schedule$": "<rootDir>/../test/mocks/nestjs-schedule.stub.ts",
+      "^@react-pdf/renderer$": "<rootDir>/../test/mocks/react-pdf-renderer.stub.ts",
       "^(\\.{1,2}/.*)\\.js$": "$1"
     },
     "collectCoverageFrom": [

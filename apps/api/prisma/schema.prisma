@@ -17,9 +17,22 @@ model Organization {
   // Editable in org settings; required at project-create time.
   shortCode String?            @map("short_code") @db.VarChar(8)
   status    OrganizationStatus @default(ACTIVE)
+
+  // Invoice branding — the header/footer identity stamped onto a generated client invoice
+  // (Commercial round-3). Deliberately editable freely: a `ClientInvoice` snapshots these at
+  // generation time (`billingAddressSnapshot`), so editing them here never rewrites an
+  // already-issued invoice.
+  logoFileId             String?         @map("logo_file_id")
+  legalAddress           String?         @map("legal_address") @db.Text
+  taxRegistrationNumber  String?         @map("tax_registration_number")
+  brandColorHex          String?         @map("brand_color_hex") @db.VarChar(9)
+  invoiceFooterNote      String?         @map("invoice_footer_note") @db.Text
+  invoiceTemplate        InvoiceTemplate @default(STANDARD) @map("invoice_template")
+
   createdAt DateTime           @default(now()) @map("created_at")
   updatedAt DateTime           @updatedAt @map("updated_at")
 
+  logoFile                 PlatformFile? @relation("OrganizationLogo", fields: [logoFileId], references: [id])
   users                    User[]
   roles                    Role[]
   workflowDefinitions      WorkflowDefinition[]
@@ -1901,6 +1914,12 @@ model PlatformFile {
   // a superseded drawing readable after a new one is issued.
   documentRevisions       ProjectDocumentRevision[]
   dprAttachments          DprAttachment[]
+  // The organization settings' invoice-branding logo. Modelled as a relation (not a bare FK) like
+  // every other attachment kind, so FileAuthorizationService's owner resolution covers it too.
+  organizationLogoFor     Organization[]           @relation("OrganizationLogo")
+  // The generated branded PDF for a client invoice — server-originated (PlatformFileService's
+  // storeGenerated path, not the presign-from-browser one), immutable once rendered.
+  invoiceDocumentFor      ClientInvoice[]          @relation("ClientInvoiceDocument")
 
   @@index([organizationId])
   @@index([lifecycle, createdAt])
@@ -2642,6 +2661,13 @@ model ClientInvoice {
   outstandingAmount      Decimal          @map("outstanding_amount") @db.Decimal(18, 2)
   paymentTerms           String?          @map("payment_terms")
   billingAddressSnapshot Json             @map("billing_address_snapshot")
+  // The rendered branded PDF (Commercial round-3) — generated lazily on first request for the
+  // document (`ClientInvoiceService.getOrGenerateDocument`), not eagerly at creation, so it works
+  // uniformly for every generation path (IPC, installment, separate charge, VO standalone) without
+  // touching each one. Once set it is never regenerated: `billingAddressSnapshot` already carries
+  // the org-branding snapshot taken at invoice-creation time, so the PDF a later view produces is
+  // still the invoice as it stood then, not as the org's branding stands today.
+  documentFileId         String?          @map("document_file_id")
   documentStatus         InvoiceDocStatus @default(DRAFT) @map("document_status")
   postingStatus          PostingStatus    @default(NOT_POSTED) @map("posting_status")
   postedJournalEntryId   String?          @map("posted_journal_entry_id")
@@ -2675,6 +2701,7 @@ model ClientInvoice {
   // ADR-030 CONST-COM-028 (Commercial redesign P1): the variation-billing realization rows that name
   // this invoice as where a VO slice was billed. Read/trace only — the invoice header is unchanged.
   variationBillingAllocations VariationBillingAllocation[]
+  documentFile      PlatformFile?               @relation("ClientInvoiceDocument", fields: [documentFileId], references: [id])
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, clientId, postingStatus])
@@ -3271,6 +3298,14 @@ enum UserStatus {
 enum OrganizationStatus {
   ACTIVE
   SUSPENDED
+}
+
+// The invoice document's visual layout (Commercial round-3 branding). STANDARD is the full-detail
+// default; COMPACT drops secondary rows for a shorter one-page document. Deliberately just two —
+// an open-ended template builder is a much larger feature than what was asked for.
+enum InvoiceTemplate {
+  STANDARD
+  COMPACT
 }
 
 enum WorkflowTransactionType {
