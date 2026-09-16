@@ -30,8 +30,9 @@ const P = PERMISSIONS;
 const REMOVALS: Record<string, PermissionKey[]> = {
   // Costs, not profit: withhold the BOQ margin tier and the project P&L (revenue vs cost = profit).
   'Construction Director': [P.boqViewMargin, P.financialPositionView],
-  // Money-blind: no BOQ cost (incl. the manage:boq umbrella that grants cost view), no contracts,
-  // no IPAs, no budget, no financial position, no commitment ledger, no procurement prices.
+  // No BOQ cost (incl. the manage:boq umbrella that grants cost view), no contracts, no IPAs, no
+  // budget, no project P&L, no commitment ledger. Procurement is KEPT (Eng Ahmed, 2026-09-16) — the
+  // PM manages material ordering and delivery on their projects, so `view:procurement` is NOT revoked.
   'Project Manager': [
     P.boqManage,
     P.boqEditCost,
@@ -45,7 +46,6 @@ const REMOVALS: Record<string, PermissionKey[]> = {
     P.projectBudgetManage,
     P.financialPositionView,
     P.commitmentsView,
-    P.procurementView,
   ],
   // Fully money-blind: scope + progress only.
   'Site Engineer': [P.ipaView, P.contractsView, P.commitmentsView, P.procurementView],

@@ -91,12 +91,14 @@ const ROLES: TeamRoleSpec[] = [
   },
   {
     name: 'Project Manager',
-    description: 'Runs assigned projects: scope and progress. Money-blind — no contracts, IPAs, budgets or cost figures.',
+    description: 'Runs assigned projects: scope, progress and procurement. No contracts, IPAs, budgets or project P&L.',
     permissions: [
       // Delivery work on ONLY assigned projects (NOT in the access-bypass set). Per Eng Ahmed
-      // 2026-09-15 the Project Manager is MONEY-BLIND: no contracts / IPAs, no budgets, no cost or
-      // margin visibility. BOQ is scope-only — `boqView` returns quantities with money omitted, and
-      // `manage:boq` is deliberately withheld because `resolveBoqVisibility` treats it as cost view.
+      // 2026-09-15 the Project Manager holds no contracts / IPAs, no budgets, no project P&L and no
+      // BOQ cost/margin: BOQ is scope-only (`boqView` omits money server-side) and `manage:boq` is
+      // withheld because `resolveBoqVisibility` treats it as cost view. Procurement is INCLUDED (Eng
+      // Ahmed, 2026-09-16) — the PM manages material ordering and delivery on their projects, so they
+      // see the procurement workspace (POs / GRs / MRs) even though it exposes order prices.
       P.projectsView,
       P.projectsCreate,
       P.projectsManage,
@@ -104,6 +106,7 @@ const ROLES: TeamRoleSpec[] = [
       P.boqView,
       P.boqEditScope,
       P.clientsView,
+      P.procurementView,
     ],
   },
   {
