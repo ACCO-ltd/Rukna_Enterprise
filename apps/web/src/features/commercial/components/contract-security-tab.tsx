@@ -723,6 +723,41 @@ function GuaranteesPanel({
   // table off the commercial summary, so it must be invalidated too or the table would go stale.
   const refreshSummary = () => qc.invalidateQueries({ queryKey: commercialKeys.summary(projectId) });
 
+  const hasGuarantees = summary.guarantees.length > 0;
+
+  const dialogEl =
+    canManage && dialog !== null ? (
+      <GuaranteeFormDialog
+        contractId={contractId}
+        guarantee={dialog === 'add' ? undefined : toEditableGuarantee(dialog)}
+        onClose={() => {
+          setDialog(null);
+        }}
+        onSuccess={refreshSummary}
+      />
+    ) : null;
+
+  // S-SH-4: like Retention and Advance, an empty Guarantees panel is noise on an ACCO milestone
+  // contract that carries none (ADR-023). With nothing recorded there is no card — just a quiet
+  // "add" affordance for someone who can manage guarantees, and nothing at all for someone who
+  // cannot. Guarantees stay one click away without occupying the tab by default.
+  if (!hasGuarantees) {
+    if (!canManage) return null;
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => setDialog('add')}
+          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-panel border border-dashed border-border px-3 text-body-sm text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
+        >
+          <ShieldCheck size={15} aria-hidden="true" />
+          {t('add')}
+        </button>
+        {dialogEl}
+      </>
+    );
+  }
+
   return (
     <SectionCard
       title={t('title')}
@@ -741,92 +776,76 @@ function GuaranteesPanel({
           </Button>
         ) : null
       }
-      bodyClassName={summary.guarantees.length > 0 ? 'px-0 py-0' : undefined}
+      bodyClassName="px-0 py-0"
     >
-      {summary.guarantees.length === 0 ? (
-        <div className="flex items-start gap-2.5 py-2">
-          <ShieldCheck size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <p className="text-body-sm text-muted-foreground">{t('none')}</p>
-        </div>
-      ) : (
-        <TableScroll>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('col.type')}</TableHead>
-                <TableHead>{t('col.reference')}</TableHead>
-                <TableHead className="text-end">{t('col.value')}</TableHead>
-                <TableHead>{t('col.expiry')}</TableHead>
-                <TableHead>{t('col.status')}</TableHead>
+      <TableScroll>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t('col.type')}</TableHead>
+              <TableHead>{t('col.reference')}</TableHead>
+              <TableHead className="text-end">{t('col.value')}</TableHead>
+              <TableHead>{t('col.expiry')}</TableHead>
+              <TableHead>{t('col.status')}</TableHead>
+              {canManage ? (
+                <TableHead className="text-end">
+                  <span className="sr-only">{tActions('edit')}</span>
+                </TableHead>
+              ) : null}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {summary.guarantees.map((guarantee) => (
+              <TableRow key={guarantee.id}>
+                <TableCell className="font-medium text-foreground">
+                  {humanize(guarantee.guaranteeType)}
+                </TableCell>
+                <TableCell className="font-mono text-caption text-muted-foreground">
+                  {guarantee.reference ?? '—'}
+                </TableCell>
+                <TableCell className="text-end tabular-nums">
+                  {formatMoney(guarantee.amount, guarantee.currency, locale) ?? '—'}
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground">
+                  {formatDate(guarantee.expiryDate, locale) ?? '—'}
+                </TableCell>
+                {/* Lifecycle and attention are different facts and must not merge: a guarantee
+                    nearing expiry is still legally ACTIVE, and "expiring soon" is a prompt from
+                    the server's own policy, not a status. */}
+                <TableCell>
+                  <div className="flex flex-col items-start gap-1">
+                    <Badge tone={guaranteeStatusTone(guarantee.status)}>
+                      {tRoot(`guaranteeStatus.${guarantee.status}`)}
+                    </Badge>
+                    {guarantee.attention !== 'NONE' ? (
+                      <Badge tone={guaranteeAttentionTone(guarantee.attention)}>
+                        {tRoot(`guaranteeAttention.${guarantee.attention}`)}
+                      </Badge>
+                    ) : null}
+                  </div>
+                </TableCell>
                 {canManage ? (
-                  <TableHead className="text-end">
-                    <span className="sr-only">{tActions('edit')}</span>
-                  </TableHead>
+                  <TableCell className="text-end">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="min-h-11 sm:min-h-0"
+                      onClick={() => {
+                        setDialog(guarantee);
+                      }}
+                    >
+                      {tActions('edit')}
+                    </Button>
+                  </TableCell>
                 ) : null}
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {summary.guarantees.map((guarantee) => (
-                <TableRow key={guarantee.id}>
-                  <TableCell className="font-medium text-foreground">
-                    {humanize(guarantee.guaranteeType)}
-                  </TableCell>
-                  <TableCell className="font-mono text-caption text-muted-foreground">
-                    {guarantee.reference ?? '—'}
-                  </TableCell>
-                  <TableCell className="text-end tabular-nums">
-                    {formatMoney(guarantee.amount, guarantee.currency, locale) ?? '—'}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">
-                    {formatDate(guarantee.expiryDate, locale) ?? '—'}
-                  </TableCell>
-                  {/* Lifecycle and attention are different facts and must not merge: a guarantee
-                      nearing expiry is still legally ACTIVE, and "expiring soon" is a prompt from
-                      the server's own policy, not a status. */}
-                  <TableCell>
-                    <div className="flex flex-col items-start gap-1">
-                      <Badge tone={guaranteeStatusTone(guarantee.status)}>
-                        {tRoot(`guaranteeStatus.${guarantee.status}`)}
-                      </Badge>
-                      {guarantee.attention !== 'NONE' ? (
-                        <Badge tone={guaranteeAttentionTone(guarantee.attention)}>
-                          {tRoot(`guaranteeAttention.${guarantee.attention}`)}
-                        </Badge>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                  {canManage ? (
-                    <TableCell className="text-end">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="min-h-11 sm:min-h-0"
-                        onClick={() => {
-                          setDialog(guarantee);
-                        }}
-                      >
-                        {tActions('edit')}
-                      </Button>
-                    </TableCell>
-                  ) : null}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableScroll>
-      )}
+            ))}
+          </TableBody>
+        </Table>
+      </TableScroll>
 
-      {canManage && dialog !== null ? (
-        <GuaranteeFormDialog
-          contractId={contractId}
-          guarantee={dialog === 'add' ? undefined : toEditableGuarantee(dialog)}
-          onClose={() => {
-            setDialog(null);
-          }}
-          onSuccess={refreshSummary}
-        />
-      ) : null}
+      {dialogEl}
     </SectionCard>
   );
 }

@@ -1718,8 +1718,8 @@ export interface PaymentInstallmentMilestoneLink {
  * `Σ% = 1.0` milestone schedule. Amount-based (the VO net), never a percentage of the base, and never
  * merged into a milestone figure. A distinct billable component the invoice path renders on its own.
  *
- * Stage attachment (which milestone/certificate the varied work rides) is a documented R7 seam:
- * `stageInstallmentId` is reserved for it and is null in this iteration.
+ * `stageInstallmentId` (R7) records the installment this VO was billed on, so the schedule can nest it
+ * visually under that stage; it stays null for an approved-but-unbilled VO (shown "unassigned").
  */
 export interface CommercialPaymentScheduleVariationLine {
   variationId: string;
@@ -1728,7 +1728,7 @@ export interface CommercialPaymentScheduleVariationLine {
   title: string;
   /** The VO net (amount-based). Null when the caller cannot view financials. */
   amount: string | null;
-  /** R7 seam — the milestone/stage this VO's certificate attaches to. Null until R7 models it. */
+  /** R7 — the installment this VO was billed on (visual nesting). Null until it is billed. */
   stageInstallmentId: string | null;
 }
 

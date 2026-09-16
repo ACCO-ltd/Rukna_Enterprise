@@ -1,10 +1,11 @@
 'use client';
 
+import { useState, type ReactNode } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import Link from 'next/link';
-import { ArrowRight, Lock } from 'lucide-react';
+import { ArrowRight, Lock, SlidersHorizontal } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Alert, Button, FormField, FormSection, Select } from '@erp/ui';
 
@@ -65,6 +66,11 @@ export function ContractCreateForm({ projectId }: { projectId: string }) {
   const projects = useProjects();
   const clients = useClients();
   const boq = useBoqWorkspace(projectId);
+
+  // Billing model is a disclosure. ACCO bills by milestone, so the alternatives — measured /
+  // time-and-material / hybrid, which bill through Applications & Certifications — stay hidden
+  // behind a reveal until a contract actually needs one.
+  const [showBilling, setShowBilling] = useState(false);
 
   const project = (projects.data ?? []).find((p) => p.id === projectId) ?? null;
   const clientId = project?.clientId ?? '';
@@ -226,77 +232,84 @@ export function ContractCreateForm({ projectId }: { projectId: string }) {
     >
       {errorMessages.length > 0 ? <Alert variant="error" messages={errorMessages} /> : null}
 
-      {/* The contract's subject — project and client — is inherited, not chosen. The project is the
-          route; its client follows from the project record. The contract's dates are inherited from
-          the project too (no pickers); they are shown read-only so the inheritance is visible, with a
-          hint when the project has no completion date for Extension-of-Time to extend later. */}
-      <FormSection variant="plain" title={t('project')}>
-        <div className="border-b border-border pb-4">
-          <p className="text-body-sm font-medium">{project?.name ?? projectId}</p>
-          <p className="mt-1 text-body-sm text-muted-foreground">
-            {clientName ?? (clientId ? tCommon('loading') : t('clientRequired'))}
-          </p>
-          <dl className="mt-3 flex flex-wrap gap-x-8 gap-y-1">
-            <div>
-              <dt className="text-caption text-muted-foreground">{t('startDate')}</dt>
-              <dd className="text-body-sm tabular-nums text-foreground">
-                {formatDate(project?.startDate ?? null, 'en') ?? t('dateNotSet')}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-caption text-muted-foreground">{t('expectedEnd')}</dt>
-              <dd className="text-body-sm tabular-nums text-foreground">
-                {formatDate(project?.expectedEndDate ?? null, 'en') ?? t('dateNotSet')}
-              </dd>
-            </div>
-          </dl>
-          {!project?.expectedEndDate ? (
-            <p className="mt-2 text-caption text-warning">{t('completionMissingHint')}</p>
-          ) : null}
+      {/* Contract summary — everything the system fills in. Project, client and dates are inherited
+          from the project; the value ties out to the committed BOQ; the number is minted on create.
+          None of these are inputs, so they read as a summary to confirm, not a form to fill. */}
+      <section className="rounded-panel border border-border bg-muted/30 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+          <div className="min-w-0">
+            <p className="text-body font-semibold text-foreground">{project?.name ?? projectId}</p>
+            <p className="mt-0.5 text-body-sm text-muted-foreground">
+              {clientName ?? (clientId ? tCommon('loading') : t('clientRequired'))}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-caption text-muted-foreground">{t('value')}</p>
+            <p className="text-h2 font-semibold tabular-nums text-foreground">{readonlyValue}</p>
+          </div>
         </div>
-      </FormSection>
 
-      {/* Value and number are server-derived, shown read-only. The value is the committed-BOQ
-          tie-out; the number is minted from the project code on create. */}
-      <FormSection variant="plain" title={t('billingModel')}>
-        <div className="grid gap-5 lg:grid-cols-2">
-          <FormField htmlFor="contract-value" label={t('value')}>
-            <div
-              id="contract-value"
-              className="flex min-h-11 items-center rounded-control border border-border bg-muted/40 px-3 text-body font-semibold tabular-nums text-foreground"
+        <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-border pt-4 sm:grid-cols-3">
+          <Fact label={t('number')} value={t('numberAuto')} tone="muted" />
+          <Fact
+            label={t('startDate')}
+            value={formatDate(project?.startDate ?? null, 'en') ?? t('dateNotSet')}
+          />
+          <Fact
+            label={t('expectedEnd')}
+            value={formatDate(project?.expectedEndDate ?? null, 'en') ?? t('dateNotSet')}
+          />
+        </dl>
+
+        <p className="mt-4 text-caption leading-5 text-muted-foreground">{t('valueFromBoq')}</p>
+        {!project?.expectedEndDate ? (
+          <p className="mt-1.5 text-caption leading-5 text-warning">{t('completionMissingHint')}</p>
+        ) : null}
+      </section>
+
+      {/* Billing model is a disclosure. ACCO bills by milestone, so that is the default and the only
+          decision the common contract needs is the payment schedule below. Measured / time-and-material
+          / hybrid contracts bill through Applications & Certifications instead of a fixed schedule, so
+          they sit behind a reveal rather than cluttering every contract's create screen. */}
+      <div className="rounded-panel border border-border p-4 sm:p-5">
+        {showBilling ? (
+          <div className="space-y-4">
+            <FormField htmlFor="contract-billing" label={t('billingModel')} hint={t('billingModelHint')}>
+              <Controller
+                control={control}
+                name="billingModel"
+                render={({ field }) => (
+                  <Select id="contract-billing" value={field.value} onChange={field.onChange}>
+                    {BILLING_MODELS.map((model) => (
+                      <option key={model} value={model}>
+                        {tContracts(`billingModel.${model}`)}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              />
+            </FormField>
+            {!isMilestone ? <Alert variant="info" messages={[t('billingMeasuredNote')]} /> : null}
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <p className="text-body-sm text-foreground">
+              <span className="font-medium">{tContracts(`billingModel.${BillingModel.MILESTONE}`)}</span>
+              <span className="text-muted-foreground"> — {t('billingDefaultNote')}</span>
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setShowBilling(true);
+              }}
+              className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-control px-2 text-body-sm font-medium text-brand-primary transition-colors hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
             >
-              {readonlyValue}
-            </div>
-            <p className="text-xs text-muted-foreground">{t('valueFromBoq')}</p>
-          </FormField>
-
-          <FormField htmlFor="contract-number" label={t('number')}>
-            <div
-              id="contract-number"
-              className="flex min-h-11 items-center rounded-control border border-dashed border-border bg-muted/40 px-3 text-body-sm text-muted-foreground"
-            >
-              {t('numberAuto')}
-            </div>
-            <p className="text-xs text-muted-foreground">{t('numberAutoHint')}</p>
-          </FormField>
-
-          <FormField htmlFor="contract-billing" label={t('billingModel')}>
-            <Controller
-              control={control}
-              name="billingModel"
-              render={({ field }) => (
-                <Select id="contract-billing" value={field.value} onChange={field.onChange}>
-                  {BILLING_MODELS.map((model) => (
-                    <option key={model} value={model}>
-                      {tContracts(`billingModel.${model}`)}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            />
-          </FormField>
-        </div>
-      </FormSection>
+              <SlidersHorizontal size={14} aria-hidden="true" />
+              {t('billingAdvancedReveal')}
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* The inline payment schedule (ADR-030) — only for a MILESTONE contract. Pre-seeded with the
           ACCO standard; the value each percent works out to is shown live against the tie-out. */}
@@ -334,5 +347,29 @@ export function ContractCreateForm({ projectId }: { projectId: string }) {
         cancelHref={`/projects/${projectId}/commercial/contract-security`}
       />
     </form>
+  );
+}
+
+/** One read-only fact in the contract summary — a small label over its value. */
+function Fact({
+  label,
+  value,
+  tone = 'default',
+}: {
+  label: string;
+  value: ReactNode;
+  tone?: 'default' | 'muted';
+}) {
+  return (
+    <div>
+      <dt className="text-caption text-muted-foreground">{label}</dt>
+      <dd
+        className={`mt-0.5 text-body-sm tabular-nums ${
+          tone === 'muted' ? 'text-muted-foreground' : 'text-foreground'
+        }`}
+      >
+        {value}
+      </dd>
+    </div>
   );
 }

@@ -371,6 +371,13 @@
     "subtitle": "Milestone contract. Each installment is billed from its own invoice as the schedule advances.",
     "collected": "Collected",
     "of": "of {total}",
+    "stageSubtotal": "Stage now (incl. variations)",
+    "unassignedTitle": "Unassigned variations",
+    "unassignedHint": "Approved — attach to a stage when it's billed.",
+    "variation": {
+      "addition": "Addition",
+      "omission": "Omission"
+    },
     "col": {
       "installment": "Installment",
       "percentage": "%",

@@ -1,11 +1,12 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, CalendarClock, Ban } from 'lucide-react';
+import { ArrowRight, CalendarClock, Ban, CornerDownRight } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import type {
   CommercialPaymentScheduleInstallment,
+  CommercialPaymentScheduleVariationLine,
   CommercialSummaryResponse,
   ProgrammeMilestoneResponse,
   VariationOrderListItem,
@@ -89,6 +90,28 @@ export function PaymentSchedulePanel({
   const [invoicing, setInvoicing] = useState<Installment | null>(null);
   const [linking, setLinking] = useState<Installment | null>(null);
 
+  // Adopted variations nest under the stage they were billed on (R7). Group them by stage; an
+  // approved-but-unbilled VO has no stage yet and collects in the trailing "Unassigned" group — it
+  // attaches to a stage the moment that stage is billed.
+  const variationLines = useMemo<CommercialPaymentScheduleVariationLine[]>(
+    () => cycle.data?.paymentSchedule?.variationLines ?? [],
+    [cycle.data],
+  );
+  const variationsByStage = useMemo(() => {
+    const map = new Map<string, CommercialPaymentScheduleVariationLine[]>();
+    for (const line of variationLines) {
+      if (!line.stageInstallmentId) continue;
+      const list = map.get(line.stageInstallmentId) ?? [];
+      list.push(line);
+      map.set(line.stageInstallmentId, list);
+    }
+    return map;
+  }, [variationLines]);
+  const unassignedVariations = useMemo(
+    () => variationLines.filter((line) => !line.stageInstallmentId),
+    [variationLines],
+  );
+
   if (cycle.isPending) return <Skeleton className="h-80 w-full" />;
   if (cycle.isError) {
     return (
@@ -160,20 +183,50 @@ export function PaymentSchedulePanel({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {installments.map((inst) => (
-                  <InstallmentRow
-                    key={inst.id}
-                    inst={inst}
-                    projectId={projectId}
-                    locale={locale}
-                    money={money}
-                    canInvoice={canInvoice}
-                    canManageLink={canManageLink}
-                    onInvoice={() => setInvoicing(inst)}
-                    onLink={() => setLinking(inst)}
-                    t={t}
-                  />
-                ))}
+                {installments.map((inst) => {
+                  const kids = variationsByStage.get(inst.id) ?? [];
+                  return (
+                    <Fragment key={inst.id}>
+                      <InstallmentRow
+                        inst={inst}
+                        projectId={projectId}
+                        locale={locale}
+                        money={money}
+                        canInvoice={canInvoice}
+                        canManageLink={canManageLink}
+                        onInvoice={() => setInvoicing(inst)}
+                        onLink={() => setLinking(inst)}
+                        t={t}
+                      />
+                      {kids.map((line) => (
+                        <VariationChildRow key={line.variationId} line={line} money={money} t={t} />
+                      ))}
+                      {/* "Stage now 152k" — the frozen milestone plus its nested variations, so the
+                          reader sees what the stage bills once the extras ride along (visual only:
+                          the milestone % itself is untouched). Hidden when money is restricted. */}
+                      {kids.length > 0 && inst.amount !== null ? (
+                        <StageSubtotalRow amount={stageSubtotal(inst.amount, kids)} money={money} t={t} />
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
+                {unassignedVariations.length > 0 ? (
+                  <>
+                    <TableRow>
+                      <TableCell colSpan={8} className="bg-muted/30">
+                        <span className="text-caption font-semibold uppercase tracking-wide text-muted-foreground">
+                          {t('paymentSchedule.unassignedTitle')}
+                        </span>
+                        <span className="ms-2 text-caption text-muted-foreground">
+                          {t('paymentSchedule.unassignedHint')}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                    {unassignedVariations.map((line) => (
+                      <VariationChildRow key={line.variationId} line={line} money={money} t={t} />
+                    ))}
+                  </>
+                ) : null}
               </TableBody>
             </Table>
           </TableScroll>
@@ -298,6 +351,81 @@ function InstallmentRow({
           </span>
         ) : null}
       </TableCell>
+    </TableRow>
+  );
+}
+
+/** "Stage now" = the frozen milestone amount plus its nested variations (additions add, omissions
+ *  subtract via their negative net). Indicative display only, from the server's decimal strings. */
+function stageSubtotal(
+  installmentAmount: string,
+  kids: CommercialPaymentScheduleVariationLine[],
+): string {
+  const base = Number(installmentAmount);
+  const delta = kids.reduce((sum, k) => sum + Number(k.amount ?? 0), 0);
+  return (base + delta).toFixed(2);
+}
+
+/** A variation nested under its billed stage (or in the Unassigned group): reference, title, signed
+ *  amount, and an addition/omission tag. Indented so it reads as a child of the row above it. */
+function VariationChildRow({
+  line,
+  money,
+  t,
+}: {
+  line: CommercialPaymentScheduleVariationLine;
+  money: (value: string | null) => string | null;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const isOmission = line.amount !== null && Number(line.amount) < 0;
+  return (
+    <TableRow className="bg-muted/20">
+      <TableCell className="ps-8">
+        <div className="flex min-w-0 items-center gap-2">
+          <CornerDownRight size={13} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span className="font-mono text-caption text-muted-foreground">{line.reference}</span>
+          <span className="min-w-0 truncate text-body-sm text-foreground">{line.title}</span>
+        </div>
+      </TableCell>
+      <TableCell />
+      <TableCell className="text-end tabular-nums text-foreground">{money(line.amount)}</TableCell>
+      <TableCell />
+      <TableCell />
+      <TableCell>
+        {line.amount !== null ? (
+          <Badge tone={isOmission ? 'warning' : 'live'}>
+            {isOmission
+              ? t('paymentSchedule.variation.omission')
+              : t('paymentSchedule.variation.addition')}
+          </Badge>
+        ) : null}
+      </TableCell>
+      <TableCell />
+      <TableCell />
+    </TableRow>
+  );
+}
+
+/** The "stage now X" subtotal row printed under a stage that has nested variations. */
+function StageSubtotalRow({
+  amount,
+  money,
+  t,
+}: {
+  amount: string;
+  money: (value: string | null) => string | null;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  return (
+    <TableRow className="bg-muted/40">
+      <TableCell className="ps-8 text-caption font-medium uppercase tracking-wide text-muted-foreground">
+        {t('paymentSchedule.stageSubtotal')}
+      </TableCell>
+      <TableCell />
+      <TableCell className="text-end tabular-nums font-semibold text-foreground">
+        {money(amount)}
+      </TableCell>
+      <TableCell colSpan={5} />
     </TableRow>
   );
 }
