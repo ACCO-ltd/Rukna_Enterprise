@@ -189,6 +189,29 @@ export class PlatformFileService {
   }
 
   /**
+   * Validate a file a caller wants to attach as their organization logo: it must exist in THIS
+   * organization, have its bytes (READY), and actually be an image.
+   *
+   * `bind` deliberately does none of this — it is a generic lifecycle transition with no notion of
+   * "logo". The client's file picker checks the MIME type too, but the client is never the security
+   * boundary: without this, a caller holding `manage:organization` could point the logo at any file
+   * id in the tenant (a contract PDF, an unconfirmed PENDING upload, or another org's file), which
+   * would then be embedded into every invoice PDF and break rendering (or leak a file across orgs).
+   */
+  async assertBindableImage(activeOrganizationId: string, fileId: string) {
+    const prisma = this.tenancy.getClient();
+    const file = await this.repo.findById(prisma, activeOrganizationId, fileId);
+    if (!file) throw new NotFoundException(`File ${fileId} not found`);
+    if (file.status !== 'READY') {
+      throw new BadRequestException('The logo upload has not completed yet.');
+    }
+    if (!file.mimeType.startsWith('image/')) {
+      throw new BadRequestException('The organization logo must be an image file.');
+    }
+    return file;
+  }
+
+  /**
    * TEMPORARY → BOUND. Called by the module that just attached the file to one of its records.
    *
    * Returns the file so the caller can assert on it in the same transaction. Idempotent: binding

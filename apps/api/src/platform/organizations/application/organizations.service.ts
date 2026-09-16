@@ -33,6 +33,14 @@ export class OrganizationsService {
     if (id !== activeOrganizationId) {
       throw new ForbiddenException('Cannot update branding for another organization.');
     }
+
+    // Validate the logo BEFORE persisting the patch: it must be this org's own READY image file.
+    // Doing it first means a rejected logo never leaves the organization row pointing at an invalid
+    // file id. `bind` itself does no such check (see PlatformFileService.assertBindableImage).
+    if (patch.logoFileId) {
+      await this.files.assertBindableImage(activeOrganizationId, patch.logoFileId);
+    }
+
     const updated = await this.organizationsRepository.updateBranding(id, patch);
 
     // TEMPORARY → BOUND, same as every other "attach a fresh upload to a record" flow (DPR

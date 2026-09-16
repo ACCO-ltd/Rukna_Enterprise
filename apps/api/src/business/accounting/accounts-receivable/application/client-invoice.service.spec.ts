@@ -385,7 +385,8 @@ describe('Commercial round-3 — getOrGenerateDocument (lazy invoice PDF)', () =
   function buildDocument(invoice: unknown) {
     const repo = {
       findById: jest.fn().mockResolvedValue(invoice),
-      setDocumentFileId: jest.fn(),
+      // Compare-and-set; defaults to winning the race (documentFileId was null).
+      bindDocumentFileIdIfUnset: jest.fn().mockResolvedValue(true),
     };
     const tenancy = { getClient: () => ({ organization: orgMock(), client: { findUnique: jest.fn() } }) };
     const documentService = { render: jest.fn().mockResolvedValue(Buffer.from('pdf-bytes')) };
@@ -395,6 +396,7 @@ describe('Commercial round-3 — getOrGenerateDocument (lazy invoice PDF)', () =
       storeGenerated: jest.fn().mockResolvedValue({ id: 'file-new' }),
       bind: jest.fn(),
       markImmutable: jest.fn(),
+      discardIfUnreferenced: jest.fn().mockResolvedValue(true),
     };
     const service = new ClientInvoiceService(
       tenancy as never,
@@ -430,10 +432,28 @@ describe('Commercial round-3 — getOrGenerateDocument (lazy invoice PDF)', () =
     expect(rendered.org.name).toBe('ACCO');
 
     expect(files.storeGenerated).toHaveBeenCalledTimes(1);
+    expect(repo.bindDocumentFileIdIfUnset).toHaveBeenCalledWith(expect.anything(), 'inv-1', 'file-new');
     expect(files.bind).toHaveBeenCalledWith('file-new', expect.stringContaining('inv-1'));
     expect(files.markImmutable).toHaveBeenCalledWith('file-new', expect.stringContaining('inv-1'));
-    expect(repo.setDocumentFileId).toHaveBeenCalledWith(expect.anything(), 'inv-1', 'file-new');
     expect(files.getDownloadUrl).toHaveBeenCalledWith(identity, 'file-new');
+  });
+
+  it('loses the race: discards its freshly-generated file and returns the winner document', async () => {
+    const { repo, files, service } = buildDocument(baseInvoice);
+    // Another concurrent request bound its document first, so the compare-and-set finds no null.
+    repo.bindDocumentFileIdIfUnset.mockResolvedValue(false);
+    repo.findById
+      .mockResolvedValueOnce(baseInvoice) // initial read: no document yet
+      .mockResolvedValueOnce({ ...baseInvoice, documentFileId: 'file-winner' }); // settled read after losing
+
+    await service.getOrGenerateDocument(identity, 'inv-1');
+
+    // The loser must not freeze its file (that would strand a permanent orphan) — it discards it.
+    expect(files.discardIfUnreferenced).toHaveBeenCalledWith('file-new');
+    expect(files.bind).not.toHaveBeenCalled();
+    expect(files.markImmutable).not.toHaveBeenCalled();
+    // And it serves the winner's document, not its own.
+    expect(files.getDownloadUrl).toHaveBeenCalledWith(identity, 'file-winner');
   });
 
   it('falls back to a live client/org lookup for a pre-round-3 invoice with no snapshot', async () => {

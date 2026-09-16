@@ -760,9 +760,20 @@ export class ClientInvoiceService {
       mimeType: 'application/pdf',
       body: pdf,
     });
+
+    // Compare-and-set BEFORE freezing the file. If a concurrent first-request already bound its own
+    // document, this call loses: discard the freshly-generated (still TEMPORARY, unreferenced) file
+    // rather than leaving it as a permanent orphan, and return the winner's document. Freezing only
+    // on the win keeps the loser's file discardable.
+    const won = await this.repo.bindDocumentFileIdIfUnset(prisma, id, file.id);
+    if (!won) {
+      await this.files.discardIfUnreferenced(file.id);
+      const settled = await this.repo.findById(prisma, identity.activeOrganizationId, id);
+      return this.files.getDownloadUrl(identity, settled!.documentFileId!);
+    }
+
     await this.files.bind(file.id, `invoice document for ${id}`);
     await this.files.markImmutable(file.id, `invoice document for ${id}`);
-    await this.repo.setDocumentFileId(prisma, id, file.id);
 
     return this.files.getDownloadUrl(identity, file.id);
   }

@@ -31,7 +31,10 @@ function build() {
     create: jest.fn(),
     updateBranding: jest.fn().mockResolvedValue(branded),
   };
-  const files = { bind: jest.fn().mockResolvedValue(undefined) };
+  const files = {
+    bind: jest.fn().mockResolvedValue(undefined),
+    assertBindableImage: jest.fn().mockResolvedValue(undefined),
+  };
 
   const service = new OrganizationsService(repository, files as never);
   return { service, repository, files, branded };
@@ -48,11 +51,25 @@ describe('OrganizationsService.updateBranding', () => {
     expect(repository.updateBranding).not.toHaveBeenCalled();
   });
 
-  it('binds a newly-supplied logo file (TEMPORARY -> BOUND)', async () => {
+  it('binds a newly-supplied logo file (TEMPORARY -> BOUND) after validating it', async () => {
     const { service, files } = build();
     await service.updateBranding('org-1', 'org-1', { logoFileId: 'file-1' });
 
+    expect(files.assertBindableImage).toHaveBeenCalledWith('org-1', 'file-1');
     expect(files.bind).toHaveBeenCalledWith('file-1', expect.stringContaining('org-1'));
+  });
+
+  it('rejects an invalid logo before persisting anything (not-this-org / not-READY / non-image)', async () => {
+    const { service, repository, files } = build();
+    files.assertBindableImage.mockRejectedValueOnce(new Error('not an image'));
+
+    await expect(
+      service.updateBranding('org-1', 'org-1', { logoFileId: 'file-bad' }),
+    ).rejects.toThrow();
+
+    // Validation runs first: the org row never ends up pointing at an invalid file, and nothing binds.
+    expect(repository.updateBranding).not.toHaveBeenCalled();
+    expect(files.bind).not.toHaveBeenCalled();
   });
 
   it('does not touch file binding when the patch never mentions a logo', async () => {

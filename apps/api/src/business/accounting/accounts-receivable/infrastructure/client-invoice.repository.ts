@@ -191,7 +191,25 @@ export class ClientInvoiceRepository {
     return prisma.clientInvoice.update({ where: { id }, data: { outstandingAmount } });
   }
 
-  setDocumentFileId(prisma: TenantPrisma, id: string, documentFileId: string) {
-    return prisma.clientInvoice.update({ where: { id }, data: { documentFileId } });
+  /**
+   * Compare-and-set the invoice's document file: bind `documentFileId` only if it is still null.
+   * Returns true if this call won, false if another concurrent request already set it.
+   *
+   * This is what makes lazy document generation race-safe. Two first-requests for the same
+   * never-documented invoice each render + store their own PDF file; without this guard both would
+   * blindly overwrite `documentFileId` (last-write-wins) and the loser's already-stored file would
+   * be orphaned forever. With it, only the first `updateMany` matches the `documentFileId: null`
+   * predicate; the loser sees `count === 0` and discards its freshly-generated file.
+   */
+  async bindDocumentFileIdIfUnset(
+    prisma: TenantPrisma,
+    id: string,
+    documentFileId: string,
+  ): Promise<boolean> {
+    const { count } = await prisma.clientInvoice.updateMany({
+      where: { id, documentFileId: null },
+      data: { documentFileId },
+    });
+    return count === 1;
   }
 }

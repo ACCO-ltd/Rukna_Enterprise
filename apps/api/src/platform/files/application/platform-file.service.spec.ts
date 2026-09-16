@@ -365,4 +365,34 @@ describe('PlatformFileService (ADR-014)', () => {
       expect(storage.deleteObject).not.toHaveBeenCalled();
     });
   });
+
+  describe('assertBindableImage (organization logo)', () => {
+    const readyImage = { ...ready, mimeType: 'image/png' };
+
+    it('accepts a READY image owned by the org', async () => {
+      const { service } = build(readyImage);
+      await expect(service.assertBindableImage('org-1', 'file-1')).resolves.toBeDefined();
+    });
+
+    it('rejects a file id that is not in this organization', async () => {
+      const { service } = build(null);
+      await expect(service.assertBindableImage('org-1', 'file-x')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('rejects a file whose bytes have not landed yet (not READY)', async () => {
+      const { service } = build({ ...pending, mimeType: 'image/png' });
+      await expect(service.assertBindableImage('org-1', 'file-1')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('rejects a non-image file (e.g. a PDF attachment)', async () => {
+      const { service } = build(ready); // application/pdf
+      await expect(service.assertBindableImage('org-1', 'file-1')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+  });
 });
