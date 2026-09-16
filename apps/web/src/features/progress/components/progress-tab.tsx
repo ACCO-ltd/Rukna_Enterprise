@@ -9,6 +9,7 @@ import { MilestonesSection } from '@/features/programme/components/milestones-se
 import { WorkPackageScheduleSection } from '@/features/programme/components/work-package-schedule-section';
 import { ActivitiesSection } from '@/features/programme/components/activities-section';
 import { ScheduleSetupCard } from '@/features/programme/components/schedule-setup-card';
+import { DownloadMasterScheduleButton } from '@/features/programme/components/download-master-schedule-button';
 
 import { DailyReportsSection } from './daily-reports-section';
 import { VerifiedProgressSection } from './verified-progress-section';
@@ -87,6 +88,13 @@ export function ProgressTab({ projectId }: { projectId: string }) {
         {view === 'verification' ? <VerifiedProgressSection projectId={projectId} /> : null}
         {view === 'schedule' ? (
           <div className="space-y-6">
+            {/* Master Schedule P4 (ADR-029): the branded PDF export sits at the top of the Schedule
+                view, beside the view heading, so the whole programme (phases + milestones +
+                activities) can be handed out as one document. */}
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+              <h3 className="text-sm font-semibold text-foreground">{t('tabs.schedule')}</h3>
+              <DownloadMasterScheduleButton projectId={projectId} />
+            </div>
             <MilestonesSection projectId={projectId} />
             <WorkPackageScheduleSection projectId={projectId} />
             <ActivitiesSection projectId={projectId} />
