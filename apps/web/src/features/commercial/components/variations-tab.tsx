@@ -16,12 +16,7 @@ import {
   TableRow,
   TableScroll,
 } from '@erp/ui';
-import type {
-  CommercialBillingPackageInvoice,
-  CommercialSummaryResponse,
-  VariationAllocationTreatment,
-  VariationOrderListItem,
-} from '@erp/types';
+import type { CommercialSummaryResponse, VariationOrderListItem } from '@erp/types';
 
 import { EmptyState } from '@/components/empty-state';
 import { formatMoney } from '@/lib/format';
@@ -36,6 +31,11 @@ import { VariationCreateSheet } from './variation-create-sheet';
 import { VariationDetailSheet } from './variation-detail-sheet';
 import { ExtensionOfTimeSection } from './extension-of-time-section';
 import { CertifiedInvoicedByVariationSection } from './certified-invoiced-by-variation-section';
+import {
+  VariationBillingChip,
+  type VariationBilling,
+  type VariationBillingLookup,
+} from './variation-billing-chip';
 
 /**
  * Variations (ADR-026 Phases 1–5).
@@ -202,6 +202,7 @@ export function VariationsTab({
         contractId={contract.id}
         projectId={projectId}
         currency={currency}
+        billing={detailId ? (billingLookup.get(detailId) ?? null) : null}
         open={detailId !== null}
         onOpenChange={(open) => {
           if (!open) setDetailId(null);
@@ -284,13 +285,6 @@ function VariationSummaryBand({
   );
 }
 
-/** One VO's single billing allocation, projected from the Billing Packages read (S-VB-12). */
-interface VariationBilling {
-  treatment: `${VariationAllocationTreatment}`;
-  invoice: CommercialBillingPackageInvoice | null;
-}
-type VariationBillingLookup = Map<string, VariationBilling>;
-
 function VariationRow({
   vo,
   currency,
@@ -355,47 +349,8 @@ function VariationRow({
         {t(`clientApproval.${approval}`)}
       </TableCell>
       <TableCell className="whitespace-nowrap">
-        <VariationBillingChip vo={vo} billing={billing} />
+        <VariationBillingChip status={vo.status} billing={billing} />
       </TableCell>
     </TableRow>
   );
-}
-
-/**
- * The "invoiced?" chip (S-VB-12).
- *
- * A VO that carries a billing allocation reports how it was realized; a client-approved VO with no
- * allocation yet reads "Approved · not billed"; anything not yet approved shows nothing (an em
- * dash), because "not billed" is only meaningful once the client has agreed to the change. The chip
- * never fabricates an invoice link — the number as text is the whole message.
- */
-function VariationBillingChip({
-  vo,
-  billing,
-}: {
-  vo: VariationOrderListItem;
-  billing: VariationBilling | null;
-}) {
-  const t = useTranslations('commercial.variations.billing');
-
-  if (billing) {
-    if (billing.treatment === 'STAGE_REDUCTION') {
-      return <Badge tone="neutral">{t('omissionBilled')}</Badge>;
-    }
-    if (billing.treatment === 'INVOICE') {
-      return billing.invoice?.invoiceNumber ? (
-        <Badge tone="live">{t('invoiced', { number: billing.invoice.invoiceNumber })}</Badge>
-      ) : (
-        <Badge tone="neutral">{t('invoicedDraft')}</Badge>
-      );
-    }
-    // CREDIT_NOTE (declared for Phase 2, not produced in P1) falls through to the neutral posture.
-    return <Badge tone="neutral">{t('invoicedDraft')}</Badge>;
-  }
-
-  if (vo.status === 'CLIENT_APPROVED') {
-    return <Badge tone="warning">{t('approvedNotBilled')}</Badge>;
-  }
-
-  return <span className="text-caption text-muted-foreground">—</span>;
 }

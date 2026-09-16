@@ -8,6 +8,7 @@ import { pickDate } from '@/test/pick-date';
 import * as hooks from '../hooks/use-commercial';
 
 import { VariationDetailSheet } from './variation-detail-sheet';
+import type { VariationBilling } from './variation-billing-chip';
 import { ExtensionOfTimeSection } from './extension-of-time-section';
 
 vi.mock('../hooks/use-commercial', () => ({
@@ -111,6 +112,7 @@ function renderDetail() {
       contractId="c-1"
       projectId="p-1"
       currency="USD"
+      billing={null}
       open
       onOpenChange={() => {}}
     />,
@@ -154,6 +156,56 @@ describe('VariationDetailSheet — actions gated by real status', () => {
   });
 });
 
+describe('VariationDetailSheet — contract & BOQ impact (round-2 C)', () => {
+  const invoicedBilling: VariationBilling = {
+    treatment: 'INVOICE',
+    invoice: {
+      id: 'inv-9',
+      invoiceNumber: 'INV-005',
+      subtotal: '25000.00',
+      totalAmount: '26250.00',
+      documentStatus: 'POSTED',
+      postingStatus: 'POSTED',
+    } as unknown as VariationBilling['invoice'],
+  };
+
+  it('surfaces the contract raise, BOQ-applied status, invoiced chip and a Billing link in one place', () => {
+    stubVariation(
+      variation({
+        status: 'CLIENT_APPROVED',
+        clientApprovalReference: 'SIGNED-42',
+        appliedToBoq: true,
+        boqNodeCount: 6,
+      }),
+    );
+    renderWithProviders(
+      <VariationDetailSheet
+        variationId="vo-1"
+        contractId="c-1"
+        projectId="p-1"
+        currency="USD"
+        billing={invoicedBilling}
+        open
+        onOpenChange={() => {}}
+      />,
+      { permissions: MANAGE, withToast: true },
+    );
+
+    expect(screen.getByText('Contract & BOQ impact')).toBeInTheDocument();
+    expect(screen.getByText(/Raised by/)).toBeInTheDocument();
+    expect(screen.getByText(/6 items/)).toBeInTheDocument();
+    // The list's chip logic, reused: a numbered invoice reads as invoiced.
+    expect(screen.getByText(/Invoiced \(INV-005\)/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /View in Billing/ })).toBeInTheDocument();
+  });
+
+  it('omits the impact section for a fresh DRAFT (nothing to connect yet)', () => {
+    stubVariation(variation({ status: 'DRAFT' }));
+    renderDetail();
+    expect(screen.queryByText('Contract & BOQ impact')).not.toBeInTheDocument();
+  });
+});
+
 describe('VariationDetailSheet — actions gated by permission', () => {
   it('a read-only user on a DRAFT sees no lifecycle action, only Close', () => {
     stubVariation(variation({ status: 'DRAFT' }));
@@ -163,6 +215,7 @@ describe('VariationDetailSheet — actions gated by permission', () => {
         contractId="c-1"
         projectId="p-1"
         currency="USD"
+        billing={null}
         open
         onOpenChange={() => {}}
       />,
@@ -182,6 +235,7 @@ describe('VariationDetailSheet — actions gated by permission', () => {
         contractId="c-1"
         projectId="p-1"
         currency="USD"
+        billing={null}
         open
         onOpenChange={() => {}}
       />,

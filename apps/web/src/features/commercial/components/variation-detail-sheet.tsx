@@ -1,6 +1,8 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
+import { ArrowRight } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Badge,
@@ -34,6 +36,7 @@ import {
 } from '../hooks/use-commercial';
 import { variationStatusTone } from '../presentation';
 import { AtRiskCommencementSection } from './at-risk-commencement-section';
+import { VariationBillingChip, type VariationBilling } from './variation-billing-chip';
 
 /**
  * VariationOrder detail, in a drawer so the list stays behind it (the commercial pattern for a
@@ -51,6 +54,7 @@ export function VariationDetailSheet({
   contractId,
   projectId,
   currency,
+  billing,
   open,
   onOpenChange,
 }: {
@@ -58,6 +62,9 @@ export function VariationDetailSheet({
   contractId: string;
   projectId: string;
   currency: string | null;
+  /** The VO's billing allocation from the list's Billing Packages read, so the detail can show
+   *  where it was billed without a second query. Null when unbilled or opened right after create. */
+  billing: VariationBilling | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -93,6 +100,7 @@ export function VariationDetailSheet({
             contractId={contractId}
             projectId={projectId}
             currency={currency}
+            billing={billing}
             onDone={() => onOpenChange(false)}
           />
         )}
@@ -106,12 +114,14 @@ function DetailBody({
   contractId,
   projectId,
   currency,
+  billing,
   onDone,
 }: {
   variation: VariationOrderResponse;
   contractId: string;
   projectId: string;
   currency: string | null;
+  billing: VariationBilling | null;
   onDone: () => void;
 }) {
   const t = useTranslations('commercial.variations');
@@ -201,6 +211,13 @@ function DetailBody({
   const money = (value: string | number | null) =>
     formatMoney(value, currency, locale) ?? t('detail.notSet');
 
+  // The three connections worth surfacing in-place: does it move the contract value (only once
+  // client-approved), has its scope landed in the BOQ, and where was it billed. Show the section
+  // only when at least one of those has an answer, so a fresh DRAFT stays uncluttered.
+  const isApproved = variation.status === 'CLIENT_APPROVED';
+  const isOmission = Number(variation.netPrice) < 0;
+  const showImpact = isApproved || variation.appliedToBoq || billing !== null;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="border-b border-border px-5 py-4">
@@ -279,6 +296,48 @@ function DetailBody({
             <DefinitionRow label={t('detail.reason')}>{variation.reason}</DefinitionRow>
           ) : null}
         </DefinitionList>
+
+        {/* Where this variation connects to the rest of the workspace: the contract value it moves
+            once client-approved, whether its scope has landed in the BOQ, and where it was billed —
+            so the answer is here, not spread across three tabs. */}
+        {showImpact ? (
+          <section className="space-y-2.5 rounded-control border border-border bg-surface-subtle p-3">
+            <h3 className="text-body-sm font-semibold text-foreground">{t('detail.impactTitle')}</h3>
+            <DefinitionList>
+              {isApproved ? (
+                <DefinitionRow label={t('detail.contractImpact')}>
+                  {isOmission
+                    ? t('detail.contractImpactReduced', {
+                        amount: money(Math.abs(Number(variation.netPrice))),
+                      })
+                    : t('detail.contractImpactRaised', { amount: money(variation.netPrice) })}
+                </DefinitionRow>
+              ) : null}
+              <DefinitionRow label={t('detail.boqImpact')}>
+                {variation.appliedToBoq
+                  ? t('detail.boqApplied', { count: variation.boqNodeCount })
+                  : isApproved
+                    ? t('detail.boqNotApplied')
+                    : t('detail.boqPending')}
+              </DefinitionRow>
+            </DefinitionList>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-2.5">
+              <span className="inline-flex items-center gap-2">
+                <span className="text-caption text-muted-foreground">{t('detail.billing')}</span>
+                <VariationBillingChip status={variation.status} billing={billing} />
+              </span>
+              {billing?.invoice ? (
+                <Link
+                  href={`/projects/${projectId}/commercial/billing-collection`}
+                  className="inline-flex min-h-11 items-center gap-1 text-caption font-medium text-brand-primary hover:underline sm:min-h-0"
+                >
+                  {t('detail.viewBilling')}
+                  <ArrowRight size={12} aria-hidden="true" />
+                </Link>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
 
         {/* At-risk commencement (Phase 5) — the audited early-start exception. Lists any recorded
             authorisations always, and offers the record action only in pre-CLIENT_APPROVED states. */}
