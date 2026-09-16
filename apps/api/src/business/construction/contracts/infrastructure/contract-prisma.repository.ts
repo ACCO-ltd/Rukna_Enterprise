@@ -291,8 +291,9 @@ export class ContractPrismaRepository {
     startDate: Date;
     expectedEndDate: Date;
     status: string;
-    clientNameSnapshot: string;
-    clientTaxSnapshot: string;
+    // Nullable so reopen can clear the identity frozen at activation (columns are nullable in schema).
+    clientNameSnapshot: string | null;
+    clientTaxSnapshot: string | null;
   }>) {
     return prisma.contract.update({
       where: { id },

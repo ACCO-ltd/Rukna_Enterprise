@@ -28,10 +28,10 @@ function contract(status: ContractStatus): Contract {
 }
 
 describe('getContractActions — forward lifecycle', () => {
+  // ACCO signs on paper, so the lifecycle collapsed to one forward step: a DRAFT is activated
+  // straight to ACTIVE. `close` still reaches CLOSED from FINAL_ACCOUNT_PENDING.
   it.each([
-    [ContractStatus.DRAFT, 'submit'],
-    [ContractStatus.UNDER_REVIEW, 'approve-review'],
-    [ContractStatus.PENDING_SIGNATURE, 'execute'],
+    [ContractStatus.DRAFT, 'activate'],
     [ContractStatus.FINAL_ACCOUNT_PENDING, 'close'],
   ])('offers %s → %s', (status, command) => {
     expect(getContractActions(contract(status)).advance).toBe(command);
@@ -39,10 +39,11 @@ describe('getContractActions — forward lifecycle', () => {
 
   // ACTIVE is the gap in the chain: nothing on the contract moves it forward. It reaches
   // FINAL_ACCOUNT_PENDING only when its project records practical completion.
-  it('offers no forward command while ACTIVE', () => {
+  it('offers no forward command while ACTIVE, but can be reopened', () => {
     const actions = getContractActions(contract(ContractStatus.ACTIVE));
     expect(actions.advance).toBeNull();
     expect(actions.awaitingPracticalCompletion).toBe(true);
+    expect(actions.canReopen).toBe(true);
   });
 
   it.each([ContractStatus.CLOSED, ContractStatus.CANCELLED, ContractStatus.TERMINATED])(
@@ -53,37 +54,35 @@ describe('getContractActions — forward lifecycle', () => {
   );
 });
 
-describe('getContractActions — cancel and terminate', () => {
-  // The important difference from projects: a project can be cancelled while ACTIVE, a
-  // contract cannot. Once executed it is terminated instead, and the two words mean
-  // different things — never took effect vs took effect and was stopped.
-  it.each([
-    ContractStatus.DRAFT,
-    ContractStatus.UNDER_REVIEW,
-    ContractStatus.PENDING_SIGNATURE,
-  ])('allows cancel from %s', (status) => {
-    expect(getContractActions(contract(status)).canCancel).toBe(true);
+describe('getContractActions — cancel, terminate and reopen', () => {
+  // Cancel is available only before the contract goes live — which, post-collapse, is DRAFT
+  // alone. Once ACTIVE it is reopened (to correct) or terminated (to stop), never cancelled:
+  // cancelled means it never took effect.
+  it('allows cancel only from DRAFT', () => {
+    expect(getContractActions(contract(ContractStatus.DRAFT)).canCancel).toBe(true);
+    for (const status of [
+      ContractStatus.ACTIVE,
+      ContractStatus.FINAL_ACCOUNT_PENDING,
+      ContractStatus.CLOSED,
+      ContractStatus.CANCELLED,
+      ContractStatus.TERMINATED,
+    ]) {
+      expect(getContractActions(contract(status)).canCancel).toBe(false);
+    }
   });
 
-  it.each([
-    ContractStatus.ACTIVE,
-    ContractStatus.FINAL_ACCOUNT_PENDING,
-    ContractStatus.CLOSED,
-    ContractStatus.CANCELLED,
-    ContractStatus.TERMINATED,
-  ])('does not allow cancel from %s', (status) => {
-    expect(getContractActions(contract(status)).canCancel).toBe(false);
-  });
-
-  it('allows terminate only while ACTIVE', () => {
-    expect(getContractActions(contract(ContractStatus.ACTIVE)).canTerminate).toBe(true);
+  it('allows terminate and reopen only while ACTIVE', () => {
+    const activeActions = getContractActions(contract(ContractStatus.ACTIVE));
+    expect(activeActions.canTerminate).toBe(true);
+    expect(activeActions.canReopen).toBe(true);
     for (const status of [
       ContractStatus.DRAFT,
-      ContractStatus.PENDING_SIGNATURE,
       ContractStatus.FINAL_ACCOUNT_PENDING,
       ContractStatus.CLOSED,
     ]) {
-      expect(getContractActions(contract(status)).canTerminate).toBe(false);
+      const actions = getContractActions(contract(status));
+      expect(actions.canTerminate).toBe(false);
+      expect(actions.canReopen).toBe(false);
     }
   });
 
@@ -105,15 +104,10 @@ describe('getContractActions — editing', () => {
 });
 
 describe('requiresConfirmation', () => {
-  // `execute` freezes the client's name and tax number onto the contract forever, and
-  // `close` is final. Both deserve a stop; the two review steps are reversible in practice.
-  it('confirms execute and close', () => {
-    expect(requiresConfirmation('execute')).toBe(true);
+  // `activate` freezes the client's name and tax number onto the contract and opens billing;
+  // `close` is final. Both forward steps deserve a stop.
+  it('confirms activate and close', () => {
+    expect(requiresConfirmation('activate')).toBe(true);
     expect(requiresConfirmation('close')).toBe(true);
-  });
-
-  it('does not confirm the review steps', () => {
-    expect(requiresConfirmation('submit')).toBe(false);
-    expect(requiresConfirmation('approve-review')).toBe(false);
   });
 });

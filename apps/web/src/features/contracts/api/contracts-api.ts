@@ -134,6 +134,19 @@ export function terminateContract(id: string, reason: string): Promise<Contract>
   });
 }
 
+/**
+ * Reopens an ACTIVE contract back to DRAFT for correction (ACCO signs on paper; the paperwork
+ * may still be changing after the contract was activated in the system). Clears the frozen
+ * client snapshots — re-activating re-freezes them. `reason` is REQUIRED (max 500) and, unlike
+ * cancel/terminate, IS recorded: the service audits a `CONTRACT_REOPENED` event carrying it.
+ */
+export function reopenContract(id: string, reason: string): Promise<Contract> {
+  return apiClient<Contract>(`/contracts/${id}/reopen`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+}
+
 // ─── Commercial terms ────────────────────────────────────────────────────────────
 //
 // None of the endpoints below is gated on contract status: the service calls

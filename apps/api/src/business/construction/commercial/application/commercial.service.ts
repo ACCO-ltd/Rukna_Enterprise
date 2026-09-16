@@ -47,6 +47,18 @@ import type { CommercialContractValue } from '@erp/types';
 
 const ZERO = new Decimal(0);
 
+/**
+ * The permission the contract's next lifecycle transition requires, keyed by current status —
+ * the mirror of the contract controller's guards. `activate` (DRAFT → ACTIVE) is `contractsApprove`
+ * (it keeps the one meaningful checkpoint from the old `execute`); `close` is `contractsManage`.
+ * A status with no forward command (ACTIVE, or any terminal state) is absent, so
+ * `canAdvanceContract` is false there.
+ */
+const ADVANCE_PERMISSION: Partial<Record<string, string>> = {
+  DRAFT: PERMISSIONS.contractsApprove,
+  FINAL_ACCOUNT_PENDING: PERMISSIONS.contractsManage,
+};
+
 // ─── Billing helpers ────────────────────────────────────────────────────────────
 //
 // Pure date/classification rules for the billing read model. Module-level rather than private
@@ -704,11 +716,22 @@ export class CommercialService {
     if (contract.status !== 'ACTIVE') {
       const mayEdit = result.capabilities.canEditContract;
       const mayAdvance = result.capabilities.canAdvanceContract;
+      // The payment plan is seeded at create, so a MILESTONE contract already has a schedule while
+      // still in DRAFT. Surface it here too — otherwise the plan the user just built is invisible
+      // (and the DRAFT re-profile editor is starved of rows) until the contract is activated.
+      // `buildPaymentSchedule` is status-agnostic: with no invoices yet every row is NEXT/UPCOMING
+      // and collected is 0 — exactly the pre-active truth. The stage stays CONTRACT_DRAFT, so the
+      // ribbon still drives "activate the contract".
+      const built =
+        contract.billingModel === 'MILESTONE'
+          ? await this.buildPaymentSchedule(identity, contract)
+          : null;
       return {
         projectId,
         contract: identitySummary,
         stage: 'CONTRACT_DRAFT',
         application: null,
+        ...(built ? { paymentSchedule: built.schedule } : {}),
         nextAction: mayEdit
           ? { kind: 'EDIT_CONTRACT', href: `/projects/${projectId}/commercial/contract/edit` }
           : mayAdvance
@@ -1481,7 +1504,16 @@ export class CommercialService {
         has(PERMISSIONS.contractsManage) &&
         status !== null &&
         CommercialTermPolicy.evaluate(status, 'CONTRACT_HEADER').allowed,
-      canAdvanceContract: has(PERMISSIONS.contractsApprove) && notTerminal,
+      // The permission the contract's NEXT lifecycle transition actually needs, mirroring the
+      // contract controller: `activate` (DRAFT → ACTIVE) is `contractsApprove`, `close` is
+      // `contractsManage`. Absent for ACTIVE (which moves on via the project's practical-completion,
+      // not a direct command) and for terminal states.
+      canAdvanceContract:
+        status !== null && ADVANCE_PERMISSION[status] !== undefined && has(ADVANCE_PERMISSION[status]!),
+      // Reopen (ACTIVE → DRAFT) is the reverse of activate — same authority (`contractsApprove`),
+      // available only while live. The command itself carries the strong confirmation; this only
+      // decides whether the workspace offers the affordance.
+      canReopenContract: has(PERMISSIONS.contractsApprove) && status === 'ACTIVE',
       canCreateApplication: has(PERMISSIONS.ipaCreate) && status === 'ACTIVE',
       canManageApplication: has(PERMISSIONS.ipaManage) && status === 'ACTIVE',
       canReviewApplication: has(PERMISSIONS.ipaApprove),

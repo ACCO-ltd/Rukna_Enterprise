@@ -1408,6 +1408,7 @@ export interface CommercialCapabilities {
   canViewFinancials: boolean;
   canEditContract: boolean;
   canAdvanceContract: boolean;
+  canReopenContract: boolean;
   canCreateApplication: boolean;
   canManageApplication: boolean;
   canReviewApplication: boolean;

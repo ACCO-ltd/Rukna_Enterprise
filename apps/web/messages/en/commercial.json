@@ -133,9 +133,9 @@
     "termsLocked": "Contract terms are locked while the contract is active.",
     "currency": "Currency",
     "clientLockedTitle": "Client details are locked",
-    "clientLockedHint": "The client name and tax details were frozen onto this contract when it was executed. Editing the client record will not change them.",
-    "willLockTitle": "Executing locks the client details",
-    "willLockHint": "The client name and tax details will be frozen onto this contract when it is executed.",
+    "clientLockedHint": "The client name and tax details were frozen onto this contract when it was activated. Editing the client record will not change them.",
+    "willLockTitle": "Activating locks the client details",
+    "willLockHint": "The client name and tax details will be frozen onto this contract when it is activated.",
     "viewBoq": "View the BOQ baseline"
   },
   "retention": {
@@ -329,7 +329,7 @@
       "ofInvoiced": "{percent}% of invoiced",
       "vatInclusive": "Sales Tax included",
       "approvedVariations": "Approved variations",
-      "approvedVariationsHint": "Client-approved entitlement, shown separately from the billed chain until each variation is invoiced."
+      "approvedVariationsHint": "Approved entitlement not yet invoiced."
     },
     "packages": {
       "title": "Stage billing",
@@ -414,7 +414,7 @@
       "paymentTerms": "Payment terms",
       "paymentTermsPlaceholder": "e.g. Net 30",
       "variationsTitle": "Approved variations to bill with this stage",
-      "variationsHint": "Client-approved variations that have not been billed yet. Included variations are billed with this stage; deferred ones stay available for a later stage.",
+      "variationsHint": "Included variations are billed now; deferred ones stay for a later stage.",
       "additionCaption": "Billed as its own invoice",
       "omissionCaption": "Reduces this stage",
       "indicativeLabel": "Billing now (indicative, before Sales Tax)",
@@ -447,22 +447,22 @@
   },
   "paymentScheduleTab": {
     "title": "Payment schedule",
-    "subtitle": "This contract is billed from a negotiated milestone schedule. Each stage is invoiced from its own document as the schedule advances.",
+    "subtitle": "Each stage is invoiced from its own document as the plan advances.",
     "contractValue": "Contract value",
     "planTotal": "Plan total",
     "valueNotSet": "Not set",
     "restricted": "Restricted",
     "editorTitle": "Edit schedule",
     "edit": "Edit schedule",
-    "draftHint": "The contract is still a draft, so the whole schedule can be re-profiled. Percentages must total 100%.",
-    "reprofileHint": "This contract is active. The stages that have already been invoiced are locked; you can re-profile only the stages that have not been billed yet.",
-    "reprofileNote": "This contract is committed, so its schedule is fixed. Re-profile a committed schedule through a Variation.",
-    "variationNote": "Invoiced stages are locked. Changing the contract value or an already-invoiced stage requires a Variation.",
-    "lockedStagesNote": "Invoiced stages are locked and left untouched. Only the un-invoiced stages below are editable. Changing the contract value or an already-invoiced stage requires a Variation.",
+    "draftHint": "Draft contract — the whole schedule can be re-profiled. Percentages must total 100%.",
+    "reprofileHint": "Already-invoiced stages are locked. Re-profile only the unbilled stages.",
+    "reprofileNote": "The schedule is fixed. Re-profile it through a Variation.",
+    "variationNote": "Invoiced stages are locked. Changing the contract value or an invoiced stage needs a Variation.",
+    "lockedStagesNote": "Invoiced stages are locked. Edit only the un-invoiced stages below; changing an invoiced stage or the contract value needs a Variation.",
     "frozenSectionTitle": "Invoiced stages (locked)",
-    "frozenSectionHint": "These stages have been billed, so their percentage is fixed. They stay in the schedule and cannot be edited or removed here.",
+    "frozenSectionHint": "Already billed — locked and cannot be edited.",
     "editableSectionTitle": "Un-invoiced stages",
-    "editableSectionHint": "Adjust the stages that have not been billed yet. These must total {target}% so the whole schedule still reconciles to 100%.",
+    "editableSectionHint": "Unbilled stages. These must total {target}%.",
     "reconcileBreakdown": "Invoiced (locked): {frozen}% · remaining to allocate: {target}%",
     "editableOk": "Totals {target}%",
     "editableMismatch": "Un-invoiced stages must total {target}% (currently {total}%)",
@@ -647,6 +647,8 @@
     "contract": {
       "create": "created the contract",
       "update": "updated the contract",
+      "activate": "activated the contract",
+      "reopen": "reopened the contract to draft",
       "submit": "submitted the contract for review",
       "approve-review": "approved the contract review",
       "execute": "executed the contract",
@@ -718,17 +720,17 @@
       "approved": "Approved variations",
       "governing": "Governing value",
       "pendingBadge": "{amount} pending",
-      "rule": "Contract value changes only when a variation is client-approved. Pending variations are shown for information and are never added into the governing value.",
+      "rule": "Contract value changes only when a variation is client-approved. Pending ones are shown for information only.",
       "notSet": "Not set",
       "restricted": "Restricted"
     },
     "create": {
       "title": "Raise a variation",
-      "subtitle": "Draft a change to the contract. Add line items — additions and omissions — then save as a draft.",
+      "subtitle": "Add the additions and omissions this change makes.",
       "fieldTitle": "Title",
       "fieldDescription": "Description",
       "fieldTimeImpact": "Proposed time impact (days)",
-      "timeImpactHint": "Proposed only. It never moves the completion date on its own — record an extension of time for that.",
+      "timeImpactHint": "Proposed only. Use Extension of Time to move the completion date.",
       "linesTitle": "Line items",
       "addLine": "Add line",
       "removeLine": "Remove line",
@@ -740,7 +742,7 @@
       "unitRate": "Unit rate",
       "lineLabel": "Line {n}",
       "netPreview": "Net (preview)",
-      "netPreviewHint": "A preview only. The saved variation shows the value derived by the server.",
+      "netPreviewHint": "Preview only. The saved figure is calculated by the server.",
       "save": "Save draft"
     },
     "detail": {
@@ -754,6 +756,16 @@
       "netPrice": "Net price",
       "timeImpact": "Proposed time impact",
       "days": "{n} days",
+      "impactTitle": "Contract & BOQ impact",
+      "contractImpact": "Contract value",
+      "contractImpactRaised": "Raised by {amount}",
+      "contractImpactReduced": "Reduced by {amount}",
+      "boqImpact": "BOQ",
+      "boqApplied": "Applied · {count, plural, one {# item} other {# items}}",
+      "boqNotApplied": "Approved — not yet applied",
+      "boqPending": "Applied once client-approved",
+      "billing": "Billing",
+      "viewBilling": "View in Billing & Collection",
       "submitted": "Submitted",
       "internalApproved": "Internally approved",
       "clientApproved": "Client approved",
@@ -796,9 +808,9 @@
     },
     "trace": {
       "title": "Certified & invoiced by variation",
-      "explainer": "Where certified and invoiced value to date traces back to — the original scope and each variation. The rows reconcile to the total.",
+      "explainer": "Certified and invoiced value to date, split by original scope and each variation. Rows sum to the total.",
       "baseScope": "Original scope",
-      "baseScopeHint": "Baseline contract, before any variation",
+      "baseScopeHint": "Before any variation",
       "total": "Total",
       "restricted": "Restricted",
       "exVatNote": "Figures are gross of Sales Tax and certificate deductions (before tax). They are not the invoice or tax-inclusive total.",
@@ -813,7 +825,7 @@
     },
     "atRisk": {
       "title": "At-risk commencement",
-      "explainer": "An audited authorisation to start urgent work before the variation is client-approved. It changes neither the contract value nor the BOQ — it is an exception, not the normal path.",
+      "explainer": "An audited authorisation to start urgent work before a variation is client-approved — an exception that changes neither the contract value nor the BOQ.",
       "record": "Record at-risk commencement",
       "none": "No at-risk commencement recorded on this variation.",
       "loadFailed": "Could not load at-risk authorisations.",
@@ -828,7 +840,7 @@
       "voStatusAt": "Variation status at authorisation",
       "authorisedBy": "Authorised",
       "authorisedMeta": "by {by} · {date}",
-      "formWarning": "This records an exception, not the normal approval path. It changes neither the contract value nor the BOQ.",
+      "formWarning": "This records an exception, not the normal approval path.",
       "exposure": "Exposure amount",
       "exposureHint": "The value ACCO accepts by starting early, in the contract currency.",
       "reason": "Reason",
@@ -867,7 +879,7 @@
   },
   "eot": {
     "title": "Extension of time",
-    "explainer": "Moving the completion date is an explicit, recorded act. A variation's proposed time impact is justification you may cite — it is never applied automatically.",
+    "explainer": "Moving the completion date is a recorded act. A variation's proposed time impact is justification you may cite; it is never applied automatically.",
     "record": "Record extension of time",
     "currentEndDate": "Current completion date",
     "noEndDate": "Not set",
@@ -953,12 +965,31 @@
     "current": "Current status",
     "next": "Next",
     "noneRequired": "No further action required at this stage",
+    "awaitingPc": "Advances when the project records practical completion.",
     "exited": "This contract is {status} and has left the normal lifecycle.",
     "transition": {
-      "SUBMIT_FOR_REVIEW": "Submit for review",
-      "APPROVE_REVIEW": "Approve review",
-      "EXECUTE": "Execute contract",
+      "ACTIVATE": "Activate contract",
       "CLOSE": "Close contract"
+    },
+    "confirm": {
+      "activate": {
+        "title": "Activate this contract?",
+        "body": "Activating makes the contract live and begins billing. The client's name and tax number are frozen onto it as they stand now. You can still reverse this to draft while the contract has not been billed.",
+        "confirm": "Activate contract"
+      },
+      "close": {
+        "title": "Close this contract?",
+        "body": "Closing finalises the contract. No further certificates, invoices or variations can be raised against it. This cannot be undone.",
+        "confirm": "Close contract"
+      }
+    },
+    "reopen": {
+      "action": "Reopen to draft",
+      "title": "Reopen this contract to draft?",
+      "body": "This reverses a live contract back to draft so you can correct it, and clears the frozen client identity (re-activating freezes it again). If invoices have already been raised or payments collected against this contract, they will contradict the draft — change its scope through a Variation, or stop it with Terminate, instead.",
+      "reasonLabel": "Reason for reopening",
+      "reasonPlaceholder": "Why is this contract being pulled back to draft?",
+      "confirm": "Reopen to draft"
     }
   },
   "contractDeliverables": {

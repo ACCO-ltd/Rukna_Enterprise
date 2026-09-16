@@ -76,6 +76,7 @@ function summary(overrides: Partial<CommercialSummaryResponse> = {}): Commercial
       canViewFinancials: true,
       canEditContract: false,
       canAdvanceContract: false,
+      canReopenContract: false,
       canCreateApplication: false,
       canManageApplication: false,
       canReviewApplication: false,

@@ -216,9 +216,9 @@ function SummaryStrip({
  *    ONLY the editable rows; the server keeps the frozen ones. Changing the contract value or an
  *    already-invoiced stage still needs a Variation.
  *
- * A terminal / locked contract (UNDER_REVIEW, PENDING_SIGNATURE, CLOSED, CANCELLED, TERMINATED,
- * FINAL_ACCOUNT_PENDING) is neither: the schedule is fixed and only a Variation reprofiles it, so the
- * editor is replaced with that explanation rather than a control the server would 409.
+ * A terminal / locked contract (CLOSED, CANCELLED, TERMINATED, FINAL_ACCOUNT_PENDING) is neither:
+ * the schedule is fixed and only a Variation reprofiles it, so the editor is replaced with that
+ * explanation rather than a control the server would 409.
  */
 function ScheduleEditor({
   projectId,

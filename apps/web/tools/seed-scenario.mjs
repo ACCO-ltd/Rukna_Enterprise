@@ -332,10 +332,8 @@ async function main() {
   });
   ok();
 
-  step('advance contract to ACTIVE');
-  for (const command of ['submit', 'approve-review', 'execute']) {
-    await post(`/contracts/${contract.id}/${command}`);
-  }
+  step('activate contract (DRAFT → ACTIVE)');
+  await post(`/contracts/${contract.id}/activate`);
   ok('client details now frozen onto the contract');
 
   // ── Start the project (ADR-019) ────────────────────────────────────────────────
