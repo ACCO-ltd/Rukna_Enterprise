@@ -8,10 +8,12 @@ import { pickDate } from '@/test/pick-date';
 
 import { ContractSecurityTab } from './contract-security-tab';
 
-// The tab mounts `useContract` for the (unrelated) payment-terms/milestones panels. Stub it idle so
-// the guarantee panel — driven entirely by the commercial summary — is what the test exercises.
+// The tab mounts `useContract` for the (unrelated) payment-terms/milestones panels, and
+// `useAdvanceContract` for the lifecycle driver on the status panel. Stub both idle so the
+// guarantee/retention/advance panels the test exercises stay isolated from a network round-trip.
 vi.mock('@/features/contracts/hooks/use-contracts', () => ({
   useContract: vi.fn(() => ({ data: null, isPending: false, isError: false })),
+  useAdvanceContract: vi.fn(() => ({ mutate: vi.fn(), isPending: false, failure: null })),
 }));
 
 // The dialog is wired to these mutations. Stubbing them lets the test assert the workspace submits

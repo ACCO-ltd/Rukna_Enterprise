@@ -953,12 +953,25 @@
     "current": "Current status",
     "next": "Next",
     "noneRequired": "No further action required at this stage",
+    "awaitingPc": "Advances when the project records practical completion.",
     "exited": "This contract is {status} and has left the normal lifecycle.",
     "transition": {
       "SUBMIT_FOR_REVIEW": "Submit for review",
       "APPROVE_REVIEW": "Approve review",
       "EXECUTE": "Execute contract",
       "CLOSE": "Close contract"
+    },
+    "confirm": {
+      "execute": {
+        "title": "Execute this contract?",
+        "body": "Executing signs the contract and makes it active. The client's name and tax number are frozen onto it permanently, and billing begins. This cannot be undone.",
+        "confirm": "Execute contract"
+      },
+      "close": {
+        "title": "Close this contract?",
+        "body": "Closing finalises the contract. No further certificates, invoices or variations can be raised against it. This cannot be undone.",
+        "confirm": "Close contract"
+      }
     }
   },
   "contractDeliverables": {

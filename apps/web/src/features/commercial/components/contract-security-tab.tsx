@@ -6,8 +6,14 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Info, Lock, ShieldCheck } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
+  Alert,
   Badge,
   Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
   LtrValue,
   Skeleton,
   Table,
@@ -23,7 +29,9 @@ import type { CommercialGuaranteeSummary, CommercialSummaryResponse } from '@erp
 
 import { EmptyState } from '@/components/empty-state';
 import { formatDate, formatMoney } from '@/lib/format';
-import { useContract } from '@/features/contracts/hooks/use-contracts';
+import { useAdvanceContract, useContract } from '@/features/contracts/hooks/use-contracts';
+import { requiresConfirmation, type ContractCommand } from '@/features/contracts/contract-actions';
+import { lifecycleErrorKey } from '@/features/lifecycle/lifecycle-error';
 import {
   GuaranteeFormDialog,
   type EditableGuarantee,
@@ -46,12 +54,20 @@ const LIFECYCLE = [
   'CLOSED',
 ] as const;
 
-/** The transition that becomes available from each state, where one exists. */
+/** The transition that becomes available from each state, where one exists (label keys). */
 const NEXT_TRANSITION: Partial<Record<string, string>> = {
   DRAFT: 'SUBMIT_FOR_REVIEW',
   UNDER_REVIEW: 'APPROVE_REVIEW',
   PENDING_SIGNATURE: 'EXECUTE',
   FINAL_ACCOUNT_PENDING: 'CLOSE',
+};
+
+/** The lifecycle command each state advances with. Mirrors `contract-actions.ts` NEXT_COMMAND. */
+const ADVANCE_COMMAND: Partial<Record<string, ContractCommand>> = {
+  DRAFT: 'submit',
+  UNDER_REVIEW: 'approve-review',
+  PENDING_SIGNATURE: 'execute',
+  FINAL_ACCOUNT_PENDING: 'close',
 };
 
 /**
@@ -119,7 +135,7 @@ function ContractSecurityBody({
           <RetentionPanel summary={summary} />
         </div>
         <div className="min-w-0 space-y-4">
-          <ContractStatusPanel summary={summary} />
+          <ContractStatusPanel projectId={projectId} summary={summary} />
           <AdvancePanel summary={summary} />
           <GuaranteesPanel projectId={projectId} summary={summary} />
         </div>
@@ -221,19 +237,61 @@ function MainContractPanel({
 }
 
 /**
- * Where the contract is in its lifecycle, and what comes next.
+ * Where the contract is in its lifecycle, and the button that moves it forward.
  *
- * A compact rail plus a stated next transition, not a permanent full-width stepper: the current
- * state is the fact a reader needs, and the six-stage journey is context for it. The next step
- * is only named when the backend has one — inventing a transition the state machine does not
- * offer would be a promise the Execute button cannot keep.
+ * A compact rail (current state in context of the six-stage journey) plus the ONE next-step
+ * button that fires the actual transition — Submit → Approve → Execute → Close — mirroring the
+ * BOQ workspace's next-step grammar. The command, its permission and its confirmation are the
+ * server's rules (`getContractActions` / `capabilities.canAdvanceContract`); the button only ever
+ * offers a step the state machine will accept. `execute` and `close` are irreversible, so they
+ * confirm first — executing freezes the client's identity onto the contract forever.
+ *
+ * When the user cannot run the step, its name is shown as a plain label (oriented, not a dead
+ * button). ACTIVE has no direct command — it advances when the project records practical
+ * completion — so that is stated rather than left blank.
  */
-function ContractStatusPanel({ summary }: { summary: CommercialSummaryResponse }) {
+function ContractStatusPanel({
+  projectId,
+  summary,
+}: {
+  projectId: string;
+  summary: CommercialSummaryResponse;
+}) {
   const t = useTranslations('commercial');
+  const tCommon = useTranslations('common');
+  const tLifecycle = useTranslations('platform.lifecycle');
+  const qc = useQueryClient();
   const contract = summary.mainContract!;
   const stageIndex = LIFECYCLE.indexOf(contract.status as (typeof LIFECYCLE)[number]);
-  const next = NEXT_TRANSITION[contract.status] ?? null;
+  const nextKey = NEXT_TRANSITION[contract.status] ?? null;
+  const command = ADVANCE_COMMAND[contract.status] ?? null;
+  const canAdvance = summary.capabilities.canAdvanceContract;
   const exited = stageIndex < 0;
+
+  const advance = useAdvanceContract(contract.id);
+  const [confirming, setConfirming] = useState(false);
+
+  const run = () => {
+    if (!command) return;
+    advance.mutate(command, {
+      onSuccess: () => {
+        setConfirming(false);
+        // useAdvanceContract refreshes contracts + projects; the commercial summary and cycle
+        // (status, capabilities, ribbon) live under their own keys, so refresh them too.
+        void qc.invalidateQueries({ queryKey: commercialKeys.all(projectId) });
+      },
+    });
+  };
+
+  const onAdvance = () => {
+    if (!command) return;
+    if (requiresConfirmation(command)) setConfirming(true);
+    else run();
+  };
+
+  const failureMessage = advance.failure
+    ? advance.failure.serverMessage || tLifecycle(lifecycleErrorKey(advance.failure.kind))
+    : null;
 
   return (
     <SectionCard title={t('contractStatus_.title')}>
@@ -282,15 +340,24 @@ function ContractStatusPanel({ summary }: { summary: CommercialSummaryResponse }
             {t(`contractStatus.${contract.status}`)}
           </Badge>
         </FactRow>
-        {/* The lifecycle transition is stated, not linked: the standalone contract detail page that
-            used to host the advance action is retired (P3 Slice C), and the in-workspace transition
-            affordance is not part of this fold. Showing the pending transition as a label keeps the
-            reader oriented without dangling a link into a route that only redirects back here. */}
         <FactRow label={t('contractStatus_.next')}>
-          {next ? (
+          {command && canAdvance ? (
+            <Button
+              size="sm"
+              className="min-h-11 sm:min-h-0"
+              onClick={onAdvance}
+              disabled={advance.isPending}
+            >
+              {advance.isPending && !confirming
+                ? tCommon('loading')
+                : t(`contractStatus_.transition.${nextKey}`)}
+            </Button>
+          ) : command ? (
             <span className="font-normal text-muted-foreground">
-              {t(`contractStatus_.transition.${next}`)}
+              {t(`contractStatus_.transition.${nextKey}`)}
             </span>
+          ) : contract.status === 'ACTIVE' ? (
+            <span className="font-normal text-muted-foreground">{t('contractStatus_.awaitingPc')}</span>
           ) : (
             <span className="font-normal text-muted-foreground">
               {t('contractStatus_.noneRequired')}
@@ -298,6 +365,42 @@ function ContractStatusPanel({ summary }: { summary: CommercialSummaryResponse }
           )}
         </FactRow>
       </dl>
+
+      {failureMessage && !confirming ? (
+        <div className="mt-3">
+          <Alert variant="error" messages={[failureMessage]} />
+        </div>
+      ) : null}
+
+      {/* Irreversible steps confirm first (S: execute freezes the client identity permanently). */}
+      {confirming && command ? (
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open && !advance.isPending) setConfirming(false);
+          }}
+        >
+          <DialogContent>
+            <DialogTitle>{t(`contractStatus_.confirm.${command}.title`)}</DialogTitle>
+            <DialogDescription>{t(`contractStatus_.confirm.${command}.body`)}</DialogDescription>
+            {failureMessage ? (
+              <div className="mt-3">
+                <Alert variant="error" messages={[failureMessage]} />
+              </div>
+            ) : null}
+            <DialogFooter>
+              <Button onClick={run} disabled={advance.isPending}>
+                {advance.isPending
+                  ? tCommon('loading')
+                  : t(`contractStatus_.confirm.${command}.confirm`)}
+              </Button>
+              <Button variant="outline" onClick={() => setConfirming(false)} disabled={advance.isPending}>
+                {tCommon('cancel')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </SectionCard>
   );
 }
