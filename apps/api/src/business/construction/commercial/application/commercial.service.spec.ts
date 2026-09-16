@@ -47,6 +47,7 @@ function build(overrides: {
   applicationCount?: number;
   installments?: unknown;
   variationInputs?: unknown;
+  variationAllocations?: unknown;
   billingInvoices?: unknown;
   receipts?: unknown;
   clientUnapplied?: Decimal;
@@ -57,6 +58,9 @@ function build(overrides: {
       .fn()
       .mockResolvedValue('contract' in overrides ? overrides.contract : baseContract),
     findPaymentInstallments: jest.fn().mockResolvedValue(overrides.installments ?? []),
+    findVariationAllocationsForContract: jest
+      .fn()
+      .mockResolvedValue(overrides.variationAllocations ?? []),
     findEffectiveCertificates: overrides.certRejects
       ? jest.fn().mockRejectedValue(new Error('db down'))
       : jest.fn().mockResolvedValue(overrides.certs ?? []),
@@ -255,12 +259,42 @@ describe('ADR-023 — getCurrentCycle for a MILESTONE contract', () => {
       reference: 'VO-001',
       title: 'Extra lift shaft',
       amount: '20000.00',
-      stageInstallmentId: null, // R7 seam
+      stageInstallmentId: null, // unbilled here → unassigned (no allocation passed)
     });
     // Two components that sum correctly, and the header value is still the FROZEN base (not base+VO).
     const milestoneTotal = sched.installments.reduce((s, i) => s + Number(i.amount), 0);
     expect(milestoneTotal + Number(sched.variationLines[0].amount)).toBe(1020000);
     expect(sched.contractValue).toBe('1000000.00');
+  });
+
+  // R7 — a VO billed on a stage nests under it: its billing allocation's installmentId flows through
+  // to stageInstallmentId, so the schedule can group it beneath that milestone (visual only).
+  it('R7: an adopted VO billed on a stage carries that stage as stageInstallmentId', async () => {
+    const { service } = build({
+      contract: milestoneContract,
+      installments: accoPlan,
+      invoices: [],
+      variationInputs: [adoptedVo],
+      variationAllocations: [{ variationId: 'vo-1', installmentId: 'i1' }],
+    });
+    const res = await service.getCurrentCycle(financeIdentity, 'p-1');
+    const line = res.paymentSchedule!.variationLines[0];
+    expect(line.variationId).toBe('vo-1');
+    expect(line.stageInstallmentId).toBe('i1');
+  });
+
+  // R7 — an adopted VO with no billing allocation yet stays unattached (null), so the frontend lists
+  // it under "Unassigned variations" until a stage is billed.
+  it('R7: an adopted but unbilled VO has a null stageInstallmentId (unassigned)', async () => {
+    const { service } = build({
+      contract: milestoneContract,
+      installments: accoPlan,
+      invoices: [],
+      variationInputs: [adoptedVo],
+      variationAllocations: [],
+    });
+    const res = await service.getCurrentCycle(financeIdentity, 'p-1');
+    expect(res.paymentSchedule!.variationLines[0].stageInstallmentId).toBeNull();
   });
 
   it('V-3: only ADOPTED on-contract VOs appear as billing lines (unadopted is excluded)', async () => {

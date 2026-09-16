@@ -133,6 +133,7 @@ export function CashflowChart({
   const t = useTranslations('commercial.billing.cashflow');
   const locale = useLocale() as 'en' | 'ar';
   const titleId = useId();
+  const gradId = useId();
 
   const invoicedSeries = toCumulativeSeries(
     invoices.map((invoice) => ({ date: invoice.invoiceDate, amount: invoice.totalAmount })),
@@ -183,6 +184,19 @@ export function CashflowChart({
         preserveAspectRatio="none"
       >
         <title id={titleId}>{ariaSummary}</title>
+
+        {/* Vertical gradient fills: strong at the curve, fading to the baseline — the professional
+            area-chart read, and theme-aware through the chart colour tokens (redefined in dark). */}
+        <defs aria-hidden="true">
+          <linearGradient id={`${gradId}-inv`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--color-chart-1)" stopOpacity={0.22} />
+            <stop offset="100%" stopColor="var(--color-chart-1)" stopOpacity={0} />
+          </linearGradient>
+          <linearGradient id={`${gradId}-col`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--color-chart-2)" stopOpacity={0.34} />
+            <stop offset="100%" stopColor="var(--color-chart-2)" stopOpacity={0.04} />
+          </linearGradient>
+        </defs>
 
         {/* Gridlines + Y-axis money labels. Hairline muted, never a status colour. */}
         <g aria-hidden="true">
@@ -235,16 +249,14 @@ export function CashflowChart({
         {invoicedSeries.length >= 2 ? (
           <path
             d={toAreaPath(invoicedSeries, dates, max)}
-            className="fill-chart-1"
-            fillOpacity={0.08}
+            fill={`url(#${gradId}-inv)`}
             aria-hidden="true"
           />
         ) : null}
         {collectedSeries.length >= 2 ? (
           <path
             d={toAreaPath(collectedSeries, dates, max)}
-            className="fill-chart-2"
-            fillOpacity={0.16}
+            fill={`url(#${gradId}-col)`}
             aria-hidden="true"
           />
         ) : null}
@@ -262,13 +274,17 @@ export function CashflowChart({
             aria-hidden="true"
           />
         ) : null}
-        {invoicedSeries.map((point) => (
+        {invoicedSeries.map((point, index) => (
           <circle
             key={`i-${point.date}`}
             cx={xPos(point.date, dates)}
             cy={yPos(point.cumulative, max)}
-            r={3}
-            className="fill-chart-1"
+            // The final point is the "where we stand now" anchor — a touch larger. A surface-coloured
+            // halo lifts every dot cleanly off the line and the fill beneath it.
+            r={index === invoicedSeries.length - 1 ? 4 : 3}
+            className="fill-chart-1 stroke-surface"
+            strokeWidth={1.5}
+            vectorEffect="non-scaling-stroke"
             aria-hidden="true"
           />
         ))}
@@ -286,13 +302,15 @@ export function CashflowChart({
             aria-hidden="true"
           />
         ) : null}
-        {collectedSeries.map((point) => (
+        {collectedSeries.map((point, index) => (
           <circle
             key={`c-${point.date}`}
             cx={xPos(point.date, dates)}
             cy={yPos(point.cumulative, max)}
-            r={3}
-            className="fill-chart-2"
+            r={index === collectedSeries.length - 1 ? 4 : 3}
+            className="fill-chart-2 stroke-surface"
+            strokeWidth={1.5}
+            vectorEffect="non-scaling-stroke"
             aria-hidden="true"
           />
         ))}

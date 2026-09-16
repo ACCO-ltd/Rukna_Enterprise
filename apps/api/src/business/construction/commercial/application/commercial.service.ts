@@ -1024,6 +1024,27 @@ export class CommercialService {
     const variationInputs: ValuationInput[] = await this.variationRepo
       .findValuationInputs(prisma, identity.activeOrganizationId, contract.id)
       .catch((): ValuationInput[] => []);
+
+    // R7 — where each adopted variation has been billed. A VO's billing allocation records the
+    // installment it rode (`VariationBillingAllocation.installmentId`); this is the same ledger the
+    // Billing-Package read groups on, so the schedule's stage-nesting can never drift from it. A DB
+    // failure degrades a VO to "unattached" (null → its own unassigned line) rather than taking the
+    // schedule down, matching the variation-input posture above.
+    type AllocationRow = Awaited<
+      ReturnType<CommercialPrismaRepository['findVariationAllocationsForContract']>
+    >[number];
+    const allocations: AllocationRow[] = await this.repo
+      .findVariationAllocationsForContract(prisma, identity.activeOrganizationId, contract.id)
+      .catch((): AllocationRow[] => []);
+    // A VO leaves billing eligibility once allocated, so it has exactly one stage in the current
+    // flow; if several ever exist, the earliest (createdAt asc, the query's order) is its home stage.
+    const stageByVariation = new Map<string, string>();
+    for (const alloc of allocations) {
+      if (alloc.installmentId && !stageByVariation.has(alloc.variationId)) {
+        stageByVariation.set(alloc.variationId, alloc.installmentId);
+      }
+    }
+
     const byInstallment = new Map(
       invoices.filter((inv) => inv.sourceInstallmentId).map((inv) => [inv.sourceInstallmentId, inv]),
     );
@@ -1087,8 +1108,9 @@ export class CommercialService {
 
     // ADR-029 V-3 / CONST-BOQ-032 — each ADOPTED on-contract variation (boqAppliedAt set — the raise
     // has happened) is a distinct billing line, amount-based (its net Σ line amount), OUTSIDE the
-    // Σ%=1.0 milestone `installments` above and NEVER merged into a milestone figure. Stage attachment
-    // (which certificate the VO rides) is the R7 seam — `stageInstallmentId` is null in this cut.
+    // Σ%=1.0 milestone `installments` above and NEVER merged into a milestone figure. `stageInstallmentId`
+    // (R7) nests it visually under the stage it was billed on; an approved-but-unbilled VO stays null
+    // (the frontend groups those as "unassigned"). The milestone figure itself is untouched either way.
     const variationLines: CommercialPaymentScheduleVariationLine[] = variationInputs
       .filter((vo) => vo.status === 'CLIENT_APPROVED' && vo.boqAppliedAt != null)
       .map((vo) => {
@@ -1101,7 +1123,7 @@ export class CommercialService {
           reference: vo.reference,
           title: vo.title,
           amount: mayViewFinancials ? net.toFixed(2) : null,
-          stageInstallmentId: null,
+          stageInstallmentId: stageByVariation.get(vo.id) ?? null,
         };
       });
 

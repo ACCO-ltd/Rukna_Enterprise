@@ -5,6 +5,7 @@ import type {
   CommercialBillingPackagesResponse,
   CommercialCurrentCycleResponse,
   CommercialPaymentScheduleInstallment,
+  CommercialPaymentScheduleVariationLine,
   CommercialSummaryResponse,
   VariationOrderListItem,
   VariationOrderListResponse,
@@ -98,7 +99,10 @@ function summary(overrides: Partial<CommercialSummaryResponse> = {}): Commercial
   } as unknown as CommercialSummaryResponse;
 }
 
-function stubCycle(installments: CommercialPaymentScheduleInstallment[]) {
+function stubCycle(
+  installments: CommercialPaymentScheduleInstallment[],
+  variationLines: CommercialPaymentScheduleVariationLine[] = [],
+) {
   vi.mocked(commercialHooks.useCommercialCurrentCycle).mockReturnValue({
     isPending: false,
     isError: false,
@@ -108,6 +112,7 @@ function stubCycle(installments: CommercialPaymentScheduleInstallment[]) {
         contractValue: '750000.00',
         totalCollected: '0.00',
         installments,
+        variationLines,
       },
     } as unknown as CommercialCurrentCycleResponse,
     refetch: vi.fn(),
@@ -204,6 +209,70 @@ function renderPanel(
     { permissions },
   );
 }
+
+function variationLine(
+  overrides: Partial<CommercialPaymentScheduleVariationLine> = {},
+): CommercialPaymentScheduleVariationLine {
+  return {
+    variationId: 'vo-1',
+    reference: 'VO-001',
+    title: 'Extra lift shaft',
+    amount: '2000.00',
+    stageInstallmentId: 'inst-1',
+    ...overrides,
+  };
+}
+
+describe('PaymentSchedulePanel — variation nesting (R7)', () => {
+  it('nests a billed variation under its stage with a "stage now" subtotal', () => {
+    stubCycle(
+      [installment({ id: 'inst-1', name: 'Structure payment', amount: '150000.00' })],
+      [variationLine({ stageInstallmentId: 'inst-1', amount: '2000.00' })],
+    );
+    renderWithProviders(
+      <PaymentSchedulePanel projectId="p-1" contractId="c-1" summary={summary()} />,
+      { permissions: ['manage:contract'] },
+    );
+
+    // The variation appears as a nested child line under its stage...
+    expect(screen.getByText('VO-001')).toBeInTheDocument();
+    expect(screen.getByText('Extra lift shaft')).toBeInTheDocument();
+    // ...and the "stage now" subtotal is the frozen 150k plus the 2k addition (visual only).
+    expect(screen.getByText('Stage now (incl. variations)')).toBeInTheDocument();
+    expect(screen.getByText('$152,000.00')).toBeInTheDocument();
+  });
+
+  it('subtracts an omission from its stage subtotal', () => {
+    stubCycle(
+      [installment({ id: 'inst-1', amount: '150000.00' })],
+      [variationLine({ reference: 'VO-002', title: 'Reduced cladding', amount: '-20000.00' })],
+    );
+    renderWithProviders(
+      <PaymentSchedulePanel projectId="p-1" contractId="c-1" summary={summary()} />,
+      { permissions: ['manage:contract'] },
+    );
+
+    expect(screen.getByText('Omission')).toBeInTheDocument();
+    // 150k − 20k = 130k.
+    expect(screen.getByText('$130,000.00')).toBeInTheDocument();
+  });
+
+  it('lists an approved-but-unbilled variation under "Unassigned variations"', () => {
+    stubCycle(
+      [installment({ id: 'inst-1', amount: '150000.00' })],
+      [variationLine({ variationId: 'vo-9', reference: 'VO-009', stageInstallmentId: null })],
+    );
+    renderWithProviders(
+      <PaymentSchedulePanel projectId="p-1" contractId="c-1" summary={summary()} />,
+      { permissions: ['manage:contract'] },
+    );
+
+    expect(screen.getByText('Unassigned variations')).toBeInTheDocument();
+    expect(screen.getByText('VO-009')).toBeInTheDocument();
+    // Nothing is billed on the stage, so there is no stage subtotal.
+    expect(screen.queryByText('Stage now (incl. variations)')).not.toBeInTheDocument();
+  });
+});
 
 describe('PaymentSchedulePanel — MilestoneCell (P2 payment-schedule side)', () => {
   it('renders an ungated pill for an ADVANCE installment instead of a link affordance', () => {
