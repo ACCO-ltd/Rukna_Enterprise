@@ -65,7 +65,6 @@
     "TERMINATED": "Terminated"
   },
   "overview": {
-    "attention": "Attention & Next Action",
     "recentActivity": "Recent Commercial Activity",
     "noActivity": "No commercial activity yet.",
     "noContractTitle": "No main contract yet",
@@ -81,7 +80,7 @@
     "notActiveAction": "Open contract"
   },
   "attention": {
-    "none": "Nothing needs attention right now.",
+    "title": "Needs attention",
     "severity": {
       "URGENT": "Urgent",
       "WARNING": "Warning",
@@ -91,16 +90,6 @@
       "title": "No main contract",
       "impact": "Certification and billing cannot start until a client contract exists.",
       "action": "Create contract"
-    },
-    "GUARANTEE_EXPIRING": {
-      "title": "Guarantee expiring soon",
-      "impact": "A guarantee will expire within the attention window and may need renewal.",
-      "action": "Review guarantee"
-    },
-    "GUARANTEE_EXPIRED": {
-      "title": "Guarantee expired",
-      "impact": "A guarantee has passed its expiry date and no longer provides cover.",
-      "action": "Review guarantee"
     },
     "UNINVOICED_CERTIFICATE": {
       "title": "Certified work not invoiced",
@@ -267,6 +256,7 @@
     "title": "Billing & Collection",
     "subtitle": "Posted client invoices, receipt allocations and the outstanding accounting balance.",
     "invoices": "Client invoices",
+    "viewDocument": "View invoice document",
     "emptyTitle": "No client invoices",
     "emptyHint": "Certified work will appear here after a client invoice is generated.",
     "readyTitle": "Certified work is ready to invoice",
@@ -727,10 +717,27 @@
     "create": {
       "title": "Raise a variation",
       "subtitle": "Add the additions and omissions this change makes.",
+      "lifecyclePreview": "Variation lifecycle",
+      "lifecycleStage": {
+        "DRAFT": "Draft",
+        "SUBMIT": "Submit",
+        "INTERNAL": "Internal approval",
+        "CLIENT": "Client approval",
+        "BILLING": "Billing"
+      },
       "fieldTitle": "Title",
+      "titlePlaceholder": "e.g. Additional excavation for rock removal",
       "fieldDescription": "Description",
+      "descriptionPlaceholder": "What's changing and why (optional)",
       "fieldTimeImpact": "Proposed time impact (days)",
       "timeImpactHint": "Proposed only. Use Extension of Time to move the completion date.",
+      "modeLabel": "How to enter the value",
+      "modeAmount": "Amount",
+      "modeItemize": "Itemize by quantity & rate",
+      "amountLabel": "Amount",
+      "amountPlaceholder": "e.g. 2,000",
+      "amountHint": "The net effect on contract value. Switch to itemize if you need a quantity × rate breakdown.",
+      "itemizeCollapsedToast": "Combined into a single net amount",
       "linesTitle": "Line items",
       "addLine": "Add line",
       "removeLine": "Remove line",
@@ -943,22 +950,9 @@
     "model": "Billing model",
     "measuredHint": "This contract is billed from certified progress. There is no negotiated installment plan — each interim certificate becomes an invoice.",
     "empty": "No payment installments have been agreed yet.",
-    "total": "Plan total",
-    "reconciled": "Reconciled",
-    "notReconciled": "Does not reconcile",
-    "amendmentHint": "Changing an agreed installment requires a contract amendment.",
-    "afterCommencement": "{days} days after commencement",
-    "trigger": {
-      "ADVANCE": "On commencement",
-      "TIME_BASED": "Time based",
-      "MILESTONE": "On milestone completion"
-    },
-    "col": {
-      "installment": "Installment",
-      "percent": "%",
-      "value": "Value",
-      "trigger": "Trigger"
-    }
+    "summary": "{count, plural, one {# installment} other {# installments}} agreed · {percent} of contract value",
+    "notReconciled": "Does not reconcile to 100% — a contract amendment is needed.",
+    "viewSchedule": "View payment schedule"
   },
   "contractStatus_": {
     "title": "Contract status",

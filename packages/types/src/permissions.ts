@@ -6,6 +6,7 @@ export const PERMISSIONS = {
   governanceImpactView: 'view:governance-impact',
   permissionsView: 'view:permission',
   organizationsView: 'view:organization',
+  organizationsManage: 'manage:organization',
   workflowsView: 'view:workflow',
   workflowsManage: 'manage:workflow',
   workflowsPublish: 'publish:workflow',
@@ -156,6 +157,8 @@ const DESCRIPTIONS: Record<PermissionKey, string> = {
     'Read role and policy impact previews, including affected-member counts and SoD findings',
   [PERMISSIONS.permissionsView]: 'View the permission catalogue',
   [PERMISSIONS.organizationsView]: 'View the active organization',
+  [PERMISSIONS.organizationsManage]:
+    'Manage organization settings: invoice branding (logo, address, tax ID, template)',
   [PERMISSIONS.workflowsView]: 'View workflow definitions and approval state',
   [PERMISSIONS.workflowsManage]: 'Configure workflows and act on approvals',
   [PERMISSIONS.workflowsPublish]: 'Publish, activate, and retire approval policies',

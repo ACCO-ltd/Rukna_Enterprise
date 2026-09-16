@@ -73,6 +73,16 @@ export class ClientInvoiceController {
     return this.clientInvoiceService.findById(identity, id);
   }
 
+  @Get(':id/document')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({
+    summary:
+      'The branded invoice PDF: a short-lived signed download URL, rendering the document on first request',
+  })
+  getDocument(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.clientInvoiceService.getOrGenerateDocument(identity, id);
+  }
+
   @Post(':id/approve')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })

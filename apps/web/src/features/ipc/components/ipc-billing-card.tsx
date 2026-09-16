@@ -6,8 +6,13 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Button, DatePicker, FormField } from '@erp/ui';
 
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+import { getInvoiceDocument } from '@/features/accounting/api/invoices-api';
 import { InvoiceStatusBadges } from '@/features/accounting/components/invoice-status-badges';
-import { useGenerateInvoice, useInvoiceForIpc } from '@/features/accounting/hooks/use-invoices';
+import {
+  useGenerateInvoice,
+  useInvoiceForIpc,
+  useOpenInvoiceDocument,
+} from '@/features/accounting/hooks/use-invoices';
 import { canGenerateInvoice, defaultDueDate } from '@/features/accounting/invoice-actions';
 import { lifecycleErrorKey, toLifecycleError } from '@/features/lifecycle/lifecycle-error';
 import { ApiError } from '@/lib/api-client';
@@ -51,6 +56,7 @@ export function IpcBillingCard({
 
   const invoice = useInvoiceForIpc(ipcId);
   const generate = useGenerateInvoice();
+  const openDocument = useOpenInvoiceDocument();
 
   const today = new Date().toISOString().slice(0, 10);
   const [invoiceDate, setInvoiceDate] = useState(today);
@@ -107,9 +113,18 @@ export function IpcBillingCard({
             {t('dueOn', { date: formatDate(existing.dueDate, locale) ?? '—' })}
           </p>
 
-          <Button variant="outline" asChild>
-            <Link href={`/finance/accounting/invoices/${existing.id}`}>{t('viewInvoice')}</Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" asChild>
+              <Link href={`/finance/accounting/invoices/${existing.id}`}>{t('viewInvoice')}</Link>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => openDocument.mutate(existing.id)}
+              disabled={openDocument.isPending}
+            >
+              {openDocument.isPending ? tCommon('loading') : t('viewDocument')}
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="space-y-4 rounded-panel border border-dashed border-border bg-surface p-6">
@@ -125,9 +140,23 @@ export function IpcBillingCard({
               onSubmit={(event) => {
                 event.preventDefault();
                 if (!canGenerateInvoice({ isEffective }, existing)) return;
+                // Opens synchronously on submit (before either async step resolves) so the
+                // browser never treats the eventual navigation as an unrequested popup — the
+                // fix for "I clicked Generate invoice and saw nothing".
+                const tab = window.open('', '_blank', 'noopener');
                 generate.mutate(
                   { ipcId, invoiceDate, dueDate },
-                  { onSuccess: () => setFormOpen(false) },
+                  {
+                    onSuccess: (created) => {
+                      setFormOpen(false);
+                      getInvoiceDocument(created.id)
+                        .then((doc) => {
+                          if (tab) tab.location.href = doc.url;
+                        })
+                        .catch(() => tab?.close());
+                    },
+                    onError: () => tab?.close(),
+                  },
                 );
               }}
             >

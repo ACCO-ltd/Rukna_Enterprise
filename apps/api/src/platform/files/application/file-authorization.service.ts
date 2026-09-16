@@ -34,7 +34,14 @@ export type FileOwner =
   | { kind: 'CONTRACT_ATTACHMENT'; attachmentId: string; contractId: string; projectId: string }
   | { kind: 'GUARANTEE_ATTACHMENT'; attachmentId: string; guaranteeId: string; projectId: string }
   | { kind: 'IPA_ATTACHMENT'; attachmentId: string; applicationId: string; projectId: string }
-  | { kind: 'IPC_ATTACHMENT'; attachmentId: string; certificateId: string; projectId: string };
+  | { kind: 'IPC_ATTACHMENT'; attachmentId: string; certificateId: string; projectId: string }
+  // The first owner with no project at all (the class doc's "future organization document"
+  // case): an org's invoice-branding logo. Reachable by organization view access, not membership.
+  | { kind: 'ORGANIZATION_LOGO'; organizationId: string }
+  // The rendered PDF for a client invoice. `ClientInvoiceController` gates every invoice route on
+  // one organization-level permission (manage:accounts-receivable), not project membership — see
+  // ORGANIZATION_LOGO's note — so the document mirrors that rather than resolving a project.
+  | { kind: 'INVOICE_DOCUMENT'; invoiceId: string };
 
 export interface FileOwnership {
   fileId: string;
@@ -113,6 +120,8 @@ export class FileAuthorizationService {
             },
           },
         },
+        organizationLogoFor: { select: { id: true } },
+        invoiceDocumentFor: { select: { id: true } },
       },
     });
     if (!file) throw new NotFoundException(`File ${fileId} not found`);
@@ -153,6 +162,16 @@ export class FileAuthorizationService {
         attachmentId: attachment.id,
         certificateId: attachment.certificateId,
         projectId: attachment.certificate.application.contract.projectId,
+      })),
+      // `organizationLogoFor` holds the Organization row(s) that reference this file as their
+      // logo — in practice at most one, since branding is updated by replacing the reference.
+      ...file.organizationLogoFor.map((org) => ({
+        kind: 'ORGANIZATION_LOGO' as const,
+        organizationId: org.id,
+      })),
+      ...file.invoiceDocumentFor.map((invoice) => ({
+        kind: 'INVOICE_DOCUMENT' as const,
+        invoiceId: invoice.id,
       })),
     ];
 
@@ -263,6 +282,14 @@ export class FileAuthorizationService {
       case 'IPC_ATTACHMENT':
         if (!identity.permissions.includes(PERMISSIONS.projectsView)) return false;
         return this.isProjectMember(identity, owner.projectId);
+      // The first owner kind answered by an organization permission rather than project
+      // membership (the class doc predicted this). `resolveOwnership` already scoped the query
+      // to the caller's own tenant, so any org member who can see organization settings can see
+      // the logo they are already branded with.
+      case 'ORGANIZATION_LOGO':
+        return identity.permissions.includes(PERMISSIONS.organizationsView);
+      case 'INVOICE_DOCUMENT':
+        return identity.permissions.includes(PERMISSIONS.receivablesManage);
     }
   }
 

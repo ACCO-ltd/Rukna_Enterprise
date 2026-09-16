@@ -447,8 +447,34 @@ describe('VariationsTab — New variation gated by permission', () => {
   });
 });
 
-describe('VariationsTab — create draft flow (additions + omission)', () => {
-  it('sends the drafted lines with the omission quantity signed negative', async () => {
+describe('VariationsTab — create draft flow', () => {
+  it('defaults to Amount mode and folds a single figure into one line, titled from the VO title', async () => {
+    const user = userEvent.setup();
+    const createMutate = vi.fn();
+    stubHooks({ createMutate });
+
+    renderWithProviders(<VariationsTab projectId="p-1" summary={summary()} />, {
+      permissions: MANAGE,
+      withToast: true,
+    });
+
+    await user.click(screen.getAllByRole('button', { name: 'New variation' })[0]!);
+
+    const dialog = screen.getByRole('dialog');
+
+    // Title (required). Amount mode is the default — no "Itemize" switch needed.
+    await user.type(within(dialog).getByLabelText('Title'), 'Scope change');
+    await user.type(within(dialog).getByLabelText('Amount'), '2000');
+
+    await user.click(within(dialog).getByRole('button', { name: 'Save draft' }));
+
+    await waitFor(() => expect(createMutate).toHaveBeenCalledTimes(1));
+    const payload = createMutate.mock.calls[0]![0];
+    expect(payload.title).toBe('Scope change');
+    expect(payload.lines).toEqual([{ description: 'Scope change', quantity: 1, unitRate: 2000 }]);
+  });
+
+  it('sends the drafted lines with the omission quantity signed negative, in Itemize mode', async () => {
     const user = userEvent.setup();
     const createMutate = vi.fn();
     stubHooks({ createMutate });
@@ -464,6 +490,9 @@ describe('VariationsTab — create draft flow (additions + omission)', () => {
 
     // Title (required)
     await user.type(within(dialog).getByLabelText('Title'), 'Scope change');
+
+    // Switch out of the default Amount mode into the quantity×rate editor.
+    await user.click(within(dialog).getByRole('tab', { name: 'Itemize by quantity & rate' }));
 
     // Line 1 — addition (default). Only one line exists at this point.
     await user.type(within(dialog).getByLabelText('Item'), 'Extra works');

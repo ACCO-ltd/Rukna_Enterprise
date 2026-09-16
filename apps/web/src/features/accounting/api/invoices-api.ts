@@ -17,6 +17,7 @@
  */
 
 import { apiClient } from '@/lib/api-client';
+import type { DownloadUrlResponse } from '@/features/files/api/files-api';
 
 import type {
   ClientInvoice,
@@ -97,6 +98,16 @@ export function generateInvoiceFromInstallment(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+}
+
+/**
+ * `GET /invoices/:id/document` — the branded PDF's short-lived signed download URL (Commercial
+ * round-3). Renders the document on the server on first request for a given invoice; every
+ * subsequent call is instant. Fetch fresh each time the reader wants to open it — the URL expires
+ * (~15 min) — never cache it alongside the invoice itself.
+ */
+export function getInvoiceDocument(id: string): Promise<DownloadUrlResponse> {
+  return apiClient<DownloadUrlResponse>(`/invoices/${id}/document`);
 }
 
 /**

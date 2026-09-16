@@ -354,7 +354,6 @@ export class CommercialService {
       projectId,
       certs,
       invoices,
-      guarantees,
       { certFailed, invoiceFailed },
       identity,
     );
@@ -1431,7 +1430,6 @@ export class CommercialService {
     projectId: string,
     certs: Array<{ id: string }>,
     invoices: InvoiceRow[],
-    guarantees: CommercialGuaranteeSummary[],
     failures: { certFailed: boolean; invoiceFailed: boolean },
     identity: RequestIdentity,
   ): CommercialAttentionItem[] {
@@ -1449,27 +1447,11 @@ export class CommercialService {
       });
     }
 
-    for (const g of guarantees) {
-      if (g.attention === 'EXPIRED') {
-        items.push({
-          id: `guarantee-expired-${g.id}`,
-          severity: 'URGENT',
-          kind: 'GUARANTEE_EXPIRED',
-          actionUrl: `/projects/${projectId}/commercial/guarantees`,
-          responsibleRole: 'COMMERCIAL_MANAGER',
-          contextId: g.id,
-        });
-      } else if (g.attention === 'EXPIRING_SOON') {
-        items.push({
-          id: `guarantee-expiring-${g.id}`,
-          severity: 'WARNING',
-          kind: 'GUARANTEE_EXPIRING',
-          actionUrl: `/projects/${projectId}/commercial/guarantees`,
-          responsibleRole: 'COMMERCIAL_MANAGER',
-          contextId: g.id,
-        });
-      }
-    }
+    // Guarantee expiry is deliberately NOT aggregated into this list. `guarantees` already
+    // carries `attention` per row (EXPIRED / EXPIRING_SOON, from the same
+    // `deriveGuaranteeAttention` policy), and the Guarantees panel renders that badge in place —
+    // on the same tab a workspace-wide item would have linked to. A second, page-level copy of a
+    // fact already visible next to the row it is about is noise, not a second signal.
 
     // Effective certificate without an invoice → uninvoiced entitlement.
     const invoicedIpcIds = new Set(invoices.map((i) => i.sourceIpcId).filter(Boolean));

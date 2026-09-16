@@ -11,6 +11,7 @@ import type {
 } from '@erp/types';
 
 import { renderWithProviders } from '@/test/render';
+import { getInvoiceDocument } from '@/features/accounting/api/invoices-api';
 import { ApiError } from '@/lib/api-client';
 import * as commercialHooks from '../hooks/use-commercial';
 import * as scheduleHooks from '../hooks/use-payment-schedule';
@@ -29,6 +30,12 @@ vi.mock('../hooks/use-payment-schedule', () => ({
 }));
 vi.mock('@/features/programme/hooks/use-programme', () => ({
   useMilestones: vi.fn(),
+}));
+// Successful billing opens the generated document immediately (Commercial round-3) — stub the
+// fetch so that path resolves deterministically instead of relying on a real, unmocked apiClient
+// call failing at the network layer under jsdom.
+vi.mock('@/features/accounting/api/invoices-api', () => ({
+  getInvoiceDocument: vi.fn(),
 }));
 
 vi.mock('next/link', () => ({
@@ -176,6 +183,13 @@ beforeEach(() => {
     isPending: false,
     isError: false,
   } as unknown as ReturnType<typeof scheduleHooks.useSetInstallmentMilestone>);
+  vi.mocked(getInvoiceDocument).mockResolvedValue({
+    url: 'https://signed.example/invoice.pdf',
+    originalName: 'invoice.pdf',
+    mimeType: 'application/pdf',
+  });
+  // jsdom does not implement window.open; the component already tolerates a null return.
+  vi.spyOn(window, 'open').mockReturnValue(null);
   // Default: no eligible variations, no prior packages — the dialog degrades to date fields only.
   stubBillStageReads([], []);
 });

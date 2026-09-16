@@ -43,12 +43,11 @@ import {
   type EditableGuarantee,
 } from '@/features/contracts/components/guarantee-form-dialog';
 import type { ContractDetail } from '@/features/contracts/types';
-import type { ContractPaymentInstallmentResponse } from '@erp/types';
 
 import { commercialKeys } from '../hooks/use-commercial';
 import { contractStatusTone, guaranteeAttentionTone, guaranteeStatusTone } from '../presentation';
 import { formatPercent } from './current-payment-cycle';
-import { FactRow, SectionCard } from './commercial-ui';
+import { FactRow, PanelLink, SectionCard } from './commercial-ui';
 
 /**
  * The contract lifecycle rail. ACCO signs on paper, so the in-app review/signature stages are
@@ -130,7 +129,12 @@ function ContractSecurityBody({
       <div className="grid min-w-0 gap-4 lg:grid-cols-2">
         <div className="min-w-0 space-y-4">
           <MainContractPanel projectId={projectId} summary={summary} detail={detail.data ?? null} />
-          <PaymentTermsPanel summary={summary} detail={detail.data ?? null} loading={detail.isPending} />
+          <PaymentTermsPanel
+            projectId={projectId}
+            summary={summary}
+            detail={detail.data ?? null}
+            loading={detail.isPending}
+          />
           <RetentionPanel summary={summary} />
         </div>
         <div className="min-w-0 space-y-4">
@@ -362,13 +366,19 @@ function ContractStatusPanel({
         </ol>
       )}
 
-      <dl className="mt-3 border-t border-border pt-3">
-        <FactRow label={t('contractStatus_.current')}>
+      {/* Current status + the one next action live on a single row — this used to be two stacked
+          FactRows plus a separately-bordered Reopen block, which gave the card three sections of
+          padding for two facts and a button. Reopen is a quiet secondary affordance that never
+          competes with the forward step; its strong warning lives in its own confirm dialog. */}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border pt-3">
+        <div className="flex items-center gap-2">
+          <span className="text-caption text-muted-foreground">{t('contractStatus_.current')}</span>
           <Badge tone={contractStatusTone(contract.status)}>
             {t(`contractStatus.${contract.status}`)}
           </Badge>
-        </FactRow>
-        <FactRow label={t('contractStatus_.next')}>
+        </div>
+
+        <div className="flex items-center gap-2">
           {command && canAdvance ? (
             <Button
               size="sm"
@@ -381,35 +391,32 @@ function ContractStatusPanel({
                 : t(`contractStatus_.transition.${nextKey}`)}
             </Button>
           ) : command ? (
-            <span className="font-normal text-muted-foreground">
+            <span className="text-caption font-normal text-muted-foreground">
               {t(`contractStatus_.transition.${nextKey}`)}
             </span>
           ) : contract.status === 'ACTIVE' ? (
-            <span className="font-normal text-muted-foreground">{t('contractStatus_.awaitingPc')}</span>
+            <span className="text-caption font-normal text-muted-foreground">
+              {t('contractStatus_.awaitingPc')}
+            </span>
           ) : (
-            <span className="font-normal text-muted-foreground">
+            <span className="text-caption font-normal text-muted-foreground">
               {t('contractStatus_.noneRequired')}
             </span>
           )}
-        </FactRow>
-      </dl>
 
-      {/* Reverse affordance — reopen a live contract to DRAFT for correction. Only offered while
-          ACTIVE (canReopenContract), quiet secondary styling so it never competes with the forward
-          step; the strong warning lives in its confirm dialog. */}
-      {canReopen ? (
-        <div className="mt-3 border-t border-border pt-3">
-          <Button
-            size="sm"
-            variant="outline"
-            className="min-h-11 sm:min-h-0"
-            onClick={() => setReopening(true)}
-            disabled={reopen.isPending}
-          >
-            {t('contractStatus_.reopen.action')}
-          </Button>
+          {canReopen ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="min-h-11 sm:min-h-0"
+              onClick={() => setReopening(true)}
+              disabled={reopen.isPending}
+            >
+              {t('contractStatus_.reopen.action')}
+            </Button>
+          ) : null}
         </div>
-      ) : null}
+      </div>
 
       {failureMessage && !confirming ? (
         <div className="mt-3">
@@ -514,25 +521,25 @@ function ContractStatusPanel({
 // ─── Payment terms ──────────────────────────────────────────────────────────────
 
 /**
- * The negotiated schedule as an agreement: what each installment is worth and what triggers it.
- *
- * No status column and no Generate-invoice button — those belong to the live plan on Overview
- * and to Billing & Collection. What matters here is that the shares reconcile: the server rejects
- * a plan that does not total 100%, so the footer states the total rather than leaving a reader to
- * add six percentages in their head.
+ * The negotiated schedule as an agreement — but only a summary. The live, actionable plan (each
+ * installment's status, amount paid/due, and its billing action) lives on the Payment Schedule
+ * tab; rendering the same installment rows again here, from a second query, is how the two tabs
+ * drifted into showing the same four rows twice. This panel states only whether the terms
+ * reconcile to 100% and links across to the tab that owns the detail.
  */
 function PaymentTermsPanel({
+  projectId,
   summary,
   detail,
   loading,
 }: {
+  projectId: string;
   summary: CommercialSummaryResponse;
   detail: ContractDetail | null;
   loading: boolean;
 }) {
   const t = useTranslations('commercial.paymentTerms');
   const tRoot = useTranslations('commercial');
-  const locale = useLocale() as 'en' | 'ar';
   const contract = summary.mainContract!;
 
   // A measured contract has no negotiated installments — it bills what is certified. Naming the
@@ -548,7 +555,7 @@ function PaymentTermsPanel({
     );
   }
 
-  if (loading) return <Skeleton className="h-56 w-full" />;
+  if (loading) return <Skeleton className="h-16 w-full" />;
 
   const installments = [...(detail?.paymentInstallments ?? [])].sort(
     (a, b) => a.sortOrder - b.sortOrder,
@@ -562,64 +569,24 @@ function PaymentTermsPanel({
     );
   }
 
-  const contractValue = Number(detail?.contractValue ?? contract.contractValue ?? 0);
   const totalFraction = installments.reduce((sum, i) => sum + Number(i.percentage), 0);
   const reconciled = Math.abs(totalFraction - 1) < 0.00005;
 
-  const amountOf = (percentage: string): string =>
-    summary.financialsVisible && Number.isFinite(contractValue) && contractValue > 0
-      ? (formatMoney((Number(percentage) * contractValue).toFixed(2), contract.currency, locale) ??
-        '—')
-      : '—';
-
   return (
-    <SectionCard title={t('title')} bodyClassName="px-0 py-0">
-      <TableScroll>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('col.installment')}</TableHead>
-              <TableHead className="text-end">{t('col.percent')}</TableHead>
-              <TableHead className="text-end">{t('col.value')}</TableHead>
-              <TableHead>{t('col.trigger')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {installments.map((installment) => (
-              <TableRow key={installment.id}>
-                <TableCell className="font-medium text-foreground">{installment.name}</TableCell>
-                <TableCell className="text-end tabular-nums text-muted-foreground">
-                  {formatPercent(installment.percentage)}
-                </TableCell>
-                <TableCell className="text-end tabular-nums">
-                  {amountOf(installment.percentage)}
-                </TableCell>
-                <TableCell className="text-caption text-muted-foreground">
-                  {installmentTrigger(installment, locale, t)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableScroll>
-
-      <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-2.5 sm:px-5">
-        <span className="text-caption font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-          {t('total')}
-        </span>
-        <span
-          className={cn(
-            'text-body-sm font-semibold tabular-nums',
-            reconciled ? 'text-foreground' : 'text-warning',
-          )}
-        >
-          {formatPercent(String(totalFraction))}
-          {reconciled ? ` · ${t('reconciled')}` : ` · ${t('notReconciled')}`}
-        </span>
+    <SectionCard title={t('title')}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-body-sm text-foreground">
+            {t('summary', { count: installments.length, percent: formatPercent(String(totalFraction)) })}
+          </p>
+          {!reconciled ? (
+            <p className="mt-0.5 text-caption text-warning">{t('notReconciled')}</p>
+          ) : null}
+        </div>
+        <PanelLink href={`/projects/${projectId}/commercial/payment-schedule`}>
+          {t('viewSchedule')}
+        </PanelLink>
       </div>
-      <p className="border-t border-border px-4 py-2 text-caption text-muted-foreground sm:px-5">
-        {t('amendmentHint')}
-      </p>
     </SectionCard>
   );
 }
@@ -969,26 +936,6 @@ function RestrictedValue() {
       {t('RESTRICTED')}
     </span>
   );
-}
-
-/**
- * What has to happen before an installment can be billed, in the contract's own words.
- *
- * Order matters: the negotiated label wins, then an explicit date, then a day offset, and only
- * then the trigger's generic name. `dueOffsetDays` arrives as `null` rather than `undefined`, so
- * an `undefined` check let an ADVANCE installment render " days after commencement" with the
- * number missing — a sentence with a hole in it.
- */
-function installmentTrigger(
-  installment: ContractPaymentInstallmentResponse,
-  locale: 'en' | 'ar',
-  t: ReturnType<typeof useTranslations>,
-): string {
-  if (installment.milestoneLabel) return installment.milestoneLabel;
-  if (installment.dueDate) return formatDate(installment.dueDate, locale) ?? '—';
-  if (installment.dueOffsetDays != null)
-    return t('afterCommencement', { days: installment.dueOffsetDays });
-  return t(`trigger.${installment.triggerType}`);
 }
 
 /** Rates arrive as fractions — `0.05` is 5%. */

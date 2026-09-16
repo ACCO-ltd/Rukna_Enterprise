@@ -167,6 +167,12 @@ export enum BillingModel {
   HYBRID = 'HYBRID',
 }
 
+/** The generated invoice document's layout (Commercial round-3 branding). */
+export enum InvoiceTemplate {
+  STANDARD = 'STANDARD',
+  COMPACT = 'COMPACT',
+}
+
 export enum AdvanceType {
   MOBILIZATION = 'MOBILIZATION',
   MATERIAL_ON_SITE = 'MATERIAL_ON_SITE',
