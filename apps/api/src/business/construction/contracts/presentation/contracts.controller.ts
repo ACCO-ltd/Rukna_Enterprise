@@ -35,6 +35,7 @@ import { ContractService } from '../application/contract.service.js';
 import { CreateContractDto } from './dto/create-contract.dto.js';
 import { UpdateContractDto } from './dto/update-contract.dto.js';
 import { CancelContractDto } from './dto/cancel-contract.dto.js';
+import { ReopenContractDto } from './dto/reopen-contract.dto.js';
 import { TerminateContractDto } from './dto/terminate-contract.dto.js';
 import { AddAdvanceTermDto } from './dto/add-advance-term.dto.js';
 import { AddGuaranteeDto } from './dto/add-guarantee.dto.js';
@@ -96,28 +97,31 @@ export class ContractsController {
 
   // ─── Lifecycle commands ───────────────────────────────────────────────────────
 
-  @Post(':id/submit')
-  @RequirePermissions(PERMISSIONS.contractsManage)
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Submit contract for review: DRAFT → UNDER_REVIEW' })
-  submit(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
-    return this.contractService.transition(identity, id, 'submit');
-  }
-
-  @Post(':id/approve-review')
+  @Post(':id/activate')
   @RequirePermissions(PERMISSIONS.contractsApprove)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Approve review: UNDER_REVIEW → PENDING_SIGNATURE' })
-  approveReview(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
-    return this.contractService.transition(identity, id, 'approve-review');
+  @ApiOperation({
+    summary:
+      'Activate a physically-signed contract: DRAFT → ACTIVE. Freezes client name and tax snapshots and the contract evidence.',
+  })
+  activate(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.contractService.transition(identity, id, 'activate');
   }
 
-  @Post(':id/execute')
+  @Post(':id/reopen')
   @RequirePermissions(PERMISSIONS.contractsApprove)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Mark contract as executed: PENDING_SIGNATURE → ACTIVE. Freezes client name and tax snapshots.' })
-  execute(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
-    return this.contractService.transition(identity, id, 'execute');
+  @ApiOperation({
+    summary:
+      'Reopen a live contract for correction: ACTIVE → DRAFT. Clears the frozen client snapshots; re-activate re-freezes them.',
+  })
+  @ApiResponse({ status: 400, description: 'Only ACTIVE contracts can be reopened' })
+  reopen(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: ReopenContractDto,
+  ) {
+    return this.contractService.reopen(identity, id, dto.reason);
   }
 
   @Post(':id/close')
@@ -131,7 +135,7 @@ export class ContractsController {
   @Post(':id/cancel')
   @RequirePermissions(PERMISSIONS.contractsManage)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Cancel contract (allowed from DRAFT, UNDER_REVIEW, PENDING_SIGNATURE)' })
+  @ApiOperation({ summary: 'Cancel contract (allowed from DRAFT)' })
   @ApiResponse({ status: 400, description: 'Cannot cancel from current status' })
   cancel(
     @CurrentUser() identity: RequestIdentity,

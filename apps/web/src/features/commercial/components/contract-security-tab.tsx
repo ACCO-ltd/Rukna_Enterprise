@@ -14,6 +14,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogTitle,
+  Label,
   LtrValue,
   Skeleton,
   Table,
@@ -23,13 +24,18 @@ import {
   TableHeader,
   TableRow,
   TableScroll,
+  Textarea,
   cn,
 } from '@erp/ui';
 import type { CommercialGuaranteeSummary, CommercialSummaryResponse } from '@erp/types';
 
 import { EmptyState } from '@/components/empty-state';
 import { formatDate, formatMoney } from '@/lib/format';
-import { useAdvanceContract, useContract } from '@/features/contracts/hooks/use-contracts';
+import {
+  useAdvanceContract,
+  useContract,
+  useReopenContract,
+} from '@/features/contracts/hooks/use-contracts';
 import { requiresConfirmation, type ContractCommand } from '@/features/contracts/contract-actions';
 import { lifecycleErrorKey } from '@/features/lifecycle/lifecycle-error';
 import {
@@ -44,29 +50,22 @@ import { contractStatusTone, guaranteeAttentionTone, guaranteeStatusTone } from 
 import { formatPercent } from './current-payment-cycle';
 import { FactRow, SectionCard } from './commercial-ui';
 
-/** ADR-017 contract lifecycle. CANCELLED and TERMINATED are exits, not stages on the rail. */
-const LIFECYCLE = [
-  'DRAFT',
-  'UNDER_REVIEW',
-  'PENDING_SIGNATURE',
-  'ACTIVE',
-  'FINAL_ACCOUNT_PENDING',
-  'CLOSED',
-] as const;
+/**
+ * The contract lifecycle rail. ACCO signs on paper, so the in-app review/signature stages are
+ * gone — a physically-signed DRAFT is activated straight to ACTIVE. CANCELLED and TERMINATED are
+ * exits, not stages on the rail.
+ */
+const LIFECYCLE = ['DRAFT', 'ACTIVE', 'FINAL_ACCOUNT_PENDING', 'CLOSED'] as const;
 
 /** The transition that becomes available from each state, where one exists (label keys). */
 const NEXT_TRANSITION: Partial<Record<string, string>> = {
-  DRAFT: 'SUBMIT_FOR_REVIEW',
-  UNDER_REVIEW: 'APPROVE_REVIEW',
-  PENDING_SIGNATURE: 'EXECUTE',
+  DRAFT: 'ACTIVATE',
   FINAL_ACCOUNT_PENDING: 'CLOSE',
 };
 
 /** The lifecycle command each state advances with. Mirrors `contract-actions.ts` NEXT_COMMAND. */
 const ADVANCE_COMMAND: Partial<Record<string, ContractCommand>> = {
-  DRAFT: 'submit',
-  UNDER_REVIEW: 'approve-review',
-  PENDING_SIGNATURE: 'execute',
+  DRAFT: 'activate',
   FINAL_ACCOUNT_PENDING: 'close',
 };
 
@@ -206,15 +205,16 @@ function MainContractPanel({
         </FactRow>
       </dl>
 
-      {/* Execution froze the client's identity onto this contract. Once it has happened, say so
-          plainly — a reader who later edits the client record needs to know it will not follow. */}
+      {/* Activation freezes the client's identity onto this contract. Once it has happened, say so
+          plainly — a reader who later edits the client record needs to know it will not follow.
+          While still a draft, forewarn that activating will freeze it. */}
       {detail?.clientNameSnapshot ? (
         <Notice
           icon={<Lock size={14} aria-hidden="true" />}
           title={t('mainContract.clientLockedTitle')}
           body={t('mainContract.clientLockedHint')}
         />
-      ) : contract.status === 'PENDING_SIGNATURE' ? (
+      ) : contract.status === 'DRAFT' ? (
         <Notice
           icon={<Info size={14} aria-hidden="true" />}
           title={t('mainContract.willLockTitle')}
@@ -237,17 +237,23 @@ function MainContractPanel({
 }
 
 /**
- * Where the contract is in its lifecycle, and the button that moves it forward.
+ * Where the contract is in its lifecycle, and the buttons that move it.
  *
- * A compact rail (current state in context of the six-stage journey) plus the ONE next-step
- * button that fires the actual transition — Submit → Approve → Execute → Close — mirroring the
- * BOQ workspace's next-step grammar. The command, its permission and its confirmation are the
- * server's rules (`getContractActions` / `capabilities.canAdvanceContract`); the button only ever
- * offers a step the state machine will accept. `execute` and `close` are irreversible, so they
- * confirm first — executing freezes the client's identity onto the contract forever.
+ * A compact rail (current state in context of the four-stage journey) plus the ONE next-step
+ * button that fires the actual transition — Activate → Close — mirroring the BOQ workspace's
+ * next-step grammar. ACCO signs on paper, so a physically-signed DRAFT is activated straight to
+ * ACTIVE; that single step freezes the client's identity onto the contract forever, so it confirms
+ * first (as does the final Close). The command, its permission and its confirmation are the
+ * server's rules (`capabilities.canAdvanceContract`); the button only ever offers a step the state
+ * machine will accept.
  *
- * When the user cannot run the step, its name is shown as a plain label (oriented, not a dead
- * button). ACTIVE has no direct command — it advances when the project records practical
+ * ACTIVE also carries a REVERSE affordance — "Reopen to draft" — for correcting a contract whose
+ * paperwork is still changing. It is gated on `capabilities.canReopenContract`, takes a mandatory
+ * reason and confirms with a strong warning: reopening a contract that has already been invoiced
+ * or collected against will leave those figures contradicting the draft.
+ *
+ * When the user cannot run the forward step, its name is shown as a plain label (oriented, not a
+ * dead button). ACTIVE has no forward command — it advances when the project records practical
  * completion — so that is stated rather than left blank.
  */
 function ContractStatusPanel({
@@ -266,19 +272,27 @@ function ContractStatusPanel({
   const nextKey = NEXT_TRANSITION[contract.status] ?? null;
   const command = ADVANCE_COMMAND[contract.status] ?? null;
   const canAdvance = summary.capabilities.canAdvanceContract;
+  const canReopen = summary.capabilities.canReopenContract;
   const exited = stageIndex < 0;
 
   const advance = useAdvanceContract(contract.id);
+  const reopen = useReopenContract(contract.id);
   const [confirming, setConfirming] = useState(false);
+  const [reopening, setReopening] = useState(false);
+  const [reopenReason, setReopenReason] = useState('');
+
+  const invalidateCommercial = () => {
+    // useAdvanceContract/useReopenContract refresh contracts + projects; the commercial summary
+    // and cycle (status, capabilities, ribbon) live under their own keys, so refresh them too.
+    void qc.invalidateQueries({ queryKey: commercialKeys.all(projectId) });
+  };
 
   const run = () => {
     if (!command) return;
     advance.mutate(command, {
       onSuccess: () => {
         setConfirming(false);
-        // useAdvanceContract refreshes contracts + projects; the commercial summary and cycle
-        // (status, capabilities, ribbon) live under their own keys, so refresh them too.
-        void qc.invalidateQueries({ queryKey: commercialKeys.all(projectId) });
+        invalidateCommercial();
       },
     });
   };
@@ -289,8 +303,22 @@ function ContractStatusPanel({
     else run();
   };
 
+  const runReopen = () => {
+    if (!reopenReason.trim()) return;
+    reopen.mutate(reopenReason.trim(), {
+      onSuccess: () => {
+        setReopening(false);
+        setReopenReason('');
+        invalidateCommercial();
+      },
+    });
+  };
+
   const failureMessage = advance.failure
     ? advance.failure.serverMessage || tLifecycle(lifecycleErrorKey(advance.failure.kind))
+    : null;
+  const reopenFailureMessage = reopen.failure
+    ? reopen.failure.serverMessage || tLifecycle(lifecycleErrorKey(reopen.failure.kind))
     : null;
 
   return (
@@ -366,9 +394,32 @@ function ContractStatusPanel({
         </FactRow>
       </dl>
 
+      {/* Reverse affordance — reopen a live contract to DRAFT for correction. Only offered while
+          ACTIVE (canReopenContract), quiet secondary styling so it never competes with the forward
+          step; the strong warning lives in its confirm dialog. */}
+      {canReopen ? (
+        <div className="mt-3 border-t border-border pt-3">
+          <Button
+            size="sm"
+            variant="outline"
+            className="min-h-11 sm:min-h-0"
+            onClick={() => setReopening(true)}
+            disabled={reopen.isPending}
+          >
+            {t('contractStatus_.reopen.action')}
+          </Button>
+        </div>
+      ) : null}
+
       {failureMessage && !confirming ? (
         <div className="mt-3">
           <Alert variant="error" messages={[failureMessage]} />
+        </div>
+      ) : null}
+
+      {reopenFailureMessage && !reopening ? (
+        <div className="mt-3">
+          <Alert variant="error" messages={[reopenFailureMessage]} />
         </div>
       ) : null}
 
@@ -395,6 +446,61 @@ function ContractStatusPanel({
                   : t(`contractStatus_.confirm.${command}.confirm`)}
               </Button>
               <Button variant="outline" onClick={() => setConfirming(false)} disabled={advance.isPending}>
+                {tCommon('cancel')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+
+      {/* Reopen confirms with a mandatory reason and a strong warning — it reverses a live
+          contract, and if it has been billed the draft will contradict issued invoices. */}
+      {reopening ? (
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open && !reopen.isPending) {
+              setReopening(false);
+              setReopenReason('');
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogTitle>{t('contractStatus_.reopen.title')}</DialogTitle>
+            <DialogDescription>{t('contractStatus_.reopen.body')}</DialogDescription>
+            <div className="mt-3 space-y-1.5">
+              <Label htmlFor="reopen-reason">{t('contractStatus_.reopen.reasonLabel')}</Label>
+              <Textarea
+                id="reopen-reason"
+                rows={3}
+                value={reopenReason}
+                onChange={(e) => setReopenReason(e.target.value)}
+                maxLength={500}
+                placeholder={t('contractStatus_.reopen.reasonPlaceholder')}
+                disabled={reopen.isPending}
+              />
+            </div>
+            {reopenFailureMessage ? (
+              <div className="mt-3">
+                <Alert variant="error" messages={[reopenFailureMessage]} />
+              </div>
+            ) : null}
+            <DialogFooter>
+              <Button
+                variant="destructive"
+                onClick={runReopen}
+                disabled={reopen.isPending || !reopenReason.trim()}
+              >
+                {reopen.isPending ? tCommon('loading') : t('contractStatus_.reopen.confirm')}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setReopening(false);
+                  setReopenReason('');
+                }}
+                disabled={reopen.isPending}
+              >
                 {tCommon('cancel')}
               </Button>
             </DialogFooter>

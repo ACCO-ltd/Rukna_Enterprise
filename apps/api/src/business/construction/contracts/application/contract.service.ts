@@ -27,7 +27,10 @@ import type { AddRetentionTermsDto } from '../presentation/dto/add-retention-ter
 import type { SetInstallmentMilestoneDto } from '../presentation/dto/set-installment-milestone.dto.js';
 import { RecordAttachmentService } from '../../../../platform/files/application/record-attachment.service.js';
 
-const CANCEL_ALLOWED_FROM = new Set(['DRAFT', 'UNDER_REVIEW', 'PENDING_SIGNATURE']);
+// A contract is created in DRAFT and only leaves it by going live (activate) — so the sole
+// pre-live state a cancel can act on is DRAFT. UNDER_REVIEW/PENDING_SIGNATURE are retired stages
+// (ACCO signs on paper; see the lifecycle note on TRANSITIONS) and no longer reachable.
+const CANCEL_ALLOWED_FROM = new Set(['DRAFT']);
 
 // ADR-029 §2 — the operational (committed) BOQ version a contract may be signed against. R2 introduced
 // COMMITTED as the in-place operational status; BASELINED still exists until the R2 contract-phase
@@ -35,11 +38,16 @@ const CANCEL_ALLOWED_FROM = new Set(['DRAFT', 'UNDER_REVIEW', 'PENDING_SIGNATURE
 // (DRAFT / SNAPSHOT / SUPERSEDED / CANCELLED) is a version a contract must never anchor to.
 const COMMITTED_BOQ_STATUSES = new Set(['COMMITTED', 'BASELINED']);
 
+// ACCO prepares and signs its contracts physically, outside the system, so the in-app signing
+// dance (submit → review → sign) modelled no real ACCO step — it was pure friction and was never
+// gated by the approval engine. The lifecycle collapses to one forward command, `activate`, which
+// takes a physically-signed DRAFT straight to ACTIVE and is the single freeze point (client
+// identity + evidence). `reopen` (ACTIVE → DRAFT) is its reverse, handled in its own method below
+// because it carries an undo. UNDER_REVIEW/PENDING_SIGNATURE remain as dormant enum values (a
+// data migration sweeps any lingering rows to DRAFT) but are no longer reachable.
 const TRANSITIONS: Record<string, { from: string; to: string }> = {
-  submit:           { from: 'DRAFT',                to: 'UNDER_REVIEW' },
-  'approve-review': { from: 'UNDER_REVIEW',         to: 'PENDING_SIGNATURE' },
-  execute:          { from: 'PENDING_SIGNATURE',     to: 'ACTIVE' },
-  close:            { from: 'FINAL_ACCOUNT_PENDING', to: 'CLOSED' },
+  activate: { from: 'DRAFT',                 to: 'ACTIVE' },
+  close:    { from: 'FINAL_ACCOUNT_PENDING', to: 'CLOSED' },
 };
 
 @Injectable()
@@ -595,9 +603,10 @@ export class ContractService {
       );
     }
 
-    // On execution (PENDING_SIGNATURE → ACTIVE), freeze client snapshots.
+    // On activation (DRAFT → ACTIVE), freeze client snapshots. This is the moment a physically-signed
+    // contract goes live, so the client's identity is captured onto it as it stood at signature.
     const snapshotData: Record<string, string> = {};
-    if (command === 'execute') {
+    if (command === 'activate') {
       snapshotData['clientNameSnapshot'] = contract.client.name;
       snapshotData['clientTaxSnapshot'] = contract.client.taxNumber ?? '';
     }
@@ -621,14 +630,69 @@ export class ContractService {
       return updated;
     });
 
-    // Phase 7A: execution is the contract's real signature event, so from here its evidence is
+    // Phase 7A: activation is the contract's real signature event, so from here its evidence is
     // part of the record. Outside the transaction because the file lifecycle is a second
     // aggregate and the freeze is idempotent — a retry finishes the job, a rollback would not
     // have to undo it.
-    if (command === 'execute') {
-      await this.attachments.freezeFor('CONTRACT', id, `evidence on executed contract ${id}`);
+    if (command === 'activate') {
+      await this.attachments.freezeFor('CONTRACT', id, `evidence on activated contract ${id}`);
     }
     return result;
+  }
+
+  /**
+   * Reverse a live contract back to DRAFT — the counter-move to `activate`.
+   *
+   * ACCO's contracts are prepared and signed on paper; a contract can be activated in the system
+   * before that paperwork is final, so the workspace needs a way to pull it back and correct it.
+   * Reopen clears the client snapshots frozen at activation, so DRAFT reads the live client again
+   * and a subsequent re-activate re-freezes to the same end state.
+   *
+   * Per the owner decision, reopen is ALWAYS allowed on an ACTIVE contract (the UI carries a strong
+   * confirmation) rather than being blocked once billing has started — the mandatory `reason` and the
+   * CONTRACT_REOPENED audit event are the guard rails. If a safe boundary is wanted later, gate this
+   * on "no invoice / receipt allocation / completed deliverable / applied variation" — deliberately
+   * omitted now.
+   *
+   * Attachments are intentionally NOT thawed: the files platform exposes only `freezeFor` (immutability
+   * is a one-way invariant), and it doesn't need reversing here — the sole frozen file pre-billing is
+   * the signed-contract evidence, re-activate re-freezes it to an identical state, and a frozen file
+   * can still be superseded through attachment replacement.
+   */
+  async reopen(identity: RequestIdentity, id: string, reason: string) {
+    const prisma = this.tenancyService.getClient();
+    const contract = await this.requireContract(prisma, identity, id);
+    const fromStatus = contract.status;
+
+    if (fromStatus !== 'ACTIVE') {
+      throw new BadRequestException(
+        `Cannot reopen a contract with status '${fromStatus}'. Only ACTIVE contracts can be reopened.`,
+      );
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const updated = await this.repo.update(tx, id, {
+        status: 'DRAFT',
+        clientNameSnapshot: null,
+        clientTaxSnapshot: null,
+      });
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'REOPEN',
+        resourceType: 'Contract',
+        resourceId: id,
+        sourceCommand: 'contract.reopen',
+        eventType: 'CONTRACT_REOPENED',
+        idempotencyKey: `contract-reopen-${id}-${fromStatus}`,
+        reason,
+        before: { status: fromStatus },
+        after: { status: 'DRAFT' },
+      });
+
+      return updated;
+    });
   }
 
   async cancel(identity: RequestIdentity, id: string, reason: string) {

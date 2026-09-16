@@ -693,32 +693,32 @@ describe('CommercialService capabilities (B4)', () => {
     expect(res.capabilities.canEditContract).toBe(true);
   });
 
-  // ADR-030 A — canAdvanceContract mirrors the next transition's own permission, not a blanket
-  // "has approve". DRAFT's next step is `submit`, which is manage-gated: a contract administrator
-  // who can only manage must still be able to move a draft forward.
-  it('canAdvanceContract on DRAFT: true with manage (submit), false with only approve', async () => {
-    const draft = { contract: { ...baseContract, status: 'DRAFT' } };
-    const managed = await build(draft).service.getSummary(
-      identityWith([PERMISSIONS.contractsView, PERMISSIONS.contractsManage]),
-      'p-1',
-    );
-    expect(managed.capabilities.canAdvanceContract).toBe(true);
-
-    const approvedOnly = await build(draft).service.getSummary(
+  // canAdvanceContract mirrors the next transition's own permission. After the lifecycle collapse
+  // (ACCO signs on paper) DRAFT's next step is `activate`, which is approve-gated — it kept the one
+  // meaningful checkpoint from the old `execute`.
+  it('canAdvanceContract on DRAFT: true with approve (activate), false with only manage', async () => {
+    const draftFixture = { contract: { ...baseContract, status: 'DRAFT' } };
+    const approved = await build(draftFixture).service.getSummary(
       identityWith([PERMISSIONS.contractsView, PERMISSIONS.contractsApprove]),
       'p-1',
     );
-    expect(approvedOnly.capabilities.canAdvanceContract).toBe(false);
+    expect(approved.capabilities.canAdvanceContract).toBe(true);
+
+    const managedOnly = await build(draftFixture).service.getSummary(
+      identityWith([PERMISSIONS.contractsView, PERMISSIONS.contractsManage]),
+      'p-1',
+    );
+    expect(managedOnly.capabilities.canAdvanceContract).toBe(false);
   });
 
-  it('canAdvanceContract on UNDER_REVIEW / PENDING_SIGNATURE: true with approve (approve/execute)', async () => {
-    for (const status of ['UNDER_REVIEW', 'PENDING_SIGNATURE']) {
-      const res = await build({ contract: { ...baseContract, status } }).service.getSummary(
-        identityWith([PERMISSIONS.contractsView, PERMISSIONS.contractsApprove]),
-        'p-1',
-      );
-      expect(res.capabilities.canAdvanceContract).toBe(true);
-    }
+  it('canAdvanceContract on FINAL_ACCOUNT_PENDING: true with manage (close)', async () => {
+    const res = await build({
+      contract: { ...baseContract, status: 'FINAL_ACCOUNT_PENDING' },
+    }).service.getSummary(
+      identityWith([PERMISSIONS.contractsView, PERMISSIONS.contractsManage]),
+      'p-1',
+    );
+    expect(res.capabilities.canAdvanceContract).toBe(true);
   });
 
   it('canAdvanceContract: false on ACTIVE and terminal states (no direct advance command)', async () => {
@@ -730,6 +730,29 @@ describe('CommercialService capabilities (B4)', () => {
     for (const status of ['ACTIVE', 'CLOSED', 'CANCELLED', 'TERMINATED']) {
       const res = await build({ contract: { ...baseContract, status } }).service.getSummary(full, 'p-1');
       expect(res.capabilities.canAdvanceContract).toBe(false);
+    }
+  });
+
+  // Reopen is the reverse of activate — the affordance is offered only while ACTIVE, to a user with
+  // approve authority. The command itself carries the strong confirmation.
+  it('canReopenContract: true only on ACTIVE with approve; false elsewhere and without approve', async () => {
+    const approve = identityWith([PERMISSIONS.contractsView, PERMISSIONS.contractsApprove]);
+
+    const activeRes = await build({ contract: { ...baseContract, status: 'ACTIVE' } }).service.getSummary(
+      approve,
+      'p-1',
+    );
+    expect(activeRes.capabilities.canReopenContract).toBe(true);
+
+    // ACTIVE but without approve authority.
+    const activeNoApprove = await build({
+      contract: { ...baseContract, status: 'ACTIVE' },
+    }).service.getSummary(identityWith([PERMISSIONS.contractsView, PERMISSIONS.contractsManage]), 'p-1');
+    expect(activeNoApprove.capabilities.canReopenContract).toBe(false);
+
+    for (const status of ['DRAFT', 'FINAL_ACCOUNT_PENDING', 'CLOSED']) {
+      const res = await build({ contract: { ...baseContract, status } }).service.getSummary(approve, 'p-1');
+      expect(res.capabilities.canReopenContract).toBe(false);
     }
   });
 });
@@ -963,11 +986,11 @@ describe('CommercialService.getCurrentCycle', () => {
     });
   });
 
-  // ADR-030 A — ADVANCE_CONTRACT applies where the next step is approve-gated and the contract is
-  // no longer editable: UNDER_REVIEW (approve-review) and PENDING_SIGNATURE (execute). An approver
-  // there can advance but cannot edit, so the CTA routes to the contract page's driver.
-  it('routes ADVANCE_CONTRACT (approver, no edit right) to the contract-security page', async () => {
-    const { service } = build({ contract: { ...baseContract, status: 'UNDER_REVIEW' } });
+  // After the lifecycle collapse, a DRAFT's next step is `activate` (approve-gated). An approver who
+  // lacks manage cannot EDIT the draft (edit is manage-gated) but CAN activate it, so the CTA routes
+  // to the contract page's driver rather than the edit form.
+  it('routes ADVANCE_CONTRACT (approver, no edit right) on a DRAFT to the contract-security page', async () => {
+    const { service } = build({ contract: { ...baseContract, status: 'DRAFT' } });
     const result = await service.getCurrentCycle(
       identityWith([PERMISSIONS.contractsView, PERMISSIONS.contractsApprove]),
       'p-1',
@@ -980,12 +1003,12 @@ describe('CommercialService.getCurrentCycle', () => {
     });
   });
 
-  // The corrected semantics: on a DRAFT the next step is `submit` (manage-gated), so an approver
-  // who lacks manage can neither edit nor advance — no CTA, rather than a button that would 403.
-  it('offers no advance action to an approver-only user on a DRAFT (submit is manage-gated)', async () => {
+  // A user who can neither manage (edit) nor approve (activate) a DRAFT gets no CTA — a
+  // PERMISSION_REQUIRED blocker instead of a button that would 403.
+  it('offers no action to a user without manage or approve on a DRAFT', async () => {
     const { service } = build({ contract: { ...baseContract, status: 'DRAFT' } });
     const result = await service.getCurrentCycle(
-      identityWith([PERMISSIONS.contractsView, PERMISSIONS.contractsApprove]),
+      identityWith([PERMISSIONS.contractsView]),
       'p-1',
     );
 

@@ -24,6 +24,8 @@ type Mocks = {
 function build(contract: Record<string, unknown> | null): Mocks {
   const repo = {
     findById: jest.fn().mockResolvedValue(contract),
+    // Lifecycle writes (activate/reopen/cancel/terminate/update) all go through repo.update.
+    update: jest.fn().mockImplementation((_tx, id, data) => ({ id, ...data })),
     upsertRetentionTerms: jest.fn().mockResolvedValue({}),
     addAdvanceTerm: jest.fn().mockResolvedValue({ id: 'term-1' }),
     findAdvanceTermOwned: jest.fn(),
@@ -123,6 +125,103 @@ describe('A2 — lifecycle enforcement (CONST-COM-001)', () => {
       'g-1',
       expect.objectContaining({ status: 'DISCHARGED' }),
     );
+  });
+});
+
+describe('collapsed lifecycle — activate / reopen (ACCO signs on paper)', () => {
+  const draftWithClient = {
+    id: 'c-1',
+    status: 'DRAFT',
+    retentionTerms: null,
+    client: { name: 'Rukna Client Co', taxNumber: 'TAX-123' },
+  };
+
+  it('activate (DRAFT → ACTIVE) freezes the client snapshots and freezes the evidence', async () => {
+    const { service, repo, audit, attachments } = build(draftWithClient);
+
+    await service.transition(identity, 'c-1', 'activate');
+
+    expect(repo.update).toHaveBeenCalledWith(
+      expect.anything(),
+      'c-1',
+      expect.objectContaining({
+        status: 'ACTIVE',
+        clientNameSnapshot: 'Rukna Client Co',
+        clientTaxSnapshot: 'TAX-123',
+      }),
+    );
+    expect(attachments.freezeFor).toHaveBeenCalledWith('CONTRACT', 'c-1', expect.any(String));
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ eventType: 'CONTRACT_ACTIVATE' }),
+    );
+  });
+
+  it('rejects activate on a contract that is not DRAFT', async () => {
+    const { service, repo, attachments } = build(active);
+    await expect(service.transition(identity, 'c-1', 'activate')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(repo.update).not.toHaveBeenCalled();
+    expect(attachments.freezeFor).not.toHaveBeenCalled();
+  });
+
+  it('the retired submit / approve-review / execute commands are no longer accepted', async () => {
+    for (const command of ['submit', 'approve-review', 'execute']) {
+      const { service, repo } = build(draftWithClient);
+      await expect(service.transition(identity, 'c-1', command)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(repo.update).not.toHaveBeenCalled();
+    }
+  });
+
+  it('reopen (ACTIVE → DRAFT) clears the client snapshots, audits, and does NOT re-freeze evidence', async () => {
+    const { service, repo, audit, attachments } = build(active);
+
+    await service.reopen(identity, 'c-1', 'paperwork changed before signature');
+
+    expect(repo.update).toHaveBeenCalledWith(
+      expect.anything(),
+      'c-1',
+      expect.objectContaining({
+        status: 'DRAFT',
+        clientNameSnapshot: null,
+        clientTaxSnapshot: null,
+      }),
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ eventType: 'CONTRACT_REOPENED', reason: 'paperwork changed before signature' }),
+    );
+    // Reopen must not thaw or re-freeze the evidence — the files platform has no thaw path.
+    expect(attachments.freezeFor).not.toHaveBeenCalled();
+  });
+
+  it('rejects reopen on a contract that is not ACTIVE', async () => {
+    const { service, repo } = build(draft);
+    await expect(
+      service.reopen(identity, 'c-1', 'nope'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('cancel is allowed only from DRAFT — the retired pre-live states no longer reach it', async () => {
+    const fromDraft = build(draft);
+    await fromDraft.service.cancel(identity, 'c-1', 'client withdrew');
+    expect(fromDraft.repo.update).toHaveBeenCalledWith(
+      expect.anything(),
+      'c-1',
+      expect.objectContaining({ status: 'CANCELLED' }),
+    );
+
+    for (const status of ['UNDER_REVIEW', 'PENDING_SIGNATURE', 'ACTIVE']) {
+      const other = build({ id: 'c-1', status, retentionTerms: null });
+      await expect(other.service.cancel(identity, 'c-1', 'x')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(other.repo.update).not.toHaveBeenCalled();
+    }
   });
 });
 

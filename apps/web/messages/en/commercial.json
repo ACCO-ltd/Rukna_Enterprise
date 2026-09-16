@@ -133,9 +133,9 @@
     "termsLocked": "Contract terms are locked while the contract is active.",
     "currency": "Currency",
     "clientLockedTitle": "Client details are locked",
-    "clientLockedHint": "The client name and tax details were frozen onto this contract when it was executed. Editing the client record will not change them.",
-    "willLockTitle": "Executing locks the client details",
-    "willLockHint": "The client name and tax details will be frozen onto this contract when it is executed.",
+    "clientLockedHint": "The client name and tax details were frozen onto this contract when it was activated. Editing the client record will not change them.",
+    "willLockTitle": "Activating locks the client details",
+    "willLockHint": "The client name and tax details will be frozen onto this contract when it is activated.",
     "viewBoq": "View the BOQ baseline"
   },
   "retention": {
@@ -647,6 +647,8 @@
     "contract": {
       "create": "created the contract",
       "update": "updated the contract",
+      "activate": "activated the contract",
+      "reopen": "reopened the contract to draft",
       "submit": "submitted the contract for review",
       "approve-review": "approved the contract review",
       "execute": "executed the contract",
@@ -966,22 +968,28 @@
     "awaitingPc": "Advances when the project records practical completion.",
     "exited": "This contract is {status} and has left the normal lifecycle.",
     "transition": {
-      "SUBMIT_FOR_REVIEW": "Submit for review",
-      "APPROVE_REVIEW": "Approve review",
-      "EXECUTE": "Execute contract",
+      "ACTIVATE": "Activate contract",
       "CLOSE": "Close contract"
     },
     "confirm": {
-      "execute": {
-        "title": "Execute this contract?",
-        "body": "Executing signs the contract and makes it active. The client's name and tax number are frozen onto it permanently, and billing begins. This cannot be undone.",
-        "confirm": "Execute contract"
+      "activate": {
+        "title": "Activate this contract?",
+        "body": "Activating makes the contract live and begins billing. The client's name and tax number are frozen onto it as they stand now. You can still reverse this to draft while the contract has not been billed.",
+        "confirm": "Activate contract"
       },
       "close": {
         "title": "Close this contract?",
         "body": "Closing finalises the contract. No further certificates, invoices or variations can be raised against it. This cannot be undone.",
         "confirm": "Close contract"
       }
+    },
+    "reopen": {
+      "action": "Reopen to draft",
+      "title": "Reopen this contract to draft?",
+      "body": "This reverses a live contract back to draft so you can correct it, and clears the frozen client identity (re-activating freezes it again). If invoices have already been raised or payments collected against this contract, they will contradict the draft — change its scope through a Variation, or stop it with Terminate, instead.",
+      "reasonLabel": "Reason for reopening",
+      "reasonPlaceholder": "Why is this contract being pulled back to draft?",
+      "confirm": "Reopen to draft"
     }
   },
   "contractDeliverables": {

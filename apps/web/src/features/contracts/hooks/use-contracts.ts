@@ -11,6 +11,7 @@ import {
   createContract,
   getContract,
   listContracts,
+  reopenContract,
   runContractCommand,
   terminateContract,
   updateContract,
@@ -105,6 +106,14 @@ export function useCancelContract(id: string) {
 
 export function useTerminateContract(id: string) {
   return useLifecycleCommand((reason: string) => terminateContract(id, reason), [
+    contractKeys.all,
+    ['projects'],
+  ]);
+}
+
+/** Reverses a live contract back to DRAFT for correction. See `reopenContract`. */
+export function useReopenContract(id: string) {
+  return useLifecycleCommand((reason: string) => reopenContract(id, reason), [
     contractKeys.all,
     ['projects'],
   ]);
