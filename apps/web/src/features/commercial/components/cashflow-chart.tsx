@@ -94,6 +94,23 @@ function toPath(series: CumulativePoint[], dates: string[], max: number): string
 }
 
 /**
+ * The closed area under a series — its line, dropped to the baseline at both ends. A faint fill of
+ * this reads the chart as an area chart (more legible at a glance than bare strokes), and the band
+ * between the invoiced fill and the collected fill on top of it is the outstanding gap made visible.
+ * Empty for a single point: one dot has no area, only a position.
+ */
+function toAreaPath(series: CumulativePoint[], dates: string[], max: number): string {
+  if (series.length < 2) return '';
+  const baseline = PAD_TOP + PLOT_H;
+  const firstX = xPos(series[0]!.date, dates);
+  const lastX = xPos(series[series.length - 1]!.date, dates);
+  const line = series
+    .map((point) => `L${xPos(point.date, dates)},${yPos(point.cumulative, max)}`)
+    .join(' ');
+  return `M${firstX},${baseline} ${line} L${lastX},${baseline} Z`;
+}
+
+/**
  * A compact axis label — `1.2M`, `450K`. The currency is stated once, in the panel title and the
  * money story above; repeating a symbol on every gridline is noise. Full precision lives in the
  * money story and the invoice/receipt tables.
@@ -212,6 +229,25 @@ export function CashflowChart({
             );
           })}
         </g>
+
+        {/* Faint area fills, drawn beneath the strokes: invoiced first, collected layered on top.
+            The band of invoiced fill the collected fill does not cover is the outstanding gap. */}
+        {invoicedSeries.length >= 2 ? (
+          <path
+            d={toAreaPath(invoicedSeries, dates, max)}
+            className="fill-chart-1"
+            fillOpacity={0.08}
+            aria-hidden="true"
+          />
+        ) : null}
+        {collectedSeries.length >= 2 ? (
+          <path
+            d={toAreaPath(collectedSeries, dates, max)}
+            className="fill-chart-2"
+            fillOpacity={0.16}
+            aria-hidden="true"
+          />
+        ) : null}
 
         {/* Invoiced — the primary cumulative series, chart-1. One point ⇒ a dot, never a line. */}
         {invoicedSeries.length >= 2 ? (
