@@ -183,7 +183,7 @@ describe('PaymentScheduleTab — editor gating (DRAFT vs committed, §5 P2)', ()
     );
 
     expect(screen.getByRole('button', { name: 'Edit schedule' })).toBeInTheDocument();
-    expect(screen.queryByText(/Re-profile a committed schedule through a Variation/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Re-profile it through a Variation/i)).not.toBeInTheDocument();
   });
 
   it('offers the editor on an ACTIVE contract (Q-B re-profile of the un-invoiced tail)', () => {
@@ -197,7 +197,7 @@ describe('PaymentScheduleTab — editor gating (DRAFT vs committed, §5 P2)', ()
 
     expect(screen.getByRole('button', { name: 'Edit schedule' })).toBeInTheDocument();
     expect(
-      screen.queryByText(/Re-profile a committed schedule through a Variation/i),
+      screen.queryByText(/Re-profile it through a Variation/i),
     ).not.toBeInTheDocument();
   });
 
@@ -209,7 +209,7 @@ describe('PaymentScheduleTab — editor gating (DRAFT vs committed, §5 P2)', ()
     );
 
     expect(
-      screen.getByText(/Re-profile a committed schedule through a Variation/i),
+      screen.getByText(/Re-profile it through a Variation/i),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit schedule' })).not.toBeInTheDocument();
   });

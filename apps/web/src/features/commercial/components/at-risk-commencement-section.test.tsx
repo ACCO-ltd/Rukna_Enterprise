@@ -113,7 +113,7 @@ describe('AtRiskCommencementSection — lists existing authorisations', () => {
     // The cap-rule outcome is a badge (server-provided, not derived here).
     expect(screen.getByText('CEO required')).toBeInTheDocument();
     // Framed as an audited exception that changes neither contract value nor BOQ.
-    expect(screen.getByText(/exception, not the normal path/i)).toBeInTheDocument();
+    expect(screen.getByText(/an exception/i)).toBeInTheDocument();
     expect(screen.getByText(/neither the contract value nor the BOQ/i)).toBeInTheDocument();
   });
 
