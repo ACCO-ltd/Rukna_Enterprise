@@ -2,14 +2,13 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, TriangleAlert } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Badge,
   Button,
   DefinitionList,
   DefinitionRow,
-  Input,
   Label,
   Dialog,
   DialogContent,
@@ -24,30 +23,25 @@ import type { VariationOrderResponse } from '@erp/types';
 
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
-import { usePermissions } from '@/features/auth/permissions/can';
 
-import {
-  useClientApproveVariation,
-  useInternalApproveVariation,
-  useRejectVariation,
-  useSubmitVariation,
-  useVariation,
-  useWithdrawVariation,
-} from '../hooks/use-commercial';
+import { useReverseVariation, useVariation } from '../hooks/use-commercial';
 import { variationStatusTone } from '../presentation';
-import { AtRiskCommencementSection } from './at-risk-commencement-section';
 import { VariationBillingChip, type VariationBilling } from './variation-billing-chip';
 
 /**
- * VariationOrder detail, in a drawer so the list stays behind it (the commercial pattern for a
- * lifecycle command). Every action here is gated twice: by the VO's real status (only the
- * transitions the state machine allows appear) and by permission (`manage`/`approve:contract`).
- * There is at most one PRIMARY per state — the obvious next action — with regressive actions
- * (reject/withdraw) rendered as muted, outline controls. A terminal VO is read-only.
+ * VariationOrder detail, in a drawer so the list stays behind it.
  *
- * The screen renders only server figures: the net price is `VariationOrderResponse.netPrice`, and
- * every transition re-reads from the server on success. Governance (409) and client-approval (400)
- * failures surface as toasts, never a crash.
+ * variation-collapse: a variation is now raised straight to CLIENT_APPROVED + adopted-to-BOQ in one
+ * step (via the BOQ "Add Extra Work" drawer), and the approval workflow is gone — so this sheet is a
+ * read-only ledger of the variation, its lines and its billing status. The one operative command it
+ * offers is **Reverse**: un-adopting an adopted, still-unbilled variation (lowering the contract
+ * value and removing its BOQ scope). Reversibility is a server rule (a 409 otherwise); the UI shows
+ * the affordance only when the coarse permission + adopted-status preconditions hold and surfaces the
+ * server's verdict verbatim.
+ *
+ * The screen renders only server figures: the net price is `VariationOrderResponse.netPrice`, and a
+ * successful reverse re-reads from the server. Governance/precondition (409) failures surface inline
+ * in the confirm dialog, never a crash.
  */
 export function VariationDetailSheet({
   variationId,
@@ -55,6 +49,7 @@ export function VariationDetailSheet({
   projectId,
   currency,
   billing,
+  canReverse,
   open,
   onOpenChange,
 }: {
@@ -65,6 +60,8 @@ export function VariationDetailSheet({
   /** The VO's billing allocation from the list's Billing Packages read, so the detail can show
    *  where it was billed without a second query. Null when unbilled or opened right after create. */
   billing: VariationBilling | null;
+  /** `capabilities.canReverseVariation` from the commercial summary — the coarse permission gate. */
+  canReverse: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -92,8 +89,8 @@ export function VariationDetailSheet({
             </Button>
           </div>
         ) : (
-          // Keyed by status so a transition remounts the body fresh — inline decision forms
-          // (reject/withdraw/client-approve) reset without a setState-in-effect.
+          // Keyed by status so a reverse remounts the body fresh — the inline confirm form resets
+          // without a setState-in-effect.
           <DetailBody
             key={query.data.status}
             variation={query.data}
@@ -101,6 +98,7 @@ export function VariationDetailSheet({
             projectId={projectId}
             currency={currency}
             billing={billing}
+            canReverse={canReverse}
             onDone={() => onOpenChange(false)}
           />
         )}
@@ -115,6 +113,7 @@ function DetailBody({
   projectId,
   currency,
   billing,
+  canReverse,
   onDone,
 }: {
   variation: VariationOrderResponse;
@@ -122,101 +121,48 @@ function DetailBody({
   projectId: string;
   currency: string | null;
   billing: VariationBilling | null;
+  canReverse: boolean;
   onDone: () => void;
 }) {
   const t = useTranslations('commercial.variations');
+  const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
-  const { can } = usePermissions();
   const { toast } = useToast();
 
-  const canManage = can('manage:contract');
-  const canApprove = can('approve:contract');
+  const reverse = useReverseVariation(variation.id, contractId, projectId);
 
-  const submit = useSubmitVariation(variation.id, contractId, projectId);
-  const internalApprove = useInternalApproveVariation(variation.id, contractId, projectId);
-  const clientApprove = useClientApproveVariation(variation.id, contractId, projectId);
-  const reject = useRejectVariation(variation.id, contractId, projectId);
-  const withdraw = useWithdrawVariation(variation.id, contractId, projectId);
-
-  const busy =
-    submit.isPending ||
-    internalApprove.isPending ||
-    clientApprove.isPending ||
-    reject.isPending ||
-    withdraw.isPending;
-
-  // Reason capture for reject/withdraw and the client-approval form are inline sub-states so the
-  // drawer never navigates away mid-decision.
-  const [mode, setMode] = React.useState<'view' | 'reject' | 'withdraw' | 'client-approve'>('view');
+  // The confirm form is an inline sub-state so the drawer never navigates away mid-decision. The
+  // 409 precondition failure ("already billed", "not adopted") is shown in place, not as a toast.
+  const [confirming, setConfirming] = React.useState(false);
   const [reason, setReason] = React.useState('');
-  const [clientRef, setClientRef] = React.useState('');
-  const [clientNote, setClientNote] = React.useState('');
-
-  function onError(fallbackKey: string) {
-    return (error: unknown) =>
-      toast({ title: errorMessage(error, t(fallbackKey)), tone: 'error' });
-  }
-
-  function runSubmit() {
-    submit.mutate(undefined, {
-      onSuccess: () => toast({ title: t('toast.submitted'), tone: 'success' }),
-      onError: onError('toast.submitFailed'),
-    });
-  }
-
-  function runInternalApprove() {
-    internalApprove.mutate(undefined, {
-      onSuccess: () => toast({ title: t('toast.internalApproved'), tone: 'success' }),
-      // A 409 here means DOA governance requires a workflow approval; a 422 means it is not
-      // configured. Either way the state has not moved — surface the server's message.
-      onError: onError('toast.internalApproveFailed'),
-    });
-  }
-
-  function runClientApprove() {
-    if (clientRef.trim() === '') return;
-    clientApprove.mutate(
-      { clientApprovalReference: clientRef.trim(), note: clientNote.trim() || undefined },
-      {
-        onSuccess: () => {
-          toast({ title: t('toast.clientApproved'), tone: 'success' });
-          setMode('view');
-        },
-        onError: onError('toast.clientApproveFailed'),
-      },
-    );
-  }
-
-  function runReject() {
-    if (reason.trim() === '') return;
-    reject.mutate(reason.trim(), {
-      onSuccess: () => {
-        toast({ title: t('toast.rejected'), tone: 'success' });
-        setMode('view');
-      },
-      onError: onError('toast.rejectFailed'),
-    });
-  }
-
-  function runWithdraw() {
-    withdraw.mutate(reason.trim() || undefined, {
-      onSuccess: () => {
-        toast({ title: t('toast.withdrawn'), tone: 'success' });
-        setMode('view');
-      },
-      onError: onError('toast.withdrawFailed'),
-    });
-  }
+  const [serverError, setServerError] = React.useState<string | null>(null);
 
   const money = (value: string | number | null) =>
     formatMoney(value, currency, locale) ?? t('detail.notSet');
 
-  // The three connections worth surfacing in-place: does it move the contract value (only once
-  // client-approved), has its scope landed in the BOQ, and where was it billed. Show the section
-  // only when at least one of those has an answer, so a fresh DRAFT stays uncluttered.
   const isApproved = variation.status === 'CLIENT_APPROVED';
   const isOmission = Number(variation.netPrice) < 0;
   const showImpact = isApproved || variation.appliedToBoq || billing !== null;
+
+  // The reverse affordance is shown only for an adopted, client-approved VO (the sole reversible
+  // shape) AND when the caller holds the coarse permission. It is NOT shown once billed — but the
+  // "already billed" case is only fully known server-side, so a 409 there is surfaced on confirm.
+  const isBilled = billing?.invoice != null;
+  const canOfferReverse = canReverse && isApproved && variation.appliedToBoq && !isBilled;
+
+  function runReverse() {
+    setServerError(null);
+    reverse.mutate(
+      { reason: reason.trim() || undefined },
+      {
+        onSuccess: () => {
+          toast({ title: t('toast.reversed'), tone: 'success' });
+          onDone();
+        },
+        onError: (error) => setServerError(errorMessage(error, t('toast.reverseFailed'))),
+      },
+    );
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -272,16 +218,6 @@ function DetailBody({
               ? undefined
               : t('detail.days', { n: variation.proposedTimeImpactDays })}
           </DefinitionRow>
-          {variation.submittedAt ? (
-            <DefinitionRow label={t('detail.submitted')}>
-              {formatDate(variation.submittedAt, locale)}
-            </DefinitionRow>
-          ) : null}
-          {variation.internalApprovedAt ? (
-            <DefinitionRow label={t('detail.internalApproved')}>
-              {formatDate(variation.internalApprovedAt, locale)}
-            </DefinitionRow>
-          ) : null}
           {variation.clientApprovedAt ? (
             <DefinitionRow label={t('detail.clientApproved')}>
               {formatDate(variation.clientApprovedAt, locale)}
@@ -297,9 +233,9 @@ function DetailBody({
           ) : null}
         </DefinitionList>
 
-        {/* Where this variation connects to the rest of the workspace: the contract value it moves
-            once client-approved, whether its scope has landed in the BOQ, and where it was billed —
-            so the answer is here, not spread across three tabs. */}
+        {/* Where this variation connects to the rest of the workspace: the contract value it moved
+            when adopted, whether its scope has landed in the BOQ, and where it was billed — so the
+            answer is here, not spread across three tabs. */}
         {showImpact ? (
           <section className="space-y-2.5 rounded-control border border-border bg-surface-subtle p-3">
             <h3 className="text-body-sm font-semibold text-foreground">{t('detail.impactTitle')}</h3>
@@ -339,235 +275,70 @@ function DetailBody({
           </section>
         ) : null}
 
-        {/* At-risk commencement (Phase 5) — the audited early-start exception. Lists any recorded
-            authorisations always, and offers the record action only in pre-CLIENT_APPROVED states. */}
-        <AtRiskCommencementSection
-          variation={variation}
-          contractId={contractId}
-          projectId={projectId}
-          canManage={canManage}
-        />
-
-        {/* Inline decision forms */}
-        {mode === 'client-approve' ? (
-          <section className="space-y-3 rounded-control border border-border bg-surface-subtle p-3">
-            <h3 className="text-body-sm font-semibold text-foreground">
-              {t('detail.clientApproveTitle')}
-            </h3>
-            <div className="space-y-1.5">
-              <Label htmlFor="vo-client-ref">{t('detail.clientRefField')}</Label>
-              <Input
-                id="vo-client-ref"
-                value={clientRef}
-                onChange={(e) => setClientRef(e.target.value)}
-                maxLength={255}
-                required
-              />
-              <p className="text-caption text-muted-foreground">{t('detail.clientRefHint')}</p>
+        {/* Reverse — the one operative command. Its inline confirm carries the warning and captures
+            an optional reason; the server owns whether it is actually reversible. */}
+        {confirming ? (
+          <section className="space-y-3 rounded-control border border-warning/40 bg-warning-subtle p-3">
+            <div className="flex items-start gap-2">
+              <TriangleAlert size={16} className="mt-0.5 shrink-0 text-warning" aria-hidden="true" />
+              <div className="space-y-1">
+                <h3 className="text-body-sm font-semibold text-foreground">
+                  {t('detail.reverseTitle')}
+                </h3>
+                <p className="text-caption text-muted-foreground">{t('detail.reverseWarning')}</p>
+              </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="vo-client-note">{t('detail.noteField')}</Label>
+              <Label htmlFor="vo-reverse-reason">{t('detail.reverseReason')}</Label>
               <Textarea
-                id="vo-client-note"
-                value={clientNote}
-                onChange={(e) => setClientNote(e.target.value)}
-                maxLength={2000}
-                rows={2}
-              />
-            </div>
-          </section>
-        ) : null}
-
-        {mode === 'reject' || mode === 'withdraw' ? (
-          <section className="space-y-3 rounded-control border border-border bg-surface-subtle p-3">
-            <h3 className="text-body-sm font-semibold text-foreground">
-              {mode === 'reject' ? t('detail.rejectTitle') : t('detail.withdrawTitle')}
-            </h3>
-            <div className="space-y-1.5">
-              <Label htmlFor="vo-reason">
-                {mode === 'reject' ? t('detail.rejectReason') : t('detail.withdrawReason')}
-              </Label>
-              <Textarea
-                id="vo-reason"
+                id="vo-reverse-reason"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 maxLength={500}
                 rows={2}
-                required={mode === 'reject'}
               />
             </div>
+            {serverError ? (
+              <p className="text-caption text-danger" role="alert">
+                {serverError}
+              </p>
+            ) : null}
           </section>
         ) : null}
       </div>
 
       <DialogFooter>
-        <Actions
-          status={variation.status}
-          canManage={canManage}
-          canApprove={canApprove}
-          busy={busy}
-          mode={mode}
-          setMode={setMode}
-          onSubmit={runSubmit}
-          onInternalApprove={runInternalApprove}
-          onClientApprove={runClientApprove}
-          onReject={runReject}
-          onWithdraw={runWithdraw}
-          onClose={onDone}
-          canConfirmClientApprove={clientRef.trim() !== ''}
-          canConfirmReject={reason.trim() !== ''}
-        />
+        {confirming ? (
+          <>
+            <Button variant="destructive" onClick={runReverse} disabled={reverse.isPending}>
+              {t('actions.confirmReverse')}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setConfirming(false);
+                setServerError(null);
+              }}
+              disabled={reverse.isPending}
+            >
+              {tCommon('cancel')}
+            </Button>
+          </>
+        ) : (
+          <>
+            {canOfferReverse ? (
+              <Button variant="outline" onClick={() => setConfirming(true)}>
+                {t('actions.reverse')}
+              </Button>
+            ) : null}
+            <Button variant="ghost" onClick={onDone}>
+              {t('actions.close')}
+            </Button>
+          </>
+        )}
       </DialogFooter>
     </div>
   );
-}
-
-/**
- * Renders exactly the transitions the current status + permission allow — never a disabled
- * button for an action the state does not offer. One primary (the obvious next step); reject and
- * withdraw are the muted, outline regressive actions.
- */
-function Actions({
-  status,
-  canManage,
-  canApprove,
-  busy,
-  mode,
-  setMode,
-  onSubmit,
-  onInternalApprove,
-  onClientApprove,
-  onReject,
-  onWithdraw,
-  onClose,
-  canConfirmClientApprove,
-  canConfirmReject,
-}: {
-  status: VariationOrderResponse['status'];
-  canManage: boolean;
-  canApprove: boolean;
-  busy: boolean;
-  mode: 'view' | 'reject' | 'withdraw' | 'client-approve';
-  setMode: (mode: 'view' | 'reject' | 'withdraw' | 'client-approve') => void;
-  onSubmit: () => void;
-  onInternalApprove: () => void;
-  onClientApprove: () => void;
-  onReject: () => void;
-  onWithdraw: () => void;
-  onClose: () => void;
-  canConfirmClientApprove: boolean;
-  canConfirmReject: boolean;
-}) {
-  const t = useTranslations('commercial.variations');
-  const tCommon = useTranslations('common');
-
-  // Confirmation footers for the inline decision forms.
-  if (mode === 'client-approve') {
-    return (
-      <>
-        <Button onClick={onClientApprove} disabled={busy || !canConfirmClientApprove}>
-          {t('actions.confirmClientApprove')}
-        </Button>
-        <Button variant="outline" onClick={() => setMode('view')} disabled={busy}>
-          {tCommon('cancel')}
-        </Button>
-      </>
-    );
-  }
-  if (mode === 'reject') {
-    return (
-      <>
-        <Button variant="destructive" onClick={onReject} disabled={busy || !canConfirmReject}>
-          {t('actions.confirmReject')}
-        </Button>
-        <Button variant="outline" onClick={() => setMode('view')} disabled={busy}>
-          {tCommon('cancel')}
-        </Button>
-      </>
-    );
-  }
-  if (mode === 'withdraw') {
-    return (
-      <>
-        <Button variant="destructive" onClick={onWithdraw} disabled={busy}>
-          {t('actions.confirmWithdraw')}
-        </Button>
-        <Button variant="outline" onClick={() => setMode('view')} disabled={busy}>
-          {tCommon('cancel')}
-        </Button>
-      </>
-    );
-  }
-
-  // Status-gated primary + regressive actions.
-  switch (status) {
-    case 'DRAFT':
-      return (
-        <>
-          {canManage ? (
-            <Button onClick={onSubmit} disabled={busy}>
-              {t('actions.submit')}
-            </Button>
-          ) : null}
-          {canManage ? (
-            <Button variant="outline" onClick={() => setMode('withdraw')} disabled={busy}>
-              {t('actions.withdraw')}
-            </Button>
-          ) : null}
-          <Button variant="ghost" onClick={onClose} disabled={busy}>
-            {t('actions.close')}
-          </Button>
-        </>
-      );
-    case 'PENDING_INTERNAL':
-      return (
-        <>
-          {canApprove ? (
-            <Button onClick={onInternalApprove} disabled={busy}>
-              {t('actions.internalApprove')}
-            </Button>
-          ) : null}
-          {canApprove ? (
-            <Button variant="outline" onClick={() => setMode('reject')} disabled={busy}>
-              {t('actions.reject')}
-            </Button>
-          ) : null}
-          {canManage ? (
-            <Button variant="outline" onClick={() => setMode('withdraw')} disabled={busy}>
-              {t('actions.withdraw')}
-            </Button>
-          ) : null}
-          <Button variant="ghost" onClick={onClose} disabled={busy}>
-            {t('actions.close')}
-          </Button>
-        </>
-      );
-    case 'INTERNAL_APPROVED':
-      return (
-        <>
-          {canApprove ? (
-            <Button onClick={() => setMode('client-approve')} disabled={busy}>
-              {t('actions.clientApprove')}
-            </Button>
-          ) : null}
-          {canApprove ? (
-            <Button variant="outline" onClick={() => setMode('reject')} disabled={busy}>
-              {t('actions.reject')}
-            </Button>
-          ) : null}
-          <Button variant="ghost" onClick={onClose} disabled={busy}>
-            {t('actions.close')}
-          </Button>
-        </>
-      );
-    // CLIENT_APPROVED / REJECTED / WITHDRAWN are terminal — read-only.
-    default:
-      return (
-        <Button variant="outline" onClick={onClose} disabled={busy}>
-          {t('actions.close')}
-        </Button>
-      );
-  }
 }
 
 function errorMessage(error: unknown, fallback: string): string {

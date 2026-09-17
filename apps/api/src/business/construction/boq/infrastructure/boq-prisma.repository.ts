@@ -374,6 +374,28 @@ export class BoqPrismaRepository {
   }
 
   /**
+   * Soft-delete (deactivate) every node on `versionId` that carries this variation's provenance
+   * (`sourceChangeOrderId = voId`) — the section + its leaves. Used by the reverse (un-adopt) command,
+   * which only runs after proving the VO is UNBILLED. Deactivating (not hard-deleting) preserves the
+   * `sourceChangeOrderId` provenance and honours the "soft delete on entities referenced by financial
+   * records — never hard delete" rule (apps/api/CLAUDE.md). The in-contract total policies now exclude
+   * `isActive === false` leaves, so the BOQ total drops in step with the lowered contract value — the
+   * reason a plain deactivate is now safe where it once left the two out of sync. Returns the number
+   * of nodes deactivated.
+   */
+  async deactivateNodesForVariation(
+    prisma: PrismaClient,
+    versionId: string,
+    voId: string,
+  ): Promise<number> {
+    const result = await prisma.boqNode.updateMany({
+      where: { versionId, sourceChangeOrderId: voId },
+      data: { isActive: false },
+    });
+    return result.count;
+  }
+
+  /**
    * Rewrites a sibling range to a dense `0..n-1` sequence — CONST-BOQ-017.
    *
    * Two passes, because `(version_id, parent_id, sort_order)` is a non-deferrable unique

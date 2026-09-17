@@ -16,6 +16,14 @@ import { Decimal } from '@prisma/client/runtime/library';
  * and never drags the generated client into a test.
  */
 
+/**
+ * The six persisted VariationOrder statuses (the Prisma enum's members). PENDING_INTERNAL and
+ * INTERNAL_APPROVED are DORMANT after the variation-collapse (feat/variation-collapse): the approval
+ * workflow was removed, so a VO now lands CLIENT_APPROVED in one step and neither intermediate status
+ * is reachable by any operative command. They are RETIRED-FROM-THE-OPERATIVE-FLOW, not deleted — the
+ * enum keeps all six values (no Postgres enum surgery) so historical/in-flight rows and audit labels
+ * stay valid, exactly as the contract-lifecycle collapse kept UNDER_REVIEW / PENDING_SIGNATURE.
+ */
 export type VariationOrderStatusValue =
   | 'DRAFT'
   | 'PENDING_INTERNAL'
@@ -24,12 +32,10 @@ export type VariationOrderStatusValue =
   | 'REJECTED'
   | 'WITHDRAWN';
 
-export type VariationOrderCommand =
-  | 'submit'
-  | 'internalApprove'
-  | 'clientApprove'
-  | 'reject'
-  | 'withdraw';
+// After the variation-collapse only reject/withdraw remain as operative commands. submit /
+// internalApprove / clientApprove were retired with the approval workflow (a VO is raised straight to
+// CLIENT_APPROVED by the atomic raiseAndAdopt path, and un-adopted by reverse → WITHDRAWN).
+export type VariationOrderCommand = 'reject' | 'withdraw';
 
 export interface TransitionDecision {
   allowed: boolean;
@@ -46,16 +52,12 @@ const TERMINAL: ReadonlySet<VariationOrderStatusValue> = new Set<VariationOrderS
   'WITHDRAWN',
 ]);
 
-// The single legal transition table. Each command names its required from-status and its target.
-// `reject` and `withdraw` are handled specially (multiple valid from-states), below.
-const FORWARD: Record<
-  Exclude<VariationOrderCommand, 'reject' | 'withdraw'>,
-  { from: VariationOrderStatusValue; to: VariationOrderStatusValue }
-> = {
-  submit: { from: 'DRAFT', to: 'PENDING_INTERNAL' },
-  internalApprove: { from: 'PENDING_INTERNAL', to: 'INTERNAL_APPROVED' },
-  clientApprove: { from: 'INTERNAL_APPROVED', to: 'CLIENT_APPROVED' },
-};
+// After the variation-collapse the only operative commands are reject and withdraw — both handled
+// directly in `evaluateTransition` below (each is valid from multiple from-states). There is no longer
+// a forward-command table: the former submit / internalApprove / clientApprove steps (DRAFT →
+// PENDING_INTERNAL → INTERNAL_APPROVED → CLIENT_APPROVED) were retired with the approval workflow; a VO
+// is now raised straight to CLIENT_APPROVED by the atomic raiseAndAdopt path, so PENDING_INTERNAL /
+// INTERNAL_APPROVED are unreachable by any command.
 
 // CONST-VAR-004: reject is legal from any pre-client, non-terminal state.
 const REJECTABLE_FROM: ReadonlySet<VariationOrderStatusValue> = new Set<VariationOrderStatusValue>([
@@ -77,6 +79,8 @@ export const VariationOrderPolicy = {
     status: VariationOrderStatusValue,
     command: VariationOrderCommand,
   ): TransitionDecision {
+    // After the variation-collapse the command union is exactly { reject, withdraw }; there is no
+    // forward step left to look up. Anything outside the union is an unknown command (never throws).
     if (command === 'reject') {
       return REJECTABLE_FROM.has(status)
         ? { allowed: true, to: 'REJECTED' }
@@ -88,11 +92,7 @@ export const VariationOrderPolicy = {
         : { allowed: false, reason: `CANNOT_WITHDRAW_FROM_${status}` };
     }
 
-    const step = FORWARD[command];
-    if (status !== step.from) {
-      return { allowed: false, reason: `EXPECTED_${step.from}_GOT_${status}` };
-    }
-    return { allowed: true, to: step.to };
+    return { allowed: false, reason: `UNKNOWN_COMMAND_${String(command)}` };
   },
 
   /**

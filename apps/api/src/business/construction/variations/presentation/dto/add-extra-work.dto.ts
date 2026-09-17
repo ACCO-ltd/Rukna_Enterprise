@@ -88,4 +88,14 @@ export class AddExtraWorkDto {
   @IsString()
   @MaxLength(255)
   variationTitle?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional client/contractual approval reference (signed VO no. or letter ref) recorded on the ' +
+      'CLIENT_APPROVED variation. Ignored for ABSORB/SEPARATE.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  clientApprovalReference?: string;
 }

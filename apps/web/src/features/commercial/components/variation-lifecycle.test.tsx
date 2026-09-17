@@ -5,6 +5,7 @@ import type { VariationOrderResponse } from '@erp/types';
 
 import { renderWithProviders } from '@/test/render';
 import { pickDate } from '@/test/pick-date';
+import { ApiError } from '@/lib/api-client';
 import * as hooks from '../hooks/use-commercial';
 
 import { VariationDetailSheet } from './variation-detail-sheet';
@@ -14,13 +15,7 @@ import { ExtensionOfTimeSection } from './extension-of-time-section';
 vi.mock('../hooks/use-commercial', () => ({
   useVariation: vi.fn(),
   useExtensionsOfTime: vi.fn(),
-  useAtRiskCommencements: vi.fn(),
-  useSubmitVariation: vi.fn(),
-  useInternalApproveVariation: vi.fn(),
-  useClientApproveVariation: vi.fn(),
-  useRejectVariation: vi.fn(),
-  useWithdrawVariation: vi.fn(),
-  useRecordAtRiskCommencement: vi.fn(),
+  useReverseVariation: vi.fn(),
   useGrantExtensionOfTime: vi.fn(),
 }));
 
@@ -31,7 +26,7 @@ function variation(overrides: Partial<VariationOrderResponse> = {}): VariationOr
     id: 'vo-1',
     contractId: 'c-1',
     reference: 'VO-001',
-    status: 'DRAFT',
+    status: 'CLIENT_APPROVED',
     title: 'Additional foundations',
     description: null,
     proposedTimeImpactDays: 14,
@@ -42,16 +37,16 @@ function variation(overrides: Partial<VariationOrderResponse> = {}): VariationOr
     submittedAt: null,
     internalApprovedBy: null,
     internalApprovedAt: null,
-    clientApprovedBy: null,
-    clientApprovedAt: null,
-    clientApprovalReference: null,
+    clientApprovedBy: 'u-2',
+    clientApprovedAt: '2026-08-02T00:00:00.000Z',
+    clientApprovalReference: 'SIGNED-42',
     rejectedBy: null,
     rejectedAt: null,
     reason: null,
-    appliedToBoq: false,
-    boqNodeCount: 0,
-    boqAppliedAt: null,
-    boqAppliedVersionId: null,
+    appliedToBoq: true,
+    boqNodeCount: 6,
+    boqAppliedAt: '2026-08-02T00:00:00.000Z',
+    boqAppliedVersionId: 'ver-1',
     createdAt: '2026-08-01T00:00:00.000Z',
     updatedAt: '2026-08-01T00:00:00.000Z',
     ...overrides,
@@ -64,31 +59,9 @@ function idleMutation(): { mutate: ReturnType<typeof vi.fn>; isPending: boolean 
 }
 
 function stubMutations() {
-  vi.mocked(hooks.useSubmitVariation).mockReturnValue(
-    idleMutation() as unknown as ReturnType<typeof hooks.useSubmitVariation>,
+  vi.mocked(hooks.useReverseVariation).mockReturnValue(
+    idleMutation() as unknown as ReturnType<typeof hooks.useReverseVariation>,
   );
-  vi.mocked(hooks.useInternalApproveVariation).mockReturnValue(
-    idleMutation() as unknown as ReturnType<typeof hooks.useInternalApproveVariation>,
-  );
-  vi.mocked(hooks.useClientApproveVariation).mockReturnValue(
-    idleMutation() as unknown as ReturnType<typeof hooks.useClientApproveVariation>,
-  );
-  vi.mocked(hooks.useRejectVariation).mockReturnValue(
-    idleMutation() as unknown as ReturnType<typeof hooks.useRejectVariation>,
-  );
-  vi.mocked(hooks.useWithdrawVariation).mockReturnValue(
-    idleMutation() as unknown as ReturnType<typeof hooks.useWithdrawVariation>,
-  );
-  vi.mocked(hooks.useRecordAtRiskCommencement).mockReturnValue(
-    idleMutation() as unknown as ReturnType<typeof hooks.useRecordAtRiskCommencement>,
-  );
-  // The detail sheet mounts the at-risk section, which reads the (empty) authorisation list.
-  vi.mocked(hooks.useAtRiskCommencements).mockReturnValue({
-    isPending: false,
-    isError: false,
-    data: [],
-    refetch: vi.fn(),
-  } as unknown as ReturnType<typeof hooks.useAtRiskCommencements>);
 }
 
 function stubVariation(data: VariationOrderResponse) {
@@ -105,7 +78,9 @@ beforeEach(() => {
   stubMutations();
 });
 
-function renderDetail() {
+function renderDetail(
+  props: Partial<Parameters<typeof VariationDetailSheet>[0]> = {},
+) {
   return renderWithProviders(
     <VariationDetailSheet
       variationId="vo-1"
@@ -113,164 +88,114 @@ function renderDetail() {
       projectId="p-1"
       currency="USD"
       billing={null}
+      canReverse
       open
       onOpenChange={() => {}}
+      {...props}
     />,
     { permissions: MANAGE, withToast: true },
   );
 }
 
-describe('VariationDetailSheet — actions gated by real status', () => {
-  it('DRAFT offers Submit and Withdraw, never Internal approve or Client approve', () => {
-    stubVariation(variation({ status: 'DRAFT' }));
+describe('VariationDetailSheet — read-only ledger (variation-collapse)', () => {
+  it('shows no approval-chain actions — the workflow is gone', () => {
+    stubVariation(variation({ status: 'CLIENT_APPROVED' }));
     renderDetail();
-    expect(screen.getByRole('button', { name: 'Submit for approval' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Withdraw' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Submit for approval' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Internal approve' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Record client approval' })).not.toBeInTheDocument();
-  });
-
-  it('PENDING_INTERNAL offers Internal approve + Reject, never Submit', () => {
-    stubVariation(variation({ status: 'PENDING_INTERNAL' }));
-    renderDetail();
-    expect(screen.getByRole('button', { name: 'Internal approve' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Submit for approval' })).not.toBeInTheDocument();
-  });
-
-  it('INTERNAL_APPROVED offers Record client approval, never Internal approve', () => {
-    stubVariation(variation({ status: 'INTERNAL_APPROVED' }));
-    renderDetail();
-    expect(screen.getByRole('button', { name: 'Record client approval' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Internal approve' })).not.toBeInTheDocument();
-  });
-
-  it('CLIENT_APPROVED is terminal — read-only, no lifecycle actions', () => {
-    stubVariation(variation({ status: 'CLIENT_APPROVED', clientApprovalReference: 'SIGNED-42' }));
-    renderDetail();
-    // The footer Close exists (alongside the sheet's own dismiss control).
-    expect(screen.getAllByRole('button', { name: 'Close' }).length).toBeGreaterThan(0);
-    expect(screen.queryByRole('button', { name: 'Submit for approval' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Reject' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Record client approval' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();
   });
-});
 
-describe('VariationDetailSheet — contract & BOQ impact (round-2 C)', () => {
-  const invoicedBilling: VariationBilling = {
-    treatment: 'INVOICE',
-    invoice: {
-      id: 'inv-9',
-      invoiceNumber: 'INV-005',
-      subtotal: '25000.00',
-      totalAmount: '26250.00',
-      documentStatus: 'POSTED',
-      postingStatus: 'POSTED',
-    } as unknown as VariationBilling['invoice'],
-  };
-
-  it('surfaces the contract raise, BOQ-applied status, invoiced chip and a Billing link in one place', () => {
-    stubVariation(
-      variation({
-        status: 'CLIENT_APPROVED',
-        clientApprovalReference: 'SIGNED-42',
-        appliedToBoq: true,
-        boqNodeCount: 6,
-      }),
-    );
-    renderWithProviders(
-      <VariationDetailSheet
-        variationId="vo-1"
-        contractId="c-1"
-        projectId="p-1"
-        currency="USD"
-        billing={invoicedBilling}
-        open
-        onOpenChange={() => {}}
-      />,
-      { permissions: MANAGE, withToast: true },
-    );
-
+  it('surfaces the contract raise, BOQ-applied status and the client approval reference', () => {
+    stubVariation(variation({ status: 'CLIENT_APPROVED', appliedToBoq: true, boqNodeCount: 6 }));
+    renderDetail();
     expect(screen.getByText('Contract & BOQ impact')).toBeInTheDocument();
     expect(screen.getByText(/Raised by/)).toBeInTheDocument();
     expect(screen.getByText(/6 items/)).toBeInTheDocument();
-    // The list's chip logic, reused: a numbered invoice reads as invoiced.
-    expect(screen.getByText(/Invoiced \(INV-005\)/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /View in Billing/ })).toBeInTheDocument();
-  });
-
-  it('omits the impact section for a fresh DRAFT (nothing to connect yet)', () => {
-    stubVariation(variation({ status: 'DRAFT' }));
-    renderDetail();
-    expect(screen.queryByText('Contract & BOQ impact')).not.toBeInTheDocument();
+    expect(screen.getByText('SIGNED-42')).toBeInTheDocument();
   });
 });
 
-describe('VariationDetailSheet — actions gated by permission', () => {
-  it('a read-only user on a DRAFT sees no lifecycle action, only Close', () => {
-    stubVariation(variation({ status: 'DRAFT' }));
-    renderWithProviders(
-      <VariationDetailSheet
-        variationId="vo-1"
-        contractId="c-1"
-        projectId="p-1"
-        currency="USD"
-        billing={null}
-        open
-        onOpenChange={() => {}}
-      />,
-      { permissions: ['view:contract'], withToast: true },
-    );
-    expect(screen.queryByRole('button', { name: 'Submit for approval' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();
-    // No lifecycle primary — the footer Close remains (plus the sheet's own dismiss control).
-    expect(screen.getAllByRole('button', { name: 'Close' }).length).toBeGreaterThan(0);
+describe('VariationDetailSheet — Reverse action', () => {
+  it('offers Reverse for an adopted, unbilled, client-approved VO when permitted', () => {
+    stubVariation(variation({ status: 'CLIENT_APPROVED', appliedToBoq: true }));
+    renderDetail({ canReverse: true, billing: null });
+    expect(screen.getByRole('button', { name: 'Reverse variation' })).toBeInTheDocument();
   });
 
-  it('a manager without approve cannot internal-approve a PENDING_INTERNAL VO', () => {
-    stubVariation(variation({ status: 'PENDING_INTERNAL' }));
-    renderWithProviders(
-      <VariationDetailSheet
-        variationId="vo-1"
-        contractId="c-1"
-        projectId="p-1"
-        currency="USD"
-        billing={null}
-        open
-        onOpenChange={() => {}}
-      />,
-      { permissions: ['manage:contract'], withToast: true },
-    );
-    // Approve/Reject require approve:contract; withdraw requires manage:contract.
-    expect(screen.queryByRole('button', { name: 'Internal approve' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Reject' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Withdraw' })).toBeInTheDocument();
+  it('hides Reverse without the capability', () => {
+    stubVariation(variation({ status: 'CLIENT_APPROVED', appliedToBoq: true }));
+    renderDetail({ canReverse: false, billing: null });
+    expect(screen.queryByRole('button', { name: 'Reverse variation' })).not.toBeInTheDocument();
   });
-});
 
-describe('VariationDetailSheet — client approval captures a reference', () => {
-  it('requires clientApprovalReference and sends it on confirm', async () => {
+  it('hides Reverse once the variation is billed', () => {
+    const billing: VariationBilling = {
+      treatment: 'INVOICE',
+      invoice: {
+        id: 'inv-9',
+        invoiceNumber: 'INV-005',
+        subtotal: '25000.00',
+        totalAmount: '26250.00',
+        documentStatus: 'POSTED',
+        postingStatus: 'POSTED',
+      } as unknown as VariationBilling['invoice'],
+    };
+    stubVariation(variation({ status: 'CLIENT_APPROVED', appliedToBoq: true }));
+    renderDetail({ canReverse: true, billing });
+    expect(screen.queryByRole('button', { name: 'Reverse variation' })).not.toBeInTheDocument();
+  });
+
+  it('confirms with an optional reason and calls reverse on confirm', async () => {
     const user = userEvent.setup();
-    const clientMutate = vi.fn();
-    vi.mocked(hooks.useClientApproveVariation).mockReturnValue({
-      mutate: clientMutate,
+    const reverseMutate = vi.fn();
+    vi.mocked(hooks.useReverseVariation).mockReturnValue({
+      mutate: reverseMutate,
       isPending: false,
-    } as unknown as ReturnType<typeof hooks.useClientApproveVariation>);
-    stubVariation(variation({ status: 'INTERNAL_APPROVED' }));
-    renderDetail();
+    } as unknown as ReturnType<typeof hooks.useReverseVariation>);
+    stubVariation(variation({ status: 'CLIENT_APPROVED', appliedToBoq: true }));
+    renderDetail({ canReverse: true, billing: null });
 
-    await user.click(screen.getByRole('button', { name: 'Record client approval' }));
+    await user.click(screen.getByRole('button', { name: 'Reverse variation' }));
 
-    // Confirm is blocked until a reference is supplied.
-    const confirm = screen.getByRole('button', { name: 'Confirm client approval' });
-    expect(confirm).toBeDisabled();
+    // The warning is shown before the destructive confirm.
+    expect(
+      screen.getByText(/removes the variation from the contract and lowers the contract value/i),
+    ).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText('Client approval reference'), 'SIGNED-VO-42');
-    expect(confirm).toBeEnabled();
-    await user.click(confirm);
+    await user.type(screen.getByLabelText(/Reason/i), 'Client withdrew the request');
+    // The footer confirm shares the label; there are now two "Reverse variation" controls, so
+    // target the destructive one explicitly by clicking the confirm in the footer.
+    const confirmButtons = screen.getAllByRole('button', { name: 'Reverse variation' });
+    await user.click(confirmButtons[confirmButtons.length - 1]!);
 
-    await waitFor(() => expect(clientMutate).toHaveBeenCalledTimes(1));
-    expect(clientMutate.mock.calls[0]![0]).toMatchObject({ clientApprovalReference: 'SIGNED-VO-42' });
+    await waitFor(() => expect(reverseMutate).toHaveBeenCalledTimes(1));
+    expect(reverseMutate.mock.calls[0]![0]).toMatchObject({ reason: 'Client withdrew the request' });
+  });
+
+  it('surfaces a 409 server message inline (e.g. already billed)', async () => {
+    const user = userEvent.setup();
+    const reverseMutate = vi.fn((_payload, opts?: { onError?: (e: unknown) => void }) => {
+      opts?.onError?.(
+        new ApiError(409, 'This variation has already been billed.', undefined, [
+          'This variation has already been billed.',
+        ]),
+      );
+    });
+    vi.mocked(hooks.useReverseVariation).mockReturnValue({
+      mutate: reverseMutate,
+      isPending: false,
+    } as unknown as ReturnType<typeof hooks.useReverseVariation>);
+    stubVariation(variation({ status: 'CLIENT_APPROVED', appliedToBoq: true }));
+    renderDetail({ canReverse: true, billing: null });
+
+    await user.click(screen.getByRole('button', { name: 'Reverse variation' }));
+    const confirmButtons = screen.getAllByRole('button', { name: 'Reverse variation' });
+    await user.click(confirmButtons[confirmButtons.length - 1]!);
+
+    expect(await screen.findByText('This variation has already been billed.')).toBeInTheDocument();
   });
 });
 

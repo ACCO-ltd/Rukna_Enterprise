@@ -32,6 +32,7 @@ interface NodeFixture {
   code: string;
   description: string;
   isLeaf: boolean;
+  isActive: boolean;
   parentId: string | null;
   depth: number;
   totalAmount: string | null;
@@ -56,6 +57,9 @@ function leaf(
     code,
     description: opts.description ?? code,
     isLeaf: true,
+    // Active by default (as every normally-created BoqNode is); the contract-value totals exclude
+    // isActive===false leaves, so a fixture that omitted this would silently drop from the money band.
+    isActive: opts.isActive ?? true,
     parentId: opts.parentId ?? null,
     depth: opts.depth ?? 1,
     totalAmount,

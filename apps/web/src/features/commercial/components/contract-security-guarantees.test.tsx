@@ -100,6 +100,7 @@ function summary(overrides: Partial<CommercialSummaryResponse> = {}): Commercial
       canManageGuarantee: true,
       canRecordReceipt: false,
       canAllocateReceipt: false,
+      canReverseVariation: false,
     },
     recentActivity: [],
     asOf: '2026-08-14T00:00:00.000Z',

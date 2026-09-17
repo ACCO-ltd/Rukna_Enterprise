@@ -7,7 +7,6 @@ import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import type { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import type { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import type { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
-import type { CommandGovernanceService } from '../../../../platform/workflows/application/command-governance.service.js';
 import type { DocumentSequenceRepository } from '../../../accounting/accounting-core/infrastructure/document-sequence.repository.js';
 import type { PostingAccountResolver } from '../../../accounting/accounting-core/application/posting-account-resolver.service.js';
 import type { IAccountingPostingPort } from '../../../accounting/accounting-core/application/ports/accounting-posting.port.js';
@@ -60,9 +59,6 @@ describe('CommercialBillingService.billStage (CONST-COM-028)', () => {
     const auditOutbox = {
       record: async () => undefined,
     } as unknown as TransactionalAuditOutboxService;
-    const ungoverned = {
-      gateStateTransition: async () => null,
-    } as unknown as CommandGovernanceService;
 
     // AR posting deps are inert — billing only CREATES DRAFT invoices and never posts.
     const sequenceRepo = {} as unknown as DocumentSequenceRepository;
@@ -88,7 +84,6 @@ describe('CommercialBillingService.billStage (CONST-COM-028)', () => {
       variationRepo,
       projectAccess,
       auditOutbox,
-      ungoverned,
     );
 
     service = new CommercialBillingService(

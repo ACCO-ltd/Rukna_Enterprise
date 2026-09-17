@@ -7,7 +7,6 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query';
 import type {
-  AtRiskCommencementResponse,
   CertifiedInvoicedByVariationResponse,
   CommercialApplicationsResponse,
   CommercialBillingResponse,
@@ -16,15 +15,14 @@ import type {
   CommercialSummaryResponse,
   ExtensionOfTimeListResponse,
   GrantExtensionOfTimeRequest,
-  RecordAtRiskCommencementRequest,
   VariationOrderListResponse,
   VariationOrderResponse,
 } from '@erp/types';
 
+import { boqKeys } from '@/features/boq/hooks/use-boq';
+
 import {
   addVariationLine,
-  clientApproveVariation,
-  createVariation,
   getCertifiedInvoicedByVariation,
   getCommercialApplications,
   getCommercialBilling,
@@ -33,18 +31,11 @@ import {
   getCommercialSummary,
   getVariation,
   grantExtensionOfTime,
-  internalApproveVariation,
-  listAtRiskCommencements,
   listExtensionsOfTime,
   listVariations,
-  recordAtRiskCommencement,
-  rejectVariation,
   removeVariationLine,
-  submitVariation,
+  reverseVariation,
   updateVariationLine,
-  withdrawVariation,
-  type ClientApproveVariationPayload,
-  type CreateVariationPayload,
   type UpdateVariationLinePayload,
   type VariationLinePayload,
 } from '../api/commercial-api';
@@ -69,8 +60,6 @@ export const variationKeys = {
   /** Certified/invoiced trace is contract-scoped (base + per-VO). */
   certifiedInvoiced: (contractId: string) =>
     [...variationKeys.all, 'certified-invoiced', contractId] as const,
-  /** At-risk authorisations are VO-scoped (list per variation). */
-  atRisk: (variationId: string) => [...variationKeys.all, 'at-risk', variationId] as const,
 };
 
 /**
@@ -176,17 +165,6 @@ export function useCertifiedInvoicedByVariation(
   });
 }
 
-/** At-risk commencement authorisations recorded on a VO (newest first). */
-export function useAtRiskCommencements(
-  variationId: string | null | undefined,
-): UseQueryResult<AtRiskCommencementResponse[], Error> {
-  return useQuery({
-    queryKey: variationKeys.atRisk(variationId ?? 'none'),
-    queryFn: () => listAtRiskCommencements(variationId as string),
-    enabled: Boolean(variationId),
-  });
-}
-
 export function useExtensionsOfTime(
   contractId: string | null | undefined,
 ): UseQueryResult<ExtensionOfTimeListResponse, Error> {
@@ -221,12 +199,6 @@ function useVariationMutation<TArgs, TResult>(
   });
 }
 
-export function useCreateVariation(contractId: string, projectId: string) {
-  return useVariationMutation(contractId, projectId, (payload: CreateVariationPayload) =>
-    createVariation(contractId, payload),
-  );
-}
-
 export function useAddVariationLine(variationId: string, contractId: string, projectId: string) {
   return useVariationMutation(
     contractId,
@@ -251,54 +223,25 @@ export function useRemoveVariationLine(variationId: string, contractId: string, 
   );
 }
 
-export function useSubmitVariation(variationId: string, contractId: string, projectId: string) {
-  return useVariationMutation(contractId, projectId, () => submitVariation(variationId));
-}
-
-export function useInternalApproveVariation(
-  variationId: string,
-  contractId: string,
-  projectId: string,
-) {
-  return useVariationMutation(contractId, projectId, () => internalApproveVariation(variationId));
-}
-
-export function useClientApproveVariation(
-  variationId: string,
-  contractId: string,
-  projectId: string,
-) {
-  return useVariationMutation(contractId, projectId, (payload: ClientApproveVariationPayload) =>
-    clientApproveVariation(variationId, payload),
-  );
-}
-
-export function useRejectVariation(variationId: string, contractId: string, projectId: string) {
-  return useVariationMutation(contractId, projectId, (reason: string) =>
-    rejectVariation(variationId, reason),
-  );
-}
-
-export function useWithdrawVariation(variationId: string, contractId: string, projectId: string) {
-  return useVariationMutation(contractId, projectId, (reason?: string) =>
-    withdrawVariation(variationId, reason),
-  );
-}
-
 /**
- * Records an at-risk commencement (Phase 5, Route 7B). Reuses `useVariationMutation` so it
- * invalidates `variationKeys.all` (which covers the VO-scoped at-risk list key) AND the project
- * commercial summary. The cap rule is enforced server-side: this hook carries the payload and
- * surfaces the server's 400/403 to the caller's `onError` — it re-implements no rule.
+ * Reverse (un-adopt) an adopted variation (variation-collapse). Un-adopting lowers the contract
+ * value AND removes the variation's scope from the BOQ, so this invalidates three cache trees the
+ * user can see move: the variations list/detail (`variationKeys.all`), the project commercial
+ * summary (the contract-value band), and the project's BOQ workspace (`boqKeys.all` — the money band
+ * and tree). The "is this reversible?" rule is server-side (a 409 otherwise), surfaced to `onError`.
  */
-export function useRecordAtRiskCommencement(
-  variationId: string,
-  contractId: string,
-  projectId: string,
-) {
-  return useVariationMutation(contractId, projectId, (payload: RecordAtRiskCommencementRequest) =>
-    recordAtRiskCommencement(variationId, payload),
-  );
+export function useReverseVariation(variationId: string, contractId: string, projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { reason?: string } = {}) => reverseVariation(variationId, payload),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: variationKeys.all }),
+        qc.invalidateQueries({ queryKey: commercialKeys.summary(projectId) }),
+        qc.invalidateQueries({ queryKey: boqKeys.all(projectId) }),
+      ]);
+    },
+  });
 }
 
 export function useGrantExtensionOfTime(contractId: string, projectId: string) {

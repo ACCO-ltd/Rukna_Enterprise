@@ -564,6 +564,101 @@ export class BoqVersioningService {
   }
 
   /**
+   * variation-collapse — the INVERSE of `appendVariationNodes`: retract a variation's scope from the
+   * operational COMMITTED BOQ and cut a fresh reduced SNAPSHOT of the now-smaller tree.
+   *
+   * The reverse (un-adopt) command drives this after proving the VO is UNBILLED (no billing
+   * allocation) — so the VO's nodes are referenced by no financial record. It:
+   *
+   *   1. resolves the ONE operational version and requires it COMMITTED (same pre-condition as append);
+   *   2. guards that the VO is actually present on that version (else "not present on this BOQ");
+   *   3. DEACTIVATES the VO's nodes (section + leaves) via `deactivateNodesForVariation` — a soft
+   *      delete (`isActive = false`), NOT a hard delete. This preserves the `sourceChangeOrderId`
+   *      provenance and honours apps/api/CLAUDE.md ("Soft delete on entities referenced by financial
+   *      records — never hard delete"). The in-contract total policies now EXCLUDE `isActive === false`
+   *      leaves, so the BOQ total drops in step with the lowered contract value — the two stay in sync
+   *      without hard-deleting. History survives in the apply-time SNAPSHOT row, the WITHDRAWN VO row,
+   *      and the audit trail;
+   *   4. cuts a FRESH reduced SNAPSHOT of the now-smaller operational tree and repoints
+   *      `committedSnapshotVersionId` (the as-committed legal record after the reversal), mirroring the
+   *      append snapshot block exactly. `copyNodes` copies `isActive`, so the snapshot carries the
+   *      now-inactive nodes and the same totals filter excludes them there too — consistent. The prior
+   *      snapshot stays a SNAPSHOT row (history).
+   *
+   * Runs inside the caller's reverse transaction (`tx`) so the node deactivation, the value lower, the
+   * cleared applied-marker, and the WITHDRAWN transition all commit together. Returns the operational
+   * version id, the new snapshot id, and how many nodes were deactivated.
+   */
+  async retractVariationNodes(
+    tx: Prisma.TransactionClient,
+    identity: RequestIdentity,
+    projectId: string,
+    variation: { id: string; reference: string },
+  ): Promise<{ versionId: string; snapshotVersionId: string; deactivatedCount: number }> {
+    const boq = await this.requireBoq(tx as never, projectId, identity.activeOrganizationId);
+
+    const operationalVersionId = boq.currentVersionId ?? boq.currentDraftVersionId;
+    if (!operationalVersionId) {
+      throw new BadRequestException(
+        'This project has no operational BOQ version to retract a variation from.',
+      );
+    }
+    const version = await this.repo.findVersion(tx as never, operationalVersionId);
+    if (!version || version.status !== 'COMMITTED') {
+      throw new BadRequestException(
+        'A variation can only be retracted from a BOQ that has been committed to contract.',
+      );
+    }
+
+    // The VO's scope must actually be present on the operational version to retract it.
+    const present = await this.repo.countNodesForVariation(
+      tx as never,
+      operationalVersionId,
+      variation.id,
+    );
+    if (present === 0) {
+      throw new ConflictException(
+        `Variation ${variation.reference} is not present on this BOQ.`,
+      );
+    }
+
+    // Deactivate (soft-delete) the VO's section + leaves on the operational version — see the method
+    // doc for why a soft delete keeps the BOQ total in sync while preserving provenance.
+    const deactivatedCount = await this.repo.deactivateNodesForVariation(
+      tx as never,
+      operationalVersionId,
+      variation.id,
+    );
+
+    // Cut a fresh frozen SNAPSHOT of the operational tree (mirrors appendVariationNodes' snapshot
+    // block) and repoint committedSnapshotVersionId. The prior snapshot stays as history. The VO's
+    // nodes are still present here (deactivated, not deleted), so `copyNodes` carries them into the
+    // snapshot with `isActive = false`; the totals filter excludes them, keeping the snapshot's
+    // reported total the reduced one.
+    const reducedNodes = await this.repo.findNodesByVersion(tx as never, operationalVersionId);
+    const snapshotNumber = (await this.repo.maxVersionNumber(tx as never, boq.id)) + 1;
+    const snapshot = await this.repo.createVersion(tx as never, {
+      boqId: boq.id,
+      versionNumber: snapshotNumber,
+      status: 'SNAPSHOT',
+      notes: `As-committed snapshot after reversing variation ${variation.reference}`,
+      createdBy: identity.userId,
+      preparedBy: identity.userId,
+      derivedFromVersionId: operationalVersionId,
+    });
+    if (reducedNodes.length > 0) {
+      await this.copyNodes(tx as never, boq.id, snapshot.id, reducedNodes);
+    }
+    await this.repo.updateBoq(tx as never, boq.id, { committedSnapshotVersionId: snapshot.id });
+
+    return {
+      versionId: operationalVersionId,
+      snapshotVersionId: snapshot.id,
+      deactivatedCount,
+    };
+  }
+
+  /**
    * Cancels the current draft version without affecting the approved version.
    */
   async cancelDraft(

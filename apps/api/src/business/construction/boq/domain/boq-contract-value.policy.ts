@@ -14,6 +14,11 @@
  *    tie-out.
  *  - SEPARATE_CHARGE leaves are excluded — billed one-off outside the contract; they feed total
  *    client revenue, not the contract value.
+ *  - INACTIVE leaves (`isActive === false`) are excluded from EVERY total below. A reversed variation
+ *    soft-deletes its leaves (isActive=false) rather than hard-deleting them, preserving the
+ *    `sourceChangeOrderId` provenance the audit trail needs; excluding them here is what drops the
+ *    BOQ total in step with the lowered contract value. `BoqNode.isActive` defaults `true` in the
+ *    Prisma schema, so every normally-created leaf still counts — only a retracted one is dropped.
  *
  * Pure and synchronous, mirroring `boq-money`/`boq-readiness`: the caller supplies the nodes.
  * This is the exact function R3's contract tie-out (`Contract.baseContractValue`) reuses, so it
@@ -27,19 +32,22 @@ import { sumAmounts, toDecimal, type DecimalString, formatAmount } from './boq-m
 import type { Decimal } from '@prisma/client/runtime/library';
 
 /**
- * True when this node contributes to the in-contract total: any leaf except a SEPARATE_CHARGE
+ * True when this node contributes to the in-contract total: any ACTIVE leaf except a SEPARATE_CHARGE
  * one. Sections carry no amount; IN_CONTRACT (incl. CONTINGENCY-role) and ABSORBED leaves count;
- * only SEPARATE_CHARGE — billed outside the contract — is out.
+ * only SEPARATE_CHARGE — billed outside the contract — is out. A reversed/inactive leaf
+ * (`isActive === false`) is excluded: a reversed variation soft-deletes its leaves (provenance is
+ * preserved via `sourceChangeOrderId`), and this filter is what keeps the lowered contract value in
+ * sync with the BOQ total once those leaves stop contributing.
  */
 export function contributesToInContractTotal(
-  node: Pick<BoqNode, 'isLeaf' | 'commercialTreatment'>,
+  node: Pick<BoqNode, 'isActive' | 'isLeaf' | 'commercialTreatment'>,
 ): boolean {
-  return node.isLeaf && node.commercialTreatment !== 'SEPARATE_CHARGE';
+  return node.isActive && node.isLeaf && node.commercialTreatment !== 'SEPARATE_CHARGE';
 }
 
-/** Σ leaf.totalAmount over IN_CONTRACT leaves. Null when nothing contributes (never a false `0`). */
+/** Σ leaf.totalAmount over active IN_CONTRACT leaves. Null when nothing contributes (never a false `0`). */
 export function inContractBillableTotal(
-  nodes: Pick<BoqNode, 'isLeaf' | 'commercialTreatment' | 'totalAmount'>[],
+  nodes: Pick<BoqNode, 'isActive' | 'isLeaf' | 'commercialTreatment' | 'totalAmount'>[],
 ): Decimal | null {
   return sumAmounts(
     nodes
@@ -50,18 +58,19 @@ export function inContractBillableTotal(
 
 /** The wire-serialized form of {@link inContractBillableTotal}. */
 export function formatInContractBillableTotal(
-  nodes: Pick<BoqNode, 'isLeaf' | 'commercialTreatment' | 'totalAmount'>[],
+  nodes: Pick<BoqNode, 'isActive' | 'isLeaf' | 'commercialTreatment' | 'totalAmount'>[],
 ): DecimalString | null {
   return formatAmount(inContractBillableTotal(nodes));
 }
 
 /**
- * True when this node is a piece of the named contingency allowance — a CONTINGENCY-role leaf.
- * A section marked CONTINGENCY carries no amount, so it never contributes; the rule is leaf-only,
- * matching how every other total in this module is summed over leaves.
+ * True when this node is a piece of the named contingency allowance — an ACTIVE CONTINGENCY-role
+ * leaf. A section marked CONTINGENCY carries no amount, so it never contributes; the rule is
+ * leaf-only, matching how every other total in this module is summed over leaves. A reversed/inactive
+ * leaf (`isActive === false`) is excluded, so the contingency figures never count a retracted line.
  */
-export function isContingencyLeaf(node: Pick<BoqNode, 'isLeaf' | 'nodeRole'>): boolean {
-  return node.isLeaf && node.nodeRole === 'CONTINGENCY';
+export function isContingencyLeaf(node: Pick<BoqNode, 'isActive' | 'isLeaf' | 'nodeRole'>): boolean {
+  return node.isActive && node.isLeaf && node.nodeRole === 'CONTINGENCY';
 }
 
 /**
@@ -77,7 +86,7 @@ export function isContingencyLeaf(node: Pick<BoqNode, 'isLeaf' | 'nodeRole'>): b
  * pure and synchronous, the caller supplies the nodes.
  */
 export function contingencyRemaining(
-  nodes: Pick<BoqNode, 'isLeaf' | 'nodeRole' | 'totalAmount'>[],
+  nodes: Pick<BoqNode, 'isActive' | 'isLeaf' | 'nodeRole' | 'totalAmount'>[],
 ): Decimal | null {
   return sumAmounts(
     nodes.filter((node) => isContingencyLeaf(node)).map((node) => toDecimal(node.totalAmount)),
@@ -86,22 +95,22 @@ export function contingencyRemaining(
 
 /** The wire-serialized form of {@link contingencyRemaining}. */
 export function formatContingencyRemaining(
-  nodes: Pick<BoqNode, 'isLeaf' | 'nodeRole' | 'totalAmount'>[],
+  nodes: Pick<BoqNode, 'isActive' | 'isLeaf' | 'nodeRole' | 'totalAmount'>[],
 ): DecimalString | null {
   return formatAmount(contingencyRemaining(nodes));
 }
 
 /**
- * True when this node is a separate charge — a SEPARATE_CHARGE-treatment leaf. Sections carry no
- * amount, so the rule is leaf-only, exactly like {@link contributesToInContractTotal} and
+ * True when this node is a separate charge — an ACTIVE SEPARATE_CHARGE-treatment leaf. Sections carry
+ * no amount, so the rule is leaf-only, exactly like {@link contributesToInContractTotal} and
  * {@link isContingencyLeaf}. This is the precise complement of the SEPARATE_CHARGE exclusion in
- * {@link contributesToInContractTotal}: a leaf is either in the in-contract total or a separate
- * charge, never both.
+ * {@link contributesToInContractTotal}: an active leaf is either in the in-contract total or a
+ * separate charge, never both. A reversed/inactive leaf (`isActive === false`) is excluded from both.
  */
 export function isSeparateChargeLeaf(
-  node: Pick<BoqNode, 'isLeaf' | 'commercialTreatment'>,
+  node: Pick<BoqNode, 'isActive' | 'isLeaf' | 'commercialTreatment'>,
 ): boolean {
-  return node.isLeaf && node.commercialTreatment === 'SEPARATE_CHARGE';
+  return node.isActive && node.isLeaf && node.commercialTreatment === 'SEPARATE_CHARGE';
 }
 
 /**
@@ -119,7 +128,7 @@ export function isSeparateChargeLeaf(
  * from "separate charges summing to zero").
  */
 export function separateChargeTotal(
-  nodes: Pick<BoqNode, 'isLeaf' | 'commercialTreatment' | 'totalAmount'>[],
+  nodes: Pick<BoqNode, 'isActive' | 'isLeaf' | 'commercialTreatment' | 'totalAmount'>[],
 ): Decimal | null {
   return sumAmounts(
     nodes.filter((node) => isSeparateChargeLeaf(node)).map((node) => toDecimal(node.totalAmount)),
@@ -128,7 +137,7 @@ export function separateChargeTotal(
 
 /** The wire-serialized form of {@link separateChargeTotal}. */
 export function formatSeparateChargeTotal(
-  nodes: Pick<BoqNode, 'isLeaf' | 'commercialTreatment' | 'totalAmount'>[],
+  nodes: Pick<BoqNode, 'isActive' | 'isLeaf' | 'commercialTreatment' | 'totalAmount'>[],
 ): DecimalString | null {
   return formatAmount(separateChargeTotal(nodes));
 }

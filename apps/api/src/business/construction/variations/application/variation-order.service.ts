@@ -20,10 +20,6 @@ import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js'
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 import {
-  CommandGovernanceService,
-  throwIfGated,
-} from '../../../../platform/workflows/application/command-governance.service.js';
-import {
   VariationOrderPrismaRepository,
   type VariationOrderWithLines,
 } from '../infrastructure/variation-order-prisma.repository.js';
@@ -42,7 +38,6 @@ import type {
   UpdateVariationLineDto,
 } from '../presentation/dto/variation-line.dto.js';
 import type {
-  ClientApproveVariationDto,
   RejectVariationDto,
   WithdrawVariationDto,
 } from '../presentation/dto/lifecycle.dto.js';
@@ -79,7 +74,6 @@ export class VariationOrderService {
     private readonly repo: VariationOrderPrismaRepository,
     private readonly projectAccess: ProjectAccessService,
     private readonly auditOutbox: TransactionalAuditOutboxService,
-    private readonly governance: CommandGovernanceService,
   ) {}
 
   // ─── Reads ──────────────────────────────────────────────────────────────────
@@ -509,72 +503,11 @@ export class VariationOrderService {
   }
 
   // ─── Lifecycle commands ───────────────────────────────────────────────────────
-
-  async submit(identity: RequestIdentity, id: string): Promise<VariationOrderResponse> {
-    const prisma = this.tenancy.getClient();
-    const vo = await this.requireVo(prisma, identity, id);
-    const to = this.guard(vo, 'submit');
-    const now = new Date();
-
-    return this.applyTransition(identity, id, vo, to, {
-      submittedBy: identity.userId,
-      submittedAt: now,
-    }, 'variation.submit', 'VARIATION_ORDER_SUBMITTED');
-  }
-
-  async internalApprove(identity: RequestIdentity, id: string): Promise<VariationOrderResponse> {
-    const prisma = this.tenancy.getClient();
-    const vo = await this.requireVo(prisma, identity, id);
-    const to = this.guard(vo, 'internalApprove');
-
-    // CONST-VAR-010: internal approval is amount-banded on |net price| through the SAME governance
-    // gate as PO approval. With no active binding this resolves to null and proceeds unchanged;
-    // an active VariationOrder band creates the approval instance and returns 409 with the id.
-    const amount = this.netPrice(vo).abs();
-    throwIfGated(
-      await this.governance.gateStateTransition(
-        identity,
-        'VariationOrder',
-        'PENDING_INTERNAL',
-        'INTERNAL_APPROVED',
-        id,
-        amount,
-      ),
-      'Variation internal approval requires workflow approval.',
-    );
-
-    const now = new Date();
-    return this.applyTransition(identity, id, vo, to, {
-      internalApprovedBy: identity.userId,
-      internalApprovedAt: now,
-    }, 'variation.internalApprove', 'VARIATION_ORDER_INTERNAL_APPROVED');
-  }
-
-  async clientApprove(
-    identity: RequestIdentity,
-    id: string,
-    dto: ClientApproveVariationDto,
-  ): Promise<VariationOrderResponse> {
-    const prisma = this.tenancy.getClient();
-    const vo = await this.requireVo(prisma, identity, id);
-    const to = this.guard(vo, 'clientApprove');
-
-    // TODO(OQ-4): the client-approval evidence contract is provisional. The follow-up memo will
-    // finalize what constitutes "client + contractual approval" (a signed VO document? an ADR-014
-    // PlatformFile attachment? a bare reference number is enough?) AND whether this transition is
-    // itself a governed (gated) command. Until then we require a clientApprovalReference + optional
-    // note and record who/when. This is the transition that makes the VO count toward the governing
-    // contract value (CONST-VAR-005) and freezes its figures (CONST-VAR-010).
-    const now = new Date();
-    return this.applyTransition(identity, id, vo, to, {
-      clientApprovedBy: identity.userId,
-      clientApprovedAt: now,
-      clientApprovalReference: dto.clientApprovalReference,
-      reason: dto.note ?? undefined,
-    }, 'variation.clientApprove', 'VARIATION_ORDER_CLIENT_APPROVED', {
-      clientApprovalReference: dto.clientApprovalReference,
-    });
-  }
+  //
+  // The approval workflow (submit → internalApprove → clientApprove) was retired in the
+  // variation-collapse: a VO is now raised straight to CLIENT_APPROVED + adopted-to-BOQ in one step
+  // by ApplyVariationToBoqService.raiseAndAdopt, and un-adopted by ReverseVariationService.reverse.
+  // Only reject/withdraw remain here as pre-client retraction commands.
 
   async reject(
     identity: RequestIdentity,

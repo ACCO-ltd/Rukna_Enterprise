@@ -7,7 +7,6 @@ import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import type { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import type { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import type { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
-import type { CommandGovernanceService } from '../../../../platform/workflows/application/command-governance.service.js';
 import { VariationOrderPrismaRepository } from '../infrastructure/variation-order-prisma.repository.js';
 import { VariationOrderService } from '../application/variation-order.service.js';
 
@@ -39,7 +38,6 @@ describe('allocateVariationBilling (CONST-COM-028)', () => {
   let otherVoId: string;
 
   beforeAll(async () => {
-    const ungoverned = { gateStateTransition: async () => null } as unknown as CommandGovernanceService;
     const tenancy = { getClient: () => prisma } as unknown as TenancyService;
     const projectAccess = {
       assertContract: async () => undefined,
@@ -52,7 +50,6 @@ describe('allocateVariationBilling (CONST-COM-028)', () => {
       new VariationOrderPrismaRepository(),
       projectAccess,
       auditOutbox,
-      ungoverned,
     );
 
     identity = {

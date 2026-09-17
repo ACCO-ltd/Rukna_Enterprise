@@ -229,45 +229,21 @@ export class VariationOrderPrismaRepository {
     return prisma.variationOrder.update({ where: { id }, data });
   }
 
+  /**
+   * The inverse of `markBoqApplied` — clears the applied-to-BOQ marker (nulls `boqAppliedAt`,
+   * `boqAppliedBy`, `boqAppliedVersionId`). Used by the reverse (un-adopt) command inside its
+   * transaction, so the VO no longer reads as adopted after its scope is retracted from the BOQ.
+   */
+  clearBoqApplied(prisma: Prisma.TransactionClient, id: string) {
+    return prisma.variationOrder.update({
+      where: { id },
+      data: { boqAppliedAt: null, boqAppliedBy: null, boqAppliedVersionId: null },
+    });
+  }
+
   /** How many BOQ nodes across all versions carry this VO's provenance — the read indicator. */
   countBoqNodes(prisma: TenantPrisma, variationOrderId: string): Promise<number> {
     return prisma.boqNode.count({ where: { sourceChangeOrderId: variationOrderId } });
-  }
-
-  // ─── ADR-026 CONST-VAR-011 (Phase 5, Route 7B): at-risk commencement authorisations ────────────
-
-  /**
-   * Record an immutable at-risk commencement authorisation on a VO. Changes NEITHER the VO row (its
-   * status/lifecycle is untouched — CONST-VAR-011) NOR the contract value NOR the BOQ — it only
-   * appends the audited record of who accepted the exposure.
-   */
-  createAtRiskAuthorisation(
-    prisma: Prisma.TransactionClient,
-    data: {
-      organizationId: string;
-      variationOrderId: string;
-      exposureAmount: Decimal;
-      currency: string;
-      capAmount: Decimal;
-      ceoRequired: boolean;
-      constructionDirectorUserId: string;
-      cfoUserId: string;
-      ceoUserId: string | null;
-      reason: string;
-      voStatusAtAuth: string;
-      authorisedBy: string;
-      authorisedAt: Date;
-    },
-  ) {
-    return prisma.variationOrderAtRiskAuthorisation.create({ data });
-  }
-
-  /** The at-risk commencement authorisations recorded on a VO, newest first. Org-scoped. */
-  findAtRiskAuthorisations(prisma: TenantPrisma, organizationId: string, variationOrderId: string) {
-    return prisma.variationOrderAtRiskAuthorisation.findMany({
-      where: { organizationId, variationOrderId },
-      orderBy: { authorisedAt: 'desc' },
-    });
   }
 
   /**

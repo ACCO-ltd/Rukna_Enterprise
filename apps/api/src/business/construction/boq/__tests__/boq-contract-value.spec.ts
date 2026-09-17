@@ -15,19 +15,28 @@ import {
  */
 
 type NodeFixture = {
+  isActive: boolean;
   isLeaf: boolean;
   commercialTreatment: 'IN_CONTRACT' | 'SEPARATE_CHARGE' | 'ABSORBED';
   totalAmount: string | null;
   nodeRole?: 'WORK' | 'CONTINGENCY';
 };
 
+// `isActive` defaults true (as every normally-created BoqNode is — Prisma schema default). A reversed
+// (soft-deleted) leaf is modelled by passing `isActive: false`.
 const leaf = (
   totalAmount: string | null,
   commercialTreatment: NodeFixture['commercialTreatment'] = 'IN_CONTRACT',
   nodeRole: NodeFixture['nodeRole'] = 'WORK',
-): NodeFixture => ({ isLeaf: true, commercialTreatment, totalAmount, nodeRole });
+  isActive = true,
+): NodeFixture => ({ isActive, isLeaf: true, commercialTreatment, totalAmount, nodeRole });
 
-const section = (): NodeFixture => ({ isLeaf: false, commercialTreatment: 'IN_CONTRACT', totalAmount: null });
+const section = (): NodeFixture => ({
+  isActive: true,
+  isLeaf: false,
+  commercialTreatment: 'IN_CONTRACT',
+  totalAmount: null,
+});
 
 describe('inContractBillableTotal — ADR-029 T-1', () => {
   it('sums IN_CONTRACT leaves and ignores sections', () => {
@@ -68,12 +77,30 @@ describe('inContractBillableTotal — ADR-029 T-1', () => {
     expect(inContractBillableTotal([leaf('500.00', 'SEPARATE_CHARGE')] as never)).toBeNull();
   });
 
+  it('EXCLUDES an inactive (reversed) leaf — a soft-deleted variation line stops contributing', () => {
+    // The 250 line is a reversed-variation leaf (isActive=false); only the live 100 line counts, so the
+    // BOQ total drops in step with the lowered contract value — the whole point of the soft-delete path.
+    const total = inContractBillableTotal([
+      leaf('100.00'),
+      leaf('250.00', 'IN_CONTRACT', 'WORK', false),
+    ] as never);
+    expect(total?.toFixed(2)).toBe('100.00');
+  });
+
+  it('returns null when every contributing leaf is inactive (reversed) — never a false zero', () => {
+    expect(
+      inContractBillableTotal([leaf('250.00', 'IN_CONTRACT', 'WORK', false)] as never),
+    ).toBeNull();
+  });
+
   it('classifies contribution per node', () => {
     expect(contributesToInContractTotal(leaf('1.00') as never)).toBe(true);
     expect(contributesToInContractTotal(leaf('1.00', 'IN_CONTRACT', 'CONTINGENCY') as never)).toBe(true);
     expect(contributesToInContractTotal(leaf('1.00', 'SEPARATE_CHARGE') as never)).toBe(false);
     expect(contributesToInContractTotal(leaf('1.00', 'ABSORBED') as never)).toBe(true);
     expect(contributesToInContractTotal(section() as never)).toBe(false);
+    // A reversed (inactive) leaf never contributes, whatever its treatment.
+    expect(contributesToInContractTotal(leaf('1.00', 'IN_CONTRACT', 'WORK', false) as never)).toBe(false);
   });
 });
 
@@ -117,8 +144,9 @@ describe('contingencyRemaining — ADR-029 C-2', () => {
   it('isContingencyLeaf marks only CONTINGENCY-role leaves', () => {
     expect(isContingencyLeaf(leaf('1.00', 'IN_CONTRACT', 'CONTINGENCY') as never)).toBe(true);
     expect(isContingencyLeaf(leaf('1.00') as never)).toBe(false);
-    // A section marked CONTINGENCY carries no amount, so it is not a contributor.
-    expect(isContingencyLeaf({ isLeaf: false, nodeRole: 'CONTINGENCY' } as never)).toBe(false);
+    // A section marked CONTINGENCY carries no amount, so it is not a contributor (leaf-only rule,
+    // independent of isActive — this section is active).
+    expect(isContingencyLeaf({ isActive: true, isLeaf: false, nodeRole: 'CONTINGENCY' } as never)).toBe(false);
   });
 });
 
@@ -170,9 +198,10 @@ describe('separateChargeTotal — ADR-029 T-5', () => {
     expect(isSeparateChargeLeaf(leaf('1.00', 'SEPARATE_CHARGE') as never)).toBe(true);
     expect(isSeparateChargeLeaf(leaf('1.00') as never)).toBe(false);
     expect(isSeparateChargeLeaf(leaf('1.00', 'ABSORBED') as never)).toBe(false);
-    // A section marked SEPARATE_CHARGE carries no amount, so it is not a contributor.
-    expect(isSeparateChargeLeaf({ isLeaf: false, commercialTreatment: 'SEPARATE_CHARGE' } as never)).toBe(
-      false,
-    );
+    // A section marked SEPARATE_CHARGE carries no amount, so it is not a contributor (leaf-only rule,
+    // independent of isActive — this section is active).
+    expect(
+      isSeparateChargeLeaf({ isActive: true, isLeaf: false, commercialTreatment: 'SEPARATE_CHARGE' } as never),
+    ).toBe(false);
   });
 });

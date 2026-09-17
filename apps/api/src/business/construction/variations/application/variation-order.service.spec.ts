@@ -45,7 +45,9 @@ function makeVo(over: Partial<Record<string, unknown>> = {}) {
   };
 }
 
-function build(opts: { vo?: ReturnType<typeof makeVo>; gate?: unknown; assertContract?: jest.Mock } = {}) {
+// variation-collapse: the governance dependency was removed (the approval workflow is gone), so the
+// service is now constructed with four deps (tenancy, repo, projectAccess, auditOutbox).
+function build(opts: { vo?: ReturnType<typeof makeVo>; assertContract?: jest.Mock } = {}) {
   const state = { vo: opts.vo ?? makeVo() };
   const prisma = { $transaction: jest.fn(async (cb: (tx: unknown) => unknown) => cb({})) };
   const tenancy = { getClient: () => prisma } as never;
@@ -78,19 +80,17 @@ function build(opts: { vo?: ReturnType<typeof makeVo>; gate?: unknown; assertCon
     assertContract: opts.assertContract ?? jest.fn().mockResolvedValue(undefined),
   };
   const auditOutbox = { record: jest.fn().mockResolvedValue(undefined) };
-  const governance = { gateStateTransition: jest.fn().mockResolvedValue(opts.gate ?? null) };
 
   const service = new VariationOrderService(
     tenancy,
     repo as never,
     projectAccess as never,
     auditOutbox as never,
-    governance as never,
   );
-  return { service, repo, projectAccess, auditOutbox, governance, state };
+  return { service, repo, projectAccess, auditOutbox, state };
 }
 
-describe('VariationOrderService — happy path lifecycle (ADR-026)', () => {
+describe('VariationOrderService — create (ADR-026)', () => {
   it('create assigns the next per-contract reference VO-001 and derives net price from lines', async () => {
     const { service, repo } = build();
     const res = await service.create(identity, 'c-1', {
@@ -106,82 +106,82 @@ describe('VariationOrderService — happy path lifecycle (ADR-026)', () => {
     expect(res.netPrice).toBe('1000.00');
   });
 
-  it('create → submit → internal-approve → client-approve walks the state machine', async () => {
-    const { service, state } = build();
+  it('create fails when the contract is not found in the caller\'s org', async () => {
+    const { service, repo } = build();
+    repo.findContract.mockResolvedValueOnce(null);
+    await expect(
+      service.create(identity, 'c-x', { title: 'X' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
 
-    await service.submit(identity, 'vo-1');
-    expect(state.vo.status).toBe('PENDING_INTERNAL');
-    expect(state.vo.submittedBy).toBe('u1');
+describe('VariationOrderService — retraction commands (reject / withdraw) survive the collapse', () => {
+  it('reject requires the VO to be pre-client and moves it to REJECTED with a reason', async () => {
+    const { service, state } = build({ vo: makeVo({ status: 'DRAFT' }) });
+    await service.reject(identity, 'vo-1', { reason: 'Client declined' });
+    expect(state.vo.status).toBe('REJECTED');
+    expect(state.vo.reason).toBe('Client declined');
+  });
 
-    await service.internalApprove(identity, 'vo-1');
-    expect(state.vo.status).toBe('INTERNAL_APPROVED');
+  it('withdraw moves a pre-client VO to WITHDRAWN (optional reason)', async () => {
+    const { service, state } = build({ vo: makeVo({ status: 'DRAFT' }) });
+    await service.withdraw(identity, 'vo-1', { reason: 'Superseded' });
+    expect(state.vo.status).toBe('WITHDRAWN');
+    expect(state.vo.reason).toBe('Superseded');
+  });
 
-    const res = await service.clientApprove(identity, 'vo-1', {
-      clientApprovalReference: 'SIGNED-VO-001',
-    });
-    expect(state.vo.status).toBe('CLIENT_APPROVED');
-    expect(res.clientApprovalReference).toBe('SIGNED-VO-001');
+  it('there is no un-approve here: reject on a CLIENT_APPROVED VO is a 409', async () => {
+    const { service } = build({ vo: makeVo({ status: 'CLIENT_APPROVED' }) });
+    await expect(
+      service.reject(identity, 'vo-1', { reason: 'too late' }),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 });
 
 describe('VariationOrderService — guards (CONST-VAR-004)', () => {
-  it('rejects an illegal transition (client-approve on a DRAFT) with 409', async () => {
-    const { service } = build({ vo: makeVo({ status: 'DRAFT' }) });
-    await expect(
-      service.clientApprove(identity, 'vo-1', { clientApprovalReference: 'X' }),
-    ).rejects.toBeInstanceOf(ConflictException);
-  });
-
-  it('closes field editing after PENDING_INTERNAL (addLine on a submitted VO → 409)', async () => {
-    const { service, repo } = build({ vo: makeVo({ status: 'PENDING_INTERNAL' }) });
+  it('closes field editing after DRAFT (addLine on a client-approved VO → 409)', async () => {
+    const { service, repo } = build({ vo: makeVo({ status: 'CLIENT_APPROVED' }) });
     await expect(
       service.addLine(identity, 'vo-1', { description: 'B', quantity: 1, unitRate: 1 }),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(repo.addLine).not.toHaveBeenCalled();
   });
-
-  it('reject requires the VO to be pre-client and moves it to REJECTED with a reason', async () => {
-    const { service, state } = build({ vo: makeVo({ status: 'PENDING_INTERNAL' }) });
-    await service.reject(identity, 'vo-1', { reason: 'Client declined' });
-    expect(state.vo.status).toBe('REJECTED');
-    expect(state.vo.reason).toBe('Client declined');
-  });
 });
 
-describe('VariationOrderService — internal approval governance gate (CONST-VAR-010)', () => {
-  it('routes through gateStateTransition on |net price| and proceeds when the gate is null', async () => {
-    const { service, governance, state } = build({ vo: makeVo({ status: 'PENDING_INTERNAL' }) });
-    await service.internalApprove(identity, 'vo-1');
-    expect(governance.gateStateTransition).toHaveBeenCalledWith(
-      identity,
-      'VariationOrder',
-      'PENDING_INTERNAL',
-      'INTERNAL_APPROVED',
-      'vo-1',
-      expect.objectContaining({ constructor: Decimal }),
-    );
-    expect(state.vo.status).toBe('INTERNAL_APPROVED');
+describe('VariationOrderService — variation billing realization (allocateVariationBilling)', () => {
+  function buildForAllocate(voStatus: string) {
+    const state = { vo: makeVo({ status: voStatus, lines: [{ id: 'l1', description: 'A', quantity: new Decimal('10'), unitRate: new Decimal('100'), amount: new Decimal('1000'), sortOrder: 0 }] }) };
+    const inner = { $transaction: jest.fn(async (cb: (tx: unknown) => unknown) => cb({})) };
+    const prisma = { ...inner };
+    const tenancy = { getClient: () => prisma } as never;
+    const repo = {
+      findById: jest.fn(async () => state.vo),
+      findAllocationsByVariation: jest.fn(async () => []),
+      createAllocation: jest.fn(async () => ({ id: 'alloc-1' })),
+      countBoqNodes: jest.fn(async () => 0),
+    };
+    const projectAccess = { assertContract: jest.fn().mockResolvedValue(undefined) };
+    const auditOutbox = { record: jest.fn().mockResolvedValue(undefined) };
+    const service = new VariationOrderService(tenancy, repo as never, projectAccess as never, auditOutbox as never);
+    return { service, repo };
+  }
+
+  it('records an INVOICE allocation for a CLIENT_APPROVED VO (net headroom respected)', async () => {
+    const { service, repo } = buildForAllocate('CLIENT_APPROVED');
+    const res = await service.allocateVariationBilling(identity, 'vo-1', {
+      amount: '400',
+      treatment: 'INVOICE',
+    });
+    expect(repo.createAllocation).toHaveBeenCalledTimes(1);
+    expect(res).toMatchObject({ amount: '400.00', treatment: 'INVOICE', netValue: '1000.00' });
   });
 
-  it('bands on the ABSOLUTE net price so a large omission is governed like a large addition', async () => {
-    const omissionVo = makeVo({
-      status: 'PENDING_INTERNAL',
-      lines: [{ id: 'l1', description: 'omit', quantity: new Decimal('-1'), unitRate: new Decimal('80000'), amount: new Decimal('-80000'), sortOrder: 0 }],
-    });
-    const { service, governance } = build({ vo: omissionVo });
-    await service.internalApprove(identity, 'vo-1');
-    const amountArg = governance.gateStateTransition.mock.calls[0][5] as Decimal;
-    expect(amountArg.toFixed(2)).toBe('80000.00'); // abs(-80000)
-  });
-
-  it('gates (409 + approvalInstanceId) without transitioning when a binding resolves', async () => {
-    const { service, governance, repo } = build({
-      vo: makeVo({ status: 'PENDING_INTERNAL' }),
-      gate: { gated: true, approvalInstanceId: 'ai-9' },
-    });
-    await expect(service.internalApprove(identity, 'vo-1')).rejects.toBeInstanceOf(ConflictException);
-    expect(governance.gateStateTransition).toHaveBeenCalled();
-    expect(repo.transition).not.toHaveBeenCalled();
+  it('refuses to bill a VO that is not client-approved (409)', async () => {
+    const { service, repo } = buildForAllocate('DRAFT');
+    await expect(
+      service.allocateVariationBilling(identity, 'vo-1', { amount: '400', treatment: 'INVOICE' }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(repo.createAllocation).not.toHaveBeenCalled();
   });
 });
 
@@ -190,13 +190,5 @@ describe('VariationOrderService — tenant / membership isolation', () => {
     const denied = jest.fn().mockRejectedValue(new ForbiddenException());
     const { service } = build({ assertContract: denied });
     await expect(service.findOne(identity, 'vo-1')).rejects.toBeInstanceOf(ForbiddenException);
-  });
-
-  it('create fails when the contract is not found in the caller\'s org', async () => {
-    const { service, repo } = build();
-    repo.findContract.mockResolvedValueOnce(null);
-    await expect(
-      service.create(identity, 'c-x', { title: 'X' }),
-    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

@@ -19,28 +19,32 @@ import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { VariationOrderService } from '../application/variation-order.service.js';
 import { ApplyVariationToBoqService } from '../application/apply-variation-to-boq.service.js';
+import { ReverseVariationService } from '../application/reverse-variation.service.js';
 import { AdoptBaselineService } from '../application/adopt-baseline.service.js';
 import { ExtensionOfTimeService } from '../application/extension-of-time.service.js';
-import { AtRiskCommencementService } from '../application/at-risk-commencement.service.js';
 import { GrantExtensionOfTimeDto } from './dto/grant-extension-of-time.dto.js';
-import { RecordAtRiskCommencementDto } from './dto/at-risk-commencement.dto.js';
 import { AdoptBaselineDto } from './dto/adopt-baseline.dto.js';
 import { CreateVariationDto } from './dto/create-variation.dto.js';
 import { UpdateVariationDto } from './dto/update-variation.dto.js';
 import { AddVariationLineDto, UpdateVariationLineDto } from './dto/variation-line.dto.js';
 import {
-  ClientApproveVariationDto,
   RejectVariationDto,
   WithdrawVariationDto,
+  ReverseVariationDto,
 } from './dto/lifecycle.dto.js';
 
 /**
  * ADR-026 (Variations Phase 1) — VariationOrder endpoints.
  *
  * RBAC reuses the contracts module's commercial scheme (no new permission invented): `contractsView`
- * to read, `contractsManage` to create/edit/line-CRUD/submit/withdraw, `contractsApprove` for the
- * two approval transitions and reject. Membership/tenancy is enforced in the service via
+ * to read, `contractsManage` to create/edit/line-CRUD/withdraw, `contractsApprove` for reject and the
+ * reverse (un-adopt) command. Membership/tenancy is enforced in the service via
  * `projectAccess.assertContract`.
+ *
+ * The approval workflow (submit/internal-approve/client-approve) and the at-risk-commencement routes
+ * were removed in the variation-collapse: a VO is now raised straight to CLIENT_APPROVED + adopted via
+ * the BOQ "Add Extra Work" drawer (ExtraWorkClassifierService → raiseAndAdopt) and un-adopted via the
+ * reverse route below.
  */
 @ApiTags('Variations')
 @ApiBearerAuth('access-token')
@@ -51,9 +55,9 @@ export class VariationsController {
   constructor(
     private readonly service: VariationOrderService,
     private readonly applyToBoq: ApplyVariationToBoqService,
+    private readonly reverseVariation: ReverseVariationService,
     private readonly adoptBaseline: AdoptBaselineService,
     private readonly extensionOfTime: ExtensionOfTimeService,
-    private readonly atRiskCommencement: AtRiskCommencementService,
   ) {}
 
   // ─── Contract-scoped ──────────────────────────────────────────────────────────
@@ -193,76 +197,6 @@ export class VariationsController {
     return this.service.removeLine(identity, id, lineId);
   }
 
-  // ─── Lifecycle transitions ──────────────────────────────────────────────────
-
-  @Post('variations/:id/submit')
-  @RequirePermissions(PERMISSIONS.contractsManage)
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Submit for internal approval: DRAFT → PENDING_INTERNAL (closes editing)' })
-  submit(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
-    return this.service.submit(identity, id);
-  }
-
-  @Post('variations/:id/internal-approve')
-  @RequirePermissions(PERMISSIONS.contractsApprove)
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary:
-      'Internal DOA approval: PENDING_INTERNAL → INTERNAL_APPROVED (governance-gated on |net price|; figures freeze)',
-  })
-  @ApiResponse({ status: 409, description: 'Gated: workflow approval required (approvalInstanceId in details)' })
-  internalApprove(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
-    return this.service.internalApprove(identity, id);
-  }
-
-  @Post('variations/:id/client-approve')
-  @RequirePermissions(PERMISSIONS.contractsApprove)
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary:
-      'Record client + contractual approval: INTERNAL_APPROVED → CLIENT_APPROVED (counts toward governing value)',
-  })
-  clientApprove(
-    @CurrentUser() identity: RequestIdentity,
-    @Param('id') id: string,
-    @Body() dto: ClientApproveVariationDto,
-  ) {
-    return this.service.clientApprove(identity, id, dto);
-  }
-
-  // ─── At-risk commencement (ADR-026 CONST-VAR-011, Phase 5, Route 7B) ─────────
-  //
-  // Record the audited authorisation to start urgent variation work BEFORE the VO is CLIENT_APPROVED
-  // (never an informal verbal instruction — memo Q7B). CD + CFO jointly; the CEO additionally above the
-  // config-driven exposure cap (default USD 25,000). Changes NEITHER contract value NOR the BOQ, and
-  // does NOT move the VO's status/lifecycle (CONST-VAR-011). RBAC: contractsApprove (an authority act).
-
-  @Get('variations/:id/at-risk-commencement')
-  @ApiOperation({ summary: 'List the at-risk commencement authorisations recorded on a VO (newest first)' })
-  @ApiParam({ name: 'id' })
-  listAtRiskCommencement(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
-    return this.atRiskCommencement.listForVariation(identity, id);
-  }
-
-  @Post('variations/:id/at-risk-commencement')
-  @RequirePermissions(PERMISSIONS.contractsApprove)
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary:
-      'Record an at-risk commencement authorisation (CD+CFO; +CEO above the config cap). Never informal; no contract-value or BOQ change (CONST-VAR-011)',
-  })
-  @ApiParam({ name: 'id' })
-  @ApiResponse({ status: 200, description: 'Authorisation recorded' })
-  @ApiResponse({ status: 400, description: 'VO already client-approved/terminal, or CEO required/forbidden by the cap' })
-  @ApiResponse({ status: 403, description: 'Caller is not CD/CFO/CEO' })
-  recordAtRiskCommencement(
-    @CurrentUser() identity: RequestIdentity,
-    @Param('id') id: string,
-    @Body() dto: RecordAtRiskCommencementDto,
-  ) {
-    return this.atRiskCommencement.record(identity, id, dto);
-  }
-
   // ─── Scope-in (ADR-026 CONST-VAR-007, Phase 2) ──────────────────────────────
   //
   // Materialise a CLIENT_APPROVED VO's scope into the project's BOQ as VARIATION-tagged nodes on a
@@ -329,5 +263,33 @@ export class VariationsController {
     @Body() dto: WithdrawVariationDto,
   ) {
     return this.service.withdraw(identity, id, dto);
+  }
+
+  // ─── Reverse / un-adopt (variation-collapse) ────────────────────────────────
+  //
+  // Un-adopt a CLIENT_APPROVED, BOQ-adopted, UNBILLED variation: retract its VARIATION nodes from the
+  // operational BOQ (hard-delete — they are referenced by no financial record), lower the current
+  // contract value by the VO net, clear the applied marker, and move the VO to WITHDRAWN. Blocked once
+  // any billing allocation exists ("reverse the invoice first"). Authority act → contractsApprove.
+
+  @Post('variations/:id/reverse')
+  @RequirePermissions(PERMISSIONS.contractsApprove)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Reverse (un-adopt) a client-approved, adopted, UNBILLED variation: retract its BOQ scope, lower the contract value, → WITHDRAWN',
+  })
+  @ApiParam({ name: 'id' })
+  @ApiResponse({ status: 200, description: 'Variation reversed; BOQ scope retracted and contract value lowered' })
+  @ApiResponse({
+    status: 409,
+    description: 'VO is not CLIENT_APPROVED, not adopted, or already billed (reverse the invoice first)',
+  })
+  reverse(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: ReverseVariationDto,
+  ) {
+    return this.reverseVariation.reverse(identity, id, dto);
   }
 }

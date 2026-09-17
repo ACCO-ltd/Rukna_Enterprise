@@ -584,18 +584,21 @@
       },
       "variation": {
         "name": "Variation",
-        "tagline": "The client pays — raise the contract",
-        "detail": "Creates a draft variation for approval. Once the client approves and it is adopted, the line appears and the contract value moves.",
-        "consequence": "Contract {from} → {to}",
-        "cta": "Create variation"
+        "tagline": "The client pays — raise the contract now",
+        "detail": "Adds the work to the contract now and bills it with its stage. The contract value moves immediately.",
+        "consequence": "Adds to the contract now: {from} → {to}",
+        "cta": "Raise variation"
       },
       "separate": {
         "name": "Separate charge",
         "tagline": "Bill it one-off, outside the contract",
-        "detail": "Adds a separately-billed line. The contract value is unchanged; total client revenue rises.",
-        "consequence": "Client revenue → {amount}",
+        "detail": "Raises a one-off invoice the client pays separately. It is not added to the contract; total client revenue rises.",
+        "consequence": "Raises a {amount} invoice now — paid separately, not added to the contract",
         "cta": "Add separate charge"
       },
+      "clientRefLabel": "Client approval ref (optional)",
+      "clientRefPlaceholder": "e.g. signed VO number or client letter reference",
+      "variationRaised": "Variation raised and added to the contract.",
       "variationCreated": "Draft variation created — sent to Commercial for approval",
       "absorbed": "Extra work absorbed from contingency.",
       "separateAdded": "Separate charge added.",

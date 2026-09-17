@@ -326,8 +326,13 @@ export class ClientInvoiceService {
   async generateFromSeparateCharge(
     identity: RequestIdentity,
     dto: GenerateInvoiceFromSeparateChargeDto,
+    // When the extra-work classifier passes its own transaction client, the idempotency read AND the
+    // create run inside it, so the SEPARATE_CHARGE node write and this invoice commit atomically —
+    // exactly like the `tx` seam on `generateFromInstallment` / `generateStandaloneCharge`. Absent, the
+    // legacy standalone path (own client) is unchanged.
+    tx?: Prisma.TransactionClient,
   ) {
-    const prisma = this.tenancyService.getClient();
+    const prisma = tx ?? this.tenancyService.getClient();
     const { activeOrganizationId: orgId, userId } = identity;
 
     const existing = await this.repo.findByBoqNode(prisma, orgId, dto.boqNodeId);

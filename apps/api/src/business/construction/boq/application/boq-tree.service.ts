@@ -1044,13 +1044,20 @@ export class BoqTreeService {
     });
   }
 
-  /** A leaf's signed contribution to the in-contract total; zero for anything that does not count. */
+  /**
+   * A leaf's signed contribution to the in-contract total; zero for anything that does not count.
+   *
+   * Every caller here evaluates a node that is being created or updated on the operational version —
+   * i.e. an ACTIVE node (only the reverse-variation path deactivates, and it never goes through this
+   * pin). So the contribution is judged as active: the `isActive` filter in `contributesToInContractTotal`
+   * (which excludes reversed/soft-deleted leaves) is satisfied by construction here.
+   */
   private inContractContribution(
     node: Pick<BoqNode, 'isLeaf' | 'commercialTreatment'>,
     amount: DecimalString | null,
   ): Decimal {
     const zero = toDecimal('0')!;
-    if (!contributesToInContractTotal(node)) return zero;
+    if (!contributesToInContractTotal({ ...node, isActive: true })) return zero;
     return toDecimal(amount) ?? zero;
   }
 

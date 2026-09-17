@@ -1,27 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsOptional, MaxLength } from 'class-validator';
 
-/**
- * ADR-026 CONST-VAR-004 / OQ-4 (provisional) — the client-approval evidence payload.
- *
- * OQ-4 is still open (what constitutes "client + contractual approval", and whether this transition
- * is itself governed). Provisional shape: require a `clientApprovalReference` (signed VO number /
- * client letter reference) plus an optional note. See the TODO(OQ-4) in the service.
- */
-export class ClientApproveVariationDto {
-  @ApiProperty({ description: 'Client/contractual approval reference (signed VO no. or letter ref).' })
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(255)
-  clientApprovalReference!: string;
-
-  @ApiPropertyOptional()
-  @IsString()
-  @MaxLength(2000)
-  @IsOptional()
-  note?: string;
-}
-
 // reject requires a reason (CONST-VAR-004). withdraw's reason is optional.
 export class RejectVariationDto {
   @ApiProperty({ description: 'Reason for rejection (required).' })
@@ -33,6 +12,16 @@ export class RejectVariationDto {
 
 export class WithdrawVariationDto {
   @ApiPropertyOptional()
+  @IsString()
+  @MaxLength(500)
+  @IsOptional()
+  reason?: string;
+}
+
+// variation-collapse — reverse (un-adopt) an adopted, unbilled variation. Optional reason, mirroring
+// withdraw; it is recorded on the WITHDRAWN transition + the reverse audit event.
+export class ReverseVariationDto {
+  @ApiPropertyOptional({ description: 'Optional reason for reversing (un-adopting) the variation.' })
   @IsString()
   @MaxLength(500)
   @IsOptional()

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { FilePlus2, GitBranch, TriangleAlert } from 'lucide-react';
+import { GitBranch, TriangleAlert } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -20,14 +20,12 @@ import type { CommercialSummaryResponse, VariationOrderListItem } from '@erp/typ
 
 import { EmptyState } from '@/components/empty-state';
 import { formatMoney } from '@/lib/format';
-import { usePermissions } from '@/features/auth/permissions/can';
 
 import { useBillingPackages, useVariations } from '../hooks/use-commercial';
 import { summariseVariations, variationClientApproval, variationKind } from '../variations-summary';
 import { variationStatusTone } from '../presentation';
 import { PositionBand, type PositionFigure } from './contract-position';
 import { errorText } from './commercial-workspace';
-import { VariationCreateSheet } from './variation-create-sheet';
 import { VariationDetailSheet } from './variation-detail-sheet';
 import { ExtensionOfTimeSection } from './extension-of-time-section';
 import { CertifiedInvoicedByVariationSection } from './certified-invoiced-by-variation-section';
@@ -38,17 +36,18 @@ import {
 } from './variation-billing-chip';
 
 /**
- * Variations (ADR-026 Phases 1–5).
+ * Variations (ADR-026 · variation-collapse).
  *
- * The governing rule the whole view is shaped around: **a variation changes the contract value
- * only when the client has approved it** (CONST-VAR-005). So the summary band reports pending
- * separately from approved and never adds them, the list keeps the internal workflow state and
- * the client's approval in different columns, and at-risk work — sanctioned early under
- * CONST-VAR-011 — is marked as the exposure it is rather than blending into approved scope.
+ * variation-collapse: variations are now created ONLY via the BOQ "Add Extra Work" drawer, which
+ * raises AND adopts the VO in one step — so this tab is a **read-only ledger**. There is no "New
+ * variation" entry point here anymore. The summary band still reports pending separately from
+ * approved (pending stays as a figure for any historical/in-flight rows), and the list keeps the
+ * internal workflow state and the client's approval in different columns. A raised variation is
+ * immediately client-approved and adopted; the only mutation the reader can make is to **reverse**
+ * an unbilled one, from the detail sheet.
  *
- * Time is the second rule: a proposed `+N days` is justification, not effect. The contractual
- * completion date moves only through an Extension of Time, which is its own audited command and
- * its own section below.
+ * Time is a separate rule: a proposed `+N days` is justification, not effect. The contractual
+ * completion date moves only through an Extension of Time, its own audited command and section below.
  */
 export function VariationsTab({
   projectId,
@@ -59,13 +58,11 @@ export function VariationsTab({
 }) {
   const t = useTranslations('commercial.variations');
   const locale = useLocale() as 'en' | 'ar';
-  const { can } = usePermissions();
 
   const contract = summary.mainContract;
   const variationsQuery = useVariations(contract?.id);
   const packagesQuery = useBillingPackages(projectId, contract?.id);
 
-  const [createOpen, setCreateOpen] = React.useState(false);
   const [detailId, setDetailId] = React.useState<string | null>(null);
 
   // The per-VO billing lookup (S-VB-12): a VO appears in at most one package line (its single
@@ -82,7 +79,7 @@ export function VariationsTab({
     return <EmptyState variant="page" title={t('noContractTitle')} description={t('noContractHint')} />;
   }
 
-  const canManage = can('manage:contract');
+  const canReverse = summary.capabilities?.canReverseVariation ?? false;
   const currency = summary.currency ?? contract.currency;
   const variations = variationsQuery.data?.variations ?? [];
 
@@ -102,16 +99,6 @@ export function VariationsTab({
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-body-sm font-semibold text-foreground">{t('listTitle')}</h3>
-          {canManage ? (
-            <Button
-              size="sm"
-              className="min-h-11 sm:min-h-0"
-              onClick={() => setCreateOpen(true)}
-            >
-              <FilePlus2 size={15} aria-hidden="true" />
-              {t('new')}
-            </Button>
-          ) : null}
         </div>
 
         {variationsQuery.isPending ? (
@@ -137,14 +124,6 @@ export function VariationsTab({
             variant="page"
             title={t('emptyTitle')}
             description={t('emptyHint')}
-            action={
-              canManage ? (
-                <Button onClick={() => setCreateOpen(true)}>
-                  <FilePlus2 size={15} aria-hidden="true" />
-                  {t('new')}
-                </Button>
-              ) : undefined
-            }
           />
         ) : (
           <div className="overflow-hidden rounded-panel border border-border bg-surface">
@@ -188,21 +167,13 @@ export function VariationsTab({
         variations={variations}
       />
 
-      <VariationCreateSheet
-        projectId={projectId}
-        contractId={contract.id}
-        currency={currency}
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        onCreated={(id) => setDetailId(id)}
-      />
-
       <VariationDetailSheet
         variationId={detailId}
         contractId={contract.id}
         projectId={projectId}
         currency={currency}
         billing={detailId ? (billingLookup.get(detailId) ?? null) : null}
+        canReverse={canReverse}
         open={detailId !== null}
         onOpenChange={(open) => {
           if (!open) setDetailId(null);

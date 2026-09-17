@@ -308,6 +308,23 @@ describe('ADR-023 — getCurrentCycle for a MILESTONE contract', () => {
     expect(res.paymentSchedule?.variationLines).toHaveLength(0);
   });
 
+  // variation-collapse — a reversed (un-adopted) VO is WITHDRAWN and its applied marker is cleared, so
+  // it is no longer CLIENT_APPROVED + boqAppliedAt and drops out of the schedule's variation lines.
+  it('a reversed / WITHDRAWN VO drops out of variationLines', async () => {
+    const reversedVo = {
+      id: 'vo-9', reference: 'VO-009', title: 'Reversed scope', status: 'WITHDRAWN',
+      boqAppliedAt: null, lines: [{ amount: new Decimal('20000') }],
+    };
+    const { service } = build({
+      contract: milestoneContract,
+      installments: accoPlan,
+      invoices: [],
+      variationInputs: [reversedVo],
+    });
+    const res = await service.getCurrentCycle(financeIdentity, 'p-1');
+    expect(res.paymentSchedule?.variationLines).toHaveLength(0);
+  });
+
   it('V-3: VO line amount is withheld without financial visibility, structure stays', async () => {
     const { service } = build({
       contract: milestoneContract,
@@ -791,6 +808,22 @@ describe('CommercialService capabilities (B4)', () => {
       const res = await build({ contract: { ...baseContract, status } }).service.getSummary(approve, 'p-1');
       expect(res.capabilities.canReopenContract).toBe(false);
     }
+  });
+
+  // variation-collapse — canReverseVariation is the coarse approve permission; the fine-grained
+  // adopted/not-billed check stays server-side in ReverseVariationService.reverse.
+  it('canReverseVariation: true with approve authority, false without it', async () => {
+    const withApprove = await build({}).service.getSummary(
+      identityWith([PERMISSIONS.contractsView, PERMISSIONS.contractsApprove]),
+      'p-1',
+    );
+    expect(withApprove.capabilities.canReverseVariation).toBe(true);
+
+    const withoutApprove = await build({}).service.getSummary(
+      identityWith([PERMISSIONS.contractsView, PERMISSIONS.contractsManage]),
+      'p-1',
+    );
+    expect(withoutApprove.capabilities.canReverseVariation).toBe(false);
   });
 });
 
