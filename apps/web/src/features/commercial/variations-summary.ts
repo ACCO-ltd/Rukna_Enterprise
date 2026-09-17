@@ -24,60 +24,24 @@ export function variationKind(vo: Pick<VariationOrderListItem, 'netPrice'>): Var
   return net > 0 ? 'VARIATION' : 'OMISSION';
 }
 
-/**
- * The client's answer, kept separate from the internal workflow state.
- *
- * These are genuinely two different facts: a variation can be `INTERNAL_APPROVED` — ACCO has
- * signed off internally — while the client has said nothing at all. Collapsing them into one
- * "Pending" column hides which of the two is holding the money up, which is the single most
- * useful thing the row can tell a commercial manager.
- */
-export type VariationClientApproval = 'APPROVED' | 'REJECTED' | 'WITHDRAWN' | 'PENDING' | 'NOT_SUBMITTED';
-
-export function variationClientApproval(
-  vo: Pick<VariationOrderListItem, 'status'>,
-): VariationClientApproval {
-  switch (vo.status) {
-    case 'CLIENT_APPROVED':
-      return 'APPROVED';
-    case 'REJECTED':
-      return 'REJECTED';
-    case 'WITHDRAWN':
-      return 'WITHDRAWN';
-    // Internally approved and awaiting the client is the one state where "pending client" is
-    // the literal truth. Everything earlier has not reached the client yet.
-    case 'INTERNAL_APPROVED':
-      return 'PENDING';
-    default:
-      return 'NOT_SUBMITTED';
-  }
-}
-
 export interface VariationTotals {
-  pendingCount: number;
   approvedCount: number;
   omissionCount: number;
   /** Σ net price of client-approved omissions — a signed, negative decimal string. */
   omissionsTotal: string;
-  atRiskCount: number;
-  /** Σ recorded at-risk exposure across the contract's variations, as a decimal string. */
-  atRiskExposure: string;
 }
 
 /**
- * Counts and the two totals the server does not already provide.
+ * Counts and the one total the server does not already provide.
  *
- * `omissionsTotal` and `atRiskExposure` are sums of figures the server derived per row, not
- * re-derivations of them: the browser adds numbers it was given, it does not decide what a
- * variation is worth. Amounts are summed in cents to avoid float drift on a column of decimals.
+ * `omissionsTotal` is a sum of figures the server derived per row, not a re-derivation of them:
+ * the browser adds numbers it was given, it does not decide what a variation is worth. Amounts
+ * are summed in cents to avoid float drift on a column of decimals.
  */
 export function summariseVariations(variations: VariationOrderListItem[]): VariationTotals {
-  let pendingCount = 0;
   let approvedCount = 0;
   let omissionCount = 0;
   let omissionCents = 0;
-  let atRiskCount = 0;
-  let atRiskCents = 0;
 
   for (const vo of variations) {
     if (vo.status === 'CLIENT_APPROVED') {
@@ -86,23 +50,13 @@ export function summariseVariations(variations: VariationOrderListItem[]): Varia
         omissionCount += 1;
         omissionCents += toCents(vo.netPrice);
       }
-    } else if (vo.status === 'PENDING_INTERNAL' || vo.status === 'INTERNAL_APPROVED') {
-      pendingCount += 1;
-    }
-
-    if (vo.atRiskAuthorisationCount > 0) {
-      atRiskCount += 1;
-      atRiskCents += toCents(vo.atRiskExposure);
     }
   }
 
   return {
-    pendingCount,
     approvedCount,
     omissionCount,
     omissionsTotal: fromCents(omissionCents),
-    atRiskCount,
-    atRiskExposure: fromCents(atRiskCents),
   };
 }
 

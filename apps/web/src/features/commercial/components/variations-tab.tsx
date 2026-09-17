@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { GitBranch, TriangleAlert } from 'lucide-react';
+import { GitBranch } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -22,7 +22,7 @@ import { EmptyState } from '@/components/empty-state';
 import { formatMoney } from '@/lib/format';
 
 import { useBillingPackages, useVariations } from '../hooks/use-commercial';
-import { summariseVariations, variationClientApproval, variationKind } from '../variations-summary';
+import { summariseVariations, variationKind } from '../variations-summary';
 import { variationStatusTone } from '../presentation';
 import { PositionBand, type PositionFigure } from './contract-position';
 import { errorText } from './commercial-workspace';
@@ -88,7 +88,6 @@ export function VariationsTab({
       <VariationSummaryBand
         variations={variations}
         currency={currency}
-        pendingValue={summary.contractValue?.pendingVariations ?? null}
         approvedValue={summary.contractValue?.approvedVariationsTotal ?? null}
         financialsVisible={summary.financialsVisible}
         loading={variationsQuery.isPending}
@@ -136,8 +135,7 @@ export function VariationsTab({
                     <TableHead>{t('col.type')}</TableHead>
                     <TableHead className="text-end">{t('col.netPrice')}</TableHead>
                     <TableHead className="text-end">{t('col.timeImpact')}</TableHead>
-                    <TableHead>{t('col.internalStatus')}</TableHead>
-                    <TableHead>{t('col.clientApproval')}</TableHead>
+                    <TableHead>{t('col.status')}</TableHead>
                     <TableHead>{t('col.billing')}</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -184,25 +182,23 @@ export function VariationsTab({
 }
 
 /**
- * Pending · Approved · Omissions · At-risk exposure.
+ * Approved · Omissions.
  *
- * Four figures that must never be added together, so they are presented as four answers to four
- * questions rather than a total. Approved is the only one inside the contract value; pending is
- * management information (CONST-VAR-006a); omissions are a signed subset of approved, shown
- * because a reader asking "what has been taken out" should not have to filter the list; at-risk
- * exposure is money ACCO has put at risk and the client has not yet agreed to at all.
+ * Two figures that must never be added together, so they are stated as two answers rather than a
+ * total. Approved is the variations value inside the contract; omissions are a signed subset of
+ * it, shown because a reader asking "what has been taken out" should not have to filter the list.
+ * (Under variation-collapse a raised variation is client-approved immediately, so there is no
+ * "pending" bucket and no at-risk exposure to report.)
  */
 function VariationSummaryBand({
   variations,
   currency,
-  pendingValue,
   approvedValue,
   financialsVisible,
   loading,
 }: {
   variations: VariationOrderListItem[];
   currency: string | null;
-  pendingValue: string | null;
   approvedValue: string | null;
   financialsVisible: boolean;
   loading: boolean;
@@ -223,13 +219,6 @@ function VariationSummaryBand({
       currency={currency}
       figures={[
         {
-          label: t('pending'),
-          value: money(pendingValue),
-          blank,
-          support: t('count', { n: totals.pendingCount }),
-          small: true,
-        },
-        {
           label: t('approved'),
           value: money(approvedValue),
           blank,
@@ -241,14 +230,6 @@ function VariationSummaryBand({
           value: money(totals.omissionsTotal),
           blank,
           support: t('count', { n: totals.omissionCount }),
-          small: true,
-        },
-        {
-          label: t('atRisk'),
-          value: money(totals.atRiskExposure),
-          blank,
-          support:
-            totals.atRiskCount > 0 ? t('atRiskCount', { n: totals.atRiskCount }) : t('atRiskNone'),
           small: true,
         },
       ]}
@@ -270,7 +251,6 @@ function VariationRow({
   onOpen: () => void;
 }) {
   const t = useTranslations('commercial.variations');
-  const approval = variationClientApproval(vo);
   const kind = variationKind(vo);
 
   return (
@@ -288,19 +268,7 @@ function VariationRow({
       <TableCell className="whitespace-nowrap font-mono text-caption text-muted-foreground">
         {vo.reference}
       </TableCell>
-      <TableCell className="font-medium text-foreground">
-        <span className="flex flex-wrap items-center gap-1.5">
-          {vo.title}
-          {/* At-risk work is sanctioned but unapproved. Marking it in the list is the whole
-              point of CONST-VAR-011 — it must never look like ordinary approved scope. */}
-          {vo.atRiskAuthorisationCount > 0 ? (
-            <Badge tone="warning">
-              <TriangleAlert size={11} className="me-1" aria-hidden="true" />
-              {t('atRiskBadge')}
-            </Badge>
-          ) : null}
-        </span>
-      </TableCell>
+      <TableCell className="font-medium text-foreground">{vo.title}</TableCell>
       <TableCell className="whitespace-nowrap text-caption text-muted-foreground">
         {t(`kind.${kind}`)}
       </TableCell>
@@ -315,9 +283,6 @@ function VariationRow({
       </TableCell>
       <TableCell>
         <Badge tone={variationStatusTone(vo.status)}>{t(`status.${vo.status}`)}</Badge>
-      </TableCell>
-      <TableCell className="whitespace-nowrap text-caption text-muted-foreground">
-        {t(`clientApproval.${approval}`)}
       </TableCell>
       <TableCell className="whitespace-nowrap">
         <VariationBillingChip status={vo.status} billing={billing} />
