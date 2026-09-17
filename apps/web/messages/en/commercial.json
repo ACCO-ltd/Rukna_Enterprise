@@ -693,8 +693,6 @@
       "status": "Status",
       "timeImpact": "Time impact",
       "type": "Type",
-      "internalStatus": "Internal status",
-      "clientApproval": "Client approval",
       "billing": "Billing"
     },
     "billing": {
@@ -775,28 +773,16 @@
         "invoiced": "Invoiced to date"
       }
     },
-    "atRiskBadge": "At risk",
     "summary": {
       "title": "Variation position",
-      "pending": "Pending client approval",
       "approved": "Approved variations",
       "omissions": "Omissions",
-      "atRisk": "At-risk exposure",
-      "count": "{n} variations",
-      "atRiskCount": "on {n} variations",
-      "atRiskNone": "None authorised"
+      "count": "{n} variations"
     },
     "kind": {
       "VARIATION": "Variation",
       "OMISSION": "Omission",
       "NEUTRAL": "No value change"
-    },
-    "clientApproval": {
-      "APPROVED": "Approved",
-      "REJECTED": "Rejected",
-      "WITHDRAWN": "Withdrawn",
-      "PENDING": "Pending",
-      "NOT_SUBMITTED": "Not submitted"
     }
   },
   "eot": {

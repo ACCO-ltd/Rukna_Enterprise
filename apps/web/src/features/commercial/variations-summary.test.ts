@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { VariationOrderListItem } from '@erp/types';
 
-import { summariseVariations, variationClientApproval, variationKind } from './variations-summary';
+import { summariseVariations, variationKind } from './variations-summary';
 
 function vo(overrides: Partial<VariationOrderListItem> = {}): VariationOrderListItem {
   return {
@@ -49,33 +49,17 @@ describe('variationKind', () => {
   });
 });
 
-describe('variationClientApproval', () => {
-  /**
-   * Internal workflow state and the client's answer are two different facts. Only a variation
-   * ACCO has internally approved is genuinely waiting on the client; anything earlier has not
-   * reached them, and saying "pending client" there would point at the wrong desk.
-   */
-  it('separates the client answer from the internal state', () => {
-    expect(variationClientApproval(vo({ status: 'DRAFT' }))).toBe('NOT_SUBMITTED');
-    expect(variationClientApproval(vo({ status: 'PENDING_INTERNAL' }))).toBe('NOT_SUBMITTED');
-    expect(variationClientApproval(vo({ status: 'INTERNAL_APPROVED' }))).toBe('PENDING');
-    expect(variationClientApproval(vo({ status: 'CLIENT_APPROVED' }))).toBe('APPROVED');
-    expect(variationClientApproval(vo({ status: 'REJECTED' }))).toBe('REJECTED');
-    expect(variationClientApproval(vo({ status: 'WITHDRAWN' }))).toBe('WITHDRAWN');
-  });
-});
-
 describe('summariseVariations', () => {
-  it('counts pending as the two in-flight states only', () => {
+  it('counts only client-approved variations as approved', () => {
     const totals = summariseVariations([
       vo({ id: 'a', status: 'DRAFT' }),
-      vo({ id: 'b', status: 'PENDING_INTERNAL' }),
-      vo({ id: 'c', status: 'INTERNAL_APPROVED' }),
+      vo({ id: 'b', status: 'CLIENT_APPROVED' }),
+      vo({ id: 'c', status: 'CLIENT_APPROVED' }),
       vo({ id: 'd', status: 'REJECTED' }),
       vo({ id: 'e', status: 'WITHDRAWN' }),
     ]);
-    expect(totals.pendingCount).toBe(2);
-    expect(totals.approvedCount).toBe(0);
+    expect(totals.approvedCount).toBe(2);
+    expect(totals.omissionCount).toBe(0);
   });
 
   /** Omissions are a signed subset of *approved* scope — a proposed omission is not yet a cut. */
@@ -99,24 +83,5 @@ describe('summariseVariations', () => {
       ),
     );
     expect(totals.omissionsTotal).toBe('-0.30');
-  });
-
-  it('adds at-risk exposure only where an authorisation exists', () => {
-    const totals = summariseVariations([
-      vo({ id: 'a', atRiskAuthorisationCount: 1, atRiskExposure: '20000.00' }),
-      vo({ id: 'b', atRiskAuthorisationCount: 2, atRiskExposure: '5000.00' }),
-      vo({ id: 'c', atRiskAuthorisationCount: 0, atRiskExposure: '0.00' }),
-    ]);
-    expect(totals.atRiskCount).toBe(2);
-    expect(totals.atRiskExposure).toBe('25000.00');
-  });
-
-  /** A withheld figure contributes nothing rather than being read as a zero it did not assert. */
-  it('tolerates withheld amounts without financial visibility', () => {
-    const totals = summariseVariations([
-      vo({ id: 'a', atRiskAuthorisationCount: 1, atRiskExposure: null }),
-    ]);
-    expect(totals.atRiskCount).toBe(1);
-    expect(totals.atRiskExposure).toBe('0.00');
   });
 });

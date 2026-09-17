@@ -190,57 +190,23 @@ beforeEach(() => {
 });
 
 describe('VariationsTab — the position band renders backend figures only', () => {
-  it('reports pending separately from approved and never adds them', () => {
+  it('shows the approved variations figure and never invents a summed total', () => {
     stubHooks();
     renderWithProviders(<VariationsTab projectId="p-1" summary={summary()} />, {
       permissions: MANAGE,
       withToast: true,
     });
 
-    // CONST-VAR-006a: the two figures are peers, stated apart. Nothing on screen may show
-    // approved + pending as a single total — that would be a contract value nobody agreed to.
-    expect(screen.getByText('Pending client approval')).toBeInTheDocument();
     expect(screen.getByText('Approved variations')).toBeInTheDocument();
     // `getAllByText` because the approved total also appears as the VO's own net price in the
     // list below — the same figure, correctly, in two places.
     expect(screen.getAllByText(/25,000/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/5,000/).length).toBeGreaterThan(0);
+
+    // variation-collapse prune: a raised variation is client-approved immediately, so the band no
+    // longer carries a "pending" or "at-risk" bucket, and it never shows a summed total.
+    expect(screen.queryByText('Pending client approval')).not.toBeInTheDocument();
+    expect(screen.queryByText('At-risk exposure')).not.toBeInTheDocument();
     expect(screen.queryByText(/30,000/)).not.toBeInTheDocument();
-
-    // The rule is stated on screen, not left for the reader to infer from the layout.
-    expect(
-      screen.getByText(/contract value changes only when a variation is client-approved/i),
-    ).toBeInTheDocument();
-  });
-
-  /**
-   * CONST-VAR-011: at-risk work is sanctioned but unapproved. It must be visible as exposure in
-   * the band and marked on its own row — never blended into approved scope.
-   */
-  it('surfaces at-risk exposure in the band and marks the row', () => {
-    stubHooks({
-      variations: [
-        listItem({
-          id: 'vo-9',
-          reference: 'VO-009',
-          title: 'Urgent slab works',
-          status: 'INTERNAL_APPROVED',
-          atRiskAuthorisationCount: 1,
-          atRiskExposure: '20000.00',
-        }),
-      ],
-    });
-    renderWithProviders(<VariationsTab projectId="p-1" summary={summary()} />, {
-      permissions: MANAGE,
-      withToast: true,
-    });
-
-    expect(screen.getByText('At-risk exposure')).toBeInTheDocument();
-    expect(screen.getByText(/20,000/)).toBeInTheDocument();
-    expect(screen.getByText('At risk')).toBeInTheDocument();
-    // Internal state and the client's answer stay in different columns.
-    expect(screen.getByText('Internally approved')).toBeInTheDocument();
-    expect(screen.getByText('Pending')).toBeInTheDocument();
   });
 
   it('renders the no-contract empty state when there is no main contract', () => {
