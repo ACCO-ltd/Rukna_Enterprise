@@ -374,6 +374,26 @@ export class BoqPrismaRepository {
   }
 
   /**
+   * Hard-delete every node on `versionId` that carries this variation's provenance
+   * (`sourceChangeOrderId = voId`) — the section + its leaves. Used by the reverse (un-adopt) command,
+   * which only runs after proving the VO is UNBILLED, so these nodes are referenced by no financial
+   * record. Deleting (not deactivating) keeps the BOQ total and the lowered contract value in sync:
+   * the totals read `findNodesByVersion`, which does NOT filter on isActive, so a deactivated node
+   * would still count and leave the BOQ total unchanged while the contract value dropped. Returns the
+   * number of nodes removed.
+   */
+  async deleteNodesForVariation(
+    prisma: PrismaClient,
+    versionId: string,
+    voId: string,
+  ): Promise<number> {
+    const result = await prisma.boqNode.deleteMany({
+      where: { versionId, sourceChangeOrderId: voId },
+    });
+    return result.count;
+  }
+
+  /**
    * Rewrites a sibling range to a dense `0..n-1` sequence — CONST-BOQ-017.
    *
    * Two passes, because `(version_id, parent_id, sort_order)` is a non-deferrable unique

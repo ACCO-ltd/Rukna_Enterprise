@@ -7,7 +7,6 @@ import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import type { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import type { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import type { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
-import type { CommandGovernanceService } from '../../../../platform/workflows/application/command-governance.service.js';
 import { VariationOrderPrismaRepository } from '../infrastructure/variation-order-prisma.repository.js';
 import { VariationOrderService } from '../application/variation-order.service.js';
 
@@ -42,9 +41,6 @@ describe('certifiedInvoicedByVariation (CONST-VAR-008)', () => {
   const VAR_CERT_SUP = '999.00'; // variation node, IPC#3 (NON-effective — must be ignored)
 
   beforeAll(async () => {
-    const ungoverned = {
-      gateStateTransition: async () => null,
-    } as unknown as CommandGovernanceService;
     const tenancy = { getClient: () => prisma } as unknown as TenancyService;
     // assertContract is exercised by real routing in prod; here we let every assert pass and rely on
     // the repository's org+contract scoping (the thing under test) to enforce isolation.
@@ -61,7 +57,6 @@ describe('certifiedInvoicedByVariation (CONST-VAR-008)', () => {
       new VariationOrderPrismaRepository(),
       projectAccess,
       auditOutbox,
-      ungoverned,
     );
 
     identity = {

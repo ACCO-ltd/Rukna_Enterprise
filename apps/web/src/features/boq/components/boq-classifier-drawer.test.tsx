@@ -44,14 +44,14 @@ describe('BoqClassifierDrawer — decision-first who-pays', () => {
     expect(screen.getAllByText(/2,342,000/).length).toBeGreaterThan(0);
   });
 
-  it('submits the Variation route (the only committed write path) with the entered figures', () => {
+  it('submits the Variation route (adopted inline) with the entered figures', () => {
     const { onSubmit } = render();
     fireEvent.change(screen.getByLabelText(/What is the work/i), {
       target: { value: 'Steel canopy' },
     });
     fireEvent.change(screen.getByLabelText(/^Amount/i), { target: { value: '2000' } });
     // Variation is the default selected route.
-    fireEvent.click(screen.getByRole('button', { name: /Create variation/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Raise variation/i }));
     expect(onSubmit).toHaveBeenCalledWith({
       route: 'VARIATION',
       description: 'Steel canopy',
@@ -59,9 +59,36 @@ describe('BoqClassifierDrawer — decision-first who-pays', () => {
     });
   });
 
+  it('passes the optional client approval reference through on the Variation route', () => {
+    const { onSubmit } = render();
+    fireEvent.change(screen.getByLabelText(/What is the work/i), {
+      target: { value: 'Steel canopy' },
+    });
+    fireEvent.change(screen.getByLabelText(/^Amount/i), { target: { value: '2000' } });
+    fireEvent.change(screen.getByLabelText(/Client approval ref/i), {
+      target: { value: 'VO-SIGNED-7' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Raise variation/i }));
+    expect(onSubmit).toHaveBeenCalledWith({
+      route: 'VARIATION',
+      description: 'Steel canopy',
+      amount: '2000.00',
+      clientApprovalReference: 'VO-SIGNED-7',
+    });
+  });
+
+  it('shows the client approval ref only for the Variation route', () => {
+    render();
+    // Variation is the default — the field is present.
+    expect(screen.getByLabelText(/Client approval ref/i)).toBeInTheDocument();
+    // Switching to Separate hides it (Separate is a one-off client invoice, not a VO).
+    fireEvent.click(screen.getByRole('radio', { name: /Separate charge/i }));
+    expect(screen.queryByLabelText(/Client approval ref/i)).not.toBeInTheDocument();
+  });
+
   it('keeps the CTA disabled until a description and a positive amount are entered', () => {
     render();
-    const cta = screen.getByRole('button', { name: /Create variation/i });
+    const cta = screen.getByRole('button', { name: /Raise variation/i });
     expect(cta).toBeDisabled();
     fireEvent.change(screen.getByLabelText(/What is the work/i), {
       target: { value: 'X' },

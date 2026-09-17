@@ -1531,6 +1531,9 @@ export class CommercialService {
       // accept is as wrong as one that offers a control the server refuses.
       canRecordReceipt: has(PERMISSIONS.receiptsCreate),
       canAllocateReceipt: has(PERMISSIONS.receiptsAllocate) || has(PERMISSIONS.receivablesManage),
+      // variation-collapse — the coarse permission answer for reversing (un-adopting) a variation.
+      // The fine-grained not-billed/adopted check stays server-side in ReverseVariationService.reverse.
+      canReverseVariation: has(PERMISSIONS.contractsApprove),
     };
   }
 }

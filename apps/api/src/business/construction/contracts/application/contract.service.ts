@@ -587,6 +587,63 @@ export class ContractService {
     };
   }
 
+  /**
+   * variation-collapse — the INVERSE of `raiseCurrentValueForVariation`: LOWER the current
+   * `contractValue` by a reversed (un-adopted) variation's net.
+   *
+   * The Contract-side seam the Variations reverse command calls when a CLIENT_APPROVED, adopted,
+   * UNBILLED VO is un-adopted. It runs INSIDE the caller's reverse transaction (`tx`) so the value
+   * lower commits atomically with the BOQ node deletion, the fresh reduced SNAPSHOT, the cleared
+   * applied-marker, and the WITHDRAWN transition — there is never a state where the scope was retracted
+   * but the contract value did not move, or vice versa.
+   *
+   * `baseContractValue` is NEVER touched here (mirrors the raise — T-2): the milestone % schedule
+   * derives from the frozen base, so a reversal lowers only the current value. The new current value is
+   * `contractValue − netDelta`; reusing the ABSOLUTE setter (`raiseCurrentContractValue`) so the raise
+   * and lower share one write path.
+   */
+  async lowerCurrentValueForVariation(
+    tx: Prisma.TransactionClient,
+    identity: RequestIdentity,
+    contractId: string,
+    variation: { id: string; reference: string; netDelta: Prisma.Decimal },
+  ): Promise<{ previousContractValue: string; newContractValue: string; baseContractValue: string | null }> {
+    const orgId = identity.activeOrganizationId;
+    const contract = await this.repo.findValueForRaise(tx, orgId, contractId);
+    if (!contract) throw new NotFoundException(`Contract ${contractId} not found`);
+
+    const previous = new Prisma.Decimal(contract.contractValue.toString());
+    const next = previous.minus(variation.netDelta);
+    const previousStr = previous.toFixed(2);
+    const newStr = next.toFixed(2);
+
+    await this.repo.raiseCurrentContractValue(tx, contractId, newStr);
+
+    await this.auditOutbox.record(tx, {
+      organizationId: orgId,
+      actorUserId: identity.userId,
+      action: 'UPDATE',
+      resourceType: 'Contract',
+      resourceId: contractId,
+      sourceCommand: 'contract.lowerCurrentValueForVariation',
+      eventType: 'CONTRACT_VALUE_LOWERED_BY_VARIATION_REVERSAL',
+      idempotencyKey: `contract-value-lower-${contractId}-${variation.id}`,
+      before: { contractValue: previousStr },
+      after: {
+        contractValue: newStr,
+        variationId: variation.id,
+        variationReference: variation.reference,
+        netDelta: variation.netDelta.toFixed(2),
+      },
+    });
+
+    return {
+      previousContractValue: previousStr,
+      newContractValue: newStr,
+      baseContractValue: contract.baseContractValue ? contract.baseContractValue.toString() : null,
+    };
+  }
+
   // ─── Lifecycle commands ───────────────────────────────────────────────────────
 
   async transition(identity: RequestIdentity, id: string, command: string) {

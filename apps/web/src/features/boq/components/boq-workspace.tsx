@@ -2,7 +2,6 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { ArrowRight, ClipboardList, FileSpreadsheet, GitCompare, History, Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import {
@@ -92,7 +91,6 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const tCommon = useTranslations('common');
   const { can } = usePermissions();
   const { toast } = useToast();
-  const router = useRouter();
 
   const guidance = useProjectGuidance(projectId);
   const workspaceQuery = useBoqWorkspace(projectId);
@@ -108,8 +106,6 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const [classifierOpen, setClassifierOpen] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
-  // Draft variations raised in this session but not yet adopted — the H1 pending affordance.
-  const [pendingVariations, setPendingVariations] = useState(0);
 
   // The one operational version the redesign works on: prefer the working draft, else the
   // approved/committed one. No user-facing version switching (Decision 9).
@@ -354,8 +350,9 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         pricedPercent={pricedPercent}
         unpricedCount={unpricedCount}
         signedContractValue={band?.baseContractValue ?? null}
-        pendingVariationCount={pendingVariations}
-        onReviewVariations={() => router.push(`/projects/${projectId}/commercial/variations`)}
+        // variation-collapse: a raised variation is adopted immediately, never "pending", so the
+        // workspace never seeds a pending count. The committed hint below still links to the ledger.
+        pendingVariationCount={0}
         primaryAction={primaryAction}
         secondaryActions={
           <>
@@ -516,8 +513,9 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
           contingencyRemaining={band?.contingencyRemaining ?? null}
           contractValue={band?.contractValue ?? null}
           totalClientRevenue={band?.totalClientRevenue ?? null}
-          // Absorb (an ABSORBED leaf funded from contingency) and Separate (a SEPARATE_CHARGE leaf)
-          // write via POST .../boq/extra-work (R5); Variation routes to the Commercial flow.
+          // All three routes write via POST .../boq/extra-work (R5, variation-collapse): Absorb adds
+          // an ABSORBED leaf from contingency, Separate a SEPARATE_CHARGE leaf, and Variation creates
+          // AND adopts the VO inline (contract value rises immediately).
           absorbEnabled
           separateEnabled
           isPending={addExtraWork.isPending}
@@ -614,28 +612,32 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   }
 
   /**
-   * The who-pays classifier's decision (R5). ABSORB and SEPARATE write immediately via the
-   * extra-work route; the drawer stays open until success so a 400 (e.g. contingency insufficient)
-   * shows in place. VARIATION raises a DRAFT VO in the Commercial flow and records the pending
-   * affordance (H1) so the moment never dead-ends.
+   * The who-pays classifier's decision (R5, variation-collapse). All three routes write immediately
+   * via the extra-work route and the drawer stays open until success, so a 400 (e.g. contingency
+   * insufficient) shows in place. VARIATION now creates AND adopts the variation in one step — it
+   * raises the contract value inline and nests under a billing stage, so there is no redirect and no
+   * "pending" framing: on success the BOQ workspace query invalidation (via useAddExtraWork) refreshes
+   * the money band and tree so the raised value shows here.
    */
   function handleClassify(result: ClassifierResult) {
-    if (result.route === 'VARIATION') {
-      setClassifierOpen(false);
-      setPendingVariations((n) => n + 1);
-      toast({ title: t('classifier.variationCreated') });
-      router.push(`/projects/${projectId}/commercial/variations`);
-      return;
-    }
-
     addExtraWork.mutate(
-      { treatment: result.route, lines: [{ description: result.description, amount: result.amount }] },
+      {
+        treatment: result.route,
+        lines: [{ description: result.description, amount: result.amount }],
+        ...(result.clientApprovalReference
+          ? { clientApprovalReference: result.clientApprovalReference }
+          : {}),
+      },
       {
         onSuccess: () => {
           setClassifierOpen(false);
           toast({
             title: t(
-              result.route === 'ABSORB' ? 'classifier.absorbed' : 'classifier.separateAdded',
+              result.route === 'VARIATION'
+                ? 'classifier.variationRaised'
+                : result.route === 'ABSORB'
+                  ? 'classifier.absorbed'
+                  : 'classifier.separateAdded',
             ),
           });
         },

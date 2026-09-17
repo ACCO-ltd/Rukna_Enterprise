@@ -77,6 +77,7 @@ function applications(
       canManageGuarantee: false,
       canRecordReceipt: false,
       canAllocateReceipt: false,
+      canReverseVariation: false,
     },
     asOf: '2026-08-26T00:00:00.000Z',
   };
@@ -116,6 +117,7 @@ function summary(): CommercialSummaryResponse {
       canManageGuarantee: false,
       canRecordReceipt: false,
       canAllocateReceipt: false,
+      canReverseVariation: false,
     },
     recentActivity: [],
     asOf: '2026-08-26T00:00:00.000Z',

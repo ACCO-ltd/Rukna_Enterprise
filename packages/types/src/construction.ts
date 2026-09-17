@@ -1418,6 +1418,12 @@ export interface CommercialCapabilities {
   canManageGuarantee: boolean;
   canRecordReceipt: boolean;
   canAllocateReceipt: boolean;
+  /**
+   * variation-collapse — whether the caller may reverse (un-adopt) an adopted variation. This is the
+   * coarse permission answer (`approve:contract`); the fine-grained "is this specific VO adopted and
+   * not yet billed?" check stays server-side in ReverseVariationService.reverse (a 409 otherwise).
+   */
+  canReverseVariation: boolean;
 }
 
 export type CommercialAttentionKind =
@@ -2349,6 +2355,11 @@ export interface VariationOrderLineResponse {
  * ADR-026 CONST-VAR-001 — a VariationOrder: a first-class change document owned by one Contract.
  * `netPrice` is derived from the lines (Σ amount) and may be negative; it is the proposed net
  * (CONST-VAR-003) until CLIENT_APPROVED, at which point the figures freeze (CONST-VAR-010).
+ *
+ * variation-collapse: the approval workflow was removed — a VO is now raised straight to
+ * CLIENT_APPROVED + adopted-to-BOQ in one step, and un-adopted (→ WITHDRAWN) via reverse. The two
+ * intermediate statuses PENDING_INTERNAL / INTERNAL_APPROVED are DORMANT: still valid enum members
+ * (kept for historical/in-flight rows — no enum surgery) but unreachable by any operative command.
  */
 export interface VariationOrderResponse {
   id: string;

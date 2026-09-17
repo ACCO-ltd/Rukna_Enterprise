@@ -27,6 +27,8 @@ export interface ClassifierResult {
   description: string;
   /** Decimal string (2dp), the amount of the extra work. */
   amount: string;
+  /** VARIATION only: the paper VO reference the client signed (optional, ≤120 chars). */
+  clientApprovalReference?: string;
 }
 
 /**
@@ -36,13 +38,14 @@ export interface ClassifierResult {
  * amount to a server-supplied base only for the arithmetic the user is about to authorise, and
  * label it as a projection).
  *
- * Route reachability (R11 backend reality):
- *  - VARIATION writes a DRAFT VO (reachable via the Commercial variations flow) — feedback + a
- *    pending row follow (H1). `onSubmit` is invoked.
- *  - ABSORB (add new ABSORBED scope) and SEPARATE (add a SEPARATE_CHARGE leaf) have service
- *    methods but NO committed HTTP route yet. When `absorbEnabled`/`separateEnabled` is false the
- *    route still previews its consequence but the CTA is disabled with an honest "not available
- *    yet" note — never a fake success.
+ * Route reachability (variation-collapse — all three write immediately via
+ * `POST .../boq/extra-work`, and every consequence is now the real, immediate effect):
+ *  - VARIATION creates AND adopts the variation in one step — the contract value rises now and the
+ *    line nests under its billing stage. There is no separate approval flow to route to.
+ *  - SEPARATE adds a SEPARATE_CHARGE leaf and raises a one-off client invoice now.
+ *  - ABSORB adds an ABSORBED leaf funded net-zero from contingency.
+ * When `absorbEnabled`/`separateEnabled` is false the route still previews its consequence but the
+ * CTA is disabled with an honest "not available yet" note — never a fake success.
  */
 export function BoqClassifierDrawer({
   open,
@@ -76,6 +79,8 @@ export function BoqClassifierDrawer({
   const [route, setRoute] = useState<ClassifierRoute | ''>('VARIATION');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
+  // VARIATION only: the paper VO reference the client signed. Optional — never blocks submit.
+  const [clientApprovalReference, setClientApprovalReference] = useState('');
 
   const money = (v: string | null): string | null => formatMoney(v, currency, locale);
 
@@ -207,6 +212,22 @@ export function BoqClassifierDrawer({
             options={options}
           />
 
+          {/* The paper VO reference the client signed. Variation adopts immediately, so capturing
+              the client's approval ref here keeps the audit trail intact — but it never blocks the
+              raise (a verbal go-ahead is common; the reference follows on paper). */}
+          {route === 'VARIATION' ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="classifier-client-ref">{t('clientRefLabel')}</Label>
+              <Input
+                id="classifier-client-ref"
+                value={clientApprovalReference}
+                onChange={(event) => setClientApprovalReference(event.target.value)}
+                maxLength={120}
+                placeholder={t('clientRefPlaceholder')}
+              />
+            </div>
+          ) : null}
+
           {errorMessage ? (
             <p className="text-body-sm text-danger" role="alert">
               {errorMessage}
@@ -220,10 +241,16 @@ export function BoqClassifierDrawer({
           </Button>
           <Button
             disabled={!canSubmit || isPending}
-            onClick={() =>
-              route !== '' &&
-              onSubmit({ route, description: description.trim(), amount: normalize(amount) })
-            }
+            onClick={() => {
+              if (route === '') return;
+              const ref = clientApprovalReference.trim();
+              onSubmit({
+                route,
+                description: description.trim(),
+                amount: normalize(amount),
+                ...(route === 'VARIATION' && ref ? { clientApprovalReference: ref } : {}),
+              });
+            }}
           >
             {cta}
           </Button>

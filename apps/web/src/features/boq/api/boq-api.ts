@@ -259,13 +259,16 @@ export interface ExtraWorkLinePayload {
 
 /**
  * Body for `POST .../boq/extra-work`, mirroring `AddExtraWorkDto` (ADR-029 R5, the who-pays
- * classifier). `contractId`/`variationTitle` apply to VARIATION only.
+ * classifier). `contractId`/`variationTitle`/`clientApprovalReference` apply to VARIATION only —
+ * VARIATION now creates AND adopts the variation in one step (variation-collapse), raising the
+ * contract value immediately; `clientApprovalReference` (≤120 chars) records the paper VO ref.
  */
 export interface AddExtraWorkPayload {
   treatment: 'ABSORB' | 'VARIATION' | 'SEPARATE';
   lines: ExtraWorkLinePayload[];
   contractId?: string;
   variationTitle?: string;
+  clientApprovalReference?: string;
 }
 
 /**

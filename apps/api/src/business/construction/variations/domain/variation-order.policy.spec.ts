@@ -17,35 +17,42 @@ const ALL_STATUSES: VariationOrderStatusValue[] = [
   'WITHDRAWN',
 ];
 
-describe('VariationOrderPolicy — lifecycle guards (ADR-026 CONST-VAR-004)', () => {
-  describe('forward transitions', () => {
-    it('submit: only DRAFT → PENDING_INTERNAL', () => {
-      expect(VariationOrderPolicy.evaluateTransition('DRAFT', 'submit')).toEqual({
-        allowed: true,
-        to: 'PENDING_INTERNAL',
-      });
-      for (const s of ALL_STATUSES.filter((s) => s !== 'DRAFT')) {
-        expect(VariationOrderPolicy.evaluateTransition(s, 'submit').allowed).toBe(false);
+describe('VariationOrderPolicy — lifecycle guards (ADR-026 CONST-VAR-004, variation-collapse)', () => {
+  describe('the approval workflow is retired: no forward command is reachable', () => {
+    // variation-collapse — submit/internalApprove/clientApprove were removed from the command union
+    // and the FORWARD table. Only reject/withdraw remain. The two intermediate statuses are still
+    // valid enum members (kept for history/in-flight rows) but no operative command reaches them.
+    it('the command union is exactly { reject, withdraw }', () => {
+      // A compile-time guarantee mirrored at runtime: only reject/withdraw evaluate to a decision that
+      // can be `allowed`. Every other string is rejected as an unknown command (never throws).
+      const known = ['reject', 'withdraw'] as const;
+      for (const cmd of known) {
+        // From DRAFT both are allowed (pre-client, non-terminal).
+        expect(VariationOrderPolicy.evaluateTransition('DRAFT', cmd).allowed).toBe(true);
       }
     });
 
-    it('internalApprove: only PENDING_INTERNAL → INTERNAL_APPROVED', () => {
-      expect(VariationOrderPolicy.evaluateTransition('PENDING_INTERNAL', 'internalApprove')).toEqual({
-        allowed: true,
-        to: 'INTERNAL_APPROVED',
-      });
-      for (const s of ALL_STATUSES.filter((s) => s !== 'PENDING_INTERNAL')) {
-        expect(VariationOrderPolicy.evaluateTransition(s, 'internalApprove').allowed).toBe(false);
+    it('PENDING_INTERNAL and INTERNAL_APPROVED are still valid enum members', () => {
+      // They appear in the exhaustive status list and are handled by every pure predicate without
+      // throwing — they are dormant, not deleted.
+      for (const s of ['PENDING_INTERNAL', 'INTERNAL_APPROVED'] as VariationOrderStatusValue[]) {
+        expect(ALL_STATUSES).toContain(s);
+        expect(() => VariationOrderPolicy.isTerminal(s)).not.toThrow();
+        expect(() => VariationOrderPolicy.fieldsEditable(s)).not.toThrow();
+        expect(() => VariationOrderPolicy.countsTowardPending(s)).not.toThrow();
       }
     });
 
-    it('clientApprove: only INTERNAL_APPROVED → CLIENT_APPROVED', () => {
-      expect(VariationOrderPolicy.evaluateTransition('INTERNAL_APPROVED', 'clientApprove')).toEqual({
-        allowed: true,
-        to: 'CLIENT_APPROVED',
-      });
-      for (const s of ALL_STATUSES.filter((s) => s !== 'INTERNAL_APPROVED')) {
-        expect(VariationOrderPolicy.evaluateTransition(s, 'clientApprove').allowed).toBe(false);
+    it('neither dormant status is forward-reachable by any operative command', () => {
+      // No status → PENDING_INTERNAL / INTERNAL_APPROVED transition exists anymore: the only decisions
+      // that resolve `to` are REJECTED (reject) and WITHDRAWN (withdraw).
+      for (const s of ALL_STATUSES) {
+        for (const cmd of ['reject', 'withdraw'] as const) {
+          const decision = VariationOrderPolicy.evaluateTransition(s, cmd);
+          if (decision.allowed) {
+            expect(['REJECTED', 'WITHDRAWN']).toContain(decision.to);
+          }
+        }
       }
     });
   });

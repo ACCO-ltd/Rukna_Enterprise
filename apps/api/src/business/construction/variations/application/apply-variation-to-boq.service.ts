@@ -12,6 +12,7 @@ import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs
 import { BoqVersioningService } from '../../boq/application/boq-versioning.service.js';
 import { ContractService } from '../../contracts/application/contract.service.js';
 import { VariationOrderPrismaRepository } from '../infrastructure/variation-order-prisma.repository.js';
+import { lineAmount } from '../domain/variation-order.policy.js';
 
 /**
  * ADR-029 V-1/V-2 (CONST-BOQ-032), extends ADR-026 CONST-VAR-007 — adopt a client-approved on-contract
@@ -143,6 +144,141 @@ export class ApplyVariationToBoqService {
       snapshotVersionId: result.applied.snapshotVersionId,
       newContractValue: result.raised.newContractValue,
       appliedAt: appliedAt.toISOString(),
+    };
+  }
+
+  /**
+   * variation-collapse — raise a variation and adopt it into the BOQ in ONE atomic step.
+   *
+   * The BOQ "Add Extra Work" drawer's VARIATION path. The old flow created a DRAFT VO that then had to
+   * be walked through submit → internal-approve → client-approve → apply-to-boq; that approval workflow
+   * is retired. Here a variation is raised directly to CLIENT_APPROVED and adopted onto the committed
+   * BOQ (its scope appended in place, the current contract value raised) in one transaction, so there
+   * is never a state where the VO exists but its scope/value did not land. Returns the same shape as
+   * `apply()`.
+   *
+   * The client-approval evidence is the optional `clientApprovalReference` (ACCO records the signed VO
+   * number / letter reference); there is no separate governed approval gate anymore.
+   */
+  async raiseAndAdopt(
+    identity: RequestIdentity,
+    contractId: string,
+    dto: {
+      title: string;
+      lines: Array<{ description: string; quantity: number; unitRate: number }>;
+      clientApprovalReference?: string;
+    },
+  ): Promise<ApplyVariationToBoqResponse> {
+    await this.projectAccess.assertContract(identity, contractId);
+    const prisma = this.tenancy.getClient();
+    const orgId = identity.activeOrganizationId;
+
+    const contract = await this.repo.findContract(prisma, orgId, contractId);
+    if (!contract) throw new NotFoundException(`Contract ${contractId} not found`);
+
+    const seq = await this.repo.nextReferenceSeq(prisma, contractId);
+    const reference = `VO-${String(seq).padStart(3, '0')}`;
+
+    // Build the priced lines (signed amount = quantity × unitRate at 2dp — the pure policy), and the
+    // net delta that raises the current contract value (Σ amount; an omission subtracts).
+    const lines = dto.lines.map((l, i) => {
+      const quantity = new Decimal(l.quantity);
+      const unitRate = new Decimal(l.unitRate);
+      return {
+        description: l.description,
+        quantity,
+        unitRate,
+        amount: lineAmount({ quantity, unitRate }),
+        sortOrder: i,
+      };
+    });
+    const netDelta = lines.reduce((sum, l) => sum.plus(l.amount), new Decimal(0));
+
+    const projectId = contract.projectId;
+    const now = new Date();
+
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Create the VO (lands DRAFT).
+      const vo = await this.repo.create(tx, {
+        organizationId: orgId,
+        contractId,
+        reference,
+        title: dto.title,
+        createdBy: identity.userId,
+        lines,
+      });
+
+      // 2. Move it straight to CLIENT_APPROVED (no approval workflow — variation-collapse).
+      await this.repo.transition(tx, vo.id, 'CLIENT_APPROVED', {
+        clientApprovedBy: identity.userId,
+        clientApprovedAt: now,
+        clientApprovalReference: dto.clientApprovalReference ?? null,
+      });
+
+      // 3. Append the VO scope in place on the committed BOQ + cut the fresh snapshot.
+      const applied = await this.boqVersioning.appendVariationNodes(tx, identity, projectId, {
+        id: vo.id,
+        reference,
+        lines: lines.map((l) => ({
+          description: l.description,
+          quantity: l.quantity,
+          unitRate: l.unitRate,
+          amount: l.amount,
+          sortOrder: l.sortOrder,
+        })),
+      });
+
+      // 4. Raise the current contract value by the VO net (base stays frozen).
+      const raised = await this.contracts.raiseCurrentValueForVariation(tx, identity, contractId, {
+        id: vo.id,
+        reference,
+        netDelta,
+      });
+
+      // 5. Stamp the VO applied (idempotency marker) against the operational version.
+      await this.repo.markBoqApplied(tx, vo.id, {
+        boqAppliedBy: identity.userId,
+        boqAppliedAt: now,
+        boqAppliedVersionId: applied.versionId,
+      });
+
+      // 6. One business audit event for the whole raise-and-adopt.
+      await this.auditOutbox.record(tx, {
+        organizationId: orgId,
+        actorUserId: identity.userId,
+        action: 'CREATE',
+        resourceType: 'VariationOrder',
+        resourceId: vo.id,
+        sourceCommand: 'variation.raiseAndAdopt',
+        eventType: 'VARIATION_ORDER_RAISED_AND_ADOPTED',
+        idempotencyKey: `variation-raise-adopt-${vo.id}`,
+        after: {
+          contractId,
+          reference,
+          status: 'CLIENT_APPROVED',
+          lineCount: lines.length,
+          boqVersionId: applied.versionId,
+          snapshotVersionId: applied.snapshotVersionId,
+          nodeCount: applied.nodeCount,
+          netDelta: netDelta.toFixed(2),
+          previousContractValue: raised.previousContractValue,
+          newContractValue: raised.newContractValue,
+          clientApprovalReference: dto.clientApprovalReference ?? null,
+        },
+      });
+
+      return { voId: vo.id, applied, raised };
+    });
+
+    return {
+      variationId: result.voId,
+      reference,
+      projectId,
+      boqVersionId: result.applied.versionId,
+      nodeCount: result.applied.nodeCount,
+      snapshotVersionId: result.applied.snapshotVersionId,
+      newContractValue: result.raised.newContractValue,
+      appliedAt: now.toISOString(),
     };
   }
 }

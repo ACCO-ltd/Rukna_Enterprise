@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { screen } from '@testing-library/react';
 import type {
   CommercialBillingPackage,
   CommercialContractValue,
@@ -20,14 +19,7 @@ vi.mock('../hooks/use-commercial', () => ({
   useBillingPackages: vi.fn(),
   useExtensionsOfTime: vi.fn(),
   useCertifiedInvoicedByVariation: vi.fn(),
-  useAtRiskCommencements: vi.fn(),
-  useCreateVariation: vi.fn(),
-  useSubmitVariation: vi.fn(),
-  useInternalApproveVariation: vi.fn(),
-  useClientApproveVariation: vi.fn(),
-  useRejectVariation: vi.fn(),
-  useWithdrawVariation: vi.fn(),
-  useRecordAtRiskCommencement: vi.fn(),
+  useReverseVariation: vi.fn(),
   useGrantExtensionOfTime: vi.fn(),
 }));
 
@@ -133,7 +125,6 @@ function stubHooks(options: {
   variations?: VariationOrderListItem[];
   packages?: CommercialBillingPackage[];
   financialsVisible?: boolean;
-  createMutate?: ReturnType<typeof vi.fn>;
 } = {}) {
   vi.mocked(hooks.useVariations).mockReturnValue({
     isPending: false,
@@ -183,38 +174,11 @@ function stubHooks(options: {
     refetch: vi.fn(),
   } as unknown as ReturnType<typeof hooks.useCertifiedInvoicedByVariation>);
 
-  // At-risk list — only reached via the detail sheet (never opened in these tests), stubbed empty.
-  vi.mocked(hooks.useAtRiskCommencements).mockReturnValue({
-    isPending: false,
-    isError: false,
-    data: [],
-    refetch: vi.fn(),
-  } as unknown as ReturnType<typeof hooks.useAtRiskCommencements>);
-
   // A bare idle mutation; each mock casts it to its own hook's exact return type.
   const idle = () => ({ mutate: vi.fn(), isPending: false });
 
-  vi.mocked(hooks.useCreateVariation).mockReturnValue({
-    mutate: options.createMutate ?? vi.fn(),
-    isPending: false,
-  } as unknown as ReturnType<typeof hooks.useCreateVariation>);
-  vi.mocked(hooks.useSubmitVariation).mockReturnValue(
-    idle() as unknown as ReturnType<typeof hooks.useSubmitVariation>,
-  );
-  vi.mocked(hooks.useInternalApproveVariation).mockReturnValue(
-    idle() as unknown as ReturnType<typeof hooks.useInternalApproveVariation>,
-  );
-  vi.mocked(hooks.useClientApproveVariation).mockReturnValue(
-    idle() as unknown as ReturnType<typeof hooks.useClientApproveVariation>,
-  );
-  vi.mocked(hooks.useRejectVariation).mockReturnValue(
-    idle() as unknown as ReturnType<typeof hooks.useRejectVariation>,
-  );
-  vi.mocked(hooks.useWithdrawVariation).mockReturnValue(
-    idle() as unknown as ReturnType<typeof hooks.useWithdrawVariation>,
-  );
-  vi.mocked(hooks.useRecordAtRiskCommencement).mockReturnValue(
-    idle() as unknown as ReturnType<typeof hooks.useRecordAtRiskCommencement>,
+  vi.mocked(hooks.useReverseVariation).mockReturnValue(
+    idle() as unknown as ReturnType<typeof hooks.useReverseVariation>,
   );
   vi.mocked(hooks.useGrantExtensionOfTime).mockReturnValue(
     idle() as unknown as ReturnType<typeof hooks.useGrantExtensionOfTime>,
@@ -315,7 +279,7 @@ describe('VariationsTab — list + status mapping', () => {
     expect(screen.getByText(/-\$?8,000/)).toBeInTheDocument();
   });
 
-  it('shows the empty state with a create action when there are no variations', () => {
+  it('shows the empty state when there are no variations', () => {
     stubHooks({ variations: [] });
     renderWithProviders(<VariationsTab projectId="p-1" summary={summary()} />, {
       permissions: MANAGE,
@@ -427,97 +391,23 @@ describe('VariationsTab — the "invoiced?" chip (S-VB-12)', () => {
   });
 });
 
-describe('VariationsTab — New variation gated by permission', () => {
-  it('offers "New variation" to a user who can manage the contract', () => {
+describe('VariationsTab — creation is drawer-only (variation-collapse)', () => {
+  it('offers no "New variation" entry point — variations are raised from the BOQ drawer', () => {
     stubHooks();
     renderWithProviders(<VariationsTab projectId="p-1" summary={summary()} />, {
       permissions: MANAGE,
-      withToast: true,
-    });
-    expect(screen.getAllByRole('button', { name: 'New variation' }).length).toBeGreaterThan(0);
-  });
-
-  it('hides "New variation" from a read-only user', () => {
-    stubHooks();
-    renderWithProviders(<VariationsTab projectId="p-1" summary={summary()} />, {
-      permissions: ['view:contract', 'view:financial-position'],
       withToast: true,
     });
     expect(screen.queryByRole('button', { name: 'New variation' })).not.toBeInTheDocument();
   });
-});
 
-describe('VariationsTab — create draft flow', () => {
-  it('defaults to Amount mode and folds a single figure into one line, titled from the VO title', async () => {
-    const user = userEvent.setup();
-    const createMutate = vi.fn();
-    stubHooks({ createMutate });
-
+  it('offers no create entry point even on the empty state', () => {
+    stubHooks({ variations: [] });
     renderWithProviders(<VariationsTab projectId="p-1" summary={summary()} />, {
       permissions: MANAGE,
       withToast: true,
     });
-
-    await user.click(screen.getAllByRole('button', { name: 'New variation' })[0]!);
-
-    const dialog = screen.getByRole('dialog');
-
-    // Title (required). Amount mode is the default — no "Itemize" switch needed.
-    await user.type(within(dialog).getByLabelText('Title'), 'Scope change');
-    await user.type(within(dialog).getByLabelText('Amount'), '2000');
-
-    await user.click(within(dialog).getByRole('button', { name: 'Save draft' }));
-
-    await waitFor(() => expect(createMutate).toHaveBeenCalledTimes(1));
-    const payload = createMutate.mock.calls[0]![0];
-    expect(payload.title).toBe('Scope change');
-    expect(payload.lines).toEqual([{ description: 'Scope change', quantity: 1, unitRate: 2000 }]);
-  });
-
-  it('sends the drafted lines with the omission quantity signed negative, in Itemize mode', async () => {
-    const user = userEvent.setup();
-    const createMutate = vi.fn();
-    stubHooks({ createMutate });
-
-    renderWithProviders(<VariationsTab projectId="p-1" summary={summary()} />, {
-      permissions: MANAGE,
-      withToast: true,
-    });
-
-    await user.click(screen.getAllByRole('button', { name: 'New variation' })[0]!);
-
-    const dialog = screen.getByRole('dialog');
-
-    // Title (required)
-    await user.type(within(dialog).getByLabelText('Title'), 'Scope change');
-
-    // Switch out of the default Amount mode into the quantity×rate editor.
-    await user.click(within(dialog).getByRole('tab', { name: 'Itemize by quantity & rate' }));
-
-    // Line 1 — addition (default). Only one line exists at this point.
-    await user.type(within(dialog).getByLabelText('Item'), 'Extra works');
-    await user.type(within(dialog).getByLabelText('Quantity'), '10');
-    await user.type(within(dialog).getByLabelText('Unit rate'), '100');
-
-    // Add a second line; fields are now indexed in DOM order (line 1, line 2).
-    await user.click(within(dialog).getByRole('button', { name: 'Add line' }));
-
-    // Line 2 — switch to omission, then fill the newly-added (second) set of inputs.
-    const omissionTabs = within(dialog).getAllByRole('tab', { name: 'Omission' });
-    await user.click(omissionTabs[1]!);
-    await user.type(within(dialog).getAllByLabelText('Item')[1]!, 'Removed fence');
-    await user.type(within(dialog).getAllByLabelText('Quantity')[1]!, '5');
-    await user.type(within(dialog).getAllByLabelText('Unit rate')[1]!, '40');
-
-    await user.click(within(dialog).getByRole('button', { name: 'Save draft' }));
-
-    await waitFor(() => expect(createMutate).toHaveBeenCalledTimes(1));
-    const payload = createMutate.mock.calls[0]![0];
-    expect(payload.title).toBe('Scope change');
-    expect(payload.lines).toEqual([
-      { description: 'Extra works', quantity: 10, unitRate: 100 },
-      // The omission is signed negative in the payload — the one place the sign is applied.
-      { description: 'Removed fence', quantity: -5, unitRate: 40 },
-    ]);
+    expect(screen.getByText('No variations yet')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'New variation' })).not.toBeInTheDocument();
   });
 });

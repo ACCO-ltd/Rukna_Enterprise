@@ -1,5 +1,4 @@
 import type {
-  AtRiskCommencementResponse,
   CommercialBillingResponse,
   CommercialBillingPackagesResponse,
   CommercialBillStageResult,
@@ -10,7 +9,6 @@ import type {
   ExtensionOfTimeListResponse,
   ExtensionOfTimeResponse,
   GrantExtensionOfTimeRequest,
-  RecordAtRiskCommencementRequest,
   VariationOrderListResponse,
   VariationOrderResponse,
 } from '@erp/types';
@@ -98,13 +96,15 @@ export function getCommercialBillingPackages(
   );
 }
 
-// ─── Variations & Change Orders (ADR-026 Phase 1) ───────────────────────────────
+// ─── Variations & Change Orders (ADR-026 Phase 1 · variation-collapse) ───────────
 //
 // Contract-scoped. Every figure here (net price, contract value) is derived by the server; the
-// UI renders it and never re-computes a rule. Line editing is DRAFT-only (the server rejects
-// otherwise); lifecycle transitions are guarded server-side by status and permission.
+// UI renders it and never re-computes a rule. Variations are now created ONLY via the BOQ
+// "Add Extra Work" drawer (which creates AND adopts in one step); the approval workflow was
+// removed. The one operative lifecycle command that remains here is `reverse` — un-adopting an
+// unbilled adopted variation. Read paths (list/detail/certified-invoiced) are unchanged.
 
-/** A single variation line the UI collects to seed a DRAFT (additions and signed-negative omissions). */
+/** A single variation line the UI collects (additions and signed-negative omissions). */
 export interface VariationLinePayload {
   description: string;
   /** May be negative to express an omission (CONST-VAR-002). */
@@ -112,23 +112,11 @@ export interface VariationLinePayload {
   unitRate: number;
 }
 
-export interface CreateVariationPayload {
-  title: string;
-  description?: string;
-  proposedTimeImpactDays?: number;
-  lines?: VariationLinePayload[];
-}
-
 export interface UpdateVariationLinePayload {
   description?: string;
   quantity?: number;
   unitRate?: number;
   sortOrder?: number;
-}
-
-export interface ClientApproveVariationPayload {
-  clientApprovalReference: string;
-  note?: string;
 }
 
 export function listVariations(contractId: string): Promise<VariationOrderListResponse> {
@@ -151,16 +139,6 @@ export function getCertifiedInvoicedByVariation(
   return apiClient<CertifiedInvoicedByVariationResponse>(
     `/contracts/${contractId}/variations/certified-invoiced`,
   );
-}
-
-export function createVariation(
-  contractId: string,
-  payload: CreateVariationPayload,
-): Promise<VariationOrderResponse> {
-  return apiClient<VariationOrderResponse>(`/contracts/${contractId}/variations`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
 }
 
 export function addVariationLine(
@@ -193,64 +171,20 @@ export function removeVariationLine(
   });
 }
 
-export function submitVariation(id: string): Promise<VariationOrderResponse> {
-  return apiClient<VariationOrderResponse>(`/variations/${id}/submit`, { method: 'POST' });
-}
-
-export function internalApproveVariation(id: string): Promise<VariationOrderResponse> {
-  return apiClient<VariationOrderResponse>(`/variations/${id}/internal-approve`, {
-    method: 'POST',
-  });
-}
-
-export function clientApproveVariation(
+/**
+ * Reverse (un-adopt) an adopted variation (variation-collapse). Lowers the contract value, removes
+ * its BOQ scope and marks it WITHDRAWN. The server is the sole authority for the "is this reversible"
+ * rule: it returns `409` when the VO is not CLIENT_APPROVED, not adopted, or already billed — the UI
+ * surfaces that message verbatim and re-implements no rule. `reason` is optional (audit note).
+ */
+export function reverseVariation(
   id: string,
-  payload: ClientApproveVariationPayload,
+  payload: { reason?: string } = {},
 ): Promise<VariationOrderResponse> {
-  return apiClient<VariationOrderResponse>(`/variations/${id}/client-approve`, {
+  return apiClient<VariationOrderResponse>(`/variations/${id}/reverse`, {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify(payload.reason ? { reason: payload.reason } : {}),
   });
-}
-
-export function rejectVariation(id: string, reason: string): Promise<VariationOrderResponse> {
-  return apiClient<VariationOrderResponse>(`/variations/${id}/reject`, {
-    method: 'POST',
-    body: JSON.stringify({ reason }),
-  });
-}
-
-export function withdrawVariation(id: string, reason?: string): Promise<VariationOrderResponse> {
-  return apiClient<VariationOrderResponse>(`/variations/${id}/withdraw`, {
-    method: 'POST',
-    body: JSON.stringify(reason ? { reason } : {}),
-  });
-}
-
-// ─── At-risk commencement (ADR-026 CONST-VAR-011, Phase 5, Route 7B) ────────────
-//
-// The audited authorisation to start urgent variation work BEFORE the VO is CLIENT_APPROVED. The
-// server is the sole authority for the cap rule (CD+CFO always; +CEO above the config cap): the
-// UI collects the fields and surfaces the server's 400/403 verbatim — it re-implements no rule.
-
-/** Existing at-risk authorisations recorded on a VO, newest first (bare array from the controller). */
-export function listAtRiskCommencements(
-  variationId: string,
-): Promise<AtRiskCommencementResponse[]> {
-  return apiClient<AtRiskCommencementResponse[]>(`/variations/${variationId}/at-risk-commencement`);
-}
-
-export function recordAtRiskCommencement(
-  variationId: string,
-  payload: RecordAtRiskCommencementRequest,
-): Promise<AtRiskCommencementResponse> {
-  return apiClient<AtRiskCommencementResponse>(
-    `/variations/${variationId}/at-risk-commencement`,
-    {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    },
-  );
 }
 
 // ─── Extension of Time (ADR-026 Phase 4) ────────────────────────────────────────

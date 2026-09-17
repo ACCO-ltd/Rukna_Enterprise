@@ -37,9 +37,22 @@ function build(opts: {
   const prisma = { $transaction: jest.fn(async (cb: (tx: unknown) => unknown) => cb({})) };
   const tenancy = { getClient: () => prisma } as never;
 
+  const created = makeVo();
   const repo = {
     findForApply: jest.fn(async () => opts.vo ?? makeVo()),
     markBoqApplied: jest.fn(async () => undefined),
+    // raiseAndAdopt path:
+    findContract: jest.fn(async () => ({
+      id: 'c-1',
+      projectId: 'p-1',
+      organizationId: 'org-1',
+      contractValue: new Decimal('1000000'),
+      currency: 'USD',
+      status: 'ACTIVE',
+    })),
+    nextReferenceSeq: jest.fn(async () => 1),
+    create: jest.fn(async () => ({ ...created, id: 'vo-1', reference: 'VO-001' })),
+    transition: jest.fn(async () => undefined),
   };
   const projectAccess = { assertContract: jest.fn().mockResolvedValue(undefined) };
   const auditOutbox = { record: jest.fn().mockResolvedValue(undefined) };
@@ -144,5 +157,78 @@ describe('ApplyVariationToBoqService (ADR-029 V-1/V-2, was CONST-VAR-007)', () =
     const { service, repo } = build();
     repo.findForApply.mockResolvedValueOnce(null as never);
     await expect(service.apply(identity, 'missing')).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('ApplyVariationToBoqService.raiseAndAdopt (variation-collapse)', () => {
+  it('creates the VO, moves it straight to CLIENT_APPROVED, appends BOQ scope, and raises the value in one tx', async () => {
+    const { service, repo, append, raise, auditOutbox } = build();
+
+    const res = await service.raiseAndAdopt(identity, 'c-1', {
+      title: 'Client variation',
+      lines: [
+        { description: 'Extra floor', quantity: 1, unitRate: 1000 },
+        { description: 'Signage', quantity: 1, unitRate: -100 },
+      ],
+      clientApprovalReference: 'SIGNED-VO-001',
+    });
+
+    // The VO is created (lands DRAFT) with the next reference…
+    expect(repo.create).toHaveBeenCalledTimes(1);
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ reference: 'VO-001', contractId: 'c-1', title: 'Client variation' }),
+    );
+    // …then transitioned straight to CLIENT_APPROVED (no submit/internal-approve — the workflow is gone).
+    expect(repo.transition).toHaveBeenCalledWith(
+      expect.anything(),
+      'vo-1',
+      'CLIENT_APPROVED',
+      expect.objectContaining({
+        clientApprovedBy: 'u1',
+        clientApprovalReference: 'SIGNED-VO-001',
+      }),
+    );
+
+    // The scope is appended in place and the current value is raised by the VO net (1000 + (−100) = 900).
+    expect(append).toHaveBeenCalledTimes(1);
+    expect(raise).toHaveBeenCalledTimes(1);
+    expect((raise.mock.calls[0]![3] as { netDelta: Decimal }).netDelta.toFixed(2)).toBe('900.00');
+
+    // The VO is stamped applied against the operational version (adopted in the same tx).
+    expect(repo.markBoqApplied).toHaveBeenCalledWith(
+      expect.anything(),
+      'vo-1',
+      expect.objectContaining({ boqAppliedVersionId: 'v-op', boqAppliedBy: 'u1' }),
+    );
+
+    // One raise-and-adopt audit event.
+    expect(auditOutbox.record).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        eventType: 'VARIATION_ORDER_RAISED_AND_ADOPTED',
+        idempotencyKey: 'variation-raise-adopt-vo-1',
+        after: expect.objectContaining({ status: 'CLIENT_APPROVED', netDelta: '900.00' }),
+      }),
+    );
+
+    // Same response shape as apply().
+    expect(res).toMatchObject({
+      variationId: 'vo-1',
+      reference: 'VO-001',
+      projectId: 'p-1',
+      boqVersionId: 'v-op',
+      snapshotVersionId: 'v-snap',
+      nodeCount: 2,
+      newContractValue: '1000900.00',
+    });
+  });
+
+  it('404s when the contract is not found', async () => {
+    const { service, repo } = build();
+    repo.findContract.mockResolvedValueOnce(null as never);
+    await expect(
+      service.raiseAndAdopt(identity, 'c-x', { title: 'X', lines: [] }),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
