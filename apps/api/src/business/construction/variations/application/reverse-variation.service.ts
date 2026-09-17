@@ -14,14 +14,16 @@ import type { ReverseVariationDto } from '../presentation/dto/lifecycle.dto.js';
  * variation-collapse — reverse (un-adopt) a variation that was raised-and-adopted in one step.
  *
  * The inverse of ApplyVariationToBoqService: it takes a CLIENT_APPROVED, BOQ-adopted, UNBILLED VO and,
- * in ONE transaction, retracts its scope from the committed BOQ (hard-deletes its nodes + cuts a fresh
- * reduced snapshot), lowers the current contract value by the VO net, clears the applied marker, and
- * moves the VO to WITHDRAWN. Same DI shape as ApplyVariationToBoqService.
+ * in ONE transaction, retracts its scope from the committed BOQ (soft-deletes its nodes via
+ * isActive=false + cuts a fresh reduced snapshot), lowers the current contract value by the VO net,
+ * clears the applied marker, and moves the VO to WITHDRAWN. Same DI shape as ApplyVariationToBoqService.
  *
  * Guards (all 409): the VO must be CLIENT_APPROVED; it must be adopted (boqAppliedAt set); and it must
  * be UNBILLED — a VO with any billing allocation cannot be reversed here ("reverse the invoice first"),
- * because that would strip scope a client has already been billed for. Only once the VO is proven
- * unbilled is the hard-delete of its BOQ nodes safe (no financial record references them).
+ * because that would strip scope a client has already been billed for. The billing guard is re-read
+ * INSIDE the transaction (the authoritative check) so a racing allocation between a pre-tx glance and
+ * the retraction cannot slip through (TOCTOU). Only once the VO is proven unbilled is deactivating its
+ * BOQ nodes safe (no financial record references them).
  */
 @Injectable()
 export class ReverseVariationService {
@@ -38,7 +40,7 @@ export class ReverseVariationService {
     identity: RequestIdentity,
     id: string,
     dto: ReverseVariationDto,
-  ): Promise<{ variationId: string; reference: string; projectId: string; boqVersionId: string; snapshotVersionId: string; removedCount: number; newContractValue: string; reversedAt: string }> {
+  ): Promise<{ variationId: string; reference: string; projectId: string; boqVersionId: string; snapshotVersionId: string; deactivatedCount: number; newContractValue: string; reversedAt: string }> {
     const prisma = this.tenancy.getClient();
     const orgId = identity.activeOrganizationId;
 
@@ -61,7 +63,10 @@ export class ReverseVariationService {
       );
     }
 
-    // Guard 3 — a billed VO cannot be reversed here: reverse the client invoice/allocation first.
+    // Guard 3 (fast pre-check) — a billed VO cannot be reversed here: reverse the client
+    // invoice/allocation first. This is a cheap early exit; it is NOT the authoritative check —
+    // that runs again INSIDE the transaction below (see the TOCTOU note), because an allocation could
+    // be created between this read and the retraction.
     const allocations = await this.repo.findAllocationsByVariation(prisma, orgId, id);
     if (allocations.length > 0) {
       throw new ConflictException(
@@ -79,6 +84,17 @@ export class ReverseVariationService {
     );
 
     const result = await prisma.$transaction(async (tx) => {
+      // 0. AUTHORITATIVE billing guard (TOCTOU): re-read the allocation ledger INSIDE the transaction,
+      //    before any retraction. The pre-tx glance above is only a fast early error — an allocation
+      //    could be created between that read and here. Re-reading in-tx (and throwing here) is the
+      //    binding check that guarantees we never strip scope a client has just been billed for.
+      const boundAllocations = await this.repo.findAllocationsByVariation(tx as never, orgId, id);
+      if (boundAllocations.length > 0) {
+        throw new ConflictException(
+          `Variation ${vo.reference} has already been billed — reverse the invoice first.`,
+        );
+      }
+
       // 1. Retract the VO scope from the committed BOQ + cut the fresh reduced snapshot.
       const retracted = await this.boqVersioning.retractVariationNodes(tx, identity, projectId, {
         id: vo.id,
@@ -113,7 +129,7 @@ export class ReverseVariationService {
           status: 'WITHDRAWN',
           boqVersionId: retracted.versionId,
           snapshotVersionId: retracted.snapshotVersionId,
-          removedCount: retracted.removedCount,
+          deactivatedCount: retracted.deactivatedCount,
           netDelta: netDelta.toFixed(2),
           previousContractValue: lowered.previousContractValue,
           newContractValue: lowered.newContractValue,
@@ -130,7 +146,7 @@ export class ReverseVariationService {
       projectId,
       boqVersionId: result.retracted.versionId,
       snapshotVersionId: result.retracted.snapshotVersionId,
-      removedCount: result.retracted.removedCount,
+      deactivatedCount: result.retracted.deactivatedCount,
       newContractValue: result.lowered.newContractValue,
       reversedAt: reversedAt.toISOString(),
     };

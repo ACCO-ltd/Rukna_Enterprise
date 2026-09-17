@@ -84,9 +84,23 @@ export class ExtraWorkClassifierService {
         // is billed immediately. contractValue is untouched (a separate charge never enters the total —
         // the generator bills off the leaf and feeds total client revenue, not the contract value).
         //
-        // Done sequentially (node then invoice) rather than in one shared tx: generateFromSeparateCharge
-        // opens its own client and is idempotent on sourceBoqNodeId (findByBoqNode short-circuits a
-        // repeat), so a retry never double-bills — threading a tx through the AR generator is not clean.
+        // ATOMICITY — the ideal is (addSeparateChargeLine + generateFromSeparateCharge) in one tx per
+        // line. `generateFromSeparateCharge` now accepts an optional tx (mirroring its siblings), but
+        // `addSeparateChargeLine` → `addNode` → `createNodeAtPosition` opens its OWN `prisma.$transaction`
+        // and resolves its own client; a `Prisma.TransactionClient` has no `$transaction`, so threading a
+        // caller tx through that shared BOQ write path is genuinely invasive (it would have to teach every
+        // node-write repo method to skip its own transaction when handed one). We deliberately do NOT force
+        // it here. Instead we stay sequential and lean on the invoice step's idempotency: it keys on
+        // `sourceBoqNodeId` (findByBoqNode short-circuits a repeat AND the DB unique index closes the
+        // race), so a full-request retry never double-bills. A hard error in either step surfaces to the
+        // caller unswallowed.
+        //
+        // RESIDUAL LIMITATION (documented, accepted for this fix): the node write and the invoice write
+        // are two commits, so if the invoice step fails AFTER the node is created, the SEPARATE_CHARGE node
+        // persists un-billed; a full-request retry re-runs every line and, because `addSeparateChargeLine`
+        // is NOT idempotent (it auto-numbers a fresh code), can create a DUPLICATE node for an
+        // already-created line — while the invoice step remains idempotent, so billing stays exactly-once.
+        // Fully closing this needs the tx-aware BOQ write path above (a follow-up), not this targeted fix.
         this.require(identity, PERMISSIONS.boqManage);
         const versionId = await this.boqTree.getOperationalVersionId(identity, projectId);
         const { invoiceDate, dueDate } = this.separateChargeDates();

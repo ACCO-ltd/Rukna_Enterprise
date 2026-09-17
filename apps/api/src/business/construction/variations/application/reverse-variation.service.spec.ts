@@ -49,7 +49,7 @@ function build(opts: {
   const auditOutbox = { record: jest.fn().mockResolvedValue(undefined) };
   const retract =
     opts.retract ??
-    jest.fn(async () => ({ versionId: 'v-op', snapshotVersionId: 'v-snap2', removedCount: 3 }));
+    jest.fn(async () => ({ versionId: 'v-op', snapshotVersionId: 'v-snap2', deactivatedCount: 3 }));
   const boqVersioning = { retractVariationNodes: retract };
   // base 1,000,000 frozen; current drops from 1,000,900 back to 1,000,000 by the VO net (−900).
   const lower =
@@ -153,8 +153,86 @@ describe('ReverseVariationService — happy path', () => {
       reference: 'VO-001',
       boqVersionId: 'v-op',
       snapshotVersionId: 'v-snap2',
-      removedCount: 3,
+      // The reversal DEACTIVATES (soft-deletes) the VO's nodes — the response reports the count
+      // deactivated, not deleted. retractVariationNodes (mocked) reports 3.
+      deactivatedCount: 3,
       newContractValue: '1000000.00',
     });
+  });
+
+  it('DEACTIVATES the VO nodes (soft delete) rather than hard-deleting them', async () => {
+    // The service delegates node retraction to boqVersioning.retractVariationNodes, whose contract is
+    // a soft delete (isActive=false via deactivateNodesForVariation) — the count it returns is the
+    // number deactivated, surfaced verbatim on the response and the audit event.
+    const retract = jest.fn(async () => ({
+      versionId: 'v-op',
+      snapshotVersionId: 'v-snap2',
+      deactivatedCount: 5,
+    }));
+    const { service, auditOutbox } = build({ retract });
+
+    const res = await service.reverse(identity, 'vo-1', {});
+
+    expect(retract).toHaveBeenCalledTimes(1);
+    expect(res.deactivatedCount).toBe(5);
+    expect(auditOutbox.record).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        after: expect.objectContaining({ deactivatedCount: 5 }),
+      }),
+    );
+  });
+});
+
+describe('ReverseVariationService — TOCTOU billing guard (FIX 2)', () => {
+  it('re-reads the allocation ledger INSIDE the transaction and refuses if it is now non-empty', async () => {
+    // The pre-tx glance sees NO allocations (so the fast pre-check passes), but a racing allocation
+    // lands before the retraction — the in-tx re-read must catch it and throw, and no retraction/lower
+    // may run. `findAllocationsByVariation` returns empty on the first (pre-tx) call, then a non-empty
+    // ledger on the second (in-tx) call.
+    const prisma = { $transaction: jest.fn(async (cb: (tx: unknown) => unknown) => cb({})) };
+    const tenancy = { getClient: () => prisma } as never;
+
+    const findAllocations = jest
+      .fn()
+      .mockResolvedValueOnce([]) // pre-tx fast check: clear
+      .mockResolvedValueOnce([{ id: 'a1', amount: new Decimal('400'), treatment: 'INVOICE' }]); // in-tx: raced
+
+    const repo = {
+      findForApply: jest.fn(async () => makeVo()),
+      findAllocationsByVariation: findAllocations,
+      clearBoqApplied: jest.fn(async () => undefined),
+      transition: jest.fn(async () => undefined),
+    };
+    const projectAccess = { assertContract: jest.fn().mockResolvedValue(undefined) };
+    const auditOutbox = { record: jest.fn().mockResolvedValue(undefined) };
+    const retract = jest.fn(async () => ({
+      versionId: 'v-op',
+      snapshotVersionId: 'v-snap2',
+      deactivatedCount: 3,
+    }));
+    const lower = jest.fn(async () => ({
+      previousContractValue: '1000900.00',
+      newContractValue: '1000000.00',
+      baseContractValue: '1000000.00',
+    }));
+    const boqVersioning = { retractVariationNodes: retract };
+    const contracts = { lowerCurrentValueForVariation: lower };
+
+    const service = new ReverseVariationService(
+      tenancy,
+      repo as never,
+      projectAccess as never,
+      auditOutbox as never,
+      boqVersioning as never,
+      contracts as never,
+    );
+
+    await expect(service.reverse(identity, 'vo-1', {})).rejects.toBeInstanceOf(ConflictException);
+    // The in-tx guard fired BEFORE any retraction/lower/transition.
+    expect(findAllocations).toHaveBeenCalledTimes(2);
+    expect(retract).not.toHaveBeenCalled();
+    expect(lower).not.toHaveBeenCalled();
+    expect(repo.transition).not.toHaveBeenCalled();
   });
 });

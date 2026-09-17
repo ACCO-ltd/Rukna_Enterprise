@@ -52,16 +52,12 @@ const TERMINAL: ReadonlySet<VariationOrderStatusValue> = new Set<VariationOrderS
   'WITHDRAWN',
 ]);
 
-// The forward-command table. After the variation-collapse the only operative commands are reject and
-// withdraw — both handled specially (multiple valid from-states), below — so this table is now empty.
-// The former submit / internalApprove / clientApprove steps (DRAFT → PENDING_INTERNAL →
-// INTERNAL_APPROVED → CLIENT_APPROVED) were retired with the approval workflow; a VO is now raised
-// straight to CLIENT_APPROVED by the atomic raiseAndAdopt path, so PENDING_INTERNAL / INTERNAL_APPROVED
-// are unreachable by any command.
-const FORWARD: Record<
-  Exclude<VariationOrderCommand, 'reject' | 'withdraw'>,
-  { from: VariationOrderStatusValue; to: VariationOrderStatusValue }
-> = {} as const;
+// After the variation-collapse the only operative commands are reject and withdraw — both handled
+// directly in `evaluateTransition` below (each is valid from multiple from-states). There is no longer
+// a forward-command table: the former submit / internalApprove / clientApprove steps (DRAFT →
+// PENDING_INTERNAL → INTERNAL_APPROVED → CLIENT_APPROVED) were retired with the approval workflow; a VO
+// is now raised straight to CLIENT_APPROVED by the atomic raiseAndAdopt path, so PENDING_INTERNAL /
+// INTERNAL_APPROVED are unreachable by any command.
 
 // CONST-VAR-004: reject is legal from any pre-client, non-terminal state.
 const REJECTABLE_FROM: ReadonlySet<VariationOrderStatusValue> = new Set<VariationOrderStatusValue>([
@@ -83,6 +79,8 @@ export const VariationOrderPolicy = {
     status: VariationOrderStatusValue,
     command: VariationOrderCommand,
   ): TransitionDecision {
+    // After the variation-collapse the command union is exactly { reject, withdraw }; there is no
+    // forward step left to look up. Anything outside the union is an unknown command (never throws).
     if (command === 'reject') {
       return REJECTABLE_FROM.has(status)
         ? { allowed: true, to: 'REJECTED' }
@@ -94,18 +92,7 @@ export const VariationOrderPolicy = {
         : { allowed: false, reason: `CANNOT_WITHDRAW_FROM_${status}` };
     }
 
-    // The only remaining operative commands are reject/withdraw (handled above). A forward step
-    // (submit/internalApprove/clientApprove) was retired with the approval workflow; FORWARD is empty.
-    const step = FORWARD[command as never] as
-      | { from: VariationOrderStatusValue; to: VariationOrderStatusValue }
-      | undefined;
-    if (!step) {
-      return { allowed: false, reason: `UNKNOWN_COMMAND_${String(command)}` };
-    }
-    if (status !== step.from) {
-      return { allowed: false, reason: `EXPECTED_${step.from}_GOT_${status}` };
-    }
-    return { allowed: true, to: step.to };
+    return { allowed: false, reason: `UNKNOWN_COMMAND_${String(command)}` };
   },
 
   /**
