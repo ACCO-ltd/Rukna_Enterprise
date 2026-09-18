@@ -1,7 +1,6 @@
 import {
   Injectable,
   NotFoundException,
-  BadRequestException,
   ConflictException,
 } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';

@@ -37,7 +37,6 @@ describe('CommercialBillingService — issuePackage + recordDelivery (Slice 4B)'
   let identity: RequestIdentity;
   let contractId: string;
   let projectId: string;
-  let clientId: string;
 
   let instA: string; // 40%, primary issue subject
   let instB: string; // 30%, isolation subject
@@ -153,7 +152,6 @@ describe('CommercialBillingService — issuePackage + recordDelivery (Slice 4B)'
     const client = await prisma.client.create({
       data: { organizationId: orgId, code: `CL-${suffix.slice(-6)}`, name: 'Test Client' },
     });
-    clientId = client.id;
     const boq = await prisma.boq.create({
       data: { organizationId: orgId, projectId: project.id, currency: 'USD' },
     });

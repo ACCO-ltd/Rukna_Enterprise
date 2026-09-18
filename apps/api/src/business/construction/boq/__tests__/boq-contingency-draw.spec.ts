@@ -81,20 +81,6 @@ function workTarget(over: Record<string, unknown> = {}) {
   });
 }
 
-/** A default ABSORBED leaf: quantity 1, starts at 0.00. */
-function absorbedTarget(over: Record<string, unknown> = {}) {
-  return allowance({
-    id: 'target',
-    code: '01.500',
-    description: 'Absorbed scope',
-    nodeRole: 'WORK',
-    commercialTreatment: 'ABSORBED',
-    unitRate: new Decimal('0'),
-    totalAmount: new Decimal('0'),
-    ...over,
-  });
-}
-
 function build(opts: {
   status?: 'DRAFT' | 'COMMITTED' | 'SNAPSHOT';
   target?: Record<string, unknown>;

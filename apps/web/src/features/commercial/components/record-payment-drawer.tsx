@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Button,
@@ -64,11 +64,6 @@ export function RecordPaymentDrawer({
   const depositAccountsQuery = useProjectDepositAccounts(projectId);
   const mutation = useRecordProjectPayment(projectId);
 
-  // Re-seed from greedy when the payment amount changes so suggestions stay fresh.
-  useEffect(() => {
-    setAllocationOverrides({});
-  }, [amount]);
-
   // ─── Reset when drawer closes ────────────────────────────────────────────
 
   function handleOpenChange(next: boolean) {
@@ -83,6 +78,13 @@ export function RecordPaymentDrawer({
       mutation.reset();
     }
     onOpenChange(next);
+  }
+
+  function handleAmountChange(nextAmount: string) {
+    // A new receipt amount needs a fresh greedy suggestion; manual allocations belong to the
+    // previous amount and must not be silently carried into this calculation.
+    setAllocationOverrides({});
+    setAmount(nextAmount);
   }
 
   // ─── Allocation (editable) ───────────────────────────────────────────────
@@ -181,7 +183,7 @@ export function RecordPaymentDrawer({
                 min="0.01"
                 step="0.01"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => handleAmountChange(e.target.value)}
                 placeholder="0.00"
                 disabled={mutation.isPending}
               />

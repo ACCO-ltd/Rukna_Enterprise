@@ -10,7 +10,6 @@
  * - derivePromiseStatus logic (pure static — no DB needed)
  */
 
-import { randomUUID } from 'node:crypto';
 import { ConflictException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';

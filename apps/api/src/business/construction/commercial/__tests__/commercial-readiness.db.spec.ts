@@ -38,7 +38,6 @@ describe('CommercialReadiness (Slice 3B)', () => {
   let service: CommercialBillingService;
   let identity: RequestIdentity;
   let contractId: string;
-  let draftContractId: string;
   let programmeMilestoneId: string;
 
   let instA: string; // 40%, no milestone — primary subject
@@ -205,7 +204,6 @@ describe('CommercialReadiness (Slice 3B)', () => {
         createdBy: 'u1',
       },
     });
-    draftContractId = draftContract.id;
 
     instDraft = (
       await prisma.contractPaymentInstallment.create({

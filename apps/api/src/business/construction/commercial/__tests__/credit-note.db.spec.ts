@@ -16,7 +16,6 @@
  * CN-DB-11: CN against NOT_POSTED invoice → BadRequestException
  */
 
-import { randomUUID } from 'node:crypto';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';

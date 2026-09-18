@@ -8,8 +8,6 @@ import { CommercialPrismaRepository } from './infrastructure/commercial-prisma.r
 import { CommercialService } from './application/commercial.service.js';
 import { CommercialBillingService } from './application/commercial-billing.service.js';
 import { CommercialController } from './presentation/commercial.controller.js';
-import { CollectionEventsService } from '../../accounting/accounts-receivable/application/collection-events.service.js';
-import { CreditNoteService } from '../../accounting/accounts-receivable/application/credit-note.service.js';
 
 /**
  * Project-scoped Commercial read models (ADR-017, Gate B). Mostly read-only aggregation across

@@ -12,10 +12,6 @@ import type { PlatformFileService } from '../../../../platform/files/application
 import { DocumentSequenceRepository } from '../../../accounting/accounting-core/infrastructure/document-sequence.repository.js';
 import { ClientInvoiceRepository } from '../../../accounting/accounts-receivable/infrastructure/client-invoice.repository.js';
 import { ClientInvoiceService } from '../../../accounting/accounts-receivable/application/client-invoice.service.js';
-import { PaymentReceiptArRepository } from '../../../accounting/accounts-receivable/infrastructure/payment-receipt-ar.repository.js';
-import { AccountRepository } from '../../../accounting/accounting-core/infrastructure/account.repository.js';
-import { PostingAccountResolver } from '../../../accounting/accounting-core/application/posting-account-resolver.service.js';
-import { CustomerReceiptService } from '../../../accounting/accounts-receivable/application/customer-receipt.service.js';
 import { VariationOrderPrismaRepository } from '../../variations/infrastructure/variation-order-prisma.repository.js';
 import { VariationOrderService } from '../../variations/application/variation-order.service.js';
 import { CommercialPrismaRepository } from '../infrastructure/commercial-prisma.repository.js';
@@ -48,7 +44,6 @@ describe('CommercialBillingService — lifecycle scenarios', () => {
 
   let contractId: string;
   let projectId: string;
-  let clientId: string;
 
   // The four installments
   let m1: string; // 40% = 200,000
@@ -196,7 +191,6 @@ describe('CommercialBillingService — lifecycle scenarios', () => {
     const client = await prisma.client.create({
       data: { organizationId: orgId, code: `CL-${suffix.slice(-6)}`, name: 'Test Client' },
     });
-    clientId = client.id;
 
     const boq = await prisma.boq.create({
       data: { organizationId: orgId, projectId: project.id, currency: 'USD' },
