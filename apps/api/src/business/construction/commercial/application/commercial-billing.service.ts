@@ -1009,7 +1009,7 @@ export class CommercialBillingService {
     // Idempotency: if the caller supplied a key and we already have a receipt for it, return
     // the existing result without creating a duplicate (safe network-retry protection).
     if (dto.idempotencyKey) {
-      const existing = await prisma.paymentReceipt.findUnique({
+      const existing = await prisma.paymentReceipt.findFirst({
         where: { idempotencyKey: dto.idempotencyKey },
         select: {
           id: true,

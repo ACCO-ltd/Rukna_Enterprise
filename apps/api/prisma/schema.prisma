@@ -2923,7 +2923,9 @@ model PaymentReceipt {
   migrationBatchId     String?          @map("migration_batch_id")
   // Slice 8: optional client-supplied key — when provided, a second call with the same key
   // returns the existing receipt instead of creating a duplicate (safe network-retry).
-  idempotencyKey       String?          @unique @map("idempotency_key")
+  // The uniqueness is enforced by a partial index (WHERE IS NOT NULL) in migration #87 — not @unique
+  // here, to avoid Prisma generating a conflicting full unique constraint on future migrate dev runs.
+  idempotencyKey       String?          @map("idempotency_key")
   revision             Int              @default(1)
   createdBy            String           @map("created_by")
   approvedBy           String?          @map("approved_by")
