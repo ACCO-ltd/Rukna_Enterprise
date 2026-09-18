@@ -131,7 +131,7 @@
     "title": "Main contract",
     "effectiveDate": "Effective date",
     "completionDate": "Completion date",
-    "boqBaseline": "BOQ baseline",
+    "boqBaseline": "Signed BOQ snapshot",
     "boqVersion": "Version {number}",
     "billingModel": "Billing model",
     "termsLocked": "Contract terms are locked while the contract is active.",
@@ -140,7 +140,7 @@
     "clientLockedHint": "The client name and tax details were frozen onto this contract when it was activated. Editing the client record will not change them.",
     "willLockTitle": "Activating locks the client details",
     "willLockHint": "The client name and tax details will be frozen onto this contract when it is activated.",
-    "viewBoq": "View the BOQ baseline"
+    "viewBoq": "View signed snapshot"
   },
   "retention": {
     "title": "Retention",
@@ -701,6 +701,8 @@
       "REVIEW_APPLICATION": "Review application",
       "ISSUE_CERTIFICATE": "Issue certificate",
       "GENERATE_INVOICE": "Generate invoice",
+      "REVIEW_FOR_BILLING": "Review for billing",
+      "PREPARE_BILLING": "Prepare billing",
       "POST_INVOICE": "Post invoice",
       "RECORD_RECEIPT": "Record receipt",
       "ALLOCATE_RECEIPT": "Allocate receipt",
@@ -950,8 +952,8 @@
       "reverseFailed": "Could not reverse the variation"
     },
     "trace": {
-      "title": "Certified & invoiced by variation",
-      "explainer": "Certified and invoiced value to date, split by original scope and each variation. Rows sum to the total.",
+      "title": "Variation billing",
+      "explainer": "Billed value to date, split by original scope and each variation. Rows sum to the total.",
       "baseScope": "Original scope",
       "baseScopeHint": "Before any variation",
       "total": "Total",
@@ -1185,6 +1187,8 @@
       "other": "Other",
       "method": "Delivery method",
       "methodRequired": "Select a delivery method",
+      "documentsIssued": "Billing documents issued",
+      "numberPending": "Number pending",
       "recipient": "Recipient",
       "recipientPlaceholder": "e.g. accounts@client.com",
       "note": "Note",

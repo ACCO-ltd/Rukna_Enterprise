@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -17,6 +18,7 @@ import { CheckCircle2 } from 'lucide-react';
 import { formatDate, formatMoney } from '@/lib/format';
 
 import { recordPackageDelivery } from '../api/commercial-api';
+import { commercialKeys } from '../hooks/use-commercial';
 import type { MilestoneItemViewModel } from '../milestone-journey.adapter';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -44,6 +46,7 @@ export function SendInvoiceDialog({
   onSent,
   onClose,
 }: SendInvoiceDialogProps) {
+  const queryClient = useQueryClient();
   const t = useTranslations('commercial.contractMilestones.sendInvoice');
   const locale = useLocale() as 'en';
 
@@ -64,6 +67,7 @@ export function SendInvoiceDialog({
         recipient: recipient.trim() || undefined,
         note: note.trim() || undefined,
       });
+      await queryClient.invalidateQueries({ queryKey: commercialKeys.all(projectId) });
       onSent(milestone.id, deliveryMethod);
     } catch (err) {
       const message =
@@ -134,6 +138,29 @@ export function SendInvoiceDialog({
         <div className="space-y-5 py-1">
           {errorMessage ? (
             <Alert variant="error" messages={[errorMessage]} role="alert" />
+          ) : null}
+
+          {journey?.documents.length ? (
+            <section className="rounded-panel border border-border bg-surface p-3">
+              <p className="text-body-sm font-semibold text-foreground">
+                {t('documentsIssued')}
+              </p>
+              <ul className="mt-2 space-y-1.5">
+                {journey.documents.map((document) => (
+                  <li
+                    key={document.invoiceId}
+                    className="flex items-center justify-between gap-3 text-body-sm"
+                  >
+                    <span className="font-mono font-medium text-foreground">
+                      {document.invoiceNumber ?? t('numberPending')}
+                    </span>
+                    <span className="truncate text-muted-foreground">
+                      {document.sourceReference}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
           ) : null}
 
           {/* Delivery method */}

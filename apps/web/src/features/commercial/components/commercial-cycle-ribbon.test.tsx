@@ -159,9 +159,8 @@ describe('CommercialCycleRibbon — MILESTONE_NOT_VERIFIED blocker (CONST-COM-02
     stubBlocked();
     renderWithProviders(<CommercialCycleRibbon projectId="p-1" />);
 
-    // No enabled action link exists; the button is present but disabled.
-    const button = screen.getByRole('button', { name: 'Generate invoice' });
-    expect(button).toBeDisabled();
+    // Verification is the current step, so no billing CTA is rendered.
+    expect(screen.queryByRole('button', { name: 'Generate invoice' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Generate invoice' })).not.toBeInTheDocument();
     // The disabled control is not bare — the blocker reason is rendered in the same band.
     expect(screen.getByText('Blocked: verify “Partition complete”')).toBeInTheDocument();

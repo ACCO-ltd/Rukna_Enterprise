@@ -74,8 +74,9 @@ export class AddExtraWorkDto {
   lines!: ExtraWorkLineDto[];
 
   @ApiPropertyOptional({
+    deprecated: true,
     description:
-      'Required for VARIATION: the contract the new DRAFT VariationOrder attaches to. A project may have several contracts, so it is not inferable. Ignored for ABSORB/SEPARATE.',
+      'Deprecated and ignored. VARIATION resolves the project\'s single ACTIVE client contract server-side.',
   })
   @IsOptional()
   @IsString()

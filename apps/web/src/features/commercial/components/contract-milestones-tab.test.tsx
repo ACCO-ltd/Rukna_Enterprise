@@ -13,6 +13,7 @@ vi.mock('./milestone-journey', () => ({
     <div
       data-testid="milestone-journey"
       data-milestone-count={viewModel.milestones.length}
+      data-first-state={(viewModel.milestones[0] as { userState?: string } | undefined)?.userState}
     />
   ),
 }));
@@ -22,6 +23,7 @@ vi.mock('./payment-schedule-tab', () => ({
 }));
 
 const cycleData = vi.hoisted(() => ({ value: null as unknown }));
+const packageData = vi.hoisted(() => ({ value: { packages: [] } as unknown }));
 vi.mock('../hooks/use-commercial', () => ({
   useCommercialCurrentCycle: () => ({
     data: cycleData.value,
@@ -29,6 +31,11 @@ vi.mock('../hooks/use-commercial', () => ({
     isError: false,
     isSuccess: cycleData.value != null,
     refetch: vi.fn(),
+  }),
+  useBillingPackages: () => ({
+    data: packageData.value,
+    isPending: false,
+    isError: false,
   }),
 }));
 
@@ -161,6 +168,7 @@ function makeCycle(
 beforeEach(() => {
   vi.clearAllMocks();
   cycleData.value = null;
+  packageData.value = { packages: [] };
 });
 
 describe('ContractMilestonesTab', () => {
@@ -223,6 +231,34 @@ describe('ContractMilestonesTab', () => {
     const journey = screen.getByTestId('milestone-journey');
     expect(journey).toBeInTheDocument();
     expect(journey.getAttribute('data-milestone-count')).toBe('3');
+  });
+
+  it('restores an issued invoice journey from billing packages after refresh', () => {
+    cycleData.value = makeCycle([{ id: 'inst-1', status: 'BILLED', name: 'Structure' }]);
+    packageData.value = {
+      packages: [
+        {
+          installmentId: 'inst-1',
+          documents: [
+            {
+              invoiceId: 'invoice-1',
+              invoiceNumber: 'INV-0001',
+              dueDate: '2026-10-01',
+              deliveries: [],
+            },
+          ],
+        },
+      ],
+    };
+
+    renderWithProviders(
+      <ContractMilestonesTab projectId="p-1" summary={makeSummary()} />,
+    );
+
+    expect(screen.getByTestId('milestone-journey')).toHaveAttribute(
+      'data-first-state',
+      'invoice-issued',
+    );
   });
 
   it('has no "Bill Stage" or "Generate Invoice" button', () => {

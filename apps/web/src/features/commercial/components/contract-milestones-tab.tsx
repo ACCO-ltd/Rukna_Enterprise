@@ -13,7 +13,7 @@ import type { CommercialSummaryResponse } from '@erp/types';
 import { EmptyState } from '@/components/empty-state';
 import { formatMoney } from '@/lib/format';
 
-import { useCommercialCurrentCycle } from '../hooks/use-commercial';
+import { useBillingPackages, useCommercialCurrentCycle } from '../hooks/use-commercial';
 import { useMarkReadyToBill } from '../hooks/use-mark-ready-to-bill';
 import {
   toMilestoneJourneyViewModel,
@@ -86,8 +86,8 @@ export function ContractMilestonesTab({
     setReviewOpen(true);
   }
 
-  function handleMarkReadyToBill(installmentId: string) {
-    markReadyMutation.mutate({ installmentId });
+  async function handleMarkReadyToBill(installmentId: string) {
+    await markReadyMutation.mutateAsync({ installmentId });
   }
 
   function handlePrepareInvoice(milestone: MilestoneItemViewModel) {
@@ -95,11 +95,20 @@ export function ContractMilestonesTab({
     setPreparingMilestone(milestone);
   }
 
+  function handleSendInvoice(milestone: MilestoneItemViewModel) {
+    setDetailOpen(false);
+    setSendingMilestone(milestone);
+  }
+
   function handleInvoiceIssued(installmentId: string, journey: InvoiceJourneyPhase) {
     setInvoiceJourneyMap((prev) => new Map(prev).set(installmentId, journey));
     const issuedMilestone = preparingMilestone;
     setPreparingMilestone(null);
-    setSendingMilestone(issuedMilestone);
+    setSendingMilestone(
+      issuedMilestone
+        ? { ...issuedMilestone, userState: 'invoice-issued', invoiceJourney: journey }
+        : null,
+    );
   }
 
   function handleInvoiceSent(installmentId: string, deliveryMethod: string) {
@@ -140,6 +149,7 @@ export function ContractMilestonesTab({
           onMilestoneClick={handleMilestoneClick}
           onReviewForBilling={handleReviewForBilling}
           onPrepareInvoice={handlePrepareInvoice}
+          onSendInvoice={handleSendInvoice}
         />
         <ScheduleEditor
           projectId={projectId}
@@ -172,10 +182,15 @@ export function ContractMilestonesTab({
         open={reviewOpen}
         onOpenChange={setReviewOpen}
         onMarkReadyToBill={handleMarkReadyToBill}
+        isPending={markReadyMutation.isPending}
+        errorMessage={
+          markReadyMutation.error instanceof Error ? markReadyMutation.error.message : undefined
+        }
       />
 
       {/* Prepare invoice dialog (SLICE_4A) */}
       <PrepareInvoiceDialog
+        key={preparingMilestone?.id ?? 'closed'}
         open={preparingMilestone !== null}
         milestone={preparingMilestone}
         summary={summary}
@@ -302,6 +317,7 @@ function ScheduleBody({
   onMilestoneClick,
   onReviewForBilling,
   onPrepareInvoice,
+  onSendInvoice,
 }: {
   projectId: string;
   summary: CommercialSummaryResponse;
@@ -310,9 +326,11 @@ function ScheduleBody({
   onMilestoneClick: (m: MilestoneItemViewModel) => void;
   onReviewForBilling: (m: MilestoneItemViewModel) => void;
   onPrepareInvoice: (m: MilestoneItemViewModel) => void;
+  onSendInvoice: (m: MilestoneItemViewModel) => void;
 }) {
   const t = useTranslations('commercial');
   const cycleQuery = useCommercialCurrentCycle(projectId);
+  const packagesQuery = useBillingPackages(projectId, contractId);
 
   if (cycleQuery.isPending) {
     return <Skeleton className="h-48 w-full" />;
@@ -339,7 +357,6 @@ function ScheduleBody({
 
   const schedule = cycleQuery.data?.paymentSchedule ?? null;
   if (!schedule || schedule.installments.length === 0) {
-    const tMilestones = t as unknown as ReturnType<typeof useTranslations<'commercial.contractMilestones'>>;
     return (
       <section className="rounded-panel border border-border bg-surface px-5 py-10 text-center">
         <p className="text-body font-medium text-foreground">
@@ -362,7 +379,24 @@ function ScheduleBody({
   const viewModel = {
     ...rawVm,
     milestones: rawVm.milestones.map((m) => {
-      const journey = invoiceJourneyMap.get(m.id) ?? null;
+      const billingPackage = packagesQuery.data?.packages.find(
+        (candidate) => candidate.installmentId === m.id && candidate.documents.length > 0,
+      );
+      const persistedJourney: InvoiceJourneyPhase | null = billingPackage
+        ? {
+            phase: billingPackage.documents.every((document) => document.deliveries.length > 0)
+              ? 'sent'
+              : 'issued',
+            invoiceId: billingPackage.documents[0]!.invoiceId,
+            invoiceDate: '',
+            dueDate: billingPackage.documents[0]!.dueDate,
+            documents: billingPackage.documents,
+            deliveryMethod: billingPackage.documents
+              .flatMap((document) => document.deliveries)
+              .at(0)?.method.toLowerCase() as InvoiceJourneyPhase['deliveryMethod'],
+          }
+        : null;
+      const journey = invoiceJourneyMap.get(m.id) ?? persistedJourney;
 
       let userState = m.userState;
       if (journey?.phase === 'issued') userState = 'invoice-issued' as const;
@@ -378,6 +412,7 @@ function ScheduleBody({
       onMilestoneClick={onMilestoneClick}
       onReviewForBilling={onReviewForBilling}
       onPrepareInvoice={onPrepareInvoice}
+      onSendInvoice={onSendInvoice}
     />
   );
 }

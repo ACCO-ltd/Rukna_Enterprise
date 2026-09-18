@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
@@ -13,9 +13,11 @@ import {
   DialogTitle,
 } from '@erp/ui';
 import type { CommercialSummaryResponse } from '@erp/types';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { formatMoney } from '@/lib/format';
 import { issuePackage } from '../api/commercial-api';
+import { commercialKeys } from '../hooks/use-commercial';
 
 import type { InvoiceJourneyPhase, MilestoneItemViewModel } from '../milestone-journey.adapter';
 import { InvoicePreviewPanel } from './invoice-preview-panel';
@@ -39,6 +41,7 @@ export function PrepareInvoiceDialog({
   onInvoiceIssued,
   onClose,
 }: PrepareInvoiceDialogProps) {
+  const queryClient = useQueryClient();
   const t = useTranslations('commercial.contractMilestones.prepareInvoice');
   const locale = useLocale() as 'en';
   const currency = summary.currency ?? summary.mainContract?.currency ?? 'USD';
@@ -51,23 +54,11 @@ export function PrepareInvoiceDialog({
   const [dueDate, setDueDate] = useState('');
   const [paymentTerms, setPaymentTerms] = useState('');
   const [notes, setNotes] = useState('');
-  const [selectedVoIds, setSelectedVoIds] = useState<Set<string>>(new Set());
+  const [selectedVoIds, setSelectedVoIds] = useState<Set<string>>(
+    new Set(milestone?.variationAllocations.map((vo) => vo.variationId) ?? []),
+  );
   const [isPending, setIsPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  // Reset form when dialog opens with a new milestone
-  useEffect(() => {
-    if (open && milestone) {
-      setInvoiceDate(today);
-      setDueDate('');
-      setPaymentTerms('');
-      setNotes('');
-      setSelectedVoIds(new Set(milestone.variationAllocations.map((vo) => vo.variationId)));
-      setIsPending(false);
-      setErrorMessage(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, milestone?.id]);
 
   function toggleVo(voId: string) {
     setSelectedVoIds((prev) => {
@@ -93,12 +84,14 @@ export function PrepareInvoiceDialog({
         notes: notes.trim() || undefined,
         selectedVariationIds: [...selectedVoIds],
       });
+      await queryClient.invalidateQueries({ queryKey: commercialKeys.all(summary.projectId) });
       const invoiceId = pkg.milestoneInvoice?.id ?? milestone.id;
       onInvoiceIssued(milestone.id, {
         phase: 'issued',
         invoiceId,
         invoiceDate,
         dueDate,
+        documents: pkg.documents,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not issue the invoice. Please try again.';

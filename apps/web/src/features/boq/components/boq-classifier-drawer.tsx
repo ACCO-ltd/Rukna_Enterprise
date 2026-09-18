@@ -52,7 +52,6 @@ export function BoqClassifierDrawer({
   currency,
   contingencyRemaining,
   contractValue,
-  totalClientRevenue,
   absorbEnabled,
   separateEnabled,
   isPending,
@@ -91,9 +90,9 @@ export function BoqClassifierDrawer({
     () => ({
       absorb: project(contingencyRemaining, amount, 'subtract'),
       variationTo: project(contractValue, amount, 'add'),
-      revenueTo: project(totalClientRevenue, amount, 'add'),
+      separateAmount: isPositive(amount) ? normalize(amount) : null,
     }),
-    [contingencyRemaining, contractValue, totalClientRevenue, amount],
+    [contingencyRemaining, contractValue, amount],
   );
 
   const options: RadioOption<ClassifierRoute>[] = [
@@ -152,8 +151,8 @@ export function BoqClassifierDrawer({
         <RouteDetail
           detail={t('separate.detail')}
           consequence={
-            totalClientRevenue && projections.revenueTo
-              ? t('separate.consequence', { amount: money(projections.revenueTo) ?? '' })
+            projections.separateAmount
+              ? t('separate.consequence', { amount: money(projections.separateAmount) ?? '' })
               : null
           }
           disabledNote={!separateEnabled ? t('unavailable') : undefined}

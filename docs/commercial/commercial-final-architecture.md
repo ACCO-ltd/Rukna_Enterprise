@@ -46,6 +46,7 @@ All extra work originates from the **BOQ "Add Extra Work" drawer**. The type det
 After Slice 8 / variation-collapse:
 - There is no separate "New Variation" entry point on the Variations tab — variations are created only from the BOQ drawer.
 - Approval workflow for variations is removed; a raised variation is immediately `CLIENT_APPROVED` and adopted.
+- The extra-work command resolves the project's active client contract on the server. A caller does not enter or send an internal contract ID. Exactly one active client contract is required; zero or multiple matches return a clear validation error.
 - An unbilled variation can be **Reversed** (un-adopted): this soft-deletes the BOQ node (`isActive = false`) and restores the contract value.
 
 ---
@@ -59,6 +60,8 @@ The billing path for a MILESTONE contract:
 3. **Revoke Readiness** (`DELETE /commercial/installments/:id/mark-ready-to-bill`): available until the installment is billed.
 
 The `billStage` gate enforces `readyToBillAt IS NOT NULL` before any invoicing action. There is no gate that prevents a later milestone being issued while an earlier one has an outstanding balance.
+
+For a milestone-triggered installment, a linked `VERIFIED` programme milestone is required before the current-cycle ribbon offers commercial review. A missing link is treated as blocked rather than silently bypassing physical verification.
 
 ---
 
@@ -77,6 +80,8 @@ This is **atomic**: either all invoices are created and posted, or none are. The
 
 `sendPackage` records a `PackageDelivery` event (delivery method + timestamp). It does not change the invoice's financial state.
 
+The Contract & Milestones UI rebuilds the issued/sent journey from the Billing Package read model. Invoice numbers and delivery state therefore survive navigation and page reloads; they are not browser-only state.
+
 **Idempotency**: calling `issuePackage` when the installment already has a posted invoice returns the existing package read model without creating a duplicate (Slice 8 guard).
 
 ---
@@ -94,6 +99,8 @@ After an invoice is issued, the AR lifecycle continues on the **Billing & Collec
 | **Credit note** | `POST /commercial/invoices/:id/credit-notes` | Reduces `netAmount`, posts reversal journal, updates `outstandingAmount` |
 
 **`recordProjectPayment` idempotency**: callers may supply an optional `idempotencyKey` string. A second call with the same key returns the existing receipt without creating a duplicate (safe for network retries). Keys are stored in the `payment_receipts.idempotency_key` column.
+
+After a payment is recorded, the client invalidates the complete project commercial read-model tree and the project financial-position query. Billing & Collection, Commercial Overview, and Project Overview consequently refetch the same posted receipt and outstanding balance.
 
 ---
 

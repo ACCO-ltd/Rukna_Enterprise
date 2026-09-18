@@ -149,6 +149,24 @@ export class ContractPrismaRepository {
     });
   }
 
+  /** The single ACTIVE client contract eligible for post-contract variation work. */
+  findActiveClientContracts(
+    prisma: TenantPrisma,
+    organizationId: string,
+    projectId: string,
+  ): Promise<Array<{ id: string; contractNumber: string }>> {
+    return prisma.contract.findMany({
+      where: {
+        organizationId,
+        projectId,
+        contractKind: 'CLIENT_CONTRACT',
+        status: 'ACTIVE',
+      },
+      select: { id: true, contractNumber: true },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   /**
    * Returns the current/effective CLIENT_CONTRACT for a project, or null if none exists.
    * "Effective" means not yet CLOSED, CANCELLED, or TERMINATED.

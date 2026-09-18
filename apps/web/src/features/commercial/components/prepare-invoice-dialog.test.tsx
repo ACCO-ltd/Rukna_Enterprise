@@ -170,7 +170,33 @@ describe('PrepareInvoiceDialog', () => {
 
     vi.mocked(commercialApi.issuePackage).mockResolvedValueOnce({
       milestoneInvoice: { id: 'inv-abc' },
-    } as Awaited<ReturnType<typeof commercialApi.issuePackage>>);
+      documents: [
+        {
+          invoiceId: 'inv-abc',
+          invoiceNumber: 'INV-0001',
+          sourceType: 'MILESTONE',
+          sourceReference: 'Structure payment',
+          subtotal: '200000.00',
+          salesTax: '10000.00',
+          total: '210000.00',
+          dueDate: '2026-10-31',
+          outstanding: '210000.00',
+          deliveries: [],
+        },
+        {
+          invoiceId: 'inv-vo-1',
+          invoiceNumber: 'INV-0002',
+          sourceType: 'VARIATION',
+          sourceReference: 'VO-001 — Boundary Wall',
+          subtotal: '2000.00',
+          salesTax: '100.00',
+          total: '2100.00',
+          dueDate: '2026-10-31',
+          outstanding: '2100.00',
+          deliveries: [],
+        },
+      ],
+    } as unknown as Awaited<ReturnType<typeof commercialApi.issuePackage>>);
 
     renderDialog({ onInvoiceIssued });
 
@@ -189,6 +215,10 @@ describe('PrepareInvoiceDialog', () => {
     expect(calledJourney.phase).toBe('issued');
     expect(calledJourney.invoiceId).toBe('inv-abc');
     expect(calledJourney.dueDate).toBe('2026-10-31');
+    expect(calledJourney.documents.map((document) => document.invoiceNumber)).toEqual([
+      'INV-0001',
+      'INV-0002',
+    ]);
   });
 
   it('8. Issue error: API error message shown in form body, not toast', async () => {

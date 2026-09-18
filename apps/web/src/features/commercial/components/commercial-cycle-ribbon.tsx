@@ -204,13 +204,7 @@ function CycleAction({
 
   // No action AND a milestone gate: the reason lives inline in the ribbon body, so this is the
   // disabled-with-reason pair CONST-COM-025 requires, not a bare disabled button.
-  if (blocked) {
-    return (
-      <Button size="sm" disabled className="min-h-11 sm:min-h-0">
-        {t('actions.GENERATE_INVOICE')}
-      </Button>
-    );
-  }
+  if (blocked) return null;
 
   return null;
 }

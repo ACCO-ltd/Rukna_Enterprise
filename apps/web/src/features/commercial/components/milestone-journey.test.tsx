@@ -217,7 +217,10 @@ describe('toMilestoneJourneyViewModel — state composition', () => {
 
 function renderJourney(
   milestones: Partial<MilestoneItemViewModel>[] = [],
-  opts?: { financialsVisible?: boolean },
+  opts?: {
+    financialsVisible?: boolean;
+    onSendInvoice?: (milestone: MilestoneItemViewModel) => void;
+  },
 ) {
   const vm: MilestoneJourneyViewModel = {
     currency: 'USD',
@@ -252,6 +255,7 @@ function renderJourney(
       onMilestoneClick={vi.fn()}
       onReviewForBilling={vi.fn()}
       onPrepareInvoice={vi.fn()}
+      onSendInvoice={opts?.onSendInvoice ?? vi.fn()}
     />,
   );
 }
@@ -285,6 +289,21 @@ describe('MilestoneJourney — rendering', () => {
     expect(screen.getAllByText(/ready to bill/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/milestone cleared.*prepare the invoice/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /review for billing/i })).not.toBeInTheDocument();
+  });
+
+  it('routes an issued invoice to the send step instead of preparing it again', async () => {
+    const user = userEvent.setup();
+    const onSendInvoice = vi.fn();
+    renderJourney(
+      [{ userState: 'invoice-issued', name: 'Stage 2' }],
+      { onSendInvoice },
+    );
+
+    await user.click(screen.getByRole('button', { name: /send to client/i }));
+
+    expect(onSendInvoice).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'inst-1', userState: 'invoice-issued' }),
+    );
   });
 
   it('contains no "Bill Stage" text anywhere', () => {

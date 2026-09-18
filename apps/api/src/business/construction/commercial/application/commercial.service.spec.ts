@@ -18,6 +18,11 @@ const financeIdentity = identityWith([
   PERMISSIONS.financialPositionView,
 ]);
 const noFinanceIdentity = identityWith([PERMISSIONS.contractsView]);
+const billingIdentity = identityWith([
+  PERMISSIONS.contractsView,
+  PERMISSIONS.financialPositionView,
+  PERMISSIONS.receivablesManage,
+]);
 
 const baseContract = {
   id: 'c-1',
@@ -168,8 +173,19 @@ describe('ADR-023 — getCurrentCycle for a MILESTONE contract', () => {
         : i,
     );
     const { service } = build({ contract: milestoneContract, installments: verifiedPlan, invoices: advancePaidInvoices });
-    const res = await service.getCurrentCycle(financeIdentity, 'p-1');
+    const res = await service.getCurrentCycle(billingIdentity, 'p-1');
     expect(res.blockers).not.toContain('MILESTONE_NOT_VERIFIED');
+    expect(res.nextAction).toEqual({
+      kind: 'REVIEW_FOR_BILLING',
+      href: '/projects/p-1/commercial/contract-milestones?installment=i1',
+    });
+  });
+
+  it('S-SH-3: an unlinked MILESTONE installment is blocked because missing evidence is not verification', async () => {
+    const { service } = build({ contract: milestoneContract, installments: accoPlan, invoices: advancePaidInvoices });
+    const res = await service.getCurrentCycle(financeIdentity, 'p-1');
+    expect(res.blockers).toContain('MILESTONE_NOT_VERIFIED');
+    expect(res.nextAction).toBeNull();
   });
 
   it('derives status per installment from its own invoice: advance PAID, structure NEXT, rest UPCOMING', async () => {

@@ -1,4 +1,5 @@
 import type {
+  CommercialBillingPackageDocument,
   CommercialPaymentSchedule,
   CommercialPaymentScheduleInstallment,
   CommercialPaymentScheduleVariationLine,
@@ -42,6 +43,7 @@ export interface InvoiceJourneyPhase {
   invoiceId: string;
   invoiceDate: string;
   dueDate: string | null;
+  documents: CommercialBillingPackageDocument[];
   deliveryMethod?: 'whatsapp' | 'email' | 'physical' | 'other';
 }
 
@@ -160,7 +162,7 @@ function toItemViewModel(
   financialsVisible: boolean,
 ): MilestoneItemViewModel {
   const billed = isBilledInstallment(inst.status);
-  const userState = resolveUserState(inst, isNext);
+  const userState = resolveUserState(inst);
   const dateLabel = resolveDateLabel(inst, billed);
   const variationAllocations = resolveVariations(inst, isNext, schedule, financialsVisible);
   const baseAmount = computeBaseAmount(inst, schedule, financialsVisible);
@@ -192,7 +194,6 @@ function toItemViewModel(
 
 function resolveUserState(
   inst: CommercialPaymentScheduleInstallment,
-  isNext: boolean,
 ): MilestoneUserState {
   switch (inst.status) {
     case 'PAID':

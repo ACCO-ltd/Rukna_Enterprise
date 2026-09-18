@@ -6,6 +6,7 @@ import { BoqTreeService } from '../../boq/application/boq-tree.service.js';
 import { ClientInvoiceService } from '../../../accounting/accounts-receivable/application/client-invoice.service.js';
 import { VariationOrderService } from './variation-order.service.js';
 import { ApplyVariationToBoqService } from './apply-variation-to-boq.service.js';
+import { ContractService } from '../../contracts/application/contract.service.js';
 import type { AddExtraWorkDto } from '../presentation/dto/add-extra-work.dto.js';
 
 /**
@@ -45,6 +46,7 @@ export class ExtraWorkClassifierService {
     private readonly variationOrders: VariationOrderService,
     private readonly applyToBoq: ApplyVariationToBoqService,
     private readonly clientInvoices: ClientInvoiceService,
+    private readonly contracts: ContractService,
   ) {}
 
   async addExtraWork(
@@ -131,12 +133,8 @@ export class ExtraWorkClassifierService {
         // retired: the VO lands CLIENT_APPROVED, its scope is appended to the committed BOQ, and the
         // current contract value is raised — all together. Each line is a lump sum (quantity 1 × amount).
         this.require(identity, PERMISSIONS.contractsManage);
-        if (!dto.contractId) {
-          throw new BadRequestException(
-            'A contractId is required to raise a client variation: a project may have several contracts, so it cannot be inferred.',
-          );
-        }
-        const adopted = await this.applyToBoq.raiseAndAdopt(identity, dto.contractId, {
+        const contract = await this.contracts.resolveActiveClientContract(identity, projectId);
+        const adopted = await this.applyToBoq.raiseAndAdopt(identity, contract.id, {
           title: dto.variationTitle ?? 'Client variation',
           lines: dto.lines.map((line) => ({
             description: line.description,

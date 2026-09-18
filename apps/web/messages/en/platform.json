@@ -578,14 +578,14 @@
       "absorb": {
         "name": "Absorb",
         "tagline": "We cover it internally",
-        "detail": "Records the scope as an internal cost. Contingency and contract value are both unchanged.",
-        "consequence": "Internal cost · {amount}",
+        "detail": "Uses project contingency to fund the work. The contract value stays unchanged and no client invoice is created.",
+        "consequence": "Contingency remaining · {amount}",
         "cta": "Absorb"
       },
       "variation": {
         "name": "Variation",
         "tagline": "The client pays — raise the contract now",
-        "detail": "Adds the work to the contract now and bills it with its stage. The contract value moves immediately.",
+        "detail": "Adds the approved change to the current contract value. Billing happens later through milestone billing.",
         "consequence": "Adds to the contract now: {from} → {to}",
         "cta": "Raise variation"
       },

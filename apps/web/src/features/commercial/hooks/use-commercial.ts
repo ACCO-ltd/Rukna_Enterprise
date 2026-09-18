@@ -23,6 +23,7 @@ import type {
 } from '@erp/types';
 
 import { boqKeys } from '@/features/boq/hooks/use-boq';
+import { accountingKeys } from '@/features/accounting/hooks/use-accounting';
 
 import {
   addVariationLine,
@@ -286,7 +287,10 @@ export function useRecordProjectPayment(projectId: string) {
   return useMutation<RecordProjectPaymentResult, Error, RecordProjectPaymentPayload>({
     mutationFn: (payload) => recordProjectPayment(projectId, payload),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: commercialKeys.billing(projectId) });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: commercialKeys.all(projectId) }),
+        qc.invalidateQueries({ queryKey: accountingKeys.projectFinancialPosition(projectId) }),
+      ]);
     },
   });
 }

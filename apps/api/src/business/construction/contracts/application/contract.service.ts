@@ -63,6 +63,36 @@ export class ContractService {
     private readonly boqVersioning: BoqVersioningService,
   ) {}
 
+  /**
+   * Resolve the project-level client contract used by the BOQ extra-work flow.
+   *
+   * The browser owns the project context, not database identifiers. Returning anything other than
+   * exactly one ACTIVE client contract is therefore a guarded business failure rather than a
+   * reason to expose a UUID field to the operator.
+   */
+  async resolveActiveClientContract(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<{ id: string; contractNumber: string }> {
+    await this.projectAccess.assertMember(identity, projectId);
+    const contracts = await this.repo.findActiveClientContracts(
+      this.tenancyService.getClient(),
+      identity.activeOrganizationId,
+      projectId,
+    );
+    if (contracts.length === 0) {
+      throw new BadRequestException(
+        'Record and activate the main contract before raising a variation.',
+      );
+    }
+    if (contracts.length > 1) {
+      throw new ConflictException(
+        'This project has more than one active client contract. Resolve the contract configuration before raising a variation.',
+      );
+    }
+    return contracts[0]!;
+  }
+
   async findAll(identity: RequestIdentity, projectId?: string) {
     const prisma = this.tenancyService.getClient();
     if (projectId) await this.projectAccess.assertMember(identity, projectId);

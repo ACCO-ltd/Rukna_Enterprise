@@ -30,8 +30,10 @@ export interface ReviewForBillingDrawerProps {
   outstandingInvoiceCount: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Called when the user clicks "Mark ready to bill". Parent owns the mutation. */
-  onMarkReadyToBill: (installmentId: string) => void;
+  /** Called when the user clicks "Mark ready to bill". Resolves only after persistence succeeds. */
+  onMarkReadyToBill: (installmentId: string) => Promise<void>;
+  isPending?: boolean;
+  errorMessage?: string;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -45,14 +47,20 @@ export function ReviewForBillingDrawer({
   open,
   onOpenChange,
   onMarkReadyToBill,
+  isPending = false,
+  errorMessage,
 }: ReviewForBillingDrawerProps) {
   const t = useTranslations('commercial.contractMilestones');
   const locale = useLocale() as 'en' | 'ar';
 
-  function handleMarkReady() {
+  async function handleMarkReady() {
     if (!milestone) return;
-    onMarkReadyToBill(milestone.id);
-    onOpenChange(false);
+    try {
+      await onMarkReadyToBill(milestone.id);
+      onOpenChange(false);
+    } catch {
+      // The mutation error is rendered below; keep the drawer open for recovery.
+    }
   }
 
   if (!milestone) return null;
@@ -77,6 +85,7 @@ export function ReviewForBillingDrawer({
         </DialogDescription>
 
         <div className="space-y-5 py-2">
+          {errorMessage ? <Alert variant="error" messages={[errorMessage]} /> : null}
           {/* Base amount */}
           {financialsVisible ? (
             <div>
@@ -166,7 +175,8 @@ export function ReviewForBillingDrawer({
         <DialogFooter>
           <Button
             variant="default"
-            onClick={handleMarkReady}
+            onClick={() => void handleMarkReady()}
+            disabled={isPending}
           >
             {t('review.markReadyToBill')}
           </Button>

@@ -765,8 +765,9 @@ export class CommercialService {
       // installment) instead of offering a next action the API would refuse.
       const nextInstallment = built.schedule.installments.find((i) => i.status === 'NEXT');
       const milestoneBlocked =
-        nextInstallment?.programmeMilestone != null &&
-        nextInstallment.programmeMilestone.status !== 'VERIFIED';
+        nextInstallment?.triggerType === 'MILESTONE' &&
+        nextInstallment.programmeMilestone?.status !== 'VERIFIED';
+      const milestoneHref = `/projects/${projectId}/commercial/contract-milestones`;
       return {
         projectId,
         contract: identitySummary,
@@ -774,10 +775,12 @@ export class CommercialService {
         application: null,
         paymentSchedule: built.schedule,
         nextAction:
-          built.hasFocus && result.capabilities.canGenerateInvoice && !milestoneBlocked
+          built.hasFocus && result.capabilities.canGenerateInvoice && !milestoneBlocked && nextInstallment
             ? {
-                kind: 'GENERATE_INVOICE',
-                href: `/projects/${projectId}/commercial/billing-collection`,
+                kind: nextInstallment.readyToBill
+                  ? ('PREPARE_BILLING' as const)
+                  : ('REVIEW_FOR_BILLING' as const),
+                href: `${milestoneHref}?installment=${nextInstallment.id}`,
               }
             : null,
         blockers: milestoneBlocked ? ['MILESTONE_NOT_VERIFIED'] : [],
@@ -1153,7 +1156,7 @@ export class CommercialService {
       const paid = amount.mul(paidFraction);
       collected = collected.plus(paid);
 
-      const isReady = inst.readyToBillAt !== null;
+      const isReady = inst.readyToBillAt != null;
       return {
         id: inst.id,
         sortOrder: inst.sortOrder,

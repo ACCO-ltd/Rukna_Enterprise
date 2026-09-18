@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { ForbiddenException } from '@nestjs/common';
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 
 import { ExtraWorkClassifierService } from './extra-work-classifier.service.js';
@@ -51,13 +51,20 @@ function build() {
   const clientInvoices = {
     generateFromSeparateCharge: jest.fn().mockResolvedValue({ id: 'inv-1' }),
   };
+  const contracts = {
+    resolveActiveClientContract: jest.fn().mockResolvedValue({
+      id: 'c1',
+      contractNumber: 'ACCO-P1-C1',
+    }),
+  };
   const svc = new ExtraWorkClassifierService(
     boqTree as never,
     variationOrders as never,
     applyToBoq as never,
     clientInvoices as never,
+    contracts as never,
   );
-  return { svc, boqTree, variationOrders, applyToBoq, clientInvoices };
+  return { svc, boqTree, variationOrders, applyToBoq, clientInvoices, contracts };
 }
 
 describe('ExtraWorkClassifierService.addExtraWork — ADR-029 E-1..E-4', () => {
@@ -141,7 +148,6 @@ describe('ExtraWorkClassifierService.addExtraWork — ADR-029 E-1..E-4', () => {
       const { svc, applyToBoq, variationOrders } = build();
       const result = await svc.addExtraWork(identityWith(PERMISSIONS.contractsManage), 'p1', {
         treatment: 'VARIATION',
-        contractId: 'c1',
         variationTitle: 'Extra excavation',
         clientApprovalReference: 'SIGNED-VO-9',
         lines: [{ description: 'Rock excavation', amount: '3000.00' }],
@@ -164,15 +170,18 @@ describe('ExtraWorkClassifierService.addExtraWork — ADR-029 E-1..E-4', () => {
       expect(adoptedVariation.boqAppliedAt).not.toBeNull();
     });
 
-    it('rejects VARIATION without a contractId (a project may have several contracts)', async () => {
-      const { svc, applyToBoq } = build();
-      await expect(
-        svc.addExtraWork(identityWith(PERMISSIONS.contractsManage), 'p1', {
-          treatment: 'VARIATION',
-          lines: [{ description: 'x', amount: '10.00' }],
-        }),
-      ).rejects.toBeInstanceOf(BadRequestException);
-      expect(applyToBoq.raiseAndAdopt).not.toHaveBeenCalled();
+    it('resolves the project active client contract without a browser-supplied contractId', async () => {
+      const { svc, applyToBoq, contracts } = build();
+      await svc.addExtraWork(identityWith(PERMISSIONS.contractsManage), 'p1', {
+        treatment: 'VARIATION',
+        lines: [{ description: 'x', amount: '10.00' }],
+      });
+      expect(contracts.resolveActiveClientContract).toHaveBeenCalledWith(expect.anything(), 'p1');
+      expect(applyToBoq.raiseAndAdopt).toHaveBeenCalledWith(
+        expect.anything(),
+        'c1',
+        expect.anything(),
+      );
     });
 
     it('requires contractsManage (403 without it)', async () => {

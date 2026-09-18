@@ -25,6 +25,7 @@ interface MilestoneJourneyProps {
   onMilestoneClick: (milestone: MilestoneItemViewModel) => void;
   onReviewForBilling: (milestone: MilestoneItemViewModel) => void;
   onPrepareInvoice: (milestone: MilestoneItemViewModel) => void;
+  onSendInvoice: (milestone: MilestoneItemViewModel) => void;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -34,6 +35,7 @@ export function MilestoneJourney({
   onMilestoneClick,
   onReviewForBilling,
   onPrepareInvoice,
+  onSendInvoice,
 }: MilestoneJourneyProps) {
   const t = useTranslations('commercial.contractMilestones');
 
@@ -72,6 +74,7 @@ export function MilestoneJourney({
             onMilestoneClick={onMilestoneClick}
             onReviewForBilling={onReviewForBilling}
             onPrepareInvoice={onPrepareInvoice}
+            onSendInvoice={onSendInvoice}
           />
         ))}
       </ol>
@@ -96,6 +99,7 @@ function MilestoneItem({
   onMilestoneClick,
   onReviewForBilling,
   onPrepareInvoice,
+  onSendInvoice,
 }: {
   milestone: MilestoneItemViewModel;
   stepNumber: number;
@@ -104,6 +108,7 @@ function MilestoneItem({
   onMilestoneClick: (m: MilestoneItemViewModel) => void;
   onReviewForBilling: (m: MilestoneItemViewModel) => void;
   onPrepareInvoice: (m: MilestoneItemViewModel) => void;
+  onSendInvoice: (m: MilestoneItemViewModel) => void;
 }) {
   const t = useTranslations('commercial.contractMilestones');
   const locale = useLocale() as 'en' | 'ar';
@@ -234,7 +239,7 @@ function MilestoneItem({
               </Badge>
               <button
                 type="button"
-                onClick={() => onPrepareInvoice(milestone)}
+                onClick={() => onSendInvoice(milestone)}
                 className="inline-flex items-center gap-1.5 rounded-md bg-brand-primary px-3 py-1.5 text-body-sm font-medium text-white hover:bg-brand-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {t('cta.sendToClient')}
@@ -353,7 +358,6 @@ function AwaitingPaymentDisplay({
     (sum, vo) => sum + (vo.amount ? Number(vo.amount) : 0),
     0,
   );
-  const totalExVat = (base + voTotal).toFixed(2);
   const totalWithVat = ((base + voTotal) * 1.05).toFixed(2);
   const fmtTotal = formatMoney(totalWithVat, currency, locale) ?? totalWithVat;
 

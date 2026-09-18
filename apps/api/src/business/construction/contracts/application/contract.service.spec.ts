@@ -44,8 +44,12 @@ function build(contract: Record<string, unknown> | null): Mocks {
     // ADR-029 V-2 — the variation current-value raise seam.
     findValueForRaise: jest.fn(),
     raiseCurrentContractValue: jest.fn().mockResolvedValue({}),
+    findActiveClientContracts: jest.fn().mockResolvedValue([]),
   };
-  const projectAccess = { assertContract: jest.fn().mockResolvedValue(undefined) };
+  const projectAccess = {
+    assertContract: jest.fn().mockResolvedValue(undefined),
+    assertMember: jest.fn().mockResolvedValue(undefined),
+  };
   const audit = { record: jest.fn().mockResolvedValue(undefined) };
   const prisma = { $transaction: (fn: (tx: unknown) => unknown) => fn({}) };
   const tenancy = { getClient: () => prisma };
@@ -65,6 +69,37 @@ function build(contract: Record<string, unknown> | null): Mocks {
   );
   return { repo, projectAccess, audit, attachments, service };
 }
+
+describe('active client contract resolution for BOQ extra work', () => {
+  it('returns the one ACTIVE client contract without exposing selection to the browser', async () => {
+    const { service, repo } = build(null);
+    repo.findActiveClientContracts.mockResolvedValue([
+      { id: 'contract-1', contractNumber: 'ACCO-P1-C1' },
+    ]);
+    await expect(service.resolveActiveClientContract(identity, 'project-1')).resolves.toEqual({
+      id: 'contract-1',
+      contractNumber: 'ACCO-P1-C1',
+    });
+  });
+
+  it('blocks when the signed main contract has not been activated', async () => {
+    const { service } = build(null);
+    await expect(service.resolveActiveClientContract(identity, 'project-1')).rejects.toThrow(
+      'Record and activate the main contract',
+    );
+  });
+
+  it('fails closed when invalid data contains multiple ACTIVE client contracts', async () => {
+    const { service, repo } = build(null);
+    repo.findActiveClientContracts.mockResolvedValue([
+      { id: 'contract-1', contractNumber: 'ACCO-P1-C1' },
+      { id: 'contract-2', contractNumber: 'ACCO-P1-C2' },
+    ]);
+    await expect(service.resolveActiveClientContract(identity, 'project-1')).rejects.toThrow(
+      'more than one active client contract',
+    );
+  });
+});
 
 const draft = { id: 'c-1', status: 'DRAFT', retentionTerms: null };
 const active = { id: 'c-1', status: 'ACTIVE', retentionTerms: null };

@@ -34,6 +34,7 @@ function makeMilestone(
     invoiceReference: null,
     invoiceJourney: {
       phase: 'issued',
+      documents: [],
       invoiceId: 'inv-1',
       invoiceDate: '2026-09-17',
       dueDate: '2026-10-17',
