@@ -168,7 +168,7 @@ async function main(): Promise<void> {
         AND ci.document_status NOT IN ('CANCELLED')
         AND NOT EXISTS (
           SELECT 1 FROM client_invoice_deliveries pd
-          WHERE pd.client_invoice_id = ci.id
+          WHERE pd.invoice_id = ci.id
         )
       ORDER BY ci.created_at DESC
     `;
@@ -199,7 +199,7 @@ async function main(): Promise<void> {
         (CURRENT_DATE - due_date::date)::int as days_overdue
       FROM client_invoices
       WHERE due_date < CURRENT_DATE
-        AND document_status NOT IN ('CANCELLED', 'PAID')
+        AND document_status NOT IN ('CANCELLED')
         AND outstanding_amount > 0
       ORDER BY days_overdue DESC
     `;
@@ -279,9 +279,9 @@ async function main(): Promise<void> {
 
     // ── 11. Unallocated receipts ───────────────────────────────────────────────
     const unallocatedReceipts = await prisma.$queryRaw<
-      Array<{ id: string; receipt_date: Date; amount: string; currency: string }>
+      Array<{ id: string; receipt_date: Date; total_amount: string; currency_code: string }>
     >`
-      SELECT pr.id, pr.receipt_date, pr.amount::text, pr.currency
+      SELECT pr.id, pr.receipt_date, pr.total_amount::text, pr.currency_code
       FROM payment_receipts pr
       WHERE NOT EXISTS (
         SELECT 1 FROM client_receipt_allocations ia WHERE ia.payment_receipt_id = pr.id
