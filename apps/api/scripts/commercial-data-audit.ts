@@ -213,35 +213,37 @@ async function main(): Promise<void> {
       })),
     });
 
-    // ── 8. Extra work nodes by type ────────────────────────────────────────────
+    // ── 8. Extra work nodes by commercial_treatment (source_type = VARIATION) ──
     const extraWorkCounts = await prisma.$queryRaw<
-      Array<{ extra_work_type: string | null; is_active: boolean; count: bigint }>
+      Array<{ commercial_treatment: string; is_active: boolean; count: bigint }>
     >`
-      SELECT extra_work_type, is_active, COUNT(*) as count
+      SELECT commercial_treatment, is_active, COUNT(*) as count
       FROM boq_nodes
-      WHERE extra_work_type IS NOT NULL
-      GROUP BY extra_work_type, is_active
-      ORDER BY extra_work_type, is_active DESC
+      WHERE source_type = 'VARIATION'
+      GROUP BY commercial_treatment, is_active
+      ORDER BY commercial_treatment, is_active DESC
     `;
     printSection(
       '8. Extra Work BOQ Nodes by Type',
       extraWorkCounts.map((r) => ({
-        extraWorkType: r.extra_work_type,
+        commercialTreatment: r.commercial_treatment,
         isActive: r.is_active,
         count: Number(r.count),
       })),
     );
 
-    // ── 9. ABSORBED nodes created before variation-collapse (pre 2026-09-15) ──
+    // ── 9. ABSORBED variation nodes created before variation-collapse ──────────
     const COLLAPSE_DATE = new Date('2026-09-15T00:00:00Z');
     const preCollapseAbsorbed = await prisma.$queryRaw<
       Array<{ id: string; created_at: Date; project_id: string }>
     >`
-      SELECT id, created_at, project_id
-      FROM boq_nodes
-      WHERE extra_work_type = 'ABSORBED'
-        AND created_at < ${COLLAPSE_DATE}
-      ORDER BY created_at DESC
+      SELECT bn.id, bn.created_at, b.project_id
+      FROM boq_nodes bn
+      JOIN boqs b ON b.id = bn.boq_id
+      WHERE bn.commercial_treatment = 'ABSORBED'
+        AND bn.source_type = 'VARIATION'
+        AND bn.created_at < ${COLLAPSE_DATE}
+      ORDER BY bn.created_at DESC
     `;
     printSection('9. Pre-Collapse ABSORBED Nodes (created before 2026-09-15)', {
       count: preCollapseAbsorbed.length,
