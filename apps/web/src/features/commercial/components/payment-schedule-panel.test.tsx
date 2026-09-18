@@ -67,6 +67,10 @@ function installment(
     dueDate: null,
     status: 'UPCOMING',
     programmeMilestone: null,
+    readyToBill: false,
+    readyToBillAt: null,
+    canMarkReadyToBill: false,
+    canPrepareInvoice: false,
     ...overrides,
   };
 }
@@ -432,6 +436,11 @@ describe('PaymentSchedulePanel — BillStageDialog (S-VB-11)', () => {
             },
           ],
           presentedTotal: null,
+          documents: [],
+          packageSubtotal: null,
+          packageTax: null,
+          packageTotal: null,
+          packageOutstanding: null,
         },
       ],
     );
@@ -482,10 +491,8 @@ describe('PaymentSchedulePanel — BillStageDialog (S-VB-11)', () => {
     await waitFor(() => expect(mutate).toHaveBeenCalledTimes(1));
     const payload = mutate.mock.calls[0]![0];
     expect(payload.installmentId).toBe('next');
-    expect(payload.variations).toEqual([
-      { variationId: 'vo-1', include: false },
-      { variationId: 'vo-2', include: true },
-    ]);
+    // VO-001 was deferred (unchecked), VO-002 remains included — only the included IDs are sent.
+    expect(payload.selectedVariationIds).toEqual(['vo-2']);
   });
 
   it('surfaces the already-invoiced 400 message verbatim', async () => {

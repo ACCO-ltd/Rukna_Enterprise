@@ -1,8 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Alert, Button, Skeleton } from '@erp/ui';
 
@@ -13,24 +11,14 @@ import { useCommercialSummary } from '../hooks/use-commercial';
 import {
   CommercialNav,
   commercialLandingTab,
-  commercialTabHref,
   commercialTabsFor,
   type CommercialTab,
 } from './commercial-nav';
 import { CommercialCycleRibbon } from './commercial-cycle-ribbon';
-import { ContractSecurityTab } from './contract-security-tab';
+import { OverviewTab } from './overview-tab';
 import { ApplicationsTab } from './applications-tab';
-import { PaymentScheduleTab } from './payment-schedule-tab';
-import { VariationsTab } from './variations-tab';
+import { ContractMilestonesTab } from './contract-milestones-tab';
 import { BillingCollectionTab } from './billing-collection-tab';
-
-/**
- * The old `/commercial` (Overview) route no longer has a tab of its own (S-SH-5). A page hitting
- * it passes `active="overview"` and the workspace resolves the real landing tab — Payment Schedule
- * for a MILESTONE contract, Contract otherwise — and replaces the URL with it, so a bookmark or a
- * stale link never dead-ends on a retired view.
- */
-type WorkspaceIntent = CommercialTab | 'overview';
 
 /**
  * The Commercial workspace.
@@ -45,34 +33,38 @@ type WorkspaceIntent = CommercialTab | 'overview';
  * Every financial figure and lifecycle verdict is the server's. The summary withholds money from
  * a user without `view:financial-position` and returns capabilities rather than a rule for the
  * browser to re-derive (ADR-017 CONST-COM).
+ *
+ * Slice 8: 3-tab consolidated layout. Contract Security, Payment Schedule, and Variations are
+ * folded into Contract & Milestones. Old routes redirect via their page.tsx files.
  */
 export function CommercialWorkspace({
   projectId,
   active,
 }: {
   projectId: string;
-  active: WorkspaceIntent;
+  active: CommercialTab;
 }) {
   const t = useTranslations('commercial');
   const tCommon = useTranslations('common');
-  const router = useRouter();
   const query = useCommercialSummary(projectId);
 
   const billingModel = query.data?.mainContract?.billingModel ?? null;
   const hasContract = query.data?.mainContract != null;
 
-  // The retired Overview route lands here as `active="overview"` and is bounced to the real landing
-  // tab once the summary tells us the billing model. The redirect runs in an effect (not during
-  // render) so it never fires against half-loaded data. The skeleton below covers the interim.
-  const isOverviewRedirect = active === 'overview';
-  const landing = commercialLandingTab(billingModel, hasContract);
-  useEffect(() => {
-    if (isOverviewRedirect && query.isSuccess) {
-      router.replace(commercialTabHref(projectId, landing));
-    }
-  }, [isOverviewRedirect, query.isSuccess, router, projectId, landing]);
+  // Overview tab renders independently — it fetches its own read model and does not need the
+  // summary to resolve first. Skip the skeleton + error states that guard the other tabs.
+  if (active === 'overview') {
+    return (
+      <div className="space-y-5" data-commercial-root>
+        <Heading />
+        <CommercialCycleRibbon projectId={projectId} />
+        <CommercialNav projectId={projectId} active="overview" billingModel={billingModel} />
+        <OverviewTab projectId={projectId} />
+      </div>
+    );
+  }
 
-  if (query.isPending || isOverviewRedirect) {
+  if (query.isPending) {
     return <WorkspaceSkeleton label={tCommon('loading')} />;
   }
 
@@ -98,15 +90,14 @@ export function CommercialWorkspace({
   // back-buttons into it gets the explanation rather than a blank screen: the tab is gone
   // because this contract is billed from its payment plan, and the plan is one click away.
   const available = commercialTabsFor(billingModel);
-  const tab = active as CommercialTab;
-  const resolved: CommercialTab = available.includes(tab) ? tab : landing;
+  const tab = active;
+  const resolved: CommercialTab = available.includes(tab) ? tab : commercialLandingTab(billingModel, hasContract);
 
   return (
     <div className="space-y-5" data-commercial-root>
       <Heading />
       {/* The persistent cycle ribbon (S-SH-2). It mounts here — once, above the view switch — so
-          "what happens next to get paid" reads the same on all four tabs. It supersedes the interim
-          CurrentPaymentCycle card C2 placed on Payment Schedule. */}
+          "what happens next to get paid" reads the same on all three tabs. */}
       <CommercialCycleRibbon projectId={projectId} />
       <CommercialNav projectId={projectId} active={resolved} billingModel={billingModel} />
 
@@ -115,17 +106,11 @@ export function CommercialWorkspace({
           <UnavailableView projectId={projectId} />
         ) : (
           <>
-            {tab === 'contract-security' ? (
-              <ContractSecurityTab projectId={projectId} summary={summary} />
+            {tab === 'contract-milestones' ? (
+              <ContractMilestonesTab projectId={projectId} summary={summary} />
             ) : null}
             {tab === 'applications' ? (
               <ApplicationsTab projectId={projectId} summary={summary} />
-            ) : null}
-            {tab === 'payment-schedule' ? (
-              <PaymentScheduleTab projectId={projectId} summary={summary} />
-            ) : null}
-            {tab === 'variations' ? (
-              <VariationsTab projectId={projectId} summary={summary} />
             ) : null}
             {tab === 'billing-collection' ? (
               <BillingCollectionTab projectId={projectId} summary={summary} />

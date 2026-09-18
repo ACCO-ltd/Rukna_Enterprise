@@ -90,7 +90,7 @@ the **Tag column's existence** change between modes.
 - **Add extra work — the who-pays classifier (all four concepts agreed on this).** From the ghost row
   (post-commit), `+ Add extra work`, or a pinned-cell block. A **decision-first** chooser that previews
   the exact money consequence of each route:
-  - **Absorb** → ABSORBED leaf funded net-zero from contingency ("Contingency → $72k left"). Contract unchanged.
+  - **Absorb** → ABSORBED leaf (internal cost record). Contingency and contract value both unchanged.
   - **Variation** → client pays; raises the contract ("$2,340k → $2,342k"); creates a DRAFT VO for approval.
   - **Separate charge** → one-off; contract unchanged; "Total client revenue → $2,342k."
 - **Draw contingency.** An over-cell popover (Excel data-validation-bubble feel) on the contingency line

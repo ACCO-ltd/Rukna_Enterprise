@@ -138,7 +138,11 @@ describe('Contract create — committed-BOQ bind, auto number, gate (ADR-030) [D
     } as never);
 
     const row = await prisma.contract.findUniqueOrThrow({ where: { id: created.id } });
-    expect(row.boqVersionId).toBe(versionId);
+    // Slice-1A: contract binds to an immutable SNAPSHOT cut from the operational version, not the
+    // operational version itself — verify the snapshot is derived from the correct committed version.
+    const snapshot = await prisma.boqVersion.findUniqueOrThrow({ where: { id: row.boqVersionId } });
+    expect(snapshot.status).toBe('SNAPSHOT');
+    expect(snapshot.derivedFromVersionId).toBe(versionId);
     expect(row.contractValue.toFixed(2)).toBe('750000.00');
     expect(row.baseContractValue?.toFixed(2)).toBe('750000.00');
     expect(row.billingModel).toBe('MILESTONE'); // S-CC-4 default
@@ -176,7 +180,7 @@ describe('Contract create — committed-BOQ bind, auto number, gate (ADR-030) [D
     expect(numbers).toEqual([`${code}-C1`, `${code}-C2`]);
   });
 
-  it('S-CC-2: a DRAFT-only project (no committed BOQ) is refused BOQ_NOT_COMMITTED and writes no row', async () => {
+  it('S-CC-2: a DRAFT BOQ with no priced nodes is refused with no-scope error and writes no row', async () => {
     const code = `DRAFT-${suffix}`;
     const project = await prisma.project.create({
       data: { organizationId: orgId, code, name: 'Draft-only', currency: 'USD', createdBy: userId },
@@ -184,7 +188,8 @@ describe('Contract create — committed-BOQ bind, auto number, gate (ADR-030) [D
     const client = await prisma.client.create({
       data: { organizationId: orgId, code: `CL-${code}`, name: 'Draft client' },
     });
-    // Initialize the BOQ but do NOT commit — the only version is DRAFT.
+    // Slice-1A: BOQ_NOT_COMMITTED gate removed — DRAFT versions are now valid for contract signing.
+    // A BOQ with no priced nodes still fails: tie-out returns null → 400 with no-scope message.
     await versioning.initialize(identity, project.id);
 
     const err = await service
@@ -192,7 +197,7 @@ describe('Contract create — committed-BOQ bind, auto number, gate (ADR-030) [D
       .catch((e) => e);
 
     expect(err).toBeInstanceOf(BadRequestException);
-    expect((err as BadRequestException).getResponse()).toMatchObject({ code: 'BOQ_NOT_COMMITTED' });
+    expect((err as BadRequestException).message).toMatch(/no priced in-contract scope/);
     const count = await prisma.contract.count({ where: { projectId: project.id } });
     expect(count).toBe(0);
   });

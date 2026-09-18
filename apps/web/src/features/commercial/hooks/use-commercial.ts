@@ -12,9 +12,12 @@ import type {
   CommercialBillingResponse,
   CommercialBillingPackagesResponse,
   CommercialCurrentCycleResponse,
+  CommercialOverviewResponse,
   CommercialSummaryResponse,
+  DepositAccountOption,
   ExtensionOfTimeListResponse,
   GrantExtensionOfTimeRequest,
+  RecordProjectPaymentResult,
   VariationOrderListResponse,
   VariationOrderResponse,
 } from '@erp/types';
@@ -28,20 +31,25 @@ import {
   getCommercialBilling,
   getCommercialBillingPackages,
   getCommercialCurrentCycle,
+  getCommercialOverview,
   getCommercialSummary,
+  getProjectDepositAccounts,
   getVariation,
   grantExtensionOfTime,
   listExtensionsOfTime,
   listVariations,
+  recordProjectPayment,
   removeVariationLine,
   reverseVariation,
   updateVariationLine,
+  type RecordProjectPaymentPayload,
   type UpdateVariationLinePayload,
   type VariationLinePayload,
 } from '../api/commercial-api';
 
 export const commercialKeys = {
   all: (projectId: string) => ['commercial', projectId] as const,
+  overview: (projectId: string) => [...commercialKeys.all(projectId), 'overview'] as const,
   summary: (projectId: string) => [...commercialKeys.all(projectId), 'summary'] as const,
   applications: (projectId: string) => [...commercialKeys.all(projectId), 'applications'] as const,
   currentCycle: (projectId: string) => [...commercialKeys.all(projectId), 'current-cycle'] as const,
@@ -49,6 +57,8 @@ export const commercialKeys = {
   /** Grouped stage-billing story (S-VB-7), contract-scoped under the project's commercial tree. */
   billingPackages: (projectId: string, contractId: string) =>
     [...commercialKeys.all(projectId), 'billing-packages', contractId] as const,
+  depositAccounts: (projectId: string) =>
+    [...commercialKeys.all(projectId), 'deposit-accounts'] as const,
 };
 
 /** Variations are contract-scoped, so their cache is keyed by contract, not project. */
@@ -61,6 +71,16 @@ export const variationKeys = {
   certifiedInvoiced: (contractId: string) =>
     [...variationKeys.all, 'certified-invoiced', contractId] as const,
 };
+
+/** Slice 7 — authoritative commercial overview. Includes financial position, current cycle, and attention items. */
+export function useCommercialOverview(
+  projectId: string,
+): UseQueryResult<CommercialOverviewResponse, Error> {
+  return useQuery({
+    queryKey: commercialKeys.overview(projectId),
+    queryFn: () => getCommercialOverview(projectId),
+  });
+}
 
 /**
  * The commercial summary read model. A project with no main contract is not an error here —
@@ -248,4 +268,25 @@ export function useGrantExtensionOfTime(contractId: string, projectId: string) {
   return useVariationMutation(contractId, projectId, (payload: GrantExtensionOfTimeRequest) =>
     grantExtensionOfTime(contractId, payload),
   );
+}
+
+// ─── Slice 5B — Deposit accounts + record payment ───────────────────────────
+
+export function useProjectDepositAccounts(
+  projectId: string,
+): UseQueryResult<DepositAccountOption[], Error> {
+  return useQuery({
+    queryKey: commercialKeys.depositAccounts(projectId),
+    queryFn: () => getProjectDepositAccounts(projectId),
+  });
+}
+
+export function useRecordProjectPayment(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation<RecordProjectPaymentResult, Error, RecordProjectPaymentPayload>({
+    mutationFn: (payload) => recordProjectPayment(projectId, payload),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: commercialKeys.billing(projectId) });
+    },
+  });
 }

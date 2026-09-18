@@ -1709,6 +1709,14 @@ export interface CommercialPaymentScheduleInstallment {
    * API enforces the same gate).
    */
   programmeMilestone: PaymentInstallmentMilestoneLink | null;
+  /** Slice 3B — whether this installment has been formally marked ready to bill. */
+  readyToBill: boolean;
+  /** ISO-8601 timestamp when readiness was marked; null when revoked or never set. */
+  readyToBillAt: string | null;
+  /** True when the user may click "Mark Ready to Bill" — NEXT status, not yet marked ready, no outstanding invoice. */
+  canMarkReadyToBill: boolean;
+  /** True when the user may click "Prepare Invoice" — NEXT status, marked ready, no outstanding invoice. */
+  canPrepareInvoice: boolean;
 }
 
 /** A programme milestone linked to a payment installment (CONST-COM-011 evidence gate). */
@@ -1753,6 +1761,48 @@ export interface CommercialPaymentSchedule {
   variationLines: CommercialPaymentScheduleVariationLine[];
 }
 
+// ─── Slice 3B — Installment readiness ───────────────────────────────────────────
+
+export interface InstallmentReadinessResult {
+  installmentId: string;
+  readyToBill: boolean;
+  /** ISO-8601 timestamp when readiness was marked; null when revoked or never set. */
+  readyToBillAt: string | null;
+}
+
+// ─── Slice 4B — Delivery records + Billing Package documents ─────────────────────
+
+export type InvoiceDeliveryMethod = 'WHATSAPP' | 'EMAIL' | 'PHYSICAL' | 'OTHER';
+
+export interface CommercialDeliveryRecord {
+  id: string;
+  method: InvoiceDeliveryMethod;
+  recipient: string | null;
+  note: string | null;
+  sentAt: string;
+  sentBy: string;
+}
+
+export type BillingPackageDocumentSource = 'MILESTONE' | 'VARIATION';
+
+/**
+ * One invoice document within a Billing Package. Each entry corresponds to a single
+ * `ClientInvoice` record. Money fields are null without `financialPositionView`.
+ */
+export interface CommercialBillingPackageDocument {
+  invoiceId: string;
+  invoiceNumber: string | null;
+  sourceType: BillingPackageDocumentSource;
+  /** Installment name for MILESTONE; "VO-001 — Title" for VARIATION. */
+  sourceReference: string;
+  subtotal: string | null;
+  salesTax: string | null;
+  total: string | null;
+  dueDate: string | null;
+  outstanding: string | null;
+  deliveries: CommercialDeliveryRecord[];
+}
+
 /**
  * ADR-030 CONST-COM-028 / S-VB-7 (Commercial redesign P1) — the Billing Package read model.
  *
@@ -1771,8 +1821,10 @@ export interface CommercialBillingPackageInvoice {
   subtotal: string | null;
   /** Tax-inclusive total. Null when the caller cannot view financials. */
   totalAmount: string | null;
+  dueDate: string | null;
   documentStatus: ClientInvoiceDocStatus;
   postingStatus: ArPostingStatus;
+  deliveries: CommercialDeliveryRecord[];
 }
 
 /**
@@ -1803,6 +1855,12 @@ export interface CommercialBillingPackage {
   variationLines: CommercialBillingPackageLine[];
   /** Milestone total + Σ addition-VO invoice totals. Null when the caller cannot view financials. */
   presentedTotal: string | null;
+  // Slice 4B — flat document list and package-level aggregates (sum across all documents).
+  documents: CommercialBillingPackageDocument[];
+  packageSubtotal: string | null;
+  packageTax: string | null;
+  packageTotal: string | null;
+  packageOutstanding: string | null;
 }
 
 /**
@@ -1936,12 +1994,57 @@ export type ClientInvoiceSettlementStatus =
   | 'PAID'
   | 'CANCELLED';
 
+// ─── Slice 6B — Collection event types for CommercialInvoiceRow ──────────────
+
+export interface CollectionFollowUpDto {
+  id: string;
+  method: string;
+  contactPerson: string | null;
+  note: string | null;
+  occurredAt: string;
+  recordedAt: string;
+}
+
+export interface CollectionPromiseDto {
+  id: string;
+  promisedDate: string;
+  promisedAmount: string | null;
+  outstandingAtPromise: string;
+  note: string | null;
+  recordedAt: string;
+  /** Derived server-side from allocations and today's date. */
+  status: 'ACTIVE' | 'KEPT' | 'MISSED';
+}
+
+export interface CollectionDisputeDto {
+  id: string;
+  disputedAmount: string | null;
+  reason: string;
+  note: string | null;
+  openedAt: string;
+  resolvedAt: string | null;
+  resolutionNote: string | null;
+}
+
+export interface CollectionCreditNoteDto {
+  id: string;
+  creditNoteNumber: string | null;
+  reason: string;
+  netAmount: string;
+  vatAmount: string;
+  totalAmount: string;
+  accountingDate: string;
+  postingStatus: string;
+  note: string | null;
+  createdAt: string;
+}
+
 export interface CommercialInvoiceRow {
   id: string;
   invoiceNumber: string | null;
   source: ClientInvoiceSource;
   invoiceDate: string;
-  dueDate: string;
+  dueDate: string | null;
   currency: string;
   /** Pre-VAT. Null without financial visibility. */
   subtotal: string | null;
@@ -1962,6 +2065,16 @@ export interface CommercialInvoiceRow {
    * browser with a skewed clock does not get a vote.
    */
   daysOverdue: number;
+  /**
+   * ISO timestamp of the first delivery event on this invoice (sentAt ascending), or null if
+   * the invoice has never been sent to the client. Populated from Slice 4B delivery records.
+   */
+  sentAt?: string | null;
+  // Slice 6B — Collection Events (populated when collection data is loaded)
+  followUps?: CollectionFollowUpDto[];
+  promises?: CollectionPromiseDto[];
+  openDispute?: CollectionDisputeDto | null;
+  creditNotes?: CollectionCreditNoteDto[];
 }
 
 /** One receipt's allocation against one of this contract's invoices. */
@@ -2023,6 +2136,8 @@ export interface CommercialBillingPosition {
 export interface CommercialBillingResponse {
   projectId: string;
   contractId: string | null;
+  /** The client this contract is with. Required by the Record Payment drawer — direct, not via current-cycle cache. */
+  clientId: string | null;
   currency: string | null;
   billingModel: `${BillingModel}` | null;
   financialsVisible: boolean;
@@ -2038,6 +2153,162 @@ export interface CommercialBillingResponse {
   aging: CommercialAgingBucket[];
   capabilities: CommercialCapabilities;
   asOf: string;
+}
+
+/** A bank/cash account available as the deposit destination for a project payment. */
+export interface DepositAccountOption {
+  id: string;
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  currencyCode: string;
+}
+
+/** One invoice allocation inside a {@link RecordProjectPaymentResult}. */
+export interface RecordProjectPaymentAllocationResult {
+  invoiceId: string;
+  invoiceNumber: string | null;
+  allocatedAmount: string;
+}
+
+/** The confirmed outcome returned after a successful {@link recordProjectPayment} command. */
+export interface RecordProjectPaymentResult {
+  receiptId: string;
+  receiptDate: string;
+  amount: string;
+  currency: string;
+  method: string | null;
+  reference: string | null;
+  allocations: RecordProjectPaymentAllocationResult[];
+  /** Amount from this receipt not yet applied to any invoice (parked in Unapplied). */
+  unallocatedAmount: string;
+}
+
+// ─── Slice 7 — Commercial Overview ─────────────────────────────────────────────
+//
+// A single authoritative read model that answers the four control-centre questions:
+//   1. Where are we commercially?
+//   2. How much has been billed and collected?
+//   3. What needs attention?
+//   4. What should the user do next?
+//
+// Introduced no new business rules. Composes existing data from contract, installments,
+// invoices, credit notes, allocations, deliveries, and collection events.
+
+export type OverviewAttentionKind =
+  | 'ISSUED_NOT_SENT'
+  | 'OVERDUE_INVOICE'
+  | 'MISSED_PROMISE'
+  | 'OPEN_DISPUTE';
+
+/**
+ * One item in the "Needs Attention" section of the Commercial Overview.
+ *
+ * Each item is for a single invoice. Per invoice only ONE kind is emitted, using the priority
+ * order: OPEN_DISPUTE > MISSED_PROMISE > ISSUED_NOT_SENT > OVERDUE_INVOICE. This prevents the
+ * same invoice from surfacing under two different headings.
+ */
+export interface OverviewAttentionItem {
+  kind: OverviewAttentionKind;
+  invoiceId: string;
+  invoiceNumber: string;
+  /** Human headline — e.g. "8 days overdue", "Promise missed", "Client dispute open". */
+  headline: string;
+  /** The financially relevant amount for this attention kind (VAT-inclusive outstanding or disputed). */
+  amount: string;
+  /** Populated for OVERDUE_INVOICE: whole calendar days past due date. */
+  daysOverdue?: number;
+  /** Populated for OPEN_DISPUTE: the contested portion (may be less than outstanding). */
+  disputedAmount?: string;
+  /** ISO timestamp of the most recent follow-up, if any. */
+  lastContactAt?: string | null;
+  /** ISO date string of the latest promise, for MISSED_PROMISE. */
+  promisedDate?: string | null;
+  /** Promised amount string, for MISSED_PROMISE (may be null when the promise had no amount). */
+  promisedAmount?: string | null;
+}
+
+/**
+ * The simplified lifecycle stage shown in the "Current Position" card.
+ *
+ * Derived server-side from the NEXT installment's flags so the frontend never needs to
+ * re-implement the state machine. Values are self-documenting user-facing states.
+ */
+export type OverviewCycleStage =
+  | 'NO_CONTRACT'     // No active/signed contract recorded
+  | 'REVIEW_FOR_BILLING'  // NEXT installment present; not yet marked ready to bill
+  | 'READY_TO_BILL'       // NEXT installment marked ready; invoice can be prepared
+  | 'ALL_BILLED'          // No NEXT installment; at least one outstanding balance remains
+  | 'ALL_COMPLETE';       // No NEXT installment; all invoice balances are zero
+
+/**
+ * Slice 7 — The authoritative Commercial Overview read model for one project.
+ *
+ * Financial definitions (frozen):
+ *   grossIssued       = Σ totalAmount  of POSTED ClientInvoices for this project
+ *   postedCreditNotes = Σ totalAmount  of POSTED CreditNotes against those invoices
+ *   netBilled         = grossIssued − postedCreditNotes
+ *   collected         = Σ allocatedAmount of POSTED ClientReceiptAllocations for those invoices
+ *   outstanding       = Σ outstandingAmount of POSTED ClientInvoices (canonical AR subledger)
+ *   overdue           = Σ outstandingAmount where dueDate < today AND dueDate ≠ null AND amount > 0
+ *
+ * Reconciliation invariant: netBilled − collected = outstanding
+ * (outstandingAmount is reduced atomically by both credit note posting and receipt allocation)
+ *
+ * Money fields are null when the caller lacks financialPositionView, mirroring every other
+ * commercial money surface.
+ */
+export interface CommercialOverviewResponse {
+  projectId: string;
+  currency: string;
+  contract: {
+    id: string | null;
+    contractNumber: string | null;
+    status: string | null;
+    /** Frozen at contract creation; never inflated by variations. */
+    baseContractValue: string;
+    /** Current governing value (includes adopted variations). */
+    currentContractValue: string;
+  };
+  /**
+   * All values are null when the caller lacks financialPositionView; never "$0".
+   * Separate charges can make netBilled > currentContractValue — this is not an error.
+   */
+  financialPosition: {
+    grossIssued: string | null;
+    postedCreditNotes: string | null;
+    netBilled: string | null;
+    collected: string | null;
+    outstanding: string | null;
+    overdue: string | null;
+  };
+  /**
+   * The current commercial stage, derived from the NEXT installment (or its absence).
+   * Installment amounts are null when the caller cannot view financials.
+   */
+  currentCycle: {
+    installmentId: string | null;
+    milestoneId: string | null;
+    title: string;
+    stage: OverviewCycleStage;
+    /** One-line human description suitable for a card subtitle. */
+    description: string;
+    /** VAT-inclusive installment amount (base × percentage). Null without financial visibility. */
+    amount: string | null;
+    nextAction: {
+      kind: 'MARK_READY' | 'PREPARE_INVOICE' | 'NONE';
+      label: string;
+      /** The installment ID the action targets. */
+      targetId: string | null;
+    } | null;
+  };
+  /**
+   * Deterministically ordered attention items.
+   * Group 1 (action required): ISSUED_NOT_SENT, MISSED_PROMISE, OPEN_DISPUTE.
+   * Group 2 (collections): OVERDUE_INVOICE sorted by daysOverdue descending.
+   * Empty when nothing needs attention.
+   */
+  attention: OverviewAttentionItem[];
 }
 
 // ─── Project Financial Position (ADR-013) ───────────────────────────────────────

@@ -29,6 +29,12 @@ import {
   type CommercialSummaryResponse,
   type PaymentInstallmentBillStatus,
   type RequestIdentity,
+  type CollectionFollowUpDto,
+  type CollectionPromiseDto,
+  type CollectionDisputeDto,
+  type CollectionCreditNoteDto,
+  type CommercialOverviewResponse,
+  type OverviewAttentionItem,
 } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
@@ -44,6 +50,7 @@ import {
   netPrice as computeVoNetPrice,
 } from '../../variations/domain/variation-order.policy.js';
 import type { CommercialContractValue } from '@erp/types';
+import { CollectionEventsService } from '../../../accounting/accounts-receivable/application/collection-events.service.js';
 
 const ZERO = new Decimal(0);
 
@@ -190,6 +197,8 @@ export class CommercialService {
     private readonly variationRepo: VariationOrderPrismaRepository,
     // ADR-029 T-5: the BOQ read port for the separate-charge total that feeds total client revenue.
     private readonly boqVersioning: BoqVersioningService,
+    // Slice 6B: collection events for the billing read model
+    private readonly collectionEventsService: CollectionEventsService,
   ) {}
 
   // ─── B2 — Project commercial summary ───────────────────────────────────────────
@@ -844,6 +853,7 @@ export class CommercialService {
       return {
         projectId,
         contractId: null,
+        clientId: null,
         currency: null,
         billingModel: null,
         financialsVisible: mayViewFinancials,
@@ -865,6 +875,14 @@ export class CommercialService {
         .catch(() => ZERO),
     ]);
 
+    // Slice 6B — load collection data for all invoices in a single set-based query
+    const invoiceIdList = invoiceRows.map((i) => i.id);
+    const collectionData = await this.repo
+      .findInvoiceCollectionData(prisma, orgId, invoiceIdList)
+      .catch(() => new Map<string, import('../infrastructure/commercial-prisma.repository.js').InvoiceCollectionData>());
+
+    const todayIso = asOf.toISOString().slice(0, 10);
+
     const money = (d: Decimal): string | null => (mayViewFinancials ? d.toFixed(2) : null);
     const today = utcMidnight(asOf);
 
@@ -884,7 +902,7 @@ export class CommercialService {
         ZERO,
       );
       const posted = inv.postingStatus === 'POSTED';
-      const daysLate = daysBetweenUtc(today, inv.dueDate);
+      const daysLate = inv.dueDate ? daysBetweenUtc(today, inv.dueDate) : 0;
       const isOverdue = posted && balance.gt(ZERO) && daysLate > 0;
 
       if (posted) {
@@ -903,12 +921,61 @@ export class CommercialService {
         }
       }
 
+      // Slice 6B — enrich with collection data
+      const coll = collectionData.get(inv.id);
+      const followUps: CollectionFollowUpDto[] = (coll?.followUps ?? []).map((f) => ({
+        id: f.id,
+        method: f.method,
+        contactPerson: f.contactPerson,
+        note: f.note,
+        occurredAt: f.occurredAt.toISOString(),
+        recordedAt: f.recordedAt.toISOString(),
+      }));
+      const promises: CollectionPromiseDto[] = (coll?.promises ?? []).map((p) => {
+        const allocsAfter = (coll?.allocationsForPromises ?? [])
+          .filter((a) => a.allocationDate >= p.recordedAt && a.allocationDate <= p.promisedDate)
+          .reduce((sum, a) => sum.plus(new Decimal(a.allocatedAmount.toString())), ZERO);
+        return {
+          id: p.id,
+          promisedDate: p.promisedDate.toISOString().slice(0, 10),
+          promisedAmount: p.promisedAmount?.toString() ?? null,
+          outstandingAtPromise: p.outstandingAtPromise.toString(),
+          note: p.note,
+          recordedAt: p.recordedAt.toISOString(),
+          status: CollectionEventsService.derivePromiseStatus(p, allocsAfter, todayIso),
+        };
+      });
+      const openDisputeRaw = coll?.openDispute ?? null;
+      const openDispute: CollectionDisputeDto | null = openDisputeRaw
+        ? {
+            id: openDisputeRaw.id,
+            disputedAmount: openDisputeRaw.disputedAmount?.toString() ?? null,
+            reason: openDisputeRaw.reason,
+            note: openDisputeRaw.note,
+            openedAt: openDisputeRaw.openedAt.toISOString(),
+            resolvedAt: openDisputeRaw.resolvedAt?.toISOString() ?? null,
+            resolutionNote: openDisputeRaw.resolutionNote,
+          }
+        : null;
+      const creditNotes: CollectionCreditNoteDto[] = (coll?.creditNotes ?? []).map((cn) => ({
+        id: cn.id,
+        creditNoteNumber: cn.creditNoteNumber,
+        reason: cn.reason,
+        netAmount: cn.netAmount.toString(),
+        vatAmount: cn.vatAmount.toString(),
+        totalAmount: cn.totalAmount.toString(),
+        accountingDate: cn.accountingDate.toISOString().slice(0, 10),
+        postingStatus: cn.postingStatus,
+        note: cn.note,
+        createdAt: cn.createdAt.toISOString(),
+      }));
+
       return {
         id: inv.id,
         invoiceNumber: inv.invoiceNumber,
         source: invoiceSource(inv),
         invoiceDate: inv.invoiceDate.toISOString(),
-        dueDate: inv.dueDate.toISOString(),
+        dueDate: inv.dueDate?.toISOString() ?? null,
         currency: inv.currencyCode,
         subtotal: money(new Decimal(inv.subtotal.toString())),
         vatAmount: money(new Decimal(inv.vatAmount.toString())),
@@ -919,6 +986,10 @@ export class CommercialService {
         postingStatus: inv.postingStatus as ArPostingStatus,
         status: invoiceSettlementStatus(inv.documentStatus, inv.postingStatus, total, balance),
         daysOverdue: isOverdue ? daysLate : 0,
+        followUps,
+        promises,
+        openDispute,
+        creditNotes,
       };
     });
 
@@ -956,6 +1027,7 @@ export class CommercialService {
     return {
       projectId,
       contractId: contract.id,
+      clientId: contract.clientId,
       currency: contract.currency,
       billingModel: contract.billingModel,
       financialsVisible: mayViewFinancials,
@@ -1081,6 +1153,7 @@ export class CommercialService {
       const paid = amount.mul(paidFraction);
       collected = collected.plus(paid);
 
+      const isReady = inst.readyToBillAt !== null;
       return {
         id: inst.id,
         sortOrder: inst.sortOrder,
@@ -1092,6 +1165,10 @@ export class CommercialService {
         milestoneLabel: inst.milestoneLabel,
         dueOffsetDays: inst.dueOffsetDays,
         dueDate: inst.dueDate ? inst.dueDate.toISOString().slice(0, 10) : null,
+        readyToBill: isReady,
+        readyToBillAt: inst.readyToBillAt?.toISOString() ?? null,
+        canMarkReadyToBill: status === 'NEXT' && !isReady,
+        canPrepareInvoice: status === 'NEXT' && isReady,
         status,
         // CONST-COM-011: the linked programme milestone, so the UI can show the evidence gate
         // and block "Generate invoice" until the milestone is verified. Null when unlinked.
@@ -1262,21 +1339,19 @@ export class CommercialService {
       .filter(
         (inv) =>
           inv.postingStatus === 'POSTED' &&
+          inv.dueDate !== null &&
           new Decimal(inv.outstandingAmount.toString()).greaterThan(0),
       )
-      .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime())
+      .sort((a, b) => a.dueDate!.getTime() - b.dueDate!.getTime())
       .slice(0, 5)
       .map((inv) => {
-        const due = Date.UTC(
-          inv.dueDate.getUTCFullYear(),
-          inv.dueDate.getUTCMonth(),
-          inv.dueDate.getUTCDate(),
-        );
+        const dueDate = inv.dueDate!;
+        const due = Date.UTC(dueDate.getUTCFullYear(), dueDate.getUTCMonth(), dueDate.getUTCDate());
         return {
           id: inv.id,
           invoiceNumber: inv.invoiceNumber,
           invoiceDate: inv.invoiceDate.toISOString(),
-          dueDate: inv.dueDate.toISOString(),
+          dueDate: dueDate.toISOString(),
           outstandingAmount: new Decimal(inv.outstandingAmount.toString()).toFixed(2),
           currency,
           daysOverdue: Math.max(0, Math.round((today - due) / 86_400_000)),
@@ -1492,6 +1567,238 @@ export class CommercialService {
 
     const order = { URGENT: 0, WARNING: 1, INFO: 2 } as const;
     return items.sort((a, b) => order[a.severity] - order[b.severity]);
+  }
+
+  // ─── Slice 7 — Commercial Overview ─────────────────────────────────────────────
+
+  /**
+   * One authoritative project-level read model for the Commercial Overview tab.
+   *
+   * Financial metrics use Σ invoice.outstandingAmount as the outstanding source — the AR
+   * subledger value already reduced by both credit-note posting and receipt allocation — NOT
+   * `invoiced − received`. This satisfies: netBilled − collected = outstanding.
+   *
+   * Read-only. No mutations occur here.
+   */
+  async getOverview(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<CommercialOverviewResponse> {
+    await this.projectAccess.assertMember(identity, projectId);
+    const prisma = this.tenancyService.getClient();
+    const orgId = identity.activeOrganizationId;
+    const { canViewMargin: mayViewFinancials } = resolveBoqVisibility(identity);
+    const today = new Date();
+    const todayUtcMs = utcMidnight(today);
+
+    const [contract, overviewData] = await Promise.all([
+      this.repo.findMainContract(prisma, orgId, projectId),
+      this.repo.findProjectOverviewData(prisma, orgId, projectId),
+    ]);
+
+    const cycle = await this.getCurrentCycle(identity, projectId);
+
+    // ── Contract ──────────────────────────────────────────────────────────────────
+    const contractSection: CommercialOverviewResponse['contract'] = contract
+      ? {
+          id: contract.id,
+          contractNumber: contract.contractNumber,
+          status: contract.status,
+          baseContractValue: new Decimal(
+            (contract.baseContractValue ?? contract.contractValue).toString(),
+          ).toFixed(2),
+          currentContractValue: new Decimal(contract.contractValue.toString()).toFixed(2),
+        }
+      : { id: null, contractNumber: null, status: null, baseContractValue: '0.00', currentContractValue: '0.00' };
+
+    // ── Financial position ─────────────────────────────────────────────────────────
+    let financialPosition: CommercialOverviewResponse['financialPosition'];
+    if (!mayViewFinancials) {
+      financialPosition = {
+        grossIssued: null,
+        postedCreditNotes: null,
+        netBilled: null,
+        collected: null,
+        outstanding: null,
+        overdue: null,
+      };
+    } else {
+      const grossIssued = overviewData.invoices.reduce((s, i) => s.plus(i.totalAmount), ZERO);
+      const outstanding = overviewData.invoices.reduce((s, i) => s.plus(i.outstandingAmount), ZERO);
+      const overdue = overviewData.invoices.reduce((s, i) => {
+        if (!i.dueDate) return s;
+        if (utcMidnight(i.dueDate) >= todayUtcMs) return s;
+        return i.outstandingAmount.gt(ZERO) ? s.plus(i.outstandingAmount) : s;
+      }, ZERO);
+      financialPosition = {
+        grossIssued: grossIssued.toFixed(2),
+        postedCreditNotes: overviewData.postedCreditNotesSum.toFixed(2),
+        netBilled: grossIssued.minus(overviewData.postedCreditNotesSum).toFixed(2),
+        collected: overviewData.collectedSum.toFixed(2),
+        outstanding: outstanding.toFixed(2),
+        overdue: overdue.toFixed(2),
+      };
+    }
+
+    // ── Current cycle ──────────────────────────────────────────────────────────────
+    let currentCycle: CommercialOverviewResponse['currentCycle'];
+
+    if (cycle.stage === 'NO_CONTRACT') {
+      currentCycle = {
+        installmentId: null,
+        milestoneId: null,
+        title: 'No signed contract',
+        stage: 'NO_CONTRACT',
+        description: 'Record the signed contract to begin commercial tracking.',
+        amount: null,
+        nextAction: null,
+      };
+    } else if (cycle.stage === 'CONTRACT_DRAFT') {
+      currentCycle = {
+        installmentId: null,
+        milestoneId: null,
+        title: 'Contract in draft',
+        stage: 'NO_CONTRACT',
+        description: 'Activate the contract to begin commercial tracking.',
+        amount: null,
+        nextAction: null,
+      };
+    } else if (cycle.stage === 'MILESTONE_SCHEDULE' && cycle.paymentSchedule) {
+      const nextInst = cycle.paymentSchedule.installments.find((i) => i.status === 'NEXT') ?? null;
+      if (!nextInst) {
+        const hasOutstanding = overviewData.invoices.some((i) => i.outstandingAmount.gt(ZERO));
+        currentCycle = {
+          installmentId: null,
+          milestoneId: null,
+          title: 'All stages billed',
+          stage: hasOutstanding ? 'ALL_BILLED' : 'ALL_COMPLETE',
+          description: hasOutstanding
+            ? 'All billing packages issued. Awaiting final payment.'
+            : 'All milestones billed and settled.',
+          amount: null,
+          nextAction: null,
+        };
+      } else {
+        const milestoneVerified = nextInst.programmeMilestone?.status === 'VERIFIED';
+        const description = nextInst.readyToBill
+          ? 'Marked ready — billing package can be prepared.'
+          : nextInst.programmeMilestone && !milestoneVerified
+            ? 'Waiting for work verification before billing.'
+            : 'Commercial review required before billing.';
+        currentCycle = {
+          installmentId: nextInst.id,
+          milestoneId: nextInst.programmeMilestone?.id ?? null,
+          title: nextInst.name,
+          stage: nextInst.readyToBill ? 'READY_TO_BILL' : 'REVIEW_FOR_BILLING',
+          description,
+          amount: nextInst.amount,
+          nextAction: {
+            kind: nextInst.readyToBill ? 'PREPARE_INVOICE' : 'MARK_READY',
+            label: nextInst.readyToBill ? 'Prepare billing package' : 'Review for billing',
+            targetId: nextInst.id,
+          },
+        };
+      }
+    } else if (cycle.stage === 'TERMINAL') {
+      const hasOutstanding = overviewData.invoices.some((i) => i.outstandingAmount.gt(ZERO));
+      currentCycle = {
+        installmentId: null,
+        milestoneId: null,
+        title: 'Contract complete',
+        stage: hasOutstanding ? 'ALL_BILLED' : 'ALL_COMPLETE',
+        description: 'The contract has reached its terminal state.',
+        amount: null,
+        nextAction: null,
+      };
+    } else {
+      currentCycle = {
+        installmentId: null,
+        milestoneId: null,
+        title: 'Commercial cycle active',
+        stage: 'REVIEW_FOR_BILLING',
+        description: '',
+        amount: null,
+        nextAction: null,
+      };
+    }
+
+    // ── Attention items ────────────────────────────────────────────────────────────
+    // Priority per invoice: OPEN_DISPUTE > MISSED_PROMISE > ISSUED_NOT_SENT > OVERDUE_INVOICE.
+    // At most ONE item per invoice to prevent double-surfacing the same issue.
+    const group1: OverviewAttentionItem[] = [];
+    const group2: OverviewAttentionItem[] = [];
+
+    for (const inv of overviewData.invoices) {
+      const num = inv.invoiceNumber ?? inv.id.slice(0, 8);
+      const col = overviewData.collectionData.get(inv.id);
+      const openDispute = col?.openDispute ?? null;
+      const latestPromise = col?.promises[0] ?? null;
+      const latestFollowUp = col?.followUps[0] ?? null;
+      const followUpAt = latestFollowUp?.occurredAt.toISOString() ?? null;
+
+      const isOverdue =
+        inv.dueDate !== null &&
+        utcMidnight(inv.dueDate) < todayUtcMs &&
+        inv.outstandingAmount.gt(ZERO);
+
+      const isMissedPromise =
+        latestPromise !== null &&
+        inv.outstandingAmount.gt(ZERO) &&
+        utcMidnight(latestPromise.promisedDate) < todayUtcMs;
+
+      if (openDispute) {
+        group1.push({
+          kind: 'OPEN_DISPUTE',
+          invoiceId: inv.id,
+          invoiceNumber: num,
+          headline: 'Client dispute open',
+          amount: inv.outstandingAmount.toFixed(2),
+          disputedAmount: openDispute.disputedAmount?.toFixed(2) ?? undefined,
+          lastContactAt: followUpAt,
+        });
+      } else if (isMissedPromise) {
+        group1.push({
+          kind: 'MISSED_PROMISE',
+          invoiceId: inv.id,
+          invoiceNumber: num,
+          headline: 'Promise missed',
+          amount: inv.outstandingAmount.toFixed(2),
+          lastContactAt: followUpAt,
+          promisedDate: latestPromise!.promisedDate.toISOString().slice(0, 10),
+          promisedAmount: latestPromise!.promisedAmount?.toFixed(2) ?? null,
+        });
+      } else if (inv.deliveryCount === 0) {
+        group1.push({
+          kind: 'ISSUED_NOT_SENT',
+          invoiceId: inv.id,
+          invoiceNumber: num,
+          headline: 'Issued but not sent to client',
+          amount: inv.outstandingAmount.toFixed(2),
+        });
+      } else if (isOverdue) {
+        const daysOverdue = Math.round((todayUtcMs - utcMidnight(inv.dueDate!)) / 86_400_000);
+        group2.push({
+          kind: 'OVERDUE_INVOICE',
+          invoiceId: inv.id,
+          invoiceNumber: num,
+          headline: `${daysOverdue} day${daysOverdue === 1 ? '' : 's'} overdue`,
+          amount: inv.outstandingAmount.toFixed(2),
+          daysOverdue,
+          lastContactAt: followUpAt,
+        });
+      }
+    }
+
+    group2.sort((a, b) => (b.daysOverdue ?? 0) - (a.daysOverdue ?? 0));
+
+    return {
+      projectId,
+      currency: contract?.currency ?? 'USD',
+      contract: contractSection,
+      financialPosition,
+      currentCycle,
+      attention: [...group1, ...group2],
+    };
   }
 
   private capabilities(

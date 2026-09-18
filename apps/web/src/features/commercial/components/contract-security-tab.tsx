@@ -115,7 +115,7 @@ export function ContractSecurityTab({
  * before an early return, so keeping it in the parent meant a project with no contract still
  * fired a request for `/contracts/` — a fetch for nothing, on the one screen that has nothing.
  */
-function ContractSecurityBody({
+export function ContractSecurityBody({
   projectId,
   summary,
 }: {

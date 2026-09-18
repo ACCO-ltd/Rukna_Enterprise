@@ -1,4 +1,4 @@
-import { CommercialWorkspace } from '@/features/commercial/components/commercial-workspace';
+import { redirect } from 'next/navigation';
 
 export default async function PaymentSchedulePage({
   params,
@@ -6,5 +6,5 @@ export default async function PaymentSchedulePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <CommercialWorkspace projectId={id} active="payment-schedule" />;
+  redirect(`/projects/${id}/commercial/contract-milestones`);
 }

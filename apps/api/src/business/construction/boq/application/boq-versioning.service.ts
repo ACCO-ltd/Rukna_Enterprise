@@ -339,6 +339,38 @@ export class BoqVersioningService {
   }
 
   /**
+   * Slice-1A — cut an immutable SNAPSHOT of the operational version at the moment of contract
+   * signing. Unlike `commit`, this does NOT flip the operational version to COMMITTED — the BOQ
+   * stays mutable. The SNAPSHOT is the frozen anchor the contract row stores; the operational
+   * version (DRAFT or COMMITTED) is unaffected.
+   *
+   * Must be called inside a Prisma transaction so snapshot creation and contract row creation
+   * are atomic.
+   */
+  async createContractSigningSnapshot(
+    tx: Prisma.TransactionClient,
+    boqId: string,
+    operationalVersionId: string,
+    userId: string,
+  ): Promise<string> {
+    const nodes = await this.repo.findNodesByVersion(tx as never, operationalVersionId);
+    const snapshotNumber = (await this.repo.maxVersionNumber(tx as never, boqId)) + 1;
+    const snapshot = await this.repo.createVersion(tx as never, {
+      boqId,
+      versionNumber: snapshotNumber,
+      status: 'SNAPSHOT',
+      notes: `Contract signing snapshot`,
+      createdBy: userId,
+      preparedBy: userId,
+      derivedFromVersionId: operationalVersionId,
+    });
+    if (nodes.length > 0) {
+      await this.copyNodes(tx as never, boqId, snapshot.id, nodes);
+    }
+    return snapshot.id;
+  }
+
+  /**
    * BOQ read port (spec I-1 / T-1) — the in-contract billable total of a version, the figure R3's
    * contract tie-out (`Contract.baseContractValue`) is checked against. Reuses the one shared
    * `inContractBillableTotal` policy so the contract can never tie out to a different rule than the
@@ -446,6 +478,7 @@ export class BoqVersioningService {
     variation: {
       id: string;
       reference: string;
+      parentId?: string;
       lines: Array<{ description: string; quantity: Prisma.Decimal; unitRate: Prisma.Decimal; amount: Prisma.Decimal; sortOrder: number }>;
     },
   ): Promise<{ versionId: string; snapshotVersionId: string; nodeCount: number }> {
@@ -481,44 +514,73 @@ export class BoqVersioningService {
       );
     }
 
-    // Generate a section code that does not collide with any code already in the version.
     const usedCodes = await this.repo.findCodesInVersion(tx as never, operationalVersionId);
-    const sectionCode = this.nextFreeCode(`VO-${variation.reference}`, usedCodes);
-    usedCodes.add(sectionCode);
 
-    const rootSiblingCount = await this.repo.countSiblings(tx as never, operationalVersionId, null);
-    const sectionId = randomUUID();
-    await this.repo.createNode(tx as never, {
-      id: sectionId,
-      boqId: boq.id,
-      versionId: operationalVersionId,
-      parentId: null,
-      path: sectionId,
-      depth: 0,
-      sortOrder: rootSiblingCount,
-      code: sectionCode,
-      description: `Variation ${variation.reference}`,
-      isLeaf: false,
-      // The section itself carries the VO provenance too, so the whole group traces to the VO. A
-      // section holds no amount, so it is inherently pin-neutral (it never contributes to the total).
-      sourceType: 'VARIATION',
-      commercialTreatment: 'IN_CONTRACT',
-      sourceChangeOrderId: variation.id,
-    });
+    // Determine the effective parent: either the explicitly chosen section, or a freshly
+    // created root container (only allowed when the BOQ has no sections yet).
+    let effectiveParentId: string;
+    let leafDepth: number;
+    let leafPathPrefix: string;
+
+    if (variation.parentId) {
+      const parentNode = await this.repo.findNodeById(tx as never, variation.parentId);
+      if (!parentNode || parentNode.versionId !== operationalVersionId) {
+        throw new BadRequestException('The selected BOQ section does not belong to this BOQ version.');
+      }
+      effectiveParentId = parentNode.id;
+      leafDepth = parentNode.depth + 1;
+      leafPathPrefix = `${parentNode.path}`;
+    } else {
+      // No explicit parentId: reject if sections exist — the user must choose one.
+      const existingSections = await this.repo.findSectionsByVersion(tx as never, operationalVersionId);
+      if (existingSections.length > 0) {
+        throw new BadRequestException(
+          'Variation placement requires selecting an existing BOQ section when the BOQ has sections. Provide parentId.',
+        );
+      }
+      // Fresh BOQ with no sections: auto-create a root container named after the VO.
+      const sectionCode = this.nextFreeCode(`VO-${variation.reference}`, usedCodes);
+      usedCodes.add(sectionCode);
+      const rootSiblingCount = await this.repo.countSiblings(tx as never, operationalVersionId, null);
+      const sectionId = randomUUID();
+      await this.repo.createNode(tx as never, {
+        id: sectionId,
+        boqId: boq.id,
+        versionId: operationalVersionId,
+        parentId: null,
+        path: sectionId,
+        depth: 0,
+        sortOrder: rootSiblingCount,
+        code: sectionCode,
+        description: `Variation ${variation.reference}`,
+        isLeaf: false,
+        // The section carries VO provenance so the whole group traces to the VO.
+        sourceType: 'VARIATION',
+        commercialTreatment: 'IN_CONTRACT',
+        sourceChangeOrderId: variation.id,
+      });
+      effectiveParentId = sectionId;
+      leafDepth = 1;
+      leafPathPrefix = sectionId;
+    }
 
     let order = 0;
     for (const line of variation.lines) {
       const leafId = randomUUID();
-      const leafCode = this.nextFreeCode(`${sectionCode}.${String(order + 1).padStart(3, '0')}`, usedCodes);
+      const siblingCount = await this.repo.countSiblings(tx as never, operationalVersionId, effectiveParentId);
+      const leafCode = this.nextFreeCode(
+        `VO-${variation.reference}.${String(order + 1).padStart(3, '0')}`,
+        usedCodes,
+      );
       usedCodes.add(leafCode);
       await this.repo.createNode(tx as never, {
         id: leafId,
         boqId: boq.id,
         versionId: operationalVersionId,
-        parentId: sectionId,
-        path: `${sectionId}/${leafId}`,
-        depth: 1,
-        sortOrder: order,
+        parentId: effectiveParentId,
+        path: `${leafPathPrefix}/${leafId}`,
+        depth: leafDepth,
+        sortOrder: siblingCount + order,
         code: leafCode,
         description: line.description,
         isLeaf: true,

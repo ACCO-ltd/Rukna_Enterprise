@@ -8,6 +8,8 @@ import { CommercialPrismaRepository } from './infrastructure/commercial-prisma.r
 import { CommercialService } from './application/commercial.service.js';
 import { CommercialBillingService } from './application/commercial-billing.service.js';
 import { CommercialController } from './presentation/commercial.controller.js';
+import { CollectionEventsService } from '../../accounting/accounts-receivable/application/collection-events.service.js';
+import { CreditNoteService } from '../../accounting/accounts-receivable/application/credit-note.service.js';
 
 /**
  * Project-scoped Commercial read models (ADR-017, Gate B). Mostly read-only aggregation across
@@ -22,6 +24,9 @@ import { CommercialController } from './presentation/commercial.controller.js';
  * ledger (VariationsModule → VariationOrderService, now exported), and a package-level audit event
  * (AuditLogsModule → TransactionalAuditOutboxService) inside one transaction. Everything else in
  * Commercial stays read-only. ProjectAccessService is injected from the global ProjectAccessModule.
+ *
+ * Slice 6B: CollectionEventsService and CreditNoteService are imported from AccountsReceivableModule
+ * for the collection-event write endpoints and the billing read model enrichment.
  */
 @Module({
   imports: [TenancyModule, AuditLogsModule, AccountsReceivableModule, VariationsModule, BoqModule],

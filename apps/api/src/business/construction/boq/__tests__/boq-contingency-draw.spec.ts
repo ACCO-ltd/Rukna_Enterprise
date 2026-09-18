@@ -67,7 +67,21 @@ function measured(over: Record<string, unknown> = {}) {
   };
 }
 
-/** A default allowance-style ABSORBED target: quantity 1, starts at 0.00. */
+/** A default IN_CONTRACT work target: quantity 1, starts at 0.00. */
+function workTarget(over: Record<string, unknown> = {}) {
+  return allowance({
+    id: 'target',
+    code: '01.500',
+    description: 'Work to fund from contingency',
+    nodeRole: 'WORK',
+    commercialTreatment: 'IN_CONTRACT',
+    unitRate: new Decimal('0'),
+    totalAmount: new Decimal('0'),
+    ...over,
+  });
+}
+
+/** A default ABSORBED leaf: quantity 1, starts at 0.00. */
 function absorbedTarget(over: Record<string, unknown> = {}) {
   return allowance({
     id: 'target',
@@ -88,7 +102,7 @@ function build(opts: {
   nodes?: unknown[];
 } = {}) {
   const source = allowance(opts.source);
-  const target = absorbedTarget(opts.target);
+  const target = workTarget(opts.target);
   const nodes = opts.nodes ?? [source, target];
 
   const repo = {
@@ -191,7 +205,7 @@ describe('BoqTreeService.drawContingency — ADR-029 C-3/C-4', () => {
   });
 
   it('refuses when there is no contingency line to draw from', async () => {
-    const target = allowance({ id: 'target', nodeRole: 'WORK', commercialTreatment: 'ABSORBED' });
+    const target = allowance({ id: 'target', nodeRole: 'WORK', commercialTreatment: 'IN_CONTRACT' });
     const repo = {
       findByProject: jest.fn().mockResolvedValue(boq),
       findVersion: jest.fn().mockResolvedValue({ id: 'v1', status: 'COMMITTED' }),
@@ -207,6 +221,14 @@ describe('BoqTreeService.drawContingency — ADR-029 C-3/C-4', () => {
 
   it('refuses funding a SEPARATE_CHARGE target (would break the tie-out)', async () => {
     const { svc, repo } = build({ target: { commercialTreatment: 'SEPARATE_CHARGE' } });
+    await expect(
+      svc.drawContingency(identity, 'p1', 'v1', 'target', '10.00'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.reallocateBetweenNodes).not.toHaveBeenCalled();
+  });
+
+  it('refuses funding an ABSORBED target — Slice 2: absorbed scope has no contingency involvement', async () => {
+    const { svc, repo } = build({ target: { commercialTreatment: 'ABSORBED' } });
     await expect(
       svc.drawContingency(identity, 'p1', 'v1', 'target', '10.00'),
     ).rejects.toBeInstanceOf(BadRequestException);

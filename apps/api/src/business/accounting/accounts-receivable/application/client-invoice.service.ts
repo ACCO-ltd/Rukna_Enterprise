@@ -5,8 +5,10 @@ import {
   ConflictException,
   Inject,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
+
+type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 import type { AccountWithCurrentVersion } from '../../accounting-core/infrastructure/account.repository.js';
 import type { RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
@@ -465,8 +467,8 @@ export class ClientInvoiceService {
     });
   }
 
-  async approve(identity: RequestIdentity, invoiceId: string) {
-    const prisma = this.tenancyService.getClient();
+  async approve(identity: RequestIdentity, invoiceId: string, externalTx?: Prisma.TransactionClient) {
+    const prisma = (externalTx ?? this.tenancyService.getClient()) as TenantPrisma;
     const { activeOrganizationId: orgId, userId } = identity;
 
     const invoice = await this.repo.findById(prisma, orgId, invoiceId);
@@ -482,11 +484,12 @@ export class ClientInvoiceService {
    * Post the ClientInvoice to the GL.
    * EVT-AR-001: Dr AR / Cr Revenue / Cr VAT Output
    */
-  async post(identity: RequestIdentity, dto: PostInvoiceDto) {
-    const prisma = this.tenancyService.getClient();
+  async post(identity: RequestIdentity, dto: PostInvoiceDto, externalTx?: Prisma.TransactionClient) {
+    const outerPrisma = this.tenancyService.getClient();
+    const readPrisma = (externalTx ?? outerPrisma) as TenantPrisma;
     const { activeOrganizationId: orgId, userId } = identity;
 
-    const invoice = await this.repo.findById(prisma, orgId, dto.invoiceId);
+    const invoice = await this.repo.findById(readPrisma, orgId, dto.invoiceId);
     if (!invoice) throw new NotFoundException(`ClientInvoice ${dto.invoiceId} not found`);
     if (invoice.documentStatus !== 'APPROVED') {
       throw new BadRequestException(`Invoice must be APPROVED before posting`);
@@ -498,88 +501,96 @@ export class ClientInvoiceService {
     // ADR-024 ACC-POST-001: control accounts are resolved server-side by role. A code in the
     // DTO still works as an explicit override (backward-compatible) but is no longer required.
     const arAccount = await this.resolver.resolveByCodeOrRole(
-      prisma, orgId, dto.arAccountCode, 'ACCOUNTS_RECEIVABLE',
+      outerPrisma, orgId, dto.arAccountCode, 'ACCOUNTS_RECEIVABLE',
     );
     const revAccount = await this.resolver.resolveByCodeOrRole(
-      prisma, orgId, dto.revenueAccountCode, 'PROJECT_REVENUE',
+      outerPrisma, orgId, dto.revenueAccountCode, 'PROJECT_REVENUE',
     );
 
     let vatAccount: ResolvedAccount | null = null;
     if (new Decimal(invoice.vatAmount.toString()).gt(0)) {
       vatAccount = await this.resolver.resolveByCodeOrRole(
-        prisma, orgId, dto.vatAccountCode, 'VAT_OUTPUT_PAYABLE',
+        outerPrisma, orgId, dto.vatAccountCode, 'VAT_OUTPUT_PAYABLE',
       );
     }
 
     await this.sequenceRepo.ensureSequence(
-      prisma as never, orgId, 'CLIENT_INVOICE', 'INV-',
+      outerPrisma as never, orgId, 'CLIENT_INVOICE', 'INV-',
     );
 
+    const runPost = async (activeTx: Prisma.TransactionClient) => {
+      const subtotal = new Decimal(invoice.subtotal.toString());
+      const vatAmount = new Decimal(invoice.vatAmount.toString());
+      const totalAmount = new Decimal(invoice.totalAmount.toString());
+
+      const lines: Parameters<typeof this.postingPort.post>[0]['lines'] = [
+        {
+          accountId: arAccount.id,
+          debitAmount: totalAmount,
+          creditAmount: new Decimal(0),
+          sourceSubledgerType: 'ACCOUNTS_RECEIVABLE' as const,
+          clientId: invoice.clientId,
+          contractId: invoice.contractId ?? undefined,
+        },
+        {
+          accountId: revAccount.id,
+          debitAmount: new Decimal(0),
+          creditAmount: subtotal,
+          projectId: invoice.projectId ?? undefined,
+          contractId: invoice.contractId ?? undefined,
+        },
+      ];
+
+      if (vatAccount && vatAmount.gt(0)) {
+        lines.push({
+          accountId: (vatAccount as AccountWithCurrentVersion).id,
+          debitAmount: new Decimal(0),
+          creditAmount: vatAmount,
+        });
+      }
+
+      const postResult = await this.postingPort.post(
+        {
+          organizationId: orgId,
+          accountingDate: invoice.invoiceDate,
+          documentDate: invoice.invoiceDate,
+          description: `Client Invoice — ${invoice.id}`,
+          currencyCode: invoice.currencyCode,
+          eventType: 'EVT-AR-001',
+          sourceDocumentType: 'CLIENT_INVOICE',
+          sourceDocumentId: invoice.id,
+          journalCategory: 'ACCOUNTS_RECEIVABLE',
+          entryPurpose: 'NORMAL',
+          postingOrigin: 'SYSTEM_AR',
+          createdBy: userId,
+          lines,
+        },
+        activeTx as never,
+      );
+
+      const invNum = await this.sequenceRepo.claimNext(
+        activeTx as never, orgId, 'CLIENT_INVOICE',
+      );
+
+      await this.repo.markPosted(activeTx as TenantPrisma, invoice.id, postResult.journalEntryId, invNum.formattedNumber, userId);
+
+      return { ...postResult, invoiceNumber: invNum.formattedNumber };
+    };
+
     try {
-      const result = await prisma.$transaction(async (tx) => {
-        const subtotal = new Decimal(invoice.subtotal.toString());
-        const vatAmount = new Decimal(invoice.vatAmount.toString());
-        const totalAmount = new Decimal(invoice.totalAmount.toString());
-
-        const lines: Parameters<typeof this.postingPort.post>[0]['lines'] = [
-          {
-            accountId: arAccount.id,
-            debitAmount: totalAmount,
-            creditAmount: new Decimal(0),
-            sourceSubledgerType: 'ACCOUNTS_RECEIVABLE' as const,
-            clientId: invoice.clientId,
-            contractId: invoice.contractId ?? undefined,
-          },
-          {
-            accountId: revAccount.id,
-            debitAmount: new Decimal(0),
-            creditAmount: subtotal,
-            projectId: invoice.projectId ?? undefined,
-            contractId: invoice.contractId ?? undefined,
-          },
-        ];
-
-        if (vatAccount && vatAmount.gt(0)) {
-          lines.push({
-            accountId: (vatAccount as AccountWithCurrentVersion).id,
-            debitAmount: new Decimal(0),
-            creditAmount: vatAmount,
-          });
-        }
-
-        const postResult = await this.postingPort.post(
-          {
-            organizationId: orgId,
-            accountingDate: invoice.invoiceDate,
-            documentDate: invoice.invoiceDate,
-            description: `Client Invoice — ${invoice.id}`,
-            currencyCode: invoice.currencyCode,
-            eventType: 'EVT-AR-001',
-            sourceDocumentType: 'CLIENT_INVOICE',
-            sourceDocumentId: invoice.id,
-            journalCategory: 'ACCOUNTS_RECEIVABLE',
-            entryPurpose: 'NORMAL',
-            postingOrigin: 'SYSTEM_AR',
-            createdBy: userId,
-            lines,
-          },
-          tx as never,
-        );
-
-        // Claim invoice number
-        const invNum = await this.sequenceRepo.claimNext(
-          tx as never, orgId, 'CLIENT_INVOICE',
-        );
-
-        await this.repo.markPosted(prisma, invoice.id, postResult.journalEntryId, invNum.formattedNumber, userId);
-
-        return { ...postResult, invoiceNumber: invNum.formattedNumber };
-      });
+      const result = externalTx
+        ? await runPost(externalTx)
+        : await outerPrisma.$transaction(runPost);
 
       return result;
     } catch (err: unknown) {
-      const code = err instanceof Error ? err.message.slice(0, 50) : 'POSTING_FAILED';
-      await this.repo.markPostingFailed(prisma, invoice.id, code);
+      // When an external transaction is provided the caller controls the tx boundary.
+      // The invoice was created inside that tx and will be rolled back on failure — there
+      // is no committed row to mark as POSTING_FAILED.
+      if (!externalTx) {
+        const code = err instanceof Error ? err.message.slice(0, 50) : 'POSTING_FAILED';
+        await this.repo.markPostingFailed(outerPrisma, invoice.id, code);
+      }
       throw err;
     }
   }

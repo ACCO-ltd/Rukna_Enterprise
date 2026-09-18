@@ -577,10 +577,10 @@
       "amountLabel": "Amount ({currency})",
       "absorb": {
         "name": "Absorb",
-        "tagline": "We cover it from contingency",
-        "detail": "Adds the scope funded net-zero from the contingency allowance. The contract value does not move.",
-        "consequence": "Contingency → {amount} left",
-        "cta": "Absorb from contingency"
+        "tagline": "We cover it internally",
+        "detail": "Records the scope as an internal cost. Contingency and contract value are both unchanged.",
+        "consequence": "Internal cost · {amount}",
+        "cta": "Absorb"
       },
       "variation": {
         "name": "Variation",
@@ -600,10 +600,49 @@
       "clientRefPlaceholder": "e.g. signed VO number or client letter reference",
       "variationRaised": "Variation raised and added to the contract.",
       "variationCreated": "Draft variation created — sent to Commercial for approval",
-      "absorbed": "Extra work absorbed from contingency.",
+      "absorbed": "Extra work recorded as internal cost.",
       "separateAdded": "Separate charge added.",
       "unavailable": "This route is not available yet.",
       "cancel": "Cancel"
+    },
+    "addExtraWork": {
+      "title": "Add extra work",
+      "subtitle": "Who pays for this?",
+      "descriptionLabel": "What is the work?",
+      "descriptionPlaceholder": "e.g. Extra retaining wall",
+      "pricingLabel": "Pricing",
+      "lumpSum": "Lump sum",
+      "unitRate": "Rate × quantity",
+      "amountLabel": "Amount ({currency})",
+      "quantityLabel": "Quantity",
+      "rateLabel": "Rate ({currency})",
+      "unitLabel": "Unit",
+      "computedAmount": "= {amount}",
+      "parentSectionLabel": "BOQ parent section",
+      "parentSectionNone": "Top level",
+      "parentSectionChoose": "Choose BOQ section",
+      "variationTitleLabel": "Variation title (optional)",
+      "variationTitlePlaceholder": "e.g. Additional retaining wall at axis C",
+      "clientRefLabel": "Client approval ref (optional)",
+      "clientRefPlaceholder": "e.g. signed VO number or client letter reference",
+      "absorb": {
+        "consequence": "Internal cost · Contract unchanged · {amount}"
+      },
+      "variation": {
+        "consequence": "Contract value: {from} → {to}"
+      },
+      "separate": {
+        "consequence": "Contract unchanged · Separate client charge {amount}"
+      },
+      "cancel": "Cancel",
+      "success": {
+        "absorbTitle": "Extra work added",
+        "absorbDesc": "Contract unchanged",
+        "variationTitle": "{ref} recorded",
+        "variationDesc": "Contract increased to {value}",
+        "separateTitle": "Separate charge added",
+        "separateDesc": "Draft invoice created"
+      }
     },
     "draw": {
       "title": "Draw from contingency",

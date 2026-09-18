@@ -74,6 +74,8 @@ function build(overrides: {
     sumClientUnappliedReceipts: jest
       .fn()
       .mockResolvedValue(overrides.clientUnapplied ?? new Decimal(0)),
+    // Slice 6B: collection data — returns empty map so existing tests are unaffected
+    findInvoiceCollectionData: jest.fn().mockResolvedValue(new Map()),
   };
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
   const tenancy = { getClient: () => ({}) };
@@ -87,12 +89,15 @@ function build(overrides: {
       .fn()
       .mockResolvedValue('separateChargeTotal' in overrides ? overrides.separateChargeTotal : null),
   };
+  // Slice 6B: stub collectionEventsService — not exercised by the existing spec scenarios
+  const collectionEventsServiceStub = {} as never;
   const service = new CommercialService(
     tenancy as never,
     projectAccess as never,
     repo as never,
     variationRepo as never,
     boqVersioning as never,
+    collectionEventsServiceStub,
   );
   return { repo, boqVersioning, service };
 }

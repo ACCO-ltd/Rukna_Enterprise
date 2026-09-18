@@ -31,6 +31,10 @@ function installment(
     dueDate: null,
     status: 'UPCOMING',
     programmeMilestone: null,
+    readyToBill: false,
+    readyToBillAt: null,
+    canMarkReadyToBill: false,
+    canPrepareInvoice: false,
     ...overrides,
   };
 }

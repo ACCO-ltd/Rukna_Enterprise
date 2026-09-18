@@ -1,4 +1,4 @@
-import { CommercialWorkspace } from '@/features/commercial/components/commercial-workspace';
+import { redirect } from 'next/navigation';
 
 export default async function ContractSecurityPage({
   params,
@@ -6,5 +6,5 @@ export default async function ContractSecurityPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <CommercialWorkspace projectId={id} active="contract-security" />;
+  redirect(`/projects/${id}/commercial/contract-milestones`);
 }

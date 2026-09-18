@@ -3,9 +3,8 @@
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import {
-  CalendarClock,
-  FileSignature,
-  GitBranch,
+  LayoutDashboard,
+  ListChecks,
   ReceiptText,
   Stamp,
 } from 'lucide-react';
@@ -16,62 +15,47 @@ import type { BillingModel } from '@erp/types';
 type BillingModelValue = `${BillingModel}`;
 
 export type CommercialTab =
-  | 'contract-security'
+  | 'overview'
   | 'applications'
-  | 'payment-schedule'
-  | 'variations'
+  | 'contract-milestones'
   | 'billing-collection';
 
 const ICONS: Record<CommercialTab, React.ReactNode> = {
-  'contract-security': <FileSignature size={16} strokeWidth={1.9} />,
+  overview: <LayoutDashboard size={16} strokeWidth={1.9} />,
   applications: <Stamp size={16} strokeWidth={1.9} />,
-  'payment-schedule': <CalendarClock size={16} strokeWidth={1.9} />,
-  variations: <GitBranch size={16} strokeWidth={1.9} />,
+  'contract-milestones': <ListChecks size={16} strokeWidth={1.9} />,
   'billing-collection': <ReceiptText size={16} strokeWidth={1.9} />,
 };
 
 /**
- * Which views this contract actually has (ADR-030 CONST-COM-026, S-SH-1).
+ * Slice 8 — consolidated 3-tab navigation (ADR-030 CONST-COM-026, S-SH-1).
  *
- * Four tabs, not five: Overview is retired (C2). Its live-cycle content moved onto the Payment
- * Schedule tab and its money bands are reachable on Billing, so nothing was lost by removing the
- * landing pad that duplicated them.
+ * Overview → Contract & Milestones → Billing & Collection for all billing models.
  *
- * The billing model chooses ONE of two mutually-exclusive views in the same slot: a MEASURED_IPC
- * contract bills through Applications & Certification (the IPA → IPC machinery), a MILESTONE
- * contract bills from its Payment Schedule instead (ADR-023). Only one applies, so only one is
- * shown — the other would be a permanently empty workspace inviting a user to start a document the
- * server will refuse.
- *
- * A contract with no billing model yet (none, or still loading) shows Applications rather than
- * hiding both — the measured chain is the historical default, and hiding a view because data has
- * not arrived is worse than showing one too many.
+ * MEASURED_IPC contracts retain the Applications & Certification chain (IPA → IPC machinery)
+ * as their primary operational surface — those routes and components are kept intact.
  *
  * Exported so the route guard and the switcher agree on one rule rather than two copies of it.
  */
 export function commercialTabsFor(
   billingModel: BillingModelValue | null | undefined,
 ): CommercialTab[] {
-  const tabs: CommercialTab[] = ['contract-security'];
-  if (billingModel === 'MILESTONE') tabs.push('payment-schedule');
-  else tabs.push('applications');
-  tabs.push('variations', 'billing-collection');
-  return tabs;
+  if (billingModel === 'MEASURED_IPC') {
+    return ['overview', 'applications', 'billing-collection'];
+  }
+  // MILESTONE (ACCO default) and unknown → 3-tab consolidated layout.
+  return ['overview', 'contract-milestones', 'billing-collection'];
 }
 
 /**
- * The tab the workspace lands on (S-SH-1). With Overview gone, a MILESTONE contract opens on its
- * Payment Schedule — the operational home where billing happens — and everything else opens on
- * Contract. When there is no contract yet the only meaningful destination is Contract, whatever the
- * (absent) billing model would otherwise say, so the reader lands on the create affordance rather
- * than an empty schedule.
+ * The tab the workspace lands on (S-SH-1, Slice 7). Overview is the universal landing tab —
+ * it answers "where are we commercially" for every billing model without requiring a redirect.
  */
 export function commercialLandingTab(
-  billingModel: BillingModelValue | null | undefined,
-  hasContract: boolean,
+  _billingModel: BillingModelValue | null | undefined,
+  _hasContract: boolean,
 ): CommercialTab {
-  if (!hasContract) return 'contract-security';
-  return billingModel === 'MILESTONE' ? 'payment-schedule' : 'contract-security';
+  return 'overview';
 }
 
 export function commercialTabHref(projectId: string, tab: CommercialTab): string {

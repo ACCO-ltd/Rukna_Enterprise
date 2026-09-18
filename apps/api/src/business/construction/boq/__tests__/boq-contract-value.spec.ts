@@ -8,10 +8,10 @@ import {
 } from '../domain/boq-contract-value.policy.js';
 
 /**
- * The in-contract billable total (ADR-029 T-1 / L-5) — the one figure a committed BOQ ties out
- * to, and the exact function R3's contract tie-out reuses. Pure and DB-free, so this runs on its
- * own. Rule: Σ leaf.totalAmount over every leaf EXCEPT SEPARATE_CHARGE — IN_CONTRACT, CONTINGENCY
- * and ABSORBED count; SEPARATE_CHARGE is out; sections carry nothing.
+ * The in-contract billable total (ADR-029 T-1 / L-5 / Slice 2) — the one figure a committed BOQ
+ * ties out to, and the exact function R3's contract tie-out reuses. Pure and DB-free.
+ * Rule: Σ leaf.totalAmount over IN_CONTRACT leaves only — SEPARATE_CHARGE and ABSORBED are both
+ * excluded; sections carry nothing.
  */
 
 type NodeFixture = {
@@ -64,12 +64,12 @@ describe('inContractBillableTotal — ADR-029 T-1', () => {
     expect(total?.toFixed(2)).toBe('100.00');
   });
 
-  it('includes ABSORBED leaves — funded by an equal contingency draw, so net-zero to the total', () => {
+  it('EXCLUDES ABSORBED leaves — internal cost record, excluded from the contract total (Slice 2)', () => {
     const total = inContractBillableTotal([
       leaf('100.00'),
       leaf('25.00', 'ABSORBED'),
     ] as never);
-    expect(total?.toFixed(2)).toBe('125.00');
+    expect(total?.toFixed(2)).toBe('100.00');
   });
 
   it('returns null when nothing contributes — never a false zero', () => {
@@ -97,7 +97,7 @@ describe('inContractBillableTotal — ADR-029 T-1', () => {
     expect(contributesToInContractTotal(leaf('1.00') as never)).toBe(true);
     expect(contributesToInContractTotal(leaf('1.00', 'IN_CONTRACT', 'CONTINGENCY') as never)).toBe(true);
     expect(contributesToInContractTotal(leaf('1.00', 'SEPARATE_CHARGE') as never)).toBe(false);
-    expect(contributesToInContractTotal(leaf('1.00', 'ABSORBED') as never)).toBe(true);
+    expect(contributesToInContractTotal(leaf('1.00', 'ABSORBED') as never)).toBe(false);
     expect(contributesToInContractTotal(section() as never)).toBe(false);
     // A reversed (inactive) leaf never contributes, whatever its treatment.
     expect(contributesToInContractTotal(leaf('1.00', 'IN_CONTRACT', 'WORK', false) as never)).toBe(false);
@@ -177,17 +177,20 @@ describe('separateChargeTotal — ADR-029 T-5', () => {
     expect(total?.toFixed(2)).toBe('500.00');
   });
 
-  it('is the exact complement of the in-contract total over leaves', () => {
-    // Every leaf is counted exactly once: in-contract OR separate charge, never both, never neither.
+  it('Slice 2: ABSORBED is excluded from both totals (it is an internal cost, not a billable total)', () => {
+    // IN_CONTRACT + SEPARATE_CHARGE = the billable universe; ABSORBED is outside both.
     const nodes = [
       leaf('100.00'),
       leaf('40.00', 'IN_CONTRACT', 'CONTINGENCY'),
-      leaf('25.00', 'ABSORBED'),
+      leaf('25.00', 'ABSORBED'),      // excluded from both
       leaf('500.00', 'SEPARATE_CHARGE'),
     ] as never;
-    const inContract = inContractBillableTotal(nodes)!; // 165
-    const separate = separateChargeTotal(nodes)!; // 500
-    expect(inContract.plus(separate).toFixed(2)).toBe('665.00');
+    const inContract = inContractBillableTotal(nodes)!; // 100 + 40 = 140
+    const separate = separateChargeTotal(nodes)!;       // 500
+    expect(inContract.toFixed(2)).toBe('140.00');
+    expect(separate.toFixed(2)).toBe('500.00');
+    // ABSORBED (25) is in neither total — it is an internal cost record outside both.
+    expect(inContract.plus(separate).toFixed(2)).toBe('640.00');
   });
 
   it('returns null when there is no separate charge — never a false zero', () => {

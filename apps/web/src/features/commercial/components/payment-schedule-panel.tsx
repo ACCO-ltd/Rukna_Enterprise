@@ -570,7 +570,7 @@ function BillStageDialog({
         invoiceDate,
         dueDate,
         ...(paymentTerms.trim() ? { paymentTerms: paymentTerms.trim() } : {}),
-        variations: eligible.map((vo) => ({ variationId: vo.id, include: isIncluded(vo.id) })),
+        selectedVariationIds: eligible.filter((vo) => isIncluded(vo.id)).map((vo) => vo.id),
       },
       {
         onSuccess: (result) => {

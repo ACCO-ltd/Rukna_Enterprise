@@ -1,16 +1,14 @@
-import { CommercialWorkspace } from '@/features/commercial/components/commercial-workspace';
+import { redirect } from 'next/navigation';
 
 /**
- * The retired Overview landing (S-SH-5). Overview is no longer a tab; this route stays only to
- * redirect. `active="overview"` tells the workspace to resolve the real landing tab from the
- * contract's billing model (Payment Schedule for MILESTONE, Contract otherwise) and replace the
- * URL with it, so an old bookmark never dead-ends on a view that no longer exists.
+ * Root `/commercial` route — redirects to the Overview tab (Slice 7).
+ * Overview is now the authoritative landing for all billing models.
  */
-export default async function CommercialOverviewPage({
+export default async function CommercialRootPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <CommercialWorkspace projectId={id} active="overview" />;
+  redirect(`/projects/${id}/commercial/overview`);
 }

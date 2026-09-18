@@ -124,15 +124,20 @@ export class ContractService {
 
     const contractKind = dto.contractKind ?? 'CLIENT_CONTRACT';
 
-    // ADR-030 CONST-COM-020 / S-CC-1 — resolve the BOQ version the contract binds to. For a
-    // CLIENT_CONTRACT the server resolves the project's SINGLE committed BOQ (no picker); a
-    // SUBCONTRACT still anchors an explicitly-supplied committed version. Both paths end with a
-    // `boqVersionId` that is guaranteed to be a committed operational version.
-    const boqVersionId = await this.resolveBoqVersionId(identity, prisma, dto, contractKind);
+    // Slice-1A / ADR-030 CONST-COM-020 / S-CC-1 — resolve the BOQ version the contract binds to.
+    // For a CLIENT_CONTRACT the server finds the current operational version (DRAFT or COMMITTED)
+    // and will cut a signing SNAPSHOT inside the transaction. For a SUBCONTRACT the caller supplies
+    // an explicit committed version id.
+    const { boqId, operationalVersionId } = await this.resolveBoqVersionId(
+      identity,
+      prisma,
+      dto,
+      contractKind,
+    );
 
     // ADR-029 T-1/T-4 — tie out to the priced scope. `getInContractTotal` reuses the one shared
     // `inContractBillableTotal` policy (every leaf except SEPARATE_CHARGE), so the contract can never
-    // be signed against a different rule than the commit snapshot was frozen under. D3: the contract
+    // be signed against a different rule than the snapshot was frozen under. D3: the contract
     // reads from the BOQ; it can never be set below/away from that total.
     //
     // CONST-COM-021: the tie-out is the CLIENT contract sum and is READ-ONLY — a supplied value is
@@ -141,7 +146,7 @@ export class ContractService {
     // value (still required for a SUBCONTRACT), base = current.
     let tieOutTotal: string;
     if (contractKind === 'CLIENT_CONTRACT') {
-      tieOutTotal = await this.deriveTieOutValue(identity, dto, boqVersionId);
+      tieOutTotal = await this.deriveTieOutValue(identity, dto, operationalVersionId);
     } else {
       if (dto.contractValue === undefined || dto.contractValue === null) {
         throw new BadRequestException('A SUBCONTRACT requires an explicit contract value.');
@@ -204,6 +209,19 @@ export class ContractService {
         }
       }
 
+      // Slice-1A — for CLIENT_CONTRACT, cut an immutable signing SNAPSHOT from the operational
+      // version inside the transaction so snapshot creation and contract row are atomic. The
+      // SUBCONTRACT path anchors directly to the supplied committed version (no snapshot needed).
+      const contractBoqVersionId =
+        contractKind === 'CLIENT_CONTRACT'
+          ? await this.boqVersioning.createContractSigningSnapshot(
+              tx as never,
+              boqId,
+              operationalVersionId,
+              identity.userId,
+            )
+          : operationalVersionId;
+
       // CONST-COM-022 — mint `{projectCode}-C{n}` from the atomic per-project sequence inside the
       // transaction, exactly like ADR-025 project codes. The increment is atomic, so concurrent
       // creates get distinct numbers; the unique index is the final backstop.
@@ -215,7 +233,7 @@ export class ContractService {
         organizationId: identity.activeOrganizationId,
         projectId: dto.projectId,
         clientId: dto.clientId,
-        boqVersionId,
+        boqVersionId: contractBoqVersionId,
         contractNumber,
         // ADR-029 T-2/T-3/T-4 — base is frozen from the tie-out at creation and drives the milestone %;
         // current starts equal to base and is what R6 later increments per adopted on-contract variation.
@@ -254,51 +272,40 @@ export class ContractService {
   }
 
   /**
-   * ADR-030 CONST-COM-020 / S-CC-1..2 — resolve the committed BOQ version a contract binds to.
+   * Slice-1A / ADR-030 CONST-COM-020 / S-CC-1..2 — resolve the BOQ version a contract binds to,
+   * returning the boqId and operationalVersionId the snapshot will be cut from.
    *
-   * CLIENT_CONTRACT: the server resolves the project's SINGLE committed BOQ (no client picker).
-   *  - Zero committed versions ⇒ gate with `BOQ_NOT_COMMITTED` (the "Commit the BOQ first" dead-end
-   *    replacement); no contract row is written.
-   *  - Tie-break (the R2/ADR-029 transitional overlap): prefer a `COMMITTED` (R2 in-place operational)
-   *    version over a legacy `BASELINED` one. In steady state there is exactly one; the preference only
-   *    disambiguates the migration window.
-   *  - If the caller still supplied `boqVersionId` (the old form), it MUST equal the resolved committed
-   *    version, else 400 — the caller can never anchor a different version than the server would.
+   * CLIENT_CONTRACT: finds the current operational version (DRAFT or COMMITTED) via the BOQ's
+   * `currentVersionId` pointer. No committed BOQ is required — the contract signing event itself
+   * creates an immutable SNAPSHOT inside the transaction. If no BOQ exists for the project at all,
+   * the create is rejected with NotFoundException.
    *
-   * SUBCONTRACT: keeps the pre-existing behaviour — an explicit `boqVersionId` is required and must be
-   * a committed operational version (COMMITTED_BOQ_STATUSES), verified for this project.
+   * SUBCONTRACT: unchanged — an explicit `boqVersionId` is required and must be a committed
+   * operational version (COMMITTED_BOQ_STATUSES), verified for this project.
    */
   private async resolveBoqVersionId(
     identity: RequestIdentity,
     prisma: ReturnType<TenancyService['getClient']>,
     dto: CreateContractDto,
     contractKind: import('@prisma/client').ContractKind,
-  ): Promise<string> {
+  ): Promise<{ boqId: string; operationalVersionId: string }> {
     if (contractKind === 'CLIENT_CONTRACT') {
-      const committed = await this.repo.findCommittedBoqVersionsForProject(prisma, dto.projectId);
-      if (committed.length === 0) {
-        throw new BadRequestException({
-          message:
-            'This project has no committed BOQ. Commit the BOQ before creating a contract — the ' +
-            'contract value ties out to the committed scope.',
-          code: 'BOQ_NOT_COMMITTED',
-          details: { projectId: dto.projectId },
-        });
+      const current = await this.repo.findCurrentOperationalBoqVersion(prisma, dto.projectId);
+      if (!current) {
+        throw new NotFoundException(
+          'No BOQ found for this project. Initialize a BOQ before recording a contract.',
+        );
       }
-      // Prefer COMMITTED (R2 in-place) over legacy BASELINED during the ADR-029 transitional overlap.
-      const resolved =
-        committed.find((v) => v.status === 'COMMITTED') ?? committed[0]!;
-
-      if (dto.boqVersionId && dto.boqVersionId !== resolved.id) {
+      if (dto.boqVersionId && dto.boqVersionId !== current.operationalVersionId) {
         throw new BadRequestException({
           message:
-            'A client contract binds to the project\'s committed BOQ, which the server resolves. ' +
-            'The supplied BOQ version does not match the committed version.',
+            'A client contract binds to the current operational BOQ, resolved by the server. ' +
+            'The supplied BOQ version does not match the current operational version.',
           code: 'BOQ_VERSION_MISMATCH',
-          details: { supplied: dto.boqVersionId, committed: resolved.id },
+          details: { supplied: dto.boqVersionId, current: current.operationalVersionId },
         });
       }
-      return resolved.id;
+      return current;
     }
 
     // SUBCONTRACT — an explicit committed version is required.
@@ -307,7 +314,7 @@ export class ContractService {
     }
     const boqVersion = await prisma.boqVersion.findFirst({
       where: { id: dto.boqVersionId, boq: { projectId: dto.projectId } },
-      select: { status: true },
+      select: { status: true, boqId: true },
     });
     if (!boqVersion) {
       throw new NotFoundException(
@@ -319,7 +326,7 @@ export class ContractService {
         `A contract can only reference a committed BOQ version. Current status: ${boqVersion.status}`,
       );
     }
-    return dto.boqVersionId;
+    return { boqId: boqVersion.boqId, operationalVersionId: dto.boqVersionId };
   }
 
   /**
@@ -583,7 +590,7 @@ export class ContractService {
     return {
       previousContractValue: previousStr,
       newContractValue: newStr,
-      baseContractValue: contract.baseContractValue ? contract.baseContractValue.toString() : null,
+      baseContractValue: contract.baseContractValue ? contract.baseContractValue.toFixed(2) : null,
     };
   }
 
@@ -640,7 +647,7 @@ export class ContractService {
     return {
       previousContractValue: previousStr,
       newContractValue: newStr,
-      baseContractValue: contract.baseContractValue ? contract.baseContractValue.toString() : null,
+      baseContractValue: contract.baseContractValue ? contract.baseContractValue.toFixed(2) : null,
     };
   }
 

@@ -43,7 +43,7 @@ describe('CommercialBillingService.billStage (CONST-COM-028)', () => {
   let contractValueBefore: string;
   // Installments (all 30% of base 500,000 = 150,000 each).
   let instAddition: string; // billed with the addition VO
-  let instExcluded: string; // billed with the addition VO EXCLUDED
+  let instExcluded: string; // billed with the addition VO EXCLUDED (selectedVariationIds: [])
   let instOmission: string; // billed with the omission VO
   let instAlreadyInvoiced: string; // milestone invoiced first, then omission attempted
   let additionVoId: string;
@@ -93,6 +93,7 @@ describe('CommercialBillingService.billStage (CONST-COM-028)', () => {
       variationRepo,
       variationService,
       clientInvoiceService,
+      {} as never, // customerReceiptService — not exercised by billStage
       auditOutbox,
     );
 
@@ -158,6 +159,9 @@ describe('CommercialBillingService.billStage (CONST-COM-028)', () => {
           percentage: new Decimal('0.3000'), // 30% × 500,000 = 150,000
           triggerType: 'MILESTONE',
           milestoneLabel: name,
+          // Slice 3B — readyToBillAt set so the billing gate passes in all test cases.
+          readyToBillAt: new Date(),
+          readyToBillBy: 'u1',
         },
       });
     instAddition = (await makeInstallment('Milestone A', 0)).id;
@@ -212,7 +216,7 @@ describe('CommercialBillingService.billStage (CONST-COM-028)', () => {
       installmentId: instAddition,
       invoiceDate: '2026-06-05',
       dueDate: '2026-07-05',
-      variations: [{ variationId: additionVoId, include: true }],
+      selectedVariationIds: [additionVoId],
     });
 
     // The milestone invoice: 30% × 500,000 = 150,000, VAT 7,500, total 157,500.
@@ -250,14 +254,13 @@ describe('CommercialBillingService.billStage (CONST-COM-028)', () => {
     expect(allocs[0]!.clientInvoiceId).toBe(line.invoice!.id);
   });
 
-  it('bills a stage with the VO EXCLUDED: one invoice only; the VO stays billable', async () => {
+  it('bills a stage with the VO deferred (selectedVariationIds: []): one invoice only; the VO stays billable', async () => {
     const pkg = await service.billStage(identity, {
       installmentId: instExcluded,
       invoiceDate: '2026-06-05',
       dueDate: '2026-07-05',
-      // additionVoId is already fully realized on Milestone A; naming a fresh VO but excluding it
-      // (include:false) proves the defer path writes nothing.
-      variations: [{ variationId: omissionVoId, include: false }],
+      // Empty selection: no VOs included this cycle; proves the defer path writes nothing.
+      selectedVariationIds: [],
     });
 
     expect(pkg.milestoneInvoice).not.toBeNull();
@@ -293,7 +296,7 @@ describe('CommercialBillingService.billStage (CONST-COM-028)', () => {
       installmentId: instOmission,
       invoiceDate: '2026-06-05',
       dueDate: '2026-07-05',
-      variations: [{ variationId: omissionVoId, include: true }],
+      selectedVariationIds: [omissionVoId],
     });
 
     // 150,000 − 3,000 = 147,000; VAT 7,350; total 154,350.
@@ -327,7 +330,7 @@ describe('CommercialBillingService.billStage (CONST-COM-028)', () => {
       installmentId: instAlreadyInvoiced,
       invoiceDate: '2026-06-05',
       dueDate: '2026-07-05',
-      variations: [],
+      selectedVariationIds: [],
     });
     // Now attempt an omission against that already-invoiced stage → rejected.
     await expect(
@@ -335,7 +338,7 @@ describe('CommercialBillingService.billStage (CONST-COM-028)', () => {
         installmentId: instAlreadyInvoiced,
         invoiceDate: '2026-06-05',
         dueDate: '2026-07-05',
-        variations: [{ variationId: omissionVo2Id, include: true }],
+        selectedVariationIds: [omissionVo2Id],
       }),
     ).rejects.toThrow(/already invoiced.*credit note/i);
 
@@ -356,7 +359,7 @@ describe('CommercialBillingService.billStage (CONST-COM-028)', () => {
       installmentId: instAddition,
       invoiceDate: '2026-06-05',
       dueDate: '2026-07-05',
-      variations: [{ variationId: additionVoId, include: true }],
+      selectedVariationIds: [additionVoId],
     });
 
     const invoicesAfter = await prisma.clientInvoice.count({ where: { organizationId: orgId } });
@@ -404,5 +407,43 @@ describe('CommercialBillingService.billStage (CONST-COM-028)', () => {
     expect(pkg!.variationLines).toHaveLength(1);
     expect(pkg!.variationLines[0]!.allocationAmount).toBeNull();
     expect(pkg!.variationLines[0]!.invoice!.totalAmount).toBeNull();
+  });
+
+  it('rejects billStage when installment is NOT marked ready to bill', async () => {
+    // Create an installment WITHOUT readyToBillAt.
+    const notReadyInst = await prisma.contractPaymentInstallment.create({
+      data: {
+        contractId: contractId,
+        name: 'Not Ready Milestone',
+        sortOrder: 99,
+        percentage: new Decimal('0.1000'),
+        triggerType: 'MILESTONE',
+        milestoneLabel: 'Not Ready Milestone',
+        // readyToBillAt intentionally omitted
+      },
+    });
+
+    await expect(
+      service.billStage(identity, {
+        installmentId: notReadyInst.id,
+        invoiceDate: '2026-06-05',
+        dueDate: '2026-07-05',
+        selectedVariationIds: [],
+      }),
+    ).rejects.toThrow(/not been marked ready to bill/i);
+
+    await prisma.contractPaymentInstallment.delete({ where: { id: notReadyInst.id } });
+  });
+
+  it('documents[] shape: package for instAddition has MILESTONE + VARIATION documents', async () => {
+    const res = await service.getBillingPackages(identity, contractId);
+    const pkg = res.packages.find((p) => p.installmentId === instAddition);
+    expect(pkg).toBeDefined();
+    expect(pkg!.documents).toHaveLength(2);
+    expect(pkg!.documents[0]!.sourceType).toBe('MILESTONE');
+    expect(pkg!.documents[1]!.sourceType).toBe('VARIATION');
+    // Package aggregates are present and non-null for a user with financialPositionView.
+    expect(pkg!.packageTotal).not.toBeNull();
+    expect(pkg!.packageSubtotal).not.toBeNull();
   });
 });

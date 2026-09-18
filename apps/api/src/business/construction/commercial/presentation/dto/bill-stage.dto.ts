@@ -1,36 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import {
-  IsArray,
-  IsBoolean,
-  IsDateString,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  MaxLength,
-  ValidateNested,
-} from 'class-validator';
-
-/**
- * ADR-030 CONST-COM-028 / S-VB-5 (Commercial redesign P1) — one eligible variation's include/defer
- * decision for the stage being billed. `include: false` (or omission from the list) defers the VO,
- * which stays billable later.
- */
-export class BillStageVariationDecisionDto {
-  @ApiProperty({ description: 'VariationOrder ID' })
-  @IsString()
-  @IsNotEmpty()
-  variationId!: string;
-
-  @ApiProperty({ description: 'Bill this variation with the stage now (false = defer)' })
-  @IsBoolean()
-  include!: boolean;
-}
+import { IsArray, IsDateString, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 /**
  * ADR-030 CONST-COM-028 / S-VB-5 — "Bill this stage": generate the milestone installment's invoice
- * plus one standalone invoice per included client-approved addition variation, netting included
+ * plus one standalone invoice per selected client-approved addition variation, netting selected
  * omissions into the (not-yet-invoiced) milestone subtotal. One atomic package.
+ *
+ * Uses POSITIVE selection: `selectedVariationIds` names exactly which CLIENT_APPROVED VOs are included
+ * in this billing cycle. An empty array means "milestone only — no VOs this cycle".
  */
 export class BillStageDto {
   @ApiProperty({ description: 'ContractPaymentInstallment ID being billed' })
@@ -53,11 +30,12 @@ export class BillStageDto {
   paymentTerms?: string;
 
   @ApiProperty({
-    type: [BillStageVariationDecisionDto],
-    description: 'Include/defer decision for each eligible client-approved variation',
+    type: [String],
+    description:
+      'Explicit list of CLIENT_APPROVED variation IDs to include in this billing cycle. ' +
+      'Use [] for milestone only. Unrecognised IDs are rejected.',
   })
   @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => BillStageVariationDecisionDto)
-  variations!: BillStageVariationDecisionDto[];
+  @IsString({ each: true })
+  selectedVariationIds!: string[];
 }

@@ -18,15 +18,11 @@
     "notSet": "Not set"
   },
   "tabs": {
-    "contract-security": "Contract",
+    "overview": "Overview",
+    "contract-milestones": "Contract & Milestones",
     "billing-collection": "Billing & Collection",
-    "label": "Commercial sections",
-    "main-contract": "Main Contract",
     "applications": "Applications & Certification",
-    "payment-schedule": "Payment Schedule",
-    "variations": "Variations",
-    "retention-advances": "Retention & Advances",
-    "guarantees": "Guarantees"
+    "label": "Commercial sections"
   },
   "metric": {
     "receiptsAllocated": "Posted receipt allocations",
@@ -77,7 +73,26 @@
     "terminalHint": "Records remain available for reference and export. No further applications or certificates can be raised against it.",
     "notActiveTitle": "Contract is {status}",
     "notActiveHint": "Billing begins once the contract is executed and active. Complete the contract to start the payment cycle.",
-    "notActiveAction": "Open contract"
+    "notActiveAction": "Open contract",
+    "financialStrip": {
+      "contractValue": "Contract",
+      "netBilled": "Net Billed",
+      "collected": "Collected",
+      "outstanding": "Outstanding",
+      "overdue": "Overdue",
+      "creditNoteNote": "Includes {amount} in posted credit notes"
+    },
+    "currentPosition": {
+      "title": "Current Position",
+      "noContract": "No contract",
+      "goToMilestones": "Go to milestones"
+    },
+    "attentionSection": {
+      "title": "Needs Attention",
+      "sendToClient": "Send to client",
+      "followUp": "Follow up",
+      "viewDispute": "View dispute"
+    }
   },
   "attention": {
     "title": "Needs attention",
@@ -364,7 +379,185 @@
         "DAYS_90_PLUS": "Over 90 days"
       }
     },
-    "noUnapplied": "No unapplied client cash."
+    "noUnapplied": "No unapplied client cash.",
+    "collection": {
+      "summaryTitle": "Receivables summary",
+      "billed": "Billed",
+      "collected": "Collected",
+      "outstanding": "Outstanding",
+      "overdue": "Overdue",
+      "needsAttentionTitle": "Needs attention",
+      "openInvoicesTitle": "Open invoices",
+      "recentPaymentsTitle": "Recent payments",
+      "recordPayment": "Record payment",
+      "noOverdue": "No overdue invoices.",
+      "noOpenInvoices": "No open invoices yet.",
+      "noRecentPayments": "No payments recorded yet.",
+      "unapplied": "Unapplied",
+      "unappliedNote": "Goes to client unapplied cash.",
+      "overdueBy": "{days} days overdue",
+      "methodUnknown": "Method not recorded",
+      "unnumbered": "Unnumbered",
+      "vatNote": "Totals include Sales Tax (5%).",
+      "paymentState": {
+        "AWAITING_PAYMENT": "Awaiting payment",
+        "PARTIALLY_PAID": "Part paid",
+        "PAID": "Paid",
+        "OVERDUE": "Overdue",
+        "DRAFT": "Draft",
+        "CANCELLED": "Cancelled"
+      },
+      "drawer": {
+        "title": "Record payment",
+        "description": "Record a payment received from the client against this contract.",
+        "depositAccountLabel": "Deposit account",
+        "depositAccountPlaceholder": "Select deposit account",
+        "amountLabel": "Amount received",
+        "dateLabel": "Date received",
+        "methodLabel": "Payment method",
+        "methodPlaceholder": "Payment method",
+        "referenceLabel": "Reference",
+        "notesLabel": "Note (optional)",
+        "allocationPreviewTitle": "Invoice allocation",
+        "allocatedTotal": "Allocated",
+        "unallocatedAmount": "Unallocated",
+        "unallocatedHint": "Unallocated amount goes to client unapplied cash.",
+        "allocationExceedsPayment": "Total allocation exceeds the payment amount.",
+        "submit": "Save payment",
+        "cancel": "Cancel",
+        "method": {
+          "bank_transfer": "Bank transfer",
+          "cheque": "Cheque",
+          "cash": "Cash",
+          "other": "Other"
+        }
+      },
+      "dueStatus": {
+        "CURRENT": "Current",
+        "DUE_SOON": "Due soon",
+        "DUE_TODAY": "Due today",
+        "OVERDUE": "Overdue"
+      },
+      "dueInDays": "{days, plural, one {Due in # day} other {Due in # days}}",
+      "dueToday": "Due today",
+      "noNeedsAttention": "No invoices need attention.",
+      "attentionSectionOverdue": "Overdue",
+      "attentionSectionMissed": "Missed promises",
+      "attentionSectionDisputed": "Disputed",
+      "missedPromise": "Promised {date} — missed",
+      "lastContact": "Last contact {date}",
+      "noFollowUp": "No follow-up recorded",
+      "promised": "Promised by {date}",
+      "disputedAmount": "{amount} disputed",
+      "recordFollowUp": "Follow up",
+      "openDispute": "Dispute",
+      "recordPromise": "Promise to pay",
+      "viewHistory": "View history",
+      "issueCreditNote": "Issue credit note",
+      "viewDispute": "View dispute",
+      "resolveDispute": "Resolve",
+      "agingBucket": {
+        "DAYS_1_7": "1–7 days",
+        "DAYS_8_30": "8–30 days",
+        "DAYS_31_60": "31–60 days",
+        "DAYS_61_90": "61–90 days",
+        "DAYS_90_PLUS": "Over 90 days"
+      },
+      "followUpDialog": {
+        "title": "Record follow-up",
+        "description": "Log a contact you made with the client about this invoice.",
+        "method": "Contact method",
+        "methodRequired": "Select a method",
+        "contactPerson": "Contact person",
+        "contactPersonPlaceholder": "e.g. Ahmed Al-Mukhtar (optional)",
+        "note": "Note",
+        "notePlaceholder": "What was discussed?",
+        "save": "Save follow-up",
+        "saving": "Saving...",
+        "saveError": "Failed to save. Please try again.",
+        "cancel": "Cancel",
+        "methods": {
+          "WHATSAPP": "WhatsApp",
+          "EMAIL": "Email",
+          "PHONE": "Phone",
+          "PHYSICAL": "In person"
+        }
+      },
+      "promiseDialog": {
+        "title": "Record promise to pay",
+        "description": "Log a payment commitment the client made.",
+        "promisedDate": "Promised date",
+        "promisedDateRequired": "Date is required",
+        "promisedAmount": "Amount promised",
+        "promisedAmountOptional": "Optional",
+        "note": "Note",
+        "notePlaceholder": "Any conditions or context?",
+        "dueDateNote": "This records a client commitment. The original invoice due date is not changed.",
+        "save": "Save promise",
+        "saving": "Saving...",
+        "saveError": "Failed to save. Please try again.",
+        "cancel": "Cancel"
+      },
+      "disputeDialog": {
+        "title": "Open dispute",
+        "description": "Record that the client has raised an objection to this invoice.",
+        "disputedAmount": "Disputed amount",
+        "disputedAmountOptional": "Optional",
+        "reason": "Reason",
+        "reasonPlaceholder": "Select a reason",
+        "note": "Note",
+        "notePlaceholder": "Details of the dispute",
+        "outstandingNote": "Opening a dispute does not adjust the outstanding balance.",
+        "save": "Open dispute",
+        "saving": "Saving...",
+        "saveError": "Failed to save. Please try again.",
+        "cancel": "Cancel",
+        "reasons": {
+          "OMISSION": "Omission",
+          "PRICE_ERROR": "Price error",
+          "WORK_NOT_ACCEPTED": "Work not accepted",
+          "SCOPE_DISAGREEMENT": "Scope disagreement",
+          "OTHER": "Other"
+        },
+        "resolveTitle": "Resolve dispute",
+        "resolveDescription": "Mark this dispute as resolved.",
+        "resolveConfirm": "Resolve dispute"
+      },
+      "timeline": {
+        "title": "Invoice history",
+        "noHistory": "No history recorded yet.",
+        "issued": "Invoice issued",
+        "sent": "Sent to client",
+        "followUp": "Follow-up — {method}",
+        "promise": "Promise to pay",
+        "promiseMissed": "Promise missed",
+        "dispute": "Dispute opened",
+        "disputeResolved": "Dispute resolved",
+        "payment": "Payment received",
+        "contact": "Contact: {person}",
+        "promisedBy": "Promised by {date}",
+        "close": "Close"
+      },
+      "creditNoteDesign": {
+        "title": "Issue credit note",
+        "notice": "Credit note issuance will be available in Slice 6B. This preview shows the planned UX.",
+        "originalInvoice": "Original invoice",
+        "reason": "Reason",
+        "reasonPlaceholder": "Select a reason",
+        "reasons": {
+          "OMISSION": "Omission — scope reduced",
+          "PRICE_ERROR": "Price error — amount was wrong",
+          "CORRECTION": "Other correction"
+        },
+        "sourceVariation": "Source variation",
+        "sourceVariationPlaceholder": "Optional — link to a variation order",
+        "amount": "Credit amount",
+        "amountNote": "Must not exceed the invoice total.",
+        "cancel": "Cancel",
+        "cta": "Create credit note",
+        "ctaDisabledHint": "Backend support coming in Slice 6B"
+      }
+    }
   },
   "paymentSchedule": {
     "title": "Payment schedule",
@@ -896,6 +1089,143 @@
       "description": "Description",
       "target": "Target date",
       "status": "Status"
+    }
+  },
+  "contractMilestones": {
+    "noContract": {
+      "title": "No contract yet",
+      "hint": "Record a signed contract to start tracking milestones."
+    },
+    "journey": {
+      "emptyTitle": "No milestones set",
+      "emptyHint": "Add installments to the payment schedule to see them here.",
+      "sectionTitle": "Milestone progress",
+      "unassignedBanner": "{count, plural, one {# variation not yet assigned to a stage} other {# variations not yet assigned to a stage}}",
+      "baseAmount": "Base amount",
+      "expectedBilling": "Expected billing"
+    },
+    "dateLabel": {
+      "expected": "Expected {date}",
+      "due": "Due {date}"
+    },
+    "milestone": {
+      "linked": "{code} — {name}",
+      "verified": "Verified",
+      "planned": "Awaiting verification",
+      "advance": "Advance payment"
+    },
+    "cta": {
+      "reviewForBilling": "Review for billing",
+      "readyToBill": "Ready to bill",
+      "readyNote": "Milestone cleared — prepare the invoice",
+      "prepareInvoice": "Prepare invoice",
+      "sendToClient": "Send to client",
+      "awaitingPayment": "Awaiting payment",
+      "dueDate": "Due {date}",
+      "openDetail": "Open"
+    },
+    "state": {
+      "upcoming": "Upcoming",
+      "in-progress": "In progress",
+      "review-for-billing": "Review for billing",
+      "ready-to-bill": "Ready to bill",
+      "invoice-issued": "Invoice issued",
+      "awaiting-payment": "Awaiting payment",
+      "invoiced": "Invoiced",
+      "partially-paid": "Part paid",
+      "paid": "Paid"
+    },
+    "detail": {
+      "title": "Stage details",
+      "percentage": "{percent} of contract",
+      "dueDate": "Due date",
+      "expectedDate": "Expected date",
+      "noDate": "Not set",
+      "linkedMilestone": "Programme milestone",
+      "noMilestoneLink": "Not linked",
+      "commercialState": "Status",
+      "variations": "Variations",
+      "noVariations": "No variations for this stage.",
+      "invoiceRef": "Invoice",
+      "invoiceRefNotSet": "Not yet issued",
+      "reviewCta": "Review for billing"
+    },
+    "review": {
+      "title": "Review for billing",
+      "subtitle": "Confirm the billing details for this stage before marking it ready.",
+      "baseAmount": "Base amount",
+      "variationsTitle": "Variations",
+      "noVariations": "No variations for this stage.",
+      "checksTitle": "Readiness checks",
+      "checkMilestoneVerified": "Programme milestone verified",
+      "checkContractActive": "Contract is active",
+      "checkNoInvoice": "No outstanding invoice",
+      "priorInvoiceWarning": "{count, plural, one {# outstanding invoice must be resolved first} other {# outstanding invoices must be resolved first}}",
+      "markReadyToBill": "Mark ready to bill",
+      "cancel": "Cancel",
+      "total": "Stage total"
+    },
+    "header": {
+      "reference": "Contract reference",
+      "originalValue": "Original contract value",
+      "approvedVariations": "Approved variations",
+      "currentValue": "Current contract value",
+      "paymentTerms": "Payment terms",
+      "paymentTermsNotSet": "Not set",
+      "viewContract": "View contract terms"
+    },
+    "sendInvoice": {
+      "eyebrow": "Invoice sent",
+      "title": "Confirm delivery",
+      "totalDue": "{total} due {date}",
+      "totalNoDue": "{total}",
+      "whatsapp": "WhatsApp",
+      "email": "Email",
+      "physical": "Physical copy",
+      "other": "Other",
+      "method": "Delivery method",
+      "methodRequired": "Select a delivery method",
+      "recipient": "Recipient",
+      "recipientPlaceholder": "e.g. accounts@client.com",
+      "note": "Note",
+      "notePlaceholder": "Optional note",
+      "sendLater": "I'll send it later",
+      "sending": "Saving...",
+      "markSent": "Mark as sent"
+    },
+    "prepareInvoice": {
+      "title": "Prepare invoice",
+      "subtitle": "Review the billing package before issuing.",
+      "client": "Client",
+      "billingSource": "Billing source",
+      "baseAmount": "Base amount",
+      "variationsTitle": "Variations",
+      "noVariations": "No variations included.",
+      "variationNote": "Addition — billed as its own invoice",
+      "invoiceDate": "Invoice date",
+      "dueDate": "Due date",
+      "dueDateRequired": "Due date is required",
+      "paymentTerms": "Payment terms",
+      "paymentTermsPlaceholder": "e.g. Net 30",
+      "notes": "Notes",
+      "notesPlaceholder": "Optional notes for the client",
+      "cancel": "Cancel",
+      "issueCta": "Issue invoice",
+      "subtotal": "Subtotal",
+      "vat": "Sales Tax (5%)",
+      "total": "Total",
+      "invoiceCreatedBadge": "Invoice issued",
+      "draftPreviewTitle": "DRAFT PREVIEW",
+      "billingPackageLabel": "Billing package",
+      "billingPackageTitle": "Billing package",
+      "billingPackageDocCount": "{count, plural, one {# document} other {# documents}}",
+      "billingPackageBaseMilestone": "Milestone base",
+      "draftInvoiceLabel": "Draft invoice",
+      "billingPackageVariation": "Variation",
+      "packageSubtotal": "Package subtotal",
+      "packageTotal": "Package total",
+      "invoiceNumberNote": "Invoice number assigned on posting.",
+      "draftPreviewNote": "This is a preview — amounts are final once issued."
     }
   }
 }

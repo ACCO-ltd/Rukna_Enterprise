@@ -1,12 +1,25 @@
 'use client';
 
-import Link from 'next/link';
-import { FileText, LockKeyhole, ReceiptText } from 'lucide-react';
+import { useState } from 'react';
+import {
+  ChevronDown,
+  CircleDollarSign,
+  MessageSquare,
+  ReceiptText,
+  ShieldAlert,
+  TriangleAlert,
+} from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Badge,
   Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
   LtrValue,
   Skeleton,
   Table,
@@ -19,9 +32,7 @@ import {
   cn,
 } from '@erp/ui';
 import type {
-  CommercialAgingBucket,
-  CommercialBillingPackage,
-  CommercialBillingPackageInvoice,
+  CommercialBillingPosition,
   CommercialBillingResponse,
   CommercialInvoiceRow,
   CommercialReceiptRow,
@@ -32,32 +43,37 @@ import { EmptyState } from '@/components/empty-state';
 import { useOpenInvoiceDocument } from '@/features/accounting/hooks/use-invoices';
 import { formatDate, formatMoney } from '@/lib/format';
 
-import { useBillingPackages, useCommercialBilling } from '../hooks/use-commercial';
-import { invoiceStatusTone } from '../presentation';
-import { PositionBand, type PositionFigure } from './contract-position';
-import { CashflowChart } from './cashflow-chart';
-import { AttentionList, PanelLink, SectionCard } from './commercial-ui';
+import { useCommercialBilling } from '../hooks/use-commercial';
+import {
+  toClientReceivableView,
+  toClientPaymentView,
+  type ClientReceivableView,
+  type ClientPaymentView,
+  type CollectionPaymentState,
+} from '../lib/collection-view-model';
+import {
+  getAttentionReasons,
+  getLatestFollowUp,
+  getLatestPromise,
+  getOpenDispute,
+  isMissedPromise,
+  buildInvoiceTimeline,
+  type TimelinePaymentEntry,
+} from '../lib/collection-events';
+import {
+  CollectionEventProvider,
+} from '../lib/collection-event-context';
+import { RecordFollowUpDialog } from './record-followup-dialog';
+import { RecordPromiseDialog } from './record-promise-dialog';
+import { OpenDisputeDialog } from './open-dispute-dialog';
+import { InvoiceTimelineDialog } from './invoice-timeline';
+import { CreditNoteDesignDialog } from './credit-note-design-dialog';
+import { AttentionList, SectionCard } from './commercial-ui';
 import { errorText } from './commercial-workspace';
+import { RecordPaymentDrawer } from './record-payment-drawer';
 
-/**
- * Billing & Collection — what has been billed, what has been paid, and what is still owed.
- *
- * One accounting rule governs the whole screen: **settlement is measured against the invoice
- * total.** An invoice is VAT-inclusive; a certified amount and a plan installment are not.
- * Comparing a receipt to a pre-VAT figure and calling the result "percent paid" is the specific
- * error this view is built to make impossible, so every ratio here has an invoice total as its
- * denominator and the tax split is stated with its basis named.
- *
- * For a MILESTONE contract the schedule now lives on its own Payment Schedule tab (§5 P2), which
- * hosts the ledger, "Generate invoice" and the CONST-COM-011 gate; this screen keeps the invoices,
- * receipts and ageing that follow from it.
- *
- * C8 (ADR-030 CD13/CD14) gave the screen a top-down money surface: the **money story** —
- * `Contract value → Invoiced → Collected → Outstanding` composed from the summary's contract value
- * and billing's settlement figures, with approved variations stated distinctly as entitlement — then
- * the **cashflow chart** (cumulative invoiced vs collected) as the hero, then the compact
- * collection/aging/unapplied panels, then the invoice and receipt tables as the audit trail.
- */
+// ─── Main tab ────────────────────────────────────────────────────────────────
+
 export function BillingCollectionTab({
   projectId,
   summary,
@@ -68,6 +84,8 @@ export function BillingCollectionTab({
   const t = useTranslations('commercial.billing');
   const query = useCommercialBilling(projectId);
   const contract = summary.mainContract;
+  const locale = useLocale() as 'en';
+  const today = new Date().toISOString().slice(0, 10);
 
   if (!contract) {
     return (
@@ -95,707 +113,844 @@ export function BillingCollectionTab({
   }
 
   const billing = query.data;
+  const currency = billing.currency ?? contract.currency;
+
+  const receivables = billing.invoices.map((inv) => toClientReceivableView(inv, today));
+  const payments = billing.receipts.map(toClientPaymentView);
+
+  // Payment map for timeline: invoiceId → sorted allocation entries
+  const paymentsByInvoice = buildPaymentsByInvoice(billing.receipts);
+
+  // Build allEvents from server data (Slice 6B: replaces client-side context store)
+  const allEvents = buildServerEventsMap(billing.invoices);
 
   return (
-    <div className="space-y-4">
-      {/* Relocated from the retired "Attention & Next Action" card (Payment Schedule): a failed
-          reconciliation or an uninvoiced certificate is a billing/collection fact, so it belongs
-          on the screen that already owns invoices, receipts and the money position — not on a
-          second page-level list competing with the cycle ribbon. Renders nothing when empty. */}
-      <AttentionList items={summary.attention} />
-
-      {/* The money story reads Contract value → Invoiced → Collected → Outstanding as one chain,
-          composed from the summary's contract value and billing's settlement figures, with approved
-          variations stated distinctly beneath it (entitlement, never missing revenue). */}
-      <MoneyStory billing={billing} summary={summary} />
-
-      {/* The hero: a collected-vs-invoiced cumulative curve. It sits above the tables because the
-          shape of the gap is the first read; the per-document figures below are the audit trail. */}
-      <CashflowPanel billing={billing} />
-
-      {/* Two small readings beside the aging bars. A sidebar looked tidier in a wireframe and cost
-          the invoice table three of its eight columns at 1440 — so the tables below get the whole
-          width, and these compact panels sit under the chart instead. */}
-      <div className="grid min-w-0 gap-4 lg:grid-cols-3">
-        <CollectionProgressPanel billing={billing} />
-        <AgingPanel billing={billing} />
-        <UnappliedPanel billing={billing} />
-      </div>
-
-      {/* The grouped stage story (S-VB-7): each milestone stage with its milestone invoice and the
-          variations billed alongside it. It precedes the flat invoice/receipt audit tables below
-          because the reader wants "what did this stage bill" before the document-by-document list. */}
-      <BillingPackagesPanel
+    // CollectionEventProvider kept as a no-op wrapper for any remaining consumers
+    <CollectionEventProvider>
+      <BillingCollectionInner
         projectId={projectId}
-        contractId={contract.id}
-        currency={summary.currency ?? contract.currency}
-      />
-
-      <InvoicesPanel billing={billing} />
-      <ReceiptsPanel billing={billing} />
-    </div>
-  );
-}
-
-// ─── Money story (S-BL-1) ─────────────────────────────────────────────────────────
-
-/**
- * Contract value → Invoiced → Collected → Outstanding, as one coherent chain.
- *
- * Composed, not re-computed: `contractValue` (the governing value) comes from the commercial
- * summary; invoiced / collected / outstanding come from the billing position. The frontend adds
- * nothing up — each figure is a server figure, formatted at the render step. The four together are
- * a sentence read left to right, which is why they share one band rather than four cards.
- *
- * Approved variations sit on their own line below the chain, stated as entitlement. A
- * client-approved-but-not-yet-billed variation is real revenue the client has agreed to; showing it
- * inside "Invoiced" would claim it is billed, and omitting it would read as a leak. The precise
- * per-VO billed/unbilled split arrives with C4–C6 — here we show the approved-variations total
- * distinctly so the reader knows the entitlement exists and is not yet in the billed chain.
- */
-function MoneyStory({
-  billing,
-  summary,
-}: {
-  billing: CommercialBillingResponse;
-  summary: CommercialSummaryResponse;
-}) {
-  const t = useTranslations('commercial.billing.story');
-  const tState = useTranslations('commercial.metricState');
-  const locale = useLocale() as 'en' | 'ar';
-  const { position, currency, financialsVisible } = billing;
-
-  const money = (value: string | null): PositionFigure['value'] =>
-    !financialsVisible || value === null ? null : (formatMoney(value, currency, locale) ?? null);
-  const blank: PositionFigure['blank'] = financialsVisible ? 'unavailable' : 'restricted';
-
-  // The governing contract value (original + approved variations, ADR-026), or the executed
-  // baseline when the variation-derived figure is absent. Either way it is the summary's, not ours.
-  const contractValue =
-    summary.contractValue?.governingContractValue ?? summary.mainContract?.contractValue ?? null;
-  const approvedVariations = summary.contractValue?.approvedVariationsTotal ?? null;
-  // Only assert an approved-variations line when there is a non-zero entitlement to state. A
-  // restricted user still sees the line (as RESTRICTED); a visible-but-zero one does not, because
-  // "approved variations $0" is noise, not information.
-  const hasApprovedVariations =
-    !financialsVisible || (approvedVariations !== null && Number(approvedVariations) > 0);
-
-  return (
-    <div className="space-y-3">
-      <PositionBand
-        title={t('title')}
+        summary={summary}
+        billing={billing}
         currency={currency}
-        figures={[
-          {
-            label: t('contractValue'),
-            value: money(contractValue),
-            blank,
-            support: t('governingHint'),
-          },
-          {
-            label: t('invoiced'),
-            value: money(position.invoiced),
-            blank,
-            support: t('postedInvoices', { n: position.postedInvoiceCount }),
-          },
-          {
-            label: t('collected'),
-            value: money(position.collected),
-            blank,
-            support:
-              position.collectionRate === null
-                ? t('vatInclusive')
-                : t('ofInvoiced', { percent: position.collectionRate }),
-          },
-          { label: t('outstanding'), value: money(position.outstanding), blank },
-        ]}
+        locale={locale}
+        today={today}
+        receivables={receivables}
+        payments={payments}
+        paymentsByInvoice={paymentsByInvoice}
+        allEvents={allEvents}
       />
-
-      {hasApprovedVariations ? (
-        <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-panel border border-border bg-surface px-4 py-2.5 text-caption text-muted-foreground sm:px-5">
-          <span className="font-medium text-foreground">{t('approvedVariations')}</span>
-          <LtrValue className="font-semibold tabular-nums text-foreground">
-            {money(approvedVariations) ?? (
-              <span className="inline-flex items-center gap-1 font-medium text-muted-foreground">
-                <LockKeyhole size={13} aria-hidden="true" />
-                {tState('RESTRICTED')}
-              </span>
-            )}
-          </LtrValue>
-          <span>· {t('approvedVariationsHint')}</span>
-        </p>
-      ) : null}
-    </div>
+    </CollectionEventProvider>
   );
 }
 
-// ─── Cashflow chart (S-BL-2) ────────────────────────────────────────────────────
-
 /**
- * The hero panel: the cumulative invoiced-vs-collected curve, or an honest empty-state.
- *
- * The chart itself refuses to draw without invoices (it returns null), so the empty-state lives
- * here in the panel rather than as a broken axis. A withheld-money user sees the empty-state's
- * restricted note, never a chart plotted from nulls.
+ * Build a CollectionEvent map from the server-side invoice rows.
+ * Converts the Slice 6B server DTOs to the CollectionEvent union used by
+ * the collection-events.ts utility functions.
  */
-function CashflowPanel({ billing }: { billing: CommercialBillingResponse }) {
-  const t = useTranslations('commercial.billing.cashflow');
+function buildServerEventsMap(
+  invoices: CommercialInvoiceRow[],
+): Map<string, import('../lib/collection-events').CollectionEvent[]> {
+  const map = new Map<string, import('../lib/collection-events').CollectionEvent[]>();
+  for (const inv of invoices) {
+    const events: import('../lib/collection-events').CollectionEvent[] = [];
 
-  const empty = !billing.financialsVisible || billing.invoices.length === 0;
+    for (const fu of inv.followUps ?? []) {
+      events.push({
+        kind: 'FOLLOW_UP',
+        id: fu.id,
+        invoiceId: inv.id,
+        method: fu.method as import('../lib/collection-events').FollowUpMethod,
+        contactPerson: fu.contactPerson,
+        note: fu.note,
+        recordedAt: fu.recordedAt,
+      });
+    }
 
-  return (
-    <SectionCard title={t('title')}>
-      {empty ? (
-        <p className="py-2 text-body-sm text-muted-foreground">
-          {!billing.financialsVisible ? t('restricted') : t('empty')}
-        </p>
-      ) : (
-        <CashflowChart
-          invoices={billing.invoices}
-          receipts={billing.receipts}
-          currency={billing.currency}
-        />
-      )}
-    </SectionCard>
-  );
+    for (const p of inv.promises ?? []) {
+      events.push({
+        kind: 'PROMISE',
+        id: p.id,
+        invoiceId: inv.id,
+        promisedDate: p.promisedDate,
+        promisedAmount: p.promisedAmount,
+        note: p.note,
+        recordedAt: p.recordedAt,
+      });
+    }
+
+    if (inv.openDispute) {
+      events.push({
+        kind: 'DISPUTE',
+        id: inv.openDispute.id,
+        invoiceId: inv.id,
+        disputedAmount: inv.openDispute.disputedAmount,
+        reason: inv.openDispute.reason as import('../lib/collection-events').DisputeReason,
+        note: inv.openDispute.note,
+        openedAt: inv.openDispute.openedAt,
+        resolvedAt: inv.openDispute.resolvedAt,
+      });
+    }
+
+    map.set(inv.id, events);
+  }
+  return map;
 }
 
-// ─── Billing Packages (S-VB-7) ────────────────────────────────────────────────────
+// Extracts payment allocations from receipts, keyed by invoiceId
+function buildPaymentsByInvoice(
+  receipts: CommercialReceiptRow[],
+): Map<string, TimelinePaymentEntry[]> {
+  const map = new Map<string, TimelinePaymentEntry[]>();
+  for (const receipt of receipts) {
+    for (const alloc of receipt.allocations) {
+      const existing = map.get(alloc.invoiceId) ?? [];
+      map.set(alloc.invoiceId, [
+        ...existing,
+        {
+          date: receipt.receiptDate,
+          amount: alloc.allocatedAmount,
+          method: receipt.paymentMethod,
+        },
+      ]);
+    }
+  }
+  return map;
+}
 
-/**
- * Stage billing — each milestone stage told as a group.
- *
- * A Billing Package answers "what did this stage bill" in one block: the milestone invoice, then
- * every variation billed alongside it (an addition on its own invoice; an omission netted into the
- * stage, so it has no separate invoice), then the presented total (milestone + Σ addition invoices;
- * an omission is not counted again). The panel is absent entirely when there are no packages — a
- * MEASURED_IPC contract has none, and an empty "Stage billing" card would be noise, not information.
- *
- * Money is redacted (RESTRICTED, never $0) whenever `financialsVisible === false`, mirroring the
- * money-null pattern the rest of this screen uses.
- */
-function BillingPackagesPanel({
+// ─── Inner (consumes CollectionEventProvider) ────────────────────────────────
+
+function BillingCollectionInner({
   projectId,
-  contractId,
+  summary,
+  billing,
   currency,
+  locale,
+  today,
+  receivables,
+  payments,
+  paymentsByInvoice,
+  allEvents,
 }: {
   projectId: string;
-  contractId: string;
-  currency: string | null;
+  summary: CommercialSummaryResponse;
+  billing: CommercialBillingResponse;
+  currency: string;
+  locale: 'en';
+  today: string;
+  receivables: ClientReceivableView[];
+  payments: ClientPaymentView[];
+  paymentsByInvoice: Map<string, TimelinePaymentEntry[]>;
+  allEvents: Map<string, import('../lib/collection-events').CollectionEvent[]>;
 }) {
-  const t = useTranslations('commercial.billing.packages');
-  const query = useBillingPackages(projectId, contractId);
-
-  // Silent while loading and on error — this is a supplementary grouping over invoices that are
-  // already shown in full in the audit tables below, so it must never take the screen down.
-  const data = query.data;
-  if (!data || data.packages.length === 0) return null;
-
   return (
-    <SectionCard title={t('title')} bodyClassName="px-0 py-0">
-      <ul className="divide-y divide-border">
-        {data.packages.map((pkg) => (
-          <BillingPackageBlock
-            key={pkg.installmentId}
-            pkg={pkg}
-            financialsVisible={data.financialsVisible}
-            currency={currency}
-          />
-        ))}
-      </ul>
-    </SectionCard>
+    <div className="space-y-4">
+      <AttentionList items={summary.attention} />
+
+      <ReceivablesSummaryStrip
+        position={billing.position}
+        financialsVisible={billing.financialsVisible}
+        currency={currency}
+        locale={locale}
+      />
+
+      <NeedsAttentionPanel
+        receivables={receivables}
+        allEvents={allEvents}
+        currency={currency}
+        locale={locale}
+        today={today}
+      />
+
+      <OpenInvoicesPanel
+        projectId={projectId}
+        currency={currency}
+        locale={locale}
+        receivables={receivables}
+        allEvents={allEvents}
+        paymentsByInvoice={paymentsByInvoice}
+        financialsVisible={billing.financialsVisible}
+        canRecordReceipt={billing.capabilities.canRecordReceipt}
+        today={today}
+      />
+
+      <RecentPaymentsPanel payments={payments} currency={currency} locale={locale} />
+    </div>
   );
 }
 
-function BillingPackageBlock({
-  pkg,
+// ─── Receivables summary strip ────────────────────────────────────────────────
+
+function ReceivablesSummaryStrip({
+  position,
   financialsVisible,
   currency,
+  locale,
 }: {
-  pkg: CommercialBillingPackage;
+  position: CommercialBillingPosition;
   financialsVisible: boolean;
   currency: string | null;
+  locale: 'en';
 }) {
-  const t = useTranslations('commercial.billing.packages');
-  const tState = useTranslations('commercial.metricState');
-  const locale = useLocale() as 'en' | 'ar';
+  const t = useTranslations('commercial.billing.collection');
 
-  // Money is redacted (RESTRICTED, never $0) when the caller cannot view financials.
   const money = (value: string | null) =>
-    !financialsVisible
-      ? tState('RESTRICTED')
-      : value === null
-        ? '—'
-        : (formatMoney(value, currency, locale) ?? '—');
+    !financialsVisible || value === null
+      ? null
+      : (formatMoney(value, currency, locale) ?? null);
 
   return (
-    <li className="px-4 py-3 sm:px-5">
-      <p className="text-body-sm font-semibold text-foreground">
-        {t('stageTitle', { name: pkg.installmentName })}
-      </p>
+    <dl className="grid overflow-hidden rounded-panel border border-border bg-surface shadow-e1 sm:grid-cols-2 lg:grid-cols-4">
+      {(
+        [
+          [t('billed'), money(position.invoiced)],
+          [t('collected'), money(position.collected)],
+          [t('outstanding'), money(position.outstanding)],
+          [t('overdue'), money(position.overdue)],
+        ] as [string, string | null][]
+      ).map(([label, value]) => (
+        <div
+          key={label}
+          className="border-b border-border p-4 last:border-b-0 sm:nth-last-2:border-b-0 sm:odd:border-e lg:border-b-0 lg:not-last:border-e"
+        >
+          <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            {label}
+          </dt>
+          <dd className="mt-2">
+            {value !== null ? (
+              <LtrValue className="text-h2 font-semibold tabular-nums text-foreground">
+                {value}
+              </LtrValue>
+            ) : (
+              <span className="text-body-sm text-muted-foreground">—</span>
+            )}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
 
-      <ul className="mt-2 space-y-1.5">
-        {/* The milestone invoice line — always the first line of the stage story. */}
-        {pkg.milestoneInvoice ? (
-          <PackageLine
-            label={t('milestone')}
-            invoice={pkg.milestoneInvoice}
-            amount={pkg.milestoneInvoice.totalAmount}
-            money={money}
-            statusLabel={pkg.milestoneInvoice.invoiceNumber ?? t('unnumbered')}
-          />
+// ─── Needs attention panel ────────────────────────────────────────────────────
+
+function NeedsAttentionPanel({
+  receivables,
+  allEvents,
+  currency,
+  locale,
+  today,
+}: {
+  receivables: ClientReceivableView[];
+  allEvents: Map<string, import('../lib/collection-events').CollectionEvent[]>;
+  currency: string | null;
+  locale: 'en';
+  today: string;
+}) {
+  const t = useTranslations('commercial.billing.collection');
+
+  const money = (value: string | null) =>
+    value === null ? '—' : (formatMoney(value, currency, locale) ?? '—');
+
+  const overdueInvoices = receivables.filter((r) => r.paymentState === 'OVERDUE');
+
+  // Missed promises: invoices with a promise whose date has passed (and not fully paid)
+  const missedPromises = receivables
+    .filter((r) => r.canRecordPayment)
+    .flatMap((r) => {
+      const events = allEvents.get(r.invoiceId) ?? [];
+      const promise = getLatestPromise(events);
+      if (promise && isMissedPromise(promise, today)) {
+        return [{ invoice: r, promise }];
+      }
+      return [];
+    });
+
+  // Disputed invoices: invoices with an open dispute
+  const disputedInvoices = receivables
+    .filter((r) => r.canRecordPayment)
+    .flatMap((r) => {
+      const events = allEvents.get(r.invoiceId) ?? [];
+      const dispute = getOpenDispute(events);
+      if (dispute) return [{ invoice: r, dispute }];
+      return [];
+    });
+
+  const hasAnything =
+    overdueInvoices.length > 0 || missedPromises.length > 0 || disputedInvoices.length > 0;
+
+  if (!hasAnything) return null;
+
+  return (
+    <SectionCard title={t('needsAttentionTitle')}>
+      <div className="space-y-4 -mx-4 -my-3 sm:-mx-5">
+        {/* Overdue section */}
+        {overdueInvoices.length > 0 ? (
+          <div>
+            <p className="border-b border-border px-4 py-1.5 text-caption font-semibold uppercase tracking-wide text-muted-foreground sm:px-5">
+              {t('attentionSectionOverdue')}
+            </p>
+            <ul className="divide-y divide-border">
+              {overdueInvoices.map((inv) => {
+                const events = allEvents.get(inv.invoiceId) ?? [];
+                const lastFollowUp = getLatestFollowUp(events);
+                return (
+                  <OverdueAttentionItem
+                    key={inv.invoiceId}
+                    inv={inv}
+                    lastFollowUpAt={lastFollowUp?.recordedAt ?? null}
+                    money={money}
+                    locale={locale}
+                    t={t}
+                  />
+                );
+              })}
+            </ul>
+          </div>
         ) : null}
 
-        {/* Then each variation billed alongside it. An addition links to its own invoice; an
-            omission has no separate invoice (it lives on the milestone stage), so it shows its
-            treatment label instead of a number. */}
-        {pkg.variationLines.map((line) => (
-          <PackageLine
-            key={line.variationId}
-            label={`${line.reference} — ${line.title}`}
-            invoice={line.treatment === 'INVOICE' ? line.invoice : null}
-            amount={line.allocationAmount}
-            money={money}
-            statusLabel={
-              line.treatment === 'INVOICE'
-                ? (line.invoice?.invoiceNumber ?? t('unnumbered'))
-                : t(`treatment.${line.treatment}`)
-            }
-          />
-        ))}
-      </ul>
-
-      <p className="mt-2 flex items-baseline justify-between gap-3 border-t border-border/70 pt-2">
-        <span className="text-caption font-medium text-muted-foreground">{t('presentedTotal')}</span>
-        <LtrValue className="text-body-sm font-semibold tabular-nums text-foreground">
-          {money(pkg.presentedTotal)}
-        </LtrValue>
-      </p>
-    </li>
-  );
-}
-
-function PackageLine({
-  label,
-  invoice,
-  amount,
-  money,
-  statusLabel,
-}: {
-  label: string;
-  invoice: CommercialBillingPackageInvoice | null;
-  amount: string | null;
-  money: (value: string | null) => string;
-  statusLabel: string;
-}) {
-  return (
-    <li className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-caption">
-      <span className="min-w-0 flex-1 truncate text-muted-foreground">{label}</span>
-      <span className="flex shrink-0 items-baseline gap-2">
-        {invoice ? (
-          <Link
-            href={`/finance/accounting/invoices/${invoice.id}`}
-            className="font-medium text-brand-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
-          >
-            <LtrValue>{statusLabel}</LtrValue>
-          </Link>
-        ) : (
-          <span className="text-muted-foreground">{statusLabel}</span>
-        )}
-        <LtrValue className="tabular-nums text-foreground">{money(amount)}</LtrValue>
-      </span>
-    </li>
-  );
-}
-
-// ─── Collection progress ──────────────────────────────────────────────────────────
-
-function CollectionProgressPanel({ billing }: { billing: CommercialBillingResponse }) {
-  const t = useTranslations('commercial.billing');
-  const tPos = useTranslations('commercial.billing.position');
-  const locale = useLocale() as 'en' | 'ar';
-  const rate = billing.position.collectionRate;
-  const { overdue, overdueInvoiceCount } = billing.position;
-  const overdueAmount =
-    billing.financialsVisible && overdue !== null
-      ? formatMoney(overdue, billing.currency, locale)
-      : null;
-
-  return (
-    <SectionCard title={t('collectionProgress')}>
-      {rate === null ? (
-        <p className="py-1 text-body-sm text-muted-foreground">{t('nothingInvoiced')}</p>
-      ) : (
-        <>
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="text-h2 font-bold tabular-nums text-foreground">{rate}%</span>
-            {/* Green only at full collection. Amber for "most of it" would read as a problem,
-                when 83% on a live contract is just the invoicing cycle. */}
-            <span
-              className={cn(
-                'text-caption font-medium',
-                rate >= 100 ? 'text-success' : 'text-muted-foreground',
-              )}
-            >
-              {t('collectedOf', {
-                collected:
-                  formatMoney(billing.position.collected, billing.currency, locale) ?? '—',
-                invoiced: formatMoney(billing.position.invoiced, billing.currency, locale) ?? '—',
-              })}
-            </span>
-          </div>
-          <span
-            className="mt-2 block h-1.5 w-full overflow-hidden rounded-full bg-muted"
-            role="progressbar"
-            aria-valuenow={rate}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label={t('collectionProgress')}
-          >
-            <span
-              className={cn(
-                'block h-full rounded-full',
-                rate >= 100 ? 'bg-success' : 'bg-brand-primary',
-              )}
-              style={{ width: `${Math.min(100, Math.max(0, rate))}%` }}
-            />
-          </span>
-          <p className="mt-2 text-caption text-muted-foreground">{t('basisNote')}</p>
-          {/* Overdue lives here rather than as a fifth link in the money-story chain — it is a
-              signal about the outstanding balance, not a new stage in Contract→Invoiced→Collected.
-              Stated plainly with its count; the alarm colour is carried per-invoice, not on a total. */}
-          {overdueInvoiceCount > 0 ? (
-            <p className="mt-2 flex items-baseline justify-between gap-3 border-t border-border/70 pt-2 text-caption">
-              <span className="text-muted-foreground">
-                {tPos('overdueInvoices', { n: overdueInvoiceCount })}
-              </span>
-              <LtrValue className="font-medium tabular-nums text-danger">
-                {overdueAmount ?? '—'}
-              </LtrValue>
+        {/* Missed promises section */}
+        {missedPromises.length > 0 ? (
+          <div>
+            <p className="border-b border-border px-4 py-1.5 text-caption font-semibold uppercase tracking-wide text-muted-foreground sm:px-5">
+              {t('attentionSectionMissed')}
             </p>
-          ) : null}
-        </>
-      )}
+            <ul className="divide-y divide-border">
+              {missedPromises.map(({ invoice, promise }) => (
+                <li
+                  key={invoice.invoiceId}
+                  className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-3 sm:px-5"
+                >
+                  <div className="flex items-baseline gap-2">
+                    <TriangleAlert size={14} className="mt-0.5 shrink-0 text-warning" aria-hidden />
+                    <span className="text-body-sm font-medium text-foreground">
+                      <LtrValue>{invoice.invoiceNumber ?? t('unnumbered')}</LtrValue>
+                    </span>
+                    <span className="text-caption text-warning">
+                      {t('missedPromise', { date: formatDate(promise.promisedDate, locale) ?? promise.promisedDate })}
+                    </span>
+                  </div>
+                  <LtrValue className="text-body-sm font-semibold tabular-nums text-warning">
+                    {money(invoice.outstanding)}
+                  </LtrValue>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {/* Disputed section */}
+        {disputedInvoices.length > 0 ? (
+          <div>
+            <p className="border-b border-border px-4 py-1.5 text-caption font-semibold uppercase tracking-wide text-muted-foreground sm:px-5">
+              {t('attentionSectionDisputed')}
+            </p>
+            <ul className="divide-y divide-border">
+              {disputedInvoices.map(({ invoice, dispute }) => (
+                <li
+                  key={invoice.invoiceId}
+                  className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 px-4 py-3 sm:px-5"
+                >
+                  <div className="flex items-start gap-2">
+                    <ShieldAlert size={14} className="mt-0.5 shrink-0 text-danger" aria-hidden />
+                    <div>
+                      <p className="text-body-sm font-medium text-foreground">
+                        <LtrValue>{invoice.invoiceNumber ?? t('unnumbered')}</LtrValue>
+                      </p>
+                      {dispute.disputedAmount ? (
+                        <p className="text-caption text-danger">
+                          {t('disputedAmount', { amount: formatMoney(dispute.disputedAmount, currency, locale) ?? dispute.disputedAmount })}
+                        </p>
+                      ) : null}
+                      <p className="text-caption text-muted-foreground">
+                        {dispute.reason.replace(/_/g, ' ').toLowerCase()}
+                      </p>
+                    </div>
+                  </div>
+                  <LtrValue className="text-body-sm font-semibold tabular-nums text-muted-foreground">
+                    {money(invoice.outstanding)}
+                  </LtrValue>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
     </SectionCard>
   );
 }
 
-// ─── Invoices ───────────────────────────────────────────────────────────────────
+function OverdueAttentionItem({
+  inv,
+  lastFollowUpAt,
+  money,
+  locale,
+  t,
+}: {
+  inv: ClientReceivableView;
+  lastFollowUpAt: string | null;
+  money: (v: string | null) => string;
+  locale: 'en';
+  t: ReturnType<typeof useTranslations<'commercial.billing.collection'>>;
+}) {
+  return (
+    <li className="px-4 py-3 sm:px-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div className="flex items-baseline gap-2">
+          <TriangleAlert size={14} className="mt-0.5 shrink-0 text-danger" aria-hidden />
+          <span className="text-body-sm font-medium text-foreground">
+            <LtrValue>{inv.invoiceNumber ?? t('unnumbered')}</LtrValue>
+          </span>
+          <span className="text-caption text-danger">
+            {t('overdueBy', { days: inv.overdueDays })}
+          </span>
+        </div>
+        <LtrValue className="text-body-sm font-semibold tabular-nums text-danger">
+          {money(inv.outstanding)}
+        </LtrValue>
+      </div>
+      <p className="mt-0.5 text-caption text-muted-foreground">
+        {lastFollowUpAt
+          ? t('lastContact', { date: formatDate(lastFollowUpAt.slice(0, 10), locale) ?? lastFollowUpAt.slice(0, 10) })
+          : t('noFollowUp')}
+      </p>
+    </li>
+  );
+}
 
-function InvoicesPanel({ billing }: { billing: CommercialBillingResponse }) {
-  const t = useTranslations('commercial.billing');
-  const locale = useLocale() as 'en' | 'ar';
+// ─── Open invoices panel ──────────────────────────────────────────────────────
 
-  if (billing.invoices.length === 0) {
+type ActiveDialog =
+  | { kind: 'followup'; invoice: ClientReceivableView }
+  | { kind: 'promise'; invoice: ClientReceivableView }
+  | { kind: 'dispute'; invoice: ClientReceivableView }
+  | { kind: 'timeline'; invoice: ClientReceivableView }
+  | { kind: 'creditNote'; invoice: ClientReceivableView };
+
+function paymentStateTone(
+  state: CollectionPaymentState,
+): 'live' | 'warning' | 'danger' | 'neutral' | 'historical' {
+  switch (state) {
+    case 'PAID':
+      return 'live';
+    case 'PARTIALLY_PAID':
+      return 'warning';
+    case 'OVERDUE':
+      return 'danger';
+    case 'AWAITING_PAYMENT':
+      return 'neutral';
+    case 'DRAFT':
+    case 'CANCELLED':
+      return 'historical';
+    default:
+      return 'neutral';
+  }
+}
+
+function OpenInvoicesPanel({
+  projectId,
+  currency,
+  locale,
+  receivables,
+  allEvents,
+  paymentsByInvoice,
+  financialsVisible,
+  canRecordReceipt,
+  today,
+}: {
+  projectId: string;
+  currency: string | null;
+  locale: 'en';
+  receivables: ClientReceivableView[];
+  allEvents: Map<string, import('../lib/collection-events').CollectionEvent[]>;
+  paymentsByInvoice: Map<string, TimelinePaymentEntry[]>;
+  financialsVisible: boolean;
+  canRecordReceipt: boolean;
+  today: string;
+}) {
+  const t = useTranslations('commercial.billing.collection');
+  const tCol = useTranslations('commercial.billing.col');
+  const openDocument = useOpenInvoiceDocument();
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [preselected, setPreselected] = useState<ClientReceivableView | null>(null);
+  const [activeDialog, setActiveDialog] = useState<ActiveDialog | null>(null);
+
+  const visible = receivables.filter((r) => r.paymentState !== 'CANCELLED');
+  const payable = receivables.filter((r) => r.canRecordPayment);
+
+  const money = (value: string | null) =>
+    !financialsVisible || value === null
+      ? '—'
+      : (formatMoney(value, currency, locale) ?? '—');
+
+  if (visible.length === 0) {
     return (
-      <SectionCard title={t('invoices')}>
+      <SectionCard title={t('openInvoicesTitle')}>
         <div className="flex items-start gap-2.5 py-2">
-          <ReceiptText size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <p className="text-body-sm text-muted-foreground">{t('noInvoices')}</p>
+          <ReceiptText size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden />
+          <p className="text-body-sm text-muted-foreground">{t('noOpenInvoices')}</p>
         </div>
       </SectionCard>
     );
   }
 
   return (
-    <SectionCard title={t('invoices')} bodyClassName="px-0 py-0">
-      <TableScroll>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('col.invoice')}</TableHead>
-              <TableHead>{t('col.source')}</TableHead>
-              <TableHead>{t('col.issued')}</TableHead>
-              <TableHead>{t('col.due')}</TableHead>
-              <TableHead className="text-end">{t('col.total')}</TableHead>
-              <TableHead className="text-end">{t('col.paid')}</TableHead>
-              <TableHead className="text-end">{t('col.balance')}</TableHead>
-              <TableHead>{t('col.status')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {billing.invoices.map((invoice) => (
-              <InvoiceRow key={invoice.id} invoice={invoice} locale={locale} />
-            ))}
-          </TableBody>
-        </Table>
-      </TableScroll>
-      <p className="border-t border-border px-4 py-2 text-caption text-muted-foreground sm:px-5">
-        {t('vatNote')}
-      </p>
-    </SectionCard>
+    <>
+      <SectionCard title={t('openInvoicesTitle')} bodyClassName="px-0 py-0">
+        <TableScroll>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{tCol('invoice')}</TableHead>
+                <TableHead>{tCol('source')}</TableHead>
+                <TableHead>{tCol('issued')}</TableHead>
+                <TableHead>{tCol('due')}</TableHead>
+                <TableHead className="text-end">{tCol('total')}</TableHead>
+                <TableHead className="text-end">{tCol('paid')}</TableHead>
+                <TableHead className="text-end">{tCol('balance')}</TableHead>
+                <TableHead>{tCol('status')}</TableHead>
+                <TableHead>{tCol('action')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {visible.map((inv) => {
+                const events = allEvents.get(inv.invoiceId) ?? [];
+                const attentionReasons = getAttentionReasons(events, today);
+                const openDispute = getOpenDispute(events);
+                return (
+                  <OpenInvoiceRow
+                    key={inv.invoiceId}
+                    inv={inv}
+                    money={money}
+                    locale={locale}
+                    canRecordReceipt={canRecordReceipt}
+                    attentionReasons={attentionReasons}
+                    hasOpenDispute={openDispute !== null}
+                    onRecord={() => {
+                      setPreselected(inv);
+                      setDrawerOpen(true);
+                    }}
+                    onViewDocument={() => openDocument.mutate(inv.invoiceId)}
+                    openDocumentPending={openDocument.isPending}
+                    onAction={(kind) => setActiveDialog({ kind, invoice: inv })}
+                  />
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableScroll>
+        <p className="border-t border-border px-4 py-2 text-caption text-muted-foreground sm:px-5">
+          {t('vatNote')}
+        </p>
+      </SectionCard>
+
+      {/* Record payment drawer */}
+      <RecordPaymentDrawer
+        open={drawerOpen}
+        onOpenChange={(next) => {
+          setDrawerOpen(next);
+          if (!next) setPreselected(null);
+        }}
+        projectId={projectId}
+        currency={currency ?? 'USD'}
+        preselectedInvoice={preselected}
+        allInvoices={payable}
+      />
+
+      {/* Collection action dialogs */}
+      {activeDialog?.kind === 'followup' ? (
+        <RecordFollowUpDialog
+          open
+          onOpenChange={(next) => !next && setActiveDialog(null)}
+          invoice={activeDialog.invoice}
+          projectId={projectId}
+        />
+      ) : null}
+      {activeDialog?.kind === 'promise' ? (
+        <RecordPromiseDialog
+          open
+          onOpenChange={(next) => !next && setActiveDialog(null)}
+          invoice={activeDialog.invoice}
+          projectId={projectId}
+        />
+      ) : null}
+      {activeDialog?.kind === 'dispute' ? (
+        <OpenDisputeDialog
+          open
+          onOpenChange={(next) => !next && setActiveDialog(null)}
+          invoice={activeDialog.invoice}
+          currency={currency ?? 'USD'}
+          projectId={projectId}
+        />
+      ) : null}
+      {activeDialog?.kind === 'timeline' ? (
+        <InvoiceTimelineDialog
+          open
+          onOpenChange={(next) => !next && setActiveDialog(null)}
+          invoice={activeDialog.invoice}
+          currency={currency ?? 'USD'}
+          entries={buildInvoiceTimeline({
+            issuedAt: activeDialog.invoice.issuedAt,
+            sentAt: activeDialog.invoice.sentAt,
+            events: allEvents.get(activeDialog.invoice.invoiceId) ?? [],
+            payments: paymentsByInvoice.get(activeDialog.invoice.invoiceId) ?? [],
+            today,
+          })}
+        />
+      ) : null}
+      {activeDialog?.kind === 'creditNote' ? (
+        <CreditNoteDesignDialog
+          open
+          onOpenChange={(next) => !next && setActiveDialog(null)}
+          invoice={activeDialog.invoice}
+          currency={currency ?? 'USD'}
+        />
+      ) : null}
+    </>
   );
 }
 
-function InvoiceRow({
-  invoice,
+function OpenInvoiceRow({
+  inv,
+  money,
   locale,
+  canRecordReceipt,
+  attentionReasons,
+  hasOpenDispute,
+  onRecord,
+  onViewDocument,
+  openDocumentPending,
+  onAction,
 }: {
-  invoice: CommercialInvoiceRow;
-  locale: 'en' | 'ar';
+  inv: ClientReceivableView;
+  money: (value: string | null) => string;
+  locale: 'en';
+  canRecordReceipt: boolean;
+  attentionReasons: import('../lib/collection-events').AttentionReason[];
+  hasOpenDispute: boolean;
+  onRecord: () => void;
+  onViewDocument: () => void;
+  openDocumentPending: boolean;
+  onAction: (kind: ActiveDialog['kind']) => void;
 }) {
-  const t = useTranslations('commercial.billing');
-  const openDocument = useOpenInvoiceDocument();
-  const money = (value: string | null) =>
-    value === null ? '—' : (formatMoney(value, invoice.currency, locale) ?? '—');
+  const t = useTranslations('commercial.billing.collection');
+  const tBilling = useTranslations('commercial.billing');
+
+  // Due-status chip display for approaching deadlines
+  const dueBadge = (() => {
+    if (!inv.dueStatus || inv.dueStatus === 'CURRENT' || inv.dueStatus === 'OVERDUE') return null;
+    if (inv.dueStatus === 'DUE_TODAY') {
+      return (
+        <span className="ms-1 inline-block rounded px-1 py-0 text-micro font-medium bg-warning/10 text-warning">
+          {t('dueToday')}
+        </span>
+      );
+    }
+    return (
+      <span className="ms-1 inline-block rounded px-1 py-0 text-micro font-medium bg-warning/10 text-warning">
+        {t('dueStatus.DUE_SOON')}
+      </span>
+    );
+  })();
 
   return (
     <TableRow>
       <TableCell className="font-medium text-foreground">
-        <div className="flex items-center gap-1.5">
-          {/* `invoiceNumber` is drawn inside the posting transaction, so every draft is
-              unnumbered. Nothing may key a row on it, and the reader is told why it is blank. */}
-          <Link
-            href={`/finance/accounting/invoices/${invoice.id}`}
-            className={cn(
-              'inline-flex min-h-11 items-center hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary sm:min-h-0',
-              !invoice.invoiceNumber && 'text-muted-foreground',
-            )}
-          >
-            {invoice.invoiceNumber ? (
-              <LtrValue>{invoice.invoiceNumber}</LtrValue>
-            ) : (
-              t('unnumbered')
-            )}
-          </Link>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={t('viewDocument')}
-            className="shrink-0"
-            disabled={openDocument.isPending}
-            onClick={() => openDocument.mutate(invoice.id)}
-          >
-            <FileText size={14} aria-hidden="true" />
-          </Button>
+        <div className="flex items-center gap-1">
+          <LtrValue>{inv.invoiceNumber ?? tBilling('unnumbered')}</LtrValue>
+          {attentionReasons.includes('MISSED_PROMISE') ? (
+            <TriangleAlert size={12} className="text-warning" aria-label="Missed promise" />
+          ) : null}
+          {hasOpenDispute ? (
+            <ShieldAlert size={12} className="text-danger" aria-label="Open dispute" />
+          ) : null}
         </div>
       </TableCell>
-      <TableCell className="text-caption text-muted-foreground">
-        {invoice.source.label ??
-          (invoice.source.kind === 'NONE'
-            ? t('source.NONE')
-            : t(`source.${invoice.source.kind}`))}
-      </TableCell>
+      <TableCell className="text-caption text-muted-foreground">{inv.sourceLabel}</TableCell>
       <TableCell className="whitespace-nowrap text-muted-foreground">
-        {formatDate(invoice.invoiceDate, locale) ?? '—'}
+        {formatDate(inv.issuedAt, locale) ?? '—'}
       </TableCell>
       <TableCell className="whitespace-nowrap">
-        <span className={cn(invoice.daysOverdue > 0 ? 'text-danger' : 'text-muted-foreground')}>
-          {formatDate(invoice.dueDate, locale) ?? '—'}
+        <span
+          className={cn(
+            inv.paymentState === 'OVERDUE' ? 'text-danger' : 'text-muted-foreground',
+          )}
+        >
+          {formatDate(inv.dueDate, locale) ?? '—'}
+          {dueBadge}
         </span>
-        {invoice.daysOverdue > 0 ? (
+        {inv.paymentState === 'OVERDUE' && inv.overdueDays > 0 ? (
           <span className="block text-micro text-danger">
-            {t('overdueBy', { days: invoice.daysOverdue })}
+            {t('overdueBy', { days: inv.overdueDays })}
+            {inv.agingBucket ? (
+              <span className="ms-1">· {t(`agingBucket.${inv.agingBucket}`)}</span>
+            ) : null}
           </span>
         ) : null}
       </TableCell>
-      <TableCell className="text-end tabular-nums">{money(invoice.totalAmount)}</TableCell>
+      <TableCell className="text-end tabular-nums">{money(inv.total)}</TableCell>
       <TableCell className="text-end tabular-nums text-muted-foreground">
-        {money(invoice.paidAmount)}
+        {money(inv.paid)}
       </TableCell>
-      <TableCell className="text-end font-medium tabular-nums">
-        {money(invoice.outstandingAmount)}
+      <TableCell className="text-end font-medium tabular-nums">{money(inv.outstanding)}</TableCell>
+      <TableCell>
+        <Badge tone={paymentStateTone(inv.paymentState)}>
+          {t(`paymentState.${inv.paymentState}`)}
+        </Badge>
       </TableCell>
       <TableCell>
-        <Badge tone={invoiceStatusTone(invoice.status)}>{t(`status.${invoice.status}`)}</Badge>
+        <div className="flex items-center gap-1.5">
+          {inv.canRecordPayment && canRecordReceipt ? (
+            <Button type="button" variant="outline" size="sm" onClick={onRecord}>
+              <CircleDollarSign size={13} className="me-1" aria-hidden />
+              {t('recordPayment')}
+            </Button>
+          ) : null}
+
+          {/* More-actions dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="ghost" size="sm" aria-label="More actions">
+                <ChevronDown size={13} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuGroup>
+                {inv.canRecordPayment ? (
+                  <>
+                    <DropdownMenuItem onSelect={() => onAction('followup')}>
+                      <MessageSquare size={13} className="me-2" aria-hidden />
+                      {t('recordFollowUp')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onAction('promise')}>
+                      {t('recordPromise')}
+                    </DropdownMenuItem>
+                    {!hasOpenDispute ? (
+                      <DropdownMenuItem onSelect={() => onAction('dispute')}>
+                        <ShieldAlert size={13} className="me-2" aria-hidden />
+                        {t('openDispute')}
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem onSelect={() => onAction('dispute')}>
+                        {t('viewDispute')}
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuSeparator />
+                  </>
+                ) : null}
+                <DropdownMenuItem onSelect={() => onAction('timeline')}>
+                  {t('viewHistory')}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={onViewDocument}
+                  disabled={openDocumentPending}
+                >
+                  {tBilling('viewDocument')}
+                </DropdownMenuItem>
+                {inv.canRecordPayment ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onSelect={() => onAction('creditNote')}>
+                      {t('issueCreditNote')}
+                    </DropdownMenuItem>
+                  </>
+                ) : null}
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </TableCell>
     </TableRow>
   );
 }
 
-// ─── Receipts ───────────────────────────────────────────────────────────────────
+// ─── Recent payments panel ────────────────────────────────────────────────────
 
-/**
- * Client payments and where each one went.
- *
- * The allocations are shown under their receipt rather than in a separate table, because the
- * question a reader has is "this $200,000 landed — what did it settle?", and two tables side by
- * side make them join it themselves. Unapplied cash on a receipt is stated on the row: hiding it
- * would make a partly-allocated receipt look fully applied.
- */
-function ReceiptsPanel({ billing }: { billing: CommercialBillingResponse }) {
-  const t = useTranslations('commercial.billing');
-  const locale = useLocale() as 'en' | 'ar';
+function RecentPaymentsPanel({
+  payments,
+  currency,
+  locale,
+}: {
+  payments: ClientPaymentView[];
+  currency: string | null;
+  locale: 'en';
+}) {
+  const t = useTranslations('commercial.billing.collection');
 
-  if (billing.receipts.length === 0) {
+  const money = (value: string | null) =>
+    value === null ? '—' : (formatMoney(value, currency, locale) ?? '—');
+
+  if (payments.length === 0) {
     return (
-      <SectionCard title={t('receipts')}>
-        <p className="py-2 text-body-sm text-muted-foreground">{t('noReceipts')}</p>
+      <SectionCard title={t('recentPaymentsTitle')}>
+        <p className="py-2 text-body-sm text-muted-foreground">{t('noRecentPayments')}</p>
       </SectionCard>
     );
   }
 
   return (
-    <SectionCard title={t('receipts')} bodyClassName="px-0 py-0">
+    <SectionCard title={t('recentPaymentsTitle')} bodyClassName="px-0 py-0">
       <ul className="divide-y divide-border">
-        {billing.receipts.map((receipt) => (
-          <ReceiptRow key={receipt.id} receipt={receipt} locale={locale} />
+        {payments.map((payment) => (
+          <PaymentRow key={payment.receiptId} payment={payment} money={money} locale={locale} />
         ))}
       </ul>
-      <p className="border-t border-border px-4 py-2 text-caption text-muted-foreground sm:px-5">
-        {t('receiptsNote')}
-      </p>
     </SectionCard>
   );
 }
 
-function ReceiptRow({
-  receipt,
+function PaymentRow({
+  payment,
+  money,
   locale,
 }: {
-  receipt: CommercialReceiptRow;
-  locale: 'en' | 'ar';
+  payment: ClientPaymentView;
+  money: (value: string | null) => string;
+  locale: 'en';
 }) {
-  const t = useTranslations('commercial.billing');
-  const money = (value: string | null) =>
-    value === null ? '—' : (formatMoney(value, receipt.currency, locale) ?? '—');
-  const unapplied = Number(receipt.unallocatedAmount ?? 0) > 0;
+  const t = useTranslations('commercial.billing.collection');
+  const unapplied = Number(payment.unallocated ?? 0) > 0;
 
   return (
     <li className="px-4 py-3 sm:px-5">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <div className="min-w-0">
           <p className="text-body-sm font-medium text-foreground">
-            {formatDate(receipt.receiptDate, locale) ?? '—'}
-            {receipt.reference ? (
+            {formatDate(payment.receivedAt, locale) ?? '—'}
+            {payment.reference ? (
               <LtrValue className="ms-2 font-mono text-caption text-muted-foreground">
-                {receipt.reference}
+                {payment.reference}
               </LtrValue>
             ) : null}
           </p>
           <p className="mt-0.5 text-caption text-muted-foreground">
-            {receipt.paymentMethod ?? t('methodUnknown')}
+            {payment.method ?? t('methodUnknown')}
           </p>
         </div>
         <LtrValue className="text-body-sm font-semibold tabular-nums text-foreground">
-          {money(receipt.totalAmount)}
+          {money(payment.total)}
         </LtrValue>
       </div>
 
       <ul className="mt-2 space-y-1">
-        {receipt.allocations.map((allocation) => (
+        {payment.allocations.map((alloc) => (
           <li
-            key={allocation.id}
+            key={alloc.invoiceId}
             className="flex items-baseline justify-between gap-3 text-caption text-muted-foreground"
           >
-            <span className="min-w-0 truncate">
-              {allocation.invoiceNumber ?? t('unnumbered')}
-            </span>
-            <LtrValue className="shrink-0 tabular-nums">
-              {money(allocation.allocatedAmount)}
+            <LtrValue className="min-w-0 truncate">
+              {alloc.invoiceNumber ?? t('unnumbered')}
             </LtrValue>
+            <LtrValue className="shrink-0 tabular-nums">{money(alloc.amount)}</LtrValue>
           </li>
         ))}
         {unapplied ? (
           <li className="flex items-baseline justify-between gap-3 text-caption text-warning">
             <span>{t('unapplied')}</span>
-            <LtrValue className="tabular-nums">{money(receipt.unallocatedAmount)}</LtrValue>
+            <LtrValue className="tabular-nums">{money(payment.unallocated)}</LtrValue>
           </li>
         ) : null}
       </ul>
     </li>
-  );
-}
-
-function UnappliedPanel({ billing }: { billing: CommercialBillingResponse }) {
-  const t = useTranslations('commercial.billing');
-  const locale = useLocale() as 'en' | 'ar';
-  const total = billing.clientUnappliedTotal;
-
-  const none = total === null || Number(total) <= 0;
-
-  return (
-    <SectionCard
-      title={t('unappliedTitle')}
-      action={
-        // Only when the user can actually perform the allocation. Receipt allocation lives in
-        // Accounting — Commercial reports the balance and hands over rather than owning a second
-        // allocation interaction that would have to stay in step with the first.
-        !none && billing.capabilities.canAllocateReceipt ? (
-          <PanelLink href="/receipts">{t('allocate')}</PanelLink>
-        ) : null
-      }
-    >
-      {none ? (
-        <p className="py-1 text-body-sm text-muted-foreground">{t('noUnapplied')}</p>
-      ) : (
-        <>
-          <p className="text-h3 font-bold tabular-nums text-foreground">
-            {formatMoney(total, billing.currency, locale) ?? '—'}
-          </p>
-          {/* Said plainly, because it is the one figure on this screen that is NOT
-              project-scoped: unallocated cash has not been attributed to any contract yet. */}
-          <p className="mt-1 text-caption text-muted-foreground">{t('unappliedHint')}</p>
-        </>
-      )}
-    </SectionCard>
-  );
-}
-
-// ─── Ageing ─────────────────────────────────────────────────────────────────────
-
-const BUCKET_ORDER: CommercialAgingBucket['bucket'][] = [
-  'NOT_DUE',
-  'DAYS_1_30',
-  'DAYS_31_60',
-  'DAYS_61_90',
-  'DAYS_90_PLUS',
-];
-
-/**
- * Outstanding balances by how late they are.
- *
- * The buckets and the day counts are the server's, measured against the server clock — whether a
- * client is late is a commercial fact with consequences, and a browser with a skewed clock does
- * not get a vote. Rendered as proportional bars rather than a chart: five numbers and their
- * relative size is the entire message.
- */
-function AgingPanel({ billing }: { billing: CommercialBillingResponse }) {
-  const t = useTranslations('commercial.billing.aging');
-  const locale = useLocale() as 'en' | 'ar';
-
-  const buckets = BUCKET_ORDER.map(
-    (bucket) =>
-      billing.aging.find((b) => b.bucket === bucket) ?? { bucket, amount: null, invoiceCount: 0 },
-  );
-  const max = Math.max(...buckets.map((b) => Number(b.amount ?? 0)), 0);
-
-  if (max <= 0) {
-    return (
-      <SectionCard title={t('title')}>
-        <p className="py-1 text-body-sm text-muted-foreground">{t('nothingOutstanding')}</p>
-      </SectionCard>
-    );
-  }
-
-  return (
-    <SectionCard title={t('title')}>
-      <ul className="space-y-2.5">
-        {buckets.map((bucket) => {
-          const amount = Number(bucket.amount ?? 0);
-          const width = max > 0 ? Math.round((amount / max) * 100) : 0;
-          const late = bucket.bucket !== 'NOT_DUE' && amount > 0;
-          return (
-            <li key={bucket.bucket}>
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="text-caption text-muted-foreground">
-                  {t(`bucket.${bucket.bucket}`)}
-                </span>
-                <LtrValue className="text-body-sm font-medium tabular-nums text-foreground">
-                  {formatMoney(bucket.amount, billing.currency, locale) ?? '—'}
-                </LtrValue>
-              </div>
-              <span className="mt-1 block h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                <span
-                  className={cn('block h-full rounded-full', late ? 'bg-warning' : 'bg-brand-primary')}
-                  style={{ width: `${width}%` }}
-                />
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    </SectionCard>
   );
 }

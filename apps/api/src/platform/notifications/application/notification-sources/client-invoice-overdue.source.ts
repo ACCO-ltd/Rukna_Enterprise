@@ -62,7 +62,7 @@ export class ClientInvoiceOverdueSource implements NotificationSource<ClientInvo
     const conditions: ClientInvoiceOverdueCondition[] = [];
     for (const invoice of invoices) {
       // daysOverdue = today − dueDate on UTC calendar days (positive, since dueDate < today).
-      const daysOverdue = -utcCalendarDaysUntil(invoice.dueDate, now);
+      const daysOverdue = -utcCalendarDaysUntil(invoice.dueDate!, now);
       if (daysOverdue <= 0) continue;
       const bucket = invoiceBucket(daysOverdue);
       conditions.push({

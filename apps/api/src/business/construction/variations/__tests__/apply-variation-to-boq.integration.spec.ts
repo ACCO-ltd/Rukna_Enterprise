@@ -34,6 +34,7 @@ describe('appendVariationNodes → BOQ (ADR-029 V-1/V-2)', () => {
   let projectId: string;
   let contractId: string;
   let voId: string;
+  let sectionId: string;
   let versioning: BoqVersioningService;
   let repo: BoqPrismaRepository;
 
@@ -71,6 +72,7 @@ describe('appendVariationNodes → BOQ (ADR-029 V-1/V-2)', () => {
     const boq = await versioning.initialize(identity, projectId);
     const v1Id = boq.versions[0]!.id;
     const section = await tree.addNode(identity, projectId, v1Id, { code: '01', description: 'Original' });
+    sectionId = section.id;
     await tree.addNode(identity, projectId, v1Id, {
       parentId: section.id,
       code: '01.001',
@@ -144,6 +146,7 @@ describe('appendVariationNodes → BOQ (ADR-029 V-1/V-2)', () => {
       versioning.appendVariationNodes(tx, identity, projectId, {
         id: voId,
         reference: 'VO-001',
+        parentId: sectionId,
         lines: [
           { description: 'Extra floor', quantity: new Decimal('10'), unitRate: new Decimal('100'), amount: new Decimal('1000'), sortOrder: 0 },
           { description: 'Omit wall', quantity: new Decimal('-2'), unitRate: new Decimal('50'), amount: new Decimal('-100'), sortOrder: 1 },
@@ -162,8 +165,9 @@ describe('appendVariationNodes → BOQ (ADR-029 V-1/V-2)', () => {
       orderBy: [{ depth: 'asc' }, { sortOrder: 'asc' }],
     });
 
-    // A group section + two leaves, all tagged VARIATION / IN_CONTRACT and all pointing at the VO (FK).
-    expect(variationNodes).toHaveLength(3);
+    // Two leaves tagged VARIATION / IN_CONTRACT and all pointing at the VO (FK).
+    // No auto-section: explicit parentId was provided so leaves sit directly under the chosen section.
+    expect(variationNodes).toHaveLength(2);
     expect(variationNodes.every((n) => n.sourceType === 'VARIATION')).toBe(true);
     expect(variationNodes.every((n) => n.commercialTreatment === 'IN_CONTRACT')).toBe(true);
     expect(variationNodes.every((n) => n.sourceChangeOrderId === voId)).toBe(true);
@@ -215,6 +219,7 @@ describe('appendVariationNodes → BOQ (ADR-029 V-1/V-2)', () => {
         versioning.appendVariationNodes(tx, identity, projectId, {
           id: voId,
           reference: 'VO-001',
+          parentId: sectionId,
           lines: [
             { description: 'Extra floor', quantity: new Decimal('10'), unitRate: new Decimal('100'), amount: new Decimal('1000'), sortOrder: 0 },
           ],

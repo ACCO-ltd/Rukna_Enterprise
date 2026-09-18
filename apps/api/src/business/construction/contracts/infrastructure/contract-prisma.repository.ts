@@ -86,6 +86,25 @@ export class ContractPrismaRepository {
   }
 
   /**
+   * Slice-1A — find the current operational BOQ version for a project, regardless of whether it
+   * has been committed. Returns null when no BOQ exists. Used by contract creation to take a
+   * signing SNAPSHOT without requiring a pre-committed BOQ.
+   */
+  async findCurrentOperationalBoqVersion(
+    prisma: TenantPrisma,
+    projectId: string,
+  ): Promise<{ boqId: string; operationalVersionId: string } | null> {
+    const boq = await prisma.boq.findUnique({
+      where: { projectId },
+      select: { id: true, currentVersionId: true, currentDraftVersionId: true },
+    });
+    if (!boq) return null;
+    const operationalVersionId = boq.currentVersionId ?? boq.currentDraftVersionId;
+    if (!operationalVersionId) return null;
+    return { boqId: boq.id, operationalVersionId };
+  }
+
+  /**
    * ADR-030 CONST-COM-022 — the project code (`ACCO-WBR-26-0065`) the contract number is built from.
    * Org-scoped so a caller cannot mint a number off another tenant's project code.
    */

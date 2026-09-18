@@ -156,6 +156,26 @@ export class AccountingFixtureFactory {
       },
     });
 
+    // ── 3b. FY2026 — OPEN full-year period so tests that use 2026 dates work ─────
+    const fy26 = await prisma.fiscalYear.create({
+      data: {
+        organizationId: orgId,
+        name: 'FY2026',
+        startDate: new Date('2026-01-01'),
+        endDate:   new Date('2026-12-31'),
+        retainedEarningsAccountId: reId,
+        status: 'OPEN',
+        createdBy: userId,
+      },
+    });
+    await prisma.accountingPeriod.create({
+      data: {
+        organizationId: orgId, fiscalYearId: fy26.id,
+        periodNumber: 1, name: 'FY2026 Full Year',
+        startDate: new Date('2026-01-01'), endDate: new Date('2026-12-31'), status: 'OPEN',
+      },
+    });
+
     // ── 4. Document number sequences ──────────────────────────────────────────
     const seqTypes = [
       { documentType: 'JOURNAL_ENTRY',    prefix: 'JE-',   paddingLength: 6 },

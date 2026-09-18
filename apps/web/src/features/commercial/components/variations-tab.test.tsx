@@ -267,6 +267,11 @@ function packageWithLine(
     milestoneInvoice: null,
     variationLines: [line],
     presentedTotal: null,
+    documents: [],
+    packageSubtotal: null,
+    packageTax: null,
+    packageTotal: null,
+    packageOutstanding: null,
   };
 }
 
@@ -286,8 +291,10 @@ describe('VariationsTab — the "invoiced?" chip (S-VB-12)', () => {
             invoiceNumber: 'INV-0007',
             subtotal: '25000.00',
             totalAmount: '26250.00',
+            dueDate: null,
             documentStatus: 'APPROVED',
             postingStatus: 'POSTED',
+            deliveries: [],
           },
         }),
       ],

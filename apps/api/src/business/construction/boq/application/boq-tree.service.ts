@@ -510,6 +510,14 @@ export class BoqTreeService {
         'Contingency funds in-contract work; a separate charge is billed outside the contract.',
       );
     }
+    if (target.commercialTreatment === 'ABSORBED') {
+      // ABSORBED scope is an internal cost record excluded from the contract total (Slice 2). Drawing
+      // contingency onto it would lower the contingency allowance without a matching in-contract rise,
+      // breaking the tie-out. ABSORBED scope does not draw from contingency.
+      throw new BadRequestException(
+        'Contingency cannot be drawn onto an absorbed scope line. Absorbed scope is an internal cost with no contingency involvement.',
+      );
+    }
 
     // The named allowance. Exactly one contingency leaf is the simple, unambiguous case R4 supports;
     // more than one would need the caller to name the source, which the command deliberately does
@@ -565,7 +573,7 @@ export class BoqTreeService {
     const newTargetAmount = lineAmount('1', newTargetRate, true)!;
 
     // L-5 — ASSERT the reallocation is net-zero to the in-contract total before trusting the seam.
-    // Both leaves count in-contract (CONTINGENCY and IN_CONTRACT/ABSORBED all contribute), so the
+    // Both leaves are IN_CONTRACT (ABSORBED and SEPARATE_CHARGE are already blocked above), so the
     // signed delta is `(newTarget − oldTarget) + (newSource − oldSource)` and MUST be exactly zero.
     const sourceDelta = this.inContractContribution(source, formatAmount(newSourceAmount)).minus(
       this.inContractContribution(source, formatAmount(sourceAmount)),
@@ -648,19 +656,12 @@ export class BoqTreeService {
   }
 
   /**
-   * Add an ABSORBED leaf funded net-zero by an equal contingency reduction — ADR-029 CONST-BOQ-030
-   * / spec E-1, C-4.
+   * Add an ABSORBED leaf — ADR-029 CONST-BOQ-030 (Slice 2 revision) / spec E-1, C-4.
    *
-   * ACCO funds this extra itself: no client charge, contract value unchanged. An ABSORBED leaf
-   * COUNTS toward the in-contract total (the shared policy), so its +amount must be matched by an
-   * equal −amount contingency reduction for the total to stay constant and the L-5 pin to pass. This
-   * is the R4 net-zero reallocation shape, except the target is the ABSORBED leaf created in the same
-   * transaction rather than an existing line — so the whole thing (create the leaf + draw the funding
-   * + both change events) is one atomic write via `addAbsorbedFundedByContingency`.
-   *
-   * The funded scope is a lump-sum: `amount` lands entirely on the leaf (quantity 1, rate = amount),
-   * mirroring the allowance-style shape the contingency draw requires, so no rate/quantity is
-   * distorted. The contingency source is decremented by the same amount with quantity kept at 1.
+   * ACCO funds this extra itself: no client charge, contract value unchanged. An ABSORBED leaf is
+   * an INTERNAL COST RECORD — it is EXCLUDED from the in-contract total (Slice 2), so no contingency
+   * draw is needed; the contingency allowance and the contract value both remain constant. The ABSORBED
+   * leaf is a lump-sum (quantity 1, rate = amount) and is added in-place on the committed version.
    */
   async addAbsorbedScope(
     identity: RequestIdentity,
@@ -694,60 +695,8 @@ export class BoqTreeService {
       parentCode = parent.code;
     }
 
-    // The named allowance to fund from — the same single-source, allowance-shape rule the R4 draw
-    // enforces (drawing from a specific pool of several is not yet supported).
-    const nodes = await this.repo.findNodesByVersion(prisma, versionId);
-    const contingencyLeaves = nodes.filter((node) => isContingencyLeaf(node));
-    if (contingencyLeaves.length === 0) {
-      throw new BadRequestException('This BOQ has no contingency allowance to absorb scope against.');
-    }
-    if (contingencyLeaves.length > 1) {
-      throw new BadRequestException(
-        'This BOQ has more than one contingency line; absorbing against a specific pool is not yet supported.',
-      );
-    }
-    const source = contingencyLeaves[0]!;
-    const one = toDecimal('1')!;
-    const sourceQty = toDecimal(source.quantity);
-    if (sourceQty === null || !sourceQty.equals(one)) {
-      throw new BadRequestException(
-        'The contingency line must be an allowance (quantity 1) to fund absorbed scope.',
-      );
-    }
-    const sourceAmount = toDecimal(source.totalAmount) ?? toDecimal('0')!;
-    if (amount.greaterThan(sourceAmount)) {
-      throw new BadRequestException({
-        message: 'The absorbed scope exceeds the contingency remaining on this line.',
-        errorCode: 'CONTINGENCY_EXCEEDED',
-        details: { requested: formatAmount(amount), remaining: formatAmount(sourceAmount) },
-      });
-    }
-
-    // The ABSORBED leaf is a lump-sum: quantity 1, rate = amount, so totalAmount == amount with no
-    // distortion (the same allowance shape the funding draw uses).
-    const addedTotal = lineAmount('1', amount, true)!;
-    // L-5 — ASSERT net-zero before trusting the pin seam: +addedTotal (ABSORBED counts) and
-    // −amount off the contingency leaf (which also counts) must sum to zero.
-    const newSourceRate = (toDecimal(source.unitRate) ?? toDecimal('0')!)
-      .minus(amount)
-      .toDecimalPlaces(AMOUNT_SCALE);
-    const newSourceAmount = lineAmount('1', newSourceRate, true)!;
-    const addedContribution = this.inContractContribution(
-      { isLeaf: true, commercialTreatment: 'ABSORBED' },
-      formatAmount(addedTotal),
-    );
-    const sourceDelta = this.inContractContribution(source, formatAmount(newSourceAmount)).minus(
-      this.inContractContribution(source, formatAmount(sourceAmount)),
-    );
-    const netDelta = addedContribution.plus(sourceDelta);
-    if (!netDelta.isZero()) {
-      throw new ConflictException({
-        message: 'Absorbing scope must not change the contract value.',
-        errorCode: 'CONTRACT_VALUE_LOCKED',
-        details: { netDelta: formatAmount(netDelta) },
-      });
-    }
-    // The seam is reused only for the COMMITTED pin; the assertion above is the real guard.
+    // ABSORBED is excluded from the in-contract total (Slice 2), so adding the leaf is pin-neutral:
+    // the contract value and the contingency allowance both stay constant — no draw required.
     this.assertPinAllows(status, toDecimal('0'), toDecimal('0'), true);
 
     const overrideCode = dto.code?.trim();
@@ -784,51 +733,35 @@ export class BoqTreeService {
       );
 
       try {
-        return await this.repo.addAbsorbedFundedByContingency(
+        return await this.repo.createNodeAtPosition(
           prisma,
           {
-            data: {
-              boqId: boq.id,
-              versionId,
-              parentId: dto.parentId ?? null,
-              path: '',
-              depth: parentDepth + 1,
-              sortOrder: targetOrder,
-              code,
-              description: dto.description,
-              isLeaf: true,
-              measurementMethod: MeasurementMethod.QUANTITY,
-              pricingBasis: PricingBasis.LUMP_SUM,
-              unit: dto.unit ?? null,
-              quantity: '1',
-              unitRate: amount.toString(),
-              currency: boq.currency,
-              totalAmount: formatAmount(addedTotal),
-              nodeRole: 'WORK',
-              commercialTreatment: 'ABSORBED',
-            },
-            parentPath,
-            targetOrder,
+            boqId: boq.id,
+            versionId,
+            parentId: dto.parentId ?? null,
+            path: '',
+            depth: parentDepth + 1,
+            sortOrder: targetOrder,
+            code,
+            description: dto.description,
+            isLeaf: true,
+            measurementMethod: MeasurementMethod.QUANTITY,
+            pricingBasis: PricingBasis.LUMP_SUM,
+            unit: dto.unit ?? null,
+            quantity: '1',
+            unitRate: amount.toString(),
+            currency: boq.currency,
+            totalAmount: formatAmount(amount),
+            nodeRole: 'WORK',
+            commercialTreatment: 'ABSORBED',
           },
-          {
-            id: source.id,
-            data: { unitRate: newSourceRate, totalAmount: newSourceAmount },
-          },
+          parentPath,
+          targetOrder,
           {
             ...this.changeBase(identity, boq, versionId),
             code,
             action: 'CREATE',
-            detail: `Absorbed scope ${code} funded from contingency ${source.code}`,
-          },
-          {
-            ...this.changeBase(identity, boq, versionId),
-            nodeId: source.id,
-            code: source.code,
-            action: 'MOVE',
-            field: 'totalAmount',
-            oldValue: formatAmount(sourceAmount),
-            newValue: formatAmount(newSourceAmount),
-            detail: `Drew ${formatAmount(amount)} from contingency ${source.code} to absorb ${code}`,
+            detail: `Absorbed internal scope ${code} (excluded from contract total)`,
           },
         );
       } catch (error) {

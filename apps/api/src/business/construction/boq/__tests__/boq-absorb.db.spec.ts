@@ -14,12 +14,10 @@ import {
 } from '../domain/boq-contract-value.policy.js';
 
 /**
- * ADR-029 E-1 / C-4 — the ABSORB atomic transaction, DB-backed (WRITTEN, LEFT UNRUN per the R5
- * ticket — the DB-free specs prove the decision logic; this proves the whole net-zero write against
- * real rows). Mirrors the commit suite's fixture. It commits a priced BOQ (a work line + a
- * contingency allowance), then absorbs scope and asserts, on the real rows, that the in-contract
- * total is unchanged, contingency ticks down by exactly the absorbed amount, and an ABSORBED leaf
- * was added — all in one transaction (both writes present, or neither).
+ * ADR-029 E-1 / C-4 — the ABSORB atomic transaction, DB-backed. Mirrors the commit suite's
+ * fixture. It commits a priced BOQ (a work line + a contingency allowance), then absorbs scope
+ * and asserts, on the real rows, that the in-contract total is unchanged, contingency is untouched
+ * (no draw — Slice 2 convergence), and an ABSORBED leaf was added.
  */
 describe('BOQ ABSORB atomic transaction (ADR-029 E-1) [DB]', () => {
   const prisma = new PrismaClient();
@@ -79,7 +77,7 @@ describe('BOQ ABSORB atomic transaction (ADR-029 E-1) [DB]', () => {
     await prisma.$disconnect();
   });
 
-  it('absorbs $200: in-contract total unchanged, contingency 500 → 300, ABSORBED leaf added', async () => {
+  it('absorbs $200: ABSORBED leaf added, contingency unchanged, in-contract total unchanged', async () => {
     const before = await prisma.boqNode.findMany({ where: { versionId } });
     const totalBefore = inContractBillableTotal(before)!.toFixed(2);
 
@@ -89,14 +87,14 @@ describe('BOQ ABSORB atomic transaction (ADR-029 E-1) [DB]', () => {
     expect(absorbed.commercialTreatment).toBe('ABSORBED');
 
     const after = await prisma.boqNode.findMany({ where: { versionId } });
-    // In-contract total constant (net-zero): the ABSORBED +200 is matched by contingency −200.
+    // In-contract total unchanged (ABSORBED is excluded from the total; no contingency draw).
     expect(inContractBillableTotal(after)!.toFixed(2)).toBe(totalBefore);
-    // Contingency remaining ticked down by exactly the absorbed amount.
-    expect(contingencyRemaining(after)!.toFixed(2)).toBe('300.00');
+    // Contingency allowance is untouched (no draw — Slice 2 convergence).
+    expect(contingencyRemaining(after)!.toFixed(2)).toBe('500.00');
     // The ABSORBED leaf really landed.
     expect(after.some((n) => n.commercialTreatment === 'ABSORBED' && n.totalAmount?.toFixed(2) === '200.00')).toBe(true);
-    // Two events recorded (the CREATE + the funding MOVE).
-    const events = await prisma.boqChangeEvent.findMany({ where: { versionId, action: { in: ['CREATE', 'MOVE'] } } });
-    expect(events.length).toBeGreaterThanOrEqual(2);
+    // One CREATE event recorded (no MOVE since no contingency draw).
+    const events = await prisma.boqChangeEvent.findMany({ where: { versionId, action: 'CREATE' } });
+    expect(events.some((e) => e.action === 'CREATE')).toBe(true);
   });
 });

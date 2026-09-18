@@ -122,16 +122,16 @@ rows, never transitioned. `SUPERSEDED`/`CANCELLED` retained for a discarded pre-
   −amount, target work line +amount, in-contract total unchanged (satisfies L-5). One
   transaction, one `BoqChangeEvent`. Auth: `manage-contingency:boq` (commercial). Test:
   total unchanged; remaining ticks down; over-draw beyond remaining → 400 `CONTINGENCY_EXCEEDED`.
-- **C-4 Absorbed scope.** An `ABSORBED` line is added and funded by an equal contingency
-  draw (net-zero to the total). Test: adding absorbed scope of $X reduces contingency by $X,
-  in-contract total constant.
+- **C-4 Absorbed scope.** An `ABSORBED` line is added as an internal cost record (excluded
+  from the in-contract total). No contingency draw occurs. Test: adding absorbed scope leaves
+  in-contract total unchanged, contingency unchanged, ABSORBED leaf appears.
 
 ## 5. Extra-work classifier — MUST
 
 `addExtraWork(lines[], treatment)` on a `COMMITTED` version. `treatment ∈ {ABSORB,
 VARIATION, SEPARATE}`.
-- **E-1 ABSORB** → `commercialTreatment=ABSORBED`, funded by contingency draw (§C-4),
-  no client, contract value unchanged. Auth: `manage-contingency:boq`.
+- **E-1 ABSORB** → `commercialTreatment=ABSORBED`, excluded from in-contract total,
+  no contingency draw, no client, contract value unchanged. Auth: `manage-contingency:boq`.
 - **E-2 VARIATION** → creates a `VariationOrder` (Commercial, ADR-026) pre-priced from the
   lines; nodes are **not** added to the operational version until the VO is client-approved
   and adopted (§6). Auth: `edit-scope:boq` to prepare; approval governed.

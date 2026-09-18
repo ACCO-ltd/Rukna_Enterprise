@@ -325,6 +325,11 @@ export class BoqPrismaRepository {
     return prisma.boqNode.count({ where: { versionId, parentId } });
   }
 
+  /** All active non-leaf (section) nodes for a version — used to guard variation placement. */
+  async findSectionsByVersion(prisma: PrismaClient, versionId: string): Promise<BoqNode[]> {
+    return prisma.boqNode.findMany({ where: { versionId, isLeaf: false, isActive: true } });
+  }
+
   /**
    * Counts downstream records that reference this node — CONST-BOQ-003.
    *

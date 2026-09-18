@@ -7,6 +7,8 @@ import { PaymentReceiptArRepository } from './infrastructure/payment-receipt-ar.
 import { ClientInvoiceService } from './application/client-invoice.service.js';
 import { CustomerReceiptService } from './application/customer-receipt.service.js';
 import { InvoiceDocumentService } from './application/invoice-document.service.js';
+import { CollectionEventsService } from './application/collection-events.service.js';
+import { CreditNoteService } from './application/credit-note.service.js';
 import { ClientInvoiceController } from './presentation/client-invoice.controller.js';
 import { CustomerReceiptController } from './presentation/customer-receipt.controller.js';
 
@@ -19,7 +21,9 @@ import { CustomerReceiptController } from './presentation/customer-receipt.contr
     ClientInvoiceService,
     CustomerReceiptService,
     InvoiceDocumentService,
+    CollectionEventsService,
+    CreditNoteService,
   ],
-  exports: [ClientInvoiceService, CustomerReceiptService],
+  exports: [ClientInvoiceService, CustomerReceiptService, CollectionEventsService, CreditNoteService],
 })
 export class AccountsReceivableModule {}

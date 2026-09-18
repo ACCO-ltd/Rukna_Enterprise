@@ -217,7 +217,7 @@ function SummaryStrip({
  * the schedule is fixed and only a Variation reprofiles it, so the editor is replaced with that
  * explanation rather than a control the server would 409.
  */
-function ScheduleEditor({
+export function ScheduleEditor({
   projectId,
   contractId,
   status,

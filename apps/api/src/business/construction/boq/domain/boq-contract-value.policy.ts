@@ -1,17 +1,15 @@
 /**
- * In-contract billable total — ADR-029 CONST-BOQ-030 / spec T-1.
+ * In-contract billable total — ADR-029 CONST-BOQ-030 / spec T-1 / Slice 2.
  *
  * The single figure a committed BOQ ties out to (it equals the contract value). It is the sum of
- * every *leaf* amount EXCEPT `SEPARATE_CHARGE` — the internal budget pie:
+ * every *leaf* with `commercialTreatment = IN_CONTRACT` — the on-contract budget:
  *
- *  - IN_CONTRACT leaves (original scope + on-contract variations) count in.
- *  - CONTINGENCY-role leaves count in — the named allowance is part of the contract value
- *    (CONST-BOQ-028); it is `nodeRole`, not `commercialTreatment`, that marks contingency, and it
- *    keeps the IN_CONTRACT treatment.
- *  - ABSORBED leaves count in — an absorbed extra is funded by an equal contingency draw
- *    (CONST-BOQ-030 / spec C-4), so counting it keeps the total constant (net-zero). *Excluding*
- *    it would drop the total below the contract value the instant scope is absorbed, breaking the
- *    tie-out.
+ *  - IN_CONTRACT leaves (original scope + on-contract variations + CONTINGENCY-role allowance)
+ *    count in. Contingency keeps the IN_CONTRACT treatment, so it counts here.
+ *  - ABSORBED leaves are EXCLUDED — they are internal cost records (Slice 2 CONST-BOQ-030 rev).
+ *    No contingency draw occurs when scope is absorbed; the contingency allowance is untouched and
+ *    the ABSORBED leaf sits outside the contract total. The in-contract figure therefore stays
+ *    constant (contingency unchanged, ABSORBED excluded) without any net-zero bookkeeping.
  *  - SEPARATE_CHARGE leaves are excluded — billed one-off outside the contract; they feed total
  *    client revenue, not the contract value.
  *  - INACTIVE leaves (`isActive === false`) are excluded from EVERY total below. A reversed variation
@@ -32,17 +30,16 @@ import { sumAmounts, toDecimal, type DecimalString, formatAmount } from './boq-m
 import type { Decimal } from '@prisma/client/runtime/library';
 
 /**
- * True when this node contributes to the in-contract total: any ACTIVE leaf except a SEPARATE_CHARGE
- * one. Sections carry no amount; IN_CONTRACT (incl. CONTINGENCY-role) and ABSORBED leaves count;
- * only SEPARATE_CHARGE — billed outside the contract — is out. A reversed/inactive leaf
- * (`isActive === false`) is excluded: a reversed variation soft-deletes its leaves (provenance is
- * preserved via `sourceChangeOrderId`), and this filter is what keeps the lowered contract value in
- * sync with the BOQ total once those leaves stop contributing.
+ * True when this node contributes to the in-contract total: an ACTIVE IN_CONTRACT leaf.
+ * Sections carry no amount; ABSORBED and SEPARATE_CHARGE leaves are both excluded (Slice 2).
+ * A reversed/inactive leaf (`isActive === false`) is excluded: a reversed variation soft-deletes
+ * its leaves (provenance preserved via `sourceChangeOrderId`), and this filter is what keeps the
+ * lowered contract value in sync with the BOQ total once those leaves stop contributing.
  */
 export function contributesToInContractTotal(
   node: Pick<BoqNode, 'isActive' | 'isLeaf' | 'commercialTreatment'>,
 ): boolean {
-  return node.isActive && node.isLeaf && node.commercialTreatment !== 'SEPARATE_CHARGE';
+  return node.isActive && node.isLeaf && node.commercialTreatment === 'IN_CONTRACT';
 }
 
 /** Σ leaf.totalAmount over active IN_CONTRACT leaves. Null when nothing contributes (never a false `0`). */

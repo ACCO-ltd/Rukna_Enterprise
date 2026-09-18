@@ -78,6 +78,8 @@ model Organization {
   matchingPolicies         MatchingTolerancePolicy[]
   overReceiptPolicies      OverReceiptPolicy[]
   commitmentEntries        CommitmentLedgerEntry[]
+  // Slice 6B — Collection Events + Credit Notes
+  creditNotes              CreditNote[]
 
   @@map("organizations")
 }
@@ -1585,6 +1587,10 @@ model ContractPaymentInstallment {
   // programme milestone (ADR-021), which is the billing evidence when present (CONST-COM-011).
   milestoneLabel       String?        @map("milestone_label")
   programmeMilestoneId String?        @map("programme_milestone_id")
+  // Slice 3B: finance marks this installment ready before the invoice can be issued.
+  readyToBillAt        DateTime?      @map("ready_to_bill_at")
+  readyToBillBy        String?        @map("ready_to_bill_by")
+  readinessNote        String?        @map("readiness_note")
 
   contract           Contract            @relation(fields: [contractId], references: [id], onDelete: Cascade)
   clientInvoice      ClientInvoice? // ADR-023: the invoice generated from this installment, if any
@@ -2639,7 +2645,8 @@ model ClientInvoice {
   organizationId         String           @map("organization_id")
   invoiceNumber          String?          @map("invoice_number") @db.VarChar(30)
   invoiceDate            DateTime         @map("invoice_date") @db.Date
-  dueDate                DateTime         @map("due_date") @db.Date
+  // Nullable: separate-charge invoices are created without a due date and completed later.
+  dueDate                DateTime?        @map("due_date") @db.Date
   clientId               String           @map("client_id")
   // sourceIpcId: the effective IPC that generated this invoice. NULL for migration-loaded records.
   sourceIpcId            String?          @unique @map("source_ipc_id")
@@ -2660,6 +2667,7 @@ model ClientInvoice {
   totalAmount            Decimal          @map("total_amount") @db.Decimal(18, 2)
   outstandingAmount      Decimal          @map("outstanding_amount") @db.Decimal(18, 2)
   paymentTerms           String?          @map("payment_terms")
+  notes                  String?
   billingAddressSnapshot Json             @map("billing_address_snapshot")
   // The rendered branded PDF (Commercial round-3) — generated lazily on first request for the
   // document (`ClientInvoiceService.getOrGenerateDocument`), not eagerly at creation, so it works
@@ -2702,11 +2710,149 @@ model ClientInvoice {
   // this invoice as where a VO slice was billed. Read/trace only — the invoice header is unchanged.
   variationBillingAllocations VariationBillingAllocation[]
   documentFile      PlatformFile?               @relation("ClientInvoiceDocument", fields: [documentFileId], references: [id])
+  deliveries        ClientInvoiceDelivery[]
+  // Slice 6B — Collection Events + Credit Notes
+  followUps         InvoiceFollowUp[]
+  promises          InvoicePaymentPromise[]
+  disputes          InvoiceDispute[]
+  creditNotes       CreditNote[]
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, clientId, postingStatus])
   @@index([organizationId, documentStatus])
   @@map("client_invoices")
+}
+
+// Slice 4B — append-only invoice delivery history. One row per send event (one per channel per day
+// is normal). Reusing the same table for both "invoice-level" and "package-level" sends: the package
+// path inserts one row here per invoice in the package in a single transaction.
+model ClientInvoiceDelivery {
+  id             String                @id @default(cuid())
+  organizationId String                @map("organization_id")
+  invoiceId      String                @map("invoice_id")
+  method         InvoiceDeliveryMethod
+  recipient      String?
+  note           String?
+  sentAt         DateTime              @map("sent_at")
+  sentBy         String                @map("sent_by")
+  createdAt      DateTime              @default(now()) @map("created_at")
+
+  invoice ClientInvoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([organizationId, invoiceId])
+  @@map("client_invoice_deliveries")
+}
+
+// ─── Collection Events + Credit Notes (Slice 6B) ────────────────────────────
+
+enum FollowUpMethod {
+  WHATSAPP
+  EMAIL
+  PHONE
+  PHYSICAL
+  OTHER
+}
+
+enum DisputeReason {
+  OMISSION
+  PRICE_ERROR
+  WORK_NOT_ACCEPTED
+  SCOPE_DISAGREEMENT
+  OTHER
+}
+
+enum CreditNoteReason {
+  OMISSION
+  PRICE_ERROR
+  CORRECTION
+  NEGATIVE_VARIATION
+}
+
+model InvoiceFollowUp {
+  id             String         @id @default(cuid())
+  organizationId String         @map("organization_id")
+  invoiceId      String         @map("invoice_id")
+  method         FollowUpMethod
+  contactPerson  String?        @map("contact_person")
+  note           String?
+  occurredAt     DateTime       @map("occurred_at")
+  recordedAt     DateTime       @default(now()) @map("recorded_at")
+  recordedBy     String         @map("recorded_by")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  invoice ClientInvoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([organizationId, invoiceId])
+  @@map("invoice_follow_ups")
+}
+
+model InvoicePaymentPromise {
+  id                   String    @id @default(cuid())
+  organizationId       String    @map("organization_id")
+  invoiceId            String    @map("invoice_id")
+  promisedDate         DateTime  @map("promised_date") @db.Date
+  promisedAmount       Decimal?  @map("promised_amount") @db.Decimal(18, 2)
+  outstandingAtPromise Decimal   @map("outstanding_at_promise") @db.Decimal(18, 2)
+  note                 String?
+  recordedAt           DateTime  @default(now()) @map("recorded_at")
+  recordedBy           String    @map("recorded_by")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  invoice ClientInvoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([organizationId, invoiceId])
+  @@map("invoice_payment_promises")
+}
+
+model InvoiceDispute {
+  id             String        @id @default(cuid())
+  organizationId String        @map("organization_id")
+  invoiceId      String        @map("invoice_id")
+  disputedAmount Decimal?      @map("disputed_amount") @db.Decimal(18, 2)
+  reason         DisputeReason
+  note           String?
+  openedAt       DateTime      @default(now()) @map("opened_at")
+  openedBy       String        @map("opened_by")
+  resolvedAt     DateTime?     @map("resolved_at")
+  resolvedBy     String?       @map("resolved_by")
+  resolutionNote String?       @map("resolution_note")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  invoice ClientInvoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([organizationId, invoiceId])
+  @@map("invoice_disputes")
+}
+
+model CreditNote {
+  id                   String           @id @default(cuid())
+  organizationId       String           @map("organization_id")
+  invoiceId            String           @map("invoice_id")
+  creditNoteNumber     String?          @map("credit_note_number") @db.VarChar(30)
+  sourceVariationId    String?          @map("source_variation_id")
+  reason               CreditNoteReason
+  netAmount            Decimal          @map("net_amount") @db.Decimal(18, 2)
+  vatAmount            Decimal          @map("vat_amount") @db.Decimal(18, 2)
+  totalAmount          Decimal          @map("total_amount") @db.Decimal(18, 2)
+  accountingDate       DateTime         @map("accounting_date") @db.Date
+  postingStatus        PostingStatus    @default(NOT_POSTED) @map("posting_status")
+  postedAt             DateTime?        @map("posted_at")
+  postedBy             String?          @map("posted_by")
+  postedJournalEntryId String?          @map("posted_journal_entry_id")
+  note                 String?
+  createdBy            String           @map("created_by")
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id])
+  invoice      ClientInvoice @relation(fields: [invoiceId], references: [id])
+
+  @@unique([organizationId, creditNoteNumber])
+  @@index([organizationId, invoiceId])
+  @@map("credit_notes")
 }
 
 // Accounting subledger: PaymentReceipt ↔ ClientInvoice for GL posting.
@@ -2744,6 +2890,8 @@ model ClientReceiptAllocation {
   @@map("client_receipt_allocations")
 }
 
+
+
 // ─── Payment Receipts (expanded from Sprint 3 stub) ───────────────────────────
 
 // Sprint 3 columns preserved; Sprint 4 adds accounting fields.
@@ -2773,6 +2921,9 @@ model PaymentReceipt {
   lastPostingAttemptAt DateTime?        @map("last_posting_attempt_at")
   lastPostingErrorCode String?          @map("last_posting_error_code")
   migrationBatchId     String?          @map("migration_batch_id")
+  // Slice 8: optional client-supplied key — when provided, a second call with the same key
+  // returns the existing receipt instead of creating a duplicate (safe network-retry).
+  idempotencyKey       String?          @unique @map("idempotency_key")
   revision             Int              @default(1)
   createdBy            String           @map("created_by")
   approvedBy           String?          @map("approved_by")
@@ -3816,6 +3967,7 @@ enum DocumentType {
   SUPPLIER_BILL
   SUPPLIER_PAYMENT
   JOURNAL_ENTRY
+  CREDIT_NOTE
 }
 
 enum SequenceStatus {
@@ -3858,6 +4010,13 @@ enum InvoiceDocStatus {
   DRAFT
   APPROVED
   CANCELLED
+}
+
+enum InvoiceDeliveryMethod {
+  WHATSAPP
+  EMAIL
+  PHYSICAL
+  OTHER
 }
 
 enum PostingStatus {
@@ -3907,6 +4066,7 @@ enum SourceDocType {
   MANUAL_JOURNAL
   OPENING_BALANCE
   YEAR_END_CLOSE
+  CREDIT_NOTE
 }
 
 enum AttemptOutcome {

@@ -127,7 +127,7 @@ keeps the change small and the migration a pure column-add with a trivial backfi
 | `commitToContract(versionId)` (= baseline) | BOQ | commit capability (see §9) | ADR-011 gate | baseline in one tx; cuts the snapshot |
 | create/finalize `Contract(boqVersionId)` | Contract | contract capability | — | reads BOQ tie-out (port), validates INV-1, sets `contractValue` |
 | `reallocate` / `drawContingency(toNode, amount)` | BOQ | manage:boq | — | DRAFT write + `BoqChangeEvent`, one tx (INV-2/4) |
-| `addExtraWork(lines, treatment)` | BOQ → | manage:boq (+ commit cap for billable) | variation path gated | Absorb = contingency draw (tx here); Variation = create `VariationOrder` (Commercial); Separate = create charge (Commercial) |
+| `addExtraWork(lines, treatment)` | BOQ → | manage:boq (+ commit cap for billable) | variation path gated | Absorb = add ABSORBED leaf (no contingency draw); Variation = create `VariationOrder` (Commercial); Separate = create charge (Commercial) |
 | `adoptVariation(voId)` (on-contract) | Variations + Contract | variation-approve | already governed | **one tx:** append (exists) → baseline → repoint `boqVersionId` → `contractValue += net` → milestone re-derivation *(see DECISION 1)* |
 
 **Ports (interfaces BOQ exposes / consumes):**
@@ -148,7 +148,7 @@ Post-commit live draft (auto-created):
   money-neutral edits ───────────► BoqChangeEvent (free)          contractValue unchanged
   drawContingency ───────────────► reallocate, pool ↓, logged      contractValue unchanged
   addExtraWork:
-    ├ Absorb    ─► contingency draw (as above)                     contractValue unchanged
+    ├ Absorb    ─► add ABSORBED leaf (no draw)                     contractValue unchanged
     ├ Separate  ─► Commercial one-off charge                       contractValue unchanged; revenue ↑
     └ Variation ─► VariationOrder → client approval ─adopt─► new snapshot,
                     boqVersionId repointed, contractValue ↑, milestones re-derived (DECISION 1)

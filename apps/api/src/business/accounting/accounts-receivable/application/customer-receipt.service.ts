@@ -5,6 +5,7 @@ import {
   ConflictException,
   Inject,
 } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import type { RequestIdentity } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
@@ -508,6 +509,151 @@ export class CustomerReceiptService {
 
       return postResult;
     });
+  }
+
+  /**
+   * Create and immediately post a receipt in one atomic operation, reusing the caller's
+   * `Prisma.TransactionClient` so the GL journal, allocation records, and invoice outstanding
+   * updates all commit or roll back with the outer transaction.
+   *
+   * Callers:
+   *  - `CommercialBillingService.recordProjectPayment` — wraps this in a prisma.$transaction that
+   *    also records an audit event, so everything is one DB commit.
+   *
+   * Follows EVT-AR-003 Branch A (fully allocated) / Branch B (partial / fully unapplied):
+   *   Dr Bank / Cr AR (allocated part) / Cr Unapplied (remainder)
+   */
+  async createAndPost(
+    identity: RequestIdentity,
+    dto: {
+      clientId: string;
+      bankAccountId: string;
+      bankAccountCode: string;
+      receiptDate: string;
+      amount: string;
+      currency: string;
+      paymentMethod?: string;
+      reference?: string;
+      notes?: string;
+      allocations: Array<{ clientInvoiceId: string; amount: number }>;
+    },
+    tx: Prisma.TransactionClient,
+  ): Promise<{ receiptId: string; journalEntryId: string }> {
+    const { activeOrganizationId: orgId, userId } = identity;
+    const ZERO = new Decimal(0);
+
+    const bankGl = await this.accountRepo.findByCode(tx as never, orgId, dto.bankAccountCode);
+    if (!bankGl) throw new NotFoundException(`Bank GL account ${dto.bankAccountCode} not found`);
+
+    const arGl = await this.resolver.resolveByCodeOrRole(tx as never, orgId, undefined, 'ACCOUNTS_RECEIVABLE');
+    const unappliedGl = await this.resolver.resolveByCodeOrRole(tx as never, orgId, undefined, 'UNAPPLIED_CLIENT_RECEIPTS');
+
+    const receiptDate = new Date(dto.receiptDate);
+    const totalAmount = new Decimal(dto.amount);
+    const allocatedAmount = dto.allocations.reduce((s, a) => s.plus(new Decimal(a.amount)), ZERO);
+    const unallocatedAmount = totalAmount.minus(allocatedAmount);
+
+    if (allocatedAmount.gt(totalAmount)) {
+      throw new BadRequestException(
+        `Total allocations ${allocatedAmount.toFixed(2)} exceed receipt amount ${totalAmount.toFixed(2)}`,
+      );
+    }
+
+    // 1. Create receipt row inside tx
+    const receipt = await tx.paymentReceipt.create({
+      data: {
+        organizationId: orgId,
+        clientId: dto.clientId,
+        bankAccountId: dto.bankAccountId,
+        receiptDate,
+        accountingDate: receiptDate,
+        totalAmount,
+        allocatedAmount: ZERO,
+        unallocatedAmount: totalAmount,
+        currencyCode: dto.currency,
+        paymentMethod: dto.paymentMethod ?? null,
+        reference: dto.reference ?? null,
+        notes: dto.notes ?? null,
+        createdBy: userId,
+      },
+    });
+
+    // 2. GL journal lines (EVT-AR-003)
+    const lines: Parameters<typeof this.postingPort.post>[0]['lines'] = [
+      { accountId: bankGl.id, debitAmount: totalAmount, creditAmount: ZERO, sourceSubledgerType: 'BANK' },
+    ];
+    if (allocatedAmount.gt(ZERO)) {
+      lines.push({
+        accountId: arGl.id,
+        debitAmount: ZERO,
+        creditAmount: allocatedAmount,
+        sourceSubledgerType: 'ACCOUNTS_RECEIVABLE',
+        clientId: dto.clientId,
+      });
+    }
+    if (unallocatedAmount.gt(ZERO)) {
+      lines.push({
+        accountId: unappliedGl.id,
+        debitAmount: ZERO,
+        creditAmount: unallocatedAmount,
+        clientId: dto.clientId,
+      });
+    }
+
+    // 3. Post to GL inside same tx
+    const postResult = await this.postingPort.post(
+      {
+        organizationId: orgId,
+        accountingDate: receiptDate,
+        documentDate: receiptDate,
+        description: `Customer Receipt — ${receipt.id}`,
+        currencyCode: dto.currency,
+        eventType: 'EVT-AR-003',
+        sourceDocumentType: 'PAYMENT_RECEIPT',
+        sourceDocumentId: receipt.id,
+        journalCategory: 'CASH_AND_BANK',
+        entryPurpose: 'NORMAL',
+        postingOrigin: 'SYSTEM_CASH',
+        createdBy: userId,
+        lines,
+      },
+      tx as never,
+    );
+
+    // 4. Mark receipt POSTED
+    await tx.paymentReceipt.update({
+      where: { id: receipt.id },
+      data: {
+        postingStatus: 'POSTED',
+        postedJournalEntryId: postResult.journalEntryId,
+        postedAt: new Date(),
+        postedBy: userId,
+        allocatedAmount,
+        unallocatedAmount,
+      },
+    });
+
+    // 5. Create initial allocation rows + reduce invoice outstanding
+    for (const alloc of dto.allocations) {
+      await tx.clientReceiptAllocation.create({
+        data: {
+          organizationId: orgId,
+          paymentReceiptId: receipt.id,
+          clientInvoiceId: alloc.clientInvoiceId,
+          allocatedAmount: new Decimal(alloc.amount),
+          allocationDate: receiptDate,
+          journalEntryId: postResult.journalEntryId,
+          postingStatus: 'POSTED',
+          createdBy: userId,
+        },
+      });
+      await tx.clientInvoice.update({
+        where: { id: alloc.clientInvoiceId },
+        data: { outstandingAmount: { decrement: new Decimal(alloc.amount) } },
+      });
+    }
+
+    return { receiptId: receipt.id, journalEntryId: postResult.journalEntryId };
   }
 
   // ACC-SET-001 BE-2: receipt creation moved here from the retired finance module. No separate

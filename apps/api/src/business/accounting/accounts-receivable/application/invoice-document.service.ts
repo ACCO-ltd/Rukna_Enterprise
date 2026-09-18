@@ -23,7 +23,8 @@ export interface InvoiceDocumentLineItem {
 export interface InvoiceDocumentInput {
   invoiceNumber: string | null;
   invoiceDate: Date;
-  dueDate: Date;
+  /** Null for separate-charge draft invoices where payment terms have not been set yet. */
+  dueDate: Date | null;
   currencyCode: string;
   subtotal: string;
   vatAmount: string;
@@ -120,7 +121,7 @@ function InvoiceDocument({ input }: { input: InvoiceDocumentInput }) {
           View,
           { style: styles.metaBlockRight },
           metaLine(styles, 'Invoice date', formatDate(input.invoiceDate)),
-          metaLine(styles, 'Due date', formatDate(input.dueDate)),
+          input.dueDate ? metaLine(styles, 'Due date', formatDate(input.dueDate)) : null,
           input.paymentTerms ? metaLine(styles, 'Payment terms', input.paymentTerms) : null,
         ),
       ),

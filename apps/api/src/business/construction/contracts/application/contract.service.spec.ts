@@ -418,24 +418,27 @@ describe('ADR-023 — payment schedule on contract create (CONST-COM-012)', () =
       findEffectiveClientContract: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({ id: 'c-1' }),
       createPaymentInstallments: jest.fn().mockResolvedValue({ count: 0 }),
-      // ADR-030 S-CC-1/3 — the committed-BOQ resolver + the number sequence the CLIENT_CONTRACT path uses.
-      findCommittedBoqVersionsForProject: jest
+      // Slice-1A: the new resolver that finds the current operational version regardless of status.
+      findCurrentOperationalBoqVersion: jest
         .fn()
-        .mockResolvedValue([{ id: 'bv-1', status: 'BASELINED' }]),
+        .mockResolvedValue({ boqId: 'boq-1', operationalVersionId: 'bv-1' }),
       findProjectCode: jest.fn().mockResolvedValue({ code: 'ACCO-WBR-26-0065' }),
       nextContractNumber: jest.fn().mockResolvedValue('ACCO-WBR-26-0065-C1'),
     };
     const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
     const audit = { record: jest.fn().mockResolvedValue(undefined) };
     const prisma = {
-      boqVersion: { findFirst: jest.fn().mockResolvedValue({ status: 'BASELINED' }) },
+      boqVersion: { findFirst: jest.fn().mockResolvedValue({ status: 'BASELINED', boqId: 'boq-1' }) },
       $transaction: (fn: (tx: unknown) => unknown) => fn({}),
     };
     const tenancy = { getClient: () => prisma };
     const attachments = { freezeFor: jest.fn().mockResolvedValue(0) };
     // ADR-029 T-1/T-4 — create() ties the contract out to the priced scope. The mock returns a tie-out
     // equal to base.contractValue so these payment-plan tests exercise the plan path, not the tie-out gate.
-    const boqVersioning = { getInContractTotal: jest.fn().mockResolvedValue('1000000.00') };
+    const boqVersioning = {
+      getInContractTotal: jest.fn().mockResolvedValue('1000000.00'),
+      createContractSigningSnapshot: jest.fn().mockResolvedValue('bv-snap-1'),
+    };
     const service = new ContractService(
       tenancy as never,
       repo as never,
@@ -633,32 +636,33 @@ describe('commercial-billing §5 P1 + Q-B — payment-plan editor (DRAFT replace
   });
 });
 
-// ADR-029 §3 — BOQ↔Contract tie-out + three-layer contract value (R3, GitHub #193).
+// ADR-029 §3 / Slice-1A — BOQ↔Contract tie-out + three-layer contract value (R3, GitHub #193).
 // Pure-logic assertions; all deps mocked, $transaction runs the callback inline.
 describe('R3 — tie-out & three-layer contract value (T-1..T-4)', () => {
-  // `committed` models what the server resolves for a CLIENT_CONTRACT (ADR-030 S-CC-1): the committed
-  // versions for the project's BOQ. A DRAFT-only project resolves to [] → BOQ_NOT_COMMITTED gate.
+  // Slice-1A: `currentBoq` models what the server resolves for a CLIENT_CONTRACT — the current
+  // operational version (DRAFT or COMMITTED). No committed BOQ is required.
   function buildForCreate(
     opts: {
-      committed?: { id: string; status: string }[];
+      currentBoq?: { boqId: string; operationalVersionId: string } | null;
       tieOutTotal?: string | null;
     } = {},
   ) {
+    const defaultBoq = { boqId: 'boq-1', operationalVersionId: 'bv-1' };
     const repo = {
       findByNumber: jest.fn().mockResolvedValue(null),
       findEffectiveClientContract: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({ id: 'c-1' }),
       createPaymentInstallments: jest.fn().mockResolvedValue({ count: 0 }),
-      findCommittedBoqVersionsForProject: jest
+      findCurrentOperationalBoqVersion: jest
         .fn()
-        .mockResolvedValue(opts.committed ?? [{ id: 'bv-1', status: 'COMMITTED' }]),
+        .mockResolvedValue(opts.currentBoq === undefined ? defaultBoq : opts.currentBoq),
       findProjectCode: jest.fn().mockResolvedValue({ code: 'ACCO-WBR-26-0065' }),
       nextContractNumber: jest.fn().mockResolvedValue('ACCO-WBR-26-0065-C1'),
     };
     const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
     const audit = { record: jest.fn().mockResolvedValue(undefined) };
     const prisma = {
-      boqVersion: { findFirst: jest.fn().mockResolvedValue({ status: 'COMMITTED' }) },
+      boqVersion: { findFirst: jest.fn().mockResolvedValue({ status: 'COMMITTED', boqId: 'boq-1' }) },
       $transaction: (fn: (tx: unknown) => unknown) => fn({}),
     };
     const tenancy = { getClient: () => prisma };
@@ -667,6 +671,7 @@ describe('R3 — tie-out & three-layer contract value (T-1..T-4)', () => {
       getInContractTotal: jest
         .fn()
         .mockResolvedValue(opts.tieOutTotal === undefined ? '750000.00' : opts.tieOutTotal),
+      createContractSigningSnapshot: jest.fn().mockResolvedValue('bv-snap-1'),
     };
     const service = new ContractService(
       tenancy as never,
@@ -679,8 +684,8 @@ describe('R3 — tie-out & three-layer contract value (T-1..T-4)', () => {
     return { repo, attachments, boqVersioning, prisma, service };
   }
 
-  // Base for the OLD full-payload path: a caller still POSTing boqVersionId + contractValue. The
-  // server resolves the committed version to the same id, so a matching supplied id is honoured.
+  // Base for the full-payload path: a caller still POSTing boqVersionId + contractValue. The
+  // server resolves to the same operational version id, so a matching supplied id is honoured.
   const base = {
     projectId: 'p-1',
     clientId: 'cl-1',
@@ -727,39 +732,16 @@ describe('R3 — tie-out & three-layer contract value (T-1..T-4)', () => {
     expect(response.details.delta).toBe('50000.00');
   });
 
-  it('committed-status acceptance: a COMMITTED version is the resolved reference', async () => {
-    const { service, repo } = buildForCreate({
-      committed: [{ id: 'bv-1', status: 'COMMITTED' }],
-      tieOutTotal: '750000.00',
-    });
+  it('contract anchors to a signing SNAPSHOT, not the operational version directly', async () => {
+    const { service, repo, boqVersioning } = buildForCreate({ tieOutTotal: '750000.00' });
     await service.create(identity, { ...base, contractValue: '750000.00' } as never);
-    expect(repo.create).toHaveBeenCalled();
-  });
-
-  it('committed-status acceptance: a BASELINED version is still resolved pre-migration', async () => {
-    const { service, repo } = buildForCreate({
-      committed: [{ id: 'bv-1', status: 'BASELINED' }],
-      tieOutTotal: '750000.00',
-    });
-    await service.create(identity, { ...base, contractValue: '750000.00' } as never);
-    expect(repo.create).toHaveBeenCalled();
-  });
-
-  it('R2 overlap tie-break: prefers the COMMITTED version over a legacy BASELINED one', async () => {
-    const { service, boqVersioning } = buildForCreate({
-      committed: [
-        { id: 'bv-baselined', status: 'BASELINED' },
-        { id: 'bv-committed', status: 'COMMITTED' },
-      ],
-      tieOutTotal: '750000.00',
-    });
-    // No supplied boqVersionId → server resolves; the COMMITTED id must be the one tied out to.
-    await service.create(identity, {
-      projectId: 'p-1',
-      clientId: 'cl-1',
-      currency: 'USD',
-    } as never);
-    expect(boqVersioning.getInContractTotal).toHaveBeenCalledWith(identity, 'p-1', 'bv-committed');
+    expect(boqVersioning.createContractSigningSnapshot).toHaveBeenCalledWith(
+      expect.anything(), 'boq-1', 'bv-1', identity.userId,
+    );
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ boqVersionId: 'bv-snap-1' }),
+    );
   });
 
   it('rejects when the referenced BOQ version has no priced in-contract scope (tie-out null)', async () => {
@@ -771,24 +753,26 @@ describe('R3 — tie-out & three-layer contract value (T-1..T-4)', () => {
   });
 });
 
-// ADR-030 CONST-COM-020/021/022 — contract-create simplification (S-CC-1..4). The minimal form posts
-// only client + dates; the server resolves the committed BOQ, derives the value, and mints the number.
+// ADR-030 CONST-COM-020/021/022 / Slice-1A — contract-create simplification (S-CC-1..4). The
+// minimal form posts only client + dates; the server finds the current operational BOQ version
+// (no committed BOQ required), derives the value, and mints the number.
 describe('C1 — contract-create simplification (S-CC-1..4)', () => {
   function buildForCreate(
     opts: {
-      committed?: { id: string; status: string }[] | undefined;
+      currentBoq?: { boqId: string; operationalVersionId: string } | null;
       tieOutTotal?: string | null;
       projectCode?: string;
     } = {},
   ) {
+    const defaultBoq = { boqId: 'boq-1', operationalVersionId: 'bv-1' };
     const repo = {
       findByNumber: jest.fn().mockResolvedValue(null),
       findEffectiveClientContract: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({ id: 'c-1' }),
       createPaymentInstallments: jest.fn().mockResolvedValue({ count: 0 }),
-      findCommittedBoqVersionsForProject: jest
+      findCurrentOperationalBoqVersion: jest
         .fn()
-        .mockResolvedValue(opts.committed ?? [{ id: 'bv-1', status: 'COMMITTED' }]),
+        .mockResolvedValue(opts.currentBoq === undefined ? defaultBoq : opts.currentBoq),
       findProjectCode: jest
         .fn()
         .mockResolvedValue({ code: opts.projectCode ?? 'ACCO-WBR-26-0065' }),
@@ -802,7 +786,7 @@ describe('C1 — contract-create simplification (S-CC-1..4)', () => {
     const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
     const audit = { record: jest.fn().mockResolvedValue(undefined) };
     const prisma = {
-      boqVersion: { findFirst: jest.fn().mockResolvedValue({ status: 'COMMITTED' }) },
+      boqVersion: { findFirst: jest.fn().mockResolvedValue({ status: 'COMMITTED', boqId: 'boq-1' }) },
       $transaction: (fn: (tx: unknown) => unknown) => fn({}),
     };
     const tenancy = { getClient: () => prisma };
@@ -811,6 +795,7 @@ describe('C1 — contract-create simplification (S-CC-1..4)', () => {
       getInContractTotal: jest
         .fn()
         .mockResolvedValue(opts.tieOutTotal === undefined ? '750000.00' : opts.tieOutTotal),
+      createContractSigningSnapshot: jest.fn().mockResolvedValue('bv-snap-1'),
     };
     const service = new ContractService(
       tenancy as never,
@@ -825,17 +810,20 @@ describe('C1 — contract-create simplification (S-CC-1..4)', () => {
 
   const minimal = { projectId: 'p-1', clientId: 'cl-1', currency: 'USD', startDate: '2026-01-15' };
 
-  it('S-CC-1: minimal payload (no boq/value/number) → base==current==tie-out, bound to committed version', async () => {
+  it('S-CC-1: minimal payload (no boq/value/number) → base==current==tie-out, anchored to snapshot', async () => {
     const { service, repo, boqVersioning } = buildForCreate({ tieOutTotal: '750000.00' });
     await service.create(identity, minimal as never);
 
-    // The committed version is resolved server-side and tied out against.
-    expect(repo.findCommittedBoqVersionsForProject).toHaveBeenCalledWith(expect.anything(), 'p-1');
+    // Operational version found and tied out against; contract anchors to the signing snapshot.
+    expect(repo.findCurrentOperationalBoqVersion).toHaveBeenCalledWith(expect.anything(), 'p-1');
     expect(boqVersioning.getInContractTotal).toHaveBeenCalledWith(identity, 'p-1', 'bv-1');
+    expect(boqVersioning.createContractSigningSnapshot).toHaveBeenCalledWith(
+      expect.anything(), 'boq-1', 'bv-1', identity.userId,
+    );
     expect(repo.create).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        boqVersionId: 'bv-1',
+        boqVersionId: 'bv-snap-1',
         baseContractValue: '750000.00',
         contractValue: '750000.00',
       }),
@@ -859,12 +847,11 @@ describe('C1 — contract-create simplification (S-CC-1..4)', () => {
     expect(repo.findByNumber).not.toHaveBeenCalled();
   });
 
-  it('S-CC-2: no committed BOQ (DRAFT-only) → BOQ_NOT_COMMITTED, no row, tie-out never computed', async () => {
-    const { service, repo, boqVersioning } = buildForCreate({ committed: [] });
+  it('S-CC-2: no BOQ initialized for the project → NotFoundException, no row, tie-out never computed', async () => {
+    const { service, repo, boqVersioning } = buildForCreate({ currentBoq: null });
     const err = await service.create(identity, minimal as never).catch((e) => e);
 
-    expect(err).toBeInstanceOf(BadRequestException);
-    expect((err as BadRequestException).getResponse()).toMatchObject({ code: 'BOQ_NOT_COMMITTED' });
+    expect(err).toBeInstanceOf(NotFoundException);
     expect(boqVersioning.getInContractTotal).not.toHaveBeenCalled();
     expect(repo.nextContractNumber).not.toHaveBeenCalled();
     expect(repo.create).not.toHaveBeenCalled();
@@ -907,8 +894,10 @@ describe('C1 — contract-create simplification (S-CC-1..4)', () => {
     );
   });
 
-  it('a supplied boqVersionId that is NOT the committed version is rejected (BOQ_VERSION_MISMATCH)', async () => {
-    const { service, repo } = buildForCreate({ committed: [{ id: 'bv-committed', status: 'COMMITTED' }] });
+  it('a supplied boqVersionId that does not match the current operational version is rejected (BOQ_VERSION_MISMATCH)', async () => {
+    const { service, repo } = buildForCreate({
+      currentBoq: { boqId: 'boq-1', operationalVersionId: 'bv-committed' },
+    });
     const err = await service
       .create(identity, { ...minimal, boqVersionId: 'bv-stale' } as never)
       .catch((e) => e);
@@ -940,7 +929,7 @@ describe('V-2 — raiseCurrentValueForVariation (current rises by net, base froz
     expect(res).toMatchObject({
       previousContractValue: '1000000.00',
       newContractValue: '1000900.00',
-      baseContractValue: '1000000',
+      baseContractValue: '1000000.00',
     });
     expect(audit.record).toHaveBeenCalledWith(
       expect.anything(),
@@ -969,7 +958,7 @@ describe('V-2 — raiseCurrentValueForVariation (current rises by net, base froz
     });
 
     expect(repo.raiseCurrentContractValue).toHaveBeenCalledWith({}, 'c-1', '1002900.00');
-    expect(res.baseContractValue).toBe('1000000');
+    expect(res.baseContractValue).toBe('1000000.00');
   });
 
   it('404s when the contract is not found (org-scoped)', async () => {

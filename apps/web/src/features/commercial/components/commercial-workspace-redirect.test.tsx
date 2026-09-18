@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { screen } from '@testing-library/react';
 import type { CommercialSummaryResponse } from '@erp/types';
 
 import { renderWithProviders } from '@/test/render';
@@ -7,13 +7,18 @@ import { renderWithProviders } from '@/test/render';
 import { CommercialWorkspace } from './commercial-workspace';
 
 /**
- * S-SH-5: the retired Overview route (`active="overview"`) must redirect to the real landing tab —
- * Payment Schedule for a MILESTONE contract, Contract otherwise — rather than dead-end on a view
- * that no longer exists.
+ * Slice 7: Overview is now a real tab, not a redirect target.
+ * CommercialWorkspace with active="overview" renders the OverviewTab directly.
  */
-const replace = vi.fn();
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ replace, push: vi.fn(), prefetch: vi.fn() }),
+
+vi.mock('./commercial-cycle-ribbon', () => ({
+  CommercialCycleRibbon: () => null,
+}));
+
+vi.mock('./overview-tab', () => ({
+  OverviewTab: ({ projectId }: { projectId: string }) => (
+    <div data-testid="overview-tab">{projectId}</div>
+  ),
 }));
 
 const summaryData = vi.hoisted(() => ({ value: null as unknown }));
@@ -25,6 +30,7 @@ vi.mock('../hooks/use-commercial', () => ({
     isSuccess: summaryData.value != null,
     error: null,
   }),
+  useCommercialOverview: () => ({ isPending: true, isError: false, data: undefined }),
 }));
 
 function summary(billingModel: string | null): CommercialSummaryResponse {
@@ -36,31 +42,31 @@ function summary(billingModel: string | null): CommercialSummaryResponse {
   } as CommercialSummaryResponse;
 }
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  summaryData.value = null;
-});
+describe('CommercialWorkspace — Overview tab (Slice 7)', () => {
+  it('renders the OverviewTab when active="overview" without waiting for summary', () => {
+    summaryData.value = null; // summary still loading
+    renderWithProviders(<CommercialWorkspace projectId="p-1" active="overview" />, {
+      permissions: ['view:contract'],
+    });
 
-describe('CommercialWorkspace — Overview redirect (S-SH-5)', () => {
-  it('redirects the Overview route to Payment Schedule for a MILESTONE contract', async () => {
+    expect(screen.getByTestId('overview-tab')).toBeInTheDocument();
+  });
+
+  it('renders the OverviewTab for a MILESTONE contract', () => {
     summaryData.value = summary('MILESTONE');
     renderWithProviders(<CommercialWorkspace projectId="p-1" active="overview" />, {
       permissions: ['view:contract'],
     });
 
-    await waitFor(() =>
-      expect(replace).toHaveBeenCalledWith('/projects/p-1/commercial/payment-schedule'),
-    );
+    expect(screen.getByTestId('overview-tab')).toBeInTheDocument();
   });
 
-  it('redirects the Overview route to Contract when there is no contract', async () => {
+  it('renders the OverviewTab when there is no contract', () => {
     summaryData.value = summary(null);
     renderWithProviders(<CommercialWorkspace projectId="p-1" active="overview" />, {
       permissions: ['view:contract'],
     });
 
-    await waitFor(() =>
-      expect(replace).toHaveBeenCalledWith('/projects/p-1/commercial/contract-security'),
-    );
+    expect(screen.getByTestId('overview-tab')).toBeInTheDocument();
   });
 });
