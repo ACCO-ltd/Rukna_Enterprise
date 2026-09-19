@@ -189,16 +189,6 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
     [orders.data],
   );
 
-  // Pre-select the PO passed via the `?poId=` query param once the receivable list loads.
-  // Only fires on mount — if the user manually changes the picker the effect has already run.
-  useEffect(() => {
-    if (!initialPoId || purchaseOrderId || receivable.length === 0) return;
-    const match = receivable.find((po) => po.id === initialPoId);
-    if (match) selectPo(match.id);
-    // selectPo reads receivable via closure; listing it here would cause infinite loops.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialPoId, receivable]);
-
   const selectPo = (id: string) => {
     setPurchaseOrderId(id);
     const po = receivable.find((p) => p.id === id);
@@ -208,6 +198,16 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
     setReceiveError(null);
     createdIdRef.current = null;
   };
+
+  // Pre-select the PO passed via the `?poId=` query param once the receivable list loads.
+  // Only fires on mount — if the user manually changes the picker the effect has already run.
+  useEffect(() => {
+    if (!initialPoId || purchaseOrderId || receivable.length === 0) return;
+    const match = receivable.find((po) => po.id === initialPoId);
+    if (match) selectPo(match.id);
+    // selectPo reads receivable via closure; listing it here would cause infinite loops.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPoId, receivable]);
 
   const submittable = submittableGrnLines(lines);
   const hasLineError = lines.some((l) => grnLineError(l) !== null);

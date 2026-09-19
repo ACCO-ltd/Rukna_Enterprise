@@ -199,7 +199,14 @@ export class ProcurementFixtureFactory {
   }
 
   static async cleanup(prisma: PrismaClient, orgId: string): Promise<void> {
-    // Delete in FK-safe order — procurement tables then shared tables
+    // Delete in FK-safe order — leaf rows first, then parents.
+    // buyer_advance_evidence_allocations and advance_returns reference buyer_advances
+    // supplier_payment_purchase_allocations references supplier_payments AND purchase_orders
+    // → must be deleted before BOTH supplier_payments (accounting section) AND purchase_orders (below).
+    await prisma.$executeRaw`DELETE FROM buyer_advance_evidence_allocations WHERE organization_id = ${orgId}`;
+    await prisma.$executeRaw`DELETE FROM advance_returns WHERE organization_id = ${orgId}`;
+    await prisma.$executeRaw`DELETE FROM buyer_advances WHERE organization_id = ${orgId}`;
+    await prisma.$executeRaw`DELETE FROM supplier_payment_purchase_allocations WHERE organization_id = ${orgId}`;
     await prisma.$executeRaw`DELETE FROM commitment_ledger_entries WHERE organization_id = ${orgId}`;
     await prisma.$executeRaw`DELETE FROM supplier_bill_match_lines
       WHERE supplier_bill_match_id IN (SELECT id FROM supplier_bill_matches WHERE supplier_bill_id IN (SELECT id FROM supplier_bills WHERE organization_id = ${orgId}))`;
@@ -223,11 +230,13 @@ export class ProcurementFixtureFactory {
     await prisma.$executeRaw`DELETE FROM over_receipt_policies WHERE organization_id = ${orgId}`;
     await prisma.$executeRaw`DELETE FROM matching_tolerance_policies WHERE organization_id = ${orgId}`;
 
-    // Accounting cleanup
+    // Accounting cleanup — supplier payments and GL (buyer advances/purchase allocs cleaned above)
+    await prisma.$executeRaw`DELETE FROM payment_release_signatures WHERE supplier_payment_id IN (SELECT id FROM supplier_payments WHERE organization_id = ${orgId})`;
     await prisma.$executeRaw`UPDATE journal_entries SET status = 'DRAFT' WHERE organization_id = ${orgId}`;
     await prisma.$executeRaw`DELETE FROM journal_lines WHERE journal_entry_id IN (SELECT id FROM journal_entries WHERE organization_id = ${orgId})`;
     await prisma.$executeRaw`DELETE FROM journal_entries WHERE organization_id = ${orgId}`;
     await prisma.$executeRaw`DELETE FROM supplier_payment_allocations WHERE organization_id = ${orgId}`;
+    await prisma.$executeRaw`DELETE FROM supplier_payments WHERE organization_id = ${orgId}`;
     await prisma.$executeRaw`DELETE FROM supplier_bill_lines WHERE supplier_bill_id IN (SELECT id FROM supplier_bills WHERE organization_id = ${orgId})`;
     await prisma.$executeRaw`DELETE FROM supplier_bills WHERE organization_id = ${orgId}`;
     await prisma.$executeRaw`DELETE FROM document_number_sequences WHERE organization_id = ${orgId}`;
@@ -235,6 +244,9 @@ export class ProcurementFixtureFactory {
     await prisma.$executeRaw`DELETE FROM fiscal_years WHERE organization_id = ${orgId}`;
     await prisma.$executeRaw`DELETE FROM posting_profile_versions WHERE posting_profile_id IN (SELECT id FROM posting_profiles WHERE organization_id = ${orgId})`;
     await prisma.$executeRaw`DELETE FROM posting_profiles WHERE organization_id = ${orgId}`;
+    // Bank accounts created by settlement tests — signatories first (FK), then accounts
+    await prisma.$executeRaw`DELETE FROM bank_account_signatories WHERE bank_account_id IN (SELECT id FROM bank_accounts WHERE organization_id = ${orgId})`;
+    await prisma.$executeRaw`DELETE FROM bank_accounts WHERE organization_id = ${orgId}`;
 
     // Construction chain
     await prisma.$executeRaw`DELETE FROM boq_nodes WHERE version_id IN (SELECT bv.id FROM boq_versions bv JOIN boqs b ON bv.boq_id = b.id JOIN projects p ON b.project_id = p.id WHERE p.organization_id = ${orgId})`;
