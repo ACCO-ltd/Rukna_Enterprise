@@ -22,10 +22,13 @@ import { ProjectAccessService } from '../../../../platform/project-access/projec
 
 // ── Purchase Orders ───────────────────────────────────────────────────────────
 import { PurchaseOrderRepository }    from '../../purchase-orders/infrastructure/purchase-order.repository.js';
+import { PurchaseOrderAttachmentRepository } from '../../purchase-orders/infrastructure/purchase-order-attachment.repository.js';
 import { PurchaseOrderService }       from '../../purchase-orders/application/purchase-order.service.js';
+import { SettlementQueryService }     from '../../purchase-orders/application/settlement-query.service.js';
 
 // ── Goods Receipts ────────────────────────────────────────────────────────────
 import { GoodsReceiptRepository }     from '../../goods-receipts/infrastructure/goods-receipt.repository.js';
+import { GrnAttachmentRepository }    from '../../goods-receipts/infrastructure/grn-attachment.repository.js';
 import { GoodsReceiptService }        from '../../goods-receipts/application/goods-receipt.service.js';
 
 // ── Bill Matching ─────────────────────────────────────────────────────────────
@@ -93,7 +96,9 @@ export function buildProcurementServices(prisma: PrismaClient): ProcurementServi
   const materialRepo         = new MaterialRepository();
   const mrRepo               = new MaterialRequestRepository();
   const poRepo               = new PurchaseOrderRepository();
+  const poAttachmentRepo     = new PurchaseOrderAttachmentRepository();
   const grnRepo              = new GoodsReceiptRepository();
+  const grnAttachmentRepo    = new GrnAttachmentRepository();
   const billMatchRepo        = new BillMatchRepository();
   const commitmentRepo       = new CommitmentLedgerRepository();
   const commitmentWriter     = new CommitmentLedgerWriter(commitmentRepo);
@@ -116,11 +121,13 @@ export function buildProcurementServices(prisma: PrismaClient): ProcurementServi
     new WorkflowTriggerResolverService(tenancy),
     new WorkflowsPrismaRepository(tenancy),
   );
-  const poService       = new PurchaseOrderService(tenancy, poRepo, materialRepo, uomRepo, commitmentWriter, noOpAuditOutbox, commandGovernance, sod);
+  // No-op settlement stub: autoCloseIfSettled reads this and returns early (OPEN ≠ SETTLED).
+  const noOpSettlement = { getSettlement: async () => ({ settlementStatus: 'OPEN' as const }) } as unknown as SettlementQueryService;
+  const poService       = new PurchaseOrderService(tenancy, poRepo, poAttachmentRepo, materialRepo, uomRepo, commitmentWriter, noOpAuditOutbox, commandGovernance, sod, noOpSettlement);
   // ADR-022 CONST-DOA-004: the harness reports no approved receipt exception, so the SoD receipt
   // block behaves normally. The exception flow is covered in its own spec.
   const receiptExceptions = { isReceiptCleared: async () => false } as unknown as import('../../goods-receipts/application/receipt-exception.service.js').ReceiptExceptionService;
-  const grnService      = new GoodsReceiptService(tenancy, grnRepo, poRepo, commitmentWriter, noOpAuditOutbox, sod, receiptExceptions);
+  const grnService      = new GoodsReceiptService(tenancy, grnRepo, grnAttachmentRepo, poRepo, poService, commitmentWriter, noOpAuditOutbox, sod, receiptExceptions);
   const billMatchingService = new BillMatchingService(tenancy, billMatchRepo);
 
   const supplierBillService = new SupplierBillService(

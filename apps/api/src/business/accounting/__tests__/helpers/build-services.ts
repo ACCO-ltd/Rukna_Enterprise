@@ -24,6 +24,7 @@ import { CustomerReceiptService }    from '../../accounts-receivable/application
 
 import { SupplierBillRepository }    from '../../accounts-payable/infrastructure/supplier-bill.repository.js';
 import { SupplierPaymentRepository } from '../../accounts-payable/infrastructure/supplier-payment.repository.js';
+import { PurchaseAllocationRepository } from '../../accounts-payable/infrastructure/purchase-allocation.repository.js';
 import { SupplierBillService }       from '../../accounts-payable/application/supplier-bill.service.js';
 import { SupplierPaymentService }    from '../../accounts-payable/application/supplier-payment.service.js';
 import { CommitmentLedgerRepository } from '../../../procurement/commitment-ledger/infrastructure/commitment-ledger.repository.js';
@@ -117,6 +118,7 @@ export function buildServices(prisma: PrismaClient): AccountingServices {
   // AP
   const supplierBillRepo    = new SupplierBillRepository();
   const supplierPaymentRepo = new SupplierPaymentRepository();
+  const purchaseAllocationRepo = new PurchaseAllocationRepository();
   const commitmentWriter    = new CommitmentLedgerWriter(new CommitmentLedgerRepository());
   // ADR-022 Phase 4: the shared harness treats accounts as having no signatories (no dual control),
   // so existing payment tests keep the APPROVED → post path. Release is covered in dedicated specs.
@@ -126,7 +128,8 @@ export function buildServices(prisma: PrismaClient): AccountingServices {
   } as unknown as import('../../accounting-core/application/bank-account-signatory.service.js').BankAccountSignatoryService;
   const billMatchingService    = new BillMatchingService(tenancy, new BillMatchRepository());
   const supplierBillService    = new SupplierBillService(tenancy, supplierBillRepo, accountRepo, sequenceRepo, postingService, commitmentWriter, billMatchingService, commandGovernance, sod);
-  const supplierPaymentService = new SupplierPaymentService(tenancy, supplierPaymentRepo, supplierBillRepo, accountRepo, sequenceRepo, postingService, commandGovernance, sod, signatoryService);
+  const noPurchaseOrderService = { autoCloseIfSettled: async () => undefined } as never;
+  const supplierPaymentService = new SupplierPaymentService(tenancy, supplierPaymentRepo, supplierBillRepo, purchaseAllocationRepo, accountRepo, sequenceRepo, postingService, commandGovernance, sod, signatoryService, noPurchaseOrderService);
 
   // Phase 3 — GL reports and period management
   const snapshotService        = new SnapshotService(tenancy);

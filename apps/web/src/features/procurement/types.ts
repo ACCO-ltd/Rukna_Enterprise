@@ -48,7 +48,7 @@ export type MaterialRequestStatus =
 
 export type MaterialRequestScope = 'PROJECT' | 'ORGANIZATION';
 
-export type PurchaseOrderStatus = 'OPEN' | 'CLOSED' | 'CANCELLED';
+export type PurchaseOrderStatus = 'DRAFT' | 'OPEN' | 'CLOSED' | 'CANCELLED';
 
 export type PurchaseOrderRevisionStatus =
   | 'DRAFT'
@@ -303,6 +303,12 @@ export interface PurchaseOrderRevision {
   expectedDeliveryDate: ApiDate | null;
   approvedAt: ApiDate | null;
   approvedBy: string | null;
+  /** Supplier's own quotation reference number. Null until set. */
+  quotationRef: string | null;
+  /** Date on the supplier's quotation document. */
+  quotationDate: ApiDate | null;
+  /** Amount on the supplier's quotation (may differ from ordered total). */
+  quotedAmount: Money | null;
   /**
    * Absent on the list response. `findAll` embeds `revisions: { take: 1 }` with no
    * `lines` include, so the list cannot compute a total (P14).
@@ -319,6 +325,8 @@ export interface PurchaseOrder {
   supplier: PurchaseOrderSupplier | null;
   /** Written on submit. See the note on `MaterialRequest.approvalInstanceId`. */
   approvalInstanceId: string | null;
+  /** Set when the settlement engine auto-closes the order. */
+  closedAt: ApiDate | null;
   /**
    * On the detail response: every revision, ascending. On the list response: exactly one
    * — the **highest-numbered**, which is the DRAFT whenever a revision is in progress,
@@ -802,4 +810,157 @@ export interface AllocateAdvancePayload {
 export interface AllocationResult {
   journalEntryId: string;
   journalNumber: string;
+}
+
+// ─── Purchase order attachments ──────────────────────────────────────────────────
+
+/**
+ * Quotation evidence attached to a PO revision. Becomes immutable when the revision is
+ * confirmed (ACTIVE). Managed via `GET|POST /procurement/purchase-orders/:id/revision-attachments`.
+ */
+export interface PoRevisionAttachment {
+  id: string;
+  purchaseOrderRevisionId: string;
+  platformFileId: string;
+  purpose: 'QUOTATION' | 'OTHER';
+  supplierRef: string | null;
+  attachedBy: string;
+  createdAt: ApiDate;
+  file: { originalName: string; mimeType: string; sizeBytes: number } | null;
+}
+
+/**
+ * Delivery note evidence attached to a GRN. Becomes immutable when the GRN is posted.
+ * Managed via `GET|POST /procurement/goods-receipts/:id/attachments`.
+ */
+export interface GrnAttachment {
+  id: string;
+  goodsReceiptNoteId: string;
+  platformFileId: string;
+  purpose: 'DELIVERY_NOTE' | 'OTHER';
+  attachedBy: string;
+  createdAt: ApiDate;
+}
+
+// ─── Purchase order settlement read model ────────────────────────────────────────
+
+export type PoFundingStatus = 'NOT_FUNDED' | 'PARTIALLY_FUNDED' | 'FUNDED';
+export type PoReceivingStatus = 'NOT_RECEIVED' | 'PARTIALLY_RECEIVED' | 'RECEIVED';
+export type PoSettlementStatus = 'OPEN' | 'ACTION_REQUIRED' | 'SETTLED';
+export type PoLineReceivingStatus = 'NOT_RECEIVED' | 'PARTIALLY_RECEIVED' | 'RECEIVED';
+export type PoExceptionType =
+  | 'QUANTITY_EXCEEDS_PO'
+  | 'OUTSTANDING_ADVANCE'
+  | 'FUNDING_GAP'
+  | 'EVIDENCE_MISSING';
+export type BuyerAdvanceReturnMethod = 'CASH' | 'BANK' | 'MOBILE_MONEY';
+
+/**
+ * Full reconciliation read model from `GET /procurement/purchase-orders/:id/settlement`.
+ *
+ * Funding, receiving and settlement status are all computed server-side from the Finance
+ * allocation tables and the commitment ledger. The frontend never recomputes these figures;
+ * it renders what the server returned.
+ */
+export interface PurchaseOrderSettlement {
+  orderedAmount: Money;
+
+  fundingStatus: PoFundingStatus;
+  directFunding: {
+    totalAllocated: Money;
+    allocations: Array<{
+      paymentId: string;
+      paymentRef: string | null;
+      allocatedAmount: Money;
+      allocationDate: ApiDate;
+    }>;
+    totalBillSettled: Money;
+    bills: Array<{
+      billId: string;
+      billNumber: string | null;
+      totalAmount: Money;
+      settledAmount: Money;
+      outstandingAmount: Money;
+    }>;
+  };
+  advanceFunding: {
+    advances: Array<{
+      advanceId: string;
+      recipientName: string;
+      amount: Money;
+      advancedAt: ApiDate;
+      evidenceAllocated: Money;
+      returned: Money;
+      outstanding: Money;
+      returns: Array<{
+        amount: Money;
+        returnMethod: BuyerAdvanceReturnMethod;
+        receivedAt: ApiDate;
+      }>;
+      evidenceAllocations: Array<{
+        billId: string;
+        billNumber: string | null;
+        allocatedAmount: Money;
+      }>;
+    }>;
+    totalAdvanced: Money;
+    totalOutstanding: Money;
+  };
+
+  receivingStatus: PoReceivingStatus;
+  receivingLines: Array<{
+    poLineId: string;
+    description: string;
+    orderedQuantity: Quantity;
+    uomSymbol: string;
+    acceptedQuantity: Quantity;
+    lineStatus: PoLineReceivingStatus;
+  }>;
+
+  settlementStatus: PoSettlementStatus;
+  exceptions: Array<{
+    type: PoExceptionType;
+    detail: string;
+  }>;
+  humanReadablePosition: string;
+}
+
+// ─── Write payloads ──────────────────────────────────────────────────────────────
+
+export interface AttachPoRevisionPayload {
+  platformFileId: string;
+  purpose?: 'QUOTATION' | 'OTHER';
+  supplierRef?: string;
+}
+
+export type BuyerAdvancePaymentMethod = 'BANK' | 'MOBILE_MONEY';
+
+export interface CreateBuyerAdvancePayload {
+  purchaseOrderId: string;
+  recipientUserId: string;
+  /** Numeric amount (2dp). Sent as a number to the API. */
+  amount: number;
+  currencyCode: string;
+  paymentMethod: BuyerAdvancePaymentMethod;
+  disbursementBankAccountId: string;
+  reference?: string;
+  notes?: string;
+  /** ISO date string (YYYY-MM-DD). */
+  advancedAt: string;
+}
+
+export interface CreateAdvanceReturnPayload {
+  amount: number;
+  returnMethod: BuyerAdvanceReturnMethod;
+  /** Required when returnMethod is BANK or MOBILE_MONEY. */
+  destinationBankAccountId?: string;
+  receivedBy: string;
+  receivedAt: string;
+  reference?: string;
+  note?: string;
+}
+
+export interface CreateEvidenceAllocationPayload {
+  supplierBillId: string;
+  allocatedAmount: number;
 }

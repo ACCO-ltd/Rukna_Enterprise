@@ -37,6 +37,7 @@ export interface CreateGrnData {
   purchaseOrderRevisionId: string;
   supplierId: string;
   status: GrnStatus;
+  overReceiptFlag?: boolean;
   deliveryDate: Date;
   deliveryNoteRef?: string;
   createdBy: string;

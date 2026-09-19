@@ -32,20 +32,17 @@ import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Button } from '@erp/ui';
-import { WorkflowTransactionType } from '@erp/types';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney, formatNumber } from '@/lib/format';
 import { MONEY_SCALE, fromMinorUnits } from '@/lib/money';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
-import { ApprovalPanel } from '@/features/workflows/components/approval-panel';
 
 import {
-  useApprovePurchaseOrder,
   useCancelPurchaseOrder,
+  useConfirmPurchaseOrder,
   usePurchaseOrder,
-  useSubmitPurchaseOrder,
 } from '../hooks/use-procurement';
 import { activeRevision, revisionTotalMinor } from '../quantities';
 import type { PurchaseOrder, PurchaseOrderRevision } from '../types';
@@ -64,41 +61,23 @@ export function PoDetail({ id }: { id: string }) {
   const [amending, setAmending] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
-  const submit = useSubmitPurchaseOrder();
-  const approve = useApprovePurchaseOrder();
+  const confirm = useConfirmPurchaseOrder();
   const cancel = useCancelPurchaseOrder();
 
-  // "Issue revision" orchestration for a DRAFT (submit → approve), with the gate seam.
-  const [approvalInstanceId, setApprovalInstanceId] = useState<string | null>(null);
-  const [issuing, setIssuing] = useState(false);
-  const [issueError, setIssueError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
 
-  const runIssue = useCallback(async () => {
-    setIssueError(null);
-    setIssuing(true);
+  const runConfirm = useCallback(async () => {
+    setConfirmError(null);
+    setConfirming(true);
     try {
-      try {
-        await submit.mutateAsync(id);
-      } catch (e) {
-        const instanceId =
-          e instanceof ApiError && e.status === 409
-            ? (e.details?.approvalInstanceId as string | undefined)
-            : undefined;
-        if (instanceId) {
-          setApprovalInstanceId(instanceId);
-          return; // pending approval — nothing faked
-        }
-        throw e;
-      }
-      setApprovalInstanceId(null);
-      await approve.mutateAsync({ id });
+      await confirm.mutateAsync(id);
     } catch (e) {
-      setIssueError(e instanceof ApiError ? e.message : tc('loadFailed'));
+      setConfirmError(e instanceof ApiError ? e.message : tc('loadFailed'));
     } finally {
-      setIssuing(false);
+      setConfirming(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, submit, approve]);
+  }, [id, confirm, tc]);
 
   if (po.isPending) {
     return (
@@ -136,7 +115,9 @@ export function PoDetail({ id }: { id: string }) {
     .filter((r) => r.id !== current?.id)
     .sort((a, b) => b.revisionNumber - a.revisionNumber);
 
+  const isDraftPo = order.status === 'DRAFT';
   const isOpen = order.status === 'OPEN';
+  const showActions = isDraftPo || isOpen;
   const canAmend = isOpen && !draft && Boolean(active);
 
   return (
@@ -174,8 +155,8 @@ export function PoDetail({ id }: { id: string }) {
           </p>
         </div>
 
-        {/* Footer: the one revision-creating action, plus cancel. No ceremonial approve. */}
-        {isOpen ? (
+        {/* Footer: amend (OPEN only) and cancel. DRAFT PO shows cancel only. */}
+        {showActions ? (
           <div className="mt-4 flex flex-wrap gap-2 border-t border-border px-5 py-3 sm:px-6">
             {canAmend ? (
               <Button type="button" size="sm" onClick={() => setAmending(true)}>
@@ -189,45 +170,24 @@ export function PoDetail({ id }: { id: string }) {
         ) : null}
       </div>
 
-      {/* ── Issue a DRAFT revision (submit → approve), gated seam preserved ──── */}
-      {isOpen && draft ? (
+      {/* ── Confirm a DRAFT revision — single action, no approval routing ───── */}
+      {draft ? (
         <div className="space-y-3 rounded-xl border border-border bg-surface p-4 shadow-[var(--shadow-panel)] sm:p-6">
           <div>
             <h2 className="text-sm font-semibold text-foreground">{t('draftRevisionTitle')}</h2>
             <p className="mt-1 text-sm text-muted-foreground">{t('draftRevisionBody')}</p>
           </div>
 
-          {issueError ? <Alert variant="error" messages={[issueError]} /> : null}
+          {confirmError ? <Alert variant="error" messages={[confirmError]} /> : null}
 
-          {approvalInstanceId ? (
-            <>
-              <Alert variant="info" messages={[t('issueAwaitingApproval')]} />
-              <ApprovalPanel
-                instanceId={approvalInstanceId}
-                transactionType={WorkflowTransactionType.PURCHASE_ORDER}
-              />
-              <div className="border-t border-border pt-3">
-                <Button type="button" disabled={issuing} onClick={() => void runIssue()}>
-                  {t('completeIssue')}
-                </Button>
-              </div>
-            </>
-          ) : (
-            <Button
-              type="button"
-              disabled={issuing || !can(PROCUREMENT_PERMISSIONS.approveOrder)}
-              onClick={() => void runIssue()}
-            >
-              {t('issueRevision')}
-            </Button>
-          )}
+          <Button
+            type="button"
+            disabled={confirming || !can(PROCUREMENT_PERMISSIONS.approveOrder)}
+            onClick={() => void runConfirm()}
+          >
+            {isDraftPo ? t('issueOrder') : t('issueRevision')}
+          </Button>
         </div>
-      ) : order.approvalInstanceId ? (
-        // A persisted instance from a prior gated submit, when no draft is in hand.
-        <ApprovalPanel
-          instanceId={order.approvalInstanceId}
-          transactionType={WorkflowTransactionType.PURCHASE_ORDER}
-        />
       ) : null}
 
       {/* ── Current revision ──────────────────────────────────────────────── */}

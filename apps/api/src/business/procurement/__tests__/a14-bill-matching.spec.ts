@@ -1,21 +1,21 @@
-/**
- * A14 — PO-backed bill ↔ PO-revision link + auto-match on submit + commitment ACTUAL (D6/A2/D7)
+﻿/**
+ * A14 â€” PO-backed bill â†” PO-revision link + auto-match on submit + commitment ACTUAL (D6/A2/D7)
  *
  * Runs against the real test DB (no mocking), one isolated fixture org, torn down in afterAll.
  *
- * D6  PO-backed flow: PO → goods received → bill entered → AUTO-match on submit (no manual "run").
+ * D6  PO-backed flow: PO â†’ goods received â†’ bill entered â†’ AUTO-match on submit (no manual "run").
  *     matched = silently ready; only a material variance raises an EXCEPTION. Non-PO bills untouched.
- * A2  ACCO tolerances: unit price 2% · quantity 0% · rounding ≤ USD 5 per invoice.
+ * A2  ACCO tolerances: unit price 2% Â· quantity 0% Â· rounding â‰¤ USD 5 per invoice.
  * D7  On post, the commitment ACTUAL inherits the originating PO line's projectId/boqNodeId
- *     (org lines → null) so the ledger nets COMMITTED → ACCRUED → ACTUAL per project/node.
+ *     (org lines â†’ null) so the ledger nets COMMITTED â†’ ACCRUED â†’ ACTUAL per project/node.
  *
  * A01 create against a PO writes purchaseOrderRevisionId (the core link)
- * A02 submit auto-matches a clean PO-backed bill → MATCHED/MATCHED_WITH_TOLERANCE (no manual step)
- * A03 submit auto-matches a >2% price-variance bill → EXCEPTION (silent, held by the posting gate)
- * A04 submit auto-matches a billed-qty > accepted-qty bill → EXCEPTION (0% qty)
- * A05 a ≤ USD 5 per-invoice net rounding diff is tolerated → MATCHED_WITH_TOLERANCE (posts)
- * A06 post writes the ACTUAL carrying the PO line's projectId/boqNodeId; the org line's ACTUAL → null
- * A07 full-loop netting: for a fully received + billed line, COMMITTED − ACCRUED and ACCRUED − ACTUAL
+ * A02 submit auto-matches a clean PO-backed bill â†’ MATCHED/MATCHED_WITH_TOLERANCE (no manual step)
+ * A03 submit auto-matches a >2% price-variance bill â†’ EXCEPTION (silent, held by the posting gate)
+ * A04 submit auto-matches a billed-qty > accepted-qty bill â†’ EXCEPTION (0% qty)
+ * A05 a â‰¤ USD 5 per-invoice net rounding diff is tolerated â†’ MATCHED_WITH_TOLERANCE (posts)
+ * A06 post writes the ACTUAL carrying the PO line's projectId/boqNodeId; the org line's ACTUAL â†’ null
+ * A07 full-loop netting: for a fully received + billed line, COMMITTED âˆ’ ACCRUED and ACCRUED âˆ’ ACTUAL
  *     resolve to zero per project/node
  * A08 the non-PO path is unchanged: submit does not match, post writes no commitment, GL posts
  */
@@ -39,7 +39,7 @@ function identity(e: ProcurementTestEnv) {
   return e.identity;
 }
 
-// ── Builders ─────────────────────────────────────────────────────────────────
+// â”€â”€ Builders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function approvedMr(qty: number) {
   const mr = await svc.mrService.create(identity(env), {
@@ -84,8 +84,7 @@ async function approvedPoWithCostTarget(mrLineId: string, qty: number, price: nu
       },
     ],
   });
-  await svc.poService.submit(identity(env), po!.id);
-  await svc.poService.approve(identity(env), po!.id);
+  await svc.poService.confirm(identity(env), po!.id);
   return prisma.purchaseOrder.findUniqueOrThrow({
     where: { id: po!.id },
     include: { revisions: { include: { lines: true } } },
@@ -150,7 +149,7 @@ async function matchStatusOf(billId: string) {
   return bill.matchStatus;
 }
 
-// ── Suite ────────────────────────────────────────────────────────────────────
+// â”€â”€ Suite â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 beforeAll(async () => {
   env = await ProcurementFixtureFactory.create(prisma);
@@ -162,8 +161,8 @@ afterAll(async () => {
   await prisma.$disconnect();
 }, 30_000);
 
-// ── A01: the core link ────────────────────────────────────────────────────────
-test('A01 — creating a bill against a PO writes purchaseOrderRevisionId (the ACTIVE revision)', async () => {
+// â”€â”€ A01: the core link â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+test('A01 â€” creating a bill against a PO writes purchaseOrderRevisionId (the ACTIVE revision)', async () => {
   const mr = await approvedMr(100);
   const po = await approvedPoWithCostTarget(mr.lines[0].id, 100, 500);
   const activeRev = po.revisions.find((r) => r.status === 'ACTIVE')!;
@@ -174,8 +173,8 @@ test('A01 — creating a bill against a PO writes purchaseOrderRevisionId (the A
   expect(bill.purchaseOrderRevisionId).toBe(activeRev.id);
 });
 
-// ── A02: auto-match on submit, clean bill ──────────────────────────────────────
-test('A02 — submit auto-matches a clean PO-backed bill (MATCHED_WITH_TOLERANCE), no manual run', async () => {
+// â”€â”€ A02: auto-match on submit, clean bill â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+test('A02 â€” submit auto-matches a clean PO-backed bill (MATCHED_WITH_TOLERANCE), no manual run', async () => {
   const mr = await approvedMr(100);
   const po = await approvedPoWithCostTarget(mr.lines[0].id, 100, 500);
   const activeRev = po.revisions.find((r) => r.status === 'ACTIVE')!;
@@ -184,12 +183,12 @@ test('A02 — submit auto-matches a clean PO-backed bill (MATCHED_WITH_TOLERANCE
   const bill = await draftPoBackedBill(po.id, 100, 500);
   await markLinesMaterial(bill.id);
 
-  // NOT_RUN until submit — submit is the only trigger (no manual "run matching").
+  // NOT_RUN until submit â€” submit is the only trigger (no manual "run matching").
   expect(await matchStatusOf(bill.id)).toBe('NOT_RUN');
 
   await svc.supplierBillService.submit(identity(env), bill.id);
 
-  // Exact price/qty match against a policy that always exists (org fallback 2%/0%) → a zero-variance
+  // Exact price/qty match against a policy that always exists (org fallback 2%/0%) â†’ a zero-variance
   // match is MATCHED; a tolerated non-zero one is MATCHED_WITH_TOLERANCE. Either way it is postable.
   const status = await matchStatusOf(bill.id);
   expect(['MATCHED', 'MATCHED_WITH_TOLERANCE']).toContain(status);
@@ -199,18 +198,18 @@ test('A02 — submit auto-matches a clean PO-backed bill (MATCHED_WITH_TOLERANCE
   expect(match.status).toBe(status);
 });
 
-// ── A03: >2% price variance → EXCEPTION ────────────────────────────────────────
-test('A03 — submit auto-matches a >2% price-variance bill to EXCEPTION (held, not thrown)', async () => {
+// â”€â”€ A03: >2% price variance â†’ EXCEPTION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+test('A03 â€” submit auto-matches a >2% price-variance bill to EXCEPTION (held, not thrown)', async () => {
   const mr = await approvedMr(100);
   const po = await approvedPoWithCostTarget(mr.lines[0].id, 100, 500);
   const activeRev = po.revisions.find((r) => r.status === 'ACTIVE')!;
   await postGrn(po.id, activeRev.lines[0].id, 100, 100);
 
-  // 520 vs 500 = 4% > 2% price tolerance → EXCEPTION.
+  // 520 vs 500 = 4% > 2% price tolerance â†’ EXCEPTION.
   const bill = await draftPoBackedBill(po.id, 100, 520);
   await markLinesMaterial(bill.id);
 
-  // submit does NOT throw for an out-of-tolerance bill — it lands as EXCEPTION and moves to SUBMITTED.
+  // submit does NOT throw for an out-of-tolerance bill â€” it lands as EXCEPTION and moves to SUBMITTED.
   await expect(svc.supplierBillService.submit(identity(env), bill.id)).resolves.toBeTruthy();
   expect(await matchStatusOf(bill.id)).toBe('EXCEPTION');
 
@@ -221,15 +220,15 @@ test('A03 — submit auto-matches a >2% price-variance bill to EXCEPTION (held, 
   ).rejects.toThrow(/posting blocked/i);
 });
 
-// ── A04: billed qty > accepted qty → EXCEPTION (0% qty) ────────────────────────
-test('A04 — submit auto-matches a billed-qty > accepted-qty bill to EXCEPTION (0% qty)', async () => {
+// â”€â”€ A04: billed qty > accepted qty â†’ EXCEPTION (0% qty) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+test('A04 â€” submit auto-matches a billed-qty > accepted-qty bill to EXCEPTION (0% qty)', async () => {
   const mr = await approvedMr(100);
   const po = await approvedPoWithCostTarget(mr.lines[0].id, 100, 500);
   const activeRev = po.revisions.find((r) => r.status === 'ACTIVE')!;
   // Accept only 80.
   await postGrn(po.id, activeRev.lines[0].id, 80, 80);
 
-  // Bill for 100 at the right price → billed 100 > accepted 80 → EXCEPTION (0% qty, never absorbed).
+  // Bill for 100 at the right price â†’ billed 100 > accepted 80 â†’ EXCEPTION (0% qty, never absorbed).
   const bill = await draftPoBackedBill(po.id, 100, 500);
   await markLinesMaterial(bill.id);
 
@@ -237,14 +236,14 @@ test('A04 — submit auto-matches a billed-qty > accepted-qty bill to EXCEPTION 
   expect(await matchStatusOf(bill.id)).toBe('EXCEPTION');
 });
 
-// ── A05: ≤ USD 5 per-invoice rounding is tolerated ─────────────────────────────
-test('A05 — a ≤ USD 5 per-invoice net rounding diff is tolerated (MATCHED_WITH_TOLERANCE)', async () => {
+// â”€â”€ A05: â‰¤ USD 5 per-invoice rounding is tolerated â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+test('A05 â€” a â‰¤ USD 5 per-invoice net rounding diff is tolerated (MATCHED_WITH_TOLERANCE)', async () => {
   const mr = await approvedMr(100);
   const po = await approvedPoWithCostTarget(mr.lines[0].id, 100, 500);
   const activeRev = po.revisions.find((r) => r.status === 'ACTIVE')!;
   await postGrn(po.id, activeRev.lines[0].id, 100, 100);
 
-  // 500.02 vs 500 on 100 units = USD 2 total, and 0.02/500 = 0.004% ≤ 2% price → within price tol too;
+  // 500.02 vs 500 on 100 units = USD 2 total, and 0.02/500 = 0.004% â‰¤ 2% price â†’ within price tol too;
   // the per-invoice USD-5 rounding band absorbs any residual. Postable.
   const bill = await draftPoBackedBill(po.id, 100, 500.02);
   await markLinesMaterial(bill.id);
@@ -253,8 +252,8 @@ test('A05 — a ≤ USD 5 per-invoice net rounding diff is tolerated (MATCHED_WI
   expect(['MATCHED', 'MATCHED_WITH_TOLERANCE']).toContain(await matchStatusOf(bill.id));
 });
 
-// ── A06 + A07: ACTUAL inherits the PO line cost-target; the full loop nets ──────
-test('A06/A07 — post writes ACTUAL carrying the PO line projectId/boqNodeId, and the loop nets to zero', async () => {
+// â”€â”€ A06 + A07: ACTUAL inherits the PO line cost-target; the full loop nets â”€â”€â”€â”€â”€â”€
+test('A06/A07 â€” post writes ACTUAL carrying the PO line projectId/boqNodeId, and the loop nets to zero', async () => {
   const mr = await approvedMr(100);
   const po = await approvedPoWithCostTarget(mr.lines[0].id, 100, 500);
   const activeRev = po.revisions.find((r) => r.status === 'ACTIVE')!;
@@ -296,8 +295,8 @@ test('A06/A07 — post writes ACTUAL carrying the PO line projectId/boqNodeId, a
   expect(actual.equals(new Decimal('50000'))).toBe(true);
 });
 
-// ── A06b: an org/overhead line's ACTUAL carries null cost-target ───────────────
-test('A06b — an org/overhead PO-backed bill line writes an ACTUAL with null project/node', async () => {
+// â”€â”€ A06b: an org/overhead line's ACTUAL carries null cost-target â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+test('A06b â€” an org/overhead PO-backed bill line writes an ACTUAL with null project/node', async () => {
   // A PO with a single ORG line (no cost-target).
   const po = await svc.poService.create(identity(env), {
     supplierId: env.supplierId,
@@ -307,13 +306,12 @@ test('A06b — an org/overhead PO-backed bill line writes an ACTUAL with null pr
       { lineType: 'OTHER', description: 'Office supplies', uomCode: 'TON', orderedQuantity: 10, unitPrice: 100 },
     ],
   });
-  await svc.poService.submit(identity(env), po!.id);
-  await svc.poService.approve(identity(env), po!.id);
+  await svc.poService.confirm(identity(env), po!.id);
   const activeRev = po!.revisions.find((r) => r.status === 'ACTIVE')!;
-  // SERVICE/OTHER line → TWO_WAY (no GRN needed).
+  // SERVICE/OTHER line â†’ TWO_WAY (no GRN needed).
 
   const bill = await draftPoBackedBill(po!.id, 10, 100);
-  // Keep it a SERVICE line → TWO_WAY match by position against the org PO line.
+  // Keep it a SERVICE line â†’ TWO_WAY match by position against the org PO line.
   await prisma.supplierBillLine.updateMany({
     where: { supplierBillId: bill.id },
     data: { lineType: 'SERVICE' },
@@ -334,8 +332,8 @@ test('A06b — an org/overhead PO-backed bill line writes an ACTUAL with null pr
   expect(new Decimal(actuals[0].amount.toString()).equals(new Decimal('1000'))).toBe(true);
 });
 
-// ── A08: non-PO path unchanged ─────────────────────────────────────────────────
-test('A08 — a genuine non-PO bill is not matched on submit and posts with no commitment entry', async () => {
+// â”€â”€ A08: non-PO path unchanged â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+test('A08 â€” a genuine non-PO bill is not matched on submit and posts with no commitment entry', async () => {
   const invNum = `A14-NONPO-${Math.random().toString(36).slice(2)}`;
   const bill = await svc.supplierBillService.create(identity(env), {
     supplierId: env.supplierId,
@@ -343,7 +341,7 @@ test('A08 — a genuine non-PO bill is not matched on submit and posts with no c
     billDate: '2026-08-25',
     dueDate: '2026-09-25',
     currencyCode: 'USD',
-    // no purchaseOrderId → separate controlled path
+    // no purchaseOrderId â†’ separate controlled path
     lines: [
       {
         description: 'Ad-hoc consulting',
@@ -374,3 +372,4 @@ test('A08 — a genuine non-PO bill is not matched on submit and posts with no c
   const commitments = await prisma.commitmentLedgerEntry.findMany({ where: { sourceDocumentId: bill.id } });
   expect(commitments).toHaveLength(0);
 });
+

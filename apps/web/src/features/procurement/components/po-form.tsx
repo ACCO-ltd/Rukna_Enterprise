@@ -62,7 +62,7 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function PoForm() {
+export function PoForm({ redirectBase = '/procurement/orders' }: { redirectBase?: string }) {
   const t = useTranslations('procurement.po');
   const tc = useTranslations('procurement.common');
   const router = useRouter();
@@ -158,7 +158,7 @@ export function PoForm() {
     void (async () => {
       try {
         const id = await ensureCreated();
-        router.push(`/procurement/orders/${id}`);
+        router.push(`${redirectBase}/${id}`);
       } catch (e) {
         setIssueError(e instanceof ApiError ? e.message : tc('loadFailed'));
       } finally {
@@ -195,7 +195,7 @@ export function PoForm() {
 
       setApprovalInstanceId(null);
       await approve.mutateAsync({ id });
-      router.push(`/procurement/orders/${id}`);
+      router.push(`${redirectBase}/${id}`);
     } catch (e) {
       setIssueError(e instanceof ApiError ? e.message : tc('loadFailed'));
     } finally {

@@ -1,11 +1,11 @@
-/**
- * REC — Does procurement's ACTUAL agree with the general ledger?
+﻿/**
+ * REC â€” Does procurement's ACTUAL agree with the general ledger?
  *
  * This is the gate for the whole Finance workspace. Every figure a Finance screen shows is
  * a claim that the commitment ledger and the accounts tell the same story about project
  * cost, and until the Phase 6 audit those were two independent variables: the ledger took
  * its cost-target from the matched purchase-order line, the GL took whatever an AP clerk
- * had keyed onto the bill — and since no bill form ever sent a project at all, the GL side
+ * had keyed onto the bill â€” and since no bill form ever sent a project at all, the GL side
  * was always null. Project actual cost in the accounts was structurally $0.
  *
  *   REC-01  ledger ACTUAL == posted GL project cost from supplier bills   (Scenario B)
@@ -15,7 +15,7 @@
  *   REC-05  reversing a bill reverses BOTH sides                          (Scenario G1)
  *   REC-06  non-procurement project cost does not break the reconciliation (Scenario E)
  *
- * Runs against the real test DB through the real services — no mocking. The reconciliation
+ * Runs against the real test DB through the real services â€” no mocking. The reconciliation
  * read model is asserted alongside the raw sums, because it is what the UI will render and
  * a read model that disagrees with its own source is worse than no read model.
  */
@@ -45,9 +45,9 @@ let posting: AccountingPostingService;
 
 const D = (v: string | number) => new Decimal(v);
 
-// ── Raw sums, computed independently of the read model under test ─────────────
+// â”€â”€ Raw sums, computed independently of the read model under test â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-/** Σ commitment-ledger amount for a stage on this project. */
+/** Î£ commitment-ledger amount for a stage on this project. */
 async function ledgerStage(stage: 'COMMITTED' | 'ACCRUED' | 'ACTUAL'): Promise<Decimal> {
   const agg = await prisma.commitmentLedgerEntry.aggregate({
     where: { organizationId: env.orgId, projectId: env.projectId, stage },
@@ -56,7 +56,7 @@ async function ledgerStage(stage: 'COMMITTED' | 'ACCRUED' | 'ACTUAL'): Promise<D
   return D((agg._sum.amount ?? 0).toString());
 }
 
-/** Σ (debit − credit) on cost accounts carrying this project, optionally by source document. */
+/** Î£ (debit âˆ’ credit) on cost accounts carrying this project, optionally by source document. */
 async function glProjectCost(sourceDocumentType?: 'SUPPLIER_BILL'): Promise<Decimal> {
   const lines = await prisma.journalLine.findMany({
     where: {
@@ -77,7 +77,7 @@ async function glProjectCost(sourceDocumentType?: 'SUPPLIER_BILL'): Promise<Deci
   );
 }
 
-// ── Flow builders ─────────────────────────────────────────────────────────────
+// â”€â”€ Flow builders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function approvedMr(qty: number, opts: { boq: boolean }) {
   const mr = await svc.mrService.create(env.identity, {
@@ -106,7 +106,7 @@ async function approvedMr(qty: number, opts: { boq: boolean }) {
 
 /**
  * An approved PO for this project. `boq: true` is a BOQ-coded line (cost-target state 3);
- * `boq: false` is project-level cost with a spend category and no BOQ node (state 2) — the
+ * `boq: false` is project-level cost with a spend category and no BOQ node (state 2) â€” the
  * attribution that could reach the ledger but not the accounts before this work.
  */
 async function approvedPo(mrLineId: string, qty: number, price: number, opts: { boq: boolean }) {
@@ -129,8 +129,7 @@ async function approvedPo(mrLineId: string, qty: number, price: number, opts: { 
       },
     ],
   });
-  await svc.poService.submit(env.identity, po!.id);
-  await svc.poService.approve(env.identity, po!.id);
+  await svc.poService.confirm(env.identity, po!.id);
   return prisma.purchaseOrder.findUniqueOrThrow({
     where: { id: po!.id },
     include: { revisions: { include: { lines: true } } },
@@ -157,8 +156,8 @@ async function postGrn(poId: string, poLineId: string, qty: number) {
 
 /**
  * Enter, match, approve and post a PO-backed bill. `vat` is charged on top of the net, and
- * posts into expense: ACCO's input VAT is non-recoverable (ACC-TAX-001), so the GL debit —
- * and therefore ACTUAL — is the gross.
+ * posts into expense: ACCO's input VAT is non-recoverable (ACC-TAX-001), so the GL debit â€”
+ * and therefore ACTUAL â€” is the gross.
  */
 async function postBill(poId: string, qty: number, price: number, vat: number) {
   const bill = await svc.supplierBillService.create(env.identity, {
@@ -209,8 +208,8 @@ afterAll(async () => {
   await prisma.$disconnect();
 }, 30_000);
 
-// ─── Scenario B — the full procurement chain, BOQ-coded ───────────────────────
-describe('Scenario B — PO → GRN → posted bill, BOQ-coded', () => {
+// â”€â”€â”€ Scenario B â€” the full procurement chain, BOQ-coded â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+describe('Scenario B â€” PO â†’ GRN â†’ posted bill, BOQ-coded', () => {
   const QTY = 100;
   const PRICE = 400;
   const NET = QTY * PRICE; // 40 000
@@ -257,7 +256,7 @@ describe('Scenario B — PO → GRN → posted bill, BOQ-coded', () => {
     // Fully received and billed: nothing is still on order, nothing is still unbilled.
     expect(committed.toFixed(2)).toBe('0.00');
     expect(accrued.toFixed(2)).toBe('0.00');
-    // Committed-to-date is the ordered value plus the non-recoverable VAT the bill added —
+    // Committed-to-date is the ordered value plus the non-recoverable VAT the bill added â€”
     // which is the real money the project spends, and the right basis for budget headroom.
     expect(committed.plus(accrued).plus(actual).toFixed(2)).toBe(D(GROSS).toFixed(2));
   });
@@ -265,7 +264,7 @@ describe('Scenario B — PO → GRN → posted bill, BOQ-coded', () => {
   /**
    * The accrual is raised on the purchase-order price and released on the same basis. It
    * used to be released at the bill's GROSS, so a project that was fully billed carried a
-   * permanent −VAT residual and reported a NEGATIVE "remaining committed".
+   * permanent âˆ’VAT residual and reported a NEGATIVE "remaining committed".
    */
   it('REC-04: releasing the accrual leaves no residual', async () => {
     const accrued = await ledgerStage('ACCRUED');
@@ -273,7 +272,7 @@ describe('Scenario B — PO → GRN → posted bill, BOQ-coded', () => {
     expect(accrued.isNegative()).toBe(false);
   });
 
-  it('the GL line carries the PO line’s BOQ node, not the bill clerk’s keying', async () => {
+  it('the GL line carries the PO lineâ€™s BOQ node, not the bill clerkâ€™s keying', async () => {
     const line = await prisma.journalLine.findFirstOrThrow({
       where: {
         projectId: env.projectId,
@@ -285,7 +284,7 @@ describe('Scenario B — PO → GRN → posted bill, BOQ-coded', () => {
     expect(line.supplierId).toBe(env.supplierId);
   });
 
-  // ─── Scenario G1 — reversal ─────────────────────────────────────────────────
+  // â”€â”€â”€ Scenario G1 â€” reversal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   it('REC-05: reversing the bill reverses BOTH the GL and the ledger', async () => {
     const bill = await prisma.supplierBill.findFirstOrThrow({
       where: { organizationId: env.orgId, postingStatus: 'POSTED', purchaseOrderId: poId },
@@ -300,7 +299,7 @@ describe('Scenario B — PO → GRN → posted bill, BOQ-coded', () => {
     const gl = await glProjectCost('SUPPLIER_BILL');
     const accrued = await ledgerStage('ACCRUED');
 
-    // Both sides return to zero — the defect was that only the GL did.
+    // Both sides return to zero â€” the defect was that only the GL did.
     expect(gl.toFixed(2)).toBe('0.00');
     expect(actual.toFixed(2)).toBe('0.00');
     // The goods are still on site and still unbilled, so the accrual comes back.
@@ -312,8 +311,8 @@ describe('Scenario B — PO → GRN → posted bill, BOQ-coded', () => {
   });
 });
 
-// ─── Scenario D — project-level cost with no BOQ line ─────────────────────────
-describe('Scenario D — project-level (non-BOQ) cost', () => {
+// â”€â”€â”€ Scenario D â€” project-level cost with no BOQ line â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+describe('Scenario D â€” project-level (non-BOQ) cost', () => {
   const QTY = 10;
   const PRICE = 1500;
   const NET = QTY * PRICE; // 15 000
@@ -355,8 +354,8 @@ describe('Scenario D — project-level (non-BOQ) cost', () => {
   });
 });
 
-// ─── Scenario E — non-procurement project cost ────────────────────────────────
-describe('Scenario E — a manual project journal', () => {
+// â”€â”€â”€ Scenario E â€” non-procurement project cost â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+describe('Scenario E â€” a manual project journal', () => {
   const MANUAL = 5000;
   let accrualAccountId: string;
 
@@ -395,7 +394,7 @@ describe('Scenario E — a manual project journal', () => {
           organizationId: env.orgId,
           accountingDate: new Date('2026-08-26'),
           documentDate: new Date('2026-08-26'),
-          description: 'Site labour — not procured',
+          description: 'Site labour â€” not procured',
           currencyCode: 'USD',
           eventType: `REC-MANUAL-${Date.now()}`,
           sourceDocumentType: 'MANUAL_JOURNAL',
@@ -437,3 +436,4 @@ describe('Scenario E — a manual project journal', () => {
     );
   });
 });
+

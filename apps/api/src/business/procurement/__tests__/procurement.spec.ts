@@ -11,7 +11,7 @@
  * T04 Split MR→multiple POs: cap at approved MR quantity
  * T05 GRN post: accepted qty moves COMMITTED→ACCRUED, rejected does not
  * T06 5% over-receipt boundary (reads OverReceiptPolicy): exactly at limit → DRAFT
- * T07 Above-limit over-receipt → EXCEPTION_PENDING
+ * T07 Above-limit over-receipt → DRAFT + overReceiptFlag=true
  * T08 GRN allocation totals reconcile to accepted/received quantities
  * T09 Two-way matching: price/qty variance calculated correctly
  * T10 Three-way matching: uses GRN accepted quantity as received quantity
@@ -91,8 +91,7 @@ async function createAndApprovePo(mrLineId: string, qty: number, price = 500) {
       },
     ],
   });
-  await svc.poService.submit(identity(env), po!.id);
-  await svc.poService.approve(identity(env), po!.id);
+  await svc.poService.confirm(identity(env), po!.id);
   return prisma.purchaseOrder.findUniqueOrThrow({
     where: { id: po!.id },
     include: { revisions: { include: { lines: true } } },
@@ -203,8 +202,7 @@ test('T02 — Revising a PO creates compensating reversal for old revision and n
     ],
   });
 
-  await svc.poService.submit(identity(env), po.id);
-  await svc.poService.approve(identity(env), po.id);
+  await svc.poService.confirm(identity(env), po.id);
 
   const allEntries = await prisma.commitmentLedgerEntry.findMany({
     where: { purchaseOrderId: po.id },
@@ -329,14 +327,14 @@ test('T06 — GRN exactly at 5% over-receipt threshold stays DRAFT (reads OverRe
   expect(record.status).toBe('DRAFT');
 });
 
-// ── T07: Above 5% threshold → EXCEPTION_PENDING ─────────────────────────────
-test('T07 — GRN 6% over ordered quantity goes to EXCEPTION_PENDING', async () => {
+// ── T07: Above 5% threshold → DRAFT + overReceiptFlag ─────────────────────────────
+test('T07 — GRN 6% over ordered quantity stays DRAFT with overReceiptFlag=true', async () => {
   const mr = await createApprovedMr(100);
   const po = await createAndApprovePo(mr.lines[0].id, 100, 500);
   const activeRev = po.revisions.find((r) => r.status === 'ACTIVE')!;
   const poLineId = activeRev.lines[0].id;
 
-  // 106 = 6% over
+  // 106 = 6% over -- stays DRAFT; overReceiptFlag signals settlement review
   const grn = await svc.grnService.create(identity(env), {
     purchaseOrderId: po.id,
     deliveryDate: '2026-08-20',
@@ -352,7 +350,8 @@ test('T07 — GRN 6% over ordered quantity goes to EXCEPTION_PENDING', async () 
   });
 
   const record = await prisma.goodsReceiptNote.findUniqueOrThrow({ where: { id: grn!.id } });
-  expect(record.status).toBe('EXCEPTION_PENDING');
+  expect(record.status).toBe('DRAFT');
+  expect(record.overReceiptFlag).toBe(true);
 });
 
 // ── T08: GRN allocation totals reconcile to received/accepted ───────────────
@@ -901,8 +900,7 @@ test('T21 — PO approval writes a COMMITTED entry carrying the line projectId/b
       { lineType: 'OTHER', description: 'Org overhead', uomCode: 'TON', orderedQuantity: 1, unitPrice: 50 },
     ],
   });
-  await svc.poService.submit(identity(env), po!.id);
-  await svc.poService.approve(identity(env), po!.id);
+  await svc.poService.confirm(identity(env), po!.id);
 
   const activeRev = await prisma.purchaseOrderRevision.findFirstOrThrow({
     where: { purchaseOrderId: po!.id, status: 'ACTIVE' },
@@ -937,8 +935,7 @@ async function createApprovedCostTargetedPo(qty = 10, price = 100) {
     effectiveFrom: '2026-08-15',
     lines: [costTargetLine(qty, price)],
   });
-  await svc.poService.submit(identity(env), po!.id);
-  await svc.poService.approve(identity(env), po!.id);
+  await svc.poService.confirm(identity(env), po!.id);
   const activeRev = await prisma.purchaseOrderRevision.findFirstOrThrow({
     where: { purchaseOrderId: po!.id, status: 'ACTIVE' },
     include: { lines: { orderBy: { lineNumber: 'asc' } } },
@@ -991,8 +988,7 @@ test('T23 — GRN post against an org/overhead PO line writes commitment entries
       },
     ],
   });
-  await svc.poService.submit(identity(env), po!.id);
-  await svc.poService.approve(identity(env), po!.id);
+  await svc.poService.confirm(identity(env), po!.id);
   const activeRev = await prisma.purchaseOrderRevision.findFirstOrThrow({
     where: { purchaseOrderId: po!.id, status: 'ACTIVE' },
     include: { lines: { orderBy: { lineNumber: 'asc' } } },

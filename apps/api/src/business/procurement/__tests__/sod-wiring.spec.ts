@@ -26,12 +26,14 @@ describe('Procurement SoD wiring (ADR-022)', () => {
     const svc = new PurchaseOrderService(
       { getClient: () => prisma } as never,
       {} as never,
+      {} as never, // attachmentRepo
       {} as never,
       {} as never,
       {} as never,
       {} as never,
       {} as never,
       sod as never,
+      {} as never, // settlementQueryService
     );
 
     await expect(
@@ -60,7 +62,9 @@ describe('Procurement SoD wiring (ADR-022)', () => {
     const svc = new GoodsReceiptService(
       { getClient: () => ({}) } as never,
       {} as never,
+      {} as never, // grnAttachmentRepo
       poRepo as never,
+      { autoCloseIfSettled: async () => undefined } as never, // purchaseOrderService
       {} as never,
       {} as never,
       sod as never,
@@ -88,7 +92,9 @@ describe('Procurement SoD wiring (ADR-022)', () => {
     const svc = new GoodsReceiptService(
       { getClient: () => ({}) } as never,
       {} as never,
+      {} as never, // grnAttachmentRepo
       poRepo as never,
+      { autoCloseIfSettled: async () => undefined } as never, // purchaseOrderService
       {} as never,
       {} as never,
       sod as never,

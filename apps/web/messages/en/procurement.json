@@ -634,11 +634,14 @@
     "title": "Procurement",
     "subtitle": "Manage project requirements and track procurement costs.",
     "openProcurement": "Open Procurement",
+    "navLabel": "Procurement workspace sections",
     "tabs": {
       "label": "Procurement views",
       "overview": "Overview",
       "requirements": "Requirements",
-      "cost": "Cost & Commitments"
+      "cost": "Cost & Commitments",
+      "requests": "Requests",
+      "purchases": "Purchases"
     },
     "position": {
       "title": "Project cost position",
@@ -937,6 +940,217 @@
       "chartShareSummary": "Share of committed cost across {n} categories.",
       "projectLevelShort": "Project-level",
       "others": "Others"
+    },
+    "purchase": {
+      "backToPurchases": "Back to purchases",
+      "loadFailed": "Could not load this purchase order",
+      "retry": "Retry",
+      "tabsLabel": "Purchase order sections",
+      "tabs": {
+        "items": "Items",
+        "funding": "Funding",
+        "receiving": "Receiving",
+        "settlement": "Evidence & Settlement"
+      },
+      "confirm": "Confirm order",
+      "confirmRevision": "Confirm revision",
+      "noRevision": "No revision exists on this order.",
+      "quotation": {
+        "bar": "Quotation",
+        "ref": "Quotation ref",
+        "date": "Quotation date",
+        "quotedAmount": "Quoted amount",
+        "orderedAmount": "Ordered total",
+        "noRef": "No ref recorded"
+      },
+      "attachments": {
+        "title": "Quotation attachments",
+        "none": "No attachments on this revision.",
+        "supplierRef": "Supplier ref"
+      },
+      "revisionHistory": "Full revision history available in the Procurement workspace",
+      "viewInProcurement": "View in Procurement",
+      "funding": {
+        "title": "Funding",
+        "subtitle": "Payments and advances committed to this order.",
+        "loadFailed": "Could not load settlement data",
+        "retry": "Retry",
+        "directTitle": "Direct payments",
+        "directNone": "No direct payments have been recorded against this order.",
+        "paymentRef": "Payment ref",
+        "date": "Date",
+        "amount": "Amount",
+        "billsTitle": "Linked supplier bills",
+        "billsNone": "No supplier bills are linked to this order.",
+        "billNumber": "Bill",
+        "totalAmount": "Total",
+        "settledAmount": "Settled",
+        "outstandingAmount": "Outstanding",
+        "advancesTitle": "Buyer advances",
+        "advancesNone": "No buyer advances have been recorded for this order.",
+        "recipient": "Recipient",
+        "advancedOn": "Advanced {date}",
+        "evidenceAllocated": "Evidence allocated",
+        "returned": "Returned",
+        "outstanding": "Outstanding",
+        "returnsLabel": "Returns",
+        "evidenceLabel": "Evidence (bills)",
+        "noReturns": "No returns recorded.",
+        "noEvidence": "No evidence bills linked.",
+        "fundingStatus": {
+          "NOT_FUNDED": "Not funded",
+          "PARTIALLY_FUNDED": "Partially funded",
+          "FUNDED": "Funded"
+        },
+        "returnMethod": {
+          "CASH": "Cash",
+          "BANK": "Bank",
+          "MOBILE_MONEY": "Mobile money"
+        },
+        "advanceToBuyer": "Advance to Buyer",
+        "recordReturn": "Record return",
+        "linkEvidence": "Link evidence bill",
+        "returnForm": {
+          "amount": "Amount returned",
+          "method": "Return method",
+          "method_CASH": "Cash (physical handover)",
+          "method_BANK": "Bank transfer",
+          "method_MOBILE_MONEY": "Mobile money",
+          "bankAccount": "Destination account",
+          "receivedBy": "Received by",
+          "date": "Received on",
+          "reference": "Reference (optional)",
+          "submit": "Record return",
+          "cancel": "Cancel",
+          "submitFailed": "Could not record the return. Try again.",
+          "amountRequired": "Enter a valid amount",
+          "receivedByRequired": "Select who received the return",
+          "dateRequired": "Enter the received date",
+          "accountRequired": "Select destination account",
+          "selectUser": "Select user…",
+          "selectAccount": "Select account…"
+        },
+        "evidenceForm": {
+          "bill": "Supplier bill",
+          "amount": "Amount covered",
+          "submit": "Link bill",
+          "cancel": "Cancel",
+          "submitFailed": "Could not link the evidence. Try again.",
+          "billRequired": "Select a supplier bill",
+          "amountRequired": "Enter a valid amount",
+          "selectBill": "Select bill…"
+        },
+        "advanceForm": {
+          "title": "New buyer advance",
+          "recipient": "Recipient (buyer)",
+          "amount": "Amount",
+          "paymentMethod": "Payment method",
+          "bankAccount": "Disbursement account",
+          "date": "Advanced on",
+          "reference": "Reference (optional)",
+          "submit": "Record advance",
+          "cancel": "Cancel",
+          "submitFailed": "Could not record the advance. Try again.",
+          "paymentMethod_BANK": "Bank transfer",
+          "paymentMethod_MOBILE_MONEY": "Mobile money",
+          "recipientRequired": "Select a recipient",
+          "amountRequired": "Enter a valid amount",
+          "bankAccountRequired": "Select a disbursement account",
+          "dateRequired": "Enter the disbursement date",
+          "selectUser": "Select recipient…",
+          "selectAccount": "Select account…",
+          "referencePlaceholder": "Quotation no., PO ref…"
+        }
+      },
+      "receiving": {
+        "title": "Receiving",
+        "subtitle": "Delivery status per order line and delivery records.",
+        "loadFailed": "Could not load receiving data",
+        "retry": "Retry",
+        "perLineTitle": "Per-line status",
+        "description": "Description",
+        "ordered": "Ordered",
+        "accepted": "Accepted",
+        "lineStatus": {
+          "NOT_RECEIVED": "Not received",
+          "PARTIALLY_RECEIVED": "Partially received",
+          "RECEIVED": "Received"
+        },
+        "grnTitle": "Delivery records",
+        "grnNone": "No goods receipts recorded against this order.",
+        "grnNumber": "GRN",
+        "deliveryDate": "Delivery date",
+        "deliveryRef": "Delivery ref",
+        "grnStatus": "Status",
+        "viewGrn": "View",
+        "receivingStatus": {
+          "NOT_RECEIVED": "Not received",
+          "PARTIALLY_RECEIVED": "Partially received",
+          "RECEIVED": "Received"
+        },
+        "recordDelivery": "Record delivery"
+      },
+      "settlement": {
+        "title": "Evidence & Settlement",
+        "subtitle": "Reconciliation of ordered, funded and evidenced amounts.",
+        "loadFailed": "Could not load settlement data",
+        "retry": "Retry",
+        "statusLabel": "Settlement status",
+        "position": "Position",
+        "ordered": "Ordered",
+        "directFunded": "Direct payments",
+        "advancesIssued": "Advances issued",
+        "outstandingAdvances": "Outstanding advances",
+        "evidenced": "Evidenced (bills)",
+        "returned": "Returns",
+        "exceptionsTitle": "Exceptions",
+        "noExceptions": "No exceptions — settlement is clean.",
+        "autoClosedOn": "Automatically closed on {date}.",
+        "settlementStatus": {
+          "OPEN": "Open",
+          "ACTION_REQUIRED": "Action required",
+          "SETTLED": "Settled"
+        },
+        "exceptionType": {
+          "QUANTITY_EXCEEDS_PO": "Quantity exceeds order",
+          "OUTSTANDING_ADVANCE": "Outstanding advance",
+          "FUNDING_GAP": "Funding gap",
+          "EVIDENCE_MISSING": "Evidence missing"
+        }
+      },
+      "items": {
+        "attachQuotation": "Attach quotation",
+        "uploading": "Uploading...",
+        "attachFailed": "Could not attach the file. Try again."
+      }
+    },
+    "purchases": {
+      "title": "Purchase orders",
+      "subtitle": "Orders placed with suppliers for this project.",
+      "newPurchase": "New purchase",
+      "viewToggle": {
+        "list": "Purchases",
+        "cost": "Cost analytics"
+      },
+      "loadFailed": "Could not load purchase orders",
+      "loadFailedHint": "Something went wrong loading the purchase orders. Try again.",
+      "retry": "Retry",
+      "emptyTitle": "No purchase orders yet",
+      "emptyHint": "Purchase orders for this project will appear here once placed.",
+      "col": {
+        "poNumber": "PO #",
+        "supplier": "Supplier",
+        "amount": "Quoted",
+        "status": "Status"
+      },
+      "status": {
+        "DRAFT": "Draft",
+        "OPEN": "Confirmed",
+        "CLOSED": "Closed",
+        "CANCELLED": "Cancelled"
+      },
+      "noSupplier": "Unknown supplier",
+      "noAmount": "—"
     }
   }
 }

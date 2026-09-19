@@ -81,12 +81,15 @@ export class PurchaseOrderRepository {
     return prisma.purchaseOrder.findUnique({ where: { organizationId_poNumber: { organizationId, poNumber } }, include: PO_INCLUDE });
   }
 
-  findAll(prisma: TenantPrisma, organizationId: string, filters?: { status?: PurchaseOrderStatus; supplierId?: string }) {
+  findAll(prisma: TenantPrisma, organizationId: string, filters?: { status?: PurchaseOrderStatus; supplierId?: string; projectId?: string }) {
     return prisma.purchaseOrder.findMany({
       where: {
         organizationId,
         ...(filters?.status ? { status: filters.status } : {}),
         ...(filters?.supplierId ? { supplierId: filters.supplierId } : {}),
+        ...(filters?.projectId ? {
+          revisions: { some: { lines: { some: { projectId: filters.projectId } } } },
+        } : {}),
       },
       include: { supplier: true, revisions: { orderBy: { revisionNumber: 'desc' }, take: 1 } },
       orderBy: { createdAt: 'desc' },
@@ -101,6 +104,7 @@ export class PurchaseOrderRepository {
         organizationId,
         supplierId,
         poNumber,
+        status: 'DRAFT',
         createdBy,
         revisions: {
           create: {

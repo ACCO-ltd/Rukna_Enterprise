@@ -77,12 +77,14 @@ function build(bills: BillSeed[]) {
     { getClient: () => prisma } as never,
     paymentRepo as never,
     billRepo as never,
+    {} as never, // purchaseAllocationRepo
     {} as never, // accountRepo
     {} as never, // sequenceRepo
     {} as never, // postingPort
     {} as never, // commandGovernance
     sod as never,
     {} as never, // signatoryService
+    {} as never, // purchaseOrderService
   );
   return { svc, paymentRepo, billRepo, store, createdPayment };
 }
@@ -384,12 +386,14 @@ function buildPost(payment: Record<string, unknown>) {
     { getClient: () => prisma } as never,
     paymentRepo as never,
     {} as never,
+    {} as never, // purchaseAllocationRepo
     accountRepo as never,
     sequenceRepo as never,
     postingPort as never,
     {} as never,
     { assertAllowed: jest.fn() } as never,
     signatoryService as never,
+    {} as never, // purchaseOrderService
   );
   return { svc, captured, postingPort };
 }

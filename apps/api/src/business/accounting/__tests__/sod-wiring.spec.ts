@@ -24,14 +24,16 @@ describe('Accounting SoD wiring (ADR-022)', () => {
     };
     const svc = new SupplierPaymentService(
       { getClient: () => prisma } as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      sod as never,
-      {} as never,
+      {} as never,                              // paymentRepo
+      {} as never,                              // billRepo
+      {} as never,                              // purchaseAllocationRepo
+      {} as never,                              // accountRepo
+      {} as never,                              // sequenceRepo
+      {} as never,                              // postingPort
+      {} as never,                              // commandGovernance
+      sod as never,                             // sod
+      {} as never,                              // signatoryService
+      {} as never,                              // purchaseOrderService
     );
 
     await expect(
@@ -175,14 +177,16 @@ describe('Accounting SoD wiring (ADR-022)', () => {
     };
     const svc = new SupplierPaymentService(
       { getClient: () => prisma } as never,
-      paymentRepo as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      sod as never,
-      {} as never,
+      paymentRepo as never,                     // paymentRepo
+      {} as never,                              // billRepo
+      {} as never,                              // purchaseAllocationRepo
+      {} as never,                              // accountRepo
+      {} as never,                              // sequenceRepo
+      {} as never,                              // postingPort
+      {} as never,                              // commandGovernance
+      sod as never,                             // sod
+      {} as never,                              // signatoryService
+      {} as never,                              // purchaseOrderService
     );
 
     await expect(svc.approve(identity('alice'), 'p1')).rejects.toBeInstanceOf(ForbiddenException);

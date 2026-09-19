@@ -3,13 +3,16 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 import type { RequestIdentity } from '@erp/types';
 import { Decimal } from '@prisma/client/runtime/library';
-import type { QualityStatus } from '@prisma/client';
+import type { GrnAttachmentPurpose, QualityStatus } from '@prisma/client';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { GoodsReceiptRepository } from '../infrastructure/goods-receipt.repository.js';
+import { GrnAttachmentRepository } from '../infrastructure/grn-attachment.repository.js';
 import { PurchaseOrderRepository } from '../../purchase-orders/infrastructure/purchase-order.repository.js';
+import { PurchaseOrderService } from '../../purchase-orders/application/purchase-order.service.js';
 import { CommitmentLedgerWriter } from '../../commitment-ledger/application/commitment-ledger-writer.service.js';
 import { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
 import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
@@ -36,12 +39,19 @@ export interface CreateGoodsReceiptDto {
   lines: CreateGrnLineDto[];
 }
 
+export interface AttachGrnFileDto {
+  platformFileId: string;
+  purpose?: GrnAttachmentPurpose;
+}
+
 @Injectable()
 export class GoodsReceiptService {
   constructor(
     private readonly tenancy: TenancyService,
     private readonly repo: GoodsReceiptRepository,
+    private readonly attachmentRepo: GrnAttachmentRepository,
     private readonly poRepo: PurchaseOrderRepository,
+    private readonly purchaseOrderService: PurchaseOrderService,
     private readonly commitmentWriter: CommitmentLedgerWriter,
     private readonly auditOutbox: TransactionalAuditOutboxService,
     private readonly sod: SegregationOfDutiesService,
@@ -108,11 +118,6 @@ export class GoodsReceiptService {
           ? totalAfter.sub(orderedQty).div(orderedQty).mul(100)
           : new Decimal(0);
 
-        let status: 'DRAFT' | 'EXCEPTION_PENDING' = 'DRAFT';
-        if (overagePercent.greaterThan(tolerancePercent)) {
-          status = 'EXCEPTION_PENDING';
-        }
-
         const accepted = new Decimal(line.acceptedQuantity);
         const rejected = new Decimal(line.rejectedQuantity ?? 0);
 
@@ -126,13 +131,15 @@ export class GoodsReceiptService {
           previouslyReceivedQty,
           accepted,
           rejected,
-          overReceiptStatus: status,
+          isOverReceipt: overagePercent.greaterThan(tolerancePercent),
         };
       }),
     );
 
-    const hasException = resolvedLines.some(r => r.overReceiptStatus === 'EXCEPTION_PENDING');
-    const grnStatus = hasException ? 'EXCEPTION_PENDING' : 'DRAFT';
+    // Over-receipt flag is informational — GRN stays DRAFT so it can be posted immediately.
+    // Settlement engine surfaces ACTION_REQUIRED for flagged GRNs (Slice 5).
+    const hasOverReceipt = resolvedLines.some(r => r.isOverReceipt);
+    const grnStatus = 'DRAFT';
 
     const count = await this.repo.countGrnNumbers(prisma, orgId);
     const grnNumber = `GRN-${String(count + 1).padStart(5, '0')}`;
@@ -145,6 +152,7 @@ export class GoodsReceiptService {
         purchaseOrderRevisionId: activeRevision.id,
         supplierId: po.supplierId,
         status: grnStatus,
+        overReceiptFlag: hasOverReceipt,
         deliveryDate: new Date(dto.deliveryDate),
         deliveryNoteRef: dto.deliveryNoteRef,
         createdBy: identity.userId,
@@ -206,6 +214,7 @@ export class GoodsReceiptService {
           grnNumber,
           purchaseOrderId: dto.purchaseOrderId,
           status: grnStatus,
+          overReceiptFlag: hasOverReceipt,
         },
       });
 
@@ -288,6 +297,9 @@ export class GoodsReceiptService {
         postedBy: identity.userId,
       });
 
+      // Freeze all evidence files on the now-posted GRN (Slice 2C).
+      await this.attachmentRepo.freezeGrnAttachments(tx, id);
+
       await this.auditOutbox.record(tx, {
         organizationId: orgId,
         actorUserId: identity.userId,
@@ -302,7 +314,56 @@ export class GoodsReceiptService {
       });
     });
 
+    // Side-effect: auto-close PO if settlement is now SETTLED (Slice 5).
+    await this.purchaseOrderService.autoCloseIfSettled(identity, grn.purchaseOrderId);
+
     return this.repo.findById(prisma, orgId, id);
+  }
+
+  async listAttachments(identity: RequestIdentity, grnId: string) {
+    const prisma = this.tenancy.getClient();
+    const grn = await this.repo.findById(prisma, identity.activeOrganizationId, grnId);
+    if (!grn) throw new NotFoundException(`Goods receipt ${grnId} not found`);
+    return this.attachmentRepo.listByGrn(prisma, grnId);
+  }
+
+  async attachToGrn(identity: RequestIdentity, grnId: string, dto: AttachGrnFileDto) {
+    const prisma = this.tenancy.getClient();
+    const orgId = identity.activeOrganizationId;
+
+    const grn = await this.repo.findById(prisma, orgId, grnId);
+    if (!grn) throw new NotFoundException(`Goods receipt ${grnId} not found`);
+    if (grn.status === 'POSTED') {
+      throw new ConflictException('Cannot attach files to a POSTED goods receipt — it is immutable.');
+    }
+
+    const file = await this.attachmentRepo.findFileStatus(prisma, orgId, dto.platformFileId);
+    if (!file) throw new NotFoundException(`File ${dto.platformFileId} not found`);
+    if (file.status !== 'READY') {
+      throw new BadRequestException('The file must be fully uploaded (READY) before it can be attached.');
+    }
+    if (file.lifecycle !== 'TEMPORARY') {
+      throw new BadRequestException('That file is already attached to a record.');
+    }
+    if (file.uploadedBy !== identity.userId) {
+      throw new ForbiddenException('You can only attach a file that you uploaded.');
+    }
+
+    const attachment = await this.attachmentRepo.attachToGrn(prisma, {
+      organizationId: orgId,
+      goodsReceiptNoteId: grnId,
+      platformFileId: dto.platformFileId,
+      purpose: dto.purpose ?? 'DELIVERY_NOTE',
+      attachedBy: identity.userId,
+    });
+
+    // Bind the file so it cannot be deleted or reused until the GRN is posted/frozen.
+    await prisma.platformFile.update({
+      where: { id: dto.platformFileId },
+      data: { lifecycle: 'BOUND', boundAt: new Date(), lifecycleReason: `grn draft ${grnId}`.slice(0, 120) },
+    });
+
+    return attachment;
   }
 
   async cancel(identity: RequestIdentity, id: string) {
@@ -332,34 +393,5 @@ export class GoodsReceiptService {
     });
   }
 
-  // P10: supervisor approves over-receipt exception — EXCEPTION_PENDING → DRAFT so GRN can be posted
-  async approveException(identity: RequestIdentity, id: string) {
-    const prisma = this.tenancy.getClient();
-    const grn = await this.repo.findById(prisma, identity.activeOrganizationId, id);
-    if (!grn) throw new NotFoundException(`Goods receipt ${id} not found`);
-    if (grn.status !== 'EXCEPTION_PENDING') {
-      throw new ConflictException(`GRN is ${grn.status} — only EXCEPTION_PENDING GRNs can have their exception approved`);
-    }
-
-    return prisma.$transaction(async (tx) => {
-      const updated = await this.repo.updateStatus(tx, id, 'DRAFT', {
-        exceptionReason: `Exception approved by ${identity.userId}`,
-      });
-
-      await this.auditOutbox.record(tx, {
-        organizationId: identity.activeOrganizationId,
-        actorUserId: identity.userId,
-        action: 'APPROVE_EXCEPTION',
-        resourceType: 'GoodsReceiptNote',
-        resourceId: id,
-        sourceCommand: 'grn.approve-exception',
-        eventType: 'GRN_EXCEPTION_APPROVED',
-        idempotencyKey: `grn-approve-exception-${id}`,
-        before: { status: 'EXCEPTION_PENDING' },
-        after: { status: 'DRAFT' },
-      });
-
-      return updated;
-    });
-  }
 }
+

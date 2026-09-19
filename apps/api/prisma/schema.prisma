@@ -80,6 +80,13 @@ model Organization {
   commitmentEntries        CommitmentLedgerEntry[]
   // Slice 6B — Collection Events + Credit Notes
   creditNotes              CreditNote[]
+  // Procurement v2 — Finance boundary
+  supplierPaymentPurchaseAllocations SupplierPaymentPurchaseAllocation[]
+  buyerAdvances                      BuyerAdvance[]
+  advanceReturns                     AdvanceReturn[]
+  buyerAdvanceEvidenceAllocations    BuyerAdvanceEvidenceAllocation[]
+  poRevisionAttachments              PurchaseOrderRevisionAttachment[]
+  grnAttachments                     GoodsReceiptAttachment[]
 
   @@map("organizations")
 }
@@ -1913,11 +1920,13 @@ model PlatformFile {
   createdAt       DateTime              @default(now()) @map("created_at")
   confirmedAt     DateTime?             @map("confirmed_at")
 
-  contractAttachments     ContractAttachment[]
-  guaranteeAttachments    GuaranteeAttachment[]
-  ipaAttachments          IpaAttachment[]
-  ipcAttachments          IpcAttachment[]
-  journalEntryAttachments JournalEntryAttachment[]
+  contractAttachments          ContractAttachment[]
+  guaranteeAttachments         GuaranteeAttachment[]
+  ipaAttachments               IpaAttachment[]
+  ipcAttachments               IpcAttachment[]
+  journalEntryAttachments      JournalEntryAttachment[]
+  poRevisionAttachments        PurchaseOrderRevisionAttachment[]
+  grnAttachments               GoodsReceiptAttachment[]
   // The register holds files on its REVISIONS, never on the document itself - that is what keeps
   // a superseded drawing readable after a new one is issued.
   documentRevisions       ProjectDocumentRevision[]
@@ -2406,11 +2415,13 @@ model BankAccount {
   createdAt       DateTime          @default(now()) @map("created_at")
   createdBy       String            @map("created_by")
 
-  glAccount        Account                @relation(fields: [glAccountId], references: [id])
-  treasuryGroup    TreasuryGroup?         @relation(fields: [treasuryGroupId], references: [id])
-  receipts         PaymentReceipt[]
-  supplierPayments SupplierPayment[]
-  signatories      BankAccountSignatory[]
+  glAccount             Account                @relation(fields: [glAccountId], references: [id])
+  treasuryGroup         TreasuryGroup?         @relation(fields: [treasuryGroupId], references: [id])
+  receipts              PaymentReceipt[]
+  supplierPayments      SupplierPayment[]
+  signatories           BankAccountSignatory[]
+  buyerAdvances         BuyerAdvance[]         @relation("BuyerAdvanceDisbursement")
+  advanceReturns        AdvanceReturn[]        @relation("AdvanceReturnDestination")
 
   @@unique([organizationId, accountNumber])
   @@index([organizationId, status])
@@ -2987,10 +2998,11 @@ model SupplierBill {
   createdAt                 DateTime        @default(now()) @map("created_at")
   updatedAt                 DateTime        @updatedAt @map("updated_at")
 
-  organization Organization                @relation(fields: [organizationId], references: [id])
-  supplier     Supplier                    @relation(fields: [supplierId], references: [id])
-  lines        SupplierBillLine[]
-  allocations  SupplierPaymentAllocation[]
+  organization               Organization                     @relation(fields: [organizationId], references: [id])
+  supplier                   Supplier                         @relation(fields: [supplierId], references: [id])
+  lines                      SupplierBillLine[]
+  allocations                SupplierPaymentAllocation[]
+  advanceEvidenceAllocations BuyerAdvanceEvidenceAllocation[]
 
   @@unique([organizationId, supplierId, supplierInvoiceNumberNorm])
   @@unique([organizationId, billNumber])
@@ -3077,8 +3089,9 @@ model SupplierPayment {
   organization      Organization                @relation(fields: [organizationId], references: [id])
   supplier          Supplier                    @relation(fields: [supplierId], references: [id])
   bankAccount       BankAccount                 @relation(fields: [bankAccountId], references: [id])
-  allocations       SupplierPaymentAllocation[]
-  releaseSignatures PaymentReleaseSignature[]
+  allocations          SupplierPaymentAllocation[]
+  releaseSignatures    PaymentReleaseSignature[]
+  purchaseAllocations  SupplierPaymentPurchaseAllocation[]
 
   @@index([organizationId, postingStatus])
   @@index([supplierId])
@@ -3129,6 +3142,110 @@ model SupplierPaymentAllocation {
   @@index([supplierPaymentId])
   @@index([supplierBillId])
   @@map("supplier_payment_allocations")
+}
+
+// ─── Procurement Funding (Finance boundary) ───────────────────────────────────
+
+// Records Finance's intent to fund a PO at payment time — before any supplier bill exists.
+// Separate from SupplierPaymentAllocation (AP settlement against bills).
+// Many-to-many: one payment may fund multiple POs; one PO may receive multiple payments.
+model SupplierPaymentPurchaseAllocation {
+  id                String   @id @default(cuid())
+  organizationId    String   @map("organization_id")
+  supplierPaymentId String   @map("supplier_payment_id")
+  purchaseOrderId   String   @map("purchase_order_id")
+  allocatedAmount   Decimal  @map("allocated_amount") @db.Decimal(18, 2)
+  allocationDate    DateTime @map("allocation_date") @db.Date
+  notes             String?
+  createdBy         String   @map("created_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  organization    Organization    @relation(fields: [organizationId], references: [id])
+  supplierPayment SupplierPayment @relation(fields: [supplierPaymentId], references: [id])
+  purchaseOrder   PurchaseOrder   @relation(fields: [purchaseOrderId], references: [id])
+
+  @@index([supplierPaymentId])
+  @@index([purchaseOrderId])
+  @@map("supplier_payment_purchase_allocations")
+}
+
+// Money disbursed by Finance to an employee buyer who purchases on ACCO's behalf.
+// Finance-owned; follows the same document status lifecycle as SupplierPayment.
+// Disbursement only via BankAccount (BANK or MOBILE_MONEY) — no cash disbursement.
+model BuyerAdvance {
+  id                        String                    @id @default(cuid())
+  organizationId            String                    @map("organization_id")
+  purchaseOrderId           String                    @map("purchase_order_id")
+  recipientUserId           String                    @map("recipient_user_id")
+  amount                    Decimal                   @db.Decimal(18, 2)
+  currencyCode              String                    @map("currency_code") @db.VarChar(3)
+  paymentMethod             BuyerAdvancePaymentMethod @map("payment_method")
+  disbursementBankAccountId String                    @map("disbursement_bank_account_id")
+  reference                 String?
+  notes                     String?
+  advancedAt                DateTime                  @map("advanced_at") @db.Date
+  documentStatus            PaymentDocStatus          @default(DRAFT) @map("document_status")
+  postingStatus             PostingStatus             @default(NOT_POSTED) @map("posting_status")
+  postedJournalEntryId      String?                   @map("posted_journal_entry_id")
+  postedAt                  DateTime?                 @map("posted_at")
+  postedBy                  String?                   @map("posted_by")
+  createdBy                 String                    @map("created_by")
+  createdAt                 DateTime                  @default(now()) @map("created_at")
+  updatedAt                 DateTime                  @updatedAt @map("updated_at")
+
+  organization        Organization                     @relation(fields: [organizationId], references: [id])
+  purchaseOrder       PurchaseOrder                    @relation(fields: [purchaseOrderId], references: [id])
+  disbursementAccount BankAccount                      @relation("BuyerAdvanceDisbursement", fields: [disbursementBankAccountId], references: [id])
+  returns             AdvanceReturn[]
+  evidenceAllocations BuyerAdvanceEvidenceAllocation[]
+
+  @@index([organizationId, purchaseOrderId])
+  @@index([recipientUserId])
+  @@map("buyer_advances")
+}
+
+// Cash or transfer returned from buyer to Finance after purchase completion.
+// destinationBankAccountId is required when returnMethod = BANK | MOBILE_MONEY; null for CASH.
+model AdvanceReturn {
+  id                       String              @id @default(cuid())
+  organizationId           String              @map("organization_id")
+  buyerAdvanceId           String              @map("buyer_advance_id")
+  amount                   Decimal             @db.Decimal(18, 2)
+  returnMethod             AdvanceReturnMethod @map("return_method")
+  destinationBankAccountId String?             @map("destination_bank_account_id")
+  receivedBy               String              @map("received_by")
+  receivedAt               DateTime            @map("received_at") @db.Date
+  reference                String?
+  note                     String?
+  createdAt                DateTime            @default(now()) @map("created_at")
+
+  organization       Organization @relation(fields: [organizationId], references: [id])
+  buyerAdvance       BuyerAdvance @relation(fields: [buyerAdvanceId], references: [id])
+  destinationAccount BankAccount? @relation("AdvanceReturnDestination", fields: [destinationBankAccountId], references: [id])
+
+  @@index([buyerAdvanceId])
+  @@map("advance_returns")
+}
+
+// Explicit per-advance evidence link. Never infer per-advance accountability
+// from PO-total bill evidence — one PO can have multiple advances and multiple bills.
+// outstanding(advance) = amount - SUM(evidenceAllocations) - SUM(returns)
+model BuyerAdvanceEvidenceAllocation {
+  id              String   @id @default(cuid())
+  organizationId  String   @map("organization_id")
+  buyerAdvanceId  String   @map("buyer_advance_id")
+  supplierBillId  String   @map("supplier_bill_id")
+  allocatedAmount Decimal  @map("allocated_amount") @db.Decimal(18, 2)
+  createdBy       String   @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  buyerAdvance BuyerAdvance @relation(fields: [buyerAdvanceId], references: [id])
+  supplierBill SupplierBill @relation(fields: [supplierBillId], references: [id])
+
+  @@index([buyerAdvanceId])
+  @@index([supplierBillId])
+  @@map("buyer_advance_evidence_allocations")
 }
 
 // ─── General Ledger ───────────────────────────────────────────────────────────
@@ -4287,18 +4404,21 @@ model PurchaseOrder {
   poNumber          String              @map("po_number") @db.VarChar(30)
   currentRevisionId String?             @map("current_revision_id")
   status            PurchaseOrderStatus @default(OPEN)
+  closedAt          DateTime?           @map("closed_at")
   createdBy         String              @map("created_by")
   createdAt         DateTime            @default(now()) @map("created_at")
   updatedAt         DateTime            @updatedAt @map("updated_at")
 
-  organization        Organization              @relation(fields: [organizationId], references: [id])
-  supplier            Supplier                  @relation(fields: [supplierId], references: [id])
-  revisions           PurchaseOrderRevision[]
-  grnNotes            GoodsReceiptNote[]
-  matchingPolicies    MatchingTolerancePolicy[]
-  overReceiptPolicies OverReceiptPolicy[]
-  commitments         CommitmentLedgerEntry[]
-  receiptExceptions   PoReceiptException[]
+  organization                Organization                        @relation(fields: [organizationId], references: [id])
+  supplier                    Supplier                            @relation(fields: [supplierId], references: [id])
+  revisions                   PurchaseOrderRevision[]
+  grnNotes                    GoodsReceiptNote[]
+  matchingPolicies            MatchingTolerancePolicy[]
+  overReceiptPolicies         OverReceiptPolicy[]
+  commitments                 CommitmentLedgerEntry[]
+  receiptExceptions           PoReceiptException[]
+  paymentPurchaseAllocations  SupplierPaymentPurchaseAllocation[]
+  buyerAdvances               BuyerAdvance[]
 
   @@unique([organizationId, poNumber])
   @@index([organizationId, status])
@@ -4348,6 +4468,9 @@ model PurchaseOrderRevision {
   currencyCode         String                      @map("currency_code") @db.VarChar(3)
   effectiveFrom        DateTime                    @map("effective_from") @db.Date
   reason               String?
+  quotationRef         String?                     @map("quotation_ref")
+  quotationDate        DateTime?                   @map("quotation_date") @db.Date
+  quotedAmount         Decimal?                    @map("quoted_amount") @db.Decimal(18, 2)
   deliveryAddress      String?                     @map("delivery_address")
   expectedDeliveryDate DateTime?                   @map("expected_delivery_date") @db.Date
   approvedBy           String?                     @map("approved_by")
@@ -4357,9 +4480,10 @@ model PurchaseOrderRevision {
   createdAt            DateTime                    @default(now()) @map("created_at")
   updatedAt            DateTime                    @updatedAt @map("updated_at")
 
-  purchaseOrder PurchaseOrder       @relation(fields: [purchaseOrderId], references: [id])
+  purchaseOrder PurchaseOrder                    @relation(fields: [purchaseOrderId], references: [id])
   lines         PurchaseOrderLine[]
   grnNotes      GoodsReceiptNote[]
+  attachments   PurchaseOrderRevisionAttachment[]
 
   @@unique([purchaseOrderId, revisionNumber])
   @@index([purchaseOrderId, status])
@@ -4426,6 +4550,26 @@ model PurchaseOrderLineRequestAllocation {
   @@map("purchase_order_line_request_allocations")
 }
 
+// Quotation evidence for a PO revision. Ownership follows the revision because an amended
+// PO can carry a different quotation. File becomes IMMUTABLE when revision is confirmed (ACTIVE).
+model PurchaseOrderRevisionAttachment {
+  id                      String                      @id @default(cuid())
+  organizationId          String                      @map("organization_id")
+  purchaseOrderRevisionId String                      @map("purchase_order_revision_id")
+  platformFileId          String                      @map("platform_file_id")
+  purpose                 PoRevisionAttachmentPurpose @default(QUOTATION) @map("purpose")
+  supplierRef             String?                     @map("supplier_ref")
+  attachedBy              String                      @map("attached_by")
+  createdAt               DateTime                    @default(now()) @map("created_at")
+
+  organization Organization          @relation(fields: [organizationId], references: [id])
+  revision     PurchaseOrderRevision @relation(fields: [purchaseOrderRevisionId], references: [id])
+  file         PlatformFile          @relation(fields: [platformFileId], references: [id])
+
+  @@index([purchaseOrderRevisionId])
+  @@map("purchase_order_revision_attachments")
+}
+
 // ─── Sprint 5: Goods Receipt ──────────────────────────────────────────────────
 
 model GoodsReceiptNote {
@@ -4438,6 +4582,7 @@ model GoodsReceiptNote {
   deliveryDate            DateTime  @map("delivery_date") @db.Date
   deliveryNoteRef         String?   @map("delivery_note_ref")
   status                  GrnStatus @default(DRAFT)
+  overReceiptFlag         Boolean   @default(false) @map("over_receipt_flag")
   exceptionReason         String?   @map("exception_reason")
   postedAt                DateTime? @map("posted_at")
   postedBy                String?   @map("posted_by")
@@ -4445,11 +4590,12 @@ model GoodsReceiptNote {
   createdAt               DateTime  @default(now()) @map("created_at")
   updatedAt               DateTime  @updatedAt @map("updated_at")
 
-  organization  Organization          @relation(fields: [organizationId], references: [id])
-  purchaseOrder PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id])
-  revision      PurchaseOrderRevision @relation(fields: [purchaseOrderRevisionId], references: [id])
-  supplier      Supplier              @relation(fields: [supplierId], references: [id])
+  organization  Organization             @relation(fields: [organizationId], references: [id])
+  purchaseOrder PurchaseOrder            @relation(fields: [purchaseOrderId], references: [id])
+  revision      PurchaseOrderRevision    @relation(fields: [purchaseOrderRevisionId], references: [id])
+  supplier      Supplier                 @relation(fields: [supplierId], references: [id])
   lines         GoodsReceiptLine[]
+  attachments   GoodsReceiptAttachment[]
 
   @@unique([organizationId, grnNumber])
   @@index([organizationId, status])
@@ -4510,6 +4656,24 @@ model GoodsReceiptLineAllocation {
   @@index([goodsReceiptLineId])
   @@index([purchaseOrderLineRequestAllocationId])
   @@map("goods_receipt_line_allocations")
+}
+
+// Delivery note evidence for a goods receipt. File becomes IMMUTABLE when GRN is POSTED.
+model GoodsReceiptAttachment {
+  id                 String               @id @default(cuid())
+  organizationId     String               @map("organization_id")
+  goodsReceiptNoteId String               @map("goods_receipt_note_id")
+  platformFileId     String               @map("platform_file_id")
+  purpose            GrnAttachmentPurpose @default(DELIVERY_NOTE) @map("purpose")
+  attachedBy         String               @map("attached_by")
+  createdAt          DateTime             @default(now()) @map("created_at")
+
+  organization Organization     @relation(fields: [organizationId], references: [id])
+  grn          GoodsReceiptNote @relation(fields: [goodsReceiptNoteId], references: [id])
+  file         PlatformFile     @relation(fields: [platformFileId], references: [id])
+
+  @@index([goodsReceiptNoteId])
+  @@map("goods_receipt_attachments")
 }
 
 // ─── Sprint 5: Supplier Bill Matching ────────────────────────────────────────
@@ -4703,6 +4867,7 @@ enum MaterialRequestStatus {
 }
 
 enum PurchaseOrderStatus {
+  DRAFT
   OPEN
   CLOSED
   CANCELLED
@@ -4723,6 +4888,27 @@ enum GrnStatus {
   POSTED
   EXCEPTION_PENDING
   CANCELLED
+}
+
+enum BuyerAdvancePaymentMethod {
+  BANK
+  MOBILE_MONEY
+}
+
+enum AdvanceReturnMethod {
+  CASH
+  BANK
+  MOBILE_MONEY
+}
+
+enum PoRevisionAttachmentPurpose {
+  QUOTATION
+  OTHER
+}
+
+enum GrnAttachmentPurpose {
+  DELIVERY_NOTE
+  OTHER
 }
 
 enum QualityStatus {
