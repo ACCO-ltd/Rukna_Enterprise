@@ -11,7 +11,7 @@ export interface ClientFormValues {
   taxNumber: string;
   defaultCurrency: string;
   address?: string;
-  notes?: string;
+  notes: string;
   contactName: string;
   contactRole: string;
   contactPhone: string;

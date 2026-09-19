@@ -8,7 +8,7 @@
  * misread by someone scanning the sidebar for where a customer payment went.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
@@ -162,7 +162,7 @@ function today(): string {
  * received and posted as one action. Post survives only as the second half of this
  * orchestration and as the follow-up once a held receipt's exception is cleared.
  */
-export function GrnForm() {
+export function GrnForm({ initialPoId }: { initialPoId?: string }) {
   const t = useTranslations('procurement.grn');
   const tc = useTranslations('procurement.common');
   const router = useRouter();
@@ -198,6 +198,16 @@ export function GrnForm() {
     setReceiveError(null);
     createdIdRef.current = null;
   };
+
+  // Pre-select the PO passed via the `?poId=` query param once the receivable list loads.
+  // Only fires on mount — if the user manually changes the picker the effect has already run.
+  useEffect(() => {
+    if (!initialPoId || purchaseOrderId || receivable.length === 0) return;
+    const match = receivable.find((po) => po.id === initialPoId);
+    if (match) selectPo(match.id);
+    // selectPo reads receivable via closure; listing it here would cause infinite loops.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPoId, receivable]);
 
   const submittable = submittableGrnLines(lines);
   const hasLineError = lines.some((l) => grnLineError(l) !== null);

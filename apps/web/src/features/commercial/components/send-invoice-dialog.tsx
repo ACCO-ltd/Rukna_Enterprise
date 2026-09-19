@@ -17,7 +17,7 @@ import { CheckCircle2 } from 'lucide-react';
 
 import { formatDate, formatMoney } from '@/lib/format';
 
-import { recordPackageDelivery } from '../api/commercial-api';
+import { getIssuedInvoiceDocument, recordPackageDelivery } from '../api/commercial-api';
 import { commercialKeys } from '../hooks/use-commercial';
 import type { MilestoneItemViewModel } from '../milestone-journey.adapter';
 
@@ -32,6 +32,7 @@ export interface SendInvoiceDialogProps {
   milestone: MilestoneItemViewModel | null;
   projectId: string;
   currency: string;
+  clientName: string;
   onSent: (installmentId: string, deliveryMethod: DeliveryMethod) => void;
   onClose: () => void;
 }
@@ -43,6 +44,7 @@ export function SendInvoiceDialog({
   milestone,
   projectId,
   currency,
+  clientName,
   onSent,
   onClose,
 }: SendInvoiceDialogProps) {
@@ -56,23 +58,55 @@ export function SendInvoiceDialog({
   const [isPending, setIsPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [whatsappOpened, setWhatsappOpened] = useState(false);
+  const [isOpeningWhatsApp, setIsOpeningWhatsApp] = useState(false);
 
-  function openWhatsApp() {
+  async function openWhatsApp() {
     if (!milestone) return;
-    const documentNumbers = milestone.invoiceJourney?.documents
-      .map((document) => document.invoiceNumber)
-      .filter(Boolean)
-      .join(', ');
-    const message = [
-      t('whatsappMessage', { package: documentNumbers || milestone.name }),
-      summaryLine ?? '',
-    ]
-      .filter(Boolean)
-      .join('\n');
     const phone = recipient.replace(/[^0-9]/g, '');
-    const href = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-    window.open(href, '_blank', 'noopener,noreferrer');
-    setWhatsappOpened(true);
+    const documents = milestone.invoiceJourney?.documents ?? [];
+    if (phone.length < 7 || documents.length === 0 || documents.some((d) => !d.invoiceNumber)) {
+      return;
+    }
+
+    setIsOpeningWhatsApp(true);
+    setErrorMessage(null);
+    try {
+      const documentLinks = await Promise.all(
+        documents.map(async (document) => ({
+          document,
+          url: (await getIssuedInvoiceDocument(document.invoiceId)).url,
+        })),
+      );
+      const message = [
+        t('whatsappGreeting', { client: clientName }),
+        t('whatsappIntro', { milestone: milestone.name }),
+        ...documentLinks.map(({ document, url }) =>
+          t('whatsappDocument', {
+            number: document.invoiceNumber!,
+            source: document.sourceReference,
+            total: document.total
+              ? (formatMoney(document.total, currency, locale) ?? document.total)
+              : '—',
+            dueDate: document.dueDate
+              ? (formatDate(document.dueDate, locale) ?? document.dueDate)
+              : t('dueDateNotSet'),
+            url,
+          }),
+        ),
+        summaryLine ? t('whatsappTotal', { total: summaryLine }) : null,
+        t('whatsappPaymentReference'),
+        t('whatsappClosing'),
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+      const href = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+      window.open(href, '_blank', 'noopener,noreferrer');
+      setWhatsappOpened(true);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : t('whatsappOpenFailed'));
+    } finally {
+      setIsOpeningWhatsApp(false);
+    }
   }
 
   async function handleMarkSent() {
@@ -104,6 +138,7 @@ export function SendInvoiceDialog({
       setNote('');
       setErrorMessage(null);
       setWhatsappOpened(false);
+      setIsOpeningWhatsApp(false);
       onClose();
     }
   }
@@ -140,6 +175,11 @@ export function SendInvoiceDialog({
     { value: 'physical' as const, label: t('physical') },
     { value: 'other' as const, label: t('other') },
   ];
+  const issuedDocuments = journey?.documents ?? [];
+  const allDocumentsNumbered =
+    issuedDocuments.length > 0 && issuedDocuments.every((document) => Boolean(document.invoiceNumber));
+  const whatsappPhoneIsValid = recipient.replace(/[^0-9]/g, '').length >= 7;
+  const canOpenWhatsApp = allDocumentsNumbered && whatsappPhoneIsValid && !isOpeningWhatsApp;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -183,6 +223,10 @@ export function SendInvoiceDialog({
             </section>
           ) : null}
 
+          {!allDocumentsNumbered ? (
+            <Alert variant="warning" messages={[t('invoiceNumberRequired')]} role="status" />
+          ) : null}
+
           {/* Delivery method */}
           <RadioGroup
             label={t('method')}
@@ -206,8 +250,8 @@ export function SendInvoiceDialog({
               id="si-recipient"
               type="text"
               value={recipient}
-              onChange={(e) => setRecipient(e.target.value)}
-              placeholder={t('recipientPlaceholder')}
+            onChange={(e) => setRecipient(e.target.value)}
+              placeholder={deliveryMethod === 'whatsapp' ? t('whatsappRecipientPlaceholder') : t('recipientPlaceholder')}
               disabled={isPending}
               className="block w-full rounded-md border border-input bg-background px-3 py-2 text-body-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
             />
@@ -241,9 +285,13 @@ export function SendInvoiceDialog({
                 ? openWhatsApp
                 : handleMarkSent
             }
-            disabled={!deliveryMethod || isPending}
+            disabled={
+              !deliveryMethod ||
+              isPending ||
+              (deliveryMethod === 'whatsapp' && !whatsappOpened && !canOpenWhatsApp)
+            }
           >
-            {isPending
+            {isPending || isOpeningWhatsApp
               ? t('sending')
               : deliveryMethod === 'whatsapp' && !whatsappOpened
                 ? t('openWhatsApp')

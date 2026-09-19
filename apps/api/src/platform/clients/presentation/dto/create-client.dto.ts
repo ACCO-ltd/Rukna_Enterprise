@@ -1,4 +1,4 @@
-import { IsEmail, IsEnum, IsOptional, IsString, MaxLength, Length, ValidateNested } from 'class-validator';
+import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, Length, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ClientType } from '@prisma/client';
@@ -6,6 +6,8 @@ import { ClientType } from '@prisma/client';
 export class PrimaryContactDto {
   @ApiProperty({ example: 'Ahmed Hassan' })
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
   name!: string;
 
   @ApiPropertyOptional({ example: 'Commercial Director' })
@@ -17,6 +19,8 @@ export class PrimaryContactDto {
   @ApiPropertyOptional({ example: '+252612345678' })
   @IsOptional()
   @IsString()
+  @MaxLength(50)
+  @Matches(/^[+]?[-\s().\d]{7,50}$/)
   phone?: string;
 
   @ApiPropertyOptional({ example: 'ahmed@example.com' })
@@ -28,6 +32,8 @@ export class PrimaryContactDto {
 export class CreateClientDto {
   @ApiProperty({ example: 'Ministry of Finance' })
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
   name!: string;
 
 
@@ -56,6 +62,7 @@ export class CreateClientDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
   notes?: string;
 
   @ApiPropertyOptional({ type: PrimaryContactDto, description: 'Optional primary contact, persisted atomically with the client.' })

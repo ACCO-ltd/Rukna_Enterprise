@@ -276,6 +276,11 @@ export function recordPackageDelivery(
   );
 }
 
+/** Fetch a fresh, short-lived URL for the branded PDF of an issued client invoice. */
+export function getIssuedInvoiceDocument(invoiceId: string): Promise<{ url: string }> {
+  return apiClient<{ url: string }>(`/invoices/${invoiceId}/document`);
+}
+
 export interface PatchDraftInvoicePayload {
   dueDate?: string | null;
   paymentTerms?: string | null;

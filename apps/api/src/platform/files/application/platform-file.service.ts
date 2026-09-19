@@ -298,6 +298,8 @@ export class PlatformFileService {
             ipaAttachments: true,
             ipcAttachments: true,
             journalEntryAttachments: true,
+            poRevisionAttachments: true,
+            grnAttachments: true,
           },
         },
       },

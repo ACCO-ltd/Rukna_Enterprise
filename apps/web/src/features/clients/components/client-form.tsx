@@ -51,11 +51,15 @@ export function ClientForm({ client, onCreated, onCancel }: ClientFormProps = {}
   const schema = z.object({
     name: z.string().trim().min(1, t('nameRequired')).max(255, t('nameTooLong')),
     type: z.enum(['COMPANY', 'GOVERNMENT', 'NGO', 'INDIVIDUAL', 'OTHER']).optional(),
-    taxNumber: z.string(), defaultCurrency: z.string(), address: z.string().optional(), notes: z.string().optional(),
+    taxNumber: z.string(), defaultCurrency: z.string(), address: z.string().optional(),
     contactName: z.string().trim().max(255, t('nameTooLong')),
     contactRole: z.string().trim().max(100, t('contactRoleTooLong')),
-    contactPhone: z.string().trim().max(50, t('contactPhoneTooLong')),
+    contactPhone: z.string().trim().max(50, t('contactPhoneTooLong')).refine(
+      (value) => value === '' || /^[+]?[-\s().\d]{7,50}$/.test(value),
+      t('contactPhoneInvalid'),
+    ),
     contactEmail: z.string().trim().email(t('contactEmailInvalid')).or(z.literal('')),
+    notes: z.string().trim().max(2000, t('notesTooLong')),
   }).superRefine((values, ctx) => {
     if (!isEdit && !values.contactName) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['contactName'], message: t('contactNameRequired') });

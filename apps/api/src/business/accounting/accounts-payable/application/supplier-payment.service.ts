@@ -18,9 +18,11 @@ import { AccountRepository } from '../../accounting-core/infrastructure/account.
 import { DocumentSequenceRepository } from '../../accounting-core/infrastructure/document-sequence.repository.js';
 import { SupplierPaymentRepository } from '../infrastructure/supplier-payment.repository.js';
 import { SupplierBillRepository } from '../infrastructure/supplier-bill.repository.js';
+import { PurchaseAllocationRepository } from '../infrastructure/purchase-allocation.repository.js';
 import { CommandGovernanceService, throwIfGated } from '../../../../platform/workflows/application/command-governance.service.js';
 import { SegregationOfDutiesService } from '../../../../platform/workflows/application/segregation-of-duties.service.js';
 import { BankAccountSignatoryService } from '../../accounting-core/application/bank-account-signatory.service.js';
+import { PurchaseOrderService } from '../../../procurement/purchase-orders/application/purchase-order.service.js';
 
 export interface CreateSupplierPaymentDto {
   supplierId: string;
@@ -51,12 +53,20 @@ export interface AllocateAdvanceDto {
   supplierAdvanceCode: string;
 }
 
+export interface CreatePurchaseAllocationDto {
+  purchaseOrderId: string;
+  allocatedAmount: number;
+  allocationDate: string;
+  notes?: string;
+}
+
 @Injectable()
 export class SupplierPaymentService {
   constructor(
     private readonly tenancyService: TenancyService,
     private readonly paymentRepo: SupplierPaymentRepository,
     private readonly billRepo: SupplierBillRepository,
+    private readonly purchaseAllocationRepo: PurchaseAllocationRepository,
     private readonly accountRepo: AccountRepository,
     private readonly sequenceRepo: DocumentSequenceRepository,
     @Inject(ACCOUNTING_POSTING_PORT)
@@ -64,6 +74,7 @@ export class SupplierPaymentService {
     private readonly commandGovernance: CommandGovernanceService,
     private readonly sod: SegregationOfDutiesService,
     private readonly signatoryService: BankAccountSignatoryService,
+    private readonly purchaseOrderService: PurchaseOrderService,
   ) {}
 
   /** ADR-022 CONST-DOA-005: the number of distinct bank signatures required to release a payment. */
@@ -649,5 +660,47 @@ export class SupplierPaymentService {
     const payment = await this.paymentRepo.findById(prisma, identity.activeOrganizationId, id);
     if (!payment) throw new NotFoundException(`SupplierPayment ${id} not found`);
     return payment;
+  }
+
+  async createPurchaseAllocation(
+    identity: RequestIdentity,
+    paymentId: string,
+    dto: CreatePurchaseAllocationDto,
+  ) {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId, userId } = identity;
+
+    const payment = await this.paymentRepo.findById(prisma, orgId, paymentId);
+    if (!payment) throw new NotFoundException(`SupplierPayment ${paymentId} not found`);
+
+    const po = await prisma.purchaseOrder.findFirst({
+      where: { id: dto.purchaseOrderId, organizationId: orgId },
+      select: { id: true },
+    });
+    if (!po) {
+      throw new NotFoundException(`PurchaseOrder ${dto.purchaseOrderId} not found in this organization`);
+    }
+
+    const result = await this.purchaseAllocationRepo.create(prisma, {
+      organizationId: orgId,
+      supplierPaymentId: paymentId,
+      purchaseOrderId: dto.purchaseOrderId,
+      allocatedAmount: new Decimal(dto.allocatedAmount),
+      allocationDate: new Date(dto.allocationDate),
+      notes: dto.notes,
+      createdBy: userId,
+    });
+    await this.purchaseOrderService.autoCloseIfSettled(identity, dto.purchaseOrderId);
+    return result;
+  }
+
+  async listPurchaseAllocations(identity: RequestIdentity, paymentId: string) {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId } = identity;
+
+    const payment = await this.paymentRepo.findById(prisma, orgId, paymentId);
+    if (!payment) throw new NotFoundException(`SupplierPayment ${paymentId} not found`);
+
+    return this.purchaseAllocationRepo.findByPayment(prisma, orgId, paymentId);
   }
 }

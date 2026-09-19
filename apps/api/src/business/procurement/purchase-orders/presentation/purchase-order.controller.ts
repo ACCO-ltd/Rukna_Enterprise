@@ -17,10 +17,12 @@ import { CurrentUser } from '../../../../common/decorators/current-user.decorato
 import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import { PurchaseOrderService } from '../application/purchase-order.service.js';
+import { SettlementQueryService } from '../application/settlement-query.service.js';
 import {
   CreatePurchaseOrderDto,
   RevisePurchaseOrderDto,
 } from './dto/create-purchase-order.dto.js';
+import { AttachPoRevisionFileDto } from './dto/attach-po-revision-file.dto.js';
 
 @ApiTags('Procurement — Purchase Orders')
 @ApiBearerAuth('access-token')
@@ -28,24 +30,29 @@ import {
 @RequirePermissions(PERMISSIONS.procurementView)
 @Controller('procurement/purchase-orders')
 export class PurchaseOrderController {
-  constructor(private readonly service: PurchaseOrderService) {}
+  constructor(
+    private readonly service: PurchaseOrderService,
+    private readonly settlementQuery: SettlementQueryService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List purchase orders' })
   @ApiQuery({ name: 'status', required: false })
   @ApiQuery({ name: 'supplierId', required: false })
+  @ApiQuery({ name: 'projectId', required: false })
   findAll(
     @CurrentUser() identity: RequestIdentity,
     @Query('status', new ParseEnumPipe(PurchaseOrderStatus, { optional: true }))
     status?: PurchaseOrderStatus,
     @Query('supplierId') supplierId?: string,
+    @Query('projectId') projectId?: string,
   ) {
-    return this.service.findAll(identity, { status, supplierId });
+    return this.service.findAll(identity, { status, supplierId, projectId });
   }
 
   @Post()
   @RequirePermissions(PERMISSIONS.purchaseOrdersCreate)
-  @ApiOperation({ summary: 'Create a purchase order (DRAFT revision)' })
+  @ApiOperation({ summary: 'Create a purchase order (DRAFT)' })
   create(@CurrentUser() identity: RequestIdentity, @Body() dto: CreatePurchaseOrderDto) {
     return this.service.create(identity, dto);
   }
@@ -57,24 +64,22 @@ export class PurchaseOrderController {
     return this.service.findById(identity, id);
   }
 
-  @Post(':id/submit')
+  @Post(':id/confirm')
   @RequirePermissions(PERMISSIONS.purchaseOrdersCreate)
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'id' })
-  @ApiOperation({ summary: 'Submit PO revision for approval: DRAFT → SUBMITTED' })
-  submit(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
-    return this.service.submit(identity, id);
+  @ApiOperation({
+    summary: 'Confirm PO: DRAFT revision → ACTIVE, PO DRAFT → OPEN. Writes COMMITTED ledger entries.',
+  })
+  confirm(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.service.confirm(identity, id);
   }
 
-  @Post(':id/approve')
-  @RequirePermissions(PERMISSIONS.purchaseOrdersApprove)
-  @HttpCode(HttpStatus.OK)
+  @Get(':id/settlement')
   @ApiParam({ name: 'id' })
-  @ApiOperation({
-    summary: 'Approve PO revision: SUBMITTED → ACTIVE. Writes CommitmentLedger COMMITTED entries.',
-  })
-  approve(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
-    return this.service.approve(identity, id);
+  @ApiOperation({ summary: 'Settlement read model: funding, receiving, and reconciliation status' })
+  getSettlement(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.settlementQuery.getSettlement(identity, id);
   }
 
   @Post(':id/revise')
@@ -97,5 +102,24 @@ export class PurchaseOrderController {
   @ApiOperation({ summary: 'Cancel purchase order' })
   cancel(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
     return this.service.cancel(identity, id);
+  }
+
+  @Get(':id/revision-attachments')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'List attachments on the current DRAFT or ACTIVE revision' })
+  listRevisionAttachments(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.service.listRevisionAttachments(identity, id);
+  }
+
+  @Post(':id/revision-attachments')
+  @RequirePermissions(PERMISSIONS.purchaseOrdersCreate)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Attach a file to the current DRAFT revision (throws if no DRAFT exists)' })
+  attachToRevision(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: AttachPoRevisionFileDto,
+  ) {
+    return this.service.attachToRevision(identity, id, dto);
   }
 }

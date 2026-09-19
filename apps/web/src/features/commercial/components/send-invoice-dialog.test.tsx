@@ -10,7 +10,7 @@ import { SendInvoiceDialog } from './send-invoice-dialog';
 
 vi.mock('../api/commercial-api', async (importOriginal) => {
   const actual = await importOriginal<typeof commercialApi>();
-  return { ...actual, recordPackageDelivery: vi.fn() };
+  return { ...actual, getIssuedInvoiceDocument: vi.fn(), recordPackageDelivery: vi.fn() };
 });
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
@@ -48,6 +48,7 @@ function renderDialog({
   milestone = makeMilestone(),
   projectId = 'p-1',
   currency = 'USD',
+  clientName = 'Client',
   onSent = vi.fn(),
   onClose = vi.fn(),
 } = {}) {
@@ -57,6 +58,7 @@ function renderDialog({
       milestone={milestone}
       projectId={projectId}
       currency={currency}
+      clientName={clientName}
       onSent={onSent}
       onClose={onClose}
     />,
@@ -68,6 +70,9 @@ function renderDialog({
 describe('SendInvoiceDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(commercialApi.getIssuedInvoiceDocument).mockResolvedValue({
+      url: 'https://files.example/invoice-0142.pdf',
+    });
     vi.mocked(commercialApi.recordPackageDelivery).mockResolvedValue({ deliveries: [] });
   });
 
@@ -98,12 +103,36 @@ describe('SendInvoiceDialog', () => {
 
   it('3. "Mark as sent" disabled until delivery method selected', async () => {
     const user = userEvent.setup();
-    renderDialog();
+    renderDialog({
+      milestone: makeMilestone({
+        invoiceJourney: {
+          phase: 'issued',
+          invoiceId: 'inv-1',
+          invoiceDate: '2026-09-17',
+          dueDate: '2026-10-17',
+          documents: [
+            {
+              invoiceId: 'inv-1',
+              invoiceNumber: 'INV-2026-0142',
+              sourceType: 'MILESTONE',
+              sourceReference: 'Structure payment',
+              subtotal: '200000.00',
+              salesTax: '10000.00',
+              total: '210000.00',
+              dueDate: '2026-10-17',
+              outstanding: '210000.00',
+              deliveries: [],
+            },
+          ],
+        },
+      }),
+    });
 
     const markBtn = screen.getByRole('button', { name: /mark as sent/i });
     expect(markBtn).toBeDisabled();
 
     await user.click(screen.getByRole('radio', { name: /whatsapp/i }));
+    await user.type(screen.getByLabelText('Recipient'), '+252 61 123 4567');
     expect(markBtn).not.toBeDisabled();
   });
 
@@ -137,9 +166,34 @@ describe('SendInvoiceDialog', () => {
     const user = userEvent.setup();
     const open = vi.spyOn(window, 'open').mockImplementation(() => null);
     const onSent = vi.fn();
-    renderDialog({ onSent });
+    renderDialog({
+      onSent,
+      milestone: makeMilestone({
+        invoiceJourney: {
+          phase: 'issued',
+          invoiceId: 'inv-1',
+          invoiceDate: '2026-09-17',
+          dueDate: '2026-10-17',
+          documents: [
+            {
+              invoiceId: 'inv-1',
+              invoiceNumber: 'INV-2026-0142',
+              sourceType: 'MILESTONE',
+              sourceReference: 'Structure payment',
+              subtotal: '200000.00',
+              salesTax: '10000.00',
+              total: '210000.00',
+              dueDate: '2026-10-17',
+              outstanding: '210000.00',
+              deliveries: [],
+            },
+          ],
+        },
+      }),
+    });
 
     await user.click(screen.getByRole('radio', { name: /whatsapp/i }));
+    await user.type(screen.getByLabelText('Recipient'), '+252 61 123 4567');
     await user.click(screen.getByRole('button', { name: /open whatsapp/i }));
 
     expect(open).toHaveBeenCalledWith(
@@ -147,11 +201,56 @@ describe('SendInvoiceDialog', () => {
       '_blank',
       'noopener,noreferrer',
     );
+    const openedUrl = new URL(vi.mocked(open).mock.calls[0]?.[0] as string);
+    const message = openedUrl.searchParams.get('text');
+    expect(message).toContain('Dear Client,');
+    expect(message).toContain('INV-2026-0142');
+    expect(message).toContain('Structure payment');
+    expect(message).toContain('Amount due: $210,000.00');
+    expect(message).toContain('Kind regards');
+    expect(message).toContain('https://files.example/invoice-0142.pdf');
     expect(commercialApi.recordPackageDelivery).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: /confirm sent/i }));
     expect(commercialApi.recordPackageDelivery).toHaveBeenCalledTimes(1);
     expect(onSent).toHaveBeenCalledWith('inst-1', 'whatsapp');
+    open.mockRestore();
+  });
+
+  it('does not open WhatsApp when a package contains an unnumbered invoice', async () => {
+    const user = userEvent.setup();
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    renderDialog({
+      milestone: makeMilestone({
+        invoiceJourney: {
+          phase: 'issued',
+          invoiceId: 'inv-1',
+          invoiceDate: '2026-09-17',
+          dueDate: '2026-10-17',
+          documents: [
+            {
+              invoiceId: 'inv-1',
+              invoiceNumber: null,
+              sourceType: 'MILESTONE',
+              sourceReference: 'Structure payment',
+              subtotal: '200000.00',
+              salesTax: '10000.00',
+              total: '210000.00',
+              dueDate: '2026-10-17',
+              outstanding: '210000.00',
+              deliveries: [],
+            },
+          ],
+        },
+      }),
+    });
+
+    await user.click(screen.getByRole('radio', { name: /whatsapp/i }));
+    await user.type(screen.getByLabelText('Recipient'), '+252 61 123 4567');
+
+    expect(screen.getByText(/cannot be sent until every invoice has an assigned inv number/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /open whatsapp/i })).toBeDisabled();
+    expect(open).not.toHaveBeenCalled();
     open.mockRestore();
   });
 });

@@ -11,7 +11,7 @@
  * T04 Split MR→multiple POs: cap at approved MR quantity
  * T05 GRN post: accepted qty moves COMMITTED→ACCRUED, rejected does not
  * T06 5% over-receipt boundary (reads OverReceiptPolicy): exactly at limit → DRAFT
- * T07 Above-limit over-receipt → EXCEPTION_PENDING
+ * T07 Above-limit over-receipt → DRAFT + overReceiptFlag=true
  * T08 GRN allocation totals reconcile to accepted/received quantities
  * T09 Two-way matching: price/qty variance calculated correctly
  * T10 Three-way matching: uses GRN accepted quantity as received quantity
@@ -91,8 +91,7 @@ async function createAndApprovePo(mrLineId: string, qty: number, price = 500) {
       },
     ],
   });
-  await svc.poService.submit(identity(env), po!.id);
-  await svc.poService.approve(identity(env), po!.id);
+  await svc.poService.confirm(identity(env), po!.id);
   return prisma.purchaseOrder.findUniqueOrThrow({
     where: { id: po!.id },
     include: { revisions: { include: { lines: true } } },
@@ -203,8 +202,7 @@ test('T02 — Revising a PO creates compensating reversal for old revision and n
     ],
   });
 
-  await svc.poService.submit(identity(env), po.id);
-  await svc.poService.approve(identity(env), po.id);
+  await svc.poService.confirm(identity(env), po.id);
 
   const allEntries = await prisma.commitmentLedgerEntry.findMany({
     where: { purchaseOrderId: po.id },
@@ -329,14 +327,14 @@ test('T06 — GRN exactly at 5% over-receipt threshold stays DRAFT (reads OverRe
   expect(record.status).toBe('DRAFT');
 });
 
-// ── T07: Above 5% threshold → EXCEPTION_PENDING ─────────────────────────────
-test('T07 — GRN 6% over ordered quantity goes to EXCEPTION_PENDING', async () => {
+// ── T07: Above 5% threshold → DRAFT + overReceiptFlag ─────────────────────────────
+test('T07 — GRN 6% over ordered quantity stays DRAFT with overReceiptFlag=true', async () => {
   const mr = await createApprovedMr(100);
   const po = await createAndApprovePo(mr.lines[0].id, 100, 500);
   const activeRev = po.revisions.find((r) => r.status === 'ACTIVE')!;
   const poLineId = activeRev.lines[0].id;
 
-  // 106 = 6% over
+  // 106 = 6% over -- stays DRAFT; overReceiptFlag signals settlement review
   const grn = await svc.grnService.create(identity(env), {
     purchaseOrderId: po.id,
     deliveryDate: '2026-08-20',
@@ -352,7 +350,8 @@ test('T07 — GRN 6% over ordered quantity goes to EXCEPTION_PENDING', async () 
   });
 
   const record = await prisma.goodsReceiptNote.findUniqueOrThrow({ where: { id: grn!.id } });
-  expect(record.status).toBe('EXCEPTION_PENDING');
+  expect(record.status).toBe('DRAFT');
+  expect(record.overReceiptFlag).toBe(true);
 });
 
 // ── T08: GRN allocation totals reconcile to received/accepted ───────────────
@@ -901,8 +900,7 @@ test('T21 — PO approval writes a COMMITTED entry carrying the line projectId/b
       { lineType: 'OTHER', description: 'Org overhead', uomCode: 'TON', orderedQuantity: 1, unitPrice: 50 },
     ],
   });
-  await svc.poService.submit(identity(env), po!.id);
-  await svc.poService.approve(identity(env), po!.id);
+  await svc.poService.confirm(identity(env), po!.id);
 
   const activeRev = await prisma.purchaseOrderRevision.findFirstOrThrow({
     where: { purchaseOrderId: po!.id, status: 'ACTIVE' },
@@ -937,8 +935,7 @@ async function createApprovedCostTargetedPo(qty = 10, price = 100) {
     effectiveFrom: '2026-08-15',
     lines: [costTargetLine(qty, price)],
   });
-  await svc.poService.submit(identity(env), po!.id);
-  await svc.poService.approve(identity(env), po!.id);
+  await svc.poService.confirm(identity(env), po!.id);
   const activeRev = await prisma.purchaseOrderRevision.findFirstOrThrow({
     where: { purchaseOrderId: po!.id, status: 'ACTIVE' },
     include: { lines: { orderBy: { lineNumber: 'asc' } } },
@@ -991,8 +988,7 @@ test('T23 — GRN post against an org/overhead PO line writes commitment entries
       },
     ],
   });
-  await svc.poService.submit(identity(env), po!.id);
-  await svc.poService.approve(identity(env), po!.id);
+  await svc.poService.confirm(identity(env), po!.id);
   const activeRev = await prisma.purchaseOrderRevision.findFirstOrThrow({
     where: { purchaseOrderId: po!.id, status: 'ACTIVE' },
     include: { lines: { orderBy: { lineNumber: 'asc' } } },
@@ -1068,4 +1064,591 @@ test('T25 — countNodeReferences counts a PO line referencing the node, protect
 
   expect(poLineRef).toBeTruthy();
   expect(poLineRef!.count).toBeGreaterThan(0);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Settlement engine — Items 1, 3, 4 integrity tests (T26–T38)
+//
+// These tests use the real SettlementQueryService wired to real DB.
+// State that requires "financially effective" status is seeded by directly
+// setting postingStatus = 'POSTED' via prisma (bypassing the full AP lifecycle
+// which would require GL accounts, journals, etc.).
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { SettlementQueryService }    from '../purchase-orders/application/settlement-query.service.js';
+import { SettlementQueryRepository } from '../purchase-orders/infrastructure/settlement-query.repository.js';
+import type { TenancyService }       from '../../../platform/tenancy/tenancy.service.js';
+import { PurchaseOrderService }      from '../purchase-orders/application/purchase-order.service.js';
+import { PurchaseOrderAttachmentRepository } from '../purchase-orders/infrastructure/purchase-order-attachment.repository.js';
+import { CommandGovernanceService }  from '../../../platform/workflows/application/command-governance.service.js';
+import { WorkflowTriggerResolverService } from '../../../platform/workflows/application/workflow-trigger-resolver.service.js';
+import { WorkflowsPrismaRepository } from '../../../platform/workflows/infrastructure/workflows-prisma.repository.js';
+
+/** Build a real SettlementQueryService backed by the shared prisma client. */
+function buildSettlementService(): SettlementQueryService {
+  const tenancy = { getClient: () => prisma } as unknown as TenancyService;
+  const repo = new SettlementQueryRepository();
+  return new SettlementQueryService(tenancy, repo);
+}
+
+/**
+ * Create + confirm a minimal PO with a single service line (no MR, no BOQ node).
+ * Returns the confirmed PO with its active revision and first line.
+ */
+async function createConfirmedServicePo(amount: number) {
+  const po = await svc.poService.create(identity(env), {
+    supplierId: env.supplierId,
+    currencyCode: 'USD',
+    effectiveFrom: '2026-08-15',
+    lines: [
+      {
+        lineType: 'OTHER',
+        description: 'Service line',
+        uomCode: 'TON',
+        orderedQuantity: 1,
+        unitPrice: amount,
+        spendCategoryId: env.spendCategoryId,
+      },
+    ],
+  });
+  await svc.poService.confirm(identity(env), po!.id);
+  const confirmed = await prisma.purchaseOrder.findUniqueOrThrow({
+    where: { id: po!.id },
+    include: { revisions: { include: { lines: true } } },
+  });
+  const activeRev = confirmed.revisions.find((r) => r.status === 'ACTIVE')!;
+  return { po: confirmed, activeRev, poLineId: activeRev.lines[0].id };
+}
+
+/**
+ * Create a SupplierBill directly in the DB, linked to the given PO.
+ * Sets postingStatus so the evidence gate sees it as present.
+ */
+async function createLinkedBill(poId: string, totalAmount: number, postingStatus = 'NOT_POSTED') {
+  const invNum = `INV-SETTLE-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return prisma.supplierBill.create({
+    data: {
+      organizationId: env.orgId,
+      supplierId: env.supplierId,
+      supplierInvoiceNumber: invNum,
+      supplierInvoiceNumberNorm: invNum.toLowerCase(),
+      billDate: new Date('2026-08-25'),
+      dueDate: new Date('2026-09-25'),
+      currencyCode: 'USD',
+      documentStatus: 'APPROVED',
+      postingStatus: postingStatus as never,
+      subtotal: new Decimal(totalAmount),
+      vatAmount: new Decimal('0'),
+      totalAmount: new Decimal(totalAmount),
+      outstandingAmount: new Decimal(totalAmount),
+      purchaseOrderId: poId,
+      createdBy: env.identity.userId,
+    },
+  });
+}
+
+/**
+ * Seed a SupplierPaymentPurchaseAllocation directly, with the payment at the given postingStatus.
+ * This avoids needing a full GL post path for settlement tests.
+ */
+async function seedPaymentPurchaseAllocation(
+  poId: string,
+  amount: number,
+  paymentPostingStatus: 'NOT_POSTED' | 'POSTED',
+) {
+  // Create a bare BankAccount (needed FK for SupplierPayment).
+  // Use short codes (<=20 chars for Account.code, <=50 chars for BankAccount.accountNumber).
+  const seq = Date.now().toString(36).slice(-8); // 8-char base36 suffix
+  const glAcct = await prisma.account.create({
+    data: {
+      organizationId: env.orgId,
+      code: `BNK-${seq}`,  // max 12 chars, well under VarChar(20)
+      normalBalance: 'DEBIT',
+      createdBy: env.identity.userId,
+    },
+  });
+  await prisma.accountVersion.create({
+    data: {
+      accountId: glAcct.id,
+      versionNumber: 1,
+      name: 'Test Bank',
+      accountClass: 'ASSET',
+      accountSubtype: 'CASH_AND_BANK',
+      isPostingAllowed: true,
+      isControlAccount: false,
+      controlPostingPolicy: 'UNRESTRICTED',
+      controlledSubledgerType: null,
+      effectiveFrom: new Date('2025-01-01'),
+      changedBy: env.identity.userId,
+    },
+  });
+  const bankAcct = await prisma.bankAccount.create({
+    data: {
+      organizationId: env.orgId,
+      glAccountId: glAcct.id,
+      bankName: 'Test Bank',
+      accountName: 'ACCO Operating',
+      accountNumber: `ACC-${seq}`,
+      currencyCode: 'USD',
+      createdBy: env.identity.userId,
+    },
+  });
+  const payment = await prisma.supplierPayment.create({
+    data: {
+      organizationId: env.orgId,
+      supplierId: env.supplierId,
+      bankAccountId: bankAcct.id,
+      paymentDate: new Date('2026-08-20'),
+      accountingDate: new Date('2026-08-20'),
+      currencyCode: 'USD',
+      totalAmount: new Decimal(amount),
+      allocatedAmount: new Decimal('0'),
+      unallocatedAmount: new Decimal(amount),
+      paymentMethod: 'BANK_TRANSFER',
+      documentStatus: paymentPostingStatus === 'POSTED' ? 'APPROVED' : 'DRAFT',
+      postingStatus: paymentPostingStatus,
+      createdBy: env.identity.userId,
+    },
+  });
+  const allocation = await prisma.supplierPaymentPurchaseAllocation.create({
+    data: {
+      organizationId: env.orgId,
+      supplierPaymentId: payment.id,
+      purchaseOrderId: poId,
+      allocatedAmount: new Decimal(amount),
+      allocationDate: new Date('2026-08-20'),
+      createdBy: env.identity.userId,
+    },
+  });
+  return { payment, allocation, bankAcctId: bankAcct.id };
+}
+
+/**
+ * Seed a BuyerAdvance at the given postingStatus.
+ */
+async function seedBuyerAdvance(
+  poId: string,
+  amount: number,
+  postingStatus: 'NOT_POSTED' | 'POSTED',
+  bankAcctId?: string,
+) {
+  let acctId = bankAcctId;
+  if (!acctId) {
+    const seq = Date.now().toString(36).slice(-8);
+    const glAcct = await prisma.account.create({
+      data: {
+        organizationId: env.orgId,
+        code: `ADV-${seq}`,  // short: max 12 chars, under VarChar(20)
+        normalBalance: 'DEBIT',
+        createdBy: env.identity.userId,
+      },
+    });
+    await prisma.accountVersion.create({
+      data: {
+        accountId: glAcct.id,
+        versionNumber: 1,
+        name: 'Advance Bank',
+        accountClass: 'ASSET',
+        accountSubtype: 'CASH_AND_BANK',
+        isPostingAllowed: true,
+        isControlAccount: false,
+        controlPostingPolicy: 'UNRESTRICTED',
+        controlledSubledgerType: null,
+        effectiveFrom: new Date('2025-01-01'),
+        changedBy: env.identity.userId,
+      },
+    });
+    const ba = await prisma.bankAccount.create({
+      data: {
+        organizationId: env.orgId,
+        glAccountId: glAcct.id,
+        bankName: 'Advance Bank',
+        accountName: 'Advance Account',
+        accountNumber: `ADV-${seq}`,
+        currencyCode: 'USD',
+        createdBy: env.identity.userId,
+      },
+    });
+    acctId = ba.id;
+  }
+  return prisma.buyerAdvance.create({
+    data: {
+      organizationId: env.orgId,
+      purchaseOrderId: poId,
+      recipientUserId: env.identity.userId,
+      amount: new Decimal(amount),
+      currencyCode: 'USD',
+      paymentMethod: 'BANK',
+      disbursementBankAccountId: acctId,
+      advancedAt: new Date('2026-08-15'),
+      documentStatus: postingStatus === 'POSTED' ? 'APPROVED' : 'DRAFT',
+      postingStatus,
+      ...(postingStatus === 'POSTED' ? { postedAt: new Date(), postedBy: env.identity.userId } : {}),
+      createdBy: env.identity.userId,
+    },
+  });
+}
+
+// ── T26: Direct supplier prepayment before invoice exists — FUNDED but EVIDENCE_MISSING ──
+test('T26 — Fully paid PO with no supplier bill is EVIDENCE_MISSING → ACTION_REQUIRED, not SETTLED', async () => {
+  const { po } = await createConfirmedServicePo(5000);
+  const settlementSvc = buildSettlementService();
+
+  // Seed a POSTED supplier payment allocation (money genuinely disbursed)
+  await seedPaymentPurchaseAllocation(po.id, 5000, 'POSTED');
+
+  const result = await settlementSvc.getSettlement(identity(env), po.id);
+
+  // Fully funded via direct payment
+  expect(result.fundingStatus).toBe('FUNDED');
+  // But no invoice exists
+  expect(result.evidence.bills).toHaveLength(0);
+  expect(result.exceptions.some((e) => e.type === 'EVIDENCE_MISSING')).toBe(true);
+  expect(result.settlementStatus).toBe('ACTION_REQUIRED');
+  expect(result.humanReadablePosition).toMatch(/invoice required/i);
+});
+
+// ── T27: EVIDENCE_MISSING blocks settlement; adding a bill enables it ──────────
+test('T27 — Paid + received + no invoice = ACTION_REQUIRED; adding a bill removes EVIDENCE_MISSING', async () => {
+  const { po, poLineId } = await createConfirmedServicePo(3000);
+  const settlementSvc = buildSettlementService();
+
+  // Fund it
+  await seedPaymentPurchaseAllocation(po.id, 3000, 'POSTED');
+  // Receive it (post GRN) — use a material PO line approach via direct DB seed
+  // For a SERVICE/OTHER line there are no GRN lines, so receivingStatus stays NOT_RECEIVED.
+  // This test focuses on the evidence gate when receivingStatus is at least RECEIVED.
+  // Create a real PO with a MATERIAL line and receive it instead.
+  const { po: mPo, poLineId: mPoLineId } = await (async () => {
+    const p = await svc.poService.create(identity(env), {
+      supplierId: env.supplierId,
+      currencyCode: 'USD',
+      effectiveFrom: '2026-08-15',
+      lines: [{ lineType: 'MATERIAL', materialCode: 'REBAR-12', description: 'Steel', uomCode: 'TON', orderedQuantity: 1, unitPrice: 3000, spendCategoryId: env.spendCategoryId }],
+    });
+    await svc.poService.confirm(identity(env), p!.id);
+    const confirmed = await prisma.purchaseOrder.findUniqueOrThrow({ where: { id: p!.id }, include: { revisions: { include: { lines: true } } } });
+    const rev = confirmed.revisions.find((r) => r.status === 'ACTIVE')!;
+    return { po: confirmed, poLineId: rev.lines[0].id };
+  })();
+
+  await createAndPostGrn(mPo.id, mPoLineId, 1, 1);
+  await seedPaymentPurchaseAllocation(mPo.id, 3000, 'POSTED');
+
+  const beforeBill = await settlementSvc.getSettlement(identity(env), mPo.id);
+  expect(beforeBill.receivingStatus).toBe('RECEIVED');
+  expect(beforeBill.fundingStatus).toBe('FUNDED');
+  expect(beforeBill.exceptions.some((e) => e.type === 'EVIDENCE_MISSING')).toBe(true);
+  expect(beforeBill.settlementStatus).toBe('ACTION_REQUIRED');
+
+  // Now add a supplier bill
+  await createLinkedBill(mPo.id, 3000);
+  const afterBill = await settlementSvc.getSettlement(identity(env), mPo.id);
+  expect(afterBill.evidence.bills).toHaveLength(1);
+  expect(afterBill.exceptions.some((e) => e.type === 'EVIDENCE_MISSING')).toBe(false);
+  expect(afterBill.settlementStatus).toBe('SETTLED');
+});
+
+// ── T28: Buyer advance + evidence + return → outstanding = 0 → can settle ─────
+test('T28 — Advance $5000, bill $4750, return $250 → outstanding=$0 → settles (with bill present)', async () => {
+  const { po, poLineId } = await (async () => {
+    const p = await svc.poService.create(identity(env), {
+      supplierId: env.supplierId,
+      currencyCode: 'USD',
+      effectiveFrom: '2026-08-15',
+      lines: [{ lineType: 'MATERIAL', materialCode: 'REBAR-12', description: 'Steel T28', uomCode: 'TON', orderedQuantity: 1, unitPrice: 5000, spendCategoryId: env.spendCategoryId }],
+    });
+    await svc.poService.confirm(identity(env), p!.id);
+    const confirmed = await prisma.purchaseOrder.findUniqueOrThrow({ where: { id: p!.id }, include: { revisions: { include: { lines: true } } } });
+    const rev = confirmed.revisions.find((r) => r.status === 'ACTIVE')!;
+    return { po: confirmed, poLineId: rev.lines[0].id };
+  })();
+  const settlementSvc = buildSettlementService();
+
+  // Post a $5000 advance
+  const advance = await seedBuyerAdvance(po.id, 5000, 'POSTED');
+  // Receive all goods
+  await createAndPostGrn(po.id, poLineId, 1, 1);
+  // Link a $4750 bill as evidence
+  const bill = await createLinkedBill(po.id, 4750);
+  await prisma.buyerAdvanceEvidenceAllocation.create({
+    data: {
+      organizationId: env.orgId,
+      buyerAdvanceId: advance.id,
+      supplierBillId: bill.id,
+      allocatedAmount: new Decimal('4750'),
+      createdBy: env.identity.userId,
+    },
+  });
+  // Record $250 return
+  await prisma.advanceReturn.create({
+    data: {
+      organizationId: env.orgId,
+      buyerAdvanceId: advance.id,
+      amount: new Decimal('250'),
+      returnMethod: 'CASH',
+      receivedBy: env.identity.userId,
+      receivedAt: new Date('2026-08-30'),
+    },
+  });
+
+  const result = await settlementSvc.getSettlement(identity(env), po.id);
+  expect(result.advanceFunding.totalAdvanced.equals(new Decimal('5000'))).toBe(true);
+  expect(result.advanceFunding.totalOutstanding.equals(new Decimal('0'))).toBe(true);
+  expect(result.exceptions.some((e) => e.type === 'OUTSTANDING_ADVANCE')).toBe(false);
+  expect(result.exceptions.some((e) => e.type === 'EVIDENCE_MISSING')).toBe(false);
+  expect(result.settlementStatus).toBe('SETTLED');
+});
+
+// ── T29: Partial evidence across multiple bills for one advance ────────────────
+test('T29 — Advance $6000, bill1 $3000 + bill2 $3000 → fully evidenced', async () => {
+  const { po } = await createConfirmedServicePo(6000);
+  const settlementSvc = buildSettlementService();
+
+  const advance = await seedBuyerAdvance(po.id, 6000, 'POSTED');
+  const bill1 = await createLinkedBill(po.id, 3000);
+  const bill2 = await createLinkedBill(po.id, 3000);
+
+  await prisma.buyerAdvanceEvidenceAllocation.createMany({
+    data: [
+      { organizationId: env.orgId, buyerAdvanceId: advance.id, supplierBillId: bill1.id, allocatedAmount: new Decimal('3000'), createdBy: env.identity.userId },
+      { organizationId: env.orgId, buyerAdvanceId: advance.id, supplierBillId: bill2.id, allocatedAmount: new Decimal('3000'), createdBy: env.identity.userId },
+    ],
+  });
+
+  const result = await settlementSvc.getSettlement(identity(env), po.id);
+  const advRow = result.advanceFunding.advances[0];
+  expect(advRow.evidenceAllocated.equals(new Decimal('6000'))).toBe(true);
+  expect(advRow.outstanding.equals(new Decimal('0'))).toBe(true);
+  expect(result.evidence.bills).toHaveLength(2);
+  expect(result.evidence.totalEvidence.equals(new Decimal('6000'))).toBe(true);
+});
+
+// ── T30: Two advances with independent evidence ────────────────────────────────
+test('T30 — Advance1 $3000 evidenced by bill1; advance2 $2000 evidenced by bill2 → both outstanding=0', async () => {
+  const { po } = await createConfirmedServicePo(5000);
+  const settlementSvc = buildSettlementService();
+
+  const adv1 = await seedBuyerAdvance(po.id, 3000, 'POSTED');
+  const adv2 = await seedBuyerAdvance(po.id, 2000, 'POSTED');
+  const bill1 = await createLinkedBill(po.id, 3000);
+  const bill2 = await createLinkedBill(po.id, 2000);
+
+  await prisma.buyerAdvanceEvidenceAllocation.createMany({
+    data: [
+      { organizationId: env.orgId, buyerAdvanceId: adv1.id, supplierBillId: bill1.id, allocatedAmount: new Decimal('3000'), createdBy: env.identity.userId },
+      { organizationId: env.orgId, buyerAdvanceId: adv2.id, supplierBillId: bill2.id, allocatedAmount: new Decimal('2000'), createdBy: env.identity.userId },
+    ],
+  });
+
+  const result = await settlementSvc.getSettlement(identity(env), po.id);
+  expect(result.advanceFunding.advances).toHaveLength(2);
+  for (const adv of result.advanceFunding.advances) {
+    expect(adv.outstanding.equals(new Decimal('0'))).toBe(true);
+  }
+  expect(result.exceptions.some((e) => e.type === 'OUTSTANDING_ADVANCE')).toBe(false);
+});
+
+// ── T31: Draft BuyerAdvance does NOT count as funding ─────────────────────────
+test('T31 — DRAFT BuyerAdvance (postingStatus=NOT_POSTED) is excluded from totalAdvanced and fundingStatus', async () => {
+  const { po } = await createConfirmedServicePo(5000);
+  const settlementSvc = buildSettlementService();
+
+  // DRAFT advance — money has NOT left ACCO yet
+  await seedBuyerAdvance(po.id, 5000, 'NOT_POSTED');
+
+  const result = await settlementSvc.getSettlement(identity(env), po.id);
+  expect(result.advanceFunding.totalAdvanced.equals(new Decimal('0'))).toBe(true);
+  expect(result.fundingStatus).toBe('NOT_FUNDED');
+  // EVIDENCE_MISSING should also be present since we have a funded condition check
+  // (bills.length === 0 and receiving started) but here we just check NOT_FUNDED
+  expect(result.advanceFunding.advances).toHaveLength(0);
+});
+
+// ── T32: Posted BuyerAdvance DOES count as funding ────────────────────────────
+test('T32 — POSTED BuyerAdvance counts toward totalAdvanced and can reach FUNDED', async () => {
+  const { po } = await createConfirmedServicePo(5000);
+  const settlementSvc = buildSettlementService();
+
+  await seedBuyerAdvance(po.id, 5000, 'POSTED');
+
+  const result = await settlementSvc.getSettlement(identity(env), po.id);
+  expect(result.advanceFunding.totalAdvanced.equals(new Decimal('5000'))).toBe(true);
+  expect(result.fundingStatus).toBe('FUNDED');
+  expect(result.advanceFunding.advances).toHaveLength(1);
+});
+
+// ── T33: Draft SupplierPayment purchase allocation does NOT count ──────────────
+test('T33 — SupplierPayment with postingStatus=NOT_POSTED is excluded from directFunding totalAllocated', async () => {
+  const { po } = await createConfirmedServicePo(4000);
+  const settlementSvc = buildSettlementService();
+
+  // Seed a DRAFT (NOT_POSTED) payment allocation
+  await seedPaymentPurchaseAllocation(po.id, 4000, 'NOT_POSTED');
+
+  const result = await settlementSvc.getSettlement(identity(env), po.id);
+  expect(result.directFunding.totalAllocated.equals(new Decimal('0'))).toBe(true);
+  expect(result.fundingStatus).toBe('NOT_FUNDED');
+  expect(result.directFunding.allocations).toHaveLength(0);
+});
+
+// ── T34: Posted SupplierPayment allocation counts as real funding ──────────────
+test('T34 — SupplierPayment with postingStatus=POSTED counts toward directFunding totalAllocated', async () => {
+  const { po } = await createConfirmedServicePo(4000);
+  const settlementSvc = buildSettlementService();
+
+  await seedPaymentPurchaseAllocation(po.id, 4000, 'POSTED');
+
+  const result = await settlementSvc.getSettlement(identity(env), po.id);
+  expect(result.directFunding.totalAllocated.equals(new Decimal('4000'))).toBe(true);
+  expect(result.fundingStatus).toBe('FUNDED');
+  expect(result.directFunding.allocations).toHaveLength(1);
+});
+
+// ── T35: One SupplierPayment funds multiple POs ────────────────────────────────
+test('T35 — One POSTED SupplierPayment can allocate partial amounts to two different POs', async () => {
+  const { po: po1 } = await createConfirmedServicePo(3000);
+  const { po: po2 } = await createConfirmedServicePo(2000);
+  const settlementSvc = buildSettlementService();
+
+  // Create one payment with enough for both POs
+  const t35seq = Date.now().toString(36).slice(-8);
+  const glAcct = await prisma.account.create({
+    data: { organizationId: env.orgId, code: `T35-${t35seq}`, normalBalance: 'DEBIT', createdBy: env.identity.userId },
+  });
+  await prisma.accountVersion.create({
+    data: { accountId: glAcct.id, versionNumber: 1, name: 'T35 Bank', accountClass: 'ASSET', accountSubtype: 'CASH_AND_BANK', isPostingAllowed: true, isControlAccount: false, controlPostingPolicy: 'UNRESTRICTED', controlledSubledgerType: null, effectiveFrom: new Date('2025-01-01'), changedBy: env.identity.userId },
+  });
+  const bankAcct = await prisma.bankAccount.create({
+    data: { organizationId: env.orgId, glAccountId: glAcct.id, bankName: 'T35 Bank', accountName: 'T35 Account', accountNumber: `T35-${t35seq}`, currencyCode: 'USD', createdBy: env.identity.userId },
+  });
+  const payment = await prisma.supplierPayment.create({
+    data: { organizationId: env.orgId, supplierId: env.supplierId, bankAccountId: bankAcct.id, paymentDate: new Date('2026-08-20'), accountingDate: new Date('2026-08-20'), currencyCode: 'USD', totalAmount: new Decimal('5000'), allocatedAmount: new Decimal('0'), unallocatedAmount: new Decimal('5000'), paymentMethod: 'BANK_TRANSFER', documentStatus: 'APPROVED', postingStatus: 'POSTED', createdBy: env.identity.userId },
+  });
+  await prisma.supplierPaymentPurchaseAllocation.createMany({
+    data: [
+      { organizationId: env.orgId, supplierPaymentId: payment.id, purchaseOrderId: po1.id, allocatedAmount: new Decimal('3000'), allocationDate: new Date('2026-08-20'), createdBy: env.identity.userId },
+      { organizationId: env.orgId, supplierPaymentId: payment.id, purchaseOrderId: po2.id, allocatedAmount: new Decimal('2000'), allocationDate: new Date('2026-08-20'), createdBy: env.identity.userId },
+    ],
+  });
+
+  const s1 = await settlementSvc.getSettlement(identity(env), po1.id);
+  const s2 = await settlementSvc.getSettlement(identity(env), po2.id);
+
+  expect(s1.directFunding.totalAllocated.equals(new Decimal('3000'))).toBe(true);
+  expect(s1.fundingStatus).toBe('FUNDED');
+  expect(s2.directFunding.totalAllocated.equals(new Decimal('2000'))).toBe(true);
+  expect(s2.fundingStatus).toBe('FUNDED');
+});
+
+// ── T36: One PO funded by multiple SupplierPayments ────────────────────────────
+test('T36 — Two POSTED SupplierPayments can fund a single PO (additive totalAllocated)', async () => {
+  const { po } = await createConfirmedServicePo(5000);
+  const settlementSvc = buildSettlementService();
+
+  await seedPaymentPurchaseAllocation(po.id, 3000, 'POSTED');
+  await seedPaymentPurchaseAllocation(po.id, 2000, 'POSTED');
+
+  const result = await settlementSvc.getSettlement(identity(env), po.id);
+  expect(result.directFunding.totalAllocated.equals(new Decimal('5000'))).toBe(true);
+  expect(result.directFunding.allocations).toHaveLength(2);
+  expect(result.fundingStatus).toBe('FUNDED');
+});
+
+// ── T37: Auto-close after final resolving event ────────────────────────────────
+test('T37 — All settlement conditions met causes PO status to become CLOSED', async () => {
+  const { po, poLineId } = await (async () => {
+    const p = await svc.poService.create(identity(env), {
+      supplierId: env.supplierId,
+      currencyCode: 'USD',
+      effectiveFrom: '2026-08-15',
+      lines: [{ lineType: 'MATERIAL', materialCode: 'REBAR-12', description: 'Steel T37', uomCode: 'TON', orderedQuantity: 1, unitPrice: 1000, spendCategoryId: env.spendCategoryId }],
+    });
+    await svc.poService.confirm(identity(env), p!.id);
+    const confirmed = await prisma.purchaseOrder.findUniqueOrThrow({ where: { id: p!.id }, include: { revisions: { include: { lines: true } } } });
+    const rev = confirmed.revisions.find((r) => r.status === 'ACTIVE')!;
+    return { po: confirmed, poLineId: rev.lines[0].id };
+  })();
+
+  // Receive all goods
+  await createAndPostGrn(po.id, poLineId, 1, 1);
+  // Fund it
+  await seedPaymentPurchaseAllocation(po.id, 1000, 'POSTED');
+  // Add supplier bill (evidence)
+  await createLinkedBill(po.id, 1000);
+
+  // Trigger autoCloseIfSettled via PurchaseOrderService wired with the real settlement service.
+  // Using static imports (already imported above in the T26-T38 block).
+  const tenancy37 = { getClient: () => prisma } as unknown as TenancyService;
+  const realSettlementSvc37 = new SettlementQueryService(tenancy37, new SettlementQueryRepository());
+  const realPoSvc37 = new PurchaseOrderService(
+    tenancy37,
+    svc.poRepo,
+    new PurchaseOrderAttachmentRepository(),
+    svc.materialRepo,
+    svc.uomRepo,
+    svc.commitmentWriter,
+    { record: async () => {} } as never,
+    new CommandGovernanceService(
+      new WorkflowTriggerResolverService(tenancy37),
+      new WorkflowsPrismaRepository(tenancy37),
+    ),
+    { assertAllowed: async () => undefined } as never,
+    realSettlementSvc37,
+  );
+
+  await realPoSvc37.autoCloseIfSettled(identity(env), po.id);
+
+  const updated = await prisma.purchaseOrder.findUniqueOrThrow({ where: { id: po.id } });
+  expect(updated.status).toBe('CLOSED');
+  expect(updated.closedAt).not.toBeNull();
+});
+
+// ── T38: projectId isolation ───────────────────────────────────────────────────
+test('T38 — findAll by projectId returns only POs for that project', async () => {
+  // Create a second project within the same org
+  const project2 = await prisma.project.create({
+    data: {
+      organizationId: env.orgId,
+      code: `PRJ-T38-${Date.now()}`,
+      name: 'T38 Second Project',
+      status: 'ACTIVE',
+      commercialModel: 'CLIENT_CONTRACT',
+      participationModel: 'SOLE',
+      createdBy: env.identity.userId,
+    },
+  });
+  await prisma.projectMember.create({
+    data: { projectId: project2.id, userId: env.identity.userId, joinedBy: env.identity.userId },
+  });
+
+  // PO1 on the fixture's project (via a cost-targeted line)
+  const po1 = await svc.poService.create(identity(env), {
+    supplierId: env.supplierId,
+    currencyCode: 'USD',
+    effectiveFrom: '2026-08-15',
+    lines: [{ lineType: 'MATERIAL', materialCode: 'REBAR-12', description: 'PO1', uomCode: 'TON', orderedQuantity: 1, unitPrice: 100, projectId: env.projectId, boqNodeId: env.boqNodeId, spendCategoryId: env.spendCategoryId }],
+  });
+
+  // PO2 on project2 (org/overhead line — no BOQ — so it won't have a projectId-linked line)
+  // Instead, use the projectId on the line to associate with project2.
+  // Since project2 has no BOQ, we use a project-level spend-category attribution.
+  const po2 = await svc.poService.create(identity(env), {
+    supplierId: env.supplierId,
+    currencyCode: 'USD',
+    effectiveFrom: '2026-08-15',
+    lines: [{ lineType: 'OTHER', description: 'PO2 project2 line', uomCode: 'TON', orderedQuantity: 1, unitPrice: 200, projectId: project2.id, spendCategoryId: env.spendCategoryId }],
+  });
+
+  const po1POs = await svc.poService.findAll(identity(env), { projectId: env.projectId });
+  const po2POs = await svc.poService.findAll(identity(env), { projectId: project2.id });
+
+  // PO1 should appear in project1 filter
+  expect(po1POs.some((p) => p.id === po1!.id)).toBe(true);
+  // PO2 should not appear in project1 filter
+  expect(po1POs.some((p) => p.id === po2!.id)).toBe(false);
+  // PO2 should appear in project2 filter
+  expect(po2POs.some((p) => p.id === po2!.id)).toBe(true);
+  // PO1 should not appear in project2 filter
+  expect(po2POs.some((p) => p.id === po1!.id)).toBe(false);
 });

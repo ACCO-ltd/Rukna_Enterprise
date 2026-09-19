@@ -14,6 +14,7 @@ import { PostSupplierPaymentDto } from './dto/post-supplier-payment.dto.js';
 import { AllocateAdvanceDto } from './dto/allocate-advance.dto.js';
 import { ReverseSupplierPaymentDto } from './dto/reverse-supplier-payment.dto.js';
 import { ReverseAdvanceAllocationDto } from './dto/reverse-advance-allocation.dto.js';
+import { CreatePurchaseAllocationDto } from './dto/create-purchase-allocation.dto.js';
 
 @ApiTags('Supplier Payments')
 @ApiBearerAuth('access-token')
@@ -122,5 +123,27 @@ export class SupplierPaymentController {
     @Body() dto: ReverseSupplierPaymentDto,
   ) {
     return this.supplierPaymentService.reverse(identity, id, dto);
+  }
+
+  @Post(':id/purchase-allocations')
+  @ApiParam({ name: 'id', description: 'Supplier payment ID' })
+  @ApiOperation({ summary: 'Link this payment to a purchase order (pre-bill funding allocation)' })
+  @ApiResponse({ status: 404, description: 'Payment or purchase order not found' })
+  createPurchaseAllocation(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: CreatePurchaseAllocationDto,
+  ) {
+    return this.supplierPaymentService.createPurchaseAllocation(identity, id, dto);
+  }
+
+  @Get(':id/purchase-allocations')
+  @ApiParam({ name: 'id', description: 'Supplier payment ID' })
+  @ApiOperation({ summary: 'List purchase order allocations for this payment' })
+  listPurchaseAllocations(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+  ) {
+    return this.supplierPaymentService.listPurchaseAllocations(identity, id);
   }
 }

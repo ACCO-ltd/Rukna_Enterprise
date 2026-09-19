@@ -9,6 +9,7 @@ import { RequirePermissions } from '../../../../common/decorators/require-permis
 import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import { GoodsReceiptService } from '../application/goods-receipt.service.js';
 import { CreateGoodsReceiptDto } from './dto/create-goods-receipt.dto.js';
+import { AttachGrnFileDto } from './dto/attach-grn-file.dto.js';
 
 @ApiTags('Procurement — Goods Receipts')
 @ApiBearerAuth('access-token')
@@ -60,12 +61,23 @@ export class GoodsReceiptController {
     return this.service.cancel(identity, id);
   }
 
-  @Post(':id/approve-exception')
-  @RequirePermissions(PERMISSIONS.goodsReceiptExceptionsApprove)
-  @HttpCode(HttpStatus.OK)
+  @Get(':id/attachments')
   @ApiParam({ name: 'id' })
-  @ApiOperation({ summary: 'Supervisor approves over-receipt exception: EXCEPTION_PENDING → DRAFT' })
-  approveException(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
-    return this.service.approveException(identity, id);
+  @ApiOperation({ summary: 'List attachments on a goods receipt' })
+  listAttachments(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.service.listAttachments(identity, id);
+  }
+
+  @Post(':id/attachments')
+  @RequirePermissions(PERMISSIONS.goodsReceiptsCreate)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Attach a file to a DRAFT goods receipt (throws if POSTED)' })
+  attachToGrn(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: AttachGrnFileDto,
+  ) {
+    return this.service.attachToGrn(identity, id, dto);
   }
 }
+

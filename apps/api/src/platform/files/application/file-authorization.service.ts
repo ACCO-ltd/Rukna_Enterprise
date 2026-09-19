@@ -41,7 +41,11 @@ export type FileOwner =
   // The rendered PDF for a client invoice. `ClientInvoiceController` gates every invoice route on
   // one organization-level permission (manage:accounts-receivable), not project membership — see
   // ORGANIZATION_LOGO's note — so the document mirrors that rather than resolving a project.
-  | { kind: 'INVOICE_DOCUMENT'; invoiceId: string };
+  | { kind: 'INVOICE_DOCUMENT'; invoiceId: string }
+  // Procurement attachments: quotation evidence on a PO revision, delivery note on a GRN.
+  // Neither lives inside a project — they are org-level records. Reachable by procurementView.
+  | { kind: 'PO_REVISION_ATTACHMENT'; attachmentId: string; revisionId: string; organizationId: string }
+  | { kind: 'GRN_ATTACHMENT'; attachmentId: string; grnId: string; organizationId: string };
 
 export interface FileOwnership {
   fileId: string;
@@ -122,6 +126,20 @@ export class FileAuthorizationService {
         },
         organizationLogoFor: { select: { id: true } },
         invoiceDocumentFor: { select: { id: true } },
+        poRevisionAttachments: {
+          select: {
+            id: true,
+            purchaseOrderRevisionId: true,
+            organizationId: true,
+          },
+        },
+        grnAttachments: {
+          select: {
+            id: true,
+            goodsReceiptNoteId: true,
+            organizationId: true,
+          },
+        },
       },
     });
     if (!file) throw new NotFoundException(`File ${fileId} not found`);
@@ -172,6 +190,18 @@ export class FileAuthorizationService {
       ...file.invoiceDocumentFor.map((invoice) => ({
         kind: 'INVOICE_DOCUMENT' as const,
         invoiceId: invoice.id,
+      })),
+      ...file.poRevisionAttachments.map((a) => ({
+        kind: 'PO_REVISION_ATTACHMENT' as const,
+        attachmentId: a.id,
+        revisionId: a.purchaseOrderRevisionId,
+        organizationId: a.organizationId,
+      })),
+      ...file.grnAttachments.map((a) => ({
+        kind: 'GRN_ATTACHMENT' as const,
+        attachmentId: a.id,
+        grnId: a.goodsReceiptNoteId,
+        organizationId: a.organizationId,
       })),
     ];
 
@@ -290,6 +320,11 @@ export class FileAuthorizationService {
         return identity.permissions.includes(PERMISSIONS.organizationsView);
       case 'INVOICE_DOCUMENT':
         return identity.permissions.includes(PERMISSIONS.receivablesManage);
+      // Procurement attachments are org-level (no project). Any holder of procurementView can
+      // read them — the same guard that gates the PO and GRN list endpoints.
+      case 'PO_REVISION_ATTACHMENT':
+      case 'GRN_ATTACHMENT':
+        return identity.permissions.includes(PERMISSIONS.procurementView);
     }
   }
 

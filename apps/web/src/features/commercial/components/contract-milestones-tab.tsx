@@ -216,6 +216,7 @@ export function ContractMilestonesTab({
         milestone={sendingMilestone}
         projectId={projectId}
         currency={summary.currency ?? contract.currency}
+        clientName={contract.clientName}
         onSent={handleInvoiceSent}
         onClose={() => setSendingMilestone(null)}
       />

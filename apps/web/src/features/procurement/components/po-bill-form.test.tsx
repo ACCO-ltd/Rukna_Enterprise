@@ -42,6 +42,7 @@ const PO: PurchaseOrder = {
   currentRevisionId: 'rev-1',
   supplier: { id: 'sup-1', name: 'ABC Trading' },
   approvalInstanceId: null,
+  closedAt: null,
   revisions: [
     {
       id: 'rev-1',
@@ -54,6 +55,9 @@ const PO: PurchaseOrder = {
       expectedDeliveryDate: null,
       approvedAt: '2026-08-01T00:00:00.000Z',
       approvedBy: 'user-1',
+      quotationRef: null,
+      quotationDate: null,
+      quotedAmount: null,
       lines: [
         {
           id: 'pol-1',

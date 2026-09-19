@@ -44,14 +44,16 @@ function build(over: {
   const sod = { assertAllowed: jest.fn() };
   const svc = new SupplierPaymentService(
     { getClient: () => prisma } as never,
-    paymentRepo as never,
-    {} as never,
-    {} as never,
-    {} as never,
-    {} as never,
-    {} as never,
-    sod as never,
-    signatoryService as never,
+    paymentRepo as never,                     // paymentRepo
+    {} as never,                              // billRepo
+    {} as never,                              // purchaseAllocationRepo
+    {} as never,                              // accountRepo
+    {} as never,                              // sequenceRepo
+    {} as never,                              // postingPort
+    {} as never,                              // commandGovernance
+    sod as never,                             // sod
+    signatoryService as never,               // signatoryService
+    {} as never,                              // purchaseOrderService
   );
   return { svc, paymentRepo, signatoryService };
 }

@@ -26,12 +26,15 @@ import type {
   CreatePurchaseOrderPayload,
   CreateUomPayload,
   GoodsReceipt,
+  GrnAttachment,
   Material,
   MaterialCategory,
   MaterialRequest,
   MaterialRequestScope,
   MaterialRequestStatus,
+  PoRevisionAttachment,
   PurchaseOrder,
+  PurchaseOrderSettlement,
   PurchaseOrderStatus,
   RevisePurchaseOrderPayload,
   SpendCategory,
@@ -49,6 +52,10 @@ import type {
   PostSupplierBillPayload,
   ReverseSupplierBillPayload,
   UnitOfMeasure,
+  AttachPoRevisionPayload,
+  CreateBuyerAdvancePayload,
+  CreateAdvanceReturnPayload,
+  CreateEvidenceAllocationPayload,
 } from '../types';
 
 /** Strips `undefined` entries so an absent filter is not sent as the string "undefined". */
@@ -260,9 +267,10 @@ export function cancelMaterialRequest(id: string): Promise<MaterialRequest> {
 export function listPurchaseOrders(filters?: {
   status?: PurchaseOrderStatus;
   supplierId?: string;
+  projectId?: string;
 }): Promise<PurchaseOrder[]> {
   return apiClient<PurchaseOrder[]>('/procurement/purchase-orders', {
-    params: queryParams({ status: filters?.status, supplierId: filters?.supplierId }),
+    params: queryParams({ status: filters?.status, supplierId: filters?.supplierId, projectId: filters?.projectId }),
   });
 }
 
@@ -301,6 +309,52 @@ export function approvePurchaseOrder(id: string): Promise<PurchaseOrder> {
   return apiClient<PurchaseOrder>(`/procurement/purchase-orders/${id}/approve`, {
     method: 'POST',
   });
+}
+
+/**
+ * `POST /procurement/purchase-orders/:id/confirm`
+ *
+ * Single-actor action that replaces the old submit → approve two-step. Validates the DRAFT
+ * revision, marks it ACTIVE, sets PO status to OPEN, and writes COMMITTED ledger entries.
+ * No DoA routing — the buyer who raised the order confirms it directly.
+ */
+export function confirmPurchaseOrder(id: string): Promise<PurchaseOrder> {
+  return apiClient<PurchaseOrder>(`/procurement/purchase-orders/${id}/confirm`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * `GET /procurement/purchase-orders/:id/settlement`
+ *
+ * Full reconciliation read model: funding (direct payments + buyer advances), receiving
+ * (per PO line), settlement status, exceptions, and a human-readable position sentence.
+ * Computed server-side from Finance allocation tables + commitment ledger — no arithmetic
+ * is performed in the browser.
+ */
+export function getPurchaseOrderSettlement(id: string): Promise<PurchaseOrderSettlement> {
+  return apiClient<PurchaseOrderSettlement>(`/procurement/purchase-orders/${id}/settlement`);
+}
+
+/**
+ * `GET /procurement/purchase-orders/:id/revision-attachments`
+ *
+ * Quotation evidence attached to the current DRAFT revision (or the ACTIVE revision for
+ * confirmed POs). All become IMMUTABLE when the revision is confirmed.
+ */
+export function listPoRevisionAttachments(poId: string): Promise<PoRevisionAttachment[]> {
+  return apiClient<PoRevisionAttachment[]>(
+    `/procurement/purchase-orders/${poId}/revision-attachments`,
+  );
+}
+
+/**
+ * `GET /procurement/goods-receipts/:id/attachments`
+ *
+ * Delivery note evidence attached to a GRN. All become IMMUTABLE when the GRN is posted.
+ */
+export function listGoodsReceiptAttachments(grnId: string): Promise<GrnAttachment[]> {
+  return apiClient<GrnAttachment[]>(`/procurement/goods-receipts/${grnId}/attachments`);
 }
 
 /**
@@ -711,6 +765,42 @@ export function allocateAdvance(
   return apiClient<AllocationResult>(`/payments/${paymentId}/allocations`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+// ─── PO revision attachments (write) ─────────────────────────────────────────────
+
+/** `POST /procurement/purchase-orders/:id/revision-attachments` */
+export function attachPoRevision(poId: string, payload: AttachPoRevisionPayload): Promise<PoRevisionAttachment> {
+  return apiClient<PoRevisionAttachment>(`/procurement/purchase-orders/${poId}/revision-attachments`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+// ─── Buyer advances ──────────────────────────────────────────────────────────────
+
+/** `POST /buyer-advances` — create a new buyer advance in DRAFT status. */
+export function createBuyerAdvance(payload: CreateBuyerAdvancePayload): Promise<unknown> {
+  return apiClient<unknown>('/buyer-advances', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/** `POST /buyer-advances/:id/returns` — record a return of unused advance funds. */
+export function createAdvanceReturn(advanceId: string, payload: CreateAdvanceReturnPayload): Promise<unknown> {
+  return apiClient<unknown>(`/buyer-advances/${advanceId}/returns`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/** `POST /buyer-advances/:id/evidence-allocations` — link a supplier bill as evidence. */
+export function createEvidenceAllocation(advanceId: string, payload: CreateEvidenceAllocationPayload): Promise<unknown> {
+  return apiClient<unknown>(`/buyer-advances/${advanceId}/evidence-allocations`, {
+    method: 'POST',
     body: JSON.stringify(payload),
   });
 }

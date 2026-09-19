@@ -44,6 +44,7 @@ function po(overrides: Partial<PurchaseOrder> = {}): PurchaseOrder {
     currentRevisionId: 'rev-1',
     supplier: { id: 'sup-1', name: 'ABC Trading' },
     approvalInstanceId: null,
+    closedAt: null,
     revisions: [
       {
         id: 'rev-1',
@@ -56,6 +57,9 @@ function po(overrides: Partial<PurchaseOrder> = {}): PurchaseOrder {
         expectedDeliveryDate: null,
         approvedAt: '2026-08-01T00:00:00.000Z',
         approvedBy: 'user-1',
+        quotationRef: null,
+        quotationDate: null,
+        quotedAmount: null,
         lines: [poLine()],
       },
     ],

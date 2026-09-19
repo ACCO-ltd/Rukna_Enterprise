@@ -52,6 +52,8 @@ interface FileRow {
   }[];
   organizationLogoFor: { id: string }[];
   invoiceDocumentFor: { id: string }[];
+  poRevisionAttachments: { id: string; purchaseOrderRevisionId: string; organizationId: string }[];
+  grnAttachments: { id: string; goodsReceiptNoteId: string; organizationId: string }[];
 }
 
 /** A revision binding on the given project — the register's owner shape, in one place. */
@@ -74,6 +76,8 @@ function fileRow(over: Partial<FileRow> = {}): FileRow {
     ipcAttachments: [],
     organizationLogoFor: [],
     invoiceDocumentFor: [],
+    poRevisionAttachments: [],
+    grnAttachments: [],
     ...over,
   };
 }

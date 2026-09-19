@@ -28,6 +28,7 @@ import {
   cancelGoodsReceipt,
   cancelMaterialRequest,
   cancelPurchaseOrder,
+  confirmPurchaseOrder,
   createGoodsReceipt,
   createMaterial,
   createMaterialCategory,
@@ -47,12 +48,15 @@ import {
   getMaterialRequest,
   getProjectCommitmentSummary,
   getPurchaseOrder,
+  getPurchaseOrderSettlement,
   getSupplierBill,
   getSupplierPayment,
   listGoodsReceipts,
+  listGoodsReceiptAttachments,
   listMaterialCategories,
   listMaterialRequests,
   listMaterials,
+  listPoRevisionAttachments,
   listProjectCommitments,
   listPurchaseOrderCommitments,
   listPurchaseOrders,
@@ -72,6 +76,10 @@ import {
   submitPurchaseOrder,
   submitSupplierBill,
   updateSupplier,
+  attachPoRevision,
+  createBuyerAdvance,
+  createAdvanceReturn,
+  createEvidenceAllocation,
 } from '../api/procurement-api';
 import type {
   ApproveExceptionPayload,
@@ -86,12 +94,15 @@ import type {
   CreatePurchaseOrderPayload,
   CreateUomPayload,
   GoodsReceipt,
+  GrnAttachment,
   Material,
   MaterialCategory,
   MaterialRequest,
   MaterialRequestScope,
   MaterialRequestStatus,
+  PoRevisionAttachment,
   PurchaseOrder,
+  PurchaseOrderSettlement,
   PurchaseOrderStatus,
   RevisePurchaseOrderPayload,
   SpendCategory,
@@ -108,6 +119,10 @@ import type {
   PostSupplierBillPayload,
   ReverseSupplierBillPayload,
   UnitOfMeasure,
+  AttachPoRevisionPayload,
+  CreateBuyerAdvancePayload,
+  CreateAdvanceReturnPayload,
+  CreateEvidenceAllocationPayload,
 } from '../types';
 
 export const procurementKeys = {
@@ -132,8 +147,8 @@ export const procurementKeys = {
       scope ?? 'all',
     ] as const,
   materialRequest: (id: string) => [...procurementKeys.all, 'material-request', id] as const,
-  purchaseOrders: (status?: string, supplierId?: string) =>
-    [...procurementKeys.all, 'purchase-orders', status ?? 'all', supplierId ?? 'all'] as const,
+  purchaseOrders: (status?: string, supplierId?: string, projectId?: string) =>
+    [...procurementKeys.all, 'purchase-orders', status ?? 'all', supplierId ?? 'all', projectId ?? 'all'] as const,
   purchaseOrder: (id: string) => [...procurementKeys.all, 'purchase-order', id] as const,
   goodsReceipts: (purchaseOrderId?: string) =>
     [...procurementKeys.all, 'goods-receipts', purchaseOrderId ?? 'all'] as const,
@@ -158,6 +173,12 @@ export const procurementKeys = {
     [...procurementKeys.commitments(), 'project-summary', projectId] as const,
   purchaseOrderCommitments: (poId: string) =>
     [...procurementKeys.commitments(), 'purchase-order', poId] as const,
+  purchaseOrderSettlement: (poId: string) =>
+    [...procurementKeys.all, 'po-settlement', poId] as const,
+  poRevisionAttachments: (poId: string) =>
+    [...procurementKeys.all, 'po-revision-attachments', poId] as const,
+  grnAttachments: (grnId: string) =>
+    [...procurementKeys.all, 'grn-attachments', grnId] as const,
 };
 
 // ─── Catalogue ───────────────────────────────────────────────────────────────────
@@ -370,9 +391,10 @@ export const useCancelMaterialRequest = () => useMrTransition(cancelMaterialRequ
 export function usePurchaseOrders(filters?: {
   status?: PurchaseOrderStatus;
   supplierId?: string;
+  projectId?: string;
 }): UseQueryResult<PurchaseOrder[]> {
   return useQuery({
-    queryKey: procurementKeys.purchaseOrders(filters?.status, filters?.supplierId),
+    queryKey: procurementKeys.purchaseOrders(filters?.status, filters?.supplierId, filters?.projectId),
     queryFn: () => listPurchaseOrders(filters),
   });
 }
@@ -444,6 +466,52 @@ export function useCancelPurchaseOrder() {
       qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'purchase-orders'] });
       qc.invalidateQueries({ queryKey: procurementKeys.commitments() });
     },
+  });
+}
+
+/** Confirms the DRAFT revision → ACTIVE, PO DRAFT → OPEN, writes COMMITTED entries. */
+export function useConfirmPurchaseOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => confirmPurchaseOrder(id),
+    onSuccess: (po) => {
+      qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrder(po.id) });
+      qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'purchase-orders'] });
+      qc.invalidateQueries({ queryKey: procurementKeys.commitments() });
+    },
+  });
+}
+
+/** Full reconciliation read model for a PO — funding, receiving, settlement status. */
+export function usePurchaseOrderSettlement(
+  poId: string,
+  options?: { enabled?: boolean },
+): UseQueryResult<PurchaseOrderSettlement> {
+  return useQuery({
+    queryKey: procurementKeys.purchaseOrderSettlement(poId),
+    queryFn: () => getPurchaseOrderSettlement(poId),
+    enabled: Boolean(poId) && (options?.enabled ?? true),
+  });
+}
+
+/** Quotation evidence attached to the current revision of a PO. */
+export function usePoRevisionAttachments(poId: string): UseQueryResult<PoRevisionAttachment[]> {
+  return useQuery({
+    queryKey: procurementKeys.poRevisionAttachments(poId),
+    queryFn: () => listPoRevisionAttachments(poId),
+    enabled: Boolean(poId),
+  });
+}
+
+/** Delivery note evidence attached to a GRN. */
+export function useGoodsReceiptAttachments(
+  grnId: string,
+  options?: { enabled?: boolean },
+): UseQueryResult<GrnAttachment[]> {
+  return useQuery({
+    queryKey: procurementKeys.grnAttachments(grnId),
+    queryFn: () => listGoodsReceiptAttachments(grnId),
+    enabled: Boolean(grnId) && (options?.enabled ?? true),
   });
 }
 
@@ -735,5 +803,50 @@ export function usePurchaseOrderCommitments(
     queryKey: procurementKeys.purchaseOrderCommitments(poId),
     queryFn: () => listPurchaseOrderCommitments(poId),
     enabled: Boolean(poId),
+  });
+}
+
+// ─── PO revision attachment write ────────────────────────────────────────────────
+
+export function useAttachPoRevision(poId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: AttachPoRevisionPayload) => attachPoRevision(poId, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: procurementKeys.poRevisionAttachments(poId) });
+    },
+  });
+}
+
+// ─── Buyer advances write ─────────────────────────────────────────────────────────
+
+export function useCreateBuyerAdvance(poId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateBuyerAdvancePayload) => createBuyerAdvance(payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderSettlement(poId) });
+    },
+  });
+}
+
+export function useCreateAdvanceReturn(advanceId: string, poId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateAdvanceReturnPayload) => createAdvanceReturn(advanceId, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderSettlement(poId) });
+    },
+  });
+}
+
+export function useCreateEvidenceAllocation(advanceId: string, poId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateEvidenceAllocationPayload) =>
+      createEvidenceAllocation(advanceId, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderSettlement(poId) });
+    },
   });
 }

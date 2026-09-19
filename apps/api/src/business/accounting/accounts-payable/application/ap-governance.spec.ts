@@ -77,13 +77,15 @@ describe('AP governance seam (ADR-011)', () => {
       const svc = new SupplierPaymentService(
         tenancy,
         paymentRepo as never,
-        {} as never,
-        {} as never,
-        {} as never,
-        {} as never,
-        commandGovernance as never,
-        sod as never,
-        {} as never,
+        {} as never,                              // billRepo
+        {} as never,                              // purchaseAllocationRepo
+        {} as never,                              // accountRepo
+        {} as never,                              // sequenceRepo
+        {} as never,                              // postingPort
+        commandGovernance as never,               // commandGovernance
+        sod as never,                             // sod
+        {} as never,                              // signatoryService
+        {} as never,                              // purchaseOrderService
       );
       return { svc, paymentRepo, commandGovernance };
     }

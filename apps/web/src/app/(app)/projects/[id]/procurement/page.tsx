@@ -1,4 +1,4 @@
-import { ProjectProcurementTab } from '@/features/procurement/components/project-procurement-tab';
+import { redirect } from 'next/navigation';
 
 export default async function ProjectProcurementPage({
   params,
@@ -6,5 +6,5 @@ export default async function ProjectProcurementPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <ProjectProcurementTab projectId={id} />;
+  redirect(`/projects/${id}/procurement/overview`);
 }
