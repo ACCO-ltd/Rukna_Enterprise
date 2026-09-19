@@ -1310,7 +1310,7 @@ test('T26 — Fully paid PO with no supplier bill is EVIDENCE_MISSING → ACTION
 
 // ── T27: EVIDENCE_MISSING blocks settlement; adding a bill enables it ──────────
 test('T27 — Paid + received + no invoice = ACTION_REQUIRED; adding a bill removes EVIDENCE_MISSING', async () => {
-  const { po, poLineId } = await createConfirmedServicePo(3000);
+  const { po } = await createConfirmedServicePo(3000);
   const settlementSvc = buildSettlementService();
 
   // Fund it
