@@ -17,6 +17,7 @@ function render(overrides: Partial<Parameters<typeof BoqClassifierDrawer>[0]> = 
       totalClientRevenue="2340000.00"
       absorbEnabled={false}
       separateEnabled={false}
+      sections={[{ id: 'section-01', code: '01', description: 'Preliminaries' }]}
       isPending={false}
       onSubmit={onSubmit}
       onClose={onClose}
@@ -24,6 +25,12 @@ function render(overrides: Partial<Parameters<typeof BoqClassifierDrawer>[0]> = 
     />,
   );
   return { onSubmit, onClose };
+}
+
+function selectVariationSection() {
+  fireEvent.change(screen.getByLabelText(/BOQ section/i), {
+    target: { value: 'section-01' },
+  });
 }
 
 describe('BoqClassifierDrawer — decision-first who-pays', () => {
@@ -41,6 +48,7 @@ describe('BoqClassifierDrawer — decision-first who-pays', () => {
       target: { value: 'Steel canopy' },
     });
     fireEvent.change(screen.getByLabelText(/^Amount/i), { target: { value: '2000' } });
+    selectVariationSection();
     expect(screen.getAllByText(/2,342,000/).length).toBeGreaterThan(0);
   });
 
@@ -56,6 +64,7 @@ describe('BoqClassifierDrawer — decision-first who-pays', () => {
       route: 'VARIATION',
       description: 'Steel canopy',
       amount: '2000.00',
+      parentId: 'section-01',
     });
   });
 
@@ -65,6 +74,7 @@ describe('BoqClassifierDrawer — decision-first who-pays', () => {
       target: { value: 'Steel canopy' },
     });
     fireEvent.change(screen.getByLabelText(/^Amount/i), { target: { value: '2000' } });
+    selectVariationSection();
     fireEvent.change(screen.getByLabelText(/Client approval ref/i), {
       target: { value: 'VO-SIGNED-7' },
     });
@@ -73,6 +83,7 @@ describe('BoqClassifierDrawer — decision-first who-pays', () => {
       route: 'VARIATION',
       description: 'Steel canopy',
       amount: '2000.00',
+      parentId: 'section-01',
       clientApprovalReference: 'VO-SIGNED-7',
     });
   });
