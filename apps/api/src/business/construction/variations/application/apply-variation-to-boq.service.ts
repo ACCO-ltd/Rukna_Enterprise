@@ -165,7 +165,7 @@ export class ApplyVariationToBoqService {
     contractId: string,
     dto: {
       title: string;
-      lines: Array<{ description: string; quantity: number; unitRate: number }>;
+      lines: Array<{ description: string; quantity: number; unitRate: number; parentId?: string }>;
       clientApprovalReference?: string;
     },
   ): Promise<ApplyVariationToBoqResponse> {
@@ -219,12 +219,13 @@ export class ApplyVariationToBoqService {
       const applied = await this.boqVersioning.appendVariationNodes(tx, identity, projectId, {
         id: vo.id,
         reference,
-        lines: lines.map((l) => ({
+        lines: lines.map((l, i) => ({
           description: l.description,
           quantity: l.quantity,
           unitRate: l.unitRate,
           amount: l.amount,
           sortOrder: l.sortOrder,
+          parentId: dto.lines[i]?.parentId,
         })),
       });
 

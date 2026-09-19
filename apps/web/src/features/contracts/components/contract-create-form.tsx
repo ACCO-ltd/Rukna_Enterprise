@@ -4,15 +4,13 @@ import { useState, type ReactNode } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import Link from 'next/link';
-import { ArrowRight, Lock, SlidersHorizontal } from 'lucide-react';
+import { SlidersHorizontal } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, FormField, FormSection, Select } from '@erp/ui';
+import { Alert, FormField, FormSection, Select } from '@erp/ui';
 
 import { useBoqWorkspace } from '@/features/boq/hooks/use-boq';
 import { useClients } from '@/features/clients/hooks/use-clients';
 import { useProjects } from '@/features/projects/hooks/use-projects';
-import { EmptyState } from '@/components/empty-state';
 import { FormActions } from '@/components/form-actions';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
@@ -81,7 +79,6 @@ export function ContractCreateForm({ projectId }: { projectId: string }) {
   // life-stage is the plain-language committed signal; `inContractTotal` is the tie-out figure
   // (canViewCost-gated, so null when the caller's tier withholds it — still committed, just not
   // shown a number).
-  const isCommitted = moneyBand?.lifeStage === 'COMMITTED';
   const tieOut = moneyBand?.inContractTotal ?? null;
   const tieOutCurrency = moneyBand?.currency ?? 'USD';
 
@@ -146,9 +143,6 @@ export function ContractCreateForm({ projectId }: { projectId: string }) {
 
   // The server's own gate: if the BOQ was uncommitted between load and submit, the create is
   // refused with BOQ_NOT_COMMITTED — surfaced as the same dead-end rather than a raw error.
-  const serverGated =
-    create.error instanceof ApiError && create.error.code === 'BOQ_NOT_COMMITTED';
-
   const dataPending = projects.isPending || clients.isPending || boq.isPending;
   const dataFailed = projects.isError || clients.isError || boq.isError;
 
@@ -170,25 +164,6 @@ export function ContractCreateForm({ projectId }: { projectId: string }) {
 
   // The no-committed-BOQ dead-end (S-CC-5). The contract value ties out to the committed scope, so
   // there is nothing to sign against until the BOQ is committed. Send the user there.
-  if (!isCommitted || serverGated) {
-    return (
-      <EmptyState
-        variant="page"
-        icon={<Lock size={25} strokeWidth={1.8} aria-hidden="true" />}
-        title={t('boqGateTitle')}
-        description={t('boqGateHint')}
-        action={
-          <Button asChild>
-            <Link href={`/projects/${projectId}/boq`}>
-              {t('boqGateAction')}
-              <ArrowRight size={16} aria-hidden="true" />
-            </Link>
-          </Button>
-        }
-      />
-    );
-  }
-
   const onSubmit = (values: CreateContractFields) => {
     if (create.isPending || !clientId) return;
     create.mutate(
@@ -206,7 +181,7 @@ export function ContractCreateForm({ projectId }: { projectId: string }) {
   };
 
   const errorMessages =
-    create.error && !serverGated
+    create.error
       ? [
           create.error instanceof ApiError && create.error.messages.length > 0
             ? create.error.message

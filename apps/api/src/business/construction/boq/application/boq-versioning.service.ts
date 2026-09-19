@@ -493,11 +493,17 @@ export class BoqVersioningService {
       );
     }
     const version = await this.repo.findVersion(tx as never, operationalVersionId);
-    if (!version || version.status !== 'COMMITTED') {
-      // A variation is a post-commit act: it raises a contract value that only exists once the BOQ has
-      // been committed. Appending to a pre-commit DRAFT would raise nothing there is to raise.
+    const activeClientContract = await tx.contract.findFirst({
+      where: { projectId, contractKind: 'CLIENT_CONTRACT', status: 'ACTIVE' },
+      select: { id: true },
+    });
+    if (!version || (version.status !== 'COMMITTED' && !activeClientContract)) {
+      // A variation is a post-signing act. The operational BOQ may remain WORKING when the
+      // contract was signed from a draft, because the contract's immutable signing snapshot is
+      // the legal baseline. A second active-client-contract guard prevents guessing which contract
+      // should receive the value raise.
       throw new BadRequestException(
-        'A variation can only be adopted into a BOQ that has been committed to contract.',
+        'A variation requires an active client contract or a BOQ committed to contract.',
       );
     }
 

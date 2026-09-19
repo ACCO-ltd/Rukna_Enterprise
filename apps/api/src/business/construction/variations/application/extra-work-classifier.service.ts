@@ -140,6 +140,7 @@ export class ExtraWorkClassifierService {
             description: line.description,
             quantity: 1,
             unitRate: Number(line.amount),
+            ...(line.parentId ? { parentId: line.parentId } : {}),
           })),
           ...(dto.clientApprovalReference
             ? { clientApprovalReference: dto.clientApprovalReference }

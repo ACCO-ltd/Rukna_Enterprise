@@ -209,6 +209,9 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
 
   const band = workspace.moneyBand;
   const committed = band?.lifeStage === 'COMMITTED';
+  // A contract created from a draft BOQ owns a signing snapshot even though the live operational
+  // version remains WORKING. That post-signing state must expose the variation command.
+  const hasSignedContract = band?.baseContractValue != null;
   // The working draft is what free-editing acts on; a committed version pins value cells.
   const onDraft = operationalVersionId === workspace.draft?.id;
   // Edit affordances need edit permission AND an editable draft (the server refuses otherwise).
@@ -303,7 +306,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
       ? guidance.data?.find((item) => item.kind === 'MAIN_CONTRACT_REQUIRED' && item.actionUrl)
       : undefined;
 
-  const primaryAction = committed ? (
+  const primaryAction = committed || hasSignedContract ? (
     canEdit ? (
       <Button size="sm" className="gap-2" onClick={() => setClassifierOpen(true)}>
         <Plus size={16} aria-hidden="true" />
@@ -449,7 +452,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
             highlighted={highlighted}
             collapsed={collapsed}
             onToggle={toggleCollapsed}
-            onPinnedCellEdit={committed && canEdit ? () => setClassifierOpen(true) : undefined}
+            onPinnedCellEdit={committed || (hasSignedContract && canEdit) ? () => setClassifierOpen(true) : undefined}
             onSelect={(node) =>
               setDrawer({
                 mode: 'edit',
@@ -518,6 +521,9 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
           // AND adopts the VO inline (contract value rises immediately).
           absorbEnabled
           separateEnabled
+          sections={nodes
+            .filter((node) => !node.isLeaf)
+            .map((node) => ({ id: node.id, code: node.code, description: node.description }))}
           isPending={addExtraWork.isPending}
           errorMessage={
             addExtraWork.isError ? (addExtraWork.error as Error | undefined)?.message : undefined
@@ -623,7 +629,13 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
     addExtraWork.mutate(
       {
         treatment: result.route,
-        lines: [{ description: result.description, amount: result.amount }],
+        lines: [
+          {
+            description: result.description,
+            amount: result.amount,
+            ...(result.parentId ? { parentId: result.parentId } : {}),
+          },
+        ],
         ...(result.clientApprovalReference
           ? { clientApprovalReference: result.clientApprovalReference }
           : {}),

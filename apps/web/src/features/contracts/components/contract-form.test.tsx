@@ -104,27 +104,21 @@ describe('ContractCreateForm — minimal create (S-CC-5)', () => {
     expect(payload).not.toHaveProperty('boqVersionId');
   });
 
-  it('replaces the form with a commit-the-BOQ gate when the BOQ is not committed', () => {
+  it('allows signing from a draft BOQ', () => {
     mocks.moneyBand = { ...mocks.moneyBand!, lifeStage: 'WORKING' };
     renderWithProviders(<ContractCreateForm projectId="p1" />);
 
-    expect(screen.getByText('Commit the BOQ first')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Go to the project BOQ/ })).toHaveAttribute(
-      'href',
-      '/projects/p1/boq',
-    );
-    // The gate stands in for the form — no submit button.
-    expect(screen.queryByRole('button', { name: 'Create contract' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create contract' })).toBeInTheDocument();
   });
 
-  it('handles the server BOQ_NOT_COMMITTED refusal with the same gate', () => {
+  it('surfaces a server refusal as a form error', () => {
     // Committed money band on load, but the server refuses at submit (a race between the two). The
-    // component reads `ApiError.code` and falls back to the same commit-the-BOQ dead-end.
+    // A server-side refusal remains visible without sending the user into a dead-end.
     mocks.createError = new ApiError(400, 'no committed boq', 'BOQ_NOT_COMMITTED');
 
     renderWithProviders(<ContractCreateForm projectId="p1" />);
 
-    expect(screen.getByText('Commit the BOQ first')).toBeInTheDocument();
+    expect(screen.getByText('no committed boq')).toBeInTheDocument();
   });
 
   it('returns cancellation to the project commercial contract tab', () => {

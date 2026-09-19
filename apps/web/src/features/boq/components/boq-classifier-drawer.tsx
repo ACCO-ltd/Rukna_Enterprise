@@ -29,6 +29,7 @@ export interface ClassifierResult {
   amount: string;
   /** VARIATION only: the paper VO reference the client signed (optional, ≤120 chars). */
   clientApprovalReference?: string;
+  parentId?: string;
 }
 
 /**
@@ -54,6 +55,7 @@ export function BoqClassifierDrawer({
   contractValue,
   absorbEnabled,
   separateEnabled,
+  sections,
   isPending,
   errorMessage,
   onSubmit,
@@ -67,6 +69,7 @@ export function BoqClassifierDrawer({
   totalClientRevenue: string | null;
   absorbEnabled: boolean;
   separateEnabled: boolean;
+  sections: Array<{ id: string; code: string; description: string }>;
   isPending: boolean;
   errorMessage?: string;
   onSubmit: (result: ClassifierResult) => void;
@@ -80,6 +83,7 @@ export function BoqClassifierDrawer({
   const [amount, setAmount] = useState('');
   // VARIATION only: the paper VO reference the client signed. Optional — never blocks submit.
   const [clientApprovalReference, setClientApprovalReference] = useState('');
+  const [parentId, setParentId] = useState('');
 
   const money = (v: string | null): string | null => formatMoney(v, currency, locale);
 
@@ -167,7 +171,8 @@ export function BoqClassifierDrawer({
     (route === 'SEPARATE' && separateEnabled);
 
   const canSubmit =
-    route !== '' && routeEnabled && description.trim().length > 0 && isPositive(amount);
+    route !== '' && routeEnabled && description.trim().length > 0 && isPositive(amount) &&
+    (route !== 'VARIATION' || Boolean(parentId));
 
   const cta =
     route === 'ABSORB'
@@ -215,16 +220,34 @@ export function BoqClassifierDrawer({
               the client's approval ref here keeps the audit trail intact — but it never blocks the
               raise (a verbal go-ahead is common; the reference follows on paper). */}
           {route === 'VARIATION' ? (
-            <div className="space-y-1.5">
-              <Label htmlFor="classifier-client-ref">{t('clientRefLabel')}</Label>
-              <Input
-                id="classifier-client-ref"
-                value={clientApprovalReference}
-                onChange={(event) => setClientApprovalReference(event.target.value)}
-                maxLength={120}
-                placeholder={t('clientRefPlaceholder')}
-              />
-            </div>
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="classifier-parent">BOQ section</Label>
+                <select
+                  id="classifier-parent"
+                  value={parentId}
+                  onChange={(event) => setParentId(event.target.value)}
+                  className="h-10 w-full rounded-control border border-border bg-surface px-3 text-body-sm"
+                >
+                <option value="">Select a section</option>
+                  {sections.map((section) => (
+                    <option key={section.id} value={section.id}>
+                      {section.code} — {section.description}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="classifier-client-ref">{t('clientRefLabel')}</Label>
+                <Input
+                  id="classifier-client-ref"
+                  value={clientApprovalReference}
+                  onChange={(event) => setClientApprovalReference(event.target.value)}
+                  maxLength={120}
+                  placeholder={t('clientRefPlaceholder')}
+                />
+              </div>
+            </>
           ) : null}
 
           {errorMessage ? (
@@ -247,6 +270,7 @@ export function BoqClassifierDrawer({
                 route,
                 description: description.trim(),
                 amount: normalize(amount),
+                ...(route === 'VARIATION' && parentId ? { parentId } : {}),
                 ...(route === 'VARIATION' && ref ? { clientApprovalReference: ref } : {}),
               });
             }}
