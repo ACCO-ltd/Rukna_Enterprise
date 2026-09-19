@@ -50,10 +50,16 @@ export class SettlementQueryRepository {
     return { byLine, hasOverReceipt: !!overReceiptGrn };
   }
 
-  // Pre-bill funding allocations (Finance links payment to PO before bill exists)
+  // Pre-bill funding allocations (Finance links payment to PO before bill exists).
+  // Only allocations whose parent SupplierPayment has been POSTED count as real disbursements —
+  // a DRAFT or APPROVED payment has not yet left ACCO's bank account.
   findPurchaseAllocations(prisma: TenantPrisma, organizationId: string, purchaseOrderId: string) {
     return prisma.supplierPaymentPurchaseAllocation.findMany({
-      where: { purchaseOrderId, organizationId },
+      where: {
+        purchaseOrderId,
+        organizationId,
+        supplierPayment: { postingStatus: 'POSTED' },
+      },
       include: { supplierPayment: { select: { id: true, paymentNumber: true } } },
       orderBy: { allocationDate: 'asc' },
     });
@@ -68,10 +74,12 @@ export class SettlementQueryRepository {
     });
   }
 
-  // Buyer advances for this PO with returns and evidence allocations
+  // Buyer advances for this PO with returns and evidence allocations.
+  // Only POSTED advances count as real disbursements — a DRAFT advance means money has not
+  // yet left ACCO's bank account and must not inflate the funded total.
   findBuyerAdvances(prisma: TenantPrisma, organizationId: string, purchaseOrderId: string) {
     return prisma.buyerAdvance.findMany({
-      where: { purchaseOrderId, organizationId },
+      where: { purchaseOrderId, organizationId, postingStatus: 'POSTED' },
       include: {
         returns: { select: { id: true, amount: true, returnMethod: true, receivedAt: true } },
         evidenceAllocations: {

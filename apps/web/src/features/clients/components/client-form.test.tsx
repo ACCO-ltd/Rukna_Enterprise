@@ -40,8 +40,8 @@ describe('Client form handoff', () => {
 
     await user.click(screen.getByRole('button', { name: 'Create client' }));
 
-    expect(await screen.findByText('Enter a name')).toBeInTheDocument();
-    expect(screen.getByText('Enter a contact person before adding their phone or email')).toBeInTheDocument();
+    expect(await screen.findAllByText('Enter a name')).not.toHaveLength(0);
+    expect(screen.getAllByText('Enter a contact person before adding their phone or email')).not.toHaveLength(0);
     expect(createClient).not.toHaveBeenCalled();
   });
 
@@ -51,10 +51,10 @@ describe('Client form handoff', () => {
 
     await user.type(screen.getByRole('textbox', { name: /^Name/ }), 'Ministry of Works');
     await user.type(screen.getByRole('textbox', { name: /Contact person/ }), 'Amina Yusuf');
-    await user.type(screen.getByRole('textbox', { name: 'Phone' }), 'abc');
+    await user.type(screen.getByRole('textbox', { name: 'Phone' }), '123');
     await user.click(screen.getByRole('button', { name: 'Create client' }));
 
-    expect(await screen.findByText('Enter a valid phone number')).toBeInTheDocument();
+    expect(await screen.findAllByText('Enter a valid phone number')).not.toHaveLength(0);
     expect(createClient).not.toHaveBeenCalled();
   });
 

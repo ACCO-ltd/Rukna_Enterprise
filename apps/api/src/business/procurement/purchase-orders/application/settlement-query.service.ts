@@ -145,6 +145,21 @@ export class SettlementQueryService {
         ? 'PARTIALLY_RECEIVED'
         : 'NOT_RECEIVED';
 
+    // ── Evidence block ──────────────────────────────────────────────────────────
+    // All supplier bills associated with this PO — independent of payment method.
+    // This is the evidence that money was actually spent and a formal invoice exists.
+    // The BuyerAdvanceEvidenceAllocation picker on the frontend uses this list.
+    const totalEvidence = bills.reduce(
+      (sum, b) => sum.add(b.totalAmount as Decimal),
+      new Decimal(0),
+    );
+    const evidenceBills = bills.map((b) => ({
+      billId: b.id,
+      billNumber: b.billNumber ?? null,
+      totalAmount: b.totalAmount as Decimal,
+      status: b.postingStatus,
+    }));
+
     // ── Exceptions ──────────────────────────────────────────────────────────────
     const exceptions: Array<{ type: ExceptionType; detail: string }> = [];
 
@@ -168,6 +183,16 @@ export class SettlementQueryService {
       exceptions.push({
         type: 'FUNDING_GAP',
         detail: `Ordered ${orderedAmount.toFixed(2)} but only ${totalFunded.toFixed(2)} funded. Attach a payment or advance to close the gap.`,
+      });
+    }
+
+    // A PO cannot settle without at least one formal supplier document (invoice or receipt).
+    // Even when fully funded and fully received, the absence of a supplier bill means ACCO
+    // has no evidence trail that the supplier delivered and invoiced — required for AP reconciliation.
+    if (bills.length === 0 && (fundingStatus === 'FUNDED' || receivingStatus === 'RECEIVED')) {
+      exceptions.push({
+        type: 'EVIDENCE_MISSING',
+        detail: 'Invoice or receipt required before settlement — no supplier bill is linked to this PO.',
       });
     }
 
@@ -212,6 +237,13 @@ export class SettlementQueryService {
         totalAdvanced,
         totalOutstanding,
       },
+      // All supplier bills linked to this PO — used as evidence of supplier delivery.
+      // Independent of directFunding.bills (which are about AP cash settlement);
+      // this block contains ALL bills regardless of payment method.
+      evidence: {
+        totalEvidence,
+        bills: evidenceBills,
+      },
       receivingStatus,
       receivingLines,
       settlementStatus,
@@ -232,6 +264,7 @@ function buildPositionSentence(
   if (status === 'SETTLED') return 'All goods received and funds accounted for — purchase order settled.';
   if (status === 'ACTION_REQUIRED') {
     const types = exceptions.map((e) => e.type);
+    if (types.includes('EVIDENCE_MISSING')) return 'Invoice required — attach a supplier bill before this PO can settle.';
     if (types.includes('OUTSTANDING_ADVANCE')) return 'Advance outstanding — attach evidence or record return to settle.';
     if (types.includes('QUANTITY_EXCEEDS_PO')) return 'Received quantity exceeds ordered — review before closing.';
     if (types.includes('FUNDING_GAP')) return `Funding gap of ${ordered.sub(funded).toFixed(2)} — attach payment or advance.`;

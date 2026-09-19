@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import type { RequestIdentity } from '@erp/types';
@@ -171,6 +172,45 @@ export class BuyerAdvanceService {
       .minus(returnsTotal);
 
     return { ...advance, outstanding };
+  }
+
+  /**
+   * Post a buyer advance: transition postingStatus from NOT_POSTED → POSTED.
+   *
+   * "Posted" means Finance has confirmed that the cash was actually disbursed from ACCO's bank
+   * account to the advance recipient. Only POSTED advances count toward funding in the settlement
+   * engine (Item 3 of the procurement integrity gate).
+   *
+   * This is a Finance-owned action (payablesManage permission). It records postedAt and postedBy
+   * from the server-side identity — the client cannot supply these.
+   *
+   * A full GL journal (Dr Supplier Advance / Cr Bank, equivalent to EVT-AP-003 branch B) is
+   * intentionally deferred to the SupplierPayment.post() path. BuyerAdvance.post() here is the
+   * settlement-engine gate only — it marks the advance as financially effective without posting
+   * a second GL entry (the underlying bank payment was already posted via SupplierPayment).
+   */
+  async post(identity: RequestIdentity, advanceId: string) {
+    const prisma = this.tenancyService.getClient();
+    const { activeOrganizationId: orgId, userId } = identity;
+
+    const advance = await this.advanceRepo.findById(prisma, orgId, advanceId);
+    if (!advance) throw new NotFoundException(`BuyerAdvance ${advanceId} not found`);
+
+    if (advance.postingStatus === 'POSTED') {
+      throw new ConflictException(`BuyerAdvance ${advanceId} is already posted`);
+    }
+    if (advance.postingStatus === 'REVERSED') {
+      throw new BadRequestException(`BuyerAdvance ${advanceId} has been reversed and cannot be posted`);
+    }
+
+    return prisma.buyerAdvance.update({
+      where: { id: advanceId },
+      data: {
+        postingStatus: 'POSTED',
+        postedAt: new Date(),
+        postedBy: userId,
+      },
+    });
   }
 
   async findByPurchaseOrder(identity: RequestIdentity, purchaseOrderId: string) {

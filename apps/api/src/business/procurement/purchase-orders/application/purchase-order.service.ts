@@ -309,7 +309,17 @@ export class PurchaseOrderService {
       throw new ConflictException('Purchase order is already cancelled');
 
     await prisma.$transaction(async (tx) => {
-      // P12: write COMMITTED reversal for remaining uncommitted balance before cancelling
+      // P12: write COMMITTED reversal for remaining uncommitted balance before cancelling.
+      //
+      // Accounting date rule: we use effectiveFrom (the original PO confirmation date), NOT new Date().
+      // Rationale: CommitmentLedger entries are written directly to prisma.commitmentLedgerEntry —
+      // they do NOT go through AccountingPostingService and are NOT subject to PeriodValidator's
+      // OPEN/CLOSED/LOCKED enforcement. The accountingDate on commitment entries is used for
+      // as-of reporting and cost-period attribution, not GL posting. Using effectiveFrom keeps the
+      // reversal paired with the period the commitment was originally charged to, maintaining
+      // per-period net-commitment integrity (COMMITTED − ACCRUED is always attributable to the same
+      // cost period as the original PO line). If the cancellation crosses a fiscal year boundary,
+      // the reversal still correctly zeroes the originally-booked period's commitment.
       const activeRevision = po.revisions.find((r) => r.status === 'ACTIVE');
       if (activeRevision) {
         for (const line of activeRevision.lines) {

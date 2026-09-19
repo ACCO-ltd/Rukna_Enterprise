@@ -433,7 +433,7 @@ function ItemsTab({
 // ─── Advance card (per-advance interactive card with return + evidence forms) ─────
 
 type AdvanceSummary = PurchaseOrderSettlement['advanceFunding']['advances'][number];
-type BillOption = PurchaseOrderSettlement['directFunding']['bills'][number];
+type BillOption = PurchaseOrderSettlement['evidence']['bills'][number];
 
 function AdvanceCard({
   adv,
@@ -990,7 +990,7 @@ function FundingTab({ poId, locale, isOpen }: { poId: string; locale: 'en'; isOp
                 locale={locale}
                 banks={banks.data ?? []}
                 users={users.data ?? []}
-                bills={s.directFunding.bills}
+                bills={s.evidence.bills}
               />
             ))}
           </div>
@@ -1075,7 +1075,7 @@ function ReceivingTab({
         action={
           isOpen ? (
             <Button asChild size="sm" variant="outline">
-              <Link href="/procurement/goods-receipts/new">{t('recordDelivery')}</Link>
+              <Link href={`/procurement/grn/new?poId=${poId}`}>{t('recordDelivery')}</Link>
             </Button>
           ) : null
         }

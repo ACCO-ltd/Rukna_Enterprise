@@ -1208,7 +1208,16 @@
       "markSent": "Mark as sent",
       "openWhatsApp": "Open WhatsApp",
       "confirmWhatsAppSent": "Confirm sent",
-      "whatsappMessage": "Billing package: {package}"
+      "whatsappGreeting": "Dear {client},",
+      "whatsappIntro": "Please find the issued invoice(s) for {milestone} below.",
+      "whatsappDocument": "Invoice {number}\n{source}\nAmount due: {total}\nDue date: {dueDate}\nDownload invoice: {url}",
+      "whatsappTotal": "Billing summary: {total}",
+      "whatsappPaymentReference": "Please quote the invoice number with your payment and confirm receipt.",
+      "whatsappClosing": "Kind regards,\nACCO Ltd\nAccounts Receivable",
+      "dueDateNotSet": "Not set",
+      "invoiceNumberRequired": "This billing package cannot be sent until every invoice has an assigned INV number. Refresh the package or ask Finance to finish posting it.",
+      "whatsappRecipientPlaceholder": "e.g. +252 61 123 4567",
+      "whatsappOpenFailed": "Could not prepare the invoice links. Please try again."
     },
     "prepareInvoice": {
       "title": "Prepare invoice",

@@ -1,10 +1,10 @@
 import {
   Controller, Get, Post, Body, Param, Query,
-  UseGuards,
+  HttpCode, HttpStatus, UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags, ApiOperation, ApiBearerAuth,
-  ApiParam, ApiQuery, ApiResponse,
+  ApiParam, ApiQuery, ApiResponse, ApiNoContentResponse,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../common/guards/jwt-auth.guard.js';
 import { RequirePermissions } from '../../../../common/decorators/require-permissions.decorator.js';
@@ -63,6 +63,25 @@ export class BuyerAdvanceController {
     return this.buyerAdvanceService.findByPurchaseOrder(identity, purchaseOrderId);
   }
 
+  @Post(':id/post')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id', description: 'Buyer advance ID' })
+  @ApiOperation({
+    summary: 'Mark a buyer advance as posted (financially disbursed). ' +
+      'Only POSTED advances count as funding in the settlement engine. ' +
+      'Records postedAt and postedBy from server-side identity.',
+  })
+  @ApiResponse({ status: 200, description: 'Advance posted' })
+  @ApiResponse({ status: 409, description: 'Advance is already posted' })
+  @ApiResponse({ status: 400, description: 'Advance has been reversed' })
+  @ApiNoContentResponse({ description: 'Not applicable' })
+  post(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+  ) {
+    return this.buyerAdvanceService.post(identity, id);
+  }
+
   @Post(':id/returns')
   @ApiParam({ name: 'id', description: 'Buyer advance ID' })
   @ApiOperation({ summary: 'Record a return of unused advance funds' })
@@ -77,7 +96,9 @@ export class BuyerAdvanceController {
       amount: dto.amount,
       returnMethod: dto.returnMethod,
       destinationBankAccountId: dto.destinationBankAccountId,
-      receivedBy: dto.receivedBy,
+      // receivedBy is set server-side from the authenticated identity, not from the client.
+      // The Finance Officer who submits this request is the person recording the return.
+      receivedBy: identity.userId,
       receivedAt: dto.receivedAt,
       reference: dto.reference,
       note: dto.note,

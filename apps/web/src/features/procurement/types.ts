@@ -917,6 +917,25 @@ export interface PurchaseOrderSettlement {
     lineStatus: PoLineReceivingStatus;
   }>;
 
+  /**
+   * All supplier bills linked to this PO, regardless of funding route.
+   *
+   * The backend provides this as a flat, deduplicated list so the evidence picker on
+   * buyer-advance purchases sees every bill — including those that arrived through
+   * `directFunding` and those created independently. The UI must not reconstruct this
+   * list from `directFunding.bills` because a pure buyer-advance PO has no direct
+   * allocations and that array would be empty.
+   */
+  evidence: {
+    totalEvidence: Money;
+    bills: Array<{
+      billId: string;
+      billNumber: string | null;
+      totalAmount: Money;
+      status: string;
+    }>;
+  };
+
   settlementStatus: PoSettlementStatus;
   exceptions: Array<{
     type: PoExceptionType;

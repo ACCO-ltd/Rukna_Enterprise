@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsString, IsNotEmpty, IsNumber, Min, IsDateString,
+  IsString, IsNumber, Min, IsDateString,
   IsOptional, MaxLength, IsEnum,
 } from 'class-validator';
 
@@ -23,9 +23,10 @@ export class CreateAdvanceReturnDto {
   @IsString() @IsOptional()
   destinationBankAccountId?: string;
 
-  @ApiProperty({ description: 'User ID of the Finance officer who received the return' })
-  @IsString() @IsNotEmpty()
-  receivedBy!: string;
+  // receivedBy is intentionally absent from this DTO.
+  // The Finance Officer who is authenticated and submits this request IS the person
+  // recording the return. Setting receivedBy from the client would allow falsifying
+  // who received the funds. It is set server-side from identity.userId in the controller.
 
   @ApiProperty({ example: '2025-04-15', description: 'ISO date the return was received' })
   @IsDateString()
