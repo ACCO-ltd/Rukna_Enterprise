@@ -25,6 +25,7 @@ import type { UpdateGuaranteeDto } from '../presentation/dto/update-guarantee.dt
 import type { AddDeliverableDto } from '../presentation/dto/add-deliverable.dto.js';
 import type { AddRetentionTermsDto } from '../presentation/dto/add-retention-terms.dto.js';
 import type { SetInstallmentMilestoneDto } from '../presentation/dto/set-installment-milestone.dto.js';
+import type { RecordSignedContractDto } from '../presentation/dto/record-signed-contract.dto.js';
 import { RecordAttachmentService } from '../../../../platform/files/application/record-attachment.service.js';
 
 // A contract is created in DRAFT and only leaves it by going live (activate) — so the sole
@@ -299,6 +300,128 @@ export class ContractService {
 
       return contract;
     });
+  }
+
+  /** Record ACCO's physically signed main contract and make it effective immediately. */
+  async recordSigned(identity: RequestIdentity, dto: RecordSignedContractDto) {
+    await this.projectAccess.assertMember(identity, dto.projectId);
+    if ((dto.billingModel ?? 'MILESTONE') === 'MILESTONE') {
+      this.assertPaymentPlanReconciles(dto.paymentPlan);
+    }
+
+    const prisma = this.tenancyService.getClient();
+    const current = await this.repo.findCurrentOperationalBoqVersion(prisma, dto.projectId);
+    if (!current) {
+      throw new NotFoundException(
+        'No BOQ found for this project. Create the live BOQ before recording the signed contract.',
+      );
+    }
+    const readiness = await this.boqVersioning.getReadiness(
+      identity,
+      dto.projectId,
+      current.operationalVersionId,
+    );
+    if (!readiness.ready) {
+      throw new BadRequestException({
+        message: 'Complete the highlighted BOQ items before recording the signed contract.',
+        details: { blockers: readiness.blockers },
+      });
+    }
+    const project = await this.repo.findProjectCode(
+      prisma,
+      identity.activeOrganizationId,
+      dto.projectId,
+    );
+    if (!project) throw new NotFoundException(`Project ${dto.projectId} not found`);
+
+    const boq = await prisma.boq.findFirst({
+      where: { id: current.boqId, organizationId: identity.activeOrganizationId },
+      select: { currency: true },
+    });
+    if (!boq) throw new NotFoundException(`BOQ for project ${dto.projectId} not found`);
+
+    const contract = await prisma.$transaction(async (tx) => {
+      const existing = await this.repo.findEffectiveClientContract(tx, dto.projectId);
+      if (existing) {
+        throw new ConflictException(
+          `Project already has a current client contract (${existing.contractNumber}).`,
+        );
+      }
+      const client = await tx.client.findFirst({
+        where: { id: dto.clientId, organizationId: identity.activeOrganizationId },
+        select: { name: true, taxNumber: true },
+      });
+      if (!client) throw new NotFoundException(`Client ${dto.clientId} not found`);
+
+      const snapshotId = await this.boqVersioning.createContractSigningSnapshot(
+        tx as never,
+        current.boqId,
+        current.operationalVersionId,
+        identity.userId,
+      );
+      const contractNumber = dto.contractNumber
+        ? dto.contractNumber
+        : await this.repo.nextContractNumber(tx, dto.projectId, project.code);
+      const signedValue = new Prisma.Decimal(dto.contractValue).toFixed(2);
+      const created = await this.repo.create(tx, {
+        organizationId: identity.activeOrganizationId,
+        projectId: dto.projectId,
+        clientId: dto.clientId,
+        boqVersionId: snapshotId,
+        contractNumber,
+        baseContractValue: signedValue,
+        contractValue: signedValue,
+        currency: boq.currency,
+        billingModel: dto.billingModel ?? 'MILESTONE',
+        contractKind: 'CLIENT_CONTRACT',
+        startDate: new Date(dto.startDate ?? dto.signedDate),
+        expectedEndDate: dto.expectedEndDate ? new Date(dto.expectedEndDate) : undefined,
+        signedDate: new Date(dto.signedDate),
+        paymentTerms: dto.paymentTerms,
+        status: 'ACTIVE',
+        clientNameSnapshot: client.name,
+        clientTaxSnapshot: client.taxNumber ?? '',
+        createdBy: identity.userId,
+      });
+      if (dto.paymentPlan.length > 0) {
+        await this.repo.createPaymentInstallments(tx, created.id, dto.paymentPlan);
+      }
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'CREATE',
+        resourceType: 'Contract',
+        resourceId: created.id,
+        sourceCommand: 'contract.record-signed',
+        eventType: 'CONTRACT_RECORDED_ACTIVE',
+        idempotencyKey: `contract-record-signed-${created.id}`,
+        after: { projectId: dto.projectId, contractNumber, status: 'ACTIVE' },
+      });
+      return created;
+    });
+
+    if (dto.signedDocumentId) {
+      await this.attachments.attach(identity, 'CONTRACT', contract.id, {
+        platformFileId: dto.signedDocumentId,
+      });
+    }
+    await this.attachments.freezeFor(
+      'CONTRACT',
+      contract.id,
+      `evidence on activated contract ${contract.id}`,
+    );
+    const full = await this.repo.findById(
+      prisma,
+      identity.activeOrganizationId,
+      contract.id,
+    );
+    return {
+      contract: full ?? contract,
+      originalContractValue: contract.baseContractValue?.toFixed(2) ?? dto.contractValue,
+      currentContractValue: contract.contractValue.toFixed(2),
+      sourceSnapshotMetadata: { description: 'Signed BOQ snapshot' },
+      milestones: full?.paymentInstallments ?? [],
+    };
   }
 
   /**

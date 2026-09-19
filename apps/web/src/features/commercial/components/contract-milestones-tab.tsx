@@ -1,19 +1,29 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Badge,
   Button,
+  DatePicker,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+  FormField,
   Skeleton,
 } from '@erp/ui';
 import type { CommercialSummaryResponse } from '@erp/types';
 
 import { EmptyState } from '@/components/empty-state';
-import { formatMoney } from '@/lib/format';
+import { formatDate, formatMoney } from '@/lib/format';
+import { useVerifyMilestone } from '@/features/programme/hooks/use-programme';
 
-import { useBillingPackages, useCommercialCurrentCycle } from '../hooks/use-commercial';
+import { commercialKeys, useBillingPackages, useCommercialCurrentCycle } from '../hooks/use-commercial';
 import { useMarkReadyToBill } from '../hooks/use-mark-ready-to-bill';
 import {
   toMilestoneJourneyViewModel,
@@ -74,6 +84,7 @@ export function ContractMilestonesTab({
   );
   const [preparingMilestone, setPreparingMilestone] = useState<MilestoneItemViewModel | null>(null);
   const [sendingMilestone, setSendingMilestone] = useState<MilestoneItemViewModel | null>(null);
+  const [verifyingMilestone, setVerifyingMilestone] = useState<MilestoneItemViewModel | null>(null);
 
   function handleMilestoneClick(milestone: MilestoneItemViewModel) {
     setDetailMilestone(milestone);
@@ -150,6 +161,7 @@ export function ContractMilestonesTab({
           onReviewForBilling={handleReviewForBilling}
           onPrepareInvoice={handlePrepareInvoice}
           onSendInvoice={handleSendInvoice}
+          onVerifyMilestone={setVerifyingMilestone}
         />
         <ScheduleEditor
           projectId={projectId}
@@ -206,6 +218,12 @@ export function ContractMilestonesTab({
         currency={summary.currency ?? contract.currency}
         onSent={handleInvoiceSent}
         onClose={() => setSendingMilestone(null)}
+      />
+
+      <VerifyCommercialMilestoneDialog
+        projectId={projectId}
+        milestone={verifyingMilestone}
+        onClose={() => setVerifyingMilestone(null)}
       />
     </>
   );
@@ -271,14 +289,30 @@ function ContractHeader({
       ) : null}
 
       {/* Footer: payment terms */}
-      <div className="mt-4 border-t border-border pt-3">
-        <p className="text-body-sm text-muted-foreground">
-          <span className="font-medium">{t('paymentTerms')}:</span>{' '}
-          {t('paymentTermsNotSet')}
-          {/* Slice 3B: show contract.paymentTermsDays when the field exists */}
-        </p>
+      <div className="mt-4 grid gap-2 border-t border-border pt-3 sm:grid-cols-2">
+        <ContractFact
+          label={t('signedDate')}
+          value={
+            contract.signedDate
+              ? (formatDate(contract.signedDate, locale) ?? contract.signedDate)
+              : t('paymentTermsNotSet')
+          }
+        />
+        <ContractFact
+          label={t('paymentTerms')}
+          value={contract.paymentTerms?.trim() || t('paymentTermsNotSet')}
+        />
       </div>
     </section>
+  );
+}
+
+function ContractFact({ label, value }: { label: string; value: string }) {
+  return (
+    <p className="text-body-sm text-muted-foreground">
+      <span className="font-medium text-foreground">{label}:</span>{' '}
+      {value}
+    </p>
   );
 }
 
@@ -318,6 +352,7 @@ function ScheduleBody({
   onReviewForBilling,
   onPrepareInvoice,
   onSendInvoice,
+  onVerifyMilestone,
 }: {
   projectId: string;
   summary: CommercialSummaryResponse;
@@ -327,6 +362,7 @@ function ScheduleBody({
   onReviewForBilling: (m: MilestoneItemViewModel) => void;
   onPrepareInvoice: (m: MilestoneItemViewModel) => void;
   onSendInvoice: (m: MilestoneItemViewModel) => void;
+  onVerifyMilestone: (m: MilestoneItemViewModel) => void;
 }) {
   const t = useTranslations('commercial');
   const cycleQuery = useCommercialCurrentCycle(projectId);
@@ -360,11 +396,10 @@ function ScheduleBody({
     return (
       <section className="rounded-panel border border-border bg-surface px-5 py-10 text-center">
         <p className="text-body font-medium text-foreground">
-          {/* Use direct string since nested key access */}
-          No milestones set
+          {t('contractMilestones.journey.emptyTitle')}
         </p>
         <p className="mt-1 text-body-sm text-muted-foreground">
-          Add installments to the payment schedule to see the milestone journey.
+          {t('contractMilestones.journey.emptyDescription')}
         </p>
       </section>
     );
@@ -399,20 +434,119 @@ function ScheduleBody({
       const journey = invoiceJourneyMap.get(m.id) ?? persistedJourney;
 
       let userState = m.userState;
-      if (journey?.phase === 'issued') userState = 'invoice-issued' as const;
-      if (journey?.phase === 'sent') userState = 'awaiting-payment' as const;
+      // Settlement is authoritative. Delivery describes how an open invoice reached the client;
+      // it must never make a partly-paid or paid stage look unpaid again.
+      const isSettled = m.userState === 'partially-paid' || m.userState === 'paid';
+      if (!isSettled && journey?.phase === 'issued') userState = 'invoice-issued' as const;
+      if (!isSettled && journey?.phase === 'sent') userState = 'awaiting-payment' as const;
 
       return { ...m, userState, invoiceJourney: journey };
     }),
   };
 
   return (
-    <MilestoneJourney
-      viewModel={viewModel}
-      onMilestoneClick={onMilestoneClick}
-      onReviewForBilling={onReviewForBilling}
-      onPrepareInvoice={onPrepareInvoice}
-      onSendInvoice={onSendInvoice}
-    />
+    <>
+      <CommercialDeepLinkAction
+        milestones={viewModel.milestones}
+        onReviewForBilling={onReviewForBilling}
+        onPrepareInvoice={onPrepareInvoice}
+      />
+      <MilestoneJourney
+        viewModel={viewModel}
+        onMilestoneClick={onMilestoneClick}
+        onReviewForBilling={onReviewForBilling}
+        onPrepareInvoice={onPrepareInvoice}
+        onSendInvoice={onSendInvoice}
+        onVerifyMilestone={onVerifyMilestone}
+      />
+    </>
+  );
+}
+
+function CommercialDeepLinkAction({
+  milestones,
+  onReviewForBilling,
+  onPrepareInvoice,
+}: {
+  milestones: MilestoneItemViewModel[];
+  onReviewForBilling: (milestone: MilestoneItemViewModel) => void;
+  onPrepareInvoice: (milestone: MilestoneItemViewModel) => void;
+}) {
+  const searchParams = useSearchParams();
+  const consumedAction = useRef<string | null>(null);
+  const requestedInstallmentId = searchParams?.get('installment') ?? null;
+  const requestedAction = searchParams?.get('action') ?? null;
+
+  useEffect(() => {
+    if (!requestedInstallmentId || !requestedAction) return;
+    const key = `${requestedInstallmentId}:${requestedAction}`;
+    if (consumedAction.current === key) return;
+    const milestone = milestones.find((item) => item.id === requestedInstallmentId);
+    if (!milestone) return;
+    consumedAction.current = key;
+    if (requestedAction === 'prepare' && milestone.userState === 'ready-to-bill') {
+      onPrepareInvoice(milestone);
+    } else if (requestedAction === 'review' && milestone.userState === 'review-for-billing') {
+      onReviewForBilling(milestone);
+    }
+  }, [milestones, onPrepareInvoice, onReviewForBilling, requestedAction, requestedInstallmentId]);
+
+  return null;
+}
+
+function VerifyCommercialMilestoneDialog({
+  projectId,
+  milestone,
+  onClose,
+}: {
+  projectId: string;
+  milestone: MilestoneItemViewModel | null;
+  onClose: () => void;
+}) {
+  const t = useTranslations('commercial.contractMilestones.verify');
+  const [actualDate, setActualDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const verify = useVerifyMilestone(projectId);
+  const queryClient = useQueryClient();
+
+  async function handleVerify() {
+    if (!milestone?.programmeMilestone || !actualDate) return;
+    await verify.mutateAsync({
+      milestoneId: milestone.programmeMilestone.id,
+      actualDate,
+    });
+    await queryClient.invalidateQueries({ queryKey: commercialKeys.all(projectId) });
+    onClose();
+  }
+
+  if (!milestone?.programmeMilestone) return null;
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && !verify.isPending && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogTitle>{t('title')}</DialogTitle>
+        <DialogDescription>
+          {t('description', { name: milestone.programmeMilestone.name, stage: milestone.name })}
+        </DialogDescription>
+        {verify.error ? (
+          <Alert variant="error" messages={[verify.error.message]} />
+        ) : null}
+        <FormField htmlFor="commercial-milestone-actual-date" label={t('actualDate')}>
+          <DatePicker
+            id="commercial-milestone-actual-date"
+            value={actualDate}
+            onChange={setActualDate}
+            disabled={verify.isPending}
+          />
+        </FormField>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={verify.isPending}>
+            {t('cancel')}
+          </Button>
+          <Button onClick={() => void handleVerify()} disabled={!actualDate || verify.isPending}>
+            {verify.isPending ? t('verifying') : t('confirm')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

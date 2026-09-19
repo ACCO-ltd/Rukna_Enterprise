@@ -135,7 +135,7 @@ describe('PrepareInvoiceDialog', () => {
 
   it('4. Null due date: "Issue invoice" button is disabled when dueDate is empty', () => {
     renderDialog();
-    const issueBtn = screen.getByRole('button', { name: /issue invoice/i });
+    const issueBtn = screen.getByRole('button', { name: /issue billing package/i });
     expect(issueBtn).toBeDisabled();
   });
 
@@ -146,7 +146,7 @@ describe('PrepareInvoiceDialog', () => {
     const dueDateInput = screen.getByLabelText(/due date/i, { selector: 'input[type="date"]' });
     await user.type(dueDateInput, '2026-10-31');
 
-    const issueBtn = screen.getByRole('button', { name: /issue invoice/i });
+    const issueBtn = screen.getByRole('button', { name: /issue billing package/i });
     expect(issueBtn).not.toBeDisabled();
 
     const termsInput = screen.getByLabelText(/payment terms/i);
@@ -156,7 +156,7 @@ describe('PrepareInvoiceDialog', () => {
 
   it('6. Distinct CTAs: "Issue invoice" (disabled until due date) and "Cancel"', () => {
     renderDialog();
-    const issueBtn = screen.getByRole('button', { name: /issue invoice/i });
+    const issueBtn = screen.getByRole('button', { name: /issue billing package/i });
     const cancelBtn = screen.getByRole('button', { name: /cancel/i });
     expect(issueBtn).toBeInTheDocument();
     expect(cancelBtn).toBeInTheDocument();
@@ -203,7 +203,7 @@ describe('PrepareInvoiceDialog', () => {
     const dueDateInput = screen.getByLabelText(/due date/i, { selector: 'input[type="date"]' });
     await user.type(dueDateInput, '2026-10-31');
 
-    const issueBtn = screen.getByRole('button', { name: /issue invoice/i });
+    const issueBtn = screen.getByRole('button', { name: /issue billing package/i });
     await user.click(issueBtn);
 
     await waitFor(() => {
@@ -233,7 +233,7 @@ describe('PrepareInvoiceDialog', () => {
     const dueDateInput = screen.getByLabelText(/due date/i, { selector: 'input[type="date"]' });
     await user.type(dueDateInput, '2026-10-31');
 
-    const issueBtn = screen.getByRole('button', { name: /issue invoice/i });
+    const issueBtn = screen.getByRole('button', { name: /issue billing package/i });
     await user.click(issueBtn);
 
     await waitFor(() => {

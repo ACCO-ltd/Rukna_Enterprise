@@ -55,6 +55,25 @@ export function SendInvoiceDialog({
   const [note, setNote] = useState('');
   const [isPending, setIsPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [whatsappOpened, setWhatsappOpened] = useState(false);
+
+  function openWhatsApp() {
+    if (!milestone) return;
+    const documentNumbers = milestone.invoiceJourney?.documents
+      .map((document) => document.invoiceNumber)
+      .filter(Boolean)
+      .join(', ');
+    const message = [
+      t('whatsappMessage', { package: documentNumbers || milestone.name }),
+      summaryLine ?? '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+    const phone = recipient.replace(/[^0-9]/g, '');
+    const href = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(href, '_blank', 'noopener,noreferrer');
+    setWhatsappOpened(true);
+  }
 
   async function handleMarkSent() {
     if (!milestone || !deliveryMethod) return;
@@ -84,6 +103,7 @@ export function SendInvoiceDialog({
       setRecipient('');
       setNote('');
       setErrorMessage(null);
+      setWhatsappOpened(false);
       onClose();
     }
   }
@@ -216,10 +236,20 @@ export function SendInvoiceDialog({
           </Button>
           <Button
             variant="default"
-            onClick={handleMarkSent}
+            onClick={
+              deliveryMethod === 'whatsapp' && !whatsappOpened
+                ? openWhatsApp
+                : handleMarkSent
+            }
             disabled={!deliveryMethod || isPending}
           >
-            {isPending ? t('sending') : t('markSent')}
+            {isPending
+              ? t('sending')
+              : deliveryMethod === 'whatsapp' && !whatsappOpened
+                ? t('openWhatsApp')
+                : deliveryMethod === 'whatsapp'
+                  ? t('confirmWhatsAppSent')
+                  : t('markSent')}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -543,6 +543,7 @@
   "boq": {
     "moneyStrip": {
       "workingLabel": "Working · draft",
+      "signedLiveLabel": "Live BOQ - signed baseline protected",
       "committedLabel": "Committed",
       "plannedTotal": "Planned",
       "workingTotal": "Working total",
@@ -596,7 +597,7 @@
         "consequence": "Raises a {amount} invoice now — paid separately, not added to the contract",
         "cta": "Add separate charge"
       },
-      "clientRefLabel": "Client approval ref (optional)",
+      "clientRefLabel": "Client approval ref",
       "clientRefPlaceholder": "e.g. signed VO number or client letter reference",
       "variationRaised": "Variation raised and added to the contract.",
       "variationCreated": "Draft variation created — sent to Commercial for approval",
@@ -623,7 +624,7 @@
       "parentSectionChoose": "Choose BOQ section",
       "variationTitleLabel": "Variation title (optional)",
       "variationTitlePlaceholder": "e.g. Additional retaining wall at axis C",
-      "clientRefLabel": "Client approval ref (optional)",
+      "clientRefLabel": "Client approval ref",
       "clientRefPlaceholder": "e.g. signed VO number or client letter reference",
       "absorb": {
         "consequence": "Internal cost · Contract unchanged · {amount}"
@@ -2032,6 +2033,42 @@
         "reprofileContext": "{billed}% already billed · allocate {target}%",
         "createOnly": "Set the payment plan before creating this contract. The plan cannot be changed afterwards."
       }
+    },
+    "record": {
+      "termsSection": "Signed contract details",
+      "client": "Client",
+      "contractReference": "Contract reference",
+      "contractReferencePlaceholder": "Leave blank to assign automatically",
+      "signedDate": "Date signed",
+      "signedDateRequired": "Choose the date the contract was signed",
+      "contractValue": "Signed contract value (USD)",
+      "valueInvalid": "Enter a valid amount with no more than two decimal places",
+      "startDate": "Start date",
+      "endDate": "Expected completion",
+      "endBeforeStart": "Expected completion cannot be before the start date",
+      "paymentTerms": "Payment terms",
+      "paymentTermsPlaceholder": "For example: payment due within 30 days",
+      "plan": {
+        "title": "Milestone payment plan",
+        "subtitle": "Set how the signed value will be billed. The complete plan must total 100%."
+      },
+      "signedDocument": "Signed document",
+      "signedDocumentHint": "Attach the signed agreement if it is available. It will be protected with the contract record.",
+      "signedDocumentDrop": "Choose the signed contract document",
+      "signedDocumentFormats": "PDF or Word document",
+      "signedDocumentClear": "Remove",
+      "submit": "Record signed contract",
+      "cancel": "Cancel",
+      "failed": "The signed contract could not be recorded.",
+      "loadFailed": "The contract form could not be loaded.",
+      "summaryReference": "Reference",
+      "summaryReferenceAuto": "Assigned automatically",
+      "summaryValue": "Signed value",
+      "summarySignedDate": "Signed date",
+      "summaryMilestones": "Payment milestones",
+      "summaryDocument": "Signed document",
+      "summaryDocumentNone": "Not attached",
+      "boqSnapshotNote": "Recording this contract protects a signed snapshot of the current BOQ. The live BOQ stays editable for project delivery."
     },
     "terms": {
       "tabs": {

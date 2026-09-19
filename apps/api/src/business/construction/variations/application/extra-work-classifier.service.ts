@@ -133,6 +133,11 @@ export class ExtraWorkClassifierService {
         // retired: the VO lands CLIENT_APPROVED, its scope is appended to the committed BOQ, and the
         // current contract value is raised — all together. Each line is a lump sum (quantity 1 × amount).
         this.require(identity, PERMISSIONS.contractsManage);
+        if (!dto.clientApprovalReference?.trim()) {
+          throw new BadRequestException(
+            'A client approval reference is required before raising a variation.',
+          );
+        }
         const contract = await this.contracts.resolveActiveClientContract(identity, projectId);
         const adopted = await this.applyToBoq.raiseAndAdopt(identity, contract.id, {
           title: dto.variationTitle ?? 'Client variation',
@@ -142,9 +147,7 @@ export class ExtraWorkClassifierService {
             unitRate: Number(line.amount),
             ...(line.parentId ? { parentId: line.parentId } : {}),
           })),
-          ...(dto.clientApprovalReference
-            ? { clientApprovalReference: dto.clientApprovalReference }
-            : {}),
+          clientApprovalReference: dto.clientApprovalReference.trim(),
         });
         return {
           treatment: 'VARIATION',

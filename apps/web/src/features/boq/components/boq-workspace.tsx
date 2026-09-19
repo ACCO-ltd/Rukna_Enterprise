@@ -19,7 +19,6 @@ import {
 import type { BoqTreeNodeResponse } from '@erp/types';
 
 import { ApiError } from '@/lib/api-client';
-import { formatMoney } from '@/lib/format';
 import { fromMinorUnits, sumMinorUnits, MONEY_SCALE } from '@/lib/money';
 import { EmptyState } from '@/components/empty-state';
 import { LifecycleCommandDrawer } from '@/components/lifecycle-command-drawer';
@@ -36,7 +35,6 @@ import {
 } from '../boq-rows';
 import { computeRollup } from '../boq-totals';
 import { treeToCsv, downloadCsv } from '../boq-export';
-import { resolveNextStep, type BoqNextStep } from '../boq-next-step';
 import {
   useBoqCompareToSigned,
   useBoqTimeline,
@@ -44,7 +42,6 @@ import {
   useBoqWorkspace,
   useCancelDraftVersion,
   useAddExtraWork,
-  useCommitVersion,
   useCreateDraftVersion,
   useDeleteNode,
   useInitializeBoq,
@@ -74,7 +71,7 @@ import { BoqReadinessBanner } from './boq-readiness-banner';
 import { BoqTimelineDrawer } from './boq-timeline-drawer';
 import { BoqToolbar } from './boq-toolbar';
 
-type Command = 'commit' | 'discard' | 'revise' | null;
+type Command = 'discard' | 'revise' | null;
 
 /**
  * The BOQ workspace (R11 redesign).
@@ -122,7 +119,6 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const deleteNode = useDeleteNode(projectId, operationalVersionId ?? '');
   const moveNode = useMoveNode(projectId, operationalVersionId ?? '');
   const addExtraWork = useAddExtraWork(projectId);
-  const commit = useCommitVersion(projectId);
   const discard = useCancelDraftVersion(projectId);
   const revise = useCreateDraftVersion(projectId);
   const recordLibraryUsage = useRecordLibraryUsage();
@@ -211,7 +207,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const committed = band?.lifeStage === 'COMMITTED';
   // A contract created from a draft BOQ owns a signing snapshot even though the live operational
   // version remains WORKING. That post-signing state must expose the variation command.
-  const hasSignedContract = band?.baseContractValue != null;
+  const hasSignedContract = workspace.mainContractStatus === 'ACTIVE';
   // The working draft is what free-editing acts on; a committed version pins value cells.
   const onDraft = operationalVersionId === workspace.draft?.id;
   // Edit affordances need edit permission AND an editable draft (the server refuses otherwise).
@@ -222,7 +218,6 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   const allSectionIds = collectSectionIds(nodes);
   const allExpanded = collapsed.size === 0;
   const isFiltered = search.trim().length > 0 || pricing !== 'all';
-  const nextStep = resolveNextStep(workspace, operationalVersionId);
 
   const pricedPercent = counts.items === 0 ? 0 : Math.round((counts.priced / counts.items) * 100);
   const unpricedCount = Math.max(0, counts.items - counts.priced);
@@ -235,29 +230,9 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
     document.getElementById('boq-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  const runNextStep = () => {
-    switch (nextStep.kind) {
-      case 'INITIALIZE':
-        initialize.mutate();
-        return;
-      case 'ADD_ITEMS':
-        setDrawer({ mode: 'add', kind: 'section', parent: null, node: null, siblingCodes: siblingCodesUnder(null) });
-        return;
-      case 'PRICE_ITEMS':
-      case 'FIX_BLOCKERS':
-        showNodes(nextStep.targetNodeIds ?? []);
-        return;
-      case 'SUBMIT_BASELINE':
+  /* Manual BOQ commitment is retired. Contract signing captures the immutable snapshot. */
+  // WORKING BOQs are signed through the contract command; no manual baseline command lives here.
         // WORKING → the forward move is commit-to-contract.
-        setCommand('commit');
-        return;
-      case 'START_REVISION':
-        setCommand('revise');
-        return;
-      default:
-        return;
-    }
-  };
 
   const visibleAmount = isFiltered
     ? sumVisibleItems(rows.map((row) => row.node))
@@ -301,10 +276,9 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
     : null;
 
   // The primary action is life-stage-aware and never a disabled dead button (next-step doctrine).
-  const contractAction =
-    !workspace.draft && !committed
-      ? guidance.data?.find((item) => item.kind === 'MAIN_CONTRACT_REQUIRED' && item.actionUrl)
-      : undefined;
+  const contractAction = guidance.data?.find(
+    (item) => item.kind === 'MAIN_CONTRACT_REQUIRED' && item.actionUrl,
+  );
 
   const primaryAction = committed || hasSignedContract ? (
     canEdit ? (
@@ -313,12 +287,12 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         {t('mode.addExtraWork')}
       </Button>
     ) : null
-  ) : contractAction?.actionUrl ? (
-    <Button asChild size="sm">
-      <Link href={contractAction.actionUrl}>{t('actions.createContract')}</Link>
-    </Button>
   ) : (
-    <NextStepButton step={nextStep} onRun={runNextStep} />
+    <Button asChild size="sm">
+      <Link href={contractAction?.actionUrl ?? `/projects/${projectId}/commercial/contract/new`}>
+        {t('actions.createContract')}
+      </Link>
+    </Button>
   );
 
   const compareAffordance = workspace.compareToSignedAvailable ? (
@@ -353,6 +327,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         pricedPercent={pricedPercent}
         unpricedCount={unpricedCount}
         signedContractValue={band?.baseContractValue ?? null}
+        signedContractActive={hasSignedContract}
         // variation-collapse: a raised variation is adopted immediately, never "pending", so the
         // workspace never seeds a pending count. The committed hint below still links to the ledger.
         pendingVariationCount={0}
@@ -369,7 +344,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onSelect={handleExportTree}>{t('toolbar.export')}</DropdownMenuItem>
-                {actions.canCreateDraft && nextStep.kind !== 'START_REVISION' ? (
+                {actions.canCreateDraft ? (
                   <DropdownMenuItem onSelect={() => setCommand('revise')}>
                     {t('actions.startRevision')}
                   </DropdownMenuItem>
@@ -388,7 +363,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         }
       />
 
-      {workspace.readiness && onDraft && !committed ? (
+      {workspace.readiness && onDraft && !committed && !workspace.readiness.ready ? (
         <BoqReadinessBanner
           readiness={workspace.readiness}
           dismissible={workspace.readiness.ready}
@@ -562,17 +537,14 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
         <LifecycleCommandDrawer
           open
           onClose={() => {
-            commit.reset();
             discard.reset();
             revise.reset();
             setCommand(null);
           }}
           commandName={t(`commands.${command}.name`)}
           currentStatus={command === 'revise' ? 'COMMITTED' : 'DRAFT'}
-          nextStatus={
-            command === 'commit' ? 'COMMITTED' : command === 'discard' ? 'CANCELLED' : 'DRAFT'
-          }
-          businessImpact={businessImpact(command, workspace, t)}
+          nextStatus={command === 'discard' ? 'CANCELLED' : 'DRAFT'}
+          businessImpact={t(`commands.${command}.impact`)}
           reason={
             command === 'revise'
               ? { required: false, label: t('commands.revise.notes'), hint: t('commands.revise.notesHint') }
@@ -580,7 +552,7 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
           }
           confirmLabel={t(`commands.${command}.confirm`)}
           isDestructive={command === 'discard'}
-          isPending={commit.isPending || discard.isPending || revise.isPending}
+          isPending={discard.isPending || revise.isPending}
           errorMessage={commandError(command, t)}
           onConfirm={(reason) => runCommand(command, reason)}
         />
@@ -684,24 +656,15 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
   function runCommand(current: Exclude<Command, null>, reason: string) {
     const close = { onSuccess: () => setCommand(null) };
 
-    if (current === 'commit' && operationalVersionId) commit.mutate(operationalVersionId, close);
-    else if (current === 'discard' && operationalVersionId) discard.mutate(operationalVersionId, close);
+    if (current === 'discard' && operationalVersionId) discard.mutate(operationalVersionId, close);
     else if (current === 'revise') revise.mutate(reason, close);
   }
 
   function commandError(current: Exclude<Command, null>, translate: (key: string) => string) {
-    const mutation = current === 'commit' ? commit : current === 'discard' ? discard : revise;
+    const mutation = current === 'discard' ? discard : revise;
     if (!mutation.error) return undefined;
 
     // A 409 on commit is the governance gate — sent for sign-off, not a failure (ADR-011/015).
-    if (
-      current === 'commit' &&
-      mutation.error instanceof ApiError &&
-      mutation.error.status === 409
-    ) {
-      return translate('commit.awaitingApproval');
-    }
-
     return errorText(mutation.error, translate(`commands.${current}.failed`));
   }
 }
@@ -710,17 +673,6 @@ export function BoqWorkspace({ projectId }: { projectId: string }) {
  * The single primary action for the WORKING flow. Always `brand-primary`, never disabled:
  * `resolveNextStep` returns something doable or nothing at all.
  */
-function NextStepButton({ step, onRun }: { step: BoqNextStep; onRun: () => void }) {
-  const t = useTranslations('platform.boq.nextStep');
-  if (step.tone === 'none') return null;
-
-  return (
-    <Button size="sm" className="gap-2" onClick={onRun}>
-      {t(step.kind, { count: step.count ?? 0 })}
-    </Button>
-  );
-}
-
 /** Sum of the visible billable rows, in minor units, so a filtered footer stays honest. */
 function sumVisibleItems(nodes: BoqTreeNodeResponse[]): string | null {
   const items = flattenTree(nodes).filter((node) => node.isLeaf && isPriced(node));
@@ -736,18 +688,6 @@ function sumVisibleItems(nodes: BoqTreeNodeResponse[]): string | null {
  * The commit consequence copy (M3) carries the weight of the transition — fixing the contract
  * value and setting the milestone schedule, after which money changes go through a variation.
  */
-function businessImpact(
-  command: Exclude<Command, null>,
-  workspace: NonNullable<ReturnType<typeof useBoqWorkspace>['data']>,
-  t: (key: string, values?: Record<string, string>) => string,
-): string {
-  if (command !== 'commit') return t(`commands.${command}.impact`);
-
-  const value = workspace.draft?.totalAmount ?? workspace.moneyBand?.inContractTotal ?? null;
-  const formatted = formatMoney(value, workspace.currency, 'en');
-  return formatted ? t('commit.impact', { amount: formatted }) : t('commit.impactNoValue');
-}
-
 function exportHeaders(t: (key: string, values?: Record<string, string>) => string) {
   return {
     code: t('grid.code'),

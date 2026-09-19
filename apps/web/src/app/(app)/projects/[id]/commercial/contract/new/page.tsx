@@ -3,7 +3,7 @@ import { ArrowLeft } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 import { PageHeader } from '@/components/layout/page-header';
-import { ContractCreateForm } from '@/features/contracts/components/contract-create-form';
+import { RecordSignedContractForm } from '@/features/contracts/components/record-signed-contract-form';
 
 /**
  * Create a project's main contract, inside the Commercial workspace (P3 Slice B / ADR-030 S-CC-5).
@@ -37,7 +37,7 @@ export default async function NewProjectContractPage({
       <PageHeader title={t('newTitle')} subtitle={t('newSubtitle')} />
 
       <div className="rounded-lg border border-border bg-surface p-5 sm:p-6">
-        <ContractCreateForm projectId={id} />
+        <RecordSignedContractForm projectId={id} />
       </div>
     </div>
   );

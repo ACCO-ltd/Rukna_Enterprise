@@ -202,13 +202,21 @@ export function toClientPaymentView(row: CommercialReceiptRow): ClientPaymentVie
 export function buildAllocationPreview(
   amount: string,
   invoices: ClientReceivableView[],
+  preferredInvoiceId?: string | null,
 ): AllocationLine[] {
   let remaining = parseFloat(amount) || 0;
   if (remaining <= 0) return [];
 
   const lines: AllocationLine[] = [];
 
-  for (const inv of invoices) {
+  const ordered = preferredInvoiceId
+    ? [
+        ...invoices.filter((invoice) => invoice.invoiceId === preferredInvoiceId),
+        ...invoices.filter((invoice) => invoice.invoiceId !== preferredInvoiceId),
+      ]
+    : invoices;
+
+  for (const inv of ordered) {
     if (!inv.canRecordPayment) continue;
     const outstanding = parseFloat(inv.outstanding ?? '0') || 0;
     if (outstanding <= 0) continue;

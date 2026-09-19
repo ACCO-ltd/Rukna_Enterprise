@@ -174,6 +174,7 @@ describe('ExtraWorkClassifierService.addExtraWork — ADR-029 E-1..E-4', () => {
       const { svc, applyToBoq, contracts } = build();
       await svc.addExtraWork(identityWith(PERMISSIONS.contractsManage), 'p1', {
         treatment: 'VARIATION',
+        clientApprovalReference: 'SIGNED-VO-10',
         lines: [{ description: 'x', amount: '10.00' }],
       });
       expect(contracts.resolveActiveClientContract).toHaveBeenCalledWith(expect.anything(), 'p1');
@@ -182,6 +183,17 @@ describe('ExtraWorkClassifierService.addExtraWork — ADR-029 E-1..E-4', () => {
         'c1',
         expect.anything(),
       );
+    });
+
+    it('rejects a variation without client approval evidence', async () => {
+      const { svc, applyToBoq } = build();
+      await expect(
+        svc.addExtraWork(identityWith(PERMISSIONS.contractsManage), 'p1', {
+          treatment: 'VARIATION',
+          lines: [{ description: 'x', amount: '10.00' }],
+        }),
+      ).rejects.toThrow('client approval reference is required');
+      expect(applyToBoq.raiseAndAdopt).not.toHaveBeenCalled();
     });
 
     it('requires contractsManage (403 without it)', async () => {

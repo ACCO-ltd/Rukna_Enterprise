@@ -258,6 +258,17 @@ describe('buildAllocationPreview', () => {
     expect(lines[0].invoiceId).toBe('open');
   });
 
+  it('allocates to the invoice the user selected before other open invoices', () => {
+    const lines = buildAllocationPreview(
+      '15000.00',
+      [makeReceivable('a', '40000.00'), makeReceivable('b', '30000.00')],
+      'b',
+    );
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ invoiceId: 'b', suggested: '15000.00' });
+  });
+
   it('returns empty array when amount is zero or empty', () => {
     expect(buildAllocationPreview('0.00', [makeReceivable('a', '10000.00')])).toEqual([]);
     expect(buildAllocationPreview('', [makeReceivable('a', '10000.00')])).toEqual([]);

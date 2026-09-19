@@ -1513,6 +1513,8 @@ model Contract {
   clientTaxSnapshot  String?        @map("client_tax_snapshot")
   startDate          DateTime?      @map("start_date") @db.Date
   expectedEndDate    DateTime?      @map("expected_end_date") @db.Date
+  signedDate         DateTime?      @map("signed_date") @db.Date
+  paymentTerms       String?        @map("payment_terms")
   createdBy          String         @map("created_by")
   createdAt          DateTime       @default(now()) @map("created_at")
   updatedAt          DateTime       @updatedAt @map("updated_at")

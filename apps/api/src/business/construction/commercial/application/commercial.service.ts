@@ -441,6 +441,8 @@ export class CommercialService {
         clientName: contract.clientNameSnapshot ?? contract.client.name,
         startDate: contract.startDate?.toISOString() ?? null,
         expectedEndDate: contract.expectedEndDate?.toISOString() ?? null,
+        signedDate: contract.signedDate?.toISOString() ?? null,
+        paymentTerms: contract.paymentTerms ?? null,
         // Withheld like every other figure — the contract value is the most sensitive number
         // on the screen, and leaking it through the identity panel would defeat the metric's
         // RESTRICTED state one card away.

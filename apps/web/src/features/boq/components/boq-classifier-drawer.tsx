@@ -172,7 +172,7 @@ export function BoqClassifierDrawer({
 
   const canSubmit =
     route !== '' && routeEnabled && description.trim().length > 0 && isPositive(amount) &&
-    (route !== 'VARIATION' || Boolean(parentId));
+    (route !== 'VARIATION' || (Boolean(parentId) && clientApprovalReference.trim().length > 0));
 
   const cta =
     route === 'ABSORB'

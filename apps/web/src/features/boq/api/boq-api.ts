@@ -66,13 +66,6 @@ export function getBoqTimeline(projectId: string): Promise<BoqTimelineResponse> 
  * command. Refused with `400`/`details.blockers` when not ready, `409`/`details.approvalInstanceId`
  * when a workflow gates it — approve the instance, then call this again (ADR-015 re-drive).
  */
-export function commitVersion(projectId: string, versionId: string): Promise<BoqResponse> {
-  return apiClient<BoqResponse>(
-    `/projects/${projectId}/boq/versions/${versionId}/commit`,
-    { method: 'POST' },
-  );
-}
-
 /**
  * Draw budget from the contingency allowance onto a target item, holding the contract value
  * constant (ADR-029 CONST-BOQ-028). Refused with `400`/`errorCode CONTINGENCY_EXCEEDED` on an

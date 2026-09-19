@@ -202,6 +202,11 @@ export class ContractPrismaRepository {
       contractKind?: ContractKind;
       startDate?: Date;
       expectedEndDate?: Date;
+      signedDate?: Date;
+      paymentTerms?: string;
+      status?: 'DRAFT' | 'ACTIVE';
+      clientNameSnapshot?: string;
+      clientTaxSnapshot?: string;
       createdBy: string;
     },
   ) {
@@ -219,6 +224,11 @@ export class ContractPrismaRepository {
         contractKind: data.contractKind ?? 'CLIENT_CONTRACT',
         startDate: data.startDate,
         expectedEndDate: data.expectedEndDate,
+        signedDate: data.signedDate,
+        paymentTerms: data.paymentTerms,
+        status: data.status,
+        clientNameSnapshot: data.clientNameSnapshot,
+        clientTaxSnapshot: data.clientTaxSnapshot,
         createdBy: data.createdBy,
       },
     });

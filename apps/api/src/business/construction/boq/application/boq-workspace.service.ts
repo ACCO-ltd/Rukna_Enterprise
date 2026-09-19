@@ -88,6 +88,7 @@ export class BoqWorkspaceService {
         versions: [],
         readiness: null,
         revision: null,
+        mainContractStatus: null,
         // No BOQ yet → no money band and nothing signed to compare against.
         moneyBand: null,
         compareToSignedAvailable: false,
@@ -116,9 +117,14 @@ export class BoqWorkspaceService {
     // BoqModule gains no dependency on Contract/Commercial and the read stays cycle-free (the reverse
     // direction — Commercial→BOQ — is what goes through the BOQ read port).
     const contract = await prisma.contract.findFirst({
-      where: { projectId },
+      where: {
+        projectId,
+        organizationId: identity.activeOrganizationId,
+        contractKind: 'CLIENT_CONTRACT',
+        status: { notIn: ['CLOSED', 'CANCELLED', 'TERMINATED'] },
+      },
       orderBy: { createdAt: 'desc' },
-      select: { boqVersionId: true, contractValue: true, baseContractValue: true },
+      select: { boqVersionId: true, contractValue: true, baseContractValue: true, status: true },
     });
 
     const summaries = boq.versions.map((version) =>
@@ -190,6 +196,7 @@ export class BoqWorkspaceService {
             : null,
       revision: this.revisionSummary(draft, byVersion, boq.versions, canViewCost),
       moneyBand,
+      mainContractStatus: contract?.status ?? null,
       // R-2 — there is something to compare against exactly when an as-committed snapshot exists.
       compareToSignedAvailable: boq.committedSnapshotVersionId !== null,
       capabilities,

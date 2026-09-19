@@ -261,6 +261,34 @@ describe('ContractMilestonesTab', () => {
     );
   });
 
+  it.each(['PARTIALLY_PAID', 'PAID'])('%s remains authoritative after delivery', (status) => {
+    cycleData.value = makeCycle([{ id: 'inst-1', status, name: 'Structure' }]);
+    packageData.value = {
+      packages: [
+        {
+          installmentId: 'inst-1',
+          documents: [
+            {
+              invoiceId: 'invoice-1',
+              invoiceNumber: 'INV-0001',
+              dueDate: '2026-10-01',
+              deliveries: [{ method: 'WHATSAPP' }],
+            },
+          ],
+        },
+      ],
+    };
+
+    renderWithProviders(
+      <ContractMilestonesTab projectId="p-1" summary={makeSummary()} />,
+    );
+
+    expect(screen.getByTestId('milestone-journey')).toHaveAttribute(
+      'data-first-state',
+      status === 'PAID' ? 'paid' : 'partially-paid',
+    );
+  });
+
   it('has no "Bill Stage" or "Generate Invoice" button', () => {
     cycleData.value = makeCycle([{ status: 'NEXT' }]);
     renderWithProviders(

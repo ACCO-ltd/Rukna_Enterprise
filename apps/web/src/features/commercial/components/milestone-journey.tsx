@@ -26,6 +26,7 @@ interface MilestoneJourneyProps {
   onReviewForBilling: (milestone: MilestoneItemViewModel) => void;
   onPrepareInvoice: (milestone: MilestoneItemViewModel) => void;
   onSendInvoice: (milestone: MilestoneItemViewModel) => void;
+  onVerifyMilestone?: (milestone: MilestoneItemViewModel) => void;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -36,6 +37,7 @@ export function MilestoneJourney({
   onReviewForBilling,
   onPrepareInvoice,
   onSendInvoice,
+  onVerifyMilestone,
 }: MilestoneJourneyProps) {
   const t = useTranslations('commercial.contractMilestones');
 
@@ -75,6 +77,7 @@ export function MilestoneJourney({
             onReviewForBilling={onReviewForBilling}
             onPrepareInvoice={onPrepareInvoice}
             onSendInvoice={onSendInvoice}
+            onVerifyMilestone={onVerifyMilestone}
           />
         ))}
       </ol>
@@ -100,6 +103,7 @@ function MilestoneItem({
   onReviewForBilling,
   onPrepareInvoice,
   onSendInvoice,
+  onVerifyMilestone,
 }: {
   milestone: MilestoneItemViewModel;
   stepNumber: number;
@@ -109,6 +113,7 @@ function MilestoneItem({
   onReviewForBilling: (m: MilestoneItemViewModel) => void;
   onPrepareInvoice: (m: MilestoneItemViewModel) => void;
   onSendInvoice: (m: MilestoneItemViewModel) => void;
+  onVerifyMilestone?: (m: MilestoneItemViewModel) => void;
 }) {
   const t = useTranslations('commercial.contractMilestones');
   const locale = useLocale() as 'en' | 'ar';
@@ -207,7 +212,16 @@ function MilestoneItem({
           ) : null}
 
           {/* CTAs */}
-          {milestone.userState === 'review-for-billing' ? (
+          {milestone.userState === 'in-progress' &&
+          milestone.programmeMilestone?.status === 'PLANNED' ? (
+            <button
+              type="button"
+              onClick={() => onVerifyMilestone?.(milestone)}
+              className="mt-1 inline-flex min-h-11 items-center gap-1.5 rounded-md border border-border bg-white px-3 py-2 text-body-sm font-medium text-foreground shadow-sm transition-colors hover:border-brand-primary/40 hover:bg-brand-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {t('cta.verifyMilestone')}
+            </button>
+          ) : milestone.userState === 'review-for-billing' ? (
             <button
               type="button"
               onClick={() => onReviewForBilling(milestone)}

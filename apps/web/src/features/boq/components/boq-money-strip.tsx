@@ -28,6 +28,7 @@ export function BoqMoneyStrip({
   pricedPercent,
   unpricedCount,
   signedContractValue,
+  signedContractActive = false,
   pendingVariationCount,
   onReviewVariations,
   primaryAction,
@@ -41,6 +42,8 @@ export function BoqMoneyStrip({
   unpricedCount: number;
   /** The signed (base) contract value, for the "signed $X" reference in COMMITTED. */
   signedContractValue: string | null;
+  /** True when the editable live BOQ already has an immutable signed-contract snapshot. */
+  signedContractActive?: boolean;
   /** Draft variations awaiting approval — the pending-VO affordance (H1). */
   pendingVariationCount: number;
   onReviewVariations?: () => void;
@@ -51,6 +54,7 @@ export function BoqMoneyStrip({
   const locale = useLocale() as 'en' | 'ar';
 
   const committed = band?.lifeStage === 'COMMITTED';
+  const signedLive = !committed && signedContractActive;
 
   // A user with no money visibility (canViewCost false) sees no figures at all — the band's
   // cost/margin fields are all null. Show the state and the priced fact, nothing withheld
@@ -63,7 +67,9 @@ export function BoqMoneyStrip({
       // beneath it. Logical border so the state edge sits on the leading side in RTL.
       className={cn(
         'sticky top-0 z-20 rounded-panel border border-s-2 bg-surface shadow-e1',
-        committed ? 'border-s-success border-border' : 'border-s-brand-primary border-border',
+        committed || signedLive
+          ? 'border-s-success border-border'
+          : 'border-s-brand-primary border-border',
       )}
       aria-label={t('lifeStage')}
     >
@@ -73,15 +79,19 @@ export function BoqMoneyStrip({
           <span
             className={cn(
               'inline-flex shrink-0 items-center gap-1.5 text-body-sm font-semibold',
-              committed ? 'text-success' : 'text-brand-primary',
+              committed || signedLive ? 'text-success' : 'text-brand-primary',
             )}
           >
-            {committed ? (
+            {committed || signedLive ? (
               <CircleDot size={14} aria-hidden="true" />
             ) : (
               <Circle size={14} aria-hidden="true" />
             )}
-            {committed ? t('committedLabel') : t('workingLabel')}
+            {committed
+              ? t('committedLabel')
+              : signedLive
+                ? t('signedLiveLabel')
+                : t('workingLabel')}
           </span>
 
           {band ? (

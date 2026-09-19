@@ -43,6 +43,7 @@ import { UpdateGuaranteeDto } from './dto/update-guarantee.dto.js';
 import { AddDeliverableDto } from './dto/add-deliverable.dto.js';
 import { AddRetentionTermsDto } from './dto/add-retention-terms.dto.js';
 import { SetInstallmentMilestoneDto } from './dto/set-installment-milestone.dto.js';
+import { RecordSignedContractDto } from './dto/record-signed-contract.dto.js';
 import { ReplacePaymentPlanDto } from './dto/replace-payment-plan.dto.js';
 
 @ApiTags('Contracts')
@@ -74,6 +75,16 @@ export class ContractsController {
   @ApiResponse({ status: 409, description: 'Contract number already exists' })
   create(@CurrentUser() identity: RequestIdentity, @Body() dto: CreateContractDto) {
     return this.contractService.create(identity, dto);
+  }
+
+  @Post('record-signed')
+  @RequirePermissions(PERMISSIONS.contractsCreate, PERMISSIONS.contractsApprove)
+  @ApiOperation({ summary: 'Record and activate a physically signed main client contract' })
+  recordSigned(
+    @CurrentUser() identity: RequestIdentity,
+    @Body() dto: RecordSignedContractDto,
+  ) {
+    return this.contractService.recordSigned(identity, dto);
   }
 
   @Get(':id')

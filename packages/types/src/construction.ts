@@ -1135,6 +1135,8 @@ export interface BoqWorkspaceResponse {
    * `resolveBoqVisibility`; a figure the caller's tier does not admit is null, never hidden in UI.
    */
   moneyBand: BoqMoneyBand | null;
+  /** Authoritative lifecycle state of the project's effective main client contract. */
+  mainContractStatus?: `${ContractStatus}` | null;
   /**
    * ADR-029 R-2 — true when there is an as-committed snapshot to compare the live operational
    * version against (i.e. the BOQ has been committed). The frontend uses this to enable
@@ -1450,6 +1452,9 @@ export interface CommercialContractSummary {
   clientName: string;
   startDate: string | null;
   expectedEndDate: string | null;
+  /** Signed-contract facts. Optional while older API deployments roll forward. */
+  signedDate?: string | null;
+  paymentTerms?: string | null;
   /** Withheld (null) without financial visibility, exactly as the metrics are. */
   contractValue: string | null;
   /**

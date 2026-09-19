@@ -258,7 +258,7 @@
   },
   "contractAuthoring": {
     "back": "Back to Contract",
-    "newTitle": "New contract",
+    "newTitle": "Record signed contract",
     "newSubtitle": "Set the commercial baseline for this project — its value, billing model and payment terms.",
     "editTitle": "Edit contract",
     "editSubtitle": "Amend the draft contract before it is submitted for review.",
@@ -1117,6 +1117,7 @@
       "advance": "Advance payment"
     },
     "cta": {
+      "verifyMilestone": "Verify milestone",
       "reviewForBilling": "Review for billing",
       "readyToBill": "Ready to bill",
       "readyNote": "Milestone cleared — prepare the invoice",
@@ -1167,18 +1168,27 @@
       "cancel": "Cancel",
       "total": "Stage total"
     },
+    "verify": {
+      "title": "Verify milestone",
+      "description": "Confirm that {name} is complete. This clears {stage} for commercial review.",
+      "actualDate": "Actual completion date",
+      "cancel": "Cancel",
+      "confirm": "Verify milestone",
+      "verifying": "Verifying..."
+    },
     "header": {
       "reference": "Contract reference",
       "originalValue": "Original contract value",
       "approvedVariations": "Approved variations",
       "currentValue": "Current contract value",
+      "signedDate": "Signed date",
       "paymentTerms": "Payment terms",
       "paymentTermsNotSet": "Not set",
       "viewContract": "View contract terms"
     },
     "sendInvoice": {
-      "eyebrow": "Invoice sent",
-      "title": "Confirm delivery",
+      "eyebrow": "Billing package ready",
+      "title": "Send to client",
       "totalDue": "{total} due {date}",
       "totalNoDue": "{total}",
       "whatsapp": "WhatsApp",
@@ -1195,7 +1205,10 @@
       "notePlaceholder": "Optional note",
       "sendLater": "I'll send it later",
       "sending": "Saving...",
-      "markSent": "Mark as sent"
+      "markSent": "Mark as sent",
+      "openWhatsApp": "Open WhatsApp",
+      "confirmWhatsAppSent": "Confirm sent",
+      "whatsappMessage": "Billing package: {package}"
     },
     "prepareInvoice": {
       "title": "Prepare invoice",
@@ -1214,7 +1227,7 @@
       "notes": "Notes",
       "notesPlaceholder": "Optional notes for the client",
       "cancel": "Cancel",
-      "issueCta": "Issue invoice",
+      "issueCta": "Issue billing package",
       "subtotal": "Subtotal",
       "vat": "Sales Tax (5%)",
       "total": "Total",

@@ -132,4 +132,26 @@ describe('SendInvoiceDialog', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onSent).not.toHaveBeenCalled();
   });
+
+  it('opens WhatsApp before recording the package as sent', async () => {
+    const user = userEvent.setup();
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const onSent = vi.fn();
+    renderDialog({ onSent });
+
+    await user.click(screen.getByRole('radio', { name: /whatsapp/i }));
+    await user.click(screen.getByRole('button', { name: /open whatsapp/i }));
+
+    expect(open).toHaveBeenCalledWith(
+      expect.stringContaining('https://wa.me/'),
+      '_blank',
+      'noopener,noreferrer',
+    );
+    expect(commercialApi.recordPackageDelivery).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: /confirm sent/i }));
+    expect(commercialApi.recordPackageDelivery).toHaveBeenCalledTimes(1);
+    expect(onSent).toHaveBeenCalledWith('inst-1', 'whatsapp');
+    open.mockRestore();
+  });
 });

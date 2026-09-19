@@ -74,7 +74,7 @@ export function RecordSignedContractForm({ projectId }: { projectId: string }) {
   const clientName = clients.data?.find((c) => c.id === clientId)?.name ?? null;
 
   // Schema defined inside the component so superRefine has access to `t` for translated messages,
-  // following the same pattern as contract-create-form.tsx.
+  // Keep the signed-document upload separate from the contract mutation so upload failures remain retryable.
   const schema = z
     .object({
       contractNumber: z.string().max(50),

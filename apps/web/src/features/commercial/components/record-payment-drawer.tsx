@@ -89,7 +89,11 @@ export function RecordPaymentDrawer({
 
   // ─── Allocation (editable) ───────────────────────────────────────────────
 
-  const allocationLines = buildAllocationPreview(amount, allInvoices);
+  const allocationLines = buildAllocationPreview(
+    amount,
+    allInvoices,
+    preselectedInvoice?.invoiceId,
+  );
   const amountNum = parseFloat(amount) || 0;
 
   const effectiveAmount = (invoiceId: string, suggested: string): string =>

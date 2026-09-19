@@ -17,7 +17,6 @@ import {
   addBoqNode,
   addExtraWork,
   cancelDraftVersion,
-  commitVersion,
   compareBoqVersions,
   createDraftVersion,
   deleteBoqNode,
@@ -168,10 +167,6 @@ export function useInitializeBoq(projectId: string) {
  * baseline as the primary WORKING action. A `409` is the governance gate ("sent for sign-off"),
  * not a failure; the caller reads `ApiError.status` to phrase it.
  */
-export function useCommitVersion(projectId: string) {
-  return useBoqMutation(projectId, (versionId: string) => commitVersion(projectId, versionId));
-}
-
 /**
  * ADR-029 CONST-BOQ-028 — draw contingency budget onto a chosen target line, holding the
  * contract value constant. Initiated from the contingency line (M1/M2), not from a fabricated

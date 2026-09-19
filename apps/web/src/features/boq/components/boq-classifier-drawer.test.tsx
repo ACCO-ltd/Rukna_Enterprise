@@ -48,7 +48,6 @@ describe('BoqClassifierDrawer — decision-first who-pays', () => {
       target: { value: 'Steel canopy' },
     });
     fireEvent.change(screen.getByLabelText(/^Amount/i), { target: { value: '2000' } });
-    selectVariationSection();
     expect(screen.getAllByText(/2,342,000/).length).toBeGreaterThan(0);
   });
 
@@ -58,6 +57,10 @@ describe('BoqClassifierDrawer — decision-first who-pays', () => {
       target: { value: 'Steel canopy' },
     });
     fireEvent.change(screen.getByLabelText(/^Amount/i), { target: { value: '2000' } });
+    selectVariationSection();
+    fireEvent.change(screen.getByLabelText(/Client approval ref/i), {
+      target: { value: 'VO-SIGNED-7' },
+    });
     // Variation is the default selected route.
     fireEvent.click(screen.getByRole('button', { name: /Raise variation/i }));
     expect(onSubmit).toHaveBeenCalledWith({
@@ -65,10 +68,11 @@ describe('BoqClassifierDrawer — decision-first who-pays', () => {
       description: 'Steel canopy',
       amount: '2000.00',
       parentId: 'section-01',
+      clientApprovalReference: 'VO-SIGNED-7',
     });
   });
 
-  it('passes the optional client approval reference through on the Variation route', () => {
+  it('passes the required client approval reference through on the Variation route', () => {
     const { onSubmit } = render();
     fireEvent.change(screen.getByLabelText(/What is the work/i), {
       target: { value: 'Steel canopy' },
