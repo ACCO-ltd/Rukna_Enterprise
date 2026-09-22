@@ -1514,6 +1514,30 @@ export interface CommercialRetentionSummary {
   retentionRate: string;
   retentionCap: string;
   retentionSplitOnPC: string;
+  retentionReleasedAt: string | null;
+}
+
+export interface SeparateChargeNode {
+  id: string;
+  code: string;
+  name: string;
+  unitRate: string | null;
+  quantity: string;
+  totalAmount: string | null;
+  currency: string;
+  contractId: string;
+  invoice: {
+    id: string;
+    invoiceNumber: string | null;
+    postingStatus: string;
+    invoiceDate: string;
+    dueDate: string | null;
+  } | null;
+}
+
+export interface SeparateChargesResponse {
+  projectId: string;
+  items: SeparateChargeNode[];
 }
 
 export interface CommercialAdvanceSummary {

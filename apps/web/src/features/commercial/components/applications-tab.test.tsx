@@ -93,7 +93,7 @@ function summary(): CommercialSummaryResponse {
     metrics: {} as CommercialSummaryResponse['metrics'],
     certification: { applicationsSubmitted: 1, effectiveCertificates: 1, postedInvoices: 0 },
     receivables: { collectionRate: 0, outstandingInvoices: [] },
-    retention: { retentionRate: '0.05', retentionCap: '0.10', retentionSplitOnPC: '0.5' },
+    retention: { retentionRate: '0.05', retentionCap: '0.10', retentionSplitOnPC: '0.5', retentionReleasedAt: null },
     advances: [],
     securityPosition: {
       applicable: true,

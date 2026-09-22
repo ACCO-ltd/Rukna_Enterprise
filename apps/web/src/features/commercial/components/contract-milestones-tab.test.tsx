@@ -37,6 +37,16 @@ vi.mock('../hooks/use-commercial', () => ({
     isPending: false,
     isError: false,
   }),
+  useProjectSeparateCharges: () => ({
+    data: { projectId: 'proj-1', items: [] },
+    isPending: false,
+    isError: false,
+  }),
+  useCreateSeparateChargeInvoice: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+    error: null,
+  }),
 }));
 
 vi.mock('./commercial-activity', () => ({

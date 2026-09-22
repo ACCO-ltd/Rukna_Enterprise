@@ -52,14 +52,15 @@ export function CommercialWorkspace({
   const hasContract = query.data?.mainContract != null;
 
   // Overview tab renders independently — it fetches its own read model and does not need the
-  // summary to resolve first. Skip the skeleton + error states that guard the other tabs.
+  // summary to resolve first. The summary is passed through when already loaded (e.g. navigating
+  // from another tab) so FinalAccountCard and TerminalStateBanner can render without a round-trip.
   if (active === 'overview') {
     return (
       <div className="space-y-5" data-commercial-root>
         <Heading />
         <CommercialCycleRibbon projectId={projectId} />
         <CommercialNav projectId={projectId} active="overview" billingModel={billingModel} />
-        <OverviewTab projectId={projectId} />
+        <OverviewTab projectId={projectId} summary={query.data ?? undefined} />
       </div>
     );
   }

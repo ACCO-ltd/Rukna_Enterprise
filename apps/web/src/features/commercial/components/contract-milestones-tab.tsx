@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
+import { CheckCircle2, Link as LinkIcon } from 'lucide-react';
+import Link from 'next/link';
 import {
   Alert,
   Badge,
@@ -16,14 +18,21 @@ import {
   DialogTitle,
   FormField,
   Skeleton,
+  cn,
 } from '@erp/ui';
-import type { CommercialSummaryResponse } from '@erp/types';
+import type { CommercialSummaryResponse, SeparateChargeNode } from '@erp/types';
 
 import { EmptyState } from '@/components/empty-state';
 import { formatDate, formatMoney } from '@/lib/format';
 import { useVerifyMilestone } from '@/features/programme/hooks/use-programme';
 
-import { commercialKeys, useBillingPackages, useCommercialCurrentCycle } from '../hooks/use-commercial';
+import {
+  commercialKeys,
+  useBillingPackages,
+  useCommercialCurrentCycle,
+  useCreateSeparateChargeInvoice,
+  useProjectSeparateCharges,
+} from '../hooks/use-commercial';
 import { useMarkReadyToBill } from '../hooks/use-mark-ready-to-bill';
 import {
   toMilestoneJourneyViewModel,
@@ -170,6 +179,7 @@ export function ContractMilestonesTab({
         />
         <ContractSecurityBody projectId={projectId} summary={summary} />
         <VariationsTab projectId={projectId} summary={summary} />
+        <SeparateChargesSection projectId={projectId} contractId={contract.id} />
         <CommercialActivity items={summary.recentActivity} />
       </div>
 
@@ -249,48 +259,55 @@ function ContractHeader({
   const cv = summary.contractValue;
 
   return (
-    <section className="rounded-panel border border-border bg-white px-5 py-5">
-      {/* Reference + status */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <section className="overflow-hidden rounded-panel border border-border bg-white shadow-e1">
+      {/* Header row: reference + status */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
         <div>
-          <p className="text-micro font-semibold uppercase tracking-widest text-muted-foreground">
-            {t('reference')}
-          </p>
+          <p className="text-caption font-medium text-muted-foreground">{t('reference')}</p>
           <p className="mt-0.5 text-h3 font-bold text-foreground">{contract.contractNumber}</p>
         </div>
         <Badge tone={contractStatusTone(contract.status)}>{contract.status}</Badge>
       </div>
 
-      {/* Money values */}
+      {/* Money values — prominent two-column layout on wider screens */}
       {summary.financialsVisible && cv ? (
-        <dl className="mt-5 space-y-2">
-          <MoneyRow
-            label={t('originalValue')}
-            value={fmt(cv.originalContractValue)}
-            prominent
-          />
+        <dl className="grid gap-0 sm:grid-cols-3">
+          <div className="border-b border-border px-5 py-4 sm:border-b-0 sm:border-e">
+            <dt className="text-caption font-medium text-muted-foreground">{t('originalValue')}</dt>
+            <dd className="mt-1 text-h3 font-bold tabular-nums text-foreground">
+              {fmt(cv.originalContractValue)}
+            </dd>
+          </div>
           {cv.approvedVariationsTotal && Number(cv.approvedVariationsTotal) !== 0 ? (
-            <MoneyRow
-              label={t('approvedVariations')}
-              value={
-                Number(cv.approvedVariationsTotal) > 0
+            <div className="border-b border-border px-5 py-4 sm:border-b-0 sm:border-e">
+              <dt className="text-caption font-medium text-muted-foreground">
+                {t('approvedVariations')}
+              </dt>
+              <dd
+                className={cn(
+                  'mt-1 text-h3 font-bold tabular-nums',
+                  Number(cv.approvedVariationsTotal) < 0 ? 'text-danger' : 'text-success',
+                )}
+              >
+                {Number(cv.approvedVariationsTotal) > 0
                   ? `+${fmt(cv.approvedVariationsTotal)}`
-                  : fmt(cv.approvedVariationsTotal)
-              }
-            />
-          ) : null}
-          <div className="border-t border-border pt-2">
-            <MoneyRow
-              label={t('currentValue')}
-              value={fmt(cv.governingContractValue)}
-              prominent
-            />
+                  : fmt(cv.approvedVariationsTotal)}
+              </dd>
+            </div>
+          ) : (
+            <div className="hidden sm:block sm:border-e border-border" />
+          )}
+          <div className="bg-surface/50 px-5 py-4">
+            <dt className="text-caption font-medium text-muted-foreground">{t('currentValue')}</dt>
+            <dd className="mt-1 text-h2 font-bold tabular-nums text-foreground">
+              {fmt(cv.governingContractValue)}
+            </dd>
           </div>
         </dl>
       ) : null}
 
       {/* Footer: payment terms */}
-      <div className="mt-4 grid gap-2 border-t border-border pt-3 sm:grid-cols-2">
+      <div className="grid gap-2 border-t border-border px-5 py-3 sm:grid-cols-2">
         <ContractFact
           label={t('signedDate')}
           value={
@@ -445,6 +462,10 @@ function ScheduleBody({
     }),
   };
 
+  const allBilled =
+    schedule.installments.length > 0 &&
+    !schedule.installments.some((i) => i.status === 'NEXT' || i.status === 'UPCOMING');
+
   return (
     <>
       <CommercialDeepLinkAction
@@ -460,6 +481,7 @@ function ScheduleBody({
         onSendInvoice={onSendInvoice}
         onVerifyMilestone={onVerifyMilestone}
       />
+      {allBilled && <AllMilestonesBilledBanner projectId={projectId} />}
     </>
   );
 }
@@ -493,6 +515,209 @@ function CommercialDeepLinkAction({
   }, [milestones, onPrepareInvoice, onReviewForBilling, requestedAction, requestedInstallmentId]);
 
   return null;
+}
+
+// ─── All Milestones Billed Banner (Slice A) ───────────────────────────────────
+
+function AllMilestonesBilledBanner({ projectId }: { projectId: string }) {
+  const t = useTranslations('commercial.contractMilestones.allBilledBanner');
+  return (
+    <div className="rounded-panel border border-success/30 bg-success/5 px-5 py-4">
+      <div className="flex items-start gap-3">
+        <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <p className="text-body-sm font-semibold text-foreground">{t('title')}</p>
+          <p className="mt-1 text-caption text-muted-foreground">{t('hint')}</p>
+        </div>
+        <Button asChild variant="outline" size="sm" className="shrink-0">
+          <Link href={`/projects/${projectId}/commercial/billing-collection`}>
+            {t('goToCollections')}
+          </Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Separate Charges Section (Slice D) ──────────────────────────────────────
+
+function SeparateChargesSection({
+  projectId,
+  contractId,
+}: {
+  projectId: string;
+  contractId: string;
+}) {
+  const t = useTranslations('commercial.contractMilestones.separateCharges');
+  const locale = useLocale() as 'en' | 'ar';
+  const query = useProjectSeparateCharges(projectId);
+  const [creatingFor, setCreatingFor] = useState<SeparateChargeNode | null>(null);
+
+  if (query.isPending) {
+    return <Skeleton className="h-24 w-full rounded-panel" />;
+  }
+
+  if (query.isError || !query.data) return null;
+
+  const { items } = query.data;
+
+  return (
+    <section className="rounded-panel border border-border bg-surface shadow-e1">
+      <div className="flex items-center justify-between border-b border-border px-5 py-4">
+        <div className="flex items-center gap-2">
+          <LinkIcon size={14} className="text-muted-foreground" aria-hidden="true" />
+          <h3 className="text-body-sm font-semibold text-foreground">{t('title')}</h3>
+          {items.length > 0 && (
+            <Badge tone="neutral" className="text-caption">{items.length}</Badge>
+          )}
+        </div>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="px-5 py-8 text-center">
+          <p className="text-body-sm font-medium text-foreground">{t('emptyTitle')}</p>
+          <p className="mt-1 text-caption text-muted-foreground">{t('emptyHint')}</p>
+        </div>
+      ) : (
+        <ul className="divide-y divide-border">
+          {items.map((item) => (
+            <SeparateChargeRow
+              key={item.id}
+              item={item}
+              locale={locale}
+              t={t}
+              onCreateInvoice={() => setCreatingFor(item)}
+            />
+          ))}
+        </ul>
+      )}
+
+      {creatingFor && (
+        <CreateSeparateChargeInvoiceDialog
+          projectId={projectId}
+          node={creatingFor}
+          onClose={() => setCreatingFor(null)}
+        />
+      )}
+    </section>
+  );
+}
+
+function SeparateChargeRow({
+  item,
+  locale,
+  onCreateInvoice,
+  t,
+}: {
+  item: SeparateChargeNode;
+  locale: string;
+  onCreateInvoice: () => void;
+  t: (key: string) => string;
+}) {
+  const fmtMoney = (v: string | null) =>
+    v ? (formatMoney(v, item.currency, locale as 'en' | 'ar') ?? v) : '—';
+
+  return (
+    <li className="flex flex-wrap items-center gap-3 px-5 py-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-body-sm font-medium text-foreground">{item.name}</p>
+        <p className="mt-0.5 text-caption text-muted-foreground">
+          <span className="font-mono">{item.code}</span>
+          {item.totalAmount ? ` · ${fmtMoney(item.totalAmount)}` : null}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {item.invoice ? (
+          <Badge tone="live" className="text-caption">{t('statusInvoiced')}</Badge>
+        ) : (
+          <>
+            <Badge tone="neutral" className="text-caption">{t('statusNotBilled')}</Badge>
+            <Button type="button" variant="outline" size="sm" onClick={onCreateInvoice}>
+              {t('createInvoice')}
+            </Button>
+          </>
+        )}
+      </div>
+    </li>
+  );
+}
+
+function CreateSeparateChargeInvoiceDialog({
+  projectId,
+  node,
+  onClose,
+}: {
+  projectId: string;
+  node: SeparateChargeNode;
+  onClose: () => void;
+}) {
+  const t = useTranslations('commercial.contractMilestones.separateCharges.dialog');
+  const today = new Date().toISOString().slice(0, 10);
+  const [invoiceDate, setInvoiceDate] = useState(today);
+  const [dueDate, setDueDate] = useState('');
+  const [paymentTerms, setPaymentTerms] = useState('');
+  const mutation = useCreateSeparateChargeInvoice(projectId);
+
+  async function handleSubmit() {
+    if (!dueDate) return;
+    await mutation.mutateAsync({
+      boqNodeId: node.id,
+      invoiceDate,
+      dueDate,
+      paymentTerms: paymentTerms || undefined,
+    });
+    onClose();
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && !mutation.isPending && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogTitle>{t('title')}</DialogTitle>
+        <DialogDescription>{t('description')}</DialogDescription>
+        {mutation.error && (
+          <Alert variant="error" messages={[(mutation.error as Error).message]} />
+        )}
+        <FormField htmlFor="sc-invoice-date" label={t('invoiceDate')}>
+          <DatePicker
+            id="sc-invoice-date"
+            value={invoiceDate}
+            onChange={setInvoiceDate}
+            disabled={mutation.isPending}
+          />
+        </FormField>
+        <FormField htmlFor="sc-due-date" label={t('dueDate')}>
+          <DatePicker
+            id="sc-due-date"
+            value={dueDate}
+            onChange={setDueDate}
+            disabled={mutation.isPending}
+          />
+        </FormField>
+        <FormField htmlFor="sc-payment-terms" label={t('paymentTerms')}>
+          <input
+            id="sc-payment-terms"
+            type="text"
+            className="w-full rounded-control border border-border bg-surface px-3 py-2 text-body-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            placeholder={t('paymentTermsPlaceholder')}
+            value={paymentTerms}
+            onChange={(e) => setPaymentTerms(e.target.value)}
+            disabled={mutation.isPending}
+          />
+        </FormField>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
+            {t('cancel')}
+          </Button>
+          <Button
+            onClick={() => void handleSubmit()}
+            disabled={!dueDate || mutation.isPending}
+          >
+            {mutation.isPending ? t('submitting') : t('submit')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function VerifyCommercialMilestoneDialog({

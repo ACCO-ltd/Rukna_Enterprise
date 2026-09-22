@@ -84,6 +84,7 @@
     },
     "currentPosition": {
       "title": "Current Position",
+      "amount": "Invoice amount",
       "noContract": "No contract",
       "goToMilestones": "Go to milestones"
     },
@@ -92,6 +93,34 @@
       "sendToClient": "Send to client",
       "followUp": "Follow up",
       "viewDispute": "View dispute"
+    },
+    "finalAccount": {
+      "title": "Final Account",
+      "hint": "Project has reached practical completion. Complete the checklist to close the contract.",
+      "checklist": {
+        "title": "Closing checklist",
+        "balance": "Outstanding balance cleared",
+        "balancePending": "Outstanding balance must be zero before closing",
+        "disputes": "No open disputes",
+        "disputesPending": "Resolve all open disputes before closing",
+        "retention": "Retention released",
+        "retentionPending": "Retention not yet released",
+        "retentionNone": "No retention terms"
+      },
+      "releaseRetention": "Release retention",
+      "releaseRetentionConfirm": {
+        "title": "Release retention",
+        "description": "Confirm releasing the retained amount for this contract. This cannot be undone.",
+        "confirm": "Release",
+        "cancel": "Cancel"
+      },
+      "closeContract": "Close contract",
+      "closeConfirm": {
+        "title": "Close contract",
+        "description": "This will mark the contract as Closed. All data remains available read-only.",
+        "confirm": "Close contract",
+        "cancel": "Cancel"
+      }
     }
   },
   "attention": {
@@ -358,7 +387,8 @@
     "source": {
       "INSTALLMENT": "Installment",
       "IPC": "Certificate",
-      "NONE": "No source document"
+      "NONE": "No source document",
+      "SEPARATE_CHARGE": "Separate charge"
     },
     "status": {
       "DRAFT": "Draft",
@@ -775,7 +805,14 @@
       "PARTIALLY_PAID": "Part paid",
       "SETTLED": "Settled",
       "MILESTONE_SCHEDULE": "Payment schedule",
-      "TERMINAL": "Contract closed"
+      "TERMINAL": "Contract closed",
+      "ALL_BILLED": "All stages invoiced",
+      "ALL_COMPLETE": "Contract complete"
+    },
+    "allBilledBanner": {
+      "title": "Every installment is invoiced",
+      "hint": "All billing packages have been issued. Track outstanding payments in Billing & Collection.",
+      "goToCollections": "Go to Billing & Collection"
     },
     "roles": {
       "PROJECT_MANAGER": "the project manager",
@@ -1218,6 +1255,42 @@
       "invoiceNumberRequired": "This billing package cannot be sent until every invoice has an assigned INV number. Refresh the package or ask Finance to finish posting it.",
       "whatsappRecipientPlaceholder": "e.g. +252 61 123 4567",
       "whatsappOpenFailed": "Could not prepare the invoice links. Please try again."
+    },
+    "separateCharges": {
+      "title": "Separate Charges",
+      "emptyTitle": "No separate charges",
+      "emptyHint": "No extra-work items have been marked as separate charges on this contract.",
+      "col": {
+        "name": "Description",
+        "amount": "Amount",
+        "status": "Status",
+        "action": "Action"
+      },
+      "statusInvoiced": "Invoiced",
+      "statusNotBilled": "Not billed",
+      "createInvoice": "Create invoice",
+      "allBilledBanner": {
+        "title": "Every installment is invoiced",
+        "hint": "All billing packages have been issued. Track outstanding payments in Billing & Collection.",
+        "goToCollections": "Go to Billing & Collection"
+      },
+      "dialog": {
+        "title": "Create separate charge invoice",
+        "description": "Raise a one-off invoice for this item. It is billed outside the milestone schedule.",
+        "invoiceDate": "Invoice date",
+        "dueDate": "Due date",
+        "dueDateRequired": "Due date is required",
+        "paymentTerms": "Payment terms",
+        "paymentTermsPlaceholder": "e.g. Net 30",
+        "submit": "Create invoice",
+        "cancel": "Cancel",
+        "submitting": "Creating..."
+      }
+    },
+    "allBilledBanner": {
+      "title": "Every installment is invoiced",
+      "hint": "All billing packages have been issued. Track outstanding payments in Billing & Collection.",
+      "goToCollections": "Go to Billing & Collection"
     },
     "prepareInvoice": {
       "title": "Prepare invoice",

@@ -75,12 +75,12 @@ function Ribbon({
       // Sticky like a frozen header (the BOQ money strip's grammar). The logical leading border
       // carries the state colour so one glance reads "clear" vs "blocked" without reading the text.
       className={cn(
-        'sticky top-0 z-20 rounded-panel border border-s-2 bg-surface shadow-e1',
+        'sticky top-0 z-20 rounded-panel border border-s-4 bg-surface shadow-e1',
         blocked ? 'border-s-warning border-border' : 'border-s-brand-primary border-border',
       )}
       aria-label={t('ribbon.label')}
     >
-      <div className="flex flex-col gap-2 px-4 py-2.5 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-2 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           {/* State dot + the plain-language stage. */}
           <span
@@ -90,9 +90,9 @@ function Ribbon({
             )}
           >
             {blocked ? (
-              <AlertTriangle size={14} aria-hidden="true" />
+              <AlertTriangle size={15} aria-hidden="true" />
             ) : (
-              <CircleDot size={14} aria-hidden="true" />
+              <CircleDot size={15} aria-hidden="true" />
             )}
             <StageLabel cycle={cycle} focus={focus} isMilestone={isMilestone} t={t} />
           </span>
@@ -136,7 +136,7 @@ function Ribbon({
         </div>
 
         <div className="flex shrink-0 items-center lg:justify-end">
-          <CycleAction cycle={cycle} blocked={blocked} t={t} />
+          <CycleAction cycle={cycle} blocked={blocked} projectId={projectId} t={t} />
         </div>
       </div>
     </section>
@@ -182,16 +182,19 @@ function StageLabel({
  * A present `nextAction` is the primary button — its `href` and `kind` verbatim. When the server
  * withheld the action because of the milestone gate (`nextAction: null` with the
  * `MILESTONE_NOT_VERIFIED` blocker), the button is shown DISABLED with the reason already stated
- * inline to its side — never a bare disabled control (CONST-COM-025). When there is simply nothing
- * to do (a settled or all-billed cycle with no blocker), no button is shown at all.
+ * inline to its side — never a bare disabled control (CONST-COM-025). When all installments are
+ * invoiced, a "Go to Billing & Collection" link guides the operator to track payments. When there
+ * is nothing else to do, no button is shown.
  */
 function CycleAction({
   cycle,
   blocked,
+  projectId,
   t,
 }: {
   cycle: CommercialCurrentCycleResponse;
   blocked: boolean;
+  projectId: string;
   t: (key: string, values?: Record<string, string | number>) => string;
 }) {
   if (cycle.nextAction) {
@@ -205,6 +208,18 @@ function CycleAction({
   // No action AND a milestone gate: the reason lives inline in the ribbon body, so this is the
   // disabled-with-reason pair CONST-COM-025 requires, not a bare disabled button.
   if (blocked) return null;
+
+  // When MILESTONE_SCHEDULE with no next action and no blocker, all installments are invoiced.
+  // Guide the operator toward collection rather than leaving the ribbon with no affordance.
+  if (cycle.stage === 'MILESTONE_SCHEDULE') {
+    return (
+      <Button asChild variant="ghost" size="sm" className="min-h-11 sm:min-h-0">
+        <Link href={`/projects/${projectId}/commercial/billing-collection`}>
+          {t('allBilledBanner.goToCollections')}
+        </Link>
+      </Button>
+    );
+  }
 
   return null;
 }

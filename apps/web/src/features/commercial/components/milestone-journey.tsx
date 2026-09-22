@@ -1,12 +1,11 @@
 'use client';
 
 import { useLocale, useTranslations } from 'next-intl';
-import { cn, Badge, type BadgeTone } from '@erp/ui';
+import { cn, Badge, Button, type BadgeTone } from '@erp/ui';
 import {
   Check,
   CheckCircle2,
   ChevronRight,
-  Circle,
   Clock,
 } from 'lucide-react';
 
@@ -65,26 +64,35 @@ export function MilestoneJourney({
 
   return (
     <section aria-label={t('journey.sectionTitle')}>
-      <ol className="space-y-2" role="list">
-        {viewModel.milestones.map((milestone, idx) => (
-          <MilestoneItem
-            key={milestone.id}
-            milestone={milestone}
-            stepNumber={idx + 1}
-            currency={viewModel.currency}
-            financialsVisible={viewModel.financialsVisible}
-            onMilestoneClick={onMilestoneClick}
-            onReviewForBilling={onReviewForBilling}
-            onPrepareInvoice={onPrepareInvoice}
-            onSendInvoice={onSendInvoice}
-            onVerifyMilestone={onVerifyMilestone}
+      <div className="relative">
+        {/* Vertical timeline connector — runs through the centre of step icons (left-7 = 28px = px-4 + h-6/2) */}
+        {viewModel.milestones.length > 1 && (
+          <div
+            className="pointer-events-none absolute bottom-0 left-7 top-0 w-px bg-border"
+            aria-hidden="true"
           />
-        ))}
-      </ol>
+        )}
+        <ol className="space-y-2" role="list">
+          {viewModel.milestones.map((milestone, idx) => (
+            <MilestoneItem
+              key={milestone.id}
+              milestone={milestone}
+              stepNumber={idx + 1}
+              currency={viewModel.currency}
+              financialsVisible={viewModel.financialsVisible}
+              onMilestoneClick={onMilestoneClick}
+              onReviewForBilling={onReviewForBilling}
+              onPrepareInvoice={onPrepareInvoice}
+              onSendInvoice={onSendInvoice}
+              onVerifyMilestone={onVerifyMilestone}
+            />
+          ))}
+        </ol>
+      </div>
 
       {/* Unassigned variations banner */}
       {unassignedCount > 0 ? (
-        <p className="mt-3 rounded-md bg-muted px-4 py-2 text-caption text-muted-foreground">
+        <p className="mt-3 rounded-panel bg-muted px-4 py-2.5 text-caption text-muted-foreground">
           {t('journey.unassignedBanner', { count: unassignedCount })}
         </p>
       ) : null}
@@ -134,11 +142,11 @@ function MilestoneItem({
       data-current={isCurrent || undefined}
       data-done={isDone || undefined}
       className={cn(
-        'rounded-panel border px-4 py-4 transition-colors',
+        'relative rounded-panel border px-4 py-4 transition-colors',
         isCurrent
-          ? 'border-brand-primary/30 bg-white shadow-sm'
+          ? 'border-brand-primary/25 bg-white shadow-e1'
           : isDone
-            ? 'border-border bg-surface/50'
+            ? 'border-border bg-surface/60'
             : 'border-border bg-surface',
       )}
     >
@@ -214,50 +222,55 @@ function MilestoneItem({
           {/* CTAs */}
           {milestone.userState === 'in-progress' &&
           milestone.programmeMilestone?.status === 'PLANNED' ? (
-            <button
-              type="button"
-              onClick={() => onVerifyMilestone?.(milestone)}
-              className="mt-1 inline-flex min-h-11 items-center gap-1.5 rounded-md border border-border bg-white px-3 py-2 text-body-sm font-medium text-foreground shadow-sm transition-colors hover:border-brand-primary/40 hover:bg-brand-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {t('cta.verifyMilestone')}
-            </button>
+            <div className="mt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => onVerifyMilestone?.(milestone)}
+              >
+                {t('cta.verifyMilestone')}
+              </Button>
+            </div>
           ) : milestone.userState === 'review-for-billing' ? (
-            <button
-              type="button"
-              onClick={() => onReviewForBilling(milestone)}
-              className="mt-1 inline-flex items-center gap-1.5 rounded-md bg-brand-primary px-3 py-1.5 text-body-sm font-medium text-white hover:bg-brand-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {t('cta.reviewForBilling')}
-            </button>
+            <div className="mt-2">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => onReviewForBilling(milestone)}
+              >
+                {t('cta.reviewForBilling')}
+              </Button>
+            </div>
           ) : milestone.userState === 'ready-to-bill' ? (
-            <div className="mt-1 space-y-2">
-              <div>
+            <div className="mt-2 space-y-2">
+              <div className="flex items-center gap-1.5">
                 <Badge tone="live" className="gap-1 text-caption">
                   <CheckCircle2 size={11} aria-hidden="true" />
                   {t('cta.readyToBill')}
                 </Badge>
-                <p className="mt-1 text-caption text-muted-foreground">{t('cta.readyNote')}</p>
+                <p className="text-caption text-muted-foreground">{t('cta.readyNote')}</p>
               </div>
-              <button
+              <Button
                 type="button"
+                size="sm"
                 onClick={() => onPrepareInvoice(milestone)}
-                className="inline-flex items-center gap-1.5 rounded-md bg-brand-primary px-3 py-1.5 text-body-sm font-medium text-white hover:bg-brand-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {t('cta.prepareInvoice')}
-              </button>
+              </Button>
             </div>
           ) : milestone.userState === 'invoice-issued' ? (
-            <div className="mt-1 space-y-2">
+            <div className="mt-2 space-y-2">
               <Badge tone="info" className="text-caption">
                 {t('state.invoice-issued')}
               </Badge>
-              <button
+              <Button
                 type="button"
+                size="sm"
                 onClick={() => onSendInvoice(milestone)}
-                className="inline-flex items-center gap-1.5 rounded-md bg-brand-primary px-3 py-1.5 text-body-sm font-medium text-white hover:bg-brand-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {t('cta.sendToClient')}
-              </button>
+              </Button>
             </div>
           ) : milestone.userState === 'awaiting-payment' ? (
             <AwaitingPaymentDisplay
@@ -295,21 +308,21 @@ function StepIcon({
 
   if (isDone) {
     return (
-      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-success/10">
-        <Check size={13} className="text-success" aria-hidden="true" />
+      <span className="relative z-10 mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-success">
+        <Check size={12} className="text-white" strokeWidth={2.5} aria-hidden="true" />
       </span>
     );
   }
   if (isCurrent) {
     return (
-      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-brand-primary bg-white">
-        <span className="text-[10px] font-bold text-brand-primary">{stepNumber}</span>
+      <span className="relative z-10 mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-primary shadow-[0_0_0_3px_var(--color-brand-primary,#255edb)33]">
+        <span className="text-[10px] font-bold text-white">{stepNumber}</span>
       </span>
     );
   }
   return (
-    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-surface">
-      <Circle size={8} className="text-muted-foreground" aria-hidden="true" />
+    <span className="relative z-10 mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-surface">
+      <span className="text-[10px] font-medium text-muted-foreground">{stepNumber}</span>
     </span>
   );
 }

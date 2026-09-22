@@ -12,6 +12,7 @@ import type {
   ExtensionOfTimeResponse,
   GrantExtensionOfTimeRequest,
   RecordProjectPaymentResult,
+  SeparateChargesResponse,
   VariationOrderListResponse,
   VariationOrderResponse,
 } from '@erp/types';
@@ -430,4 +431,44 @@ export function postCreditNote(
     `/projects/${projectId}/commercial/credit-notes/${creditNoteId}/post`,
     { method: 'POST', body: JSON.stringify({}) },
   );
+}
+
+// ─── Slice B — Contract close ─────────────────────────────────────────────────
+
+export function closeContract(contractId: string): Promise<{ id: string; status: string }> {
+  return apiClient<{ id: string; status: string }>(`/contracts/${contractId}/close`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+// ─── Slice C — Retention release ─────────────────────────────────────────────
+
+export function releaseRetention(contractId: string): Promise<{ id: string; status: string }> {
+  return apiClient<{ id: string; status: string }>(`/contracts/${contractId}/retention/release`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+// ─── Slice D — Separate charges ───────────────────────────────────────────────
+
+export function getProjectSeparateCharges(projectId: string): Promise<SeparateChargesResponse> {
+  return apiClient<SeparateChargesResponse>(`/projects/${projectId}/commercial/separate-charges`);
+}
+
+export interface CreateSeparateChargeInvoicePayload {
+  boqNodeId: string;
+  invoiceDate: string;
+  dueDate: string;
+  paymentTerms?: string;
+}
+
+export function createSeparateChargeInvoice(
+  payload: CreateSeparateChargeInvoicePayload,
+): Promise<{ id: string; postingStatus: string }> {
+  return apiClient<{ id: string; postingStatus: string }>(`/invoices/from-separate-charge`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
