@@ -189,15 +189,18 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
     [orders.data],
   );
 
-  // Pre-select the PO passed via the `?poId=` query param once the receivable list loads.
-  // Only fires on mount — if the user manually changes the picker the effect has already run.
-  useEffect(() => {
-    if (!initialPoId || purchaseOrderId || receivable.length === 0) return;
-    const match = receivable.find((po) => po.id === initialPoId);
-    if (match) selectPo(match.id);
-    // selectPo reads receivable via closure; listing it here would cause infinite loops.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialPoId, receivable]);
+  // A GRN opened from a purchase order link has a valid default selection, but no state
+  // transition is needed just to render that default. Keeping it derived avoids an extra
+  // render when the asynchronous order list arrives.
+  const linkedPurchaseOrder = useMemo(
+    () => (purchaseOrderId ? null : receivable.find((po) => po.id === initialPoId) ?? null),
+    [initialPoId, purchaseOrderId, receivable],
+  );
+  const selectedPurchaseOrderId = purchaseOrderId || linkedPurchaseOrder?.id || '';
+  const selectedLines =
+    purchaseOrderId || !linkedPurchaseOrder
+      ? lines
+      : grnLinesFromPo(activeRevision(linkedPurchaseOrder.revisions)?.lines ?? []);
 
   const selectPo = (id: string) => {
     setPurchaseOrderId(id);
@@ -209,8 +212,15 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
     createdIdRef.current = null;
   };
 
-  const submittable = submittableGrnLines(lines);
-  const hasLineError = lines.some((l) => grnLineError(l) !== null);
+  const changeLines = (nextLines: GrnLineDraft[]) => {
+    // Once a linked PO is edited, materialize its derived default so the user's edits
+    // remain the source of truth for the rest of the receive flow.
+    if (!purchaseOrderId && linkedPurchaseOrder) setPurchaseOrderId(linkedPurchaseOrder.id);
+    setLines(nextLines);
+  };
+
+  const submittable = submittableGrnLines(selectedLines);
+  const hasLineError = selectedLines.some((l) => grnLineError(l) !== null);
 
   function buildLines(): CreateGrnLinePayload[] {
     // Untouched rows are omitted, not sent as zeros — @IsPositive() would reject the whole
@@ -245,7 +255,7 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
         grn = { id: createdIdRef.current, status: 'DRAFT' } as GoodsReceipt;
       } else {
         grn = await create.mutateAsync({
-          purchaseOrderId,
+          purchaseOrderId: selectedPurchaseOrderId,
           deliveryDate,
           ...(deliveryNoteRef.trim() ? { deliveryNoteRef: deliveryNoteRef.trim() } : {}),
           lines: buildLines(),
@@ -270,15 +280,15 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
     }
     // buildLines reads current state; it is intentionally not a dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [create, post, router, purchaseOrderId, deliveryDate, deliveryNoteRef]);
+  }, [create, post, router, selectedPurchaseOrderId, deliveryDate, deliveryNoteRef]);
 
   function handleReceive() {
     setShowErrors(true);
-    if (hasLineError || submittable.length === 0 || !purchaseOrderId) return;
+    if (hasLineError || submittable.length === 0 || !selectedPurchaseOrderId) return;
     void runReceive();
   }
 
-  const canReceive = purchaseOrderId !== '' && lines.length > 0;
+  const canReceive = selectedPurchaseOrderId !== '' && selectedLines.length > 0;
 
   return (
     <div className="space-y-6 pb-28">
@@ -291,7 +301,7 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField htmlFor="grn-po" label={t('purchaseOrder')}>
-          <Select id="grn-po" value={purchaseOrderId} onChange={(value) => selectPo(value)}>
+          <Select id="grn-po" value={selectedPurchaseOrderId} onChange={(value) => selectPo(value)}>
             <option value="">{t('selectPo')}</option>
             {receivable.map((po) => (
               <option key={po.id} value={po.id}>
@@ -328,16 +338,16 @@ export function GrnForm({ initialPoId }: { initialPoId?: string }) {
 
       {orders.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
 
-      {lines.length > 0 ? (
+      {selectedLines.length > 0 ? (
         <section className="space-y-3">
           <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             {t('linesTitle')}
           </h2>
-          <GrnLineEditor lines={lines} onChange={setLines} showErrors={showErrors} />
+          <GrnLineEditor lines={selectedLines} onChange={changeLines} showErrors={showErrors} />
         </section>
       ) : null}
 
-      {showErrors && submittable.length === 0 && lines.length > 0 ? (
+      {showErrors && submittable.length === 0 && selectedLines.length > 0 ? (
         <Alert variant="error" messages={[t('allLinesEmpty')]} />
       ) : null}
 
