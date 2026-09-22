@@ -18,6 +18,7 @@ import type {
   ExtensionOfTimeListResponse,
   GrantExtensionOfTimeRequest,
   RecordProjectPaymentResult,
+  SeparateChargesResponse,
   VariationOrderListResponse,
   VariationOrderResponse,
 } from '@erp/types';
@@ -27,6 +28,8 @@ import { accountingKeys } from '@/features/accounting/hooks/use-accounting';
 
 import {
   addVariationLine,
+  closeContract,
+  createSeparateChargeInvoice,
   getCertifiedInvoicedByVariation,
   getCommercialApplications,
   getCommercialBilling,
@@ -35,14 +38,17 @@ import {
   getCommercialOverview,
   getCommercialSummary,
   getProjectDepositAccounts,
+  getProjectSeparateCharges,
   getVariation,
   grantExtensionOfTime,
   listExtensionsOfTime,
   listVariations,
   recordProjectPayment,
+  releaseRetention,
   removeVariationLine,
   reverseVariation,
   updateVariationLine,
+  type CreateSeparateChargeInvoicePayload,
   type RecordProjectPaymentPayload,
   type UpdateVariationLinePayload,
   type VariationLinePayload,
@@ -60,6 +66,8 @@ export const commercialKeys = {
     [...commercialKeys.all(projectId), 'billing-packages', contractId] as const,
   depositAccounts: (projectId: string) =>
     [...commercialKeys.all(projectId), 'deposit-accounts'] as const,
+  separateCharges: (projectId: string) =>
+    [...commercialKeys.all(projectId), 'separate-charges'] as const,
 };
 
 /** Variations are contract-scoped, so their cache is keyed by contract, not project. */
@@ -290,6 +298,57 @@ export function useRecordProjectPayment(projectId: string) {
       await Promise.all([
         qc.invalidateQueries({ queryKey: commercialKeys.all(projectId) }),
         qc.invalidateQueries({ queryKey: accountingKeys.projectFinancialPosition(projectId) }),
+      ]);
+    },
+  });
+}
+
+// ─── Slice B — Contract close ─────────────────────────────────────────────────
+
+export function useCloseContract(contractId: string, projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => closeContract(contractId),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: commercialKeys.all(projectId) });
+    },
+  });
+}
+
+// ─── Slice C — Retention release ─────────────────────────────────────────────
+
+export function useReleaseRetention(contractId: string, projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => releaseRetention(contractId),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: commercialKeys.summary(projectId) });
+    },
+  });
+}
+
+// ─── Slice D — Separate charges ───────────────────────────────────────────────
+
+export function useProjectSeparateCharges(
+  projectId: string,
+): UseQueryResult<SeparateChargesResponse, Error> {
+  return useQuery({
+    queryKey: commercialKeys.separateCharges(projectId),
+    queryFn: () => getProjectSeparateCharges(projectId),
+    enabled: Boolean(projectId),
+  });
+}
+
+export function useCreateSeparateChargeInvoice(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateSeparateChargeInvoicePayload) =>
+      createSeparateChargeInvoice(payload),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: commercialKeys.separateCharges(projectId) }),
+        qc.invalidateQueries({ queryKey: commercialKeys.billing(projectId) }),
+        qc.invalidateQueries({ queryKey: commercialKeys.summary(projectId) }),
       ]);
     },
   });

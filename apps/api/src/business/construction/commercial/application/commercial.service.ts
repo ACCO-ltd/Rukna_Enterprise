@@ -35,6 +35,8 @@ import {
   type CollectionCreditNoteDto,
   type CommercialOverviewResponse,
   type OverviewAttentionItem,
+  type SeparateChargesResponse,
+  type SeparateChargeNode,
 } from '@erp/types';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
@@ -525,6 +527,7 @@ export class CommercialService {
             retentionRate: contract.retentionTerms.retentionRate.toString(),
             retentionCap: contract.retentionTerms.retentionCap.toString(),
             retentionSplitOnPC: contract.retentionTerms.retentionSplitOnPC.toString(),
+            retentionReleasedAt: contract.retentionTerms.retentionReleasedAt?.toISOString() ?? null,
           }
         : null,
       securityPosition: this.securityPosition(
@@ -1847,5 +1850,65 @@ export class CommercialService {
       // The fine-grained not-billed/adopted check stays server-side in ReverseVariationService.reverse.
       canReverseVariation: has(PERMISSIONS.contractsApprove),
     };
+  }
+
+  // ─── B11 — Separate charges list (ADR-029 R-4) ──────────────────────────────
+
+  async getSeparateCharges(
+    identity: RequestIdentity,
+    projectId: string,
+  ): Promise<SeparateChargesResponse> {
+    await this.projectAccess.assertMember(identity, projectId);
+    const prisma = this.tenancyService.getClient();
+    const orgId = identity.activeOrganizationId;
+    const { canViewMargin: mayViewFinancials } = resolveBoqVisibility(identity);
+
+    const contract = await this.repo.findMainContract(prisma, orgId, projectId);
+    if (!contract) {
+      return { projectId, items: [] };
+    }
+
+    const nodes = await prisma.boqNode.findMany({
+      where: {
+        versionId: contract.boqVersionId,
+        commercialTreatment: 'SEPARATE_CHARGE',
+        isLeaf: true,
+        isActive: true,
+      },
+      include: {
+        separateChargeInvoice: {
+          select: {
+            id: true,
+            invoiceNumber: true,
+            postingStatus: true,
+            invoiceDate: true,
+            dueDate: true,
+          },
+        },
+      },
+      orderBy: { sortOrder: 'asc' },
+    });
+
+    const items: SeparateChargeNode[] = nodes.map((node) => ({
+      id: node.id,
+      code: node.code,
+      name: node.description,
+      unitRate: mayViewFinancials && node.unitRate ? node.unitRate.toString() : null,
+      quantity: node.quantity?.toString() ?? '0',
+      totalAmount: mayViewFinancials && node.totalAmount ? node.totalAmount.toString() : null,
+      currency: node.currency ?? contract.currency,
+      contractId: contract.id,
+      invoice: node.separateChargeInvoice
+        ? {
+            id: node.separateChargeInvoice.id,
+            invoiceNumber: node.separateChargeInvoice.invoiceNumber,
+            postingStatus: node.separateChargeInvoice.postingStatus,
+            invoiceDate: node.separateChargeInvoice.invoiceDate.toISOString(),
+            dueDate: node.separateChargeInvoice.dueDate?.toISOString() ?? null,
+          }
+        : null,
+    }));
+
+    return { projectId, items };
   }
 }

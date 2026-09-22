@@ -229,7 +229,7 @@ describe('Contract tab — retention/advance shown only when configured (S-SH-4)
 
   it('renders the retention panel when the contract carries retention terms', () => {
     renderTab({
-      retention: { retentionRate: '0.05', retentionCap: '0.10', retentionSplitOnPC: '0.5' },
+      retention: { retentionRate: '0.05', retentionCap: '0.10', retentionSplitOnPC: '0.5', retentionReleasedAt: null },
       securityPosition: {
         applicable: true,
         retentionHeld: '25000.00',

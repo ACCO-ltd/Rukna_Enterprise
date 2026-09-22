@@ -143,6 +143,16 @@ export class ContractsController {
     return this.contractService.transition(identity, id, 'close');
   }
 
+  @Post(':id/retention/release')
+  @RequirePermissions(PERMISSIONS.contractsManage)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Release retention on a FINAL_ACCOUNT_PENDING contract' })
+  @ApiResponse({ status: 409, description: 'Contract not in FINAL_ACCOUNT_PENDING, or retention already released' })
+  @ApiResponse({ status: 400, description: 'No retention terms on this contract' })
+  releaseRetention(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.contractService.releaseRetention(identity, id);
+  }
+
   @Post(':id/cancel')
   @RequirePermissions(PERMISSIONS.contractsManage)
   @HttpCode(HttpStatus.OK)

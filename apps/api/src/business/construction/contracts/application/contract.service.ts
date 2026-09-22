@@ -1020,6 +1020,47 @@ export class ContractService {
     });
   }
 
+  async releaseRetention(identity: RequestIdentity, id: string): Promise<ContractFull> {
+    const prisma = this.tenancyService.getClient();
+    const contract = await this.requireContract(prisma, identity, id);
+
+    if (contract.status !== 'FINAL_ACCOUNT_PENDING') {
+      throw new ConflictException(
+        `Retention can only be released on a contract in FINAL_ACCOUNT_PENDING status (current: '${contract.status}').`,
+      );
+    }
+    if (!contract.retentionTerms) {
+      throw new BadRequestException('This contract has no retention terms to release.');
+    }
+    if (contract.retentionTerms.retentionReleasedAt) {
+      throw new ConflictException('Retention has already been released on this contract.');
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const releasedAt = new Date();
+      await tx.contractRetentionTerms.update({
+        where: { contractId: id },
+        data: { retentionReleasedAt: releasedAt },
+      });
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'UPDATE',
+        resourceType: 'ContractRetentionTerms',
+        resourceId: id,
+        sourceCommand: 'contract.releaseRetention',
+        eventType: 'CONTRACT_RETENTION_RELEASED',
+        idempotencyKey: `contract-retention-release-${id}`,
+        before: { retentionReleasedAt: null },
+        after: { retentionReleasedAt: releasedAt.toISOString() },
+      });
+
+      const updated = await this.repo.findById(tx as never, identity.activeOrganizationId, id);
+      return updated!;
+    });
+  }
+
   async addAdvanceTerm(identity: RequestIdentity, id: string, dto: AddAdvanceTermDto) {
     const prisma = this.tenancyService.getClient();
     const contract = await this.requireContract(prisma, identity, id);

@@ -390,4 +390,18 @@ export class CommercialController {
       vatAccountCode: dto.vatAccountCode,
     });
   }
+
+  // ─── B11 — Separate charges list (ADR-029 R-4) ───────────────────────────────
+
+  @Get('separate-charges')
+  @ApiOperation({
+    summary: 'ADR-029 R-4: list SEPARATE_CHARGE BOQ leaves and their one-off invoices',
+  })
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  getSeparateCharges(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+  ) {
+    return this.commercialService.getSeparateCharges(identity, projectId);
+  }
 }
