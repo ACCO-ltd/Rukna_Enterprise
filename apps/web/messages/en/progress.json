@@ -652,5 +652,10 @@
       "Night": "Night",
       "Full day": "Full day"
     }
+  },
+  "masterSchedule": {
+    "download": "Download PDF",
+    "downloading": "Generating…",
+    "downloadFailed": "Could not generate the master schedule PDF. Please try again."
   }
 }

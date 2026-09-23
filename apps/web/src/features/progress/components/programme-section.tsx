@@ -7,6 +7,7 @@ import { MilestonesSection } from '@/features/programme/components/milestones-se
 import { WorkPackageScheduleSection } from '@/features/programme/components/work-package-schedule-section';
 import { ActivitiesSection } from '@/features/programme/components/activities-section';
 import { ScheduleSetupCard } from '@/features/programme/components/schedule-setup-card';
+import { DownloadMasterScheduleButton } from '@/features/programme/components/download-master-schedule-button';
 
 import { useProjectRollup, useWorkPackages } from '../hooks/use-progress';
 import type { ProgressView } from './progress-tab';
@@ -73,6 +74,11 @@ export function ProgrammeSection({
       <BaselineSection projectId={projectId} />
 
       <MilestonesSection projectId={projectId} />
+
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <h3 className="text-sm font-semibold text-foreground">{t('tabs.programme')}</h3>
+        <DownloadMasterScheduleButton projectId={projectId} />
+      </div>
 
       <ScheduleSetupCard projectId={projectId} />
 

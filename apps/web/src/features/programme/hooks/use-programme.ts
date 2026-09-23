@@ -12,6 +12,7 @@ import {
   createActivity,
   createMilestone,
   deleteActivity,
+  downloadMasterSchedule,
   listActivities,
   listMilestones,
   suggestWeights,
@@ -128,6 +129,21 @@ export function useApplyScheduleTemplate(projectId: string) {
 export function useSuggestWeights(projectId: string) {
   return useMutation({
     mutationFn: () => suggestWeights(projectId),
+  });
+}
+
+/**
+ * Master Schedule P4 (ADR-029) — download the branded PDF report.
+ *
+ * A mutation (not a query) because it is a one-shot user action with a side effect — the browser
+ * download — and never caches; `isPending` drives the button's generating state and `onError`
+ * surfaces a toast. `fallbackProjectCode` names the file when the server's `Content-Disposition`
+ * is not readable by the browser.
+ */
+export function useDownloadMasterSchedule(projectId: string) {
+  return useMutation({
+    mutationFn: (fallbackProjectCode: string) =>
+      downloadMasterSchedule(projectId, fallbackProjectCode),
   });
 }
 
