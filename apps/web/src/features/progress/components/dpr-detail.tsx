@@ -14,10 +14,13 @@ import {
   Select,
   Skeleton,
   Textarea,
+  useToast,
   type ApprovalStep,
 } from '@erp/ui';
 import { ArrowLeft, HardHat, Image as ImageIcon, Play, Ruler, TriangleAlert, Trash2, Wrench } from 'lucide-react';
 import type { DprLabourRowResponse, DprEquipmentRowResponse, DprObservationResponse } from '@erp/types';
+
+import type { DailyProgressReportDetail } from '../api/progress-api';
 
 import {
   RefButton,
@@ -50,6 +53,7 @@ import {
   useApproveDpr,
   useAttachDprEvidence,
   useDpr,
+  usePatchDprContext,
   useProjectProgress,
   useReturnDpr,
   useSubmitDpr,
@@ -62,6 +66,41 @@ import {
 } from '../hooks/use-progress';
 import { lineLabel, useBoqLeaves } from '../hooks/use-boq-leaves';
 import { DprStatusBadge } from './dpr-status-badge';
+
+/**
+ * Bounded site-condition options (ADR-021 redesign §5.2). Stored as their readable string so
+ * analysis can group by a known set — never free-typed prose that reads "rainy" / "Rainy" /
+ * "RAINY". A hot-climate (Banaadir) weather set; a delay taxonomy that seeds later delay/EOT
+ * analysis.
+ */
+const WEATHER_OPTIONS = [
+  'Clear',
+  'Sunny / hot',
+  'Partly cloudy',
+  'Overcast',
+  'Light rain',
+  'Heavy rain',
+  'Thunderstorm',
+  'Windy',
+  'Dust / haze',
+  'Fog',
+] as const;
+
+const DELAY_OPTIONS = [
+  'No delay',
+  'Weather',
+  'Material shortage',
+  'Labour shortage',
+  'Equipment breakdown',
+  'Client instruction',
+  'Design change / RFI',
+  'Site access restriction',
+  'Utilities / services',
+  'Permit / authority',
+  'Other',
+] as const;
+
+const refFieldClass = 'rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
 
 export function DprDetail({
   projectId,
@@ -206,13 +245,16 @@ export function DprDetail({
           {isApproved ? (
             <p className="mt-3 text-sm text-green-600">{t('report.approvedHint')}</p>
           ) : null}
+          {/* Once the report is submitted/approved these become the permanent read record; while
+              editable they live in the ReportDetailsCard below instead, so a value is never shown
+              read-only and editable at the same time. */}
           <dl className="mt-4 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-            {dpr.weather ? <Meta label={t('report.fields.weather')} value={dpr.weather} /> : null}
-            {dpr.labourCount != null ? (
+            {!editable && dpr.weather ? <Meta label={t('report.fields.weather')} value={dpr.weather} /> : null}
+            {!editable && dpr.labourCount != null ? (
               <Meta label={t('report.fields.labourCount')} value={String(dpr.labourCount)} />
             ) : null}
-            {dpr.delayReason ? <Meta label={t('report.fields.delayReason')} value={dpr.delayReason} /> : null}
-            {dpr.narrative ? <Meta label={t('report.fields.narrative')} value={dpr.narrative} /> : null}
+            {!editable && dpr.delayReason ? <Meta label={t('report.fields.delayReason')} value={dpr.delayReason} /> : null}
+            {!editable && dpr.narrative ? <Meta label={t('report.fields.narrative')} value={dpr.narrative} /> : null}
             {dpr.returnReason ? (
               <div className="sm:col-span-2">
                 <Meta label={t('report.fields.returnReason')} value={dpr.returnReason} />
@@ -221,6 +263,8 @@ export function DprDetail({
           </dl>
         </RefCardBody>
       </RefCard>
+
+      {editable ? <ReportDetailsCard dpr={dpr} /> : null}
 
       {/* Measurements */}
       <RefCard>
@@ -355,6 +399,112 @@ export function DprDetail({
         />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Weather, delay reason, labour/equipment headline counts, and the "work performed" narrative —
+ * the context fields `PatchDprContextBody` already covers server-side (a genuinely built but,
+ * before this, never-wired-up capability). Shown only while the report is DRAFT/RETURNED; once
+ * submitted these read back as the plain `Meta` rows in the header instead.
+ */
+function ReportDetailsCard({ dpr }: { dpr: DailyProgressReportDetail }) {
+  const t = useTranslations('progress');
+  const { toast } = useToast();
+  const patch = usePatchDprContext(dpr.id);
+
+  const [weather, setWeather] = useState(dpr.weather ?? WEATHER_OPTIONS[0]);
+  const [delayReason, setDelayReason] = useState(dpr.delayReason ?? DELAY_OPTIONS[0]);
+  const [labourCount, setLabourCount] = useState(dpr.labourCount != null ? String(dpr.labourCount) : '');
+  const [equipmentNote, setEquipmentNote] = useState(dpr.equipmentNote ?? '');
+  const [narrative, setNarrative] = useState(dpr.narrative ?? '');
+  const [error, setError] = useState<string | null>(null);
+
+  function onSave(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
+    patch.mutate(
+      {
+        weather,
+        delayReason,
+        labourCount: labourCount ? Number(labourCount) : undefined,
+        equipmentNote: equipmentNote.trim() || undefined,
+        narrative: narrative.trim() || undefined,
+      },
+      {
+        onSuccess: () => toast({ tone: 'success', title: t('report.detailsSaved') }),
+        onError: (e) => setError(e instanceof ApiError ? e.message : t('states.loadFailed')),
+      },
+    );
+  }
+
+  return (
+    <RefCard>
+      <RefCardHeader title={t('report.detailsTitle')} divider />
+      <RefCardBody className="pt-4">
+        <form onSubmit={onSave}>
+          {error ? (
+            <div className="mb-3">
+              <Alert variant="error" messages={[error]} />
+            </div>
+          ) : null}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <FormField htmlFor="rd-weather" label={t('report.fields.weather')}>
+              <Select id="rd-weather" value={weather} onChange={setWeather} className={refFieldClass}>
+                {WEATHER_OPTIONS.map((w) => (
+                  <option key={w} value={w}>
+                    {w}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+            <FormField htmlFor="rd-delay" label={t('report.fields.delayReason')}>
+              <Select id="rd-delay" value={delayReason} onChange={setDelayReason} className={refFieldClass}>
+                {DELAY_OPTIONS.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+            <FormField htmlFor="rd-labour" label={t('report.fields.labourCount')}>
+              <Input
+                id="rd-labour"
+                type="number"
+                min="0"
+                value={labourCount}
+                onChange={(e) => setLabourCount(e.target.value)}
+                className={refFieldClass}
+              />
+            </FormField>
+            <FormField htmlFor="rd-equipment" label={t('report.fields.equipmentNote')}>
+              <Input
+                id="rd-equipment"
+                value={equipmentNote}
+                onChange={(e) => setEquipmentNote(e.target.value)}
+                className={refFieldClass}
+              />
+            </FormField>
+            <div className="sm:col-span-2">
+              <FormField htmlFor="rd-narrative" label={t('report.fields.narrative')}>
+                <Textarea
+                  id="rd-narrative"
+                  value={narrative}
+                  onChange={(e) => setNarrative(e.target.value)}
+                  rows={3}
+                  className={refFieldClass}
+                />
+              </FormField>
+            </div>
+          </div>
+          <div className="mt-4">
+            <RefButton type="submit" size="sm" disabled={patch.isPending}>
+              {patch.isPending ? t('report.detailsSaving') : t('actions.save')}
+            </RefButton>
+          </div>
+        </form>
+      </RefCardBody>
+    </RefCard>
   );
 }
 
@@ -539,8 +689,8 @@ function DprEvidence({
           <p className="mt-3 text-sm text-gray-500">{t('evidence.empty')}</p>
         ) : (
           <ul className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-4">
-            {attachments.map((a) => (
-              <EvidenceTile key={a.id} platformFileId={a.platformFileId} />
+            {attachments.map((a, index) => (
+              <EvidenceTile key={a.id} platformFileId={a.platformFileId} index={index} />
             ))}
           </ul>
         )}
@@ -549,7 +699,7 @@ function DprEvidence({
   );
 }
 
-function EvidenceTile({ platformFileId }: { platformFileId: string }) {
+function EvidenceTile({ platformFileId, index }: { platformFileId: string; index: number }) {
   const t = useTranslations('progress');
   // The signed URL is the thumbnail src AND the open-in-new-tab target, and it carries the mime type
   // that decides <img> vs <video>. Cached under its ~15-min expiry so a gallery is not a burst of
@@ -601,6 +751,12 @@ function EvidenceTile({ platformFileId }: { platformFileId: string }) {
             </span>
           </span>
         ) : null}
+        <span
+          aria-hidden="true"
+          className="absolute end-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-[11px] font-medium text-white"
+        >
+          {index + 1}
+        </span>
         <span
           className="absolute inset-x-0 bottom-0 truncate bg-black/55 px-1.5 py-0.5 text-micro text-white"
           title={originalName}

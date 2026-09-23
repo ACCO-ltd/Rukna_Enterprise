@@ -159,19 +159,21 @@ export function MediaUpload({
           if (!disabled && e.dataTransfer.files?.length) addFiles(e.dataTransfer.files);
         }}
         className={cn(
-          'rounded-panel border border-dashed px-4 py-6 text-center transition-colors duration-(--motion-enter) ease-brand',
-          dragging ? 'border-brand-primary bg-brand-accent/40' : 'border-border bg-surface',
+          'rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors',
+          dragging ? 'border-blue-400 bg-blue-50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100',
           disabled && 'opacity-50',
         )}
       >
-        <Upload size={20} className="mx-auto text-muted-foreground" aria-hidden="true" />
-        <p className="mt-2 text-sm text-muted-foreground">
+        <span className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-blue-100" aria-hidden="true">
+          <Upload size={18} className="text-blue-600" />
+        </span>
+        <p className="mt-2.5 text-sm text-gray-600">
           {labels.dropHint}{' '}
           <button
             type="button"
             disabled={disabled}
             onClick={() => inputRef.current?.click()}
-            className="font-medium text-brand-primary underline-offset-2 hover:underline disabled:no-underline disabled:opacity-50"
+            className="font-semibold text-blue-600 underline-offset-2 hover:underline disabled:no-underline disabled:opacity-50"
           >
             {labels.browse}
           </button>
@@ -190,14 +192,14 @@ export function MediaUpload({
         />
       </div>
 
-      {error ? <p className="mt-2 text-caption font-medium text-danger">{error}</p> : null}
+      {error ? <p className="mt-2 text-xs font-medium text-red-600">{error}</p> : null}
 
       {items.length > 0 ? (
         <ul className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-4">
-          {items.map((it) => (
+          {items.map((it, index) => (
             <li
               key={it.key}
-              className="relative aspect-square overflow-hidden rounded-control border border-border bg-muted"
+              className="relative aspect-square overflow-hidden rounded-lg border border-gray-200 bg-gray-100 shadow-sm"
             >
               {it.kind === 'image' ? (
                 // eslint-disable-next-line @next/next/no-img-element -- object-URL preview, not a remote asset
@@ -206,9 +208,13 @@ export function MediaUpload({
                 <video src={it.previewUrl} className="h-full w-full object-cover" muted playsInline />
               )}
 
+              <span className="absolute bottom-1.5 end-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-[11px] font-medium text-white">
+                {index + 1}
+              </span>
+
               <div className="absolute inset-0 flex items-center justify-center bg-black/45">
                 {it.status === 'uploading' ? (
-                  <span className="flex items-center gap-1.5 text-caption font-medium text-white">
+                  <span className="flex items-center gap-1.5 text-xs font-medium text-white">
                     <span
                       className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white"
                       aria-hidden="true"
@@ -217,11 +223,11 @@ export function MediaUpload({
                   </span>
                 ) : (
                   <div className="flex flex-col items-center gap-1 px-1 text-center">
-                    <span className="text-caption font-medium text-white">{labels.failed}</span>
+                    <span className="text-xs font-medium text-white">{labels.failed}</span>
                     <button
                       type="button"
                       onClick={() => retry(it)}
-                      className="rounded-control bg-white/90 px-2 py-0.5 text-micro font-semibold text-foreground hover:bg-white"
+                      className="rounded-md bg-white/90 px-2 py-0.5 text-[11px] font-semibold text-gray-900 hover:bg-white"
                     >
                       {labels.retry}
                     </button>
