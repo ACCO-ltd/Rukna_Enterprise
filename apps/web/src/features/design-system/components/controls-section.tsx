@@ -3,11 +3,18 @@
 import { useState } from 'react';
 import {
   Button,
+  Combobox,
+  type ComboboxOption,
   DatePicker,
+  DateRangePicker,
+  FilterBar,
+  FilterField,
   FormField,
   FormSection,
   Input,
   Label,
+  RadioGroup,
+  SectionHeader,
   Select,
   Textarea,
   useToast,
@@ -252,6 +259,68 @@ export function ControlsSection() {
           <code className="font-mono text-caption">isDateDisabled</code> and the calendar refuses
           those days outright, instead of the server rejecting the form afterwards.
         </Rule>
+
+        <Specimen label="DateRangePicker" token="<DateRangePicker>">
+          <div className="max-w-sm">
+            <Label htmlFor="ds-range" className="mb-1.5 block text-body-sm font-medium text-foreground">
+              Date range
+            </Label>
+            <DateRangePickerSpecimen id="ds-range" />
+          </div>
+        </Specimen>
+
+        <Rule>
+          One calendar in <code className="font-mono text-caption">react-day-picker</code>&rsquo;s
+          own range mode, not two <code className="font-mono text-caption">DatePicker</code>s
+          bolted together — <code className="font-mono text-caption">Calendar</code> already
+          carries <code className="font-mono text-caption">range_start</code>/
+          <code className="font-mono text-caption">range_end</code>/
+          <code className="font-mono text-caption">range_middle</code> styling that sat unused
+          until now. Closes on the second click, not the first — react-day-picker sets{' '}
+          <code className="font-mono text-caption">to = from</code> on the first click, so
+          &ldquo;a click happened&rdquo; cannot be the close condition.
+        </Rule>
+
+        <Specimen label="RadioGroup — inline and card" token="<RadioGroup variant>">
+          <RadioGroupSpecimen />
+        </Specimen>
+
+        <Rule>
+          <code className="font-mono text-caption">variant=&quot;card&quot;</code> is for a
+          choice that needs deciding, not just picking — the description is part of the
+          decision. It still keeps the description out of the radio&rsquo;s accessible name
+          (<code className="font-mono text-caption">aria-describedby</code>, not nested text) —
+          the same rule <code className="font-mono text-caption">CheckboxField</code> follows, so
+          a screen reader announces the label once and the description once, not the two run
+          together.
+        </Rule>
+
+        <Specimen
+          label="Combobox — grouped, with a loading state"
+          token="<Combobox> · group · icon · caption · meta · loading"
+        >
+          <ComboboxSpecimen />
+        </Specimen>
+
+        <Rule>
+          Grouping goes by array order — put every option for one group together, in the order
+          the section should read. <code className="font-mono text-caption">loading</code> swaps
+          the list for a spinner without closing the panel or losing what was typed, for a
+          server-driven search where <code className="font-mono text-caption">options</code>
+          hasn&rsquo;t caught up yet.
+        </Rule>
+
+        <Specimen label="FilterBar" token="<FilterBar> · <FilterField grow>">
+          <FilterBarSpecimen />
+        </Specimen>
+
+        <Rule>
+          <code className="font-mono text-caption">grow</code> is for the field people reach for
+          first — the search box — not a general-purpose sizing knob. Every other field shares
+          one <code className="font-mono text-caption">flex-1</code>: they grow evenly and wrap
+          together at 375px, rather than each field guessing its own width the way five screens
+          independently did before this existed.
+        </Rule>
       </Section>
 
       {/* ── Toast ───────────────────────────────────────────────────────── */}
@@ -322,6 +391,39 @@ export function ControlsSection() {
               </div>
             </FormSection>
           </div>
+        </Specimen>
+
+        <Specimen label="FormSection — numbered" token="<FormSection step>">
+          <div className="flex flex-col gap-6">
+            <FormSection step={1} title="Procurement Method" description="Select the most appropriate procurement method for this purchase.">
+              <p className="text-caption text-muted-foreground">
+                A numbered section is for a form that is itself a short sequence of decisions —
+                not a label on every section of a long one.
+              </p>
+            </FormSection>
+            <FormSection step={2} variant="plain" title="Tax Treatment" description="Select how tax should be applied to this purchase.">
+              <p className="text-caption text-muted-foreground">Plain variant, numbered.</p>
+            </FormSection>
+          </div>
+        </Specimen>
+
+        <Specimen label="SectionHeader — with a subtitle" token="<SectionHeader subtitle>">
+          <div className="flex flex-col gap-6">
+            <SectionHeader title="Approval status" />
+            <SectionHeader
+              title="Requisition details"
+              subtitle="PR-2026-0148 · Submitted 22 Sep 2026 by Ahmed Ali"
+            >
+              <Button variant="ghost" size="sm">
+                Edit
+              </Button>
+            </SectionHeader>
+          </div>
+          <p className="mt-4 text-caption leading-5 text-muted-foreground">
+            <code className="font-mono text-caption">subtitle</code> is optional — most sections
+            need only the label. Reach for it when the section is a specific record, not a
+            category of fields.
+          </p>
         </Specimen>
 
         <Specimen label="Label — standalone" token="<Label>">
@@ -419,6 +521,178 @@ function ToastSpecimen() {
  * round-trip through the caller's own state to be submitted. The gallery therefore has to hold
  * that state like any real screen does, which is itself the thing worth demonstrating.
  */
+/**
+ * `RadioGroup` is controlled, same reason as `DatePicker` below: a choice the user makes has
+ * to round-trip through the caller's own state, so the gallery holds it like any real screen.
+ */
+function RadioGroupSpecimen() {
+  const [taxTreatment, setTaxTreatment] = useState('inclusive');
+  const [method, setMethod] = useState('rfq');
+
+  return (
+    <div className="flex flex-col gap-8">
+      <div>
+        <p className="mb-3 text-micro font-semibold uppercase text-muted-foreground">
+          variant=&quot;inline&quot; (default)
+        </p>
+        <RadioGroup
+          label="Tax treatment"
+          name="ds-tax-treatment"
+          value={taxTreatment}
+          onChange={setTaxTreatment}
+          options={[
+            { value: 'inclusive', label: 'Inclusive' },
+            { value: 'exclusive', label: 'Exclusive' },
+            { value: 'exempt', label: 'Exempt' },
+          ]}
+        />
+      </div>
+      <div>
+        <p className="mb-3 text-micro font-semibold uppercase text-muted-foreground">
+          variant=&quot;card&quot;
+        </p>
+        <RadioGroup
+          label="Procurement method"
+          name="ds-procurement-method"
+          value={method}
+          onChange={setMethod}
+          variant="card"
+          orientation="vertical"
+          options={[
+            {
+              value: 'direct',
+              label: 'Direct Purchase',
+              description: 'Low-value purchase from an approved supplier.',
+            },
+            {
+              value: 'rfq',
+              label: 'Request for Quotation',
+              description: 'Collect quotations from multiple suppliers.',
+            },
+            {
+              value: 'tender',
+              label: 'Tender',
+              description: 'Formal process requiring tender evaluation.',
+            },
+          ]}
+        />
+      </div>
+    </div>
+  );
+}
+
+const SUPPLIER_OPTIONS: ComboboxOption[] = [
+  { value: 'sup-48', label: 'Al Noor Building Materials', group: 'Top Matches', hint: 'SUP-0048', meta: '$12,840' },
+  { value: 'sup-213', label: 'Al Noor Trading Co.', group: 'Top Matches', hint: 'SUP-0213', meta: '$5,230' },
+  { value: 'sup-176', label: 'Al Noor Construction Supplies', group: 'Recent Suppliers', hint: 'SUP-0176', meta: '$0' },
+  { value: 'sup-91', label: 'Al Noor Infrastructure LLC', group: 'Recent Suppliers', hint: 'SUP-0091', meta: '$28,450' },
+];
+
+/**
+ * Grouping is caller-ordered (`SUPPLIER_OPTIONS` puts every "Top Matches" row before every
+ * "Recent Suppliers" row), and the group label carries its own count rather than the component
+ * recomputing one — a filtered search legitimately changes how many rows are left in a group.
+ */
+function ComboboxSpecimen() {
+  const [value, setValue] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Combobox
+        id="ds-supplier"
+        value={value}
+        onChange={setValue}
+        options={SUPPLIER_OPTIONS}
+        placeholder="Select a supplier"
+        searchPlaceholder="Search suppliers"
+        emptyLabel="No suppliers found"
+        footerAction={{ label: 'Create new supplier "al noor"', onSelect: () => undefined }}
+        loading={loading}
+        loadingLabel="Searching suppliers…"
+      />
+      <label className="flex items-center gap-2 text-caption text-muted-foreground">
+        <input
+          type="checkbox"
+          checked={loading}
+          onChange={(event) => setLoading(event.target.checked)}
+          className="h-4 w-4 accent-brand-primary"
+        />
+        Simulate loading (server-driven search)
+      </label>
+    </div>
+  );
+}
+
+function DateRangePickerSpecimen({ id }: { id: string }) {
+  const [range, setRange] = useState({ from: '2026-04-01', to: '2026-04-30' });
+  return (
+    <DateRangePicker
+      id={id}
+      fromValue={range.from}
+      toValue={range.to}
+      onChange={setRange}
+      clearLabel="Clear"
+    />
+  );
+}
+
+/**
+ * A representative "Purchase Requisitions" filter row — search grows, three Selects share the
+ * remaining width evenly, and "Clear filters" appears only once something narrows the list.
+ */
+function FilterBarSpecimen() {
+  const [search, setSearch] = useState('');
+  const [project, setProject] = useState('');
+  const [status, setStatus] = useState('');
+  const hasFilters = search !== '' || project !== '' || status !== '';
+
+  return (
+    <FilterBar
+      actions={
+        hasFilters ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setSearch('');
+              setProject('');
+              setStatus('');
+            }}
+          >
+            Clear filters
+          </Button>
+        ) : null
+      }
+    >
+      <FilterField id="ds-fb-search" label="Search" hideLabel grow>
+        <Input
+          id="ds-fb-search"
+          type="search"
+          placeholder="Search PR number, description or vendor…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </FilterField>
+      <FilterField id="ds-fb-project" label="Project">
+        <Select id="ds-fb-project" value={project} onChange={setProject}>
+          <option value="">All projects</option>
+          <option value="riverside">Riverside Commercial Tower</option>
+          <option value="palm">Palm Residence</option>
+        </Select>
+      </FilterField>
+      <FilterField id="ds-fb-status" label="Status">
+        <Select id="ds-fb-status" value={status} onChange={setStatus}>
+          <option value="">All statuses</option>
+          <option value="open">Open</option>
+          <option value="pending">Pending approval</option>
+          <option value="approved">Approved</option>
+        </Select>
+      </FilterField>
+    </FilterBar>
+  );
+}
+
 function DatePickerSpecimen({
   id,
   initial,

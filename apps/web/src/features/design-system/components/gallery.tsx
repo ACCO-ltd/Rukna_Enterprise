@@ -27,6 +27,7 @@ const CONTENTS = [
   { id: 'fields', label: 'Fields' },
   { id: 'forms', label: 'Form composition' },
   { id: 'toast', label: 'Toast' },
+  { id: 'containers', label: 'Containers' },
   { id: 'status', label: 'Status' },
   { id: 'data', label: 'Tables' },
   { id: 'feedback', label: 'Feedback' },
