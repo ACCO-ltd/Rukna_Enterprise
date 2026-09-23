@@ -278,7 +278,7 @@ function TrialBalanceSummary({
 
   return (
     <div
-      className={`rounded-md border p-4 ${
+      className={`rounded-panel border p-4 ${
         totals.balanced ? 'border-border bg-muted/40' : 'border-danger bg-danger/5'
       }`}
     >
@@ -330,7 +330,7 @@ function MigrationReportView({ report }: { report: MigrationReport }) {
         messages={[report.zeroVariance ? t('reconciledBody') : t('varianceBody')]}
       />
 
-      <dl className="grid gap-4 rounded-lg border border-border bg-surface p-4 sm:grid-cols-3">
+      <dl className="grid gap-4 rounded-panel border border-border bg-surface p-4 shadow-e2 sm:grid-cols-3">
         <div>
           <dt className="text-xs font-medium text-muted-foreground">{t('journal')}</dt>
           <dd className="mt-0.5 font-mono text-sm">{report.openingBalanceJournalNumber}</dd>

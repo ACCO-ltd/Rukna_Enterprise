@@ -18,21 +18,16 @@ import {
   Alert,
   Badge,
   Button,
+  CheckboxField,
   FormField,
   Input,
   Select,
   Dialog,
   DialogContent,
   DialogTitle,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
 } from '@erp/ui';
 
+import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 import { ApiError } from '@/lib/api-client';
 
@@ -50,32 +45,65 @@ import {
   useBankAccounts,
   useConfigureBankAccount,
 } from '../hooks/use-accounting';
+import type { BankAccount } from '../types';
 
 export function BankAccounts() {
   const t = useTranslations('accounting.bankAccounts');
-  const tCommon = useTranslations('common');
   const { can } = usePermissions();
 
   const banks = useBankAccounts();
   const [creating, setCreating] = useState(false);
 
-  if (banks.isPending) {
-    return (
-      <div role="status" aria-live="polite">
-        <span className="sr-only">{tCommon('loading')}</span>
-        <div
-          className="h-64 animate-pulse rounded-lg border border-border bg-muted"
-          aria-hidden="true"
-        />
-      </div>
-    );
-  }
-
-  if (banks.isError) {
-    return <Alert variant="error" messages={[t('loadFailed')]} />;
-  }
-
-  const rows = banks.data ?? [];
+  const columns: GridColumn<BankAccount>[] = [
+    {
+      key: 'bank',
+      header: t('colBank'),
+      sticky: true,
+      sortable: true,
+      plainValue: (bank) => bank.bankName,
+      render: (bank) => <span className="text-sm text-foreground">{bank.bankName}</span>,
+    },
+    {
+      key: 'account',
+      header: t('colAccount'),
+      sortable: true,
+      plainValue: (bank) => bank.accountName,
+      render: (bank) => <span className="text-sm text-foreground">{bank.accountName}</span>,
+    },
+    {
+      key: 'number',
+      header: t('colNumber'),
+      render: (bank) => (
+        // Masked to the last four. A full account number on a list screen is a detail
+        // nobody needs at a glance and everybody can screenshot.
+        <span className="font-mono text-xs text-muted-foreground">
+          ****{bank.accountNumber.slice(-4)}
+        </span>
+      ),
+    },
+    {
+      key: 'use',
+      header: t('colUse'),
+      render: (bank) => (
+        <span className="flex flex-wrap gap-1">
+          {bank.allowsReceipts ? <Badge tone="info">{t('receipts')}</Badge> : null}
+          {bank.allowsPayments ? <Badge tone="accent">{t('payments')}</Badge> : null}
+          {!bank.allowsReceipts && !bank.allowsPayments ? (
+            <Badge tone="warning">{t('neither')}</Badge>
+          ) : null}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: t('colStatus'),
+      render: (bank) => (
+        <Badge tone={bank.status === 'ACTIVE' ? 'live' : 'neutral'}>
+          {t(`status.${bank.status}`)}
+        </Badge>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -103,57 +131,26 @@ export function BankAccounts() {
         </DialogContent>
       </Dialog>
 
-      {rows.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
-          <p className="text-sm font-medium text-foreground">{t('empty')}</p>
-          <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
-            {t('emptyHint')}
-          </p>
-        </div>
-      ) : (
-        <TableScroll aria-label={t('title')}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('colBank')}</TableHead>
-                <TableHead>{t('colAccount')}</TableHead>
-                <TableHead>{t('colNumber')}</TableHead>
-                <TableHead>{t('colUse')}</TableHead>
-                <TableHead>{t('colStatus')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((bank) => (
-                <TableRow key={bank.id}>
-                  <TableCell className="text-sm text-foreground">{bank.bankName}</TableCell>
-                  <TableCell className="text-sm text-foreground">{bank.accountName}</TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {/* Masked to the last four. A full account number on a list screen is a
-                        detail nobody needs at a glance and everybody can screenshot. */}
-                    ****{bank.accountNumber.slice(-4)}
-                  </TableCell>
-                  <TableCell className="space-x-1">
-                    {bank.allowsReceipts ? (
-                      <Badge tone="info">{t('receipts')}</Badge>
-                    ) : null}
-                    {bank.allowsPayments ? (
-                      <Badge tone="accent">{t('payments')}</Badge>
-                    ) : null}
-                    {!bank.allowsReceipts && !bank.allowsPayments ? (
-                      <Badge tone="warning">{t('neither')}</Badge>
-                    ) : null}
-                  </TableCell>
-                  <TableCell>
-                    <Badge tone={bank.status === 'ACTIVE' ? 'live' : 'neutral'}>
-                      {t(`status.${bank.status}`)}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableScroll>
-      )}
+      <PlatformDataGrid
+        columns={columns}
+        data={banks.data ?? []}
+        rowKey={(bank) => bank.id}
+        label={t('title')}
+        isLoading={banks.isPending}
+        isError={banks.isError}
+        errorMessage={t('loadFailed')}
+        emptyState={
+          (banks.data?.length ?? 0) === 0 ? (
+            <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
+              <p className="text-sm font-medium text-foreground">{t('empty')}</p>
+              <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
+                {t('emptyHint')}
+              </p>
+            </div>
+          ) : undefined
+        }
+        pagination={{ defaultPageSize: 25 }}
+      />
 
       <p className="max-w-prose text-xs text-muted-foreground">{t('readOnlyNote')}</p>
     </div>
@@ -180,6 +177,8 @@ function ConfigureBankAccountForm({ onDone }: { onDone: () => void }) {
     accountNumber: useId(),
     currency: useId(),
     gl: useId(),
+    allowsReceipts: useId(),
+    allowsPayments: useId(),
   };
 
   const candidates = useMemo(
@@ -268,28 +267,22 @@ function ConfigureBankAccountForm({ onDone }: { onDone: () => void }) {
         <p className="text-xs text-muted-foreground">{t('glAccountHint')}</p>
       </FormField>
 
-      <fieldset className="space-y-2 rounded-md border border-border p-3">
+      <fieldset className="space-y-1 rounded-control border border-border p-3">
         <legend className="px-1 text-xs font-medium text-muted-foreground">{t('useLegend')}</legend>
 
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={draft.allowsReceipts}
-            onChange={(e) => patch({ allowsReceipts: e.target.checked })}
-            className="size-4"
-          />
-          {t('allowsReceipts')}
-        </label>
+        <CheckboxField
+          id={ids.allowsReceipts}
+          label={t('allowsReceipts')}
+          checked={draft.allowsReceipts}
+          onChange={(e) => patch({ allowsReceipts: e.target.checked })}
+        />
 
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={draft.allowsPayments}
-            onChange={(e) => patch({ allowsPayments: e.target.checked })}
-            className="size-4"
-          />
-          {t('allowsPayments')}
-        </label>
+        <CheckboxField
+          id={ids.allowsPayments}
+          label={t('allowsPayments')}
+          checked={draft.allowsPayments}
+          onChange={(e) => patch({ allowsPayments: e.target.checked })}
+        />
 
         <p className="text-xs text-muted-foreground">{t('useHint')}</p>
       </fieldset>

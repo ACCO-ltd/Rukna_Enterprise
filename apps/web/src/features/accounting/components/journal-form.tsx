@@ -172,7 +172,7 @@ export function JournalForm() {
           <div role="status" aria-live="polite">
             <span className="sr-only">{tCommon('loading')}</span>
             <div
-              className="h-40 animate-pulse rounded-lg border border-border bg-muted"
+              className="h-40 animate-pulse rounded-panel border border-border bg-muted"
               aria-hidden="true"
             />
           </div>
@@ -181,12 +181,12 @@ export function JournalForm() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="min-w-[200px]">{t('colAccount')}</TableHead>
-                  <TableHead className="min-w-[140px]">{t('colMemo')}</TableHead>
-                  <TableHead numeric className="min-w-[120px]">
+                  <TableHead className="min-w-50">{t('colAccount')}</TableHead>
+                  <TableHead className="min-w-35">{t('colMemo')}</TableHead>
+                  <TableHead numeric className="min-w-30">
                     {t('colDebit')}
                   </TableHead>
-                  <TableHead numeric className="min-w-[120px]">
+                  <TableHead numeric className="min-w-30">
                     {t('colCredit')}
                   </TableHead>
                   <TableHead>
@@ -201,7 +201,7 @@ export function JournalForm() {
 
                   return (
                     <TableRow key={index}>
-                      <TableCell className="min-w-[200px]">
+                      <TableCell className="min-w-50">
                         <Select
                           aria-label={`${t('colAccount')} ${index + 1}`}
                           value={line.accountId}
@@ -219,7 +219,7 @@ export function JournalForm() {
                         ) : null}
                       </TableCell>
 
-                      <TableCell className="min-w-[140px]">
+                      <TableCell className="min-w-35">
                         <Input
                           aria-label={`${t('colMemo')} ${index + 1}`}
                           value={line.memo}
@@ -227,7 +227,7 @@ export function JournalForm() {
                         />
                       </TableCell>
 
-                      <TableCell numeric className="min-w-[120px]">
+                      <TableCell numeric className="min-w-30">
                         <MoneyInput
                           aria-label={`${t('colDebit')} ${index + 1}`}
                           className="text-end tabular-nums"
@@ -236,7 +236,7 @@ export function JournalForm() {
                         />
                       </TableCell>
 
-                      <TableCell numeric className="min-w-[120px]">
+                      <TableCell numeric className="min-w-30">
                         <MoneyInput
                           aria-label={`${t('colCredit')} ${index + 1}`}
                           className="text-end tabular-nums"
@@ -285,7 +285,7 @@ export function JournalForm() {
       {/* The running balance. Live rather than on submit, because a journal is built by
           watching these two numbers converge — finding out at the end is the slow way. */}
       <section
-        className="rounded-lg border border-border bg-surface p-4 sm:p-6"
+        className="rounded-panel border border-border bg-surface p-4 shadow-e2 sm:p-6"
         aria-live="polite"
       >
         <dl className="grid gap-4 sm:grid-cols-3">

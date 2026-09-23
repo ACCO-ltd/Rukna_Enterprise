@@ -60,7 +60,7 @@ export function FiscalPeriods() {
       <div role="status" aria-live="polite">
         <span className="sr-only">{tCommon('loading')}</span>
         <div
-          className="h-64 animate-pulse rounded-lg border border-border bg-muted"
+          className="h-64 animate-pulse rounded-panel border border-border bg-muted"
           aria-hidden="true"
         />
       </div>
@@ -105,7 +105,7 @@ export function FiscalPeriods() {
 
 
       {years.data.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
+        <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
           <p className="text-sm font-medium text-foreground">{t('empty')}</p>
           <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
             {t('emptyHint')}
@@ -162,7 +162,7 @@ function FiscalYearPanel({ year }: { year: FiscalYear }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="min-w-[140px]">{t('colPeriod')}</TableHead>
+                <TableHead className="min-w-35">{t('colPeriod')}</TableHead>
                 <TableHead>{t('colRange')}</TableHead>
                 <TableHead>{t('colStatus')}</TableHead>
                 <TableHead>
@@ -187,7 +187,7 @@ function PeriodRow({ period, locale }: { period: AccountingPeriod; locale: 'en' 
 
   return (
     <TableRow>
-      <TableCell className="min-w-[140px]">
+      <TableCell className="min-w-35">
         <span className="text-sm text-foreground">{period.name}</span>
         <span className="ms-2 font-mono text-xs text-muted-foreground tabular-nums">
           #{period.periodNumber}

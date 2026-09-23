@@ -39,7 +39,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
       <div role="status" aria-live="polite">
         <span className="sr-only">{tCommon('loading')}</span>
         <div
-          className="h-64 animate-pulse rounded-lg border border-border bg-muted"
+          className="h-64 animate-pulse rounded-panel border border-border bg-muted"
           aria-hidden="true"
         />
       </div>
@@ -123,7 +123,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
         <Alert variant="error" messages={[errorMessage ?? t('actionFailed')]} />
       ) : null}
 
-      <dl className="grid gap-x-8 gap-y-4 rounded-lg border border-border bg-surface p-6 sm:grid-cols-2 lg:grid-cols-3">
+      <dl className="grid gap-x-8 gap-y-4 rounded-panel border border-border bg-surface p-6 shadow-e2 sm:grid-cols-2 lg:grid-cols-3">
         <Field label={t('fieldClient')} value={clientName ?? data.clientId.slice(-8)} />
         <Field label={t('fieldInvoiceDate')} value={formatDate(data.invoiceDate, locale)} />
         <Field label={t('fieldDueDate')} value={formatDate(data.dueDate, locale)} />

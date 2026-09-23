@@ -2,7 +2,15 @@
 
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, DatePicker, FormField } from '@erp/ui';
+import {
+  Alert,
+  Card,
+  CardHeader,
+  CardTitle,
+  DateRangePicker,
+  FilterBar,
+  FilterField,
+} from '@erp/ui';
 
 import { formatDate, formatMoney } from '@/lib/format';
 import { MONEY_SCALE, toMinorUnits } from '@/lib/money';
@@ -40,29 +48,22 @@ export function ProfitLossReport() {
         <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
       </div>
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-        <FormField htmlFor="pl-from" label={tCommon('fromDate')} className="sm:w-56">
-          <DatePicker
-            id="pl-from"
-            value={range.from}
-            onChange={(value) => setRange((r) => ({ ...r, from: value }))}
+      <FilterBar>
+        <FilterField id="pl-range" label={tCommon('dateRange')}>
+          <DateRangePicker
+            id="pl-range"
+            fromValue={range.from}
+            toValue={range.to}
+            onChange={(next) => setRange(next)}
           />
-        </FormField>
-
-        <FormField htmlFor="pl-to" label={tCommon('toDate')} className="sm:w-56">
-          <DatePicker
-            id="pl-to"
-            value={range.to}
-            onChange={(value) => setRange((r) => ({ ...r, to: value }))}
-          />
-        </FormField>
-      </div>
+        </FilterField>
+      </FilterBar>
 
       {report.isPending ? (
         <div role="status" aria-live="polite">
           <span className="sr-only">{tShared('loading')}</span>
           <div
-            className="h-64 animate-pulse rounded-lg border border-border bg-muted"
+            className="h-64 animate-pulse rounded-panel border border-border bg-muted"
             aria-hidden="true"
           />
         </div>
@@ -83,7 +84,7 @@ export function ProfitLossReport() {
           {report.data.revenue.lines.length === 0 &&
           report.data.costOfSales.lines.length === 0 &&
           report.data.expenses.lines.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
+            <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
               <p className="text-sm font-medium text-foreground">{t('empty')}</p>
               <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
                 {t('emptyHint')}
@@ -144,13 +145,13 @@ export function Section({
   const t = useTranslations('accounting.profitLoss');
 
   return (
-    <section className="overflow-hidden rounded-lg border border-border bg-surface">
-      <div className="flex items-baseline justify-between gap-4 border-b border-border px-4 py-3">
-        <h2 className="text-sm font-semibold text-foreground">{label}</h2>
+    <Card className="gap-0 py-0">
+      <CardHeader className="border-b border-border py-3">
+        <CardTitle className="text-sm">{label}</CardTitle>
         <p className="text-sm font-semibold text-foreground">
           <bdi className="tabular-nums">{formatMoney(section.total, undefined, locale)}</bdi>
         </p>
-      </div>
+      </CardHeader>
 
       {section.lines.length === 0 ? (
         <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('sectionEmpty')}</p>
@@ -174,7 +175,7 @@ export function Section({
           ))}
         </ul>
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -197,8 +198,8 @@ export function Subtotal({
     <div
       className={
         emphasis
-          ? 'flex flex-wrap items-baseline justify-between gap-3 rounded-lg border-2 border-brand-primary/30 bg-brand-primary/5 px-4 py-4'
-          : 'flex flex-wrap items-baseline justify-between gap-3 rounded-lg border border-border bg-muted px-4 py-3'
+          ? 'flex flex-wrap items-baseline justify-between gap-3 rounded-panel border-2 border-brand-primary/30 bg-brand-primary/5 px-4 py-4'
+          : 'flex flex-wrap items-baseline justify-between gap-3 rounded-panel border border-border bg-muted px-4 py-3'
       }
     >
       <div>

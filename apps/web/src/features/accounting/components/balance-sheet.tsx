@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, DatePicker, FormField } from '@erp/ui';
+import { Alert, Card, CardHeader, CardTitle, DatePicker, FilterBar, FilterField } from '@erp/ui';
 
 import { formatDate, formatMoney } from '@/lib/format';
 
@@ -32,29 +32,29 @@ export function BalanceSheetReport() {
         <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
       </div>
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-        <FormField htmlFor="bs-date" label={tCommon('asOfDate')} className="sm:w-56">
+      <FilterBar>
+        <FilterField id="bs-date" label={tCommon('asOfDate')}>
           <DatePicker
             id="bs-date"
             value={asOfDate}
             onChange={(value) => setAsOfDate(value)}
           />
-        </FormField>
+        </FilterField>
 
-        <FormField htmlFor="bs-comparative" label={t('comparativeLabel')} className="sm:w-56">
+        <FilterField id="bs-comparative" label={t('comparativeLabel')}>
           <DatePicker
             id="bs-comparative"
             value={comparativeDate}
             onChange={(value) => setComparativeDate(value)}
           />
-        </FormField>
-      </div>
+        </FilterField>
+      </FilterBar>
 
       {report.isPending ? (
         <div role="status" aria-live="polite">
           <span className="sr-only">{tShared('loading')}</span>
           <div
-            className="h-64 animate-pulse rounded-lg border border-border bg-muted"
+            className="h-64 animate-pulse rounded-panel border border-border bg-muted"
             aria-hidden="true"
           />
         </div>
@@ -90,7 +90,7 @@ export function BalanceSheetReport() {
           {report.data.assets.lines.length === 0 &&
           report.data.liabilities.lines.length === 0 &&
           report.data.equity.lines.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
+            <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
               <p className="text-sm font-medium text-foreground">{t('empty')}</p>
               <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
                 {t('emptyHint')}
@@ -117,7 +117,7 @@ export function BalanceSheetReport() {
                 comparing={comparing}
               />
 
-              <div className="flex flex-wrap items-baseline justify-between gap-3 rounded-lg border-2 border-brand-primary/30 bg-brand-primary/5 px-4 py-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-3 rounded-panel border-2 border-brand-primary/30 bg-brand-primary/5 px-4 py-4">
                 <p className="text-base font-semibold text-foreground">
                   {t('totalLiabilitiesAndEquity')}
                 </p>
@@ -166,9 +166,9 @@ function Section({
   const t = useTranslations('accounting.balanceSheet');
 
   return (
-    <section className="overflow-hidden rounded-lg border border-border bg-surface">
-      <div className="flex items-baseline justify-between gap-4 border-b border-border px-4 py-3">
-        <h2 className="text-sm font-semibold text-foreground">{label}</h2>
+    <Card className="gap-0 py-0">
+      <CardHeader className="border-b border-border py-3">
+        <CardTitle className="text-sm">{label}</CardTitle>
         <div className="flex items-baseline gap-6">
           {comparing ? (
             <p className="text-sm text-muted-foreground">
@@ -181,7 +181,7 @@ function Section({
             <bdi className="tabular-nums">{formatMoney(section.total, undefined, locale)}</bdi>
           </p>
         </div>
-      </div>
+      </CardHeader>
 
       {section.lines.length === 0 ? (
         <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('sectionEmpty')}</p>
@@ -216,6 +216,6 @@ function Section({
           ))}
         </ul>
       )}
-    </section>
+    </Card>
   );
 }

@@ -49,7 +49,7 @@ export function JournalDetail({ journalId }: { journalId: string }) {
       <div role="status" aria-live="polite">
         <span className="sr-only">{tCommon('loading')}</span>
         <div
-          className="h-64 animate-pulse rounded-lg border border-border bg-muted"
+          className="h-64 animate-pulse rounded-panel border border-border bg-muted"
           aria-hidden="true"
         />
       </div>
@@ -157,7 +157,7 @@ export function JournalDetail({ journalId }: { journalId: string }) {
         <Alert variant="warning" messages={[`${t('rejectionReason')}: ${entry.rejectionReason}`]} />
       ) : null}
 
-      <section className="rounded-lg border border-border bg-surface p-4 sm:p-6">
+      <section className="rounded-panel border border-border bg-surface p-4 shadow-e2 sm:p-6">
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <dt className="text-xs text-muted-foreground">{t('accountingDate')}</dt>
@@ -182,7 +182,7 @@ export function JournalDetail({ journalId }: { journalId: string }) {
         <h2 className="text-lg font-semibold text-foreground">{t('linesHeading')}</h2>
 
         {entry.lines.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-8 text-center">
+          <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-8 text-center">
             <p className="text-sm text-muted-foreground">{t('noLines')}</p>
           </div>
         ) : (
@@ -190,8 +190,8 @@ export function JournalDetail({ journalId }: { journalId: string }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="min-w-[200px]">{t('colAccount')}</TableHead>
-                  <TableHead className="min-w-[140px]">{t('colMemo')}</TableHead>
+                  <TableHead className="min-w-50">{t('colAccount')}</TableHead>
+                  <TableHead className="min-w-35">{t('colMemo')}</TableHead>
                   <TableHead numeric>{t('colDebit')}</TableHead>
                   <TableHead numeric>{t('colCredit')}</TableHead>
                 </TableRow>
@@ -200,12 +200,12 @@ export function JournalDetail({ journalId }: { journalId: string }) {
               <TableBody>
                 {entry.lines.map((line) => (
                   <TableRow key={line.id}>
-                    <TableCell className="min-w-[200px]">
+                    <TableCell className="min-w-50">
                       <span className="text-sm text-foreground">
                         {lineAccountLabel(line, accountsById, locale)}
                       </span>
                     </TableCell>
-                    <TableCell className="min-w-[140px]">
+                    <TableCell className="min-w-35">
                       <span className="text-sm text-muted-foreground">
                         {line.description ?? '—'}
                       </span>
@@ -224,7 +224,7 @@ export function JournalDetail({ journalId }: { journalId: string }) {
                 ))}
 
                 <TableRow>
-                  <TableCell className="min-w-[200px]">
+                  <TableCell className="min-w-50">
                     <span className="text-sm font-semibold text-foreground">{t('totals')}</span>
                   </TableCell>
                   <TableCell />
