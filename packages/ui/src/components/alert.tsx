@@ -27,10 +27,15 @@ export interface AlertProps
    * individually rather than concatenated into one unreadable line.
    */
   messages?: string[];
+  /** Leading glyph, ~16px. Decorative — the variant and title already carry the meaning. */
+  icon?: React.ReactNode;
+  /** Trailing control — a button or link, aligned with the title row. For "Investigate",
+   * "View All", not for restating the alert's own dismissal (there is none). */
+  action?: React.ReactNode;
 }
 
 export const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
-  ({ className, variant, title, messages, children, ...props }, ref) => {
+  ({ className, variant, title, messages, icon, action, children, ...props }, ref) => {
     // Errors are announced assertively; everything else politely, so a success or info
     // message does not interrupt what a screen reader user is currently reading.
     const isError = variant === 'error';
@@ -43,21 +48,33 @@ export const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
         className={cn(alertVariants({ variant }), className)}
         {...props}
       >
-        {title ? <p className="font-semibold">{title}</p> : null}
+        <div className="flex items-start gap-3">
+          {icon ? (
+            <span className="mt-0.5 shrink-0" aria-hidden="true">
+              {icon}
+            </span>
+          ) : null}
 
-        {messages && messages.length > 0 ? (
-          messages.length === 1 ? (
-            <p className={cn(title && 'mt-1')}>{messages[0]}</p>
-          ) : (
-            <ul className={cn('list-disc space-y-1 ps-5', title && 'mt-1')}>
-              {messages.map((message) => (
-                <li key={message}>{message}</li>
-              ))}
-            </ul>
-          )
-        ) : null}
+          <div className="min-w-0 flex-1">
+            {title ? <p className="font-semibold">{title}</p> : null}
 
-        {children}
+            {messages && messages.length > 0 ? (
+              messages.length === 1 ? (
+                <p className={cn(title && 'mt-1')}>{messages[0]}</p>
+              ) : (
+                <ul className={cn('list-disc space-y-1 ps-5', title && 'mt-1')}>
+                  {messages.map((message) => (
+                    <li key={message}>{message}</li>
+                  ))}
+                </ul>
+              )
+            ) : null}
+
+            {children}
+          </div>
+
+          {action ? <div className="shrink-0">{action}</div> : null}
+        </div>
       </div>
     );
   },

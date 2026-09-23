@@ -1,5 +1,7 @@
 export { Alert } from './components/alert';
 export type { AlertProps } from './components/alert';
+export { Avatar, initialsFromName } from './components/avatar';
+export type { AvatarProps } from './components/avatar';
 export {
   ApprovalChain,
   ApprovalNotConfigured,
@@ -18,6 +20,23 @@ export { Badge } from './components/badge';
 export type { BadgeProps, BadgeTone } from './components/badge';
 export { Button } from './components/button';
 export type { ButtonProps } from './components/button';
+export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from './components/card';
+export { EmptyState } from './components/empty-state';
+export type { EmptyStateProps } from './components/empty-state';
+export { Progress, Meter } from './components/progress';
+export type { ProgressProps, MeterProps, ProgressTone } from './components/progress';
+export {
+  Sheet,
+  SheetTrigger,
+  SheetClose,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetBody,
+  SheetFooter,
+} from './components/sheet';
+export { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from './components/tooltip';
 export {
   Dialog,
   DialogClose,
@@ -76,6 +95,10 @@ export { Calendar } from './components/calendar';
 export type { CalendarProps } from './components/calendar';
 export { DatePicker, parseWireDate, toWireDate } from './components/date-picker';
 export type { DatePickerProps } from './components/date-picker';
+export { DateRangePicker } from './components/date-range-picker';
+export type { DateRangePickerProps } from './components/date-range-picker';
+export { FilterBar, FilterField } from './components/filter-bar';
+export type { FilterBarProps, FilterFieldProps } from './components/filter-bar';
 export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from './components/popover';
 export type { ComboboxProps, ComboboxOption } from './components/combobox';
 export type { CheckboxProps, CheckboxFieldProps, RadioGroupProps, RadioOption } from './components/choice';

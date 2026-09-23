@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
+  CheckboxField,
   DatePicker,
-  FormField,
+  FilterBar,
+  FilterField,
   Table,
   TableBody,
   TableCell,
@@ -32,6 +34,7 @@ export function TrialBalanceReport() {
 
   const [asOfDate, setAsOfDate] = useState(today);
   const [includeZero, setIncludeZero] = useState(false);
+  const includeZeroId = useId();
 
   const report = useTrialBalance(asOfDate, includeZero);
 
@@ -42,31 +45,28 @@ export function TrialBalanceReport() {
         <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
       </div>
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-        <FormField htmlFor="tb-date" label={tCommon('asOfDate')} className="sm:w-56">
+      <FilterBar>
+        <FilterField id="tb-date" label={tCommon('asOfDate')}>
           <DatePicker
             id="tb-date"
             value={asOfDate}
             onChange={(value) => setAsOfDate(value)}
           />
-        </FormField>
+        </FilterField>
 
-        <label className="flex min-h-11 items-center gap-2 text-sm text-foreground">
-          <input
-            type="checkbox"
-            className="size-4 rounded border-border"
-            checked={includeZero}
-            onChange={(e) => setIncludeZero(e.target.checked)}
-          />
-          {t('includeZero')}
-        </label>
-      </div>
+        <CheckboxField
+          id={includeZeroId}
+          label={t('includeZero')}
+          checked={includeZero}
+          onChange={(e) => setIncludeZero(e.target.checked)}
+        />
+      </FilterBar>
 
       {report.isPending ? (
         <div role="status" aria-live="polite">
           <span className="sr-only">{tShared('loading')}</span>
           <div
-            className="h-64 animate-pulse rounded-lg border border-border bg-muted"
+            className="h-64 animate-pulse rounded-panel border border-border bg-muted"
             aria-hidden="true"
           />
         </div>
@@ -102,7 +102,7 @@ export function TrialBalanceReport() {
           </p>
 
           {report.data.lines.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
+            <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
               <p className="text-sm font-medium text-foreground">{t('empty')}</p>
               <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
                 {t('emptyHint')}
@@ -113,7 +113,7 @@ export function TrialBalanceReport() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="min-w-[200px]">{t('colAccount')}</TableHead>
+                    <TableHead className="min-w-50">{t('colAccount')}</TableHead>
                     <TableHead numeric>{t('colOpeningDebit')}</TableHead>
                     <TableHead numeric>{t('colOpeningCredit')}</TableHead>
                     <TableHead numeric>{t('colPeriodDebit')}</TableHead>
@@ -129,7 +129,7 @@ export function TrialBalanceReport() {
                   ))}
 
                   <TableRow>
-                    <TableCell className="min-w-[200px]">
+                    <TableCell className="min-w-50">
                       <span className="text-sm font-semibold text-foreground">{t('totals')}</span>
                     </TableCell>
                     {[
@@ -177,7 +177,7 @@ function TrialBalanceRow({
 }) {
   return (
     <TableRow>
-      <TableCell className="min-w-[200px]">
+      <TableCell className="min-w-50">
         <span className="font-mono text-xs text-muted-foreground tabular-nums">
           {line.accountCode}
         </span>

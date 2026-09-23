@@ -151,7 +151,17 @@ const eslintConfig = defineConfig([
     // shadow, arbitrary font size, hardcoded colour, off-grid spacing or hardcoded
     // duration fails lint here rather than warning. Add the next module's paths
     // here as it finishes migrating; the ratchet only ever tightens.
-    files: ["src/features/ipa/**", "src/features/ipc/**"],
+    files: [
+      "src/features/ipa/**",
+      "src/features/ipc/**",
+      "src/features/finance/**",
+      "src/features/accounting/**",
+      "src/features/receipts/**",
+      "src/features/workflows/**",
+      "src/features/contracts/**",
+      "src/features/procurement/**",
+      "src/features/commercial/**",
+    ],
     rules: {
       "no-restricted-syntax": ["error", ...designScaleSelectors],
     },

@@ -7,6 +7,9 @@
   },
   "tabs": {
     "label": "Progress sections",
+    "today": "Today",
+    "review": "Review",
+    "programme": "Programme",
     "reports": "Daily Reports",
     "record": "Record",
     "milestones": "Milestones",
@@ -15,6 +18,27 @@
     "planSetup": "Plan & Setup",
     "overview": "Overview",
     "verification": "Verification"
+  },
+  "review": {
+    "title": "Review queue",
+    "subtitle": "Daily reports waiting for your review.",
+    "awaiting": "Awaiting review",
+    "returned": "Returned",
+    "recentlyApproved": "Recently approved",
+    "empty": "No reports to review.",
+    "emptyHint": "Reports submitted by the site team will appear here.",
+    "openReport": "Review report"
+  },
+  "today": {
+    "noReportTitle": "No report for today",
+    "noReportHint": "Record what happened on site today.",
+    "startReport": "Start today's report",
+    "continueReport": "Continue report",
+    "awaitingReview": "Awaiting review",
+    "submittedAt": "Submitted {time}",
+    "returned": "Returned for revision",
+    "reviseReport": "Revise report",
+    "recentReports": "Recent reports"
   },
   "headline": {
     "physical": "Overall physical progress",
@@ -90,17 +114,6 @@
     "newTitle": "New daily report",
     "emptyTitle": "No daily reports yet",
     "emptyHint": "Record the first daily report to start capturing site progress.",
-    "fields": {
-      "reportDate": "Date",
-      "weather": "Weather",
-      "labourCount": "Labour on site",
-      "equipmentNote": "Equipment",
-      "narrative": "Work performed",
-      "delayReason": "Delay / issues",
-      "preparedBy": "Prepared by",
-      "submittedBy": "Submitted by",
-      "approvedBy": "Approved by"
-    },
     "status": {
       "DRAFT": "Draft",
       "SUBMITTED": "Submitted",
@@ -121,12 +134,28 @@
     "approveConfirmBody": "Its measurements become verified progress and the report becomes read-only.",
     "returnConfirmTitle": "Return for revision?",
     "returnConfirmBody": "The report goes back to the author to correct.",
-    "selfApprovalWarning": "You prepared this report. Approving your own report may need a second reviewer.",
+    "selfApprovalWarning": "You prepared or submitted this report — approval must come from a different reviewer.",
+    "selfApprovalBlocked": "You cannot approve a report you prepared or submitted.",
+    "returnReasonLabel": "What needs correcting",
+    "returnReasonHint": "Returned to preparer with this note",
     "chain": {
       "label": "Report status",
       "prepared": "Prepared",
       "submitted": "Submitted",
       "approved": "Approved"
+    },
+    "fields": {
+      "reportDate": "Date",
+      "weather": "Weather",
+      "labourCount": "Labour on site",
+      "equipmentNote": "Equipment",
+      "narrative": "Work performed",
+      "delayReason": "Delay / issues",
+      "preparedBy": "Prepared by",
+      "submittedBy": "Submitted by",
+      "submittedAt": "Submitted",
+      "approvedBy": "Approved by",
+      "returnReason": "Return reason"
     }
   },
   "measurement": {
@@ -142,7 +171,15 @@
     "empty": "No measurements recorded on this report.",
     "quantityRequired": "Enter a quantity greater than zero",
     "scopeHint": "Scope {scope} · verified to date {verified} · remaining {remaining}",
-    "exceedsRemaining": "This exceeds the remaining scope."
+    "exceedsRemaining": "This exceeds the remaining scope.",
+    "review": {
+      "priorVerified": "Prior verified",
+      "today": "Today",
+      "cumulative": "Cumulative",
+      "scope": "BOQ scope",
+      "unit": "Unit",
+      "cumulativeExceedsScope": "Cumulative would exceed BOQ scope"
+    }
   },
   "evidence": {
     "title": "Evidence",
@@ -249,6 +286,16 @@
       "submit": "Allocate",
       "workPackage": "Work package",
       "noBaseline": "Baseline the BOQ before allocating items."
+    },
+    "suggestWeights": "Suggest from BOQ values",
+    "suggestFailed": "Could not suggest weights.",
+    "saveFailed": "Could not save the weight.",
+    "proposed": {
+      "title": "Suggested weights",
+      "hint": "Derived from assigned BOQ value. Accept each to apply.",
+      "accept": "Accept",
+      "acceptAll": "Accept all",
+      "dismiss": "Dismiss"
     }
   },
   "rollup": {
@@ -541,5 +588,69 @@
     "progress": "Progress",
     "empty": "No work packages yet.",
     "noVsPlan": "Planned progress is tracked for the project as a whole, not per work package."
+  },
+  "labour": {
+    "title": "Labour on site",
+    "empty": "No labour records yet.",
+    "add": "Add trade",
+    "remove": "Remove row",
+    "fields": {
+      "trade": "Trade",
+      "headcount": "Headcount",
+      "contractor": "Contractor",
+      "hours": "Hours"
+    },
+    "tradePlaceholder": "e.g. Mason, Carpenter, Electrician",
+    "saving": "Saving…"
+  },
+  "equipment": {
+    "title": "Equipment on site",
+    "empty": "No equipment records yet.",
+    "add": "Add equipment",
+    "remove": "Remove row",
+    "fields": {
+      "type": "Equipment type",
+      "count": "Qty",
+      "hours": "Hours worked",
+      "condition": "Condition",
+      "notes": "Notes"
+    },
+    "typePlaceholder": "e.g. Concrete pump, Excavator",
+    "saving": "Saving…"
+  },
+  "observations": {
+    "title": "Site observations",
+    "empty": "No observations recorded.",
+    "add": "Add observation",
+    "remove": "Remove",
+    "fields": {
+      "category": "Category",
+      "description": "Description",
+      "affectedWork": "Affected work",
+      "severity": "Severity",
+      "followUpOwner": "Follow-up owner"
+    },
+    "categories": {
+      "ISSUE": "Issue",
+      "DELAY": "Delay",
+      "SAFETY": "Safety"
+    },
+    "severities": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
+    },
+    "saving": "Saving…"
+  },
+  "context": {
+    "locationArea": "Location / area",
+    "shift": "Shift",
+    "tomorrowPlan": "Tomorrow's plan",
+    "shifts": {
+      "Morning": "Morning",
+      "Afternoon": "Afternoon",
+      "Night": "Night",
+      "Full day": "Full day"
+    }
   }
 }

@@ -145,7 +145,7 @@ export function SupplierPaymentDetail({ id }: { id: string }) {
     return (
       <div role="status" aria-live="polite">
         <div
-          className="h-64 animate-pulse rounded-lg border border-border bg-muted"
+          className="h-64 animate-pulse rounded-panel border border-border bg-muted"
           aria-hidden="true"
         />
       </div>
@@ -177,7 +177,7 @@ export function SupplierPaymentDetail({ id }: { id: string }) {
 
       <PaymentActionBar payment={payment} />
 
-      <dl className="grid gap-4 rounded-lg border border-border bg-surface p-4 sm:grid-cols-2 lg:grid-cols-3">
+      <dl className="grid gap-4 rounded-panel border border-border bg-surface p-4 shadow-e2 sm:grid-cols-2 lg:grid-cols-3">
         <Field
           label={t('paymentDate')}
           value={formatDate(payment.paymentDate, locale) ?? tc('notAvailable')}

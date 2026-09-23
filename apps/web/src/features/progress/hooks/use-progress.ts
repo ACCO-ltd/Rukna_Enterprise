@@ -43,11 +43,22 @@ import {
   returnDpr,
   setProgressTargets,
   submitDpr,
+  patchDprContext,
+  addLabourRow,
+  removeLabourRow,
+  addEquipmentRow,
+  removeEquipmentRow,
+  addObservation,
+  removeObservation,
   type AddMeasurementBody,
   type CaptureProgressSnapshotBody,
   type CreateDprBody,
   type CreateWorkPackageBody,
   type DailyProgressReportDetail,
+  type PatchDprContextBody,
+  type AddLabourRowBody,
+  type AddEquipmentRowBody,
+  type AddObservationBody,
   type ProgressTargetItem,
   type RebaselineBody,
   type WorkPackageResponse,
@@ -390,6 +401,78 @@ export function useAllocateToWorkPackage(projectId: string) {
         queryClient.invalidateQueries({ queryKey: progressKeys.workPackages(projectId) }),
         invalidateVerifiedDerived(queryClient, projectId),
       ]);
+    },
+  });
+}
+
+// ─── Phase 3: structured DPR row mutations ────────────────────────────────────────────────
+
+export function usePatchDprContext(dprId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: PatchDprContextBody) => patchDprContext(dprId, body),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) });
+    },
+  });
+}
+
+export function useAddLabourRow(dprId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AddLabourRowBody) => addLabourRow(dprId, body),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) });
+    },
+  });
+}
+
+export function useRemoveLabourRow(dprId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (rowId: string) => removeLabourRow(dprId, rowId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) });
+    },
+  });
+}
+
+export function useAddEquipmentRow(dprId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AddEquipmentRowBody) => addEquipmentRow(dprId, body),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) });
+    },
+  });
+}
+
+export function useRemoveEquipmentRow(dprId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (rowId: string) => removeEquipmentRow(dprId, rowId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) });
+    },
+  });
+}
+
+export function useAddObservation(dprId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AddObservationBody) => addObservation(dprId, body),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) });
+    },
+  });
+}
+
+export function useRemoveObservation(dprId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (obsId: string) => removeObservation(dprId, obsId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) });
     },
   });
 }

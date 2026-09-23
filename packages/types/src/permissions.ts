@@ -24,6 +24,13 @@ export const PERMISSIONS = {
   projectsApprove: 'approve:project',
   projectMembersManage: 'manage:project-member',
 
+  // ADR-022 CONST-DOA-008 — DPR separation of duties: Site Engineer records (record:progress),
+  // Project Manager approves (approve:progress). Splitting these two acts lets the SE submit
+  // daily reports without holding the broad manage:project umbrella, which would also grant
+  // work-package creation, baseline approval and snapshot capture.
+  progressRecord: 'record:progress',
+  progressApprove: 'approve:progress',
+
   // The controlled project document register. Read reuses `view:project` deliberately: the
   // register is project data behind project membership, and a third view permission would mean
   // every existing role silently losing a tab it can open today. Writing is split the way BOQ
@@ -120,6 +127,7 @@ const DOMAIN_BY_RESOURCE: Record<string, string> = {
   organization: 'Organization', workflow: 'Approval policies', 'audit-log': 'Audit',
   client: 'Commercial', project: 'Projects', district: 'Organization', 'project-member': 'Projects',
   'project-type': 'Organization', 'project-document': 'Projects',
+  progress: 'Projects',
   boq: 'Projects', contract: 'Commercial', ipa: 'Commercial', ipc: 'Commercial', receipt: 'Commercial',
   accounting: 'Accounting', 'financial-position': 'Accounting', journal: 'Accounting',
   receivable: 'Accounting', payable: 'Accounting', period: 'Accounting', 'fiscal-year': 'Accounting',
@@ -177,6 +185,10 @@ const DESCRIPTIONS: Record<PermissionKey, string> = {
     'Register controlled project documents, draft revisions and replace draft files',
   [PERMISSIONS.projectDocumentsIssue]:
     'Issue, withdraw, supersede and archive controlled project documents',
+  [PERMISSIONS.progressRecord]:
+    'Create and submit daily progress reports (DPRs), add measurements and attach evidence',
+  [PERMISSIONS.progressApprove]:
+    'Review and approve daily progress reports; return reports for revision',
   [PERMISSIONS.boqView]: 'View bills of quantities (scope, quantities, progress — no money)',
   [PERMISSIONS.boqManage]: 'Create and edit BOQ drafts',
   [PERMISSIONS.boqBaseline]: 'Baseline BOQ versions',

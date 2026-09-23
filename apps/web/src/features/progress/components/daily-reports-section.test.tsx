@@ -16,6 +16,13 @@ const mocks = vi.hoisted(() => ({
   useReturnDpr: vi.fn(),
   useAddMeasurement: vi.fn(),
   useAttachDprEvidence: vi.fn(),
+  usePatchDprContext: vi.fn(),
+  useAddLabourRow: vi.fn(),
+  useRemoveLabourRow: vi.fn(),
+  useAddEquipmentRow: vi.fn(),
+  useRemoveEquipmentRow: vi.fn(),
+  useAddObservation: vi.fn(),
+  useRemoveObservation: vi.fn(),
 }));
 
 vi.mock('../hooks/use-progress', () => ({
@@ -28,6 +35,13 @@ vi.mock('../hooks/use-progress', () => ({
   useReturnDpr: mocks.useReturnDpr,
   useAddMeasurement: mocks.useAddMeasurement,
   useAttachDprEvidence: mocks.useAttachDprEvidence,
+  usePatchDprContext: mocks.usePatchDprContext,
+  useAddLabourRow: mocks.useAddLabourRow,
+  useRemoveLabourRow: mocks.useRemoveLabourRow,
+  useAddEquipmentRow: mocks.useAddEquipmentRow,
+  useRemoveEquipmentRow: mocks.useRemoveEquipmentRow,
+  useAddObservation: mocks.useAddObservation,
+  useRemoveObservation: mocks.useRemoveObservation,
 }));
 
 vi.mock('../hooks/use-boq-leaves', () => ({
@@ -72,7 +86,7 @@ beforeEach(() => {
   mocks.useCreateDpr.mockReturnValue({ mutate: vi.fn(), isPending: false });
   // Detail-panel hooks (used once a row is opened).
   mocks.useDpr.mockReturnValue(
-    loaded({ ...DPRS[0], measurements: [], attachments: [] }),
+    loaded({ ...DPRS[0], measurements: [], attachments: [], labourRows: [], equipmentRows: [], observations: [] }),
   );
   mocks.useProjectProgress.mockReturnValue(loaded([]));
   mocks.useBoqLeaves.mockReturnValue({ leaves: [] });
@@ -81,6 +95,13 @@ beforeEach(() => {
   mocks.useReturnDpr.mockReturnValue({ mutate: vi.fn(), isPending: false });
   mocks.useAddMeasurement.mockReturnValue({ mutate: vi.fn(), isPending: false });
   mocks.useAttachDprEvidence.mockReturnValue({ mutate: vi.fn(), isPending: false });
+  mocks.usePatchDprContext.mockReturnValue({ mutate: vi.fn(), isPending: false });
+  mocks.useAddLabourRow.mockReturnValue({ mutate: vi.fn(), isPending: false });
+  mocks.useRemoveLabourRow.mockReturnValue({ mutate: vi.fn(), isPending: false });
+  mocks.useAddEquipmentRow.mockReturnValue({ mutate: vi.fn(), isPending: false });
+  mocks.useRemoveEquipmentRow.mockReturnValue({ mutate: vi.fn(), isPending: false });
+  mocks.useAddObservation.mockReturnValue({ mutate: vi.fn(), isPending: false });
+  mocks.useRemoveObservation.mockReturnValue({ mutate: vi.fn(), isPending: false });
 });
 
 describe('DailyReportsSection', () => {

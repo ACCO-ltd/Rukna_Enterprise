@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { EmptyState } from './empty-state';
+import { EmptyState } from '@erp/ui';
 
 describe('EmptyState', () => {
   it('renders the title', () => {

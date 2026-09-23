@@ -4,8 +4,9 @@ import { useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
-  DatePicker,
-  FormField,
+  DateRangePicker,
+  FilterBar,
+  FilterField,
   Select,
   Table,
   TableBody,
@@ -53,8 +54,8 @@ export function AccountLedgerReport() {
         <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
       </div>
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-        <FormField htmlFor="ledger-account" label={t('accountLabel')} className="sm:flex-1">
+      <FilterBar>
+        <FilterField id="ledger-account" label={t('accountLabel')} grow>
           <Select
             id="ledger-account"
             value={accountId}
@@ -67,27 +68,20 @@ export function AccountLedgerReport() {
               </option>
             ))}
           </Select>
-        </FormField>
+        </FilterField>
 
-        <FormField htmlFor="ledger-from" label={tCommon('fromDate')} className="sm:w-44">
-          <DatePicker
-            id="ledger-from"
-            value={range.from}
-            onChange={(value) => setRange((r) => ({ ...r, from: value }))}
+        <FilterField id="ledger-range" label={tCommon('dateRange')}>
+          <DateRangePicker
+            id="ledger-range"
+            fromValue={range.from}
+            toValue={range.to}
+            onChange={(next) => setRange(next)}
           />
-        </FormField>
-
-        <FormField htmlFor="ledger-to" label={tCommon('toDate')} className="sm:w-44">
-          <DatePicker
-            id="ledger-to"
-            value={range.to}
-            onChange={(value) => setRange((r) => ({ ...r, to: value }))}
-          />
-        </FormField>
-      </div>
+        </FilterField>
+      </FilterBar>
 
       {!accountId ? (
-        <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
+        <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
           <p className="text-sm font-medium text-foreground">{t('noAccountChosen')}</p>
           <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
             {t('noAccountChosenHint')}
@@ -97,7 +91,7 @@ export function AccountLedgerReport() {
         <div role="status" aria-live="polite">
           <span className="sr-only">{tShared('loading')}</span>
           <div
-            className="h-64 animate-pulse rounded-lg border border-border bg-muted"
+            className="h-64 animate-pulse rounded-panel border border-border bg-muted"
             aria-hidden="true"
           />
         </div>
@@ -105,7 +99,7 @@ export function AccountLedgerReport() {
         <Alert variant="error" messages={[t('loadFailed')]} />
       ) : (
         <>
-          <section className="rounded-lg border border-border bg-surface p-4 sm:p-6">
+          <section className="rounded-panel border border-border bg-surface p-4 shadow-e2 sm:p-6">
             <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {[
                 [t('openingBalance'), ledger.data.openingBalance],
@@ -126,7 +120,7 @@ export function AccountLedgerReport() {
           <p className="text-xs text-muted-foreground">{t('postedOnlyNote')}</p>
 
           {ledger.data.lines.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
+            <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
               <p className="text-sm font-medium text-foreground">{t('empty')}</p>
               <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
                 {t('emptyHint')}
@@ -139,7 +133,7 @@ export function AccountLedgerReport() {
                   <TableRow>
                     <TableHead>{t('colDate')}</TableHead>
                     <TableHead>{t('colJournal')}</TableHead>
-                    <TableHead className="min-w-[200px]">{t('colDescription')}</TableHead>
+                    <TableHead className="min-w-50">{t('colDescription')}</TableHead>
                     <TableHead numeric>{t('colDebit')}</TableHead>
                     <TableHead numeric>{t('colCredit')}</TableHead>
                     <TableHead numeric>{t('colBalance')}</TableHead>
@@ -159,7 +153,7 @@ export function AccountLedgerReport() {
                           {line.journalNumber}
                         </span>
                       </TableCell>
-                      <TableCell className="min-w-[200px] max-w-[320px]">
+                      <TableCell className="min-w-50 max-w-80">
                         <span className="line-clamp-2 text-sm text-foreground">
                           {line.description}
                         </span>

@@ -16,13 +16,14 @@ import {
   DialogDescription,
   DialogFooter,
   DialogTitle,
+  EmptyState,
   FormField,
+  Input,
   Skeleton,
   cn,
 } from '@erp/ui';
 import type { CommercialSummaryResponse, SeparateChargeNode } from '@erp/types';
 
-import { EmptyState } from '@/components/empty-state';
 import { formatDate, formatMoney } from '@/lib/format';
 import { useVerifyMilestone } from '@/features/programme/hooks/use-programme';
 
@@ -694,10 +695,9 @@ function CreateSeparateChargeInvoiceDialog({
           />
         </FormField>
         <FormField htmlFor="sc-payment-terms" label={t('paymentTerms')}>
-          <input
+          <Input
             id="sc-payment-terms"
             type="text"
-            className="w-full rounded-control border border-border bg-surface px-3 py-2 text-body-sm focus:outline-none focus:ring-2 focus:ring-ring"
             placeholder={t('paymentTermsPlaceholder')}
             value={paymentTerms}
             onChange={(e) => setPaymentTerms(e.target.value)}

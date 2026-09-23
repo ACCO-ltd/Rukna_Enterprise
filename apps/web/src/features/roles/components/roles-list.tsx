@@ -10,8 +10,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  FilterBar,
+  FilterField,
+  Input,
   OverflowGlyph,
   RowActions,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -30,7 +34,6 @@ import { useUsers } from '@/features/users/hooks/use-users';
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { ApiError } from '@/lib/api-client';
 import { AdminPanel } from '@/features/admin/components/admin-panel';
-import { FilterSelect, TableToolbar } from '@/features/admin/components/table-toolbar';
 
 import { useDeleteRole, useRoles } from '../hooks/use-roles';
 import { filterRoles, type RoleKindFilter } from '../filter-roles';
@@ -50,6 +53,7 @@ export function RolesList() {
   const { can } = usePermissions();
   const canManage = can(PERMISSIONS.rolesManage);
   const searchId = useId();
+  const kindFilterId = useId();
 
   const { data, isPending, isError, refetch, isFetching } = useRoles();
   const users = useUsers();
@@ -155,24 +159,29 @@ export function RolesList() {
           </div>
         ) : (
           <>
-            <TableToolbar
-              searchId={searchId}
-              searchValue={query}
-              onSearchChange={setQuery}
-              searchLabel={t('searchLabel')}
-              searchPlaceholder={t('searchPlaceholder')}
-            >
-              <FilterSelect
-                label={t('filterKind')}
-                value={kindFilter}
-                onChange={(next) => setKindFilter(next as RoleKindFilter)}
-                options={[
-                  { value: 'ALL', label: t('filterAll') },
-                  { value: 'SYSTEM', label: t('filterSystem') },
-                  { value: 'CUSTOM', label: t('filterCustom') },
-                ]}
-              />
-            </TableToolbar>
+            <FilterBar>
+              <FilterField id={searchId} label={t('searchLabel')} hideLabel grow>
+                <Input
+                  id={searchId}
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={t('searchPlaceholder')}
+                  autoComplete="off"
+                />
+              </FilterField>
+              <FilterField id={kindFilterId} label={t('filterKind')}>
+                <Select
+                  id={kindFilterId}
+                  value={kindFilter}
+                  onChange={(next) => setKindFilter(next as RoleKindFilter)}
+                >
+                  <option value="ALL">{t('filterAll')}</option>
+                  <option value="SYSTEM">{t('filterSystem')}</option>
+                  <option value="CUSTOM">{t('filterCustom')}</option>
+                </Select>
+              </FilterField>
+            </FilterBar>
 
             <TableScroll aria-label={t('title')}>
               <Table>

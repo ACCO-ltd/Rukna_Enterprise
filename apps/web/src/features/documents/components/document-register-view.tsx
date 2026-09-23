@@ -13,8 +13,8 @@ import {
 import {
   Alert,
   Button,
+  FilterField,
   Input,
-  Label,
   Select,
   SkeletonTable,
   Table,
@@ -349,25 +349,6 @@ function SummaryFigure({
         {value}
       </dd>
       {hint ? <p className="mt-0.5 text-micro text-muted-foreground">{hint}</p> : null}
-    </div>
-  );
-}
-
-function FilterField({
-  id,
-  label,
-  children,
-}: {
-  id: string;
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="min-w-0 space-y-1.5">
-      <Label htmlFor={id} className="text-micro font-semibold uppercase tracking-[0.06em]">
-        {label}
-      </Label>
-      {children}
     </div>
   );
 }

@@ -1,40 +1,8 @@
 'use client';
 
-import {
-  Alert,
-  Badge,
-  Button,
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-  DialogTrigger,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  SkeletonForm,
-  SkeletonRecord,
-  SkeletonTable,
-  Table,
-  TableBody,
-  TableCell,
-  TableEmpty,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@erp/ui';
-import { FileX, Receipt } from '@phosphor-icons/react';
+import { Alert, Avatar, Badge, Button, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, Checkbox, Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogTitle, DialogTrigger, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Meter, Progress, Sheet, SheetBody, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger, SkeletonForm, SkeletonRecord, SkeletonTable, Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow, TableScroll, Tabs, TabsContent, TabsList, TabsTrigger, Tooltip, TooltipContent, TooltipTrigger } from '@erp/ui';
+import { FileX, Receipt, Warning } from '@phosphor-icons/react';
 
-import { EmptyState } from '@/components/empty-state';
 import { ProgressStepper, type Step } from '@/components/progress-stepper';
 import { SetupChecklist } from '@/components/setup-checklist';
 import { StatusBadge } from '@/components/status-badge';
@@ -82,6 +50,59 @@ const STEPS_ERROR: Step[] = [
 export function PatternsSection() {
   return (
     <>
+      {/* ── Containers ──────────────────────────────────────────────────── */}
+      <Section
+        id="containers"
+        title="Containers"
+        intro="The byte-identical rounded-xl border border-border bg-surface shadow-panel shell that 59 screens were hand-writing, registered once. Reach for RecordPanel (Record layout, below) for a titled record/detail panel with icon + action + meta — Card is for everything else a screen groups visually."
+      >
+        <Specimen label="Card" token="<Card> · <CardHeader> · <CardContent> · <CardFooter>">
+          <Card className="max-w-sm">
+            <CardHeader>
+              <div>
+                <CardTitle>Purchase Requisitions</CardTitle>
+                <CardDescription>Internal requests for goods, materials, and services.</CardDescription>
+              </div>
+              <Button size="sm">New</Button>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between border-t border-border pt-4 text-body-sm">
+                <span className="text-muted-foreground">Open</span>
+                <span className="font-semibold text-foreground">24</span>
+              </div>
+              <div className="flex items-center justify-between border-t border-border py-3 text-body-sm">
+                <span className="text-muted-foreground">Pending approval</span>
+                <span className="font-semibold text-foreground">8</span>
+              </div>
+            </CardContent>
+            <CardFooter>
+              <Button variant="outline" size="sm">
+                View all
+              </Button>
+            </CardFooter>
+          </Card>
+        </Specimen>
+
+        <Specimen label="Avatar" token="<Avatar name size>">
+          <div className="flex flex-wrap items-center gap-4">
+            <Avatar name="Omar Khan" size="sm" />
+            <Avatar name="Omar Khan" />
+            <Avatar name="Omar Khan" size="lg" />
+            <Avatar name="Priya Shah" />
+            <span className="ms-2 flex items-center gap-2 text-body-sm text-muted-foreground">
+              <Avatar name="John Dvers" size="sm" />
+              John Dvers · Project Manager
+            </span>
+          </div>
+        </Specimen>
+
+        <Rule>
+          <code className="font-mono text-caption">Avatar</code> is decorative by default — every
+          real usage sits beside the person&rsquo;s visible name, which already carries the
+          accessible name.
+        </Rule>
+      </Section>
+
       {/* ── Status ──────────────────────────────────────────────────────── */}
       <Section
         id="status"
@@ -209,6 +230,70 @@ export function PatternsSection() {
           footer totals the money in view. A financial list that does not add up its own column
           pushes the reader into a spreadsheet.
         </Pending>
+
+        <Specimen
+          label="Recipe — permission matrix"
+          token="<Table> + <Checkbox>, no new component"
+          note="A grid of who-can-do-what is Table and Checkbox composed, not a component of its own — the only thing worth naming here is the validation state: an invalid cell gets a danger-toned ring on the Checkbox itself plus one error line under the matrix, not a per-cell message that would repeat six times for one mistake."
+        >
+          <TableScroll className="rounded-none border-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Permission</TableHead>
+                  <TableHead className="text-center">Director</TableHead>
+                  <TableHead className="text-center">Finance</TableHead>
+                  <TableHead className="text-center">Procurement</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow>
+                  <TableCell>View purchase orders</TableCell>
+                  <TableCell className="text-center">
+                    <Checkbox defaultChecked aria-label="Director — View purchase orders" />
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Checkbox defaultChecked aria-label="Finance — View purchase orders" />
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Checkbox disabled defaultChecked aria-label="Procurement — View purchase orders" />
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>Approve purchase orders</TableCell>
+                  <TableCell className="text-center">
+                    <Checkbox defaultChecked aria-label="Director — Approve purchase orders" />
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Checkbox aria-label="Finance — Approve purchase orders" />
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Checkbox defaultChecked aria-label="Procurement — Approve purchase orders" />
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell>
+                    Manage supplier data
+                    <p className="mt-0.5 text-caption text-danger">Select at least one role.</p>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Checkbox aria-label="Director — Manage supplier data" />
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Checkbox
+                      aria-invalid
+                      className="border-danger"
+                      aria-label="Finance — Manage supplier data"
+                    />
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Checkbox defaultChecked aria-label="Procurement — Manage supplier data" />
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </TableScroll>
+        </Specimen>
       </Section>
 
       {/* ── Feedback ────────────────────────────────────────────────────── */}
@@ -239,12 +324,29 @@ export function PatternsSection() {
               variant="info"
               messages={['Retention and advance recovery are calculated from the contract.']}
             />
+            <Alert
+              variant="warning"
+              icon={<Warning size={18} weight="fill" aria-hidden="true" />}
+              title="Structural materials at 91% while work is 73%"
+              messages={[
+                'Structural materials cost has reached 91% of budget, while physical progress is 73%. Review usage, delivery schedule, and remaining quantities to avoid cost overrun.',
+              ]}
+              action={
+                <Button variant="outline" size="sm">
+                  Investigate
+                </Button>
+              }
+            />
           </div>
           <p className="mt-4 text-caption leading-5 text-muted-foreground">
             <code className="font-mono text-caption">messages</code> takes an array because the
             API returns <code className="font-mono text-caption">error.message</code> as an
             array for 400 validation failures — one entry per failed constraint. Concatenating
-            them produces one unreadable line.
+            them produces one unreadable line.{' '}
+            <code className="font-mono text-caption">icon</code> and{' '}
+            <code className="font-mono text-caption">action</code> are both optional — most
+            alerts need neither; reach for them for a standalone attention card like the one
+            above, not for a routine form or toast error.
           </p>
         </Specimen>
 
@@ -336,6 +438,23 @@ export function PatternsSection() {
                 With a step in error
               </p>
               <ProgressStepper steps={STEPS_ERROR} />
+            </div>
+          </div>
+        </Specimen>
+
+        <Specimen label="Progress and Meter" token="<Progress value max tone> · <Meter value max>">
+          <div className="flex flex-col gap-6">
+            <div className="max-w-sm space-y-3">
+              <div className="flex items-center justify-between text-body-sm">
+                <span className="text-muted-foreground">Budget exposure</span>
+                <span className="font-semibold text-foreground">84.8%</span>
+              </div>
+              <Progress value={84.8} tone="warning" label="Budget exposure" />
+              <Progress value={48} tone="default" size="sm" label="Actual to date" />
+            </div>
+            <div className="flex flex-wrap items-center gap-8">
+              <Meter value={68} tone="default" />
+              <Meter value={92} tone="danger" size={72} strokeWidth={6} />
             </div>
           </div>
         </Specimen>
@@ -460,6 +579,59 @@ export function PatternsSection() {
           happens — &ldquo;the client name and tax number will be locked permanently&rdquo;, not
           &ldquo;are you sure?&rdquo;. The confirm button repeats the verb from the trigger, so
           nobody has to re-read the title to know what the button does.
+        </Rule>
+
+        <Specimen label="Sheet" token="<Sheet> · <SheetContent side>">
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="outline">Open requisition PR-2026-0148</Button>
+            </SheetTrigger>
+            <SheetContent>
+              <SheetHeader>
+                <SheetTitle>PR-2026-0148</SheetTitle>
+                <SheetDescription>Submitted 22 Sep 2026 by Ahmed Ali.</SheetDescription>
+              </SheetHeader>
+              <SheetBody>
+                <p className="text-body-sm text-muted-foreground">
+                  Concrete, rebar and formwork materials for foundation works — Block A.
+                </p>
+              </SheetBody>
+              <SheetFooter>
+                <SheetClose asChild>
+                  <Button>View approval</Button>
+                </SheetClose>
+                <SheetClose asChild>
+                  <Button variant="outline">Edit</Button>
+                </SheetClose>
+              </SheetFooter>
+            </SheetContent>
+          </Sheet>
+        </Specimen>
+
+        <Rule>
+          Reach for <code className="font-mono text-caption">Dialog</code> first —{' '}
+          <code className="font-mono text-caption">Sheet</code> is for a screen genuinely built
+          as list-on-one-side, detail-on-the-other, not a default replacement for a confirmation
+          or a create form. See the component&rsquo;s own doc comment for why (
+          <code className="font-mono text-caption">boq-item-drawer.tsx</code>&rsquo;s history).
+        </Rule>
+
+        <Specimen label="Tooltip" token="<Tooltip> · <TooltipTrigger> · <TooltipContent>">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge tone="info" dot>
+                Committed
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent>Ordered but not yet received or billed.</TooltipContent>
+          </Tooltip>
+        </Specimen>
+
+        <Rule>
+          Not for a truncated cell&rsquo;s full text — a native{' '}
+          <code className="font-mono text-caption">title=</code> on the truncated span already
+          works for that. Reach for <code className="font-mono text-caption">Tooltip</code> only
+          where the hint explains something a label cannot say in its own space.
         </Rule>
       </Section>
     </>

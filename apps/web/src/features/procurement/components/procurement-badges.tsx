@@ -20,7 +20,7 @@
  */
 
 import { useTranslations } from 'next-intl';
-import { Badge, type BadgeTone } from '@erp/ui';
+import { Badge, type BadgeTone, Tooltip, TooltipContent, TooltipTrigger } from '@erp/ui';
 
 import type { BillMatchStatus, CommitmentStage } from '../types';
 
@@ -91,9 +91,14 @@ export function CommitmentStageTag({ stage }: { stage: CommitmentStage }) {
   }[stage];
 
   return (
-    <Badge tone={STAGE_TONES[stage] ?? 'neutral'} title={hint}>
-      {t(stage.toLowerCase() as 'committed' | 'accrued' | 'actual')}
-    </Badge>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge tone={STAGE_TONES[stage] ?? 'neutral'}>
+          {t(stage.toLowerCase() as 'committed' | 'accrued' | 'actual')}
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent>{hint}</TooltipContent>
+    </Tooltip>
   );
 }
 

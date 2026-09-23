@@ -130,7 +130,7 @@ export function PostReceiptDialog({
             )}
           </FormField>
 
-          <div className="space-y-3 rounded-lg border border-border bg-surface p-3">
+          <div className="space-y-3 rounded-control border border-border bg-surface p-3">
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium text-foreground">{t('allocateNow')}</p>
               <Button

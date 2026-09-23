@@ -2,10 +2,9 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Button } from '@erp/ui';
+import { Button, EmptyState } from '@erp/ui';
 import { CalendarClock } from 'lucide-react';
 
-import { EmptyState } from '@/components/empty-state';
 import { usePermissions } from '@/features/auth/permissions/can';
 import { PROGRESS_PERMISSIONS } from '@/features/progress/permissions';
 import { useBoqLeaves } from '@/features/progress/hooks/use-boq-leaves';

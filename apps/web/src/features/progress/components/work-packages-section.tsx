@@ -8,6 +8,7 @@ import {
   FormField,
   Input,
   Label,
+  Progress,
   SectionHeader,
   Select,
   Dialog,
@@ -22,9 +23,12 @@ import {
   TableScroll,
 } from '@erp/ui';
 
+import type { SuggestedWeightLine } from '@erp/types';
+
 import { MetricStrip } from '@/components/widget/metric-strip';
 import { ApiError } from '@/lib/api-client';
 
+import { useSuggestWeights, useUpdateWorkPackage } from '@/features/programme/hooks/use-programme';
 import { useAllocateBoqNode, useCreateWorkPackage, useProjectRollup } from '../hooks/use-progress';
 import { lineLabel, useBoqLeaves } from '../hooks/use-boq-leaves';
 
@@ -41,6 +45,50 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
 
   const [creating, setCreating] = useState(false);
   const [allocating, setAllocating] = useState(false);
+  const [suggestions, setSuggestions] = useState<SuggestedWeightLine[] | null>(null);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+
+  const suggest = useSuggestWeights(projectId);
+  const updateWp = useUpdateWorkPackage(projectId);
+
+  function handleSuggest() {
+    setSuggestError(null);
+    suggest.mutate(undefined, {
+      onSuccess: (res) => setSuggestions(res.weights),
+      onError: (e) =>
+        setSuggestError(e instanceof ApiError ? e.message : t('workPackage.suggestFailed')),
+    });
+  }
+
+  function handleAcceptOne(workPackageId: string, weight: number) {
+    updateWp.mutate(
+      { workPackageId, body: { progressWeight: Number(weight.toFixed(4)) } },
+      {
+        onSuccess: () =>
+          setSuggestions((prev) => {
+            const next = prev?.filter((s) => s.workPackageId !== workPackageId) ?? null;
+            return next?.length === 0 ? null : next;
+          }),
+        onError: (e) =>
+          setSuggestError(e instanceof ApiError ? e.message : t('workPackage.saveFailed')),
+      },
+    );
+  }
+
+  function handleAcceptAll() {
+    if (!suggestions) return;
+    setSuggestError(null);
+    for (const w of suggestions) {
+      updateWp.mutate(
+        { workPackageId: w.workPackageId, body: { progressWeight: Number(w.suggestedWeight.toFixed(4)) } },
+        {
+          onError: (e) =>
+            setSuggestError(e instanceof ApiError ? e.message : t('workPackage.saveFailed')),
+        },
+      );
+    }
+    setSuggestions(null);
+  }
 
   if (isPending) {
     return (
@@ -88,6 +136,14 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
         <SectionHeader title={t('workPackage.title')}>
           <div className="flex items-center gap-2">
             <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSuggest}
+              disabled={suggest.isPending || data.packages.length === 0}
+            >
+              {t('workPackage.suggestWeights')}
+            </Button>
+            <Button
               variant="outline"
               size="sm"
               onClick={() => setAllocating(true)}
@@ -100,6 +156,66 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
             </Button>
           </div>
         </SectionHeader>
+
+        {suggestError ? (
+          <Alert variant="error" messages={[suggestError]}>
+            <div className="mt-2">
+              <Button variant="ghost" size="sm" onClick={() => setSuggestError(null)}>
+                {t('actions.cancel')}
+              </Button>
+            </div>
+          </Alert>
+        ) : null}
+
+        {suggestions !== null ? (
+          <div className="rounded-panel border border-border bg-surface p-4 space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-sm font-medium text-foreground">{t('workPackage.proposed.title')}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{t('workPackage.proposed.hint')}</p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setSuggestions(null)}>
+                {t('workPackage.proposed.dismiss')}
+              </Button>
+            </div>
+            <div className="space-y-1">
+              {suggestions.map((s) => {
+                const pkg = data.packages.find((p) => p.id === s.workPackageId);
+                const proposedPercent = Math.round(s.suggestedWeight * 100);
+                return (
+                  <div key={s.workPackageId} className="flex items-center justify-between gap-4 py-1.5">
+                    <div className="min-w-0 flex-1 flex items-center gap-2">
+                      <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                        {pkg?.code ?? s.workPackageId}
+                      </span>
+                      <span className="truncate text-sm text-foreground">{pkg?.name ?? s.workPackageId}</span>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <span className="w-10 text-right tabular-nums text-sm font-medium text-foreground">
+                        {`${proposedPercent}%`}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleAcceptOne(s.workPackageId, s.suggestedWeight)}
+                        disabled={updateWp.isPending}
+                      >
+                        {t('workPackage.proposed.accept')}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {suggestions.length > 1 ? (
+              <div className="border-t border-border pt-2">
+                <Button size="sm" onClick={handleAcceptAll} disabled={updateWp.isPending}>
+                  {t('workPackage.proposed.acceptAll')}
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {data.packages.length === 0 ? (
           <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
@@ -179,23 +295,16 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
  * figure; the bar is the glanceable status.
  */
 function PercentCompleteBar({ percent, label }: { percent: number; label: string }) {
-  const clamped = Math.min(100, Math.max(0, percent));
   const complete = percent >= 100;
   return (
     <div className="flex items-center gap-2">
-      <span
-        className="block h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-muted"
-        role="progressbar"
-        aria-valuenow={percent}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label={label}
-      >
-        <span
-          className={`block h-full rounded-full ${complete ? 'bg-success' : 'bg-warning'}`}
-          style={{ width: `${clamped}%` }}
-        />
-      </span>
+      <Progress
+        value={percent}
+        tone={complete ? 'success' : 'warning'}
+        size="sm"
+        label={label}
+        className="w-16 shrink-0"
+      />
       <span className="whitespace-nowrap font-medium tabular-nums text-foreground">{`${percent}%`}</span>
     </div>
   );

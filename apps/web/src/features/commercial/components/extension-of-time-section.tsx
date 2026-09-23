@@ -3,25 +3,10 @@
 import * as React from 'react';
 import { CalendarClock } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import {
-  Badge,
-  Button,
-  DatePicker,
-  Label,
-  SectionHeader,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-  Skeleton,
-  Textarea,
-  useToast,
-} from '@erp/ui';
+import { Badge, Button, CheckboxField, DatePicker, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, EmptyState, Label, SectionHeader, Skeleton, Textarea, useToast } from '@erp/ui';
 import type { ExtensionOfTimeResponse, VariationOrderListItem } from '@erp/types';
 
 import { ApiError } from '@/lib/api-client';
-import { EmptyState } from '@/components/empty-state';
 import { formatDate } from '@/lib/format';
 import { usePermissions } from '@/features/auth/permissions/can';
 
@@ -250,14 +235,10 @@ function GrantExtensionSheet({
                 <ul className="space-y-1.5">
                   {variations.map((vo) => (
                     <li key={vo.id}>
-                      <label className="flex cursor-pointer items-start gap-2.5 rounded-control border border-border bg-surface-subtle px-3 py-2">
-                        <input
-                          type="checkbox"
-                          checked={cited.includes(vo.id)}
-                          onChange={() => toggleCite(vo.id)}
-                          className="mt-0.5 size-4 accent-brand-primary"
-                        />
-                        <span className="min-w-0">
+                      <CheckboxField
+                        id={`eot-vo-${vo.id}`}
+                        className="rounded-control border border-border bg-surface-subtle px-3"
+                        label={
                           <span className="flex flex-wrap items-center gap-2">
                             <code className="font-mono text-caption text-muted-foreground">
                               {vo.reference}
@@ -266,16 +247,22 @@ function GrantExtensionSheet({
                               {tVo(`status.${vo.status}`)}
                             </Badge>
                           </span>
-                          <span className="mt-0.5 block truncate text-body-sm text-foreground">
-                            {vo.title}
-                          </span>
-                          {vo.proposedTimeImpactDays !== null ? (
-                            <span className="text-caption text-muted-foreground">
-                              {t('proposedImpact', { n: vo.proposedTimeImpactDays })}
+                        }
+                        description={
+                          <>
+                            <span className="block truncate text-body-sm text-foreground">
+                              {vo.title}
                             </span>
-                          ) : null}
-                        </span>
-                      </label>
+                            {vo.proposedTimeImpactDays !== null ? (
+                              <span className="block text-caption text-muted-foreground">
+                                {t('proposedImpact', { n: vo.proposedTimeImpactDays })}
+                              </span>
+                            ) : null}
+                          </>
+                        }
+                        checked={cited.includes(vo.id)}
+                        onChange={() => toggleCite(vo.id)}
+                      />
                     </li>
                   ))}
                 </ul>

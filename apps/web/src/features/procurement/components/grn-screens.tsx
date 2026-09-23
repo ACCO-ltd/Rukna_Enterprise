@@ -8,7 +8,7 @@
  * misread by someone scanning the sidebar for where a customer payment went.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
@@ -388,7 +388,7 @@ export function GrnDetail({ id }: { id: string }) {
   if (grn.isPending) {
     return (
       <div role="status" aria-live="polite">
-        <div className="h-64 animate-pulse rounded-lg border border-border bg-muted" aria-hidden="true" />
+        <div className="h-64 animate-pulse rounded-panel border border-border bg-muted" aria-hidden="true" />
       </div>
     );
   }
@@ -461,7 +461,7 @@ export function GrnDetail({ id }: { id: string }) {
         <Alert variant="info" messages={[t('postedNotice')]} />
       ) : null}
 
-      <dl className="grid gap-4 rounded-lg border border-border bg-surface p-4 sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="grid gap-4 rounded-panel border border-border bg-surface p-4 shadow-e2 sm:grid-cols-2 lg:grid-cols-4">
         <Field
           label={t('deliveryDate')}
           value={formatDate(receipt.deliveryDate, locale) ?? tc('notAvailable')}

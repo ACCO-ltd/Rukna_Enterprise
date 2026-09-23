@@ -247,8 +247,7 @@
   "ledger": {
     "title": "Ledger",
     "basis": "Project accounting entries. Posted journals only.",
-    "fromDate": "From",
-    "toDate": "To",
+    "dateRange": "Date range",
     "search": "Search",
     "searchPlaceholder": "Description, account or journal",
     "reset": "Reset",

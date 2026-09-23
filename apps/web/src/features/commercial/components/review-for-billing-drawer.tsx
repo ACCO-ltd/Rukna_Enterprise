@@ -119,7 +119,7 @@ export function ReviewForBillingDrawer({
                         {vo.amount ? (
                           <span
                             className={`shrink-0 text-body-sm font-medium tabular-nums ${
-                              vo.isOmission ? 'text-destructive' : 'text-success'
+                              vo.isOmission ? 'text-danger' : 'text-success'
                             }`}
                           >
                             {vo.isOmission ? '' : '+'}

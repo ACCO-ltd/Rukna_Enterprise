@@ -11,31 +11,8 @@ import type {
   ProgrammeMilestoneResponse,
   VariationOrderListItem,
 } from '@erp/types';
-import {
-  Alert,
-  Badge,
-  Button,
-  Checkbox,
-  DatePicker,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-  FormField,
-  Input,
-  Select,
-  Skeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-} from '@erp/ui';
+import { Alert, Badge, Button, Checkbox, DatePicker, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, EmptyState, FormField, Input, Select, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll } from '@erp/ui';
 
-import { EmptyState } from '@/components/empty-state';
 import { getInvoiceDocument } from '@/features/accounting/api/invoices-api';
 import { usePermissions } from '@/features/auth/permissions/can';
 import { useMilestones } from '@/features/programme/hooks/use-programme';

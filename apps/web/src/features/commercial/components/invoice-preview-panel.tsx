@@ -64,11 +64,11 @@ export function InvoicePreviewPanel({
   const statusBar = (
     <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
       {isIssued ? (
-        <span className="rounded-md bg-success/10 px-2.5 py-1 text-caption font-semibold uppercase tracking-wide text-success">
+        <span className="rounded-full bg-success/10 px-2.5 py-1 text-caption font-semibold uppercase tracking-wide text-success">
           {t('invoiceCreatedBadge')}
         </span>
       ) : (
-        <span className="rounded-md bg-amber-100 px-2.5 py-1 text-caption font-semibold uppercase tracking-wide text-amber-800">
+        <span className="rounded-full bg-amber-100 px-2.5 py-1 text-caption font-semibold uppercase tracking-wide text-amber-800">
           {t('draftPreviewTitle')}
         </span>
       )}
@@ -119,12 +119,10 @@ export function InvoicePreviewPanel({
 
   if (hasVos) {
     const milestoneSubtotal = base;
-    const milestoneVat = milestoneSubtotal * 0.05;
-    const milestoneTotal = milestoneSubtotal + milestoneVat;
 
     return (
       <div
-        className="flex h-full flex-col overflow-y-auto rounded-lg border border-border bg-white"
+        className="flex h-full flex-col overflow-y-auto rounded-panel border border-border bg-white"
         aria-label={t('billingPackageLabel')}
       >
         {statusBar}
@@ -133,7 +131,7 @@ export function InvoicePreviewPanel({
           {invoiceHeader}
 
           {/* Package header */}
-          <div className="rounded-lg bg-surface px-4 py-2.5">
+          <div className="rounded-control bg-surface px-4 py-2.5">
             <p className="text-body-sm font-semibold text-foreground">
               {t('billingPackageTitle')}
             </p>
@@ -143,7 +141,7 @@ export function InvoicePreviewPanel({
           </div>
 
           {/* BASE MILESTONE document card */}
-          <div className="rounded-lg border border-border bg-white p-4 space-y-2">
+          <div className="rounded-control border border-border bg-white p-4 space-y-2">
             <div>
               <p className="text-caption font-semibold uppercase tracking-wide text-muted-foreground">
                 {t('billingPackageBaseMilestone')}
@@ -162,7 +160,7 @@ export function InvoicePreviewPanel({
           {selectedVos.map((vo) => {
             const voAmt = vo.amount ? Number(vo.amount) : 0;
             return (
-              <div key={vo.variationId} className="rounded-lg border border-border bg-white p-4 space-y-2">
+              <div key={vo.variationId} className="rounded-control border border-border bg-white p-4 space-y-2">
                 <div>
                   <p className="text-caption font-semibold uppercase tracking-wide text-muted-foreground">
                     {t('billingPackageVariation')}
@@ -176,7 +174,7 @@ export function InvoicePreviewPanel({
                   </span>
                   <span
                     className={`shrink-0 text-body-sm tabular-nums ${
-                      vo.isOmission ? 'text-destructive' : 'text-success'
+                      vo.isOmission ? 'text-danger' : 'text-success'
                     }`}
                   >
                     {fmt(voAmt.toFixed(2))}
@@ -223,7 +221,7 @@ export function InvoicePreviewPanel({
 
   return (
     <div
-      className="flex h-full flex-col overflow-y-auto rounded-lg border border-border bg-white"
+      className="flex h-full flex-col overflow-y-auto rounded-panel border border-border bg-white"
       aria-label={isIssued ? t('invoiceCreatedBadge') : t('draftPreviewTitle')}
     >
       {statusBar}

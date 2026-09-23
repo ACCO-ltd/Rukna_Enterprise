@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { cn, RecordPanel } from '@erp/ui';
+import { Progress, RecordPanel } from '@erp/ui';
 import { Layers } from 'lucide-react';
 
 import { useProjectRollup } from '../hooks/use-progress';
@@ -75,19 +75,17 @@ export function WorkPackageProgressPanel({ projectId }: { projectId: string }) {
                     <span className="text-body-sm text-muted-foreground">—</span>
                   ) : (
                     <div className="flex items-center gap-3">
-                      <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
-                        {/* One colour. A package is not "good" at 80% and "bad" at 20% — it is
-                            simply further along, and without a per-package plan there is nothing
-                            to be ahead or behind of. Colouring by magnitude would be inventing a
-                            judgement the data cannot support. */}
-                        <span
-                          className={cn(
-                            'block h-full rounded-full',
-                            wp.percentComplete >= 100 ? 'bg-success' : 'bg-brand-primary',
-                          )}
-                          style={{ width: `${Math.min(100, Math.max(0, wp.percentComplete))}%` }}
-                        />
-                      </span>
+                      {/* One colour. A package is not "good" at 80% and "bad" at 20% — it is
+                          simply further along, and without a per-package plan there is nothing
+                          to be ahead or behind of. Colouring by magnitude would be inventing a
+                          judgement the data cannot support. */}
+                      <Progress
+                        value={wp.percentComplete}
+                        tone={wp.percentComplete >= 100 ? 'success' : 'default'}
+                        size="sm"
+                        label={t('packages.progress')}
+                        className="min-w-0 flex-1"
+                      />
                       <span className="w-10 shrink-0 text-end text-body-sm font-medium tabular-nums text-foreground">
                         {wp.percentComplete}%
                       </span>

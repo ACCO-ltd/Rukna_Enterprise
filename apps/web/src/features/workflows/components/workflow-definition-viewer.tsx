@@ -40,7 +40,7 @@ export function WorkflowDefinitionViewer() {
       {isPending ? (
         <div role="status" aria-live="polite">
           <span className="sr-only">{tCommon('loading')}</span>
-          <div className="h-48 animate-pulse rounded-lg border border-border bg-muted" aria-hidden="true" />
+          <div className="h-48 animate-pulse rounded-panel border border-border bg-muted" aria-hidden="true" />
         </div>
       ) : isError ? (
         <Alert variant="error" messages={[t('viewer.loadFailed')]}>
@@ -51,14 +51,14 @@ export function WorkflowDefinitionViewer() {
           </div>
         </Alert>
       ) : definition === null ? (
-        <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-10 text-center">
+        <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-10 text-center">
           <p className="text-sm font-medium text-foreground">{t('viewer.notConfigured')}</p>
           <p className="mt-1 text-xs text-muted-foreground">{t('viewer.notConfiguredHint')}</p>
         </div>
       ) : (
         <div className="space-y-6">
           {/* Definition header */}
-          <div className="rounded-lg border border-border bg-surface p-5">
+          <div className="rounded-panel border border-border bg-surface p-5 shadow-e2">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-xs text-muted-foreground">{t('viewer.definitionName')}</p>

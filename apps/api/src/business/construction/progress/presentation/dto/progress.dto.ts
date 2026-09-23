@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsOptional, IsInt, IsNumber, IsBoolean, IsIn, Min, Max, IsDateString, MaxLength, ValidateNested, ArrayMaxSize } from 'class-validator';
 import { Type } from 'class-transformer';
 import type { ScheduleTemplateKey } from '@erp/types';
+import { DprObservationCategory } from '@erp/types';
 
 // Master Schedule P1-d (ADR-029) — apply a server-side schedule template to seed the project phases.
 const SCHEDULE_TEMPLATE_KEYS: ScheduleTemplateKey[] = ['ACCO_STANDARD_BUILDING'];
@@ -232,4 +233,105 @@ export class UpdateWorkPackageDto {
   @ApiPropertyOptional({ description: 'Non-measurable phase (no BOQ scope); tracked by dates only' })
   @IsOptional() @IsBoolean()
   scheduleOnly?: boolean;
+}
+
+// Phase 3: structured DPR row DTOs (Sections C and D of the DPR editor).
+
+export class AddDprLabourRowDto {
+  @ApiProperty({ example: 'Mason' })
+  @IsString() @IsNotEmpty() @MaxLength(100)
+  trade!: string;
+
+  @ApiProperty({ example: 8 })
+  @IsInt() @Min(0)
+  headcount!: number;
+
+  @ApiPropertyOptional({ example: 'Al-Amin Contracting' })
+  @IsOptional() @IsString() @MaxLength(255)
+  contractor?: string;
+
+  @ApiPropertyOptional({ example: 8 })
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0)
+  hours?: number;
+}
+
+export class AddDprEquipmentRowDto {
+  @ApiProperty({ example: 'Concrete Pump' })
+  @IsString() @IsNotEmpty() @MaxLength(100)
+  equipmentType!: string;
+
+  @ApiProperty({ example: 1 })
+  @IsInt() @Min(0)
+  count!: number;
+
+  @ApiPropertyOptional({ example: 7.5 })
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }) @Min(0)
+  hoursWorked?: number;
+
+  @ApiPropertyOptional({ example: 'working', description: 'working | breakdown | idle | maintenance' })
+  @IsOptional() @IsString() @MaxLength(50)
+  condition?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsString() @MaxLength(500)
+  notes?: string;
+}
+
+const OBS_CATEGORIES = Object.values(DprObservationCategory);
+
+export class AddDprObservationDto {
+  @ApiProperty({ enum: OBS_CATEGORIES })
+  @IsIn(OBS_CATEGORIES)
+  category!: DprObservationCategory;
+
+  @ApiProperty()
+  @IsString() @IsNotEmpty() @MaxLength(1000)
+  description!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsString() @MaxLength(255)
+  affectedWork?: string;
+
+  @ApiPropertyOptional({ example: 'medium', description: 'low | medium | high' })
+  @IsOptional() @IsString() @MaxLength(20)
+  severity?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsString() @MaxLength(255)
+  followUpOwner?: string;
+}
+
+// Phase 3: patch context fields (Section A + tomorrow plan) on an existing editable DPR.
+export class PatchDprContextDto {
+  @ApiPropertyOptional({ example: 'Third floor, east wing' })
+  @IsOptional() @IsString() @MaxLength(255)
+  locationArea?: string;
+
+  @ApiPropertyOptional({ example: 'Morning', description: 'Morning | Afternoon | Night | Full day' })
+  @IsOptional() @IsString() @MaxLength(50)
+  shift?: string;
+
+  @ApiPropertyOptional({ example: 'Continue concrete pour for columns B5-B8' })
+  @IsOptional() @IsString() @MaxLength(1000)
+  tomorrowPlan?: string;
+
+  @ApiPropertyOptional({ example: 'Clear' })
+  @IsOptional() @IsString() @MaxLength(120)
+  weather?: string;
+
+  @ApiPropertyOptional({ example: 24 })
+  @IsOptional() @IsInt() @Min(0)
+  labourCount?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsString() @MaxLength(255)
+  equipmentNote?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsString()
+  narrative?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional() @IsString() @MaxLength(255)
+  delayReason?: string;
 }

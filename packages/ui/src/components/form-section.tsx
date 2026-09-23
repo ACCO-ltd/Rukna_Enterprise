@@ -14,16 +14,38 @@ export interface FormSectionProps extends Omit<React.HTMLAttributes<HTMLElement>
    * composition would feel heavy.
    */
   variant?: 'card' | 'plain';
+  /**
+   * Numbers the section — "1. Procurement Method", "2. Tax Treatment" — for a form that is
+   * itself a short sequence of decisions rather than one flat set of fields. Omit for an
+   * ordinary form: a number on every section of a long form is noise, not structure.
+   */
+  step?: number;
+}
+
+function StepBadge({ step }: { step: number }) {
+  return (
+    <span className="me-2 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-primary text-micro font-semibold text-brand-on-primary">
+      {step}
+    </span>
+  );
 }
 
 export function FormSection({
   title,
   description,
   variant = 'card',
+  step,
   className,
   children,
   ...props
 }: FormSectionProps) {
+  const heading = (
+    <>
+      {step ? <StepBadge step={step} /> : null}
+      {title}
+    </>
+  );
+
   if (variant === 'plain') {
     return (
       <div className={cn('space-y-5', className)} {...(props as React.HTMLAttributes<HTMLDivElement>)}>
@@ -31,7 +53,7 @@ export function FormSection({
             below the description rather than between it and the title, so the two lines read as one
             heading block — the section label and what the section is for. */}
         <div className="border-b border-border pb-3">
-          <h3 className="text-h3 font-semibold text-foreground">{title}</h3>
+          <h3 className="flex items-center text-h3 font-semibold text-foreground">{heading}</h3>
           {description ? (
             <p className="mt-1 text-caption leading-5 text-muted-foreground">{description}</p>
           ) : null}
@@ -49,7 +71,9 @@ export function FormSection({
       )}
       {...(props as React.HTMLAttributes<HTMLFieldSetElement>)}
     >
-      <legend className="px-1 text-sm font-semibold text-foreground">{title}</legend>
+      <legend className="flex items-center px-1 text-sm font-semibold text-foreground">
+        {heading}
+      </legend>
       {description ? (
         <p className="mt-1 text-sm leading-5 text-muted-foreground">{description}</p>
       ) : null}

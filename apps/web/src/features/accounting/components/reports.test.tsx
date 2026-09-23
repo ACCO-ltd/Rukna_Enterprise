@@ -260,7 +260,7 @@ describe('ProfitLossReport', () => {
     renderWithProviders(<ProfitLossReport />);
 
     await screen.findByText('Revenue');
-    await pickDate(user, screen.getByLabelText('From'), '2026-03-01');
+    await pickDate(user, screen.getByRole('button', { name: 'Date range' }), '2026-03-01');
 
     expect(vi.mocked(getProfitLoss)).toHaveBeenLastCalledWith(
       expect.objectContaining({ fromDate: '2026-03-01' }),

@@ -2,19 +2,10 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import {
-  Alert,
-  Badge,
-  Button,
-  SectionHeader,
-  Skeleton,
-  cn,
-  type BadgeProps,
-} from '@erp/ui';
+import { Alert, Badge, Button, cn, EmptyState, SectionHeader, Skeleton, type BadgeProps } from '@erp/ui';
 import { CalendarClock } from 'lucide-react';
 import type { ProgressScheduleStatus, WorkPackageRollupLine } from '@erp/types';
 
-import { EmptyState } from '@/components/empty-state';
 import { useProject } from '@/features/projects/hooks/use-project';
 import { useBoqLeaves } from '@/features/progress/hooks/use-boq-leaves';
 import { useProjectRollup } from '@/features/progress/hooks/use-progress';

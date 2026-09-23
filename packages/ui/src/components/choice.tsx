@@ -133,8 +133,20 @@ export interface RadioGroupProps<TValue extends string> {
    * `"horizontal"` (default) for a short closed set whose labels are a word or two — the
    * payment-terms case. `"vertical"` once options carry descriptions, or once there are more
    * than about four, at which point a horizontal row stops being scannable.
+   *
+   * With `variant="card"`, this instead decides whether the tiles sit in a wrapping row
+   * (`"horizontal"`) or stack full-width, one per line (`"vertical"`).
    */
   orientation?: 'horizontal' | 'vertical';
+  /**
+   * `"inline"` (default) — a plain radio dot and label, one line.
+   *
+   * `"card"` — each option is a bordered, selectable tile with the radio, the label and its
+   * description inside it, and the whole tile highlights on selection. Use this once an
+   * option needs to be *chosen*, not just picked from a short list — a procurement method, a
+   * tax treatment — where the description is part of deciding, not an afterthought.
+   */
+  variant?: 'inline' | 'card';
   disabled?: boolean;
   className?: string;
 }
@@ -154,9 +166,12 @@ export function RadioGroup<TValue extends string>({
   options,
   description,
   orientation = 'horizontal',
+  variant = 'inline',
   disabled,
   className,
 }: RadioGroupProps<TValue>) {
+  const isCard = variant === 'card';
+
   return (
     <fieldset className={cn('min-w-0', className)} disabled={disabled}>
       <legend className="block text-body-sm font-medium text-foreground">{label}</legend>
@@ -168,45 +183,110 @@ export function RadioGroup<TValue extends string>({
         className={cn(
           'mt-2 flex',
           orientation === 'horizontal'
-            ? 'flex-wrap items-center gap-x-6 gap-y-1'
-            : 'flex-col gap-1',
+            ? cn('flex-wrap', isCard ? 'items-stretch gap-3' : 'items-center gap-x-6 gap-y-1')
+            : cn('flex-col', isCard ? 'gap-3' : 'gap-1'),
         )}
       >
-        {options.map((option) => (
-          <div key={option.value} className="min-w-0">
-            {/* Same rule as CheckboxField: the description is described-by, not named-by. */}
-            <label
-              className={cn(
-                'flex min-h-control items-center gap-2.5 py-2.5',
-                option.disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
-              )}
-            >
-              <input
-                type="radio"
-                name={name}
-                value={option.value}
-                checked={value === option.value}
-                disabled={option.disabled}
-                onChange={() => onChange(option.value)}
-                aria-describedby={option.description ? `${name}-${option.value}-description` : undefined}
+        {options.map((option) => {
+          const checked = value === option.value;
+          const descriptionId = option.description ? `${name}-${option.value}-description` : undefined;
+
+          if (isCard) {
+            // The description sits OUTSIDE the <label htmlFor>, same rule as CheckboxField: a
+            // screen reader names this radio from the label alone and reads the description
+            // separately, from aria-describedby, once — not twice, and not run together into
+            // one sentence a listener cannot tell apart from the label. The whole tile is still
+            // clickable via the div's own onClick, so the description text is a live target too.
+            const optionId = `${name}-${option.value}`;
+            return (
+              <div
+                key={option.value}
+                onClick={() => !option.disabled && onChange(option.value)}
                 className={cn(
-                  'h-4 w-4 shrink-0 cursor-pointer accent-brand-primary',
-                  'focus-visible:outline-none focus-visible:shadow-ring',
-                  'disabled:cursor-not-allowed disabled:opacity-50',
+                  'flex min-w-0 flex-1 basis-56 items-start gap-2.5 rounded-panel border p-3.5 transition-colors',
+                  'duration-(--motion-enter) ease-brand',
+                  option.disabled
+                    ? 'cursor-not-allowed opacity-60'
+                    : 'cursor-pointer hover:border-border-interactive',
+                  checked
+                    ? 'border-brand-primary bg-surface-selected'
+                    : 'border-border-strong bg-surface',
                 )}
-              />
-              <span className="min-w-0 text-body-sm text-foreground">{option.label}</span>
-            </label>
-            {option.description ? (
-              <p
-                id={`${name}-${option.value}-description`}
-                className="-mt-1.5 ps-6 text-caption leading-5 text-muted-foreground"
               >
-                {option.description}
-              </p>
-            ) : null}
-          </div>
-        ))}
+                <input
+                  type="radio"
+                  id={optionId}
+                  name={name}
+                  value={option.value}
+                  checked={checked}
+                  disabled={option.disabled}
+                  onChange={() => onChange(option.value)}
+                  aria-describedby={descriptionId}
+                  className={cn(
+                    'mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-brand-primary',
+                    'focus-visible:outline-none focus-visible:shadow-ring',
+                    'disabled:cursor-not-allowed disabled:opacity-50',
+                  )}
+                />
+                <span className="min-w-0">
+                  <label
+                    htmlFor={optionId}
+                    className={cn(
+                      'block text-body-sm font-semibold text-foreground',
+                      option.disabled ? 'cursor-not-allowed' : 'cursor-pointer',
+                    )}
+                  >
+                    {option.label}
+                  </label>
+                  {option.description ? (
+                    <p
+                      id={descriptionId}
+                      className="mt-0.5 text-caption leading-5 text-muted-foreground"
+                    >
+                      {option.description}
+                    </p>
+                  ) : null}
+                </span>
+              </div>
+            );
+          }
+
+          return (
+            <div key={option.value} className="min-w-0">
+              {/* Same rule as CheckboxField: the description is described-by, not named-by. */}
+              <label
+                className={cn(
+                  'flex min-h-control items-center gap-2.5 py-2.5',
+                  option.disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+                )}
+              >
+                <input
+                  type="radio"
+                  name={name}
+                  value={option.value}
+                  checked={checked}
+                  disabled={option.disabled}
+                  onChange={() => onChange(option.value)}
+                  aria-describedby={descriptionId}
+                  className={cn(
+                    'h-4 w-4 shrink-0 cursor-pointer accent-brand-primary',
+                    'focus-visible:outline-none focus-visible:shadow-ring',
+                    'disabled:cursor-not-allowed disabled:opacity-50',
+                  )}
+                />
+                <span className="min-w-0 text-body-sm text-foreground">{option.label}</span>
+              </label>
+              {option.description ? (
+                <p
+                  id={descriptionId}
+                  className="-mt-1.5 ps-6 text-caption leading-5 text-muted-foreground"
+                >
+                  {option.description}
+                </p>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
     </fieldset>
   );

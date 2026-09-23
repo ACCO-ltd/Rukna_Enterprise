@@ -37,7 +37,7 @@ export function ContractEditRedirect({ contractId }: { contractId: string }) {
     <div role="status" aria-live="polite">
       <span className="sr-only">{tCommon('loading')}</span>
       <div
-        className="h-24 animate-pulse rounded-lg border border-border bg-muted"
+        className="h-24 animate-pulse rounded-panel border border-border bg-muted"
         aria-hidden="true"
       />
     </div>

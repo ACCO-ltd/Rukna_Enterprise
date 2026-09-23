@@ -22,12 +22,18 @@ import {
   CreateProgrammeActivityDto,
   UpdateProgrammeActivityDto,
   CaptureProgressSnapshotDto,
+  PatchDprContextDto,
+  AddDprLabourRowDto,
+  AddDprEquipmentRowDto,
+  AddDprObservationDto,
 } from './dto/progress.dto.js';
 
 // ADR-021 Progress MVP: daily progress reports + measurements + evidence, and verified progress.
-// Capability gate mirrors the rest of construction (view:project to read, manage:project to
-// write); project membership is enforced per-call in the service via projectAccess.assertMember.
-// ADR-022 will refine the write chain (Site Engineer submits, PM approves).
+// ADR-022 CONST-DOA-008 DPR permission split:
+//   record:progress — SE (and PM) can CREATE a DPR, add measurements/evidence, and SUBMIT it.
+//   approve:progress — PM can APPROVE, RETURN or REOPEN a DPR.
+//   manage:project — programme setup (work packages, baseline, targets, activities, snapshots).
+// Project membership is enforced per-call in the service via projectAccess.assertMember.
 @ApiTags('Progress')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard)
@@ -40,7 +46,7 @@ export class ProgressController {
   ) {}
 
   @Post('projects/:projectId/progress/reports')
-  @RequirePermissions(PERMISSIONS.projectsManage)
+  @RequirePermissions(PERMISSIONS.progressRecord)
   @ApiParam({ name: 'projectId' })
   @ApiOperation({ summary: 'Create a daily progress report (DRAFT)' })
   createDpr(
@@ -330,7 +336,7 @@ export class ProgressController {
   }
 
   @Post('progress/reports/:dprId/measurements')
-  @RequirePermissions(PERMISSIONS.projectsManage)
+  @RequirePermissions(PERMISSIONS.progressRecord)
   @ApiParam({ name: 'dprId' })
   @ApiOperation({ summary: 'Add a measured quantity against a BOQ leaf (DRAFT report only)' })
   addMeasurement(
@@ -342,7 +348,7 @@ export class ProgressController {
   }
 
   @Post('progress/reports/:dprId/evidence')
-  @RequirePermissions(PERMISSIONS.projectsManage)
+  @RequirePermissions(PERMISSIONS.progressRecord)
   @ApiParam({ name: 'dprId' })
   @ApiOperation({ summary: 'Attach an uploaded evidence file (photo / measurement sheet)' })
   attachEvidence(
@@ -353,8 +359,103 @@ export class ProgressController {
     return this.service.attachEvidence(identity, dprId, dto.platformFileId);
   }
 
+  // ── Phase 3: structured DPR row endpoints (Sections A / C / D) ───────────────
+
+  @Patch('progress/reports/:dprId/context')
+  @RequirePermissions(PERMISSIONS.progressRecord)
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'dprId' })
+  @ApiOperation({ summary: 'Patch context fields (Section A + tomorrow plan) on an editable DPR' })
+  patchDprContext(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('dprId') dprId: string,
+    @Body() dto: PatchDprContextDto,
+  ) {
+    return this.service.patchDprContext(identity, dprId, dto);
+  }
+
+  @Post('progress/reports/:dprId/labour')
+  @RequirePermissions(PERMISSIONS.progressRecord)
+  @ApiParam({ name: 'dprId' })
+  @ApiOperation({ summary: 'Add a labour row to an editable DPR (Section C)' })
+  addLabourRow(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('dprId') dprId: string,
+    @Body() dto: AddDprLabourRowDto,
+  ) {
+    return this.service.addLabourRow(identity, dprId, dto);
+  }
+
+  @Delete('progress/reports/:dprId/labour/:rowId')
+  @RequirePermissions(PERMISSIONS.progressRecord)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiParam({ name: 'dprId' })
+  @ApiParam({ name: 'rowId' })
+  @ApiOperation({ summary: 'Remove a labour row from an editable DPR' })
+  removeLabourRow(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('dprId') dprId: string,
+    @Param('rowId') rowId: string,
+  ) {
+    return this.service.removeLabourRow(identity, dprId, rowId);
+  }
+
+  @Post('progress/reports/:dprId/equipment')
+  @RequirePermissions(PERMISSIONS.progressRecord)
+  @ApiParam({ name: 'dprId' })
+  @ApiOperation({ summary: 'Add an equipment row to an editable DPR (Section C)' })
+  addEquipmentRow(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('dprId') dprId: string,
+    @Body() dto: AddDprEquipmentRowDto,
+  ) {
+    return this.service.addEquipmentRow(identity, dprId, dto);
+  }
+
+  @Delete('progress/reports/:dprId/equipment/:rowId')
+  @RequirePermissions(PERMISSIONS.progressRecord)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiParam({ name: 'dprId' })
+  @ApiParam({ name: 'rowId' })
+  @ApiOperation({ summary: 'Remove an equipment row from an editable DPR' })
+  removeEquipmentRow(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('dprId') dprId: string,
+    @Param('rowId') rowId: string,
+  ) {
+    return this.service.removeEquipmentRow(identity, dprId, rowId);
+  }
+
+  @Post('progress/reports/:dprId/observations')
+  @RequirePermissions(PERMISSIONS.progressRecord)
+  @ApiParam({ name: 'dprId' })
+  @ApiOperation({ summary: 'Add a site observation to an editable DPR (Section D: ISSUE/DELAY/SAFETY)' })
+  addObservation(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('dprId') dprId: string,
+    @Body() dto: AddDprObservationDto,
+  ) {
+    return this.service.addObservation(identity, dprId, dto);
+  }
+
+  @Delete('progress/reports/:dprId/observations/:obsId')
+  @RequirePermissions(PERMISSIONS.progressRecord)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiParam({ name: 'dprId' })
+  @ApiParam({ name: 'obsId' })
+  @ApiOperation({ summary: 'Remove a site observation from an editable DPR' })
+  removeObservation(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('dprId') dprId: string,
+    @Param('obsId') obsId: string,
+  ) {
+    return this.service.removeObservation(identity, dprId, obsId);
+  }
+
+  // ── End Phase 3 ─────────────────────────────────────────────────────────────
+
   @Post('progress/reports/:dprId/submit')
-  @RequirePermissions(PERMISSIONS.projectsManage)
+  @RequirePermissions(PERMISSIONS.progressRecord)
   @ApiParam({ name: 'dprId' })
   @ApiOperation({ summary: 'Submit the report for approval' })
   submit(@CurrentUser() identity: RequestIdentity, @Param('dprId') dprId: string) {
@@ -362,7 +463,7 @@ export class ProgressController {
   }
 
   @Post('progress/reports/:dprId/approve')
-  @RequirePermissions(PERMISSIONS.projectsManage)
+  @RequirePermissions(PERMISSIONS.progressApprove)
   @ApiParam({ name: 'dprId' })
   @ApiOperation({ summary: 'Approve the report — its measurements become verified progress' })
   approve(@CurrentUser() identity: RequestIdentity, @Param('dprId') dprId: string) {
@@ -370,7 +471,7 @@ export class ProgressController {
   }
 
   @Post('progress/reports/:dprId/return')
-  @RequirePermissions(PERMISSIONS.projectsManage)
+  @RequirePermissions(PERMISSIONS.progressApprove)
   @ApiParam({ name: 'dprId' })
   @ApiOperation({ summary: 'Return a submitted report for revision' })
   returnForRevision(
@@ -382,7 +483,7 @@ export class ProgressController {
   }
 
   @Post('progress/reports/:dprId/reopen')
-  @RequirePermissions(PERMISSIONS.projectsManage)
+  @RequirePermissions(PERMISSIONS.progressApprove)
   @ApiParam({ name: 'dprId' })
   @ApiOperation({
     summary: 'Reopen an APPROVED report for a controlled correction (ADR-021 CONST-PROG-010). ' +

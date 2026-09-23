@@ -59,13 +59,14 @@ export interface BadgeProps
   dot?: boolean;
 }
 
-export function Badge({ className, tone, dot, children, ...props }: BadgeProps) {
-  return (
-    <span className={cn(badgeVariants({ tone, className }), dot && 'gap-1.5')} {...props}>
+export const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
+  ({ className, tone, dot, children, ...props }, ref) => (
+    <span ref={ref} className={cn(badgeVariants({ tone, className }), dot && 'gap-1.5')} {...props}>
       {dot ? (
         <span className="size-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
       ) : null}
       {children}
     </span>
-  );
-}
+  ),
+);
+Badge.displayName = 'Badge';

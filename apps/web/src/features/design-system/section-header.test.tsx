@@ -34,4 +34,16 @@ describe('SectionHeader', () => {
 
     expect(screen.getByRole('link', { name: 'Edit information' })).toBeInTheDocument();
   });
+
+  it('renders an optional subtitle under the title', () => {
+    render(<SectionHeader title="Summary" subtitle="Updated 18 Jan 2026, 10:24 AM" />);
+
+    expect(screen.getByText('Updated 18 Jan 2026, 10:24 AM')).toBeInTheDocument();
+  });
+
+  it('omits the subtitle paragraph when none is given', () => {
+    const { container } = render(<SectionHeader title="Summary" />);
+
+    expect(container.querySelectorAll('p')).toHaveLength(0);
+  });
 });

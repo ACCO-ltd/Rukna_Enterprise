@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { Badge, type BadgeTone } from '@erp/ui';
+import { Badge, type BadgeTone, Tooltip, TooltipContent, TooltipTrigger } from '@erp/ui';
 
 import type { AccountClass, ControlPostingPolicy, NormalBalance } from '../types';
 
@@ -48,9 +48,12 @@ export function PostingPolicyBadge({
 
   if (isControlAccount || controlPostingPolicy === 'SYSTEM_ONLY') {
     return (
-      <Badge tone="warning" title={t('controlAccountHint')}>
-        {t('systemOnly')}
-      </Badge>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge tone="warning">{t('systemOnly')}</Badge>
+        </TooltipTrigger>
+        <TooltipContent>{t('controlAccountHint')}</TooltipContent>
+      </Tooltip>
     );
   }
 

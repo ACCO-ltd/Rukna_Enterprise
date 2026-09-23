@@ -1,21 +1,10 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import Link from 'next/link';
-import { useLocale, useTranslations } from 'next-intl';
-import {
-  Alert,
-  FormField,
-  Select,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-} from '@erp/ui';
+import { useTranslations } from 'next-intl';
+import { FilterBar, FilterField, Select } from '@erp/ui';
 
+import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { useClients } from '@/features/clients/hooks/use-clients';
 import { formatDate, formatMoney } from '@/lib/format';
 
@@ -35,8 +24,6 @@ const DOC_STATUSES: InvoiceDocStatus[] = ['DRAFT', 'APPROVED', 'CANCELLED'];
  */
 export function InvoicesList() {
   const t = useTranslations('accounting.invoices');
-  const tCommon = useTranslations('common');
-  const locale = useLocale() as 'en' | 'ar';
 
   const invoices = useInvoices();
   // Joined here because `GET /invoices` embeds no client relation. P16 fixed this for supplier
@@ -57,21 +44,76 @@ export function InvoicesList() {
     return status ? all.filter((invoice) => invoice.documentStatus === status) : all;
   }, [invoices.data, status]);
 
-  if (invoices.isPending) {
-    return (
-      <div role="status" aria-live="polite">
-        <span className="sr-only">{tCommon('loading')}</span>
-        <div
-          className="h-64 animate-pulse rounded-lg border border-border bg-muted"
-          aria-hidden="true"
+  const columns: GridColumn<ClientInvoice>[] = [
+    {
+      key: 'number',
+      header: t('colNumber'),
+      sticky: true,
+      sortable: true,
+      plainValue: (invoice) => invoice.invoiceNumber ?? '',
+      render: (invoice) => (
+        // Null until the invoice posts — the INV- sequence is drawn inside the posting
+        // transaction, so every draft is unnumbered.
+        <span className="font-mono text-caption font-semibold">
+          {invoice.invoiceNumber ?? t('unnumbered')}
+        </span>
+      ),
+    },
+    {
+      key: 'date',
+      header: t('colDate'),
+      sortable: true,
+      plainValue: (invoice) => invoice.invoiceDate,
+      render: (invoice, ctx) => (
+        <span className="text-muted-foreground">{formatDate(invoice.invoiceDate, ctx.locale)}</span>
+      ),
+    },
+    {
+      key: 'client',
+      header: t('colClient'),
+      sortable: true,
+      plainValue: (invoice) => clientNames.get(invoice.clientId) ?? '',
+      render: (invoice) => (
+        <span className="block max-w-[16rem] truncate">
+          {clientNames.get(invoice.clientId) ?? invoice.clientId.slice(-8)}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: t('colStatus'),
+      render: (invoice) => (
+        <InvoiceStatusBadges
+          documentStatus={invoice.documentStatus}
+          postingStatus={invoice.postingStatus}
         />
-      </div>
-    );
-  }
-
-  if (invoices.isError) {
-    return <Alert variant="error" messages={[t('loadFailed')]} />;
-  }
+      ),
+    },
+    {
+      key: 'total',
+      header: t('colTotal'),
+      numeric: true,
+      sortable: true,
+      plainValue: (invoice) => Number(invoice.totalAmount),
+      render: (invoice, ctx) => (
+        <bdi className="tabular-nums">
+          {formatMoney(invoice.totalAmount, invoice.currencyCode, ctx.locale)}
+        </bdi>
+      ),
+    },
+    {
+      key: 'outstanding',
+      header: t('colOutstanding'),
+      numeric: true,
+      sortable: true,
+      plainValue: (invoice) => Number(invoice.outstandingAmount),
+      render: (invoice, ctx) => (
+        <bdi className="tabular-nums">
+          {formatMoney(invoice.outstandingAmount, invoice.currencyCode, ctx.locale)}
+        </bdi>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -80,17 +122,35 @@ export function InvoicesList() {
         <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
       </div>
 
-      {invoices.data.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
-          <p className="text-sm font-medium text-foreground">{t('empty')}</p>
-          <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
-            {t('emptyHint')}
-          </p>
-        </div>
-      ) : (
-        <>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-4">
-            <FormField htmlFor="invoice-status" label={t('filterByStatus')} className="sm:w-56">
+      {/* `GET /invoices` accepts only `clientId` — no status filter, no date range, no
+          pagination — so this narrows what is already loaded rather than re-querying. */}
+      <p className="text-xs text-muted-foreground">{t('filterNote')}</p>
+
+      <PlatformDataGrid
+        columns={columns}
+        data={visible}
+        rowKey={(invoice) => invoice.id}
+        label={t('title')}
+        isLoading={invoices.isPending}
+        isError={invoices.isError}
+        errorMessage={t('loadFailed')}
+        rowHref={(invoice) => `/finance/accounting/invoices/${invoice.id}`}
+        emptyState={
+          (invoices.data?.length ?? 0) === 0 ? (
+            <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
+              <p className="text-sm font-medium text-foreground">{t('empty')}</p>
+              <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
+                {t('emptyHint')}
+              </p>
+            </div>
+          ) : undefined
+        }
+        noMatchMessage={t('noMatches')}
+        resultLabel={(count) => t('countLabel', { count })}
+        pagination={{ defaultPageSize: 25 }}
+        toolbarFilters={
+          <FilterBar>
+            <FilterField id="invoice-status" label={t('filterByStatus')}>
               <Select
                 id="invoice-status"
                 value={status}
@@ -103,106 +163,11 @@ export function InvoicesList() {
                   </option>
                 ))}
               </Select>
-            </FormField>
-            {/* `GET /invoices` accepts only `clientId` — no status filter, no date range, no
-                pagination — so this narrows what is already loaded rather than re-querying. */}
-            <p className="text-xs text-muted-foreground sm:pb-3">{t('filterNote')}</p>
-          </div>
-
-          <p className="text-sm text-muted-foreground" aria-live="polite">
-            {t('countLabel', { count: visible.length })}
-          </p>
-
-          {visible.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
-              <p className="text-sm text-muted-foreground">{t('noMatches')}</p>
-            </div>
-          ) : (
-            <TableScroll aria-label={t('title')}>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t('colNumber')}</TableHead>
-                    <TableHead>{t('colDate')}</TableHead>
-                    <TableHead className="min-w-[160px]">{t('colClient')}</TableHead>
-                    <TableHead>{t('colStatus')}</TableHead>
-                    <TableHead numeric>{t('colTotal')}</TableHead>
-                    <TableHead numeric>{t('colOutstanding')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {visible.map((invoice) => (
-                    <InvoiceRow
-                      key={invoice.id}
-                      invoice={invoice}
-                      clientName={clientNames.get(invoice.clientId)}
-                      locale={locale}
-                    />
-                  ))}
-                </TableBody>
-              </Table>
-            </TableScroll>
-          )}
-        </>
-      )}
+            </FilterField>
+          </FilterBar>
+        }
+        onClearFilters={() => setStatus('')}
+      />
     </div>
-  );
-}
-
-function InvoiceRow({
-  invoice,
-  clientName,
-  locale,
-}: {
-  invoice: ClientInvoice;
-  clientName: string | undefined;
-  locale: 'en' | 'ar';
-}) {
-  const t = useTranslations('accounting.invoices');
-
-  return (
-    <TableRow>
-      <TableCell>
-        <Link
-          href={`/finance/accounting/invoices/${invoice.id}`}
-          className="font-mono text-sm text-brand-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
-        >
-          {/* Null until the invoice posts — the INV- sequence is drawn inside the posting
-              transaction, so every draft is unnumbered and the link cannot key on it. */}
-          {invoice.invoiceNumber ?? t('unnumbered')}
-        </Link>
-      </TableCell>
-
-      <TableCell>
-        <span className="text-sm text-muted-foreground">
-          {formatDate(invoice.invoiceDate, locale)}
-        </span>
-      </TableCell>
-
-      <TableCell className="min-w-[160px] max-w-[260px]">
-        <span className="line-clamp-2 text-sm text-foreground">
-          {clientName ?? invoice.clientId.slice(-8)}
-        </span>
-      </TableCell>
-
-      <TableCell>
-        <InvoiceStatusBadges
-          documentStatus={invoice.documentStatus}
-          postingStatus={invoice.postingStatus}
-        />
-      </TableCell>
-
-      <TableCell numeric>
-        <bdi className="tabular-nums">
-          {formatMoney(invoice.totalAmount, invoice.currencyCode, locale)}
-        </bdi>
-      </TableCell>
-
-      <TableCell numeric>
-        <bdi className="tabular-nums">
-          {formatMoney(invoice.outstandingAmount, invoice.currencyCode, locale)}
-        </bdi>
-      </TableCell>
-    </TableRow>
   );
 }

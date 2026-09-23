@@ -3,6 +3,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { renderWithProviders } from '@/test/render';
+import { pickDate } from '@/test/pick-date';
 import * as commercialApi from '../api/commercial-api';
 
 import type { InvoiceJourneyPhase, MilestoneItemViewModel } from '../milestone-journey.adapter';
@@ -143,8 +144,7 @@ describe('PrepareInvoiceDialog', () => {
     const user = userEvent.setup();
     renderDialog();
 
-    const dueDateInput = screen.getByLabelText(/due date/i, { selector: 'input[type="date"]' });
-    await user.type(dueDateInput, '2026-10-31');
+    await pickDate(user, screen.getByLabelText(/due date/i), '2026-10-31');
 
     const issueBtn = screen.getByRole('button', { name: /issue billing package/i });
     expect(issueBtn).not.toBeDisabled();
@@ -200,8 +200,7 @@ describe('PrepareInvoiceDialog', () => {
 
     renderDialog({ onInvoiceIssued });
 
-    const dueDateInput = screen.getByLabelText(/due date/i, { selector: 'input[type="date"]' });
-    await user.type(dueDateInput, '2026-10-31');
+    await pickDate(user, screen.getByLabelText(/due date/i), '2026-10-31');
 
     const issueBtn = screen.getByRole('button', { name: /issue billing package/i });
     await user.click(issueBtn);
@@ -230,8 +229,7 @@ describe('PrepareInvoiceDialog', () => {
 
     renderDialog();
 
-    const dueDateInput = screen.getByLabelText(/due date/i, { selector: 'input[type="date"]' });
-    await user.type(dueDateInput, '2026-10-31');
+    await pickDate(user, screen.getByLabelText(/due date/i), '2026-10-31');
 
     const issueBtn = screen.getByRole('button', { name: /issue billing package/i });
     await user.click(issueBtn);

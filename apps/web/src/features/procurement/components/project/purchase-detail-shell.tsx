@@ -7,6 +7,9 @@ import {
   Alert,
   Badge,
   Button,
+  Card,
+  CardContent,
+  CardFooter,
   DatePicker,
   FormField,
   Input,
@@ -123,15 +126,15 @@ export function PurchaseDetailShell({
       </Link>
 
       {/* PO header */}
-      <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
-        <div className="px-5 pt-5 sm:px-6 sm:pt-6">
+      <Card>
+        <CardContent>
           <div className="flex flex-wrap items-center gap-2">
             <LtrValue className="font-mono text-xs font-medium text-muted-foreground">
               {order.poNumber}
             </LtrValue>
             <ProcurementStatusBadge status={order.status} />
           </div>
-          <h2 className="mt-2 text-[22px] font-bold leading-tight tracking-[-0.02em] text-foreground sm:text-[24px]">
+          <h2 className="mt-2 text-h1 font-bold text-foreground">
             {order.supplier?.name ?? order.poNumber}
           </h2>
           {current ? (
@@ -142,11 +145,11 @@ export function PurchaseDetailShell({
               })}
             </p>
           ) : null}
-        </div>
+        </CardContent>
 
         {/* Action footer */}
         {(isDraftPo || isOpen) && (
-          <div className="mt-4 flex flex-wrap gap-2 border-t border-border px-5 py-3 sm:px-6">
+          <CardFooter className="flex-row flex-wrap justify-start border-t border-border pt-4 sm:flex-row sm:justify-start">
             {draft && (
               <Button
                 type="button"
@@ -162,9 +165,9 @@ export function PurchaseDetailShell({
                 {tPo('amend')}
               </Button>
             )}
-          </div>
+          </CardFooter>
         )}
-      </div>
+      </Card>
 
       {/* Tab nav */}
       <nav aria-label={t('tabsLabel')}>
@@ -263,7 +266,7 @@ function ItemsTab({
       {/* Quotation bar */}
       {hasQuotation ? (
         <SectionPanel title={t('quotation.bar')}>
-          <dl className="grid gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-3">
+          <dl className="grid gap-px overflow-hidden rounded-control border border-border bg-border sm:grid-cols-3">
             <div className="bg-surface px-4 py-3">
               <dt className="text-xs font-medium text-muted-foreground">{t('quotation.ref')}</dt>
               <dd className="mt-1 text-sm font-semibold text-foreground">
@@ -613,7 +616,7 @@ function AdvanceCard({
       )}
 
       {showReturnForm && (
-        <div className="mt-3 rounded-lg border border-border bg-muted/30 p-4 space-y-3">
+        <div className="mt-3 rounded-control border border-border bg-muted/30 p-4 space-y-3">
           {retError ? <Alert variant="error" messages={[retError]} /> : null}
           <div className="grid gap-3 sm:grid-cols-2">
             <FormField
@@ -679,7 +682,7 @@ function AdvanceCard({
       )}
 
       {showEvidenceForm && (
-        <div className="mt-3 rounded-lg border border-border bg-muted/30 p-4 space-y-3">
+        <div className="mt-3 rounded-control border border-border bg-muted/30 p-4 space-y-3">
           {evError ? <Alert variant="error" messages={[evError]} /> : null}
           <div className="grid gap-3 sm:grid-cols-2">
             <FormField
@@ -874,7 +877,7 @@ function FundingTab({ poId, locale, isOpen }: { poId: string; locale: 'en'; isOp
         }
       >
         {showAdvanceForm && (
-          <div className="mb-4 rounded-lg border border-border bg-muted/30 p-4 space-y-3">
+          <div className="mb-4 rounded-control border border-border bg-muted/30 p-4 space-y-3">
             {advError ? <Alert variant="error" messages={[advError]} /> : null}
             <div className="grid gap-3 sm:grid-cols-2">
               <FormField
@@ -1158,21 +1161,23 @@ function SettlementTab({
   return (
     <div className="space-y-4">
       {/* Status + position sentence */}
-      <div className="overflow-hidden rounded-xl border border-border bg-surface p-5 shadow-[var(--shadow-panel)] sm:p-6">
-        <div className="flex flex-wrap items-start gap-3">
-          <SettlementStatusBadge status={s.settlementStatus} />
-          {order.closedAt ? (
-            <Badge tone="neutral">
-              {t('autoClosedOn', { date: formatDate(order.closedAt, locale) ?? '' })}
-            </Badge>
-          ) : null}
-        </div>
-        <p className="mt-3 text-base text-foreground">{s.humanReadablePosition}</p>
-      </div>
+      <Card>
+        <CardContent>
+          <div className="flex flex-wrap items-start gap-3">
+            <SettlementStatusBadge status={s.settlementStatus} />
+            {order.closedAt ? (
+              <Badge tone="neutral">
+                {t('autoClosedOn', { date: formatDate(order.closedAt, locale) ?? '' })}
+              </Badge>
+            ) : null}
+          </div>
+          <p className="mt-3 text-base text-foreground">{s.humanReadablePosition}</p>
+        </CardContent>
+      </Card>
 
       {/* Reconciliation card */}
       <SectionPanel title={t('position')}>
-        <dl className="grid gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-2">
+        <dl className="grid gap-px overflow-hidden rounded-control border border-border bg-border sm:grid-cols-2">
           <ReconciliationRow
             label={t('ordered')}
             value={formatMoney(s.orderedAmount, 'USD', locale) ?? '—'}

@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
-  FormField,
+  FilterBar,
+  FilterField,
   Select,
   Table,
   TableBody,
@@ -48,12 +49,12 @@ export function MonthlyComparisonReport() {
         <div role="status" aria-live="polite">
           <span className="sr-only">{tShared('loading')}</span>
           <div
-            className="h-64 animate-pulse rounded-lg border border-border bg-muted"
+            className="h-64 animate-pulse rounded-panel border border-border bg-muted"
             aria-hidden="true"
           />
         </div>
       ) : years.data?.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
+        <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
           <p className="text-sm font-medium text-foreground">{t('noFiscalYears')}</p>
           <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
             {t('noFiscalYearsHint')}
@@ -61,26 +62,28 @@ export function MonthlyComparisonReport() {
         </div>
       ) : (
         <>
-          <FormField htmlFor="mpl-year" label={t('fiscalYearLabel')} className="sm:w-64">
-            <Select
-              id="mpl-year"
-              value={fiscalYearId}
-              onChange={(value) => setChosenId(value)}
-            >
-              <option value="">{t('selectFiscalYear')}</option>
-              {(years.data ?? []).map((year) => (
-                <option key={year.id} value={year.id}>
-                  {year.name}
-                </option>
-              ))}
-            </Select>
-          </FormField>
+          <FilterBar>
+            <FilterField id="mpl-year" label={t('fiscalYearLabel')}>
+              <Select
+                id="mpl-year"
+                value={fiscalYearId}
+                onChange={(value) => setChosenId(value)}
+              >
+                <option value="">{t('selectFiscalYear')}</option>
+                {(years.data ?? []).map((year) => (
+                  <option key={year.id} value={year.id}>
+                    {year.name}
+                  </option>
+                ))}
+              </Select>
+            </FilterField>
+          </FilterBar>
 
           {report.isPending ? (
             <div role="status" aria-live="polite">
               <span className="sr-only">{tShared('loading')}</span>
               <div
-                className="h-64 animate-pulse rounded-lg border border-border bg-muted"
+                className="h-64 animate-pulse rounded-panel border border-border bg-muted"
                 aria-hidden="true"
               />
             </div>
@@ -112,7 +115,7 @@ function ComparisonTable({
 
   if (!posted) {
     return (
-      <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
+      <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
         <p className="text-sm text-muted-foreground">{t('empty')}</p>
       </div>
     );
@@ -134,7 +137,7 @@ function ComparisonTable({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="min-w-[140px]">{t('colPeriod')}</TableHead>
+            <TableHead className="min-w-35">{t('colPeriod')}</TableHead>
             <TableHead numeric>{t('colRevenue')}</TableHead>
             <TableHead numeric>{t('colCostOfSales')}</TableHead>
             <TableHead numeric>{t('colGrossProfit')}</TableHead>
@@ -146,7 +149,7 @@ function ComparisonTable({
         <TableBody>
           {columns.map((column) => (
             <TableRow key={column.periodNumber}>
-              <TableCell className="min-w-[140px]">
+              <TableCell className="min-w-35">
                 <span className="text-sm text-foreground">{column.periodName}</span>
               </TableCell>
               {[
@@ -176,7 +179,7 @@ function ComparisonTable({
           ))}
 
           <TableRow>
-            <TableCell className="min-w-[140px]">
+            <TableCell className="min-w-35">
               <span className="text-sm font-semibold text-foreground">{t('total')}</span>
             </TableCell>
             {(['revenue', 'costOfSales', 'grossProfit', 'expenses', 'netIncome'] as const).map(

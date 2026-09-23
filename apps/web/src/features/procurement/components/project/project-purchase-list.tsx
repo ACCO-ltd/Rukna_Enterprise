@@ -4,23 +4,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { ShoppingCart } from 'lucide-react';
-import {
-  Alert,
-  Badge,
-  Button,
-  LtrValue,
-  Skeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-} from '@erp/ui';
+import { Alert, Badge, Button, EmptyState, LtrValue, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll } from '@erp/ui';
 import type { BadgeTone } from '@erp/ui';
 
-import { EmptyState } from '@/components/empty-state';
 import { formatMoney } from '@/lib/format';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 

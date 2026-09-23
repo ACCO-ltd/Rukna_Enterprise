@@ -1,9 +1,6 @@
-'use client';
-
 import * as React from 'react';
-import { cn } from '@erp/ui';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+import { cn } from '../lib/utils';
 
 export interface EmptyStateProps {
   /** Optional icon — should be 32–40px. Use a muted/subtle color. */

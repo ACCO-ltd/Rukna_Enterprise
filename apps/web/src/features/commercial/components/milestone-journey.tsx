@@ -161,7 +161,7 @@ function MilestoneItem({
             <button
               type="button"
               onClick={() => onMilestoneClick(milestone)}
-              className="flex items-center gap-1 text-body font-semibold text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex items-center gap-1 text-body font-semibold text-foreground hover:underline focus-visible:outline-none focus-visible:shadow-ring"
               aria-label={milestone.name}
             >
               {milestone.name}
@@ -316,13 +316,13 @@ function StepIcon({
   if (isCurrent) {
     return (
       <span className="relative z-10 mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-primary shadow-[0_0_0_3px_var(--color-brand-primary,#255edb)33]">
-        <span className="text-[10px] font-bold text-white">{stepNumber}</span>
+        <span className="text-micro font-bold text-white">{stepNumber}</span>
       </span>
     );
   }
   return (
     <span className="relative z-10 mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-surface">
-      <span className="text-[10px] font-medium text-muted-foreground">{stepNumber}</span>
+      <span className="text-micro font-medium text-muted-foreground">{stepNumber}</span>
     </span>
   );
 }
@@ -444,7 +444,7 @@ function MoneyBlock({
             {vo.amount ? (
               <span
                 className={`shrink-0 text-caption font-medium tabular-nums ${
-                  vo.isOmission ? 'text-destructive' : 'text-success'
+                  vo.isOmission ? 'text-danger' : 'text-success'
                 }`}
               >
                 {vo.isOmission ? '' : '+'}

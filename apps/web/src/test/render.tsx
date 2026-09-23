@@ -3,6 +3,7 @@ import { afterEach } from 'vitest';
 import { render, type RenderOptions, type RenderResult } from '@testing-library/react';
 import { NextIntlClientProvider, type AbstractIntlMessages } from 'next-intl';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { TooltipProvider } from '@erp/ui';
 
 import { sessionStore } from '@/features/auth/session/session-store';
 import { ToastProvider } from '@/providers/toast-provider';
@@ -108,11 +109,17 @@ export function renderWithProviders(
             throw error;
           }}
         >
-          {/* Opt-in: a component that raises toasts (a mutation) needs the provider mounted
-              above it, as `layout.tsx`/`app-shell.tsx` mount it in the app. It is opt-in
-              because the toast region is a permanent `role="status"` element, which would
-              otherwise collide with the many tests that assert on a loading `role="status"`. */}
-          {withToast ? <ToastProvider>{children}</ToastProvider> : children}
+          {/* Unconditional, unlike ToastProvider below: Radix's Tooltip.Provider is pure
+              context, no DOM node of its own, so it can never collide with an assertion the
+              way the toast region's permanent role="status" can. layout.tsx mounts it the
+              same way, unconditionally, for the same reason. */}
+          <TooltipProvider>
+            {/* Opt-in: a component that raises toasts (a mutation) needs the provider mounted
+                above it, as `layout.tsx`/`app-shell.tsx` mount it in the app. It is opt-in
+                because the toast region is a permanent `role="status"` element, which would
+                otherwise collide with the many tests that assert on a loading `role="status"`. */}
+            {withToast ? <ToastProvider>{children}</ToastProvider> : children}
+          </TooltipProvider>
         </NextIntlClientProvider>
       </QueryClientProvider>
     );

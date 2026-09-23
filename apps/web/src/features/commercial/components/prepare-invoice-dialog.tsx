@@ -6,11 +6,15 @@ import {
   Alert,
   Button,
   Checkbox,
+  DatePicker,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogTitle,
+  FormField,
+  Input,
+  Textarea,
 } from '@erp/ui';
 import type { CommercialSummaryResponse } from '@erp/types';
 import { useQueryClient } from '@tanstack/react-query';
@@ -125,7 +129,7 @@ export function PrepareInvoiceDialog({
             ) : null}
 
             {/* Client + source */}
-            <div className="space-y-2 rounded-lg border border-border bg-surface p-4">
+            <div className="space-y-2 rounded-panel border border-border bg-surface p-4">
               <FieldRow label={t('client')}>{clientName}</FieldRow>
               <FieldRow label={t('billingSource')}>
                 {milestone.name} · {fmtPercent(milestone.percentage)}
@@ -170,7 +174,7 @@ export function PrepareInvoiceDialog({
                           {vo.amount ? (
                             <span
                               className={`shrink-0 tabular-nums ${
-                                vo.isOmission ? 'text-destructive' : 'text-success'
+                                vo.isOmission ? 'text-danger' : 'text-success'
                               }`}
                             >
                               {vo.isOmission ? '' : '+'}
@@ -197,49 +201,38 @@ export function PrepareInvoiceDialog({
             <div className="border-t border-border" />
 
             {/* Invoice date */}
-            <div className="space-y-1">
-              <label htmlFor="pi-invoice-date" className="text-body-sm font-medium text-foreground">
-                {t('invoiceDate')}
-              </label>
-              <input
+            <FormField htmlFor="pi-invoice-date" label={t('invoiceDate')}>
+              <DatePicker
                 id="pi-invoice-date"
-                type="date"
                 value={invoiceDate}
-                onChange={(e) => setInvoiceDate(e.target.value)}
+                onChange={(value) => setInvoiceDate(value)}
                 disabled={isPending}
-                className="block w-full rounded-md border border-input bg-background px-3 py-2 text-body-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-                required
               />
-            </div>
+            </FormField>
 
             {/* Due date */}
-            <div className="space-y-1">
-              <label htmlFor="pi-due-date" className="text-body-sm font-medium text-foreground">
-                {t('dueDate')}{' '}
-                <span className="text-caption text-muted-foreground">
-                  ({t('dueDateRequired')})
-                </span>
-              </label>
-              <input
+            <FormField
+              htmlFor="pi-due-date"
+              label={
+                <>
+                  {t('dueDate')}{' '}
+                  <span className="text-caption text-muted-foreground">
+                    ({t('dueDateRequired')})
+                  </span>
+                </>
+              }
+            >
+              <DatePicker
                 id="pi-due-date"
-                type="date"
                 value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
+                onChange={(value) => setDueDate(value)}
                 disabled={isPending}
-                className="block w-full rounded-md border border-input bg-background px-3 py-2 text-body-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-                aria-required="true"
               />
-            </div>
+            </FormField>
 
             {/* Payment terms */}
-            <div className="space-y-1">
-              <label
-                htmlFor="pi-payment-terms"
-                className="text-body-sm font-medium text-foreground"
-              >
-                {t('paymentTerms')}
-              </label>
-              <input
+            <FormField htmlFor="pi-payment-terms" label={t('paymentTerms')}>
+              <Input
                 id="pi-payment-terms"
                 type="text"
                 value={paymentTerms}
@@ -247,25 +240,20 @@ export function PrepareInvoiceDialog({
                 placeholder={t('paymentTermsPlaceholder')}
                 maxLength={100}
                 disabled={isPending}
-                className="block w-full rounded-md border border-input bg-background px-3 py-2 text-body-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
               />
-            </div>
+            </FormField>
 
             {/* Notes */}
-            <div className="space-y-1">
-              <label htmlFor="pi-notes" className="text-body-sm font-medium text-foreground">
-                {t('notes')}
-              </label>
-              <textarea
+            <FormField htmlFor="pi-notes" label={t('notes')}>
+              <Textarea
                 id="pi-notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder={t('notesPlaceholder')}
                 rows={3}
                 disabled={isPending}
-                className="block w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-body-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
               />
-            </div>
+            </FormField>
           </div>
 
           {/* ── Right: live preview ─────────────────────────────────────────── */}
@@ -339,7 +327,7 @@ function ComputedTotals({
   const total = subtotal + vat;
 
   return (
-    <div className="mt-4 space-y-1 rounded-lg bg-surface px-4 py-3">
+    <div className="mt-4 space-y-1 rounded-panel bg-surface px-4 py-3">
       <TotalLine label={t('subtotal')} value={fmt(subtotal)} />
       <TotalLine label={t('vat')} value={fmt(vat)} />
       <div className="border-t border-border pt-1.5">

@@ -3,22 +3,9 @@
 import * as React from 'react';
 import { GitBranch } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import {
-  Alert,
-  Badge,
-  Button,
-  Skeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-} from '@erp/ui';
+import { Alert, Badge, Button, EmptyState, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll } from '@erp/ui';
 import type { CommercialSummaryResponse, VariationOrderListItem } from '@erp/types';
 
-import { EmptyState } from '@/components/empty-state';
 import { formatMoney } from '@/lib/format';
 
 import { useBillingPackages, useVariations } from '../hooks/use-commercial';
