@@ -234,7 +234,7 @@ function PoLineRow({
   const { extendedMinor } = lineAmounts(line);
 
   return (
-    <fieldset className="rounded-lg border border-border p-4">
+    <fieldset className="rounded-panel border border-border p-4">
       <div className="flex items-center justify-between gap-2">
         <legend className="px-1 text-xs font-semibold text-muted-foreground">
           {tc('lineNumber')}

@@ -204,7 +204,7 @@ function MrLineRow({
   const isMaterial = line.lineType === 'MATERIAL';
 
   return (
-    <fieldset className="rounded-lg border border-border p-4">
+    <fieldset className="rounded-panel border border-border p-4">
       <legend className="px-1 text-xs font-semibold text-muted-foreground">
         {tc('lineNumber')}
         {index + 1}

@@ -94,7 +94,7 @@ export function AllocationPanel({ payment }: { payment: SupplierPayment }) {
       : null;
 
   return (
-    <section className="space-y-4 rounded-lg border border-border bg-surface p-4">
+    <section className="space-y-4 rounded-panel border border-border bg-surface p-4 shadow-e2">
       <div className="min-w-0">
         <h2 className="text-lg font-semibold text-foreground">{t('title')}</h2>
         <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
@@ -157,7 +157,7 @@ export function AllocationPanel({ payment }: { payment: SupplierPayment }) {
           </FormField>
 
           {plan?.ok ? (
-            <div className="rounded-md border border-border bg-muted/40 p-3">
+            <div className="rounded-control border border-border bg-muted/40 p-3">
               <p className="text-xs font-medium text-muted-foreground">{t('journalPreview')}</p>
               <ul className="mt-2 space-y-1 text-sm">
                 {plan.plan.lines.map((line) => (

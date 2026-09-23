@@ -66,7 +66,7 @@ export function SupplierPicker({
     return (
       <div role="status" aria-live="polite">
         <span className="sr-only">{tCommon('loading')}</span>
-        <div className="h-11 animate-pulse rounded-md bg-muted" aria-hidden="true" />
+        <div className="h-11 animate-pulse rounded-control bg-muted" aria-hidden="true" />
       </div>
     );
   }

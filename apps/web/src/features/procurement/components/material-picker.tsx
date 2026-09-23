@@ -15,7 +15,7 @@
 
 import { useId, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { cn, Combobox, Input, Select, type ComboboxOption } from '@erp/ui';
+import { cn, Combobox, Select, type ComboboxOption } from '@erp/ui';
 
 import { formatNumber } from '@/lib/format';
 import { QUANTITY_SCALE, fromMinorUnits } from '@/lib/money';
@@ -56,7 +56,7 @@ export function MaterialPicker({ value, onSelect, disabled, error }: MaterialPic
 
   if (value) {
     return (
-      <div className="flex min-h-11 items-center justify-between gap-2 rounded-md border border-border px-3 py-2">
+      <div className="flex min-h-11 items-center justify-between gap-2 rounded-control border border-border px-3 py-2">
         <span className="min-w-0 truncate text-sm">
           <span className="font-mono text-xs text-muted-foreground">{value.code}</span>
           <span className="mx-1.5" aria-hidden="true">

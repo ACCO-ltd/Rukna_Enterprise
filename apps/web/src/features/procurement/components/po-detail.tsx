@@ -143,7 +143,7 @@ export function PoDetail({ id }: { id: string }) {
             <ProcurementStatusBadge status={order.status} />
           </div>
 
-          <h1 className="mt-2 text-[26px] font-bold leading-tight tracking-tight text-foreground sm:text-[28px]">
+          <h1 className="mt-2 text-h1 font-bold text-foreground">
             {order.supplier?.name ?? t('detailTitle', { number: order.poNumber })}
           </h1>
 

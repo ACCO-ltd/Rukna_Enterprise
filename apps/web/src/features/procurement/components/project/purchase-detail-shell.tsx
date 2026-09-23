@@ -134,7 +134,7 @@ export function PurchaseDetailShell({
             </LtrValue>
             <ProcurementStatusBadge status={order.status} />
           </div>
-          <h2 className="mt-2 text-[22px] font-bold leading-tight tracking-tight text-foreground sm:text-[24px]">
+          <h2 className="mt-2 text-h1 font-bold text-foreground">
             {order.supplier?.name ?? order.poNumber}
           </h2>
           {current ? (

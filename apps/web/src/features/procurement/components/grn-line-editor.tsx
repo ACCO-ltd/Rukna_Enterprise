@@ -204,7 +204,7 @@ function GrnLineRow({
   ];
 
   return (
-    <div className="rounded-lg border border-border p-4">
+    <div className="rounded-panel border border-border p-4">
       {/* D7: material + description, inherited read-only from the PO line. */}
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
         {line.materialCode ? (

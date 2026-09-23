@@ -114,7 +114,7 @@ export function MrDetail({ id }: { id: string }) {
           </div>
 
           {/* Primary heading */}
-          <h1 className="mt-2 text-[26px] font-bold leading-tight tracking-tight text-foreground sm:text-[28px]">
+          <h1 className="mt-2 text-h1 font-bold text-foreground">
             {request.description ?? t('detailTitle', { number: request.mrNumber })}
           </h1>
 
@@ -388,7 +388,7 @@ function WorkflowChain({
                       <span className="h-2 w-2 rounded-full bg-white" aria-hidden="true" />
                     )}
                   </span>
-                  <span className="max-w-18 truncate text-center text-[11px] font-medium leading-tight text-muted-foreground">
+                  <span className="max-w-18 truncate text-center text-micro font-medium leading-tight text-muted-foreground">
                     {defStep.roleRequired}
                   </span>
                 </div>
@@ -409,7 +409,7 @@ function WorkflowChain({
         </div>
 
         {!isDraft && !isCancelled ? (
-          <p className="text-[11px] text-muted-foreground/60">{t('workflowProgressNote')}</p>
+          <p className="text-micro text-muted-foreground/60">{t('workflowProgressNote')}</p>
         ) : null}
       </CardContent>
     </Card>

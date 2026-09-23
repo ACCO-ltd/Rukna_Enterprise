@@ -182,7 +182,7 @@ function FilterBar({
           value={filters.search}
           placeholder={t('searchPlaceholder')}
           onChange={(e) => set({ search: e.target.value })}
-          className="ps-9"
+          className="ps-10"
         />
       </div>
 

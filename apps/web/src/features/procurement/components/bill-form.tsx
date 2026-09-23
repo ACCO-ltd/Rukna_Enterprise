@@ -332,7 +332,7 @@ function BillLineRow({
   };
 
   return (
-    <div className="space-y-3 rounded-lg border border-border p-4">
+    <div className="space-y-3 rounded-panel border border-border p-4">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">
           {tc('lineNumber')} {index + 1}
