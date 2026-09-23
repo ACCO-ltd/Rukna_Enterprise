@@ -967,11 +967,18 @@ model DailyProgressReport {
   reopenedBy     String?   @map("reopened_by")
   reopenedAt     DateTime? @map("reopened_at")
   reopenReason   String?   @map("reopen_reason")
+  // Phase 3 structured fields — section A (context) and D (tomorrow plan).
+  locationArea   String?   @map("location_area")
+  shift          String?
+  tomorrowPlan   String?   @map("tomorrow_plan")
   createdAt      DateTime  @default(now()) @map("created_at")
 
-  project      Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  measurements ProgressMeasurement[]
-  attachments  DprAttachment[]
+  project       Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  measurements  ProgressMeasurement[]
+  attachments   DprAttachment[]
+  labourRows    DprLabourRow[]
+  equipmentRows DprEquipmentRow[]
+  observations  DprObservation[]
 
   @@index([projectId, reportDate])
   @@map("daily_progress_reports")
@@ -1008,6 +1015,61 @@ model DprAttachment {
 
   @@index([dprId])
   @@map("dpr_attachments")
+}
+
+// Phase 3: structured resource records — Section C of the DPR editor.
+model DprLabourRow {
+  id         String              @id @default(cuid())
+  dprId      String              @map("dpr_id")
+  trade      String
+  headcount  Int
+  contractor String?
+  hours      Decimal?            @db.Decimal(6, 2)
+  createdAt  DateTime            @default(now()) @map("created_at")
+
+  dpr DailyProgressReport @relation(fields: [dprId], references: [id], onDelete: Cascade)
+
+  @@index([dprId])
+  @@map("dpr_labour_rows")
+}
+
+model DprEquipmentRow {
+  id            String              @id @default(cuid())
+  dprId         String              @map("dpr_id")
+  equipmentType String              @map("equipment_type")
+  count         Int
+  hoursWorked   Decimal?            @map("hours_worked") @db.Decimal(6, 2)
+  condition     String?
+  notes         String?
+  createdAt     DateTime            @default(now()) @map("created_at")
+
+  dpr DailyProgressReport @relation(fields: [dprId], references: [id], onDelete: Cascade)
+
+  @@index([dprId])
+  @@map("dpr_equipment_rows")
+}
+
+// Phase 3: site observations — Section D of the DPR editor (issues, delays, safety).
+model DprObservation {
+  id            String                 @id @default(cuid())
+  dprId         String                 @map("dpr_id")
+  category      DprObservationCategory
+  description   String
+  affectedWork  String?                @map("affected_work")
+  severity      String?
+  followUpOwner String?                @map("follow_up_owner")
+  createdAt     DateTime               @default(now()) @map("created_at")
+
+  dpr DailyProgressReport @relation(fields: [dprId], references: [id], onDelete: Cascade)
+
+  @@index([dprId])
+  @@map("dpr_observations")
+}
+
+enum DprObservationCategory {
+  ISSUE
+  DELAY
+  SAFETY
 }
 
 enum DprStatus {

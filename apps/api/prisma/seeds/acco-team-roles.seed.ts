@@ -107,6 +107,11 @@ const ROLES: TeamRoleSpec[] = [
       P.boqEditScope,
       P.clientsView,
       P.procurementView,
+      // ADR-022 CONST-DOA-008 — PM approves DPRs prepared by Site Engineers. Also holds
+      // record:progress so a PM can create/submit their own report when there is no SE on the
+      // project (e.g. a self-delivered phase).
+      P.progressRecord,
+      P.progressApprove,
     ],
   },
   {
@@ -116,9 +121,12 @@ const ROLES: TeamRoleSpec[] = [
       // Per Eng Ahmed 2026-09-15 the Site Engineer is FULLY money-blind: scope + progress only. No
       // contracts, IPAs, commitments or procurement (all expose prices). BOQ is scope-only
       // (`boqView` omits money server-side); scope edits only, no create/approve.
+      // ADR-022 CONST-DOA-008: SE is the primary DPR preparer. record:progress allows create/submit;
+      // approve:progress is intentionally withheld so the SE cannot approve their own reports.
       P.projectsView,
       P.boqView,
       P.boqEditScope,
+      P.progressRecord,
     ],
   },
   {

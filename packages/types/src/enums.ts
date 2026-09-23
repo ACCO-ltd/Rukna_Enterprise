@@ -197,6 +197,13 @@ export enum DprStatus {
   REOPENED = 'REOPENED',
 }
 
+// Phase 3: category for a structured site observation in a DPR (Section D).
+export enum DprObservationCategory {
+  ISSUE = 'ISSUE',
+  DELAY = 'DELAY',
+  SAFETY = 'SAFETY',
+}
+
 // ADR-021 phase 2: lifecycle of a programme delivery milestone.
 export enum ProgrammeMilestoneStatus {
   PLANNED = 'PLANNED',

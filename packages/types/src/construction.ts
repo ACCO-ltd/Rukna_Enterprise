@@ -21,6 +21,7 @@ import type {
   PricingBasis,
   VariationOrderStatus,
   VariationAllocationTreatment,
+  DprObservationCategory,
 } from './enums.js';
 
 // ADR-025: district registry — org-scoped reference data, the site segment of a project code.
@@ -522,6 +523,33 @@ export interface ProgressMeasurementResponse {
   notes?: string;
 }
 
+// Phase 3 structured DPR row types (Section C + D).
+export interface DprLabourRowResponse {
+  id: string;
+  trade: string;
+  headcount: number;
+  contractor?: string;
+  hours?: string;
+}
+
+export interface DprEquipmentRowResponse {
+  id: string;
+  equipmentType: string;
+  count: number;
+  hoursWorked?: string;
+  condition?: string;
+  notes?: string;
+}
+
+export interface DprObservationResponse {
+  id: string;
+  category: `${DprObservationCategory}`;
+  description: string;
+  affectedWork?: string;
+  severity?: string;
+  followUpOwner?: string;
+}
+
 export interface DailyProgressReportResponse {
   id: string;
   projectId: string;
@@ -532,11 +560,23 @@ export interface DailyProgressReportResponse {
   equipmentNote?: string;
   narrative?: string;
   delayReason?: string;
+  // Phase 3 structured context fields.
+  locationArea?: string;
+  shift?: string;
+  tomorrowPlan?: string;
   preparedBy: string;
   /** The preparer's "firstName lastName", resolved read-side from preparedBy; undefined if the user is not found. */
   preparedByName?: string;
   submittedBy?: string;
+  /** ISO datetime string; present once the report has been submitted. */
+  submittedAt?: string;
   approvedBy?: string;
+  /** The reason the report was most recently returned to the author. */
+  returnReason?: string;
+  // Phase 3 structured row collections — present only on the getDpr endpoint (not on list).
+  labourRows?: DprLabourRowResponse[];
+  equipmentRows?: DprEquipmentRowResponse[];
+  observations?: DprObservationResponse[];
 }
 
 // Master Schedule P2: a contract payment installment that a programme milestone RELEASES. Read-side

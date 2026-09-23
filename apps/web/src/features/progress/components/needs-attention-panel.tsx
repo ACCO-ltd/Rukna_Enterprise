@@ -53,7 +53,7 @@ export function NeedsAttentionPanel({
       count: pending,
       title: t('attention.pendingVerification', { count: pending }),
       hint: t('attention.pendingVerificationHint'),
-      goTo: 'verification',
+      goTo: 'review',
     });
   }
 
@@ -67,7 +67,7 @@ export function NeedsAttentionPanel({
       count: 1,
       title: t('attention.weightsIncomplete', { total }),
       hint: t('attention.weightsIncompleteHint'),
-      goTo: 'planSetup',
+      goTo: 'programme',
     });
   }
 
@@ -83,7 +83,7 @@ export function NeedsAttentionPanel({
       count: unallocated,
       title: t('attention.unallocated', { count: unallocated }),
       hint: t('attention.unallocatedHint'),
-      goTo: 'planSetup',
+      goTo: 'programme',
     });
   }
   const loading = dprs.isPending || rollup.isPending || workPackages.isPending;

@@ -6,11 +6,13 @@ import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   ApprovalChain,
+  Badge,
   Button,
   Combobox,
   FormField,
   Input,
   Label,
+  Select,
   Skeleton,
   Table,
   TableBody,
@@ -19,9 +21,11 @@ import {
   TableHeader,
   TableRow,
   TableScroll,
+  Textarea,
   type ApprovalStep,
 } from '@erp/ui';
-import { ArrowLeft, Play } from 'lucide-react';
+import { ArrowLeft, Play, Trash2 } from 'lucide-react';
+import type { DprLabourRowResponse, DprEquipmentRowResponse, DprObservationResponse } from '@erp/types';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { MediaUpload, type MediaUploadLabels } from '@/components/media-upload';
@@ -29,6 +33,7 @@ import { ApiError } from '@/lib/api-client';
 import { getFileDownloadUrl } from '@/features/files/api/files-api';
 import { useFileUpload } from '@/features/files/hooks/use-file-upload';
 import { useSession } from '@/features/auth/session/use-session';
+import { usePermissions } from '@/features/auth/permissions/can';
 import { formatDate, formatNumber } from '@/lib/format';
 
 import {
@@ -39,6 +44,12 @@ import {
   useProjectProgress,
   useReturnDpr,
   useSubmitDpr,
+  useAddLabourRow,
+  useRemoveLabourRow,
+  useAddEquipmentRow,
+  useRemoveEquipmentRow,
+  useAddObservation,
+  useRemoveObservation,
 } from '../hooks/use-progress';
 import { lineLabel, useBoqLeaves } from '../hooks/use-boq-leaves';
 import { DprStatusBadge } from './dpr-status-badge';
@@ -59,11 +70,18 @@ export function DprDetail({
   const { data: dpr, isPending, isError, refetch, isFetching } = useDpr(dprId);
   const { leaves } = useBoqLeaves(projectId);
   const leafLabel = useMemo(() => new Map(leaves.map((l) => [l.id, lineLabel(l)])), [leaves]);
+  const leafMap = useMemo(() => new Map(leaves.map((l) => [l.id, l])), [leaves]);
 
   const submit = useSubmitDpr(projectId, dprId);
   const approve = useApproveDpr(projectId, dprId);
   const returnDpr = useReturnDpr(projectId, dprId);
   const session = useSession();
+  const { can } = usePermissions();
+  const progress = useProjectProgress(projectId);
+  const progressByNode = useMemo(
+    () => new Map((progress.data ?? []).map((line) => [line.boqNodeId, line])),
+    [progress.data],
+  );
 
   const [confirm, setConfirm] = useState<'approve' | 'return' | null>(null);
 
@@ -107,6 +125,7 @@ export function DprDetail({
   // report until a governance workflow enforces preparer≠approver (ADR-021 §7, redesign spec).
   const isSelfApprover =
     currentUserId != null && (currentUserId === dpr.preparedBy || currentUserId === dpr.submittedBy);
+  const canApprove = can('approve:progress') && !isSelfApprover;
 
   // Provenance chain — where the report is and who prepared it. Prepared is always done; the rest
   // follows the DPR lifecycle. RETURNED/REOPENED are editable-again, so they read as "to submit".
@@ -131,12 +150,12 @@ export function DprDetail({
               {t('actions.submit')}
             </Button>
           ) : null}
-          {dpr.status === 'SUBMITTED' ? (
+          {dpr.status === 'SUBMITTED' && can('approve:progress') ? (
             <>
               <Button variant="outline" size="sm" onClick={() => setConfirm('return')}>
                 {t('actions.return')}
               </Button>
-              <Button size="sm" onClick={() => setConfirm('approve')}>
+              <Button size="sm" onClick={() => setConfirm('approve')} disabled={!canApprove}>
                 {t('actions.approve')}
               </Button>
             </>
@@ -144,8 +163,8 @@ export function DprDetail({
         </div>
       </div>
 
-      {dpr.status === 'SUBMITTED' && isSelfApprover ? (
-        <Alert variant="warning" messages={[t('report.selfApprovalWarning')]} />
+      {dpr.status === 'SUBMITTED' && isSelfApprover && can('approve:progress') ? (
+        <Alert variant="warning" messages={[t('report.selfApprovalBlocked')]} />
       ) : null}
 
       {/* Header */}
@@ -162,12 +181,23 @@ export function DprDetail({
         ) : null}
         <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
           <Meta label={t('report.fields.preparedBy')} value={dpr.preparedByName ?? dpr.preparedBy} />
+          {dpr.submittedAt ? (
+            <Meta
+              label={t('report.fields.submittedAt')}
+              value={formatDate(dpr.submittedAt, locale) ?? dpr.submittedAt}
+            />
+          ) : null}
           {dpr.weather ? <Meta label={t('report.fields.weather')} value={dpr.weather} /> : null}
           {dpr.labourCount != null ? (
             <Meta label={t('report.fields.labourCount')} value={String(dpr.labourCount)} />
           ) : null}
           {dpr.delayReason ? <Meta label={t('report.fields.delayReason')} value={dpr.delayReason} /> : null}
           {dpr.narrative ? <Meta label={t('report.fields.narrative')} value={dpr.narrative} /> : null}
+          {dpr.returnReason ? (
+            <div className="sm:col-span-2">
+              <Meta label={t('report.fields.returnReason')} value={dpr.returnReason} />
+            </div>
+          ) : null}
         </dl>
       </div>
 
@@ -176,11 +206,58 @@ export function DprDetail({
         <h4 className="text-sm font-semibold text-foreground">{t('measurement.title')}</h4>
         {editable ? (
           <AddMeasurementForm dprId={dprId} projectId={projectId} leaves={leaves} />
-        ) : (
-          <p className="mt-2 text-sm text-muted-foreground">{t('report.draftOnlyHint')}</p>
-        )}
+        ) : null}
         {dpr.measurements.length === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground">{t('measurement.empty')}</p>
+        ) : dpr.status === 'SUBMITTED' ? (
+          <TableScroll className="mt-3" aria-label={t('measurement.title')}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('measurement.boqNode')}</TableHead>
+                  <TableHead>{t('measurement.review.unit')}</TableHead>
+                  <TableHead numeric>{t('measurement.review.priorVerified')}</TableHead>
+                  <TableHead numeric>{t('measurement.review.today')}</TableHead>
+                  <TableHead numeric>{t('measurement.review.cumulative')}</TableHead>
+                  <TableHead numeric>{t('measurement.review.scope')}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {dpr.measurements.map((m) => {
+                  const line = progressByNode.get(m.boqNodeId);
+                  const leaf = leafMap.get(m.boqNodeId);
+                  const priorVerified = Number(line?.verifiedToDate ?? 0);
+                  const today = Number(m.quantity);
+                  const cumulative = priorVerified + today;
+                  const scope = Number(line?.measurableQuantity ?? leaf?.quantity ?? 0);
+                  const exceeds = scope > 0 && cumulative > scope;
+                  return (
+                    <TableRow key={m.id}>
+                      <TableCell>{leafLabel.get(m.boqNodeId) ?? m.boqNodeId}</TableCell>
+                      <TableCell className="text-muted-foreground">{leaf?.unit ?? '—'}</TableCell>
+                      <TableCell numeric className="tabular-nums text-muted-foreground">
+                        {formatNumber(priorVerified, locale, 3)}
+                      </TableCell>
+                      <TableCell numeric className="tabular-nums font-medium">
+                        {formatNumber(today, locale, 3)}
+                      </TableCell>
+                      <TableCell
+                        numeric
+                        className={exceeds ? 'tabular-nums text-warning' : 'tabular-nums'}
+                        title={exceeds ? t('measurement.review.cumulativeExceedsScope') : undefined}
+                      >
+                        {formatNumber(cumulative, locale, 3)}
+                        {exceeds ? ' !' : ''}
+                      </TableCell>
+                      <TableCell numeric className="tabular-nums text-muted-foreground">
+                        {scope > 0 ? formatNumber(scope, locale, 3) : '—'}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableScroll>
         ) : (
           <TableScroll className="mt-3" aria-label={t('measurement.title')}>
             <Table>
@@ -209,6 +286,22 @@ export function DprDetail({
 
       {/* Evidence */}
       <DprEvidence dprId={dprId} canUpload={!isApproved} attachments={dpr.attachments} />
+
+      {/* Section C — Labour */}
+      <LabourSection dprId={dprId} rows={dpr.labourRows ?? []} editable={editable} />
+
+      {/* Section C — Equipment */}
+      <EquipmentSection dprId={dprId} rows={dpr.equipmentRows ?? []} editable={editable} />
+
+      {/* Section D — Observations + tomorrow plan */}
+      <ObservationsSection dprId={dprId} rows={dpr.observations ?? []} editable={editable} />
+
+      {dpr.tomorrowPlan ? (
+        <section className="rounded-panel border border-border bg-surface p-4 sm:p-5">
+          <h4 className="text-sm font-semibold text-foreground">{t('context.tomorrowPlan')}</h4>
+          <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{dpr.tomorrowPlan}</p>
+        </section>
+      ) : null}
 
       {confirm === 'approve' ? (
         <ConfirmActionDialog
@@ -480,6 +573,414 @@ function EvidenceTile({ platformFileId }: { platformFileId: string }) {
         </span>
       </a>
     </li>
+  );
+}
+
+// ─── Section C: Labour ───────────────────────────────────────────────────────────────────
+
+function LabourSection({
+  dprId,
+  rows,
+  editable,
+}: {
+  dprId: string;
+  rows: DprLabourRowResponse[];
+  editable: boolean;
+}) {
+  const t = useTranslations('progress');
+  const add = useAddLabourRow(dprId);
+  const remove = useRemoveLabourRow(dprId);
+
+  const [trade, setTrade] = useState('');
+  const [headcount, setHeadcount] = useState('');
+  const [contractor, setContractor] = useState('');
+  const [hours, setHours] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  function onAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!trade.trim() || !(Number(headcount) >= 0)) return;
+    setError(null);
+    add.mutate(
+      {
+        trade: trade.trim(),
+        headcount: Number(headcount),
+        contractor: contractor.trim() || undefined,
+        hours: hours ? Number(hours) : undefined,
+      },
+      {
+        onSuccess: () => {
+          setTrade('');
+          setHeadcount('');
+          setContractor('');
+          setHours('');
+        },
+        onError: (err) => setError(err instanceof ApiError ? err.message : t('states.loadFailed')),
+      },
+    );
+  }
+
+  return (
+    <section className="rounded-panel border border-border bg-surface p-4 sm:p-5">
+      <h4 className="text-sm font-semibold text-foreground">{t('labour.title')}</h4>
+      {rows.length > 0 ? (
+        <TableScroll className="mt-3" aria-label={t('labour.title')}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('labour.fields.trade')}</TableHead>
+                <TableHead numeric>{t('labour.fields.headcount')}</TableHead>
+                <TableHead>{t('labour.fields.contractor')}</TableHead>
+                <TableHead numeric>{t('labour.fields.hours')}</TableHead>
+                {editable ? <TableHead /> : null}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={row.id}>
+                  <TableCell className="font-medium">{row.trade}</TableCell>
+                  <TableCell numeric className="tabular-nums">{row.headcount}</TableCell>
+                  <TableCell className="text-muted-foreground">{row.contractor ?? '—'}</TableCell>
+                  <TableCell numeric className="tabular-nums text-muted-foreground">
+                    {row.hours ?? '—'}
+                  </TableCell>
+                  {editable ? (
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={t('labour.remove')}
+                        onClick={() => remove.mutate(row.id)}
+                        disabled={remove.isPending}
+                      >
+                        <Trash2 size={14} aria-hidden="true" />
+                      </Button>
+                    </TableCell>
+                  ) : null}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableScroll>
+      ) : (
+        <p className="mt-2 text-sm text-muted-foreground">{t('labour.empty')}</p>
+      )}
+      {editable ? (
+        <form onSubmit={onAdd} className="mt-3 grid gap-2 sm:grid-cols-4" aria-label={t('labour.add')}>
+          {error ? (
+            <div className="sm:col-span-4">
+              <Alert variant="error" messages={[error]} />
+            </div>
+          ) : null}
+          <FormField htmlFor="lr-trade" label={t('labour.fields.trade')}>
+            <Input
+              id="lr-trade"
+              value={trade}
+              onChange={(e) => setTrade(e.target.value)}
+              placeholder={t('labour.tradePlaceholder')}
+            />
+          </FormField>
+          <FormField htmlFor="lr-count" label={t('labour.fields.headcount')}>
+            <Input id="lr-count" type="number" min="0" value={headcount} onChange={(e) => setHeadcount(e.target.value)} />
+          </FormField>
+          <FormField htmlFor="lr-contractor" label={t('labour.fields.contractor')}>
+            <Input id="lr-contractor" value={contractor} onChange={(e) => setContractor(e.target.value)} />
+          </FormField>
+          <FormField htmlFor="lr-hours" label={t('labour.fields.hours')}>
+            <Input id="lr-hours" type="number" min="0" step="0.5" value={hours} onChange={(e) => setHours(e.target.value)} />
+          </FormField>
+          <div className="sm:col-span-4">
+            <Button type="submit" size="sm" disabled={add.isPending || !trade.trim()}>
+              {add.isPending ? t('labour.saving') : t('labour.add')}
+            </Button>
+          </div>
+        </form>
+      ) : null}
+    </section>
+  );
+}
+
+// ─── Section C: Equipment ────────────────────────────────────────────────────────────────
+
+const EQUIPMENT_CONDITIONS = ['working', 'breakdown', 'idle', 'maintenance'] as const;
+
+function EquipmentSection({
+  dprId,
+  rows,
+  editable,
+}: {
+  dprId: string;
+  rows: DprEquipmentRowResponse[];
+  editable: boolean;
+}) {
+  const t = useTranslations('progress');
+  const add = useAddEquipmentRow(dprId);
+  const remove = useRemoveEquipmentRow(dprId);
+
+  const [equipType, setEquipType] = useState('');
+  const [count, setCount] = useState('');
+  const [hoursWorked, setHoursWorked] = useState('');
+  const [condition, setCondition] = useState('');
+  const [notes, setNotes] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  function onAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!equipType.trim() || !(Number(count) >= 0)) return;
+    setError(null);
+    add.mutate(
+      {
+        equipmentType: equipType.trim(),
+        count: Number(count),
+        hoursWorked: hoursWorked ? Number(hoursWorked) : undefined,
+        condition: condition || undefined,
+        notes: notes.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          setEquipType('');
+          setCount('');
+          setHoursWorked('');
+          setCondition('');
+          setNotes('');
+        },
+        onError: (err) => setError(err instanceof ApiError ? err.message : t('states.loadFailed')),
+      },
+    );
+  }
+
+  return (
+    <section className="rounded-panel border border-border bg-surface p-4 sm:p-5">
+      <h4 className="text-sm font-semibold text-foreground">{t('equipment.title')}</h4>
+      {rows.length > 0 ? (
+        <TableScroll className="mt-3" aria-label={t('equipment.title')}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('equipment.fields.type')}</TableHead>
+                <TableHead numeric>{t('equipment.fields.count')}</TableHead>
+                <TableHead numeric>{t('equipment.fields.hours')}</TableHead>
+                <TableHead>{t('equipment.fields.condition')}</TableHead>
+                {editable ? <TableHead /> : null}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={row.id}>
+                  <TableCell className="font-medium">{row.equipmentType}</TableCell>
+                  <TableCell numeric className="tabular-nums">{row.count}</TableCell>
+                  <TableCell numeric className="tabular-nums text-muted-foreground">
+                    {row.hoursWorked ?? '—'}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{row.condition ?? '—'}</TableCell>
+                  {editable ? (
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={t('equipment.remove')}
+                        onClick={() => remove.mutate(row.id)}
+                        disabled={remove.isPending}
+                      >
+                        <Trash2 size={14} aria-hidden="true" />
+                      </Button>
+                    </TableCell>
+                  ) : null}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableScroll>
+      ) : (
+        <p className="mt-2 text-sm text-muted-foreground">{t('equipment.empty')}</p>
+      )}
+      {editable ? (
+        <form onSubmit={onAdd} className="mt-3 grid gap-2 sm:grid-cols-3" aria-label={t('equipment.add')}>
+          {error ? (
+            <div className="sm:col-span-3">
+              <Alert variant="error" messages={[error]} />
+            </div>
+          ) : null}
+          <FormField htmlFor="eq-type" label={t('equipment.fields.type')}>
+            <Input
+              id="eq-type"
+              value={equipType}
+              onChange={(e) => setEquipType(e.target.value)}
+              placeholder={t('equipment.typePlaceholder')}
+            />
+          </FormField>
+          <FormField htmlFor="eq-count" label={t('equipment.fields.count')}>
+            <Input id="eq-count" type="number" min="0" value={count} onChange={(e) => setCount(e.target.value)} />
+          </FormField>
+          <FormField htmlFor="eq-hours" label={t('equipment.fields.hours')}>
+            <Input id="eq-hours" type="number" min="0" step="0.5" value={hoursWorked} onChange={(e) => setHoursWorked(e.target.value)} />
+          </FormField>
+          <FormField htmlFor="eq-condition" label={t('equipment.fields.condition')}>
+            <Select id="eq-condition" value={condition} onChange={(value) => setCondition(value)}>
+              <option value="">—</option>
+              {EQUIPMENT_CONDITIONS.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </Select>
+          </FormField>
+          <div className="sm:col-span-2">
+            <FormField htmlFor="eq-notes" label={t('equipment.fields.notes')}>
+              <Input id="eq-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+            </FormField>
+          </div>
+          <div className="sm:col-span-3">
+            <Button type="submit" size="sm" disabled={add.isPending || !equipType.trim()}>
+              {add.isPending ? t('equipment.saving') : t('equipment.add')}
+            </Button>
+          </div>
+        </form>
+      ) : null}
+    </section>
+  );
+}
+
+// ─── Section D: Observations ─────────────────────────────────────────────────────────────
+
+const OBS_CATEGORIES = ['ISSUE', 'DELAY', 'SAFETY'] as const;
+type ObsCategory = (typeof OBS_CATEGORIES)[number];
+
+const SEVERITY_OPTIONS = ['low', 'medium', 'high'] as const;
+
+const OBS_TONES: Record<ObsCategory, 'warning' | 'danger' | 'info'> = {
+  ISSUE: 'warning',
+  DELAY: 'warning',
+  SAFETY: 'danger',
+};
+
+function ObservationsSection({
+  dprId,
+  rows,
+  editable,
+}: {
+  dprId: string;
+  rows: DprObservationResponse[];
+  editable: boolean;
+}) {
+  const t = useTranslations('progress');
+  const add = useAddObservation(dprId);
+  const remove = useRemoveObservation(dprId);
+
+  const [category, setCategory] = useState<ObsCategory>('ISSUE');
+  const [description, setDescription] = useState('');
+  const [affectedWork, setAffectedWork] = useState('');
+  const [severity, setSeverity] = useState('');
+  const [followUpOwner, setFollowUpOwner] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  function onAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!description.trim()) return;
+    setError(null);
+    add.mutate(
+      {
+        category,
+        description: description.trim(),
+        affectedWork: affectedWork.trim() || undefined,
+        severity: severity || undefined,
+        followUpOwner: followUpOwner.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          setDescription('');
+          setAffectedWork('');
+          setSeverity('');
+          setFollowUpOwner('');
+        },
+        onError: (err) => setError(err instanceof ApiError ? err.message : t('states.loadFailed')),
+      },
+    );
+  }
+
+  return (
+    <section className="rounded-panel border border-border bg-surface p-4 sm:p-5">
+      <h4 className="text-sm font-semibold text-foreground">{t('observations.title')}</h4>
+      {rows.length > 0 ? (
+        <ul className="mt-3 divide-y divide-border">
+          {rows.map((obs) => (
+            <li key={obs.id} className="flex items-start gap-3 py-3">
+              <Badge tone={OBS_TONES[obs.category as ObsCategory] ?? 'info'} className="mt-0.5 shrink-0">
+                {t(`observations.categories.${obs.category}`)}
+              </Badge>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-foreground">{obs.description}</p>
+                {obs.affectedWork ? (
+                  <p className="mt-0.5 text-xs text-muted-foreground">{obs.affectedWork}</p>
+                ) : null}
+                {obs.severity ? (
+                  <p className="mt-0.5 text-xs text-muted-foreground capitalize">{obs.severity}</p>
+                ) : null}
+                {obs.followUpOwner ? (
+                  <p className="mt-0.5 text-xs text-muted-foreground">→ {obs.followUpOwner}</p>
+                ) : null}
+              </div>
+              {editable ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={t('observations.remove')}
+                  onClick={() => remove.mutate(obs.id)}
+                  disabled={remove.isPending}
+                >
+                  <Trash2 size={14} aria-hidden="true" />
+                </Button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-sm text-muted-foreground">{t('observations.empty')}</p>
+      )}
+      {editable ? (
+        <form onSubmit={onAdd} className="mt-3 grid gap-2 sm:grid-cols-2" aria-label={t('observations.add')}>
+          {error ? (
+            <div className="sm:col-span-2">
+              <Alert variant="error" messages={[error]} />
+            </div>
+          ) : null}
+          <FormField htmlFor="obs-cat" label={t('observations.fields.category')}>
+            <Select id="obs-cat" value={category} onChange={(v) => setCategory(v as ObsCategory)}>
+              {OBS_CATEGORIES.map((c) => (
+                <option key={c} value={c}>{t(`observations.categories.${c}`)}</option>
+              ))}
+            </Select>
+          </FormField>
+          <FormField htmlFor="obs-severity" label={t('observations.fields.severity')}>
+            <Select id="obs-severity" value={severity} onChange={(v) => setSeverity(v)}>
+              <option value="">—</option>
+              {SEVERITY_OPTIONS.map((s) => (
+                <option key={s} value={s}>{t(`observations.severities.${s}`)}</option>
+              ))}
+            </Select>
+          </FormField>
+          <div className="sm:col-span-2">
+            <FormField htmlFor="obs-desc" label={t('observations.fields.description')}>
+              <Textarea
+                id="obs-desc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={2}
+              />
+            </FormField>
+          </div>
+          <FormField htmlFor="obs-affected" label={t('observations.fields.affectedWork')}>
+            <Input id="obs-affected" value={affectedWork} onChange={(e) => setAffectedWork(e.target.value)} />
+          </FormField>
+          <FormField htmlFor="obs-owner" label={t('observations.fields.followUpOwner')}>
+            <Input id="obs-owner" value={followUpOwner} onChange={(e) => setFollowUpOwner(e.target.value)} />
+          </FormField>
+          <div className="sm:col-span-2">
+            <Button type="submit" size="sm" disabled={add.isPending || !description.trim()}>
+              {add.isPending ? t('observations.saving') : t('observations.add')}
+            </Button>
+          </div>
+        </form>
+      ) : null}
+    </section>
   );
 }
 

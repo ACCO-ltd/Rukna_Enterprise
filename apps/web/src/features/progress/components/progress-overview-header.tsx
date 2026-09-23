@@ -50,7 +50,7 @@ export function ProgressOverviewHeader({
       description: t('setup.workPackages.description'),
       status: hasPackages ? 'complete' : 'incomplete',
       action: hasPackages ? undefined : (
-        <Button size="sm" variant="outline" onClick={() => onGoTo('planSetup')}>
+        <Button size="sm" variant="outline" onClick={() => onGoTo('programme')}>
           {t('setup.workPackages.action')}
         </Button>
       ),
@@ -63,7 +63,7 @@ export function ProgressOverviewHeader({
       blockedReason: hasPackages ? undefined : t('setup.allocate.blocked'),
       action:
         hasPackages && !hasAllocation ? (
-          <Button size="sm" variant="outline" onClick={() => onGoTo('planSetup')}>
+          <Button size="sm" variant="outline" onClick={() => onGoTo('programme')}>
             {t('setup.allocate.action')}
           </Button>
         ) : undefined,
@@ -76,14 +76,14 @@ export function ProgressOverviewHeader({
         : t('rollup.weightsIncomplete', { total: rollup.data?.weightsTotal ?? '0' }),
       status: weightsComplete ? 'complete' : hasPackages ? 'incomplete' : 'blocked',
       blockedReason: hasPackages ? undefined : t('setup.weights.blocked'),
-      action: hasPackages ? <Button size="sm" variant="outline" onClick={() => onGoTo('planSetup')}>{t('setup.weights.action')}</Button> : undefined,
+      action: hasPackages ? <Button size="sm" variant="outline" onClick={() => onGoTo('programme')}>{t('setup.weights.action')}</Button> : undefined,
     },
     {
       id: 'baseline',
       label: t('setup.baseline.label'),
       description: t('setup.baseline.description'),
       status: 'optional',
-      action: <Button size="sm" variant="ghost" onClick={() => onGoTo('planSetup')}>{t('setup.baseline.action')}</Button>,
+      action: <Button size="sm" variant="ghost" onClick={() => onGoTo('programme')}>{t('setup.baseline.action')}</Button>,
     },
   ];
 

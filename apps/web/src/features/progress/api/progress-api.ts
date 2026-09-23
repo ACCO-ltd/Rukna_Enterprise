@@ -1,6 +1,9 @@
 import type {
   CollectionProgressSignalResponse,
   DailyProgressReportResponse,
+  DprLabourRowResponse,
+  DprEquipmentRowResponse,
+  DprObservationResponse,
   PhysicalFinancialSignalResponse,
   ProgrammeBaselineResponse,
   ProgressCurveResponse,
@@ -52,10 +55,48 @@ export interface CreateWorkPackageBody {
 }
 
 // ─── Response shapes without a shared @erp/types definition ───────────────────────────────
-/** A DPR with its measurements + evidence (the getDpr detail). */
+/** A DPR with its measurements + evidence + structured rows (the getDpr detail). */
 export interface DailyProgressReportDetail extends DailyProgressReportResponse {
   measurements: ProgressMeasurementResponse[];
   attachments: Array<{ id: string; platformFileId: string; createdBy: string }>;
+  labourRows: DprLabourRowResponse[];
+  equipmentRows: DprEquipmentRowResponse[];
+  observations: DprObservationResponse[];
+}
+
+// Phase 3 request bodies.
+export interface PatchDprContextBody {
+  locationArea?: string;
+  shift?: string;
+  tomorrowPlan?: string;
+  weather?: string;
+  labourCount?: number;
+  equipmentNote?: string;
+  narrative?: string;
+  delayReason?: string;
+}
+
+export interface AddLabourRowBody {
+  trade: string;
+  headcount: number;
+  contractor?: string;
+  hours?: number;
+}
+
+export interface AddEquipmentRowBody {
+  equipmentType: string;
+  count: number;
+  hoursWorked?: number;
+  condition?: string;
+  notes?: string;
+}
+
+export interface AddObservationBody {
+  category: 'ISSUE' | 'DELAY' | 'SAFETY';
+  description: string;
+  affectedWork?: string;
+  severity?: string;
+  followUpOwner?: string;
 }
 
 /** A work-package row. Mirrors the Prisma model; move to @erp/types if the API adds a mapper. */
@@ -125,6 +166,60 @@ export function returnDpr(dprId: string, reason: string): Promise<DailyProgressR
     method: 'POST',
     body: JSON.stringify({ reason }),
   });
+}
+
+// ─── Phase 3: structured DPR row mutations ────────────────────────────────────────────────
+
+export function patchDprContext(
+  dprId: string,
+  body: PatchDprContextBody,
+): Promise<DailyProgressReportResponse> {
+  return apiClient<DailyProgressReportResponse>(`/progress/reports/${dprId}/context`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+export function addLabourRow(
+  dprId: string,
+  body: AddLabourRowBody,
+): Promise<DprLabourRowResponse> {
+  return apiClient<DprLabourRowResponse>(`/progress/reports/${dprId}/labour`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function removeLabourRow(dprId: string, rowId: string): Promise<void> {
+  return apiClient<void>(`/progress/reports/${dprId}/labour/${rowId}`, { method: 'DELETE' });
+}
+
+export function addEquipmentRow(
+  dprId: string,
+  body: AddEquipmentRowBody,
+): Promise<DprEquipmentRowResponse> {
+  return apiClient<DprEquipmentRowResponse>(`/progress/reports/${dprId}/equipment`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function removeEquipmentRow(dprId: string, rowId: string): Promise<void> {
+  return apiClient<void>(`/progress/reports/${dprId}/equipment/${rowId}`, { method: 'DELETE' });
+}
+
+export function addObservation(
+  dprId: string,
+  body: AddObservationBody,
+): Promise<DprObservationResponse> {
+  return apiClient<DprObservationResponse>(`/progress/reports/${dprId}/observations`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function removeObservation(dprId: string, obsId: string): Promise<void> {
+  return apiClient<void>(`/progress/reports/${dprId}/observations/${obsId}`, { method: 'DELETE' });
 }
 
 // ─── Verified progress + roll-up + signal (read models) ──────────────────────────────────

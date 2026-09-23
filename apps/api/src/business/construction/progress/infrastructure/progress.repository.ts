@@ -22,6 +22,9 @@ export class ProgressRepository {
         attachments: {
           include: { platformFile: { select: { originalName: true, mimeType: true, status: true } } },
         },
+        labourRows: { orderBy: { createdAt: 'asc' } },
+        equipmentRows: { orderBy: { createdAt: 'asc' } },
+        observations: { orderBy: { createdAt: 'asc' } },
       },
     });
   }
@@ -141,6 +144,48 @@ export class ProgressRepository {
       where: { id: fileId, organizationId },
       select: { id: true, status: true },
     });
+  }
+
+  // ─── Phase 3: structured DPR row CRUD ───────────────────────────────────────────
+
+  addLabourRow(prisma: TenantPrisma, data: Prisma.DprLabourRowUncheckedCreateInput) {
+    return prisma.dprLabourRow.create({ data });
+  }
+
+  deleteLabourRow(prisma: TenantPrisma, id: string) {
+    return prisma.dprLabourRow.delete({ where: { id } });
+  }
+
+  findLabourRow(prisma: TenantPrisma, id: string) {
+    return prisma.dprLabourRow.findUnique({ where: { id }, select: { id: true, dprId: true } });
+  }
+
+  addEquipmentRow(prisma: TenantPrisma, data: Prisma.DprEquipmentRowUncheckedCreateInput) {
+    return prisma.dprEquipmentRow.create({ data });
+  }
+
+  deleteEquipmentRow(prisma: TenantPrisma, id: string) {
+    return prisma.dprEquipmentRow.delete({ where: { id } });
+  }
+
+  findEquipmentRow(prisma: TenantPrisma, id: string) {
+    return prisma.dprEquipmentRow.findUnique({ where: { id }, select: { id: true, dprId: true } });
+  }
+
+  addObservation(prisma: TenantPrisma, data: Prisma.DprObservationUncheckedCreateInput) {
+    return prisma.dprObservation.create({ data });
+  }
+
+  deleteObservation(prisma: TenantPrisma, id: string) {
+    return prisma.dprObservation.delete({ where: { id } });
+  }
+
+  findObservation(prisma: TenantPrisma, id: string) {
+    return prisma.dprObservation.findUnique({ where: { id }, select: { id: true, dprId: true } });
+  }
+
+  patchDprContext(prisma: TenantPrisma, id: string, data: Prisma.DailyProgressReportUncheckedUpdateInput) {
+    return prisma.dailyProgressReport.update({ where: { id }, data });
   }
 
   // ─── Work packages (ADR-021 roll-up) ────────────────────────────────────────────

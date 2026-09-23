@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import {
   DprStatus,
@@ -158,6 +158,117 @@ export class ProgressService {
     return attachment;
   }
 
+  // ─── Phase 3: structured DPR row CRUD ─────────────────────────────────────────
+
+  /** Patch context fields (Section A + tomorrow plan) on an editable DPR. */
+  async patchDprContext(
+    identity: RequestIdentity,
+    dprId: string,
+    dto: {
+      locationArea?: string;
+      shift?: string;
+      tomorrowPlan?: string;
+      weather?: string;
+      labourCount?: number;
+      equipmentNote?: string;
+      narrative?: string;
+      delayReason?: string;
+    },
+  ) {
+    const dpr = await this.requireDpr(identity, dprId);
+    if (!isEditableDprStatus(dpr.status)) {
+      throw new BadRequestException('Context fields can only be updated on a DRAFT, RETURNED or REOPENED report.');
+    }
+    return this.repo.patchDprContext(this.tenancy.getClient(), dprId, dto);
+  }
+
+  async addLabourRow(identity: RequestIdentity, dprId: string, dto: { trade: string; headcount: number; contractor?: string; hours?: number }) {
+    const dpr = await this.requireDpr(identity, dprId);
+    if (!isEditableDprStatus(dpr.status)) {
+      throw new BadRequestException('Labour rows can only be added to a DRAFT, RETURNED or REOPENED report.');
+    }
+    return this.repo.addLabourRow(this.tenancy.getClient(), {
+      dprId,
+      trade: dto.trade,
+      headcount: dto.headcount,
+      contractor: dto.contractor ?? null,
+      hours: dto.hours ?? null,
+    });
+  }
+
+  async removeLabourRow(identity: RequestIdentity, dprId: string, rowId: string) {
+    const prisma = this.tenancy.getClient();
+    const row = await this.repo.findLabourRow(prisma, rowId);
+    if (!row || row.dprId !== dprId) throw new NotFoundException(`Labour row ${rowId} not found on this report.`);
+    const dpr = await this.requireDpr(identity, dprId);
+    if (!isEditableDprStatus(dpr.status)) {
+      throw new BadRequestException('Labour rows can only be removed from a DRAFT, RETURNED or REOPENED report.');
+    }
+    return this.repo.deleteLabourRow(prisma, rowId);
+  }
+
+  async addEquipmentRow(
+    identity: RequestIdentity,
+    dprId: string,
+    dto: { equipmentType: string; count: number; hoursWorked?: number; condition?: string; notes?: string },
+  ) {
+    const dpr = await this.requireDpr(identity, dprId);
+    if (!isEditableDprStatus(dpr.status)) {
+      throw new BadRequestException('Equipment rows can only be added to a DRAFT, RETURNED or REOPENED report.');
+    }
+    return this.repo.addEquipmentRow(this.tenancy.getClient(), {
+      dprId,
+      equipmentType: dto.equipmentType,
+      count: dto.count,
+      hoursWorked: dto.hoursWorked ?? null,
+      condition: dto.condition ?? null,
+      notes: dto.notes ?? null,
+    });
+  }
+
+  async removeEquipmentRow(identity: RequestIdentity, dprId: string, rowId: string) {
+    const prisma = this.tenancy.getClient();
+    const row = await this.repo.findEquipmentRow(prisma, rowId);
+    if (!row || row.dprId !== dprId) throw new NotFoundException(`Equipment row ${rowId} not found on this report.`);
+    const dpr = await this.requireDpr(identity, dprId);
+    if (!isEditableDprStatus(dpr.status)) {
+      throw new BadRequestException('Equipment rows can only be removed from a DRAFT, RETURNED or REOPENED report.');
+    }
+    return this.repo.deleteEquipmentRow(prisma, rowId);
+  }
+
+  async addObservation(
+    identity: RequestIdentity,
+    dprId: string,
+    dto: { category: string; description: string; affectedWork?: string; severity?: string; followUpOwner?: string },
+  ) {
+    const dpr = await this.requireDpr(identity, dprId);
+    if (!isEditableDprStatus(dpr.status)) {
+      throw new BadRequestException('Observations can only be added to a DRAFT, RETURNED or REOPENED report.');
+    }
+    return this.repo.addObservation(this.tenancy.getClient(), {
+      dprId,
+      category: dto.category as any,
+      description: dto.description,
+      affectedWork: dto.affectedWork ?? null,
+      severity: dto.severity ?? null,
+      followUpOwner: dto.followUpOwner ?? null,
+    });
+  }
+
+  async removeObservation(identity: RequestIdentity, dprId: string, obsId: string) {
+    const prisma = this.tenancy.getClient();
+    const obs = await this.repo.findObservation(prisma, obsId);
+    if (!obs || obs.dprId !== dprId) throw new NotFoundException(`Observation ${obsId} not found on this report.`);
+    const dpr = await this.requireDpr(identity, dprId);
+    if (!isEditableDprStatus(dpr.status)) {
+      throw new BadRequestException('Observations can only be removed from a DRAFT, RETURNED or REOPENED report.');
+    }
+    return this.repo.deleteObservation(prisma, obsId);
+  }
+
+  // ─── End Phase 3 ───────────────────────────────────────────────────────────────
+
   async submit(identity: RequestIdentity, dprId: string) {
     const dpr = await this.requireDpr(identity, dprId);
     if (!isEditableDprStatus(dpr.status)) {
@@ -176,6 +287,14 @@ export class ProgressService {
     const dpr = await this.requireDpr(identity, dprId);
     if (dpr.status !== DprStatus.SUBMITTED) {
       throw new BadRequestException(`Only a SUBMITTED report can be approved (is ${dpr.status}).`);
+    }
+
+    // ADR-022 CONST-DOA-008 SoD: the preparer or submitter cannot approve their own report.
+    // This applies to reopened reports too — reopening and re-submitting does not reset the check.
+    if (dpr.preparedBy === identity.userId || dpr.submittedBy === identity.userId) {
+      throw new ForbiddenException(
+        'A preparer or submitter cannot approve their own daily progress report.',
+      );
     }
 
     // ADR-022 CONST-DOA-008 governance seam: a DPR is approved by the Project Manager. With no
