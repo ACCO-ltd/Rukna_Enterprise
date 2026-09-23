@@ -8,6 +8,7 @@ import {
   Badge,
   Button,
   LtrValue,
+  Progress,
   Skeleton,
   Table,
   TableBody,
@@ -424,17 +425,17 @@ function CostByCategoryTable({ data }: { data: ProjectProcurementCostResponse })
 function UsageBar({ percent }: { percent: number }) {
   const over = percent > 100;
   return (
-    <span className="inline-flex items-center justify-end gap-2">
-      <span className="hidden w-16 overflow-hidden rounded-full bg-muted sm:block">
-        <span
-          className={cn('block h-1.5 rounded-full', over ? 'bg-warning' : 'bg-brand-primary')}
-          style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
-        />
-      </span>
+    <div className="flex items-center justify-end gap-2">
+      <Progress
+        value={percent}
+        tone={over ? 'warning' : 'default'}
+        size="sm"
+        className="hidden w-16 sm:block"
+      />
       <span className={cn('tabular-nums', over ? 'font-medium text-warning' : 'text-muted-foreground')}>
         {percent}%
       </span>
-    </span>
+    </div>
   );
 }
 
@@ -442,15 +443,10 @@ function UsageBar({ percent }: { percent: number }) {
 function ShareBar({ percent }: { percent: number | null }) {
   if (percent === null) return <span className="text-caption text-muted-foreground">—</span>;
   return (
-    <span className="flex items-center gap-2">
-      <span className="w-24 overflow-hidden rounded-full bg-muted">
-        <span
-          className="block h-1.5 rounded-full bg-brand-primary"
-          style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
-        />
-      </span>
+    <div className="flex items-center gap-2">
+      <Progress value={percent} size="sm" className="w-24" />
       <span className="text-caption tabular-nums text-muted-foreground">{percent}%</span>
-    </span>
+    </div>
   );
 }
 

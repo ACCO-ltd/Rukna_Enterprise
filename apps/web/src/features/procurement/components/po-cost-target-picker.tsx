@@ -40,7 +40,7 @@ import { flattenTree } from '@/features/boq/boq-rows';
 import { useBoqTree, useBoqWorkspace } from '@/features/boq/hooks/use-boq';
 import { useProjects } from '@/features/projects/hooks/use-projects';
 import { useSpendCategories } from '../hooks/use-procurement';
-import { Select } from '@erp/ui';
+import { CheckboxField, Select } from '@erp/ui';
 
 /** The cost-target a line carries, or the explicit org/overhead opt-out. */
 export interface CostTargetValue {
@@ -102,26 +102,20 @@ export function PoCostTargetPicker({ value, onChange, showError }: PoCostTargetP
 
   return (
     <div className="mt-3 border-t border-border pt-3">
-      <div className="flex items-start gap-2">
-        <input
-          id={ids.toggle}
-          type="checkbox"
-          checked={value.notChargeable}
-          onChange={(e) =>
-            // Turning the opt-out on clears any chosen target so a stale id can never be sent.
-            onChange(
-              e.target.checked
-                ? { notChargeable: true, projectId: null, boqNodeId: null, spendCategoryId: null }
-                : { notChargeable: false, projectId: null, boqNodeId: null, spendCategoryId: null },
-            )
-          }
-          className="mt-0.5 size-4 shrink-0 rounded border-border"
-        />
-        <label htmlFor={ids.toggle} className="text-xs">
-          <span className="font-medium text-foreground">{t('notChargeableLabel')}</span>
-          <span className="mt-0.5 block text-muted-foreground">{t('notChargeableHint')}</span>
-        </label>
-      </div>
+      <CheckboxField
+        id={ids.toggle}
+        label={t('notChargeableLabel')}
+        description={t('notChargeableHint')}
+        checked={value.notChargeable}
+        onChange={(e) =>
+          // Turning the opt-out on clears any chosen target so a stale id can never be sent.
+          onChange(
+            e.target.checked
+              ? { notChargeable: true, projectId: null, boqNodeId: null, spendCategoryId: null }
+              : { notChargeable: false, projectId: null, boqNodeId: null, spendCategoryId: null },
+          )
+        }
+      />
 
       {value.notChargeable ? null : (
         <div className="mt-3 grid gap-3 sm:grid-cols-2">

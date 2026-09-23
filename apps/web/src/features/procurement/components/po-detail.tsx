@@ -31,7 +31,7 @@
 import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button } from '@erp/ui';
+import { Alert, Button, Card, CardContent, CardFooter, CardHeader, CardTitle } from '@erp/ui';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { ApiError } from '@/lib/api-client';
@@ -84,7 +84,7 @@ export function PoDetail({ id }: { id: string }) {
       <div role="status" aria-live="polite">
         <span className="sr-only">{tCommon('loading')}</span>
         <div
-          className="h-64 animate-pulse rounded-xl border border-border bg-muted"
+          className="h-64 animate-pulse rounded-panel border border-border bg-muted"
           aria-hidden="true"
         />
       </div>
@@ -134,8 +134,8 @@ export function PoDetail({ id }: { id: string }) {
       </div>
 
       {/* ── Header card ───────────────────────────────────────────────────── */}
-      <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
-        <div className="px-5 pt-5 sm:px-6 sm:pt-6">
+      <Card>
+        <CardContent>
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-xs font-medium text-muted-foreground">
               {order.poNumber}
@@ -143,7 +143,7 @@ export function PoDetail({ id }: { id: string }) {
             <ProcurementStatusBadge status={order.status} />
           </div>
 
-          <h1 className="mt-2 text-[26px] font-bold leading-tight tracking-[-0.025em] text-foreground sm:text-[28px]">
+          <h1 className="mt-2 text-[26px] font-bold leading-tight tracking-tight text-foreground sm:text-[28px]">
             {order.supplier?.name ?? t('detailTitle', { number: order.poNumber })}
           </h1>
 
@@ -153,11 +153,11 @@ export function PoDetail({ id }: { id: string }) {
               total: order.revisions.length,
             })}
           </p>
-        </div>
+        </CardContent>
 
         {/* Footer: amend (OPEN only) and cancel. DRAFT PO shows cancel only. */}
         {showActions ? (
-          <div className="mt-4 flex flex-wrap gap-2 border-t border-border px-5 py-3 sm:px-6">
+          <CardFooter className="flex-row flex-wrap justify-start border-t border-border pt-4 sm:flex-row sm:justify-start">
             {canAmend ? (
               <Button type="button" size="sm" onClick={() => setAmending(true)}>
                 {t('amend')}
@@ -166,28 +166,30 @@ export function PoDetail({ id }: { id: string }) {
             <Button type="button" size="sm" variant="outline" onClick={() => setCancelling(true)}>
               {t('cancelOrder')}
             </Button>
-          </div>
+          </CardFooter>
         ) : null}
-      </div>
+      </Card>
 
       {/* ── Confirm a DRAFT revision — single action, no approval routing ───── */}
       {draft ? (
-        <div className="space-y-3 rounded-xl border border-border bg-surface p-4 shadow-[var(--shadow-panel)] sm:p-6">
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">{t('draftRevisionTitle')}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{t('draftRevisionBody')}</p>
-          </div>
+        <Card>
+          <CardContent className="space-y-3">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">{t('draftRevisionTitle')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{t('draftRevisionBody')}</p>
+            </div>
 
-          {confirmError ? <Alert variant="error" messages={[confirmError]} /> : null}
+            {confirmError ? <Alert variant="error" messages={[confirmError]} /> : null}
 
-          <Button
-            type="button"
-            disabled={confirming || !can(PROCUREMENT_PERMISSIONS.approveOrder)}
-            onClick={() => void runConfirm()}
-          >
-            {isDraftPo ? t('issueOrder') : t('issueRevision')}
-          </Button>
-        </div>
+            <Button
+              type="button"
+              disabled={confirming || !can(PROCUREMENT_PERMISSIONS.approveOrder)}
+              onClick={() => void runConfirm()}
+            >
+              {isDraftPo ? t('issueOrder') : t('issueRevision')}
+            </Button>
+          </CardContent>
+        </Card>
       ) : null}
 
       {/* ── Current revision ──────────────────────────────────────────────── */}
@@ -199,7 +201,7 @@ export function PoDetail({ id }: { id: string }) {
 
       {/* ── Revision history (collapsed) ──────────────────────────────────── */}
       {history.length > 0 ? (
-        <details className="group overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
+        <details className="group overflow-hidden rounded-panel border border-border bg-surface shadow-e2">
           <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-5 py-3 text-sm font-medium text-foreground marker:hidden sm:px-6 [&::-webkit-details-marker]:hidden">
             <span>{t('revisionHistory', { count: history.length })}</span>
             <ChevronDownIcon />
@@ -246,7 +248,7 @@ function RevisionHistoryItem({
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="rounded-lg border border-border">
+    <div className="rounded-control border border-border">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -305,7 +307,7 @@ function RevisionPanel({
       ) : null}
 
       {/* Revision metadata — gap-px tile grid */}
-      <dl className="grid gap-px overflow-hidden rounded-xl border border-border bg-border shadow-[var(--shadow-panel)] sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="grid gap-px overflow-hidden rounded-panel border border-border bg-border shadow-e2 sm:grid-cols-2 lg:grid-cols-4">
         <div className="bg-surface px-5 py-4">
           <dt className="text-xs font-medium text-muted-foreground">{t('effectiveFrom')}</dt>
           <dd className="mt-1.5 text-sm font-semibold text-foreground">
@@ -335,10 +337,10 @@ function RevisionPanel({
       {/* Lines — read-only, with classification chips (D7 consistency). Rendered as
           stacked cards rather than a table so a line's classification chips read cleanly
           at 375px without horizontal scroll. */}
-      <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
-        <div className="border-b border-border px-5 py-3 sm:px-6">
-          <h3 className="text-[13px] font-semibold text-foreground">{tc('lines')}</h3>
-        </div>
+      <Card className="gap-0 py-0">
+        <CardHeader className="border-b border-border py-4">
+          <CardTitle className="text-h3">{tc('lines')}</CardTitle>
+        </CardHeader>
         <ul className="divide-y divide-border">
           {lines.map((line) => (
             <li key={line.id} className="px-5 py-3 sm:px-6">
@@ -387,7 +389,7 @@ function RevisionPanel({
             {formatMoney(fromMinorUnits(totalMinor, MONEY_SCALE), revision.currencyCode, locale)}
           </span>
         </div>
-      </section>
+      </Card>
     </div>
   );
 }

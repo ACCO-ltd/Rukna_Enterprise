@@ -21,7 +21,11 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Coins, HandCoins, Receipt, TrendUp } from '@phosphor-icons/react';
 import {
   Alert,
+  Card,
+  CardHeader,
+  CardTitle,
   cn,
+  RadioGroup,
   RecordPanel,
   Select,
   Table,
@@ -237,37 +241,24 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
         </div>
       </div>
 
-      {/* ── Stage filter pills ────────────────────────────────────────────── */}
-      <fieldset>
-        <legend className="sr-only">{t('stage')}</legend>
-        <div className="flex flex-wrap gap-2">
-          {([''] as (CommitmentStage | '')[]).concat(STAGES).map((value) => (
-            <label
-              key={value || 'all'}
-              className={`inline-flex min-h-9 cursor-pointer items-center rounded-md border px-3 text-sm transition-colors ${
-                stage === value
-                  ? 'border-brand-primary bg-brand-primary/10 font-medium text-brand-primary'
-                  : 'border-border text-muted-foreground hover:border-brand-primary/40 hover:text-foreground'
-              }`}
-            >
-              <input
-                type="radio"
-                name="stage"
-                className="sr-only"
-                checked={stage === value}
-                onChange={() => setStage(value)}
-              />
-              {value === ''
-                ? tc('all')
-                : t(value.toLowerCase() as 'committed' | 'accrued' | 'actual')}
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      {/* ── Stage filter ──────────────────────────────────────────────────── */}
+      <RadioGroup<CommitmentStage | ''>
+        label={t('stage')}
+        name="stage"
+        value={stage}
+        onChange={setStage}
+        options={[
+          { value: '', label: tc('all') },
+          ...STAGES.map((s) => ({
+            value: s,
+            label: t(s.toLowerCase() as 'committed' | 'accrued' | 'actual'),
+          })),
+        ]}
+      />
 
       {/* ── No project selected ────────────────────────────────────────────── */}
       {projectId === '' ? (
-        <div className="rounded-xl border border-dashed border-border bg-surface px-6 py-12 text-center shadow-[var(--shadow-panel)]">
+        <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center shadow-e2">
           <p className="text-sm font-medium text-foreground">{t('selectProject')}</p>
           <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
             {t('selectProjectHint')}
@@ -277,7 +268,7 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
         <>
           {/* ── Summary tiles (when project is selected) ─────────────────── */}
           {summary.data ? (
-            <dl className="grid gap-px overflow-hidden rounded-xl border border-border bg-border shadow-[var(--shadow-panel)] sm:grid-cols-3">
+            <dl className="grid gap-px overflow-hidden rounded-panel border border-border bg-border shadow-e2 sm:grid-cols-3">
               {(
                 [
                   ['committed', summary.data.committed, t('committedHint')],
@@ -296,7 +287,7 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
               ))}
             </dl>
           ) : summary.isPending ? (
-            <div className="grid gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-3">
+            <div className="grid gap-px overflow-hidden rounded-panel border border-border bg-border sm:grid-cols-3">
               {[...Array(3)].map((_, i) => (
                 <div key={i} className="bg-surface px-5 py-4" aria-hidden="true">
                   <div className="h-3 w-20 animate-pulse rounded bg-muted" />
@@ -310,10 +301,10 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
           {entries.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
 
           {/* ── Ledger table ─────────────────────────────────────────────── */}
-          <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
-            <div className="border-b border-border px-5 py-3 sm:px-6">
-              <h2 className="text-[13px] font-semibold text-foreground">{t('title')}</h2>
-            </div>
+          <Card className="gap-0 py-0">
+            <CardHeader className="border-b border-border py-4">
+              <CardTitle className="text-h3">{t('title')}</CardTitle>
+            </CardHeader>
 
             <TableScroll aria-label={t('title')}>
               <Table>
@@ -383,7 +374,7 @@ export function CommitmentLedger({ initialProjectId }: { initialProjectId?: stri
                 </TableBody>
               </Table>
             </TableScroll>
-          </section>
+          </Card>
         </>
       )}
     </div>

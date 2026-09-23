@@ -7,6 +7,12 @@ import {
   Alert,
   Badge,
   Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
   Table,
   TableBody,
   TableCell,
@@ -55,7 +61,7 @@ export function MrDetail({ id }: { id: string }) {
     return (
       <div role="status" aria-live="polite">
         <span className="sr-only">{tc('loadFailed')}</span>
-        <div className="h-64 animate-pulse rounded-xl border border-border bg-muted" aria-hidden="true" />
+        <div className="h-64 animate-pulse rounded-panel border border-border bg-muted" aria-hidden="true" />
       </div>
     );
   }
@@ -94,8 +100,8 @@ export function MrDetail({ id }: { id: string }) {
       </div>
 
       {/* ── Header card ───────────────────────────────────────────────────── */}
-      <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
-        <div className="px-5 pt-5 sm:px-6 sm:pt-6">
+      <Card>
+        <CardContent>
           {/* Top row: MR number + status + scope */}
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-xs font-medium text-muted-foreground">
@@ -108,7 +114,7 @@ export function MrDetail({ id }: { id: string }) {
           </div>
 
           {/* Primary heading */}
-          <h1 className="mt-2 text-[26px] font-bold leading-tight tracking-[-0.025em] text-foreground sm:text-[28px]">
+          <h1 className="mt-2 text-[26px] font-bold leading-tight tracking-tight text-foreground sm:text-[28px]">
             {request.description ?? t('detailTitle', { number: request.mrNumber })}
           </h1>
 
@@ -116,11 +122,11 @@ export function MrDetail({ id }: { id: string }) {
           {projectName ? (
             <p className="mt-1 text-sm text-muted-foreground">{projectName}</p>
           ) : null}
-        </div>
+        </CardContent>
 
         {/* Footer: lifecycle actions */}
         {!isTerminal ? (
-          <div className="mt-4 flex flex-wrap gap-2 border-t border-border px-5 py-3 sm:px-6">
+          <CardFooter className="flex-row flex-wrap justify-start border-t border-border pt-4 sm:flex-row sm:justify-start">
             {request.status === 'DRAFT' ? (
               <Button type="button" size="sm" onClick={() => setPending('submit')}>
                 {t('submit')}
@@ -136,9 +142,9 @@ export function MrDetail({ id }: { id: string }) {
                 {t('cancelRequest')}
               </Button>
             ) : null}
-          </div>
+          </CardFooter>
         ) : null}
-      </div>
+      </Card>
 
       {/* ── Approval workflow chain ────────────────────────────────────────── */}
       <WorkflowChain instanceId={request.approvalInstanceId} status={request.status} />
@@ -162,7 +168,7 @@ export function MrDetail({ id }: { id: string }) {
       ) : null}
 
       {/* ── Context tile grid ─────────────────────────────────────────────── */}
-      <dl className="grid gap-px overflow-hidden rounded-xl border border-border bg-border shadow-[var(--shadow-panel)] sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="grid gap-px overflow-hidden rounded-panel border border-border bg-border shadow-e2 sm:grid-cols-2 lg:grid-cols-4">
         <div className="bg-surface px-5 py-4">
           <dt className="text-xs font-medium text-muted-foreground">{tc('project')}</dt>
           <dd className="mt-1.5 text-sm font-semibold text-foreground">
@@ -191,19 +197,21 @@ export function MrDetail({ id }: { id: string }) {
 
       {/* ── Notes ─────────────────────────────────────────────────────────── */}
       {request.notes ? (
-        <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
-          <div className="border-b border-border px-5 py-3 sm:px-6">
-            <h2 className="text-[13px] font-semibold text-foreground">{tc('notes')}</h2>
-          </div>
-          <p className="px-5 py-4 text-sm text-foreground sm:px-6">{request.notes}</p>
-        </section>
+        <Card className="gap-0 py-0">
+          <CardHeader className="border-b border-border py-4">
+            <CardTitle className="text-h3">{tc('notes')}</CardTitle>
+          </CardHeader>
+          <CardContent className="py-4">
+            <p className="text-sm text-foreground">{request.notes}</p>
+          </CardContent>
+        </Card>
       ) : null}
 
       {/* ── Lines table ───────────────────────────────────────────────────── */}
-      <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
-        <div className="border-b border-border px-5 py-3 sm:px-6">
-          <h2 className="text-[13px] font-semibold text-foreground">{t('linesTitle')}</h2>
-        </div>
+      <Card className="gap-0 py-0">
+        <CardHeader className="border-b border-border py-4">
+          <CardTitle className="text-h3">{t('linesTitle')}</CardTitle>
+        </CardHeader>
         <TableScroll aria-label={t('linesTitle')}>
           <Table>
             <TableHeader>
@@ -242,7 +250,7 @@ export function MrDetail({ id }: { id: string }) {
             </TableBody>
           </Table>
         </TableScroll>
-      </section>
+      </Card>
 
       {/* ── Confirm dialogs ───────────────────────────────────────────────── */}
       {pending ? (
@@ -281,20 +289,20 @@ function WorkflowChain({
 
   if (isLoading) {
     return (
-      <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
-        <div className="px-5 py-4 sm:px-6 sm:py-5">
+      <Card>
+        <CardContent>
           <span className="sr-only">{tCommon('loading')}</span>
           <div className="h-3.5 w-36 animate-pulse rounded bg-muted" aria-hidden="true" />
           <div className="mt-4 flex items-center gap-2" aria-hidden="true">
             {[0, 1, 2].map((i) => (
               <Fragment key={i}>
-                <div className="h-7 w-7 flex-shrink-0 animate-pulse rounded-full bg-muted" />
+                <div className="h-7 w-7 shrink-0 animate-pulse rounded-full bg-muted" />
                 {i < 2 && <div className="h-0.5 flex-1 animate-pulse rounded bg-muted" />}
               </Fragment>
             ))}
           </div>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -344,13 +352,15 @@ function WorkflowChain({
   }
 
   return (
-    <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow-panel)]">
-      <div className="space-y-4 px-5 py-4 sm:px-6 sm:py-5">
+    <Card>
+      <CardHeader>
         <div>
-          <h2 className="text-[13px] font-semibold text-foreground">{t('workflowTitle')}</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">{caption}</p>
+          <CardTitle>{t('workflowTitle')}</CardTitle>
+          <CardDescription>{caption}</CardDescription>
         </div>
+      </CardHeader>
 
+      <CardContent className="space-y-4">
         <div
           className="flex items-start overflow-x-auto pb-1"
           role="list"
@@ -363,10 +373,10 @@ function WorkflowChain({
             return (
               <Fragment key={defStep.id}>
                 {/* Node + role label */}
-                <div className="flex flex-shrink-0 flex-col items-center gap-1.5" role="listitem">
+                <div className="flex shrink-0 flex-col items-center gap-1.5" role="listitem">
                   <span
                     className={cn(
-                      'flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full transition-colors',
+                      'flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors',
                       nodeState === 'complete' && 'bg-success text-white',
                       nodeState === 'active' &&
                         'bg-brand-primary text-white ring-4 ring-brand-primary/15',
@@ -378,7 +388,7 @@ function WorkflowChain({
                       <span className="h-2 w-2 rounded-full bg-white" aria-hidden="true" />
                     )}
                   </span>
-                  <span className="max-w-[72px] truncate text-center text-[11px] font-medium leading-tight text-muted-foreground">
+                  <span className="max-w-18 truncate text-center text-[11px] font-medium leading-tight text-muted-foreground">
                     {defStep.roleRequired}
                   </span>
                 </div>
@@ -387,7 +397,7 @@ function WorkflowChain({
                 {!isLast && (
                   <div
                     className={cn(
-                      'mt-3.5 h-0.5 min-w-[1.5rem] flex-1 transition-colors',
+                      'mt-3.5 h-0.5 min-w-6 flex-1 transition-colors',
                       nodeState === 'complete' ? 'bg-success/40' : 'bg-border',
                     )}
                     aria-hidden="true"
@@ -401,8 +411,8 @@ function WorkflowChain({
         {!isDraft && !isCancelled ? (
           <p className="text-[11px] text-muted-foreground/60">{t('workflowProgressNote')}</p>
         ) : null}
-      </div>
-    </section>
+      </CardContent>
+    </Card>
   );
 }
 

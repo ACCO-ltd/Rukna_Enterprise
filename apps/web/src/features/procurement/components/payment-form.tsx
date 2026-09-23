@@ -22,7 +22,7 @@
 import { useId, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, DatePicker, FormField, Input, MoneyInput, Select, Textarea } from '@erp/ui';
+import { Alert, Button, Checkbox, DatePicker, FormField, Input, MoneyInput, Select, Textarea } from '@erp/ui';
 
 import { useBankAccounts, useFiscalYears } from '@/features/accounting/hooks/use-accounting';
 import { makeClosedPeriodPredicate } from '@/features/accounting/open-period';
@@ -463,11 +463,10 @@ function ApplyBody({
             {/* One line: checkbox + invoice/date, then the outstanding pinned to the end. */}
             <label className="flex items-start justify-between gap-3">
               <span className="flex min-w-0 items-start gap-2">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={row.checked}
                   onChange={(e) => onToggle(row.bill, e.target.checked)}
-                  className="mt-0.5 size-4 shrink-0 accent-brand-primary"
+                  className="mt-0.5"
                 />
                 <span className="min-w-0">
                   <span className="block truncate font-mono text-sm text-foreground">

@@ -2,23 +2,10 @@
 
 import { useId, useState, type FormEvent } from 'react';
 import { useTranslations } from 'next-intl';
-import {
-  Alert,
-  FormField,
-  Input,
-  Select,
-  Table,
-  TableBody,
-  TableCell,
-  TableEmpty,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-  Textarea,
-} from '@erp/ui';
+import { Alert, FilterBar, FilterField, FormField, Input, Select, Textarea } from '@erp/ui';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
+import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 
 import {
@@ -75,6 +62,61 @@ export function MaterialsList() {
   const canManage = can(PROCUREMENT_PERMISSIONS.manageConfig);
   const filterIds = { category: useId(), spend: useId() };
 
+  const columns: GridColumn<Material>[] = [
+    {
+      key: 'code',
+      header: tc('code'),
+      sticky: true,
+      sortable: true,
+      plainValue: (material) => material.code,
+      render: (material) => <span className="font-mono text-caption">{material.code}</span>,
+    },
+    {
+      key: 'name',
+      header: tc('name'),
+      sortable: true,
+      plainValue: (material) => material.name,
+      render: (material) => <span className="text-sm text-foreground">{material.name}</span>,
+    },
+    {
+      key: 'baseUom',
+      header: t('baseUom'),
+      plainValue: (material) => material.baseUom?.symbol ?? material.baseUom?.code ?? '',
+      render: (material) => (
+        <bdi className="text-sm">
+          {material.baseUom?.symbol ?? material.baseUom?.code ?? tc('notAvailable')}
+        </bdi>
+      ),
+    },
+    {
+      key: 'materialCategory',
+      header: t('materialCategory'),
+      sortable: true,
+      plainValue: (material) => material.materialCategory?.name ?? '',
+      render: (material) => (
+        <span className="text-sm text-muted-foreground">
+          {material.materialCategory?.name ?? tc('notAvailable')}
+        </span>
+      ),
+    },
+    {
+      key: 'defaultSpendCategory',
+      header: t('defaultSpendCategory'),
+      sortable: true,
+      plainValue: (material) => material.defaultSpendCategory?.name ?? '',
+      render: (material) => (
+        <span className="text-sm text-muted-foreground">
+          {material.defaultSpendCategory?.name ?? tc('notAvailable')}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: tc('status'),
+      render: (material) => <ProcurementStatusBadge status={material.status} />,
+    },
+  ];
+
   return (
     <>
       <SetupScreen
@@ -88,14 +130,8 @@ export function MaterialsList() {
         isPending={materials.isPending}
         isError={materials.isError}
       >
-        <div className="flex flex-wrap gap-4">
-          <div className="min-w-48 flex-1">
-            <label
-              htmlFor={filterIds.category}
-              className="mb-1 block text-xs font-medium text-muted-foreground"
-            >
-              {t('filterByCategory')}
-            </label>
+        <FilterBar>
+          <FilterField id={filterIds.category} label={t('filterByCategory')}>
             <Select
               id={filterIds.category}
               value={materialCategoryId}
@@ -108,15 +144,9 @@ export function MaterialsList() {
                 </option>
               ))}
             </Select>
-          </div>
+          </FilterField>
 
-          <div className="min-w-48 flex-1">
-            <label
-              htmlFor={filterIds.spend}
-              className="mb-1 block text-xs font-medium text-muted-foreground"
-            >
-              {t('filterBySpendCategory')}
-            </label>
+          <FilterField id={filterIds.spend} label={t('filterBySpendCategory')}>
             <Select
               id={filterIds.spend}
               value={spendCategoryId}
@@ -129,65 +159,28 @@ export function MaterialsList() {
                 </option>
               ))}
             </Select>
-          </div>
-        </div>
+          </FilterField>
+        </FilterBar>
 
-        <TableScroll aria-label={t('title')}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{tc('code')}</TableHead>
-                <TableHead>{tc('name')}</TableHead>
-                <TableHead>{t('baseUom')}</TableHead>
-                <TableHead>{t('materialCategory')}</TableHead>
-                <TableHead>{t('defaultSpendCategory')}</TableHead>
-                <TableHead>{tc('status')}</TableHead>
-                <TableHead>
-                  <span className="sr-only">{tc('actions')}</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(materials.data ?? []).length === 0 ? (
-                <TableEmpty colSpan={7}>{t('empty')}</TableEmpty>
-              ) : (
-                (materials.data ?? []).map((material) => (
-                  <TableRow key={material.id}>
-                    <TableCell className="font-mono text-xs">{material.code}</TableCell>
-                    <TableCell>
-                      <span className="text-sm text-foreground">{material.name}</span>
-                    </TableCell>
-                    <TableCell>
-                      <bdi className="text-sm">
-                        {material.baseUom?.symbol ?? material.baseUom?.code ?? tc('notAvailable')}
-                      </bdi>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {material.materialCategory?.name ?? tc('notAvailable')}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {material.defaultSpendCategory?.name ?? tc('notAvailable')}
-                    </TableCell>
-                    <TableCell>
-                      <ProcurementStatusBadge status={material.status} />
-                    </TableCell>
-                    <TableCell>
-                      {canManage && material.status === 'ACTIVE' ? (
-                        <button
-                          type="button"
-                          onClick={() => setPending(material)}
-                          className="min-h-11 text-sm font-medium text-danger underline-offset-2 hover:underline"
-                        >
-                          {t('discontinue')}
-                        </button>
-                      ) : null}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableScroll>
+        <PlatformDataGrid
+          columns={columns}
+          data={materials.data ?? []}
+          rowKey={(material) => material.id}
+          label={t('title')}
+          noMatchMessage={t('empty')}
+          pagination={{ defaultPageSize: 25 }}
+          rowActions={(material) =>
+            canManage && material.status === 'ACTIVE' ? (
+              <button
+                type="button"
+                onClick={() => setPending(material)}
+                className="min-h-11 text-sm font-medium text-danger underline-offset-2 hover:underline"
+              >
+                {t('discontinue')}
+              </button>
+            ) : null
+          }
+        />
       </SetupScreen>
 
       {pending ? (

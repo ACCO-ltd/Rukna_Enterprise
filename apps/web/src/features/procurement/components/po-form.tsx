@@ -32,7 +32,7 @@
 import { useCallback, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, DatePicker, FormField, Input } from '@erp/ui';
+import { Alert, Button, Card, CardContent, DatePicker, FormField, Input } from '@erp/ui';
 import { WorkflowTransactionType } from '@erp/types';
 
 import { ApiError } from '@/lib/api-client';
@@ -270,27 +270,29 @@ export function PoForm({ redirectBase = '/procurement/orders' }: { redirectBase?
       {/* Gate: shown only when a DoA binding actually opened an approval on submit.
           The order is created and awaiting approval; "Complete issue" re-drives. */}
       {approvalInstanceId ? (
-        <div className="space-y-3 rounded-xl border border-border bg-surface p-4 sm:p-6">
-          <Alert variant="info" messages={[t('issueAwaitingApproval')]} />
-          <ApprovalPanel
-            instanceId={approvalInstanceId}
-            transactionType={WorkflowTransactionType.PURCHASE_ORDER}
-          />
-          <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
-            <Button type="button" disabled={busy} onClick={() => void runIssue()}>
-              {t('completeIssue')}
-            </Button>
-            {createdId ? (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => router.push(`/procurement/orders/${createdId}`)}
-              >
-                {t('backToList')}
+        <Card>
+          <CardContent className="space-y-3">
+            <Alert variant="info" messages={[t('issueAwaitingApproval')]} />
+            <ApprovalPanel
+              instanceId={approvalInstanceId}
+              transactionType={WorkflowTransactionType.PURCHASE_ORDER}
+            />
+            <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
+              <Button type="button" disabled={busy} onClick={() => void runIssue()}>
+                {t('completeIssue')}
               </Button>
-            ) : null}
-          </div>
-        </div>
+              {createdId ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => router.push(`/procurement/orders/${createdId}`)}
+                >
+                  {t('backToList')}
+                </Button>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
       ) : null}
 
       {/* ── Sticky footer: running total + the single primary action ──────────────── */}
