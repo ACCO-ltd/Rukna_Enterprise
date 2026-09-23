@@ -123,7 +123,7 @@ export function RecordPromiseDialog({ open, onOpenChange, invoice, projectId }: 
           </div>
 
           {/* Invariant note: contractual due date is never changed by a promise */}
-          <p className="rounded-md bg-surface-raised px-3 py-2 text-caption text-muted-foreground">
+          <p className="rounded-control bg-surface-raised px-3 py-2 text-caption text-muted-foreground">
             {t('dueDateNote')}
           </p>
 

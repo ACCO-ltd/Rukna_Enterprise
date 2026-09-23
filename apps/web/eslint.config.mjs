@@ -159,6 +159,8 @@ const eslintConfig = defineConfig([
       "src/features/receipts/**",
       "src/features/workflows/**",
       "src/features/contracts/**",
+      "src/features/procurement/**",
+      "src/features/commercial/**",
     ],
     rules: {
       "no-restricted-syntax": ["error", ...designScaleSelectors],

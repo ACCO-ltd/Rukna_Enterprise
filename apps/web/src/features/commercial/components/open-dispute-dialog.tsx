@@ -132,7 +132,7 @@ export function OpenDisputeDialog({ open, onOpenChange, invoice, currency, proje
 
           {/* Invariant note: outstanding balance is NOT adjusted by a dispute */}
           {outstandingFormatted ? (
-            <p className="rounded-md bg-surface-raised px-3 py-2 text-caption text-muted-foreground">
+            <p className="rounded-control bg-surface-raised px-3 py-2 text-caption text-muted-foreground">
               {t('outstandingNote')}
               {' '}
               <span className="font-medium tabular-nums">{outstandingFormatted}</span>

@@ -315,7 +315,7 @@ export function RecordPaymentDrawer({
 
           {/* ── Error ──────────────────────────────────────────────────────── */}
           {mutation.isError ? (
-            <p className="rounded-md bg-danger/10 px-3 py-2 text-caption text-danger" role="alert">
+            <p className="rounded-control bg-danger/10 px-3 py-2 text-caption text-danger" role="alert">
               {(mutation.error as Error).message}
             </p>
           ) : null}

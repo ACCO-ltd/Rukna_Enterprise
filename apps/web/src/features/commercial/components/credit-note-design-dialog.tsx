@@ -13,7 +13,6 @@ import {
   Input,
   Label,
   Select,
-  Textarea,
 } from '@erp/ui';
 
 import { formatMoney } from '@/lib/format';
@@ -81,7 +80,7 @@ export function CreditNoteDesignDialog({ open, onOpenChange, invoice, currency }
         <DialogDescription className="sr-only">{t('title')}</DialogDescription>
 
         {/* 6A notice — backend not yet built */}
-        <div className="flex items-start gap-2.5 rounded-md border border-warning/30 bg-warning/5 px-3 py-2.5">
+        <div className="flex items-start gap-2.5 rounded-control border border-warning/30 bg-warning/5 px-3 py-2.5">
           <AlertCircle size={15} className="mt-0.5 shrink-0 text-warning" aria-hidden />
           <p className="text-caption text-warning">{t('notice')}</p>
         </div>
@@ -90,7 +89,7 @@ export function CreditNoteDesignDialog({ open, onOpenChange, invoice, currency }
           {/* Original invoice (read-only) */}
           <div className="space-y-1.5">
             <Label>{t('originalInvoice')}</Label>
-            <div className="flex items-center gap-3 rounded-md border border-border bg-surface-raised px-3 py-2 text-body-sm">
+            <div className="flex items-center gap-3 rounded-control border border-border bg-surface-raised px-3 py-2 text-body-sm">
               <span className="font-medium">{invoice.invoiceNumber ?? '—'}</span>
               <span className="text-muted-foreground">{invoice.sourceLabel}</span>
               {totalFormatted ? (
@@ -144,7 +143,7 @@ export function CreditNoteDesignDialog({ open, onOpenChange, invoice, currency }
 
           {/* Draft preview */}
           {reason && amountFormatted ? (
-            <div className="rounded-md border border-dashed border-border bg-surface-raised p-3">
+            <div className="rounded-control border border-dashed border-border bg-surface-raised p-3">
               <p className="mb-2 text-caption font-semibold uppercase tracking-wide text-muted-foreground">
                 Credit note preview
               </p>
