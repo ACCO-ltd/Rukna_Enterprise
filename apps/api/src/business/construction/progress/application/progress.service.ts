@@ -248,7 +248,7 @@ export class ProgressService {
     }
     return this.repo.addObservation(this.tenancy.getClient(), {
       dprId,
-      category: dto.category as any,
+      category: dto.category,
       description: dto.description,
       affectedWork: dto.affectedWork ?? null,
       severity: dto.severity ?? null,

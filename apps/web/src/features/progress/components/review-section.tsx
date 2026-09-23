@@ -161,7 +161,7 @@ function DprQueueRow({
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-3">
       <div className="flex items-center gap-3 min-w-0">
-        <DprStatusBadge status={dpr.status as any} />
+        <DprStatusBadge status={dpr.status} />
         <div className="min-w-0">
           <p className="text-body-sm font-medium text-foreground truncate">
             {formatDate(dpr.reportDate, locale as 'en')}
