@@ -3,23 +3,9 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
-import {
-  Alert,
-  Badge,
-  Button,
-  Input,
-  Label,
-  Select,
-  Table,
-  TableBody,
-  TableCell,
-  TableEmpty,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-} from '@erp/ui';
+import { Badge, Button, FilterBar, FilterField, Input, Select } from '@erp/ui';
 
+import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { useClients } from '@/features/clients/hooks/use-clients';
 import { formatDate, formatMoney } from '@/lib/format';
 
@@ -28,7 +14,6 @@ import type { Receipt } from '../types';
 
 export function ReceiptsList() {
   const t = useTranslations('platform.receipts');
-  const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
 
   const [clientId, setClientId] = useState('');
@@ -37,7 +22,7 @@ export function ReceiptsList() {
   // The client filter is applied SERVER-side — `clientId` is the one parameter
   // `GET /receipts` accepts — while the reference search is client-side, since the
   // endpoint offers no text search.
-  const { data, isPending, isError, refetch, isFetching } = useReceipts(clientId || undefined);
+  const { data, isPending, isError, refetch } = useReceipts(clientId || undefined);
   const clients = useClients();
 
   const clientNames = useMemo(
@@ -51,175 +36,46 @@ export function ReceiptsList() {
     return (data ?? []).filter((r) => r.reference?.toLowerCase().includes(needle));
   }, [data, search]);
 
-  if (isPending) {
-    return (
-      <div role="status" aria-live="polite">
-        <span className="sr-only">{tCommon('loading')}</span>
-        <div
-          className="h-64 animate-pulse rounded-lg border border-border bg-muted"
-          aria-hidden="true"
-        />
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <Alert variant="error" messages={[t('loadFailed')]}>
-        <div className="mt-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              void refetch();
-            }}
-            disabled={isFetching}
-          >
-            {t('retry')}
-          </Button>
-        </div>
-      </Alert>
-    );
-  }
-
-  if (data.length === 0 && !clientId) {
-    return (
-      <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
-        <p className="text-sm font-medium text-foreground">{t('empty')}</p>
-        <p className="mt-1 text-sm text-muted-foreground">{t('emptyHint')}</p>
-        <div className="mt-4">
-          <Button asChild>
-            <Link href="/receipts/new">{t('newReceipt')}</Link>
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  const hasFilters = search.trim() !== '' || clientId !== '';
-
-  return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-        <div>
-          <Label htmlFor="receipt-search" className="sr-only">
-            {t('searchLabel')}
-          </Label>
-          <Input
-            id="receipt-search"
-            type="search"
-            placeholder={t('searchPlaceholder')}
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-            }}
-          />
-        </div>
-
-        <div>
-          <Label htmlFor="receipt-client" className="sr-only">
-            {t('filterByClient')}
-          </Label>
-          <Select
-            id="receipt-client"
-            value={clientId}
-            onChange={(value) => {
-              setClientId(value);
-            }}
-          >
-            <option value="">{t('allClients')}</option>
-            {(clients.data ?? []).map((client) => (
-              <option key={client.id} value={client.id}>
-                {client.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </div>
-
-      <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
-        {t('countLabel', { count: visible.length })}
-      </p>
-
-      <TableScroll aria-label={t('title')}>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('columns.date')}</TableHead>
-              <TableHead>{t('columns.reference')}</TableHead>
-              <TableHead>{t('columns.client')}</TableHead>
-              <TableHead>{t('columns.status')}</TableHead>
-              <TableHead numeric>{t('columns.amount')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {visible.length === 0 ? (
-              <TableEmpty colSpan={5}>
-                <p>{t('noMatches')}</p>
-                {hasFilters ? (
-                  <div className="mt-4">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSearch('');
-                        setClientId('');
-                      }}
-                    >
-                      {t('clearFilters')}
-                    </Button>
-                  </div>
-                ) : null}
-              </TableEmpty>
-            ) : (
-              visible.map((receipt) => (
-                <ReceiptRow
-                  key={receipt.id}
-                  receipt={receipt}
-                  clientName={clientNames.get(receipt.clientId)}
-                  locale={locale}
-                />
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableScroll>
-    </div>
-  );
-}
-
-function ReceiptRow({
-  receipt,
-  clientName,
-  locale,
-}: {
-  receipt: Receipt;
-  clientName: string | undefined;
-  locale: 'en' | 'ar';
-}) {
-  const t = useTranslations('platform.receipts');
-
-  return (
-    <TableRow>
-      <TableCell className="whitespace-nowrap">
-        {/* The link sits on the date because a receipt has no name — the date and
-            reference together are how finance staff identify one. */}
-        <Link
-          href={`/receipts/${receipt.id}`}
-          className="-my-3 flex min-h-11 items-center font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
-        >
-          {formatDate(receipt.receiptDate, locale)}
-        </Link>
-      </TableCell>
-      <TableCell className="whitespace-nowrap font-mono text-xs">
-        {receipt.reference ?? <span className="text-muted-foreground">{t('noReference')}</span>}
-      </TableCell>
-      <TableCell>
-        {/* `GET /receipts` returns `clientId` with no expansion, so the name is joined from
-            the clients list. Falls back to nothing rather than showing a cuid. */}
-        {clientName ?? <span className="text-muted-foreground">{t('notSet')}</span>}
-      </TableCell>
-      <TableCell>
+  const columns: GridColumn<Receipt>[] = [
+    {
+      key: 'date',
+      header: t('columns.date'),
+      sticky: true,
+      sortable: true,
+      plainValue: (receipt) => receipt.receiptDate,
+      render: (receipt, ctx) => (
+        <span className="font-medium text-foreground">
+          {formatDate(receipt.receiptDate, ctx.locale)}
+        </span>
+      ),
+    },
+    {
+      key: 'reference',
+      header: t('columns.reference'),
+      sortable: true,
+      plainValue: (receipt) => receipt.reference ?? '',
+      render: (receipt) => (
+        <span className="font-mono text-caption">
+          {receipt.reference ?? <span className="text-muted-foreground">{t('noReference')}</span>}
+        </span>
+      ),
+    },
+    {
+      key: 'client',
+      header: t('columns.client'),
+      sortable: true,
+      // `GET /receipts` returns `clientId` with no expansion, so the name is joined from
+      // the clients list. Falls back to nothing rather than showing a cuid.
+      plainValue: (receipt) => clientNames.get(receipt.clientId) ?? '',
+      render: (receipt) =>
+        clientNames.get(receipt.clientId) ?? (
+          <span className="text-muted-foreground">{t('notSet')}</span>
+        ),
+    },
+    {
+      key: 'status',
+      header: t('columns.status'),
+      render: (receipt) => (
         <Badge
           tone={
             receipt.postingStatus === 'POSTED'
@@ -231,10 +87,83 @@ function ReceiptRow({
         >
           {t(`status.${receipt.postingStatus === 'POSTED' ? 'posted' : receipt.postingStatus === 'REVERSED' ? 'reversed' : 'notPosted'}`)}
         </Badge>
-      </TableCell>
-      <TableCell numeric className="whitespace-nowrap font-medium">
-        <bdi>{formatMoney(receipt.totalAmount, receipt.currencyCode, locale)}</bdi>
-      </TableCell>
-    </TableRow>
+      ),
+    },
+    {
+      key: 'amount',
+      header: t('columns.amount'),
+      numeric: true,
+      sortable: true,
+      plainValue: (receipt) => Number(receipt.totalAmount),
+      render: (receipt) => <bdi>{formatMoney(receipt.totalAmount, receipt.currencyCode, locale)}</bdi>,
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <PlatformDataGrid
+        columns={columns}
+        data={visible}
+        rowKey={(receipt) => receipt.id}
+        label={t('title')}
+        isLoading={isPending}
+        isError={isError}
+        errorMessage={t('loadFailed')}
+        onRetry={() => void refetch()}
+        rowHref={(receipt) => `/receipts/${receipt.id}`}
+        emptyState={
+          (data?.length ?? 0) === 0 && !clientId ? (
+            <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
+              <p className="text-sm font-medium text-foreground">{t('empty')}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{t('emptyHint')}</p>
+              <div className="mt-4">
+                <Button asChild>
+                  <Link href="/receipts/new">{t('newReceipt')}</Link>
+                </Button>
+              </div>
+            </div>
+          ) : undefined
+        }
+        noMatchMessage={t('noMatches')}
+        resultLabel={(count) => t('countLabel', { count })}
+        pagination={{ defaultPageSize: 25 }}
+        toolbarFilters={
+          <FilterBar>
+            <FilterField id="receipt-search" label={t('searchLabel')} hideLabel grow>
+              <Input
+                id="receipt-search"
+                type="search"
+                placeholder={t('searchPlaceholder')}
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                }}
+              />
+            </FilterField>
+
+            <FilterField id="receipt-client" label={t('filterByClient')}>
+              <Select
+                id="receipt-client"
+                value={clientId}
+                onChange={(value) => {
+                  setClientId(value);
+                }}
+              >
+                <option value="">{t('allClients')}</option>
+                {(clients.data ?? []).map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.name}
+                  </option>
+                ))}
+              </Select>
+            </FilterField>
+          </FilterBar>
+        }
+        onClearFilters={() => {
+          setSearch('');
+          setClientId('');
+        }}
+      />
+    </div>
   );
 }

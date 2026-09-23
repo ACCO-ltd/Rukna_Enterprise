@@ -161,7 +161,7 @@ function MilestoneItem({
             <button
               type="button"
               onClick={() => onMilestoneClick(milestone)}
-              className="flex items-center gap-1 text-body font-semibold text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex items-center gap-1 text-body font-semibold text-foreground hover:underline focus-visible:outline-none focus-visible:shadow-ring"
               aria-label={milestone.name}
             >
               {milestone.name}
@@ -444,7 +444,7 @@ function MoneyBlock({
             {vo.amount ? (
               <span
                 className={`shrink-0 text-caption font-medium tabular-nums ${
-                  vo.isOmission ? 'text-destructive' : 'text-success'
+                  vo.isOmission ? 'text-danger' : 'text-success'
                 }`}
               >
                 {vo.isOmission ? '' : '+'}

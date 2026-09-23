@@ -1,25 +1,11 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import Link from 'next/link';
-import { useLocale, useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import { ContractStatus } from '@erp/types';
-import {
-  Alert,
-  Button,
-  Input,
-  Label,
-  Select,
-  Table,
-  TableBody,
-  TableCell,
-  TableEmpty,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-} from '@erp/ui';
+import { FilterBar, FilterField, Input, Select } from '@erp/ui';
 
+import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { formatDate, formatMoney } from '@/lib/format';
 
 import { filterContracts } from '../filter-contracts';
@@ -34,9 +20,7 @@ interface ContractsListProps {
 
 export function ContractsList({ projectId }: ContractsListProps = {}) {
   const t = useTranslations('platform.contracts');
-  const tCommon = useTranslations('common');
-  const locale = useLocale() as 'en' | 'ar';
-  const { data, isPending, isError, refetch, isFetching } = useContracts(projectId);
+  const { data, isPending, isError, refetch } = useContracts(projectId);
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<ContractStatus | 'ALL'>('ALL');
@@ -46,166 +30,105 @@ export function ContractsList({ projectId }: ContractsListProps = {}) {
     [data, search, status],
   );
 
-  if (isPending) {
-    return (
-      <div role="status" aria-live="polite">
-        <span className="sr-only">{tCommon('loading')}</span>
-        <div
-          className="h-64 animate-pulse rounded-lg border border-border bg-muted"
-          aria-hidden="true"
-        />
-      </div>
-    );
-  }
+  const unset = <span className="text-muted-foreground">{t('notSet')}</span>;
 
-  if (isError) {
-    return (
-      <Alert variant="error" messages={[t('loadFailed')]}>
-        <div className="mt-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              void refetch();
-            }}
-            disabled={isFetching}
-          >
-            {t('retry')}
-          </Button>
-        </div>
-      </Alert>
-    );
-  }
-
-  if (data.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center">
-        <p className="text-sm font-medium text-foreground">{t('empty')}</p>
-        <p className="mt-1 text-sm text-muted-foreground">{t('emptyHint')}</p>
-      </div>
-    );
-  }
-
-  const hasFilters = search.trim() !== '' || status !== 'ALL';
+  const columns: GridColumn<Contract>[] = [
+    {
+      key: 'number',
+      header: t('columns.number'),
+      sticky: true,
+      sortable: true,
+      plainValue: (contract) => contract.contractNumber,
+      render: (contract) => (
+        <span className="font-mono text-caption font-semibold">{contract.contractNumber}</span>
+      ),
+    },
+    {
+      key: 'value',
+      header: t('columns.value'),
+      numeric: true,
+      sortable: true,
+      plainValue: (contract) => Number(contract.contractValue),
+      render: (contract, ctx) =>
+        formatMoney(contract.contractValue, contract.currency, ctx.locale) ?? unset,
+    },
+    {
+      key: 'billing',
+      header: t('columns.billing'),
+      sortable: true,
+      plainValue: (contract) => contract.billingModel,
+      render: (contract) => t(`billingModel.${contract.billingModel}`),
+    },
+    {
+      key: 'dates',
+      header: t('columns.dates'),
+      sortable: true,
+      plainValue: (contract) => contract.startDate ?? '',
+      render: (contract, ctx) => formatDate(contract.startDate, ctx.locale) ?? unset,
+    },
+    {
+      key: 'status',
+      header: t('columns.status'),
+      render: (contract) => <ContractStatusBadge status={contract.status} />,
+    },
+  ];
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 rounded-lg border border-border bg-surface p-4 shadow-sm sm:grid-cols-[1fr_15rem]">
-        <div>
-          <Label htmlFor="contract-search" className="sr-only">
-            {t('searchLabel')}
-          </Label>
-          <Input
-            id="contract-search"
-            type="search"
-            placeholder={t('searchPlaceholder')}
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-            }}
-          />
-        </div>
+      <PlatformDataGrid
+        columns={columns}
+        data={visible}
+        rowKey={(contract) => contract.id}
+        label={t('title')}
+        isLoading={isPending}
+        isError={isError}
+        errorMessage={t('loadFailed')}
+        onRetry={() => void refetch()}
+        rowHref={(contract) => `/projects/${contract.projectId}/commercial/contract-security`}
+        emptyState={
+          (data?.length ?? 0) === 0 ? (
+            <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
+              <p className="text-sm font-medium text-foreground">{t('empty')}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{t('emptyHint')}</p>
+            </div>
+          ) : undefined
+        }
+        noMatchMessage={t('noMatches')}
+        resultLabel={(count) => t('countLabel', { count })}
+        pagination={{ defaultPageSize: 25 }}
+        toolbarFilters={
+          <FilterBar>
+            <FilterField id="contract-search" label={t('searchLabel')} hideLabel grow>
+              <Input
+                id="contract-search"
+                type="search"
+                placeholder={t('searchPlaceholder')}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </FilterField>
 
-        <div>
-          <Label htmlFor="contract-status" className="sr-only">
-            {t('filterByStatus')}
-          </Label>
-          <Select
-            id="contract-status"
-            value={status}
-            onChange={(value) => {
-              setStatus(value as ContractStatus | 'ALL');
-            }}
-          >
-            <option value="ALL">{t('allStatuses')}</option>
-            {CONTRACT_STATUS_ORDER.map((value) => (
-              <option key={value} value={value}>
-                {t(`status.${value}`)}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </div>
-
-      <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
-        {t('countLabel', { count: visible.length })}
-      </p>
-
-      <TableScroll aria-label={t('title')} className="rounded-lg border-border shadow-sm">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('columns.number')}</TableHead>
-              <TableHead numeric>{t('columns.value')}</TableHead>
-              <TableHead>{t('columns.billing')}</TableHead>
-              <TableHead>{t('columns.dates')}</TableHead>
-              <TableHead>{t('columns.status')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {visible.length === 0 ? (
-              <TableEmpty colSpan={5}>
-                <p>{t('noMatches')}</p>
-                {hasFilters ? (
-                  <div className="mt-4">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSearch('');
-                        setStatus('ALL');
-                      }}
-                    >
-                      {t('clearFilters')}
-                    </Button>
-                  </div>
-                ) : null}
-              </TableEmpty>
-            ) : (
-              visible.map((contract) => (
-                <ContractRow key={contract.id} contract={contract} locale={locale} />
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableScroll>
+            <FilterField id="contract-status" label={t('filterByStatus')} hideLabel>
+              <Select
+                id="contract-status"
+                value={status}
+                onChange={(value) => setStatus(value as ContractStatus | 'ALL')}
+              >
+                <option value="ALL">{t('allStatuses')}</option>
+                {CONTRACT_STATUS_ORDER.map((value) => (
+                  <option key={value} value={value}>
+                    {t(`status.${value}`)}
+                  </option>
+                ))}
+              </Select>
+            </FilterField>
+          </FilterBar>
+        }
+        onClearFilters={() => {
+          setSearch('');
+          setStatus('ALL');
+        }}
+      />
     </div>
-  );
-}
-
-function ContractRow({ contract, locale }: { contract: Contract; locale: 'en' | 'ar' }) {
-  const t = useTranslations('platform.contracts');
-
-  const value = formatMoney(contract.contractValue, contract.currency, locale);
-  const start = formatDate(contract.startDate, locale);
-  const unset = <span className="text-muted-foreground">{t('notSet')}</span>;
-
-  return (
-    <TableRow className="group hover:bg-brand-active-subtle/60">
-      <TableCell className="whitespace-nowrap">
-        {/* The link sits on the number, not the row: a clickable <tr> is unreachable by
-            keyboard and breaks the table semantics screen readers rely on.
-
-            Points into the project workspace, not the retired standalone detail page: every
-            contract carries a non-null projectId, and the Contract aggregate now lives under
-            the project's Commercial workspace (P3 Q-C). */}
-        <Link
-          href={`/projects/${contract.projectId}/commercial/contract-security`}
-          className="-my-3 flex min-h-11 items-center font-mono text-xs font-semibold text-brand-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
-        >
-          {contract.contractNumber}
-        </Link>
-      </TableCell>
-      <TableCell numeric className="whitespace-nowrap font-medium">
-        {value ?? unset}
-      </TableCell>
-      <TableCell className="whitespace-nowrap">
-        {t(`billingModel.${contract.billingModel}`)}
-      </TableCell>
-      <TableCell className="whitespace-nowrap">{start ?? unset}</TableCell>
-      <TableCell>
-        <ContractStatusBadge status={contract.status} />
-      </TableCell>
-    </TableRow>
   );
 }

@@ -2,22 +2,9 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import {
-  Alert,
-  Badge,
-  Button,
-  DatePicker,
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  FormField,
-  Input,
-  SectionHeader,
-  Skeleton,
-} from '@erp/ui';
+import { Alert, Badge, Button, CheckboxField, DatePicker, Dialog, DialogContent, DialogTitle, EmptyState, FormField, Input, SectionHeader, Skeleton } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
-import { EmptyState } from '@/components/empty-state';
 import { useProject } from '@/features/projects/hooks/use-project';
 import { useWorkPackages } from '@/features/progress/hooks/use-progress';
 
@@ -366,15 +353,13 @@ function ActivityDialog({
               />
             </FormField>
           </div>
-          <label className="mt-3 flex items-center gap-2 text-sm text-foreground">
-            <input
-              type="checkbox"
-              checked={isMilestone}
-              onChange={(e) => setIsMilestone(e.target.checked)}
-              className="h-4 w-4"
-            />
-            {t('activity.form.milestone')}
-          </label>
+          <CheckboxField
+            id="act-milestone"
+            className="mt-3"
+            label={t('activity.form.milestone')}
+            checked={isMilestone}
+            onChange={(e) => setIsMilestone(e.target.checked)}
+          />
           <div className="mt-4 flex items-center justify-between gap-2">
             <Button type="submit" disabled={busy}>
               {t('activity.save')}

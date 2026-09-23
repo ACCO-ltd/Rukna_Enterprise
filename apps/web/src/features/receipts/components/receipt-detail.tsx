@@ -30,7 +30,7 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
       <div role="status" aria-live="polite">
         <span className="sr-only">{tCommon('loading')}</span>
         <div
-          className="h-64 animate-pulse rounded-lg border border-border bg-muted"
+          className="h-64 animate-pulse rounded-panel border border-border bg-muted"
           aria-hidden="true"
         />
       </div>
@@ -56,7 +56,7 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
       <ReceiptHeader receipt={receipt} locale={locale} />
 
       {notPosted ? (
-        <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-surface p-4 sm:p-6">
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-panel border border-border bg-surface p-4 shadow-e2 sm:p-6">
           <div>
             <h2 className="text-sm font-semibold text-foreground">{tPost('title')}</h2>
             <p className="mt-1 text-sm text-muted-foreground">{tPost('intro')}</p>
@@ -68,7 +68,7 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
       )}
 
       {receipt.notes ? (
-        <section className="rounded-lg border border-border bg-surface p-4 sm:p-6">
+        <section className="rounded-panel border border-border bg-surface p-4 shadow-e2 sm:p-6">
           <h2 className="text-sm font-semibold text-foreground">{t('notes')}</h2>
           <p className="mt-2 text-sm text-muted-foreground">{receipt.notes}</p>
         </section>
@@ -138,7 +138,7 @@ function ReceiptHeader({
         </div>
       </div>
 
-      <dl className="mt-6 grid gap-4 rounded-lg border border-border bg-surface p-4 sm:grid-cols-4 sm:p-6">
+      <dl className="mt-6 grid gap-4 rounded-panel border border-border bg-surface p-4 shadow-e2 sm:grid-cols-4 sm:p-6">
         <Figure label={t('received')} value={formatDate(receipt.receiptDate, locale) ?? ''} />
         <Figure
           label={t('amount')}

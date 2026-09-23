@@ -9,6 +9,7 @@ import {
   Alert,
   Badge,
   Button,
+  CheckboxField,
   Dialog,
   DialogContent,
   DialogFooter,
@@ -244,22 +245,15 @@ function AddContactDialog({ clientId, hasPrimary, onClose }: AddContactDialogPro
             <Input id="contact-phone" type="tel" dir="ltr" {...register('phone')} />
           </FormField>
 
-          <div className="space-y-1.5">
-            <label className="flex items-center gap-2 text-sm text-foreground">
-              <input
-                type="checkbox"
-                className="size-4 rounded border-border text-brand-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
-                {...register('isPrimary')}
-              />
-              {t('isPrimary')}
-            </label>
-            {/* The API demotes the existing primary in the same request. That is a change
-                to a record the user did not name, so it is stated before they submit
-                rather than discovered afterwards. */}
-            {willDemote ? (
-              <p className="text-xs text-warning">{t('isPrimaryHint')}</p>
-            ) : null}
-          </div>
+          {/* The API demotes the existing primary in the same request. That is a change to a
+              record the user did not name, so it is stated before they submit rather than
+              discovered afterwards. */}
+          <CheckboxField
+            id="contact-is-primary"
+            label={t('isPrimary')}
+            description={willDemote ? <span className="text-warning">{t('isPrimaryHint')}</span> : undefined}
+            {...register('isPrimary')}
+          />
 
           <DialogFooter>
             <Button type="submit" disabled={add.isPending}>

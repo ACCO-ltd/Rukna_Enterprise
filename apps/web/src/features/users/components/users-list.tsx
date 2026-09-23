@@ -5,12 +5,17 @@ import { useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
+  Checkbox,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  FilterBar,
+  FilterField,
+  Input,
   OverflowGlyph,
   RowActions,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -29,7 +34,6 @@ import { useSession } from '@/features/auth/session/use-session';
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { ApiError } from '@/lib/api-client';
 import { AdminPanel } from '@/features/admin/components/admin-panel';
-import { FilterSelect, TableToolbar } from '@/features/admin/components/table-toolbar';
 
 import {
   useBulkUserStatus,
@@ -58,6 +62,7 @@ export function UsersList() {
   const canManage = can(PERMISSIONS.usersManage);
   const currentUserId = useSession().user?.id ?? null;
   const searchId = useId();
+  const statusFilterId = useId();
 
   const { data, isPending, isError, refetch, isFetching } = useUsers();
 
@@ -236,24 +241,29 @@ export function UsersList() {
           </div>
         ) : (
           <>
-            <TableToolbar
-              searchId={searchId}
-              searchValue={query}
-              onSearchChange={setQuery}
-              searchLabel={t('searchLabel')}
-              searchPlaceholder={t('searchPlaceholder')}
-            >
-              <FilterSelect
-                label={t('filterStatus')}
-                value={statusFilter}
-                onChange={(next) => setStatusFilter(next as UserStatusFilter)}
-                options={[
-                  { value: 'ALL', label: t('filterAll') },
-                  { value: UserStatus.ACTIVE, label: t('status.ACTIVE') },
-                  { value: UserStatus.INACTIVE, label: t('status.INACTIVE') },
-                ]}
-              />
-            </TableToolbar>
+            <FilterBar>
+              <FilterField id={searchId} label={t('searchLabel')} hideLabel grow>
+                <Input
+                  id={searchId}
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={t('searchPlaceholder')}
+                  autoComplete="off"
+                />
+              </FilterField>
+              <FilterField id={statusFilterId} label={t('filterStatus')}>
+                <Select
+                  id={statusFilterId}
+                  value={statusFilter}
+                  onChange={(next) => setStatusFilter(next as UserStatusFilter)}
+                >
+                  <option value="ALL">{t('filterAll')}</option>
+                  <option value={UserStatus.ACTIVE}>{t('status.ACTIVE')}</option>
+                  <option value={UserStatus.INACTIVE}>{t('status.INACTIVE')}</option>
+                </Select>
+              </FilterField>
+            </FilterBar>
 
             {canManage && selectedCount > 0 ? (
               <div className="flex flex-wrap items-center gap-3 rounded-panel border border-brand-primary/20 bg-brand-accent/50 px-4 py-2.5">
@@ -295,15 +305,11 @@ export function UsersList() {
                   <TableRow>
                     {canManage ? (
                       <TableHead className="w-10">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           aria-label={t('select.allLabel')}
                           checked={allSelected}
-                          ref={(el) => {
-                            if (el) el.indeterminate = someSelected;
-                          }}
+                          indeterminate={someSelected}
                           onChange={toggleAll}
-                          className="h-4 w-4 rounded border-border-strong text-brand-primary focus-visible:shadow-ring"
                         />
                       </TableHead>
                     ) : null}
@@ -328,14 +334,12 @@ export function UsersList() {
                         <TableRow key={user.id} className={checked ? 'bg-brand-accent/30' : undefined}>
                           {canManage ? (
                             <TableCell>
-                              <input
-                                type="checkbox"
+                              <Checkbox
                                 aria-label={t('select.rowLabel', {
                                   name: `${user.firstName} ${user.lastName}`,
                                 })}
                                 checked={checked}
                                 onChange={() => toggleRow(user.id)}
-                                className="h-4 w-4 rounded border-border-strong text-brand-primary focus-visible:shadow-ring"
                               />
                             </TableCell>
                           ) : null}

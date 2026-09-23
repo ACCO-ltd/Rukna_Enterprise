@@ -11,7 +11,10 @@ import {
   DialogDescription,
   DialogFooter,
   DialogTitle,
+  FormField,
+  Input,
   RadioGroup,
+  Textarea,
 } from '@erp/ui';
 import { CheckCircle2 } from 'lucide-react';
 
@@ -239,39 +242,28 @@ export function SendInvoiceDialog({
           />
 
           {/* Recipient */}
-          <div className="space-y-1">
-            <label
-              htmlFor="si-recipient"
-              className="text-body-sm font-medium text-foreground"
-            >
-              {t('recipient')}
-            </label>
-            <input
+          <FormField htmlFor="si-recipient" label={t('recipient')}>
+            <Input
               id="si-recipient"
               type="text"
               value={recipient}
-            onChange={(e) => setRecipient(e.target.value)}
+              onChange={(e) => setRecipient(e.target.value)}
               placeholder={deliveryMethod === 'whatsapp' ? t('whatsappRecipientPlaceholder') : t('recipientPlaceholder')}
               disabled={isPending}
-              className="block w-full rounded-md border border-input bg-background px-3 py-2 text-body-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
             />
-          </div>
+          </FormField>
 
           {/* Note */}
-          <div className="space-y-1">
-            <label htmlFor="si-note" className="text-body-sm font-medium text-foreground">
-              {t('note')}
-            </label>
-            <textarea
+          <FormField htmlFor="si-note" label={t('note')}>
+            <Textarea
               id="si-note"
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder={t('notePlaceholder')}
               rows={2}
               disabled={isPending}
-              className="block w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-body-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
             />
-          </div>
+          </FormField>
         </div>
 
         <DialogFooter>

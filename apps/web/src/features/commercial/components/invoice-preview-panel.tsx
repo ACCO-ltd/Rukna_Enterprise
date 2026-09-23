@@ -176,7 +176,7 @@ export function InvoicePreviewPanel({
                   </span>
                   <span
                     className={`shrink-0 text-body-sm tabular-nums ${
-                      vo.isOmission ? 'text-destructive' : 'text-success'
+                      vo.isOmission ? 'text-danger' : 'text-success'
                     }`}
                   >
                     {fmt(voAmt.toFixed(2))}

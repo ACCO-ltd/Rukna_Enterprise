@@ -159,15 +159,15 @@ function resolveEntryMeta(
       };
     case 'SENT':
       return {
-        icon: <Send size={13} className="text-primary" />,
+        icon: <Send size={13} className="text-brand-primary" />,
         label: t('sent'),
-        tone: { bg: 'bg-surface', ring: 'border-primary/30' },
+        tone: { bg: 'bg-surface', ring: 'border-brand-primary/30' },
       };
     case 'FOLLOW_UP':
       return {
-        icon: <MessageSquare size={13} className="text-primary" />,
+        icon: <MessageSquare size={13} className="text-brand-primary" />,
         label: t('followUp', { method: '' }).replace(' — ', ''),
-        tone: { bg: 'bg-primary/5', ring: 'border-primary/20' },
+        tone: { bg: 'bg-brand-primary/5', ring: 'border-brand-primary/20' },
       };
     case 'PROMISE':
       return {
