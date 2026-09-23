@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
-import { DirectionProvider } from '@erp/ui';
+import { DirectionProvider, TooltipProvider } from '@erp/ui';
 import './globals.css';
 
 import { QueryProvider } from '@/providers/query-provider';
@@ -56,7 +56,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {/* Above QueryProvider: a mutation is what raises a toast, so the provider it
                 calls has to already be mounted around it. */}
             <ToastProvider>
-              <QueryProvider>{children}</QueryProvider>
+              <TooltipProvider delayDuration={300}>
+                <QueryProvider>{children}</QueryProvider>
+              </TooltipProvider>
             </ToastProvider>
           </DirectionProvider>
         </NextIntlClientProvider>

@@ -4,20 +4,8 @@ import type { CommercialApplicationRow, CommercialSummaryResponse } from '@erp/t
 import Link from 'next/link';
 import { FilePlus2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import {
-  Alert,
-  Button,
-  Skeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-} from '@erp/ui';
+import { Alert, Button, EmptyState, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll } from '@erp/ui';
 
-import { EmptyState } from '@/components/empty-state';
 import { formatDate, formatMoney } from '@/lib/format';
 import { useCommercialApplications } from '../hooks/use-commercial';
 import { errorText } from './commercial-workspace';

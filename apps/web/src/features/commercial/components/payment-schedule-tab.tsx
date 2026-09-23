@@ -10,9 +10,8 @@ import type {
   CommercialPaymentScheduleInstallment,
   CommercialSummaryResponse,
 } from '@erp/types';
-import { Alert, Button, FormSection, Skeleton, cn } from '@erp/ui';
+import { Alert, Button, cn, EmptyState, FormSection, Skeleton } from '@erp/ui';
 
-import { EmptyState } from '@/components/empty-state';
 import { usePermissions } from '@/features/auth/permissions/can';
 import {
   buildPaymentPlan,

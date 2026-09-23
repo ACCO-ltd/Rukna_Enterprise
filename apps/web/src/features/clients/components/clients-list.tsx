@@ -4,20 +4,9 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { ClientStatus } from '@erp/types';
-import {
-  Button,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  Label,
-  OverflowGlyph,
-  RowActions,
-  Select,
-} from '@erp/ui';
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, EmptyState, Label, OverflowGlyph, RowActions, Select, Tooltip, TooltipContent, TooltipTrigger } from '@erp/ui';
 import { FunnelSimple } from '@phosphor-icons/react';
 
-import { EmptyState } from '@/components/empty-state';
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { RecordTile } from '@/components/record-tile';
 import { formatMoney } from '@/lib/format';
@@ -94,9 +83,12 @@ function buildColumns(
       plainValue: (client) => client.outstandingBalance,
       render: (client) =>
         client.outstandingBalance === null ? (
-          <span className="text-muted-foreground" title={t('balanceRestricted')}>
-            {t('restricted')}
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-muted-foreground">{t('restricted')}</span>
+            </TooltipTrigger>
+            <TooltipContent>{t('balanceRestricted')}</TooltipContent>
+          </Tooltip>
         ) : (
           <span className="font-medium tabular-nums text-foreground">
             {formatMoney(client.outstandingBalance, 'USD')}

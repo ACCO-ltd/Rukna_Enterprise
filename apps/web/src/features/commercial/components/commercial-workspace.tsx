@@ -2,10 +2,9 @@
 
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Alert, Button, Skeleton } from '@erp/ui';
+import { Alert, Button, EmptyState, Skeleton } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
-import { EmptyState } from '@/components/empty-state';
 
 import { useCommercialSummary } from '../hooks/use-commercial';
 import {

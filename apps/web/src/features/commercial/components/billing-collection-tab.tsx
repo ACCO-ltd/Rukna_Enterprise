@@ -10,27 +10,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import {
-  Alert,
-  Badge,
-  Button,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  LtrValue,
-  Skeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-  cn,
-} from '@erp/ui';
+import { Alert, Badge, Button, cn, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, LtrValue, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll } from '@erp/ui';
 import type {
   CommercialBillingPosition,
   CommercialBillingResponse,
@@ -39,7 +19,6 @@ import type {
   CommercialSummaryResponse,
 } from '@erp/types';
 
-import { EmptyState } from '@/components/empty-state';
 import { useOpenInvoiceDocument } from '@/features/accounting/hooks/use-invoices';
 import { formatDate, formatMoney } from '@/lib/format';
 

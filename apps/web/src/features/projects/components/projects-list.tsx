@@ -4,20 +4,9 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { ProjectCategory, ProjectStatus } from '@erp/types';
-import {
-  Button,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  Label,
-  OverflowGlyph,
-  RowActions,
-  Select,
-} from '@erp/ui';
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, EmptyState, Label, OverflowGlyph, RowActions, Select } from '@erp/ui';
 import { CalendarDays, Filter, Plus } from 'lucide-react';
 
-import { EmptyState } from '@/components/empty-state';
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { RecordTile } from '@/components/record-tile';
 import { formatDate, formatMoney } from '@/lib/format';

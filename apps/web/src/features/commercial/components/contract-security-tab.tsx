@@ -5,31 +5,9 @@ import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { Info, Lock, ShieldCheck } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import {
-  Alert,
-  Badge,
-  Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-  Label,
-  LtrValue,
-  Skeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-  Textarea,
-  cn,
-} from '@erp/ui';
+import { Alert, Badge, Button, cn, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, EmptyState, Label, LtrValue, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll, Textarea } from '@erp/ui';
 import type { CommercialGuaranteeSummary, CommercialSummaryResponse } from '@erp/types';
 
-import { EmptyState } from '@/components/empty-state';
 import { formatDate, formatMoney } from '@/lib/format';
 import {
   useAdvanceContract,

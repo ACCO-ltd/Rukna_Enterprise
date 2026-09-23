@@ -4,10 +4,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { BellOff } from 'lucide-react';
-import { Alert, Button, SkeletonTable } from '@erp/ui';
+import { Alert, Button, EmptyState, SkeletonTable } from '@erp/ui';
 import type { NotificationItem } from '@erp/types';
-
-import { EmptyState } from '@/components/empty-state';
 
 import { useMarkAllRead, useMarkRead, useNotifications } from '../hooks/use-notifications';
 import { NotificationRow } from './notification-row';

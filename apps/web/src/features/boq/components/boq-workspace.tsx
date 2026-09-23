@@ -4,23 +4,12 @@ import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, ClipboardList, FileSpreadsheet, GitCompare, History, Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import {
-  Alert,
-  Button,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  Skeleton,
-  useToast,
-} from '@erp/ui';
+import { Alert, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Skeleton, useToast } from '@erp/ui';
 
 import type { BoqTreeNodeResponse } from '@erp/types';
 
 import { ApiError } from '@/lib/api-client';
 import { fromMinorUnits, sumMinorUnits, MONEY_SCALE } from '@/lib/money';
-import { EmptyState } from '@/components/empty-state';
 import { LifecycleCommandDrawer } from '@/components/lifecycle-command-drawer';
 import { useProjectGuidance } from '@/features/projects/hooks/use-project';
 import { usePermissions } from '@/features/auth/permissions/can';

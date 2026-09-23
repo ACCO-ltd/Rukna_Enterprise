@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { CaretDown, Desktop, Moon, Sun } from '@phosphor-icons/react';
 import {
+  Avatar,
   cn,
   DropdownMenu,
   DropdownMenuContent,
@@ -18,23 +19,6 @@ import { useSession } from '@/features/auth/session/use-session';
 import { setThemePreference, useThemePreference } from '@/features/theme/theme-store';
 import type { ThemePreference } from '@/features/theme/theme-preference';
 
-/** Initials from a display name. "System Admin" → "SA". */
-function nameToInitials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
-}
-
-/** Derives display initials from an email address. "abdulsalam@acco.com" → "AA". */
-function emailToInitials(email: string): string {
-  const local = email.split('@')[0] ?? '';
-  const parts = local.replace(/[._-]+/g, ' ').trim().split(/\s+/);
-  if (parts.length >= 2) {
-    return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase();
-  }
-  return local.slice(0, 2).toUpperCase();
-}
-
 /**
  * Avatar button that opens a dropdown containing the user email, theme control, and sign out.
  * Sign-out clears the in-memory access token and redirects to /login.
@@ -49,7 +33,10 @@ export function UserMenu() {
   // the email — "a.hassan@acco.com" is not "A Hassan", and guessing someone's name is worse
   // than showing the address they signed in with.
   const displayName = user?.name ?? user?.email ?? null;
-  const initials = user ? (user.name ? nameToInitials(user.name) : emailToInitials(user.email)) : '??';
+  // `Avatar` derives initials from a space-separated name (`initialsFromName`); with no real
+  // name on file, feed it the email's local part with separators turned to spaces, so
+  // "a.hassan@acco.com" still yields "AH" rather than treating "a." as one literal word.
+  const avatarName = user?.name ?? user?.email?.split('@')[0]?.replace(/[._-]+/g, ' ');
 
   return (
     <DropdownMenu>
@@ -63,15 +50,7 @@ export function UserMenu() {
             'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
           )}
         >
-          <span
-            className={cn(
-              'flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
-              'bg-brand-primary text-caption font-semibold text-brand-on-primary shadow-[var(--shadow-control)] ring-2 ring-surface',
-            )}
-            aria-hidden="true"
-          >
-            {initials}
-          </span>
+          <Avatar name={avatarName} />
 
           {/* Identity in the bar, not only behind a click. An avatar alone asks "whose session
               is this?" of anyone sharing a machine or holding two tenants open. Hidden below

@@ -1,9 +1,19 @@
 'use client';
 
 import type { BoqTimelineEntry, BoqTimelineResponse } from '@erp/types';
-import { CheckCircle2, GitPullRequestArrow, PencilLine, X } from 'lucide-react';
+import { CheckCircle2, GitPullRequestArrow, PencilLine } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, LtrValue, Skeleton, cn } from '@erp/ui';
+import {
+  Alert,
+  LtrValue,
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  Skeleton,
+  cn,
+} from '@erp/ui';
 
 import { formatDate, formatMoney } from '@/lib/format';
 
@@ -13,6 +23,13 @@ import { formatDate, formatMoney } from '@/lib/format';
  * Renders `BoqTimelineResponse` newest-first: the commit, each variation-adopt snapshot, and
  * notable per-line change events. Plain language, no version numbers (Decision 9). Clicking an
  * entry scrolls the grid to the line it concerns (when it carries one).
+ *
+ * Built on `Sheet` rather than the hand-rolled overlay this used to be — the old version had no
+ * focus trap, no Escape handling and no scroll lock. The caller still mount-gates this exactly
+ * as before (`{timelineOpen ? <BoqTimelineDrawer .../> : null}`); `open` stays `true` for the
+ * component's whole lifetime and `onOpenChange(false)` — Escape, outside click, the close
+ * button — calls `onClose`, which is what actually unmounts it. Same pattern
+ * `LifecycleCommandDrawer` already uses for its own always-mounted `Dialog`.
  */
 export function BoqTimelineDrawer({
   data,
@@ -35,22 +52,13 @@ export function BoqTimelineDrawer({
   const t = useTranslations('platform.boq.timeline');
 
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={t('heading')}>
-      <button
-        type="button"
-        className="absolute inset-0 bg-overlay backdrop-blur-sm"
-        aria-label={t('close')}
-        onClick={onClose}
-      />
-      <aside className="absolute end-0 top-0 flex h-full w-full max-w-sm flex-col border-s border-border bg-surface shadow-e3">
-        <header className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2 className="text-h3 font-semibold text-foreground">{t('heading')}</h2>
-          <Button variant="ghost" size="icon" aria-label={t('close')} onClick={onClose}>
-            <X size={16} aria-hidden="true" />
-          </Button>
-        </header>
+    <Sheet open onOpenChange={(next) => { if (!next) onClose(); }}>
+      <SheetContent className="max-w-sm" closeLabel={t('close')}>
+        <SheetHeader>
+          <SheetTitle>{t('heading')}</SheetTitle>
+        </SheetHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        <SheetBody>
           {isPending ? (
             <div className="space-y-3">
               <Skeleton className="h-14 w-full" />
@@ -74,9 +82,9 @@ export function BoqTimelineDrawer({
               ))}
             </ol>
           )}
-        </div>
-      </aside>
-    </div>
+        </SheetBody>
+      </SheetContent>
+    </Sheet>
   );
 }
 

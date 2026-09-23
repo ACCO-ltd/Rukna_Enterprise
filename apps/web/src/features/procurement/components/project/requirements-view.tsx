@@ -3,25 +3,9 @@
 import * as React from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { ClipboardList, Search } from 'lucide-react';
-import {
-  Alert,
-  Badge,
-  Button,
-  Input,
-  LtrValue,
-  Select,
-  Skeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-} from '@erp/ui';
+import { Alert, Badge, Button, EmptyState, Input, LtrValue, Select, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll, Tooltip, TooltipContent, TooltipTrigger } from '@erp/ui';
 import type { ProjectRequirementRow, ProjectRequirementsResponse } from '@erp/types';
 
-import { EmptyState } from '@/components/empty-state';
 import { formatDate, formatMoney } from '@/lib/format';
 
 import {
@@ -351,7 +335,12 @@ function RequirementRow({
       {/* The requester's estimate — what ADR-022 routes approval on. Not a commitment. */}
       <TableCell className="text-end tabular-nums text-muted-foreground">
         {row.estimatedValue === null ? (
-          <span title={t('noEstimateHint')}>—</span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>—</span>
+            </TooltipTrigger>
+            <TooltipContent>{t('noEstimateHint')}</TooltipContent>
+          </Tooltip>
         ) : (
           <LtrValue>{formatMoney(row.estimatedValue, row.currencyCode, locale) ?? '—'}</LtrValue>
         )}
