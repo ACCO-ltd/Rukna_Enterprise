@@ -100,6 +100,40 @@ const DELAY_OPTIONS = [
   'Other',
 ] as const;
 
+/** Bounded trade list — same reasoning as weather/delay: a known set analysis can group by. */
+const TRADE_OPTIONS = [
+  'Mason',
+  'Carpenter',
+  'Steel fixer',
+  'Electrician',
+  'Plumber',
+  'Painter',
+  'Tiler',
+  'Plasterer',
+  'Welder',
+  'Scaffolder',
+  'Labourer',
+  'Foreman / Supervisor',
+  'Surveyor',
+  'Other',
+] as const;
+
+const EQUIPMENT_TYPE_OPTIONS = [
+  'Excavator',
+  'Concrete pump',
+  'Concrete mixer',
+  'Tower crane',
+  'Mobile crane',
+  'Compactor / Roller',
+  'Generator',
+  'Scaffolding',
+  'Dump truck',
+  'Bulldozer',
+  'Loader',
+  'Water tanker',
+  'Other',
+] as const;
+
 const refFieldClass = 'rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
 
 export function DprDetail({
@@ -864,21 +898,23 @@ function LabourSection({
             </div>
           ) : null}
           <FormField htmlFor="lr-trade" label={t('labour.fields.trade')}>
-            <Input
-              id="lr-trade"
-              value={trade}
-              onChange={(e) => setTrade(e.target.value)}
-              placeholder={t('labour.tradePlaceholder')}
-            />
+            <Select id="lr-trade" value={trade} onChange={setTrade} className={refFieldClass}>
+              <option value="">{t('labour.tradeChoose')}</option>
+              {TRADE_OPTIONS.map((tr) => (
+                <option key={tr} value={tr}>
+                  {tr}
+                </option>
+              ))}
+            </Select>
           </FormField>
           <FormField htmlFor="lr-count" label={t('labour.fields.headcount')}>
-            <Input id="lr-count" type="number" min="0" value={headcount} onChange={(e) => setHeadcount(e.target.value)} />
+            <Input id="lr-count" type="number" min="0" value={headcount} onChange={(e) => setHeadcount(e.target.value)} className={refFieldClass} />
           </FormField>
           <FormField htmlFor="lr-contractor" label={t('labour.fields.contractor')}>
-            <Input id="lr-contractor" value={contractor} onChange={(e) => setContractor(e.target.value)} />
+            <Input id="lr-contractor" value={contractor} onChange={(e) => setContractor(e.target.value)} className={refFieldClass} />
           </FormField>
           <FormField htmlFor="lr-hours" label={t('labour.fields.hours')}>
-            <Input id="lr-hours" type="number" min="0" step="0.5" value={hours} onChange={(e) => setHours(e.target.value)} />
+            <Input id="lr-hours" type="number" min="0" step="0.5" value={hours} onChange={(e) => setHours(e.target.value)} className={refFieldClass} />
           </FormField>
           <div className="sm:col-span-4">
             <RefButton type="submit" size="sm" disabled={add.isPending || !trade.trim()}>
@@ -992,21 +1028,23 @@ function EquipmentSection({
             </div>
           ) : null}
           <FormField htmlFor="eq-type" label={t('equipment.fields.type')}>
-            <Input
-              id="eq-type"
-              value={equipType}
-              onChange={(e) => setEquipType(e.target.value)}
-              placeholder={t('equipment.typePlaceholder')}
-            />
+            <Select id="eq-type" value={equipType} onChange={setEquipType} className={refFieldClass}>
+              <option value="">{t('equipment.typeChoose')}</option>
+              {EQUIPMENT_TYPE_OPTIONS.map((e) => (
+                <option key={e} value={e}>
+                  {e}
+                </option>
+              ))}
+            </Select>
           </FormField>
           <FormField htmlFor="eq-count" label={t('equipment.fields.count')}>
-            <Input id="eq-count" type="number" min="0" value={count} onChange={(e) => setCount(e.target.value)} />
+            <Input id="eq-count" type="number" min="0" value={count} onChange={(e) => setCount(e.target.value)} className={refFieldClass} />
           </FormField>
           <FormField htmlFor="eq-hours" label={t('equipment.fields.hours')}>
-            <Input id="eq-hours" type="number" min="0" step="0.5" value={hoursWorked} onChange={(e) => setHoursWorked(e.target.value)} />
+            <Input id="eq-hours" type="number" min="0" step="0.5" value={hoursWorked} onChange={(e) => setHoursWorked(e.target.value)} className={refFieldClass} />
           </FormField>
           <FormField htmlFor="eq-condition" label={t('equipment.fields.condition')}>
-            <Select id="eq-condition" value={condition} onChange={(value) => setCondition(value)}>
+            <Select id="eq-condition" value={condition} onChange={(value) => setCondition(value)} className={refFieldClass}>
               <option value="">—</option>
               {EQUIPMENT_CONDITIONS.map((c) => (
                 <option key={c} value={c}>{c}</option>
@@ -1015,7 +1053,7 @@ function EquipmentSection({
           </FormField>
           <div className="sm:col-span-2">
             <FormField htmlFor="eq-notes" label={t('equipment.fields.notes')}>
-              <Input id="eq-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+              <Input id="eq-notes" value={notes} onChange={(e) => setNotes(e.target.value)} className={refFieldClass} />
             </FormField>
           </div>
           <div className="sm:col-span-3">

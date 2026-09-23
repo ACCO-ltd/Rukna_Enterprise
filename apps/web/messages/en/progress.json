@@ -620,7 +620,7 @@
       "contractor": "Contractor",
       "hours": "Hours"
     },
-    "tradePlaceholder": "e.g. Mason, Carpenter, Electrician",
+    "tradeChoose": "Choose a trade",
     "saving": "Saving…"
   },
   "equipment": {
@@ -635,7 +635,7 @@
       "condition": "Condition",
       "notes": "Notes"
     },
-    "typePlaceholder": "e.g. Concrete pump, Excavator",
+    "typeChoose": "Choose equipment type",
     "saving": "Saving…"
   },
   "observations": {
