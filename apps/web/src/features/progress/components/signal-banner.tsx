@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Badge, RecordPanel, cn, type BadgeTone } from '@erp/ui';
+import { Badge, Progress, RecordPanel, cn, type BadgeTone } from '@erp/ui';
 
 export interface SignalStat {
   label: string;
@@ -105,12 +105,7 @@ export function SignalBanner({
             </dd>
             <dd className="min-w-0 flex-1">
               {s.percent === null || s.percent === undefined ? null : (
-                <span className="block h-2 overflow-hidden rounded-full bg-muted">
-                  <span
-                    className="block h-full rounded-full bg-brand-primary"
-                    style={{ width: `${Math.min(100, Math.max(0, s.percent))}%` }}
-                  />
-                </span>
+                <Progress value={s.percent} label={s.label} />
               )}
             </dd>
           </div>

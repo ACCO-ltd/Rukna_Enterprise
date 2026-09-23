@@ -8,6 +8,7 @@ import {
   FormField,
   Input,
   Label,
+  Progress,
   SectionHeader,
   Select,
   Dialog,
@@ -179,23 +180,16 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
  * figure; the bar is the glanceable status.
  */
 function PercentCompleteBar({ percent, label }: { percent: number; label: string }) {
-  const clamped = Math.min(100, Math.max(0, percent));
   const complete = percent >= 100;
   return (
     <div className="flex items-center gap-2">
-      <span
-        className="block h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-muted"
-        role="progressbar"
-        aria-valuenow={percent}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label={label}
-      >
-        <span
-          className={`block h-full rounded-full ${complete ? 'bg-success' : 'bg-warning'}`}
-          style={{ width: `${clamped}%` }}
-        />
-      </span>
+      <Progress
+        value={percent}
+        tone={complete ? 'success' : 'warning'}
+        size="sm"
+        label={label}
+        className="w-16 shrink-0"
+      />
       <span className="whitespace-nowrap font-medium tabular-nums text-foreground">{`${percent}%`}</span>
     </div>
   );
