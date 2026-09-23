@@ -13,11 +13,15 @@ import { cn } from '../lib/utils';
 export function SectionHeader({
   id,
   title,
+  subtitle,
   children,
   className,
 }: {
   id?: string;
   title: string;
+  /** A sentence under the title — the record-detail case (`RecordHeader` already has this;
+   * this is for the same need on a plain section, not for turning every hairline into one). */
+  subtitle?: React.ReactNode;
   /** Right-aligned control in the header row. */
   children?: React.ReactNode;
   className?: string;
@@ -31,12 +35,19 @@ export function SectionHeader({
         className,
       )}
     >
-      <h2
-        id={id}
-        className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground"
-      >
-        {title}
-      </h2>
+      <div className="min-w-0">
+        <h2
+          id={id}
+          className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+        >
+          {title}
+        </h2>
+        {subtitle ? (
+          <p className="mt-1 text-body-sm normal-case tracking-normal text-muted-foreground">
+            {subtitle}
+          </p>
+        ) : null}
+      </div>
       {children}
     </div>
   );

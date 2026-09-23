@@ -1,6 +1,8 @@
 'use client';
 
 import * as React from 'react';
+import * as PopperPrimitive from '@radix-ui/react-popper';
+import * as PortalPrimitive from '@radix-ui/react-portal';
 
 import { cn } from '../lib/utils';
 
@@ -28,14 +30,41 @@ import { cn } from '../lib/utils';
  * readers expect from a combobox, and the one that keeps typing and navigating on the same
  * control. The footer action participates in that navigation as the final row, so it is
  * reachable by keyboard rather than by mouse only.
+ *
+ * ─── Popper + Portal, not a CSS-relative absolute div ────────────────────────────
+ *
+ * The panel used to be a plain `position: absolute` sibling of the trigger, sized by a
+ * `position: relative` wrapper. That is exactly the positioning `Popover` (popover.tsx)
+ * already rejected for the same reason: it clips inside any ancestor with `overflow: hidden`
+ * or `overflow: auto` — which is not a hypothetical, it clipped the very first real usage,
+ * the `/design` gallery's own `Specimen` chrome. `Popper` supplies collision-aware placement
+ * (it flips above the trigger when there is no room below) and `Portal` renders the panel
+ * into `document.body`, outside every ancestor's clipping and stacking context — the same
+ * combination `Popover`, `Select` and `DropdownMenu` each already assemble internally. Popper
+ * carries no focus or dismissal behaviour of its own, so the outside-pointerdown, Escape and
+ * focus-on-open logic below is unchanged; only the positioning moved.
  */
 
 export interface ComboboxOption {
   value: string;
   /** The row's text, and what the filter matches against. */
   label: string;
-  /** Quiet trailing text — a code, a count. Also matched by the filter. */
+  /** Quiet trailing text — a code, a count. Also matched by the filter. Dropped from the row
+   * when `caption` is set — the two occupy the same position and a row does not carry both. */
   hint?: string;
+  /**
+   * Buckets this option under a labeled section, rendered as "{group} ({count in group})" —
+   * "Top Matches (2)", "Recent Suppliers (3)". Grouping goes by array order: put every option
+   * for one group together, in the order they should appear. Options without a `group` render
+   * flat, so existing callers are unaffected.
+   */
+  group?: string;
+  /** Leading glyph — an icon or a small avatar, ~16px. */
+  icon?: React.ReactNode;
+  /** Secondary line under the label — a category breadcrumb, a location. */
+  caption?: React.ReactNode;
+  /** Trailing content, end-aligned — an amount, a status, a remaining quantity. */
+  meta?: React.ReactNode;
 }
 
 export interface ComboboxProps {
@@ -51,6 +80,19 @@ export interface ComboboxProps {
   emptyLabel: string;
   /** Pinned last row — "Create new …". Closes the panel before running. */
   footerAction?: { label: string; onSelect: () => void };
+  /**
+   * Shows a loading row instead of the list — for a server-driven search where `options`
+   * hasn't caught up with what was just typed yet. The filter input stays interactive.
+   */
+  loading?: boolean;
+  loadingLabel?: string;
+  /**
+   * Fires on every keystroke in the filter input, in addition to the panel's own client-side
+   * filtering — wire this to a debounced server search that replaces `options` as results
+   * arrive. Filtering `options` client-side too is harmless: server results already matching
+   * the same text pass straight through.
+   */
+  onQueryChange?: (query: string) => void;
   disabled?: boolean;
   invalid?: boolean;
   className?: string;
@@ -67,6 +109,9 @@ export function Combobox({
   searchPlaceholder,
   emptyLabel,
   footerAction,
+  loading,
+  loadingLabel,
+  onQueryChange,
   disabled,
   invalid,
   className,
@@ -77,9 +122,9 @@ export function Combobox({
   const [query, setQuery] = React.useState('');
   const [activeIndex, setActiveIndex] = React.useState(0);
 
-  const rootRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const panelRef = React.useRef<HTMLDivElement>(null);
 
   const selected = options.find((option) => option.value === value);
 
@@ -101,19 +146,26 @@ export function Combobox({
   }, [query, open]);
 
   // Close on an outside pointer press. Pointerdown rather than click so the panel is gone
-  // before a click on something behind it resolves.
+  // before a click on something behind it resolves. Checked against the trigger AND the
+  // panel separately — the panel is portaled, so it is a React descendant but not a DOM
+  // descendant of the trigger's wrapper, and `contains` only ever sees the DOM tree.
   React.useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (triggerRef.current?.contains(target)) return;
+      if (panelRef.current?.contains(target)) return;
+      setOpen(false);
     };
     document.addEventListener('pointerdown', onPointerDown);
     return () => document.removeEventListener('pointerdown', onPointerDown);
   }, [open]);
 
-  React.useEffect(() => {
-    if (open) inputRef.current?.focus();
-  }, [open]);
+  // Not a plain `useEffect` keyed on `open`: Popper's `Content` measures the anchor before it
+  // places and mounts its real children, one commit later than `open` flipping true — an
+  // effect keyed only on `open` fires while `inputRef.current` is still null. `onPlaced` is
+  // Popper's own signal that positioning (and therefore the content) is actually ready.
+  const focusInput = React.useCallback(() => inputRef.current?.focus(), []);
 
   const close = (returnFocus = true) => {
     setOpen(false);
@@ -157,126 +209,181 @@ export function Combobox({
   const rowId = (index: number) => `${id}-row-${index}`;
 
   return (
-    <div ref={rootRef} className={cn('relative', className)}>
-      <button
-        ref={triggerRef}
-        id={id}
-        type="button"
-        role="combobox"
-        aria-expanded={open}
-        aria-controls={`${id}-panel`}
-        aria-haspopup="listbox"
-        aria-describedby={describedBy}
-        aria-required={required}
-        aria-invalid={invalid || undefined}
-        disabled={disabled}
-        onClick={() => setOpen((current) => !current)}
-        onKeyDown={(event) => {
-          if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            setOpen(true);
-          }
-        }}
-        className={cn(
-          'flex h-control w-full items-center justify-between gap-2 rounded-control border border-border-strong bg-surface px-3.5 py-2 text-start text-body-sm shadow-e1',
-          'transition-[border-color,box-shadow] duration-150 hover:border-border-interactive focus-visible:border-brand-primary focus-visible:outline-none focus-visible:shadow-ring',
-          'disabled:cursor-not-allowed disabled:opacity-50',
-          invalid && 'border-danger focus-visible:border-danger',
-        )}
-      >
-        <span className={cn('min-w-0 truncate', selected ? 'text-foreground' : 'text-muted-foreground')}>
-          {selected ? selected.label : placeholder}
-        </span>
-        <CaretGlyph open={open} />
-      </button>
+    <PopperPrimitive.Root>
+      <PopperPrimitive.Anchor asChild>
+        <button
+          ref={triggerRef}
+          id={id}
+          type="button"
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={`${id}-panel`}
+          aria-haspopup="listbox"
+          aria-describedby={describedBy}
+          aria-required={required}
+          aria-invalid={invalid || undefined}
+          disabled={disabled}
+          onClick={() => setOpen((current) => !current)}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              setOpen(true);
+            }
+          }}
+          className={cn(
+            'flex h-control w-full items-center justify-between gap-2 rounded-control border border-border-strong bg-surface px-3.5 py-2 text-start text-body-sm shadow-e1',
+            'transition-[border-color,box-shadow] duration-150 hover:border-border-interactive focus-visible:border-brand-primary focus-visible:outline-none focus-visible:shadow-ring',
+            'disabled:cursor-not-allowed disabled:opacity-50',
+            invalid && 'border-danger focus-visible:border-danger',
+            className,
+          )}
+        >
+          <span className={cn('min-w-0 truncate', selected ? 'text-foreground' : 'text-muted-foreground')}>
+            {selected ? selected.label : placeholder}
+          </span>
+          <CaretGlyph open={open} />
+        </button>
+      </PopperPrimitive.Anchor>
 
       {open ? (
-        <div
-          id={`${id}-panel`}
-          className="absolute z-30 mt-1 w-full overflow-hidden rounded-panel border border-border bg-surface-elevated shadow-e3"
-        >
-          <div className="border-b border-border p-2">
-            <input
-              ref={inputRef}
-              type="text"
-              role="combobox"
-              aria-expanded="true"
-              aria-controls={`${id}-listbox`}
-              aria-autocomplete="list"
-              aria-activedescendant={rowCount > 0 ? rowId(activeIndex) : undefined}
-              autoComplete="off"
-              placeholder={searchPlaceholder}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={onKeyDown}
-              className="h-control w-full rounded-control border border-border-strong bg-surface px-3 text-body-sm text-foreground placeholder:text-muted-foreground focus:border-brand-primary focus:outline-none focus:shadow-ring"
-            />
-          </div>
-
-          <ul id={`${id}-listbox`} role="listbox" className="max-h-56 overflow-y-auto py-1">
-            {results.length === 0 ? (
-              <li className="px-3 py-2 text-body-sm text-muted-foreground">{emptyLabel}</li>
-            ) : (
-              results.map((option, index) => (
-                <li key={option.value}>
-                  <button
-                    id={rowId(index)}
-                    type="button"
-                    role="option"
-                    aria-selected={option.value === value}
-                    // Same reason as Select's: a test drives these by the value they set, not
-                    // by translated display text that is often not unique in a list.
-                    data-value={option.value}
-                    onMouseEnter={() => setActiveIndex(index)}
-                    onClick={() => commit(index)}
-                    className={cn(
-                      'flex min-h-control w-full items-center gap-2 px-3 py-2 text-start text-body-sm',
-                      index === activeIndex ? 'bg-surface-selected' : 'bg-transparent',
-                      option.value === value
-                        ? 'font-semibold text-brand-primary'
-                        : 'text-foreground',
-                    )}
-                  >
-                    {option.hint ? (
-                      <span className="shrink-0 font-mono text-caption text-muted-foreground">
-                        {option.hint}
-                      </span>
-                    ) : null}
-                    <span className="min-w-0 truncate">{option.label}</span>
-                    {option.value === value ? (
-                      // The chosen row is marked, not merely bolded: in a filtered list the
-                      // selection is often scrolled out of the first screen, and weight alone
-                      // is not something you can scan for.
-                      <CheckGlyph />
-                    ) : null}
-                  </button>
-                </li>
-              ))
-            )}
-          </ul>
-
-          {footerAction ? (
-            <div className="border-t border-border">
-              <button
-                id={rowId(footerIndex)}
-                type="button"
-                role="option"
-                aria-selected={false}
-                onMouseEnter={() => setActiveIndex(footerIndex)}
-                onClick={() => commit(footerIndex)}
-                className={cn(
-                  'flex min-h-control w-full items-center gap-2 px-3 py-2 text-start text-body-sm font-semibold text-brand-primary',
-                  activeIndex === footerIndex ? 'bg-surface-selected' : 'bg-transparent',
-                )}
-              >
-                <PlusGlyph />
-                {footerAction.label}
-              </button>
+        <PortalPrimitive.Portal>
+          <PopperPrimitive.Content
+            ref={panelRef}
+            id={`${id}-panel`}
+            side="bottom"
+            align="start"
+            sideOffset={4}
+            avoidCollisions
+            onPlaced={focusInput}
+            className="z-30 w-(--radix-popper-anchor-width) overflow-hidden rounded-panel border border-border bg-surface-elevated shadow-e3"
+          >
+            <div className="border-b border-border p-2">
+              <input
+                ref={inputRef}
+                type="text"
+                role="combobox"
+                aria-expanded="true"
+                aria-controls={`${id}-listbox`}
+                aria-autocomplete="list"
+                aria-activedescendant={rowCount > 0 ? rowId(activeIndex) : undefined}
+                autoComplete="off"
+                placeholder={searchPlaceholder}
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  onQueryChange?.(event.target.value);
+                }}
+                onKeyDown={onKeyDown}
+                className="h-control w-full rounded-control border border-border-strong bg-surface px-3 text-body-sm text-foreground placeholder:text-muted-foreground focus:border-brand-primary focus:outline-none focus:shadow-ring"
+              />
             </div>
-          ) : null}
-        </div>
+
+            <ul id={`${id}-listbox`} role="listbox" className="max-h-56 overflow-y-auto py-1">
+              {loading ? (
+                <li className="flex flex-col items-center gap-2 px-3 py-6 text-center" aria-hidden="true">
+                  <SpinnerGlyph />
+                  <span className="text-body-sm text-muted-foreground">
+                    {loadingLabel ?? 'Loading…'}
+                  </span>
+                </li>
+              ) : results.length === 0 ? (
+                <li className="px-3 py-2 text-body-sm text-muted-foreground">{emptyLabel}</li>
+              ) : (
+                results.map((option, index) => {
+                  const previousGroup = index > 0 ? results[index - 1]!.group : undefined;
+                  const groupCount = option.group
+                    ? results.filter((o) => o.group === option.group).length
+                    : 0;
+
+                  return (
+                    <React.Fragment key={option.value}>
+                      {option.group && option.group !== previousGroup ? (
+                        <li
+                          role="presentation"
+                          className="px-3 pb-1 pt-2.5 text-micro font-semibold uppercase tracking-wide text-muted-foreground first:pt-1"
+                        >
+                          {option.group} ({groupCount})
+                        </li>
+                      ) : null}
+                      <li>
+                        <button
+                          id={rowId(index)}
+                          type="button"
+                          role="option"
+                          aria-selected={option.value === value}
+                          // Same reason as Select's: a test drives these by the value they set,
+                          // not by translated display text that is often not unique in a list.
+                          data-value={option.value}
+                          onMouseEnter={() => setActiveIndex(index)}
+                          onClick={() => commit(index)}
+                          className={cn(
+                            'flex min-h-control w-full items-center gap-2.5 px-3 py-2 text-start text-body-sm',
+                            index === activeIndex ? 'bg-surface-selected' : 'bg-transparent',
+                            option.value === value
+                              ? 'font-semibold text-brand-primary'
+                              : 'text-foreground',
+                          )}
+                        >
+                          {option.icon ? (
+                            <span className="shrink-0 text-muted-foreground" aria-hidden="true">
+                              {option.icon}
+                            </span>
+                          ) : null}
+                          {option.hint && !option.caption ? (
+                            <span className="shrink-0 font-mono text-caption text-muted-foreground">
+                              {option.hint}
+                            </span>
+                          ) : null}
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate">{option.label}</span>
+                            {option.caption ? (
+                              <span className="block truncate text-caption font-normal text-muted-foreground">
+                                {option.caption}
+                              </span>
+                            ) : null}
+                          </span>
+                          {option.meta ? (
+                            <span className="shrink-0 text-end text-caption text-muted-foreground">
+                              {option.meta}
+                            </span>
+                          ) : null}
+                          {option.value === value ? (
+                            // The chosen row is marked, not merely bolded: in a filtered list
+                            // the selection is often scrolled out of the first screen, and
+                            // weight alone is not something you can scan for.
+                            <CheckGlyph />
+                          ) : null}
+                        </button>
+                      </li>
+                    </React.Fragment>
+                  );
+                })
+              )}
+            </ul>
+
+            {footerAction ? (
+              <div className="border-t border-border">
+                <button
+                  id={rowId(footerIndex)}
+                  type="button"
+                  role="option"
+                  aria-selected={false}
+                  onMouseEnter={() => setActiveIndex(footerIndex)}
+                  onClick={() => commit(footerIndex)}
+                  className={cn(
+                    'flex min-h-control w-full items-center gap-2 px-3 py-2 text-start text-body-sm font-semibold text-brand-primary',
+                    activeIndex === footerIndex ? 'bg-surface-selected' : 'bg-transparent',
+                  )}
+                >
+                  <PlusGlyph />
+                  {footerAction.label}
+                </button>
+              </div>
+            ) : null}
+          </PopperPrimitive.Content>
+        </PortalPrimitive.Portal>
       ) : null}
-    </div>
+    </PopperPrimitive.Root>
   );
 }
 
@@ -319,6 +426,22 @@ function CheckGlyph() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+function SpinnerGlyph() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="animate-spin text-muted-foreground"
+    >
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.5" strokeOpacity="0.25" />
+      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
     </svg>
   );
 }
