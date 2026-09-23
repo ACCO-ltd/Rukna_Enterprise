@@ -248,7 +248,8 @@ export class ProgressService {
     }
     return this.repo.addObservation(this.tenancy.getClient(), {
       dprId,
-      category: dto.category,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      category: dto.category as any,
       description: dto.description,
       affectedWork: dto.affectedWork ?? null,
       severity: dto.severity ?? null,
