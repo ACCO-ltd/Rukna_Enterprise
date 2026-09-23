@@ -2,13 +2,16 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Button, DatePicker, useToast } from '@erp/ui';
+import { DatePicker, useToast } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
 import { usePermissions } from '@/features/auth/permissions/can';
 
 import { PROGRESS_PERMISSIONS } from '../permissions';
 import { useCaptureProgressSnapshot } from '../hooks/use-progress';
+import { RefButton } from './ref-ui';
+
+const refFieldClass = 'rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
 
 /** Today as YYYY-MM-DD, in UTC to match how the API stores calendar dates. */
 function todayIso(): string {
@@ -66,19 +69,20 @@ export function CaptureSnapshotAction({
   return (
     <div className="flex flex-wrap items-end gap-2">
       {allowDateChoice ? (
-        <label className="flex flex-col gap-1 text-caption text-muted-foreground">
+        <label className="flex flex-col gap-1 text-xs text-gray-500">
           <span>{t('curve.capture.periodEndDate')}</span>
           <DatePicker
             id="snapshot-period-end"
             value={periodEndDate}
             max={todayIso()}
             onChange={(value) => setPeriodEndDate(value)}
+            className={refFieldClass}
           />
         </label>
       ) : null}
-      <Button variant={variant} onClick={onCapture} disabled={capture.isPending}>
+      <RefButton variant={variant === 'outline' ? 'outline' : 'primary'} onClick={onCapture} disabled={capture.isPending}>
         {t('curve.capture.action')}
-      </Button>
+      </RefButton>
     </div>
   );
 }

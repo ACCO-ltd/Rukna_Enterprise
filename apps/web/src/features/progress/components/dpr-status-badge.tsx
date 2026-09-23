@@ -1,16 +1,17 @@
 import { useTranslations } from 'next-intl';
 import { DprStatus } from '@erp/types';
-import { Badge, type BadgeTone } from '@erp/ui';
 
-const TONES: Record<DprStatus, BadgeTone> = {
-  [DprStatus.DRAFT]: 'neutral',
-  [DprStatus.SUBMITTED]: 'info',
-  [DprStatus.APPROVED]: 'live',
-  [DprStatus.RETURNED]: 'warning',
-  [DprStatus.REOPENED]: 'warning',
+import { RefPill, type RefTone } from './ref-ui';
+
+export const statusPillTone: Record<DprStatus, RefTone> = {
+  [DprStatus.DRAFT]: 'gray',
+  [DprStatus.SUBMITTED]: 'blue',
+  [DprStatus.APPROVED]: 'green',
+  [DprStatus.RETURNED]: 'amber',
+  [DprStatus.REOPENED]: 'amber',
 };
 
 export function DprStatusBadge({ status }: { status: `${DprStatus}` }) {
   const t = useTranslations('progress');
-  return <Badge tone={TONES[status as DprStatus] ?? 'neutral'}>{t(`report.status.${status}`)}</Badge>;
+  return <RefPill tone={statusPillTone[status as DprStatus] ?? 'gray'}>{t(`report.status.${status}`)}</RefPill>;
 }

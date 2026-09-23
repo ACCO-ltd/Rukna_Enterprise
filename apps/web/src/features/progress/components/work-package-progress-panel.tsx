@@ -1,10 +1,10 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { Progress, RecordPanel } from '@erp/ui';
 import { Layers } from 'lucide-react';
 
 import { useProjectRollup } from '../hooks/use-progress';
+import { RefBar, RefCard, RefCardHeader } from './ref-ui';
 
 /**
  * Where the project's percentage actually comes from: each work package, its share of the whole,
@@ -27,69 +27,49 @@ export function WorkPackageProgressPanel({ projectId }: { projectId: string }) {
   const packages = rollup.data?.packages ?? [];
 
   return (
-    <RecordPanel
-      title={t('packages.title')}
-      icon={<Layers size={17} strokeWidth={1.9} />}
-      meta={t('packages.noVsPlan')}
-      padded={false}
-    >
+    <RefCard>
+      <RefCardHeader
+        icon={<Layers size={17} strokeWidth={1.9} />}
+        title={t('packages.title')}
+        subtitle={t('packages.noVsPlan')}
+        divider
+      />
       {rollup.isPending ? (
-        <div className="m-4 h-32 animate-pulse rounded-control bg-muted" aria-hidden="true" />
+        <div className="m-5 h-32 animate-pulse rounded-lg bg-gray-100" aria-hidden="true" />
       ) : packages.length === 0 ? (
-        <p className="px-4 py-8 text-center text-caption text-muted-foreground">
-          {t('packages.empty')}
-        </p>
+        <p className="px-5 py-8 text-center text-sm text-gray-500">{t('packages.empty')}</p>
       ) : (
         <table className="w-full">
           <thead>
-            <tr className="border-b border-border">
-              <th className="px-4 py-2 text-start text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+            <tr className="border-b border-gray-100">
+              <th className="px-5 py-2.5 text-start text-xs font-medium text-gray-500">
                 {t('packages.workPackage')}
               </th>
-              <th className="w-20 px-2 py-2 text-end text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+              <th className="w-20 px-2 py-2.5 text-end text-xs font-medium text-gray-500">
                 {t('packages.weight')}
               </th>
-              <th className="w-1/2 px-4 py-2 text-start text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+              <th className="w-1/2 px-5 py-2.5 text-start text-xs font-medium text-gray-500">
                 {t('packages.progress')}
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-border">
+          <tbody className="divide-y divide-gray-100">
             {packages.map((wp) => (
               <tr key={wp.id}>
-                <td className="px-4 py-3">
-                  <span className="block truncate text-body-sm font-medium text-foreground">
-                    {wp.name}
-                  </span>
-                  <span className="block truncate font-mono text-caption text-muted-foreground">
-                    {wp.code}
-                  </span>
+                <td className="px-5 py-3">
+                  <span className="block truncate text-sm font-medium text-gray-900">{wp.name}</span>
+                  <span className="block truncate font-mono text-xs text-gray-500">{wp.code}</span>
                 </td>
-                <td className="px-2 py-3 text-end text-body-sm tabular-nums text-muted-foreground">
+                <td className="px-2 py-3 text-end text-sm tabular-nums text-gray-500">
                   {Math.round(Number(wp.weight) * 100)}%
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-5 py-3">
                   {/* Schedule-only phases (no BOQ scope) have no derived %, so there is nothing to
                       bar — show a dash, never a misleading 0%. */}
                   {wp.percentComplete === null ? (
-                    <span className="text-body-sm text-muted-foreground">—</span>
+                    <span className="text-sm text-gray-400">—</span>
                   ) : (
-                    <div className="flex items-center gap-3">
-                      {/* One colour. A package is not "good" at 80% and "bad" at 20% — it is
-                          simply further along, and without a per-package plan there is nothing
-                          to be ahead or behind of. Colouring by magnitude would be inventing a
-                          judgement the data cannot support. */}
-                      <Progress
-                        value={wp.percentComplete}
-                        tone={wp.percentComplete >= 100 ? 'success' : 'default'}
-                        size="sm"
-                        label={t('packages.progress')}
-                        className="min-w-0 flex-1"
-                      />
-                      <span className="w-10 shrink-0 text-end text-body-sm font-medium tabular-nums text-foreground">
-                        {wp.percentComplete}%
-                      </span>
-                    </div>
+                    <RefBar percent={wp.percentComplete} tone={wp.percentComplete >= 100 ? 'green' : 'blue'} />
                   )}
                 </td>
               </tr>
@@ -97,6 +77,6 @@ export function WorkPackageProgressPanel({ projectId }: { projectId: string }) {
           </tbody>
         </table>
       )}
-    </RecordPanel>
+    </RefCard>
   );
 }

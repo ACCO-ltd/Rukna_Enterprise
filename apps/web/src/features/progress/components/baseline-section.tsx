@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Badge, Button, DatePicker, Input, Label, SectionHeader, useToast } from '@erp/ui';
-import { AlertTriangle, ShieldCheck, X } from 'lucide-react';
+import { Alert, DatePicker, Input, Label, useToast } from '@erp/ui';
+import { AlertTriangle, GitBranch, ShieldCheck, X } from 'lucide-react';
 
 import type { ProgrammeBaselineResponse } from '@erp/types';
 
@@ -21,6 +21,9 @@ import {
 } from '../hooks/use-progress';
 import type { ProgressTargetItem } from '../api/progress-api';
 import { RebaselineDialog } from './rebaseline-dialog';
+import { RefButton, RefCard, RefCardBody, RefCardHeader, RefPill } from './ref-ui';
+
+const refFieldClass = 'rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
 
 interface Row {
   date: string;
@@ -190,114 +193,113 @@ export function BaselineSection({ projectId }: { projectId: string }) {
   }, [current]);
 
   return (
-    <section className="space-y-4 rounded-panel border border-border bg-surface p-4 sm:p-5">
-      <div>
-        <SectionHeader title={t('baseline.title')} />
-        <p className="mt-1 text-body-sm text-muted-foreground">{t('baseline.subtitle')}</p>
-        <p className="mt-1 text-caption">
-          {isSet ? (
-            <Badge tone="live">{t('baseline.currentSet')}</Badge>
-          ) : (
-            <Badge tone="accent">{t('baseline.currentNone')}</Badge>
-          )}
-        </p>
-      </div>
-
-      <GoverningBaselineCard
-        baseline={governingBaseline}
-        loading={baselineQuery.isPending}
-        hasUnpublishedChanges={hasUnpublishedChanges}
-        locale={locale}
+    <RefCard>
+      <RefCardHeader
+        icon={<GitBranch size={17} strokeWidth={1.9} />}
+        title={t('baseline.title')}
+        subtitle={t('baseline.subtitle')}
+        divider
+        action={isSet ? <RefPill tone="green">{t('baseline.currentSet')}</RefPill> : <RefPill tone="violet">{t('baseline.currentNone')}</RefPill>}
       />
+      <RefCardBody className="space-y-4 pt-4">
+        <GoverningBaselineCard
+          baseline={governingBaseline}
+          loading={baselineQuery.isPending}
+          hasUnpublishedChanges={hasUnpublishedChanges}
+          locale={locale}
+        />
 
-      <p className="text-caption text-muted-foreground">{t('baseline.workingCurveNote')}</p>
+        <p className="text-xs text-gray-500">{t('baseline.workingCurveNote')}</p>
 
-      <div className="flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" onClick={generateLinear} disabled={!canLinear}>
-          {t('baseline.generateLinear')}
-        </Button>
-        <Button variant="outline" size="sm" onClick={deriveFromMilestones} disabled={milestoneCount === 0}>
-          {t('baseline.deriveMilestones')}
-        </Button>
-      </div>
-      {!canLinear ? <p className="text-caption text-muted-foreground">{t('baseline.noDates')}</p> : null}
+        <div className="flex flex-wrap gap-2">
+          <RefButton variant="outline" size="sm" onClick={generateLinear} disabled={!canLinear}>
+            {t('baseline.generateLinear')}
+          </RefButton>
+          <RefButton variant="outline" size="sm" onClick={deriveFromMilestones} disabled={milestoneCount === 0}>
+            {t('baseline.deriveMilestones')}
+          </RefButton>
+        </div>
+        {!canLinear ? <p className="text-xs text-gray-500">{t('baseline.noDates')}</p> : null}
 
-      {error ? <Alert variant="error" messages={[error]} /> : null}
+        {error ? <Alert variant="error" messages={[error]} /> : null}
 
-      {current.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t('baseline.empty')}</p>
-      ) : (
-        <ul className="space-y-2">
-          {current.map((row, index) => (
-            <li key={index} className="flex flex-wrap items-end gap-3">
-              <div className="min-w-40 flex-1">
-                <Label htmlFor={`bl-date-${index}`}>{t('baseline.colDate')}</Label>
-                <DatePicker
-                  id={`bl-date-${index}`}
-                  value={row.date}
-                  min={startDate ?? undefined}
-                  max={endDate ?? undefined}
-                  onChange={(value) => update(index, 'date', value)}
-                />
-              </div>
-              <div className="w-28">
-                <Label htmlFor={`bl-pct-${index}`}>{t('baseline.colPercent')}</Label>
-                <Input
-                  id={`bl-pct-${index}`}
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={row.percent}
-                  onChange={(e) => update(index, 'percent', e.target.value)}
-                />
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => removeRow(index)}
-                aria-label={t('baseline.remove')}
-              >
-                <X size={14} aria-hidden="true" />
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
+        {current.length === 0 ? (
+          <p className="text-sm text-gray-500">{t('baseline.empty')}</p>
+        ) : (
+          <ul className="space-y-2">
+            {current.map((row, index) => (
+              <li key={index} className="flex flex-wrap items-end gap-3">
+                <div className="min-w-40 flex-1">
+                  <Label htmlFor={`bl-date-${index}`}>{t('baseline.colDate')}</Label>
+                  <DatePicker
+                    id={`bl-date-${index}`}
+                    value={row.date}
+                    min={startDate ?? undefined}
+                    max={endDate ?? undefined}
+                    onChange={(value) => update(index, 'date', value)}
+                    className={refFieldClass}
+                  />
+                </div>
+                <div className="w-28">
+                  <Label htmlFor={`bl-pct-${index}`}>{t('baseline.colPercent')}</Label>
+                  <Input
+                    id={`bl-pct-${index}`}
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={row.percent}
+                    onChange={(e) => update(index, 'percent', e.target.value)}
+                    className={refFieldClass}
+                  />
+                </div>
+                <RefButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeRow(index)}
+                  aria-label={t('baseline.remove')}
+                >
+                  <X size={14} aria-hidden="true" />
+                </RefButton>
+              </li>
+            ))}
+          </ul>
+        )}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Button variant="outline" size="sm" onClick={addRow}>
-          {t('baseline.addPoint')}
-        </Button>
-        {previewPoints.length >= 2 ? <BaselinePreview points={previewPoints} /> : null}
-      </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <RefButton variant="outline" size="sm" onClick={addRow}>
+            {t('baseline.addPoint')}
+          </RefButton>
+          {previewPoints.length >= 2 ? <BaselinePreview points={previewPoints} /> : null}
+        </div>
 
-      <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
-        <Button onClick={onSave} disabled={save.isPending}>
-          {t('baseline.save')}
-        </Button>
+        <div className="flex flex-wrap items-center gap-3 border-t border-gray-100 pt-4">
+          <RefButton onClick={onSave} disabled={save.isPending}>
+            {t('baseline.save')}
+          </RefButton>
 
-        {/* Publish path: with no governing baseline this is the initial PM approve; once one exists
-            it becomes the senior re-baseline that must cite a Variation. Each control is present
-            only for the permission its endpoint enforces — an actor never sees a button that would
-            only 403 (honesty §4). */}
-        {!governingBaseline && canApprove ? (
-          <Button
-            variant="outline"
-            onClick={onApprove}
-            disabled={!isSet || approve.isPending}
-            title={!isSet ? t('baseline.governing.approveNeedsCurve') : undefined}
-          >
-            {t('baseline.governing.approve')}
-          </Button>
-        ) : null}
+          {/* Publish path: with no governing baseline this is the initial PM approve; once one exists
+              it becomes the senior re-baseline that must cite a Variation. Each control is present
+              only for the permission its endpoint enforces — an actor never sees a button that would
+              only 403 (honesty §4). */}
+          {!governingBaseline && canApprove ? (
+            <RefButton
+              variant="outline"
+              onClick={onApprove}
+              disabled={!isSet || approve.isPending}
+              title={!isSet ? t('baseline.governing.approveNeedsCurve') : undefined}
+            >
+              {t('baseline.governing.approve')}
+            </RefButton>
+          ) : null}
 
-        {governingBaseline && canRebaseline ? (
-          <Button variant="outline" onClick={() => setRebaselineOpen(true)}>
-            {t('baseline.governing.rebaseline')}
-          </Button>
-        ) : null}
-      </div>
+          {governingBaseline && canRebaseline ? (
+            <RefButton variant="outline" onClick={() => setRebaselineOpen(true)}>
+              {t('baseline.governing.rebaseline')}
+            </RefButton>
+          ) : null}
+        </div>
+      </RefCardBody>
 
       {rebaselineOpen ? (
         <RebaselineDialog
@@ -306,7 +308,7 @@ export function BaselineSection({ projectId }: { projectId: string }) {
           onOpenChange={setRebaselineOpen}
         />
       ) : null}
-    </section>
+    </RefCard>
   );
 }
 
@@ -335,8 +337,8 @@ function GoverningBaselineCard({
 
   if (!baseline) {
     return (
-      <div className="rounded-panel border border-dashed border-border bg-surface-subtle px-4 py-3">
-        <p className="text-body-sm text-muted-foreground">{t('baseline.governing.none')}</p>
+      <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-3">
+        <p className="text-sm text-gray-500">{t('baseline.governing.none')}</p>
       </div>
     );
   }
@@ -347,23 +349,23 @@ function GoverningBaselineCard({
   }));
 
   return (
-    <div className="rounded-panel border border-border bg-surface-subtle px-4 py-3">
+    <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <ShieldCheck size={16} className="text-success" aria-hidden="true" />
-          <span className="text-body-sm font-semibold text-foreground">
+          <ShieldCheck size={16} className="text-green-600" aria-hidden="true" />
+          <span className="text-sm font-semibold text-gray-900">
             {t('baseline.governing.versionLabel', { version: baseline.version })}
           </span>
         </div>
         {hasUnpublishedChanges ? (
-          <Badge tone="warning">
+          <RefPill tone="amber">
             <AlertTriangle size={12} className="me-1 inline" aria-hidden="true" />
             {t('baseline.governing.unpublished')}
-          </Badge>
+          </RefPill>
         ) : null}
       </div>
 
-      <p className="mt-1 text-caption text-muted-foreground">
+      <p className="mt-1 text-xs text-gray-500">
         {t('baseline.governing.approvedBy', {
           who: baseline.approvedBy,
           date: formatDate(baseline.approvedAt, locale) ?? '—',
@@ -371,24 +373,22 @@ function GoverningBaselineCard({
       </p>
 
       {baseline.variationOrderId ? (
-        <p className="mt-0.5 text-caption text-muted-foreground">
+        <p className="mt-0.5 text-xs text-gray-500">
           {t('baseline.governing.variationRef', { ref: baseline.variationOrderId })}
         </p>
       ) : null}
 
-      {baseline.note ? (
-        <p className="mt-1 text-body-sm text-foreground">{baseline.note}</p>
-      ) : null}
+      {baseline.note ? <p className="mt-1 text-sm text-gray-900">{baseline.note}</p> : null}
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {points.length >= 2 ? <BaselinePreview points={points} /> : null}
-        <span className="text-caption text-muted-foreground">
+        <span className="text-xs text-gray-500">
           {t('baseline.governing.pointCount', { count: points.length })}
         </span>
       </div>
 
       {hasUnpublishedChanges ? (
-        <p className="mt-2 text-caption text-warning">{t('baseline.governing.unpublishedHint')}</p>
+        <p className="mt-2 text-xs text-amber-600">{t('baseline.governing.unpublishedHint')}</p>
       ) : null}
     </div>
   );
@@ -411,10 +411,10 @@ function BaselinePreview({ points }: { points: Array<{ date: string; percent: nu
     .map((c, i) => `${i === 0 ? 'M' : 'L'}${c}`)
     .join(' ');
   return (
-    <span className="inline-flex items-center gap-2 text-caption text-muted-foreground">
+    <span className="inline-flex items-center gap-2 text-xs text-gray-500">
       {t('baseline.preview')}
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="overflow-visible" aria-hidden="true">
-        <path d={path} fill="none" className="stroke-muted-foreground" strokeWidth={1.5} strokeDasharray="4 3" />
+        <path d={path} fill="none" className="stroke-gray-400" strokeWidth={1.5} strokeDasharray="4 3" />
       </svg>
     </span>
   );

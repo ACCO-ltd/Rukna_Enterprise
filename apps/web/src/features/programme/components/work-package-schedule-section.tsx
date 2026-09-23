@@ -2,13 +2,14 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, Badge, Button, cn, EmptyState, SectionHeader, Skeleton, type BadgeProps } from '@erp/ui';
+import { Alert, cn, EmptyState, SectionHeader, Skeleton } from '@erp/ui';
 import { CalendarClock } from 'lucide-react';
 import type { ProgressScheduleStatus, WorkPackageRollupLine } from '@erp/types';
 
 import { useProject } from '@/features/projects/hooks/use-project';
 import { useBoqLeaves } from '@/features/progress/hooks/use-boq-leaves';
 import { useProjectRollup } from '@/features/progress/hooks/use-progress';
+import { RefButton, RefPill, type RefTone } from '@/features/progress/components/ref-ui';
 
 const dateOnly = (iso: string | null): string => (iso ? iso.slice(0, 10) : '');
 const isoOf = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
@@ -20,17 +21,17 @@ const msOf = (iso: string): number => new Date(iso).getTime();
  * `--chart-*` ramp (data-viz, not status); only this dot/badge colours by meaning.
  */
 const STATUS_DOT: Record<ProgressScheduleStatus, string> = {
-  AHEAD: 'bg-success',
-  ON_TRACK: 'bg-success',
-  BEHIND: 'bg-warning',
-  INSUFFICIENT_DATA: 'bg-muted-foreground',
+  AHEAD: 'bg-green-500',
+  ON_TRACK: 'bg-green-500',
+  BEHIND: 'bg-amber-500',
+  INSUFFICIENT_DATA: 'bg-gray-400',
 };
 
-const STATUS_TONE: Record<ProgressScheduleStatus, BadgeProps['tone']> = {
-  AHEAD: 'live',
-  ON_TRACK: 'info',
-  BEHIND: 'warning',
-  INSUFFICIENT_DATA: 'neutral',
+const STATUS_TONE: Record<ProgressScheduleStatus, RefTone> = {
+  AHEAD: 'green',
+  ON_TRACK: 'blue',
+  BEHIND: 'amber',
+  INSUFFICIENT_DATA: 'gray',
 };
 
 /**
@@ -65,14 +66,14 @@ export function WorkPackageScheduleSection({ projectId }: { projectId: string })
     return (
       <Alert variant="error" messages={[t('states.loadFailed')]}>
         <div className="mt-3">
-          <Button
+          <RefButton
             variant="outline"
             size="sm"
             onClick={() => void rollup.refetch()}
             disabled={rollup.isFetching}
           >
             {t('actions.retry')}
-          </Button>
+          </RefButton>
         </div>
       </Alert>
     );
@@ -146,7 +147,7 @@ function ScheduleHeader({ t }: { t: ReturnType<typeof useTranslations> }) {
   return (
     <div>
       <SectionHeader title={t('wpSchedule.title')} />
-      <p className="mt-1 text-body-sm text-muted-foreground">{t('wpSchedule.subtitle')}</p>
+      <p className="mt-1 text-sm text-gray-500">{t('wpSchedule.subtitle')}</p>
     </div>
   );
 }
@@ -201,21 +202,21 @@ function ScheduleTimeline({
   const clampPct = (ms: number) => Math.min(100, Math.max(0, pct(ms)));
 
   return (
-    <div className="rounded-panel border border-border bg-surface p-4">
-      <div className="mb-3 flex items-center justify-between text-micro font-semibold uppercase text-muted-foreground">
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between text-xs font-semibold uppercase text-gray-500">
         <span className="tabular-nums tracking-normal">{isoOf(axisStart)}</span>
         <span>{t('wpSchedule.timeline')}</span>
         <span className="tabular-nums tracking-normal">{isoOf(axisEnd)}</span>
       </div>
 
       {/* Legend — the two bar meanings, and that the actual is derived, stated once. */}
-      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-caption text-muted-foreground">
+      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
         <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-4 rounded-control bg-chart-1" aria-hidden="true" />
+          <span className="h-2.5 w-4 rounded bg-chart-1" aria-hidden="true" />
           {t('wpSchedule.legend.planned')}
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-4 rounded-control bg-chart-2" aria-hidden="true" />
+          <span className="h-2.5 w-4 rounded bg-chart-2" aria-hidden="true" />
           {t('wpSchedule.legend.actual')}
         </span>
       </div>
@@ -274,13 +275,11 @@ function ScheduleRow({
   return (
     <li className="space-y-1.5">
       <div className="flex items-center gap-2">
-        <span className="w-14 shrink-0 font-mono text-xs text-muted-foreground">{line.code}</span>
-        <span className="min-w-0 flex-1 truncate text-caption font-semibold text-foreground" title={line.name}>
+        <span className="w-14 shrink-0 font-mono text-xs text-gray-500">{line.code}</span>
+        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-gray-900" title={line.name}>
           {line.name}
         </span>
-        {line.scheduleOnly ? (
-          <Badge tone="neutral">{t('wpSchedule.scheduleOnly')}</Badge>
-        ) : null}
+        {line.scheduleOnly ? <RefPill tone="gray">{t('wpSchedule.scheduleOnly')}</RefPill> : null}
         <PercentChip percent={line.percentComplete} label={t('wpSchedule.percentLabel')} />
         <StatusBadge status={line.scheduleStatus} />
       </div>
@@ -289,13 +288,13 @@ function ScheduleRow({
         <span className="w-14 shrink-0" aria-hidden="true" />
         {/* The track holds the planned bar on top and the derived-actual bar below it. */}
         <span
-          className="relative block h-6 min-w-0 flex-1 rounded-control bg-muted"
+          className="relative block h-6 min-w-0 flex-1 rounded-md bg-gray-100"
           role="img"
           aria-label={`${line.name}: ${t('wpSchedule.planned')} ${plannedRange}; ${t('wpSchedule.actual')} ${actualRange}`}
         >
           {hasPlanned ? (
             <span
-              className="absolute inset-x-0 top-1 h-2 rounded-control bg-chart-1"
+              className="absolute inset-x-0 top-1 h-2 rounded bg-chart-1"
               style={{
                 left: `${plannedLeft}%`,
                 right: 'auto',
@@ -308,7 +307,7 @@ function ScheduleRow({
           {line.actualStart && actualEndMs !== null ? (
             <span
               className={cn(
-                'absolute bottom-1 h-2 rounded-control bg-chart-2',
+                'absolute bottom-1 h-2 rounded bg-chart-2',
                 ongoing && 'border border-dashed border-chart-2 bg-chart-2/40',
               )}
               style={{
@@ -335,19 +334,13 @@ function ScheduleRow({
 function PercentChip({ percent, label }: { percent: number | null; label: string }) {
   if (percent === null) {
     return (
-      <span
-        className="w-12 shrink-0 text-end text-caption tabular-nums text-muted-foreground"
-        aria-label={label}
-      >
+      <span className="w-12 shrink-0 text-end text-xs tabular-nums text-gray-400" aria-label={label}>
         —
       </span>
     );
   }
   return (
-    <span
-      className="w-12 shrink-0 text-end text-caption font-semibold tabular-nums text-foreground"
-      aria-label={label}
-    >
+    <span className="w-12 shrink-0 text-end text-xs font-semibold tabular-nums text-gray-900" aria-label={label}>
       {`${percent}%`}
     </span>
   );
@@ -357,12 +350,12 @@ function PercentChip({ percent, label }: { percent: number | null; label: string
 function StatusBadge({ status }: { status: ProgressScheduleStatus }) {
   const t = useTranslations('progress');
   return (
-    <Badge tone={STATUS_TONE[status]} className="shrink-0 gap-1.5">
+    <RefPill tone={STATUS_TONE[status]} className="shrink-0 gap-1.5">
       <span
         aria-hidden="true"
         className={cn('h-1.5 w-1.5 shrink-0 rounded-full', STATUS_DOT[status])}
       />
       {t(`curve.status.${status}`)}
-    </Badge>
+    </RefPill>
   );
 }

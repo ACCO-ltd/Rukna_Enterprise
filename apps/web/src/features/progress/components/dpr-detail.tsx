@@ -6,26 +6,35 @@ import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   ApprovalChain,
-  Badge,
-  Button,
+  Avatar,
   Combobox,
   FormField,
   Input,
   Label,
   Select,
   Skeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
   Textarea,
   type ApprovalStep,
 } from '@erp/ui';
-import { ArrowLeft, Play, Trash2 } from 'lucide-react';
+import { ArrowLeft, HardHat, Image as ImageIcon, Play, Ruler, TriangleAlert, Trash2, Wrench } from 'lucide-react';
 import type { DprLabourRowResponse, DprEquipmentRowResponse, DprObservationResponse } from '@erp/types';
+
+import {
+  RefButton,
+  RefCard,
+  RefCardBody,
+  RefCardHeader,
+  RefPill,
+  RefStatTile,
+  RefTable,
+  RefTableScroll,
+  RefTbody,
+  RefTd,
+  RefTh,
+  RefThead,
+  RefTr,
+  type RefTone,
+} from './ref-ui';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { MediaUpload, type MediaUploadLabels } from '@/components/media-upload';
@@ -86,10 +95,10 @@ export function DprDetail({
   const [confirm, setConfirm] = useState<'approve' | 'return' | null>(null);
 
   const backButton = (
-    <Button variant="ghost" size="sm" onClick={onBack}>
+    <RefButton variant="ghost" size="sm" onClick={onBack}>
       <ArrowLeft size={16} className="rtl:rotate-180" aria-hidden="true" />
       {t('report.backToList')}
-    </Button>
+    </RefButton>
   );
 
   if (isPending) {
@@ -108,9 +117,9 @@ export function DprDetail({
         {backButton}
         <Alert variant="error" messages={[t('states.loadFailed')]}>
           <div className="mt-3">
-            <Button variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching}>
+            <RefButton variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching}>
               {t('actions.retry')}
-            </Button>
+            </RefButton>
           </div>
         </Alert>
       </div>
@@ -140,27 +149,31 @@ export function DprDetail({
     },
   ];
 
+  const actionButtons = (editable || (dpr.status === 'SUBMITTED' && can('approve:progress'))) && (
+    <div className="flex flex-wrap items-center gap-2">
+      {editable ? (
+        <RefButton onClick={() => submit.mutate()} disabled={submit.isPending}>
+          {t('actions.submit')}
+        </RefButton>
+      ) : null}
+      {dpr.status === 'SUBMITTED' && can('approve:progress') ? (
+        <>
+          <RefButton variant="outline" onClick={() => setConfirm('return')}>
+            {t('actions.return')}
+          </RefButton>
+          <RefButton onClick={() => setConfirm('approve')} disabled={!canApprove}>
+            {t('actions.approve')}
+          </RefButton>
+        </>
+      ) : null}
+    </div>
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         {backButton}
-        <div className="flex items-center gap-2">
-          {editable ? (
-            <Button size="sm" onClick={() => submit.mutate()} disabled={submit.isPending}>
-              {t('actions.submit')}
-            </Button>
-          ) : null}
-          {dpr.status === 'SUBMITTED' && can('approve:progress') ? (
-            <>
-              <Button variant="outline" size="sm" onClick={() => setConfirm('return')}>
-                {t('actions.return')}
-              </Button>
-              <Button size="sm" onClick={() => setConfirm('approve')} disabled={!canApprove}>
-                {t('actions.approve')}
-              </Button>
-            </>
-          ) : null}
-        </div>
+        <DprStatusBadge status={dpr.status} />
       </div>
 
       {dpr.status === 'SUBMITTED' && isSelfApprover && can('approve:progress') ? (
@@ -168,139 +181,149 @@ export function DprDetail({
       ) : null}
 
       {/* Header */}
-      <div className="rounded-panel border border-border bg-surface p-4 sm:p-5">
-        <div className="flex flex-wrap items-center gap-3">
-          <h3 className="text-h3 font-bold text-foreground">{formatDate(dpr.reportDate, locale)}</h3>
-          <DprStatusBadge status={dpr.status} />
-        </div>
-        <div className="mt-3 border-t border-border pt-3">
-          <ApprovalChain steps={chain} label={t('report.chain.label')} />
-        </div>
-        {isApproved ? (
-          <p className="mt-2 text-sm text-success">{t('report.approvedHint')}</p>
-        ) : null}
-        <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-          <Meta label={t('report.fields.preparedBy')} value={dpr.preparedByName ?? dpr.preparedBy} />
-          {dpr.submittedAt ? (
-            <Meta
-              label={t('report.fields.submittedAt')}
-              value={formatDate(dpr.submittedAt, locale) ?? dpr.submittedAt}
+      <RefCard>
+        <RefCardHeader
+          title={t('report.title')}
+          subtitle={formatDate(dpr.reportDate, locale)}
+        />
+        <RefCardBody>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <PersonCard
+              label={t('report.fields.preparedBy')}
+              name={dpr.preparedByName ?? dpr.preparedBy}
             />
+            {dpr.submittedAt ? (
+              <PersonCard
+                label={t('report.fields.submittedAt')}
+                name={formatDate(dpr.submittedAt, locale) ?? dpr.submittedAt}
+                muted
+              />
+            ) : null}
+          </div>
+          <div className="mt-4 border-t border-gray-100 pt-4">
+            <ApprovalChain steps={chain} label={t('report.chain.label')} />
+          </div>
+          {isApproved ? (
+            <p className="mt-3 text-sm text-green-600">{t('report.approvedHint')}</p>
           ) : null}
-          {dpr.weather ? <Meta label={t('report.fields.weather')} value={dpr.weather} /> : null}
-          {dpr.labourCount != null ? (
-            <Meta label={t('report.fields.labourCount')} value={String(dpr.labourCount)} />
-          ) : null}
-          {dpr.delayReason ? <Meta label={t('report.fields.delayReason')} value={dpr.delayReason} /> : null}
-          {dpr.narrative ? <Meta label={t('report.fields.narrative')} value={dpr.narrative} /> : null}
-          {dpr.returnReason ? (
-            <div className="sm:col-span-2">
-              <Meta label={t('report.fields.returnReason')} value={dpr.returnReason} />
-            </div>
-          ) : null}
-        </dl>
-      </div>
+          <dl className="mt-4 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+            {dpr.weather ? <Meta label={t('report.fields.weather')} value={dpr.weather} /> : null}
+            {dpr.labourCount != null ? (
+              <Meta label={t('report.fields.labourCount')} value={String(dpr.labourCount)} />
+            ) : null}
+            {dpr.delayReason ? <Meta label={t('report.fields.delayReason')} value={dpr.delayReason} /> : null}
+            {dpr.narrative ? <Meta label={t('report.fields.narrative')} value={dpr.narrative} /> : null}
+            {dpr.returnReason ? (
+              <div className="sm:col-span-2">
+                <Meta label={t('report.fields.returnReason')} value={dpr.returnReason} />
+              </div>
+            ) : null}
+          </dl>
+        </RefCardBody>
+      </RefCard>
 
       {/* Measurements */}
-      <section className="rounded-panel border border-border bg-surface p-4 sm:p-5">
-        <h4 className="text-sm font-semibold text-foreground">{t('measurement.title')}</h4>
-        {editable ? (
-          <AddMeasurementForm dprId={dprId} projectId={projectId} leaves={leaves} />
-        ) : null}
-        {dpr.measurements.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">{t('measurement.empty')}</p>
-        ) : dpr.status === 'SUBMITTED' ? (
-          <TableScroll className="mt-3" aria-label={t('measurement.title')}>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('measurement.boqNode')}</TableHead>
-                  <TableHead>{t('measurement.review.unit')}</TableHead>
-                  <TableHead numeric>{t('measurement.review.priorVerified')}</TableHead>
-                  <TableHead numeric>{t('measurement.review.today')}</TableHead>
-                  <TableHead numeric>{t('measurement.review.cumulative')}</TableHead>
-                  <TableHead numeric>{t('measurement.review.scope')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {dpr.measurements.map((m) => {
-                  const line = progressByNode.get(m.boqNodeId);
-                  const leaf = leafMap.get(m.boqNodeId);
-                  const priorVerified = Number(line?.verifiedToDate ?? 0);
-                  const today = Number(m.quantity);
-                  const cumulative = priorVerified + today;
-                  const scope = Number(line?.measurableQuantity ?? leaf?.quantity ?? 0);
-                  const exceeds = scope > 0 && cumulative > scope;
-                  return (
-                    <TableRow key={m.id}>
-                      <TableCell>{leafLabel.get(m.boqNodeId) ?? m.boqNodeId}</TableCell>
-                      <TableCell className="text-muted-foreground">{leaf?.unit ?? '—'}</TableCell>
-                      <TableCell numeric className="tabular-nums text-muted-foreground">
-                        {formatNumber(priorVerified, locale, 3)}
-                      </TableCell>
-                      <TableCell numeric className="tabular-nums font-medium">
-                        {formatNumber(today, locale, 3)}
-                      </TableCell>
-                      <TableCell
-                        numeric
-                        className={exceeds ? 'tabular-nums text-warning' : 'tabular-nums'}
-                        title={exceeds ? t('measurement.review.cumulativeExceedsScope') : undefined}
-                      >
-                        {formatNumber(cumulative, locale, 3)}
-                        {exceeds ? ' !' : ''}
-                      </TableCell>
-                      <TableCell numeric className="tabular-nums text-muted-foreground">
-                        {scope > 0 ? formatNumber(scope, locale, 3) : '—'}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </TableScroll>
-        ) : (
-          <TableScroll className="mt-3" aria-label={t('measurement.title')}>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('measurement.boqNode')}</TableHead>
-                  <TableHead numeric>{t('measurement.quantity')}</TableHead>
-                  <TableHead>{t('measurement.notes')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {dpr.measurements.map((m) => (
-                  <TableRow key={m.id}>
-                    <TableCell>{leafLabel.get(m.boqNodeId) ?? m.boqNodeId}</TableCell>
-                    <TableCell numeric className="whitespace-nowrap tabular-nums">
-                      {formatNumber(m.quantity, locale, 3)}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{m.notes ?? '—'}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableScroll>
-        )}
-      </section>
+      <RefCard>
+        <RefCardHeader icon={<Ruler size={17} strokeWidth={1.9} />} title={t('measurement.title')} />
+        <RefCardBody>
+          {editable ? (
+            <AddMeasurementForm dprId={dprId} projectId={projectId} leaves={leaves} />
+          ) : null}
+          {dpr.measurements.length === 0 ? (
+            <p className="mt-3 text-sm text-gray-500">{t('measurement.empty')}</p>
+          ) : dpr.status === 'SUBMITTED' ? (
+            <div className="mt-3 space-y-4">
+              {dpr.measurements.map((m) => {
+                const line = progressByNode.get(m.boqNodeId);
+                const leaf = leafMap.get(m.boqNodeId);
+                const priorVerified = Number(line?.verifiedToDate ?? 0);
+                const today = Number(m.quantity);
+                const cumulative = priorVerified + today;
+                const scope = Number(line?.measurableQuantity ?? leaf?.quantity ?? 0);
+                const exceeds = scope > 0 && cumulative > scope;
+                const unit = leaf?.unit ? ` ${leaf.unit}` : '';
+                return (
+                  <div key={m.id} className="rounded-lg border border-gray-100 p-3">
+                    <p className="text-sm font-medium text-gray-900">{leafLabel.get(m.boqNodeId) ?? m.boqNodeId}</p>
+                    <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                      <RefStatTile label={t('measurement.review.priorVerified')} value={`${formatNumber(priorVerified, locale, 3)}${unit}`} />
+                      <RefStatTile label={t('measurement.review.today')} value={`${formatNumber(today, locale, 3)}${unit}`} />
+                      <RefStatTile
+                        label={t('measurement.review.cumulative')}
+                        value={`${formatNumber(cumulative, locale, 3)}${unit}`}
+                        tone={exceeds ? 'amber' : undefined}
+                      />
+                      <RefStatTile label={t('measurement.review.scope')} value={scope > 0 ? `${formatNumber(scope, locale, 3)}${unit}` : '—'} />
+                    </div>
+                    {exceeds ? (
+                      <p className="mt-2 text-xs text-amber-600">{t('measurement.review.cumulativeExceedsScope')}</p>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <RefTableScroll className="mt-3" aria-label={t('measurement.title')}>
+              <RefTable>
+                <RefThead>
+                  <RefTr>
+                    <RefTh>{t('measurement.boqNode')}</RefTh>
+                    <RefTh numeric>{t('measurement.quantity')}</RefTh>
+                    <RefTh>{t('measurement.notes')}</RefTh>
+                  </RefTr>
+                </RefThead>
+                <RefTbody>
+                  {dpr.measurements.map((m) => (
+                    <RefTr key={m.id}>
+                      <RefTd>{leafLabel.get(m.boqNodeId) ?? m.boqNodeId}</RefTd>
+                      <RefTd numeric className="whitespace-nowrap tabular-nums">
+                        {formatNumber(m.quantity, locale, 3)}
+                      </RefTd>
+                      <RefTd className="text-gray-500">{m.notes ?? '—'}</RefTd>
+                    </RefTr>
+                  ))}
+                </RefTbody>
+              </RefTable>
+            </RefTableScroll>
+          )}
+        </RefCardBody>
+      </RefCard>
 
       {/* Evidence */}
       <DprEvidence dprId={dprId} canUpload={!isApproved} attachments={dpr.attachments} />
 
-      {/* Section C — Labour */}
-      <LabourSection dprId={dprId} rows={dpr.labourRows ?? []} editable={editable} />
-
-      {/* Section C — Equipment */}
-      <EquipmentSection dprId={dprId} rows={dpr.equipmentRows ?? []} editable={editable} />
+      {/* Section C — Labour & equipment */}
+      <RefCard>
+        <RefCardHeader icon={<HardHat size={17} strokeWidth={1.9} />} title={t('labour.title')} divider />
+        <RefCardBody className="pt-4">
+          <LabourSection dprId={dprId} rows={dpr.labourRows ?? []} editable={editable} />
+        </RefCardBody>
+        <div className="border-t border-gray-100" />
+        <RefCardHeader icon={<Wrench size={17} strokeWidth={1.9} />} title={t('equipment.title')} />
+        <RefCardBody>
+          <EquipmentSection dprId={dprId} rows={dpr.equipmentRows ?? []} editable={editable} />
+        </RefCardBody>
+      </RefCard>
 
       {/* Section D — Observations + tomorrow plan */}
-      <ObservationsSection dprId={dprId} rows={dpr.observations ?? []} editable={editable} />
+      <RefCard>
+        <RefCardHeader icon={<TriangleAlert size={17} strokeWidth={1.9} />} iconTone="amber" title={t('observations.title')} />
+        <RefCardBody>
+          <ObservationsSection dprId={dprId} rows={dpr.observations ?? []} editable={editable} />
+        </RefCardBody>
+      </RefCard>
 
       {dpr.tomorrowPlan ? (
-        <section className="rounded-panel border border-border bg-surface p-4 sm:p-5">
-          <h4 className="text-sm font-semibold text-foreground">{t('context.tomorrowPlan')}</h4>
-          <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{dpr.tomorrowPlan}</p>
-        </section>
+        <RefCard>
+          <RefCardHeader title={t('context.tomorrowPlan')} />
+          <RefCardBody>
+            <p className="text-sm whitespace-pre-wrap text-gray-700">{dpr.tomorrowPlan}</p>
+          </RefCardBody>
+        </RefCard>
+      ) : null}
+
+      {actionButtons ? (
+        <div className="flex justify-end gap-2 border-t border-gray-100 pt-4">{actionButtons}</div>
       ) : null}
 
       {confirm === 'approve' ? (
@@ -338,8 +361,20 @@ export function DprDetail({
 function Meta({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex gap-2">
-      <dt className="shrink-0 font-medium text-muted-foreground">{label}</dt>
-      <dd className="text-foreground">{value}</dd>
+      <dt className="shrink-0 font-medium text-gray-500">{label}</dt>
+      <dd className="text-gray-900">{value}</dd>
+    </div>
+  );
+}
+
+function PersonCard({ label, name, muted }: { label: string; name: string; muted?: boolean }) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-gray-100 p-3">
+      <Avatar name={name} />
+      <div className="min-w-0">
+        <p className="text-xs text-gray-500">{label}</p>
+        <p className={`truncate text-sm font-medium ${muted ? 'text-gray-600' : 'text-gray-900'}`}>{name}</p>
+      </div>
     </div>
   );
 }
@@ -447,9 +482,9 @@ function AddMeasurementForm({
         <Input id="m-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </FormField>
       <div className="sm:col-span-2">
-        <Button type="submit" disabled={add.isPending || !boqNodeId}>
+        <RefButton type="submit" disabled={add.isPending || !boqNodeId}>
           {t('measurement.add')}
-        </Button>
+        </RefButton>
       </div>
     </form>
   );
@@ -492,24 +527,25 @@ function DprEvidence({
   };
 
   return (
-    <section className="rounded-panel border border-border bg-surface p-4 sm:p-5">
-      <h4 className="text-sm font-semibold text-foreground">{t('evidence.title')}</h4>
-      <p className="mt-1 text-xs text-muted-foreground">{t('evidence.hint')}</p>
-      {canUpload ? (
-        <div className="mt-3">
-          <MediaUpload onUpload={onUpload} labels={labels} />
-        </div>
-      ) : null}
-      {attachments.length === 0 ? (
-        <p className="mt-3 text-sm text-muted-foreground">{t('evidence.empty')}</p>
-      ) : (
-        <ul className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-4">
-          {attachments.map((a) => (
-            <EvidenceTile key={a.id} platformFileId={a.platformFileId} />
-          ))}
-        </ul>
-      )}
-    </section>
+    <RefCard>
+      <RefCardHeader icon={<ImageIcon size={17} strokeWidth={1.9} />} iconTone="violet" title={t('evidence.title')} subtitle={t('evidence.hint')} />
+      <RefCardBody>
+        {canUpload ? (
+          <div className="mt-1">
+            <MediaUpload onUpload={onUpload} labels={labels} />
+          </div>
+        ) : null}
+        {attachments.length === 0 ? (
+          <p className="mt-3 text-sm text-gray-500">{t('evidence.empty')}</p>
+        ) : (
+          <ul className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-4">
+            {attachments.map((a) => (
+              <EvidenceTile key={a.id} platformFileId={a.platformFileId} />
+            ))}
+          </ul>
+        )}
+      </RefCardBody>
+    </RefCard>
   );
 }
 
@@ -525,11 +561,11 @@ function EvidenceTile({ platformFileId }: { platformFileId: string }) {
   });
 
   if (query.isPending) {
-    return <li className="aspect-square animate-pulse rounded-control bg-muted" aria-hidden="true" />;
+    return <li className="aspect-square animate-pulse rounded-lg bg-gray-100" aria-hidden="true" />;
   }
   if (query.isError || !query.data) {
     return (
-      <li className="flex aspect-square items-center justify-center rounded-control border border-border bg-surface px-2 text-center text-caption text-muted-foreground">
+      <li className="flex aspect-square items-center justify-center rounded-lg border border-gray-200 bg-white px-2 text-center text-xs text-gray-500">
         {t('evidence.unavailable')}
       </li>
     );
@@ -540,12 +576,12 @@ function EvidenceTile({ platformFileId }: { platformFileId: string }) {
   const isVideo = mimeType.startsWith('video/');
 
   return (
-    <li className="relative aspect-square overflow-hidden rounded-control border border-border bg-muted">
+    <li className="relative aspect-square overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
       <a
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        className="block h-full w-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
+        className="block h-full w-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"
         title={originalName}
       >
         {isImage ? (
@@ -621,32 +657,31 @@ function LabourSection({
   }
 
   return (
-    <section className="rounded-panel border border-border bg-surface p-4 sm:p-5">
-      <h4 className="text-sm font-semibold text-foreground">{t('labour.title')}</h4>
+    <div>
       {rows.length > 0 ? (
-        <TableScroll className="mt-3" aria-label={t('labour.title')}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('labour.fields.trade')}</TableHead>
-                <TableHead numeric>{t('labour.fields.headcount')}</TableHead>
-                <TableHead>{t('labour.fields.contractor')}</TableHead>
-                <TableHead numeric>{t('labour.fields.hours')}</TableHead>
-                {editable ? <TableHead /> : null}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+        <RefTableScroll aria-label={t('labour.title')}>
+          <RefTable>
+            <RefThead>
+              <RefTr>
+                <RefTh>{t('labour.fields.trade')}</RefTh>
+                <RefTh numeric>{t('labour.fields.headcount')}</RefTh>
+                <RefTh>{t('labour.fields.contractor')}</RefTh>
+                <RefTh numeric>{t('labour.fields.hours')}</RefTh>
+                {editable ? <RefTh /> : null}
+              </RefTr>
+            </RefThead>
+            <RefTbody>
               {rows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="font-medium">{row.trade}</TableCell>
-                  <TableCell numeric className="tabular-nums">{row.headcount}</TableCell>
-                  <TableCell className="text-muted-foreground">{row.contractor ?? '—'}</TableCell>
-                  <TableCell numeric className="tabular-nums text-muted-foreground">
+                <RefTr key={row.id}>
+                  <RefTd className="font-medium">{row.trade}</RefTd>
+                  <RefTd numeric className="tabular-nums">{row.headcount}</RefTd>
+                  <RefTd className="text-gray-500">{row.contractor ?? '—'}</RefTd>
+                  <RefTd numeric className="tabular-nums text-gray-500">
                     {row.hours ?? '—'}
-                  </TableCell>
+                  </RefTd>
                   {editable ? (
-                    <TableCell>
-                      <Button
+                    <RefTd>
+                      <RefButton
                         variant="ghost"
                         size="sm"
                         aria-label={t('labour.remove')}
@@ -654,16 +689,16 @@ function LabourSection({
                         disabled={remove.isPending}
                       >
                         <Trash2 size={14} aria-hidden="true" />
-                      </Button>
-                    </TableCell>
+                      </RefButton>
+                    </RefTd>
                   ) : null}
-                </TableRow>
+                </RefTr>
               ))}
-            </TableBody>
-          </Table>
-        </TableScroll>
+            </RefTbody>
+          </RefTable>
+        </RefTableScroll>
       ) : (
-        <p className="mt-2 text-sm text-muted-foreground">{t('labour.empty')}</p>
+        <p className="text-sm text-gray-500">{t('labour.empty')}</p>
       )}
       {editable ? (
         <form onSubmit={onAdd} className="mt-3 grid gap-2 sm:grid-cols-4" aria-label={t('labour.add')}>
@@ -690,13 +725,13 @@ function LabourSection({
             <Input id="lr-hours" type="number" min="0" step="0.5" value={hours} onChange={(e) => setHours(e.target.value)} />
           </FormField>
           <div className="sm:col-span-4">
-            <Button type="submit" size="sm" disabled={add.isPending || !trade.trim()}>
+            <RefButton type="submit" size="sm" disabled={add.isPending || !trade.trim()}>
               {add.isPending ? t('labour.saving') : t('labour.add')}
-            </Button>
+            </RefButton>
           </div>
         </form>
       ) : null}
-    </section>
+    </div>
   );
 }
 
@@ -750,32 +785,31 @@ function EquipmentSection({
   }
 
   return (
-    <section className="rounded-panel border border-border bg-surface p-4 sm:p-5">
-      <h4 className="text-sm font-semibold text-foreground">{t('equipment.title')}</h4>
+    <div>
       {rows.length > 0 ? (
-        <TableScroll className="mt-3" aria-label={t('equipment.title')}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('equipment.fields.type')}</TableHead>
-                <TableHead numeric>{t('equipment.fields.count')}</TableHead>
-                <TableHead numeric>{t('equipment.fields.hours')}</TableHead>
-                <TableHead>{t('equipment.fields.condition')}</TableHead>
-                {editable ? <TableHead /> : null}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+        <RefTableScroll aria-label={t('equipment.title')}>
+          <RefTable>
+            <RefThead>
+              <RefTr>
+                <RefTh>{t('equipment.fields.type')}</RefTh>
+                <RefTh numeric>{t('equipment.fields.count')}</RefTh>
+                <RefTh numeric>{t('equipment.fields.hours')}</RefTh>
+                <RefTh>{t('equipment.fields.condition')}</RefTh>
+                {editable ? <RefTh /> : null}
+              </RefTr>
+            </RefThead>
+            <RefTbody>
               {rows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="font-medium">{row.equipmentType}</TableCell>
-                  <TableCell numeric className="tabular-nums">{row.count}</TableCell>
-                  <TableCell numeric className="tabular-nums text-muted-foreground">
+                <RefTr key={row.id}>
+                  <RefTd className="font-medium">{row.equipmentType}</RefTd>
+                  <RefTd numeric className="tabular-nums">{row.count}</RefTd>
+                  <RefTd numeric className="tabular-nums text-gray-500">
                     {row.hoursWorked ?? '—'}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{row.condition ?? '—'}</TableCell>
+                  </RefTd>
+                  <RefTd className="text-gray-500">{row.condition ?? '—'}</RefTd>
                   {editable ? (
-                    <TableCell>
-                      <Button
+                    <RefTd>
+                      <RefButton
                         variant="ghost"
                         size="sm"
                         aria-label={t('equipment.remove')}
@@ -783,16 +817,16 @@ function EquipmentSection({
                         disabled={remove.isPending}
                       >
                         <Trash2 size={14} aria-hidden="true" />
-                      </Button>
-                    </TableCell>
+                      </RefButton>
+                    </RefTd>
                   ) : null}
-                </TableRow>
+                </RefTr>
               ))}
-            </TableBody>
-          </Table>
-        </TableScroll>
+            </RefTbody>
+          </RefTable>
+        </RefTableScroll>
       ) : (
-        <p className="mt-2 text-sm text-muted-foreground">{t('equipment.empty')}</p>
+        <p className="text-sm text-gray-500">{t('equipment.empty')}</p>
       )}
       {editable ? (
         <form onSubmit={onAdd} className="mt-3 grid gap-2 sm:grid-cols-3" aria-label={t('equipment.add')}>
@@ -829,13 +863,13 @@ function EquipmentSection({
             </FormField>
           </div>
           <div className="sm:col-span-3">
-            <Button type="submit" size="sm" disabled={add.isPending || !equipType.trim()}>
+            <RefButton type="submit" size="sm" disabled={add.isPending || !equipType.trim()}>
               {add.isPending ? t('equipment.saving') : t('equipment.add')}
-            </Button>
+            </RefButton>
           </div>
         </form>
       ) : null}
-    </section>
+    </div>
   );
 }
 
@@ -846,10 +880,10 @@ type ObsCategory = (typeof OBS_CATEGORIES)[number];
 
 const SEVERITY_OPTIONS = ['low', 'medium', 'high'] as const;
 
-const OBS_TONES: Record<ObsCategory, 'warning' | 'danger' | 'info'> = {
-  ISSUE: 'warning',
-  DELAY: 'warning',
-  SAFETY: 'danger',
+const OBS_TONES: Record<ObsCategory, RefTone> = {
+  ISSUE: 'amber',
+  DELAY: 'amber',
+  SAFETY: 'red',
 };
 
 function ObservationsSection({
@@ -897,29 +931,28 @@ function ObservationsSection({
   }
 
   return (
-    <section className="rounded-panel border border-border bg-surface p-4 sm:p-5">
-      <h4 className="text-sm font-semibold text-foreground">{t('observations.title')}</h4>
+    <div>
       {rows.length > 0 ? (
-        <ul className="mt-3 divide-y divide-border">
+        <ul className="divide-y divide-gray-100">
           {rows.map((obs) => (
             <li key={obs.id} className="flex items-start gap-3 py-3">
-              <Badge tone={OBS_TONES[obs.category as ObsCategory] ?? 'info'} className="mt-0.5 shrink-0">
+              <RefPill tone={OBS_TONES[obs.category as ObsCategory] ?? 'blue'} className="mt-0.5 shrink-0">
                 {t(`observations.categories.${obs.category}`)}
-              </Badge>
+              </RefPill>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-foreground">{obs.description}</p>
+                <p className="text-sm font-medium text-gray-900">{obs.description}</p>
                 {obs.affectedWork ? (
-                  <p className="mt-0.5 text-xs text-muted-foreground">{obs.affectedWork}</p>
+                  <p className="mt-0.5 text-xs text-gray-500">{obs.affectedWork}</p>
                 ) : null}
                 {obs.severity ? (
-                  <p className="mt-0.5 text-xs text-muted-foreground capitalize">{obs.severity}</p>
+                  <p className="mt-0.5 text-xs text-gray-500 capitalize">{obs.severity}</p>
                 ) : null}
                 {obs.followUpOwner ? (
-                  <p className="mt-0.5 text-xs text-muted-foreground">→ {obs.followUpOwner}</p>
+                  <p className="mt-0.5 text-xs text-gray-500">→ {obs.followUpOwner}</p>
                 ) : null}
               </div>
               {editable ? (
-                <Button
+                <RefButton
                   variant="ghost"
                   size="sm"
                   aria-label={t('observations.remove')}
@@ -927,13 +960,13 @@ function ObservationsSection({
                   disabled={remove.isPending}
                 >
                   <Trash2 size={14} aria-hidden="true" />
-                </Button>
+                </RefButton>
               ) : null}
             </li>
           ))}
         </ul>
       ) : (
-        <p className="mt-2 text-sm text-muted-foreground">{t('observations.empty')}</p>
+        <p className="text-sm text-gray-500">{t('observations.empty')}</p>
       )}
       {editable ? (
         <form onSubmit={onAdd} className="mt-3 grid gap-2 sm:grid-cols-2" aria-label={t('observations.add')}>
@@ -974,13 +1007,13 @@ function ObservationsSection({
             <Input id="obs-owner" value={followUpOwner} onChange={(e) => setFollowUpOwner(e.target.value)} />
           </FormField>
           <div className="sm:col-span-2">
-            <Button type="submit" size="sm" disabled={add.isPending || !description.trim()}>
+            <RefButton type="submit" size="sm" disabled={add.isPending || !description.trim()}>
               {add.isPending ? t('observations.saving') : t('observations.add')}
-            </Button>
+            </RefButton>
           </div>
         </form>
       ) : null}
-    </section>
+    </div>
   );
 }
 

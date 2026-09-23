@@ -4,7 +4,6 @@ import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Alert,
-  Button,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -21,6 +20,9 @@ import { ApiError } from '@/lib/api-client';
 import { useCommercialSummary, useVariations } from '@/features/commercial/hooks/use-commercial';
 
 import { useRebaseline } from '../hooks/use-progress';
+import { RefButton } from './ref-ui';
+
+const refFieldClass = 'rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
 
 /**
  * Re-baseline dialog (Master Schedule P3, ADR-029). A re-baseline supersedes the governing
@@ -83,7 +85,7 @@ export function RebaselineDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg" aria-describedby="rebaseline-desc">
+      <DialogContent className="rounded-xl sm:max-w-lg" aria-describedby="rebaseline-desc">
         <form onSubmit={handleSubmit}>
           <DialogTitle>{t('baseline.governing.rebaselineTitle')}</DialogTitle>
           <DialogDescription id="rebaseline-desc">
@@ -107,6 +109,7 @@ export function RebaselineDialog({
                   value={variationOrderId}
                   onChange={setVariationOrderId}
                   placeholder={t('baseline.governing.variationPlaceholder')}
+                  className={refFieldClass}
                 >
                   <option value="">{t('baseline.governing.variationPlaceholder')}</option>
                   {variations.map((vo) => (
@@ -115,9 +118,7 @@ export function RebaselineDialog({
                     </option>
                   ))}
                 </Select>
-                <p className="text-caption text-muted-foreground">
-                  {t('baseline.governing.variationHint')}
-                </p>
+                <p className="text-xs text-gray-500">{t('baseline.governing.variationHint')}</p>
               </div>
             )}
 
@@ -130,28 +131,27 @@ export function RebaselineDialog({
                   onChange={(e) => setNote(e.target.value)}
                   maxLength={1000}
                   rows={3}
+                  className={refFieldClass}
                 />
-                <p className="text-caption text-muted-foreground">
-                  {t('baseline.governing.noteHint')}
-                </p>
+                <p className="text-xs text-gray-500">{t('baseline.governing.noteHint')}</p>
               </div>
             ) : null}
           </div>
 
           <DialogFooter>
             {canPick ? (
-              <Button type="submit" disabled={!canSubmit}>
+              <RefButton type="submit" disabled={!canSubmit}>
                 {rebaseline.isPending ? tCommon('saving') : t('baseline.governing.rebaselineConfirm')}
-              </Button>
+              </RefButton>
             ) : null}
-            <Button
+            <RefButton
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
               disabled={rebaseline.isPending}
             >
               {tCommon('cancel')}
-            </Button>
+            </RefButton>
           </DialogFooter>
         </form>
       </DialogContent>

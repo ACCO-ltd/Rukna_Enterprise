@@ -1,23 +1,27 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import {
-  Alert,
-  Button,
-  SectionHeader,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableScroll,
-} from '@erp/ui';
+import { Alert, SectionHeader } from '@erp/ui';
+import { ClipboardCheck } from 'lucide-react';
 import type { ProgressPeriodComparisonResponse } from '@erp/types';
 
 import { formatDate, formatNumber } from '@/lib/format';
 
 import { useProgressPeriodComparison, useProjectProgress } from '../hooks/use-progress';
+import {
+  RefButton,
+  RefCard,
+  RefCardBody,
+  RefCardHeader,
+  RefEmpty,
+  RefTable,
+  RefTableScroll,
+  RefTbody,
+  RefTd,
+  RefTh,
+  RefThead,
+  RefTr,
+} from './ref-ui';
 
 /** Verified physical progress per BOQ leaf (approved DPRs only), plus a period-over-period summary. */
 export function VerifiedProgressSection({ projectId }: { projectId: string }) {
@@ -30,7 +34,7 @@ export function VerifiedProgressSection({ projectId }: { projectId: string }) {
     return (
       <div role="status" aria-live="polite">
         <span className="sr-only">{tCommon('loading')}</span>
-        <div className="h-48 animate-pulse rounded-panel border border-border bg-muted" aria-hidden="true" />
+        <div className="h-48 animate-pulse rounded-xl bg-gray-100" aria-hidden="true" />
       </div>
     );
   }
@@ -39,67 +43,68 @@ export function VerifiedProgressSection({ projectId }: { projectId: string }) {
     return (
       <Alert variant="error" messages={[t('states.loadFailed')]}>
         <div className="mt-3">
-          <Button variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching}>
+          <RefButton variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching}>
             {t('actions.retry')}
-          </Button>
+          </RefButton>
         </div>
       </Alert>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Overall period-over-period comparison (BE-1 is overall-only; per-leaf deltas are BE-2). */}
       <PeriodComparison query={comparisonQuery} />
 
-      <div className="space-y-3">
-        <SectionHeader title={t('verified.title')} />
-        {data.length === 0 ? (
-          <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
-            <p className="text-sm text-muted-foreground">{t('verified.empty')}</p>
-          </div>
-        ) : (
-          <>
-            <p className="text-body-sm text-muted-foreground">{t('verified.subtitle')}</p>
-            <TableScroll aria-label={t('verified.title')}>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t('verified.col.code')}</TableHead>
-                    <TableHead>{t('verified.col.description')}</TableHead>
-                    <TableHead numeric>{t('verified.col.measurable')}</TableHead>
-                    <TableHead numeric>{t('verified.col.verified')}</TableHead>
-                    <TableHead numeric>{t('verified.col.percent')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+      <RefCard>
+        <RefCardHeader
+          icon={<ClipboardCheck size={17} strokeWidth={1.9} />}
+          iconTone="green"
+          title={t('verified.title')}
+          subtitle={data.length > 0 ? t('verified.subtitle') : undefined}
+          divider
+        />
+        <RefCardBody className="pt-4">
+          {data.length === 0 ? (
+            <RefEmpty title={t('verified.empty')} />
+          ) : (
+            <RefTableScroll aria-label={t('verified.title')}>
+              <RefTable>
+                <RefThead>
+                  <RefTr>
+                    <RefTh>{t('verified.col.code')}</RefTh>
+                    <RefTh>{t('verified.col.description')}</RefTh>
+                    <RefTh numeric>{t('verified.col.measurable')}</RefTh>
+                    <RefTh numeric>{t('verified.col.verified')}</RefTh>
+                    <RefTh numeric>{t('verified.col.percent')}</RefTh>
+                  </RefTr>
+                </RefThead>
+                <RefTbody>
                   {data.map((line) => (
-                    <TableRow key={line.boqNodeId}>
-                      <TableCell className="whitespace-nowrap font-mono text-xs">
-                        {line.code}
-                      </TableCell>
-                      <TableCell>{line.description}</TableCell>
-                      <TableCell numeric className="whitespace-nowrap tabular-nums">
+                    <RefTr key={line.boqNodeId}>
+                      <RefTd className="whitespace-nowrap font-mono text-xs">{line.code}</RefTd>
+                      <RefTd>{line.description}</RefTd>
+                      <RefTd numeric className="whitespace-nowrap tabular-nums">
                         {formatNumber(line.measurableQuantity, 'en', 3)}
-                      </TableCell>
-                      <TableCell numeric className="whitespace-nowrap tabular-nums">
+                      </RefTd>
+                      <RefTd numeric className="whitespace-nowrap tabular-nums">
                         {formatNumber(line.verifiedToDate, 'en', 3)}
-                      </TableCell>
-                      <TableCell numeric className="whitespace-nowrap font-medium tabular-nums">
+                      </RefTd>
+                      <RefTd numeric className="whitespace-nowrap font-medium tabular-nums">
                         {line.percentComplete === null ? (
-                          <span className="text-muted-foreground">—</span>
+                          <span className="text-gray-400">—</span>
                         ) : (
                           `${line.percentComplete}%`
                         )}
-                      </TableCell>
-                    </TableRow>
+                      </RefTd>
+                    </RefTr>
                   ))}
-                </TableBody>
-              </Table>
-            </TableScroll>
-          </>
-        )}
-      </div>
+                </RefTbody>
+              </RefTable>
+            </RefTableScroll>
+          )}
+        </RefCardBody>
+      </RefCard>
     </div>
   );
 }
@@ -125,10 +130,10 @@ function PeriodComparison({
     <div className="space-y-3">
       <SectionHeader title={t('comparison.title')} />
       {c.physical === null && c.verified === null ? (
-        <p className="text-body-sm text-muted-foreground">{t('comparison.insufficient')}</p>
+        <p className="text-sm text-gray-500">{t('comparison.insufficient')}</p>
       ) : (
         <>
-          <p className="text-caption text-muted-foreground">
+          <p className="text-xs text-gray-500">
             {t('comparison.range', {
               previous: formatDate(c.previousPeriodEndDate) ?? '—',
               current: formatDate(c.currentPeriodEndDate) ?? '—',
@@ -155,27 +160,26 @@ function ComparisonRow({
 
   if (metric === null) {
     return (
-      <div className="border-y border-border py-3">
-        <dt className="text-micro uppercase text-muted-foreground">{label}</dt>
-        <dd className="mt-1 text-muted-foreground">—</dd>
+      <div className="border-y border-gray-100 py-3">
+        <dt className="text-xs uppercase text-gray-500">{label}</dt>
+        <dd className="mt-1 text-gray-400">—</dd>
       </div>
     );
   }
 
   const { previous, current, delta } = metric;
   // Δ direction is a status: up is good (progress rose), flat/down is neutral/attention.
-  const deltaTone =
-    delta > 0 ? 'text-success' : delta < 0 ? 'text-danger' : 'text-muted-foreground';
+  const deltaTone = delta > 0 ? 'text-green-600' : delta < 0 ? 'text-red-600' : 'text-gray-500';
   const deltaLabel = `${delta > 0 ? '+' : delta < 0 ? '−' : ''}${Math.abs(delta)}%`;
 
   return (
-    <div className="border-y border-border py-3">
-      <dt className="text-micro uppercase text-muted-foreground">{label}</dt>
+    <div className="border-y border-gray-100 py-3">
+      <dt className="text-xs uppercase text-gray-500">{label}</dt>
       <dd className="mt-1 flex items-baseline gap-2">
-        <span className="text-body-sm text-muted-foreground tabular-nums">
+        <span className="text-sm text-gray-500 tabular-nums">
           {t('comparison.previousToCurrent', { previous: `${previous}%`, current: `${current}%` })}
         </span>
-        <span className={`text-body-sm font-medium tabular-nums ${deltaTone}`}>{deltaLabel}</span>
+        <span className={`text-sm font-medium tabular-nums ${deltaTone}`}>{deltaLabel}</span>
       </dd>
     </div>
   );

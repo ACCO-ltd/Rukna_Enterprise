@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { Badge, Progress, RecordPanel, cn, type BadgeTone } from '@erp/ui';
+
+import { RefBar, RefCard, RefCardBody, RefCardHeader, RefPill, type RefTone } from './ref-ui';
 
 export interface SignalStat {
   label: string;
@@ -44,7 +45,7 @@ export function SignalBanner({
   title: string;
   icon?: React.ReactNode;
   statusLabel: string;
-  tone: BadgeTone;
+  tone: RefTone;
   hint: string;
   stats: SignalStat[];
   /** Cross-link into the surface that owns the detail. Omit to render no link (e.g. a self-link). */
@@ -61,68 +62,63 @@ export function SignalBanner({
     return (
       <section
         aria-labelledby={headingId}
-        className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-panel border border-border bg-surface px-4 py-3"
+        className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-lg border border-gray-200 bg-white px-4 py-3"
       >
-        <h2 id={headingId} className="text-body-sm font-semibold text-foreground">
+        <h2 id={headingId} className="text-sm font-semibold text-gray-900">
           {title}
         </h2>
-        <p className="text-caption text-muted-foreground">{hint}</p>
+        <p className="text-xs text-gray-500">{hint}</p>
       </section>
     );
   }
 
   return (
-    <RecordPanel
-      title={title}
-      icon={icon}
-      action={
-        <div className="flex items-center gap-2.5">
-          <Badge tone={tone}>{statusLabel}</Badge>
-          {link ? (
-            <Link
-              href={link.href}
-              className="text-caption font-medium text-brand-primary hover:underline"
-            >
-              {link.label}
-            </Link>
-          ) : null}
-        </div>
-      }
-    >
-      <dl className="flex flex-col gap-2.5">
-        {stats.map((s) => (
-          <div key={s.label} className="flex items-center gap-3">
-            <dt className="w-32 shrink-0 truncate text-caption text-muted-foreground">
-              {s.label}
-            </dt>
-            <dd
-              className={cn(
-                'w-14 shrink-0 text-end text-body-sm font-semibold tabular-nums',
-                s.variance ? toneClass(tone) : 'text-foreground',
-              )}
-            >
-              {s.value}
-            </dd>
-            <dd className="min-w-0 flex-1">
-              {s.percent === null || s.percent === undefined ? null : (
-                <Progress value={s.percent} label={s.label} />
-              )}
-            </dd>
+    <RefCard>
+      <RefCardHeader
+        icon={icon}
+        title={title}
+        action={
+          <div className="flex items-center gap-2.5">
+            <RefPill tone={tone}>{statusLabel}</RefPill>
+            {link ? (
+              <Link href={link.href} className="text-xs font-medium text-blue-600 hover:underline">
+                {link.label}
+              </Link>
+            ) : null}
           </div>
-        ))}
-      </dl>
+        }
+      />
+      <RefCardBody>
+        <dl className="flex flex-col gap-2.5">
+          {stats.map((s) => (
+            <div key={s.label} className="flex items-center gap-3">
+              <dt className="w-32 shrink-0 truncate text-xs text-gray-500">{s.label}</dt>
+              <dd
+                className={`w-14 shrink-0 text-end text-sm font-semibold tabular-nums ${
+                  s.variance ? toneClass(tone) : 'text-gray-900'
+                }`}
+              >
+                {s.value}
+              </dd>
+              <dd className="min-w-0 flex-1">
+                {s.percent === null || s.percent === undefined ? null : (
+                  <RefBar percent={s.percent} />
+                )}
+              </dd>
+            </div>
+          ))}
+        </dl>
 
-      <p className="mt-3 border-t border-border pt-3 text-caption leading-5 text-muted-foreground">
-        {hint}
-      </p>
-    </RecordPanel>
+        <p className="mt-3 border-t border-gray-100 pt-3 text-xs leading-5 text-gray-500">{hint}</p>
+      </RefCardBody>
+    </RefCard>
   );
 }
 
 /** The variance takes the signal's own tone, so the number and the pill agree. */
-function toneClass(tone: BadgeTone): string {
-  if (tone === 'warning') return 'text-warning';
-  if (tone === 'danger') return 'text-danger';
-  if (tone === 'live') return 'text-success';
-  return 'text-foreground';
+function toneClass(tone: RefTone): string {
+  if (tone === 'amber') return 'text-amber-600';
+  if (tone === 'red') return 'text-red-600';
+  if (tone === 'green') return 'text-green-600';
+  return 'text-gray-900';
 }

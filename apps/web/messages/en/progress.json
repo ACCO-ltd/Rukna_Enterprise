@@ -22,12 +22,15 @@
   "review": {
     "title": "Review queue",
     "subtitle": "Daily reports waiting for your review.",
+    "queueCount": "Report queue ({count})",
     "awaiting": "Awaiting review",
     "returned": "Returned",
     "recentlyApproved": "Recently approved",
     "empty": "No reports to review.",
     "emptyHint": "Reports submitted by the site team will appear here.",
-    "openReport": "Review report"
+    "openReport": "Review report",
+    "selectPrompt": "Select a report to review",
+    "selectPromptHint": "Choose a report from the queue on the left to see its details."
   },
   "today": {
     "noReportTitle": "No report for today",
@@ -38,7 +41,20 @@
     "submittedAt": "Submitted {time}",
     "returned": "Returned for revision",
     "reviseReport": "Revise report",
-    "recentReports": "Recent reports"
+    "recentReports": "Recent reports",
+    "cardTitle": "Today's site report",
+    "viewReport": "View report",
+    "workCompleted": "Work completed",
+    "workCompletedCount": "{count, plural, one {# item recorded} other {# items recorded}}",
+    "workCompletedNone": "Nothing recorded yet",
+    "labourOnSite": "Labour on site",
+    "labourNone": "Not recorded",
+    "issues": "Issues / delays",
+    "issuesCount": "{count, plural, one {# issue recorded} other {# issues recorded}}",
+    "issuesNone": "None recorded",
+    "photos": "Photos",
+    "photosCount": "{count, plural, one {# photo attached} other {# photos attached}}",
+    "photosNone": "None attached"
   },
   "headline": {
     "physical": "Overall physical progress",

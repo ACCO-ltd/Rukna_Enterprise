@@ -1,12 +1,12 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { Badge, RecordPanel } from '@erp/ui';
 import { AlertCircle, ChevronRight } from 'lucide-react';
 
 import { useBoqLeaves } from '../hooks/use-boq-leaves';
 import { useDprs, useProjectRollup, useWorkPackages } from '../hooks/use-progress';
 import type { ProgressView } from './progress-tab';
+import { RefCard, RefCardBody, RefCardHeader, RefPill } from './ref-ui';
 
 interface AttentionItem {
   id: string;
@@ -89,53 +89,49 @@ export function NeedsAttentionPanel({
   const loading = dprs.isPending || rollup.isPending || workPackages.isPending;
 
   return (
-    <RecordPanel
-      title={t('attention.title')}
-      icon={<AlertCircle size={17} strokeWidth={1.9} />}
-      action={
-        items.length > 0 ? (
-          <Badge tone="warning">{items.reduce((sum, i) => sum + i.count, 0)}</Badge>
-        ) : null
-      }
-      padded={items.length === 0}
-    >
+    <RefCard>
+      <RefCardHeader
+        icon={<AlertCircle size={17} strokeWidth={1.9} />}
+        iconTone={items.length > 0 ? 'amber' : 'blue'}
+        title={t('attention.title')}
+        divider
+        action={
+          items.length > 0 ? (
+            <RefPill tone="amber">{items.reduce((sum, i) => sum + i.count, 0)}</RefPill>
+          ) : null
+        }
+      />
       {loading ? (
-        <div className="h-16 animate-pulse rounded-control bg-muted" aria-hidden="true" />
+        <RefCardBody className="pt-4">
+          <div className="h-16 animate-pulse rounded-lg bg-gray-100" aria-hidden="true" />
+        </RefCardBody>
       ) : items.length === 0 ? (
-        <>
-          <p className="text-body-sm font-medium text-foreground">{t('attention.clear')}</p>
-          <p className="mt-1 text-caption text-muted-foreground">{t('attention.clearHint')}</p>
-        </>
+        <RefCardBody className="pt-4">
+          <p className="text-sm font-medium text-gray-900">{t('attention.clear')}</p>
+          <p className="mt-1 text-xs text-gray-500">{t('attention.clearHint')}</p>
+        </RefCardBody>
       ) : (
-        <ul className="divide-y divide-border">
+        <ul className="divide-y divide-gray-100">
           {items.map((item) => (
             <li key={item.id}>
               <button
                 type="button"
                 onClick={() => onGoTo(item.goTo)}
-                className="flex w-full items-start gap-3 px-4 py-3 text-start transition-colors hover:bg-surface-hover focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-brand-primary"
+                className="flex w-full items-start gap-3 px-5 py-3 text-start transition-colors hover:bg-gray-50 focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-blue-500"
               >
-                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-warning-subtle text-micro font-bold tabular-nums text-warning">
+                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xs font-bold tabular-nums text-amber-700">
                   {item.count}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-body-sm font-medium text-foreground">
-                    {item.title}
-                  </span>
-                  <span className="mt-0.5 block text-caption text-muted-foreground">
-                    {item.hint}
-                  </span>
+                  <span className="block text-sm font-medium text-gray-900">{item.title}</span>
+                  <span className="mt-0.5 block text-xs text-gray-500">{item.hint}</span>
                 </span>
-                <ChevronRight
-                  size={16}
-                  aria-hidden="true"
-                  className="mt-0.5 shrink-0 text-muted-foreground rtl:rotate-180"
-                />
+                <ChevronRight size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-gray-400 rtl:rotate-180" />
               </button>
             </li>
           ))}
         </ul>
       )}
-    </RecordPanel>
+    </RefCard>
   );
 }

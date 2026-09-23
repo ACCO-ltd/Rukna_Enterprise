@@ -2,19 +2,20 @@
 
 import { useTranslations } from 'next-intl';
 import { Banknote } from 'lucide-react';
-import { Skeleton, type BadgeTone } from '@erp/ui';
+import { Skeleton } from '@erp/ui';
 import type { CollectionProgressSignalResponse } from '@erp/types';
 
 import { useCollectionProgressSignal } from '../hooks/use-progress';
 import { SignalBanner, formatPct, formatSignedPct } from './signal-banner';
+import type { RefTone } from './ref-ui';
 
 type Status = CollectionProgressSignalResponse['status'];
 
-const STATUS_TONE: Record<Status, BadgeTone> = {
-  ALIGNED: 'live',
-  CASH_AHEAD: 'info',
-  WORK_AHEAD: 'warning',
-  INSUFFICIENT_DATA: 'neutral',
+const STATUS_TONE: Record<Status, RefTone> = {
+  ALIGNED: 'green',
+  CASH_AHEAD: 'blue',
+  WORK_AHEAD: 'amber',
+  INSUFFICIENT_DATA: 'gray',
 };
 
 const STATUS_HINT: Record<Status, string> = {

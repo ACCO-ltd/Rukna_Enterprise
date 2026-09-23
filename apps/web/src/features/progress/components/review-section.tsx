@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button, SectionHeader, Skeleton, Tabs, TabsList, TabsTrigger, TabsContent } from '@erp/ui';
+import { Alert, Avatar } from '@erp/ui';
+import { ClipboardCheck } from 'lucide-react';
 import type { DailyProgressReportResponse } from '@erp/types';
 
 import { formatDate } from '@/lib/format';
@@ -10,38 +11,31 @@ import { formatDate } from '@/lib/format';
 import { useDprs } from '../hooks/use-progress';
 import { DprStatusBadge } from './dpr-status-badge';
 import { DprDetail } from './dpr-detail';
+import { RefCard, RefCardHeader } from './ref-ui';
+
+type QueueTab = 'submitted' | 'returned' | 'approved';
 
 /**
  * Review view — the PM's primary entry point.
  *
- * Shows DPRs grouped by status: SUBMITTED (oldest first, the actionable queue),
- * RETURNED (reports sent back, may need a follow-up), and recently APPROVED.
- * Clicking a row opens the full DPR detail where the PM can approve or return.
- *
- * Phase 4 will add a rich review detail with side-by-side measurement comparison.
+ * Two-pane layout: a persistent queue on the left (grouped SUBMITTED / RETURNED / recently
+ * APPROVED), the selected report's full detail on the right — so switching reports doesn't
+ * mean leaving and re-entering the queue. Below `lg` the queue and detail stack instead
+ * (a 375px viewport has no room for two panes side by side).
  */
 export function ReviewSection({ projectId }: { projectId: string }) {
   const t = useTranslations('progress');
   const locale = useLocale() as 'en';
   const dprs = useDprs(projectId);
   const [selectedDprId, setSelectedDprId] = useState<string | null>(null);
-
-  if (selectedDprId) {
-    return (
-      <DprDetail
-        projectId={projectId}
-        dprId={selectedDprId}
-        onBack={() => setSelectedDprId(null)}
-      />
-    );
-  }
+  const [tab, setTab] = useState<QueueTab>('submitted');
 
   if (dprs.isPending) {
     return (
       <div className="space-y-3">
-        <Skeleton className="h-12 w-full" aria-hidden="true" />
-        <Skeleton className="h-12 w-full" aria-hidden="true" />
-        <Skeleton className="h-12 w-full" aria-hidden="true" />
+        <div className="h-12 w-full animate-pulse rounded-lg bg-gray-100" aria-hidden="true" />
+        <div className="h-12 w-full animate-pulse rounded-lg bg-gray-100" aria-hidden="true" />
+        <div className="h-12 w-full animate-pulse rounded-lg bg-gray-100" aria-hidden="true" />
       </div>
     );
   }
@@ -51,129 +45,120 @@ export function ReviewSection({ projectId }: { projectId: string }) {
   }
 
   const all = dprs.data ?? [];
-  const submitted = [...all.filter((d) => d.status === 'SUBMITTED')].sort(
-    (a, b) => a.reportDate.localeCompare(b.reportDate),
+  const submitted = [...all.filter((d) => d.status === 'SUBMITTED')].sort((a, b) =>
+    a.reportDate.localeCompare(b.reportDate),
   );
   const returned = all.filter((d) => d.status === 'RETURNED');
-  const approved = [...all.filter((d) => d.status === 'APPROVED')].sort(
-    (a, b) => b.reportDate.localeCompare(a.reportDate),
-  ).slice(0, 10);
+  const approved = [...all.filter((d) => d.status === 'APPROVED')]
+    .sort((a, b) => b.reportDate.localeCompare(a.reportDate))
+    .slice(0, 10);
+
+  const groups: Record<QueueTab, DailyProgressReportResponse[]> = { submitted, returned, approved };
+  const tabLabels: Record<QueueTab, string> = {
+    submitted: t('review.awaiting'),
+    returned: t('review.returned'),
+    approved: t('review.recentlyApproved'),
+  };
+  const items = groups[tab];
 
   return (
-    <div className="space-y-4">
-      <SectionHeader title={t('review.title')}>
-        <p className="text-body-sm text-muted-foreground">{t('review.subtitle')}</p>
-      </SectionHeader>
-
-      <Tabs defaultValue="submitted">
-        <TabsList>
-          <TabsTrigger value="submitted">
-            {t('review.awaiting')}
-            {submitted.length > 0 && (
-              <span className="ml-1.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
-                {submitted.length}
-              </span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="returned">{t('review.returned')}</TabsTrigger>
-          <TabsTrigger value="approved">{t('review.recentlyApproved')}</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="submitted" className="mt-4">
-          <DprQueue
-            items={submitted}
-            empty={t('review.empty')}
-            emptyHint={t('review.emptyHint')}
-            onOpen={(id) => setSelectedDprId(id)}
-            locale={locale}
-            t={t}
-          />
-        </TabsContent>
-
-        <TabsContent value="returned" className="mt-4">
-          <DprQueue
-            items={returned}
-            empty={t('review.empty')}
-            onOpen={(id) => setSelectedDprId(id)}
-            locale={locale}
-            t={t}
-          />
-        </TabsContent>
-
-        <TabsContent value="approved" className="mt-4">
-          <DprQueue
-            items={approved}
-            empty={t('review.empty')}
-            onOpen={(id) => setSelectedDprId(id)}
-            locale={locale}
-            t={t}
-          />
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-}
-
-function DprQueue({
-  items,
-  empty,
-  emptyHint,
-  onOpen,
-  locale,
-  t,
-}: {
-  items: DailyProgressReportResponse[];
-  empty: string;
-  emptyHint?: string;
-  onOpen: (id: string) => void;
-  locale: string;
-  t: ReturnType<typeof useTranslations<'progress'>>;
-}) {
-  if (items.length === 0) {
-    return (
-      <div className="rounded-lg border border-border bg-muted/30 px-4 py-8 text-center">
-        <p className="text-body-sm text-muted-foreground">{empty}</p>
-        {emptyHint && <p className="mt-1 text-body-xs text-muted-foreground">{emptyHint}</p>}
-      </div>
-    );
-  }
-
-  return (
-    <div className="divide-y divide-border rounded-lg border border-border bg-card">
-      {items.map((dpr) => (
-        <DprQueueRow key={dpr.id} dpr={dpr} onOpen={onOpen} locale={locale} t={t} />
-      ))}
-    </div>
-  );
-}
-
-function DprQueueRow({
-  dpr,
-  onOpen,
-  locale,
-  t,
-}: {
-  dpr: DailyProgressReportResponse;
-  onOpen: (id: string) => void;
-  locale: string;
-  t: ReturnType<typeof useTranslations<'progress'>>;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 px-4 py-3">
-      <div className="flex items-center gap-3 min-w-0">
-        <DprStatusBadge status={dpr.status} />
-        <div className="min-w-0">
-          <p className="text-body-sm font-medium text-foreground truncate">
-            {formatDate(dpr.reportDate, locale as 'en')}
-          </p>
-          {dpr.preparedByName && (
-            <p className="text-body-xs text-muted-foreground truncate">{dpr.preparedByName}</p>
+    <div className="grid gap-4 lg:grid-cols-[340px_1fr] lg:items-start">
+      <RefCard className="lg:sticky lg:top-4">
+        <RefCardHeader
+          icon={<ClipboardCheck size={17} strokeWidth={1.9} />}
+          title={t('review.queueCount', { count: all.length })}
+          subtitle={t('review.subtitle')}
+        />
+        <div className="border-t border-gray-100 px-5 pt-3">
+          <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
+            {(Object.keys(groups) as QueueTab[]).map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setTab(key)}
+                className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                  tab === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {tabLabels[key]}
+                {key === 'submitted' && submitted.length > 0 ? (
+                  <span className="ms-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-medium text-white">
+                    {submitted.length}
+                  </span>
+                ) : null}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="mt-3 max-h-[32rem] overflow-y-auto px-2 pb-2">
+          {items.length === 0 ? (
+            <div className="px-3 py-8 text-center">
+              <p className="text-sm text-gray-500">{t('review.empty')}</p>
+              {tab === 'submitted' ? <p className="mt-1 text-xs text-gray-400">{t('review.emptyHint')}</p> : null}
+            </div>
+          ) : (
+            <ul className="space-y-1">
+              {items.map((dpr) => (
+                <QueueRow
+                  key={dpr.id}
+                  dpr={dpr}
+                  selected={dpr.id === selectedDprId}
+                  onSelect={() => setSelectedDprId(dpr.id)}
+                  locale={locale}
+                />
+              ))}
+            </ul>
           )}
         </div>
-      </div>
-      <Button size="sm" variant="outline" onClick={() => onOpen(dpr.id)}>
-        {t('review.openReport')}
-      </Button>
+      </RefCard>
+
+      {selectedDprId ? (
+        <DprDetail projectId={projectId} dprId={selectedDprId} onBack={() => setSelectedDprId(null)} />
+      ) : (
+        <RefCard>
+          <div className="flex flex-col items-center justify-center gap-2 px-6 py-20 text-center">
+            <ClipboardCheck size={28} strokeWidth={1.6} className="text-gray-300" aria-hidden="true" />
+            <p className="text-sm font-medium text-gray-900">{t('review.selectPrompt')}</p>
+            <p className="text-sm text-gray-500">{t('review.selectPromptHint')}</p>
+          </div>
+        </RefCard>
+      )}
     </div>
+  );
+}
+
+function QueueRow({
+  dpr,
+  selected,
+  onSelect,
+  locale,
+}: {
+  dpr: DailyProgressReportResponse;
+  selected: boolean;
+  onSelect: () => void;
+  locale: 'en';
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-current={selected ? 'true' : undefined}
+        className={`flex w-full items-start gap-2.5 rounded-lg border px-3 py-2.5 text-start transition-colors ${
+          selected ? 'border-blue-200 bg-blue-50' : 'border-transparent hover:bg-gray-50'
+        }`}
+      >
+        <Avatar name={dpr.preparedByName ?? dpr.preparedBy} size="sm" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <p className="truncate text-sm font-medium text-gray-900">{dpr.preparedByName ?? dpr.preparedBy}</p>
+            <span className="shrink-0 text-xs text-gray-400">{formatDate(dpr.reportDate, locale)}</span>
+          </div>
+          <div className="mt-0.5 flex items-center gap-1.5">
+            <DprStatusBadge status={dpr.status} />
+          </div>
+        </div>
+      </button>
+    </li>
   );
 }

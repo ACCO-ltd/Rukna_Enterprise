@@ -1,11 +1,10 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { Alert, Badge, Button, RecordPanel, SectionHeader, Skeleton, type BadgeProps } from '@erp/ui';
+import { Alert, SectionHeader, Skeleton } from '@erp/ui';
 import { TrendingUp } from 'lucide-react';
 import type { ProgressCurveSource, ProgressScheduleStatus } from '@erp/types';
 
-import { MetricStrip } from '@/components/widget/metric-strip';
 import { formatDate } from '@/lib/format';
 
 import { useProgressCurve } from '../hooks/use-progress';
@@ -16,29 +15,30 @@ import { NeedsAttentionPanel } from './needs-attention-panel';
 import { WorkPackageProgressPanel } from './work-package-progress-panel';
 import type { ProgressView } from './progress-tab';
 import { ProgressCurveChart } from './progress-curve-chart';
+import { RefButton, RefCard, RefCardBody, RefCardHeader, RefEmpty, RefPill, RefStatTile, type RefTone } from './ref-ui';
 
 /**
  * The schedule-status chip *is* a status (ahead/on-track/behind), so it colours by meaning. This is
  * the one place the Performance view colours by status; the curve itself stays on the `--chart-*`
  * ramp. Mirrors the headline band so the tab reads one vocabulary.
  */
-const SCHEDULE_TONE: Record<ProgressScheduleStatus, BadgeProps['tone']> = {
-  AHEAD: 'live',
-  ON_TRACK: 'info',
-  BEHIND: 'warning',
-  INSUFFICIENT_DATA: 'neutral',
+const SCHEDULE_TONE: Record<ProgressScheduleStatus, RefTone> = {
+  AHEAD: 'green',
+  ON_TRACK: 'blue',
+  BEHIND: 'amber',
+  INSUFFICIENT_DATA: 'gray',
 };
 
 /**
  * Where the planned line came from (Master Schedule P3, ADR-029). A frozen, governing baseline is
- * the trustworthy state (`live`); an unapproved draft plan or the provisional ramp are both "not
- * yet governing" and read as `accent`, so a reader never mistakes an estimate for the plan. This is
+ * the trustworthy state (`green`); an unapproved draft plan or the provisional ramp are both "not
+ * yet governing" and read as `violet`, so a reader never mistakes an estimate for the plan. This is
  * the source of the line, NOT the schedule verdict — the AHEAD/ON_TRACK/BEHIND chip is separate.
  */
-const SOURCE_TONE: Record<ProgressCurveSource, BadgeProps['tone']> = {
-  baseline: 'live',
-  targets: 'accent',
-  provisional: 'accent',
+const SOURCE_TONE: Record<ProgressCurveSource, RefTone> = {
+  baseline: 'green',
+  targets: 'violet',
+  provisional: 'violet',
 };
 
 /**
@@ -113,14 +113,14 @@ function ProgressCurvePanel({
         {header}
         <Alert variant="error" messages={[t('states.loadFailed')]}>
           <div className="mt-3">
-            <Button
+            <RefButton
               variant="outline"
               size="sm"
               onClick={() => void query.refetch()}
               disabled={query.isFetching}
             >
               {t('actions.retry')}
-            </Button>
+            </RefButton>
           </div>
         </Alert>
       </div>
@@ -142,12 +142,7 @@ function ProgressCurvePanel({
             because a snapshot is a point-in-time roll-up capture and a daily report is a site
             record; they are different objects and merging their controls would say otherwise. */}
         <SectionHeader title={t('curve.title')} />
-        <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
-          <p className="text-sm text-muted-foreground">{t('curve.insufficient')}</p>
-          <div className="mt-4 flex justify-center">
-            <CaptureSnapshotAction projectId={projectId} variant="outline" allowDateChoice />
-          </div>
-        </div>
+        <RefEmpty title={t('curve.insufficient')} action={<CaptureSnapshotAction projectId={projectId} variant="outline" allowDateChoice />} />
       </div>
     );
   }
@@ -170,51 +165,52 @@ function ProgressCurvePanel({
   const pct = (v: number | null) => (v === null ? '—' : `${v}%`);
 
   return (
-    <RecordPanel
-      title={t('curve.title')}
-      icon={<TrendingUp size={17} strokeWidth={1.9} />}
-      action={
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Badge tone={SOURCE_TONE[curve.baselineSource]}>
-            {curve.baselineSource === 'baseline'
-              ? t('curve.source.baseline', { version: curve.baselineVersion ?? 0 })
-              : t(`curve.source.${curve.baselineSource}`)}
-          </Badge>
-          <Badge tone={SCHEDULE_TONE[status]}>
-            {varianceLabel === null
-              ? t(`curve.status.${status}`)
-              : `${t(`curve.status.${status}`)} · ${varianceLabel}`}
-          </Badge>
-          <CaptureSnapshotAction projectId={projectId} />
+    <RefCard>
+      <RefCardHeader
+        icon={<TrendingUp size={17} strokeWidth={1.9} />}
+        title={t('curve.title')}
+        divider
+        action={
+          <div className="flex flex-wrap items-center gap-2.5">
+            <RefPill tone={SOURCE_TONE[curve.baselineSource]}>
+              {curve.baselineSource === 'baseline'
+                ? t('curve.source.baseline', { version: curve.baselineVersion ?? 0 })
+                : t(`curve.source.${curve.baselineSource}`)}
+            </RefPill>
+            <RefPill tone={SCHEDULE_TONE[status]}>
+              {varianceLabel === null
+                ? t(`curve.status.${status}`)
+                : `${t(`curve.status.${status}`)} · ${varianceLabel}`}
+            </RefPill>
+            <CaptureSnapshotAction projectId={projectId} />
+          </div>
+        }
+      />
+      <RefCardBody className="space-y-4 pt-4">
+        <div className="grid grid-cols-3 gap-4 rounded-lg border border-gray-100 p-4">
+          <RefStatTile label={t('curve.plannedToDate')} value={pct(plannedToDate)} />
+          <RefStatTile label={t('curve.actual')} value={latest ? `${latest.physicalPercent}%` : '—'} />
+          <RefStatTile label={t('curve.verified')} value={latest ? `${latest.verifiedPercent}%` : '—'} />
         </div>
-      }
-    >
-      <MetricStrip
-        aria-label={t('curve.scheduleStripLabel')}
-        metrics={[
-          { label: t('curve.plannedToDate'), value: pct(plannedToDate) },
-          { label: t('curve.actual'), value: latest ? `${latest.physicalPercent}%` : '—' },
-          { label: t('curve.verified'), value: latest ? `${latest.verifiedPercent}%` : '—' },
-        ]}
-      />
 
-      <ProgressCurveChart
-        baseline={curve.baseline}
-        actual={curve.actual}
-        showVerified
-        plannedProvisional={curve.baselineProvisional}
-      />
+        <ProgressCurveChart
+          baseline={curve.baseline}
+          actual={curve.actual}
+          showVerified
+          plannedProvisional={curve.baselineProvisional}
+        />
 
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-        {latest ? (
-          <p className="text-caption text-muted-foreground">
-            {t('curve.lastSnapshot', { date: formatDate(latest.periodEndDate) ?? '—' })}
-          </p>
-        ) : null}
-        {curve.baselineProvisional ? (
-          <p className="text-caption text-muted-foreground">{t('curve.provisionalNote')}</p>
-        ) : null}
-      </div>
-    </RecordPanel>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          {latest ? (
+            <p className="text-xs text-gray-500">
+              {t('curve.lastSnapshot', { date: formatDate(latest.periodEndDate) ?? '—' })}
+            </p>
+          ) : null}
+          {curve.baselineProvisional ? (
+            <p className="text-xs text-gray-500">{t('curve.provisionalNote')}</p>
+          ) : null}
+        </div>
+      </RefCardBody>
+    </RefCard>
   );
 }

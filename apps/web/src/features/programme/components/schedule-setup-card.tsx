@@ -2,13 +2,14 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Button, EmptyState } from '@erp/ui';
+import { EmptyState } from '@erp/ui';
 import { CalendarClock } from 'lucide-react';
 
 import { usePermissions } from '@/features/auth/permissions/can';
 import { PROGRESS_PERMISSIONS } from '@/features/progress/permissions';
 import { useBoqLeaves } from '@/features/progress/hooks/use-boq-leaves';
 import { useProjectRollup } from '@/features/progress/hooks/use-progress';
+import { RefButton } from '@/features/progress/components/ref-ui';
 
 import { ScheduleSetupWizard } from './schedule-setup-wizard';
 
@@ -39,12 +40,7 @@ export function ScheduleSetupCard({ projectId }: { projectId: string }) {
 
   // Don't flash an empty state while the baseline/roll-up resolve.
   if (baselinePending || rollup.isPending) {
-    return (
-      <div
-        className="h-28 animate-pulse rounded-panel border border-border bg-muted"
-        aria-hidden="true"
-      />
-    );
+    return <div className="h-28 animate-pulse rounded-xl bg-gray-100" aria-hidden="true" />;
   }
 
   const packages = rollup.data?.packages ?? [];
@@ -62,9 +58,7 @@ export function ScheduleSetupCard({ projectId }: { projectId: string }) {
         icon={<CalendarClock size={28} strokeWidth={1.6} aria-hidden="true" />}
         title={tw('gate.noBaselineTitle')}
         description={tw('gate.noBaseline')}
-        action={
-          <Button disabled>{tw('cta.setUp')}</Button>
-        }
+        action={<RefButton disabled>{tw('cta.setUp')}</RefButton>}
       />
     );
   }
@@ -78,7 +72,7 @@ export function ScheduleSetupCard({ projectId }: { projectId: string }) {
           icon={<CalendarClock size={28} strokeWidth={1.6} aria-hidden="true" />}
           title={tw('cta.title')}
           description={tw('cta.description')}
-          action={<Button onClick={() => setOpen(true)}>{tw('cta.setUp')}</Button>}
+          action={<RefButton onClick={() => setOpen(true)}>{tw('cta.setUp')}</RefButton>}
         />
         {wizard}
       </>
@@ -87,19 +81,19 @@ export function ScheduleSetupCard({ projectId }: { projectId: string }) {
 
   // A schedule exists → a compact re-entry.
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-panel border border-border bg-surface p-4">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="flex items-center gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-container bg-surface-subtle text-muted-foreground">
+        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
           <CalendarClock size={20} strokeWidth={1.7} aria-hidden="true" />
         </span>
         <div>
-          <p className="text-body-sm font-semibold text-foreground">{tw('cta.setTitle')}</p>
-          <p className="text-caption text-muted-foreground">{tw('cta.setDescription')}</p>
+          <p className="text-sm font-semibold text-gray-900">{tw('cta.setTitle')}</p>
+          <p className="text-xs text-gray-500">{tw('cta.setDescription')}</p>
         </div>
       </div>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+      <RefButton variant="outline" size="sm" onClick={() => setOpen(true)}>
         {tw('cta.edit')}
-      </Button>
+      </RefButton>
       {wizard}
     </div>
   );

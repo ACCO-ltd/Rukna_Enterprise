@@ -113,7 +113,7 @@ export function ProgressHeadline({ projectId }: { projectId: string }) {
  * Panels rather than an open metric strip. Four figures at this weight need an edge each, or the
  * eye reads them as one run-on sentence — which is what the previous flat row did at 1440.
  */
-const TILE = 'min-w-0 rounded-panel border border-border bg-surface p-4';
+const TILE = 'min-w-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm';
 
 function Metric({
   label,
@@ -134,24 +134,22 @@ function Metric({
 }) {
   return (
     <div className={TILE}>
-      <p className="text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-        {label}
-      </p>
+      <p className="text-xs font-semibold uppercase tracking-[0.06em] text-gray-500">{label}</p>
 
       {pending ? (
-        <div className="mt-2 h-8 w-24 animate-pulse rounded bg-muted" aria-hidden="true" />
+        <div className="mt-2 h-8 w-24 animate-pulse rounded bg-gray-100" aria-hidden="true" />
       ) : value === null ? (
         <>
-          <p className="mt-1.5 text-h1 font-bold text-muted-foreground">—</p>
-          <p className="mt-1 text-caption text-muted-foreground">{emptyReason}</p>
+          <p className="mt-1.5 text-2xl font-bold text-gray-300">—</p>
+          <p className="mt-1 text-xs text-gray-500">{emptyReason}</p>
         </>
       ) : (
         <>
           <div className="mt-1.5 flex flex-wrap items-baseline gap-2">
             <span
               className={cn(
-                'text-display font-bold tabular-nums',
-                tone === 'success' ? 'text-success' : 'text-foreground',
+                'text-3xl font-bold tabular-nums',
+                tone === 'success' ? 'text-green-600' : 'text-gray-900',
               )}
             >
               {value}
@@ -159,10 +157,10 @@ function Metric({
             {delta ? (
               <span
                 className={cn(
-                  'text-caption font-semibold tabular-nums',
+                  'text-xs font-semibold tabular-nums',
                   // Variance against plan is a state, not money — colour is carried by the
                   // arrow as well as the hue, so it survives greyscale.
-                  delta.direction === 'down' ? 'text-danger' : 'text-success',
+                  delta.direction === 'down' ? 'text-red-600' : 'text-green-600',
                 )}
               >
                 <span aria-hidden="true">{delta.direction === 'down' ? '▾' : '▴'}</span>{' '}
@@ -170,7 +168,7 @@ function Metric({
               </span>
             ) : null}
           </div>
-          {support ? <p className="mt-1 text-caption text-muted-foreground">{support}</p> : null}
+          {support ? <p className="mt-1 text-xs text-gray-500">{support}</p> : null}
         </>
       )}
     </div>
@@ -178,10 +176,10 @@ function Metric({
 }
 
 const STATUS_DOT: Record<ProgressScheduleStatus, string> = {
-  AHEAD: 'bg-success',
-  ON_TRACK: 'bg-success',
-  BEHIND: 'bg-warning',
-  INSUFFICIENT_DATA: 'bg-muted-foreground',
+  AHEAD: 'bg-green-500',
+  ON_TRACK: 'bg-green-500',
+  BEHIND: 'bg-amber-500',
+  INSUFFICIENT_DATA: 'bg-gray-400',
 };
 
 function StatusMetric({
@@ -201,28 +199,26 @@ function StatusMetric({
 
   return (
     <div className={TILE}>
-      <p className="text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-        {label}
-      </p>
+      <p className="text-xs font-semibold uppercase tracking-[0.06em] text-gray-500">{label}</p>
 
       {pending ? (
-        <div className="mt-2 h-8 w-28 animate-pulse rounded bg-muted" aria-hidden="true" />
+        <div className="mt-2 h-8 w-28 animate-pulse rounded bg-gray-100" aria-hidden="true" />
       ) : status === null ? (
         <>
-          <p className="mt-1.5 text-h1 font-bold text-muted-foreground">—</p>
-          <p className="mt-1 text-caption text-muted-foreground">{emptyReason}</p>
+          <p className="mt-1.5 text-2xl font-bold text-gray-300">—</p>
+          <p className="mt-1 text-xs text-gray-500">{emptyReason}</p>
         </>
       ) : (
         <>
           {/* The dot repeats what the label says, so nothing depends on colour alone. */}
-          <p className="mt-2 flex items-center gap-2 text-h2 font-bold text-foreground">
+          <p className="mt-2 flex items-center gap-2 text-xl font-bold text-gray-900">
             <span
               aria-hidden="true"
               className={cn('h-2.5 w-2.5 shrink-0 rounded-full', STATUS_DOT[status])}
             />
             {t(`curve.status.${status}`)}
           </p>
-          <p className="mt-1.5 text-caption text-muted-foreground">
+          <p className="mt-1.5 text-xs text-gray-500">
             {variance === null || variance === 0
               ? t('headline.statusOnPlan')
               : t('headline.statusPoints', { points: Math.abs(variance).toFixed(1) })}

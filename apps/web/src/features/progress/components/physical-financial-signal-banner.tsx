@@ -1,20 +1,21 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { Skeleton, type BadgeTone } from '@erp/ui';
+import { Skeleton } from '@erp/ui';
 import { Wallet } from 'lucide-react';
 import type { PhysicalFinancialSignalResponse } from '@erp/types';
 
 import { usePhysicalFinancialSignal } from '../hooks/use-progress';
 import { SignalBanner, formatPct, formatSignedPct } from './signal-banner';
+import type { RefTone } from './ref-ui';
 
 type Status = PhysicalFinancialSignalResponse['status'];
 
-const STATUS_TONE: Record<Status, BadgeTone> = {
-  ALIGNED: 'live',
-  COST_AHEAD: 'warning',
-  PROGRESS_AHEAD: 'info',
-  INSUFFICIENT_DATA: 'neutral',
+const STATUS_TONE: Record<Status, RefTone> = {
+  ALIGNED: 'green',
+  COST_AHEAD: 'amber',
+  PROGRESS_AHEAD: 'blue',
+  INSUFFICIENT_DATA: 'gray',
 };
 
 const STATUS_HINT: Record<Status, string> = {

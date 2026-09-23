@@ -3,15 +3,18 @@
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { type DprStatus } from '@erp/types';
-import { Badge, Button, Skeleton } from '@erp/ui';
+import { Skeleton } from '@erp/ui';
+import { ClipboardList, FileText, HardHat, Image as ImageIcon, TriangleAlert } from 'lucide-react';
 
 import { formatDate } from '@/lib/format';
 
-import { useDprs, useProjectRollup } from '../hooks/use-progress';
+import type { DailyProgressReportDetail } from '../api/progress-api';
+import { useDpr, useDprs, useProjectRollup } from '../hooks/use-progress';
 import { ProgressHeadline } from './progress-headline';
 import { DailyReportsSection } from './daily-reports-section';
 import { DprDetail } from './dpr-detail';
 import { DprStatusBadge } from './dpr-status-badge';
+import { RefButton, RefCard, RefCardBody, RefCardHeader, RefPill } from './ref-ui';
 
 /**
  * Today view — the SE's primary entry point.
@@ -20,9 +23,6 @@ import { DprStatusBadge } from './dpr-status-badge';
  * then the recent reports list. The ProgressHeadline band is shown when
  * the project is set up (has work packages + allocation + weights); otherwise
  * it is silently omitted so the SE is never blocked by a PM setup task.
- *
- * Phase 3 will add the structured DPR editor (Section A–E). For now, the
- * DailyReportsSection below provides the full record workflow.
  */
 export function TodaySection({ projectId }: { projectId: string }) {
   const t = useTranslations('progress');
@@ -52,8 +52,7 @@ export function TodaySection({ projectId }: { projectId: string }) {
     <div className="space-y-6">
       {modelReady && <ProgressHeadline projectId={projectId} />}
 
-      {/* Today's DPR status banner — shows once the DPR list has loaded */}
-      <TodayDprBanner
+      <TodayReportCard
         today={today}
         todayDpr={todayDpr}
         isPending={dprs.isPending}
@@ -69,7 +68,7 @@ export function TodaySection({ projectId }: { projectId: string }) {
   );
 }
 
-function TodayDprBanner({
+function TodayReportCard({
   today,
   todayDpr,
   isPending,
@@ -86,42 +85,140 @@ function TodayDprBanner({
   locale: string;
   t: ReturnType<typeof useTranslations<'progress'>>;
 }) {
-  if (isPending) return <Skeleton className="h-16 w-full" aria-hidden="true" />;
+  // Only fires once there is a today's report — `useDpr` no-ops on an empty id.
+  const detail = useDpr(todayDpr?.id ?? '');
+
+  if (isPending) return <Skeleton className="h-24 w-full rounded-xl" aria-hidden="true" />;
   if (isError) return null;
 
   const dateLabel = formatDate(today, locale as 'en');
 
   if (!todayDpr) {
     return (
-      <div className="rounded-lg border border-border bg-card p-4 flex items-center justify-between gap-4">
-        <div>
-          <p className="text-body-sm font-medium text-foreground">{dateLabel}</p>
-          <p className="text-body-xs text-muted-foreground">{t('today.noReportHint')}</p>
-        </div>
-      </div>
+      <RefCard>
+        <RefCardHeader icon={<FileText size={17} strokeWidth={1.9} />} title={dateLabel} subtitle={t('today.noReportHint')} />
+        <RefCardBody />
+      </RefCard>
     );
   }
 
   const { status } = todayDpr;
+  const d = detail.data;
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4 flex items-center justify-between gap-4">
-      <div className="flex items-center gap-3">
-        <DprStatusBadge status={status} />
-        <p className="text-body-sm text-muted-foreground">{dateLabel}</p>
+    <RefCard>
+      <RefCardHeader
+        icon={<FileText size={17} strokeWidth={1.9} />}
+        title={t('today.cardTitle')}
+        subtitle={dateLabel}
+        action={
+          status === 'DRAFT' || status === 'RETURNED' ? (
+            <RefButton size="sm" onClick={() => onOpen(todayDpr.id)}>
+              {status === 'RETURNED' ? t('today.reviseReport') : t('today.continueReport')}
+            </RefButton>
+          ) : status === 'SUBMITTED' ? (
+            <RefPill tone="blue">{t('today.awaitingReview')}</RefPill>
+          ) : (
+            <RefButton variant="outline" size="sm" onClick={() => onOpen(todayDpr.id)}>
+              {t('today.viewReport')}
+            </RefButton>
+          )
+        }
+      />
+      <RefCardBody>
+        <div className="mt-3 divide-y divide-gray-100 border-t border-gray-100">
+          <SummaryRow
+            icon={<HardHat size={16} strokeWidth={1.9} />}
+            tone="green"
+            label={t('today.workCompleted')}
+            value={
+              d
+                ? d.measurements.length > 0
+                  ? t('today.workCompletedCount', { count: d.measurements.length })
+                  : t('today.workCompletedNone')
+                : undefined
+            }
+          />
+          <SummaryRow
+            icon={<ClipboardList size={16} strokeWidth={1.9} />}
+            tone="blue"
+            label={t('today.labourOnSite')}
+            value={d ? labourSummary(d, t) : undefined}
+          />
+          <SummaryRow
+            icon={<TriangleAlert size={16} strokeWidth={1.9} />}
+            tone="amber"
+            label={t('today.issues')}
+            value={
+              d
+                ? (d.observations?.length ?? 0) > 0
+                  ? t('today.issuesCount', { count: d.observations?.length ?? 0 })
+                  : t('today.issuesNone')
+                : undefined
+            }
+          />
+          <SummaryRow
+            icon={<ImageIcon size={16} strokeWidth={1.9} />}
+            tone="violet"
+            label={t('today.photos')}
+            value={
+              d
+                ? d.attachments.length > 0
+                  ? t('today.photosCount', { count: d.attachments.length })
+                  : t('today.photosNone')
+                : undefined
+            }
+          />
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <DprStatusBadge status={status} />
+        </div>
+      </RefCardBody>
+    </RefCard>
+  );
+}
+
+function labourSummary(
+  d: DailyProgressReportDetail,
+  t: ReturnType<typeof useTranslations<'progress'>>,
+): string {
+  if (typeof d.labourCount === 'number') return String(d.labourCount);
+  if (d.labourRows && d.labourRows.length > 0) {
+    const total = d.labourRows.reduce((sum, row) => sum + row.headcount, 0);
+    return String(total);
+  }
+  return t('today.labourNone');
+}
+
+function SummaryRow({
+  icon,
+  tone,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  tone: 'green' | 'blue' | 'amber' | 'violet';
+  label: string;
+  value: string | undefined;
+}) {
+  const toneClass: Record<typeof tone, string> = {
+    green: 'bg-green-50 text-green-600',
+    blue: 'bg-blue-50 text-blue-600',
+    amber: 'bg-amber-50 text-amber-600',
+    violet: 'bg-violet-50 text-violet-600',
+  };
+  return (
+    <div className="flex items-center justify-between gap-3 py-2.5">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${toneClass[tone]}`} aria-hidden="true">
+          {icon}
+        </span>
+        <span className="truncate text-sm text-gray-600">{label}</span>
       </div>
-      {(status === 'DRAFT' || status === 'RETURNED') && (
-        <Button size="sm" onClick={() => onOpen(todayDpr.id)}>
-          {status === 'RETURNED' ? t('today.reviseReport') : t('today.continueReport')}
-        </Button>
-      )}
-      {status === 'SUBMITTED' && (
-        <Badge tone="info">{t('today.awaitingReview')}</Badge>
-      )}
-      {status === 'APPROVED' && (
-        <Button size="sm" variant="outline" onClick={() => onOpen(todayDpr.id)}>
-          {t('report.status.APPROVED')}
-        </Button>
+      {value === undefined ? (
+        <span className="h-3.5 w-20 animate-pulse rounded bg-gray-100" aria-hidden="true" />
+      ) : (
+        <span className="shrink-0 text-sm font-medium text-gray-900">{value}</span>
       )}
     </div>
   );

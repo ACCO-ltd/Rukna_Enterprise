@@ -1,12 +1,13 @@
 'use client';
 
 import { useTranslations } from 'next-intl';
-import { Button, useToast } from '@erp/ui';
+import { useToast } from '@erp/ui';
 import { Download } from 'lucide-react';
 
 import { ApiError } from '@/lib/api-client';
 import { usePermissions } from '@/features/auth/permissions/can';
 import { useProject } from '@/features/projects/hooks/use-project';
+import { RefButton } from '@/features/progress/components/ref-ui';
 
 import { useDownloadMasterSchedule } from '../hooks/use-programme';
 
@@ -46,7 +47,7 @@ export function DownloadMasterScheduleButton({ projectId }: { projectId: string 
   }
 
   return (
-    <Button
+    <RefButton
       variant="outline"
       size="sm"
       className="gap-2"
@@ -55,6 +56,6 @@ export function DownloadMasterScheduleButton({ projectId }: { projectId: string 
     >
       <Download size={16} strokeWidth={1.9} aria-hidden="true" />
       {download.isPending ? t('masterSchedule.downloading') : t('masterSchedule.download')}
-    </Button>
+    </RefButton>
   );
 }
