@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import type { MilestoneReleaseLine, ProgrammeMilestoneResponse } from '@erp/types';
 import {
@@ -143,7 +144,7 @@ export function MilestonesSection({ projectId }: { projectId: string }) {
                     </RefTd>
                     <RefTd className="whitespace-nowrap text-gray-500">{variance(m)}</RefTd>
                     <RefTd>
-                      <ReleasesCell releases={m.releases} locale={locale} t={t} />
+                      <ReleasesCell releases={m.releases} locale={locale} t={t} projectId={projectId} />
                     </RefTd>
                     <RefTd>
                       <RefPill tone={STATUS_TONE[m.status]}>{t(`programme.status.${m.status}`)}</RefPill>
@@ -184,10 +185,12 @@ function ReleasesCell({
   releases,
   locale,
   t,
+  projectId,
 }: {
   releases: MilestoneReleaseLine[];
   locale: 'en' | 'ar';
   t: ReturnType<typeof useTranslations>;
+  projectId: string;
 }) {
   if (releases.length === 0) {
     return <span className="text-gray-400">{t('programme.releases.none')}</span>;
@@ -209,6 +212,14 @@ function ReleasesCell({
               {t('programme.releases.invoiced')}
             </RefPill>
           ) : null}
+          {/* The same ProgrammeMilestone is read from both domains (see research) — this only
+              deep-links into where its billing side lives, never creates or copies anything. */}
+          <Link
+            href={`/projects/${projectId}/commercial/contract-milestones`}
+            className="text-xs font-medium text-blue-600 hover:underline"
+          >
+            {t('programme.releases.viewInCommercial')}
+          </Link>
         </li>
       ))}
     </ul>

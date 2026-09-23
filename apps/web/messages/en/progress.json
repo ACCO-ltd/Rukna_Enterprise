@@ -10,14 +10,7 @@
     "today": "Today",
     "review": "Review",
     "programme": "Programme",
-    "reports": "Daily Reports",
-    "record": "Record",
-    "milestones": "Milestones",
-    "schedule": "Schedule",
-    "workPackages": "Work Packages",
-    "planSetup": "Plan & Setup",
-    "overview": "Overview",
-    "verification": "Verification"
+    "milestones": "Milestones"
   },
   "review": {
     "title": "Review queue",
@@ -244,7 +237,7 @@
     "ariaSummary": "Progress curve over {points, plural, one {# period} other {# periods}}. Latest planned {planned}, latest actual physical {physical}.",
     "insufficient": "The progress curve begins once progress is recorded.",
     "provisionalChip": "Provisional baseline",
-    "provisionalNote": "The planned line is an estimate until a baseline is set in Plan & Setup.",
+    "provisionalNote": "The planned line is an estimate until a baseline is approved in Programme.",
     "source": {
       "baseline": "Baseline v{version}",
       "targets": "Draft plan (not approved)",
@@ -454,7 +447,8 @@
       "none": "—",
       "line": "Releases {percent} · {name} · {amount}",
       "invoiced": "invoiced",
-      "invoicedLabel": "already invoiced"
+      "invoicedLabel": "already invoiced",
+      "viewInCommercial": "View in Commercial"
     },
     "verify": {
       "title": "Verify {name}",
@@ -478,8 +472,8 @@
     "noBaselineTitle": "Commit the BOQ first",
     "noBaseline": "A schedule is built from BOQ scope. Commit the BOQ before setting up the schedule.",
     "emptyTitle": "No schedule yet",
-    "emptyNoPackages": "Create work packages and set their planned dates in Plan & Setup to build the schedule.",
-    "emptyNoDates": "No work package has planned dates yet. Set planned start and end dates in Plan & Setup to build the schedule.",
+    "emptyNoPackages": "Create work packages and set their planned dates in Programme to build the schedule.",
+    "emptyNoDates": "No work package has planned dates yet. Set planned start and end dates in Programme to build the schedule.",
     "partial": "{count, plural, one {# phase has no planned dates yet} other {# phases have no planned dates yet}} — they are listed without a bar.",
     "legend": {
       "planned": "Planned window",
@@ -566,7 +560,7 @@
     "title": "Activities",
     "subtitle": "The work breakdown under each package — planned dates and milestones. Dependencies are deliberately out of scope.",
     "noWorkPackagesTitle": "No work packages yet",
-    "noWorkPackages": "Create work packages in Plan & Setup first, then break each into activities.",
+    "noWorkPackages": "Create work packages in Programme first, then break each into activities.",
     "add": "Add activity",
     "addTitle": "New activity",
     "editTitle": "Edit activity",
