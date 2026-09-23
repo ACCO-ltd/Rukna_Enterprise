@@ -7,8 +7,9 @@ import { X } from 'lucide-react';
 import {
   Alert,
   Button,
-  DatePicker,
-  FormField,
+  DateRangePicker,
+  FilterBar,
+  FilterField,
   Input,
   Skeleton,
   Table,
@@ -122,51 +123,45 @@ export function LedgerView({ projectId }: { projectId: string }) {
 
       <TotalsStrip data={data} money={money} />
 
-      <div className="flex flex-wrap items-end gap-3">
-        <FormField htmlFor="lg-from" label={t('fromDate')} className="w-full sm:w-48">
-          <DatePicker
-            id="lg-from"
-            value={fromDate ?? defaults.fromDate}
-            onChange={(value) => {
-              setFromDate(value);
+      <FilterBar
+        actions={
+          fromDate || toDate || search ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setFromDate(null);
+                setToDate(null);
+                setSearch('');
+                setPage(0);
+              }}
+            >
+              {t('reset')}
+            </Button>
+          ) : null
+        }
+      >
+        <FilterField id="lg-range" label={t('dateRange')}>
+          <DateRangePicker
+            id="lg-range"
+            fromValue={fromDate ?? defaults.fromDate}
+            toValue={toDate ?? defaults.toDate}
+            onChange={({ from, to }) => {
+              setFromDate(from);
+              setToDate(to);
               setPage(0);
             }}
           />
-        </FormField>
-        <FormField htmlFor="lg-to" label={t('toDate')} className="w-full sm:w-48">
-          <DatePicker
-            id="lg-to"
-            value={toDate ?? defaults.toDate}
-            onChange={(value) => {
-              setToDate(value);
-              setPage(0);
-            }}
-          />
-        </FormField>
-        <FormField htmlFor="lg-search" label={t('search')} className="w-full sm:w-64">
+        </FilterField>
+        <FilterField id="lg-search" label={t('search')} grow>
           <Input
             id="lg-search"
             value={search}
             placeholder={t('searchPlaceholder')}
             onChange={(e) => setSearch(e.target.value)}
           />
-        </FormField>
-        {fromDate || toDate || search ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="min-h-11"
-            onClick={() => {
-              setFromDate(null);
-              setToDate(null);
-              setSearch('');
-              setPage(0);
-            }}
-          >
-            {t('reset')}
-          </Button>
-        ) : null}
-      </div>
+        </FilterField>
+      </FilterBar>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="min-w-0 overflow-hidden rounded-panel border border-border bg-surface">

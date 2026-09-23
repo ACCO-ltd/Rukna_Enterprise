@@ -13,6 +13,9 @@ import {
   DialogContent,
   DialogDescription,
   DialogTitle,
+  FilterBar,
+  FilterField,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -26,7 +29,6 @@ import {
 
 import { usePermissions } from '@/features/auth/permissions/can';
 import { AdminPanel } from '@/features/admin/components/admin-panel';
-import { FilterSelect, TableToolbar } from '@/features/admin/components/table-toolbar';
 import { useApprovalPolicies, useCreateApprovalPolicyDraft } from '../hooks/use-approval-policies';
 import { filterPolicies, type PolicyStatusFilter } from '../filter-policies';
 import { PolicyVersionComparisonSheet } from './policy-version-comparison-sheet';
@@ -50,6 +52,7 @@ export function ApprovalPolicyInventory({ headingLevel = 2 }: { headingLevel?: 2
   // Comparison and version history are reads — gated by the view permission, not the manage one.
   const canView = can('view:workflow');
   const searchId = useId();
+  const statusFilterId = useId();
 
   const { data = [], isPending, isError } = useApprovalPolicies();
   const create = useCreateApprovalPolicyDraft();
@@ -97,27 +100,32 @@ export function ApprovalPolicyInventory({ headingLevel = 2 }: { headingLevel?: 2
           </div>
         ) : (
           <>
-            <TableToolbar
-              searchId={searchId}
-              searchValue={query}
-              onSearchChange={setQuery}
-              searchLabel={t('searchLabel')}
-              searchPlaceholder={t('searchPlaceholder')}
-            >
-              <FilterSelect
-                label={t('filterStatus')}
-                value={statusFilter}
-                onChange={(next) => setStatusFilter(next as PolicyStatusFilter)}
-                options={[
-                  { value: 'ALL', label: t('filterAll') },
-                  { value: 'DRAFT', label: t('statusDraft') },
-                  { value: 'IN_REVIEW', label: t('statusInReview') },
-                  { value: 'SCHEDULED', label: t('statusScheduled') },
-                  { value: 'ACTIVE', label: t('statusActive') },
-                  { value: 'RETIRED', label: t('statusRetired') },
-                ]}
-              />
-            </TableToolbar>
+            <FilterBar>
+              <FilterField id={searchId} label={t('searchLabel')} hideLabel grow>
+                <Input
+                  id={searchId}
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={t('searchPlaceholder')}
+                  autoComplete="off"
+                />
+              </FilterField>
+              <FilterField id={statusFilterId} label={t('filterStatus')}>
+                <Select
+                  id={statusFilterId}
+                  value={statusFilter}
+                  onChange={(next) => setStatusFilter(next as PolicyStatusFilter)}
+                >
+                  <option value="ALL">{t('filterAll')}</option>
+                  <option value="DRAFT">{t('statusDraft')}</option>
+                  <option value="IN_REVIEW">{t('statusInReview')}</option>
+                  <option value="SCHEDULED">{t('statusScheduled')}</option>
+                  <option value="ACTIVE">{t('statusActive')}</option>
+                  <option value="RETIRED">{t('statusRetired')}</option>
+                </Select>
+              </FilterField>
+            </FilterBar>
 
             <TableScroll aria-label={t('heading')}>
               <Table>

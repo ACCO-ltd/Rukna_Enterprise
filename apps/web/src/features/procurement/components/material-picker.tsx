@@ -15,7 +15,7 @@
 
 import { useId, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { cn, Input, Select } from '@erp/ui';
+import { cn, Combobox, Input, Select, type ComboboxOption } from '@erp/ui';
 
 import { formatNumber } from '@/lib/format';
 import { QUANTITY_SCALE, fromMinorUnits } from '@/lib/money';
@@ -34,29 +34,25 @@ interface MaterialPickerProps {
   error?: string;
 }
 
-/** Case-insensitive match on code or name, in either language. */
-function matches(material: Material, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (q.length === 0) return true;
-  return (
-    material.code.toLowerCase().includes(q) ||
-    material.name.toLowerCase().includes(q)
-  );
-}
-
 export function MaterialPicker({ value, onSelect, disabled, error }: MaterialPickerProps) {
   const t = useTranslations('procurement.material');
   const tc = useTranslations('procurement.common');
-  const listId = useId();
-  const [query, setQuery] = useState('');
-  const [open, setOpen] = useState(false);
+  const pickerId = useId();
 
   const { data: materials, isLoading, isError } = useMaterials();
 
-  const results = useMemo(() => {
-    if (!materials) return [];
-    return materials.filter((m) => matches(m, query)).slice(0, 50);
-  }, [materials, query]);
+  // `Combobox` filters on `label` (name) and `hint` (code) itself — the same two fields the
+  // hand-rolled version matched by hand.
+  const options: ComboboxOption[] = useMemo(
+    () =>
+      (materials ?? []).map((material) => ({
+        value: material.id,
+        label: material.name,
+        hint: material.code,
+        meta: material.baseUom?.symbol,
+      })),
+    [materials],
+  );
 
   if (value) {
     return (
@@ -71,10 +67,7 @@ export function MaterialPicker({ value, onSelect, disabled, error }: MaterialPic
         {disabled ? null : (
           <button
             type="button"
-            onClick={() => {
-              onSelect(null);
-              setQuery('');
-            }}
+            onClick={() => onSelect(null)}
             className="shrink-0 text-xs font-medium text-brand-primary underline-offset-2 hover:underline"
           >
             {tc('cancel')}
@@ -85,66 +78,24 @@ export function MaterialPicker({ value, onSelect, disabled, error }: MaterialPic
   }
 
   return (
-    <div className="relative">
-      <Input
-        type="search"
-        role="combobox"
-        aria-expanded={open}
-        aria-controls={listId}
-        aria-autocomplete="list"
-        placeholder={t('pickerPlaceholder')}
-        value={query}
-        disabled={disabled || isLoading}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setOpen(true);
+    <div>
+      <Combobox
+        id={pickerId}
+        value=""
+        onChange={(id) => {
+          const material = (materials ?? []).find((m) => m.id === id);
+          if (material) onSelect(material);
         }}
-        onFocus={() => setOpen(true)}
-        // Delayed so a click on an option lands before the list unmounts.
-        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
-        aria-invalid={error ? true : undefined}
+        options={options}
+        placeholder={t('pickerPlaceholder')}
+        searchPlaceholder={t('pickerPlaceholder')}
+        emptyLabel={t('pickerNoMatch')}
+        disabled={disabled || isLoading}
+        invalid={Boolean(error)}
       />
 
       {error ? <p className="mt-1 text-xs text-danger">{error}</p> : null}
       {isError ? <p className="mt-1 text-xs text-danger">{tc('loadFailed')}</p> : null}
-
-      {open && !isLoading && !isError ? (
-        <ul
-          id={listId}
-          role="listbox"
-          className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-border bg-surface shadow-lg"
-        >
-          {results.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-muted-foreground">{t('pickerNoMatch')}</li>
-          ) : (
-            results.map((material) => (
-              <li key={material.id}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={false}
-                  onClick={() => {
-                    onSelect(material);
-                    setOpen(false);
-                    setQuery('');
-                  }}
-                  className="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-start text-sm hover:bg-muted"
-                >
-                  <span className="font-mono text-xs text-muted-foreground">
-                    {material.code}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate">{material.name}</span>
-                  {material.baseUom ? (
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {material.baseUom.symbol}
-                    </span>
-                  ) : null}
-                </button>
-              </li>
-            ))
-          )}
-        </ul>
-      ) : null}
     </div>
   );
 }
