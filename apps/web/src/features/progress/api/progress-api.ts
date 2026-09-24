@@ -110,6 +110,8 @@ export interface WorkPackageResponse {
   progressWeight: string;
   createdBy: string;
   createdAt: string;
+  /** The BOQ leaves already allocated to this package — used to exclude them from suggestions. */
+  boqNodeIds: string[];
 }
 
 // ─── Daily Progress Reports ───────────────────────────────────────────────────────────────
@@ -378,5 +380,35 @@ export function allocateBoqNode(workPackageId: string, boqNodeId: string): Promi
   return apiClient<unknown>(`/work-packages/${workPackageId}/boq-nodes`, {
     method: 'POST',
     body: JSON.stringify({ boqNodeId }),
+  });
+}
+
+// ─── Delivery Plan (BOQ-derived setup) ─────────────────────────────────────────────────────
+export interface DeliveryPlanPackageBody {
+  code: string;
+  name: string;
+  responsibleOwner?: string;
+  /** Fraction 0..1 — the PM-edited (or accepted-suggested) weight, never a raw BOQ-value weight. */
+  progressWeight?: number;
+  boqNodeIds: string[];
+}
+
+export interface SaveDeliveryPlanBody {
+  packages: DeliveryPlanPackageBody[];
+}
+
+export interface SaveDeliveryPlanResponse {
+  projectId: string;
+  packages: Array<{ id: string; code: string; name: string }>;
+}
+
+/** Creates every package and its BOQ-leaf allocations together, all-or-nothing (see the service doc). */
+export function saveDeliveryPlan(
+  projectId: string,
+  body: SaveDeliveryPlanBody,
+): Promise<SaveDeliveryPlanResponse> {
+  return apiClient<SaveDeliveryPlanResponse>(`/projects/${projectId}/work-packages/delivery-plan`, {
+    method: 'POST',
+    body: JSON.stringify(body),
   });
 }

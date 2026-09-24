@@ -41,6 +41,7 @@ import {
   listWorkPackages,
   rebaselineProgramme,
   returnDpr,
+  saveDeliveryPlan,
   setProgressTargets,
   submitDpr,
   patchDprContext,
@@ -61,6 +62,7 @@ import {
   type AddObservationBody,
   type ProgressTargetItem,
   type RebaselineBody,
+  type SaveDeliveryPlanBody,
   type WorkPackageResponse,
 } from '../api/progress-api';
 
@@ -377,6 +379,20 @@ export function useAllocateBoqNode(projectId: string, workPackageId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (boqNodeId: string) => allocateBoqNode(workPackageId, boqNodeId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: progressKeys.workPackages(projectId) }),
+        invalidateVerifiedDerived(queryClient, projectId),
+      ]);
+    },
+  });
+}
+
+/** Saves a reviewed Delivery Plan — every package + its leaf allocations, created atomically. */
+export function useSaveDeliveryPlan(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SaveDeliveryPlanBody) => saveDeliveryPlan(projectId, body),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: progressKeys.workPackages(projectId) }),

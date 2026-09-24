@@ -57,8 +57,6 @@ export function NeedsAttentionPanel({
     });
   }
 
-  // Only worth raising once there is a model to be incomplete — a project with no work packages
-  // is being set up, and the setup checklist already says so.
   const hasPackages = (workPackages.data?.length ?? 0) > 0;
   if (hasPackages && rollup.data && !rollup.data.weightsComplete) {
     const total = `${Math.round(Number(rollup.data.weightsTotal) * 100)}%`;
@@ -87,6 +85,12 @@ export function NeedsAttentionPanel({
     });
   }
   const loading = dprs.isPending || rollup.isPending || workPackages.isPending;
+
+  // A project with no work packages yet isn't "clear" — it's unset up, and the Programme view's
+  // own setup notice (above this panel, same page) already says so. Rendering "Nothing needs
+  // attention" here at the same time would flatly contradict it, so this panel stays silent
+  // rather than repeat or dispute that message.
+  if (!loading && !hasPackages) return null;
 
   return (
     <RefCard>

@@ -255,6 +255,19 @@ export class ProgressRepository {
     });
   }
 
+  /**
+   * Batched existence + leaf-ness check for a Delivery Plan save — every `boqNodeId` a submitted
+   * batch references, scoped to this project, so the service can reject an id that doesn't exist
+   * or names a section rather than a leaf BEFORE opening the write transaction.
+   */
+  async findBoqNodesForAllocation(prisma: TenantPrisma, projectId: string, boqNodeIds: string[]) {
+    if (boqNodeIds.length === 0) return [];
+    return prisma.boqNode.findMany({
+      where: { id: { in: boqNodeIds }, version: { boq: { projectId } } },
+      select: { id: true, isLeaf: true },
+    });
+  }
+
   /** The work package a leaf is already allocated to, or null. A leaf allocates to at most one. */
   findLeafAllocation(prisma: TenantPrisma, boqNodeId: string) {
     return prisma.workPackageBoqNode.findUnique({

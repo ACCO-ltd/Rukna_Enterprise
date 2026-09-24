@@ -15,6 +15,7 @@ import {
   ReturnDprDto,
   ReopenDprDto,
   CreateWorkPackageDto,
+  SaveDeliveryPlanDto,
   UpdateWorkPackageDto,
   AllocateBoqNodeDto,
   ApplyScheduleTemplateDto,
@@ -328,6 +329,22 @@ export class ProgressController {
   @ApiOperation({ summary: 'List the project work packages' })
   listWorkPackages(@CurrentUser() identity: RequestIdentity, @Param('projectId') projectId: string) {
     return this.service.listWorkPackages(identity, projectId);
+  }
+
+  @Post('projects/:projectId/work-packages/delivery-plan')
+  @RequirePermissions(PERMISSIONS.projectsManage)
+  @ApiParam({ name: 'projectId' })
+  @ApiOperation({
+    summary:
+      'Save a reviewed Delivery Plan: create every package and its BOQ-leaf allocations together, ' +
+      'all-or-nothing. Nothing is persisted if any package in the batch fails validation.',
+  })
+  saveDeliveryPlan(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('projectId') projectId: string,
+    @Body() dto: SaveDeliveryPlanDto,
+  ) {
+    return this.service.saveDeliveryPlan(identity, projectId, dto);
   }
 
   @Patch('work-packages/:workPackageId')

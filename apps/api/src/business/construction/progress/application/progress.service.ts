@@ -16,6 +16,8 @@ import {
 } from '@erp/types';
 
 import { isoDate, scheduleStatusFor } from '../domain/progress-curve.js';
+import { classifyDivergence } from '../domain/divergence.js';
+import { validateDeliveryPlanBatch, type DeliveryPlanPackageInput } from '../domain/delivery-plan.js';
 
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
@@ -30,34 +32,12 @@ import {
 import { weightedPackagePercent } from '../domain/progress-rollup.js';
 import { scheduleTemplateCode, scheduleTemplatePhases } from '../domain/schedule-templates.js';
 
-const DIVERGENCE_THRESHOLD = 20; // percentage points before the signal flags a divergence (cf. ADR-023 CONST-COM-018)
-
 const ZERO = new Decimal(0);
 
 // ADR-021: the statuses in which a DPR's measurements may be added/edited and it can be submitted —
 // a fresh draft, one returned before approval, or one reopened for correction (CONST-PROG-010).
 function isEditableDprStatus(status: string): boolean {
   return status === DprStatus.DRAFT || status === DprStatus.RETURNED || status === DprStatus.REOPENED;
-}
-
-/**
- * Classifies a signed percentage-point gap against DIVERGENCE_THRESHOLD, shared by the two cockpit
- * signals (physical-vs-financial, collection-vs-progress). `diff` = primary − secondary (positive =
- * primary ahead); `null` primary → INSUFFICIENT_DATA. Same threshold cascade, different status labels.
- */
-function classifyDivergence<P extends string, N extends string>(
-  diff: number | null,
-  positiveStatus: P,
-  negativeStatus: N,
-): { divergence: number | null; status: P | N | 'ALIGNED' | 'INSUFFICIENT_DATA' } {
-  if (diff === null) return { divergence: null, status: 'INSUFFICIENT_DATA' };
-  const status =
-    diff > DIVERGENCE_THRESHOLD
-      ? positiveStatus
-      : diff < -DIVERGENCE_THRESHOLD
-        ? negativeStatus
-        : 'ALIGNED';
-  return { divergence: Math.round(diff * 100) / 100, status };
 }
 
 export interface CreateDprDto {
@@ -505,7 +485,98 @@ export class ProgressService {
 
   async listWorkPackages(identity: RequestIdentity, projectId: string) {
     await this.projectAccess.assertMember(identity, projectId);
-    return this.repo.findWorkPackages(this.tenancy.getClient(), identity.activeOrganizationId, projectId);
+    const packages = await this.repo.findWorkPackages(
+      this.tenancy.getClient(),
+      identity.activeOrganizationId,
+      projectId,
+    );
+    // `boqNodeIds` is the client-facing shape of the `boqLinks` join rows — named for what it is
+    // (Delivery Plan's suggestion engine needs the actual allocated leaf ids, not just a count, to
+    // know which BOQ leaves are already spoken for) rather than leaking the Prisma relation shape.
+    return packages.map((wp) => ({
+      ...wp,
+      boqNodeIds: wp.boqLinks.map((link) => link.boqNodeId),
+    }));
+  }
+
+  /**
+   * Delivery Plan batch save: create every reviewed package AND its leaf allocations together,
+   * all-or-nothing. The frontend proposes packages from the BOQ tree and lets the PM edit them
+   * freely — nothing here is a suggestion by the time it reaches this method, and NOTHING is
+   * persisted until this call succeeds in full.
+   *
+   * Two validation passes, deliberately in this order:
+   *  1. `validateDeliveryPlanBatch` (pure, no I/O) against what already exists — catches the
+   *     ordinary mistakes (blank fields, reused codes, a leaf assigned twice) with one clear
+   *     message per problem, before any write is attempted.
+   *  2. The write itself runs in ONE `prisma.$transaction`. A leaf's `@@unique([boqNodeId])`
+   *     constraint is the final backstop against a race (two PMs saving overlapping plans at the
+   *     same moment) that step 1 cannot see — if it fires, Prisma rolls back everything the
+   *     transaction had written so far, so the project never ends up with some packages created
+   *     and others missing. This is the same all-or-nothing pattern `applyScheduleTemplate` (P1-d)
+   *     already uses for seeding phases from a template; this batches allocations onto it too.
+   */
+  async saveDeliveryPlan(identity: RequestIdentity, projectId: string, dto: SaveDeliveryPlanDto) {
+    await this.projectAccess.assertMember(identity, projectId);
+    const prisma = this.tenancy.getClient();
+
+    const allLeafIds = [...new Set(dto.packages.flatMap((pkg) => pkg.boqNodeIds))];
+    const nodes = await this.repo.findBoqNodesForAllocation(prisma, projectId, allLeafIds);
+    const foundIds = new Set(nodes.map((n) => n.id));
+    const missingIds = allLeafIds.filter((id) => !foundIds.has(id));
+    if (missingIds.length > 0) {
+      throw new BadRequestException(
+        `${missingIds.length} BOQ item(s) in this plan were not found in this project's BOQ.`,
+      );
+    }
+    const nonLeafIds = nodes.filter((n) => !n.isLeaf).map((n) => n.id);
+    if (nonLeafIds.length > 0) {
+      throw new BadRequestException('Only BOQ leaf items can be allocated to a package, not sections.');
+    }
+
+    const existingPackages = await this.repo.findWorkPackages(
+      prisma,
+      identity.activeOrganizationId,
+      projectId,
+    );
+    const existingCodes = new Set(existingPackages.map((wp) => wp.code));
+    const existingAllocatedLeafIds = new Set(
+      existingPackages.flatMap((wp) => wp.boqLinks.map((link) => link.boqNodeId)),
+    );
+
+    const errors = validateDeliveryPlanBatch(dto.packages, existingCodes, existingAllocatedLeafIds);
+    if (errors.length > 0) {
+      throw new BadRequestException(errors.map((e) => e.message).join(' '));
+    }
+
+    const created = await prisma.$transaction(async (tx) => {
+      const packages = await Promise.all(
+        dto.packages.map((pkg) =>
+          this.repo.createWorkPackage(tx as never, {
+            organizationId: identity.activeOrganizationId,
+            projectId,
+            code: pkg.code,
+            name: pkg.name,
+            responsibleOwner: pkg.responsibleOwner ?? null,
+            progressWeight: pkg.progressWeight ?? 0,
+            createdBy: identity.userId,
+          }),
+        ),
+      );
+      await Promise.all(
+        packages.flatMap((wp, index) =>
+          dto.packages[index]!.boqNodeIds.map((leafId) =>
+            this.repo.allocateBoqNode(tx as never, wp.id, leafId),
+          ),
+        ),
+      );
+      return packages;
+    });
+
+    return {
+      projectId,
+      packages: created.map((wp) => ({ id: wp.id, code: wp.code, name: wp.name })),
+    };
   }
 
   /**
@@ -828,7 +899,8 @@ export class ProgressService {
 
     const physicalPercent = rollup.physicalPercent;
     const { divergence, status } = classifyDivergence(
-      costConsumedPercent === null ? null : physicalPercent - costConsumedPercent,
+      physicalPercent,
+      costConsumedPercent,
       'PROGRESS_AHEAD',
       'COST_AHEAD',
     );
@@ -866,7 +938,8 @@ export class ProgressService {
 
     const physicalPercent = rollup.physicalPercent;
     const { divergence, status } = classifyDivergence(
-      collectedPercent === null ? null : collectedPercent - physicalPercent,
+      collectedPercent,
+      physicalPercent,
       'CASH_AHEAD',
       'WORK_AHEAD',
     );
@@ -1038,7 +1111,8 @@ export class ProgressService {
     const physicalPercent = rollup.physicalPercent;
 
     const { divergence, status } = classifyDivergence(
-      plannedPercent === null ? null : physicalPercent - plannedPercent,
+      physicalPercent,
+      plannedPercent,
       'AHEAD_OF_SCHEDULE',
       'BEHIND_SCHEDULE',
     );
@@ -1448,6 +1522,10 @@ export interface CreateWorkPackageDto {
   name: string;
   responsibleOwner?: string;
   progressWeight?: number;
+}
+
+export interface SaveDeliveryPlanDto {
+  packages: DeliveryPlanPackageInput[];
 }
 
 // Master Schedule P1-a (ADR-029): partial WP update incl. the schedule window. Dates are ISO

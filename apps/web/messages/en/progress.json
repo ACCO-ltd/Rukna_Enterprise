@@ -311,6 +311,38 @@
       "dismiss": "Dismiss"
     }
   },
+  "deliveryPlan": {
+    "action": "Create delivery plan from BOQ",
+    "noBaseline": "Baseline the BOQ before generating a delivery plan.",
+    "title": "Review proposed packages",
+    "subtitle": "One package per BOQ section with unallocated scope. Edit anything before saving — nothing is created until you save.",
+    "empty": "Every BOQ section is already fully allocated to a work package. Nothing to propose.",
+    "orphanWarning": "{count, plural, one {# BOQ item is} other {# BOQ items are}} not under any top-level section and could not be proposed. Allocate manually from Work packages once the plan is saved.",
+    "col": {
+      "include": "Include",
+      "code": "Code",
+      "name": "Package name",
+      "coverage": "BOQ coverage",
+      "owner": "Owner",
+      "weight": "Suggested weight",
+      "status": "Status"
+    },
+    "coverageCount": "{count, plural, one {# item} other {# items}}",
+    "inspect": "Inspect items",
+    "unpriced": "Has unpriced items",
+    "unpricedHint": "This package's weight is understated until every item is priced.",
+    "ready": "Ready",
+    "excluded": "Not included",
+    "ownerPlaceholder": "Optional",
+    "weightTotal": "Total weight of included packages: {total}%",
+    "weightTotalOver": "Total weight of included packages: {total}% — over 100%.",
+    "saveDraft": "Save draft plan",
+    "saving": "Saving…",
+    "saved": "Delivery plan saved. {count, plural, one {# work package} other {# work packages}} created.",
+    "saveFailed": "Could not save the delivery plan.",
+    "noneIncluded": "Include at least one package to save.",
+    "cancel": "Cancel"
+  },
   "rollup": {
     "title": "Project physical progress",
     "physicalPercent": "Physical complete",

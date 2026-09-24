@@ -10,8 +10,10 @@ import type { SuggestedWeightLine } from '@erp/types';
 import { ApiError } from '@/lib/api-client';
 
 import { useSuggestWeights, useUpdateWorkPackage } from '@/features/programme/hooks/use-programme';
+import { useBoqWorkspace } from '@/features/boq/hooks/use-boq';
 import { useAllocateBoqNode, useCreateWorkPackage, useProjectRollup } from '../hooks/use-progress';
 import { lineLabel, useBoqLeaves } from '../hooks/use-boq-leaves';
+import { DeliveryPlanDialog } from './delivery-plan-dialog';
 import {
   RefBar,
   RefButton,
@@ -41,9 +43,12 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
   const t = useTranslations('progress');
   const tCommon = useTranslations('common');
   const { data, isPending, isError, refetch, isFetching } = useProjectRollup(projectId);
+  const { hasBaseline } = useBoqLeaves(projectId);
+  const workspace = useBoqWorkspace(projectId);
 
   const [creating, setCreating] = useState(false);
   const [allocating, setAllocating] = useState(false);
+  const [planning, setPlanning] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestedWeightLine[] | null>(null);
   const [suggestError, setSuggestError] = useState<string | null>(null);
 
@@ -140,6 +145,15 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
             >
               {t('actions.allocate')}
             </RefButton>
+            <RefButton
+              variant="outline"
+              size="sm"
+              onClick={() => setPlanning(true)}
+              disabled={!hasBaseline}
+              title={!hasBaseline ? t('deliveryPlan.noBaseline') : undefined}
+            >
+              {t('deliveryPlan.action')}
+            </RefButton>
             <RefButton size="sm" onClick={() => setCreating(true)}>
               {t('actions.newWorkPackage')}
             </RefButton>
@@ -217,7 +231,15 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
         ) : null}
 
         {data.packages.length === 0 ? (
-          <RefEmpty title={t('workPackage.emptyTitle')} hint={t('workPackage.emptyHint')} />
+          <RefEmpty
+            title={t('workPackage.emptyTitle')}
+            hint={hasBaseline ? t('workPackage.emptyHint') : t('deliveryPlan.noBaseline')}
+            action={
+              hasBaseline ? (
+                <RefButton onClick={() => setPlanning(true)}>{t('deliveryPlan.action')}</RefButton>
+              ) : undefined
+            }
+          />
         ) : (
           <RefTableScroll aria-label={t('workPackage.title')}>
             <RefTable>
@@ -281,6 +303,13 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
           </div>
         </DialogContent>
       </Dialog>
+
+      <DeliveryPlanDialog
+        projectId={projectId}
+        currency={workspace.data?.currency ?? null}
+        open={planning}
+        onOpenChange={setPlanning}
+      />
     </RefCard>
   );
 }

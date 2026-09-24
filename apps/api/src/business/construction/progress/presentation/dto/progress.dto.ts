@@ -198,6 +198,40 @@ export class AllocateBoqNodeDto {
   boqNodeId!: string;
 }
 
+// Delivery Plan (BOQ-derived setup) — one reviewed-and-edited package proposal, saved together with
+// its leaf allocations. `progressWeight` is a PM-edited or accepted-suggested fraction, never a raw
+// BOQ-value weight taken as approved (the suggestion is a starting point, not written until here).
+export class DeliveryPlanPackageDto {
+  @ApiProperty({ example: 'WP-01' })
+  @IsString() @IsNotEmpty() @MaxLength(50)
+  code!: string;
+
+  @ApiProperty({ example: 'Substructure' })
+  @IsString() @IsNotEmpty() @MaxLength(255)
+  name!: string;
+
+  @ApiPropertyOptional({ example: 'Ahmed Ali' })
+  @IsOptional() @IsString() @MaxLength(255)
+  responsibleOwner?: string;
+
+  @ApiPropertyOptional({ example: 0.35, description: 'Fraction of project weight (0..1)' })
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Max(1)
+  progressWeight?: number;
+
+  @ApiProperty({ type: [String], description: 'BOQ leaf node ids to allocate to this package' })
+  @IsString({ each: true })
+  @ArrayMaxSize(500)
+  boqNodeIds!: string[];
+}
+
+export class SaveDeliveryPlanDto {
+  @ApiProperty({ type: [DeliveryPlanPackageDto] })
+  @ValidateNested({ each: true })
+  @Type(() => DeliveryPlanPackageDto)
+  @ArrayMaxSize(100)
+  packages!: DeliveryPlanPackageDto[];
+}
+
 // Master Schedule P1-a (ADR-029) — partial update of a work package, including its schedule window
 // (the WorkPackage IS the master-schedule phase row). Dates are ISO strings (@db.Date). % complete
 // and actual dates are DERIVED on read, never accepted here.
