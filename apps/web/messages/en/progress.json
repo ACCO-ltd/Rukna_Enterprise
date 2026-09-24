@@ -159,6 +159,8 @@
     },
     "fields": {
       "reportDate": "Date",
+      "locationArea": "Location / area",
+      "shift": "Shift",
       "weather": "Weather",
       "labourCount": "Labour on site",
       "equipmentNote": "Equipment",
@@ -652,7 +654,9 @@
       "trade": "Trade",
       "headcount": "Headcount",
       "contractor": "Contractor",
-      "hours": "Hours"
+      "contractorDefault": "In-House / Direct",
+      "hours": "Hours / worker",
+      "manHours": "man-hrs total"
     },
     "tradeChoose": "Choose a trade",
     "saving": "Saving…"
@@ -670,6 +674,8 @@
       "notes": "Notes"
     },
     "typeChoose": "Choose equipment type",
+    "typeSearch": "Search type",
+    "typeEmpty": "No matching type — type to add custom",
     "saving": "Saving…"
   },
   "observations": {

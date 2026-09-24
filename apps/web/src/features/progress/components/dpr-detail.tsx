@@ -71,6 +71,8 @@ import {
 } from '../hooks/use-progress';
 import { lineLabel, useBoqLeaves } from '../hooks/use-boq-leaves';
 import { DprStatusBadge } from './dpr-status-badge';
+import { useProject } from '@/features/projects/hooks/use-project';
+import { useSuppliers } from '@/features/procurement/hooks/use-procurement';
 
 /**
  * Bounded site-condition options (ADR-021 redesign §5.2). Stored as their readable string so
@@ -137,7 +139,9 @@ const EQUIPMENT_TYPE_OPTIONS = [
   'Loader',
   'Water tanker',
   'Other',
-] as const;
+];
+
+const SHIFT_OPTIONS = ['Morning', 'Afternoon', 'Night', 'Full day'] as const;
 
 const refFieldClass = 'rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
 
@@ -154,6 +158,7 @@ export function DprDetail({
   const tCommon = useTranslations('common');
   const locale = useLocale() as 'en' | 'ar';
 
+  const project = useProject(projectId);
   const { data: dpr, isPending, isError, refetch, isFetching } = useDpr(dprId);
   const { leaves } = useBoqLeaves(projectId);
   const leafLabel = useMemo(() => new Map(leaves.map((l) => [l.id, lineLabel(l)])), [leaves]);
@@ -288,12 +293,15 @@ export function DprDetail({
               editable they live in the ReportDetailsCard below instead, so a value is never shown
               read-only and editable at the same time. */}
           <dl className="mt-4 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+            {!editable && dpr.locationArea ? <Meta label={t('report.fields.locationArea')} value={dpr.locationArea} /> : null}
+            {!editable && dpr.shift ? <Meta label={t('report.fields.shift')} value={dpr.shift} /> : null}
             {!editable && dpr.weather ? <Meta label={t('report.fields.weather')} value={dpr.weather} /> : null}
-            {!editable && dpr.labourCount != null ? (
-              <Meta label={t('report.fields.labourCount')} value={String(dpr.labourCount)} />
-            ) : null}
             {!editable && dpr.delayReason ? <Meta label={t('report.fields.delayReason')} value={dpr.delayReason} /> : null}
-            {!editable && dpr.narrative ? <Meta label={t('report.fields.narrative')} value={dpr.narrative} /> : null}
+            {!editable && dpr.narrative ? (
+              <div className="sm:col-span-2">
+                <Meta label={t('report.fields.narrative')} value={dpr.narrative} />
+              </div>
+            ) : null}
             {dpr.returnReason ? (
               <div className="sm:col-span-2">
                 <Meta label={t('report.fields.returnReason')} value={dpr.returnReason} />
@@ -303,7 +311,9 @@ export function DprDetail({
         </RefCardBody>
       </RefCard>
 
-      {editable ? <ReportDetailsCard dpr={dpr} /> : null}
+      {editable ? (
+        <ReportDetailsCard dpr={dpr} projectLocation={project.data?.location ?? undefined} />
+      ) : null}
 
       {/* Measurements */}
       <RefCard>
@@ -458,15 +468,23 @@ export function DprDetail({
  * before this, never-wired-up capability). Shown only while the report is DRAFT/RETURNED; once
  * submitted these read back as the plain `Meta` rows in the header instead.
  */
-function ReportDetailsCard({ dpr }: { dpr: DailyProgressReportDetail }) {
+function ReportDetailsCard({
+  dpr,
+  projectLocation,
+}: {
+  dpr: DailyProgressReportDetail;
+  projectLocation?: string;
+}) {
   const t = useTranslations('progress');
   const { toast } = useToast();
   const patch = usePatchDprContext(dpr.id);
 
+  // locationArea pre-fills from the DPR if previously saved, then falls back to the project
+  // address so the SE doesn't have to type it every day on a single-site project.
+  const [locationArea, setLocationArea] = useState(dpr.locationArea ?? projectLocation ?? '');
+  const [shift, setShift] = useState(dpr.shift ?? '');
   const [weather, setWeather] = useState(dpr.weather ?? WEATHER_OPTIONS[0]);
   const [delayReason, setDelayReason] = useState(dpr.delayReason ?? DELAY_OPTIONS[0]);
-  const [labourCount, setLabourCount] = useState(dpr.labourCount != null ? String(dpr.labourCount) : '');
-  const [equipmentNote, setEquipmentNote] = useState(dpr.equipmentNote ?? '');
   const [narrative, setNarrative] = useState(dpr.narrative ?? '');
   const [error, setError] = useState<string | null>(null);
 
@@ -475,10 +493,10 @@ function ReportDetailsCard({ dpr }: { dpr: DailyProgressReportDetail }) {
     setError(null);
     patch.mutate(
       {
+        locationArea: locationArea.trim() || undefined,
+        shift: shift || undefined,
         weather,
         delayReason,
-        labourCount: labourCount ? Number(labourCount) : undefined,
-        equipmentNote: equipmentNote.trim() || undefined,
         narrative: narrative.trim() || undefined,
       },
       {
@@ -499,6 +517,25 @@ function ReportDetailsCard({ dpr }: { dpr: DailyProgressReportDetail }) {
             </div>
           ) : null}
           <div className="grid gap-3 sm:grid-cols-2">
+            <FormField htmlFor="rd-location" label={t('context.locationArea')}>
+              <Input
+                id="rd-location"
+                value={locationArea}
+                onChange={(e) => setLocationArea(e.target.value)}
+                placeholder={projectLocation ?? ''}
+                className={refFieldClass}
+              />
+            </FormField>
+            <FormField htmlFor="rd-shift" label={t('context.shift')}>
+              <Select id="rd-shift" value={shift} onChange={setShift} className={refFieldClass}>
+                <option value="">—</option>
+                {SHIFT_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {t(`context.shifts.${s}` as Parameters<typeof t>[0])}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
             <FormField htmlFor="rd-weather" label={t('report.fields.weather')}>
               <Select id="rd-weather" value={weather} onChange={setWeather} className={refFieldClass}>
                 {WEATHER_OPTIONS.map((w) => (
@@ -516,24 +553,6 @@ function ReportDetailsCard({ dpr }: { dpr: DailyProgressReportDetail }) {
                   </option>
                 ))}
               </Select>
-            </FormField>
-            <FormField htmlFor="rd-labour" label={t('report.fields.labourCount')}>
-              <Input
-                id="rd-labour"
-                type="number"
-                min="0"
-                value={labourCount}
-                onChange={(e) => setLabourCount(e.target.value)}
-                className={refFieldClass}
-              />
-            </FormField>
-            <FormField htmlFor="rd-equipment" label={t('report.fields.equipmentNote')}>
-              <Input
-                id="rd-equipment"
-                value={equipmentNote}
-                onChange={(e) => setEquipmentNote(e.target.value)}
-                className={refFieldClass}
-              />
             </FormField>
             <div className="sm:col-span-2">
               <FormField htmlFor="rd-narrative" label={t('report.fields.narrative')}>
@@ -892,14 +911,25 @@ function LabourSection({
   editable: boolean;
 }) {
   const t = useTranslations('progress');
+  const locale = useLocale() as 'en' | 'ar';
   const add = useAddLabourRow(dprId);
   const remove = useRemoveLabourRow(dprId);
+  const suppliers = useSuppliers({ status: 'ACTIVE' });
 
   const [trade, setTrade] = useState('');
   const [headcount, setHeadcount] = useState('');
-  const [contractor, setContractor] = useState('');
+  // Default to direct labour; SE only changes it for subcontracted trades.
+  const [contractor, setContractor] = useState(t('labour.fields.contractorDefault'));
   const [hours, setHours] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  const contractorOptions = useMemo(
+    () => [
+      t('labour.fields.contractorDefault'),
+      ...(suppliers.data?.map((s) => s.name) ?? []),
+    ],
+    [suppliers.data, t],
+  );
 
   function onAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -909,14 +939,14 @@ function LabourSection({
       {
         trade: trade.trim(),
         headcount: Number(headcount),
-        contractor: contractor.trim() || undefined,
+        contractor: contractor || undefined,
         hours: hours ? Number(hours) : undefined,
       },
       {
         onSuccess: () => {
           setTrade('');
           setHeadcount('');
-          setContractor('');
+          setContractor(t('labour.fields.contractorDefault'));
           setHours('');
         },
         onError: (err) => setError(err instanceof ApiError ? err.message : t('states.loadFailed')),
@@ -939,29 +969,42 @@ function LabourSection({
               </RefTr>
             </RefThead>
             <RefTbody>
-              {rows.map((row) => (
-                <RefTr key={row.id}>
-                  <RefTd className="font-medium">{row.trade}</RefTd>
-                  <RefTd numeric className="tabular-nums">{row.headcount}</RefTd>
-                  <RefTd className="text-gray-500">{row.contractor ?? '—'}</RefTd>
-                  <RefTd numeric className="tabular-nums text-gray-500">
-                    {row.hours ?? '—'}
-                  </RefTd>
-                  {editable ? (
-                    <RefTd>
-                      <RefButton
-                        variant="ghost"
-                        size="sm"
-                        aria-label={t('labour.remove')}
-                        onClick={() => remove.mutate(row.id)}
-                        disabled={remove.isPending}
-                      >
-                        <Trash2 size={14} aria-hidden="true" />
-                      </RefButton>
+              {rows.map((row) => {
+                const manHours =
+                  row.hours != null ? row.headcount * Number(row.hours) : null;
+                return (
+                  <RefTr key={row.id}>
+                    <RefTd className="font-medium">{row.trade}</RefTd>
+                    <RefTd numeric className="tabular-nums">{row.headcount}</RefTd>
+                    <RefTd className="text-gray-500">{row.contractor ?? '—'}</RefTd>
+                    <RefTd numeric className="tabular-nums text-gray-500">
+                      {row.hours != null ? (
+                        <>
+                          <div>{formatNumber(Number(row.hours), locale, 1)}</div>
+                          <div className="text-xs text-gray-400">
+                            {formatNumber(manHours!, locale, 0)} {t('labour.fields.manHours')}
+                          </div>
+                        </>
+                      ) : (
+                        '—'
+                      )}
                     </RefTd>
-                  ) : null}
-                </RefTr>
-              ))}
+                    {editable ? (
+                      <RefTd>
+                        <RefButton
+                          variant="ghost"
+                          size="sm"
+                          aria-label={t('labour.remove')}
+                          onClick={() => remove.mutate(row.id)}
+                          disabled={remove.isPending}
+                        >
+                          <Trash2 size={14} aria-hidden="true" />
+                        </RefButton>
+                      </RefTd>
+                    ) : null}
+                  </RefTr>
+                );
+              })}
             </RefTbody>
           </RefTable>
         </RefTableScroll>
@@ -989,7 +1032,19 @@ function LabourSection({
             <Input id="lr-count" type="number" min="0" value={headcount} onChange={(e) => setHeadcount(e.target.value)} className={refFieldClass} />
           </FormField>
           <FormField htmlFor="lr-contractor" label={t('labour.fields.contractor')}>
-            <Input id="lr-contractor" value={contractor} onChange={(e) => setContractor(e.target.value)} className={refFieldClass} />
+            <Select
+              id="lr-contractor"
+              value={contractor}
+              onChange={setContractor}
+              className={refFieldClass}
+              disabled={suppliers.isPending}
+            >
+              {contractorOptions.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </Select>
           </FormField>
           <FormField htmlFor="lr-hours" label={t('labour.fields.hours')}>
             <Input id="lr-hours" type="number" min="0" step="0.5" value={hours} onChange={(e) => setHours(e.target.value)} className={refFieldClass} />
@@ -1022,12 +1077,50 @@ function EquipmentSection({
   const add = useAddEquipmentRow(dprId);
   const remove = useRemoveEquipmentRow(dprId);
 
+  // Custom types entered this session — persists within the component lifetime so previously
+  // added custom types reappear in the dropdown without requiring a backend round-trip.
+  const [sessionCustomTypes, setSessionCustomTypes] = useState<string[]>([]);
+  const [equipQuery, setEquipQuery] = useState('');
   const [equipType, setEquipType] = useState('');
   const [count, setCount] = useState('');
   const [hoursWorked, setHoursWorked] = useState('');
   const [condition, setCondition] = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  // Extract any custom types already stored on this DPR's rows (e.g. from a prior session).
+  const persistedCustomTypes = useMemo(
+    () => rows.map((r) => r.equipmentType).filter((ty) => !EQUIPMENT_TYPE_OPTIONS.includes(ty)),
+    [rows],
+  );
+  const allCustomTypes = useMemo(
+    () => Array.from(new Set([...persistedCustomTypes, ...sessionCustomTypes])),
+    [persistedCustomTypes, sessionCustomTypes],
+  );
+  const equipOptions = useMemo(
+    () => [
+      ...allCustomTypes.map((ty) => ({ value: ty, label: ty, group: 'Custom' })),
+      ...EQUIPMENT_TYPE_OPTIONS.map((e) => ({ value: e, label: e })),
+    ],
+    [allCustomTypes],
+  );
+
+  // Footer action: shown when the user types something not in the options list, letting them add a
+  // custom type without a dedicated DB table (org-wide persistence is backend-blocked, Q1).
+  const footerAction = useMemo(() => {
+    const q = equipQuery.trim();
+    if (!q) return undefined;
+    const already = equipOptions.some((o) => o.label.toLowerCase() === q.toLowerCase());
+    if (already) return undefined;
+    return {
+      label: `Use "${q}"`,
+      onSelect: () => {
+        setEquipType(q);
+        setSessionCustomTypes((prev) => (prev.includes(q) ? prev : [...prev, q]));
+        setEquipQuery('');
+      },
+    };
+  }, [equipQuery, equipOptions]);
 
   function onAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -1106,14 +1199,17 @@ function EquipmentSection({
             </div>
           ) : null}
           <FormField htmlFor="eq-type" label={t('equipment.fields.type')}>
-            <Select id="eq-type" value={equipType} onChange={setEquipType} className={refFieldClass}>
-              <option value="">{t('equipment.typeChoose')}</option>
-              {EQUIPMENT_TYPE_OPTIONS.map((e) => (
-                <option key={e} value={e}>
-                  {e}
-                </option>
-              ))}
-            </Select>
+            <Combobox
+              id="eq-type"
+              value={equipType}
+              onChange={setEquipType}
+              options={equipOptions}
+              placeholder={t('equipment.typeChoose')}
+              searchPlaceholder={t('equipment.typeSearch')}
+              emptyLabel={t('equipment.typeEmpty')}
+              onQueryChange={setEquipQuery}
+              footerAction={footerAction}
+            />
           </FormField>
           <FormField htmlFor="eq-count" label={t('equipment.fields.count')}>
             <Input id="eq-count" type="number" min="0" value={count} onChange={(e) => setCount(e.target.value)} className={refFieldClass} />
