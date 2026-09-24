@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { cn, Badge, Button, type BadgeTone } from '@erp/ui';
 import {
@@ -26,6 +27,10 @@ interface MilestoneJourneyProps {
   onPrepareInvoice: (milestone: MilestoneItemViewModel) => void;
   onSendInvoice: (milestone: MilestoneItemViewModel) => void;
   onVerifyMilestone?: (milestone: MilestoneItemViewModel) => void;
+  /** Panel title + trailing action, rendered as one bordered header on the list — so the
+   * schedule reads as one titled panel rather than a floating, unlabeled list of cards. */
+  title?: ReactNode;
+  action?: ReactNode;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -37,14 +42,24 @@ export function MilestoneJourney({
   onPrepareInvoice,
   onSendInvoice,
   onVerifyMilestone,
+  title,
+  action,
 }: MilestoneJourneyProps) {
   const t = useTranslations('commercial.contractMilestones');
 
   if (viewModel.milestones.length === 0) {
     return (
-      <section className="rounded-panel border border-border bg-surface px-5 py-10 text-center">
-        <p className="text-body font-medium text-foreground">{t('journey.emptyTitle')}</p>
-        <p className="mt-1 text-body-sm text-muted-foreground">{t('journey.emptyHint')}</p>
+      <section className="overflow-hidden rounded-panel border border-border bg-surface">
+        {title ? (
+          <div className="flex min-h-12 items-center justify-between gap-3 border-b border-border px-4 sm:px-5">
+            <h3 className="text-body-sm font-semibold text-foreground">{title}</h3>
+            {action}
+          </div>
+        ) : null}
+        <div className="px-5 py-10 text-center">
+          <p className="text-body font-medium text-foreground">{t('journey.emptyTitle')}</p>
+          <p className="mt-1 text-body-sm text-muted-foreground">{t('journey.emptyHint')}</p>
+        </div>
       </section>
     );
   }
@@ -64,29 +79,29 @@ export function MilestoneJourney({
 
   return (
     <section aria-label={t('journey.sectionTitle')}>
-      <div className="relative">
-        {/* Vertical timeline connector — runs through the centre of step icons (left-7 = 28px = px-4 + h-6/2) */}
-        {viewModel.milestones.length > 1 && (
-          <div
-            className="pointer-events-none absolute bottom-0 left-7 top-0 w-px bg-border"
-            aria-hidden="true"
+      <div className="overflow-hidden rounded-panel border border-border bg-surface">
+        {title ? (
+          <div className="flex min-h-12 items-center justify-between gap-3 border-b border-border px-4 sm:px-5">
+            <h3 className="text-body-sm font-semibold text-foreground">{title}</h3>
+            {action}
+          </div>
+        ) : null}
+        <ol role="list">
+        {viewModel.milestones.map((milestone, idx) => (
+          <MilestoneItem
+            key={milestone.id}
+            milestone={milestone}
+            stepNumber={idx + 1}
+            isLast={idx === viewModel.milestones.length - 1}
+            currency={viewModel.currency}
+            financialsVisible={viewModel.financialsVisible}
+            onMilestoneClick={onMilestoneClick}
+            onReviewForBilling={onReviewForBilling}
+            onPrepareInvoice={onPrepareInvoice}
+            onSendInvoice={onSendInvoice}
+            onVerifyMilestone={onVerifyMilestone}
           />
-        )}
-        <ol className="space-y-2" role="list">
-          {viewModel.milestones.map((milestone, idx) => (
-            <MilestoneItem
-              key={milestone.id}
-              milestone={milestone}
-              stepNumber={idx + 1}
-              currency={viewModel.currency}
-              financialsVisible={viewModel.financialsVisible}
-              onMilestoneClick={onMilestoneClick}
-              onReviewForBilling={onReviewForBilling}
-              onPrepareInvoice={onPrepareInvoice}
-              onSendInvoice={onSendInvoice}
-              onVerifyMilestone={onVerifyMilestone}
-            />
-          ))}
+        ))}
         </ol>
       </div>
 
@@ -105,6 +120,7 @@ export function MilestoneJourney({
 function MilestoneItem({
   milestone,
   stepNumber,
+  isLast,
   currency,
   financialsVisible,
   onMilestoneClick,
@@ -115,6 +131,7 @@ function MilestoneItem({
 }: {
   milestone: MilestoneItemViewModel;
   stepNumber: number;
+  isLast: boolean;
   currency: string;
   financialsVisible: boolean;
   onMilestoneClick: (m: MilestoneItemViewModel) => void;
@@ -137,64 +154,107 @@ function MilestoneItem({
     milestone.userState === 'invoiced' ||
     milestone.userState === 'awaiting-payment';
 
+  const sharePercent = Math.round(Number(milestone.percentage) * 100);
+  const fmtMoney = (amount: string) => formatMoney(amount, currency, locale) ?? amount;
+
+  const dateLine =
+    milestone.dateLabel && milestone.expectedDate
+      ? milestone.dateLabel === 'expected'
+        ? t('dateLabel.expected', {
+            date: formatDate(milestone.expectedDate, locale) ?? milestone.expectedDate,
+          })
+        : t('dateLabel.due', {
+            date: formatDate(milestone.expectedDate, locale) ?? milestone.expectedDate,
+          })
+      : null;
+
+  // One compact control per row — the reference's "Action" column. Everything else the
+  // journey needs to say (ready-to-bill note, awaiting-payment total, VO breakdown, linked
+  // programme milestone) moves to the detail strip below the row instead of stacking here.
+  const action =
+    milestone.userState === 'in-progress' && milestone.programmeMilestone?.status === 'PLANNED' ? (
+      <Button type="button" variant="outline" size="sm" onClick={() => onVerifyMilestone?.(milestone)}>
+        {t('cta.verifyMilestone')}
+      </Button>
+    ) : milestone.userState === 'review-for-billing' ? (
+      <Button type="button" size="sm" onClick={() => onReviewForBilling(milestone)}>
+        {t('cta.reviewForBilling')}
+      </Button>
+    ) : milestone.userState === 'ready-to-bill' ? (
+      <Button type="button" size="sm" onClick={() => onPrepareInvoice(milestone)}>
+        {t('cta.prepareInvoice')}
+      </Button>
+    ) : milestone.userState === 'invoice-issued' ? (
+      <Button type="button" size="sm" onClick={() => onSendInvoice(milestone)}>
+        {t('cta.sendToClient')}
+      </Button>
+    ) : (
+      <span className="text-body-sm text-muted-foreground" aria-hidden="true">
+        —
+      </span>
+    );
+
+  const hasDetail =
+    milestone.userState === 'ready-to-bill' ||
+    milestone.userState === 'invoice-issued' ||
+    milestone.userState === 'awaiting-payment' ||
+    (!isDone && milestone.programmeMilestone) ||
+    milestone.variationAllocations.length > 0;
+
   return (
     <li
       data-current={isCurrent || undefined}
       data-done={isDone || undefined}
-      className={cn(
-        'relative rounded-panel border px-4 py-4 transition-colors',
-        isCurrent
-          ? 'border-brand-primary/25 bg-surface shadow-e1'
-          : isDone
-            ? 'border-border bg-surface/60'
-            : 'border-border bg-surface',
-      )}
+      className={cn(!isLast && 'border-b border-border', isCurrent && 'bg-brand-accent/30')}
     >
-      <div className="flex items-start gap-3">
-        {/* Step indicator */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3.5">
         <StepIcon state={milestone.userState} stepNumber={stepNumber} />
 
-        {/* Content */}
-        <div className="min-w-0 flex-1 space-y-2">
-          {/* Name row */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0 flex-1 basis-56">
+          <div className="flex flex-wrap items-baseline gap-x-2">
             <button
               type="button"
               onClick={() => onMilestoneClick(milestone)}
-              className="flex items-center gap-1 text-body font-semibold text-foreground hover:underline focus-visible:outline-none focus-visible:shadow-ring"
+              className="flex items-center gap-1 text-body-sm font-semibold text-foreground hover:underline focus-visible:outline-none focus-visible:shadow-ring"
               aria-label={milestone.name}
             >
               {milestone.name}
-              <ChevronRight size={14} className="text-muted-foreground" aria-hidden="true" />
+              <ChevronRight size={13} className="text-muted-foreground" aria-hidden="true" />
             </button>
-            <StateBadge state={milestone.userState} />
+            <span className="text-caption text-muted-foreground">{sharePercent}%</span>
           </div>
+          {dateLine ? <p className="text-caption text-muted-foreground">{dateLine}</p> : null}
+        </div>
 
-          {/* Date */}
-          {milestone.dateLabel && milestone.expectedDate ? (
-            <p className="text-body-sm text-muted-foreground">
-              {milestone.dateLabel === 'expected'
-                ? t('dateLabel.expected', {
-                    date: formatDate(milestone.expectedDate, locale) ?? milestone.expectedDate,
-                  })
-                : t('dateLabel.due', {
-                    date: formatDate(milestone.expectedDate, locale) ?? milestone.expectedDate,
-                  })}
+        {financialsVisible && milestone.baseAmount ? (
+          <span className="shrink-0 text-body-sm font-medium tabular-nums text-foreground">
+            {fmtMoney(milestone.baseAmount)}
+          </span>
+        ) : null}
+
+        <div className="shrink-0">
+          <StateBadge state={milestone.userState} />
+        </div>
+
+        <div className="ms-auto shrink-0">{action}</div>
+      </div>
+
+      {hasDetail ? (
+        <div className="space-y-1.5 border-t border-border/60 bg-surface-subtle px-4 py-2.5 ps-12">
+          {milestone.userState === 'ready-to-bill' ? (
+            <p className="flex items-center gap-1.5 text-caption text-muted-foreground">
+              <CheckCircle2 size={12} className="text-success" aria-hidden="true" />
+              {t('cta.readyNote')}
             </p>
           ) : null}
-
-          {/* Money — base + variations separated */}
-          {financialsVisible ? (
-            <MoneyBlock
-              milestone={milestone}
-              currency={currency}
-              locale={locale}
-              t={t}
-              isCurrent={isCurrent}
-            />
+          {milestone.userState === 'invoice-issued' ? (
+            <Badge tone="info" className="text-caption">
+              {t('state.invoice-issued')}
+            </Badge>
           ) : null}
-
-          {/* Programme milestone status (only when linked and current/upcoming) */}
+          {milestone.userState === 'awaiting-payment' ? (
+            <AwaitingPaymentDisplay milestone={milestone} currency={currency} locale={locale} t={t} />
+          ) : null}
           {!isDone && milestone.programmeMilestone ? (
             <p className="flex items-center gap-1.5 text-caption text-muted-foreground">
               {milestone.programmeMilestone.status === 'VERIFIED' ? (
@@ -218,70 +278,11 @@ function MilestoneItem({
               )}
             </p>
           ) : null}
-
-          {/* CTAs */}
-          {milestone.userState === 'in-progress' &&
-          milestone.programmeMilestone?.status === 'PLANNED' ? (
-            <div className="mt-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => onVerifyMilestone?.(milestone)}
-              >
-                {t('cta.verifyMilestone')}
-              </Button>
-            </div>
-          ) : milestone.userState === 'review-for-billing' ? (
-            <div className="mt-2">
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => onReviewForBilling(milestone)}
-              >
-                {t('cta.reviewForBilling')}
-              </Button>
-            </div>
-          ) : milestone.userState === 'ready-to-bill' ? (
-            <div className="mt-2 space-y-2">
-              <div className="flex items-center gap-1.5">
-                <Badge tone="live" className="gap-1 text-caption">
-                  <CheckCircle2 size={11} aria-hidden="true" />
-                  {t('cta.readyToBill')}
-                </Badge>
-                <p className="text-caption text-muted-foreground">{t('cta.readyNote')}</p>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => onPrepareInvoice(milestone)}
-              >
-                {t('cta.prepareInvoice')}
-              </Button>
-            </div>
-          ) : milestone.userState === 'invoice-issued' ? (
-            <div className="mt-2 space-y-2">
-              <Badge tone="info" className="text-caption">
-                {t('state.invoice-issued')}
-              </Badge>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => onSendInvoice(milestone)}
-              >
-                {t('cta.sendToClient')}
-              </Button>
-            </div>
-          ) : milestone.userState === 'awaiting-payment' ? (
-            <AwaitingPaymentDisplay
-              milestone={milestone}
-              currency={currency}
-              locale={locale}
-              t={t}
-            />
+          {financialsVisible && milestone.variationAllocations.length > 0 ? (
+            <MoneyBlock milestone={milestone} currency={currency} locale={locale} t={t} isCurrent={isCurrent} />
           ) : null}
         </div>
-      </div>
+      ) : null}
     </li>
   );
 }

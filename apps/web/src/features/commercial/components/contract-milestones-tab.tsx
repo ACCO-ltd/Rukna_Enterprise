@@ -275,60 +275,71 @@ function ContractHeader({
         <Badge tone={contractStatusTone(contract.status)}>{tStatus(contract.status)}</Badge>
       </div>
 
-      {/* Money values — prominent two-column layout on wider screens */}
-      {summary.financialsVisible && cv ? (
-        <dl className="grid gap-0 sm:grid-cols-3">
-          <div className="border-b border-border px-5 py-4 sm:border-b-0 sm:border-e">
-            <dt className="text-caption font-medium text-muted-foreground">{t('originalValue')}</dt>
-            <dd className="mt-1 text-h3 font-bold tabular-nums text-foreground">
-              {fmt(cv.originalContractValue)}
-            </dd>
-          </div>
-          {cv.approvedVariationsTotal && Number(cv.approvedVariationsTotal) !== 0 ? (
-            <div className="border-b border-border px-5 py-4 sm:border-b-0 sm:border-e">
-              <dt className="text-caption font-medium text-muted-foreground">
-                {t('approvedVariations')}
-              </dt>
-              <dd
-                className={cn(
-                  'mt-1 text-h3 font-bold tabular-nums',
-                  Number(cv.approvedVariationsTotal) < 0 ? 'text-danger' : 'text-success',
-                )}
-              >
-                {Number(cv.approvedVariationsTotal) > 0
-                  ? `+${fmt(cv.approvedVariationsTotal)}`
-                  : fmt(cv.approvedVariationsTotal)}
-              </dd>
-            </div>
-          ) : (
-            <div className="hidden sm:block sm:border-e border-border" />
-          )}
-          <div className="bg-surface/50 px-5 py-4">
-            <dt className="text-caption font-medium text-muted-foreground">{t('currentValue')}</dt>
-            <dd className="mt-1 text-h2 font-bold tabular-nums text-foreground">
+      {/* The four facts a reader reaches for first — value, who, when it's due, whether it's
+          signed. Original value and the approved-variations delta moved to the Contract
+          changes summary card below; repeating them here just for a contract with no
+          variations left an empty grid cell where the reference has none. */}
+      <dl className="grid sm:grid-cols-4">
+        <HeaderCell label={t('currentValue')}>
+          {summary.financialsVisible && cv ? (
+            <span className="text-h3 font-bold tabular-nums text-foreground">
               {fmt(cv.governingContractValue)}
-            </dd>
-          </div>
-        </dl>
-      ) : null}
-
-      {/* Footer: payment terms */}
-      <div className="grid gap-2 border-t border-border px-5 py-3 sm:grid-cols-2">
-        <ContractFact
-          label={t('signedDate')}
-          value={
-            contract.signedDate
+            </span>
+          ) : (
+            <span className="text-h3 font-bold text-muted-foreground">—</span>
+          )}
+        </HeaderCell>
+        <HeaderCell label={t('client')}>
+          <span className="text-body-sm font-semibold text-foreground">{contract.clientName}</span>
+        </HeaderCell>
+        <HeaderCell label={t('completionDate')}>
+          <span className="text-body-sm font-semibold text-foreground">
+            {contract.expectedEndDate
+              ? (formatDate(contract.expectedEndDate, locale) ?? contract.expectedEndDate)
+              : t('paymentTermsNotSet')}
+          </span>
+        </HeaderCell>
+        <HeaderCell label={t('signedDate')} warning={!contract.signedDate}>
+          <span className="flex items-center gap-1.5 text-body-sm font-semibold">
+            {!contract.signedDate ? (
+              <AlertTriangle size={12} className="shrink-0" aria-hidden="true" />
+            ) : null}
+            {contract.signedDate
               ? (formatDate(contract.signedDate, locale) ?? contract.signedDate)
-              : t('signedDateNotRecorded')
-          }
-          warning={!contract.signedDate}
-        />
-        <ContractFact
-          label={t('paymentTerms')}
-          value={contract.paymentTerms?.trim() || t('paymentTermsNotSet')}
-        />
-      </div>
+              : t('signedDateNotRecorded')}
+          </span>
+        </HeaderCell>
+      </dl>
+
+      {contract.paymentTerms?.trim() ? (
+        <div className="border-t border-border px-5 py-3">
+          <ContractFact label={t('paymentTerms')} value={contract.paymentTerms.trim()} />
+        </div>
+      ) : null}
     </section>
+  );
+}
+
+function HeaderCell({
+  label,
+  warning,
+  children,
+}: {
+  label: string;
+  /** Draws attention to a fact that should be recorded but isn't — e.g. an unsigned contract. */
+  warning?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        'border-b border-border px-5 py-4 sm:border-b-0 sm:not-last:border-e',
+        warning && 'text-warning',
+      )}
+    >
+      <dt className="text-caption font-medium text-muted-foreground">{label}</dt>
+      <dd className={cn('mt-1', warning && 'text-warning')}>{children}</dd>
+    </div>
   );
 }
 
@@ -562,6 +573,7 @@ function ScheduleBody({
         onSendInvoice={onSendInvoice}
       />
       <MilestoneJourney
+        title={t('contractMilestones.paymentScheduleTitle')}
         viewModel={viewModel}
         onMilestoneClick={onMilestoneClick}
         onReviewForBilling={onReviewForBilling}

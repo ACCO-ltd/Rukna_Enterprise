@@ -1172,6 +1172,7 @@
       "extensionDays": "{days, plural, one {# day} other {# days}}",
       "viewDetails": "View details →"
     },
+    "paymentScheduleTitle": "Payment schedule",
     "journey": {
       "emptyTitle": "No milestones set",
       "emptyHint": "Add installments to the payment schedule to see them here.",
@@ -1252,6 +1253,8 @@
     },
     "header": {
       "reference": "Contract reference",
+      "client": "Client",
+      "completionDate": "Contractual completion date",
       "originalValue": "Original contract value",
       "approvedVariations": "Approved variations",
       "currentValue": "Current contract value",

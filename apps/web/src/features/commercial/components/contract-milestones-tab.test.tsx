@@ -195,7 +195,10 @@ describe('ContractMilestonesTab', () => {
     expect(screen.getByText(/no contract/i)).toBeInTheDocument();
   });
 
-  it('shows original contract value and current contract value as separate figures', () => {
+  it('shows the current (governing) contract value in the header', () => {
+    // Header shows only the current value (ADR-033 visual refresh) — original value and the
+    // approved-variations delta live in the Contract changes summary card instead, so a
+    // contract with no variations doesn't leave an empty grid cell in the header.
     cycleData.value = makeCycle([{ status: 'NEXT' }]);
     renderWithProviders(
       <ContractMilestonesTab
@@ -207,8 +210,6 @@ describe('ContractMilestonesTab', () => {
         })}
       />,
     );
-    // Both original and current appear (formatted as USD)
-    expect(screen.getByText(/500,000/)).toBeInTheDocument();
     expect(screen.getByText(/525,000/)).toBeInTheDocument();
   });
 
