@@ -15,7 +15,7 @@ import { Alert, Badge, Button, Checkbox, DatePicker, Dialog, DialogContent, Dial
 
 import { getInvoiceDocument } from '@/features/accounting/api/invoices-api';
 import { usePermissions } from '@/features/auth/permissions/can';
-import { useMilestones } from '@/features/programme/hooks/use-programme';
+import { useCreateMilestone, useMilestones } from '@/features/programme/hooks/use-programme';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 import { useDialogDismissGuard } from '@/lib/use-dialog-dismiss-guard';
@@ -710,9 +710,38 @@ function LinkMilestoneDialog({
 }) {
   const t = useTranslations('commercial');
   const link = useSetInstallmentMilestone(projectId, contractId);
+  const create = useCreateMilestone(projectId);
   const [selected, setSelected] = useState<string>(installment.programmeMilestone?.id ?? '');
 
-  const dismissGuard = useDialogDismissGuard(link.isPending, onDismiss);
+  // Select-and-link is the default path (pick an existing milestone this installment names as its
+  // delivery evidence). Creating one is the exception — offered inline so a PM who hasn't set the
+  // milestone up yet doesn't have to leave Commercial, go create it in Progress, then come back to
+  // find this dialog again. This still creates the ONE shared ProgrammeMilestone Progress already
+  // owns (via the same `useCreateMilestone` hook Progress's own form uses) — never a second entity.
+  const [creatingNew, setCreatingNew] = useState(false);
+  const [newCode, setNewCode] = useState('');
+  const [newName, setNewName] = useState(installment.name);
+  const [newDate, setNewDate] = useState('');
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const dismissGuard = useDialogDismissGuard(link.isPending || create.isPending, onDismiss);
+
+  function onCreateAndSelect(event: React.FormEvent) {
+    event.preventDefault();
+    setCreateError(null);
+    if (!newCode.trim() || !newName.trim() || !newDate) return;
+    create.mutate(
+      { code: newCode.trim(), name: newName.trim(), baselineDate: newDate },
+      {
+        onSuccess: (milestone) => {
+          setSelected(milestone.id);
+          setCreatingNew(false);
+        },
+        onError: (e) =>
+          setCreateError(e instanceof ApiError ? e.message : t('paymentSchedule.milestone.createFailed')),
+      },
+    );
+  }
 
   return (
     <Dialog open onOpenChange={dismissGuard.onOpenChange}>
@@ -733,27 +762,59 @@ function LinkMilestoneDialog({
           </div>
         ) : null}
 
-        {milestones.length === 0 && !milestonesLoading ? (
-          <div className="mt-4">
-            <Alert variant="info" messages={[t('paymentSchedule.milestone.noMilestones')]} />
-          </div>
-        ) : (
-          <div className="mt-4">
-            <FormField htmlFor="inst-milestone" label={t('paymentSchedule.milestone.picker')}>
-              <Select
-                id="inst-milestone"
-                value={selected}
-                onChange={(value) => setSelected(value)}
-                disabled={milestonesLoading}
+        {creatingNew ? (
+          <form onSubmit={onCreateAndSelect} className="mt-4 space-y-3 rounded-panel border border-border p-3">
+            {createError ? <Alert variant="error" messages={[createError]} /> : null}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <FormField htmlFor="new-ms-code" label={t('paymentSchedule.milestone.newCode')}>
+                <Input id="new-ms-code" value={newCode} onChange={(e) => setNewCode(e.target.value)} />
+              </FormField>
+              <FormField htmlFor="new-ms-date" label={t('paymentSchedule.milestone.newDate')}>
+                <DatePicker id="new-ms-date" value={newDate} onChange={setNewDate} />
+              </FormField>
+              <div className="sm:col-span-2">
+                <FormField htmlFor="new-ms-name" label={t('paymentSchedule.milestone.newName')}>
+                  <Input id="new-ms-name" value={newName} onChange={(e) => setNewName(e.target.value)} />
+                </FormField>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="submit"
+                size="sm"
+                disabled={create.isPending || !newCode.trim() || !newName.trim() || !newDate}
               >
-                <option value="">{t('paymentSchedule.milestone.pickerNone')}</option>
-                {milestones.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.code} — {m.name}
-                  </option>
-                ))}
-              </Select>
-            </FormField>
+                {create.isPending ? t('paymentSchedule.milestone.creating') : t('paymentSchedule.milestone.createAndSelect')}
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setCreatingNew(false)} disabled={create.isPending}>
+                {t('paymentSchedule.milestone.cancel')}
+              </Button>
+            </div>
+          </form>
+        ) : (
+          <div className="mt-4 space-y-2">
+            {milestones.length === 0 && !milestonesLoading ? (
+              <Alert variant="info" messages={[t('paymentSchedule.milestone.noMilestones')]} />
+            ) : (
+              <FormField htmlFor="inst-milestone" label={t('paymentSchedule.milestone.picker')}>
+                <Select
+                  id="inst-milestone"
+                  value={selected}
+                  onChange={(value) => setSelected(value)}
+                  disabled={milestonesLoading}
+                >
+                  <option value="">{t('paymentSchedule.milestone.pickerNone')}</option>
+                  {milestones.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.code} — {m.name}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
+            )}
+            <Button type="button" variant="ghost" size="sm" onClick={() => setCreatingNew(true)}>
+              {t('paymentSchedule.milestone.createNew')}
+            </Button>
           </div>
         )}
 
@@ -765,7 +826,7 @@ function LinkMilestoneDialog({
                 { onSuccess: onDismiss },
               )
             }
-            disabled={link.isPending}
+            disabled={link.isPending || creatingNew}
           >
             {t('paymentSchedule.milestone.save')}
           </Button>
