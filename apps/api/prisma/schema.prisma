@@ -997,10 +997,15 @@ model ProgressMeasurement {
   boqNodeId      String  @map("boq_node_id")
   quantity       Decimal @db.Decimal(18, 3)
   notes          String?
+  // Where on site this quantity was measured (e.g. "Units 301-308", "East wing") — free text,
+  // optional, distinct from the DPR-level `locationArea` (that one is the whole report's area;
+  // this is per work entry, since one report can cover several locations).
+  locationArea   String? @map("location_area")
   createdBy      String  @map("created_by")
 
-  dpr     DailyProgressReport @relation(fields: [dprId], references: [id], onDelete: Cascade)
-  boqNode BoqNode             @relation(fields: [boqNodeId], references: [id])
+  dpr         DailyProgressReport @relation(fields: [dprId], references: [id], onDelete: Cascade)
+  boqNode     BoqNode             @relation(fields: [boqNodeId], references: [id])
+  attachments DprAttachment[]
 
   @@index([dprId])
   @@index([boqNodeId])
@@ -1009,15 +1014,21 @@ model ProgressMeasurement {
 
 // ADR-021/014: evidence attached to a DPR (photos, measurement sheets), stored via PlatformFile.
 model DprAttachment {
-  id             String @id @default(cuid())
-  dprId          String @map("dpr_id")
-  platformFileId String @map("platform_file_id")
-  createdBy      String @map("created_by")
+  id             String  @id @default(cuid())
+  dprId          String  @map("dpr_id")
+  platformFileId String  @map("platform_file_id")
+  // Optional link to the specific work entry this photo evidences — null means "general to the
+  // report", same as every attachment before this column existed. SetNull (not Cascade): removing
+  // the tag must never delete the file or the evidence record, only its association to that row.
+  measurementId  String? @map("measurement_id")
+  createdBy      String  @map("created_by")
 
-  dpr          DailyProgressReport @relation(fields: [dprId], references: [id], onDelete: Cascade)
-  platformFile PlatformFile        @relation(fields: [platformFileId], references: [id])
+  dpr          DailyProgressReport  @relation(fields: [dprId], references: [id], onDelete: Cascade)
+  platformFile PlatformFile         @relation(fields: [platformFileId], references: [id])
+  measurement  ProgressMeasurement? @relation(fields: [measurementId], references: [id], onDelete: SetNull)
 
   @@index([dprId])
+  @@index([measurementId])
   @@map("dpr_attachments")
 }
 

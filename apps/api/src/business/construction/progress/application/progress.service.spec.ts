@@ -247,6 +247,36 @@ describe('ProgressService (ADR-021 MVP)', () => {
     expect(repo.createAttachment).not.toHaveBeenCalled();
   });
 
+  it('addMeasurement: threads an optional location through to the record', async () => {
+    const { repo, service } = build();
+    await service.addMeasurement(identity, 'dpr-1', { boqNodeId: 'n1', quantity: 120, locationArea: 'Units 301-308' });
+    expect(repo.addMeasurement).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ locationArea: 'Units 301-308' }),
+    );
+  });
+
+  it('attachEvidence: tags a specific work entry when its measurementId belongs to the report', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'DRAFT', projectId: 'p-1', measurements: [{ id: 'm-1', boqNodeId: 'n1' }], attachments: [] },
+    });
+    await service.attachEvidence(identity, 'dpr-1', 'f-1', 'm-1');
+    expect(repo.createAttachment).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ measurementId: 'm-1' }),
+    );
+  });
+
+  it('attachEvidence: rejects a measurementId that does not belong to this report', async () => {
+    const { repo, service } = build({
+      dpr: { id: 'dpr-1', status: 'DRAFT', projectId: 'p-1', measurements: [{ id: 'm-1', boqNodeId: 'n1' }], attachments: [] },
+    });
+    await expect(
+      service.attachEvidence(identity, 'dpr-1', 'f-1', 'm-from-another-report'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.createAttachment).not.toHaveBeenCalled();
+  });
+
   it('getRollup: weighted project physical % from work packages (CONST-PROG-007)', async () => {
     const { service } = build({
       workPackages: [

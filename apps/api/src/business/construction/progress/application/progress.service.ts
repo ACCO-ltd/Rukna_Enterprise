@@ -52,6 +52,7 @@ export interface AddMeasurementDto {
   boqNodeId: string;
   quantity: number;
   notes?: string;
+  locationArea?: string;
 }
 
 /**
@@ -115,23 +116,34 @@ export class ProgressService {
       boqNodeId: dto.boqNodeId,
       quantity: dto.quantity,
       notes: dto.notes ?? null,
+      locationArea: dto.locationArea ?? null,
       createdBy: identity.userId,
     });
   }
 
-  async attachEvidence(identity: RequestIdentity, dprId: string, platformFileId: string) {
+  async attachEvidence(
+    identity: RequestIdentity,
+    dprId: string,
+    platformFileId: string,
+    measurementId?: string,
+  ) {
     const prisma = this.tenancy.getClient();
-    await this.requireDpr(identity, dprId);
+    const dpr = await this.requireDpr(identity, dprId);
     const file = await this.repo.findFileStatus(prisma, identity.activeOrganizationId, platformFileId);
     if (!file) throw new NotFoundException(`File ${platformFileId} not found`);
     if (file.status !== 'READY') {
       throw new BadRequestException('The evidence file must be fully uploaded (READY).');
+    }
+    if (measurementId) {
+      const belongs = dpr.measurements.some((m) => m.id === measurementId);
+      if (!belongs) throw new BadRequestException('That work entry does not belong to this report.');
     }
     // Binding takes the file out of reach of the abandoned-upload sweep and of DELETE /files/:id:
     // from here it is evidence on a report, and only the report can release it.
     const attachment = await this.repo.createAttachment(prisma, {
       dprId,
       platformFileId,
+      measurementId: measurementId ?? null,
       createdBy: identity.userId,
     });
     await this.files.bind(platformFileId, `DPR evidence ${attachment.id}`);

@@ -18,7 +18,12 @@ import {
   type ApprovalStep,
 } from '@erp/ui';
 import { ArrowLeft, HardHat, Image as ImageIcon, Play, Ruler, TriangleAlert, Trash2, Wrench } from 'lucide-react';
-import type { DprLabourRowResponse, DprEquipmentRowResponse, DprObservationResponse } from '@erp/types';
+import type {
+  DprLabourRowResponse,
+  DprEquipmentRowResponse,
+  DprObservationResponse,
+  ProgressMeasurementResponse,
+} from '@erp/types';
 
 import type { DailyProgressReportDetail } from '../api/progress-api';
 
@@ -323,6 +328,9 @@ export function DprDetail({
                 return (
                   <div key={m.id} className="rounded-lg border border-gray-100 p-3">
                     <p className="text-sm font-medium text-gray-900">{leafLabel.get(m.boqNodeId) ?? m.boqNodeId}</p>
+                    {m.locationArea ? (
+                      <p className="mt-0.5 text-xs text-gray-500">{m.locationArea}</p>
+                    ) : null}
                     <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
                       <RefStatTile label={t('measurement.review.priorVerified')} value={`${formatNumber(priorVerified, locale, 3)}${unit}`} />
                       <RefStatTile label={t('measurement.review.today')} value={`${formatNumber(today, locale, 3)}${unit}`} />
@@ -347,6 +355,7 @@ export function DprDetail({
                   <RefTr>
                     <RefTh>{t('measurement.boqNode')}</RefTh>
                     <RefTh numeric>{t('measurement.quantity')}</RefTh>
+                    <RefTh>{t('measurement.locationArea')}</RefTh>
                     <RefTh>{t('measurement.notes')}</RefTh>
                   </RefTr>
                 </RefThead>
@@ -357,6 +366,7 @@ export function DprDetail({
                       <RefTd numeric className="whitespace-nowrap tabular-nums">
                         {formatNumber(m.quantity, locale, 3)}
                       </RefTd>
+                      <RefTd className="text-gray-500">{m.locationArea ?? '—'}</RefTd>
                       <RefTd className="text-gray-500">{m.notes ?? '—'}</RefTd>
                     </RefTr>
                   ))}
@@ -368,7 +378,13 @@ export function DprDetail({
       </RefCard>
 
       {/* Evidence */}
-      <DprEvidence dprId={dprId} canUpload={!isApproved} attachments={dpr.attachments} />
+      <DprEvidence
+        dprId={dprId}
+        canUpload={!isApproved}
+        attachments={dpr.attachments}
+        measurements={dpr.measurements}
+        leafLabel={leafLabel}
+      />
 
       {/* Section C — Labour & equipment */}
       <RefCard>
@@ -580,6 +596,7 @@ function AddMeasurementForm({
   const [boqNodeId, setBoqNodeId] = useState('');
   const [quantity, setQuantity] = useState('');
   const [notes, setNotes] = useState('');
+  const [locationArea, setLocationArea] = useState('');
   const [touched, setTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -613,12 +630,18 @@ function AddMeasurementForm({
     setError(null);
     if (!boqNodeId || !(Number(quantity) > 0)) return;
     add.mutate(
-      { boqNodeId, quantity: Number(quantity), notes: notes.trim() || undefined },
+      {
+        boqNodeId,
+        quantity: Number(quantity),
+        notes: notes.trim() || undefined,
+        locationArea: locationArea.trim() || undefined,
+      },
       {
         onSuccess: () => {
           setBoqNodeId('');
           setQuantity('');
           setNotes('');
+          setLocationArea('');
           setTouched(false);
         },
         onError: (e) => setError(e instanceof ApiError ? e.message : t('measurement.title')),
@@ -665,6 +688,14 @@ function AddMeasurementForm({
       <FormField htmlFor="m-notes" label={t('measurement.notes')}>
         <Input id="m-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </FormField>
+      <FormField htmlFor="m-location" label={t('measurement.locationArea')}>
+        <Input
+          id="m-location"
+          value={locationArea}
+          onChange={(e) => setLocationArea(e.target.value)}
+          placeholder={t('measurement.locationAreaPlaceholder')}
+        />
+      </FormField>
       <div className="sm:col-span-2">
         <RefButton type="submit" disabled={add.isPending || !boqNodeId}>
           {t('measurement.add')}
@@ -684,18 +715,30 @@ function DprEvidence({
   dprId,
   canUpload,
   attachments,
+  measurements,
+  leafLabel,
 }: {
   dprId: string;
   canUpload: boolean;
-  attachments: Array<{ id: string; platformFileId: string }>;
+  attachments: Array<{ id: string; platformFileId: string; measurementId?: string }>;
+  measurements: ProgressMeasurementResponse[];
+  leafLabel: Map<string, string>;
 }) {
   const t = useTranslations('progress');
   const upload = useFileUpload();
   const attach = useAttachDprEvidence(dprId);
+  const [tagTo, setTagTo] = useState('');
+
+  // Which work entry the evidence supports, not just that it exists on the report — the same
+  // label used on the measurement rows above, so a photo tag reads consistently everywhere.
+  const measurementLabel = useMemo(
+    () => new Map(measurements.map((m) => [m.id, leafLabel.get(m.boqNodeId) ?? m.boqNodeId])),
+    [measurements, leafLabel],
+  );
 
   const onUpload = async (file: File) => {
     const fileId = await upload.mutateAsync(file);
-    await attach.mutateAsync(fileId);
+    await attach.mutateAsync({ platformFileId: fileId, measurementId: tagTo || undefined });
   };
 
   const labels: MediaUploadLabels = {
@@ -716,6 +759,20 @@ function DprEvidence({
       <RefCardBody>
         {canUpload ? (
           <div className="mt-1">
+            {measurements.length > 0 ? (
+              <div className="mb-3">
+                <FormField htmlFor="ev-tag" label={t('evidence.tagLabel')}>
+                  <Select id="ev-tag" value={tagTo} onChange={setTagTo} className={refFieldClass}>
+                    <option value="">{t('evidence.tagWholeReport')}</option>
+                    {measurements.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {measurementLabel.get(m.id)}
+                      </option>
+                    ))}
+                  </Select>
+                </FormField>
+              </div>
+            ) : null}
             <MediaUpload onUpload={onUpload} labels={labels} />
           </div>
         ) : null}
@@ -724,7 +781,12 @@ function DprEvidence({
         ) : (
           <ul className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-4">
             {attachments.map((a, index) => (
-              <EvidenceTile key={a.id} platformFileId={a.platformFileId} index={index} />
+              <EvidenceTile
+                key={a.id}
+                platformFileId={a.platformFileId}
+                index={index}
+                tagLabel={a.measurementId ? measurementLabel.get(a.measurementId) : undefined}
+              />
             ))}
           </ul>
         )}
@@ -733,7 +795,15 @@ function DprEvidence({
   );
 }
 
-function EvidenceTile({ platformFileId, index }: { platformFileId: string; index: number }) {
+function EvidenceTile({
+  platformFileId,
+  index,
+  tagLabel,
+}: {
+  platformFileId: string;
+  index: number;
+  tagLabel?: string;
+}) {
   const t = useTranslations('progress');
   // The signed URL is the thumbnail src AND the open-in-new-tab target, and it carries the mime type
   // that decides <img> vs <video>. Cached under its ~15-min expiry so a gallery is not a burst of
@@ -783,6 +853,14 @@ function EvidenceTile({ platformFileId, index }: { platformFileId: string; index
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white">
               <Play size={14} className="fill-current" aria-hidden="true" />
             </span>
+          </span>
+        ) : null}
+        {tagLabel ? (
+          <span
+            className="absolute start-1.5 top-1.5 max-w-[65%] truncate rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white"
+            title={tagLabel}
+          >
+            {tagLabel}
           </span>
         ) : null}
         <span

@@ -521,6 +521,9 @@ export interface ProgressMeasurementResponse {
   boqNodeId: string;
   quantity: string;
   notes?: string;
+  /** Where on site this quantity was measured, e.g. "Units 301-308" — distinct from the DPR's own
+   * whole-report `locationArea`, since one report can cover several work entries in different spots. */
+  locationArea?: string;
 }
 
 // Phase 3 structured DPR row types (Section C + D).

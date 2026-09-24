@@ -153,12 +153,20 @@ export class AddMeasurementDto {
   @ApiPropertyOptional()
   @IsString() @IsOptional() @MaxLength(255)
   notes?: string;
+
+  @ApiPropertyOptional({ example: 'Units 301-308', description: 'Where on site this was measured' })
+  @IsString() @IsOptional() @MaxLength(255)
+  locationArea?: string;
 }
 
 export class AttachEvidenceDto {
   @ApiProperty({ description: 'A confirmed (READY) PlatformFile id' })
   @IsString() @IsNotEmpty()
   platformFileId!: string;
+
+  @ApiPropertyOptional({ description: 'The specific work entry this evidence supports, if any' })
+  @IsString() @IsOptional()
+  measurementId?: string;
 }
 
 export class ReturnDprDto {

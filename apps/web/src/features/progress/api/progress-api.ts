@@ -44,6 +44,8 @@ export interface AddMeasurementBody {
   /** Quantity measured this report (≤ 3 dp). */
   quantity: number;
   notes?: string;
+  /** Where on site this quantity was measured, e.g. "Units 301-308". */
+  locationArea?: string;
 }
 
 export interface CreateWorkPackageBody {
@@ -58,7 +60,13 @@ export interface CreateWorkPackageBody {
 /** A DPR with its measurements + evidence + structured rows (the getDpr detail). */
 export interface DailyProgressReportDetail extends DailyProgressReportResponse {
   measurements: ProgressMeasurementResponse[];
-  attachments: Array<{ id: string; platformFileId: string; createdBy: string }>;
+  attachments: Array<{
+    id: string;
+    platformFileId: string;
+    createdBy: string;
+    /** The specific work entry this evidence supports, if tagged. */
+    measurementId?: string;
+  }>;
   labourRows: DprLabourRowResponse[];
   equipmentRows: DprEquipmentRowResponse[];
   observations: DprObservationResponse[];
@@ -143,11 +151,18 @@ export function addMeasurement(
   });
 }
 
-/** Attach a READY PlatformFile as evidence (upload it via files-api first). */
-export function attachEvidence(dprId: string, platformFileId: string): Promise<unknown> {
+/**
+ * Attach a READY PlatformFile as evidence (upload it via files-api first). Pass `measurementId` to
+ * tag the evidence to a specific work entry on the report, rather than the report as a whole.
+ */
+export function attachEvidence(
+  dprId: string,
+  platformFileId: string,
+  measurementId?: string,
+): Promise<unknown> {
   return apiClient<unknown>(`/progress/reports/${dprId}/evidence`, {
     method: 'POST',
-    body: JSON.stringify({ platformFileId }),
+    body: JSON.stringify({ platformFileId, measurementId }),
   });
 }
 

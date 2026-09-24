@@ -403,7 +403,7 @@ export class ProgressController {
     @Param('dprId') dprId: string,
     @Body() dto: AttachEvidenceDto,
   ) {
-    return this.service.attachEvidence(identity, dprId, dto.platformFileId);
+    return this.service.attachEvidence(identity, dprId, dto.platformFileId, dto.measurementId);
   }
 
   // ── Phase 3: structured DPR row endpoints (Sections A / C / D) ───────────────

@@ -10,11 +10,17 @@ import { ApiError } from '@/lib/api-client';
 import { formatMoney } from '@/lib/format';
 import { useBoqTree, useBoqWorkspace } from '@/features/boq/hooks/use-boq';
 
-import { suggestDeliveryPlan, type SuggestedPackage } from '../domain/suggest-delivery-plan';
+import { suggestDeliveryPlan } from '../domain/suggest-delivery-plan';
 import { useSaveDeliveryPlan, useWorkPackages } from '../hooks/use-progress';
 import { RefButton, RefPill, RefTable, RefTableScroll, RefTbody, RefTd, RefTh, RefThead, RefTr } from './ref-ui';
 
 const refFieldClass = 'rounded-lg border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
+
+interface LeafInfo {
+  code: string;
+  description: string;
+  value: number;
+}
 
 interface PlanRow {
   key: string;
@@ -25,22 +31,6 @@ interface PlanRow {
   /** Edited as a whole-number percent string in the UI; converted to a 0..1 fraction on save. */
   weightPercent: string;
   leafIds: string[];
-  totalValue: number;
-  hasUnpriced: boolean;
-}
-
-function toRow(pkg: SuggestedPackage, unpricedLeafIds: ReadonlySet<string>): PlanRow {
-  return {
-    key: pkg.sectionNodeId,
-    included: true,
-    code: pkg.code,
-    name: pkg.name,
-    responsibleOwner: '',
-    weightPercent: String(Math.round(pkg.suggestedWeight * 100)),
-    leafIds: pkg.leafIds,
-    totalValue: pkg.totalValue,
-    hasUnpriced: pkg.leafIds.some((id) => unpricedLeafIds.has(id)),
-  };
 }
 
 export function DeliveryPlanDialog({
@@ -74,14 +64,63 @@ export function DeliveryPlanDialog({
     return suggestDeliveryPlan(tree.data, existingCodes, alreadyAllocated);
   }, [tree.data, workPackages.data]);
 
+  const unpricedLeafIds = useMemo(
+    () => new Set(suggestion?.unpricedLeafIds ?? []),
+    [suggestion],
+  );
+
+  // Every leaf's code/description/value, whether or not it ended up in a suggestion — a moved leaf
+  // still needs to be looked up. Computed once from the tree, not from the suggestion's own subset.
+  const leafInfo = useMemo(() => {
+    const map = new Map<string, LeafInfo>();
+    const visit = (node: BoqTreeNodeResponse) => {
+      if (node.isLeaf) {
+        map.set(node.id, {
+          code: node.code,
+          description: node.description,
+          value: node.totalAmount ? Number(node.totalAmount) : 0,
+        });
+      } else {
+        node.children.forEach(visit);
+      }
+    };
+    (tree.data ?? []).forEach(visit);
+    return map;
+  }, [tree.data]);
+
   // Rows are seeded from the suggestion once per dialog open, then owned locally — the PM edits
-  // freely and re-running the suggestion (e.g. a background refetch) must never clobber an edit.
+  // freely (including moving a leaf between rows) and a background refetch of the suggestion must
+  // never clobber that.
   const current =
-    rows ?? (suggestion ? suggestion.packages.map((p) => toRow(p, new Set(suggestion.unpricedLeafIds))) : []);
+    rows ??
+    (suggestion
+      ? suggestion.packages.map((p) => ({
+          key: p.sectionNodeId,
+          included: true,
+          code: p.code,
+          name: p.name,
+          responsibleOwner: '',
+          weightPercent: String(Math.round(p.suggestedWeight * 100)),
+          leafIds: p.leafIds,
+        }))
+      : []);
 
   function update(key: string, patch: Partial<PlanRow>) {
     setError(null);
     setRows(current.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  }
+
+  /** Moves one leaf from wherever it currently sits (if anywhere in this plan) onto `toKey`. */
+  function moveLeaf(leafId: string, toKey: string) {
+    setError(null);
+    setRows(
+      current.map((r) => {
+        if (r.key === toKey) {
+          return r.leafIds.includes(leafId) ? r : { ...r, leafIds: [...r.leafIds, leafId] };
+        }
+        return r.leafIds.includes(leafId) ? { ...r, leafIds: r.leafIds.filter((id) => id !== leafId) } : r;
+      }),
+    );
   }
 
   function toggleExpanded(key: string) {
@@ -95,16 +134,6 @@ export function DeliveryPlanDialog({
 
   const included = current.filter((r) => r.included);
   const totalWeightPercent = included.reduce((sum, r) => sum + (Number(r.weightPercent) || 0), 0);
-
-  const leafDescriptions = useMemo(() => {
-    const map = new Map<string, { code: string; description: string }>();
-    const visit = (node: BoqTreeNodeResponse) => {
-      if (node.isLeaf) map.set(node.id, { code: node.code, description: node.description });
-      else node.children.forEach(visit);
-    };
-    (tree.data ?? []).forEach(visit);
-    return map;
-  }, [tree.data]);
 
   function onSave() {
     setError(null);
@@ -191,7 +220,10 @@ export function DeliveryPlanDialog({
                         isExpanded={expanded.has(row.key)}
                         onToggleExpand={() => toggleExpanded(row.key)}
                         onChange={(patch) => update(row.key, patch)}
-                        leafDescriptions={leafDescriptions}
+                        onMoveLeaf={moveLeaf}
+                        leafInfo={leafInfo}
+                        unpricedLeafIds={unpricedLeafIds}
+                        otherIncludedRows={current.filter((r) => r.key !== row.key && r.included)}
                         t={t}
                       />
                     ))}
@@ -229,7 +261,10 @@ function RowGroup({
   isExpanded,
   onToggleExpand,
   onChange,
-  leafDescriptions,
+  onMoveLeaf,
+  leafInfo,
+  unpricedLeafIds,
+  otherIncludedRows,
   t,
 }: {
   row: PlanRow;
@@ -237,9 +272,15 @@ function RowGroup({
   isExpanded: boolean;
   onToggleExpand: () => void;
   onChange: (patch: Partial<PlanRow>) => void;
-  leafDescriptions: Map<string, { code: string; description: string }>;
+  onMoveLeaf: (leafId: string, toKey: string) => void;
+  leafInfo: Map<string, LeafInfo>;
+  unpricedLeafIds: ReadonlySet<string>;
+  otherIncludedRows: Array<{ key: string; code: string; name: string }>;
   t: ReturnType<typeof useTranslations<'progress'>>;
 }) {
+  const totalValue = row.leafIds.reduce((sum, id) => sum + (leafInfo.get(id)?.value ?? 0), 0);
+  const hasUnpriced = row.leafIds.some((id) => unpricedLeafIds.has(id));
+
   return (
     <>
       <RefTr className={row.included ? '' : 'opacity-50'}>
@@ -281,7 +322,7 @@ function RowGroup({
             )}
             <span>{t('deliveryPlan.coverageCount', { count: row.leafIds.length })}</span>
           </button>
-          <div className="text-xs text-gray-500">{formatMoney(String(row.totalValue), currency, 'en')}</div>
+          <div className="text-xs text-gray-500">{formatMoney(String(totalValue), currency, 'en')}</div>
         </RefTd>
         <RefTd>
           <input
@@ -309,7 +350,9 @@ function RowGroup({
         <RefTd>
           {!row.included ? (
             <RefPill tone="gray">{t('deliveryPlan.excluded')}</RefPill>
-          ) : row.hasUnpriced ? (
+          ) : row.leafIds.length === 0 ? (
+            <RefPill tone="gray">{t('deliveryPlan.noItems')}</RefPill>
+          ) : hasUnpriced ? (
             <RefPill tone="amber" title={t('deliveryPlan.unpricedHint')}>
               {t('deliveryPlan.unpriced')}
             </RefPill>
@@ -322,17 +365,40 @@ function RowGroup({
         <RefTr>
           <RefTd colSpan={7} className="bg-gray-50">
             <p className="mb-1 text-xs font-medium text-gray-500">{t('deliveryPlan.inspect')}</p>
-            <ul className="space-y-0.5">
-              {row.leafIds.map((id) => {
-                const leaf = leafDescriptions.get(id);
-                return (
-                  <li key={id} className="text-xs text-gray-700">
-                    <span className="font-mono text-gray-500">{leaf?.code ?? id}</span>
-                    {leaf ? ` — ${leaf.description}` : ''}
-                  </li>
-                );
-              })}
-            </ul>
+            {row.leafIds.length === 0 ? (
+              <p className="text-xs text-gray-400">{t('deliveryPlan.noItemsHint')}</p>
+            ) : (
+              <ul className="space-y-1">
+                {row.leafIds.map((id) => {
+                  const leaf = leafInfo.get(id);
+                  return (
+                    <li key={id} className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-700">
+                      <span>
+                        <span className="font-mono text-gray-500">{leaf?.code ?? id}</span>
+                        {leaf ? ` — ${leaf.description}` : ''}
+                      </span>
+                      {otherIncludedRows.length > 0 ? (
+                        <select
+                          value=""
+                          onChange={(e) => {
+                            if (e.target.value) onMoveLeaf(id, e.target.value);
+                          }}
+                          aria-label={t('deliveryPlan.moveTo', { item: leaf?.code ?? id })}
+                          className="rounded border-gray-300 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        >
+                          <option value="">{t('deliveryPlan.moveToPlaceholder')}</option>
+                          {otherIncludedRows.map((r) => (
+                            <option key={r.key} value={r.key}>
+                              {r.code} — {r.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </RefTd>
         </RefTr>
       ) : null}

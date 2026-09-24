@@ -236,7 +236,8 @@ export function useAddMeasurement(dprId: string) {
 export function useAttachDprEvidence(dprId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (platformFileId: string) => attachEvidence(dprId, platformFileId),
+    mutationFn: ({ platformFileId, measurementId }: { platformFileId: string; measurementId?: string }) =>
+      attachEvidence(dprId, platformFileId, measurementId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: progressKeys.report(dprId) });
     },
