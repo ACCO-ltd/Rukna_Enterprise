@@ -88,6 +88,19 @@
       "noContract": "No contract",
       "goToMilestones": "Go to milestones"
     },
+    "commercialPosition": {
+      "title": "Commercial position",
+      "contractReference": "Contract reference",
+      "contractStatus": "Contract status",
+      "nextInvoiceStatus": "Next invoice status",
+      "stage": {
+        "NO_CONTRACT": "No active contract",
+        "REVIEW_FOR_BILLING": "Review for billing",
+        "READY_TO_BILL": "Invoice in progress",
+        "ALL_BILLED": "Fully invoiced",
+        "ALL_COMPLETE": "Fully settled"
+      }
+    },
     "attentionSection": {
       "title": "Needs Attention",
       "sendToClient": "Send to client",
@@ -417,12 +430,21 @@
       "outstanding": "Outstanding",
       "overdue": "Overdue",
       "needsAttentionTitle": "Needs attention",
-      "openInvoicesTitle": "Open invoices",
+      "openInvoicesTitle": "Invoices",
       "recentPaymentsTitle": "Recent payments",
       "recordPayment": "Record payment",
+      "recordDelivery": "Record delivery",
+      "completeInvoice": "Complete invoice",
+      "searchPlaceholder": "Search invoices…",
       "noOverdue": "No overdue invoices.",
       "noOpenInvoices": "No open invoices yet.",
+      "noInvoicesMatchFilter": "No invoices match this filter.",
       "noRecentPayments": "No payments recorded yet.",
+      "statusGroup": {
+        "OPEN": "Open",
+        "DRAFT": "Drafts",
+        "PAID": "Paid"
+      },
       "unapplied": "Unapplied",
       "unappliedNote": "Goes to client unapplied cash.",
       "overdueBy": "{days} days overdue",
@@ -1142,6 +1164,14 @@
       "title": "No contract yet",
       "hint": "Record a signed contract to start tracking milestones."
     },
+    "changesSummary": {
+      "approvedVariations": "Approved variations",
+      "pendingVariations": "Pending variations",
+      "extensionOfTime": "Extension of time",
+      "none": "None",
+      "extensionDays": "{days, plural, one {# day} other {# days}}",
+      "viewDetails": "View details →"
+    },
     "journey": {
       "emptyTitle": "No milestones set",
       "emptyHint": "Add installments to the payment schedule to see them here.",
@@ -1226,6 +1256,7 @@
       "approvedVariations": "Approved variations",
       "currentValue": "Current contract value",
       "signedDate": "Signed date",
+      "signedDateNotRecorded": "Not recorded",
       "paymentTerms": "Payment terms",
       "paymentTermsNotSet": "Not set",
       "viewContract": "View contract terms"

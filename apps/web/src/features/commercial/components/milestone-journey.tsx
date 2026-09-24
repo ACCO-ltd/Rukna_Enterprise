@@ -144,7 +144,7 @@ function MilestoneItem({
       className={cn(
         'relative rounded-panel border px-4 py-4 transition-colors',
         isCurrent
-          ? 'border-brand-primary/25 bg-white shadow-e1'
+          ? 'border-brand-primary/25 bg-surface shadow-e1'
           : isDone
             ? 'border-border bg-surface/60'
             : 'border-border bg-surface',

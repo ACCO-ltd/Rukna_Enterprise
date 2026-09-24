@@ -48,19 +48,19 @@ export function RecordLayout({
   className?: string;
 }) {
   return (
-    <div className={cn('flex flex-col gap-5', className)}>
+    <div className={cn('flex flex-col gap-8', className)}>
       {header}
       {banner}
       <div
         className={cn(
-          'grid min-w-0 gap-5',
+          'grid min-w-0 gap-8',
           // 1.7fr / 1fr rather than a fixed rail width: at 1440px the rail lands near
           // 360px, which is where a definition list stops wrapping its values.
           rail ? 'lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]' : 'grid-cols-1',
         )}
       >
-        <div className="flex min-w-0 flex-col gap-5">{children}</div>
-        {rail ? <div className="flex min-w-0 flex-col gap-5">{rail}</div> : null}
+        <div className="flex min-w-0 flex-col gap-8">{children}</div>
+        {rail ? <div className="flex min-w-0 flex-col gap-8">{rail}</div> : null}
       </div>
     </div>
   );
@@ -106,7 +106,7 @@ export function RecordHeader({
         className,
       )}
     >
-      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4 p-6">
         <div className="min-w-0">
           {breadcrumb ? <div className="mb-2">{breadcrumb}</div> : null}
           <div className="flex flex-wrap items-center gap-2.5">
@@ -140,7 +140,7 @@ export function RecordHeader({
       </div>
 
       {lifecycle ? (
-        <div className="border-t border-border px-5 py-3.5">{lifecycle}</div>
+        <div className="border-t border-border px-6 py-3.5">{lifecycle}</div>
       ) : null}
     </div>
   );
@@ -171,7 +171,10 @@ export function RecordPanel({
    * only ever at region level.** The tile marks where a panel begins so a page of several reads
    * as several places rather than one wall — which is the job it does on the project Overview.
    * It is not a licence for an icon per row, per fact, or per status, and never a second hue:
-   * a grid of differently-coloured tiles is the anti-pattern this stayed banned for.
+   * a grid of differently-coloured tiles is the anti-pattern this stayed banned for. That rule is
+   * still exactly this strict — it did not get quietly loosened. The one tone-mapped icon tile in
+   * the platform, `TimelineIcon` (`timeline-icon.tsx`, ADR-033), is a deliberately separate
+   * component for timeline/activity-feed rows only; it is not an alternate value for this prop.
    *
    * `aria-hidden` is applied here, so pass the bare glyph — the `<h2>` beside it is the name.
    */

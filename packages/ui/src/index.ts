@@ -59,6 +59,10 @@ export {
   RecordPanel,
 } from './components/record-layout';
 export { OverflowGlyph, RowActions } from './components/row-actions';
+export { Pagination } from './components/pagination';
+export type { PaginationProps } from './components/pagination';
+export { TimelineIcon } from './components/timeline-icon';
+export type { TimelineIconProps } from './components/timeline-icon';
 export { SavedViews } from './components/saved-views';
 export type { SavedView, SavedViewsProps } from './components/saved-views';
 export { SectionHeader } from './components/section-header';

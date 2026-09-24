@@ -47,6 +47,18 @@ The token layer (`frontend-theme.md`) is mature and already aligned with enterpr
 
 Round 2 changes *composition and content*, not these primitives.
 
+**Amended 2026-09-24 (ADR-033) — the token *values* were refined, the architecture wasn't.**
+`--radius-panel` (10px → 8px), `--control-height`/`--row-height` (44px → 40px comfortable),
+`--shadow-panel` (softened), and `Card`/`RecordPanel`'s internal spacing (20px → 24px/32px) moved
+as part of a platform-wide visual refresh. The closed-scale *architecture* this section describes —
+a finite, eslint-ratcheted set of radii/type/elevation/motion/density steps that every component
+consumes as a semantic token rather than a hardcoded value — is exactly what made that refresh a
+one-file edit instead of a per-screen rewrite, and stays intact. **Brand colours did not change**
+(`--brand-primary` already matched the new reference); the closed-vocabulary status colours
+(`success`/`warning`/`danger`/`historical`) didn't either. See ADR-033 for the reference material
+and full rationale, and §7 for the one architectural exception this refresh introduced
+(`TimelineIcon`, for feed rows only).
+
 ---
 
 ## 2. Composition patterns adopted for Round 2
@@ -231,7 +243,24 @@ job: on a multi-panel page it is what lets the eye find a panel's start without 
   nothing a screen reader needs.
 
 If a page ever wants more than one tint across its tiles, that is the original anti-pattern coming
-back and the answer is no.
+back and the answer is no — **for `RecordPanel`'s icon and the entity-list primary-column tile
+above.** Both stay exactly as strict as written.
+
+**Amended 2026-09-24 (ADR-033) — a timeline/activity-feed row may carry a tone-mapped tile,
+through a separate, purpose-built component.** This is not a loosening of the two rules above; it
+is a third, narrower case those rules were never written to cover. A chronological feed mixing
+event types (an invoice issued, a milestone verified, a contract change) reads as one wall of
+identical bullets without a per-row signal of *what kind of event this is* — the same problem a
+status badge or a chart series solves by carrying meaning in colour, not decoration. `TimelineIcon`
+(`packages/ui/src/components/timeline-icon.tsx`) is the only sanctioned form:
+
+- **Tone is drawn from the closed `Badge` vocabulary** (`neutral`/`info`/`live`/`accent`/
+  `warning`/`danger`), never an ad-hoc palette, and encodes the row's *event type* — not a status,
+  not a per-metric colour.
+- **Timeline/activity-feed rows only.** Not `RecordPanel`, not a `Card`, not a table cell, not an
+  entity-list column — those keep their own rules unchanged. Reaching for `TimelineIcon` outside a
+  feed row is the original anti-pattern again.
+- **`aria-hidden`**, same as every other icon tile here — the row's own text carries the meaning.
 
 ---
 

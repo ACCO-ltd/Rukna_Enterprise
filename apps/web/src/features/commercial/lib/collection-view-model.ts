@@ -1,4 +1,4 @@
-import type { CommercialInvoiceRow, CommercialReceiptRow } from '@erp/types';
+import type { ClientInvoiceSourceKind, CommercialInvoiceRow, CommercialReceiptRow } from '@erp/types';
 
 export type CollectionPaymentState =
   | 'AWAITING_PAYMENT'
@@ -18,6 +18,10 @@ export interface ClientReceivableView {
   invoiceId: string;
   invoiceNumber: string | null;
   sourceLabel: string;
+  sourceKind: ClientInvoiceSourceKind;
+  /** The source record's id (installment id for INSTALLMENT) — for row actions that need to
+   * deep-link into the record that owns the delivery/issuance workflow. */
+  sourceId: string | null;
   issuedAt: string;
   /** ISO timestamp of the first delivery event, or null if never sent to client. */
   sentAt: string | null;
@@ -160,6 +164,8 @@ export function toClientReceivableView(
     invoiceId: row.id,
     invoiceNumber: row.invoiceNumber,
     sourceLabel: deriveSourceLabel(row),
+    sourceKind: row.source.kind,
+    sourceId: row.source.id,
     issuedAt: row.invoiceDate,
     sentAt: row.sentAt ?? null,
     dueDate: row.dueDate,

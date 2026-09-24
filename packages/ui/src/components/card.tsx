@@ -12,8 +12,10 @@ import { cn } from '../lib/utils';
  * else a screen groups visually: a dashboard tile, a stat grid, a report section — anywhere
  * the caller wants full control over what goes inside rather than RecordPanel's fixed props.
  *
- * Vertical rhythm lives on `Card` itself (`py-5` + `gap-5`), not on each section, so
+ * Vertical rhythm lives on `Card` itself (`py-6` + `gap-8`), not on each section, so
  * `CardHeader`/`CardContent`/`CardFooter` never fight over who owns the padding between them —
+ * (ADR-033: bumped from `py-5`/`gap-5`/`px-5` to `py-6`/`gap-8`/`px-6` in the platform-wide
+ * visual refresh's 24/32 spacing step)
  * the same reason `DialogFooter` and `SheetFooter` don't add their own top margin either.
  *
  * @example
@@ -33,7 +35,7 @@ export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDi
     <div
       ref={ref}
       className={cn(
-        'flex flex-col gap-5 overflow-hidden rounded-panel border border-border bg-surface py-5 text-foreground shadow-e2',
+        'flex flex-col gap-8 overflow-hidden rounded-panel border border-border bg-surface py-6 text-foreground shadow-e2',
         className,
       )}
       {...props}
@@ -45,14 +47,14 @@ Card.displayName = 'Card';
 /**
  * Title/description on the start edge, actions on the end edge — the same left/right split
  * `SectionHeader` and `RecordHeader` already use. Add `border-b border-border pb-4` (and drop
- * `Card`'s own `gap-5` contribution by wrapping) only where a screen wants a visible divider
+ * `Card`'s own `gap-8` contribution by wrapping) only where a screen wants a visible divider
  * under the header, e.g. a card whose body is a table — most dashboard tiles don't.
  */
 export const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn('flex items-start justify-between gap-3 px-5', className)}
+      className={cn('flex items-start justify-between gap-3 px-6', className)}
       {...props}
     />
   ),
@@ -83,7 +85,7 @@ CardDescription.displayName = 'CardDescription';
 
 export const CardContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn('px-5', className)} {...props} />
+    <div ref={ref} className={cn('px-6', className)} {...props} />
   ),
 );
 CardContent.displayName = 'CardContent';
@@ -97,7 +99,7 @@ export const CardFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      className={cn('flex flex-col gap-3 px-5 sm:flex-row-reverse sm:items-center sm:justify-start', className)}
+      className={cn('flex flex-col gap-3 px-6 sm:flex-row-reverse sm:items-center sm:justify-start', className)}
       {...props}
     />
   ),

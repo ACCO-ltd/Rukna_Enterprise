@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
-import { CheckCircle2, Link as LinkIcon } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Link as LinkIcon } from 'lucide-react';
 import Link from 'next/link';
 import {
   Alert,
@@ -32,6 +32,7 @@ import {
   useBillingPackages,
   useCommercialCurrentCycle,
   useCreateSeparateChargeInvoice,
+  useExtensionsOfTime,
   useProjectSeparateCharges,
 } from '../hooks/use-commercial';
 import { useMarkReadyToBill } from '../hooks/use-mark-ready-to-bill';
@@ -179,7 +180,10 @@ export function ContractMilestonesTab({
           status={contract.status}
         />
         <ContractSecurityBody projectId={projectId} summary={summary} />
-        <VariationsTab projectId={projectId} summary={summary} />
+        <ContractChangesSummary contractId={contract.id} summary={summary} />
+        <div id="contract-changes-detail">
+          <VariationsTab projectId={projectId} summary={summary} />
+        </div>
         <SeparateChargesSection projectId={projectId} contractId={contract.id} />
         <CommercialActivity items={summary.recentActivity} />
       </div>
@@ -251,6 +255,7 @@ function ContractHeader({
   summary: CommercialSummaryResponse;
 }) {
   const t = useTranslations('commercial.contractMilestones.header');
+  const tStatus = useTranslations('commercial.contractStatus');
   const locale = useLocale() as 'en';
   const currency = summary.currency ?? contract.currency;
 
@@ -260,14 +265,14 @@ function ContractHeader({
   const cv = summary.contractValue;
 
   return (
-    <section className="overflow-hidden rounded-panel border border-border bg-white shadow-e1">
+    <section className="overflow-hidden rounded-panel border border-border bg-surface shadow-e1">
       {/* Header row: reference + status */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
         <div>
           <p className="text-caption font-medium text-muted-foreground">{t('reference')}</p>
           <p className="mt-0.5 text-h3 font-bold text-foreground">{contract.contractNumber}</p>
         </div>
-        <Badge tone={contractStatusTone(contract.status)}>{contract.status}</Badge>
+        <Badge tone={contractStatusTone(contract.status)}>{tStatus(contract.status)}</Badge>
       </div>
 
       {/* Money values — prominent two-column layout on wider screens */}
@@ -314,8 +319,9 @@ function ContractHeader({
           value={
             contract.signedDate
               ? (formatDate(contract.signedDate, locale) ?? contract.signedDate)
-              : t('paymentTermsNotSet')
+              : t('signedDateNotRecorded')
           }
+          warning={!contract.signedDate}
         />
         <ContractFact
           label={t('paymentTerms')}
@@ -326,12 +332,92 @@ function ContractHeader({
   );
 }
 
-function ContractFact({ label, value }: { label: string; value: string }) {
+function ContractFact({
+  label,
+  value,
+  warning,
+}: {
+  label: string;
+  value: string;
+  /** Draws attention to a fact that should be recorded but isn't — e.g. an unsigned contract. */
+  warning?: boolean;
+}) {
   return (
-    <p className="text-body-sm text-muted-foreground">
-      <span className="font-medium text-foreground">{label}:</span>{' '}
+    <p className={cn('text-body-sm', warning ? 'text-warning' : 'text-muted-foreground')}>
+      <span className={cn('font-medium', warning ? 'text-warning' : 'text-foreground')}>
+        {label}:
+      </span>{' '}
+      {warning ? <AlertTriangle size={12} className="-mt-0.5 me-1 inline" aria-hidden="true" /> : null}
       {value}
     </p>
+  );
+}
+
+// ─── Contract changes summary ───────────────────────────────────────────────
+
+/**
+ * A glanceable summary above the full Variations/EoT sections below — approved and pending
+ * variation totals come straight off `summary.contractValue` (the same authoritative figures
+ * `ContractHeader` reads its "Approved variations" cell from), so this never recomputes a
+ * total the server already derived. `useExtensionsOfTime` is the one extra read — the same
+ * hook `ExtensionOfTimeSection` calls for the same `contractId`, which TanStack Query dedupes,
+ * so this costs no extra round trip.
+ */
+function ContractChangesSummary({
+  contractId,
+  summary,
+}: {
+  contractId: string;
+  summary: CommercialSummaryResponse;
+}) {
+  const t = useTranslations('commercial.contractMilestones.changesSummary');
+  const locale = useLocale() as 'en';
+  const currency = summary.currency ?? summary.mainContract?.currency ?? null;
+
+  const eotQuery = useExtensionsOfTime(contractId);
+
+  const money = (value: string | null) =>
+    value !== null && currency ? (formatMoney(value, currency, locale) ?? value) : '—';
+
+  const extensionDays =
+    eotQuery.data?.extensions.reduce((sum, ext) => sum + (ext.grantedDays ?? 0), 0) ?? null;
+  const hasExtensions = (eotQuery.data?.extensions.length ?? 0) > 0;
+
+  return (
+    <div className="grid overflow-hidden rounded-panel border border-border bg-surface shadow-e1 sm:grid-cols-3">
+      <PositionCell label={t('approvedVariations')}>
+        <span className="text-h3 font-bold tabular-nums text-foreground">
+          {money(summary.contractValue?.approvedVariationsTotal ?? null)}
+        </span>
+      </PositionCell>
+      <PositionCell label={t('pendingVariations')}>
+        <span className="text-h3 font-bold tabular-nums text-foreground">
+          {money(summary.contractValue?.pendingVariations ?? null)}
+        </span>
+      </PositionCell>
+      <PositionCell label={t('extensionOfTime')}>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-h3 font-bold tabular-nums text-foreground">
+            {hasExtensions ? t('extensionDays', { days: extensionDays ?? 0 }) : t('none')}
+          </span>
+          <a
+            href="#contract-changes-detail"
+            className="shrink-0 text-caption font-medium text-brand-primary hover:underline"
+          >
+            {t('viewDetails')}
+          </a>
+        </div>
+      </PositionCell>
+    </div>
+  );
+}
+
+function PositionCell({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="border-b border-border p-4 last:border-b-0 sm:border-b-0 sm:not-last:border-e">
+      <dt className="text-caption font-medium text-muted-foreground">{label}</dt>
+      <dd className="mt-1.5">{children}</dd>
+    </div>
   );
 }
 
@@ -473,6 +559,7 @@ function ScheduleBody({
         milestones={viewModel.milestones}
         onReviewForBilling={onReviewForBilling}
         onPrepareInvoice={onPrepareInvoice}
+        onSendInvoice={onSendInvoice}
       />
       <MilestoneJourney
         viewModel={viewModel}
@@ -491,10 +578,12 @@ function CommercialDeepLinkAction({
   milestones,
   onReviewForBilling,
   onPrepareInvoice,
+  onSendInvoice,
 }: {
   milestones: MilestoneItemViewModel[];
   onReviewForBilling: (milestone: MilestoneItemViewModel) => void;
   onPrepareInvoice: (milestone: MilestoneItemViewModel) => void;
+  onSendInvoice: (milestone: MilestoneItemViewModel) => void;
 }) {
   const searchParams = useSearchParams();
   const consumedAction = useRef<string | null>(null);
@@ -512,8 +601,13 @@ function CommercialDeepLinkAction({
       onPrepareInvoice(milestone);
     } else if (requestedAction === 'review' && milestone.userState === 'review-for-billing') {
       onReviewForBilling(milestone);
+    } else if (requestedAction === 'send' && milestone.userState === 'invoice-issued') {
+      // Billing & Collection's "Record delivery" row action links here — the delivery
+      // dialog (SendInvoiceDialog) needs the same milestone view-model the schedule body
+      // already built, which is why this is a deep link rather than a duplicated dialog.
+      onSendInvoice(milestone);
     }
-  }, [milestones, onPrepareInvoice, onReviewForBilling, requestedAction, requestedInstallmentId]);
+  }, [milestones, onPrepareInvoice, onReviewForBilling, onSendInvoice, requestedAction, requestedInstallmentId]);
 
   return null;
 }

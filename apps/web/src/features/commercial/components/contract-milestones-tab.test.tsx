@@ -47,6 +47,11 @@ vi.mock('../hooks/use-commercial', () => ({
     isPending: false,
     error: null,
   }),
+  useExtensionsOfTime: () => ({
+    data: { contractId: 'contract-1', currentEndDate: null, extensions: [] },
+    isPending: false,
+    isError: false,
+  }),
 }));
 
 vi.mock('./commercial-activity', () => ({
@@ -218,7 +223,9 @@ describe('ContractMilestonesTab', () => {
         })}
       />,
     );
-    expect(screen.getByText('Approved variations')).toBeInTheDocument();
+    // Shows in both the header's money breakdown and the Contract changes summary card —
+    // the same authoritative figure surfaced twice, not a conflict.
+    expect(screen.getAllByText('Approved variations').length).toBeGreaterThan(0);
   });
 
   it('renders schedule editor below the journey', () => {

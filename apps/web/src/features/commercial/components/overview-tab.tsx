@@ -31,6 +31,7 @@ import {
   useCommercialOverview,
   useReleaseRetention,
 } from '../hooks/use-commercial';
+import { CommercialActivity } from './commercial-activity';
 
 export function OverviewTab({
   projectId,
@@ -83,6 +84,18 @@ export function OverviewTab({
           <AttentionSection items={overview.attention} projectId={projectId} currency={overview.currency} />
         </section>
       )}
+
+      {overview.contract.id ? (
+        <section aria-label={t('overview.commercialPosition.title')}>
+          <CommercialPositionPanel overview={overview} />
+        </section>
+      ) : null}
+
+      {summary?.recentActivity ? (
+        <section aria-label={t('overview.recentActivity')}>
+          <CommercialActivity items={summary.recentActivity} />
+        </section>
+      ) : null}
 
       {contractStatus === 'FINAL_ACCOUNT_PENDING' && summary?.mainContract && (
         <FinalAccountCard
@@ -260,6 +273,58 @@ function CurrentPositionCard({
           </Button>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+// ─── Commercial Position Panel ─────────────────────────────────────────────────
+
+/**
+ * The three identity facts a reader reaches for right after the money: which contract this
+ * is, whether it is active, and where the next invoice stands. All three come straight off
+ * `overview.contract`/`overview.currentCycle` — no derived or client-invented state.
+ */
+function CommercialPositionPanel({ overview }: { overview: CommercialOverviewResponse }) {
+  const t = useTranslations('commercial');
+  const { contract, currentCycle: cc } = overview;
+
+  const statusTone: 'live' | 'neutral' | 'warning' | 'danger' =
+    contract.status === 'ACTIVE'
+      ? 'live'
+      : contract.status === 'CANCELLED' || contract.status === 'TERMINATED'
+        ? 'danger'
+        : contract.status === 'FINAL_ACCOUNT_PENDING'
+          ? 'warning'
+          : 'neutral';
+
+  return (
+    <div className="grid overflow-hidden rounded-panel border border-border bg-surface shadow-e1 sm:grid-cols-3">
+      <PositionCell label={t('overview.commercialPosition.contractReference')}>
+        <span className="font-mono text-body-sm font-medium text-foreground">
+          {contract.contractNumber ?? t('states.notSet')}
+        </span>
+      </PositionCell>
+      <PositionCell label={t('overview.commercialPosition.contractStatus')}>
+        {contract.status ? (
+          <Badge tone={statusTone}>{t(`contractStatus.${contract.status}`)}</Badge>
+        ) : (
+          <span className="text-body-sm text-muted-foreground">{t('states.notSet')}</span>
+        )}
+      </PositionCell>
+      <PositionCell label={t('overview.commercialPosition.nextInvoiceStatus')}>
+        <Badge tone={cc.stage === 'ALL_COMPLETE' ? 'live' : 'neutral'}>
+          {t(`overview.commercialPosition.stage.${cc.stage}`)}
+        </Badge>
+      </PositionCell>
+    </div>
+  );
+}
+
+function PositionCell({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="border-b border-border p-4 last:border-b-0 sm:border-b-0 sm:not-last:border-e">
+      <dt className="text-caption font-medium text-muted-foreground">{label}</dt>
+      <dd className="mt-1.5">{children}</dd>
     </div>
   );
 }

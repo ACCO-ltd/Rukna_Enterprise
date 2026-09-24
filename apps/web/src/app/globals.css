@@ -67,7 +67,8 @@
      utility was ever generated and 290 ad-hoc `rounded-lg|md|xl` took their
      place. Registering them here is what makes them usable. */
   --radius-control: 0.375rem;            /* 6px  — input, button, chip, tab */
-  --radius-panel: 0.625rem;              /* 10px — card, table, dialog, popover */
+  --radius-panel: 0.5rem;                /* 8px  — card, table, dialog, popover (was 10px;
+                                             ADR-033 platform-wide visual refresh) */
   --radius-container: 0.875rem;          /* 14px — workspace shell, page-level frame */
 
   /* ── Easing — one curve for the whole product ─────────────────────────── */
@@ -199,8 +200,8 @@
      someone spends the whole day entering rows — BOQ editors, manual
      journals, the ledger and trial balance — where 36px rows show roughly a
      third more data per screen. Overridden by [data-density] below. */
-  --row-height: 2.75rem;                 /* 44px */
-  --control-height: 2.75rem;             /* 44px */
+  --row-height: 2.5rem;                  /* 40px (was 44px; ADR-033 platform-wide visual refresh) */
+  --control-height: 2.5rem;              /* 40px (was 44px; ADR-033 platform-wide visual refresh) */
 
   /* ── Motion ────────────────────────────────────────────────────────────
      Three durations, one curve (--ease-brand). Leaving is always faster than
@@ -213,7 +214,8 @@
   /* Elevation. The values change per theme; the three intent-named utilities
      that consume them (shadow-e1/e2/e3) are bridged in @theme inline. */
   --shadow-control: 0 1px 2px rgb(16 24 40 / 0.06);
-  --shadow-panel: 0 1px 3px rgb(16 24 40 / 0.05), 0 10px 28px rgb(16 24 40 / 0.035);
+  --shadow-panel: 0 1px 2px rgb(16 24 40 / 0.04), 0 4px 12px rgb(16 24 40 / 0.03); /* softened,
+    ADR-033 platform-wide visual refresh — was 0 1px 3px .05, 0 10px 28px .035 */
   --shadow-overlay: 0 24px 48px rgb(16 24 40 / 0.16);
   --shadow-focus: 0 0 0 3px rgb(37 94 219 / 0.2);
 }
@@ -270,7 +272,8 @@
   --series-4: #c98500;
   --series-5: #d55181;
   --shadow-control: 0 1px 2px rgb(0 0 0 / 0.3);
-  --shadow-panel: 0 1px 3px rgb(0 0 0 / 0.28), 0 12px 32px rgb(0 0 0 / 0.18);
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / 0.22), 0 4px 14px rgb(0 0 0 / 0.14); /* softened,
+    ADR-033 platform-wide visual refresh — was 0 1px 3px .28, 0 12px 32px .18 */
   --shadow-overlay: 0 24px 56px rgb(0 0 0 / 0.42);
   --shadow-focus: 0 0 0 3px rgb(109 150 255 / 0.28);
 }
@@ -279,8 +282,9 @@
    `data-theme` is — a display preference, resolved before hydration so a
    compact user never sees one comfortable frame first. */
 :root[data-density='compact'] {
-  --row-height: 2.25rem;                 /* 36px */
-  --control-height: 2.25rem;             /* 36px */
+  --row-height: 2.125rem;                /* 34px (was 36px, stepped down with the comfortable
+                                             default; ADR-033 platform-wide visual refresh) */
+  --control-height: 2.125rem;            /* 34px */
 }
 
 @theme inline {

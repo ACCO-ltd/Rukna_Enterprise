@@ -1,16 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
   ChevronDown,
   CircleDollarSign,
   MessageSquare,
   ReceiptText,
+  Search,
+  Send,
   ShieldAlert,
   TriangleAlert,
 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Badge, Button, cn, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, LtrValue, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll } from '@erp/ui';
+import { Alert, Badge, Button, cn, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Input, LtrValue, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll } from '@erp/ui';
 import type {
   CommercialBillingPosition,
   CommercialBillingResponse,
@@ -505,6 +508,14 @@ type ActiveDialog =
   | { kind: 'timeline'; invoice: ClientReceivableView }
   | { kind: 'creditNote'; invoice: ClientReceivableView };
 
+type InvoiceStatusGroup = 'OPEN' | 'DRAFT' | 'PAID';
+
+function invoiceStatusGroup(state: CollectionPaymentState): InvoiceStatusGroup {
+  if (state === 'DRAFT') return 'DRAFT';
+  if (state === 'PAID') return 'PAID';
+  return 'OPEN'; // AWAITING_PAYMENT, PARTIALLY_PAID, OVERDUE
+}
+
 function paymentStateTone(
   state: CollectionPaymentState,
 ): 'live' | 'warning' | 'danger' | 'neutral' | 'historical' {
@@ -553,9 +564,25 @@ function OpenInvoicesPanel({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [preselected, setPreselected] = useState<ClientReceivableView | null>(null);
   const [activeDialog, setActiveDialog] = useState<ActiveDialog | null>(null);
+  const [statusFilter, setStatusFilter] = useState<InvoiceStatusGroup>('OPEN');
+  const [search, setSearch] = useState('');
 
   const visible = receivables.filter((r) => r.paymentState !== 'CANCELLED');
   const payable = receivables.filter((r) => r.canRecordPayment);
+
+  const grouped = useMemo(() => {
+    const groups: Record<InvoiceStatusGroup, ClientReceivableView[]> = { OPEN: [], DRAFT: [], PAID: [] };
+    for (const inv of visible) groups[invoiceStatusGroup(inv.paymentState)].push(inv);
+    return groups;
+  }, [visible]);
+
+  const searchLower = search.trim().toLowerCase();
+  const filtered = grouped[statusFilter].filter(
+    (inv) =>
+      searchLower === '' ||
+      (inv.invoiceNumber ?? '').toLowerCase().includes(searchLower) ||
+      inv.sourceLabel.toLowerCase().includes(searchLower),
+  );
 
   const money = (value: string | null) =>
     !financialsVisible || value === null
@@ -575,7 +602,51 @@ function OpenInvoicesPanel({
 
   return (
     <>
-      <SectionCard title={t('openInvoicesTitle')} bodyClassName="px-0 py-0">
+      <SectionCard
+        title={t('openInvoicesTitle')}
+        bodyClassName="px-0 py-0"
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            {(['OPEN', 'DRAFT', 'PAID'] as const).map((group) => (
+              <button
+                key={group}
+                type="button"
+                onClick={() => setStatusFilter(group)}
+                aria-pressed={statusFilter === group}
+                className={cn(
+                  'inline-flex h-control items-center gap-1.5 rounded-full border px-3 text-caption font-medium transition-colors',
+                  'duration-(--motion-enter) ease-brand focus-visible:outline-none focus-visible:shadow-ring',
+                  statusFilter === group
+                    ? 'border-brand-primary/30 bg-brand-accent text-brand-primary'
+                    : 'border-border-strong bg-surface text-muted-foreground hover:bg-surface-hover',
+                )}
+              >
+                {t(`statusGroup.${group}`)}
+                <span className="text-micro tabular-nums">({grouped[group].length})</span>
+              </button>
+            ))}
+            <div className="relative">
+              <Search
+                size={14}
+                className="pointer-events-none absolute inset-y-0 inset-s-3 my-auto text-muted-foreground"
+                aria-hidden="true"
+              />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={t('searchPlaceholder')}
+                aria-label={t('searchPlaceholder')}
+                className="ps-8 sm:w-56"
+              />
+            </div>
+          </div>
+        }
+      >
+        {filtered.length === 0 ? (
+          <p className="px-4 py-4 text-body-sm text-muted-foreground sm:px-5">
+            {t('noInvoicesMatchFilter')}
+          </p>
+        ) : (
         <TableScroll>
           <Table>
             <TableHeader>
@@ -592,13 +663,14 @@ function OpenInvoicesPanel({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visible.map((inv) => {
+              {filtered.map((inv) => {
                 const events = allEvents.get(inv.invoiceId) ?? [];
                 const attentionReasons = getAttentionReasons(events, today);
                 const openDispute = getOpenDispute(events);
                 return (
                   <OpenInvoiceRow
                     key={inv.invoiceId}
+                    projectId={projectId}
                     inv={inv}
                     money={money}
                     locale={locale}
@@ -618,9 +690,12 @@ function OpenInvoicesPanel({
             </TableBody>
           </Table>
         </TableScroll>
-        <p className="border-t border-border px-4 py-2 text-caption text-muted-foreground sm:px-5">
-          {t('vatNote')}
-        </p>
+        )}
+        {filtered.length > 0 ? (
+          <p className="border-t border-border px-4 py-2 text-caption text-muted-foreground sm:px-5">
+            {t('vatNote')}
+          </p>
+        ) : null}
       </SectionCard>
 
       {/* Record payment drawer */}
@@ -690,6 +765,7 @@ function OpenInvoicesPanel({
 }
 
 function OpenInvoiceRow({
+  projectId,
   inv,
   money,
   locale,
@@ -701,6 +777,7 @@ function OpenInvoiceRow({
   openDocumentPending,
   onAction,
 }: {
+  projectId: string;
   inv: ClientReceivableView;
   money: (value: string | null) => string;
   locale: 'en';
@@ -714,6 +791,23 @@ function OpenInvoiceRow({
 }) {
   const t = useTranslations('commercial.billing.collection');
   const tBilling = useTranslations('commercial.billing');
+
+  // "Record delivery" only applies to an issued milestone invoice not yet sent to the client —
+  // recordPackageDelivery is keyed by installment, so only an INSTALLMENT-sourced row can open
+  // it. Deep-links into Contract & Milestones, which owns the milestone view-model the delivery
+  // dialog needs (see CommercialDeepLinkAction) — this avoids reconstructing that state here.
+  const canRecordDelivery =
+    inv.sourceKind === 'INSTALLMENT' &&
+    inv.sourceId !== null &&
+    inv.sentAt === null &&
+    inv.paymentState !== 'DRAFT' &&
+    inv.paymentState !== 'CANCELLED';
+
+  // "Complete invoice" hands a DRAFT invoice to its real approve-then-post workflow in
+  // Accounting (GL account resolution + Dr/Cr preview) rather than a simplified one-click
+  // action here — that flow is deliberately stricter than the server and has its own history
+  // of subtle bugs, so it isn't duplicated.
+  const canCompleteInvoice = inv.paymentState === 'DRAFT';
 
   // Due-status chip display for approaching deadlines
   const dueBadge = (() => {
@@ -779,6 +873,25 @@ function OpenInvoiceRow({
       </TableCell>
       <TableCell>
         <div className="flex items-center gap-1.5">
+          {canCompleteInvoice ? (
+            <Button asChild type="button" variant="outline" size="sm">
+              <Link href={`/finance/accounting/invoices/${inv.invoiceId}`}>
+                {t('completeInvoice')}
+              </Link>
+            </Button>
+          ) : null}
+
+          {canRecordDelivery ? (
+            <Button asChild type="button" variant="outline" size="sm">
+              <Link
+                href={`/projects/${projectId}/commercial/contract-milestones?installment=${inv.sourceId}&action=send`}
+              >
+                <Send size={13} className="me-1" aria-hidden />
+                {t('recordDelivery')}
+              </Link>
+            </Button>
+          ) : null}
+
           {inv.canRecordPayment && canRecordReceipt ? (
             <Button type="button" variant="outline" size="sm" onClick={onRecord}>
               <CircleDollarSign size={13} className="me-1" aria-hidden />

@@ -1,6 +1,7 @@
 'use client';
 
-import { Alert, Avatar, Badge, Button, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, Checkbox, Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogTitle, DialogTrigger, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Meter, Progress, Sheet, SheetBody, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger, SkeletonForm, SkeletonRecord, SkeletonTable, Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow, TableScroll, Tabs, TabsContent, TabsList, TabsTrigger, Tooltip, TooltipContent, TooltipTrigger } from '@erp/ui';
+import { useState } from 'react';
+import { Alert, Avatar, Badge, Button, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, Checkbox, Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogTitle, DialogTrigger, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, EmptyState, Meter, Pagination, Progress, Sheet, SheetBody, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger, SkeletonForm, SkeletonRecord, SkeletonTable, Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow, TableScroll, Tabs, TabsContent, TabsList, TabsTrigger, Tooltip, TooltipContent, TooltipTrigger } from '@erp/ui';
 import { FileX, Receipt, Warning } from '@phosphor-icons/react';
 
 import { ProgressStepper, type Step } from '@/components/progress-stepper';
@@ -223,6 +224,14 @@ export function PatternsSection() {
           <code className="font-mono text-caption">TableScroll</code>: wide content scrolls
           inside its own container and the page body never scrolls sideways.
         </Rule>
+
+        <Specimen
+          label="Pagination — page-numbered, total-aware"
+          token="<Pagination page pageCount totalItems pageSize>"
+          note="Page-number based, not cursor-based: every caller here paginates a server response that already returns a total count. Collapses to `current / count` under sm rather than wrapping to a second row."
+        >
+          <PaginationSpecimen />
+        </Specimen>
 
         <Pending>
           The grid has no <strong className="font-semibold">saved-view tabs</strong> and no{' '}
@@ -635,5 +644,21 @@ export function PatternsSection() {
         </Rule>
       </Section>
     </>
+  );
+}
+
+// ─── Pagination specimen ────────────────────────────────────────────────────
+
+function PaginationSpecimen() {
+  const [page, setPage] = useState(3);
+  return (
+    <Pagination
+      page={page}
+      pageCount={5}
+      totalItems={24}
+      pageSize={5}
+      onPageChange={setPage}
+      aria-label="Specimen pages"
+    />
   );
 }
