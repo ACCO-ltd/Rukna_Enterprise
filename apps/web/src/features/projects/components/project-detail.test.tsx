@@ -174,7 +174,7 @@ describe('ProjectDetail — project readiness', () => {
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
-    const readiness = await screen.findByRole('heading', { name: 'Project preparation' });
+    const readiness = await screen.findByRole('heading', { name: 'Preparation sequence' });
     const information = await screen.findByRole('heading', { name: 'Project information' });
 
     expect(readiness.compareDocumentPosition(information)).toBe(
@@ -189,10 +189,11 @@ describe('ProjectDetail — project readiness', () => {
   it('shows server conditions and their owner when the reader cannot act', async () => {
     vi.mocked(getProject).mockResolvedValue(project());
     renderWithProviders(<ProjectDetail id="p1" />);
-    const section = (await screen.findByRole('heading', {name: 'Project preparation'})).closest('section')!;
+    const section = (await screen.findByRole('heading', {name: 'Preparation sequence'})).closest('section')!;
     expect(within(section).getAllByRole('listitem')).toHaveLength(3);
     expect(within(section).queryByText('25%')).not.toBeInTheDocument();
-    expect(within(section).getAllByText('Owner action needed')).toHaveLength(3);
+    expect(within(section).getAllByText('Owner action needed')).toHaveLength(2);
+    expect(within(section).getByText('Complete “Baseline the BOQ” first.')).toBeInTheDocument();
     expect(within(section).queryByRole('link')).not.toBeInTheDocument();
   });
 
@@ -213,7 +214,7 @@ describe('ProjectDetail — project readiness', () => {
     renderWithProviders(<ProjectDetail id="p1" />);
 
     await screen.findByRole('heading', { name: 'Project information' });
-    expect(screen.queryByRole('heading', { name: 'Project preparation' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Preparation sequence' })).not.toBeInTheDocument();
   });
 });
 
@@ -453,7 +454,7 @@ describe('ProjectDetail — actions belong to the shell', () => {
 
     renderWithProviders(<ProjectDetail id="p1" />);
 
-    await screen.findByRole('heading', { name: 'Project preparation' });
+    await screen.findByRole('heading', { name: 'Preparation sequence' });
     expect(screen.queryByRole('button', { name: 'Start project' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Actions' })).not.toBeInTheDocument();
   });

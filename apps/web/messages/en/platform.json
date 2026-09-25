@@ -486,9 +486,10 @@
       "supersedeCertificate": "Supersede"
     },
     "preparation": {
-      "title": "Project preparation",
-      "hint": "Complete the required conditions before starting this project. Tasks can be prepared in parallel.",
-      "ready": "The current start conditions are satisfied. Record commencement to start the project.",
+        "title": "Preparation sequence",
+        "hint": "Follow the numbered sequence. Team and programme setup may proceed in parallel, while the main contract must be priced against a baselined BOQ.",
+        "ready": "The current start conditions are satisfied. Record commencement to start the project.",
+        "progress": "{complete} of {total} complete",
       "remaining": "{count, plural, =0 {Ready for commencement} one {# condition remaining} other {# conditions remaining}}",
       "completed": "{count} conditions completed",
       "resolve": "Open task",
@@ -496,16 +497,34 @@
       "projectManager": "Project manager",
       "commercialTeam": "Commercial team",
       "quantitySurveyor": "Quantity surveyor",
-      "waivable": "Complete this condition or record an authorized exception when starting.",
-      "ownerAction": "Owner action needed",
-      "deferred": "Some requirements are not checked automatically. Review them before commencement.",
-      "conditions": {
-        "CLIENT_ACTIVE": "Assign an active client",
-        "BOQ_BASELINED": "Commit the BOQ",
-        "ACTIVE_MAIN_CONTRACT": "Execute the main contract",
-        "CONTRACT_START_DATE": "Set the contractual start date",
-        "PROGRAMME_DATES": "Set planned project dates",
-        "DELIVERY_TEAM": "Assign the delivery team"
+      “waivable”: “Complete this condition or record an authorized exception when starting.”,
+      “ownerAction”: “Owner action needed”,
+      “blockedBy”: “Complete “{task}” first.”,
+      “finalReady”: “Final step: record commencement and start the project”,
+      “finalBlocked”: “Final step: start the project after mandatory preparation is complete”,
+      “finalHint”: “Starting the project records the actual commencement date and may require workflow approval. Optional preparation requires a recorded exception if left incomplete.”,
+      “deferred”: “Some requirements are not checked automatically. Review them before commencement.”,
+      “status”: {
+        “complete”: “Complete”,
+        “ready”: “Ready now”,
+        “blocked”: “Blocked”,
+        “optional”: “Exception allowed”
+      },
+      “conditions”: {
+        “CLIENT_ACTIVE”: “Assign an active client”,
+        “BOQ_BASELINED”: “Baseline the BOQ”,
+        “ACTIVE_MAIN_CONTRACT”: “Create and execute the main contract”,
+        “CONTRACT_START_DATE”: “Set the contractual start date”,
+        “PROGRAMME_DATES”: “Set planned project dates”,
+        “DELIVERY_TEAM”: “Assign the delivery team”
+      },
+      “descriptions”: {
+        “CLIENT_ACTIVE”: “Confirm the legal customer that owns the project contract and billing relationship.”,
+        “BOQ_BASELINED”: “Freeze the approved scope, quantities and rates that the main contract will reference.”,
+        “ACTIVE_MAIN_CONTRACT”: “Create the contract against the baselined BOQ, complete its approval, and mark it executed.”,
+        “CONTRACT_START_DATE”: “Record the commencement date stated by the executed contract or notice to proceed.”,
+        “DELIVERY_TEAM”: “Add at least one delivery member beyond the project manager.”,
+        “PROGRAMME_DATES”: “Confirm the planned start and expected completion dates used by scheduling and progress tracking.”
       }
     },
     "transition": {
