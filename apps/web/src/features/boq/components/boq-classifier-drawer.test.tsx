@@ -1,4 +1,5 @@
 import { fireEvent, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '@/test/render';
@@ -27,10 +28,9 @@ function render(overrides: Partial<Parameters<typeof BoqClassifierDrawer>[0]> = 
   return { onSubmit, onClose };
 }
 
-function selectVariationSection() {
-  fireEvent.change(screen.getByLabelText(/BOQ section/i), {
-    target: { value: 'section-01' },
-  });
+async function selectVariationSection(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByLabelText(/BOQ section/i));
+  await user.click(await screen.findByRole('option', { name: /Preliminaries/i }));
 }
 
 describe('BoqClassifierDrawer — decision-first who-pays', () => {
@@ -51,13 +51,14 @@ describe('BoqClassifierDrawer — decision-first who-pays', () => {
     expect(screen.getAllByText(/2,342,000/).length).toBeGreaterThan(0);
   });
 
-  it('submits the Variation route (adopted inline) with the entered figures', () => {
+  it('submits the Variation route (adopted inline) with the entered figures', async () => {
+    const user = userEvent.setup();
     const { onSubmit } = render();
     fireEvent.change(screen.getByLabelText(/What is the work/i), {
       target: { value: 'Steel canopy' },
     });
     fireEvent.change(screen.getByLabelText(/^Amount/i), { target: { value: '2000' } });
-    selectVariationSection();
+    await selectVariationSection(user);
     fireEvent.change(screen.getByLabelText(/Client approval ref/i), {
       target: { value: 'VO-SIGNED-7' },
     });
@@ -72,13 +73,14 @@ describe('BoqClassifierDrawer — decision-first who-pays', () => {
     });
   });
 
-  it('passes the required client approval reference through on the Variation route', () => {
+  it('passes the required client approval reference through on the Variation route', async () => {
+    const user = userEvent.setup();
     const { onSubmit } = render();
     fireEvent.change(screen.getByLabelText(/What is the work/i), {
       target: { value: 'Steel canopy' },
     });
     fireEvent.change(screen.getByLabelText(/^Amount/i), { target: { value: '2000' } });
-    selectVariationSection();
+    await selectVariationSection(user);
     fireEvent.change(screen.getByLabelText(/Client approval ref/i), {
       target: { value: 'VO-SIGNED-7' },
     });

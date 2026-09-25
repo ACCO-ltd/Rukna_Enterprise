@@ -1,4 +1,4 @@
-import { ProjectStatus } from '@erp/types';
+﻿import { ProjectStatus } from '@erp/types';
 import { screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -193,7 +193,7 @@ describe('ProjectDetail — project readiness', () => {
     expect(within(section).getAllByRole('listitem')).toHaveLength(3);
     expect(within(section).queryByText('25%')).not.toBeInTheDocument();
     expect(within(section).getAllByText('Owner action needed')).toHaveLength(2);
-    expect(within(section).getByText('Complete “Baseline the BOQ” first.')).toBeInTheDocument();
+    expect(within(section).getByText('Complete "Baseline the BOQ" first.')).toBeInTheDocument();
     expect(within(section).queryByRole('link')).not.toBeInTheDocument();
   });
 

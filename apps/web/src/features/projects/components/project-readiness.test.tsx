@@ -1,4 +1,4 @@
-import { ProjectStatus } from '@erp/types';
+﻿import { ProjectStatus } from '@erp/types';
 import { screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -78,7 +78,7 @@ describe('ProjectReadiness preparation sequence', () => {
 
     const contractRow = rows[2]!;
     expect(within(contractRow).getByText('Blocked')).toBeInTheDocument();
-    expect(within(contractRow).getByText('Complete “Baseline the BOQ” first.')).toBeInTheDocument();
+    expect(within(contractRow).getByText('Complete "Baseline the BOQ" first.')).toBeInTheDocument();
     expect(within(contractRow).queryByRole('link', { name: 'Open task' })).not.toBeInTheDocument();
     expect(within(rows[1]!).getByRole('link', { name: 'Open task' })).toHaveAttribute(
       'href',
