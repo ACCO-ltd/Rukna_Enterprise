@@ -799,7 +799,7 @@ export class CommercialBillingService {
           voInvoiceIds,
         },
       });
-    });
+    }, { timeout: 15000 });
 
     const packages = await this.getBillingPackages(identity, contract.id);
     const pkg = packages.packages.find((p) => p.installmentId === installmentId);
@@ -1174,7 +1174,7 @@ export class CommercialBillingService {
       });
 
       return { receiptId };
-    });
+    }, { timeout: 15000 });
 
     // Build the response (reads outside tx — receipt is committed)
     const unallocatedAmount = totalAmount.minus(allocatedTotal);

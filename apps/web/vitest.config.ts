@@ -19,6 +19,11 @@ export default defineConfig({
     // this is collection overhead under contention, not a slow assertion.
     testTimeout: 20_000,
     css: false,
+    poolOptions: {
+      forks: {
+        execArgv: ['--max-old-space-size=4096'],
+      },
+    },
   },
   resolve: {
     alias: {
