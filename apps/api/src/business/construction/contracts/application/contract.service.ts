@@ -689,6 +689,42 @@ export class ContractService {
   }
 
   /**
+   * Back-fill the date the paper contract was physically signed, for a contract that went
+   * DRAFT → ACTIVE through `transition('activate')` rather than `recordSigned` (which captures
+   * signedDate up front). ACCO signs on paper and there is no in-app review/signature step, so
+   * activation never required this fact — it is recorded after the fact as an operational
+   * exception to the baseline freeze, not a commercial-term edit.
+   */
+  async recordSignedDate(identity: RequestIdentity, id: string, signedDate: string) {
+    const prisma = this.tenancyService.getClient();
+    const contract = await this.requireContract(prisma, identity, id);
+    this.assertTermMutationAllowed(contract.status, 'SIGNED_DATE');
+
+    return prisma.$transaction(async (tx) => {
+      const updated = await this.repo.update(tx, id, {
+        signedDate: new Date(signedDate),
+      });
+
+      await this.auditOutbox.record(tx, {
+        organizationId: identity.activeOrganizationId,
+        actorUserId: identity.userId,
+        action: 'UPDATE',
+        resourceType: 'Contract',
+        resourceId: id,
+        sourceCommand: 'contract.recordSignedDate',
+        eventType: 'CONTRACT_SIGNED_DATE_RECORDED',
+        idempotencyKey: `contract-signed-date-${id}-${Date.now()}`,
+        before: {
+          signedDate: contract.signedDate ? contract.signedDate.toISOString() : null,
+        },
+        after: { signedDate },
+      });
+
+      return updated;
+    });
+  }
+
+  /**
    * ADR-029 T-3 / V-2 — raise the CURRENT contract value by an adopted on-contract variation's net.
    *
    * The Contract-side seam the Variations adopt command (R6) calls to move `Contract.contractValue`
@@ -817,6 +853,24 @@ export class ContractService {
     if (fromStatus !== step.from) {
       throw new BadRequestException(
         `Cannot '${command}' a contract with status '${fromStatus}'. Expected '${step.from}'.`,
+      );
+    }
+
+    // ADR-023 CONST-COM-012: activation must not let a MILESTONE contract go live with a payment
+    // schedule that does not reconcile to 100% — including the previously-open gap of ZERO
+    // installments (an unset schedule, never populated via create() or replacePaymentPlan()).
+    // Reuses the exact same check create()/replacePaymentPlan() already enforce on write, so there
+    // is one reconciliation rule, not a second copy re-derived here.
+    if (command === 'activate' && contract.billingModel === 'MILESTONE') {
+      this.assertPaymentPlanReconciles(
+        contract.paymentInstallments.map((installment) => ({
+          sortOrder: installment.sortOrder,
+          name: installment.name,
+          percentage: installment.percentage.toNumber(),
+          triggerType: installment.triggerType,
+          dueOffsetDays: installment.dueOffsetDays ?? undefined,
+          dueDate: installment.dueDate ? installment.dueDate.toISOString() : undefined,
+        })),
       );
     }
 

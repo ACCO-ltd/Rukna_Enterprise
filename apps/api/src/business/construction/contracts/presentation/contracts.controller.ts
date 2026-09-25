@@ -34,6 +34,7 @@ import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import { ContractService } from '../application/contract.service.js';
 import { CreateContractDto } from './dto/create-contract.dto.js';
 import { UpdateContractDto } from './dto/update-contract.dto.js';
+import { RecordSignedDateDto } from './dto/record-signed-date.dto.js';
 import { CancelContractDto } from './dto/cancel-contract.dto.js';
 import { ReopenContractDto } from './dto/reopen-contract.dto.js';
 import { TerminateContractDto } from './dto/terminate-contract.dto.js';
@@ -104,6 +105,22 @@ export class ContractsController {
     @Body() dto: UpdateContractDto,
   ) {
     return this.contractService.update(identity, id, dto);
+  }
+
+  @Patch(':id/signed-date')
+  @RequirePermissions(PERMISSIONS.contractsManage)
+  @ApiOperation({
+    summary:
+      "Back-fill the date the paper contract was physically signed. Allowed in any non-terminal " +
+      'status — it records a real-world fact, not a commercial term, so it is not limited to DRAFT.',
+  })
+  @ApiParam({ name: 'id' })
+  recordSignedDate(
+    @CurrentUser() identity: RequestIdentity,
+    @Param('id') id: string,
+    @Body() dto: RecordSignedDateDto,
+  ) {
+    return this.contractService.recordSignedDate(identity, id, dto.signedDate);
   }
 
   // ─── Lifecycle commands ───────────────────────────────────────────────────────

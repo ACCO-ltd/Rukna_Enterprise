@@ -338,6 +338,7 @@ export class ContractPrismaRepository {
     startDate: Date;
     expectedEndDate: Date;
     status: string;
+    signedDate: Date | null;
     // Nullable so reopen can clear the identity frozen at activation (columns are nullable in schema).
     clientNameSnapshot: string | null;
     clientTaxSnapshot: string | null;

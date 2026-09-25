@@ -57,6 +57,8 @@ function build(overrides: {
   receipts?: unknown;
   clientUnapplied?: Decimal;
   separateChargeTotal?: string | null;
+  boqSeparateChargeNodes?: unknown[];
+  variationBillingAllocations?: unknown[];
 }) {
   const repo = {
     findMainContract: jest
@@ -81,6 +83,13 @@ function build(overrides: {
       .mockResolvedValue(overrides.clientUnapplied ?? new Decimal(0)),
     // Slice 6B: collection data — returns empty map so existing tests are unaffected
     findInvoiceCollectionData: jest.fn().mockResolvedValue(new Map()),
+    // B11 — getSeparateCharges' two origins of a one-off invoice.
+    findSeparateChargeBoqLeaves: jest
+      .fn()
+      .mockResolvedValue(overrides.boqSeparateChargeNodes ?? []),
+    findVariationBillingInvoiceAllocations: jest
+      .fn()
+      .mockResolvedValue(overrides.variationBillingAllocations ?? []),
   };
   const projectAccess = { assertMember: jest.fn().mockResolvedValue(undefined) };
   const tenancy = { getClient: () => ({}) };
@@ -766,6 +775,25 @@ describe('CommercialService capabilities (B4)', () => {
       'p-1',
     );
     expect(res.capabilities.canEditContract).toBe(true);
+  });
+
+  it('canRecordSignedDate: true on ACTIVE with manage permission, unlike canEditContract', async () => {
+    const { service } = build({ contract: { ...baseContract, status: 'ACTIVE' } });
+    const res = await service.getSummary(
+      identityWith([PERMISSIONS.contractsView, PERMISSIONS.contractsManage]),
+      'p-1',
+    );
+    expect(res.capabilities.canRecordSignedDate).toBe(true);
+    expect(res.capabilities.canEditContract).toBe(false);
+  });
+
+  it('canRecordSignedDate: false once the contract is terminal', async () => {
+    const { service } = build({ contract: { ...baseContract, status: 'CLOSED' } });
+    const res = await service.getSummary(
+      identityWith([PERMISSIONS.contractsView, PERMISSIONS.contractsManage]),
+      'p-1',
+    );
+    expect(res.capabilities.canRecordSignedDate).toBe(false);
   });
 
   // canAdvanceContract mirrors the next transition's own permission. After the lifecycle collapse
@@ -1457,5 +1485,86 @@ describe('securityPosition — retention held and advance recovered', () => {
     const result = await service.getSummary(financeIdentity, 'p-1');
     expect(result.securityPosition.advanceRecovered).toBe('0.00');
     expect(result.securityPosition.advanceOutstanding).toBeNull();
+  });
+});
+
+describe('getSeparateCharges — unified list (BOQ_LEAF + VARIATION origins)', () => {
+  const boqLeafNode = {
+    id: 'node-1',
+    code: 'SC-01',
+    description: 'Generator rental',
+    unitRate: new Decimal('5000'),
+    quantity: new Decimal('1'),
+    totalAmount: new Decimal('5000'),
+    currency: 'USD',
+    separateChargeInvoice: null,
+  };
+
+  const voAllocation = {
+    id: 'alloc-1',
+    variation: { id: 'vo-1', reference: 'VO-014', title: 'Extra excavation' },
+    clientInvoice: {
+      id: 'inv-vo-1',
+      invoiceNumber: 'INV-2026-0099',
+      postingStatus: 'POSTED',
+      invoiceDate: new Date('2026-09-01'),
+      dueDate: new Date('2026-10-01'),
+      totalAmount: new Decimal('12000'),
+      currencyCode: 'USD',
+    },
+  };
+
+  it('returns empty when there is no main contract', async () => {
+    const { service } = build({ contract: null });
+    const res = await service.getSeparateCharges(financeIdentity, 'p-1');
+    expect(res).toEqual({ projectId: 'p-1', items: [] });
+  });
+
+  it('includes an un-invoiced BOQ SEPARATE_CHARGE leaf, tagged source BOQ_LEAF', async () => {
+    const { service } = build({ boqSeparateChargeNodes: [boqLeafNode] });
+    const res = await service.getSeparateCharges(financeIdentity, 'p-1');
+    expect(res.items).toHaveLength(1);
+    expect(res.items[0]).toMatchObject({ source: 'BOQ_LEAF', id: 'node-1', code: 'SC-01', invoice: null });
+  });
+
+  it('includes a VO addition billed standalone, tagged source VARIATION, always with its invoice', async () => {
+    const { service } = build({ variationBillingAllocations: [voAllocation] });
+    const res = await service.getSeparateCharges(financeIdentity, 'p-1');
+    expect(res.items).toHaveLength(1);
+    expect(res.items[0]).toMatchObject({
+      source: 'VARIATION',
+      id: 'alloc-1',
+      variationId: 'vo-1',
+      variationReference: 'VO-014',
+      name: 'Extra excavation',
+      invoice: expect.objectContaining({ invoiceNumber: 'INV-2026-0099' }),
+    });
+  });
+
+  it('unifies both origins into one list', async () => {
+    const { service } = build({
+      boqSeparateChargeNodes: [boqLeafNode],
+      variationBillingAllocations: [voAllocation],
+    });
+    const res = await service.getSeparateCharges(financeIdentity, 'p-1');
+    expect(res.items.map((i) => i.source).sort()).toEqual(['BOQ_LEAF', 'VARIATION']);
+  });
+
+  it('scopes the VO-allocation lookup to this contract', async () => {
+    const { service, repo } = build({ variationBillingAllocations: [voAllocation] });
+    await service.getSeparateCharges(financeIdentity, 'p-1');
+    expect(repo.findVariationBillingInvoiceAllocations).toHaveBeenCalledWith(
+      expect.anything(),
+      baseContract.id,
+    );
+  });
+
+  it('hides money for a caller without financial visibility, on both origins', async () => {
+    const { service } = build({
+      boqSeparateChargeNodes: [boqLeafNode],
+      variationBillingAllocations: [voAllocation],
+    });
+    const res = await service.getSeparateCharges(noFinanceIdentity, 'p-1');
+    expect(res.items.every((i) => i.totalAmount === null)).toBe(true);
   });
 });

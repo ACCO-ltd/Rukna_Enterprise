@@ -1461,6 +1461,8 @@ export interface CommercialCapabilities {
   canGenerateInvoice: boolean;
   canPostInvoice: boolean;
   canManageGuarantee: boolean;
+  /** Back-fill the physically-signed date — an operational fact, allowed in any non-terminal status. */
+  canRecordSignedDate: boolean;
   canRecordReceipt: boolean;
   canAllocateReceipt: boolean;
   /**
@@ -1560,7 +1562,27 @@ export interface CommercialRetentionSummary {
   retentionReleasedAt: string | null;
 }
 
-export interface SeparateChargeNode {
+export interface SeparateChargeInvoiceRef {
+  id: string;
+  invoiceNumber: string | null;
+  postingStatus: string;
+  invoiceDate: string;
+  dueDate: string | null;
+}
+
+/**
+ * A one-off invoice outside the milestone billing cycle, unified across its two real origins
+ * (ADR-029 R-4 confirmed there is no single "Advance"-typed source — see commercial-final-architecture.md):
+ *   - BOQ_LEAF — a SEPARATE_CHARGE BOQ leaf, billed on demand via `CreateSeparateChargeInvoiceDialog`.
+ *     May exist un-invoiced (`invoice: null`).
+ *   - VARIATION — a client-approved VO addition billed standalone inside a milestone billing package
+ *     (`issuePackage` → `generateStandaloneCharge`). The allocation row and its invoice are created
+ *     atomically, so `invoice` is never null for this origin.
+ */
+export type SeparateChargeNode = SeparateChargeBoqLeaf | SeparateChargeVariationInvoice;
+
+export interface SeparateChargeBoqLeaf {
+  source: 'BOQ_LEAF';
   id: string;
   code: string;
   name: string;
@@ -1569,13 +1591,20 @@ export interface SeparateChargeNode {
   totalAmount: string | null;
   currency: string;
   contractId: string;
-  invoice: {
-    id: string;
-    invoiceNumber: string | null;
-    postingStatus: string;
-    invoiceDate: string;
-    dueDate: string | null;
-  } | null;
+  invoice: SeparateChargeInvoiceRef | null;
+}
+
+export interface SeparateChargeVariationInvoice {
+  source: 'VARIATION';
+  /** The VariationBillingAllocation row id — the ledger record this invoice's provenance traces to. */
+  id: string;
+  variationId: string;
+  variationReference: string;
+  name: string;
+  totalAmount: string | null;
+  currency: string;
+  contractId: string;
+  invoice: SeparateChargeInvoiceRef;
 }
 
 export interface SeparateChargesResponse {

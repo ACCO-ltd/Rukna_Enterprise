@@ -1840,6 +1840,7 @@ export class CommercialService {
       canGenerateInvoice: has(PERMISSIONS.receivablesManage),
       canPostInvoice: has(PERMISSIONS.receivablesManage),
       canManageGuarantee: has(PERMISSIONS.contractsManage) && notTerminal,
+      canRecordSignedDate: has(PERMISSIONS.contractsManage) && notTerminal,
       // These were hardcoded `false` from before the AR receipt endpoints existed. They do now
       // (`POST /customer-receipts`, `POST /customer-receipts/:id/allocations`), so the honest
       // answer is the caller's actual permission — a UI that hides a control the server would
@@ -1862,40 +1863,23 @@ export class CommercialService {
     const prisma = this.tenancyService.getClient();
     const orgId = identity.activeOrganizationId;
     const { canViewMargin: mayViewFinancials } = resolveBoqVisibility(identity);
+    const money = (v: { toString(): string } | null | undefined): string | null =>
+      mayViewFinancials && v ? v.toString() : null;
 
     const contract = await this.repo.findMainContract(prisma, orgId, projectId);
     if (!contract) {
       return { projectId, items: [] };
     }
 
-    const nodes = await prisma.boqNode.findMany({
-      where: {
-        versionId: contract.boqVersionId,
-        commercialTreatment: 'SEPARATE_CHARGE',
-        isLeaf: true,
-        isActive: true,
-      },
-      include: {
-        separateChargeInvoice: {
-          select: {
-            id: true,
-            invoiceNumber: true,
-            postingStatus: true,
-            invoiceDate: true,
-            dueDate: true,
-          },
-        },
-      },
-      orderBy: { sortOrder: 'asc' },
-    });
-
-    const items: SeparateChargeNode[] = nodes.map((node) => ({
+    const nodes = await this.repo.findSeparateChargeBoqLeaves(prisma, contract.boqVersionId);
+    const boqLeafItems: SeparateChargeNode[] = nodes.map((node) => ({
+      source: 'BOQ_LEAF',
       id: node.id,
       code: node.code,
       name: node.description,
-      unitRate: mayViewFinancials && node.unitRate ? node.unitRate.toString() : null,
+      unitRate: money(node.unitRate),
       quantity: node.quantity?.toString() ?? '0',
-      totalAmount: mayViewFinancials && node.totalAmount ? node.totalAmount.toString() : null,
+      totalAmount: money(node.totalAmount),
       currency: node.currency ?? contract.currency,
       contractId: contract.id,
       invoice: node.separateChargeInvoice
@@ -1909,6 +1893,36 @@ export class CommercialService {
         : null,
     }));
 
-    return { projectId, items };
+    // A client-approved VO addition billed STANDALONE inside a milestone billing package
+    // (commercial-billing.service.ts `issuePackage` → `generateStandaloneCharge`) is the second real
+    // origin of a one-off invoice — it never touches a BOQ SEPARATE_CHARGE leaf, so the query above
+    // never sees it. Its only provenance is this allocation ledger row (CONST-COM-028); the invoice
+    // itself carries no source tag back to the VO (`sourceBoqNodeId`/`sourceInstallmentId`/`sourceIpcId`
+    // are all null for it — see `generateStandaloneCharge`'s comment).
+    const allocations = await this.repo.findVariationBillingInvoiceAllocations(prisma, contract.id);
+    const variationItems: SeparateChargeNode[] = allocations
+      .filter((allocation) => allocation.clientInvoice !== null)
+      .map((allocation) => {
+        const invoice = allocation.clientInvoice!;
+        return {
+          source: 'VARIATION',
+          id: allocation.id,
+          variationId: allocation.variation.id,
+          variationReference: allocation.variation.reference,
+          name: allocation.variation.title,
+          totalAmount: money(invoice.totalAmount),
+          currency: invoice.currencyCode,
+          contractId: contract.id,
+          invoice: {
+            id: invoice.id,
+            invoiceNumber: invoice.invoiceNumber,
+            postingStatus: invoice.postingStatus,
+            invoiceDate: invoice.invoiceDate.toISOString(),
+            dueDate: invoice.dueDate?.toISOString() ?? null,
+          },
+        };
+      });
+
+    return { projectId, items: [...boqLeafItems, ...variationItems] };
   }
 }

@@ -161,6 +161,32 @@ describe('A2 — lifecycle enforcement (CONST-COM-001)', () => {
       expect.objectContaining({ status: 'DISCHARGED' }),
     );
   });
+
+  it('blocks the contract header edit that would carry signedDate on an ACTIVE contract, but recordSignedDate is allowed', async () => {
+    const { service, repo } = build(active);
+
+    // CONTRACT_HEADER (update()) stays DRAFT-only — signedDate is never smuggled through it.
+    await expect(
+      service.update(identity, 'c-1', { contractNumber: 'ACCO-P1-C1' } as never),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    // SIGNED_DATE is the explicit operational exception — allowed on ACTIVE.
+    await service.recordSignedDate(identity, 'c-1', '2026-09-17');
+    expect(repo.update).toHaveBeenCalledWith(
+      expect.anything(),
+      'c-1',
+      expect.objectContaining({ signedDate: new Date('2026-09-17') }),
+    );
+  });
+
+  it('blocks recordSignedDate once the contract is terminal', async () => {
+    const closed = { id: 'c-1', status: 'CLOSED', retentionTerms: null };
+    const { service, repo } = build(closed);
+    await expect(service.recordSignedDate(identity, 'c-1', '2026-09-17')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(repo.update).not.toHaveBeenCalled();
+  });
 });
 
 describe('collapsed lifecycle — activate / reopen (ACCO signs on paper)', () => {
@@ -190,6 +216,76 @@ describe('collapsed lifecycle — activate / reopen (ACCO signs on paper)', () =
       expect.anything(),
       expect.objectContaining({ eventType: 'CONTRACT_ACTIVATE' }),
     );
+  });
+
+  // ADR-023 CONST-COM-012 — activation must not let a MILESTONE contract go live with a payment
+  // schedule that does not reconcile to 100%, including the previously-open gap of zero
+  // installments (a schedule never populated via create() or replacePaymentPlan()).
+  describe('ADR-023 CONST-COM-012 — activation payment-plan reconciliation', () => {
+    function milestoneDraft(installments: Array<{ percentage: string; triggerType?: string }>) {
+      return {
+        id: 'c-1',
+        status: 'DRAFT',
+        billingModel: 'MILESTONE',
+        retentionTerms: null,
+        client: { name: 'Rukna Client Co', taxNumber: 'TAX-123' },
+        paymentInstallments: installments.map((installment, index) => ({
+          sortOrder: index,
+          name: `Stage ${index + 1}`,
+          percentage: new Decimal(installment.percentage),
+          triggerType: installment.triggerType ?? 'MILESTONE',
+          dueOffsetDays: null,
+          dueDate: null,
+        })),
+      };
+    }
+
+    it('rejects activate for a MILESTONE contract with no payment schedule at all', async () => {
+      const { service, repo } = build(milestoneDraft([]));
+      await expect(service.transition(identity, 'c-1', 'activate')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects activate for a MILESTONE contract whose schedule does not total 100%', async () => {
+      const { service, repo } = build(
+        milestoneDraft([{ percentage: '0.4' }, { percentage: '0.3' }]), // 70%
+      );
+      await expect(service.transition(identity, 'c-1', 'activate')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(repo.update).not.toHaveBeenCalled();
+    });
+
+    it('allows activate for a MILESTONE contract whose schedule reconciles to 100%', async () => {
+      const { service, repo } = build(
+        milestoneDraft([{ percentage: '0.4' }, { percentage: '0.3' }, { percentage: '0.3' }]),
+      );
+      await service.transition(identity, 'c-1', 'activate');
+      expect(repo.update).toHaveBeenCalledWith(
+        expect.anything(),
+        'c-1',
+        expect.objectContaining({ status: 'ACTIVE' }),
+      );
+    });
+
+    it('does not check the payment schedule for a non-MILESTONE (e.g. MEASURED_IPC) contract', async () => {
+      const { service, repo } = build({
+        id: 'c-1',
+        status: 'DRAFT',
+        billingModel: 'MEASURED_IPC',
+        retentionTerms: null,
+        client: { name: 'Rukna Client Co', taxNumber: 'TAX-123' },
+        paymentInstallments: [],
+      });
+      await service.transition(identity, 'c-1', 'activate');
+      expect(repo.update).toHaveBeenCalledWith(
+        expect.anything(),
+        'c-1',
+        expect.objectContaining({ status: 'ACTIVE' }),
+      );
+    });
   });
 
   it('rejects activate on a contract that is not DRAFT', async () => {

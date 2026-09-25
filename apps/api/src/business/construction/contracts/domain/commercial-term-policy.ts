@@ -22,6 +22,12 @@ import type { ContractStatus } from '@prisma/client';
  *      · DELIVERABLE_COMPLETE — recording that a contract deliverable was achieved.
  *                               Only meaningful once the contract is executing, so allowed
  *                               in ACTIVE and FINAL_ACCOUNT_PENDING.
+ *      · SIGNED_DATE          — recording the date the paper contract was actually signed.
+ *                               This is a fact about a real-world event, not a commercial
+ *                               term — activate() never required it (there is no in-app
+ *                               review/signature step; ACCO signs on paper), so a contract
+ *                               can go live before anyone records it. Allowed in any
+ *                               non-terminal status, same as GUARANTEE_STATUS.
  *
  * PROVISIONAL: the operational carve-outs (which statuses permit guarantee-status and
  * deliverable-completion changes) are provisional pending confirmation from Eng Ahmed
@@ -35,7 +41,8 @@ export type CommercialMutationKind =
   | 'GUARANTEE_TERM'
   | 'DELIVERABLE_TERM'
   | 'GUARANTEE_STATUS'
-  | 'DELIVERABLE_COMPLETE';
+  | 'DELIVERABLE_COMPLETE'
+  | 'SIGNED_DATE';
 
 export interface TermPolicyDecision {
   allowed: boolean;
@@ -82,7 +89,7 @@ export const CommercialTermPolicy = {
       };
     }
 
-    if (kind === 'GUARANTEE_STATUS') {
+    if (kind === 'GUARANTEE_STATUS' || kind === 'SIGNED_DATE') {
       if (TERMINAL_STATUSES.has(status)) {
         return { allowed: false, reason: 'CONTRACT_TERMINAL' };
       }

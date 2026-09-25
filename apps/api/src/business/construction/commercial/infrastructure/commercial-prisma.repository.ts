@@ -113,6 +113,60 @@ export class CommercialPrismaRepository {
     return version?.versionNumber ?? null;
   }
 
+  /** ADR-029 R-4 — the SEPARATE_CHARGE BOQ leaves on a contract's BOQ version, with their one-off invoice. */
+  findSeparateChargeBoqLeaves(prisma: TenantPrisma, boqVersionId: string) {
+    return prisma.boqNode.findMany({
+      where: {
+        versionId: boqVersionId,
+        commercialTreatment: 'SEPARATE_CHARGE',
+        isLeaf: true,
+        isActive: true,
+      },
+      include: {
+        separateChargeInvoice: {
+          select: {
+            id: true,
+            invoiceNumber: true,
+            postingStatus: true,
+            invoiceDate: true,
+            dueDate: true,
+          },
+        },
+      },
+      orderBy: { sortOrder: 'asc' },
+    });
+  }
+
+  /**
+   * The second origin of a one-off invoice (B11 unification): a client-approved VO addition
+   * billed STANDALONE inside a milestone billing package (`issuePackage` → `generateStandaloneCharge`).
+   * The allocation row and its invoice are created atomically, so `clientInvoice` is never null here
+   * for a row this query returns real data for.
+   */
+  findVariationBillingInvoiceAllocations(prisma: TenantPrisma, contractId: string) {
+    return prisma.variationBillingAllocation.findMany({
+      where: {
+        treatment: 'INVOICE',
+        variation: { contractId },
+      },
+      include: {
+        variation: { select: { id: true, reference: true, title: true } },
+        clientInvoice: {
+          select: {
+            id: true,
+            invoiceNumber: true,
+            postingStatus: true,
+            invoiceDate: true,
+            dueDate: true,
+            totalAmount: true,
+            currencyCode: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   /** All effective certificates for a contract — the only ones that count (CONST-COM-003). */
   findEffectiveCertificates(prisma: TenantPrisma, organizationId: string, contractId: string) {
     return prisma.interimPaymentCertificate.findMany({

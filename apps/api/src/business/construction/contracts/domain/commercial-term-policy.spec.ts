@@ -67,6 +67,22 @@ describe('CommercialTermPolicy — guarantee status (operational exception)', ()
   });
 });
 
+describe('CommercialTermPolicy — signed date (operational exception)', () => {
+  it('is allowed in every non-terminal status', () => {
+    for (const status of ['DRAFT', 'UNDER_REVIEW', 'PENDING_SIGNATURE', 'ACTIVE', 'FINAL_ACCOUNT_PENDING'] as ContractStatus[]) {
+      expect(CommercialTermPolicy.evaluate(status, 'SIGNED_DATE').allowed).toBe(true);
+    }
+  });
+
+  it('is blocked in terminal statuses', () => {
+    for (const status of ['CLOSED', 'CANCELLED', 'TERMINATED'] as ContractStatus[]) {
+      const d = CommercialTermPolicy.evaluate(status, 'SIGNED_DATE');
+      expect(d.allowed).toBe(false);
+      expect(d.reason).toBe('CONTRACT_TERMINAL');
+    }
+  });
+});
+
 describe('CommercialTermPolicy — deliverable completion (operational)', () => {
   it('is allowed only while the contract is executing', () => {
     expect(CommercialTermPolicy.evaluate('ACTIVE', 'DELIVERABLE_COMPLETE').allowed).toBe(true);

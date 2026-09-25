@@ -173,6 +173,27 @@ describe('Cross-slice E2E — DRAFT BOQ → Contract Snapshot → Variation → 
     } as never);
     contractId = contract.id;
 
+    // ADR-023 CONST-COM-012 — activate() now requires a MILESTONE contract's payment plan to
+    // reconcile to 100% (closing the previously-open zero-installment gap). inst1 alone (100%)
+    // satisfies that at the moment of activation; inst2 is added afterward (below), which the
+    // guard never re-checks post-activation. The two installments are deliberately independent
+    // 100%-of-base-value scenarios, not a single coexisting schedule (see the comment at their
+    // creation) — inst1 must exist first only to make activation itself valid.
+    const makeInstallment = (name: string, sortOrder: number) =>
+      prisma.contractPaymentInstallment.create({
+        data: {
+          contractId,
+          name,
+          sortOrder,
+          percentage: new Decimal('1.0000'),
+          triggerType: 'MILESTONE',
+          milestoneLabel: name,
+          readyToBillAt: new Date(),
+          readyToBillBy: 'u1',
+        },
+      });
+    inst1Id = (await makeInstallment('Handover', 0)).id;
+
     // Activate the contract (DRAFT → ACTIVE). issuePackage requires ACTIVE status.
     await contractService.transition(identity, contractId, 'activate');
 
@@ -218,23 +239,10 @@ describe('Cross-slice E2E — DRAFT BOQ → Contract Snapshot → Variation → 
       }),
     );
 
-    // ── 5. Two 100% installments (ready-to-bill) ───────────────────────────────
+    // ── 5. Second 100% installment (ready-to-bill) ─────────────────────────────
     // 100% × baseContractValue (500,000) = 500,000 milestone subtotal per installment.
-    // Having two 100% installments is intentional: each test scenario owns one.
-    const makeInstallment = (name: string, sortOrder: number) =>
-      prisma.contractPaymentInstallment.create({
-        data: {
-          contractId,
-          name,
-          sortOrder,
-          percentage: new Decimal('1.0000'),
-          triggerType: 'MILESTONE',
-          milestoneLabel: name,
-          readyToBillAt: new Date(),
-          readyToBillBy: 'u1',
-        },
-      });
-    inst1Id = (await makeInstallment('Handover', 0)).id;
+    // Having two 100% installments is intentional: each test scenario owns one (inst1 was
+    // created pre-activation above; this mirrors it for T7's independent scenario).
     inst2Id = (await makeInstallment('Handover-2', 1)).id;
   }
 
