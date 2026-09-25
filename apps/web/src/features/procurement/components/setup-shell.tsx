@@ -15,6 +15,7 @@ import {
   Button,
   Dialog,
   DialogContent,
+  DialogHeader,
   DialogTitle,
 } from '@erp/ui';
 
@@ -85,10 +86,10 @@ export function SetupScreen({
       {/* A dialog, not the side panel this was: these setup forms are three or four short
           fields, and none of them needs the table behind it to stay readable while you type. */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogTitle>
-            {createTitle}
-          </DialogTitle>
+        <DialogContent size="md">
+          <DialogHeader>
+            <DialogTitle>{createTitle}</DialogTitle>
+          </DialogHeader>
           <div className="mt-5">{createForm(() => setOpen(false))}</div>
         </DialogContent>
       </Dialog>

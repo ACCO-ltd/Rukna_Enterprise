@@ -141,10 +141,11 @@ export const NAV_DOMAINS: NavDomain[] = [
       { href: '/procurement/grn', labelKey: 'goodsReceipts', iconKey: 'truck' },
       { href: '/finance/accounting/bills', labelKey: 'supplierBills', iconKey: 'credit-card', crossLink: true },
       { href: '/procurement/commitments', labelKey: 'commitments', iconKey: 'chart-bar' },
-      // Setup — one-time configuration. Suppliers is master data added as purchasing widens,
-      // so it stays ungated (a buyer must be able to add the supplier their own PO needs); the
-      // four catalogue screens keep their manage:procurement-config gate.
-      { href: '/procurement/suppliers', labelKey: 'suppliers', iconKey: 'storefront', groupKey: 'setup' },
+      // Suppliers: ungated master data — buyers add suppliers as purchasing widens, so this
+      // must not require manage:procurement-config (a buyer needs to add the supplier their
+      // own PO needs). The four catalogue screens below are one-time configuration and keep
+      // their manage:procurement-config gate.
+      { href: '/procurement/suppliers', labelKey: 'suppliers', iconKey: 'storefront' },
       { href: '/procurement/setup/materials', labelKey: 'materials', iconKey: 'package', permissionKey: 'manage:procurement-config', groupKey: 'setup' },
       { href: '/procurement/setup/material-categories', labelKey: 'materialCategories', iconKey: 'tag', permissionKey: 'manage:procurement-config', groupKey: 'setup' },
       { href: '/procurement/setup/uom', labelKey: 'unitsOfMeasure', iconKey: 'ruler', permissionKey: 'manage:procurement-config', groupKey: 'setup' },

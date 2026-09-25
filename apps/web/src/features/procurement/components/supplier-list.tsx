@@ -27,6 +27,8 @@ import {
   Input,
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogHeader,
   DialogTitle,
   Table,
   TableBody,
@@ -169,11 +171,11 @@ export function SupplierList() {
       </TableScroll>
 
       <Dialog open={editing !== null} onOpenChange={(open) => (open ? null : setEditing(null))}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogTitle className="text-lg font-semibold text-foreground">
-            {t('editTitle')}
-          </DialogTitle>
-          <p className="mt-1 text-sm text-muted-foreground">{t('editSubtitle')}</p>
+        <DialogContent size="md">
+          <DialogHeader>
+            <DialogTitle>{t('editTitle')}</DialogTitle>
+            <DialogDescription>{t('editSubtitle')}</DialogDescription>
+          </DialogHeader>
           {editing ? (
             <div className="mt-5">
               <SupplierEditForm supplier={editing} onDone={() => setEditing(null)} />

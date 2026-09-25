@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import type { UserEvent } from '@testing-library/user-event';
 
 /**
@@ -47,6 +47,9 @@ export async function chooseOption(
   });
 
   await user.click(option as unknown as HTMLElement);
+  // Flush Radix Select's async close-animation state updates and any TanStack Query
+  // dispatches that became enabled by the selection (e.g. supplierId → bills query).
+  await act(async () => {});
 }
 
 /**
@@ -61,4 +64,6 @@ export async function chooseOption(
 export async function openSelect(user: UserEvent, trigger: HTMLElement): Promise<void> {
   await user.click(trigger);
   await screen.findByRole('listbox');
+  // Flush Radix Select's async open-state updates (portal mount, focus management).
+  await act(async () => {});
 }

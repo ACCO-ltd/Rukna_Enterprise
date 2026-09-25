@@ -109,16 +109,18 @@ describe('NAV_DOMAINS', () => {
       expect(hrefs.some((h) => h.includes('payment'))).toBe(false);
     });
 
-    it('groups suppliers and the four catalogue screens under Setup', () => {
+    it('groups the four catalogue screens under Setup, not suppliers', () => {
       const setup = procurement().items.filter((i) => i.groupKey === 'setup');
       const setupHrefs = setup.map((i) => i.href);
       expect(setupHrefs).toEqual([
-        '/procurement/suppliers',
         '/procurement/setup/materials',
         '/procurement/setup/material-categories',
         '/procurement/setup/uom',
         '/procurement/setup/spend-categories',
       ]);
+      // Suppliers is operational master data, not one-time config — it must appear in the
+      // main (ungrouped) items so a buyer can add suppliers without manage:procurement-config.
+      expect(setupHrefs).not.toContain('/procurement/suppliers');
     });
 
     it('gates the four catalog setup items behind manage:procurement-config', () => {
@@ -163,12 +165,11 @@ describe('NAV_DOMAINS', () => {
       expect(groups[1]!.items.map((i) => i.href)).toEqual(['/c', '/d']);
     });
 
-    it('groups the real procurement Setup section as one block', () => {
+    it('groups the real procurement Setup section as the four catalogue screens only', () => {
       const procurement = NAV_DOMAINS.find((d) => d.moduleKey === 'procurement')!;
       const groups = groupNavItems(procurement.items);
       const setup = groups.find((g) => g.key === 'setup');
       expect(setup?.items.map((i) => i.labelKey)).toEqual([
-        'suppliers',
         'materials',
         'materialCategories',
         'unitsOfMeasure',
