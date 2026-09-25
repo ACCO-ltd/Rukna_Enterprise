@@ -37,13 +37,30 @@ export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
 export const DialogClose = DialogPrimitive.Close;
 
+/**
+ * Size controls the max-width on `sm+` screens. The mobile bottom-sheet is always full-width.
+ *
+ *  sm  448px  destructive confirm, 1–3 fields (default)
+ *  md  512px  4–6 field form
+ *  lg  672px  edge case — prefer Sheet for anything larger
+ *  xl  896px  2-column document-preparation layouts (form + live preview)
+ */
+const dialogSizeClass = {
+  sm: 'sm:max-w-md',
+  md: 'sm:max-w-lg',
+  lg: 'sm:max-w-2xl',
+  xl: 'sm:max-w-4xl',
+} as const;
+
 export const DialogContent = React.forwardRef<
   React.ComponentRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     /** Accessible name for the close control. */
     closeLabel?: string;
+    /** Max-width tier. Defaults to 'sm' (448px). Use 'md' for 4–6 field forms. */
+    size?: keyof typeof dialogSizeClass;
   }
->(({ className, children, closeLabel = 'Close', ...props }, ref) => (
+>(({ className, children, closeLabel = 'Close', size = 'sm', ...props }, ref) => (
   <DialogPrimitive.Portal>
     {/* Blurred as well as dimmed. A flat scrim separates the dialog from the page; blurring
         what is behind it also stops a dense table competing for attention through the tint. */}
@@ -53,17 +70,11 @@ export const DialogContent = React.forwardRef<
       // Anchored to the bottom on narrow screens and centred from `sm` up: a sheet within
       // thumb reach beats a box in the middle of a phone. `max-h` with an internal scroll
       // keeps a long dialog usable at 375px rather than pushing its buttons off-screen.
-      //
-      // A caller widening this dialog MUST prefix its width with the same breakpoint the
-      // default carries. `cn` is tailwind-merge, which keys on utility *and* variant, so an
-      // unprefixed width is not seen as competing with the default: both survive, and from
-      // `sm` up the variant wins on source order. The dialog then silently stays at the
-      // default width and the override looks like it was never written — which is exactly
-      // what happened to four dialogs before anyone noticed. Lint now catches it.
       className={cn(
         'fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] overflow-y-auto border border-border bg-surface-elevated p-6 shadow-e3',
         'rounded-t-container sm:rounded-container',
-        'sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2 sm:p-8',
+        'sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:-translate-x-1/2 sm:-translate-y-1/2 sm:p-8',
+        dialogSizeClass[size],
         className,
       )}
       {...props}
@@ -108,6 +119,14 @@ export const DialogDescription = React.forwardRef<
   />
 ));
 DialogDescription.displayName = 'DialogDescription';
+
+/**
+ * Groups title and description with consistent spacing.
+ * Use inside DialogContent before any form fields.
+ */
+export function DialogHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn('mb-5 flex flex-col gap-1.5', className)} {...props} />;
+}
 
 /**
  * Action row. Reversed on wide screens so the primary action sits on the trailing edge,

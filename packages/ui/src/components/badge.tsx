@@ -70,3 +70,18 @@ export const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
   ),
 );
 Badge.displayName = 'Badge';
+
+/**
+ * Badge variant for lifecycle states — automatically adds the status dot for tones that
+ * represent liveness (info, live, accent, warning, danger). Use this everywhere a record's
+ * current state is displayed; use plain `Badge` for classification labels (type, category)
+ * that don't have a liveness quality.
+ */
+const LIVE_TONES = new Set<BadgeTone>(['info', 'live', 'accent', 'warning', 'danger']);
+
+export const StatusBadge = React.forwardRef<HTMLSpanElement, BadgeProps>(
+  ({ tone = 'neutral', dot, ...props }, ref) => (
+    <Badge ref={ref} tone={tone} dot={dot ?? (tone != null && LIVE_TONES.has(tone))} {...props} />
+  ),
+);
+StatusBadge.displayName = 'StatusBadge';

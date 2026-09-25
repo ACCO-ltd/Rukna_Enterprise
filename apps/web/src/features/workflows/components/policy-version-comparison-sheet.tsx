@@ -6,10 +6,12 @@ import {
   Alert,
   Badge,
   Select,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
 } from '@erp/ui';
 
 import type { ApprovalPolicyVersionSummary } from '@erp/types';
@@ -42,30 +44,33 @@ export function PolicyVersionComparisonSheet({
   const versions = history.data?.versions ?? [];
 
   return (
-    <Dialog open={Boolean(policyKey)} onOpenChange={onOpenChange}>
-      <DialogContent className="overflow-y-auto p-6 sm:max-w-4xl">
-        <DialogTitle>
-          {t('title')}{' '}
-          <span className="font-mono text-sm font-normal text-muted-foreground">{policyKey}</span>
-        </DialogTitle>
-        <DialogDescription>{t('description')}</DialogDescription>
-
-        {history.isPending ? (
-          <div
-            className="mt-5 h-40 animate-pulse rounded-panel border border-border bg-muted"
-            aria-hidden="true"
-          />
-        ) : history.isError ? (
-          <Alert className="mt-5" variant="error" messages={[t('historyLoadFailed')]} />
-        ) : versions.length === 0 ? (
-          <p className="mt-5 rounded-panel border border-dashed border-border bg-surface px-4 py-6 text-center text-sm text-muted-foreground">
-            {t('noVersions')}
-          </p>
-        ) : (
-          <VersionComparer versions={versions} />
-        )}
-      </DialogContent>
-    </Dialog>
+    <Sheet open={Boolean(policyKey)} onOpenChange={onOpenChange}>
+      <SheetContent size="xl">
+        <SheetHeader>
+          <SheetTitle>
+            {t('title')}{' '}
+            <span className="font-mono text-sm font-normal text-muted-foreground">{policyKey}</span>
+          </SheetTitle>
+          <SheetDescription>{t('description')}</SheetDescription>
+        </SheetHeader>
+        <SheetBody>
+          {history.isPending ? (
+            <div
+              className="h-40 animate-pulse rounded-panel border border-border bg-muted"
+              aria-hidden="true"
+            />
+          ) : history.isError ? (
+            <Alert variant="error" messages={[t('historyLoadFailed')]} />
+          ) : versions.length === 0 ? (
+            <p className="rounded-panel border border-dashed border-border bg-surface px-4 py-6 text-center text-sm text-muted-foreground">
+              {t('noVersions')}
+            </p>
+          ) : (
+            <VersionComparer versions={versions} />
+          )}
+        </SheetBody>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -88,7 +93,7 @@ function VersionComparer({ versions }: { versions: ApprovalPolicyVersionSummary[
   );
 
   return (
-    <div className="mt-5 space-y-5">
+    <div className="space-y-5">
       {/* Version roster — a compact read of the lifecycle across versions. */}
       <ul className="space-y-1.5">
         {versions.map((version) => (

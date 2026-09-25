@@ -4,15 +4,19 @@ import { useMemo, useState } from 'react';
 import { CircleDollarSign, GitPullRequestArrow, Receipt } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import {
+  Alert,
   Button,
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
+  DialogHeader,
   DialogTitle,
   Input,
   Label,
   MoneyInput,
   RadioGroup,
+  Select,
   cn,
   type RadioOption,
 } from '@erp/ui';
@@ -183,13 +187,11 @@ export function BoqClassifierDrawer({
 
   return (
     <Dialog open={open} onOpenChange={(next) => (!next ? onClose() : undefined)}>
-      <DialogContent className="sm:max-w-xl">
-        <DialogTitle>
-          {t('title')}
-          <span className="mt-0.5 block text-body-sm font-normal text-muted-foreground">
-            {t('subtitle')}
-          </span>
-        </DialogTitle>
+      <DialogContent size="md">
+        <DialogHeader>
+          <DialogTitle>{t('title')}</DialogTitle>
+          <DialogDescription>{t('subtitle')}</DialogDescription>
+        </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-1.5">
@@ -223,19 +225,18 @@ export function BoqClassifierDrawer({
             <>
               <div className="space-y-1.5">
                 <Label htmlFor="classifier-parent">BOQ section</Label>
-                <select
+                <Select
                   id="classifier-parent"
                   value={parentId}
-                  onChange={(event) => setParentId(event.target.value)}
-                  className="h-10 w-full rounded-control border border-border bg-surface px-3 text-body-sm"
+                  onChange={setParentId}
                 >
-                <option value="">Select a section</option>
+                  <option value="">Select a section</option>
                   {sections.map((section) => (
                     <option key={section.id} value={section.id}>
                       {section.code} — {section.description}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="classifier-client-ref">{t('clientRefLabel')}</Label>
@@ -251,9 +252,7 @@ export function BoqClassifierDrawer({
           ) : null}
 
           {errorMessage ? (
-            <p className="text-body-sm text-danger" role="alert">
-              {errorMessage}
-            </p>
+            <Alert variant="error">{errorMessage}</Alert>
           ) : null}
         </div>
 

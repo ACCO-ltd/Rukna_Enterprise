@@ -78,7 +78,7 @@ function Cell({
   return (
     // Logical dividers, so the rules land on the correct edge in RTL without an rtl: variant.
     <div className="border-b border-border p-4 last:border-b-0 sm:nth-last-2:border-b-0 sm:odd:border-e lg:border-b-0 lg:not-last:border-e">
-      <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+      <dt className="text-caption font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         {label}
       </dt>
 

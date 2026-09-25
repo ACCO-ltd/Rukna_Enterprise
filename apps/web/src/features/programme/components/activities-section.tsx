@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, CheckboxField, DatePicker, Dialog, DialogContent, DialogTitle, EmptyState, FormField, Input, SectionHeader, Skeleton } from '@erp/ui';
+import { Alert, CheckboxField, DatePicker, Dialog, DialogContent, DialogHeader, DialogTitle, EmptyState, FormField, Input, SectionHeader, Skeleton } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
 import { useProject } from '@/features/projects/hooks/use-project';
@@ -17,7 +17,7 @@ import {
 } from '../hooks/use-programme';
 import type { ProgrammeActivityResponse } from '../api/programme-api';
 
-const refFieldClass = 'rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
+const refFieldClass = 'rounded-control border-border focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary';
 
 const dateOnly = (iso: string | null): string => (iso ? iso.slice(0, 10) : '');
 const isoOf = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
@@ -74,7 +74,7 @@ export function ActivitiesSection({ projectId }: { projectId: string }) {
     <div className="space-y-5">
       <div>
         <SectionHeader title={t('activity.title')} />
-        <p className="mt-1 text-sm text-gray-500">{t('activity.subtitle')}</p>
+        <p className="mt-1 text-body text-muted-foreground">{t('activity.subtitle')}</p>
       </div>
 
       <GanttLite packages={packages} byWp={byWp} projectStart={projectStart} projectEnd={projectEnd} />
@@ -93,9 +93,9 @@ export function ActivitiesSection({ projectId }: { projectId: string }) {
               </RefButton>
             </SectionHeader>
             {acts.length === 0 ? (
-              <p className="text-sm text-gray-500">{t('activity.empty')}</p>
+              <p className="text-body text-muted-foreground">{t('activity.empty')}</p>
             ) : (
-              <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
+              <ul className="divide-y divide-border rounded-panel border border-border bg-surface">
                 {acts.map((a) => {
                   const range =
                     a.plannedStart && a.plannedEnd
@@ -108,12 +108,12 @@ export function ActivitiesSection({ projectId }: { projectId: string }) {
                       <button
                         type="button"
                         onClick={() => setDialog({ workPackageId: wp.id, activity: a })}
-                        className="flex w-full items-center gap-3 px-3 py-2 text-start text-sm hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"
+                        className="flex w-full items-center gap-3 px-3 py-2 text-start text-body hover:bg-surface-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
                       >
-                        <span className="w-16 shrink-0 font-mono text-xs text-gray-500">{a.code}</span>
-                        <span className="min-w-0 flex-1 truncate text-gray-900">{a.name}</span>
+                        <span className="w-16 shrink-0 font-mono text-caption text-muted-foreground">{a.code}</span>
+                        <span className="min-w-0 flex-1 truncate text-foreground">{a.name}</span>
                         {a.isMilestone ? <RefPill tone="blue">{t('activity.col.milestone')}</RefPill> : null}
-                        <span className="shrink-0 tabular-nums text-xs text-gray-500">{range}</span>
+                        <span className="shrink-0 tabular-nums text-caption text-muted-foreground">{range}</span>
                       </button>
                     </li>
                   );
@@ -165,8 +165,8 @@ function GanttLite({
   const pct = (ms: number) => ((ms - axisStart) / span) * 100;
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-      <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase text-gray-500">
+    <div className="rounded-container border border-border bg-surface p-4 shadow-e1">
+      <div className="mb-2 flex items-center justify-between text-caption font-semibold uppercase text-muted-foreground">
         <span className="tabular-nums tracking-normal">{isoOf(axisStart)}</span>
         <span>{t('activity.timeline')}</span>
         <span className="tabular-nums tracking-normal">{isoOf(axisEnd)}</span>
@@ -178,7 +178,7 @@ function GanttLite({
             if (acts.length === 0) return null;
             return (
               <div key={wp.id}>
-                <p className="text-xs font-semibold text-gray-900">
+                <p className="text-caption font-semibold text-foreground">
                   {wp.code} · {wp.name}
                 </p>
                 <ul className="mt-1 space-y-1">
@@ -187,10 +187,10 @@ function GanttLite({
                     const endMs = a.plannedEnd ? new Date(a.plannedEnd).getTime() : null;
                     return (
                       <li key={a.id} className="flex items-center gap-3">
-                        <span className="w-32 shrink-0 truncate text-xs text-gray-500" title={a.name}>
+                        <span className="w-32 shrink-0 truncate text-caption text-muted-foreground" title={a.name}>
                           {a.name}
                         </span>
-                        <span className="relative h-4 flex-1 rounded bg-gray-100">
+                        <span className="relative h-4 flex-1 rounded bg-muted">
                           {endMs !== null ? (
                             <span
                               className="absolute inset-y-0 rounded bg-chart-1"
@@ -310,9 +310,11 @@ function ActivityDialog({
         if (!o && !busy) onClose();
       }}
     >
-      <DialogContent className="rounded-xl p-5 sm:p-6 sm:max-w-lg">
-        <DialogTitle>{isEdit ? t('activity.editTitle') : t('activity.addTitle')}</DialogTitle>
-        <form onSubmit={onSubmit} className="mt-5">
+      <DialogContent size="md">
+        <DialogHeader>
+          <DialogTitle>{isEdit ? t('activity.editTitle') : t('activity.addTitle')}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={onSubmit}>
           {error ? (
             <div className="mb-3">
               <Alert variant="error" messages={[error]} />

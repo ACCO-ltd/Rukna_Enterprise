@@ -25,9 +25,26 @@ export const Sheet = DialogPrimitive.Root;
 export const SheetTrigger = DialogPrimitive.Trigger;
 export const SheetClose = DialogPrimitive.Close;
 
+/**
+ * Size controls the max-width of the panel.
+ *
+ *  md   448px  record preview, short edit form (default)
+ *  lg   576px  medium form, simple inline table
+ *  xl   768px  comparison views, tables with multiple columns
+ *  2xl  896px  matrix/line editors with 4+ columns per row
+ *
+ * If the content needs more than 2xl, it belongs on a full page, not a sheet.
+ */
+const sheetSizeClass = {
+  md: 'max-w-md',
+  lg: 'max-w-xl',
+  xl: 'max-w-3xl',
+  '2xl': 'max-w-4xl',
+} as const;
+
 const sheetSideClass = {
-  end: 'inset-y-0 end-0 w-full max-w-md border-s',
-  start: 'inset-y-0 start-0 w-full max-w-md border-e',
+  end: 'inset-y-0 end-0 w-full border-s',
+  start: 'inset-y-0 start-0 w-full border-e',
 } as const;
 
 export const SheetContent = React.forwardRef<
@@ -35,10 +52,12 @@ export const SheetContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     /** Which inline edge the panel docks to. Logical, so it flips correctly in RTL. */
     side?: keyof typeof sheetSideClass;
+    /** Panel width tier. Defaults to 'md' (448px). Use 'xl' only for comparison tables. */
+    size?: keyof typeof sheetSizeClass;
     /** Accessible name for the close control. */
     closeLabel?: string;
   }
->(({ className, children, side = 'end', closeLabel = 'Close', ...props }, ref) => (
+>(({ className, children, side = 'end', size = 'md', closeLabel = 'Close', ...props }, ref) => (
   <DialogPrimitive.Portal>
     <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-overlay backdrop-blur-sm motion-safe:animate-enter-fade" />
     <DialogPrimitive.Content
@@ -46,6 +65,7 @@ export const SheetContent = React.forwardRef<
       className={cn(
         'fixed z-50 flex flex-col overflow-hidden border-border bg-surface-elevated shadow-e3 motion-safe:animate-enter-fade',
         sheetSideClass[side],
+        sheetSizeClass[size],
         className,
       )}
       {...props}

@@ -9,6 +9,8 @@ import {
   DatePicker,
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogHeader,
   DialogTitle,
   Label,
   Select,
@@ -84,9 +86,11 @@ export function ScheduleSetupWizard({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="p-5 sm:max-w-3xl sm:p-6">
-        <DialogTitle>{tw('title')}</DialogTitle>
-        <p className="mt-1 text-body-sm text-muted-foreground">{tw('subtitle')}</p>
+      <DialogContent size="lg">
+        <DialogHeader>
+          <DialogTitle>{tw('title')}</DialogTitle>
+          <DialogDescription>{tw('subtitle')}</DialogDescription>
+        </DialogHeader>
 
         <div className="mt-5">
           <ProgressStepper steps={stepperSteps} />

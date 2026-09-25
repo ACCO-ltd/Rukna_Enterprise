@@ -11,7 +11,7 @@ import { PROGRESS_PERMISSIONS } from '../permissions';
 import { useCaptureProgressSnapshot } from '../hooks/use-progress';
 import { RefButton } from './ref-ui';
 
-const refFieldClass = 'rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
+const refFieldClass = 'rounded-control border-border focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary';
 
 /** Today as YYYY-MM-DD, in UTC to match how the API stores calendar dates. */
 function todayIso(): string {
@@ -69,7 +69,7 @@ export function CaptureSnapshotAction({
   return (
     <div className="flex flex-wrap items-end gap-2">
       {allowDateChoice ? (
-        <label className="flex flex-col gap-1 text-xs text-gray-500">
+        <label className="flex flex-col gap-1 text-caption text-muted-foreground">
           <span>{t('curve.capture.periodEndDate')}</span>
           <DatePicker
             id="snapshot-period-end"

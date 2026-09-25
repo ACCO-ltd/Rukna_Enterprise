@@ -143,7 +143,7 @@ const EQUIPMENT_TYPE_OPTIONS = [
 
 const SHIFT_OPTIONS = ['Morning', 'Afternoon', 'Night', 'Full day'] as const;
 
-const refFieldClass = 'rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
+const refFieldClass = 'rounded-control border-border focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary';
 
 export function DprDetail({
   projectId,
@@ -283,11 +283,11 @@ export function DprDetail({
               />
             ) : null}
           </div>
-          <div className="mt-4 border-t border-gray-100 pt-4">
+          <div className="mt-4 border-t border-border pt-4">
             <ApprovalChain steps={chain} label={t('report.chain.label')} />
           </div>
           {isApproved ? (
-            <p className="mt-3 text-sm text-green-600">{t('report.approvedHint')}</p>
+            <p className="mt-3 text-body text-success">{t('report.approvedHint')}</p>
           ) : null}
           {/* Once the report is submitted/approved these become the permanent read record; while
               editable they live in the ReportDetailsCard below instead, so a value is never shown
@@ -323,7 +323,7 @@ export function DprDetail({
             <AddMeasurementForm dprId={dprId} projectId={projectId} leaves={leaves} />
           ) : null}
           {dpr.measurements.length === 0 ? (
-            <p className="mt-3 text-sm text-gray-500">{t('measurement.empty')}</p>
+            <p className="mt-3 text-body text-muted-foreground">{t('measurement.empty')}</p>
           ) : dpr.status === 'SUBMITTED' ? (
             <div className="mt-3 space-y-4">
               {dpr.measurements.map((m) => {
@@ -336,10 +336,10 @@ export function DprDetail({
                 const exceeds = scope > 0 && cumulative > scope;
                 const unit = leaf?.unit ? ` ${leaf.unit}` : '';
                 return (
-                  <div key={m.id} className="rounded-lg border border-gray-100 p-3">
-                    <p className="text-sm font-medium text-gray-900">{leafLabel.get(m.boqNodeId) ?? m.boqNodeId}</p>
+                  <div key={m.id} className="rounded-panel border border-border p-3">
+                    <p className="text-body font-medium text-foreground">{leafLabel.get(m.boqNodeId) ?? m.boqNodeId}</p>
                     {m.locationArea ? (
-                      <p className="mt-0.5 text-xs text-gray-500">{m.locationArea}</p>
+                      <p className="mt-0.5 text-caption text-muted-foreground">{m.locationArea}</p>
                     ) : null}
                     <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
                       <RefStatTile label={t('measurement.review.priorVerified')} value={`${formatNumber(priorVerified, locale, 3)}${unit}`} />
@@ -352,7 +352,7 @@ export function DprDetail({
                       <RefStatTile label={t('measurement.review.scope')} value={scope > 0 ? `${formatNumber(scope, locale, 3)}${unit}` : '—'} />
                     </div>
                     {exceeds ? (
-                      <p className="mt-2 text-xs text-amber-600">{t('measurement.review.cumulativeExceedsScope')}</p>
+                      <p className="mt-2 text-caption text-warning">{t('measurement.review.cumulativeExceedsScope')}</p>
                     ) : null}
                   </div>
                 );
@@ -376,8 +376,8 @@ export function DprDetail({
                       <RefTd numeric className="whitespace-nowrap tabular-nums">
                         {formatNumber(m.quantity, locale, 3)}
                       </RefTd>
-                      <RefTd className="text-gray-500">{m.locationArea ?? '—'}</RefTd>
-                      <RefTd className="text-gray-500">{m.notes ?? '—'}</RefTd>
+                      <RefTd className="text-muted-foreground">{m.locationArea ?? '—'}</RefTd>
+                      <RefTd className="text-muted-foreground">{m.notes ?? '—'}</RefTd>
                     </RefTr>
                   ))}
                 </RefTbody>
@@ -402,7 +402,7 @@ export function DprDetail({
         <RefCardBody className="pt-4">
           <LabourSection dprId={dprId} rows={dpr.labourRows ?? []} editable={editable} />
         </RefCardBody>
-        <div className="border-t border-gray-100" />
+        <div className="border-t border-border" />
         <RefCardHeader icon={<Wrench size={17} strokeWidth={1.9} />} title={t('equipment.title')} />
         <RefCardBody>
           <EquipmentSection dprId={dprId} rows={dpr.equipmentRows ?? []} editable={editable} />
@@ -421,13 +421,13 @@ export function DprDetail({
         <RefCard>
           <RefCardHeader title={t('context.tomorrowPlan')} />
           <RefCardBody>
-            <p className="text-sm whitespace-pre-wrap text-gray-700">{dpr.tomorrowPlan}</p>
+            <p className="text-body whitespace-pre-wrap text-foreground">{dpr.tomorrowPlan}</p>
           </RefCardBody>
         </RefCard>
       ) : null}
 
       {actionButtons ? (
-        <div className="flex justify-end gap-2 border-t border-gray-100 pt-4">{actionButtons}</div>
+        <div className="flex justify-end gap-2 border-t border-border pt-4">{actionButtons}</div>
       ) : null}
 
       {confirm === 'approve' ? (
@@ -580,19 +580,19 @@ function ReportDetailsCard({
 function Meta({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex gap-2">
-      <dt className="shrink-0 font-medium text-gray-500">{label}</dt>
-      <dd className="text-gray-900">{value}</dd>
+      <dt className="shrink-0 font-medium text-muted-foreground">{label}</dt>
+      <dd className="text-foreground">{value}</dd>
     </div>
   );
 }
 
 function PersonCard({ label, name, muted }: { label: string; name: string; muted?: boolean }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-gray-100 p-3">
+    <div className="flex items-center gap-3 rounded-panel border border-border p-3">
       <Avatar name={name} />
       <div className="min-w-0">
-        <p className="text-xs text-gray-500">{label}</p>
-        <p className={`truncate text-sm font-medium ${muted ? 'text-gray-600' : 'text-gray-900'}`}>{name}</p>
+        <p className="text-caption text-muted-foreground">{label}</p>
+        <p className={`truncate text-body font-medium ${muted ? 'text-muted-foreground' : 'text-foreground'}`}>{name}</p>
       </div>
     </div>
   );
@@ -796,7 +796,7 @@ function DprEvidence({
           </div>
         ) : null}
         {attachments.length === 0 ? (
-          <p className="mt-3 text-sm text-gray-500">{t('evidence.empty')}</p>
+          <p className="mt-3 text-body text-muted-foreground">{t('evidence.empty')}</p>
         ) : (
           <ul className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-4">
             {attachments.map((a, index) => (
@@ -834,11 +834,11 @@ function EvidenceTile({
   });
 
   if (query.isPending) {
-    return <li className="aspect-square animate-pulse rounded-lg bg-gray-100" aria-hidden="true" />;
+    return <li className="aspect-square animate-pulse rounded-panel bg-muted" aria-hidden="true" />;
   }
   if (query.isError || !query.data) {
     return (
-      <li className="flex aspect-square items-center justify-center rounded-lg border border-gray-200 bg-white px-2 text-center text-xs text-gray-500">
+      <li className="flex aspect-square items-center justify-center rounded-panel border border-border bg-surface px-2 text-center text-caption text-muted-foreground">
         {t('evidence.unavailable')}
       </li>
     );
@@ -849,12 +849,12 @@ function EvidenceTile({
   const isVideo = mimeType.startsWith('video/');
 
   return (
-    <li className="relative aspect-square overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
+    <li className="relative aspect-square overflow-hidden rounded-panel border border-border bg-muted">
       <a
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        className="block h-full w-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500"
+        className="block h-full w-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
         title={originalName}
       >
         {isImage ? (
@@ -976,12 +976,12 @@ function LabourSection({
                   <RefTr key={row.id}>
                     <RefTd className="font-medium">{row.trade}</RefTd>
                     <RefTd numeric className="tabular-nums">{row.headcount}</RefTd>
-                    <RefTd className="text-gray-500">{row.contractor ?? '—'}</RefTd>
-                    <RefTd numeric className="tabular-nums text-gray-500">
+                    <RefTd className="text-muted-foreground">{row.contractor ?? '—'}</RefTd>
+                    <RefTd numeric className="tabular-nums text-muted-foreground">
                       {row.hours != null ? (
                         <>
                           <div>{formatNumber(Number(row.hours), locale, 1)}</div>
-                          <div className="text-xs text-gray-400">
+                          <div className="text-caption text-disabled-foreground">
                             {formatNumber(manHours!, locale, 0)} {t('labour.fields.manHours')}
                           </div>
                         </>
@@ -1009,7 +1009,7 @@ function LabourSection({
           </RefTable>
         </RefTableScroll>
       ) : (
-        <p className="text-sm text-gray-500">{t('labour.empty')}</p>
+        <p className="text-body text-muted-foreground">{t('labour.empty')}</p>
       )}
       {editable ? (
         <form onSubmit={onAdd} className="mt-3 grid gap-2 sm:grid-cols-4" aria-label={t('labour.add')}>
@@ -1166,10 +1166,10 @@ function EquipmentSection({
                 <RefTr key={row.id}>
                   <RefTd className="font-medium">{row.equipmentType}</RefTd>
                   <RefTd numeric className="tabular-nums">{row.count}</RefTd>
-                  <RefTd numeric className="tabular-nums text-gray-500">
+                  <RefTd numeric className="tabular-nums text-muted-foreground">
                     {row.hoursWorked ?? '—'}
                   </RefTd>
-                  <RefTd className="text-gray-500">{row.condition ?? '—'}</RefTd>
+                  <RefTd className="text-muted-foreground">{row.condition ?? '—'}</RefTd>
                   {editable ? (
                     <RefTd>
                       <RefButton
@@ -1189,7 +1189,7 @@ function EquipmentSection({
           </RefTable>
         </RefTableScroll>
       ) : (
-        <p className="text-sm text-gray-500">{t('equipment.empty')}</p>
+        <p className="text-body text-muted-foreground">{t('equipment.empty')}</p>
       )}
       {editable ? (
         <form onSubmit={onAdd} className="mt-3 grid gap-2 sm:grid-cols-3" aria-label={t('equipment.add')}>
@@ -1301,22 +1301,22 @@ function ObservationsSection({
   return (
     <div>
       {rows.length > 0 ? (
-        <ul className="divide-y divide-gray-100">
+        <ul className="divide-y divide-border">
           {rows.map((obs) => (
             <li key={obs.id} className="flex items-start gap-3 py-3">
               <RefPill tone={OBS_TONES[obs.category as ObsCategory] ?? 'blue'} className="mt-0.5 shrink-0">
                 {t(`observations.categories.${obs.category}`)}
               </RefPill>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-gray-900">{obs.description}</p>
+                <p className="text-body font-medium text-foreground">{obs.description}</p>
                 {obs.affectedWork ? (
-                  <p className="mt-0.5 text-xs text-gray-500">{obs.affectedWork}</p>
+                  <p className="mt-0.5 text-caption text-muted-foreground">{obs.affectedWork}</p>
                 ) : null}
                 {obs.severity ? (
-                  <p className="mt-0.5 text-xs text-gray-500 capitalize">{obs.severity}</p>
+                  <p className="mt-0.5 text-caption text-muted-foreground capitalize">{obs.severity}</p>
                 ) : null}
                 {obs.followUpOwner ? (
-                  <p className="mt-0.5 text-xs text-gray-500">→ {obs.followUpOwner}</p>
+                  <p className="mt-0.5 text-caption text-muted-foreground">→ {obs.followUpOwner}</p>
                 ) : null}
               </div>
               {editable ? (
@@ -1334,7 +1334,7 @@ function ObservationsSection({
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-gray-500">{t('observations.empty')}</p>
+        <p className="text-body text-muted-foreground">{t('observations.empty')}</p>
       )}
       {editable ? (
         <form onSubmit={onAdd} className="mt-3 grid gap-2 sm:grid-cols-2" aria-label={t('observations.add')}>

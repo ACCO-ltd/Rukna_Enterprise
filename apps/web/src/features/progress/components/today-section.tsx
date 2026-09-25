@@ -88,7 +88,7 @@ function TodayReportCard({
   // Only fires once there is a today's report — `useDpr` no-ops on an empty id.
   const detail = useDpr(todayDpr?.id ?? '');
 
-  if (isPending) return <Skeleton className="h-24 w-full rounded-xl" aria-hidden="true" />;
+  if (isPending) return <Skeleton className="h-24 w-full rounded-container" aria-hidden="true" />;
   if (isError) return null;
 
   const dateLabel = formatDate(today, locale as 'en');
@@ -126,7 +126,7 @@ function TodayReportCard({
         }
       />
       <RefCardBody>
-        <div className="mt-3 divide-y divide-gray-100 border-t border-gray-100">
+        <div className="mt-3 divide-y divide-border border-t border-border">
           <SummaryRow
             icon={<HardHat size={16} strokeWidth={1.9} />}
             tone="green"
@@ -202,10 +202,10 @@ function SummaryRow({
   value: string | undefined;
 }) {
   const toneClass: Record<typeof tone, string> = {
-    green: 'bg-green-50 text-green-600',
-    blue: 'bg-blue-50 text-blue-600',
-    amber: 'bg-amber-50 text-amber-600',
-    violet: 'bg-violet-50 text-violet-600',
+    green: 'bg-success-subtle text-success',
+    blue: 'bg-brand-accent text-brand-primary',
+    amber: 'bg-warning-subtle text-warning',
+    violet: 'bg-historical-subtle text-historical',
   };
   return (
     <div className="flex items-center justify-between gap-3 py-2.5">
@@ -213,12 +213,12 @@ function SummaryRow({
         <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${toneClass[tone]}`} aria-hidden="true">
           {icon}
         </span>
-        <span className="truncate text-sm text-gray-600">{label}</span>
+        <span className="truncate text-body text-muted-foreground">{label}</span>
       </div>
       {value === undefined ? (
-        <span className="h-3.5 w-20 animate-pulse rounded bg-gray-100" aria-hidden="true" />
+        <span className="h-3.5 w-20 animate-pulse rounded bg-muted" aria-hidden="true" />
       ) : (
-        <span className="shrink-0 text-sm font-medium text-gray-900">{value}</span>
+        <span className="shrink-0 text-body font-medium text-foreground">{value}</span>
       )}
     </div>
   );

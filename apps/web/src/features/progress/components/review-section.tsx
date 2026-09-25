@@ -33,9 +33,9 @@ export function ReviewSection({ projectId }: { projectId: string }) {
   if (dprs.isPending) {
     return (
       <div className="space-y-3">
-        <div className="h-12 w-full animate-pulse rounded-lg bg-gray-100" aria-hidden="true" />
-        <div className="h-12 w-full animate-pulse rounded-lg bg-gray-100" aria-hidden="true" />
-        <div className="h-12 w-full animate-pulse rounded-lg bg-gray-100" aria-hidden="true" />
+        <div className="h-12 w-full animate-pulse rounded-panel bg-muted" aria-hidden="true" />
+        <div className="h-12 w-full animate-pulse rounded-panel bg-muted" aria-hidden="true" />
+        <div className="h-12 w-full animate-pulse rounded-panel bg-muted" aria-hidden="true" />
       </div>
     );
   }
@@ -69,20 +69,20 @@ export function ReviewSection({ projectId }: { projectId: string }) {
           title={t('review.queueCount', { count: all.length })}
           subtitle={t('review.subtitle')}
         />
-        <div className="border-t border-gray-100 px-5 pt-3">
-          <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
+        <div className="border-t border-border px-5 pt-3">
+          <div className="flex gap-1 rounded-panel bg-muted p-1">
             {(Object.keys(groups) as QueueTab[]).map((key) => (
               <button
                 key={key}
                 type="button"
                 onClick={() => setTab(key)}
-                className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
-                  tab === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                className={`flex-1 rounded-md px-2 py-1.5 text-caption font-medium transition-colors ${
+                  tab === key ? 'bg-surface text-foreground shadow-e1' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 {tabLabels[key]}
                 {key === 'submitted' && submitted.length > 0 ? (
-                  <span className="ms-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-medium text-white">
+                  <span className="ms-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-primary px-1 text-[10px] font-medium text-white">
                     {submitted.length}
                   </span>
                 ) : null}
@@ -93,8 +93,8 @@ export function ReviewSection({ projectId }: { projectId: string }) {
         <div className="mt-3 max-h-[32rem] overflow-y-auto px-2 pb-2">
           {items.length === 0 ? (
             <div className="px-3 py-8 text-center">
-              <p className="text-sm text-gray-500">{t('review.empty')}</p>
-              {tab === 'submitted' ? <p className="mt-1 text-xs text-gray-400">{t('review.emptyHint')}</p> : null}
+              <p className="text-body text-muted-foreground">{t('review.empty')}</p>
+              {tab === 'submitted' ? <p className="mt-1 text-caption text-disabled-foreground">{t('review.emptyHint')}</p> : null}
             </div>
           ) : (
             <ul className="space-y-1">
@@ -117,9 +117,9 @@ export function ReviewSection({ projectId }: { projectId: string }) {
       ) : (
         <RefCard>
           <div className="flex flex-col items-center justify-center gap-2 px-6 py-20 text-center">
-            <ClipboardCheck size={28} strokeWidth={1.6} className="text-gray-300" aria-hidden="true" />
-            <p className="text-sm font-medium text-gray-900">{t('review.selectPrompt')}</p>
-            <p className="text-sm text-gray-500">{t('review.selectPromptHint')}</p>
+            <ClipboardCheck size={28} strokeWidth={1.6} className="text-disabled-foreground" aria-hidden="true" />
+            <p className="text-body font-medium text-foreground">{t('review.selectPrompt')}</p>
+            <p className="text-body text-muted-foreground">{t('review.selectPromptHint')}</p>
           </div>
         </RefCard>
       )}
@@ -144,15 +144,15 @@ function QueueRow({
         type="button"
         onClick={onSelect}
         aria-current={selected ? 'true' : undefined}
-        className={`flex w-full items-start gap-2.5 rounded-lg border px-3 py-2.5 text-start transition-colors ${
-          selected ? 'border-blue-200 bg-blue-50' : 'border-transparent hover:bg-gray-50'
+        className={`flex w-full items-start gap-2.5 rounded-panel border px-3 py-2.5 text-start transition-colors ${
+          selected ? 'border-brand-accent-strong bg-brand-accent' : 'border-transparent hover:bg-surface-subtle'
         }`}
       >
         <Avatar name={dpr.preparedByName ?? dpr.preparedBy} size="sm" aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <p className="truncate text-sm font-medium text-gray-900">{dpr.preparedByName ?? dpr.preparedBy}</p>
-            <span className="shrink-0 text-xs text-gray-400">{formatDate(dpr.reportDate, locale)}</span>
+            <p className="truncate text-body font-medium text-foreground">{dpr.preparedByName ?? dpr.preparedBy}</p>
+            <span className="shrink-0 text-caption text-disabled-foreground">{formatDate(dpr.reportDate, locale)}</span>
           </div>
           <div className="mt-0.5 flex items-center gap-1.5">
             <DprStatusBadge status={dpr.status} />

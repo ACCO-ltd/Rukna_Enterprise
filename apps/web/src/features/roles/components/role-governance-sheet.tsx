@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, Badge, Button, FormField, Select, Dialog, DialogContent, DialogDescription, DialogTitle, Textarea } from '@erp/ui';
+import { Alert, Badge, Button, FormField, Select, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Textarea } from '@erp/ui';
 import type { RoleSummary } from '@erp/types';
 import { useUsers } from '@/features/users/hooks/use-users';
 import { useCreateRoleAccessReview, useReassignRoleOwner, useRoleAccessReviews, useRoleImpact } from '../hooks/use-roles';
@@ -12,7 +12,7 @@ export function RoleGovernanceSheet({ role, onOpenChange }: { role: RoleSummary 
   const impact = useRoleImpact(role?.id ?? null); const reviews = useRoleAccessReviews(role?.id ?? null); const users = useUsers();
   const reassign = useReassignRoleOwner(); const review = useCreateRoleAccessReview(); const [ownerId, setOwnerId] = useState(''); const [decision, setDecision] = useState<'CONFIRMED' | 'CHANGES_REQUIRED'>('CONFIRMED'); const [notes, setNotes] = useState('');
   const close = (open: boolean) => { if (!open) { setOwnerId(''); setNotes(''); reassign.reset(); review.reset(); } onOpenChange(open); };
-  return <Dialog open={Boolean(role)} onOpenChange={close}><DialogContent className="overflow-y-auto p-6 sm:max-w-lg"><DialogTitle>{role?.name}</DialogTitle><DialogDescription className="mt-1">{role?.kind === 'SYSTEM' ? t('systemHint') : t('customHint')}</DialogDescription>
+  return <Dialog open={Boolean(role)} onOpenChange={close}><DialogContent size="md"><DialogHeader><DialogTitle>{role?.name}</DialogTitle><DialogDescription>{role?.kind === 'SYSTEM' ? t('systemHint') : t('customHint')}</DialogDescription></DialogHeader>
     {impact.isPending ? <div className="mt-5 h-48 animate-pulse rounded-panel bg-muted" /> : impact.data ? <div className="mt-5 space-y-5"><section><h3 className="text-sm font-semibold">{t('impact')}</h3><p className="text-sm text-muted-foreground">{t('memberCount', { count: impact.data.memberCount })}</p><div className="mt-2 flex flex-wrap gap-1">{impact.data.permissions.map(p => <Badge key={p.id} tone={p.riskClass === 'CRITICAL' ? 'danger' : p.riskClass === 'HIGH' ? 'warning' : 'neutral'}>{p.action}:{p.resource} · {p.riskClass}</Badge>)}</div></section>
       {impact.data.warnings.length ? <Alert variant="warning" messages={impact.data.warnings.map(w => w.message)} /> : <Alert variant="success" messages={[t('noWarnings')]} />}
       {role?.kind === 'CUSTOM' ? <section className="space-y-3 border-t border-border pt-4"><h3 className="text-sm font-semibold">{t('owner')}</h3><Select value={ownerId} onChange={value => setOwnerId(value)}><option value="">{t('selectOwner')}</option>{(users.data ?? []).filter(u => u.status === 'ACTIVE').map(u => <option key={u.id} value={u.id}>{u.firstName} {u.lastName} · {u.email}</option>)}</Select><Button size="sm" disabled={!ownerId || reassign.isPending} onClick={() => role && reassign.mutate({ id: role.id, ownerUserId: ownerId })}>{t('saveOwner')}</Button></section> : null}

@@ -187,7 +187,7 @@ function ProgressCurvePanel({
         }
       />
       <RefCardBody className="space-y-4 pt-4">
-        <div className="grid grid-cols-3 gap-4 rounded-lg border border-gray-100 p-4">
+        <div className="grid grid-cols-3 gap-4 rounded-panel border border-border p-4">
           <RefStatTile label={t('curve.plannedToDate')} value={pct(plannedToDate)} />
           <RefStatTile label={t('curve.actual')} value={latest ? `${latest.physicalPercent}%` : '—'} />
           <RefStatTile label={t('curve.verified')} value={latest ? `${latest.verifiedPercent}%` : '—'} />
@@ -202,12 +202,12 @@ function ProgressCurvePanel({
 
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
           {latest ? (
-            <p className="text-xs text-gray-500">
+            <p className="text-caption text-muted-foreground">
               {t('curve.lastSnapshot', { date: formatDate(latest.periodEndDate) ?? '—' })}
             </p>
           ) : null}
           {curve.baselineProvisional ? (
-            <p className="text-xs text-gray-500">{t('curve.provisionalNote')}</p>
+            <p className="text-caption text-muted-foreground">{t('curve.provisionalNote')}</p>
           ) : null}
         </div>
       </RefCardBody>

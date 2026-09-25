@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, Dialog, DialogContent, DialogDescription, DialogTitle, Skeleton, useToast } from '@erp/ui';
+import { Alert, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Skeleton, useToast } from '@erp/ui';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { BoqTreeNodeResponse } from '@erp/types';
 
@@ -14,7 +14,7 @@ import { suggestDeliveryPlan } from '../domain/suggest-delivery-plan';
 import { useSaveDeliveryPlan, useWorkPackages } from '../hooks/use-progress';
 import { RefButton, RefPill, RefTable, RefTableScroll, RefTbody, RefTd, RefTh, RefThead, RefTr } from './ref-ui';
 
-const refFieldClass = 'rounded-lg border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
+const refFieldClass = 'rounded-control border-border px-2 py-1 text-body focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary';
 
 interface LeafInfo {
   code: string;
@@ -172,15 +172,17 @@ export function DeliveryPlanDialog({
         onOpenChange(o);
       }}
     >
-      <DialogContent className="rounded-xl p-5 sm:max-w-4xl sm:p-6" aria-describedby="delivery-plan-desc">
-        <DialogTitle>{t('deliveryPlan.title')}</DialogTitle>
-        <DialogDescription id="delivery-plan-desc">{t('deliveryPlan.subtitle')}</DialogDescription>
+      <DialogContent size="xl">
+        <DialogHeader>
+          <DialogTitle>{t('deliveryPlan.title')}</DialogTitle>
+          <DialogDescription>{t('deliveryPlan.subtitle')}</DialogDescription>
+        </DialogHeader>
 
         <div className="mt-4 max-h-[65vh] overflow-y-auto">
           {loading ? (
             <Skeleton className="h-48 w-full" />
           ) : !suggestion || suggestion.packages.length === 0 ? (
-            <p className="py-8 text-center text-sm text-gray-500">{t('deliveryPlan.empty')}</p>
+            <p className="py-8 text-center text-body text-muted-foreground">{t('deliveryPlan.empty')}</p>
           ) : (
             <>
               {suggestion.orphanLeafIds.length > 0 ? (
@@ -231,7 +233,7 @@ export function DeliveryPlanDialog({
                 </RefTable>
               </RefTableScroll>
 
-              <p className={`mt-3 text-xs ${totalWeightPercent > 100 ? 'text-amber-600' : 'text-gray-500'}`}>
+              <p className={`mt-3 text-caption ${totalWeightPercent > 100 ? 'text-warning' : 'text-muted-foreground'}`}>
                 {totalWeightPercent > 100
                   ? t('deliveryPlan.weightTotalOver', { total: totalWeightPercent })
                   : t('deliveryPlan.weightTotal', { total: totalWeightPercent })}
@@ -240,7 +242,7 @@ export function DeliveryPlanDialog({
           )}
         </div>
 
-        <div className="mt-4 flex items-center justify-end gap-2 border-t border-gray-100 pt-4">
+        <div className="mt-4 flex items-center justify-end gap-2 border-t border-border pt-4">
           <RefButton variant="outline" onClick={() => onOpenChange(false)} disabled={save.isPending}>
             {t('deliveryPlan.cancel')}
           </RefButton>
@@ -290,7 +292,7 @@ function RowGroup({
             checked={row.included}
             onChange={(e) => onChange({ included: e.target.checked })}
             aria-label={`${t('deliveryPlan.col.include')} — ${row.name}`}
-            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            className="h-4 w-4 rounded border-border text-brand-primary focus:ring-brand-primary"
           />
         </RefTd>
         <RefTd>
@@ -313,7 +315,7 @@ function RowGroup({
           <button
             type="button"
             onClick={onToggleExpand}
-            className="flex items-center gap-1 text-gray-700 hover:text-gray-900"
+            className="flex items-center gap-1 text-foreground hover:text-foreground"
           >
             {isExpanded ? (
               <ChevronDown size={14} aria-hidden="true" />
@@ -322,7 +324,7 @@ function RowGroup({
             )}
             <span>{t('deliveryPlan.coverageCount', { count: row.leafIds.length })}</span>
           </button>
-          <div className="text-xs text-gray-500">{formatMoney(String(totalValue), currency, 'en')}</div>
+          <div className="text-caption text-muted-foreground">{formatMoney(String(totalValue), currency, 'en')}</div>
         </RefTd>
         <RefTd>
           <input
@@ -344,7 +346,7 @@ function RowGroup({
               disabled={!row.included}
               className={`${refFieldClass} w-16 text-end`}
             />
-            <span className="text-gray-500">%</span>
+            <span className="text-muted-foreground">%</span>
           </div>
         </RefTd>
         <RefTd>
@@ -363,18 +365,18 @@ function RowGroup({
       </RefTr>
       {isExpanded ? (
         <RefTr>
-          <RefTd colSpan={7} className="bg-gray-50">
-            <p className="mb-1 text-xs font-medium text-gray-500">{t('deliveryPlan.inspect')}</p>
+          <RefTd colSpan={7} className="bg-surface-subtle">
+            <p className="mb-1 text-caption font-medium text-muted-foreground">{t('deliveryPlan.inspect')}</p>
             {row.leafIds.length === 0 ? (
-              <p className="text-xs text-gray-400">{t('deliveryPlan.noItemsHint')}</p>
+              <p className="text-caption text-disabled-foreground">{t('deliveryPlan.noItemsHint')}</p>
             ) : (
               <ul className="space-y-1">
                 {row.leafIds.map((id) => {
                   const leaf = leafInfo.get(id);
                   return (
-                    <li key={id} className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-700">
+                    <li key={id} className="flex flex-wrap items-center justify-between gap-2 text-caption text-foreground">
                       <span>
-                        <span className="font-mono text-gray-500">{leaf?.code ?? id}</span>
+                        <span className="font-mono text-muted-foreground">{leaf?.code ?? id}</span>
                         {leaf ? ` — ${leaf.description}` : ''}
                       </span>
                       {otherIncludedRows.length > 0 ? (
@@ -384,7 +386,7 @@ function RowGroup({
                             if (e.target.value) onMoveLeaf(id, e.target.value);
                           }}
                           aria-label={t('deliveryPlan.moveTo', { item: leaf?.code ?? id })}
-                          className="rounded border-gray-300 text-xs focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                          className="rounded-control border-border text-caption focus:border-brand-primary focus:ring-1 focus:ring-brand-primary"
                         >
                           <option value="">{t('deliveryPlan.moveToPlaceholder')}</option>
                           {otherIncludedRows.map((r) => (

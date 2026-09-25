@@ -21,10 +21,10 @@ const msOf = (iso: string): number => new Date(iso).getTime();
  * `--chart-*` ramp (data-viz, not status); only this dot/badge colours by meaning.
  */
 const STATUS_DOT: Record<ProgressScheduleStatus, string> = {
-  AHEAD: 'bg-green-500',
-  ON_TRACK: 'bg-green-500',
-  BEHIND: 'bg-amber-500',
-  INSUFFICIENT_DATA: 'bg-gray-400',
+  AHEAD: 'bg-success',
+  ON_TRACK: 'bg-success',
+  BEHIND: 'bg-warning',
+  INSUFFICIENT_DATA: 'bg-disabled-foreground',
 };
 
 const STATUS_TONE: Record<ProgressScheduleStatus, RefTone> = {
@@ -147,7 +147,7 @@ function ScheduleHeader({ t }: { t: ReturnType<typeof useTranslations> }) {
   return (
     <div>
       <SectionHeader title={t('wpSchedule.title')} />
-      <p className="mt-1 text-sm text-gray-500">{t('wpSchedule.subtitle')}</p>
+      <p className="mt-1 text-body text-muted-foreground">{t('wpSchedule.subtitle')}</p>
     </div>
   );
 }
@@ -202,15 +202,15 @@ function ScheduleTimeline({
   const clampPct = (ms: number) => Math.min(100, Math.max(0, pct(ms)));
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-      <div className="mb-3 flex items-center justify-between text-xs font-semibold uppercase text-gray-500">
+    <div className="rounded-container border border-border bg-surface p-4 shadow-e1">
+      <div className="mb-3 flex items-center justify-between text-caption font-semibold uppercase text-muted-foreground">
         <span className="tabular-nums tracking-normal">{isoOf(axisStart)}</span>
         <span>{t('wpSchedule.timeline')}</span>
         <span className="tabular-nums tracking-normal">{isoOf(axisEnd)}</span>
       </div>
 
       {/* Legend — the two bar meanings, and that the actual is derived, stated once. */}
-      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-caption text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <span className="h-2.5 w-4 rounded bg-chart-1" aria-hidden="true" />
           {t('wpSchedule.legend.planned')}
@@ -275,8 +275,8 @@ function ScheduleRow({
   return (
     <li className="space-y-1.5">
       <div className="flex items-center gap-2">
-        <span className="w-14 shrink-0 font-mono text-xs text-gray-500">{line.code}</span>
-        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-gray-900" title={line.name}>
+        <span className="w-14 shrink-0 font-mono text-caption text-muted-foreground">{line.code}</span>
+        <span className="min-w-0 flex-1 truncate text-caption font-semibold text-foreground" title={line.name}>
           {line.name}
         </span>
         {line.scheduleOnly ? <RefPill tone="gray">{t('wpSchedule.scheduleOnly')}</RefPill> : null}
@@ -288,7 +288,7 @@ function ScheduleRow({
         <span className="w-14 shrink-0" aria-hidden="true" />
         {/* The track holds the planned bar on top and the derived-actual bar below it. */}
         <span
-          className="relative block h-6 min-w-0 flex-1 rounded-md bg-gray-100"
+          className="relative block h-6 min-w-0 flex-1 rounded-md bg-muted"
           role="img"
           aria-label={`${line.name}: ${t('wpSchedule.planned')} ${plannedRange}; ${t('wpSchedule.actual')} ${actualRange}`}
         >
@@ -334,13 +334,13 @@ function ScheduleRow({
 function PercentChip({ percent, label }: { percent: number | null; label: string }) {
   if (percent === null) {
     return (
-      <span className="w-12 shrink-0 text-end text-xs tabular-nums text-gray-400" aria-label={label}>
+      <span className="w-12 shrink-0 text-end text-caption tabular-nums text-disabled-foreground" aria-label={label}>
         —
       </span>
     );
   }
   return (
-    <span className="w-12 shrink-0 text-end text-xs font-semibold tabular-nums text-gray-900" aria-label={label}>
+    <span className="w-12 shrink-0 text-end text-caption font-semibold tabular-nums text-foreground" aria-label={label}>
       {`${percent}%`}
     </span>
   );

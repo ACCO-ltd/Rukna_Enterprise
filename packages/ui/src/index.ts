@@ -16,7 +16,7 @@ export type {
   ApprovalTimelineProps,
   DecisionPanelProps,
 } from './components/approval';
-export { Badge } from './components/badge';
+export { Badge, StatusBadge } from './components/badge';
 export type { BadgeProps, BadgeTone } from './components/badge';
 export { Button } from './components/button';
 export type { ButtonProps } from './components/button';
@@ -43,9 +43,12 @@ export {
   DialogContent,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from './components/dialog';
+export { ConfirmDialog } from './components/confirm-dialog';
+export type { ConfirmDialogProps } from './components/confirm-dialog';
 export { DirectionProvider } from './components/direction-provider';
 export { Input } from './components/input';
 export type { InputProps } from './components/input';

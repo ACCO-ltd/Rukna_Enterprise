@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Alert, FormField, Input, Label, Select, Dialog, DialogContent, DialogTitle } from '@erp/ui';
+import { Alert, FormField, Input, Label, Select, Dialog, DialogContent, DialogHeader, DialogTitle } from '@erp/ui';
 import { Layers } from 'lucide-react';
 
 import type { SuggestedWeightLine } from '@erp/types';
@@ -31,7 +31,7 @@ import {
   RefTr,
 } from './ref-ui';
 
-const refFieldClass = 'rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
+const refFieldClass = 'rounded-control border-border focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary';
 
 /**
  * Work-package control layer: an index that leads with the weighted roll-up and the packages
@@ -98,7 +98,7 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
     return (
       <div role="status" aria-live="polite">
         <span className="sr-only">{tCommon('loading')}</span>
-        <div className="h-48 animate-pulse rounded-xl bg-gray-100" aria-hidden="true" />
+        <div className="h-48 animate-pulse rounded-container bg-muted" aria-hidden="true" />
       </div>
     );
   }
@@ -161,7 +161,7 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
         }
       />
       <RefCardBody className="space-y-4 pt-4">
-        <div className="grid grid-cols-2 gap-4 rounded-lg border border-gray-100 p-4 sm:w-fit sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-4 rounded-panel border border-border p-4 sm:w-fit sm:grid-cols-2">
           <RefStatTile label={t('rollup.physicalPercent')} value={`${data.physicalPercent}%`} />
           <RefStatTile
             label={t('rollup.weightsLabel')}
@@ -181,11 +181,11 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
         ) : null}
 
         {suggestions !== null ? (
-          <div className="rounded-lg border border-gray-100 bg-gray-50 p-4 space-y-3">
+          <div className="rounded-panel border border-border bg-surface-subtle p-4 space-y-3">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="text-sm font-medium text-gray-900">{t('workPackage.proposed.title')}</p>
-                <p className="mt-0.5 text-xs text-gray-500">{t('workPackage.proposed.hint')}</p>
+                <p className="text-body font-medium text-foreground">{t('workPackage.proposed.title')}</p>
+                <p className="mt-0.5 text-caption text-muted-foreground">{t('workPackage.proposed.hint')}</p>
               </div>
               <RefButton variant="ghost" size="sm" onClick={() => setSuggestions(null)}>
                 {t('workPackage.proposed.dismiss')}
@@ -198,13 +198,13 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
                 return (
                   <div key={s.workPackageId} className="flex items-center justify-between gap-4 py-1.5">
                     <div className="min-w-0 flex-1 flex items-center gap-2">
-                      <span className="shrink-0 font-mono text-xs text-gray-500">
+                      <span className="shrink-0 font-mono text-caption text-muted-foreground">
                         {pkg?.code ?? s.workPackageId}
                       </span>
-                      <span className="truncate text-sm text-gray-900">{pkg?.name ?? s.workPackageId}</span>
+                      <span className="truncate text-body text-foreground">{pkg?.name ?? s.workPackageId}</span>
                     </div>
                     <div className="flex shrink-0 items-center gap-3">
-                      <span className="w-10 text-right tabular-nums text-sm font-medium text-gray-900">
+                      <span className="w-10 text-right tabular-nums text-body font-medium text-foreground">
                         {`${proposedPercent}%`}
                       </span>
                       <RefButton
@@ -221,7 +221,7 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
               })}
             </div>
             {suggestions.length > 1 ? (
-              <div className="border-t border-gray-200 pt-2">
+              <div className="border-t border-border pt-2">
                 <RefButton size="sm" onClick={handleAcceptAll} disabled={updateWp.isPending}>
                   {t('workPackage.proposed.acceptAll')}
                 </RefButton>
@@ -259,7 +259,7 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
                     <RefTd className="whitespace-nowrap font-mono text-xs">{p.code}</RefTd>
                     <RefTd className="font-medium">{p.name}</RefTd>
                     <RefTd>
-                      {p.responsibleOwner ?? <span className="text-gray-400">—</span>}
+                      {p.responsibleOwner ?? <span className="text-disabled-foreground">—</span>}
                     </RefTd>
                     <RefTd numeric className="whitespace-nowrap tabular-nums">
                       {`${Math.round(Number(p.weight) * 100)}%`}
@@ -268,7 +268,7 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
                     <RefTd>
                       {/* Schedule-only phases have no derived % — dash, not a misleading 0%. */}
                       {p.percentComplete === null ? (
-                        <span className="text-gray-400">—</span>
+                        <span className="text-disabled-foreground">—</span>
                       ) : (
                         <RefBar percent={p.percentComplete} tone={p.percentComplete >= 100 ? 'green' : 'blue'} />
                       )}
@@ -282,25 +282,25 @@ export function WorkPackagesSection({ projectId }: { projectId: string }) {
       </RefCardBody>
 
       <Dialog open={creating} onOpenChange={setCreating}>
-        <DialogContent className="rounded-xl p-5 sm:p-6 sm:max-w-lg">
-          <DialogTitle>{t('actions.newWorkPackage')}</DialogTitle>
-          <div className="mt-5">
-            <CreateWorkPackageForm
-              projectId={projectId}
-              suggestedCode={nextCode}
-              existingWeightPercent={existingWeightPercent}
-              onCreated={() => setCreating(false)}
-            />
-          </div>
+        <DialogContent size="md">
+          <DialogHeader>
+            <DialogTitle>{t('actions.newWorkPackage')}</DialogTitle>
+          </DialogHeader>
+          <CreateWorkPackageForm
+            projectId={projectId}
+            suggestedCode={nextCode}
+            existingWeightPercent={existingWeightPercent}
+            onCreated={() => setCreating(false)}
+          />
         </DialogContent>
       </Dialog>
 
       <Dialog open={allocating} onOpenChange={setAllocating}>
-        <DialogContent className="rounded-xl p-5 sm:p-6">
-          <DialogTitle>{t('workPackage.allocate.title')}</DialogTitle>
-          <div className="mt-5">
-            <AllocateForm projectId={projectId} packages={packages} onAllocated={() => setAllocating(false)} />
-          </div>
+        <DialogContent size="sm">
+          <DialogHeader>
+            <DialogTitle>{t('workPackage.allocate.title')}</DialogTitle>
+          </DialogHeader>
+          <AllocateForm projectId={projectId} packages={packages} onAllocated={() => setAllocating(false)} />
         </DialogContent>
       </Dialog>
 
@@ -429,7 +429,7 @@ function AllocateForm({
   return (
     <form onSubmit={onSubmit} aria-label={t('workPackage.allocate.title')}>
       {!hasBaseline ? (
-        <p className="mb-3 text-sm text-gray-500">{t('workPackage.allocate.noBaseline')}</p>
+        <p className="mb-3 text-body text-muted-foreground">{t('workPackage.allocate.noBaseline')}</p>
       ) : null}
       {error ? (
         <div className="mb-3">

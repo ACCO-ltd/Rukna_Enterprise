@@ -44,7 +44,7 @@ const STATUS_TONE: Record<ProgrammeMilestoneResponse['status'], RefTone> = {
   VERIFIED: 'green',
 };
 
-const refFieldClass = 'rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
+const refFieldClass = 'rounded-control border-border focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary';
 
 /** Whole-day difference actual − baseline; negative = early. Null when not both present. */
 function varianceDays(baseline: string, actual: string | null): number | null {
@@ -102,7 +102,7 @@ export function MilestonesSection({ projectId }: { projectId: string }) {
         {isPending ? (
           <div role="status" aria-live="polite">
             <span className="sr-only">{tCommon('loading')}</span>
-            <div className="h-40 animate-pulse rounded-xl bg-gray-100" aria-hidden="true" />
+            <div className="h-40 animate-pulse rounded-container bg-muted" aria-hidden="true" />
           </div>
         ) : isError ? (
           <Alert variant="error" messages={[t('programme.states.loadFailed')]}>
@@ -136,13 +136,13 @@ export function MilestonesSection({ projectId }: { projectId: string }) {
                   <RefTr key={m.id}>
                     <RefTd className="whitespace-nowrap font-mono text-xs">{m.code}</RefTd>
                     <RefTd className="font-medium">{m.name}</RefTd>
-                    <RefTd className="whitespace-nowrap text-gray-500">
+                    <RefTd className="whitespace-nowrap text-muted-foreground">
                       {formatDate(m.baselineDate, locale)}
                     </RefTd>
-                    <RefTd className="whitespace-nowrap text-gray-500">
+                    <RefTd className="whitespace-nowrap text-muted-foreground">
                       {m.actualDate ? formatDate(m.actualDate, locale) : '—'}
                     </RefTd>
-                    <RefTd className="whitespace-nowrap text-gray-500">{variance(m)}</RefTd>
+                    <RefTd className="whitespace-nowrap text-muted-foreground">{variance(m)}</RefTd>
                     <RefTd>
                       <ReleasesCell releases={m.releases} locale={locale} t={t} projectId={projectId} />
                     </RefTd>
@@ -193,14 +193,14 @@ function ReleasesCell({
   projectId: string;
 }) {
   if (releases.length === 0) {
-    return <span className="text-gray-400">{t('programme.releases.none')}</span>;
+    return <span className="text-disabled-foreground">{t('programme.releases.none')}</span>;
   }
 
   return (
     <ul className="flex flex-col gap-1">
       {releases.map((r) => (
         <li key={r.installmentId} className="flex flex-wrap items-center gap-1.5">
-          <span className="text-sm text-gray-700">
+          <span className="text-body text-foreground">
             {t('programme.releases.line', {
               percent: formatFraction(r.percentage, locale),
               name: r.name,
@@ -216,7 +216,7 @@ function ReleasesCell({
               deep-links into where its billing side lives, never creates or copies anything. */}
           <Link
             href={`/projects/${projectId}/commercial/contract-milestones`}
-            className="text-xs font-medium text-blue-600 hover:underline"
+            className="text-caption font-medium text-brand-primary hover:underline"
           >
             {t('programme.releases.viewInCommercial')}
           </Link>
@@ -260,8 +260,8 @@ function CreateMilestoneForm({ projectId }: { projectId: string }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="rounded-lg border border-gray-100 bg-gray-50 p-4 sm:p-5" aria-label={t('programme.new')}>
-      <h3 className="text-sm font-semibold text-gray-900">{t('programme.new')}</h3>
+    <form onSubmit={onSubmit} className="rounded-panel border border-border bg-surface-subtle p-4 sm:p-5" aria-label={t('programme.new')}>
+      <h3 className="text-body font-semibold text-foreground">{t('programme.new')}</h3>
       {error ? (
         <div className="mt-3">
           <Alert variant="error" messages={[error]} />

@@ -23,7 +23,7 @@ import type { ProgressTargetItem } from '../api/progress-api';
 import { RebaselineDialog } from './rebaseline-dialog';
 import { RefButton, RefCard, RefCardBody, RefCardHeader, RefPill } from './ref-ui';
 
-const refFieldClass = 'rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
+const refFieldClass = 'rounded-control border-border focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary';
 
 interface Row {
   date: string;
@@ -209,7 +209,7 @@ export function BaselineSection({ projectId }: { projectId: string }) {
           locale={locale}
         />
 
-        <p className="text-xs text-gray-500">{t('baseline.workingCurveNote')}</p>
+        <p className="text-caption text-muted-foreground">{t('baseline.workingCurveNote')}</p>
 
         <div className="flex flex-wrap gap-2">
           <RefButton variant="outline" size="sm" onClick={generateLinear} disabled={!canLinear}>
@@ -219,12 +219,12 @@ export function BaselineSection({ projectId }: { projectId: string }) {
             {t('baseline.deriveMilestones')}
           </RefButton>
         </div>
-        {!canLinear ? <p className="text-xs text-gray-500">{t('baseline.noDates')}</p> : null}
+        {!canLinear ? <p className="text-caption text-muted-foreground">{t('baseline.noDates')}</p> : null}
 
         {error ? <Alert variant="error" messages={[error]} /> : null}
 
         {current.length === 0 ? (
-          <p className="text-sm text-gray-500">{t('baseline.empty')}</p>
+          <p className="text-body text-muted-foreground">{t('baseline.empty')}</p>
         ) : (
           <ul className="space-y-2">
             {current.map((row, index) => (
@@ -273,7 +273,7 @@ export function BaselineSection({ projectId }: { projectId: string }) {
           {previewPoints.length >= 2 ? <BaselinePreview points={previewPoints} /> : null}
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 border-t border-gray-100 pt-4">
+        <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
           <RefButton onClick={onSave} disabled={save.isPending}>
             {t('baseline.save')}
           </RefButton>
@@ -337,8 +337,8 @@ function GoverningBaselineCard({
 
   if (!baseline) {
     return (
-      <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-3">
-        <p className="text-sm text-gray-500">{t('baseline.governing.none')}</p>
+      <div className="rounded-panel border border-dashed border-border bg-surface-subtle px-4 py-3">
+        <p className="text-body text-muted-foreground">{t('baseline.governing.none')}</p>
       </div>
     );
   }
@@ -349,11 +349,11 @@ function GoverningBaselineCard({
   }));
 
   return (
-    <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+    <div className="rounded-panel border border-border bg-surface-subtle px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <ShieldCheck size={16} className="text-green-600" aria-hidden="true" />
-          <span className="text-sm font-semibold text-gray-900">
+          <ShieldCheck size={16} className="text-success" aria-hidden="true" />
+          <span className="text-body font-semibold text-foreground">
             {t('baseline.governing.versionLabel', { version: baseline.version })}
           </span>
         </div>
@@ -365,7 +365,7 @@ function GoverningBaselineCard({
         ) : null}
       </div>
 
-      <p className="mt-1 text-xs text-gray-500">
+      <p className="mt-1 text-caption text-muted-foreground">
         {t('baseline.governing.approvedBy', {
           who: baseline.approvedBy,
           date: formatDate(baseline.approvedAt, locale) ?? '—',
@@ -373,22 +373,22 @@ function GoverningBaselineCard({
       </p>
 
       {baseline.variationOrderId ? (
-        <p className="mt-0.5 text-xs text-gray-500">
+        <p className="mt-0.5 text-caption text-muted-foreground">
           {t('baseline.governing.variationRef', { ref: baseline.variationOrderId })}
         </p>
       ) : null}
 
-      {baseline.note ? <p className="mt-1 text-sm text-gray-900">{baseline.note}</p> : null}
+      {baseline.note ? <p className="mt-1 text-body text-foreground">{baseline.note}</p> : null}
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {points.length >= 2 ? <BaselinePreview points={points} /> : null}
-        <span className="text-xs text-gray-500">
+        <span className="text-caption text-muted-foreground">
           {t('baseline.governing.pointCount', { count: points.length })}
         </span>
       </div>
 
       {hasUnpublishedChanges ? (
-        <p className="mt-2 text-xs text-amber-600">{t('baseline.governing.unpublishedHint')}</p>
+        <p className="mt-2 text-caption text-warning">{t('baseline.governing.unpublishedHint')}</p>
       ) : null}
     </div>
   );
@@ -411,10 +411,10 @@ function BaselinePreview({ points }: { points: Array<{ date: string; percent: nu
     .map((c, i) => `${i === 0 ? 'M' : 'L'}${c}`)
     .join(' ');
   return (
-    <span className="inline-flex items-center gap-2 text-xs text-gray-500">
+    <span className="inline-flex items-center gap-2 text-caption text-muted-foreground">
       {t('baseline.preview')}
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="overflow-visible" aria-hidden="true">
-        <path d={path} fill="none" className="stroke-gray-400" strokeWidth={1.5} strokeDasharray="4 3" />
+        <path d={path} fill="none" className="stroke-disabled-foreground" strokeWidth={1.5} strokeDasharray="4 3" />
       </svg>
     </span>
   );

@@ -144,7 +144,7 @@ export function ProgressCurveChart({
                   y1={y}
                   x2={VIEW_W - PAD_RIGHT}
                   y2={y}
-                  className="stroke-gray-200"
+                  className="stroke-border"
                   strokeWidth={1}
                   vectorEffect="non-scaling-stroke"
                 />
@@ -153,7 +153,7 @@ export function ProgressCurveChart({
                   y={y}
                   textAnchor="end"
                   dominantBaseline="middle"
-                  className="fill-gray-400 text-[10px] tabular-nums tracking-normal"
+                  className="fill-disabled-foreground text-[10px] tabular-nums tracking-normal"
                 >
                   {tick}
                 </text>
@@ -183,7 +183,7 @@ export function ProgressCurveChart({
           <path
             d={toPath(plannedSeries, dates)}
             fill="none"
-            className="stroke-gray-400"
+            className="stroke-disabled-foreground"
             strokeWidth={1.5}
             strokeDasharray="5 4"
             strokeOpacity={plannedProvisional ? 0.55 : 1}
@@ -234,10 +234,10 @@ export function ProgressCurveChart({
       </svg>
 
       {/* Legend — small, legible, tabular. Colour + word, never colour alone. */}
-      <figcaption className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+      <figcaption className="flex flex-wrap gap-x-4 gap-y-1 text-caption text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
           <span
-            className="inline-block h-0.5 w-4 border-t-2 border-dashed border-gray-400"
+            className="inline-block h-0.5 w-4 border-t-2 border-dashed border-disabled-foreground"
             aria-hidden="true"
           />
           {plannedLabel}

@@ -6,15 +6,17 @@ import { Trash2 } from 'lucide-react';
 import {
   Alert,
   Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
   FormField,
   Input,
   MoneyInput,
   Select,
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
   Skeleton,
 } from '@erp/ui';
 
@@ -179,184 +181,188 @@ export function BudgetEditorDialog({
   const mutationError = create.error ?? update.error ?? baseline.error ?? discard.error;
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-4xl">
-        <DialogTitle>{mode === 'create' ? t('createTitle') : t('editTitle')}</DialogTitle>
-        <DialogDescription>{t('description')}</DialogDescription>
+    <Sheet open onOpenChange={(open) => !open && onClose()}>
+      <SheetContent size="2xl">
+        <SheetHeader>
+          <SheetTitle>{mode === 'create' ? t('createTitle') : t('editTitle')}</SheetTitle>
+          <SheetDescription>{t('description')}</SheetDescription>
+        </SheetHeader>
 
-        {budgets.isPending ? (
-          <Skeleton className="h-64 w-full" />
-        ) : (
-          <div className="space-y-4">
-            {mutationError ? (
-              <Alert
-                variant="error"
-                messages={[
-                  mutationError instanceof Error ? mutationError.message : tc('loadFailed'),
-                ]}
-              />
-            ) : null}
+        <SheetBody>
+          {budgets.isPending ? (
+            <Skeleton className="h-64 w-full" />
+          ) : (
+            <div className="space-y-4">
+              {mutationError ? (
+                <Alert
+                  variant="error"
+                  messages={[
+                    mutationError instanceof Error ? mutationError.message : tc('loadFailed'),
+                  ]}
+                />
+              ) : null}
 
-            <div className="space-y-3">
-              {lines.map((line) => {
-                const error = showErrors ? lineError(line) : null;
-                return (
-                  <div
-                    key={line.key}
-                    className="rounded-panel border border-border p-3.5"
-                  >
-                    <div className="flex flex-wrap items-end gap-3">
-                      <FormField
-                        htmlFor={`target-${line.key}`}
-                        label={t('targetType')}
-                        className="min-w-44 flex-1"
-                      >
-                        <Select
-                          id={`target-${line.key}`}
-                          value={line.target}
-                          onChange={(value) =>
-                            // The two targets are alternatives: switching clears the other so a
-                            // line can never carry both.
-                            patch(line.key, {
-                              target: value as LineDraft['target'],
-                              boqNodeId: '',
-                              spendCategoryId: '',
-                            })
-                          }
+              <div className="space-y-3">
+                {lines.map((line) => {
+                  const error = showErrors ? lineError(line) : null;
+                  return (
+                    <div
+                      key={line.key}
+                      className="rounded-panel border border-border p-3.5"
+                    >
+                      <div className="flex flex-wrap items-end gap-3">
+                        <FormField
+                          htmlFor={`target-${line.key}`}
+                          label={t('targetType')}
+                          className="min-w-44 flex-1"
                         >
-                          <option value="BOQ">{t('targetBoq')}</option>
-                          <option value="CATEGORY">{t('targetCategory')}</option>
-                        </Select>
-                      </FormField>
-
-                      <FormField
-                        htmlFor={`value-${line.key}`}
-                        label={line.target === 'BOQ' ? t('boqItem') : t('spendCategory')}
-                        className="min-w-56 flex-[2]"
-                      >
-                        {line.target === 'BOQ' ? (
                           <Select
-                            id={`value-${line.key}`}
-                            value={line.boqNodeId}
-                            disabled={tree.isLoading || leafNodes.length === 0}
-                            onChange={(value) => patch(line.key, { boqNodeId: value })}
+                            id={`target-${line.key}`}
+                            value={line.target}
+                            onChange={(value) =>
+                              // The two targets are alternatives: switching clears the other so a
+                              // line can never carry both.
+                              patch(line.key, {
+                                target: value as LineDraft['target'],
+                                boqNodeId: '',
+                                spendCategoryId: '',
+                              })
+                            }
                           >
-                            <option value="">
-                              {leafNodes.length === 0 ? t('noBoqItems') : t('selectBoqItem')}
-                            </option>
-                            {leafNodes.map((node) => (
-                              <option key={node.id} value={node.id}>
-                                {node.code} · {node.description}
-                              </option>
-                            ))}
+                            <option value="BOQ">{t('targetBoq')}</option>
+                            <option value="CATEGORY">{t('targetCategory')}</option>
                           </Select>
-                        ) : (
-                          <Select
-                            id={`value-${line.key}`}
-                            value={line.spendCategoryId}
-                            disabled={categories.isLoading}
-                            onChange={(value) => patch(line.key, { spendCategoryId: value })}
-                          >
-                            <option value="">{t('selectCategory')}</option>
-                            {activeCategories.map((category) => (
-                              <option key={category.id} value={category.id}>
-                                {category.code} · {category.name}
+                        </FormField>
+
+                        <FormField
+                          htmlFor={`value-${line.key}`}
+                          label={line.target === 'BOQ' ? t('boqItem') : t('spendCategory')}
+                          className="min-w-56 flex-[2]"
+                        >
+                          {line.target === 'BOQ' ? (
+                            <Select
+                              id={`value-${line.key}`}
+                              value={line.boqNodeId}
+                              disabled={tree.isLoading || leafNodes.length === 0}
+                              onChange={(value) => patch(line.key, { boqNodeId: value })}
+                            >
+                              <option value="">
+                                {leafNodes.length === 0 ? t('noBoqItems') : t('selectBoqItem')}
                               </option>
-                            ))}
-                          </Select>
-                        )}
-                      </FormField>
+                              {leafNodes.map((node) => (
+                                <option key={node.id} value={node.id}>
+                                  {node.code} · {node.description}
+                                </option>
+                              ))}
+                            </Select>
+                          ) : (
+                            <Select
+                              id={`value-${line.key}`}
+                              value={line.spendCategoryId}
+                              disabled={categories.isLoading}
+                              onChange={(value) => patch(line.key, { spendCategoryId: value })}
+                            >
+                              <option value="">{t('selectCategory')}</option>
+                              {activeCategories.map((category) => (
+                                <option key={category.id} value={category.id}>
+                                  {category.code} · {category.name}
+                                </option>
+                              ))}
+                            </Select>
+                          )}
+                        </FormField>
 
-                      <FormField
-                        htmlFor={`desc-${line.key}`}
-                        label={t('lineDescription')}
-                        className="min-w-48 flex-[2]"
-                      >
-                        <Input
-                          id={`desc-${line.key}`}
-                          value={line.description}
-                          onChange={(e) => patch(line.key, { description: e.target.value })}
-                        />
-                      </FormField>
+                        <FormField
+                          htmlFor={`desc-${line.key}`}
+                          label={t('lineDescription')}
+                          className="min-w-48 flex-[2]"
+                        >
+                          <Input
+                            id={`desc-${line.key}`}
+                            value={line.description}
+                            onChange={(e) => patch(line.key, { description: e.target.value })}
+                          />
+                        </FormField>
 
-                      <FormField
-                        htmlFor={`amount-${line.key}`}
-                        label={t('amount')}
-                        className="min-w-36 flex-1"
-                      >
-                        <MoneyInput
-                          id={`amount-${line.key}`}
-                          value={line.amount}
-                          onValueChange={(value) => patch(line.key, { amount: value })}
-                        />
-                      </FormField>
+                        <FormField
+                          htmlFor={`amount-${line.key}`}
+                          label={t('amount')}
+                          className="min-w-36 flex-1"
+                        >
+                          <MoneyInput
+                            id={`amount-${line.key}`}
+                            value={line.amount}
+                            onValueChange={(value) => patch(line.key, { amount: value })}
+                          />
+                        </FormField>
 
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        aria-label={t('removeLine')}
-                        disabled={lines.length === 1}
-                        onClick={() =>
-                          setLines((prev) => prev.filter((l) => l.key !== line.key))
-                        }
-                        className="min-h-11"
-                      >
-                        <Trash2 size={15} strokeWidth={1.9} aria-hidden="true" />
-                      </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          aria-label={t('removeLine')}
+                          disabled={lines.length === 1}
+                          onClick={() =>
+                            setLines((prev) => prev.filter((l) => l.key !== line.key))
+                          }
+                          className="min-h-11"
+                        >
+                          <Trash2 size={15} strokeWidth={1.9} aria-hidden="true" />
+                        </Button>
+                      </div>
+                      {error ? (
+                        <Alert variant="error" className="mt-2 py-2 text-caption">
+                          {t(`lineError.${error}`)}
+                        </Alert>
+                      ) : null}
                     </div>
-                    {error ? (
-                      <p className="mt-2 text-caption text-danger" role="alert">
-                        {t(`lineError.${error}`)}
-                      </p>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setLines((prev) => [...prev, emptyLine()])}
-              >
-                {t('addLine')}
-              </Button>
-              <p className="text-body-sm text-muted-foreground">
-                {t('total', {
-                  count: lines.length,
-                  amount: (totalMinor / 10 ** MONEY_SCALE).toFixed(2),
+                  );
                 })}
-              </p>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setLines((prev) => [...prev, emptyLine()])}
+                >
+                  {t('addLine')}
+                </Button>
+                <p className="text-body-sm text-muted-foreground">
+                  {t('total', {
+                    count: lines.length,
+                    amount: (totalMinor / 10 ** MONEY_SCALE).toFixed(2),
+                  })}
+                </p>
+              </div>
+
+              {/* Baselining is a freeze the project is then measured against, so it is confirmed
+                  explicitly and described for what it does — never as an approval. */}
+              {confirmBaseline && budgetId ? (
+                <Alert variant="warning" title={t('baselineConfirmTitle')}>
+                  <p className="text-caption">{t('baselineConfirmBody')}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      disabled={baseline.isPending}
+                      onClick={() =>
+                        baseline.mutate(budgetId, { onSuccess: () => onClose() })
+                      }
+                    >
+                      {t('baselineConfirmAction')}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setConfirmBaseline(false)}>
+                      {tc('cancel')}
+                    </Button>
+                  </div>
+                </Alert>
+              ) : null}
             </div>
+          )}
+        </SheetBody>
 
-            {/* Baselining is a freeze the project is then measured against, so it is confirmed
-                explicitly and described for what it does — never as an approval. */}
-            {confirmBaseline && budgetId ? (
-              <Alert variant="warning" title={t('baselineConfirmTitle')}>
-                <p className="text-caption">{t('baselineConfirmBody')}</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    disabled={baseline.isPending}
-                    onClick={() =>
-                      baseline.mutate(budgetId, { onSuccess: () => onClose() })
-                    }
-                  >
-                    {t('baselineConfirmAction')}
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setConfirmBaseline(false)}>
-                    {tc('cancel')}
-                  </Button>
-                </div>
-              </Alert>
-            ) : null}
-          </div>
-        )}
-
-        <DialogFooter>
+        <SheetFooter>
           <Button variant="ghost" onClick={onClose}>
             {tc('cancel')}
           </Button>
@@ -381,8 +387,8 @@ export function BudgetEditorDialog({
           <Button disabled={saving} onClick={handleSave}>
             {saving ? tc('saving') : t('save')}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }

@@ -11,6 +11,7 @@ import {
   DialogContent,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
   DialogTitle,
   FormField,
   Input,
@@ -114,11 +115,11 @@ export function PrepareInvoiceDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => (!next ? onClose() : undefined)}>
-      <DialogContent className="sm:max-w-5xl" aria-describedby="prepare-invoice-desc">
-        <DialogTitle>{t('title')}</DialogTitle>
-        <DialogDescription id="prepare-invoice-desc" className="text-body-sm text-muted-foreground">
-          {t('subtitle')}
-        </DialogDescription>
+      <DialogContent size="xl">
+        <DialogHeader>
+          <DialogTitle>{t('title')}</DialogTitle>
+          <DialogDescription>{t('subtitle')}</DialogDescription>
+        </DialogHeader>
 
         <div className="grid gap-6 lg:grid-cols-2">
           {/* ── Left: form ─────────────────────────────────────────────────── */}

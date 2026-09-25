@@ -34,7 +34,7 @@ export function VerifiedProgressSection({ projectId }: { projectId: string }) {
     return (
       <div role="status" aria-live="polite">
         <span className="sr-only">{tCommon('loading')}</span>
-        <div className="h-48 animate-pulse rounded-xl bg-gray-100" aria-hidden="true" />
+        <div className="h-48 animate-pulse rounded-container bg-muted" aria-hidden="true" />
       </div>
     );
   }
@@ -82,7 +82,7 @@ export function VerifiedProgressSection({ projectId }: { projectId: string }) {
                 <RefTbody>
                   {data.map((line) => (
                     <RefTr key={line.boqNodeId}>
-                      <RefTd className="whitespace-nowrap font-mono text-xs">{line.code}</RefTd>
+                      <RefTd className="whitespace-nowrap font-mono text-caption">{line.code}</RefTd>
                       <RefTd>{line.description}</RefTd>
                       <RefTd numeric className="whitespace-nowrap tabular-nums">
                         {formatNumber(line.measurableQuantity, 'en', 3)}
@@ -92,7 +92,7 @@ export function VerifiedProgressSection({ projectId }: { projectId: string }) {
                       </RefTd>
                       <RefTd numeric className="whitespace-nowrap font-medium tabular-nums">
                         {line.percentComplete === null ? (
-                          <span className="text-gray-400">—</span>
+                          <span className="text-disabled-foreground">—</span>
                         ) : (
                           `${line.percentComplete}%`
                         )}
@@ -130,10 +130,10 @@ function PeriodComparison({
     <div className="space-y-3">
       <SectionHeader title={t('comparison.title')} />
       {c.physical === null && c.verified === null ? (
-        <p className="text-sm text-gray-500">{t('comparison.insufficient')}</p>
+        <p className="text-body text-muted-foreground">{t('comparison.insufficient')}</p>
       ) : (
         <>
-          <p className="text-xs text-gray-500">
+          <p className="text-caption text-muted-foreground">
             {t('comparison.range', {
               previous: formatDate(c.previousPeriodEndDate) ?? '—',
               current: formatDate(c.currentPeriodEndDate) ?? '—',
@@ -160,26 +160,26 @@ function ComparisonRow({
 
   if (metric === null) {
     return (
-      <div className="border-y border-gray-100 py-3">
-        <dt className="text-xs uppercase text-gray-500">{label}</dt>
-        <dd className="mt-1 text-gray-400">—</dd>
+      <div className="border-y border-border py-3">
+        <dt className="text-caption uppercase text-muted-foreground">{label}</dt>
+        <dd className="mt-1 text-disabled-foreground">—</dd>
       </div>
     );
   }
 
   const { previous, current, delta } = metric;
   // Δ direction is a status: up is good (progress rose), flat/down is neutral/attention.
-  const deltaTone = delta > 0 ? 'text-green-600' : delta < 0 ? 'text-red-600' : 'text-gray-500';
+  const deltaTone = delta > 0 ? 'text-success' : delta < 0 ? 'text-danger' : 'text-muted-foreground';
   const deltaLabel = `${delta > 0 ? '+' : delta < 0 ? '−' : ''}${Math.abs(delta)}%`;
 
   return (
-    <div className="border-y border-gray-100 py-3">
-      <dt className="text-xs uppercase text-gray-500">{label}</dt>
+    <div className="border-y border-border py-3">
+      <dt className="text-caption uppercase text-muted-foreground">{label}</dt>
       <dd className="mt-1 flex items-baseline gap-2">
-        <span className="text-sm text-gray-500 tabular-nums">
+        <span className="text-body text-muted-foreground tabular-nums">
           {t('comparison.previousToCurrent', { previous: `${previous}%`, current: `${current}%` })}
         </span>
-        <span className={`text-sm font-medium tabular-nums ${deltaTone}`}>{deltaLabel}</span>
+        <span className={`text-body font-medium tabular-nums ${deltaTone}`}>{deltaLabel}</span>
       </dd>
     </div>
   );

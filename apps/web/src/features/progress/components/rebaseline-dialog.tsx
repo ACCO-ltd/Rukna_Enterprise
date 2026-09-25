@@ -8,6 +8,7 @@ import {
   DialogContent,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
   DialogTitle,
   Label,
   Select,
@@ -22,7 +23,7 @@ import { useCommercialSummary, useVariations } from '@/features/commercial/hooks
 import { useRebaseline } from '../hooks/use-progress';
 import { RefButton } from './ref-ui';
 
-const refFieldClass = 'rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
+const refFieldClass = 'rounded-control border-border focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary';
 
 /**
  * Re-baseline dialog (Master Schedule P3, ADR-029). A re-baseline supersedes the governing
@@ -85,14 +86,16 @@ export function RebaselineDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="rounded-xl sm:max-w-lg" aria-describedby="rebaseline-desc">
+      <DialogContent size="md">
         <form onSubmit={handleSubmit}>
-          <DialogTitle>{t('baseline.governing.rebaselineTitle')}</DialogTitle>
-          <DialogDescription id="rebaseline-desc">
-            {t('baseline.governing.rebaselineSubtitle')}
-          </DialogDescription>
+          <DialogHeader>
+            <DialogTitle>{t('baseline.governing.rebaselineTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('baseline.governing.rebaselineSubtitle')}
+            </DialogDescription>
+          </DialogHeader>
 
-          <div className="mt-5 space-y-5">
+          <div className="space-y-5">
             {error ? <Alert variant="error" messages={[error]} /> : null}
 
             {loading ? (
@@ -118,7 +121,7 @@ export function RebaselineDialog({
                     </option>
                   ))}
                 </Select>
-                <p className="text-xs text-gray-500">{t('baseline.governing.variationHint')}</p>
+                <p className="text-caption text-muted-foreground">{t('baseline.governing.variationHint')}</p>
               </div>
             )}
 
@@ -133,7 +136,7 @@ export function RebaselineDialog({
                   rows={3}
                   className={refFieldClass}
                 />
-                <p className="text-xs text-gray-500">{t('baseline.governing.noteHint')}</p>
+                <p className="text-caption text-muted-foreground">{t('baseline.governing.noteHint')}</p>
               </div>
             ) : null}
           </div>

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, DatePicker, FormField, SectionHeader, Dialog, DialogContent, DialogDescription, DialogTitle } from '@erp/ui';
+import { Alert, DatePicker, FormField, SectionHeader, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@erp/ui';
 
 import { ApiError } from '@/lib/api-client';
 import { formatDate } from '@/lib/format';
@@ -12,7 +12,7 @@ import { DprStatusBadge } from './dpr-status-badge';
 import { DprDetail } from './dpr-detail';
 import { RefButton, RefCard, RefEmpty, RefTable, RefTableScroll, RefTbody, RefTd, RefTh, RefThead, RefTr } from './ref-ui';
 
-const refFieldClass = 'rounded-lg border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
+const refFieldClass = 'rounded-control border-border focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary';
 
 /**
  * Daily progress reports: an operational index that leads with the list, not a form.
@@ -50,18 +50,18 @@ export function DailyReportsSection({ projectId }: { projectId: string }) {
       </SectionHeader>
 
       <Dialog open={creating} onOpenChange={setCreating}>
-        <DialogContent className="rounded-xl p-5 sm:p-6 sm:max-w-sm" aria-describedby="new-report-desc">
-          <DialogTitle>{t('report.newTitle')}</DialogTitle>
-          <DialogDescription id="new-report-desc">{t('report.newHint')}</DialogDescription>
-          <div className="mt-5">
-            <CreateReportForm
-              projectId={projectId}
-              onCreated={(id) => {
-                setCreating(false);
-                setSelectedDprId(id);
-              }}
-            />
-          </div>
+        <DialogContent size="sm">
+          <DialogHeader>
+            <DialogTitle>{t('report.newTitle')}</DialogTitle>
+            <DialogDescription>{t('report.newHint')}</DialogDescription>
+          </DialogHeader>
+          <CreateReportForm
+            projectId={projectId}
+            onCreated={(id) => {
+              setCreating(false);
+              setSelectedDprId(id);
+            }}
+          />
         </DialogContent>
       </Dialog>
 
@@ -69,7 +69,7 @@ export function DailyReportsSection({ projectId }: { projectId: string }) {
         {isPending ? (
           <div role="status" aria-live="polite" className="p-5">
             <span className="sr-only">{tCommon('loading')}</span>
-            <div className="h-40 animate-pulse rounded-lg bg-gray-100" aria-hidden="true" />
+            <div className="h-40 animate-pulse rounded-panel bg-muted" aria-hidden="true" />
           </div>
         ) : isError ? (
           <div className="p-5">
@@ -106,7 +106,7 @@ export function DailyReportsSection({ projectId }: { projectId: string }) {
                       <button
                         type="button"
                         onClick={() => setSelectedDprId(dpr.id)}
-                        className="-my-3 flex min-h-11 items-center font-medium text-gray-900 underline-offset-4 after:absolute after:inset-0 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+                        className="-my-3 flex min-h-11 items-center font-medium text-foreground underline-offset-4 after:absolute after:inset-0 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
                       >
                         {formatDate(dpr.reportDate, locale)}
                       </button>
@@ -115,9 +115,9 @@ export function DailyReportsSection({ projectId }: { projectId: string }) {
                       <DprStatusBadge status={dpr.status} />
                     </RefTd>
                     <RefTd numeric className="tabular-nums">
-                      {dpr.labourCount ?? <span className="text-gray-400">—</span>}
+                      {dpr.labourCount ?? <span className="text-disabled-foreground">—</span>}
                     </RefTd>
-                    <RefTd className="whitespace-nowrap text-gray-500">
+                    <RefTd className="whitespace-nowrap text-muted-foreground">
                       {dpr.preparedByName ?? dpr.preparedBy}
                     </RefTd>
                   </RefTr>

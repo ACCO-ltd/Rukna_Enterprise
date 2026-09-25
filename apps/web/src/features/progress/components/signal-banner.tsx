@@ -62,12 +62,12 @@ export function SignalBanner({
     return (
       <section
         aria-labelledby={headingId}
-        className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-lg border border-gray-200 bg-white px-4 py-3"
+        className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-panel border border-border bg-surface px-4 py-3"
       >
-        <h2 id={headingId} className="text-sm font-semibold text-gray-900">
+        <h2 id={headingId} className="text-body font-semibold text-foreground">
           {title}
         </h2>
-        <p className="text-xs text-gray-500">{hint}</p>
+        <p className="text-caption text-muted-foreground">{hint}</p>
       </section>
     );
   }
@@ -81,7 +81,7 @@ export function SignalBanner({
           <div className="flex items-center gap-2.5">
             <RefPill tone={tone}>{statusLabel}</RefPill>
             {link ? (
-              <Link href={link.href} className="text-xs font-medium text-blue-600 hover:underline">
+              <Link href={link.href} className="text-caption font-medium text-brand-primary hover:underline">
                 {link.label}
               </Link>
             ) : null}
@@ -92,10 +92,10 @@ export function SignalBanner({
         <dl className="flex flex-col gap-2.5">
           {stats.map((s) => (
             <div key={s.label} className="flex items-center gap-3">
-              <dt className="w-32 shrink-0 truncate text-xs text-gray-500">{s.label}</dt>
+              <dt className="w-32 shrink-0 truncate text-caption text-muted-foreground">{s.label}</dt>
               <dd
-                className={`w-14 shrink-0 text-end text-sm font-semibold tabular-nums ${
-                  s.variance ? toneClass(tone) : 'text-gray-900'
+                className={`w-14 shrink-0 text-end text-body font-semibold tabular-nums ${
+                  s.variance ? toneClass(tone) : 'text-foreground'
                 }`}
               >
                 {s.value}
@@ -109,7 +109,7 @@ export function SignalBanner({
           ))}
         </dl>
 
-        <p className="mt-3 border-t border-gray-100 pt-3 text-xs leading-5 text-gray-500">{hint}</p>
+        <p className="mt-3 border-t border-border pt-3 text-caption leading-5 text-muted-foreground">{hint}</p>
       </RefCardBody>
     </RefCard>
   );
@@ -117,8 +117,8 @@ export function SignalBanner({
 
 /** The variance takes the signal's own tone, so the number and the pill agree. */
 function toneClass(tone: RefTone): string {
-  if (tone === 'amber') return 'text-amber-600';
-  if (tone === 'red') return 'text-red-600';
-  if (tone === 'green') return 'text-green-600';
-  return 'text-gray-900';
+  if (tone === 'amber') return 'text-warning';
+  if (tone === 'red') return 'text-danger';
+  if (tone === 'green') return 'text-success';
+  return 'text-foreground';
 }

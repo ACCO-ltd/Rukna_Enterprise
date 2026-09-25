@@ -107,30 +107,30 @@ export function NeedsAttentionPanel({
       />
       {loading ? (
         <RefCardBody className="pt-4">
-          <div className="h-16 animate-pulse rounded-lg bg-gray-100" aria-hidden="true" />
+          <div className="h-16 animate-pulse rounded-panel bg-muted" aria-hidden="true" />
         </RefCardBody>
       ) : items.length === 0 ? (
         <RefCardBody className="pt-4">
-          <p className="text-sm font-medium text-gray-900">{t('attention.clear')}</p>
-          <p className="mt-1 text-xs text-gray-500">{t('attention.clearHint')}</p>
+          <p className="text-body font-medium text-foreground">{t('attention.clear')}</p>
+          <p className="mt-1 text-caption text-muted-foreground">{t('attention.clearHint')}</p>
         </RefCardBody>
       ) : (
-        <ul className="divide-y divide-gray-100">
+        <ul className="divide-y divide-border">
           {items.map((item) => (
             <li key={item.id}>
               <button
                 type="button"
                 onClick={() => onGoTo(item.goTo)}
-                className="flex w-full items-start gap-3 px-5 py-3 text-start transition-colors hover:bg-gray-50 focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-blue-500"
+                className="flex w-full items-start gap-3 px-5 py-3 text-start transition-colors hover:bg-surface-subtle focus-visible:outline focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-brand-primary"
               >
-                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xs font-bold tabular-nums text-amber-700">
+                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-warning-subtle text-caption font-bold tabular-nums text-warning">
                   {item.count}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium text-gray-900">{item.title}</span>
-                  <span className="mt-0.5 block text-xs text-gray-500">{item.hint}</span>
+                  <span className="block text-body font-medium text-foreground">{item.title}</span>
+                  <span className="mt-0.5 block text-caption text-muted-foreground">{item.hint}</span>
                 </span>
-                <ChevronRight size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-gray-400 rtl:rotate-180" />
+                <ChevronRight size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-disabled-foreground rtl:rotate-180" />
               </button>
             </li>
           ))}
