@@ -3,20 +3,19 @@
 /**
  * PO-backed bill matching — the **outcome** surface (Slice ④, D6).
  *
- * Three-way matching is a silent control, not manual work. It runs automatically when a
- * PO-backed bill is submitted (`SupplierBillService.submit` → `runMatching`), so this
- * component never offers a "Run matching" button — it renders the *result* the auto-match
- * already produced:
+ * Three-way matching runs automatically when a PO-backed bill is submitted. This
+ * component renders the result:
  *
- *  - **Healthy** (MATCHED / MATCHED_WITH_TOLERANCE / APPROVED_EXCEPTION) → a quiet
- *    "Matched · ready" line with the PO applicable / Accepted receipts / Bill reconciliation.
- *    Nothing to operate; the bill proceeds toward posting and payment.
- *  - **Exception** (EXCEPTION) → a warning banner naming the variance, and a "Review
- *    differences" disclosure that reveals the per-line comparison. The real exception-
- *    resolution action is offered only to a user holding `approve:matching-exception`.
+ *  - **Healthy** (MATCHED / MATCHED_WITH_TOLERANCE / APPROVED_EXCEPTION) → quiet
+ *    "Matched · ready" strip with PO applicable / Accepted receipts / Bill total.
+ *  - **Exception** (EXCEPTION, no resolutionAction yet) → warning banner + "Review
+ *    differences" disclosure + "Resolve exception" structured drawer.
+ *  - **Pending PO revision / Receipt correction** (EXCEPTION with resolutionAction set)
+ *    → informational banner explaining what to do + re-run button.
+ *  - **Disputed** (DISPUTED) → error banner + re-run button for after the supplier
+ *    reissues the corrected invoice.
  *
- * Posting still requires MATCHED / MATCHED_WITH_TOLERANCE / APPROVED_EXCEPTION; the server
- * enforces it. This surface is the human-readable face of that gate, not the gate itself.
+ * The server enforces all gates. This surface is the human-readable face of those gates.
  */
 
 import { useState } from 'react';
@@ -28,6 +27,7 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -42,15 +42,45 @@ import { formatDate, formatMoney, formatNumber } from '@/lib/format';
 import { PROCUREMENT_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
 
 import { billMatchReconciliation } from '../bill-match-summary';
-import { useApproveMatchException, useBillMatch } from '../hooks/use-procurement';
-import type { BillMatchLine, BillMatchStatus, BillMatchResult, SupplierBill } from '../types';
+import {
+  useBillMatch,
+  useResolveMatchException,
+  useRunBillMatch,
+} from '../hooks/use-procurement';
+import type {
+  BillMatchLine,
+  BillMatchResult,
+  BillMatchStatus,
+  MatchExceptionReason,
+  MatchResolutionAction,
+  SupplierBill,
+} from '../types';
 
-/** The healthy verdicts — the bill is ready, silently, toward posting and payment. */
 const HEALTHY: readonly BillMatchStatus[] = [
   'MATCHED',
   'MATCHED_WITH_TOLERANCE',
   'APPROVED_EXCEPTION',
 ];
+
+const REASONS: MatchExceptionReason[] = [
+  'ROUNDING_VARIANCE',
+  'FREIGHT_OR_ADDITIONAL_CHARGE',
+  'OTHER',
+  'SUPPLIER_INVOICE_ERROR',
+  'AGREED_PRICE_CHANGE',
+  'PO_QUANTITY_CHANGE',
+  'RECEIPT_CORRECTION',
+];
+
+const REASON_TO_ACTION: Record<MatchExceptionReason, MatchResolutionAction> = {
+  ROUNDING_VARIANCE: 'APPROVE',
+  FREIGHT_OR_ADDITIONAL_CHARGE: 'APPROVE',
+  OTHER: 'APPROVE',
+  SUPPLIER_INVOICE_ERROR: 'DISPUTE',
+  AGREED_PRICE_CHANGE: 'REQUIRE_PO_REVISION',
+  PO_QUANTITY_CHANGE: 'REQUIRE_PO_REVISION',
+  RECEIPT_CORRECTION: 'REQUIRE_RECEIPT_CORRECTION',
+};
 
 export function BillMatchSummary({ bill }: { bill: SupplierBill }) {
   const t = useTranslations('procurement.matching');
@@ -61,7 +91,6 @@ export function BillMatchSummary({ bill }: { bill: SupplierBill }) {
   const hasPoLink = Boolean(bill.purchaseOrderRevisionId ?? bill.purchaseOrderId);
   const match = useBillMatch(bill.id);
 
-  // A genuine non-PO bill never matches — say so plainly rather than showing an empty control.
   if (!hasPoLink) {
     return <p className="text-sm text-muted-foreground">{t('notApplicable')}</p>;
   }
@@ -84,21 +113,52 @@ export function BillMatchSummary({ bill }: { bill: SupplierBill }) {
   const result = match.data ?? null;
   const status: BillMatchStatus = result?.status ?? bill.matchStatus ?? 'NOT_RUN';
 
-  // NOT_RUN on a PO-backed bill means it has not been submitted yet — matching runs on submit.
   if (status === 'NOT_RUN' || !result) {
     return <p className="text-sm text-muted-foreground">{t('pendingSubmit')}</p>;
   }
+
+  const canResolve = can(PROCUREMENT_PERMISSIONS.approveMatchException);
 
   if (HEALTHY.includes(status)) {
     return <HealthyMatch bill={bill} result={result} status={status} locale={locale} />;
   }
 
+  if (status === 'DISPUTED') {
+    return <DisputedMatch bill={bill} result={result} locale={locale} canRerun={canResolve} />;
+  }
+
+  // EXCEPTION sub-states — after a resolve call that doesn't change status
+  if (result.resolutionAction === 'REQUIRE_PO_REVISION') {
+    return (
+      <PendingActionMatch
+        bill={bill}
+        result={result}
+        locale={locale}
+        kind="po-revision"
+        canRerun={canResolve}
+      />
+    );
+  }
+
+  if (result.resolutionAction === 'REQUIRE_RECEIPT_CORRECTION') {
+    return (
+      <PendingActionMatch
+        bill={bill}
+        result={result}
+        locale={locale}
+        kind="receipt-correction"
+        canRerun={canResolve}
+      />
+    );
+  }
+
+  // Fresh EXCEPTION — not yet resolved
   return (
     <ExceptionMatch
       bill={bill}
       result={result}
       locale={locale}
-      canApprove={can(PROCUREMENT_PERMISSIONS.approveMatchException)}
+      canResolve={canResolve}
     />
   );
 }
@@ -119,8 +179,6 @@ function HealthyMatch({
   const t = useTranslations('procurement.matching');
   const recon = billMatchReconciliation(result);
 
-  // APPROVED_EXCEPTION reads as ready, but names who cleared it — it is a matched bill that
-  // needed a decision, not a clean one.
   const readyLine =
     status === 'APPROVED_EXCEPTION'
       ? t('approvedReady', {
@@ -142,8 +200,6 @@ function HealthyMatch({
         {readyLine}
       </p>
 
-      {/* PO applicable · Accepted receipts · Bill — a divider-separated metric strip that
-          stacks at 375px. Money stays neutral (never coloured). */}
       <dl className="flex flex-col gap-3 rounded-panel border border-border bg-surface p-4 sm:flex-row sm:gap-0">
         <ReconCell
           label={t('poApplicable')}
@@ -174,13 +230,7 @@ function ReconCell({
   divider?: boolean;
 }) {
   return (
-    <div
-      className={
-        divider
-          ? 'sm:border-s sm:border-border sm:ps-4 sm:ms-4'
-          : undefined
-      }
-    >
+    <div className={divider ? 'sm:border-s sm:border-border sm:ps-4 sm:ms-4' : undefined}>
       <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </dt>
@@ -189,25 +239,23 @@ function ReconCell({
   );
 }
 
-// ─── Exception ───────────────────────────────────────────────────────────────────────
+// ─── Exception (fresh — not yet resolved) ─────────────────────────────────────────
 
 function ExceptionMatch({
   bill,
   result,
   locale,
-  canApprove,
+  canResolve,
 }: {
   bill: SupplierBill;
   result: BillMatchResult;
   locale: 'en';
-  canApprove: boolean;
+  canResolve: boolean;
 }) {
   const t = useTranslations('procurement.matching');
   const [reviewing, setReviewing] = useState(false);
-  const [approving, setApproving] = useState(false);
+  const [resolving, setResolving] = useState(false);
 
-  // Name the variance from the first out-of-tolerance line's server-provided reason, falling
-  // back to a generic message. This is the ⚠ line in the owner's sketch.
   const failing = result.lines.find((l) => !l.withinTolerance);
   const variance = failing?.exceptionReason ?? t('exceptionGeneric');
 
@@ -225,12 +273,9 @@ function ExceptionMatch({
           {reviewing ? t('hideDifferences') : t('reviewDifferences')}
         </Button>
 
-        {/* The real resolution path — free-text approve-exception, gated server-side on
-            approve:matching-exception. Offered only to a holder of that permission; never a
-            fabricated approval. */}
-        {canApprove ? (
-          <Button type="button" onClick={() => setApproving(true)}>
-            {t('approveException')}
+        {canResolve ? (
+          <Button type="button" onClick={() => setResolving(true)}>
+            {t('resolveException')}
           </Button>
         ) : null}
       </div>
@@ -239,18 +284,143 @@ function ExceptionMatch({
         <DifferencesTable bill={bill} lines={result.lines} locale={locale} />
       ) : null}
 
-      {approving ? (
-        <ApproveExceptionDrawer billId={bill.id} onClose={() => setApproving(false)} />
+      {resolving ? (
+        <ResolveExceptionDrawer billId={bill.id} onClose={() => setResolving(false)} />
       ) : null}
     </div>
   );
 }
 
-/**
- * The per-line comparison, revealed by "Review differences". A full-width disclosure whose
- * table scrolls internally at 375px (`TableScroll`). Each cell states, in words then colour,
- * whether its dimension is within tolerance.
- */
+// ─── Disputed ─────────────────────────────────────────────────────────────────────
+
+function DisputedMatch({
+  bill,
+  result,
+  locale,
+  canRerun,
+}: {
+  bill: SupplierBill;
+  result: BillMatchResult;
+  locale: 'en';
+  canRerun: boolean;
+}) {
+  const t = useTranslations('procurement.matching');
+
+  return (
+    <div className="space-y-3">
+      <Alert variant="error" title={t('disputedTitle')} messages={[
+        t('disputedBody'),
+        ...(result.resolutionNotes ? [t('resolvedNotes', { notes: result.resolutionNotes })] : []),
+      ]} />
+
+      {canRerun ? <RerunMatchButton billId={bill.id} /> : null}
+    </div>
+  );
+}
+
+// ─── Pending action (REQUIRE_PO_REVISION / REQUIRE_RECEIPT_CORRECTION) ─────────────
+
+function PendingActionMatch({
+  bill,
+  result,
+  locale,
+  kind,
+  canRerun,
+}: {
+  bill: SupplierBill;
+  result: BillMatchResult;
+  locale: 'en';
+  kind: 'po-revision' | 'receipt-correction';
+  canRerun: boolean;
+}) {
+  const t = useTranslations('procurement.matching');
+  const [reviewing, setReviewing] = useState(false);
+
+  const title = kind === 'po-revision' ? t('pendingPoRevisionTitle') : t('pendingReceiptCorrectionTitle');
+  const body = kind === 'po-revision' ? t('pendingPoRevisionBody') : t('pendingReceiptCorrectionBody');
+
+  return (
+    <div className="space-y-3">
+      <Alert variant="warning" title={title} messages={[
+        body,
+        ...(result.resolutionNotes ? [t('resolvedNotes', { notes: result.resolutionNotes })] : []),
+      ]} />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setReviewing((open) => !open)}
+          aria-expanded={reviewing}
+        >
+          {reviewing ? t('hideDifferences') : t('reviewDifferences')}
+        </Button>
+
+        {canRerun ? <RerunMatchButton billId={bill.id} /> : null}
+      </div>
+
+      {reviewing ? (
+        <DifferencesTable bill={bill} lines={result.lines} locale={locale} />
+      ) : null}
+    </div>
+  );
+}
+
+// ─── Re-run button ─────────────────────────────────────────────────────────────────
+
+function RerunMatchButton({ billId }: { billId: string }) {
+  const t = useTranslations('procurement.matching');
+  const tc = useTranslations('procurement.common');
+  const [confirming, setConfirming] = useState(false);
+  const rerun = useRunBillMatch();
+
+  return (
+    <>
+      <Button type="button" variant="outline" onClick={() => setConfirming(true)}>
+        {t('rerunMatch')}
+      </Button>
+
+      {confirming ? (
+        <Dialog open onOpenChange={(next) => (next ? undefined : setConfirming(false))}>
+          <DialogContent className="p-6 sm:max-w-md">
+            <DialogTitle className="text-lg font-semibold text-foreground">
+              {t('rerunMatchTitle')}
+            </DialogTitle>
+
+            <div className="mt-4 space-y-4">
+              <p className="text-sm text-muted-foreground">{t('rerunMatchBody')}</p>
+
+              {rerun.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
+
+              <div className="flex flex-wrap justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setConfirming(false)}
+                  disabled={rerun.isPending}
+                >
+                  {tc('cancel')}
+                </Button>
+                <Button
+                  type="button"
+                  disabled={rerun.isPending}
+                  onClick={() =>
+                    rerun.mutate(billId, { onSuccess: () => setConfirming(false) })
+                  }
+                >
+                  {t('rerunMatch')}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+    </>
+  );
+}
+
+// ─── Differences table ─────────────────────────────────────────────────────────────
+
 function DifferencesTable({
   bill,
   lines,
@@ -313,7 +483,6 @@ function DifferencesTable({
                 </VarianceValue>
               </TableCell>
               <TableCell>
-                {/* Word first, colour second — the verdict is legible without the glyph. */}
                 <span
                   className={
                     line.withinTolerance
@@ -333,7 +502,6 @@ function DifferencesTable({
   );
 }
 
-/** A variance figure, tinted danger only when its dimension is out of tolerance. */
 function VarianceValue({
   withinTolerance,
   children,
@@ -348,9 +516,9 @@ function VarianceValue({
   );
 }
 
-// ─── Exception approval ──────────────────────────────────────────────────────────────
+// ─── Resolve exception drawer ──────────────────────────────────────────────────────
 
-function ApproveExceptionDrawer({
+function ResolveExceptionDrawer({
   billId,
   onClose,
 }: {
@@ -359,56 +527,105 @@ function ApproveExceptionDrawer({
 }) {
   const t = useTranslations('procurement.matching');
   const tc = useTranslations('procurement.common');
-  const approve = useApproveMatchException();
-  const [reason, setReason] = useState('');
+  const resolve = useResolveMatchException();
 
-  const valid = reason.trim().length > 0;
+  const [reason, setReason] = useState<MatchExceptionReason | ''>('');
+  const [notes, setNotes] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+
+  const derivedAction = reason ? REASON_TO_ACTION[reason] : null;
+  const needsNotes = derivedAction === 'DISPUTE';
+  const isApprove = derivedAction === 'APPROVE';
+
+  const reasonError = submitted && !reason ? t('reasonRequired') : undefined;
+  const notesError = submitted && needsNotes && !notes.trim() ? t('resolveNotesRequired') : undefined;
+
+  function handleSubmit() {
+    setSubmitted(true);
+    if (!reason) return;
+    if (needsNotes && !notes.trim()) return;
+
+    resolve.mutate(
+      {
+        billId,
+        payload: {
+          reason,
+          action: REASON_TO_ACTION[reason],
+          ...(notes.trim() ? { notes: notes.trim() } : {}),
+        },
+      },
+      { onSuccess: onClose },
+    );
+  }
 
   return (
     <Dialog open onOpenChange={(next) => (next ? undefined : onClose())}>
       <DialogContent className="p-6 sm:max-w-lg">
         <DialogTitle className="text-lg font-semibold text-foreground">
-          {t('approveExceptionTitle')}
+          {t('resolveExceptionTitle')}
         </DialogTitle>
 
         <div className="mt-5 space-y-4">
-          <Alert variant="info" messages={[t('approveExceptionBody')]} />
+          <FormField
+            htmlFor="resolve-reason"
+            label={t('reasonLabel')}
+            error={reasonError}
+          >
+            <Select
+              id="resolve-reason"
+              value={reason}
+              onChange={(v) => setReason(v as MatchExceptionReason)}
+            >
+              <option value="">—</option>
+              {REASONS.map((r) => (
+                <option key={r} value={r}>
+                  {t(`reason.${r}` as Parameters<typeof t>[0])}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+
+          {derivedAction ? (
+            <Alert
+              variant={derivedAction === 'DISPUTE' ? 'error' : 'info'}
+              messages={[t(`actionConsequence.${derivedAction}` as Parameters<typeof t>[0])]}
+            />
+          ) : null}
+
+          {isApprove ? (
+            <p className="text-xs text-muted-foreground">{t('cfoRequired')}</p>
+          ) : null}
 
           <FormField
-            htmlFor="approve-exception-reason"
-            label={t('approvalReason')}
-            error={valid ? undefined : t('approvalReasonRequired')}
+            htmlFor="resolve-notes"
+            label={`${t('resolveNotesLabel')}${needsNotes ? '' : ` (${tc('optional')})`}`}
+            error={notesError}
           >
             <Textarea
-              id="approve-exception-reason"
+              id="resolve-notes"
               rows={3}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
             />
           </FormField>
 
-          {approve.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
+          {resolve.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
 
           <div className="flex flex-wrap justify-end gap-2 pt-2">
             <Button
               type="button"
               variant="outline"
               onClick={onClose}
-              disabled={approve.isPending}
+              disabled={resolve.isPending}
             >
               {tc('cancel')}
             </Button>
             <Button
               type="button"
-              disabled={!valid || approve.isPending}
-              onClick={() =>
-                approve.mutate(
-                  { billId, payload: { approvalReason: reason.trim() } },
-                  { onSuccess: onClose },
-                )
-              }
+              disabled={resolve.isPending}
+              onClick={handleSubmit}
             >
-              {t('approveException')}
+              {t('resolveException')}
             </Button>
           </div>
         </div>

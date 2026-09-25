@@ -77,7 +77,29 @@ export type BillMatchStatus =
   | 'MATCHED'
   | 'MATCHED_WITH_TOLERANCE'
   | 'EXCEPTION'
-  | 'APPROVED_EXCEPTION';
+  | 'APPROVED_EXCEPTION'
+  | 'DISPUTED';
+
+export type MatchExceptionReason =
+  | 'ROUNDING_VARIANCE'
+  | 'FREIGHT_OR_ADDITIONAL_CHARGE'
+  | 'OTHER'
+  | 'SUPPLIER_INVOICE_ERROR'
+  | 'AGREED_PRICE_CHANGE'
+  | 'PO_QUANTITY_CHANGE'
+  | 'RECEIPT_CORRECTION';
+
+export type MatchResolutionAction =
+  | 'APPROVE'
+  | 'DISPUTE'
+  | 'REQUIRE_PO_REVISION'
+  | 'REQUIRE_RECEIPT_CORRECTION';
+
+export interface ResolveExceptionPayload {
+  reason: MatchExceptionReason;
+  action: MatchResolutionAction;
+  notes?: string;
+}
 
 export type MatchType = 'TWO_WAY' | 'THREE_WAY';
 
@@ -415,6 +437,9 @@ export interface BillMatchResult {
   approvalReason: string | null;
   approvedBy: string | null;
   approvedAt: ApiDate | null;
+  resolutionReason: MatchExceptionReason | null;
+  resolutionAction: MatchResolutionAction | null;
+  resolutionNotes: string | null;
   lines: BillMatchLine[];
 }
 

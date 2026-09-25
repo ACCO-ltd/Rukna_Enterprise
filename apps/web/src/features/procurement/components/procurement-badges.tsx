@@ -115,6 +115,7 @@ const MATCH_TONES: Record<BillMatchStatus, BadgeTone> = {
   MATCHED_WITH_TOLERANCE: 'warning',
   EXCEPTION: 'danger',
   APPROVED_EXCEPTION: 'warning',
+  DISPUTED: 'danger',
 };
 
 export function BillMatchStatusBadge({ status }: { status: BillMatchStatus }) {

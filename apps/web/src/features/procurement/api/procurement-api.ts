@@ -16,6 +16,7 @@ import { apiClient } from '@/lib/api-client';
 import type {
   ApproveExceptionPayload,
   BillMatchResult,
+  ResolveExceptionPayload,
   CommitmentLedgerEntry,
   CommitmentSummary,
   CommitmentStage,
@@ -469,6 +470,27 @@ export function approveMatchException(
   payload: ApproveExceptionPayload,
 ): Promise<BillMatchResult> {
   return apiClient<BillMatchResult>(`/procurement/bill-matching/${billId}/approve-exception`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * `POST /procurement/bill-matching/:billId/resolve`
+ *
+ * Structured exception resolution (ADR-018). The reason drives the action:
+ *  - ROUNDING_VARIANCE / FREIGHT_OR_ADDITIONAL_CHARGE / OTHER → APPROVE → APPROVED_EXCEPTION
+ *  - SUPPLIER_INVOICE_ERROR → DISPUTE → DISPUTED
+ *  - AGREED_PRICE_CHANGE / PO_QUANTITY_CHANGE → REQUIRE_PO_REVISION → stays EXCEPTION
+ *  - RECEIPT_CORRECTION → REQUIRE_RECEIPT_CORRECTION → stays EXCEPTION
+ *
+ * APPROVE on bills > $1,000 is server-gated to CFO role.
+ */
+export function resolveMatchException(
+  billId: string,
+  payload: ResolveExceptionPayload,
+): Promise<BillMatchResult> {
+  return apiClient<BillMatchResult>(`/procurement/bill-matching/${billId}/resolve`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });

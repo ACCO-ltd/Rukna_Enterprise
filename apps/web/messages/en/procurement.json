@@ -111,7 +111,8 @@
     "MATCHED": "Matched",
     "MATCHED_WITH_TOLERANCE": "Matched with variance",
     "EXCEPTION": "Exception",
-    "APPROVED_EXCEPTION": "Exception approved"
+    "APPROVED_EXCEPTION": "Exception approved",
+    "DISPUTED": "Disputed"
   },
   "uom": {
     "title": "Units of Measure",
@@ -599,7 +600,39 @@
     "approveExceptionTitle": "Approve matching exception",
     "approveExceptionBody": "Approving records that the difference is accepted and releases the bill toward posting and payment. The bill total decides who may approve — larger differences need CFO sign-off.",
     "approvalReason": "Approval Reason",
-    "approvalReasonRequired": "A reason is required."
+    "approvalReasonRequired": "A reason is required.",
+    "resolveException": "Resolve exception",
+    "resolveExceptionTitle": "Resolve matching exception",
+    "reasonLabel": "Reason for exception",
+    "reasonRequired": "Select a reason.",
+    "resolveNotesLabel": "Notes",
+    "resolveNotesRequired": "Notes are required for disputes.",
+    "cfoRequired": "Bills over $1,000 require CFO sign-off to approve.",
+    "reason": {
+      "ROUNDING_VARIANCE": "Rounding variance",
+      "FREIGHT_OR_ADDITIONAL_CHARGE": "Freight or additional charge",
+      "OTHER": "Other minor variance",
+      "SUPPLIER_INVOICE_ERROR": "Supplier invoice error",
+      "AGREED_PRICE_CHANGE": "Agreed price change",
+      "PO_QUANTITY_CHANGE": "PO quantity change",
+      "RECEIPT_CORRECTION": "Receipt correction needed"
+    },
+    "actionConsequence": {
+      "APPROVE": "The bill will be marked as an approved exception and released toward posting.",
+      "DISPUTE": "The bill will be marked as disputed. Disputed bills cannot be posted and must be re-raised once the supplier reissues the invoice.",
+      "REQUIRE_PO_REVISION": "No immediate status change — revise and approve the purchase order, then re-run matching.",
+      "REQUIRE_RECEIPT_CORRECTION": "No immediate status change — correct the goods receipt, then re-run matching."
+    },
+    "rerunMatch": "Re-run matching",
+    "rerunMatchTitle": "Re-run matching?",
+    "rerunMatchBody": "Discards the current result and runs a fresh three-way match. Use this after a PO revision is approved or a goods receipt is corrected.",
+    "disputedTitle": "This bill is disputed",
+    "disputedBody": "The exception was recorded as a supplier invoice error. Re-run matching once the supplier reissues the corrected invoice.",
+    "pendingPoRevisionTitle": "PO revision required",
+    "pendingPoRevisionBody": "The exception requires a purchase order revision. Approve the revised PO then re-run matching.",
+    "pendingReceiptCorrectionTitle": "Receipt correction required",
+    "pendingReceiptCorrectionBody": "The exception requires a correction to the goods receipt. Correct the receipt then re-run matching.",
+    "resolvedNotes": "Notes: {notes}"
   },
   "commitments": {
     "title": "Commitment Ledger",

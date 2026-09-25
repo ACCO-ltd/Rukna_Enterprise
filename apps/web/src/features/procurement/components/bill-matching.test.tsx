@@ -22,6 +22,8 @@ import { canPostBill } from '../quantities';
 const mocks = vi.hoisted(() => ({
   useBillMatch: vi.fn(),
   useApproveMatchException: vi.fn(),
+  useResolveMatchException: vi.fn(),
+  useRunBillMatch: vi.fn(),
 }));
 
 vi.mock('../hooks/use-procurement', () => mocks);
@@ -64,6 +66,9 @@ function makeMatch(overrides: Partial<BillMatchResult> = {}): BillMatchResult {
     approvalReason: null,
     approvedBy: null,
     approvedAt: null,
+    resolutionReason: null,
+    resolutionAction: null,
+    resolutionNotes: null,
     lines: [
       {
         id: 'ml-1',
@@ -107,6 +112,8 @@ beforeEach(() => {
   });
   vi.clearAllMocks();
   mocks.useApproveMatchException.mockReturnValue(idleMutation);
+  mocks.useResolveMatchException.mockReturnValue(idleMutation);
+  mocks.useRunBillMatch.mockReturnValue(idleMutation);
   mocks.useBillMatch.mockReturnValue({ data: null, isPending: false, isError: false });
 });
 
@@ -240,10 +247,10 @@ describe('BillMatchSummary — exception (D6, Review differences)', () => {
     });
 
     renderWithProviders(<BillMatchSummary bill={makeBill({ matchStatus: 'EXCEPTION' })} />);
-    expect(screen.getByRole('button', { name: 'Approve exception' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Resolve exception' })).toBeInTheDocument();
   });
 
-  it('does not offer exception approval without the permission', () => {
+  it('does not offer exception resolution without the permission', () => {
     sessionStore.setSession({
       accessToken: 'test-token',
       user: {
@@ -264,16 +271,16 @@ describe('BillMatchSummary — exception (D6, Review differences)', () => {
 
     renderWithProviders(<BillMatchSummary bill={makeBill({ matchStatus: 'EXCEPTION' })} />);
     expect(
-      screen.queryByRole('button', { name: 'Approve exception' }),
+      screen.queryByRole('button', { name: 'Resolve exception' }),
     ).not.toBeInTheDocument();
     // But anyone may still review the differences.
     expect(screen.getByRole('button', { name: 'Review differences' })).toBeInTheDocument();
   });
 
-  it('requires a reason before an exception can be approved', async () => {
+  it('requires a reason before the exception can be resolved', async () => {
     const user = userEvent.setup();
-    const approve = { ...idleMutation, mutate: vi.fn() };
-    mocks.useApproveMatchException.mockReturnValue(approve);
+    const resolve = { ...idleMutation, mutate: vi.fn() };
+    mocks.useResolveMatchException.mockReturnValue(resolve);
     mocks.useBillMatch.mockReturnValue({
       data: exceptionMatch(),
       isPending: false,
@@ -281,21 +288,16 @@ describe('BillMatchSummary — exception (D6, Review differences)', () => {
     });
 
     renderWithProviders(<BillMatchSummary bill={makeBill({ matchStatus: 'EXCEPTION' })} />);
-    await user.click(screen.getByRole('button', { name: 'Approve exception' }));
 
-    const confirm = screen.getAllByRole('button', { name: 'Approve exception' }).at(-1)!;
-    expect(confirm).toBeDisabled();
+    // Open the resolve drawer.
+    await user.click(screen.getByRole('button', { name: 'Resolve exception' }));
 
-    await user.type(
-      screen.getByLabelText('Approval Reason'),
-      'Agreed short delivery with supplier',
-    );
-    expect(confirm).toBeEnabled();
+    // Drawer is open; the submit button is the last "Resolve exception" button.
+    const submitBtn = screen.getAllByRole('button', { name: 'Resolve exception' }).at(-1)!;
 
-    await user.click(confirm);
-    expect(approve.mutate).toHaveBeenCalledWith(
-      { billId: 'bill-1', payload: { approvalReason: 'Agreed short delivery with supplier' } },
-      expect.anything(),
-    );
+    // Submit without selecting a reason — error shown, mutate not called.
+    await user.click(submitBtn);
+    expect(screen.getByText('Select a reason.')).toBeInTheDocument();
+    expect(resolve.mutate).not.toHaveBeenCalled();
   });
 });

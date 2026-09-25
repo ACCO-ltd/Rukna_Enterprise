@@ -71,6 +71,7 @@ import {
   reverseSupplierBill,
   reverseSupplierPayment,
   revisePurchaseOrder,
+  resolveMatchException,
   runBillMatch,
   submitMaterialRequest,
   submitPurchaseOrder,
@@ -84,6 +85,7 @@ import {
 import type {
   ApproveExceptionPayload,
   BillMatchResult,
+  ResolveExceptionPayload,
   CommitmentLedgerEntry,
   CommitmentStage,
   CommitmentSummary,
@@ -760,6 +762,19 @@ export function useApproveMatchException() {
   return useMutation({
     mutationFn: ({ billId, payload }: { billId: string; payload: ApproveExceptionPayload }) =>
       approveMatchException(billId, payload),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: procurementKeys.billMatch(result.supplierBillId) });
+      qc.invalidateQueries({ queryKey: procurementKeys.bill(result.supplierBillId) });
+      qc.invalidateQueries({ queryKey: [...procurementKeys.all, 'bills'] });
+    },
+  });
+}
+
+export function useResolveMatchException() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ billId, payload }: { billId: string; payload: ResolveExceptionPayload }) =>
+      resolveMatchException(billId, payload),
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: procurementKeys.billMatch(result.supplierBillId) });
       qc.invalidateQueries({ queryKey: procurementKeys.bill(result.supplierBillId) });

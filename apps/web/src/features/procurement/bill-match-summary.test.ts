@@ -44,6 +44,9 @@ function result(lines: BillMatchLine[]): BillMatchResult {
     approvalReason: null,
     approvedBy: null,
     approvedAt: null,
+    resolutionReason: null,
+    resolutionAction: null,
+    resolutionNotes: null,
     lines,
   };
 }
