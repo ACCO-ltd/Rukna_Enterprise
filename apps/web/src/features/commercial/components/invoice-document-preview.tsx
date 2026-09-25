@@ -109,7 +109,7 @@ export function InvoiceDocumentPreview({ documents, allNumbered, className }: In
             key={query.data.url}
             src={query.data.url}
             title={t('previewTitle')}
-            className="h-full min-h-120 w-full border-0 bg-white"
+            className="h-full w-full border-0 bg-white"
           />
         )}
       </div>

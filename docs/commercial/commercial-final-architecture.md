@@ -59,7 +59,13 @@ The billing path for a MILESTONE contract:
 2. **Mark Ready to Bill** (`POST /commercial/installments/:id/mark-ready-to-bill`): commercial team confirms the installment is eligible for invoicing. Sets `readyToBillAt`.
 3. **Revoke Readiness** (`DELETE /commercial/installments/:id/mark-ready-to-bill`): available until the installment is billed.
 
-The `billStage` gate enforces `readyToBillAt IS NOT NULL` before any invoicing action. There is no gate that prevents a later milestone being issued while an earlier one has an outstanding balance.
+The `issuePackage` gate enforces `readyToBillAt IS NOT NULL` before any invoicing action. There is no gate that prevents a later milestone being issued while an earlier one has an outstanding balance.
+
+**Retired:** an earlier two-step "Bill this stage" command (`billStage` — draft-only: allocate now, post
+later) has been removed. It left a variation's invoice allocated but never posted, which made
+`issuePackage`'s "already fully realized → skip" eligibility check silently exclude that VO's invoice
+from ever being posted — orphaning it with no invoice number. `issuePackage` is now the only way to
+raise a billing package, and it always approves + posts in the same transaction (see §5).
 
 For a milestone-triggered installment, a linked `VERIFIED` programme milestone is required before the current-cycle ribbon offers commercial review. A missing link is treated as blocked rather than silently bypassing physical verification.
 

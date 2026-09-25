@@ -1,7 +1,6 @@
 import type {
   CommercialBillingResponse,
   CommercialBillingPackagesResponse,
-  CommercialBillStageResult,
   CertifiedInvoicedByVariationResponse,
   CommercialApplicationsResponse,
   CommercialCurrentCycleResponse,
@@ -64,32 +63,13 @@ export function getCommercialApplications(
   );
 }
 
-// ─── Stage billing & Billing Packages (ADR-030 CD10 / C5–C6) ────────────────────
+// ─── Billing Packages (ADR-030 CD10 / C5–C6) ────────────────────────────────────
 //
-// "Bill this stage" bills a milestone installment and, in the same command, each included
-// client-approved variation's REMAINING net — additions on their own standalone invoice, an
-// omission netted into the milestone stage. The server owns every money rule (idempotent skip of
-// already-realized VOs, the "already invoiced ⇒ credit note required" 400): the UI carries the
-// installment/date fields and the include flags, and surfaces the server's verdict verbatim.
-
-export interface BillStagePayload {
-  installmentId: string;
-  invoiceDate: string;
-  dueDate: string;
-  paymentTerms?: string;
-  selectedVariationIds: string[];
-}
-
-/** Bill a milestone stage plus its included variations. Returns the freshly-composed Billing Package. */
-export function billStage(
-  projectId: string,
-  payload: BillStagePayload,
-): Promise<CommercialBillStageResult> {
-  return apiClient<CommercialBillStageResult>(`/projects/${projectId}/commercial/bill-stage`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-}
+// Billing itself happens exclusively through `issuePackage` (Slice 4B, below) — the milestone
+// invoice plus each included client-approved variation, approved and posted atomically. The
+// earlier two-step "Bill this stage" (draft-only) command has been retired: it could leave a
+// variation's invoice allocated but never posted once `issuePackage` later treated the VO as
+// already realized and skipped it, silently orphaning a DRAFT invoice with no invoice number.
 
 /**
  * The grouped stage-billing story for a contract (S-VB-7): one Billing Package per installment that

@@ -219,7 +219,7 @@ export function SendInvoiceDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent size="xl" aria-describedby="send-invoice-desc">
+      <DialogContent size="2xl" aria-describedby="send-invoice-desc">
         <DialogHeader>
           <Badge tone="live" dot className="w-fit">
             {t('eyebrow')}
@@ -232,9 +232,9 @@ export function SendInvoiceDialog({
           </div>
         </DialogHeader>
 
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
           {/* ── Left: delivery record ──────────────────────────────────────── */}
-          <div className="space-y-5 overflow-y-auto">
+          <div className="space-y-5 lg:max-h-[65vh] lg:overflow-y-auto lg:pe-1">
             <div>
               <h3 className="text-body font-semibold text-foreground">{t('deliveryRecordTitle')}</h3>
               <p className="mt-0.5 text-body-sm text-muted-foreground">{t('deliveryRecordHint')}</p>
@@ -279,6 +279,7 @@ export function SendInvoiceDialog({
               onChange={(v) => setDeliveryMethod(v as DeliveryMethod)}
               options={deliveryOptions}
               variant="card"
+              compact
               orientation="horizontal"
               description={!deliveryMethod ? t('methodRequired') : undefined}
             />
@@ -309,8 +310,8 @@ export function SendInvoiceDialog({
           </div>
 
           {/* ── Right: live preview ─────────────────────────────────────────── */}
-          <div className="hidden lg:block">
-            <InvoiceDocumentPreview documents={issuedDocuments} allNumbered={allDocumentsNumbered} />
+          <div className="hidden lg:block lg:max-h-[65vh]">
+            <InvoiceDocumentPreview documents={issuedDocuments} allNumbered={allDocumentsNumbered} className="h-full" />
           </div>
         </div>
 

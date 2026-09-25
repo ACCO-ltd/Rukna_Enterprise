@@ -7,11 +7,9 @@ import { PERMISSIONS, type RequestIdentity } from '@erp/types';
 import type { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import type { ProjectAccessService } from '../../../../platform/project-access/project-access.service.js';
 import type { TransactionalAuditOutboxService } from '../../../../platform/audit-logs/application/transactional-audit-outbox.service.js';
-import type { DocumentSequenceRepository } from '../../../accounting/accounting-core/infrastructure/document-sequence.repository.js';
-import type { PostingAccountResolver } from '../../../accounting/accounting-core/application/posting-account-resolver.service.js';
-import type { IAccountingPostingPort } from '../../../accounting/accounting-core/application/ports/accounting-posting.port.js';
 import type { InvoiceDocumentService } from '../../../accounting/accounts-receivable/application/invoice-document.service.js';
 import type { PlatformFileService } from '../../../../platform/files/application/platform-file.service.js';
+import { DocumentSequenceRepository } from '../../../accounting/accounting-core/infrastructure/document-sequence.repository.js';
 import { ClientInvoiceRepository } from '../../../accounting/accounts-receivable/infrastructure/client-invoice.repository.js';
 import { ClientInvoiceService } from '../../../accounting/accounts-receivable/application/client-invoice.service.js';
 import { VariationOrderPrismaRepository } from '../../variations/infrastructure/variation-order-prisma.repository.js';
@@ -25,7 +23,7 @@ import { CommercialBillingService } from '../application/commercial-billing.serv
  * Fixture: one ACTIVE MILESTONE contract (base 500,000 USD) with four installments:
  *   instA  (40% = 200,000) — unlinked   → primary test subject
  *   instB  (30% = 150,000) — linked to a programme milestone (starts PLANNED)
- *   instC  (20% = 100,000) — unlinked   → revoke + billStage-gate tests
+ *   instC  (20% = 100,000) — unlinked   → revoke + issuePackage-gate tests
  *   instD  (10% =  50,000) — unlinked   → DB-invariant probe
  *
  * A separate DRAFT contract carries instDraft for the "inactive contract" guard test.
@@ -54,9 +52,47 @@ describe('CommercialReadiness (Slice 3B)', () => {
     } as unknown as ProjectAccessService;
     const auditOutbox = { record: async () => undefined } as unknown as TransactionalAuditOutboxService;
 
-    const sequenceRepo = {} as unknown as DocumentSequenceRepository;
-    const resolver = {} as unknown as PostingAccountResolver;
-    const postingPort = {} as unknown as IAccountingPostingPort;
+    // Posting port: creates a real JournalEntry so markPosted's FK is satisfied — issuePackage
+    // (unlike the retired billStage) always approves + posts inside its own transaction.
+    const mockPostingPort = {
+      post: async (data: {
+        organizationId: string;
+        journalCategory: string;
+        entryPurpose: string;
+        documentDate: Date;
+        accountingDate: Date;
+        description: string;
+        currencyCode: string;
+        eventType?: string;
+        sourceDocumentType?: string;
+        sourceDocumentId?: string;
+        createdBy: string;
+      }, tx: Parameters<typeof prisma.$transaction>[0] extends ((tx: infer T) => unknown) ? T : never) => {
+        const je = await (tx as typeof prisma).journalEntry.create({
+          data: {
+            organizationId: orgId,
+            journalCategory: data.journalCategory as never,
+            entryPurpose: data.entryPurpose as never,
+            documentDate: data.documentDate,
+            accountingDate: data.accountingDate,
+            description: data.description,
+            currencyCode: data.currencyCode,
+            sourceDocumentType: (data.sourceDocumentType ?? null) as never,
+            sourceDocumentId: data.sourceDocumentId ?? null,
+            status: 'POSTED' as never,
+            createdBy: data.createdBy,
+          },
+        });
+        return { journalEntryId: je.id };
+      },
+    };
+
+    // Resolver: returns a fake account stub — only the `id` is needed by the posting lines builder.
+    const mockResolver = {
+      resolveByCodeOrRole: async () => ({ id: `acc-${randomUUID().slice(0, 8)}` }),
+    };
+
+    const sequenceRepo = new DocumentSequenceRepository();
     const documentService = {} as unknown as InvoiceDocumentService;
     const files = {} as unknown as PlatformFileService;
 
@@ -64,8 +100,8 @@ describe('CommercialReadiness (Slice 3B)', () => {
       tenancy,
       new ClientInvoiceRepository(),
       sequenceRepo,
-      resolver,
-      postingPort,
+      mockResolver as never,
+      mockPostingPort as never,
       documentService,
       files,
     );
@@ -222,6 +258,11 @@ describe('CommercialReadiness (Slice 3B)', () => {
   afterAll(async () => {
     await prisma.variationBillingAllocation.deleteMany({ where: { organizationId: orgId } });
     await prisma.clientInvoice.deleteMany({ where: { organizationId: orgId } });
+    // issuePackage (unlike the retired billStage) posts atomically, so R-10 leaves behind a real
+    // JournalEntry and a drawn DocumentNumberSequence row — both scoped to this org and both must
+    // go before the organization itself can be deleted.
+    await prisma.journalEntry.deleteMany({ where: { organizationId: orgId } });
+    await prisma.documentNumberSequence.deleteMany({ where: { organizationId: orgId } });
     await prisma.contractPaymentInstallment.deleteMany({
       where: { contract: { organizationId: orgId } },
     });
@@ -319,13 +360,12 @@ describe('CommercialReadiness (Slice 3B)', () => {
     expect(row.readyToBillAt).not.toBeNull();
   });
 
-  // ─── Group 4: billStage readiness gate ──────────────────────────────────────
+  // ─── Group 4: issuePackage readiness gate ────────────────────────────────────
 
-  it('R-09: billStage rejects an installment that has not been marked ready', async () => {
+  it('R-09: issuePackage rejects an installment that has not been marked ready', async () => {
     // instC has not been marked ready
     await expect(
-      service.billStage(identity, {
-        installmentId: instC,
+      service.issuePackage(identity, instC, {
         invoiceDate: '2026-09-17',
         dueDate: '2026-10-17',
         selectedVariationIds: [],
@@ -333,10 +373,9 @@ describe('CommercialReadiness (Slice 3B)', () => {
     ).rejects.toThrow(/not been marked ready to bill/i);
   });
 
-  it('R-10: billStage succeeds once the installment is marked ready', async () => {
+  it('R-10: issuePackage succeeds once the installment is marked ready', async () => {
     // instA was marked ready in R-03; instA has sortOrder=0 so it is NEXT
-    const pkg = await service.billStage(identity, {
-      installmentId: instA,
+    const pkg = await service.issuePackage(identity, instA, {
       invoiceDate: '2026-09-17',
       dueDate: '2026-10-17',
       selectedVariationIds: [],
@@ -344,9 +383,11 @@ describe('CommercialReadiness (Slice 3B)', () => {
     expect(pkg.milestoneInvoice).not.toBeNull();
     expect(pkg.milestoneInvoice?.subtotal).toBe('200000.00');
 
-    // Invoice created in DB
+    // Invoice created in DB, posted with an assigned invoice number.
     const inv = await prisma.clientInvoice.findFirst({ where: { sourceInstallmentId: instA } });
     expect(inv).not.toBeNull();
+    expect(inv?.postingStatus).toBe('POSTED');
+    expect(inv?.invoiceNumber).not.toBeNull();
   });
 
   it('R-11: rejects markReadyToBill on an already-invoiced installment', async () => {
@@ -397,7 +438,7 @@ describe('CommercialReadiness (Slice 3B)', () => {
     expect(derived.toFixed(2)).toBe('200000.00');
   });
 
-  it('R-16: billStage did not create allocations (no VOs were included)', async () => {
+  it('R-16: issuePackage did not create allocations (no VOs were included)', async () => {
     const count = await prisma.variationBillingAllocation.count({ where: { organizationId: orgId } });
     expect(count).toBe(0);
   });

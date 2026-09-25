@@ -147,6 +147,14 @@ export interface RadioGroupProps<TValue extends string> {
    * tax treatment — where the description is part of deciding, not an afterthought.
    */
   variant?: 'inline' | 'card';
+  /**
+   * `variant="card"` only. Shrinks the tile's minimum width (224px → 128px) and centers the
+   * radio and label on one row instead of stacking the label over a description. For a set of
+   * short, description-less choices — a delivery method, an icon-labelled option — where the
+   * full-size card's width would force one tile per line in anything narrower than a wide page
+   * column.
+   */
+  compact?: boolean;
   disabled?: boolean;
   className?: string;
 }
@@ -167,6 +175,7 @@ export function RadioGroup<TValue extends string>({
   description,
   orientation = 'horizontal',
   variant = 'inline',
+  compact = false,
   disabled,
   className,
 }: RadioGroupProps<TValue>) {
@@ -203,8 +212,9 @@ export function RadioGroup<TValue extends string>({
                 key={option.value}
                 onClick={() => !option.disabled && onChange(option.value)}
                 className={cn(
-                  'flex min-w-0 flex-1 basis-56 items-start gap-2.5 rounded-panel border p-3.5 transition-colors',
+                  'flex min-w-0 flex-1 gap-2.5 rounded-panel border transition-colors',
                   'duration-(--motion-enter) ease-brand',
+                  compact ? 'basis-32 items-center p-2.5' : 'basis-56 items-start p-3.5',
                   option.disabled
                     ? 'cursor-not-allowed opacity-60'
                     : 'cursor-pointer hover:border-border-interactive',
@@ -223,7 +233,8 @@ export function RadioGroup<TValue extends string>({
                   onChange={() => onChange(option.value)}
                   aria-describedby={descriptionId}
                   className={cn(
-                    'mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-brand-primary',
+                    'h-4 w-4 shrink-0 cursor-pointer accent-brand-primary',
+                    compact ? '' : 'mt-0.5',
                     'focus-visible:outline-none focus-visible:shadow-ring',
                     'disabled:cursor-not-allowed disabled:opacity-50',
                   )}

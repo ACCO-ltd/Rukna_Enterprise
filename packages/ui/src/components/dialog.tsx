@@ -40,16 +40,20 @@ export const DialogClose = DialogPrimitive.Close;
 /**
  * Size controls the max-width on `sm+` screens. The mobile bottom-sheet is always full-width.
  *
- *  sm  448px  destructive confirm, 1–3 fields (default)
- *  md  512px  4–6 field form
- *  lg  672px  edge case — prefer Sheet for anything larger
- *  xl  896px  2-column document-preparation layouts (form + live preview)
+ *  sm   448px  destructive confirm, 1–3 fields (default)
+ *  md   512px  4–6 field form
+ *  lg   672px  edge case — prefer Sheet for anything larger
+ *  xl   896px  2-column document-preparation layouts (form + a short, text-summary preview)
+ *  2xl 1152px  2-column layouts where the preview is a real rendered document (an embedded
+ *              PDF, a page-scale invoice) rather than a summary card — it needs page-reading
+ *              width, not just enough room to fit. Past this, it belongs on a full page.
  */
 const dialogSizeClass = {
   sm: 'sm:max-w-md',
   md: 'sm:max-w-lg',
   lg: 'sm:max-w-2xl',
   xl: 'sm:max-w-4xl',
+  '2xl': 'sm:max-w-6xl',
 } as const;
 
 export const DialogContent = React.forwardRef<

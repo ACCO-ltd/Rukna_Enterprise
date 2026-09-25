@@ -24,7 +24,6 @@ import { CommercialService } from '../application/commercial.service.js';
 import { CommercialBillingService } from '../application/commercial-billing.service.js';
 import { CollectionEventsService } from '../../../accounting/accounts-receivable/application/collection-events.service.js';
 import { CreditNoteService } from '../../../accounting/accounts-receivable/application/credit-note.service.js';
-import { BillStageDto } from './dto/bill-stage.dto.js';
 import { IssuePackageDto } from './dto/issue-package.dto.js';
 import { MarkReadyToBillDto } from './dto/mark-ready-to-bill.dto.js';
 import { RevokeReadyToBillDto } from './dto/revoke-ready-to-bill.dto.js';
@@ -110,20 +109,6 @@ export class CommercialController {
     @Query('contractId') contractId: string,
   ) {
     return this.commercialBillingService.getBillingPackages(identity, contractId);
-  }
-
-  @Post('bill-stage')
-  @HttpCode(HttpStatus.OK)
-  @RequirePermissions(PERMISSIONS.contractsView, PERMISSIONS.receivablesManage)
-  @ApiOperation({
-    summary:
-      'ADR-030 S-VB-5: bill a milestone stage — milestone invoice + one invoice per included variation',
-  })
-  @ApiParam({ name: 'projectId', description: 'Project ID' })
-  @ApiResponse({ status: 400, description: 'Omission against an already-invoiced stage (credit note required)' })
-  @ApiResponse({ status: 404, description: 'Installment not found' })
-  billStage(@CurrentUser() identity: RequestIdentity, @Body() dto: BillStageDto) {
-    return this.commercialBillingService.billStage(identity, dto);
   }
 
   // ─── Slice 3B — Commercial readiness commands ────────────────────────────────────

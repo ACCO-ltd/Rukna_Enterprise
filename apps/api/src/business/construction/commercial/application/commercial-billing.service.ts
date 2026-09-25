@@ -10,7 +10,6 @@ import {
   type BillingPackageDocumentSource,
   type ClientInvoiceDocStatus,
   type ArPostingStatus,
-  type CommercialBillStageResult,
   type CommercialBillingPackage,
   type CommercialBillingPackageDocument,
   type CommercialBillingPackageInvoice,
@@ -74,30 +73,30 @@ export interface RecordProjectPaymentInput {
   idempotencyKey?: string;
 }
 
-export interface BillStageInput {
-  installmentId: string;
-  invoiceDate: string;
-  dueDate: string;
-  paymentTerms?: string;
-  /** Positive selection: only these CLIENT_APPROVED variation IDs are included. */
-  selectedVariationIds: string[];
-}
-
 /**
- * ADR-030 CONST-COM-028 / S-VB-5..9 (Commercial redesign P1) — the "bill this stage" orchestrator and
- * the Billing-Package read model.
+ * ADR-030 CONST-COM-028 / S-VB-5..9 (Commercial redesign P1) — the Billing-Package orchestrator and
+ * read model.
  *
  * This is Commercial's ONE thin variation-billing WRITE path; the rest of Commercial stays read-only.
  * Orchestration crosses construction → accounting, allowed by ARCH-BOUNDARY-001 (Accounting never
- * imports Variations — the ordering/authorization lives here). It composes existing capabilities:
+ * imports Variations — the ordering/authorization lives here). {@link issuePackage} composes existing
+ * capabilities:
  *   - the milestone invoice via {@link ClientInvoiceService.generateFromInstallment} (with an omission
  *     `subtotalAdjustment` when this un-invoiced stage nets included omissions);
  *   - one standalone invoice per included ADDITION via
  *     {@link ClientInvoiceService.generateStandaloneCharge};
- *   - the exactly-once billing ledger via {@link VariationOrderService.allocateVariationBilling}.
+ *   - the exactly-once billing ledger via {@link VariationOrderService.allocateVariationBilling};
+ *   - approval + posting via {@link ClientInvoiceService.approve} / {@link ClientInvoiceService.post},
+ *     so every document leaves the transaction POSTED with its INV-xxxx number already assigned.
  * All of it runs inside a single transaction so the package commits or rolls back as a whole, with one
  * package-level audit event. Entitlement (contract value / %-schedule) is never touched — realization
  * is a separate layer (CONST-COM-027).
+ *
+ * A two-step "bill this stage" command (draft-only: allocate now, post later) used to exist here and
+ * has been retired — it let a variation's invoice sit allocated-but-unposted, which made
+ * {@link issuePackage}'s "already fully realized → skip" eligibility check silently exclude that VO's
+ * invoice from ever being posted, orphaning it with no invoice number. `issuePackage` is now the only
+ * way to raise a billing package, and it always issues (approves + posts) in the same transaction.
  */
 @Injectable()
 export class CommercialBillingService {
@@ -111,184 +110,6 @@ export class CommercialBillingService {
     private readonly customerReceiptService: CustomerReceiptService,
     private readonly auditOutbox: TransactionalAuditOutboxService,
   ) {}
-
-  // ─── S-VB-5..9 — Prepare this stage (creates DRAFT invoices) ────────────────────
-
-  async billStage(
-    identity: RequestIdentity,
-    dto: BillStageInput,
-  ): Promise<CommercialBillStageResult> {
-    const prisma = this.tenancy.getClient();
-    const orgId = identity.activeOrganizationId;
-
-    // 1. Load the installment + contract, org-scoped through contract.organizationId.
-    const installment = await this.repo.findInstallmentWithContract(prisma, orgId, dto.installmentId);
-    if (!installment) {
-      throw new NotFoundException(`Payment installment ${dto.installmentId} not found`);
-    }
-    const contract = installment.contract;
-    // Tenancy + membership: the contract must be reachable by this member.
-    await this.projectAccess.assertContract(identity, contract.id);
-
-    // Slice 3B — commercial readiness gate. Commercial must explicitly mark the installment ready
-    // before billing can proceed, regardless of the programme milestone status.
-    if (!installment.readyToBillAt) {
-      throw new BadRequestException(
-        `Installment "${installment.name}" has not been marked ready to bill.`,
-      );
-    }
-
-    // 2. Resolve the eligible (CLIENT_APPROVED) variations and their remaining headroom.
-    // Positive selection: only the explicitly listed variation IDs are considered.
-    const vos = await this.variationRepo.findByContract(prisma, orgId, contract.id);
-    const selectedSet = new Set(dto.selectedVariationIds);
-
-    interface Eligible {
-      id: string;
-      reference: string;
-      title: string;
-      remaining: Decimal;
-    }
-    const additions: Eligible[] = [];
-    const omissions: Eligible[] = [];
-    for (const vo of vos) {
-      if (vo.status !== 'CLIENT_APPROVED') continue;
-      if (!selectedSet.has(vo.id)) continue; // deferred (or not named) → no-op
-      const net = computeNetPrice(vo.lines.map((l) => ({ amount: l.amount as Decimal })));
-      const existing = await this.variationRepo.findAllocationsByVariation(prisma, orgId, vo.id);
-      const remaining = VariationBillingAllocationPolicy.remainingUnallocated(net, existing);
-      if (remaining.isZero()) continue; // already fully realized → idempotent skip
-      const e: Eligible = { id: vo.id, reference: vo.reference, title: vo.title, remaining };
-      if (remaining.greaterThan(ZERO)) additions.push(e);
-      else omissions.push(e);
-    }
-
-    // 4a. Milestone-invoice handling — S-VB-9: an already-invoiced stage cannot absorb an omission.
-    const alreadyInvoiced = installment.clientInvoice !== null;
-    if (alreadyInvoiced && omissions.length > 0) {
-      throw new BadRequestException(
-        `Milestone "${installment.name}" is already invoiced — an omission cannot be netted into it; ` +
-          'a credit note is required (not yet available).',
-      );
-    }
-
-    // The signed Σ of included omissions (≤ 0), applied to the fresh milestone invoice's subtotal.
-    const omissionAdjustment = omissions.reduce((sum, o) => sum.plus(o.remaining), ZERO);
-
-    // 7. One transaction for the whole package.
-    const result = await prisma.$transaction(async (tx) => {
-      // 4b. The milestone invoice: reuse an existing one, else create it (with the omission adjustment).
-      const milestoneInvoice: InvoiceLike = alreadyInvoiced
-        ? (installment.clientInvoice as InvoiceLike)
-        : await this.clientInvoiceService.generateFromInstallment(
-            identity,
-            {
-              installmentId: dto.installmentId,
-              invoiceDate: dto.invoiceDate,
-              dueDate: dto.dueDate,
-              paymentTerms: dto.paymentTerms,
-              subtotalAdjustment: omissionAdjustment.toFixed(2),
-            },
-            tx,
-          );
-
-      // 5. Each included OMISSION records a STAGE_REDUCTION against the (freshly-created) milestone
-      // invoice. (alreadyInvoiced + omissions was rejected above, so this only runs on the fresh path.)
-      for (const omission of omissions) {
-        await this.variationService.allocateVariationBilling(
-          identity,
-          omission.id,
-          {
-            amount: omission.remaining, // negative
-            treatment: 'STAGE_REDUCTION',
-            clientInvoiceId: milestoneInvoice.id,
-            installmentId: dto.installmentId,
-          },
-          tx,
-        );
-      }
-
-      // 6. Each included ADDITION gets its own standalone invoice + an INVOICE allocation. Idempotent:
-      // if an INVOICE allocation already links this (voId, installmentId), reuse its invoice (skip).
-      const voInvoiceIds: string[] = [];
-      for (const addition of additions) {
-        // Exactly-once across re-runs (S-VB-6): if this variation was already billed on THIS
-        // installment via an INVOICE allocation, reuse that invoice rather than raising a second one.
-        const priorInvoiceId = await this.findExistingInvoiceAllocation(
-          tx,
-          orgId,
-          addition.id,
-          dto.installmentId,
-        );
-        if (priorInvoiceId) {
-          voInvoiceIds.push(priorInvoiceId);
-          continue;
-        }
-
-        const voInvoice = await this.clientInvoiceService.generateStandaloneCharge(
-          identity,
-          {
-            clientId: contract.clientId,
-            projectId: contract.projectId,
-            contractId: contract.id,
-            currencyCode: contract.currency,
-            subtotal: addition.remaining.toFixed(2),
-            label: `${addition.reference} — ${addition.title}`,
-            invoiceDate: dto.invoiceDate,
-            dueDate: dto.dueDate,
-            paymentTerms: dto.paymentTerms,
-          },
-          tx,
-        );
-        await this.variationService.allocateVariationBilling(
-          identity,
-          addition.id,
-          {
-            amount: addition.remaining, // positive
-            treatment: 'INVOICE',
-            clientInvoiceId: voInvoice.id,
-            installmentId: dto.installmentId,
-          },
-          tx,
-        );
-        voInvoiceIds.push(voInvoice.id);
-      }
-
-      // A stable discriminator so a re-run that legitimately raised a new invoice gets a new key,
-      // while a fully-idempotent re-run (no new invoices) reuses the same key.
-      const newInvoiceCount =
-        (alreadyInvoiced ? 0 : 1) + additions.length; // upper bound on documents raised this call
-      await this.auditOutbox.record(tx, {
-        organizationId: orgId,
-        actorUserId: identity.userId,
-        action: 'CREATE',
-        resourceType: 'Contract',
-        resourceId: contract.id,
-        sourceCommand: 'commercial.billStage',
-        eventType: 'COMMERCIAL_STAGE_BILLED',
-        idempotencyKey: `bill-stage-${dto.installmentId}-${newInvoiceCount}-${milestoneInvoice.id}`,
-        after: {
-          installmentId: dto.installmentId,
-          milestoneInvoiceId: milestoneInvoice.id,
-          voInvoiceIds,
-        },
-      });
-
-      return { milestoneInvoiceId: milestoneInvoice.id };
-    });
-
-    void result;
-    // 8. Return the freshly-composed Billing Package for this installment.
-    const packages = await this.getBillingPackages(identity, contract.id);
-    const pkg = packages.packages.find((p) => p.installmentId === dto.installmentId);
-    if (!pkg) {
-      // Defensive: the installment we just billed must have a package.
-      throw new NotFoundException(
-        `Billing package for installment ${dto.installmentId} could not be assembled.`,
-      );
-    }
-    return pkg;
-  }
 
   // ─── S-VB-7 — Billing Package read model ────────────────────────────────────────
 

@@ -1936,12 +1936,6 @@ export interface CommercialBillingPackage {
 }
 
 /**
- * The result of "bill this stage" — the freshly-composed Billing Package for the installment that
- * was billed. Identical shape to a package read back from {@link CommercialBillingPackage}.
- */
-export type CommercialBillStageResult = CommercialBillingPackage;
-
-/**
  * The list of Billing Packages for a contract (S-VB-7), one per installment that has a milestone
  * invoice OR at least one variation allocation, ordered by installment sort order.
  */

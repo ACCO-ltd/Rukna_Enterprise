@@ -9,19 +9,17 @@ import type {
   CommercialPaymentScheduleVariationLine,
   CommercialSummaryResponse,
   ProgrammeMilestoneResponse,
-  VariationOrderListItem,
 } from '@erp/types';
-import { Alert, Badge, Button, Checkbox, DatePicker, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, EmptyState, FormField, Input, Select, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll } from '@erp/ui';
+import { Alert, Badge, Button, DatePicker, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, EmptyState, FormField, Input, Select, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll } from '@erp/ui';
 
-import { getInvoiceDocument } from '@/features/accounting/api/invoices-api';
 import { usePermissions } from '@/features/auth/permissions/can';
 import { useCreateMilestone, useMilestones } from '@/features/programme/hooks/use-programme';
 import { ApiError } from '@/lib/api-client';
 import { formatDate, formatMoney } from '@/lib/format';
 import { useDialogDismissGuard } from '@/lib/use-dialog-dismiss-guard';
 
-import { useBillingPackages, useCommercialCurrentCycle, useVariations } from '../hooks/use-commercial';
-import { useBillStage, useSetInstallmentMilestone } from '../hooks/use-payment-schedule';
+import { useCommercialCurrentCycle } from '../hooks/use-commercial';
+import { useSetInstallmentMilestone } from '../hooks/use-payment-schedule';
 import { dueStatus, isBilledInstallment, paymentInstallmentTone } from '../presentation';
 import { errorText } from './commercial-workspace';
 
@@ -64,7 +62,6 @@ export function PaymentSchedulePanel({
   const cycle = useCommercialCurrentCycle(projectId);
   const milestones = useMilestones(projectId);
 
-  const [invoicing, setInvoicing] = useState<Installment | null>(null);
   const [linking, setLinking] = useState<Installment | null>(null);
 
   // Adopted variations nest under the stage they were billed on (R7). Group them by stage; an
@@ -107,7 +104,6 @@ export function PaymentSchedulePanel({
   const schedule = cycle.data.paymentSchedule ?? null;
   const installments = schedule?.installments ?? [];
   const canManageLink = can('manage:contract');
-  const canInvoice = summary.capabilities.canGenerateInvoice;
 
   const money = (value: string | null) =>
     value === null
@@ -169,9 +165,7 @@ export function PaymentSchedulePanel({
                         projectId={projectId}
                         locale={locale}
                         money={money}
-                        canInvoice={canInvoice}
                         canManageLink={canManageLink}
-                        onInvoice={() => setInvoicing(inst)}
                         onLink={() => setLinking(inst)}
                         t={t}
                       />
@@ -210,16 +204,6 @@ export function PaymentSchedulePanel({
         </div>
       )}
 
-      {invoicing ? (
-        <BillStageDialog
-          projectId={projectId}
-          contractId={contractId}
-          summary={summary}
-          installment={invoicing}
-          onDismiss={() => setInvoicing(null)}
-        />
-      ) : null}
-
       {linking ? (
         <LinkMilestoneDialog
           projectId={projectId}
@@ -239,9 +223,7 @@ function InstallmentRow({
   projectId,
   locale,
   money,
-  canInvoice,
   canManageLink,
-  onInvoice,
   onLink,
   t,
 }: {
@@ -249,9 +231,7 @@ function InstallmentRow({
   projectId: string;
   locale: 'en' | 'ar';
   money: (value: string | null) => string | null;
-  canInvoice: boolean;
   canManageLink: boolean;
-  onInvoice: () => void;
   onLink: () => void;
   t: ReturnType<typeof useTranslations>;
 }) {
@@ -290,38 +270,23 @@ function InstallmentRow({
         <MilestoneCell inst={inst} canManageLink={canManageLink} onLink={onLink} t={t} />
       </TableCell>
       <TableCell className="text-end">
-        {inst.status === 'NEXT' && canInvoice ? (
-          <div className="flex flex-col items-end gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="min-h-11 sm:min-h-0"
-              onClick={onInvoice}
-              disabled={blocked}
-              // The reason is not on this button alone — it is rendered adjacent below (S-PS-1), so
-              // the disabled state is self-explanatory rather than a bare, unexplained control.
-              title={blocked ? t('paymentSchedule.milestone.blockedHint') : undefined}
-            >
-              {t('paymentSchedule.billStage')}
-            </Button>
-            {/* CONST-COM-025 / S-PS-1: the gate's reason and its remediation live on the row itself —
-                "⛔ Verify "<milestone>" →" links straight into Programme & Progress (the same target
-                the cycle ribbon uses), so a blocked control is never bare. */}
-            {blocked && inst.programmeMilestone ? (
-              <Link
-                href={`/projects/${projectId}/progress`}
-                className="inline-flex max-w-56 items-center justify-end gap-1 text-caption font-medium text-warning underline underline-offset-2 hover:text-warning/80"
-              >
-                <Ban size={13} className="shrink-0" aria-hidden="true" />
-                <span className="min-w-0">
-                  {t('paymentSchedule.milestone.blockedRow', {
-                    name: inst.programmeMilestone.name,
-                  })}
-                </span>
-                <ArrowRight size={12} className="shrink-0" aria-hidden="true" />
-              </Link>
-            ) : null}
-          </div>
+        {/* CONST-COM-025 / S-PS-1: the gate's reason and its remediation live on the row itself —
+            "⛔ Verify "<milestone>" →" links straight into Programme & Progress (the same target
+            the cycle ribbon uses). Billing itself now happens exclusively through the milestone-
+            journey "Issue" flow (Contract & Milestones tab) — this panel only surfaces the gate. */}
+        {inst.status === 'NEXT' && blocked && inst.programmeMilestone ? (
+          <Link
+            href={`/projects/${projectId}/progress`}
+            className="inline-flex max-w-56 items-center justify-end gap-1 text-caption font-medium text-warning underline underline-offset-2 hover:text-warning/80"
+          >
+            <Ban size={13} className="shrink-0" aria-hidden="true" />
+            <span className="min-w-0">
+              {t('paymentSchedule.milestone.blockedRow', {
+                name: inst.programmeMilestone.name,
+              })}
+            </span>
+            <ArrowRight size={12} className="shrink-0" aria-hidden="true" />
+          </Link>
         ) : isBilledInstallment(inst.status) ? (
           <span className="text-caption text-muted-foreground">
             {t('paymentSchedule.status.BILLED')}
@@ -454,242 +419,6 @@ function MilestoneCell({
         </Button>
       ) : null}
     </div>
-  );
-}
-
-/**
- * "Bill this stage" (S-VB-11 / ADR-030 CD10).
- *
- * One billing path. It always bills the milestone installment; when the contract has eligible
- * client-approved variations it also offers to bill each of them in the same command — additions
- * on their own standalone invoice, an omission netted into this stage.
- *
- * **Eligible VO** = `CLIENT_APPROVED` AND not already allocated on any prior stage. The
- * already-allocated set is every VO that appears in the Billing Packages read — a VO billed on an
- * earlier stage is done and must not be offered again (the server would idempotently skip it, but
- * showing it would misrepresent it as still-billable).
- *
- * The summary is **indicative**: a running sum of the server's own decimal strings
- * (`installment.amount` + Σ included VO `netPrice`, omissions subtract via their negative net),
- * before Sales Tax. It exists to make the include/defer toggles legible, not to assert a figure —
- * the authoritative numbers live on the generated invoices, so it is labelled as indicative and
- * the frontend computes no tax.
- */
-function BillStageDialog({
-  projectId,
-  contractId,
-  summary,
-  installment,
-  onDismiss,
-}: {
-  projectId: string;
-  contractId: string;
-  summary: CommercialSummaryResponse;
-  installment: Installment;
-  onDismiss: () => void;
-}) {
-  const t = useTranslations('commercial');
-  const locale = useLocale() as 'en' | 'ar';
-  const bill = useBillStage(projectId);
-  const variationsQuery = useVariations(contractId);
-  const packagesQuery = useBillingPackages(projectId, contractId);
-
-  const today = new Date().toISOString().slice(0, 10);
-  const [invoiceDate, setInvoiceDate] = useState(today);
-  const [dueDate, setDueDate] = useState(() => {
-    if (installment.dueDate) return installment.dueDate;
-    const d = new Date();
-    d.setUTCDate(d.getUTCDate() + 30);
-    return d.toISOString().slice(0, 10);
-  });
-  const [paymentTerms, setPaymentTerms] = useState('');
-
-  // The VOs that are still available to bill on this stage. A VO already present in ANY billing
-  // package (with any allocation) has been realized on a prior stage and is excluded.
-  const eligible = useMemo<VariationOrderListItem[]>(() => {
-    const variations = variationsQuery.data?.variations ?? [];
-    const allocated = new Set(
-      (packagesQuery.data?.packages ?? [])
-        .flatMap((p) => p.variationLines)
-        .map((l) => l.variationId),
-    );
-    return variations.filter((vo) => vo.status === 'CLIENT_APPROVED' && !allocated.has(vo.id));
-  }, [variationsQuery.data, packagesQuery.data]);
-
-  // Include/defer per eligible VO — default INCLUDE. Keyed by id; unknown ids (none yet fetched)
-  // fall back to included, so the summary is correct before the first toggle.
-  const [included, setIncluded] = useState<Record<string, boolean>>({});
-  const isIncluded = (id: string) => included[id] ?? true;
-
-  // Indicative running sum of the server's decimal strings. NOT a re-derivation of a money rule —
-  // just the stage amount plus each included VO's signed net, for the reader to see the direction.
-  const includedVos = eligible.filter((vo) => isIncluded(vo.id));
-  const deferredCount = eligible.length - includedVos.length;
-  const indicativeTotal =
-    Number(installment.amount ?? 0) +
-    includedVos.reduce((sum, vo) => sum + Number(vo.netPrice ?? 0), 0);
-  const indicativeText = summary.financialsVisible
-    ? (formatMoney(String(indicativeTotal), summary.currency, locale) ?? '—')
-    : t('metricState.restricted');
-
-  const dismissGuard = useDialogDismissGuard(bill.isPending, onDismiss);
-
-  // Opens the generated invoice document as soon as billing succeeds — this used to end with a
-  // toast and nothing else, which is the "I clicked Bill this stage and saw nothing" complaint.
-  // The tab opens synchronously on click (before either async step resolves) so the browser
-  // never treats the eventual navigation as an unrequested popup; it starts on `about:blank` and
-  // is redirected once the milestone invoice's document URL comes back.
-  const submit = () => {
-    const tab = window.open('', '_blank', 'noopener');
-    bill.mutate(
-      {
-        installmentId: installment.id,
-        invoiceDate,
-        dueDate,
-        ...(paymentTerms.trim() ? { paymentTerms: paymentTerms.trim() } : {}),
-        selectedVariationIds: eligible.filter((vo) => isIncluded(vo.id)).map((vo) => vo.id),
-      },
-      {
-        onSuccess: (result) => {
-          onDismiss();
-          const invoiceId = result.milestoneInvoice?.id;
-          if (!invoiceId) {
-            tab?.close();
-            return;
-          }
-          getInvoiceDocument(invoiceId)
-            .then((doc) => {
-              if (tab) tab.location.href = doc.url;
-            })
-            .catch(() => tab?.close());
-        },
-        onError: () => tab?.close(),
-      },
-    );
-  };
-
-  return (
-    <Dialog open onOpenChange={dismissGuard.onOpenChange}>
-      <DialogContent {...dismissGuard.contentProps}>
-        <DialogTitle>{t('paymentSchedule.billDialog.title', { name: installment.name })}</DialogTitle>
-        <DialogDescription>{t('paymentSchedule.billDialog.hint')}</DialogDescription>
-
-        {bill.isError ? (
-          <div className="mt-4">
-            <Alert
-              variant="error"
-              messages={[
-                bill.error instanceof ApiError
-                  ? bill.error.message
-                  : t('paymentSchedule.billDialog.failed'),
-              ]}
-            />
-          </div>
-        ) : null}
-
-        <div className="mt-4 space-y-3">
-          <FormField htmlFor="inst-invoice-date" label={t('paymentSchedule.billDialog.invoiceDate')}>
-            <DatePicker
-              id="inst-invoice-date"
-              value={invoiceDate}
-              onChange={(value) => setInvoiceDate(value)}
-            />
-          </FormField>
-          <FormField htmlFor="inst-due-date" label={t('paymentSchedule.billDialog.dueDate')}>
-            <DatePicker id="inst-due-date" value={dueDate} onChange={(value) => setDueDate(value)} />
-          </FormField>
-          <FormField htmlFor="inst-terms" label={t('paymentSchedule.billDialog.paymentTerms')}>
-            <Input
-              id="inst-terms"
-              value={paymentTerms}
-              placeholder={t('paymentSchedule.billDialog.paymentTermsPlaceholder')}
-              onChange={(e) => setPaymentTerms(e.target.value)}
-            />
-          </FormField>
-        </div>
-
-        {/* Eligible variations. Absent this section the dialog is exactly the old single-invoice
-            flow — one billing path, degrading gracefully when there is nothing extra to bill. */}
-        {eligible.length > 0 ? (
-          <div className="mt-4 space-y-2 rounded-panel border border-border p-3">
-            <p className="text-body-sm font-semibold text-foreground">
-              {t('paymentSchedule.billDialog.variationsTitle')}
-            </p>
-            <p className="text-caption text-muted-foreground">
-              {t('paymentSchedule.billDialog.variationsHint')}
-            </p>
-            <ul className="divide-y divide-border/70">
-              {eligible.map((vo) => {
-                const isOmission = Number(vo.netPrice ?? 0) < 0;
-                return (
-                  <li
-                    key={vo.id}
-                    className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-2"
-                  >
-                    <label
-                      htmlFor={`bill-vo-${vo.id}`}
-                      className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-start gap-2.5 sm:min-h-0"
-                    >
-                      <Checkbox
-                        id={`bill-vo-${vo.id}`}
-                        className="mt-0.5"
-                        checked={isIncluded(vo.id)}
-                        onChange={(e) =>
-                          setIncluded((prev) => ({ ...prev, [vo.id]: e.target.checked }))
-                        }
-                      />
-                      <span className="min-w-0">
-                        <span className="flex flex-wrap items-baseline gap-x-2">
-                          <span className="font-mono text-caption text-muted-foreground">
-                            {vo.reference}
-                          </span>
-                          <span className="text-body-sm font-medium text-foreground">{vo.title}</span>
-                        </span>
-                        <span className="mt-0.5 block text-caption text-muted-foreground">
-                          {isOmission
-                            ? t('paymentSchedule.billDialog.omissionCaption')
-                            : t('paymentSchedule.billDialog.additionCaption')}
-                        </span>
-                      </span>
-                    </label>
-                    <span className="shrink-0 tabular-nums text-body-sm text-foreground">
-                      {summary.financialsVisible
-                        ? (formatMoney(vo.netPrice, summary.currency, locale) ?? '—')
-                        : t('metricState.restricted')}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-            <div className="border-t border-border pt-2">
-              <p className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                <span className="text-caption text-muted-foreground">
-                  {t('paymentSchedule.billDialog.indicativeLabel')}
-                </span>
-                <span className="tabular-nums text-body-sm font-semibold text-foreground">
-                  {indicativeText}
-                </span>
-              </p>
-              <p className="mt-0.5 text-caption text-muted-foreground">
-                {t('paymentSchedule.billDialog.indicativeNote')}
-                {deferredCount > 0
-                  ? ` · ${t('paymentSchedule.billDialog.deferred', { n: deferredCount })}`
-                  : ''}
-              </p>
-            </div>
-          </div>
-        ) : null}
-
-        <DialogFooter>
-          <Button onClick={submit} disabled={bill.isPending || !invoiceDate || !dueDate}>
-            {t('paymentSchedule.billDialog.submit')}
-          </Button>
-          <Button variant="outline" onClick={onDismiss} disabled={bill.isPending}>
-            {t('paymentSchedule.billDialog.cancel')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 

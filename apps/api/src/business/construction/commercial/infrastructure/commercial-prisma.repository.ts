@@ -175,9 +175,9 @@ export class CommercialPrismaRepository {
   }
 
   /**
-   * ADR-030 CONST-COM-028 (Commercial redesign P1) — the single installment the bill-stage
+   * ADR-030 CONST-COM-028 (Commercial redesign P1) — the single installment the billing
    * orchestrator is billing, with its owning contract and its already-generated milestone invoice (if
-   * any). Org-scoped through `contract.organizationId`. Carries exactly what `billStage` needs to
+   * any). Org-scoped through `contract.organizationId`. Carries exactly what `issuePackage` needs to
    * derive the stage amount, resolve VOs, and route the milestone-invoice / omission handling:
    *   - the contract's client/project/currency/billing-model/status and both value columns (the
    *     schedule spreads `baseContractValue ?? contractValue`);
