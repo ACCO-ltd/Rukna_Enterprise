@@ -17,7 +17,19 @@ import {
   useToast,
   type ApprovalStep,
 } from '@erp/ui';
-import { ArrowLeft, HardHat, Image as ImageIcon, Play, Ruler, TriangleAlert, Trash2, Wrench } from 'lucide-react';
+import {
+  ArrowLeft,
+  Check,
+  HardHat,
+  Image as ImageIcon,
+  Play,
+  Ruler,
+  Send,
+  TriangleAlert,
+  Trash2,
+  Undo2,
+  Wrench,
+} from 'lucide-react';
 import type {
   DprLabourRowResponse,
   DprEquipmentRowResponse,
@@ -235,16 +247,19 @@ export function DprDetail({
   const actionButtons = (editable || (dpr.status === 'SUBMITTED' && can('approve:progress'))) && (
     <div className="flex flex-wrap items-center gap-2">
       {editable ? (
-        <RefButton onClick={() => submit.mutate()} disabled={submit.isPending}>
+        <RefButton onClick={() => submit.mutate()} disabled={submit.isPending} className="shadow-e1">
+          <Send size={16} aria-hidden="true" />
           {t('actions.submit')}
         </RefButton>
       ) : null}
       {dpr.status === 'SUBMITTED' && can('approve:progress') ? (
         <>
           <RefButton variant="outline" onClick={() => setConfirm('return')}>
+            <Undo2 size={16} aria-hidden="true" />
             {t('actions.return')}
           </RefButton>
-          <RefButton onClick={() => setConfirm('approve')} disabled={!canApprove}>
+          <RefButton onClick={() => setConfirm('approve')} disabled={!canApprove} className="shadow-e1">
+            <Check size={16} aria-hidden="true" />
             {t('actions.approve')}
           </RefButton>
         </>
@@ -427,7 +442,9 @@ export function DprDetail({
       ) : null}
 
       {actionButtons ? (
-        <div className="flex justify-end gap-2 border-t border-border pt-4">{actionButtons}</div>
+        <div className="flex justify-end gap-2 rounded-container border border-border bg-surface px-5 py-4 shadow-e1">
+          {actionButtons}
+        </div>
       ) : null}
 
       {confirm === 'approve' ? (

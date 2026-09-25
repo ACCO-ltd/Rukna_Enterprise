@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Avatar } from '@erp/ui';
+import { Alert, Avatar, Tabs, TabsContent, TabsList, TabsTrigger } from '@erp/ui';
 import { ClipboardCheck } from 'lucide-react';
 import type { DailyProgressReportResponse } from '@erp/types';
 
@@ -57,59 +57,44 @@ export function ReviewSection({ projectId }: { projectId: string }) {
   const tabLabels: Record<QueueTab, string> = {
     submitted: t('review.awaiting'),
     returned: t('review.returned'),
-    approved: t('review.recentlyApproved'),
+    approved: t('review.approved'),
   };
-  const items = groups[tab];
+
+  // Switching filters keeps the current selection only when it still belongs to the new group —
+  // otherwise the first result in that group takes over, or the selection clears so the queue's
+  // own empty state shows instead of a stale detail pane.
+  function onTabChange(next: string) {
+    const nextTab = next as QueueTab;
+    setTab(nextTab);
+    const nextItems = groups[nextTab];
+    setSelectedDprId((current) => (current && nextItems.some((d) => d.id === current) ? current : nextItems[0]?.id ?? null));
+  }
 
   return (
     <div className="grid gap-4 lg:grid-cols-[340px_1fr] lg:items-start">
       <RefCard className="lg:sticky lg:top-4">
         <RefCardHeader
           icon={<ClipboardCheck size={17} strokeWidth={1.9} />}
-          title={t('review.queueCount', { count: all.length })}
+          title={t('review.title')}
           subtitle={t('review.subtitle')}
         />
-        <div className="border-t border-border px-5 pt-3">
-          <div className="flex gap-1 rounded-panel bg-muted p-1">
-            {(Object.keys(groups) as QueueTab[]).map((key) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setTab(key)}
-                className={`flex-1 rounded-md px-2 py-1.5 text-caption font-medium transition-colors ${
-                  tab === key ? 'bg-surface text-foreground shadow-e1' : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {tabLabels[key]}
-                {key === 'submitted' && submitted.length > 0 ? (
-                  <span className="ms-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-primary px-1 text-[10px] font-medium text-white">
-                    {submitted.length}
-                  </span>
-                ) : null}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="mt-3 max-h-[32rem] overflow-y-auto px-2 pb-2">
-          {items.length === 0 ? (
-            <div className="px-3 py-8 text-center">
-              <p className="text-body text-muted-foreground">{t('review.empty')}</p>
-              {tab === 'submitted' ? <p className="mt-1 text-caption text-disabled-foreground">{t('review.emptyHint')}</p> : null}
-            </div>
-          ) : (
-            <ul className="space-y-1">
-              {items.map((dpr) => (
-                <QueueRow
-                  key={dpr.id}
-                  dpr={dpr}
-                  selected={dpr.id === selectedDprId}
-                  onSelect={() => setSelectedDprId(dpr.id)}
-                  locale={locale}
-                />
+        <Tabs value={tab} onValueChange={onTabChange}>
+          <div className="px-5 pt-2">
+            <TabsList aria-label={t('review.tabsLabel')}>
+              {(Object.keys(groups) as QueueTab[]).map((key) => (
+                <TabsTrigger key={key} value={key}>
+                  {tabLabels[key]}
+                  <TabCount value={groups[key].length} />
+                </TabsTrigger>
               ))}
-            </ul>
-          )}
-        </div>
+            </TabsList>
+          </div>
+          {(Object.keys(groups) as QueueTab[]).map((key) => (
+            <TabsContent key={key} value={key} className="mt-3 max-h-[32rem] overflow-y-auto px-2 pb-2">
+              <QueueList items={groups[key]} tab={key} selectedDprId={selectedDprId} onSelect={setSelectedDprId} locale={locale} t={t} />
+            </TabsContent>
+          ))}
+        </Tabs>
       </RefCard>
 
       {selectedDprId ? (
@@ -124,6 +109,49 @@ export function ReviewSection({ projectId }: { projectId: string }) {
         </RefCard>
       )}
     </div>
+  );
+}
+
+/** A tab's result count — omitted entirely (not shown as "0") when the group is empty. */
+function TabCount({ value }: { value: number }) {
+  if (value <= 0) return null;
+  return (
+    <span className="ms-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-primary px-1 text-[10px] font-medium text-white">
+      {value}
+    </span>
+  );
+}
+
+function QueueList({
+  items,
+  tab,
+  selectedDprId,
+  onSelect,
+  locale,
+  t,
+}: {
+  items: DailyProgressReportResponse[];
+  tab: QueueTab;
+  selectedDprId: string | null;
+  onSelect: (id: string) => void;
+  locale: 'en';
+  t: ReturnType<typeof useTranslations<'progress'>>;
+}) {
+  if (items.length === 0) {
+    return (
+      <div className="px-3 py-8 text-center">
+        <p className="text-body text-muted-foreground">{t('review.empty')}</p>
+        {tab === 'submitted' ? <p className="mt-1 text-caption text-disabled-foreground">{t('review.emptyHint')}</p> : null}
+      </div>
+    );
+  }
+
+  return (
+    <ul className="space-y-1">
+      {items.map((dpr) => (
+        <QueueRow key={dpr.id} dpr={dpr} selected={dpr.id === selectedDprId} onSelect={() => onSelect(dpr.id)} locale={locale} />
+      ))}
+    </ul>
   );
 }
 

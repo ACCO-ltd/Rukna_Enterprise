@@ -5,24 +5,30 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
+  ApprovalChain,
+  Badge,
   Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
   DialogTitle,
   FormField,
   Input,
   RadioGroup,
   Textarea,
+  type ApprovalStep,
+  type RadioOption,
 } from '@erp/ui';
-import { CheckCircle2 } from 'lucide-react';
+import { Mail, MessageCircle, MoreHorizontal, Printer } from 'lucide-react';
 
 import { formatDate, formatMoney } from '@/lib/format';
 
 import { getIssuedInvoiceDocument, recordPackageDelivery } from '../api/commercial-api';
 import { commercialKeys } from '../hooks/use-commercial';
 import type { MilestoneItemViewModel } from '../milestone-journey.adapter';
+import { InvoiceDocumentPreview } from './invoice-document-preview';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -172,11 +178,11 @@ export function SendInvoiceDialog({
         ? t('totalNoDue', { total: fmtTotal })
         : null;
 
-  const deliveryOptions = [
-    { value: 'whatsapp' as const, label: t('whatsapp') },
-    { value: 'email' as const, label: t('email') },
-    { value: 'physical' as const, label: t('physical') },
-    { value: 'other' as const, label: t('other') },
+  const deliveryOptions: RadioOption<DeliveryMethod>[] = [
+    { value: 'whatsapp', label: <IconLabel icon={<MessageCircle size={16} aria-hidden="true" />}>{t('whatsapp')}</IconLabel> },
+    { value: 'email', label: <IconLabel icon={<Mail size={16} aria-hidden="true" />}>{t('email')}</IconLabel> },
+    { value: 'physical', label: <IconLabel icon={<Printer size={16} aria-hidden="true" />}>{t('physical')}</IconLabel> },
+    { value: 'other', label: <IconLabel icon={<MoreHorizontal size={16} aria-hidden="true" />}>{t('other')}</IconLabel> },
   ];
   const issuedDocuments = journey?.documents ?? [];
   const allDocumentsNumbered =
@@ -184,86 +190,128 @@ export function SendInvoiceDialog({
   const whatsappPhoneIsValid = recipient.replace(/[^0-9]/g, '').length >= 7;
   const canOpenWhatsApp = allDocumentsNumbered && whatsappPhoneIsValid && !isOpeningWhatsApp;
 
+  // Lifecycle context (Draft → Issued → Sent → Paid). This dialog only ever opens once an
+  // invoice is issued, so 'draft' is always behind it — the rest reflects the real journey/
+  // milestone state rather than assuming this action always ends in 'sent'.
+  const isPaid = milestone.userState === 'paid';
+  const isPartiallyPaid = milestone.userState === 'partially-paid';
+  const isSent =
+    journey?.phase === 'sent' || milestone.userState === 'awaiting-payment' || isPaid || isPartiallyPaid;
+  const lifecycleSteps: ApprovalStep[] = [
+    { id: 'draft', title: t('lifecycle.draft'), state: 'approved' },
+    { id: 'issued', title: t('lifecycle.issued'), state: isSent ? 'approved' : 'current' },
+    {
+      id: 'sent',
+      title: t('lifecycle.sent'),
+      state: isPaid || isPartiallyPaid ? 'approved' : isSent ? 'current' : 'upcoming',
+    },
+    { id: 'paid', title: t('lifecycle.paid'), state: isPaid ? 'approved' : isPartiallyPaid ? 'current' : 'upcoming' },
+  ];
+
+  const primaryLabel =
+    isPending || isOpeningWhatsApp
+      ? t('sending')
+      : deliveryMethod === 'whatsapp' && !whatsappOpened
+        ? t('openWhatsApp')
+        : deliveryMethod === 'whatsapp'
+          ? t('confirmWhatsAppSent')
+          : t('markSent');
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md" aria-describedby="send-invoice-desc">
-        {/* Eyebrow */}
-        <div className="flex items-center gap-2">
-          <CheckCircle2 size={18} className="text-success" aria-hidden="true" />
-          <span className="text-body-sm font-semibold text-success">{t('eyebrow')}</span>
-        </div>
+      <DialogContent size="xl" aria-describedby="send-invoice-desc">
+        <DialogHeader>
+          <Badge tone="live" dot className="w-fit">
+            {t('eyebrow')}
+          </Badge>
+          <DialogTitle className="mt-2">{t('title')}</DialogTitle>
+          <DialogDescription id="send-invoice-desc">{summaryLine}</DialogDescription>
 
-        <DialogTitle className="mt-1">{t('title')}</DialogTitle>
-        <DialogDescription id="send-invoice-desc" className="text-body-sm text-muted-foreground">
-          {summaryLine}
-        </DialogDescription>
+          <div className="mt-4 overflow-x-auto border-t border-border pt-4 [-webkit-overflow-scrolling:touch]">
+            <ApprovalChain steps={lifecycleSteps} label={t('lifecycleLabel')} />
+          </div>
+        </DialogHeader>
 
-        <div className="space-y-5 py-1">
-          {errorMessage ? (
-            <Alert variant="error" messages={[errorMessage]} role="alert" />
-          ) : null}
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* ── Left: delivery record ──────────────────────────────────────── */}
+          <div className="space-y-5 overflow-y-auto">
+            <div>
+              <h3 className="text-body font-semibold text-foreground">{t('deliveryRecordTitle')}</h3>
+              <p className="mt-0.5 text-body-sm text-muted-foreground">{t('deliveryRecordHint')}</p>
+            </div>
 
-          {journey?.documents.length ? (
-            <section className="rounded-panel border border-border bg-surface p-3">
-              <p className="text-body-sm font-semibold text-foreground">
-                {t('documentsIssued')}
-              </p>
-              <ul className="mt-2 space-y-1.5">
-                {journey.documents.map((document) => (
-                  <li
-                    key={document.invoiceId}
-                    className="flex items-center justify-between gap-3 text-body-sm"
-                  >
-                    <span className="font-mono font-medium text-foreground">
-                      {document.invoiceNumber ?? t('numberPending')}
-                    </span>
-                    <span className="truncate text-muted-foreground">
-                      {document.sourceReference}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
+            {errorMessage ? (
+              <Alert variant="error" messages={[errorMessage]} role="alert" />
+            ) : null}
 
-          {!allDocumentsNumbered ? (
-            <Alert variant="warning" messages={[t('invoiceNumberRequired')]} role="status" />
-          ) : null}
+            {journey?.documents.length ? (
+              <section className="rounded-panel border border-border bg-surface p-3">
+                <p className="text-body-sm font-semibold text-foreground">
+                  {t('documentsIssued')}
+                </p>
+                <ul className="mt-2 space-y-1.5">
+                  {journey.documents.map((document) => (
+                    <li
+                      key={document.invoiceId}
+                      className="flex items-center justify-between gap-3 text-body-sm"
+                    >
+                      <span className="font-mono font-medium text-foreground">
+                        {document.invoiceNumber ?? t('numberPending')}
+                      </span>
+                      <span className="truncate text-muted-foreground">
+                        {document.sourceReference}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
 
-          {/* Delivery method */}
-          <RadioGroup
-            label={t('method')}
-            name="delivery-method"
-            value={deliveryMethod}
-            onChange={(v) => setDeliveryMethod(v as DeliveryMethod)}
-            options={deliveryOptions}
-            orientation="vertical"
-            description={!deliveryMethod ? t('methodRequired') : undefined}
-          />
+            {!allDocumentsNumbered ? (
+              <Alert variant="warning" messages={[t('invoiceNumberRequired')]} role="status" />
+            ) : null}
 
-          {/* Recipient */}
-          <FormField htmlFor="si-recipient" label={t('recipient')}>
-            <Input
-              id="si-recipient"
-              type="text"
-              value={recipient}
-              onChange={(e) => setRecipient(e.target.value)}
-              placeholder={deliveryMethod === 'whatsapp' ? t('whatsappRecipientPlaceholder') : t('recipientPlaceholder')}
-              disabled={isPending}
+            {/* Delivery method */}
+            <RadioGroup
+              label={t('method')}
+              name="delivery-method"
+              value={deliveryMethod}
+              onChange={(v) => setDeliveryMethod(v as DeliveryMethod)}
+              options={deliveryOptions}
+              variant="card"
+              orientation="horizontal"
+              description={!deliveryMethod ? t('methodRequired') : undefined}
             />
-          </FormField>
 
-          {/* Note */}
-          <FormField htmlFor="si-note" label={t('note')}>
-            <Textarea
-              id="si-note"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder={t('notePlaceholder')}
-              rows={2}
-              disabled={isPending}
-            />
-          </FormField>
+            {/* Recipient */}
+            <FormField htmlFor="si-recipient" label={t('recipient')}>
+              <Input
+                id="si-recipient"
+                type="text"
+                value={recipient}
+                onChange={(e) => setRecipient(e.target.value)}
+                placeholder={deliveryMethod === 'whatsapp' ? t('whatsappRecipientPlaceholder') : t('recipientPlaceholder')}
+                disabled={isPending}
+              />
+            </FormField>
+
+            {/* Note */}
+            <FormField htmlFor="si-note" label={t('note')}>
+              <Textarea
+                id="si-note"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder={t('notePlaceholder')}
+                rows={3}
+                disabled={isPending}
+              />
+            </FormField>
+          </div>
+
+          {/* ── Right: live preview ─────────────────────────────────────────── */}
+          <div className="hidden lg:block">
+            <InvoiceDocumentPreview documents={issuedDocuments} allNumbered={allDocumentsNumbered} />
+          </div>
         </div>
 
         <DialogFooter>
@@ -283,16 +331,19 @@ export function SendInvoiceDialog({
               (deliveryMethod === 'whatsapp' && !whatsappOpened && !canOpenWhatsApp)
             }
           >
-            {isPending || isOpeningWhatsApp
-              ? t('sending')
-              : deliveryMethod === 'whatsapp' && !whatsappOpened
-                ? t('openWhatsApp')
-                : deliveryMethod === 'whatsapp'
-                  ? t('confirmWhatsAppSent')
-                  : t('markSent')}
+            {primaryLabel}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function IconLabel({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <span className="flex items-center gap-2">
+      {icon}
+      {children}
+    </span>
   );
 }

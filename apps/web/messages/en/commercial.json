@@ -1266,7 +1266,7 @@
     },
     "sendInvoice": {
       "eyebrow": "Billing package ready",
-      "title": "Send to client",
+      "title": "Send invoice to client",
       "totalDue": "{total} due {date}",
       "totalNoDue": "{total}",
       "whatsapp": "WhatsApp",
@@ -1295,7 +1295,22 @@
       "dueDateNotSet": "Not set",
       "invoiceNumberRequired": "This billing package cannot be sent until every invoice has an assigned INV number. Refresh the package or ask Finance to finish posting it.",
       "whatsappRecipientPlaceholder": "e.g. +252 61 123 4567",
-      "whatsappOpenFailed": "Could not prepare the invoice links. Please try again."
+      "whatsappOpenFailed": "Could not prepare the invoice links. Please try again.",
+      "deliveryRecordTitle": "Delivery record",
+      "deliveryRecordHint": "Select how you are sending this invoice to the client and record the delivery.",
+      "lifecycleLabel": "Invoice lifecycle",
+      "lifecycle": {
+        "draft": "Draft",
+        "issued": "Issued",
+        "sent": "Sent",
+        "paid": "Paid"
+      },
+      "previewTitle": "Invoice preview",
+      "previewHint": "This is the posted, numbered invoice that will be sent to the client.",
+      "previewUnavailable": "The preview appears once every invoice in this package has been posted with an invoice number.",
+      "previewLoadFailed": "Could not load the invoice preview.",
+      "downloadPdf": "Download PDF",
+      "retry": "Retry"
     },
     "separateCharges": {
       "title": "Separate Charges",
