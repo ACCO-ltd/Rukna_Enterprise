@@ -34,7 +34,24 @@ function makeMilestone(
     invoiceReference: null,
     invoiceJourney: {
       phase: 'issued',
-      documents: [],
+      // A persisted journey only ever surfaces once its billing package has ≥1 document
+      // (contract-milestones-tab.tsx's `.find(... candidate.documents.length > 0)`), so an
+      // empty array here would not be a realistic default — it would silently exercise a
+      // state real production data never reaches.
+      documents: [
+        {
+          invoiceId: 'inv-1',
+          invoiceNumber: 'INV-2026-0142',
+          sourceType: 'MILESTONE',
+          sourceReference: 'Structure payment',
+          subtotal: '200000.00',
+          salesTax: '10000.00',
+          total: '210000.00',
+          dueDate: '2026-10-17',
+          outstanding: '210000.00',
+          deliveries: [],
+        },
+      ],
       invoiceId: 'inv-1',
       invoiceDate: '2026-09-17',
       dueDate: '2026-10-17',
@@ -215,6 +232,43 @@ describe('SendInvoiceDialog', () => {
     expect(commercialApi.recordPackageDelivery).toHaveBeenCalledTimes(1);
     expect(onSent).toHaveBeenCalledWith('inst-1', 'whatsapp');
     open.mockRestore();
+  });
+
+  it('hard-blocks every delivery method — not just WhatsApp — while any document lacks an invoice number', async () => {
+    const user = userEvent.setup();
+    renderDialog({
+      milestone: makeMilestone({
+        invoiceJourney: {
+          phase: 'issued',
+          invoiceId: 'inv-1',
+          invoiceDate: '2026-09-17',
+          dueDate: '2026-10-17',
+          documents: [
+            {
+              invoiceId: 'inv-1',
+              invoiceNumber: null,
+              sourceType: 'MILESTONE',
+              sourceReference: 'Structure payment',
+              subtotal: '200000.00',
+              salesTax: '10000.00',
+              total: '210000.00',
+              dueDate: '2026-10-17',
+              outstanding: '210000.00',
+              deliveries: [],
+            },
+          ],
+        },
+      }),
+    });
+
+    await user.click(screen.getByRole('radio', { name: /email/i }));
+    expect(screen.getByRole('button', { name: /mark as sent/i })).toBeDisabled();
+
+    await user.click(screen.getByRole('radio', { name: /physical/i }));
+    expect(screen.getByRole('button', { name: /mark as sent/i })).toBeDisabled();
+
+    await user.click(screen.getByRole('radio', { name: /other/i }));
+    expect(screen.getByRole('button', { name: /mark as sent/i })).toBeDisabled();
   });
 
   it('does not open WhatsApp when a package contains an unnumbered invoice', async () => {

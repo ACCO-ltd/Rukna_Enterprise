@@ -1260,9 +1260,18 @@
       "currentValue": "Current contract value",
       "signedDate": "Signed date",
       "signedDateNotRecorded": "Not recorded",
+      "completeRecord": "Complete record",
       "paymentTerms": "Payment terms",
       "paymentTermsNotSet": "Not set",
       "viewContract": "View contract terms"
+    },
+    "recordSignedDate": {
+      "title": "Record signed date",
+      "description": "Enter the date the parties physically signed this contract. This does not change any commercial terms.",
+      "signedDate": "Signed date",
+      "cancel": "Cancel",
+      "submit": "Save",
+      "submitting": "Saving..."
     },
     "sendInvoice": {
       "eyebrow": "Billing package ready",

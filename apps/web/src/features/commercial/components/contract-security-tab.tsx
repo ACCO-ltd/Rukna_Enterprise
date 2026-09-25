@@ -3,9 +3,9 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
-import { Info, Lock, ShieldCheck } from 'lucide-react';
+import { Lock, ShieldCheck } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Badge, Button, cn, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, EmptyState, Label, LtrValue, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll, Textarea } from '@erp/ui';
+import { Alert, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, EmptyState, Label, LtrValue, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll, Textarea } from '@erp/ui';
 import type { CommercialGuaranteeSummary, CommercialSummaryResponse } from '@erp/types';
 
 import { formatDate, formatMoney } from '@/lib/format';
@@ -31,8 +31,11 @@ import { FactRow, PanelLink, SectionCard } from './commercial-ui';
  * The contract lifecycle rail. ACCO signs on paper, so the in-app review/signature stages are
  * gone — a physically-signed DRAFT is activated straight to ACTIVE. CANCELLED and TERMINATED are
  * exits, not stages on the rail.
+ *
+ * Exported: the rail itself now renders in `ContractHeader` (top of the Contract & Milestones
+ * tab), not here — visible without scrolling instead of buried below the schedule editor.
  */
-const LIFECYCLE = ['DRAFT', 'ACTIVE', 'FINAL_ACCOUNT_PENDING', 'CLOSED'] as const;
+export const LIFECYCLE = ['DRAFT', 'ACTIVE', 'FINAL_ACCOUNT_PENDING', 'CLOSED'] as const;
 
 /** The transition that becomes available from each state, where one exists (label keys). */
 const NEXT_TRANSITION: Partial<Record<string, string>> = {
@@ -106,7 +109,6 @@ export function ContractSecurityBody({
     <div className="space-y-4">
       <div className="grid min-w-0 gap-4 lg:grid-cols-2">
         <div className="min-w-0 space-y-4">
-          <MainContractPanel projectId={projectId} summary={summary} detail={detail.data ?? null} />
           <PaymentTermsPanel
             projectId={projectId}
             summary={summary}
@@ -124,97 +126,6 @@ export function ContractSecurityBody({
 
       <ContractDeliverablesPanel detail={detail.data ?? null} loading={detail.isPending} />
     </div>
-  );
-}
-
-// ─── Main contract ──────────────────────────────────────────────────────────────
-
-function MainContractPanel({
-  projectId,
-  summary,
-  detail,
-}: {
-  projectId: string;
-  summary: CommercialSummaryResponse;
-  detail: ContractDetail | null;
-}) {
-  const t = useTranslations('commercial');
-  const locale = useLocale() as 'en' | 'ar';
-  const contract = summary.mainContract!;
-  const value = summary.metrics.contractValue;
-
-  return (
-    <SectionCard
-      title={t('mainContract.title')}
-      action={
-        summary.capabilities.canEditContract ? (
-          <Button asChild variant="outline" size="sm" className="min-h-11 sm:min-h-0">
-            <Link href={`/projects/${projectId}/commercial/contract/edit`}>{t('actions.edit')}</Link>
-          </Button>
-        ) : null
-      }
-    >
-      <dl>
-        <FactRow label={t('mainContract.number')}>
-          <LtrValue>{contract.contractNumber}</LtrValue>
-        </FactRow>
-        <FactRow label={t('mainContract.client')}>{contract.clientName}</FactRow>
-        <FactRow label={t('mainContract.value')}>
-          {value.state === 'RESTRICTED' ? (
-            <RestrictedValue />
-          ) : (
-            <LtrValue>{formatMoney(value.amount, contract.currency, locale) ?? '—'}</LtrValue>
-          )}
-        </FactRow>
-        <FactRow label={t('mainContract.currency')}>
-          <LtrValue>{contract.currency}</LtrValue>
-        </FactRow>
-        <FactRow label={t('mainContract.billingModel')}>
-          {t(`billingModel.${contract.billingModel}`)}
-        </FactRow>
-        <FactRow label={t('mainContract.effectiveDate')}>
-          {formatDate(contract.startDate, locale) ?? t('states.notSet')}
-        </FactRow>
-        {/* The contractual completion date. It moves only through an audited Extension of Time
-            (ADR-026 CONST-VAR-009) — never because a variation proposed extra days. */}
-        <FactRow label={t('mainContract.completionDate')}>
-          {formatDate(contract.expectedEndDate, locale) ?? t('states.notSet')}
-        </FactRow>
-        <FactRow label={t('mainContract.boqBaseline')}>
-          {contract.boqVersionNumber !== null
-            ? t('mainContract.boqVersion', { number: contract.boqVersionNumber })
-            : t('states.notSet')}
-        </FactRow>
-      </dl>
-
-      {/* Activation freezes the client's identity onto this contract. Once it has happened, say so
-          plainly — a reader who later edits the client record needs to know it will not follow.
-          While still a draft, forewarn that activating will freeze it. */}
-      {detail?.clientNameSnapshot ? (
-        <Notice
-          icon={<Lock size={14} aria-hidden="true" />}
-          title={t('mainContract.clientLockedTitle')}
-          body={t('mainContract.clientLockedHint')}
-        />
-      ) : contract.status === 'DRAFT' ? (
-        <Notice
-          icon={<Info size={14} aria-hidden="true" />}
-          title={t('mainContract.willLockTitle')}
-          body={t('mainContract.willLockHint')}
-        />
-      ) : null}
-
-      {/* 44px tall on touch, quiet on desktop — a bare inline anchor inherits its line height
-          and lands at 15px, which is not a target a thumb can hit. */}
-      <div className="mt-2">
-        <Link
-          href={`/projects/${projectId}/boq`}
-          className="inline-flex min-h-11 items-center text-caption font-medium text-brand-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary sm:min-h-0"
-        >
-          {t('mainContract.viewBoq')}
-        </Link>
-      </div>
-    </SectionCard>
   );
 }
 
@@ -250,12 +161,10 @@ function ContractStatusPanel({
   const tLifecycle = useTranslations('platform.lifecycle');
   const qc = useQueryClient();
   const contract = summary.mainContract!;
-  const stageIndex = LIFECYCLE.indexOf(contract.status as (typeof LIFECYCLE)[number]);
   const nextKey = NEXT_TRANSITION[contract.status] ?? null;
   const command = ADVANCE_COMMAND[contract.status] ?? null;
   const canAdvance = summary.capabilities.canAdvanceContract;
   const canReopen = summary.capabilities.canReopenContract;
-  const exited = stageIndex < 0;
 
   const advance = useAdvanceContract(contract.id);
   const reopen = useReopenContract(contract.id);
@@ -305,50 +214,13 @@ function ContractStatusPanel({
 
   return (
     <SectionCard title={t('contractStatus_.title')}>
-      {exited ? (
-        <p className="pb-3 text-body-sm text-muted-foreground">
-          {t('contractStatus_.exited', { status: t(`contractStatus.${contract.status}`) })}
-        </p>
-      ) : (
-        <ol className="flex items-start gap-1 overflow-x-auto pb-1" aria-label={t('contractStatus_.title')}>
-          {LIFECYCLE.map((stage, index) => {
-            const active = index === stageIndex;
-            return (
-              <li
-                key={stage}
-                className="flex min-w-16 flex-1 flex-col items-center gap-1.5 text-center"
-                aria-current={active ? 'step' : undefined}
-              >
-                <span
-                  className={cn(
-                    'h-1 w-full rounded-full',
-                    index < stageIndex
-                      ? 'bg-success'
-                      : active
-                        ? 'bg-brand-primary'
-                        : 'bg-border-strong',
-                  )}
-                  aria-hidden="true"
-                />
-                <span
-                  className={cn(
-                    'text-micro font-medium',
-                    active ? 'text-brand-primary' : 'text-muted-foreground',
-                  )}
-                >
-                  {t(`contractStatus.${stage}`)}
-                </span>
-              </li>
-            );
-          })}
-        </ol>
-      )}
-
-      {/* Current status + the one next action live on a single row — this used to be two stacked
-          FactRows plus a separately-bordered Reopen block, which gave the card three sections of
-          padding for two facts and a button. Reopen is a quiet secondary affordance that never
-          competes with the forward step; its strong warning lives in its own confirm dialog. */}
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border pt-3">
+      {/* The lifecycle rail itself now lives in ContractHeader at the top of the tab — this card
+          is just the actions (current status + the one next-step button + Reopen). Current status
+          + the one next action live on a single row — this used to be two stacked FactRows plus a
+          separately-bordered Reopen block, which gave the card three sections of padding for two
+          facts and a button. Reopen is a quiet secondary affordance that never competes with the
+          forward step; its strong warning lives in its own confirm dialog. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex items-center gap-2">
           <span className="text-caption text-muted-foreground">{t('contractStatus_.current')}</span>
           <Badge tone={contractStatusTone(contract.status)}>
@@ -904,26 +776,6 @@ function ContractDeliverablesPanel({
 }
 
 // ─── Shared bits ────────────────────────────────────────────────────────────────
-
-function Notice({
-  icon,
-  title,
-  body,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  body: string;
-}) {
-  return (
-    <div className="mt-3 flex items-start gap-2 rounded-control border border-border bg-muted/50 px-3 py-2.5">
-      <span className="mt-0.5 shrink-0 text-muted-foreground">{icon}</span>
-      <div>
-        <p className="text-caption font-semibold text-foreground">{title}</p>
-        <p className="mt-0.5 text-caption text-muted-foreground">{body}</p>
-      </div>
-    </div>
-  );
-}
 
 function RestrictedValue() {
   const t = useTranslations('commercial.metricState');

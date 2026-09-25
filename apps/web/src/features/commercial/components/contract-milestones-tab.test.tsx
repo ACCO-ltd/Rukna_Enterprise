@@ -22,6 +22,17 @@ vi.mock('./payment-schedule-tab', () => ({
   ScheduleEditor: () => <div data-testid="schedule-editor" />,
 }));
 
+// ContractHeader reads the contract-detail query directly now (for the client-locked notice) —
+// stub it idle so the header doesn't fire a real network round-trip in these tests.
+vi.mock('@/features/contracts/hooks/use-contracts', () => ({
+  useContract: vi.fn(() => ({ data: null, isPending: false, isError: false })),
+  useRecordSignedDate: vi.fn(() => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+    error: null,
+  })),
+}));
+
 const cycleData = vi.hoisted(() => ({ value: null as unknown }));
 const packageData = vi.hoisted(() => ({ value: { packages: [] } as unknown }));
 vi.mock('../hooks/use-commercial', () => ({
@@ -61,6 +72,9 @@ vi.mock('./commercial-activity', () => ({
 // Stub the folded-in sections so their own hooks don't need mocking here.
 vi.mock('./contract-security-tab', () => ({
   ContractSecurityBody: () => <div data-testid="contract-security-body" />,
+  // ContractHeader reads the lifecycle stage list directly (its compact status rail moved there
+  // from the now-actions-only Contract Status panel), so the mock must still provide it.
+  LIFECYCLE: ['DRAFT', 'ACTIVE', 'FINAL_ACCOUNT_PENDING', 'CLOSED'],
 }));
 
 vi.mock('./variations-tab', () => ({
@@ -335,5 +349,37 @@ describe('ContractMilestonesTab', () => {
     );
     expect(screen.getByTestId('contract-security-body')).toBeInTheDocument();
     expect(screen.getByTestId('variations-tab')).toBeInTheDocument();
+  });
+
+  describe('signed-date completion (operational exception — allowed on ACTIVE)', () => {
+    function summaryMissingSignedDate(canRecordSignedDate: boolean): CommercialSummaryResponse {
+      const base = makeSummary();
+      return {
+        ...base,
+        mainContract: { ...base.mainContract!, signedDate: null },
+        capabilities: {
+          ...base.capabilities,
+          canRecordSignedDate,
+        } as unknown as CommercialSummaryResponse['capabilities'],
+      };
+    }
+
+    it('offers "Complete record" when signedDate is missing and the caller may record it', () => {
+      cycleData.value = makeCycle([{ status: 'NEXT' }]);
+      renderWithProviders(
+        <ContractMilestonesTab projectId="p-1" summary={summaryMissingSignedDate(true)} />,
+      );
+      expect(screen.getByText(/not recorded/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /complete record/i })).toBeInTheDocument();
+    });
+
+    it('hides "Complete record" when the caller lacks the capability, even though signedDate is missing', () => {
+      cycleData.value = makeCycle([{ status: 'NEXT' }]);
+      renderWithProviders(
+        <ContractMilestonesTab projectId="p-1" summary={summaryMissingSignedDate(false)} />,
+      );
+      expect(screen.getByText(/not recorded/i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /complete record/i })).not.toBeInTheDocument();
+    });
   });
 });

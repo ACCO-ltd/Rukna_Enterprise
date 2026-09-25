@@ -11,6 +11,7 @@ import {
   createContract,
   getContract,
   listContracts,
+  recordSignedDate,
   reopenContract,
   runContractCommand,
   terminateContract,
@@ -117,4 +118,16 @@ export function useReopenContract(id: string) {
     contractKeys.all,
     ['projects'],
   ]);
+}
+
+/** Back-fills the physically-signed date on a contract missing it. See `recordSignedDate`. */
+export function useRecordSignedDate(id: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (signedDate: string) => recordSignedDate(id, signedDate),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: contractKeys.detail(id) });
+    },
+  });
 }

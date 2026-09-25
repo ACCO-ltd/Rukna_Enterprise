@@ -329,6 +329,7 @@ export function SendInvoiceDialog({
             disabled={
               !deliveryMethod ||
               isPending ||
+              !allDocumentsNumbered ||
               (deliveryMethod === 'whatsapp' && !whatsappOpened && !canOpenWhatsApp)
             }
           >

@@ -98,6 +98,7 @@ function summary(overrides: Partial<CommercialSummaryResponse> = {}): Commercial
       canGenerateInvoice: false,
       canPostInvoice: false,
       canManageGuarantee: true,
+      canRecordSignedDate: true,
       canRecordReceipt: false,
       canAllocateReceipt: false,
       canReverseVariation: false,

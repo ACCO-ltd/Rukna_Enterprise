@@ -147,6 +147,19 @@ export function reopenContract(id: string, reason: string): Promise<Contract> {
   });
 }
 
+/**
+ * `PATCH /contracts/:id/signed-date` — back-fill the date the paper contract was physically
+ * signed. Unlike `updateContract`, this is allowed in any non-terminal status: it records a
+ * real-world fact (ACCO signs on paper; there is no in-app signature step), not a commercial
+ * term, so it is not limited to DRAFT.
+ */
+export function recordSignedDate(id: string, signedDate: string): Promise<Contract> {
+  return apiClient<Contract>(`/contracts/${id}/signed-date`, {
+    method: 'PATCH',
+    body: JSON.stringify({ signedDate }),
+  });
+}
+
 // ─── Commercial terms ────────────────────────────────────────────────────────────
 //
 // None of the endpoints below is gated on contract status: the service calls
