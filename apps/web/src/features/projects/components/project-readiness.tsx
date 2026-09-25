@@ -202,7 +202,7 @@ function StatusBadge({
 }) {
   const t = useTranslations('platform.projects.preparation');
 
-  if (complete) return <Badge tone="success">{t('status.complete')}</Badge>;
+  if (complete) return <Badge tone="live">{t('status.complete')}</Badge>;
   if (blocked) return <Badge tone="neutral">{t('status.blocked')}</Badge>;
   return (
     <Badge tone={waivable ? 'warning' : 'info'}>

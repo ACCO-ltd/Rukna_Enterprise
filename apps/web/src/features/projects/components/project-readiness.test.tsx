@@ -107,7 +107,7 @@ describe('ProjectReadiness preparation sequence', () => {
     expect(await screen.findByText('2 of 4 complete')).toBeInTheDocument();
     expect(screen.getAllByText('Complete')).toHaveLength(2);
     expect(
-      screen.getByRole('link', { name: 'Open task', exact: true }),
+      screen.getByRole('link', { name: 'Open task' }),
     ).toHaveAttribute('href', '/projects/p1/commercial/contract-security');
   });
 });

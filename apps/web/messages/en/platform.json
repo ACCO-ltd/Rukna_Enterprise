@@ -497,34 +497,34 @@
       "projectManager": "Project manager",
       "commercialTeam": "Commercial team",
       "quantitySurveyor": "Quantity surveyor",
-      “waivable”: “Complete this condition or record an authorized exception when starting.”,
-      “ownerAction”: “Owner action needed”,
-      “blockedBy”: “Complete “{task}” first.”,
-      “finalReady”: “Final step: record commencement and start the project”,
-      “finalBlocked”: “Final step: start the project after mandatory preparation is complete”,
-      “finalHint”: “Starting the project records the actual commencement date and may require workflow approval. Optional preparation requires a recorded exception if left incomplete.”,
-      “deferred”: “Some requirements are not checked automatically. Review them before commencement.”,
-      “status”: {
-        “complete”: “Complete”,
-        “ready”: “Ready now”,
-        “blocked”: “Blocked”,
-        “optional”: “Exception allowed”
+      "waivable": "Complete this condition or record an authorized exception when starting.",
+      "ownerAction": "Owner action needed",
+      "blockedBy": "Complete \"{task}\" first.",
+      "finalReady": "Final step: record commencement and start the project",
+      "finalBlocked": "Final step: start the project after mandatory preparation is complete",
+      "finalHint": "Starting the project records the actual commencement date and may require workflow approval. Optional preparation requires a recorded exception if left incomplete.",
+      "deferred": "Some requirements are not checked automatically. Review them before commencement.",
+      "status": {
+        "complete": "Complete",
+        "ready": "Ready now",
+        "blocked": "Blocked",
+        "optional": "Exception allowed"
       },
-      “conditions”: {
-        “CLIENT_ACTIVE”: “Assign an active client”,
-        “BOQ_BASELINED”: “Baseline the BOQ”,
-        “ACTIVE_MAIN_CONTRACT”: “Create and execute the main contract”,
-        “CONTRACT_START_DATE”: “Set the contractual start date”,
-        “PROGRAMME_DATES”: “Set planned project dates”,
-        “DELIVERY_TEAM”: “Assign the delivery team”
+      "conditions": {
+        "CLIENT_ACTIVE": "Assign an active client",
+        "BOQ_BASELINED": "Baseline the BOQ",
+        "ACTIVE_MAIN_CONTRACT": "Create and execute the main contract",
+        "CONTRACT_START_DATE": "Set the contractual start date",
+        "PROGRAMME_DATES": "Set planned project dates",
+        "DELIVERY_TEAM": "Assign the delivery team"
       },
-      “descriptions”: {
-        “CLIENT_ACTIVE”: “Confirm the legal customer that owns the project contract and billing relationship.”,
-        “BOQ_BASELINED”: “Freeze the approved scope, quantities and rates that the main contract will reference.”,
-        “ACTIVE_MAIN_CONTRACT”: “Create the contract against the baselined BOQ, complete its approval, and mark it executed.”,
-        “CONTRACT_START_DATE”: “Record the commencement date stated by the executed contract or notice to proceed.”,
-        “DELIVERY_TEAM”: “Add at least one delivery member beyond the project manager.”,
-        “PROGRAMME_DATES”: “Confirm the planned start and expected completion dates used by scheduling and progress tracking.”
+      "descriptions": {
+        "CLIENT_ACTIVE": "Confirm the legal customer that owns the project contract and billing relationship.",
+        "BOQ_BASELINED": "Freeze the approved scope, quantities and rates that the main contract will reference.",
+        "ACTIVE_MAIN_CONTRACT": "Create the contract against the baselined BOQ, complete its approval, and mark it executed.",
+        "CONTRACT_START_DATE": "Record the commencement date stated by the executed contract or notice to proceed.",
+        "DELIVERY_TEAM": "Add at least one delivery member beyond the project manager.",
+        "PROGRAMME_DATES": "Confirm the planned start and expected completion dates used by scheduling and progress tracking."
       }
     },
     "transition": {
@@ -1806,7 +1806,7 @@
       "heading": "Contacts",
       "add": "Add contact",
       "none": "No contacts recorded yet.",
-      "noneHint": "Add the person you deal with on this client’s side.",
+      "noneHint": "Add the person you deal with on this client's side.",
       "primary": "Primary",
       "remove": "Remove",
       "removeTitle": "Remove this contact?",
@@ -2277,11 +2277,11 @@
     "items": {
       "heading": "Claimed lines",
       "none": "No lines claimed yet.",
-      "noneHint": "Claim BOQ lines to build up this period’s valuation.",
+      "noneHint": "Claim BOQ lines to build up this period's valuation.",
       "add": "Claim a line",
       "line": "BOQ line",
       "linePlaceholder": "Choose a line",
-      "noLines": "This contract’s BOQ has no priced leaf lines to claim.",
+      "noLines": "This contract's BOQ has no priced leaf lines to claim.",
       "allClaimed": "Every line on this BOQ is already claimed on this application.",
       "unpriced": "no rate — cannot be claimed",
       "cumulativeClaimed": "Cumulative claimed",
