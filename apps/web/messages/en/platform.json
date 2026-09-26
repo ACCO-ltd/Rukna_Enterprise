@@ -1941,6 +1941,7 @@
       "back": "Back to contracts",
       "edit": "Edit contract",
       "overview": "Overview",
+      "number": "Contract number",
       "client": "Client",
       "project": "Project",
       "boqVersion": "BOQ version",
@@ -1957,7 +1958,8 @@
       "snapshotHeading": "Client details frozen on this contract",
       "snapshotHint": "Recorded when the contract was executed. Later edits to the client record do not change these.",
       "awaitingPc": "This contract closes when its project records practical completion. That moves every active contract on the project to final account pending.",
-      "editOnlyDraft": "A contract can only be edited while it is a draft."
+      "editOnlyDraft": "A contract can only be edited while it is a draft.",
+      "noEditPermission": "You don't have permission to edit this contract."
     },
     "actions": {
       "submit": "Submit for review",

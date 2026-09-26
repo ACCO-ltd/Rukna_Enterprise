@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { GitBranch } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Badge, Button, EmptyState, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll } from '@erp/ui';
@@ -11,7 +12,6 @@ import { formatMoney } from '@/lib/format';
 import { useBillingPackages, useVariations } from '../hooks/use-commercial';
 import { summariseVariations, variationKind } from '../variations-summary';
 import { variationStatusTone } from '../presentation';
-import { PositionBand, type PositionFigure } from './contract-position';
 import { errorText } from './commercial-workspace';
 import { VariationDetailSheet } from './variation-detail-sheet';
 import {
@@ -72,7 +72,7 @@ export function VariationsTab({
 
   return (
     <div className="space-y-4">
-      <VariationSummaryBand
+      <ChangesSummaryRow
         variations={variations}
         currency={currency}
         approvedValue={summary.contractValue?.approvedVariationsTotal ?? null}
@@ -106,10 +106,15 @@ export function VariationsTab({
           </Alert>
         ) : variations.length === 0 ? (
           <EmptyState
-            icon={<GitBranch size={22} aria-hidden="true" />}
-            variant="page"
+            icon={<GitBranch size={20} aria-hidden="true" />}
+            variant="row"
             title={t('emptyTitle')}
             description={t('emptyHint')}
+            action={
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/projects/${projectId}/boq`}>{t('openBoq')}</Link>
+              </Button>
+            }
           />
         ) : (
           <div className="overflow-hidden rounded-panel border border-border bg-surface">
@@ -161,15 +166,17 @@ export function VariationsTab({
 }
 
 /**
- * Approved · Omissions.
+ * Approved changes · Omissions · Pending — three bare answers, never summed into a total.
+ * Approved is the variations value already inside the contract; omissions are a signed subset
+ * of it (a reader asking "what has been taken out" shouldn't have to filter the list); pending
+ * is a plain count of any variation still short of client approval — almost always zero under
+ * variation-collapse (a raised variation is approved immediately), but a real reading of
+ * already-fetched data for the historical/in-flight rows where it isn't.
  *
- * Two figures that must never be added together, so they are stated as two answers rather than a
- * total. Approved is the variations value inside the contract; omissions are a signed subset of
- * it, shown because a reader asking "what has been taken out" should not have to filter the list.
- * (Under variation-collapse a raised variation is client-approved immediately, so there is no
- * "pending" bucket and no at-risk exposure to report.)
+ * No title bar, no per-cell support caption — this sits directly under the "Contract changes"
+ * panel's own tab strip, which already names what it is.
  */
-function VariationSummaryBand({
+function ChangesSummaryRow({
   variations,
   currency,
   approvedValue,
@@ -185,34 +192,29 @@ function VariationSummaryBand({
   const t = useTranslations('commercial.variations.summary');
   const locale = useLocale() as 'en' | 'ar';
 
-  if (loading) return <Skeleton className="h-28 w-full" />;
+  if (loading) return <Skeleton className="h-20 w-full rounded-panel" />;
 
   const totals = summariseVariations(variations);
-  const money = (value: string | null): PositionFigure['value'] =>
-    !financialsVisible || value === null ? null : (formatMoney(value, currency, locale) ?? null);
-  const blank: PositionFigure['blank'] = financialsVisible ? 'unavailable' : 'restricted';
+  const money = (value: string | null) =>
+    !financialsVisible || value === null ? '—' : (formatMoney(value, currency, locale) ?? '—');
 
   return (
-    <PositionBand
-      title={t('title')}
-      currency={currency}
-      figures={[
-        {
-          label: t('approved'),
-          value: money(approvedValue),
-          blank,
-          support: t('count', { n: totals.approvedCount }),
-          small: true,
-        },
-        {
-          label: t('omissions'),
-          value: money(totals.omissionsTotal),
-          blank,
-          support: t('count', { n: totals.omissionCount }),
-          small: true,
-        },
-      ]}
-    />
+    <dl className="grid overflow-hidden rounded-panel border border-border bg-surface sm:grid-cols-3">
+      <SummaryCell label={t('approved')}>{money(approvedValue)}</SummaryCell>
+      <SummaryCell label={t('omissions')}>{money(totals.omissionsTotal)}</SummaryCell>
+      <SummaryCell label={t('pending')}>{totals.pendingCount}</SummaryCell>
+    </dl>
+  );
+}
+
+function SummaryCell({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="border-b border-border p-4 last:border-b-0 sm:border-b-0 sm:not-last:border-e">
+      <dt className="text-micro font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="mt-1.5 text-h3 font-bold tabular-nums text-foreground">{children}</dd>
+    </div>
   );
 }
 

@@ -29,6 +29,14 @@ export interface VariationTotals {
   omissionCount: number;
   /** Σ net price of client-approved omissions — a signed, negative decimal string. */
   omissionsTotal: string;
+  /**
+   * Count of variations still in `PENDING_INTERNAL`/`INTERNAL_APPROVED` — dormant-but-valid
+   * statuses under variation-collapse (a raised variation is now client-approved immediately;
+   * these two remain reachable only for historical/in-flight rows, per `VariationsTab`'s own
+   * doc comment). Almost always zero in current operation, but a real count of already-fetched
+   * data, not a fabricated figure.
+   */
+  pendingCount: number;
 }
 
 /**
@@ -42,6 +50,7 @@ export function summariseVariations(variations: VariationOrderListItem[]): Varia
   let approvedCount = 0;
   let omissionCount = 0;
   let omissionCents = 0;
+  let pendingCount = 0;
 
   for (const vo of variations) {
     if (vo.status === 'CLIENT_APPROVED') {
@@ -50,6 +59,8 @@ export function summariseVariations(variations: VariationOrderListItem[]): Varia
         omissionCount += 1;
         omissionCents += toCents(vo.netPrice);
       }
+    } else if (vo.status === 'PENDING_INTERNAL' || vo.status === 'INTERNAL_APPROVED') {
+      pendingCount += 1;
     }
   }
 
@@ -57,6 +68,7 @@ export function summariseVariations(variations: VariationOrderListItem[]): Varia
     approvedCount,
     omissionCount,
     omissionsTotal: fromCents(omissionCents),
+    pendingCount,
   };
 }
 

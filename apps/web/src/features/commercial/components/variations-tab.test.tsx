@@ -197,7 +197,7 @@ describe('VariationsTab — the position band renders backend figures only', () 
       withToast: true,
     });
 
-    expect(screen.getByText('Approved variations')).toBeInTheDocument();
+    expect(screen.getByText('Approved changes')).toBeInTheDocument();
     // `getAllByText` because the approved total also appears as the VO's own net price in the
     // list below — the same figure, correctly, in two places.
     expect(screen.getAllByText(/25,000/).length).toBeGreaterThan(0);
@@ -251,7 +251,7 @@ describe('VariationsTab — list + status mapping', () => {
       permissions: MANAGE,
       withToast: true,
     });
-    expect(screen.getByText('No variations yet')).toBeInTheDocument();
+    expect(screen.getByText('No variations recorded')).toBeInTheDocument();
   });
 });
 
@@ -380,7 +380,7 @@ describe('VariationsTab — creation is drawer-only (variation-collapse)', () =>
       permissions: MANAGE,
       withToast: true,
     });
-    expect(screen.getByText('No variations yet')).toBeInTheDocument();
+    expect(screen.getByText('No variations recorded')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'New variation' })).not.toBeInTheDocument();
   });
 });

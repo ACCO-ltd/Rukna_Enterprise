@@ -372,7 +372,7 @@ describe('ContractMilestonesTab', () => {
       expect(screen.getByTestId('certified-invoiced-section')).toBeInTheDocument();
       expect(screen.queryByTestId('variations-tab')).not.toBeInTheDocument();
 
-      await user.click(screen.getByRole('tab', { name: 'Extension of time' }));
+      await user.click(screen.getByRole('tab', { name: 'Extensions of time' }));
       expect(screen.getByTestId('extension-of-time-section')).toBeInTheDocument();
       expect(screen.queryByTestId('certified-invoiced-section')).not.toBeInTheDocument();
 

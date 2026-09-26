@@ -19,8 +19,14 @@ export interface EmptyStateProps {
    *
    * `"inline"` — plain centred block without the bordered panel, used inside
    * a table's empty row or a constrained surface.
+   *
+   * `"row"` — a single compact horizontal row (icon, then title + description,
+   * then the action on the trailing edge), inside a solid-border panel. For an
+   * empty state that already sits inside its own titled section or tab (so a
+   * second full "page" treatment — its own big centered block — would read as
+   * a box nested in a box) but still wants an icon and a clear next step.
    */
-  variant?: 'page' | 'inline';
+  variant?: 'page' | 'inline' | 'row';
   className?: string;
 }
 
@@ -48,6 +54,35 @@ export function EmptyState({
   variant = 'page',
   className,
 }: EmptyStateProps) {
+  if (variant === 'row') {
+    return (
+      <div
+        className={cn(
+          'flex flex-wrap items-center gap-4 rounded-panel border border-border bg-surface px-5 py-4',
+          className,
+        )}
+      >
+        {icon ? (
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-surface-subtle text-muted-foreground">
+            {icon}
+          </span>
+        ) : null}
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-foreground">{title}</p>
+          {description ? (
+            <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
+          ) : null}
+        </div>
+        {(action || secondaryAction) ? (
+          <div className="flex shrink-0 items-center gap-2">
+            {action}
+            {secondaryAction}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   const inner = (
     <div className="flex flex-col items-center gap-3 py-10 text-center">
       {icon ? (
@@ -81,7 +116,7 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        'rounded-lg border border-dashed border-border bg-surface px-6',
+        'rounded-panel border border-dashed border-border bg-surface px-6',
         className,
       )}
     >

@@ -62,5 +62,11 @@ export function ProjectContractEdit({ projectId }: { projectId: string }) {
     );
   }
 
-  return <ContractEdit id={contractId} projectId={projectId} />;
+  return (
+    <ContractEdit
+      id={contractId}
+      projectId={projectId}
+      canEdit={summary.data.capabilities.canEditContract}
+    />
+  );
 }

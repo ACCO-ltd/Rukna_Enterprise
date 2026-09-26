@@ -182,7 +182,7 @@
     "clientLockedHint": "The client name and tax details were frozen onto this contract when it was activated. Editing the client record will not change them.",
     "willLockTitle": "Activating locks the client details",
     "willLockHint": "The client name and tax details will be frozen onto this contract when it is activated.",
-    "viewBoq": "View signed snapshot"
+    "viewBoq": "Open BOQ workspace"
   },
   "retention": {
     "title": "Retention",
@@ -948,8 +948,9 @@
     "listTitle": "Variation orders",
     "noContractTitle": "No main contract",
     "noContractHint": "Variations are raised against the project's main contract. Add and execute a contract first.",
-    "emptyTitle": "No variations yet",
-    "emptyHint": "Raise a variation from the BOQ workspace using \"Add extra work\" — choosing Variation adds the work to the contract now.",
+    "emptyTitle": "No variations recorded",
+    "emptyHint": "Changes raised from BOQ appear here after submission.",
+    "openBoq": "Open BOQ",
     "loadFailed": "Could not load variations",
     "loadFailedHint": "Something went wrong loading the variations. Try again.",
     "retry": "Retry",
@@ -1042,10 +1043,9 @@
       }
     },
     "summary": {
-      "title": "Variation position",
-      "approved": "Approved variations",
+      "approved": "Approved changes",
       "omissions": "Omissions",
-      "count": "{n} variations"
+      "pending": "Pending"
     },
     "kind": {
       "VARIATION": "Variation",
@@ -1176,7 +1176,7 @@
       "tabs": {
         "variations": "Variations",
         "certified": "Certified & invoiced",
-        "eot": "Extension of time",
+        "eot": "Extensions of time",
         "separate": "Separate charges"
       }
     },

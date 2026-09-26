@@ -691,7 +691,7 @@ function ContractChangesPanel({
   const separateChargesQuery = useProjectSeparateCharges(projectId);
 
   const variations = variationsQuery.data?.variations ?? [];
-  const counted = (n: number) => (n > 0 ? ` (${n})` : '');
+  const counted = (n: number) => (n > 0 ? ` · ${n}` : '');
 
   const items = [
     { value: 'variations' as const, label: `${t('tabs.variations')}${counted(variations.length)}` },
@@ -711,6 +711,7 @@ function ContractChangesPanel({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
         <h2 className="text-h3 font-semibold text-foreground">{t('title')}</h2>
         <ViewSwitcher
+          appearance="underline"
           aria-label={t('title')}
           value={view}
           onValueChange={(next) => setView(next as ContractChangesView)}

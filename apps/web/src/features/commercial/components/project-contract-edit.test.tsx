@@ -47,9 +47,9 @@ afterEach(() => {
 });
 
 describe('ProjectContractEdit', () => {
-  it('resolves the main contract id from the summary and mounts the editor', () => {
+  it('resolves the main contract id from the summary and mounts the editor with canEdit', () => {
     mocks.useCommercialSummary.mockReturnValue({
-      data: { mainContract: { id: 'c-9' } },
+      data: { mainContract: { id: 'c-9' }, capabilities: { canEditContract: true } },
       isPending: false,
       isError: false,
     });
@@ -57,7 +57,25 @@ describe('ProjectContractEdit', () => {
     renderWithProviders(<ProjectContractEdit projectId={PROJECT_ID} />);
 
     expect(screen.getByTestId('contract-edit')).toBeInTheDocument();
-    expect(mocks.ContractEdit).toHaveBeenCalledWith({ id: 'c-9', projectId: PROJECT_ID });
+    expect(mocks.ContractEdit).toHaveBeenCalledWith({
+      id: 'c-9',
+      projectId: PROJECT_ID,
+      canEdit: true,
+    });
+  });
+
+  it('passes canEdit: false through when the summary says the user cannot edit', () => {
+    mocks.useCommercialSummary.mockReturnValue({
+      data: { mainContract: { id: 'c-9' }, capabilities: { canEditContract: false } },
+      isPending: false,
+      isError: false,
+    });
+
+    renderWithProviders(<ProjectContractEdit projectId={PROJECT_ID} />);
+
+    expect(mocks.ContractEdit).toHaveBeenCalledWith(
+      expect.objectContaining({ canEdit: false }),
+    );
   });
 
   it('shows a loading status while the summary is in flight', () => {

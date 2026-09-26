@@ -84,4 +84,22 @@ describe('summariseVariations', () => {
     );
     expect(totals.omissionsTotal).toBe('-0.30');
   });
+
+  /** PENDING_INTERNAL/INTERNAL_APPROVED are dormant-but-valid under variation-collapse — a real
+   * count of historical/in-flight rows, never counted as approved or omitted. */
+  it('counts PENDING_INTERNAL and INTERNAL_APPROVED as pending, not approved', () => {
+    const totals = summariseVariations([
+      vo({ id: 'a', status: 'PENDING_INTERNAL' }),
+      vo({ id: 'b', status: 'INTERNAL_APPROVED' }),
+      vo({ id: 'c', status: 'CLIENT_APPROVED' }),
+      vo({ id: 'd', status: 'DRAFT' }),
+    ]);
+    expect(totals.pendingCount).toBe(2);
+    expect(totals.approvedCount).toBe(1);
+  });
+
+  it('reports zero pending when there are none', () => {
+    const totals = summariseVariations([vo({ status: 'CLIENT_APPROVED' })]);
+    expect(totals.pendingCount).toBe(0);
+  });
 });
