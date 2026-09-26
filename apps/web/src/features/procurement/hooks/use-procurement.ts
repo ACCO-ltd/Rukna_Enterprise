@@ -79,6 +79,9 @@ import {
   updateSupplier,
   attachPoRevision,
   createBuyerAdvance,
+  getBuyerAdvance,
+  listBuyerAdvances,
+  postBuyerAdvance,
   createAdvanceReturn,
   createEvidenceAllocation,
 } from '../api/procurement-api';
@@ -122,6 +125,7 @@ import type {
   ReverseSupplierBillPayload,
   UnitOfMeasure,
   AttachPoRevisionPayload,
+  BuyerAdvance,
   CreateBuyerAdvancePayload,
   CreateAdvanceReturnPayload,
   CreateEvidenceAllocationPayload,
@@ -181,6 +185,8 @@ export const procurementKeys = {
     [...procurementKeys.all, 'po-revision-attachments', poId] as const,
   grnAttachments: (grnId: string) =>
     [...procurementKeys.all, 'grn-attachments', grnId] as const,
+  buyerAdvance: (id: string) => [...procurementKeys.all, 'buyer-advance', id] as const,
+  buyerAdvances: (poId: string) => [...procurementKeys.all, 'buyer-advances', poId] as const,
 };
 
 // ─── Catalogue ───────────────────────────────────────────────────────────────────
@@ -861,6 +867,33 @@ export function useCreateEvidenceAllocation(advanceId: string, poId: string) {
     mutationFn: (payload: CreateEvidenceAllocationPayload) =>
       createEvidenceAllocation(advanceId, payload),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderSettlement(poId) });
+      qc.invalidateQueries({ queryKey: procurementKeys.buyerAdvance(advanceId) });
+      qc.invalidateQueries({ queryKey: procurementKeys.buyerAdvances(poId) });
+    },
+  });
+}
+
+// ─── Buyer advances read ──────────────────────────────────────────────────────────
+
+export function useGetBuyerAdvance(id: string): UseQueryResult<BuyerAdvance> {
+  return useQuery({ queryKey: procurementKeys.buyerAdvance(id), queryFn: () => getBuyerAdvance(id) });
+}
+
+export function useListBuyerAdvances(purchaseOrderId: string): UseQueryResult<BuyerAdvance[]> {
+  return useQuery({
+    queryKey: procurementKeys.buyerAdvances(purchaseOrderId),
+    queryFn: () => listBuyerAdvances(purchaseOrderId),
+  });
+}
+
+export function usePostBuyerAdvance(advanceId: string, poId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => postBuyerAdvance(advanceId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: procurementKeys.buyerAdvance(advanceId) });
+      qc.invalidateQueries({ queryKey: procurementKeys.buyerAdvances(poId) });
       qc.invalidateQueries({ queryKey: procurementKeys.purchaseOrderSettlement(poId) });
     },
   });

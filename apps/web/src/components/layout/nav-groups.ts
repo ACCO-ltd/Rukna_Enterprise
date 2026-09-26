@@ -152,6 +152,7 @@ export const NAV_DOMAINS: NavDomain[] = [
       { href: '/procurement/orders', labelKey: 'purchaseOrders', iconKey: 'shopping-cart' },
       { href: '/procurement/requests', labelKey: 'materialRequests', iconKey: 'clipboard' },
       { href: '/procurement/grn', labelKey: 'goodsReceipts', iconKey: 'truck' },
+      { href: '/procurement/advances', labelKey: 'buyerAdvances', iconKey: 'wallet' },
       { href: '/finance/accounting/bills', labelKey: 'supplierBills', iconKey: 'credit-card', crossLink: true },
       { href: '/procurement/commitments', labelKey: 'commitments', iconKey: 'chart-bar' },
       // Suppliers: ungated master data — buyers add suppliers as purchasing widens, so this

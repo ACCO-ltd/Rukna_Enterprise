@@ -1008,3 +1008,56 @@ export interface CreateEvidenceAllocationPayload {
   supplierBillId: string;
   allocatedAmount: number;
 }
+
+// ─── Buyer advance response types ────────────────────────────────────────────────
+
+export type BuyerAdvanceDocStatus = 'DRAFT' | 'APPROVED' | 'RELEASED' | 'REJECTED' | 'CANCELLED';
+
+export interface AdvanceReturn {
+  id: string;
+  organizationId: string;
+  buyerAdvanceId: string;
+  amount: Money;
+  returnMethod: BuyerAdvanceReturnMethod;
+  destinationBankAccountId: string | null;
+  receivedBy: string;
+  receivedAt: ApiDate;
+  reference: string | null;
+  note: string | null;
+  createdAt: ApiDate;
+}
+
+export interface BuyerAdvanceEvidenceAllocation {
+  id: string;
+  organizationId: string;
+  buyerAdvanceId: string;
+  supplierBillId: string;
+  allocatedAmount: Money;
+  createdBy: string;
+  createdAt: ApiDate;
+}
+
+export interface BuyerAdvance {
+  id: string;
+  organizationId: string;
+  purchaseOrderId: string;
+  recipientUserId: string;
+  amount: Money;
+  currencyCode: string;
+  paymentMethod: BuyerAdvancePaymentMethod;
+  disbursementBankAccountId: string;
+  reference: string | null;
+  notes: string | null;
+  advancedAt: ApiDate;
+  documentStatus: BuyerAdvanceDocStatus;
+  postingStatus: BillPostingStatus;
+  postedJournalEntryId: string | null;
+  postedAt: ApiDate | null;
+  postedBy: string | null;
+  createdBy: string;
+  createdAt: ApiDate;
+  updatedAt: ApiDate;
+  returns: AdvanceReturn[];
+  evidenceAllocations: BuyerAdvanceEvidenceAllocation[];
+  outstanding: Money;
+}

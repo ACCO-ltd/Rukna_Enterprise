@@ -54,6 +54,9 @@ import type {
   ReverseSupplierBillPayload,
   UnitOfMeasure,
   AttachPoRevisionPayload,
+  BuyerAdvance,
+  AdvanceReturn,
+  BuyerAdvanceEvidenceAllocation,
   CreateBuyerAdvancePayload,
   CreateAdvanceReturnPayload,
   CreateEvidenceAllocationPayload,
@@ -804,24 +807,39 @@ export function attachPoRevision(poId: string, payload: AttachPoRevisionPayload)
 // ─── Buyer advances ──────────────────────────────────────────────────────────────
 
 /** `POST /buyer-advances` — create a new buyer advance in DRAFT status. */
-export function createBuyerAdvance(payload: CreateBuyerAdvancePayload): Promise<unknown> {
-  return apiClient<unknown>('/buyer-advances', {
+export function createBuyerAdvance(payload: CreateBuyerAdvancePayload): Promise<BuyerAdvance> {
+  return apiClient<BuyerAdvance>('/buyer-advances', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 }
 
+/** `GET /buyer-advances/:id` — fetch a single advance with returns, evidence, and outstanding. */
+export function getBuyerAdvance(id: string): Promise<BuyerAdvance> {
+  return apiClient<BuyerAdvance>(`/buyer-advances/${id}`);
+}
+
+/** `GET /buyer-advances?purchaseOrderId=` — list advances for a purchase order. */
+export function listBuyerAdvances(purchaseOrderId: string): Promise<BuyerAdvance[]> {
+  return apiClient<BuyerAdvance[]>(`/buyer-advances?purchaseOrderId=${encodeURIComponent(purchaseOrderId)}`);
+}
+
+/** `POST /buyer-advances/:id/post` — mark an advance as financially disbursed (NOT_POSTED → POSTED). */
+export function postBuyerAdvance(id: string): Promise<BuyerAdvance> {
+  return apiClient<BuyerAdvance>(`/buyer-advances/${id}/post`, { method: 'POST' });
+}
+
 /** `POST /buyer-advances/:id/returns` — record a return of unused advance funds. */
-export function createAdvanceReturn(advanceId: string, payload: CreateAdvanceReturnPayload): Promise<unknown> {
-  return apiClient<unknown>(`/buyer-advances/${advanceId}/returns`, {
+export function createAdvanceReturn(advanceId: string, payload: CreateAdvanceReturnPayload): Promise<AdvanceReturn> {
+  return apiClient<AdvanceReturn>(`/buyer-advances/${advanceId}/returns`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 }
 
 /** `POST /buyer-advances/:id/evidence-allocations` — link a supplier bill as evidence. */
-export function createEvidenceAllocation(advanceId: string, payload: CreateEvidenceAllocationPayload): Promise<unknown> {
-  return apiClient<unknown>(`/buyer-advances/${advanceId}/evidence-allocations`, {
+export function createEvidenceAllocation(advanceId: string, payload: CreateEvidenceAllocationPayload): Promise<BuyerAdvanceEvidenceAllocation> {
+  return apiClient<BuyerAdvanceEvidenceAllocation>(`/buyer-advances/${advanceId}/evidence-allocations`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });

@@ -1190,5 +1190,35 @@
       "noSupplier": "Unknown supplier",
       "noAmount": "—"
     }
+  },
+  "advances": {
+    "title": "Buyer Advances",
+    "subtitle": "Cash advances disbursed to buyers against a purchase order.",
+    "empty": "No buyer advances recorded",
+    "emptyDesc": "Buyer advances are recorded from within a purchase order's settlement tab.",
+    "noMatches": "No advances match the current filter",
+    "countLabel": "{count, plural, one {# advance} other {# advances}}",
+    "filterByPostingStatus": "Posting status",
+    "allPostingStatuses": "All statuses",
+    "colAmount": "Amount",
+    "colAdvancedAt": "Date",
+    "colPo": "Purchase Order",
+    "colOutstanding": "Outstanding",
+    "colPosting": "Posting",
+    "detailTitle": "Buyer Advance",
+    "sectionReturns": "Returns",
+    "sectionEvidence": "Evidence allocations",
+    "noReturns": "No returns have been recorded for this advance.",
+    "noEvidence": "No supplier bills have been linked as evidence.",
+    "postAction": "Mark as posted",
+    "postConfirmTitle": "Mark advance as posted?",
+    "postConfirmBody": "This confirms the cash was actually disbursed. Only posted advances count toward purchase order funding.",
+    "postSuccess": "Advance marked as posted.",
+    "alreadyPosted": "Already posted",
+    "sectionDetails": "Details",
+    "colReturnMethod": "Method",
+    "colReceivedAt": "Received",
+    "colBill": "Bill",
+    "colAllocated": "Allocated"
   }
 }
