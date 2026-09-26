@@ -33,7 +33,6 @@ import {
   useBillingPackages,
   useCommercialCurrentCycle,
   useCreateSeparateChargeInvoice,
-  useExtensionsOfTime,
   useProjectSeparateCharges,
 } from '../hooks/use-commercial';
 import { useMarkReadyToBill } from '../hooks/use-mark-ready-to-bill';
@@ -176,17 +175,18 @@ export function ContractMilestonesTab({
           onSendInvoice={handleSendInvoice}
           onVerifyMilestone={setVerifyingMilestone}
         />
+        {/* Money content first — variations and separate charges directly affect what gets
+            billed, so a finance reader meets them right after the schedule. Contract-lifecycle
+            admin (Edit schedule, Contract status, deliverables) and the activity log are
+            occasional-use surfaces, not daily reads, and sit below. */}
+        <VariationsTab projectId={projectId} summary={summary} />
+        <SeparateChargesSection projectId={projectId} contractId={contract.id} />
         <ScheduleEditor
           projectId={projectId}
           contractId={contract.id}
           status={contract.status}
         />
         <ContractSecurityBody projectId={projectId} summary={summary} />
-        <ContractChangesSummary contractId={contract.id} summary={summary} />
-        <div id="contract-changes-detail">
-          <VariationsTab projectId={projectId} summary={summary} />
-        </div>
-        <SeparateChargesSection projectId={projectId} contractId={contract.id} />
         <CommercialActivity items={summary.recentActivity} />
       </div>
 
@@ -564,73 +564,6 @@ function ContractFact({
   );
 }
 
-// ─── Contract changes summary ───────────────────────────────────────────────
-
-/**
- * A glanceable summary above the full Variations/EoT sections below — approved and pending
- * variation totals come straight off `summary.contractValue` (the same authoritative figures
- * `ContractHeader` reads its "Approved variations" cell from), so this never recomputes a
- * total the server already derived. `useExtensionsOfTime` is the one extra read — the same
- * hook `ExtensionOfTimeSection` calls for the same `contractId`, which TanStack Query dedupes,
- * so this costs no extra round trip.
- */
-function ContractChangesSummary({
-  contractId,
-  summary,
-}: {
-  contractId: string;
-  summary: CommercialSummaryResponse;
-}) {
-  const t = useTranslations('commercial.contractMilestones.changesSummary');
-  const locale = useLocale() as 'en';
-  const currency = summary.currency ?? summary.mainContract?.currency ?? null;
-
-  const eotQuery = useExtensionsOfTime(contractId);
-
-  const money = (value: string | null) =>
-    value !== null && currency ? (formatMoney(value, currency, locale) ?? value) : '—';
-
-  const extensionDays =
-    eotQuery.data?.extensions.reduce((sum, ext) => sum + (ext.grantedDays ?? 0), 0) ?? null;
-  const hasExtensions = (eotQuery.data?.extensions.length ?? 0) > 0;
-
-  return (
-    <div className="grid overflow-hidden rounded-panel border border-border bg-surface shadow-e1 sm:grid-cols-3">
-      <PositionCell label={t('approvedVariations')}>
-        <span className="text-h3 font-bold tabular-nums text-foreground">
-          {money(summary.contractValue?.approvedVariationsTotal ?? null)}
-        </span>
-      </PositionCell>
-      <PositionCell label={t('pendingVariations')}>
-        <span className="text-h3 font-bold tabular-nums text-foreground">
-          {money(summary.contractValue?.pendingVariations ?? null)}
-        </span>
-      </PositionCell>
-      <PositionCell label={t('extensionOfTime')}>
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-h3 font-bold tabular-nums text-foreground">
-            {hasExtensions ? t('extensionDays', { days: extensionDays ?? 0 }) : t('none')}
-          </span>
-          <a
-            href="#contract-changes-detail"
-            className="shrink-0 text-caption font-medium text-brand-primary hover:underline"
-          >
-            {t('viewDetails')}
-          </a>
-        </div>
-      </PositionCell>
-    </div>
-  );
-}
-
-function PositionCell({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="border-b border-border p-4 last:border-b-0 sm:border-b-0 sm:not-last:border-e">
-      <dt className="text-caption font-medium text-muted-foreground">{label}</dt>
-      <dd className="mt-1.5">{children}</dd>
-    </div>
-  );
-}
 
 function MoneyRow({
   label,

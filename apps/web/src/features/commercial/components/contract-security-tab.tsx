@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
-import { Lock, ShieldCheck } from 'lucide-react';
+import { Lock } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Alert, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, EmptyState, Label, LtrValue, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableScroll, Textarea } from '@erp/ui';
 import type { CommercialGuaranteeSummary, CommercialSummaryResponse } from '@erp/types';
@@ -24,8 +24,7 @@ import type { ContractDetail } from '@/features/contracts/types';
 
 import { commercialKeys } from '../hooks/use-commercial';
 import { contractStatusTone, guaranteeAttentionTone, guaranteeStatusTone } from '../presentation';
-import { formatPercent } from './current-payment-cycle';
-import { FactRow, PanelLink, SectionCard } from './commercial-ui';
+import { FactRow, SectionCard } from './commercial-ui';
 
 /**
  * The contract lifecycle rail. ACCO signs on paper, so the in-app review/signature stages are
@@ -105,25 +104,17 @@ export function ContractSecurityBody({
 }) {
   const detail = useContract(summary.mainContract!.id);
 
+  // Single column, not a 2-up grid: Retention/Advance/Guarantees each already hide themselves
+  // when not configured (S-SH-4), and ACCO's MILESTONE contracts carry none of the three — a
+  // side-by-side grid left one column empty and the other lopsided. Payment-terms reconciliation
+  // moved out entirely: it restated the same installments the Payment Schedule table above
+  // already shows, with a "view schedule" link that only pointed back at the same page.
   return (
     <div className="space-y-4">
-      <div className="grid min-w-0 gap-4 lg:grid-cols-2">
-        <div className="min-w-0 space-y-4">
-          <PaymentTermsPanel
-            projectId={projectId}
-            summary={summary}
-            detail={detail.data ?? null}
-            loading={detail.isPending}
-          />
-          <RetentionPanel summary={summary} />
-        </div>
-        <div className="min-w-0 space-y-4">
-          <ContractStatusPanel projectId={projectId} summary={summary} />
-          <AdvancePanel summary={summary} />
-          <GuaranteesPanel projectId={projectId} summary={summary} />
-        </div>
-      </div>
-
+      <ContractStatusPanel projectId={projectId} summary={summary} />
+      <RetentionPanel summary={summary} />
+      <AdvancePanel summary={summary} />
+      <GuaranteesPanel projectId={projectId} summary={summary} />
       <ContractDeliverablesPanel detail={detail.data ?? null} loading={detail.isPending} />
     </div>
   );
@@ -368,79 +359,6 @@ function ContractStatusPanel({
   );
 }
 
-// ─── Payment terms ──────────────────────────────────────────────────────────────
-
-/**
- * The negotiated schedule as an agreement — but only a summary. The live, actionable plan (each
- * installment's status, amount paid/due, and its billing action) lives on the Payment Schedule
- * tab; rendering the same installment rows again here, from a second query, is how the two tabs
- * drifted into showing the same four rows twice. This panel states only whether the terms
- * reconcile to 100% and links across to the tab that owns the detail.
- */
-function PaymentTermsPanel({
-  projectId,
-  summary,
-  detail,
-  loading,
-}: {
-  projectId: string;
-  summary: CommercialSummaryResponse;
-  detail: ContractDetail | null;
-  loading: boolean;
-}) {
-  const t = useTranslations('commercial.paymentTerms');
-  const tRoot = useTranslations('commercial');
-  const contract = summary.mainContract!;
-
-  // A measured contract has no negotiated installments — it bills what is certified. Naming the
-  // mechanism is more useful than an empty table pretending a plan is missing.
-  if (contract.billingModel !== 'MILESTONE') {
-    return (
-      <SectionCard title={t('title')}>
-        <dl>
-          <FactRow label={t('model')}>{tRoot(`billingModel.${contract.billingModel}`)}</FactRow>
-        </dl>
-        <p className="mt-2 text-caption text-muted-foreground">{t('measuredHint')}</p>
-      </SectionCard>
-    );
-  }
-
-  if (loading) return <Skeleton className="h-16 w-full" />;
-
-  const installments = [...(detail?.paymentInstallments ?? [])].sort(
-    (a, b) => a.sortOrder - b.sortOrder,
-  );
-
-  if (installments.length === 0) {
-    return (
-      <SectionCard title={t('title')}>
-        <p className="py-2 text-body-sm text-muted-foreground">{t('empty')}</p>
-      </SectionCard>
-    );
-  }
-
-  const totalFraction = installments.reduce((sum, i) => sum + Number(i.percentage), 0);
-  const reconciled = Math.abs(totalFraction - 1) < 0.00005;
-
-  return (
-    <SectionCard title={t('title')}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-body-sm text-foreground">
-            {t('summary', { count: installments.length, percent: formatPercent(String(totalFraction)) })}
-          </p>
-          {!reconciled ? (
-            <p className="mt-0.5 text-caption text-warning">{t('notReconciled')}</p>
-          ) : null}
-        </div>
-        <PanelLink href={`/projects/${projectId}/commercial/payment-schedule`}>
-          {t('viewSchedule')}
-        </PanelLink>
-      </div>
-    </SectionCard>
-  );
-}
-
 // ─── Retention & advance ────────────────────────────────────────────────────────
 
 function RetentionPanel({ summary }: { summary: CommercialSummaryResponse }) {
@@ -587,26 +505,11 @@ function GuaranteesPanel({
       />
     ) : null;
 
-  // S-SH-4: like Retention and Advance, an empty Guarantees panel is noise on an ACCO milestone
-  // contract that carries none (ADR-023). With nothing recorded there is no card — just a quiet
-  // "add" affordance for someone who can manage guarantees, and nothing at all for someone who
-  // cannot. Guarantees stay one click away without occupying the tab by default.
-  if (!hasGuarantees) {
-    if (!canManage) return null;
-    return (
-      <>
-        <button
-          type="button"
-          onClick={() => setDialog('add')}
-          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-panel border border-dashed border-border px-3 text-body-sm text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
-        >
-          <ShieldCheck size={15} aria-hidden="true" />
-          {t('add')}
-        </button>
-        {dialogEl}
-      </>
-    );
-  }
+  // Confirmed with Eng Ahmed (2026-09-25): ACCO does not use retention or guarantees — this
+  // mirrors Retention and Advance exactly (S-SH-4) rather than keeping a quiet "add" affordance
+  // for an instrument this tenant never issues. The backend command and endpoint stay live for a
+  // future tenant that does; only the always-visible entry point on ACCO's own contracts is gone.
+  if (!hasGuarantees) return null;
 
   return (
     <SectionCard

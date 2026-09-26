@@ -210,9 +210,10 @@ describe('ContractMilestonesTab', () => {
   });
 
   it('shows the current (governing) contract value in the header', () => {
-    // Header shows only the current value (ADR-033 visual refresh) — original value and the
-    // approved-variations delta live in the Contract changes summary card instead, so a
-    // contract with no variations doesn't leave an empty grid cell in the header.
+    // Header shows only the current value — the approved/pending-variations breakdown lives on
+    // the Variations section instead (it already has its own Approved/Omissions summary band,
+    // sourced from the same figures), so a contract with no variations doesn't leave an empty
+    // grid cell in the header.
     cycleData.value = makeCycle([{ status: 'NEXT' }]);
     renderWithProviders(
       <ContractMilestonesTab
@@ -225,22 +226,6 @@ describe('ContractMilestonesTab', () => {
       />,
     );
     expect(screen.getByText(/525,000/)).toBeInTheDocument();
-  });
-
-  it('shows approved variations total in its own row', () => {
-    cycleData.value = makeCycle([{ status: 'NEXT' }]);
-    renderWithProviders(
-      <ContractMilestonesTab
-        projectId="p-1"
-        summary={makeSummary({
-          approvedVariationsTotal: '25000.00',
-          governingContractValue: '525000.00',
-        })}
-      />,
-    );
-    // Shows in both the header's money breakdown and the Contract changes summary card —
-    // the same authoritative figure surfaced twice, not a conflict.
-    expect(screen.getAllByText('Approved variations').length).toBeGreaterThan(0);
   });
 
   it('renders schedule editor below the journey', () => {

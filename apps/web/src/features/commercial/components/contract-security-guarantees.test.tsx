@@ -210,6 +210,16 @@ describe('Commercial workspace — guarantee authoring', () => {
     expect(screen.queryByRole('button', { name: 'Add guarantee' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
   });
+
+  // Confirmed with Eng Ahmed (2026-09-25): ACCO does not use retention or guarantees. Unlike
+  // above, this contract carries none at all — the panel (and its "add" affordance) must not
+  // appear, even for a user who could otherwise manage guarantees.
+  it('renders no guarantees panel or add affordance at all when the contract carries none', () => {
+    renderTab({ guarantees: [] });
+
+    expect(screen.queryByRole('heading', { name: 'Guarantees' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add guarantee' })).not.toBeInTheDocument();
+  });
 });
 
 /**

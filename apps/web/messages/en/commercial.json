@@ -933,6 +933,13 @@
     },
     "receipt": {
       "allocate": "allocated a receipt"
+    },
+    "commercial": {
+      "billStage": "billed a stage",
+      "issuePackage": "issued a billing package",
+      "recordPackageDelivery": "recorded a package delivery",
+      "markReadyToBill": "marked a stage ready to bill",
+      "createSeparateChargeInvoice": "created a separate-charge invoice"
     }
   },
   "variations": {
