@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
-import { AlertTriangle, CheckCircle2, Info, Lock } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import {
   Alert,
@@ -26,7 +26,7 @@ import {
 import type { CommercialSummaryResponse, SeparateChargeNode } from '@erp/types';
 
 import { formatDate, formatMoney } from '@/lib/format';
-import { useContract, useRecordSignedDate } from '@/features/contracts/hooks/use-contracts';
+import { useRecordSignedDate } from '@/features/contracts/hooks/use-contracts';
 import { useVerifyMilestone } from '@/features/programme/hooks/use-programme';
 
 import {
@@ -52,7 +52,7 @@ import { ReviewForBillingDrawer } from './review-for-billing-drawer';
 import { PrepareInvoiceDialog } from './prepare-invoice-dialog';
 import { SendInvoiceDialog } from './send-invoice-dialog';
 import { ScheduleEditor } from './payment-schedule-tab';
-import { ContractSecurityBody, ContractStatusPanel, LIFECYCLE } from './contract-security-tab';
+import { ContractSecurityBody, ContractStatusPanel } from './contract-security-tab';
 import { VariationsTab } from './variations-tab';
 import { CertifiedInvoicedByVariationSection } from './certified-invoiced-by-variation-section';
 import { ExtensionOfTimeSection } from './extension-of-time-section';
@@ -271,87 +271,41 @@ function ContractHeader({
   const tRoot = useTranslations('commercial');
   const locale = useLocale() as 'en';
   const currency = summary.currency ?? contract.currency;
-  // Only field this header needs from the contract-detail query — everything else it needs
-  // (billing model, dates, BOQ version) already rides on `summary.mainContract`. Cheap: the
-  // Contract & Milestones tab's own security section fetches the same id, so TanStack Query
-  // serves both from one request.
-  const detail = useContract(contract.id);
 
   const fmt = (amount: string | null) =>
     amount ? (formatMoney(amount, currency, locale) ?? amount) : '—';
 
   const cv = summary.contractValue;
-  const stageIndex = LIFECYCLE.indexOf(contract.status as (typeof LIFECYCLE)[number]);
-  const exited = stageIndex < 0;
-
-  // Activation freezes the client's identity onto the contract; state it plainly once it has
-  // happened, forewarn while it hasn't. Never both.
-  const isLocked = Boolean(detail.data?.clientNameSnapshot);
-  const showLockNotice = isLocked || contract.status === 'DRAFT';
   const [showSignedDateDialog, setShowSignedDateDialog] = useState(false);
 
   return (
     <section className="overflow-hidden rounded-panel border border-border bg-surface shadow-e1">
-      {/* Header row: reference + lifecycle at a glance — no scrolling past the schedule editor
-          and the contract-security section to learn where this contract stands. */}
+      {/* Identity + status, and the one way into the rest of the contract record (lifecycle
+          actions, guarantees, deliverables — everything ContractStatusPanel/ContractSecurityBody
+          own below). Payment-terms reconciliation, the client-lock notice, and a second "Edit"
+          button all used to live in this card too, restating facts this same header, the
+          Payment Schedule table, or "View contract details" already cover. */}
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border px-5 py-4">
         <div>
-          <p className="text-caption font-medium text-muted-foreground">{t('reference')}</p>
-          <p className="mt-0.5 text-h3 font-bold text-foreground">{contract.contractNumber}</p>
-        </div>
-
-        <div className="w-full sm:w-auto sm:min-w-64 sm:max-w-xs">
-          <p className="text-caption font-medium text-muted-foreground">
-            {tRoot('contractStatus_.title')}
-          </p>
-          {exited ? (
-            <Badge tone={contractStatusTone(contract.status)} className="mt-1.5">
+          <p className="text-micro font-semibold uppercase text-muted-foreground">{t('reference')}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-2.5">
+            <span className="text-h3 font-bold text-foreground">{contract.contractNumber}</span>
+            <Badge tone={contractStatusTone(contract.status)} dot>
               {tRoot(`contractStatus.${contract.status}`)}
             </Badge>
-          ) : (
-            <ol
-              className="mt-1.5 flex items-start gap-1"
-              aria-label={tRoot('contractStatus_.title')}
-            >
-              {LIFECYCLE.map((stage, index) => {
-                const active = index === stageIndex;
-                return (
-                  <li
-                    key={stage}
-                    className="flex min-w-14 flex-1 flex-col items-center gap-1 text-center"
-                    aria-current={active ? 'step' : undefined}
-                  >
-                    <span
-                      className={cn(
-                        'h-1 w-full rounded-full',
-                        index < stageIndex
-                          ? 'bg-success'
-                          : active
-                            ? 'bg-brand-primary'
-                            : 'bg-border-strong',
-                      )}
-                      aria-hidden="true"
-                    />
-                    <span
-                      className={cn(
-                        'text-micro font-medium leading-tight',
-                        active ? 'text-brand-primary' : 'text-muted-foreground',
-                      )}
-                    >
-                      {tRoot(`contractStatus.${stage}`)}
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
-          )}
+          </div>
         </div>
+        <Link
+          href={`/projects/${projectId}/commercial/contract/edit`}
+          className="inline-flex shrink-0 items-center gap-1 text-body-sm font-medium text-brand-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
+        >
+          {t('viewDetails')}
+          <ChevronRight size={15} aria-hidden="true" />
+        </Link>
       </div>
 
-      {/* Row 1 — what/who/how billed. Row 2 — the three dates. Split into two 3-cell grids
-          (rather than one 6-cell grid) so HeaderCell's own not-last divider lands correctly
-          at the end of each row instead of only at the very last cell. */}
-      <dl className="grid sm:grid-cols-3">
+      {/* The four facts a reader reaches for first. */}
+      <dl className="grid sm:grid-cols-4">
         <HeaderCell label={t('currentValue')}>
           {summary.financialsVisible && cv ? (
             <span className="text-h3 font-bold tabular-nums text-foreground">
@@ -369,15 +323,6 @@ function ContractHeader({
             {tRoot(`billingModel.${contract.billingModel}`)}
           </span>
         </HeaderCell>
-      </dl>
-      <dl className="grid border-t border-border sm:grid-cols-3">
-        <HeaderCell label={tRoot('mainContract.effectiveDate')}>
-          <span className="text-body-sm font-semibold text-foreground">
-            {contract.startDate
-              ? (formatDate(contract.startDate, locale) ?? contract.startDate)
-              : t('paymentTermsNotSet')}
-          </span>
-        </HeaderCell>
         <HeaderCell label={t('completionDate')}>
           <span className="text-body-sm font-semibold text-foreground">
             {contract.expectedEndDate
@@ -385,53 +330,20 @@ function ContractHeader({
               : t('paymentTermsNotSet')}
           </span>
         </HeaderCell>
-        <HeaderCell label={t('signedDate')} warning={!contract.signedDate}>
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body-sm font-semibold">
-            <span className="flex items-center gap-1.5">
-              {!contract.signedDate ? (
-                <AlertTriangle size={12} className="shrink-0" aria-hidden="true" />
-              ) : null}
-              {contract.signedDate
-                ? (formatDate(contract.signedDate, locale) ?? contract.signedDate)
-                : t('signedDateNotRecorded')}
-            </span>
-            {!contract.signedDate && summary.capabilities.canRecordSignedDate ? (
-              <button
-                type="button"
-                onClick={() => setShowSignedDateDialog(true)}
-                className="text-caption font-semibold text-brand-primary underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
-              >
-                {t('completeRecord')}
-              </button>
-            ) : null}
-          </span>
-        </HeaderCell>
       </dl>
 
-      <RecordSignedDateDialog
-        open={showSignedDateDialog}
-        projectId={projectId}
-        contractId={contract.id}
-        onClose={() => setShowSignedDateDialog(false)}
-      />
-
-      {contract.paymentTerms?.trim() ? (
-        <div className="border-t border-border px-5 py-3">
-          <ContractFact label={t('paymentTerms')} value={contract.paymentTerms.trim()} />
-        </div>
-      ) : null}
-
-      {/* BOQ baseline this contract was signed against, plus the one edit entry point — moved
-          here from the (now-removed) standalone Main Contract card, which restated four of
-          these nine facts a screen's worth of scrolling below this same information. */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3">
-        <p className="text-body-sm text-muted-foreground">
-          {tRoot('mainContract.boqBaseline')}:{' '}
-          <span className="font-medium text-foreground">
-            {contract.boqVersionNumber !== null
-              ? tRoot('mainContract.boqVersion', { number: contract.boqVersionNumber })
-              : t('paymentTermsNotSet')}
-          </span>
+      {/* Compact footer — provenance on the start edge, the one fact worth a warning on the end. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 border-t border-border px-5 py-3 text-caption">
+        <p className="text-muted-foreground">
+          {tRoot('mainContract.effectiveDate')}{' '}
+          {contract.startDate
+            ? (formatDate(contract.startDate, locale) ?? contract.startDate)
+            : t('paymentTermsNotSet')}
+          {' · '}
+          {tRoot('mainContract.boqBaseline')}{' '}
+          {contract.boqVersionNumber !== null
+            ? tRoot('mainContract.boqVersion', { number: contract.boqVersionNumber })
+            : t('paymentTermsNotSet')}
           {' · '}
           <Link
             href={`/projects/${projectId}/boq`}
@@ -440,35 +352,39 @@ function ContractHeader({
             {tRoot('mainContract.viewBoq')}
           </Link>
         </p>
-        {summary.capabilities.canEditContract ? (
-          <Button asChild variant="outline" size="sm" className="min-h-11 sm:min-h-0">
-            <Link href={`/projects/${projectId}/commercial/contract/edit`}>
-              {tRoot('actions.edit')}
-            </Link>
-          </Button>
-        ) : null}
+
+        <p className="flex items-center gap-1.5">
+          {contract.signedDate ? (
+            <span className="text-muted-foreground">
+              {t('signedDate')} {formatDate(contract.signedDate, locale) ?? contract.signedDate}
+            </span>
+          ) : (
+            <>
+              <AlertTriangle size={12} className="shrink-0 text-warning" aria-hidden="true" />
+              <span className="font-medium text-warning">{t('signedDateNotRecorded')}</span>
+              {summary.capabilities.canRecordSignedDate ? (
+                <>
+                  <span className="text-muted-foreground">·</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowSignedDateDialog(true)}
+                    className="font-medium text-brand-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-primary"
+                  >
+                    {t('completeRecord')}
+                  </button>
+                </>
+              ) : null}
+            </>
+          )}
+        </p>
       </div>
 
-      {showLockNotice ? (
-        <div className="flex items-start gap-2 border-t border-border bg-muted/50 px-5 py-3">
-          <span className="mt-0.5 shrink-0 text-muted-foreground">
-            {isLocked ? (
-              <Lock size={13} aria-hidden="true" />
-            ) : (
-              <Info size={13} aria-hidden="true" />
-            )}
-          </span>
-          <p className="text-caption text-muted-foreground">
-            <span className="font-semibold text-foreground">
-              {isLocked
-                ? tRoot('mainContract.clientLockedTitle')
-                : tRoot('mainContract.willLockTitle')}
-            </span>
-            {' — '}
-            {isLocked ? tRoot('mainContract.clientLockedHint') : tRoot('mainContract.willLockHint')}
-          </p>
-        </div>
-      ) : null}
+      <RecordSignedDateDialog
+        open={showSignedDateDialog}
+        projectId={projectId}
+        contractId={contract.id}
+        onClose={() => setShowSignedDateDialog(false)}
+      />
     </section>
   );
 }
@@ -548,53 +464,6 @@ function HeaderCell({
     >
       <dt className="text-caption font-medium text-muted-foreground">{label}</dt>
       <dd className={cn('mt-1', warning && 'text-warning')}>{children}</dd>
-    </div>
-  );
-}
-
-function ContractFact({
-  label,
-  value,
-  warning,
-}: {
-  label: string;
-  value: string;
-  /** Draws attention to a fact that should be recorded but isn't — e.g. an unsigned contract. */
-  warning?: boolean;
-}) {
-  return (
-    <p className={cn('text-body-sm', warning ? 'text-warning' : 'text-muted-foreground')}>
-      <span className={cn('font-medium', warning ? 'text-warning' : 'text-foreground')}>
-        {label}:
-      </span>{' '}
-      {warning ? <AlertTriangle size={12} className="-mt-0.5 me-1 inline" aria-hidden="true" /> : null}
-      {value}
-    </p>
-  );
-}
-
-
-function MoneyRow({
-  label,
-  value,
-  prominent = false,
-}: {
-  label: string;
-  value: string;
-  prominent?: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <dt className="text-body-sm text-muted-foreground">{label}</dt>
-      <dd
-        className={
-          prominent
-            ? 'text-body font-semibold tabular-nums text-foreground'
-            : 'text-body-sm tabular-nums text-foreground'
-        }
-      >
-        {value}
-      </dd>
     </div>
   );
 }

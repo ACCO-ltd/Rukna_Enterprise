@@ -1260,18 +1260,15 @@
       "verifying": "Verifying..."
     },
     "header": {
-      "reference": "Contract reference",
+      "reference": "Client contract",
       "client": "Client",
-      "completionDate": "Contractual completion date",
-      "originalValue": "Original contract value",
-      "approvedVariations": "Approved variations",
-      "currentValue": "Current contract value",
-      "signedDate": "Signed date",
-      "signedDateNotRecorded": "Not recorded",
+      "completionDate": "Completion",
+      "currentValue": "Contract value",
+      "signedDate": "Signed",
+      "signedDateNotRecorded": "Signed date not recorded",
       "completeRecord": "Complete record",
-      "paymentTerms": "Payment terms",
       "paymentTermsNotSet": "Not set",
-      "viewContract": "View contract terms"
+      "viewDetails": "View contract details"
     },
     "recordSignedDate": {
       "title": "Record signed date",

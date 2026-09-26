@@ -23,10 +23,8 @@ vi.mock('./payment-schedule-tab', () => ({
   ScheduleEditor: () => <div data-testid="schedule-editor" />,
 }));
 
-// ContractHeader reads the contract-detail query directly now (for the client-locked notice) —
-// stub it idle so the header doesn't fire a real network round-trip in these tests.
+// RecordSignedDateDialog (mounted, not stubbed) reads this for its own mutation.
 vi.mock('@/features/contracts/hooks/use-contracts', () => ({
-  useContract: vi.fn(() => ({ data: null, isPending: false, isError: false })),
   useRecordSignedDate: vi.fn(() => ({
     mutateAsync: vi.fn(),
     isPending: false,
@@ -90,12 +88,9 @@ vi.mock('./extension-of-time-section', () => ({
 // Stub the folded-in sections so their own hooks don't need mocking here.
 vi.mock('./contract-security-tab', () => ({
   ContractSecurityBody: () => <div data-testid="contract-security-body" />,
-  // ContractStatusPanel now renders directly under ContractMilestonesTab (next to the header's
-  // own lifecycle stepper, not buried below Payment Schedule/Variations/Edit-schedule).
+  // ContractStatusPanel now renders directly under ContractMilestonesTab, next to the header's
+  // own compact status pill — not buried below Payment Schedule/Variations/Edit-schedule.
   ContractStatusPanel: () => <div data-testid="contract-status-panel" />,
-  // ContractHeader reads the lifecycle stage list directly (its compact status rail moved there
-  // from the now-actions-only Contract Status panel), so the mock must still provide it.
-  LIFECYCLE: ['DRAFT', 'ACTIVE', 'FINAL_ACCOUNT_PENDING', 'CLOSED'],
 }));
 
 vi.mock('./variations-tab', () => ({

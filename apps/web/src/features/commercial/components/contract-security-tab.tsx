@@ -26,16 +26,6 @@ import { commercialKeys } from '../hooks/use-commercial';
 import { contractStatusTone, guaranteeAttentionTone, guaranteeStatusTone } from '../presentation';
 import { FactRow, SectionCard } from './commercial-ui';
 
-/**
- * The contract lifecycle rail. ACCO signs on paper, so the in-app review/signature stages are
- * gone — a physically-signed DRAFT is activated straight to ACTIVE. CANCELLED and TERMINATED are
- * exits, not stages on the rail.
- *
- * Exported: the rail itself now renders in `ContractHeader` (top of the Contract & Milestones
- * tab), not here — visible without scrolling instead of buried below the schedule editor.
- */
-export const LIFECYCLE = ['DRAFT', 'ACTIVE', 'FINAL_ACCOUNT_PENDING', 'CLOSED'] as const;
-
 /** The transition that becomes available from each state, where one exists (label keys). */
 const NEXT_TRANSITION: Partial<Record<string, string>> = {
   DRAFT: 'ACTIVATE',
