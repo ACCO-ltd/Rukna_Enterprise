@@ -2,17 +2,19 @@
 
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { FilterBar, FilterField, Select } from '@erp/ui';
+import { EmptyState, FilterBar, FilterField, Select } from '@erp/ui';
+import { FileTextIcon } from '@phosphor-icons/react';
 
 import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { useClients } from '@/features/clients/hooks/use-clients';
 import { formatDate, formatMoney } from '@/lib/format';
 
 import { useInvoices } from '../hooks/use-invoices';
-import type { ClientInvoice, InvoiceDocStatus } from '../types';
+import type { ClientInvoice, InvoiceDocStatus, PostingStatus } from '../types';
 import { InvoiceStatusBadges } from './invoice-status-badges';
 
 const DOC_STATUSES: InvoiceDocStatus[] = ['DRAFT', 'APPROVED', 'CANCELLED'];
+const POSTING_STATUSES: PostingStatus[] = ['NOT_POSTED', 'POSTED', 'REVERSED', 'FAILED'];
 
 /**
  * Read-only by design.
@@ -29,7 +31,8 @@ export function InvoicesList() {
   // Joined here because `GET /invoices` embeds no client relation. P16 fixed this for supplier
   // bills; AR was not given the same treatment.
   const clients = useClients();
-  const [status, setStatus] = useState<InvoiceDocStatus | ''>('');
+  const [docStatus, setDocStatus] = useState<InvoiceDocStatus | ''>('');
+  const [postingStatus, setPostingStatus] = useState<PostingStatus | ''>('');
 
   const clientNames = useMemo(() => {
     const map = new Map<string, string>();
@@ -40,9 +43,11 @@ export function InvoicesList() {
   }, [clients.data]);
 
   const visible = useMemo(() => {
-    const all = invoices.data ?? [];
-    return status ? all.filter((invoice) => invoice.documentStatus === status) : all;
-  }, [invoices.data, status]);
+    let all = invoices.data ?? [];
+    if (docStatus) all = all.filter((inv) => inv.documentStatus === docStatus);
+    if (postingStatus) all = all.filter((inv) => inv.postingStatus === postingStatus);
+    return all;
+  }, [invoices.data, docStatus, postingStatus]);
 
   const columns: GridColumn<ClientInvoice>[] = [
     {
@@ -52,12 +57,24 @@ export function InvoicesList() {
       sortable: true,
       plainValue: (invoice) => invoice.invoiceNumber ?? '',
       render: (invoice) => (
-        // Null until the invoice posts — the INV- sequence is drawn inside the posting
-        // transaction, so every draft is unnumbered.
         <span className="font-mono text-caption font-semibold">
           {invoice.invoiceNumber ?? t('unnumbered')}
         </span>
       ),
+    },
+    {
+      key: 'source',
+      header: t('colSource'),
+      sortable: true,
+      plainValue: (invoice) => {
+        const kindText = t(`sourceKind.${invoice.source.kind}`);
+        return invoice.source.label ? `${kindText} · ${invoice.source.label}` : kindText;
+      },
+      render: (invoice) => {
+        const kindText = t(`sourceKind.${invoice.source.kind}`);
+        const label = invoice.source.label ? `${kindText} · ${invoice.source.label}` : kindText;
+        return <span className="block max-w-[18rem] truncate text-sm text-muted-foreground">{label}</span>;
+      },
     },
     {
       key: 'date',
@@ -115,16 +132,14 @@ export function InvoicesList() {
     },
   ];
 
+  const hasFilter = docStatus !== '' || postingStatus !== '';
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t('title')}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
       </div>
-
-      {/* `GET /invoices` accepts only `clientId` — no status filter, no date range, no
-          pagination — so this narrows what is already loaded rather than re-querying. */}
-      <p className="text-xs text-muted-foreground">{t('filterNote')}</p>
 
       <PlatformDataGrid
         columns={columns}
@@ -137,12 +152,11 @@ export function InvoicesList() {
         rowHref={(invoice) => `/finance/accounting/invoices/${invoice.id}`}
         emptyState={
           (invoices.data?.length ?? 0) === 0 ? (
-            <div className="rounded-panel border border-dashed border-border bg-surface px-6 py-12 text-center">
-              <p className="text-sm font-medium text-foreground">{t('empty')}</p>
-              <p className="mx-auto mt-1 max-w-prose text-sm text-muted-foreground">
-                {t('emptyHint')}
-              </p>
-            </div>
+            <EmptyState
+              icon={<FileTextIcon size={28} aria-hidden="true" />}
+              title={t('empty')}
+              description={t('emptyHint')}
+            />
           ) : undefined
         }
         noMatchMessage={t('noMatches')}
@@ -150,11 +164,11 @@ export function InvoicesList() {
         pagination={{ defaultPageSize: 25 }}
         toolbarFilters={
           <FilterBar>
-            <FilterField id="invoice-status" label={t('filterByStatus')}>
+            <FilterField id="invoice-doc-status" label={t('filterByStatus')}>
               <Select
-                id="invoice-status"
-                value={status}
-                onChange={(value) => setStatus(value as InvoiceDocStatus | '')}
+                id="invoice-doc-status"
+                value={docStatus}
+                onChange={(value) => setDocStatus(value as InvoiceDocStatus | '')}
               >
                 <option value="">{t('allStatuses')}</option>
                 {DOC_STATUSES.map((s) => (
@@ -164,9 +178,23 @@ export function InvoicesList() {
                 ))}
               </Select>
             </FilterField>
+            <FilterField id="invoice-posting-status" label={t('filterByPostingStatus')}>
+              <Select
+                id="invoice-posting-status"
+                value={postingStatus}
+                onChange={(value) => setPostingStatus(value as PostingStatus | '')}
+              >
+                <option value="">{t('allPostingStatuses')}</option>
+                {POSTING_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {t(`postingStatus.${s}`)}
+                  </option>
+                ))}
+              </Select>
+            </FilterField>
           </FilterBar>
         }
-        onClearFilters={() => setStatus('')}
+        onClearFilters={hasFilter ? () => { setDocStatus(''); setPostingStatus(''); } : undefined}
       />
     </div>
   );

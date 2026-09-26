@@ -114,16 +114,29 @@ export const NAV_DOMAINS: NavDomain[] = [
     href: '/accounting',
     moduleKey: 'accounting',
     iconKey: 'chart-bar',
+    // Six named sections mirror the module's logical structure. The groupKey controls the
+    // micro-label divider rendered by NavItemList; ungrouped items always lead, so we start
+    // with the first section directly — no ungrouped spine items.
     items: [
-      { href: '/finance/accounting/chart-of-accounts', labelKey: 'chartOfAccounts', iconKey: 'list' },
-      { href: '/finance/accounting/journals', labelKey: 'journals', iconKey: 'book-open' },
-      { href: '/finance/accounting/invoices', labelKey: 'clientInvoices', iconKey: 'file-text' },
-      { href: '/receipts', labelKey: 'receipts', iconKey: 'receipt' },
-      { href: '/finance/accounting/bills', labelKey: 'supplierBills', iconKey: 'credit-card' },
-      { href: '/finance/accounting/payments', labelKey: 'supplierPayments', iconKey: 'wallet' },
-      { href: '/finance/accounting/ledger', labelKey: 'generalLedger', iconKey: 'clipboard' },
-      { href: '/accounting/reports', labelKey: 'accountingReports', iconKey: 'trending-up' },
-      { href: '/finance/accounting/periods', labelKey: 'fiscalPeriods', iconKey: 'calendar' },
+      // Receivables
+      { href: '/finance/accounting/invoices', labelKey: 'clientInvoices', iconKey: 'file-text', groupKey: 'receivables' },
+      { href: '/receipts', labelKey: 'receipts', iconKey: 'receipt', groupKey: 'receivables' },
+      // Payables
+      { href: '/finance/accounting/bills', labelKey: 'supplierBills', iconKey: 'credit-card', groupKey: 'payables' },
+      { href: '/finance/accounting/payments', labelKey: 'supplierPayments', iconKey: 'wallet', groupKey: 'payables' },
+      // General Ledger
+      { href: '/finance/accounting/journals', labelKey: 'journals', iconKey: 'book-open', groupKey: 'ledger' },
+      { href: '/finance/accounting/chart-of-accounts', labelKey: 'chartOfAccounts', iconKey: 'list', groupKey: 'ledger' },
+      { href: '/finance/accounting/ledger', labelKey: 'accountLedger', iconKey: 'clipboard', groupKey: 'ledger' },
+      // Reports
+      { href: '/finance/accounting/trial-balance', labelKey: 'trialBalance', iconKey: 'trending-up', groupKey: 'reports' },
+      { href: '/finance/accounting/balance-sheet', labelKey: 'balanceSheet', iconKey: 'trending-up', groupKey: 'reports' },
+      { href: '/finance/accounting/profit-loss', labelKey: 'profitLoss', iconKey: 'trending-up', groupKey: 'reports' },
+      { href: '/finance/accounting/monthly-comparison', labelKey: 'monthlyComparison', iconKey: 'trending-up', groupKey: 'reports' },
+      // Setup & Close
+      { href: '/finance/accounting/bank-accounts', labelKey: 'bankAccounts', iconKey: 'credit-card', groupKey: 'acctSetup' },
+      { href: '/finance/accounting/opening-balance', labelKey: 'openingBalance', iconKey: 'book-open', groupKey: 'acctSetup' },
+      { href: '/finance/accounting/periods', labelKey: 'fiscalPeriods', iconKey: 'calendar', groupKey: 'acctSetup' },
     ],
   },
   {

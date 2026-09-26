@@ -43,25 +43,46 @@ describe('NAV_DOMAINS', () => {
 
     it('exposes the core accounting screens', () => {
       const hrefs = accounting().items.map((i) => i.href);
-      expect(hrefs).toContain('/finance/accounting/chart-of-accounts');
-      expect(hrefs).toContain('/finance/accounting/journals');
+      // Receivables
       expect(hrefs).toContain('/finance/accounting/invoices');
+      expect(hrefs).toContain('/receipts');
+      // Payables
       expect(hrefs).toContain('/finance/accounting/bills');
       expect(hrefs).toContain('/finance/accounting/payments');
+      // General Ledger
+      expect(hrefs).toContain('/finance/accounting/journals');
+      expect(hrefs).toContain('/finance/accounting/chart-of-accounts');
       expect(hrefs).toContain('/finance/accounting/ledger');
-      expect(hrefs).toContain('/accounting/reports');
+      // Reports (individual routes; /accounting/reports placeholder removed)
+      expect(hrefs).toContain('/finance/accounting/trial-balance');
+      expect(hrefs).toContain('/finance/accounting/balance-sheet');
+      expect(hrefs).toContain('/finance/accounting/profit-loss');
+      // Setup & Close
       expect(hrefs).toContain('/finance/accounting/periods');
-      expect(hrefs).toContain('/receipts');
+      expect(hrefs).toContain('/finance/accounting/bank-accounts');
     });
 
     it('has no disabled items', () => {
       expect(accounting().items.filter((i) => i.disabled)).toHaveLength(0);
     });
 
-    it('places setup screens before transaction screens', () => {
+    it('orders sections: receivables → payables → ledger → reports → setup', () => {
       const hrefs = accounting().items.map((i) => i.href);
-      expect(hrefs.indexOf('/finance/accounting/chart-of-accounts')).toBeLessThan(
+      // Receivables precede Payables
+      expect(hrefs.indexOf('/finance/accounting/invoices')).toBeLessThan(
+        hrefs.indexOf('/finance/accounting/bills'),
+      );
+      // Payables precede General Ledger
+      expect(hrefs.indexOf('/finance/accounting/bills')).toBeLessThan(
         hrefs.indexOf('/finance/accounting/journals'),
+      );
+      // General Ledger precedes Reports
+      expect(hrefs.indexOf('/finance/accounting/journals')).toBeLessThan(
+        hrefs.indexOf('/finance/accounting/trial-balance'),
+      );
+      // Reports precede Setup & Close
+      expect(hrefs.indexOf('/finance/accounting/trial-balance')).toBeLessThan(
+        hrefs.indexOf('/finance/accounting/periods'),
       );
     });
   });

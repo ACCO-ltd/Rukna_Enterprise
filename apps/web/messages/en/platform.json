@@ -89,7 +89,12 @@
       "people": "People",
       "organization": "Organization",
       "governance": "Approval governance",
-      "evidence": "Evidence"
+      "evidence": "Evidence",
+      "receivables": "Receivables",
+      "payables": "Payables",
+      "ledger": "General Ledger",
+      "reports": "Reports",
+      "acctSetup": "Setup & Close"
     }
   },
   "admin": {

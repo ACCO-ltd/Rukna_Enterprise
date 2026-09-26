@@ -164,7 +164,7 @@ describe('InvoicesList', () => {
     renderWithProviders(<InvoicesList />);
     expect(await screen.findByText('INV-A')).toBeInTheDocument();
 
-    await chooseOption(user, screen.getByLabelText('Filter by status'), 'DRAFT');
+    await chooseOption(user, screen.getByLabelText('Approval status'), 'DRAFT');
 
     expect(screen.queryByText('INV-A')).not.toBeInTheDocument();
     expect(screen.getByText('INV-B')).toBeInTheDocument();

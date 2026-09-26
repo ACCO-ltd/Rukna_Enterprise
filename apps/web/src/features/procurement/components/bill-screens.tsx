@@ -21,41 +21,135 @@
  * Arabic UI shows the English name here while a purchase order shows the Arabic one (A13).
  */
 
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import {
   Alert,
   Button,
+  EmptyState,
+  FilterBar,
+  FilterField,
+  Select,
   SectionHeader,
   Table,
   TableBody,
   TableCell,
-  TableEmpty,
   TableHead,
   TableHeader,
   TableRow,
   TableScroll,
 } from '@erp/ui';
+import { ReceiptIcon } from '@phosphor-icons/react';
 
 import { ACCOUNTING_PERMISSIONS, usePermissions } from '@/features/auth/permissions/can';
+import { PlatformDataGrid, type GridColumn } from '@/components/platform-data-grid';
 import { formatDate, formatMoney } from '@/lib/format';
 
 import { useSupplierBill, useSupplierBills } from '../hooks/use-procurement';
-import type { SupplierBill } from '../types';
+import type { BillDocumentStatus, SupplierBill } from '../types';
 import { BillActionBar } from './bill-actions-bar';
 import { ClassificationChips } from './classification-chips';
 import { BillMatchSummary } from './bill-matching';
 import { BillMatchStatusBadge, PostingStatusBadge, ProcurementStatusBadge } from './procurement-badges';
+
+const BILL_DOC_STATUSES: BillDocumentStatus[] = ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'CANCELLED'];
 
 // ─── List ────────────────────────────────────────────────────────────────────────
 
 export function SupplierBillsList() {
   const t = useTranslations('procurement.bills');
   const tc = useTranslations('procurement.common');
+  const tStatus = useTranslations('procurement.status');
   const locale = useLocale() as 'en' | 'ar';
   const { can } = usePermissions();
 
   const bills = useSupplierBills();
+  const [docStatus, setDocStatus] = useState<BillDocumentStatus | ''>('');
+
+  const visible = useMemo(() => {
+    const all = bills.data ?? [];
+    return docStatus ? all.filter((b) => b.documentStatus === docStatus) : all;
+  }, [bills.data, docStatus]);
+
+  const columns: GridColumn<SupplierBill>[] = [
+    {
+      key: 'number',
+      header: t('invoiceNumber'),
+      sticky: true,
+      sortable: true,
+      plainValue: (bill) => bill.supplierInvoiceNumber,
+      render: (bill) => (
+        <span className="font-mono text-caption font-semibold">{bill.supplierInvoiceNumber}</span>
+      ),
+    },
+    {
+      key: 'supplier',
+      header: tc('supplier'),
+      sortable: true,
+      plainValue: (bill) => bill.supplier?.name ?? '',
+      render: (bill) =>
+        bill.supplier ? (
+          <span className="block max-w-[18rem] truncate text-sm">
+            <span className="font-mono text-xs text-muted-foreground">{bill.supplier.code}</span>
+            {' '}
+            {bill.supplier.name}
+          </span>
+        ) : (
+          <span className="text-sm text-muted-foreground">{tc('notAvailable')}</span>
+        ),
+    },
+    {
+      key: 'billDate',
+      header: t('billDate'),
+      sortable: true,
+      plainValue: (bill) => bill.billDate,
+      render: (bill, ctx) => (
+        <span className="text-muted-foreground">{formatDate(bill.billDate, ctx.locale)}</span>
+      ),
+    },
+    {
+      key: 'dueDate',
+      header: t('dueDate'),
+      sortable: true,
+      plainValue: (bill) => bill.dueDate,
+      render: (bill, ctx) => (
+        <span className="text-muted-foreground">{formatDate(bill.dueDate, ctx.locale)}</span>
+      ),
+    },
+    {
+      key: 'total',
+      header: t('totalAmount'),
+      numeric: true,
+      sortable: true,
+      plainValue: (bill) => Number(bill.totalAmount),
+      render: (bill, ctx) => (
+        <bdi className="tabular-nums">
+          {formatMoney(bill.totalAmount, bill.currencyCode, ctx.locale)}
+        </bdi>
+      ),
+    },
+    {
+      key: 'status',
+      header: tc('status'),
+      render: (bill) => (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <ProcurementStatusBadge status={bill.documentStatus} />
+          <PostingStatusBadge status={bill.postingStatus} />
+        </div>
+      ),
+    },
+    {
+      key: 'matchStatus',
+      header: t('matchStatus'),
+      render: (bill) => {
+        const hasPoLink = Boolean(bill.purchaseOrderRevisionId ?? bill.purchaseOrderId);
+        return hasPoLink ? <BillMatchStatusBadge status={bill.matchStatus} /> : (
+          <span className="text-xs text-muted-foreground">{tc('notAvailable')}</span>
+        );
+      },
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -65,9 +159,8 @@ export function SupplierBillsList() {
           <p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('subtitle')}</p>
         </div>
 
-        {/* Two distinct controlled paths, offered as two choices (D6): a PO-backed bill that
-            auto-matches on submit, and a genuine non-PO bill (utilities, rent, one-off) that
-            never matches. The PO-backed create is the primary; the non-PO create is secondary. */}
+        {/* Two distinct controlled paths (D6): PO-backed bill that auto-matches on submit,
+            and a genuine non-PO bill (utilities, rent, one-off) that never matches. */}
         {can(ACCOUNTING_PERMISSIONS.managePayables) ? (
           <div className="flex flex-wrap gap-2">
             <Button asChild>
@@ -80,70 +173,46 @@ export function SupplierBillsList() {
         ) : null}
       </div>
 
-      {bills.isError ? <Alert variant="error" messages={[tc('loadFailed')]} /> : null}
-
-      <TableScroll aria-label={t('title')}>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('invoiceNumber')}</TableHead>
-              <TableHead>{tc('supplier')}</TableHead>
-              <TableHead>{t('billDate')}</TableHead>
-              <TableHead>{t('dueDate')}</TableHead>
-              <TableHead className="text-end">{t('totalAmount')}</TableHead>
-              <TableHead>{tc('status')}</TableHead>
-              <TableHead>{t('matchStatus')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(bills.data ?? []).length === 0 ? (
-              <TableEmpty colSpan={7}>{t('empty')}</TableEmpty>
-            ) : (
-              (bills.data ?? []).map((bill) => (
-                <TableRow key={bill.id}>
-                  <TableCell>
-                    <Link
-                      href={`/finance/accounting/bills/${bill.id}`}
-                      className="font-mono text-xs font-medium text-brand-primary underline-offset-2 hover:underline"
-                    >
-                      {bill.supplierInvoiceNumber}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    {bill.supplier ? (
-                      <span className="text-sm text-foreground">
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {bill.supplier.code}
-                        </span>{' '}
-                        {bill.supplier.name}
-                      </span>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">
-                        {tc('notAvailable')}
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    <bdi>{formatDate(bill.billDate, locale) ?? tc('notAvailable')}</bdi>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    <bdi>{formatDate(bill.dueDate, locale) ?? tc('notAvailable')}</bdi>
-                  </TableCell>
-                  <TableCell className="text-end font-medium tabular-nums">
-                    {formatMoney(bill.totalAmount, bill.currencyCode, locale)}
-                  </TableCell>
-                  <TableCell>
-                    <ProcurementStatusBadge status={bill.documentStatus} />
-                  </TableCell>
-                  <TableCell>
-                    <BillMatchStatusBadge status={bill.matchStatus} />
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableScroll>
+      <PlatformDataGrid
+        columns={columns}
+        data={visible}
+        rowKey={(bill) => bill.id}
+        label={t('title')}
+        isLoading={bills.isPending}
+        isError={bills.isError}
+        errorMessage={tc('loadFailed')}
+        rowHref={(bill) => `/finance/accounting/bills/${bill.id}`}
+        emptyState={
+          (bills.data?.length ?? 0) === 0 ? (
+            <EmptyState
+              icon={<ReceiptIcon size={28} aria-hidden="true" />}
+              title={t('empty')}
+            />
+          ) : undefined
+        }
+        noMatchMessage={t('noMatches')}
+        resultLabel={(count) => t('countLabel', { count })}
+        pagination={{ defaultPageSize: 25 }}
+        toolbarFilters={
+          <FilterBar>
+            <FilterField id="bill-doc-status" label={t('filterByStatus')}>
+              <Select
+                id="bill-doc-status"
+                value={docStatus}
+                onChange={(value) => setDocStatus(value as BillDocumentStatus | '')}
+              >
+                <option value="">{t('allStatuses')}</option>
+                {BILL_DOC_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {tStatus(s)}
+                  </option>
+                ))}
+              </Select>
+            </FilterField>
+          </FilterBar>
+        }
+        onClearFilters={docStatus !== '' ? () => setDocStatus('') : undefined}
+      />
     </div>
   );
 }
