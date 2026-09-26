@@ -4,7 +4,7 @@ import { suggestNodeCode } from './suggest-node-code';
 
 describe('suggestNodeCode', () => {
   it('numbers the first section at the root', () => {
-    expect(suggestNodeCode('section', null, [])).toBe('01');
+    expect(suggestNodeCode('section', null, [])).toBe('1');
   });
 
   it('continues the root sequence', () => {
@@ -16,9 +16,10 @@ describe('suggestNodeCode', () => {
     expect(suggestNodeCode('section', '02.01', ['02.01.01'])).toBe('02.01.02');
   });
 
-  it('numbers items on a wider segment than sections', () => {
-    // This is what keeps section 01.01 and the first item under 01 from both being "01.01".
-    expect(suggestNodeCode('item', '01', [])).toBe('01.001');
+  it('numbers items under a parent section', () => {
+    // The server enforces no-mixed-children so sections and items never share a parent.
+    // Segment width defaults to 1; existing siblings override it (see 'keeps the width' test).
+    expect(suggestNodeCode('item', '01', [])).toBe('01.1');
     expect(suggestNodeCode('item', '02.01', ['02.01.001'])).toBe('02.01.002');
   });
 
@@ -48,6 +49,6 @@ describe('suggestNodeCode', () => {
   });
 
   it('still proposes something when every sibling is unparseable', () => {
-    expect(suggestNodeCode('section', null, ['PRELIM', 'DAYWORK'])).toBe('01');
+    expect(suggestNodeCode('section', null, ['PRELIM', 'DAYWORK'])).toBe('1');
   });
 });

@@ -78,9 +78,9 @@ describe('BoqItemDrawer — library fast entry', () => {
     // Rate carried across as assistance.
     expect(screen.getByLabelText(/Unit rate/i)).toHaveValue('12.50');
     // The code is server-assigned and shown as a chip (D2), not copied from the library item —
-    // it must be unique within this BOQ. The chip shows the drawer's own suggestion ('001' for
+    // it must be unique within this BOQ. The chip shows the drawer's own suggestion ('1' for
     // the first item here), never the picked item's code.
-    expect(screen.getByText('001')).toBeInTheDocument();
+    expect(screen.getByText('1')).toBeInTheDocument();
     expect(screen.queryByText(ITEM.code)).not.toBeInTheDocument();
   });
 

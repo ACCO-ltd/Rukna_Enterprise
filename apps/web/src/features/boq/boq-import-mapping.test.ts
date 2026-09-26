@@ -95,6 +95,6 @@ describe('importTemplateCsv', () => {
   it('has the mappable header and a section + item example', () => {
     const csv = importTemplateCsv();
     expect(csv.split('\r\n')[0]).toBe('Code,Description,Unit,Quantity,Rate');
-    expect(csv).toContain('02.01.001');
+    expect(csv).toContain('1.1.1');
   });
 });
