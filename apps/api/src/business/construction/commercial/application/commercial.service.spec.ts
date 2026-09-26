@@ -1288,6 +1288,12 @@ describe('getBilling — the invoice-total settlement basis', () => {
           sourceBoqNodeId: 'node-9',
           sourceBoqNode: { id: 'node-9', code: 'SC-01', description: 'Client-requested extra fence' },
         }),
+        // A leaf with no description falls back to its code rather than a bare null label.
+        billingInvoice({
+          id: 'inv-sc-nodesc',
+          sourceBoqNodeId: 'node-10',
+          sourceBoqNode: { id: 'node-10', code: 'SC-02', description: '' },
+        }),
       ],
     });
 
@@ -1302,8 +1308,15 @@ describe('getBilling — the invoice-total settlement basis', () => {
     expect(byId.get('inv-c')).toEqual({ kind: 'IPC', label: 'IPA-006', id: 'ipc-6' });
     // A migration-loaded invoice says it has no source rather than borrowing one.
     expect(byId.get('inv-migrated')).toEqual({ kind: 'NONE', label: null, id: null });
-    // A separate charge is distinguishable from installment/IPC/NONE, labelled by its BOQ code.
-    expect(byId.get('inv-sc')).toEqual({ kind: 'SEPARATE_CHARGE', label: 'SC-01', id: 'node-9' });
+    // A separate charge is distinguishable from installment/IPC/NONE, labelled by its BOQ leaf's
+    // description — the code alone ("SC-01") reads as an opaque id, not a human reference.
+    expect(byId.get('inv-sc')).toEqual({
+      kind: 'SEPARATE_CHARGE',
+      label: 'Client-requested extra fence',
+      id: 'node-9',
+    });
+    // A leaf with no description falls back to its code rather than a bare null label.
+    expect(byId.get('inv-sc-nodesc')).toEqual({ kind: 'SEPARATE_CHARGE', label: 'SC-02', id: 'node-10' });
   });
 
   /**

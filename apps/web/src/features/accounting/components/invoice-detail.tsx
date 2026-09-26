@@ -1,8 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { ChevronLeft, Check, Circle } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Alert, Button } from '@erp/ui';
+import { Alert, Button, DefinitionList, DefinitionRow, RecordHeader, RecordPanel } from '@erp/ui';
 
 import { ConfirmActionDialog } from '@/components/confirm-action-dialog';
 import { useClients } from '@/features/clients/hooks/use-clients';
@@ -11,9 +14,16 @@ import { lifecycleErrorKey, toLifecycleError } from '@/features/lifecycle/lifecy
 import { formatDate, formatMoney } from '@/lib/format';
 
 import { useAccounts } from '../hooks/use-accounting';
-import { useInvoice, useInvoiceAction, useOpenInvoiceDocument } from '../hooks/use-invoices';
-import { canApprove, canPost, canReverse, invoiceBlockReason } from '../invoice-actions';
+import { useInvoice, useInvoiceAction } from '../hooks/use-invoices';
+import {
+  canApprove,
+  canPost,
+  canReverse,
+  invoiceBlockReason,
+  invoiceWorkspaceState,
+} from '../invoice-actions';
 import type { ClientInvoice, PostInvoicePayload } from '../types';
+import { InvoiceDocumentPreview, MobileInvoicePreviewTrigger } from './invoice-document-preview';
 import { InvoiceStatusBadges } from './invoice-status-badges';
 import { PostInvoiceDialog } from './post-invoice-dialog';
 
@@ -25,12 +35,12 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   const tLifecycle = useTranslations('common.lifecycleErrors');
   const locale = useLocale() as 'en' | 'ar';
   const { can } = usePermissions();
+  const searchParams = useSearchParams();
 
   const invoice = useInvoice(invoiceId);
   const accounts = useAccounts();
   const clients = useClients();
   const action = useInvoiceAction(invoiceId);
-  const openDocument = useOpenInvoiceDocument();
 
   const [dialog, setDialog] = useState<OpenDialog>(null);
 
@@ -53,11 +63,19 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   const data = invoice.data;
   const client = (clients.data ?? []).find((c) => c.id === data.clientId);
   const clientName = client ? client.name : null;
+  const state = invoiceWorkspaceState(data);
+  const money = (value: string | null) => formatMoney(value, data.currencyCode, locale);
 
   const mayManage = can(ACCOUNTING_PERMISSIONS.manageReceivables);
   const errorMessage = action.isError
     ? tLifecycle(lifecycleErrorKey(toLifecycleError(action.error).kind))
     : undefined;
+
+  const backHref = searchParams.get('from');
+  const backLabel = searchParams.get('fromLabel') ?? t('backToInvoices');
+
+  const title =
+    state === 'POSTED' ? t('stateTitle.POSTED', { number: data.invoiceNumber ?? t('unnumbered') }) : t(`stateTitle.${state}`);
 
   const close = () => {
     action.reset();
@@ -70,30 +88,23 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-1">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">
-            {t('detailEyebrow')}
-          </p>
-          <h1 className="font-mono text-2xl font-semibold tracking-tight text-foreground">
-            {data.invoiceNumber ?? t('unnumbered')}
-          </h1>
-          <InvoiceStatusBadges
-            documentStatus={data.documentStatus}
-            postingStatus={data.postingStatus}
-          />
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            onClick={() => openDocument.mutate(invoiceId)}
-            disabled={openDocument.isPending}
-          >
-            {openDocument.isPending ? tCommon('loading') : t('viewDocument')}
-          </Button>
-
-          {mayManage ? (
+      <RecordHeader
+        breadcrumb={
+          backHref ? (
+            <Link
+              href={backHref}
+              className="inline-flex items-center gap-1 text-caption font-medium text-muted-foreground hover:text-foreground"
+            >
+              <ChevronLeft size={14} aria-hidden="true" />
+              {backLabel}
+            </Link>
+          ) : undefined
+        }
+        identifier={data.invoiceNumber ?? undefined}
+        title={title}
+        status={<InvoiceStatusBadges documentStatus={data.documentStatus} postingStatus={data.postingStatus} />}
+        actions={
+          mayManage ? (
             <>
               {canApprove(data) ? (
                 <Button onClick={() => setDialog('approve')}>{t('approve')}</Button>
@@ -111,54 +122,51 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
                 </Button>
               ) : null}
             </>
-          ) : null}
-        </div>
-      </header>
+          ) : undefined
+        }
+      />
 
-      {openDocument.isError ? (
-        <Alert variant="error" messages={[t('viewDocumentFailed')]} />
+      {state === 'DRAFT' ? <p className="text-caption text-muted-foreground">{t('approveHint')}</p> : null}
+      {state === 'AWAITING_POSTING' ? (
+        <p className="text-caption text-muted-foreground">{t('postHint')}</p>
       ) : null}
 
       {action.isError && dialog === null ? (
         <Alert variant="error" messages={[errorMessage ?? t('actionFailed')]} />
       ) : null}
 
-      <dl className="grid gap-x-8 gap-y-4 rounded-panel border border-border bg-surface p-6 shadow-e2 sm:grid-cols-2 lg:grid-cols-3">
-        <Field label={t('fieldClient')} value={clientName ?? data.clientId.slice(-8)} />
-        <Field label={t('fieldInvoiceDate')} value={formatDate(data.invoiceDate, locale)} />
-        <Field label={t('fieldDueDate')} value={formatDate(data.dueDate, locale)} />
-        <Field
-          label={t('fieldSubtotal')}
-          value={formatMoney(data.subtotal, data.currencyCode, locale)}
-          numeric
-        />
-        <Field
-          label={t('fieldVat')}
-          value={formatMoney(data.vatAmount, data.currencyCode, locale)}
-          numeric
-        />
-        <Field
-          label={t('fieldTotal')}
-          value={formatMoney(data.totalAmount, data.currencyCode, locale)}
-          numeric
-        />
-        <Field
-          label={t('fieldOutstanding')}
-          value={formatMoney(data.outstandingAmount, data.currencyCode, locale)}
-          numeric
-        />
-        <Field label={t('fieldTerms')} value={data.paymentTerms} />
-        <Field label={t('fieldPostedAt')} value={formatDate(data.postedAt, locale)} />
-      </dl>
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+        <div className="flex min-w-0 flex-col gap-6">
+          <RecordPanel title={t('detailEyebrow')}>
+            <DefinitionList>
+              <DefinitionRow label={t('fieldSource')}>{humanSource(data, t)}</DefinitionRow>
+              <DefinitionRow label={t('fieldClient')}>{clientName ?? data.clientId.slice(-8)}</DefinitionRow>
+              <DefinitionRow label={t('fieldInvoiceDate')}>{formatDate(data.invoiceDate, locale)}</DefinitionRow>
+              <DefinitionRow label={t('fieldDueDate')}>{formatDate(data.dueDate, locale)}</DefinitionRow>
+              <DefinitionRow label={t('fieldTerms')}>{data.paymentTerms}</DefinitionRow>
+            </DefinitionList>
+            <DefinitionList className="mt-2 border-t border-border pt-2">
+              <DefinitionRow label={t('fieldSubtotal')} numeric>{money(data.subtotal)}</DefinitionRow>
+              <DefinitionRow label={t('fieldVat')} numeric>{money(data.vatAmount)}</DefinitionRow>
+              <DefinitionRow label={state === 'POSTED' ? t('fieldBalanceDue') : t('fieldDraftTotal')} numeric>
+                {money(state === 'POSTED' ? data.outstandingAmount : data.totalAmount)}
+              </DefinitionRow>
+            </DefinitionList>
+          </RecordPanel>
 
-      {/* The certificate this invoice was raised from. Present on everything except a record
-          loaded by the opening-balance migration, which has no IPC behind it.
-          Not a link: the certificate route is /contracts/:id/applications/:ipaId/certificates/:ipcId
-          and the invoice payload carries no `ipaId`, so the URL cannot be built from here. The
-          journey runs the other way — the certificate page links to the invoice. */}
-      {data.sourceIpcId ? (
-        <p className="text-sm text-muted-foreground">{t('generatedFromCertificate')}</p>
-      ) : null}
+          <RecordPanel title={t('statusList.heading')}>
+            <ApprovalPostingStatus data={data} locale={locale} />
+          </RecordPanel>
+
+          <MobileInvoicePreviewTrigger invoiceId={invoiceId} />
+        </div>
+
+        <div className="hidden min-w-0 sm:block">
+          <RecordPanel title={t('document.heading')}>
+            <InvoiceDocumentPreview invoiceId={invoiceId} active />
+          </RecordPanel>
+        </div>
+      </div>
 
       {dialog === 'approve' ? (
         <ConfirmActionDialog
@@ -205,6 +213,67 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
 }
 
 /**
+ * "{Kind} · {reference}" — e.g. "Milestone · Structure", "Separate charge · shamiito". Falls
+ * back to the bare kind word only for a migration-loaded invoice, which has no reference to show.
+ */
+function humanSource(invoice: ClientInvoice, t: ReturnType<typeof useTranslations<'accounting.invoices'>>): string {
+  const kindText = t(`sourceKind.${invoice.source.kind}`);
+  if (!invoice.source.label) return kindText;
+  return `${kindText} · ${invoice.source.label}`;
+}
+
+/**
+ * Two real, server-stamped steps — never a fabricated readiness checklist. Approved and Posted
+ * are the only transitions this page's own data can honestly account for; a reversal appends a
+ * third step only when one actually happened.
+ */
+function ApprovalPostingStatus({
+  data,
+  locale,
+}: {
+  data: ClientInvoice;
+  locale: 'en' | 'ar';
+}) {
+  const t = useTranslations('accounting.invoices.statusList');
+  const approved = data.documentStatus !== 'DRAFT';
+  const posted = data.postingStatus === 'POSTED';
+
+  return (
+    <ul className="flex flex-col gap-2.5">
+      <StatusStep
+        done={approved}
+        label={t('approvedStep')}
+        detail={approved ? formatDate(data.approvedAt, locale) : t('approvedPending')}
+      />
+      <StatusStep
+        done={posted}
+        label={t('postedStep')}
+        detail={posted ? formatDate(data.postedAt, locale) : t('postedPending')}
+      />
+      {data.reversedAt ? (
+        <StatusStep done label={t('reversedStep')} detail={formatDate(data.reversedAt, locale)} />
+      ) : null}
+    </ul>
+  );
+}
+
+function StatusStep({ done, label, detail }: { done: boolean; label: string; detail: string | null }) {
+  return (
+    <li className="flex items-center gap-2.5">
+      {done ? (
+        <Check size={16} className="shrink-0 text-success" aria-hidden="true" />
+      ) : (
+        <Circle size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+      )}
+      <span className={done ? 'text-body-sm text-foreground' : 'text-body-sm text-muted-foreground'}>
+        {label}
+      </span>
+      <span className="text-caption text-muted-foreground">{detail}</span>
+    </li>
+  );
+}
+
+/**
  * Why Post is unavailable, next to where the button would be.
  *
  * An absent button tells the user nothing about what to do next; "approve this invoice first"
@@ -218,23 +287,4 @@ function BlockedHint({ invoice }: { invoice: ClientInvoice }) {
   if (reason === null || reason === 'already-posted') return null;
 
   return <p className="self-center text-sm text-muted-foreground">{t(reason)}</p>;
-}
-
-function Field({
-  label,
-  value,
-  numeric = false,
-}: {
-  label: string;
-  value: string | null;
-  numeric?: boolean;
-}) {
-  return (
-    <div>
-      <dt className="text-xs uppercase tracking-wide text-muted-foreground">{label}</dt>
-      <dd className={`mt-1 text-sm text-foreground ${numeric ? 'tabular-nums' : ''}`}>
-        {value ? <bdi>{value}</bdi> : <span className="text-muted-foreground">—</span>}
-      </dd>
-    </div>
-  );
 }

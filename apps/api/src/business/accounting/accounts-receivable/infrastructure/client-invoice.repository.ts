@@ -30,6 +30,27 @@ export class ClientInvoiceRepository {
     return prisma.clientInvoice.findFirst({ where: { id, organizationId } });
   }
 
+  /**
+   * Same row, plus the three mutually-exclusive source relations resolved to their human
+   * reference — for the detail read path only. Never used by the approve/post/reverse guards,
+   * which need just the flat entity `findById` already returns.
+   */
+  findByIdWithSource(prisma: TenantPrisma, organizationId: string, id: string) {
+    return prisma.clientInvoice.findFirst({
+      where: { id, organizationId },
+      include: {
+        sourceInstallment: { select: { id: true, name: true } },
+        sourceIpc: {
+          select: {
+            id: true,
+            application: { select: { id: true, applicationRef: true, applicationNumber: true } },
+          },
+        },
+        sourceBoqNode: { select: { id: true, code: true, description: true } },
+      },
+    });
+  }
+
   findByIpc(prisma: TenantPrisma, organizationId: string, ipcId: string): Promise<ClientInvoice | null> {
     return prisma.clientInvoice.findFirst({ where: { sourceIpcId: ipcId, organizationId } });
   }

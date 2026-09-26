@@ -434,16 +434,18 @@
       "recentPaymentsTitle": "Recent payments",
       "recordPayment": "Record payment",
       "recordDelivery": "Record delivery",
-      "completeInvoice": "Complete invoice",
+      "reviewDraft": "Review draft",
+      "postInvoice": "Post invoice",
       "searchPlaceholder": "Search invoices…",
       "noOverdue": "No overdue invoices.",
       "noOpenInvoices": "No open invoices yet.",
       "noInvoicesMatchFilter": "No invoices match this filter.",
       "noRecentPayments": "No payments recorded yet.",
       "statusGroup": {
+        "NEEDS_ACTION": "Needs action",
         "OPEN": "Open",
-        "DRAFT": "Drafts",
-        "PAID": "Paid"
+        "PAID": "Paid",
+        "ALL": "All"
       },
       "unapplied": "Unapplied",
       "unappliedNote": "Goes to client unapplied cash.",

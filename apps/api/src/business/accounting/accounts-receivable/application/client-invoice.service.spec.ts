@@ -479,3 +479,63 @@ describe('Commercial round-3 — getOrGenerateDocument (lazy invoice PDF)', () =
     );
   });
 });
+
+describe('findById — readable source (detail read path)', () => {
+  function buildDetail(invoice: unknown) {
+    const repo = { findByIdWithSource: jest.fn().mockResolvedValue(invoice) };
+    const tenancy = { getClient: () => ({}) };
+    const service = new ClientInvoiceService(
+      tenancy as never,
+      repo as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    return { repo, service };
+  }
+
+  it('resolves a SEPARATE_CHARGE source to the BOQ leaf description, not its bare code', async () => {
+    const { service } = buildDetail({
+      id: 'inv-1',
+      sourceInstallmentId: null,
+      sourceInstallment: null,
+      sourceIpcId: null,
+      sourceIpc: null,
+      sourceBoqNodeId: 'node-9',
+      sourceBoqNode: { id: 'node-9', code: '11', description: 'shamiito' },
+    });
+
+    const result = await service.findById(identity, 'inv-1');
+
+    expect(result.source).toEqual({ kind: 'SEPARATE_CHARGE', label: 'shamiito', id: 'node-9' });
+    // The raw relation objects are internal — the DTO carries only the resolved `source`.
+    expect(result).not.toHaveProperty('sourceBoqNode');
+    expect(result).not.toHaveProperty('sourceInstallment');
+    expect(result).not.toHaveProperty('sourceIpc');
+  });
+
+  it('resolves an INSTALLMENT source to the stage name', async () => {
+    const { service } = buildDetail({
+      id: 'inv-2',
+      sourceInstallmentId: 'inst-1',
+      sourceInstallment: { id: 'inst-1', name: 'Structure' },
+      sourceIpcId: null,
+      sourceIpc: null,
+      sourceBoqNodeId: null,
+      sourceBoqNode: null,
+    });
+
+    const result = await service.findById(identity, 'inv-2');
+
+    expect(result.source).toEqual({ kind: 'INSTALLMENT', label: 'Structure', id: 'inst-1' });
+  });
+
+  it('throws NotFoundException when the invoice does not exist in this tenant', async () => {
+    const { service } = buildDetail(null);
+    await expect(service.findById(identity, 'inv-missing')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+});

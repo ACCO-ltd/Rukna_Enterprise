@@ -32,6 +32,7 @@ function invoice(overrides: Partial<ClientInvoice> = {}): ClientInvoice {
     dueDate: '2026-09-09',
     clientId: 'client-1',
     sourceIpcId: 'ipc-1',
+    source: { kind: 'IPC', label: null, id: 'ipc-1' },
     projectId: 'proj-1',
     contractId: 'con-1',
     currencyCode: 'SOS',

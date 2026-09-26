@@ -8,6 +8,7 @@ import {
   canReverse,
   defaultDueDate,
   invoiceBlockReason,
+  invoiceWorkspaceState,
 } from './invoice-actions';
 import type { ClientInvoice } from './types';
 
@@ -20,6 +21,7 @@ function invoice(overrides: Partial<ClientInvoice> = {}): ClientInvoice {
     dueDate: '2026-09-09',
     clientId: 'client-1',
     sourceIpcId: 'ipc-1',
+    source: { kind: 'IPC', label: null, id: 'ipc-1' },
     projectId: 'proj-1',
     contractId: 'con-1',
     currencyCode: 'SOS',
@@ -231,5 +233,37 @@ describe('defaultDueDate', () => {
 
   it('ignores a time component rather than letting a timezone shift the day', () => {
     expect(defaultDueDate('2026-08-10T23:30:00.000Z')).toBe('2026-09-09');
+  });
+});
+
+describe('invoiceWorkspaceState', () => {
+  it('is DRAFT for a true draft', () => {
+    expect(invoiceWorkspaceState(invoice({ documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED' }))).toBe(
+      'DRAFT',
+    );
+  });
+
+  it('is AWAITING_POSTING once approved but not yet posted', () => {
+    expect(
+      invoiceWorkspaceState(invoice({ documentStatus: 'APPROVED', postingStatus: 'NOT_POSTED' })),
+    ).toBe('AWAITING_POSTING');
+  });
+
+  it('is AWAITING_POSTING on a failed posting retry, same as the first attempt', () => {
+    expect(
+      invoiceWorkspaceState(invoice({ documentStatus: 'APPROVED', postingStatus: 'FAILED' })),
+    ).toBe('AWAITING_POSTING');
+  });
+
+  it('is POSTED once postingStatus reaches POSTED', () => {
+    expect(
+      invoiceWorkspaceState(invoice({ documentStatus: 'APPROVED', postingStatus: 'POSTED' })),
+    ).toBe('POSTED');
+  });
+
+  it('is CANCELLED regardless of postingStatus', () => {
+    expect(
+      invoiceWorkspaceState(invoice({ documentStatus: 'CANCELLED', postingStatus: 'NOT_POSTED' })),
+    ).toBe('CANCELLED');
   });
 });

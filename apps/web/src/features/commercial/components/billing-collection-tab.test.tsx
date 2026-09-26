@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import type {
   CommercialBillingResponse,
   CommercialInvoiceRow,
@@ -21,6 +21,9 @@ vi.mock('../hooks/use-commercial', () => ({
 vi.mock('@/features/accounting/hooks/use-invoices', () => ({
   useOpenInvoiceDocument: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
 }));
+
+const mockSearchParams = vi.hoisted(() => ({ current: new URLSearchParams() }));
+vi.mock('next/navigation', () => ({ useSearchParams: () => mockSearchParams.current }));
 
 // ─── Factories ───────────────────────────────────────────────────────────────
 
@@ -162,6 +165,7 @@ function renderTab(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockSearchParams.current = new URLSearchParams();
 });
 
 // ─── T-BC-1: no accounting internals in rendered output ──────────────────────
@@ -340,6 +344,9 @@ describe('BillingCollectionTab — canRecordReceipt capability gate', () => {
   });
 
   it('shows Record payment button when canRecordReceipt is true and invoice is payable', () => {
+    // A posted, unpaid invoice lives under "Open", not the default "Needs action" filter
+    // (that one is for drafts still requiring approval/posting).
+    mockSearchParams.current = new URLSearchParams({ filter: 'OPEN' });
     renderTab(
       makeBilling({
         invoices: [makeInvoice({ status: 'UNPAID', dueDate: '2026-10-01' })],
@@ -347,5 +354,123 @@ describe('BillingCollectionTab — canRecordReceipt capability gate', () => {
     );
 
     expect(screen.getByRole('button', { name: 'Record payment' })).toBeInTheDocument();
+  });
+});
+
+// ─── Default filter is "Needs action", not an empty "Open" ───────────────────
+
+describe('BillingCollectionTab — default filter shows actionable invoices, not an empty Open', () => {
+  it('shows a draft invoice by default without selecting a filter first', () => {
+    renderTab(
+      makeBilling({
+        invoices: [
+          makeInvoice({
+            id: 'inv-draft',
+            invoiceNumber: null,
+            status: 'DRAFT',
+            documentStatus: 'DRAFT',
+            postingStatus: 'NOT_POSTED',
+          }),
+        ],
+      }),
+    );
+
+    expect(screen.queryByText('No invoices match this filter.')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Review draft' })).toBeInTheDocument();
+  });
+
+  it('hides a posted, unpaid invoice by default (it belongs under Open, not Needs action)', () => {
+    renderTab(
+      makeBilling({ invoices: [makeInvoice({ status: 'UNPAID', dueDate: '2026-10-01' })] }),
+    );
+
+    expect(screen.queryByRole('button', { name: 'Record payment' })).not.toBeInTheDocument();
+    expect(screen.getByText('No invoices match this filter.')).toBeInTheDocument();
+  });
+
+  it('restores a filter passed via ?filter= (breadcrumb back-navigation)', () => {
+    mockSearchParams.current = new URLSearchParams({ filter: 'PAID' });
+    renderTab(
+      makeBilling({
+        invoices: [makeInvoice({ status: 'PAID', outstandingAmount: '0.00', paidAmount: '105000.00' })],
+      }),
+    );
+
+    // A PAID invoice has no row action at all — its presence (not "no match") proves the PAID
+    // filter, not the NEEDS_ACTION default, was applied.
+    expect(screen.queryByText('No invoices match this filter.')).not.toBeInTheDocument();
+    expect(within(screen.getByRole('table')).getByText('INV-0001')).toBeInTheDocument();
+  });
+});
+
+// ─── Row action names the real next step, never a fake one-click "Complete" ──
+
+describe('BillingCollectionTab — state-aware row action', () => {
+  it('offers "Review draft" for a true draft, linking to the invoice workspace with a breadcrumb back', () => {
+    renderTab(
+      makeBilling({
+        invoices: [
+          makeInvoice({ id: 'inv-draft', status: 'DRAFT', documentStatus: 'DRAFT', postingStatus: 'NOT_POSTED' }),
+        ],
+      }),
+    );
+
+    const link = screen.getByRole('link', { name: 'Review draft' });
+    const href = link.getAttribute('href') ?? '';
+    expect(href).toContain('/finance/accounting/invoices/inv-draft');
+    expect(href).toContain('from=');
+    expect(href).toContain('fromLabel=');
+  });
+
+  it('offers "Post invoice" for an approved invoice still awaiting posting', () => {
+    renderTab(
+      makeBilling({
+        invoices: [
+          makeInvoice({
+            id: 'inv-awaiting',
+            status: 'AWAITING_POSTING',
+            documentStatus: 'APPROVED',
+            postingStatus: 'NOT_POSTED',
+          }),
+        ],
+      }),
+    );
+
+    expect(screen.getByRole('link', { name: 'Post invoice' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Review draft' })).not.toBeInTheDocument();
+  });
+
+  it('offers neither action once the invoice is posted', () => {
+    mockSearchParams.current = new URLSearchParams({ filter: 'OPEN' });
+    renderTab(makeBilling({ invoices: [makeInvoice({ status: 'UNPAID' })] }));
+
+    expect(screen.queryByRole('link', { name: 'Review draft' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Post invoice' })).not.toBeInTheDocument();
+  });
+});
+
+// ─── A draft's Paid/Balance are blank, not a false collectible amount ────────
+
+describe('BillingCollectionTab — draft rows show no collectible balance', () => {
+  it('shows "—" for Paid and Balance on a draft, whose outstandingAmount otherwise equals its total', () => {
+    renderTab(
+      makeBilling({
+        invoices: [
+          makeInvoice({
+            status: 'DRAFT',
+            documentStatus: 'DRAFT',
+            postingStatus: 'NOT_POSTED',
+            totalAmount: '26250.00',
+            outstandingAmount: '26250.00',
+            paidAmount: '0.00',
+          }),
+        ],
+      }),
+    );
+
+    // The draft total itself still renders …
+    expect(screen.getByText('$26,250.00')).toBeInTheDocument();
+    // … but nothing repeats that figure as a "Balance" — Paid/Balance both read as blank.
+    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
   });
 });

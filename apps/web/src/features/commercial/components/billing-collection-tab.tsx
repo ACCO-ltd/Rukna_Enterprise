@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   ChevronDown,
   CircleDollarSign,
@@ -508,10 +509,17 @@ type ActiveDialog =
   | { kind: 'timeline'; invoice: ClientReceivableView }
   | { kind: 'creditNote'; invoice: ClientReceivableView };
 
-type InvoiceStatusGroup = 'OPEN' | 'DRAFT' | 'PAID';
+type InvoiceStatusGroup = 'NEEDS_ACTION' | 'OPEN' | 'PAID';
+type ActiveFilter = InvoiceStatusGroup | 'ALL';
 
+/**
+ * `NEEDS_ACTION` covers both a true DRAFT and an approved-but-not-yet-posted invoice
+ * (`derivePaymentState` already collapses both into the same `'DRAFT'` payment state, since
+ * neither is a live receivable) — it is the same bucket the old "Drafts" pill showed, renamed
+ * and defaulted so a project with only unfinished invoices does not land on an empty list.
+ */
 function invoiceStatusGroup(state: CollectionPaymentState): InvoiceStatusGroup {
-  if (state === 'DRAFT') return 'DRAFT';
+  if (state === 'DRAFT') return 'NEEDS_ACTION';
   if (state === 'PAID') return 'PAID';
   return 'OPEN'; // AWAITING_PAYMENT, PARTIALLY_PAID, OVERDUE
 }
@@ -559,25 +567,40 @@ function OpenInvoicesPanel({
 }) {
   const t = useTranslations('commercial.billing.collection');
   const tCol = useTranslations('commercial.billing.col');
+  const searchParams = useSearchParams();
   const openDocument = useOpenInvoiceDocument();
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [preselected, setPreselected] = useState<ClientReceivableView | null>(null);
   const [activeDialog, setActiveDialog] = useState<ActiveDialog | null>(null);
-  const [statusFilter, setStatusFilter] = useState<InvoiceStatusGroup>('OPEN');
+  const initialFilter = searchParams.get('filter');
+  const [statusFilter, setStatusFilter] = useState<ActiveFilter>(
+    initialFilter === 'OPEN' || initialFilter === 'PAID' || initialFilter === 'ALL'
+      ? initialFilter
+      : 'NEEDS_ACTION',
+  );
   const [search, setSearch] = useState('');
 
   const visible = receivables.filter((r) => r.paymentState !== 'CANCELLED');
   const payable = receivables.filter((r) => r.canRecordPayment);
 
   const grouped = useMemo(() => {
-    const groups: Record<InvoiceStatusGroup, ClientReceivableView[]> = { OPEN: [], DRAFT: [], PAID: [] };
+    const groups: Record<InvoiceStatusGroup, ClientReceivableView[]> = {
+      NEEDS_ACTION: [],
+      OPEN: [],
+      PAID: [],
+    };
     for (const inv of visible) groups[invoiceStatusGroup(inv.paymentState)].push(inv);
     return groups;
   }, [visible]);
 
+  // The page a row's "Review draft" / "Post invoice" action returns to — carries the selected
+  // filter so the breadcrumb back-link restores it, rather than always landing back on the
+  // default.
+  const fromHref = `/projects/${projectId}/commercial/billing-collection?filter=${statusFilter}`;
+
   const searchLower = search.trim().toLowerCase();
-  const filtered = grouped[statusFilter].filter(
+  const filtered = (statusFilter === 'ALL' ? visible : grouped[statusFilter]).filter(
     (inv) =>
       searchLower === '' ||
       (inv.invoiceNumber ?? '').toLowerCase().includes(searchLower) ||
@@ -607,7 +630,7 @@ function OpenInvoicesPanel({
         bodyClassName="px-0 py-0"
         action={
           <div className="flex flex-wrap items-center gap-2">
-            {(['OPEN', 'DRAFT', 'PAID'] as const).map((group) => (
+            {(['NEEDS_ACTION', 'OPEN', 'PAID', 'ALL'] as const).map((group) => (
               <button
                 key={group}
                 type="button"
@@ -622,7 +645,9 @@ function OpenInvoicesPanel({
                 )}
               >
                 {t(`statusGroup.${group}`)}
-                <span className="text-micro tabular-nums">({grouped[group].length})</span>
+                <span className="text-micro tabular-nums">
+                  ({group === 'ALL' ? visible.length : grouped[group].length})
+                </span>
               </button>
             ))}
             <div className="relative">
@@ -671,6 +696,7 @@ function OpenInvoicesPanel({
                   <OpenInvoiceRow
                     key={inv.invoiceId}
                     projectId={projectId}
+                    fromHref={fromHref}
                     inv={inv}
                     money={money}
                     locale={locale}
@@ -766,6 +792,7 @@ function OpenInvoicesPanel({
 
 function OpenInvoiceRow({
   projectId,
+  fromHref,
   inv,
   money,
   locale,
@@ -778,6 +805,9 @@ function OpenInvoiceRow({
   onAction,
 }: {
   projectId: string;
+  /** Where this row's action links back to, filter preserved — read by the invoice workspace's
+   * breadcrumb. */
+  fromHref: string;
   inv: ClientReceivableView;
   money: (value: string | null) => string;
   locale: 'en';
@@ -803,11 +833,18 @@ function OpenInvoiceRow({
     inv.paymentState !== 'DRAFT' &&
     inv.paymentState !== 'CANCELLED';
 
-  // "Complete invoice" hands a DRAFT invoice to its real approve-then-post workflow in
-  // Accounting (GL account resolution + Dr/Cr preview) rather than a simplified one-click
-  // action here — that flow is deliberately stricter than the server and has its own history
-  // of subtle bugs, so it isn't duplicated.
-  const canCompleteInvoice = inv.paymentState === 'DRAFT';
+  // Hands a not-yet-posted invoice to its real approve-then-post workflow in Accounting (GL
+  // account resolution + Dr/Cr preview) rather than a simplified one-click action here — that
+  // flow is deliberately stricter than the server and has its own history of subtle bugs, so it
+  // isn't duplicated. The label names the REAL next step rather than one generic "Complete":
+  // a true draft still needs approval, an approved-but-unposted one only needs posting.
+  const nextAction: 'reviewDraft' | 'postInvoice' | null =
+    inv.documentStatus === 'DRAFT'
+      ? 'reviewDraft'
+      : inv.documentStatus === 'APPROVED' && inv.postingStatus !== 'POSTED'
+        ? 'postInvoice'
+        : null;
+  const invoiceWorkspaceHref = `/finance/accounting/invoices/${inv.invoiceId}?from=${encodeURIComponent(fromHref)}&fromLabel=${encodeURIComponent(tBilling('title'))}`;
 
   // Due-status chip display for approaching deadlines
   const dueBadge = (() => {
@@ -862,10 +899,15 @@ function OpenInvoiceRow({
         ) : null}
       </TableCell>
       <TableCell className="text-end tabular-nums">{money(inv.total)}</TableCell>
+      {/* A draft's `outstanding` equals its total from the moment it is created — not yet a
+          real collectible balance, so Paid/Balance stay blank rather than implying a debt that
+          does not exist until the invoice is posted. */}
       <TableCell className="text-end tabular-nums text-muted-foreground">
-        {money(inv.paid)}
+        {inv.paymentState === 'DRAFT' ? '—' : money(inv.paid)}
       </TableCell>
-      <TableCell className="text-end font-medium tabular-nums">{money(inv.outstanding)}</TableCell>
+      <TableCell className="text-end font-medium tabular-nums">
+        {inv.paymentState === 'DRAFT' ? '—' : money(inv.outstanding)}
+      </TableCell>
       <TableCell>
         <Badge tone={paymentStateTone(inv.paymentState)}>
           {t(`paymentState.${inv.paymentState}`)}
@@ -873,11 +915,9 @@ function OpenInvoiceRow({
       </TableCell>
       <TableCell>
         <div className="flex items-center gap-1.5">
-          {canCompleteInvoice ? (
+          {nextAction ? (
             <Button asChild type="button" variant="outline" size="sm">
-              <Link href={`/finance/accounting/invoices/${inv.invoiceId}`}>
-                {t('completeInvoice')}
-              </Link>
+              <Link href={invoiceWorkspaceHref}>{t(nextAction)}</Link>
             </Button>
           ) : null}
 

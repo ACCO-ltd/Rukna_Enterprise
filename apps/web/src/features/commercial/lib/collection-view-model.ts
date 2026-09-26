@@ -1,4 +1,10 @@
-import type { ClientInvoiceSourceKind, CommercialInvoiceRow, CommercialReceiptRow } from '@erp/types';
+import type {
+  ClientInvoiceDocStatus,
+  ClientInvoiceSourceKind,
+  ArPostingStatus,
+  CommercialInvoiceRow,
+  CommercialReceiptRow,
+} from '@erp/types';
 
 export type CollectionPaymentState =
   | 'AWAITING_PAYMENT'
@@ -19,6 +25,8 @@ export interface ClientReceivableView {
   invoiceNumber: string | null;
   sourceLabel: string;
   sourceKind: ClientInvoiceSourceKind;
+  documentStatus: ClientInvoiceDocStatus;
+  postingStatus: ArPostingStatus;
   /** The source record's id (installment id for INSTALLMENT) — for row actions that need to
    * deep-link into the record that owns the delivery/issuance workflow. */
   sourceId: string | null;
@@ -140,18 +148,27 @@ export function derivePaymentState(
   return 'AWAITING_PAYMENT';
 }
 
-function deriveSourceLabel(row: CommercialInvoiceRow): string {
-  if (row.source.label) return row.source.label;
-  switch (row.source.kind) {
+function sourceKindText(kind: ClientInvoiceSourceKind): string {
+  switch (kind) {
     case 'INSTALLMENT':
-      return 'Milestone invoice';
+      return 'Milestone';
     case 'IPC':
-      return 'IPC invoice';
+      return 'IPC';
     case 'SEPARATE_CHARGE':
-      return 'Extra charge';
+      return 'Separate charge';
     default:
       return 'Invoice';
   }
+}
+
+/**
+ * "{Kind} · {reference}" — e.g. "Milestone · Structure", "Separate charge · shamiito". A
+ * migration-loaded invoice (`NONE`, no reference) falls back to the bare kind word.
+ */
+function deriveSourceLabel(row: CommercialInvoiceRow): string {
+  const kindText = sourceKindText(row.source.kind);
+  if (!row.source.label || row.source.kind === 'NONE') return kindText;
+  return `${kindText} · ${row.source.label}`;
 }
 
 export function toClientReceivableView(
@@ -166,6 +183,8 @@ export function toClientReceivableView(
     sourceLabel: deriveSourceLabel(row),
     sourceKind: row.source.kind,
     sourceId: row.source.id,
+    documentStatus: row.documentStatus,
+    postingStatus: row.postingStatus,
     issuedAt: row.invoiceDate,
     sentAt: row.sentAt ?? null,
     dueDate: row.dueDate,

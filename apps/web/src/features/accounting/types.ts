@@ -475,6 +475,12 @@ export interface ClientInvoice {
   clientId: string;
   /** The effective IPC this invoice was generated from. Null only for migrated records. */
   sourceIpcId: string | null;
+  /** The source document, resolved to its human reference — never re-derived in the browser. */
+  source: {
+    kind: 'INSTALLMENT' | 'IPC' | 'SEPARATE_CHARGE' | 'NONE';
+    label: string | null;
+    id: string | null;
+  };
   projectId: string | null;
   contractId: string | null;
   currencyCode: string;

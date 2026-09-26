@@ -150,12 +150,13 @@ function invoiceSource(inv: {
     return { kind: 'IPC', label, id: inv.sourceIpcId };
   }
   // ADR-029 R-4 — a one-off separate-charge invoice: tagged by its SEPARATE_CHARGE BOQ leaf, so it is
-  // distinguishable from installment / IPC / migration-loaded (NONE) invoices. The leaf's code is the
-  // human reference; it feeds total client revenue, never the contract value (CONST-BOQ-030).
+  // distinguishable from installment / IPC / migration-loaded (NONE) invoices. The leaf's description
+  // is the human reference (its code alone, e.g. "11", reads as an opaque id); it feeds total client
+  // revenue, never the contract value (CONST-BOQ-030).
   if (inv.sourceBoqNodeId) {
     return {
       kind: 'SEPARATE_CHARGE',
-      label: inv.sourceBoqNode?.code ?? null,
+      label: inv.sourceBoqNode?.description || inv.sourceBoqNode?.code || null,
       id: inv.sourceBoqNodeId,
     };
   }

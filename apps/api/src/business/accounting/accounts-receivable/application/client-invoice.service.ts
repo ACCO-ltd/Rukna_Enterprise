@@ -10,7 +10,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 
 type TenantPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 import type { AccountWithCurrentVersion } from '../../accounting-core/infrastructure/account.repository.js';
-import type { RequestIdentity } from '@erp/types';
+import type { RequestIdentity, ClientInvoiceSourceKind } from '@erp/types';
 import { TenancyService } from '../../../../platform/tenancy/tenancy.service.js';
 import {
   ACCOUNTING_POSTING_PORT,
@@ -82,6 +82,46 @@ export interface GenerateInvoiceFromSeparateChargeDto {
   invoiceDate: string;
   dueDate: string;
   paymentTerms?: string;
+}
+
+/**
+ * Where an invoice came from, named the way a reader recognises it — the read-path counterpart
+ * of `commercial.service.ts`'s own `invoiceSource()`. Deliberately a separate, independent
+ * function rather than a shared import: ARCH-BOUNDARY-001 forbids this (accounting) module from
+ * importing construction-domain services, so each module resolves the same shared
+ * `sourceInstallmentId`/`sourceIpcId`/`sourceBoqNodeId` columns on its own `ClientInvoice` row.
+ */
+function resolveInvoiceSource(inv: {
+  sourceInstallmentId: string | null;
+  sourceInstallment: { id: string; name: string } | null;
+  sourceIpcId: string | null;
+  sourceIpc: {
+    id: string;
+    application: { id: string; applicationRef: string | null; applicationNumber: number | null } | null;
+  } | null;
+  sourceBoqNodeId: string | null;
+  sourceBoqNode: { id: string; code: string; description: string } | null;
+}): { kind: ClientInvoiceSourceKind; label: string | null; id: string | null } {
+  if (inv.sourceInstallmentId) {
+    return { kind: 'INSTALLMENT', label: inv.sourceInstallment?.name ?? null, id: inv.sourceInstallmentId };
+  }
+  if (inv.sourceIpcId) {
+    const application = inv.sourceIpc?.application ?? null;
+    const label =
+      application?.applicationRef ??
+      (application?.applicationNumber !== null && application?.applicationNumber !== undefined
+        ? `IPA ${application.applicationNumber}`
+        : null);
+    return { kind: 'IPC', label, id: inv.sourceIpcId };
+  }
+  if (inv.sourceBoqNodeId) {
+    return {
+      kind: 'SEPARATE_CHARGE',
+      label: inv.sourceBoqNode?.description || inv.sourceBoqNode?.code || null,
+      id: inv.sourceBoqNodeId,
+    };
+  }
+  return { kind: 'NONE', label: null, id: null };
 }
 
 export interface ApproveInvoiceDto {
@@ -690,9 +730,16 @@ export class ClientInvoiceService {
 
   async findById(identity: RequestIdentity, id: string) {
     const prisma = this.tenancyService.getClient();
-    const invoice = await this.repo.findById(prisma, identity.activeOrganizationId, id);
+    const invoice = await this.repo.findByIdWithSource(prisma, identity.activeOrganizationId, id);
     if (!invoice) throw new NotFoundException(`ClientInvoice ${id} not found`);
-    return invoice;
+    const source = resolveInvoiceSource(invoice);
+    const rest: Record<string, unknown> = { ...invoice, source };
+    // The raw relations are internal to `resolveInvoiceSource` above — the DTO carries only
+    // the resolved `source`, never these.
+    delete rest.sourceInstallment;
+    delete rest.sourceIpc;
+    delete rest.sourceBoqNode;
+    return rest;
   }
 
   /**

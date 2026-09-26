@@ -193,14 +193,24 @@ describe('toClientReceivableView', () => {
     expect(view.canRecordPayment).toBe(false);
   });
 
-  it('uses source.label when server provides it', () => {
-    const row = makeInvoiceRow({ source: { kind: 'INSTALLMENT', label: 'Milestone 2 · Plastering', id: 'inst-2' } });
-    expect(toClientReceivableView(row, TODAY).sourceLabel).toBe('Milestone 2 · Plastering');
+  it('composes "{kind} · {reference}" when the server provides a source label', () => {
+    const row = makeInvoiceRow({ source: { kind: 'INSTALLMENT', label: 'Structure', id: 'inst-2' } });
+    expect(toClientReceivableView(row, TODAY).sourceLabel).toBe('Milestone · Structure');
   });
 
-  it('falls back to kind-based label when source.label is null', () => {
+  it('composes the SEPARATE_CHARGE kind with its BOQ leaf description', () => {
+    const row = makeInvoiceRow({ source: { kind: 'SEPARATE_CHARGE', label: 'shamiito', id: 'node-9' } });
+    expect(toClientReceivableView(row, TODAY).sourceLabel).toBe('Separate charge · shamiito');
+  });
+
+  it('falls back to the bare kind word when source.label is null', () => {
     const row = makeInvoiceRow({ source: { kind: 'IPC', label: null, id: null } });
-    expect(toClientReceivableView(row, TODAY).sourceLabel).toBe('IPC invoice');
+    expect(toClientReceivableView(row, TODAY).sourceLabel).toBe('IPC');
+  });
+
+  it('falls back to the bare kind word for a migration-loaded (NONE) invoice, never a raw label', () => {
+    const row = makeInvoiceRow({ source: { kind: 'NONE', label: null, id: null } });
+    expect(toClientReceivableView(row, TODAY).sourceLabel).toBe('Invoice');
   });
 });
 

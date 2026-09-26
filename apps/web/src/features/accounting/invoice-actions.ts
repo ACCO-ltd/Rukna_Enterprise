@@ -88,6 +88,21 @@ export function canReverse(invoice: ClientInvoice): boolean {
   return invoice.postingStatus === 'POSTED' && invoice.reversalJournalEntryId === null;
 }
 
+export type InvoiceWorkspaceState = 'DRAFT' | 'AWAITING_POSTING' | 'POSTED' | 'CANCELLED';
+
+/**
+ * Which of the four workspace presentations an invoice is in — coarser than the two raw status
+ * axes, for choosing a page title/badge/action set in one place rather than re-deriving it at
+ * every call site. `AWAITING_POSTING` covers APPROVED whether `postingStatus` is its first
+ * attempt (`NOT_POSTED`) or a retry (`FAILED`) — both need the same next action, Post.
+ */
+export function invoiceWorkspaceState(invoice: ClientInvoice): InvoiceWorkspaceState {
+  if (invoice.documentStatus === 'CANCELLED') return 'CANCELLED';
+  if (invoice.documentStatus === 'DRAFT') return 'DRAFT';
+  if (invoice.postingStatus === 'POSTED') return 'POSTED';
+  return 'AWAITING_POSTING';
+}
+
 /** Every action currently legal, in the order they appear in the lifecycle. */
 export function availableInvoiceActions(invoice: ClientInvoice): InvoiceAction[] {
   const actions: InvoiceAction[] = [];

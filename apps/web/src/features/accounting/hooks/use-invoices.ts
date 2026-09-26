@@ -104,6 +104,23 @@ export function useOpenInvoiceDocument() {
   });
 }
 
+/**
+ * The signed document URL as data, for an embedded preview — `useOpenInvoiceDocument` above is a
+ * one-shot mutation that immediately navigates a new tab, which an `<iframe>` cannot use as a
+ * source. `staleTime` sits safely under the URL's ~15 minute signed lifetime so a background
+ * refetch (tab refocus, `refetch()`) reliably gets a fresh one rather than reusing one about to
+ * expire. Not enabled by default: only fetch once the preview panel is actually visible.
+ */
+export function useInvoiceDocumentUrl(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: [...invoiceKeys.detail(id), 'document'] as const,
+    queryFn: () => getInvoiceDocument(id),
+    enabled: Boolean(id) && enabled,
+    staleTime: 10 * 60 * 1000,
+    retry: 1,
+  });
+}
+
 export type InvoiceActionRequest =
   | { type: 'approve' }
   | { type: 'post'; payload: PostInvoicePayload }
