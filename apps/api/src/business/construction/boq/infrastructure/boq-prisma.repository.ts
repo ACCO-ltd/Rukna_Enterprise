@@ -308,9 +308,10 @@ export class BoqPrismaRepository {
     prisma: PrismaClient,
     versionId: string,
     parentId: string | null,
+    excludeNodeId?: string,
   ): Promise<'item' | 'section' | null> {
     const first = await prisma.boqNode.findFirst({
-      where: { versionId, parentId },
+      where: { versionId, parentId, ...(excludeNodeId ? { id: { not: excludeNodeId } } : {}) },
       select: { isLeaf: true },
     });
     if (!first) return null;

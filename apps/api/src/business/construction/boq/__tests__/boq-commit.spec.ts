@@ -247,8 +247,10 @@ describe('BOQ commit-to-contract (ADR-029 L-1..L-7)', () => {
     const total = await versioning.getInContractTotal(identity, projectId, versionId);
     expect(total).toBe('1500.00');
 
-    // And a subsequent money-neutral write (reorder) needs no override.
+    // And a subsequent money-neutral write (reorder within its section) needs no override.
+    const section = await prisma.boqNode.findFirstOrThrow({ where: { versionId, code: '01' } });
     const moved = await tree.moveNode(identity, projectId, versionId, contingency.id, {
+      newParentId: section.id,
       newSortOrder: 0,
     });
     expect(Array.isArray(moved)).toBe(true);

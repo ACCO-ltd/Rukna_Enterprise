@@ -283,6 +283,13 @@ export class BoqTreeService {
     const quantity = dto.quantity !== undefined ? dto.quantity : node.quantity?.toString();
     const unitRate = dto.unitRate !== undefined ? dto.unitRate : node.unitRate?.toString();
 
+    // Only relevant when isLeaf is actually flipping — exclude this node so we see what the
+    // siblings are, not what this node currently is.
+    const isLeafChanging = dto.isLeaf !== undefined && dto.isLeaf !== node.isLeaf;
+    const existingSiblingKind = isLeafChanging
+      ? await this.repo.findDirectChildKind(prisma, versionId, node.parentId, nodeId)
+      : undefined;
+
     this.assertValid(
       validateNodeWrite(
         { code, isLeaf, unit, quantity, unitRate, currency: dto.currency, depth: node.depth },
@@ -291,6 +298,7 @@ export class BoqTreeService {
           siblingCodes: await this.repo.findCodesInVersion(prisma, versionId, nodeId),
           parentIsItem: false,
           hasChildren: childCount > 0,
+          existingSiblingKind,
         },
       ),
     );
@@ -379,6 +387,14 @@ export class BoqTreeService {
         );
       }
 
+      const destKind = await this.repo.findDirectChildKind(prisma, versionId, dto.newParentId, nodeId);
+      if (destKind !== null && destKind !== (node.isLeaf ? 'item' : 'section')) {
+        const existing = destKind === 'item' ? 'billable items' : 'sub-sections';
+        throw new BadRequestException(
+          `Cannot move here: the destination already contains ${existing}.`,
+        );
+      }
+
       await this.repo.moveNode(
         prisma,
         versionId,
@@ -390,6 +406,13 @@ export class BoqTreeService {
         this.moveEvent(identity, boq, versionId, node),
       );
     } else {
+      const rootKind = await this.repo.findDirectChildKind(prisma, versionId, null, nodeId);
+      if (rootKind !== null && rootKind !== (node.isLeaf ? 'item' : 'section')) {
+        const existing = rootKind === 'item' ? 'billable items' : 'sub-sections';
+        throw new BadRequestException(
+          `Cannot move here: the root level already contains ${existing}.`,
+        );
+      }
       await this.repo.moveNode(
         prisma,
         versionId,

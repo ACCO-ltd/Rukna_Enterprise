@@ -239,6 +239,10 @@ describe('BOQ tree — ADR-016 correctness', () => {
         parentId: section.id,
         code: `04.00${n}`,
         description: `Line ${n}`,
+        isLeaf: true,
+        unit: 'm',
+        quantity: '1.000',
+        unitRate: '1.00',
       });
     }
 
@@ -275,7 +279,8 @@ describe('BOQ tree — ADR-016 correctness', () => {
   });
 
   it('rewrites path and depth across the moved subtree', async () => {
-    const target = await prisma.boqNode.findFirstOrThrow({ where: { versionId, code: '01' } });
+    // Use a fresh empty section so MIXED_CHILDREN is not triggered (section '01' has a leaf item).
+    const target = await tree.addNode(identity, projectId, versionId, { code: 'PATH-TEST', description: 'Path test container' });
     const section = await prisma.boqNode.findFirstOrThrow({ where: { versionId, code: '04' } });
 
     await tree.moveNode(identity, projectId, versionId, section.id, {
@@ -297,7 +302,8 @@ describe('BOQ tree — ADR-016 correctness', () => {
   });
 
   it('refuses to move a node under its own descendant', async () => {
-    const parent = await prisma.boqNode.findFirstOrThrow({ where: { versionId, code: '01' } });
+    // PATH-TEST is the ancestor of '04' (moved there by the previous test).
+    const parent = await prisma.boqNode.findFirstOrThrow({ where: { versionId, code: 'PATH-TEST' } });
     const child = await prisma.boqNode.findFirstOrThrow({ where: { versionId, code: '04' } });
 
     await expect(
