@@ -14,8 +14,6 @@ import { variationStatusTone } from '../presentation';
 import { PositionBand, type PositionFigure } from './contract-position';
 import { errorText } from './commercial-workspace';
 import { VariationDetailSheet } from './variation-detail-sheet';
-import { ExtensionOfTimeSection } from './extension-of-time-section';
-import { CertifiedInvoicedByVariationSection } from './certified-invoiced-by-variation-section';
 import {
   VariationBillingChip,
   type VariationBilling,
@@ -34,7 +32,9 @@ import {
  * an unbilled one, from the detail sheet.
  *
  * Time is a separate rule: a proposed `+N days` is justification, not effect. The contractual
- * completion date moves only through an Extension of Time, its own audited command and section below.
+ * completion date moves only through an Extension of Time — its own audited command, on the
+ * sibling "Extension of time" tab in `ContractChangesPanel` (`contract-milestones-tab.tsx`), not
+ * rendered inside this component.
  */
 export function VariationsTab({
   projectId,
@@ -143,14 +143,6 @@ export function VariationsTab({
           </div>
         )}
       </section>
-
-      <CertifiedInvoicedByVariationSection contractId={contract.id} />
-
-      <ExtensionOfTimeSection
-        contractId={contract.id}
-        projectId={projectId}
-        variations={variations}
-      />
 
       <VariationDetailSheet
         variationId={detailId}

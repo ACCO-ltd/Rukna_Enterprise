@@ -1171,13 +1171,14 @@
       "title": "No contract yet",
       "hint": "Record a signed contract to start tracking milestones."
     },
-    "changesSummary": {
-      "approvedVariations": "Approved variations",
-      "pendingVariations": "Pending variations",
-      "extensionOfTime": "Extension of time",
-      "none": "None",
-      "extensionDays": "{days, plural, one {# day} other {# days}}",
-      "viewDetails": "View details →"
+    "changes": {
+      "title": "Contract changes",
+      "tabs": {
+        "variations": "Variations",
+        "certified": "Certified & invoiced",
+        "eot": "Extension of time",
+        "separate": "Separate charges"
+      }
     },
     "paymentScheduleTitle": "Payment schedule",
     "journey": {

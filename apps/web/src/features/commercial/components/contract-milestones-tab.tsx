@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocale, useTranslations } from 'next-intl';
-import { AlertTriangle, CheckCircle2, Info, Link as LinkIcon, Lock } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, Lock } from 'lucide-react';
 import Link from 'next/link';
 import {
   Alert,
@@ -20,6 +20,7 @@ import {
   FormField,
   Input,
   Skeleton,
+  ViewSwitcher,
   cn,
 } from '@erp/ui';
 import type { CommercialSummaryResponse, SeparateChargeNode } from '@erp/types';
@@ -33,7 +34,9 @@ import {
   useBillingPackages,
   useCommercialCurrentCycle,
   useCreateSeparateChargeInvoice,
+  useExtensionsOfTime,
   useProjectSeparateCharges,
+  useVariations,
 } from '../hooks/use-commercial';
 import { useMarkReadyToBill } from '../hooks/use-mark-ready-to-bill';
 import {
@@ -51,6 +54,8 @@ import { SendInvoiceDialog } from './send-invoice-dialog';
 import { ScheduleEditor } from './payment-schedule-tab';
 import { ContractSecurityBody, ContractStatusPanel, LIFECYCLE } from './contract-security-tab';
 import { VariationsTab } from './variations-tab';
+import { CertifiedInvoicedByVariationSection } from './certified-invoiced-by-variation-section';
+import { ExtensionOfTimeSection } from './extension-of-time-section';
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -184,8 +189,7 @@ export function ContractMilestonesTab({
             billed, so a finance reader meets them right after the schedule. Contract-lifecycle
             admin (Edit schedule, Guarantees, deliverables) and the activity log are
             occasional-use surfaces, not daily reads, and sit below. */}
-        <VariationsTab projectId={projectId} summary={summary} />
-        <SeparateChargesSection projectId={projectId} contractId={contract.id} />
+        <ContractChangesPanel projectId={projectId} contractId={contract.id} summary={summary} />
         <ScheduleEditor
           projectId={projectId}
           contractId={contract.id}
@@ -784,6 +788,81 @@ function AllMilestonesBilledBanner({ projectId }: { projectId: string }) {
   );
 }
 
+// ─── Contract changes panel ──────────────────────────────────────────────────
+
+type ContractChangesView = 'variations' | 'certified' | 'eot' | 'separate';
+
+/**
+ * Variations, the certified/invoiced trace by variation, Extension of Time, and Separate
+ * Charges each answer a genuinely different question — none of their figures duplicate each
+ * other — but stacked as four independently-bordered full-width sections they read as a long,
+ * mostly-empty scroll for the common case of a contract with few or no changes yet. One titled
+ * panel with a local tab switch keeps all four one click away without the sprawl, and each tab
+ * carries a count so "is there anything here" stays visible without switching to it.
+ *
+ * `useVariations`/`useExtensionsOfTime`/`useProjectSeparateCharges` are called here (for the tab
+ * badge counts, and — for variations — to pass down to the Extension of Time tab's "cite a VO"
+ * checklist) as well as inside the tab bodies themselves; TanStack Query dedupes identical
+ * queries, so this costs no extra round trip.
+ */
+function ContractChangesPanel({
+  projectId,
+  contractId,
+  summary,
+}: {
+  projectId: string;
+  contractId: string;
+  summary: CommercialSummaryResponse;
+}) {
+  const t = useTranslations('commercial.contractMilestones.changes');
+  const [view, setView] = useState<ContractChangesView>('variations');
+
+  const variationsQuery = useVariations(contractId);
+  const eotQuery = useExtensionsOfTime(contractId);
+  const separateChargesQuery = useProjectSeparateCharges(projectId);
+
+  const variations = variationsQuery.data?.variations ?? [];
+  const counted = (n: number) => (n > 0 ? ` (${n})` : '');
+
+  const items = [
+    { value: 'variations' as const, label: `${t('tabs.variations')}${counted(variations.length)}` },
+    { value: 'certified' as const, label: t('tabs.certified') },
+    {
+      value: 'eot' as const,
+      label: `${t('tabs.eot')}${counted(eotQuery.data?.extensions.length ?? 0)}`,
+    },
+    {
+      value: 'separate' as const,
+      label: `${t('tabs.separate')}${counted(separateChargesQuery.data?.items.length ?? 0)}`,
+    },
+  ];
+
+  return (
+    <section className="overflow-hidden rounded-panel border border-border bg-surface shadow-e1">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
+        <h2 className="text-h3 font-semibold text-foreground">{t('title')}</h2>
+        <ViewSwitcher
+          aria-label={t('title')}
+          value={view}
+          onValueChange={(next) => setView(next as ContractChangesView)}
+          items={items}
+        />
+      </div>
+
+      <div className="p-4 sm:p-5">
+        {view === 'variations' ? <VariationsTab projectId={projectId} summary={summary} /> : null}
+        {view === 'certified' ? <CertifiedInvoicedByVariationSection contractId={contractId} /> : null}
+        {view === 'eot' ? (
+          <ExtensionOfTimeSection contractId={contractId} projectId={projectId} variations={variations} />
+        ) : null}
+        {view === 'separate' ? (
+          <SeparateChargesSection projectId={projectId} contractId={contractId} />
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 // ─── Separate Charges Section (Slice D) ──────────────────────────────────────
 
 function SeparateChargesSection({
@@ -809,25 +888,19 @@ function SeparateChargesSection({
 
   const { items } = query.data;
 
+  // No own border/title here — this only ever renders as a tab body inside ContractChangesPanel,
+  // whose outer panel supplies the border and whose tab label already reads "Separate charges
+  // (N)". A second nested box repeating both was the exact box-in-a-box look this panel exists
+  // to avoid.
   return (
-    <section className="rounded-panel border border-border bg-surface shadow-e1">
-      <div className="flex items-center justify-between border-b border-border px-5 py-4">
-        <div className="flex items-center gap-2">
-          <LinkIcon size={14} className="text-muted-foreground" aria-hidden="true" />
-          <h3 className="text-body-sm font-semibold text-foreground">{t('title')}</h3>
-          {items.length > 0 && (
-            <Badge tone="neutral" className="text-caption">{items.length}</Badge>
-          )}
-        </div>
-      </div>
-
+    <div>
       {items.length === 0 ? (
-        <div className="px-5 py-8 text-center">
+        <div className="py-6 text-center">
           <p className="text-body-sm font-medium text-foreground">{t('emptyTitle')}</p>
           <p className="mt-1 text-caption text-muted-foreground">{t('emptyHint')}</p>
         </div>
       ) : (
-        <ul className="divide-y divide-border">
+        <ul className="divide-y divide-border overflow-hidden rounded-panel border border-border">
           {items.map((item) => (
             <SeparateChargeRow
               key={item.id}
@@ -849,7 +922,7 @@ function SeparateChargesSection({
           onClose={() => setCreatingFor(null)}
         />
       )}
-    </section>
+    </div>
   );
 }
 

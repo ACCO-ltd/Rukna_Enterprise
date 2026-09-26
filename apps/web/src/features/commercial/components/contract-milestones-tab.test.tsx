@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { CommercialSummaryResponse } from '@erp/types';
 
 import { renderWithProviders } from '@/test/render';
@@ -63,10 +64,27 @@ vi.mock('../hooks/use-commercial', () => ({
     isPending: false,
     isError: false,
   }),
+  // ContractChangesPanel's own read, for the "Variations (N)" tab badge and the list it hands to
+  // the Extension of Time tab's "cite a VO" checklist. VariationsTab itself is stubbed below, so
+  // this is the only place in this test file that reads it.
+  useVariations: () => ({
+    data: { contractId: 'contract-1', variations: [] },
+    isPending: false,
+    isError: false,
+  }),
 }));
 
 vi.mock('./commercial-activity', () => ({
   CommercialActivity: () => <div data-testid="commercial-activity" />,
+}));
+
+// ContractChangesPanel's non-default tabs — stubbed so switching to them in a test doesn't fire
+// a real network round-trip for content those tests aren't exercising.
+vi.mock('./certified-invoiced-by-variation-section', () => ({
+  CertifiedInvoicedByVariationSection: () => <div data-testid="certified-invoiced-section" />,
+}));
+vi.mock('./extension-of-time-section', () => ({
+  ExtensionOfTimeSection: () => <div data-testid="extension-of-time-section" />,
 }));
 
 // Stub the folded-in sections so their own hooks don't need mocking here.
@@ -337,6 +355,36 @@ describe('ContractMilestonesTab', () => {
     );
     expect(screen.getByTestId('contract-security-body')).toBeInTheDocument();
     expect(screen.getByTestId('variations-tab')).toBeInTheDocument();
+  });
+
+  describe('Contract changes panel — one titled panel, four tabs', () => {
+    it('lands on Variations and mounts no other tab body', () => {
+      cycleData.value = makeCycle([{ status: 'NEXT' }]);
+      renderWithProviders(<ContractMilestonesTab projectId="p-1" summary={makeSummary()} />);
+
+      expect(screen.getByTestId('variations-tab')).toBeInTheDocument();
+      expect(screen.queryByTestId('certified-invoiced-section')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('extension-of-time-section')).not.toBeInTheDocument();
+      expect(screen.queryByText('No separate charges')).not.toBeInTheDocument();
+    });
+
+    it('switches to each tab on click, one body mounted at a time', async () => {
+      const user = userEvent.setup();
+      cycleData.value = makeCycle([{ status: 'NEXT' }]);
+      renderWithProviders(<ContractMilestonesTab projectId="p-1" summary={makeSummary()} />);
+
+      await user.click(screen.getByRole('tab', { name: 'Certified & invoiced' }));
+      expect(screen.getByTestId('certified-invoiced-section')).toBeInTheDocument();
+      expect(screen.queryByTestId('variations-tab')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('tab', { name: 'Extension of time' }));
+      expect(screen.getByTestId('extension-of-time-section')).toBeInTheDocument();
+      expect(screen.queryByTestId('certified-invoiced-section')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('tab', { name: 'Separate charges' }));
+      expect(screen.getByText('No separate charges')).toBeInTheDocument();
+      expect(screen.queryByTestId('extension-of-time-section')).not.toBeInTheDocument();
+    });
   });
 
   describe('signed-date completion (operational exception — allowed on ACTIVE)', () => {
