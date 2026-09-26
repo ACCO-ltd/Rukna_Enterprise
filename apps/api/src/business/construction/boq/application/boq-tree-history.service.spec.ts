@@ -39,6 +39,7 @@ function build(over: { node?: unknown; history?: unknown[]; actorNames?: Map<str
     findNodeById: jest.fn().mockResolvedValue(over.node ?? leaf()),
     countChildren: jest.fn().mockResolvedValue(0),
     countSiblings: jest.fn().mockResolvedValue(0),
+    findDirectChildKind: jest.fn().mockResolvedValue(null),
     findCodesInVersion: jest.fn().mockResolvedValue(new Set<string>()),
     findChildCodes: jest.fn().mockResolvedValue([]),
     countNodeReferences: jest.fn().mockResolvedValue([]),
@@ -76,8 +77,8 @@ describe('BoqTreeService — change history', () => {
       const { svc, repo } = build();
       await svc.addNode(identity, 'p1', 'v1', dto({ description: 'Concrete works', isLeaf: false }));
       const data = repo.createNodeAtPosition.mock.calls[0][1] as { code: string };
-      expect(data.code).toBe('01');
-      expect(eventArg(repo.createNodeAtPosition, 4).code).toBe('01');
+      expect(data.code).toBe('1');
+      expect(eventArg(repo.createNodeAtPosition, 4).code).toBe('1');
     });
 
     it('uses a provided code as an override', async () => {

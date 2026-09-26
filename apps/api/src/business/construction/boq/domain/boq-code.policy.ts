@@ -7,11 +7,11 @@
  * be a blank box the user guesses at. This derives the next code from where the node sits in the
  * tree and the direct children already there.
  *
- * The convention (read from the data, not invented): sections deepen the dotted path — `01`,
- * `01.02`, `01.02.03`; items are numbered inside their section on a WIDER segment — `01.001`,
- * `02.01.001` — so a section and the first item beside it can't both be `01.01`. Segment width is
- * taken from the siblings, so a bill that numbers `001` keeps doing so. This mirrors the browser's
- * `suggestNodeCode` exactly, so the code the dialog previews is the code the server assigns.
+ * The convention: sections and items both use natural numbers — `1`, `1.2`, `1.2.3`. A parent
+ * may contain either sub-sections or items, never both (enforced by boq-node.policy). Segment
+ * width is inherited from siblings so an existing hand-typed convention (e.g. `001`) is
+ * continued rather than reset. This mirrors the browser's `suggestNodeCode` exactly, so the code
+ * the dialog previews is the code the server assigns.
  */
 
 /** How many digits the siblings use, so an existing convention is continued rather than reset. */
@@ -33,9 +33,7 @@ export function proposeNodeCode(
   /** Codes of the nodes already directly under that parent. */
   childCodes: readonly string[],
 ): string {
-  // Items sit on a wider segment than sections so a section and the first item beside it cannot
-  // both be "01.01".
-  const defaultWidth = kind === 'item' ? 3 : 2;
+  const defaultWidth = 1;
   const prefix = parentCode ? `${parentCode}.` : '';
 
   const tails = childCodes

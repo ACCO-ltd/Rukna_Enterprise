@@ -14,13 +14,12 @@
  * above the field. That plus the siblings already there is everything needed to say what the
  * next code is, so the field arrives answered and the user only has to disagree.
  *
- * ─── The convention, read from the data rather than invented ─────────────────────
+ * ─── The convention ──────────────────────────────────────────────────────────────
  *
- * Sections are dotted segments that deepen with the tree — `01`, then `01.02`, then
- * `01.02.03`. Items are numbered inside their section on a wider segment — `01.001`,
- * `02.01.001` — which is what keeps a section and its first item from colliding at
- * `01.01`. Segment width is taken from the siblings rather than hardcoded: a BOQ that
- * numbers its sections `001` keeps doing so.
+ * Sections and items both use natural numbers — `1`, then `1.2`, then `1.2.3`. A parent
+ * may contain either sub-sections or items, never both (the server enforces this). Segment
+ * width is taken from the siblings rather than hardcoded: a BOQ whose codes were manually
+ * typed as `001` keeps doing so.
  */
 
 /** How many digits the siblings use, so an existing convention is continued rather than reset. */
@@ -42,9 +41,7 @@ export function suggestNodeCode(
   /** Codes of the nodes already under that parent. */
   siblingCodes: readonly string[],
 ): string {
-  // Items are numbered on a wider segment than sections so that a section and the first item
-  // beside it cannot both be "01.01".
-  const defaultWidth = kind === 'item' ? 3 : 2;
+  const defaultWidth = 1;
   const prefix = parentCode ? `${parentCode}.` : '';
 
   // Only siblings that actually sit under this parent, and only the numeric tail.

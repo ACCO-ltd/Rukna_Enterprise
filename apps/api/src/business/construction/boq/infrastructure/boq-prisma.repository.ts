@@ -303,6 +303,20 @@ export class BoqPrismaRepository {
     return new Set(rows.map((row) => row.code));
   }
 
+  /** The kind of the first direct child under `parentId`, or null when the parent has none. */
+  async findDirectChildKind(
+    prisma: PrismaClient,
+    versionId: string,
+    parentId: string | null,
+  ): Promise<'item' | 'section' | null> {
+    const first = await prisma.boqNode.findFirst({
+      where: { versionId, parentId },
+      select: { isLeaf: true },
+    });
+    if (!first) return null;
+    return first.isLeaf ? 'item' : 'section';
+  }
+
   /** Codes of the nodes directly under `parentId` (null = root) — feeds the next-code proposal. */
   async findChildCodes(
     prisma: PrismaClient,

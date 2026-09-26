@@ -22,6 +22,7 @@ function absorbRepo(opts: {
     findVersion: jest.fn().mockResolvedValue({ id: 'v1', status: opts.status ?? 'COMMITTED' }),
     findNodeById: jest.fn().mockResolvedValue(null),
     countSiblings: jest.fn().mockResolvedValue(0),
+    findDirectChildKind: jest.fn().mockResolvedValue(null),
     findChildCodes: jest.fn().mockResolvedValue([]),
     findCodesInVersion: jest.fn().mockResolvedValue(new Set<string>()),
     createNodeAtPosition: jest
@@ -84,6 +85,7 @@ function separateRepo(status: 'DRAFT' | 'COMMITTED') {
     findVersion: jest.fn().mockResolvedValue({ id: 'v1', status }),
     findNodeById: jest.fn().mockResolvedValue(null),
     countSiblings: jest.fn().mockResolvedValue(0),
+    findDirectChildKind: jest.fn().mockResolvedValue(null),
     findChildCodes: jest.fn().mockResolvedValue([]),
     findCodesInVersion: jest.fn().mockResolvedValue(new Set<string>()),
     createNodeAtPosition: jest

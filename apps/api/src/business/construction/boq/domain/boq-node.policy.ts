@@ -22,6 +22,7 @@ export type BoqNodeViolationCode =
   | 'SECTION_CARRIES_PRICING'
   | 'ITEM_HAS_CHILDREN'
   | 'PARENT_IS_ITEM'
+  | 'MIXED_CHILDREN'
   | 'QUANTITY_SCALE'
   | 'RATE_SCALE'
   | 'NEGATIVE_QUANTITY'
@@ -55,6 +56,12 @@ export interface NodeWriteContext {
   parentIsItem: boolean;
   /** True when the node already has children — blocks turning it into an item. */
   hasChildren: boolean;
+  /**
+   * The kind of existing direct children under the target parent, if any.
+   * Null means the parent has no children yet (any kind is allowed).
+   * A parent may contain only sections or only items — never both.
+   */
+  existingSiblingKind?: 'item' | 'section' | null;
 }
 
 export function validateNodeWrite(
@@ -75,6 +82,18 @@ export function validateNodeWrite(
       code: 'PARENT_IS_ITEM',
       message: 'A billable item cannot contain other nodes. Choose a section as the parent.',
     });
+  }
+
+  if (context.existingSiblingKind != null) {
+    const incomingKind = node.isLeaf ? 'item' : 'section';
+    if (incomingKind !== context.existingSiblingKind) {
+      const existing = context.existingSiblingKind === 'item' ? 'billable items' : 'sub-sections';
+      const incoming = node.isLeaf ? 'a billable item' : 'a sub-section';
+      violations.push({
+        code: 'MIXED_CHILDREN',
+        message: `This section already contains ${existing}. Cannot add ${incoming} alongside them.`,
+      });
+    }
   }
 
   if (node.depth > MAX_DEPTH) {

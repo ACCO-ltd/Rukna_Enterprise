@@ -121,7 +121,9 @@ describe('BOQ tree — ADR-016 correctness', () => {
   });
 
   it('rejects a child under a billable item', async () => {
+    const s01 = await prisma.boqNode.findFirstOrThrow({ where: { versionId, code: '01' } });
     const item = await tree.addNode(identity, projectId, versionId, {
+      parentId: s01.id,
       code: '01.ITEM',
       description: 'An item',
       isLeaf: true,
@@ -139,9 +141,29 @@ describe('BOQ tree — ADR-016 correctness', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('rejects a quantity beyond three decimal places', async () => {
+  it('rejects a leaf item added to a section that already has sub-sections (MIXED_CHILDREN)', async () => {
+    const container = await tree.addNode(identity, projectId, versionId, { code: 'MC', description: 'Mixed-children test container' });
+    const sub = await tree.addNode(identity, projectId, versionId, { parentId: container.id, code: 'MC.1', description: 'Sub-section' });
     await expect(
       tree.addNode(identity, projectId, versionId, {
+        parentId: container.id,
+        code: 'MC.ITEM',
+        description: 'Cannot mix',
+        isLeaf: true,
+        unit: 'LS',
+        quantity: '1',
+        unitRate: '10.00',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await tree.deleteNode(identity, projectId, versionId, sub.id);
+    await tree.deleteNode(identity, projectId, versionId, container.id);
+  });
+
+  it('rejects a quantity beyond three decimal places', async () => {
+    const s01 = await prisma.boqNode.findFirstOrThrow({ where: { versionId, code: '01' } });
+    await expect(
+      tree.addNode(identity, projectId, versionId, {
+        parentId: s01.id,
         code: '01.SCALE',
         description: 'Over-precise',
         isLeaf: true,
@@ -299,8 +321,10 @@ describe('BOQ tree — ADR-016 correctness', () => {
   // ─── CONST-BOQ-003: deletion protection ────────────────────────────────────
 
   it('refuses to delete a node referenced by a downstream record', async () => {
+    const s02 = await prisma.boqNode.findFirstOrThrow({ where: { versionId, code: '02' } });
     const item = await tree.addNode(identity, projectId, versionId, {
-      code: '09.REF',
+      parentId: s02.id,
+      code: '02.REF',
       description: 'Claimed line',
       isLeaf: true,
       unit: 'm',

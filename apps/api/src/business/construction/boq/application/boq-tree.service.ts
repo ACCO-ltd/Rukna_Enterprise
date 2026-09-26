@@ -181,6 +181,7 @@ export class BoqTreeService {
     // and server-owned (CONST-BOQ-017), so an out-of-range request is clamped, not rejected.
     const siblingCount = await this.repo.countSiblings(prisma, versionId, dto.parentId ?? null);
     const targetOrder = Math.max(0, Math.min(dto.sortOrder ?? siblingCount, siblingCount));
+    const existingSiblingKind = await this.repo.findDirectChildKind(prisma, versionId, dto.parentId ?? null);
 
     // D2: the server assigns the code from the tree position unless the caller overrode it. If a
     // concurrent add just claimed the generated code (the unique index fires), regenerate and
@@ -211,6 +212,7 @@ export class BoqTreeService {
             siblingCodes: await this.repo.findCodesInVersion(prisma, versionId),
             parentIsItem,
             hasChildren: false,
+            existingSiblingKind,
           },
         ),
       );

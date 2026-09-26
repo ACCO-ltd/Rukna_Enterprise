@@ -102,8 +102,9 @@ export function importTemplateCsv(): string {
   return (
     [
       'Code,Description,Unit,Quantity,Rate',
-      '02,Concrete works,,,',
-      '02.01.001,Mass concrete C25,m3,120.5,85.00',
+      '1,Concrete works,,,',
+      '1.1,Substructure,,,',
+      '1.1.1,Mass concrete C25,m3,120.5,85.00',
     ].join('\r\n') + '\r\n'
   );
 }
