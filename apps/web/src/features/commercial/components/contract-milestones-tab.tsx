@@ -49,7 +49,7 @@ import { ReviewForBillingDrawer } from './review-for-billing-drawer';
 import { PrepareInvoiceDialog } from './prepare-invoice-dialog';
 import { SendInvoiceDialog } from './send-invoice-dialog';
 import { ScheduleEditor } from './payment-schedule-tab';
-import { ContractSecurityBody, LIFECYCLE } from './contract-security-tab';
+import { ContractSecurityBody, ContractStatusPanel, LIFECYCLE } from './contract-security-tab';
 import { VariationsTab } from './variations-tab';
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -164,6 +164,11 @@ export function ContractMilestonesTab({
           contract={contract}
           summary={summary}
         />
+        {/* Right next to the header's own lifecycle stepper, not a screen below it — the reader
+            who just saw "Active" next to a next-step label is the reader reaching for the button
+            that moves it. Everything else that acts on the contract (Guarantees, Deliverables)
+            stays with ContractSecurityBody, lower down. */}
+        <ContractStatusPanel projectId={projectId} summary={summary} />
         <ScheduleBody
           projectId={projectId}
           summary={summary}
@@ -175,9 +180,9 @@ export function ContractMilestonesTab({
           onSendInvoice={handleSendInvoice}
           onVerifyMilestone={setVerifyingMilestone}
         />
-        {/* Money content first — variations and separate charges directly affect what gets
+        {/* Money content next — variations and separate charges directly affect what gets
             billed, so a finance reader meets them right after the schedule. Contract-lifecycle
-            admin (Edit schedule, Contract status, deliverables) and the activity log are
+            admin (Edit schedule, Guarantees, deliverables) and the activity log are
             occasional-use surfaces, not daily reads, and sit below. */}
         <VariationsTab projectId={projectId} summary={summary} />
         <SeparateChargesSection projectId={projectId} contractId={contract.id} />

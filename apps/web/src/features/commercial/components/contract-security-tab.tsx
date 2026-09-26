@@ -109,9 +109,11 @@ export function ContractSecurityBody({
   // side-by-side grid left one column empty and the other lopsided. Payment-terms reconciliation
   // moved out entirely: it restated the same installments the Payment Schedule table above
   // already shows, with a "view schedule" link that only pointed back at the same page.
+  // `ContractStatusPanel` itself renders separately, right after `ContractHeader` — the lifecycle
+  // stepper lives there, and the Advance/Reopen buttons that act on it need to be next to what
+  // they act on, not a screen of Payment Schedule/Variations/Edit-schedule below it.
   return (
     <div className="space-y-4">
-      <ContractStatusPanel projectId={projectId} summary={summary} />
       <RetentionPanel summary={summary} />
       <AdvancePanel summary={summary} />
       <GuaranteesPanel projectId={projectId} summary={summary} />
@@ -140,7 +142,7 @@ export function ContractSecurityBody({
  * dead button). ACTIVE has no forward command — it advances when the project records practical
  * completion — so that is stated rather than left blank.
  */
-function ContractStatusPanel({
+export function ContractStatusPanel({
   projectId,
   summary,
 }: {

@@ -72,6 +72,9 @@ vi.mock('./commercial-activity', () => ({
 // Stub the folded-in sections so their own hooks don't need mocking here.
 vi.mock('./contract-security-tab', () => ({
   ContractSecurityBody: () => <div data-testid="contract-security-body" />,
+  // ContractStatusPanel now renders directly under ContractMilestonesTab (next to the header's
+  // own lifecycle stepper, not buried below Payment Schedule/Variations/Edit-schedule).
+  ContractStatusPanel: () => <div data-testid="contract-status-panel" />,
   // ContractHeader reads the lifecycle stage list directly (its compact status rail moved there
   // from the now-actions-only Contract Status panel), so the mock must still provide it.
   LIFECYCLE: ['DRAFT', 'ACTIVE', 'FINAL_ACCOUNT_PENDING', 'CLOSED'],
