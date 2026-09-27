@@ -50,6 +50,9 @@ import {
   getPurchaseOrder,
   getPurchaseOrderSettlement,
   getSupplierBill,
+  getSupplierBillActivity,
+  getSupplierBillApprovals,
+  getSupplierBillPayments,
   getSupplierPayment,
   listGoodsReceipts,
   listGoodsReceiptAttachments,
@@ -86,6 +89,9 @@ import {
   createEvidenceAllocation,
 } from '../api/procurement-api';
 import type {
+  BillActivityEntry,
+  BillApprovals,
+  BillPayments,
   ApproveExceptionPayload,
   BillMatchResult,
   ResolveExceptionPayload,
@@ -610,6 +616,32 @@ export function useSupplierBill(id: string): UseQueryResult<SupplierBill> {
   return useQuery({
     queryKey: procurementKeys.bill(id),
     queryFn: () => getSupplierBill(id),
+    enabled: Boolean(id),
+  });
+}
+
+// Keyed under the bill, so every bill mutation's invalidation of `bill(id)` refreshes them too.
+
+export function useSupplierBillApprovals(id: string): UseQueryResult<BillApprovals> {
+  return useQuery({
+    queryKey: [...procurementKeys.bill(id), 'approvals'],
+    queryFn: () => getSupplierBillApprovals(id),
+    enabled: Boolean(id),
+  });
+}
+
+export function useSupplierBillActivity(id: string): UseQueryResult<BillActivityEntry[]> {
+  return useQuery({
+    queryKey: [...procurementKeys.bill(id), 'activity'],
+    queryFn: () => getSupplierBillActivity(id),
+    enabled: Boolean(id),
+  });
+}
+
+export function useSupplierBillPayments(id: string): UseQueryResult<BillPayments> {
+  return useQuery({
+    queryKey: [...procurementKeys.bill(id), 'payments'],
+    queryFn: () => getSupplierBillPayments(id),
     enabled: Boolean(id),
   });
 }

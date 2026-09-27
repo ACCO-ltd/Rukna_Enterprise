@@ -14,6 +14,9 @@
 import { apiClient } from '@/lib/api-client';
 
 import type {
+  BillActivityEntry,
+  BillApprovals,
+  BillPayments,
   ApproveExceptionPayload,
   BillMatchResult,
   ResolveExceptionPayload,
@@ -517,6 +520,21 @@ export function listSupplierBills(filters?: { supplierId?: string }): Promise<Su
 
 export function getSupplierBill(id: string): Promise<SupplierBill> {
   return apiClient<SupplierBill>(`/bills/${id}`);
+}
+
+/** ADR-036: the bill's approval chain(s), or who approved it directly. */
+export function getSupplierBillApprovals(id: string): Promise<BillApprovals> {
+  return apiClient<BillApprovals>(`/bills/${id}/approvals`);
+}
+
+/** ADR-036: the bill's history, newest first. */
+export function getSupplierBillActivity(id: string): Promise<BillActivityEntry[]> {
+  return apiClient<BillActivityEntry[]>(`/bills/${id}/activity`);
+}
+
+/** ADR-036: payments against the bill, with paid / pending computed server-side. */
+export function getSupplierBillPayments(id: string): Promise<BillPayments> {
+  return apiClient<BillPayments>(`/bills/${id}/payments`);
 }
 
 /**

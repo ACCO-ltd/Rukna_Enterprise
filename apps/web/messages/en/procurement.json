@@ -519,7 +519,40 @@
       "loadFailed": "Could not load the journal entry.",
       "account": "Account",
       "description": "Description",
-      "postedAs": "Posted as <link>{number}</link>. Journal entries are immutable; corrections use a reversal."
+      "postedAs": "Posted as <link>{number}</link>. Journal entries are immutable; corrections use a reversal.",
+      "noAccessNumbered": "Posted as {number}. Viewing its journal lines needs the Manage journals permission."
+    },
+    "tabApprovals": "Approvals",
+    "tabActivity": "Activity",
+    "amountPaid": "Amount paid",
+    "pendingPayments": "In unposted payments",
+    "paymentCount": "Payments",
+    "approvals": {
+      "label": "Approval history",
+      "policy": "{policy} · evaluated at {amount}",
+      "policyNoAmount": "{policy}",
+      "direct": "Approved directly by {name} on {at} — no approval policy applied to this bill.",
+      "none": "No approval has been requested for this bill yet.",
+      "notReached": "Not reached",
+      "loadFailed": "Could not load the approval history."
+    },
+    "activity": {
+      "loadFailed": "Could not load the bill history.",
+      "empty": "No history recorded for this bill yet.",
+      "code": {
+        "bills_create": "created the bill",
+        "bills_update": "updated the bill",
+        "bills_submit": "submitted the bill for approval",
+        "bills_approve": "approved the bill",
+        "bills_post": "posted the bill to the general ledger",
+        "bills_reverse": "reversed the posting",
+        "approval_approve": "approved as {role}",
+        "approval_reject": "rejected as {role}",
+        "bill_matching_run": "ran the purchase-order match",
+        "bill_matching_approve_exception": "approved the match exception",
+        "bill_matching_resolve": "resolved the match exception"
+      },
+      "other": "recorded {code}"
     }
   },
   "payments": {

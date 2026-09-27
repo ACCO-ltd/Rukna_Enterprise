@@ -536,6 +536,9 @@ export interface SupplierBill {
   reversalJournalEntryId?: string | null;
   reversedAt?: string | null;
   approvedAt?: string | null;
+  /** Human numbers of the posting and reversal journals — detail only (ADR-036). */
+  postedJournalNumber?: string | null;
+  reversalJournalNumber?: string | null;
   /** Present on detail only — `findAll` includes no lines. */
   lines?: SupplierBillLine[];
 }
@@ -1069,4 +1072,67 @@ export interface BuyerAdvance {
   returns: AdvanceReturn[];
   evidenceAllocations: BuyerAdvanceEvidenceAllocation[];
   outstanding: Money;
+}
+
+
+// ─── Supplier bill document read models (ADR-036) ─────────────────────────────
+
+export interface ActorRef {
+  id: string;
+  name: string;
+}
+
+export type BillApprovalStepState = 'APPROVED' | 'REJECTED' | 'CURRENT' | 'UPCOMING' | 'SKIPPED' | 'CANCELLED';
+
+export interface BillApprovalStep {
+  stepOrder: number;
+  roleRequired: string;
+  isOptional: boolean;
+  state: BillApprovalStepState;
+  actor: ActorRef | null;
+  actedAt: string | null;
+  notes: string | null;
+}
+
+export interface BillApprovalInstance {
+  id: string;
+  status: string;
+  policyName: string;
+  initiatedAt: string;
+  initiatedBy: ActorRef;
+  evaluatedAmount: Money | null;
+  steps: BillApprovalStep[];
+}
+
+/** `GET /bills/:id/approvals`. */
+export interface BillApprovals {
+  instances: BillApprovalInstance[];
+  directApproval: { actor: ActorRef; at: string } | null;
+}
+
+/** `GET /bills/:id/activity` — newest first. */
+export interface BillActivityEntry {
+  id: string;
+  at: string;
+  actor: ActorRef;
+  /** `bills.submit`, `approval.approve`, `bill-matching.run`… */
+  code: string;
+  /** The approving role, for approval decisions. */
+  detail?: string;
+}
+
+/** `GET /bills/:id/payments` — money computed server-side. */
+export interface BillPayments {
+  paidAmount: Money;
+  pendingAmount: Money;
+  paymentCount: number;
+  allocations: Array<{
+    id: string;
+    paymentId: string;
+    paymentNumber: string | null;
+    paymentDate: ApiDate;
+    allocatedAmount: Money;
+    postingStatus: string;
+    paymentStatus: string;
+  }>;
 }

@@ -543,7 +543,26 @@ export class SupplierBillService {
     const prisma = this.tenancyService.getClient();
     const bill = await this.repo.findById(prisma, identity.activeOrganizationId, id);
     if (!bill) throw new NotFoundException(`SupplierBill ${id} not found`);
-    return bill;
+
+    // The human journal numbers of the posting and its reversal (ADR-036), so a reader without
+    // journal access can still see which journal posted the bill.
+    const journalIds = [bill.postedJournalEntryId, bill.reversalJournalEntryId].filter(
+      (value): value is string => Boolean(value),
+    );
+    const journals = journalIds.length
+      ? await prisma.journalEntry.findMany({
+          where: { id: { in: journalIds }, organizationId: identity.activeOrganizationId },
+          select: { id: true, journalNumber: true },
+        })
+      : [];
+    const numberOf = (journalId: string | null) =>
+      journalId ? (journals.find((j) => j.id === journalId)?.journalNumber ?? null) : null;
+
+    return {
+      ...bill,
+      postedJournalNumber: numberOf(bill.postedJournalEntryId),
+      reversalJournalNumber: numberOf(bill.reversalJournalEntryId),
+    };
   }
 
   /** The facts the cost-target rule needs about a BOQ node, or null when it does not resolve. */

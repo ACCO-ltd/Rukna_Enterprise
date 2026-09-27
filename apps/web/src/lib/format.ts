@@ -139,3 +139,21 @@ export function relativeTime(
   if (absSeconds < 31536000) return rtf.format(Math.round(diffSeconds / 2592000), 'month');
   return rtf.format(Math.round(diffSeconds / 31536000), 'year');
 }
+
+/**
+ * A timestamp as "15 Sep 2026, 09:12", for activity and approval trails. Null for absent or
+ * unparseable input, like its siblings.
+ */
+export function formatDateTime(value: string | null | undefined, locale: Locale = 'en'): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat(numericLocale(locale), {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date);
+}

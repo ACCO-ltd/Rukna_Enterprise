@@ -47,7 +47,17 @@ import { formatDate, formatMoney } from '@/lib/format';
 import { useSupplierBill, useSupplierBills } from '../hooks/use-procurement';
 import type { BillDocumentStatus, BillPostingStatus, SupplierBill } from '../types';
 import { BillDocumentHeader } from './bill-actions-bar';
-import { BillJournalTab, BillLinesTab, useBillFacts, useBillSummary, useBillTotals } from './bill-document-body';
+import {
+  BillActivityTab,
+  BillApprovalsTab,
+  BillJournalTab,
+  BillLinesTab,
+  useBillActivityCount,
+  useBillApprovalCount,
+  useBillFacts,
+  useBillSummary,
+  useBillTotals,
+} from './bill-document-body';
 import { BillMatchSummary } from './bill-matching';
 import { BillMatchStatusBadge, PostingStatusBadge, ProcurementStatusBadge } from './procurement-badges';
 
@@ -277,6 +287,8 @@ function SupplierBillDocument({ bill }: { bill: SupplierBill }) {
   const totals = useBillTotals(bill);
   const summary = useBillSummary(bill);
   const lineCount = bill.lines?.length ?? 0;
+  const approvalCount = useBillApprovalCount(bill);
+  const activityCount = useBillActivityCount(bill);
 
   return (
     <BillDocumentHeader
@@ -304,6 +316,18 @@ function SupplierBillDocument({ bill }: { bill: SupplierBill }) {
             ),
           },
           { key: 'journal', label: t('tabJournal'), content: <BillJournalTab bill={bill} /> },
+          {
+            key: 'approvals',
+            label: t('tabApprovals'),
+            count: approvalCount,
+            content: <BillApprovalsTab bill={bill} />,
+          },
+          {
+            key: 'activity',
+            label: t('tabActivity'),
+            count: activityCount,
+            content: <BillActivityTab bill={bill} />,
+          },
         ]}
       />
 

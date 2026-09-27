@@ -9,6 +9,7 @@ import { PERMISSIONS } from '@erp/types';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator.js';
 import type { RequestIdentity } from '@erp/types';
 import { SupplierBillService } from '../application/supplier-bill.service.js';
+import { SupplierBillDocumentService } from '../application/supplier-bill-document.service.js';
 import { CreateSupplierBillDto } from './dto/create-supplier-bill.dto.js';
 import { PostSupplierBillDto } from './dto/post-supplier-bill.dto.js';
 import { ReverseSupplierBillDto } from './dto/reverse-supplier-bill.dto.js';
@@ -19,7 +20,10 @@ import { ReverseSupplierBillDto } from './dto/reverse-supplier-bill.dto.js';
 @RequirePermissions(PERMISSIONS.payablesManage)
 @Controller('bills')
 export class SupplierBillController {
-  constructor(private readonly supplierBillService: SupplierBillService) {}
+  constructor(
+    private readonly supplierBillService: SupplierBillService,
+    private readonly documentService: SupplierBillDocumentService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List supplier bills' })
@@ -42,6 +46,33 @@ export class SupplierBillController {
   @ApiOperation({ summary: 'Get supplier bill with lines' })
   findById(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
     return this.supplierBillService.findById(identity, id);
+  }
+
+  @Get(':id/approvals')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({
+    summary: 'Approval chain(s) raised for the bill, or who approved it directly (ADR-036)',
+  })
+  approvals(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.documentService.approvals(identity, id);
+  }
+
+  @Get(':id/activity')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({
+    summary: 'The bill history, newest first: audited commands, approval decisions, creation (ADR-036)',
+  })
+  activity(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.documentService.activity(identity, id);
+  }
+
+  @Get(':id/payments')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({
+    summary: 'Payment allocations against the bill, with paid and pending amounts computed server-side (ADR-036)',
+  })
+  payments(@CurrentUser() identity: RequestIdentity, @Param('id') id: string) {
+    return this.documentService.payments(identity, id);
   }
 
   @Post(':id/submit')

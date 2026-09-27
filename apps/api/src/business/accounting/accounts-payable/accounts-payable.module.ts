@@ -14,6 +14,7 @@ import { BuyerAdvanceRepository } from './infrastructure/buyer-advance.repositor
 import { BuyerAdvanceService } from './application/buyer-advance.service.js';
 import { BuyerAdvanceController } from './presentation/buyer-advance.controller.js';
 import { SupplierBillService } from './application/supplier-bill.service.js';
+import { SupplierBillDocumentService } from './application/supplier-bill-document.service.js';
 import { SupplierPaymentService } from './application/supplier-payment.service.js';
 import { SupplierService } from './application/supplier.service.js';
 import { SupplierBillController } from './presentation/supplier-bill.controller.js';
@@ -39,6 +40,7 @@ import { PostingProfileController } from './presentation/posting-profile.control
     PurchaseAllocationRepository,
     BuyerAdvanceRepository,
     SupplierBillService,
+    SupplierBillDocumentService,
     SupplierPaymentService,
     SupplierService,
     BuyerAdvanceService,

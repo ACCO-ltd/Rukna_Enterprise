@@ -69,6 +69,17 @@ export class SupplierBillRepository {
     });
   }
 
+  /** Every payment allocation against a bill, oldest first, with the paying document's identity. */
+  findAllocationsForBill(prisma: TenantPrisma, organizationId: string, billId: string) {
+    return prisma.supplierPaymentAllocation.findMany({
+      where: { organizationId, supplierBillId: billId },
+      include: {
+        payment: { select: { paymentNumber: true, paymentDate: true, documentStatus: true } },
+      },
+      orderBy: { allocationDate: 'asc' },
+    });
+  }
+
   findAll(prisma: TenantPrisma, organizationId: string, supplierId?: string) {
     return prisma.supplierBill.findMany({
       where: { organizationId, ...(supplierId ? { supplierId } : {}) },

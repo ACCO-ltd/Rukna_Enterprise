@@ -88,24 +88,43 @@ it yet:
 - **No create action.** Invoices are raised from certificates, milestones and separate
   charges on the screens where those happen.
 
-## Backend requests
+## Backend requests: delivered 2026-09-27
 
-These are what the Approvals and Activity tabs and the payments count need.
+All four were built without a database migration, because the data already existed and was
+indexed. Every endpoint is guarded by the bill's own permission (`payables:manage`). Each
+one first loads the bill within the caller's organisation, so another organisation's bill
+returns a 404 before any related record is read.
 
-1. **Approval chain by document:** `GET /workflows/instances?transactionType=&transactionId=`,
-   or `approvalInstanceId` stored on the bill, returning the full steps with actor, time and
-   comment.
-2. **Audit trail by record:** `GET /audit-logs?resource=&resourceId=`. It should be gated by the
-   record's own view permission rather than the org-wide `auditLogsView`.
-3. **Bill allocations:** `GET /bills/:id/allocations`, or `paidAmount` plus `paymentCount` on
-   the bill, computed server-side.
-4. **Journal number on the document**, or journal-by-source, so users without `manage:journal`
-   still see which journal posted it.
+1. **`GET /bills/:id/approvals`** returns the approval chain.
+   - `ApprovalHistoryService` (platform/workflows) reads the approval instances by
+     transaction, and the pure `deriveApprovalSteps` gives each step one state.
+   - When no approval policy applied, it returns `directApproval` from the bill's
+     `approvedBy` and `approvedAt` instead.
+2. **`GET /bills/:id/activity`** returns the history, merged from three sources:
+   - the audit log for the bill's own ID, via `RecordActivityService` (platform/audit-logs)
+     and the pure `activityCode`: `POST /api/v1/bills/:id/approve` becomes `bills.approve`;
+   - approval decisions, which the audit log files under the approval instance instead;
+   - creation, which the audit log records before the bill has an ID, so it is taken from the
+     bill's `createdBy` and `createdAt`.
+
+   Per-record reads no longer need the organisation-wide `view:audit-log`.
+3. **`GET /bills/:id/payments`** returns payment allocations with server-computed totals:
+   - `paidAmount` counts POSTED allocations only.
+   - `pendingAmount` is money allocated by payments that are not yet posted. It is already
+     taken off `outstandingAmount` when the payment is created.
+   - `paymentCount` counts distinct payments.
+   - Buyer-advance evidence allocations do not change the balance and are not included.
+4. **Journal numbers.** `GET /bills/:id` now includes `postedJournalNumber` and
+   `reversalJournalNumber`.
+
+The web app now shows the Approvals and Activity tabs, Amount paid, In unposted payments and
+Payments in the summary rail, and names the journal for viewers without `manage:journal`.
+
+**Known limit.** The audit log records commands, not field changes, so Activity shows what
+happened rather than before/after values. Client invoices can reuse the same readers next.
 
 ## Consequences
 
 - Every document type built from now on uses the same body components.
-- The bill page shows fewer tabs than the design until the backend requests land. That gap is
-  deliberate, not an oversight.
 - **Not handled at 375px:** the lines table scrolls sideways at phone width. A phone card
   layout for lines belongs with the line-item editor batch.
