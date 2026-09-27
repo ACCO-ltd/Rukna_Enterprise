@@ -268,6 +268,7 @@ export const STATUS_REGISTRY = {
     'in-progress': 'progress',
     'review-for-billing': 'attention',
     'ready-to-bill': 'success',
+    'invoice-draft': 'attention',
     'invoice-issued': 'progress',
     'awaiting-payment': 'progress',
     invoiced: 'progress',

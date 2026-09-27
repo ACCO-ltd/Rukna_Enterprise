@@ -28,12 +28,12 @@ export const TabsList = React.forwardRef<
     // Scrolls rather than wraps: five tabs on a narrow screen stay on one line and are
     // swiped, which reads as a tab strip. Wrapping to a second row reads as a broken menu.
     //
-    // `overflow-y-hidden` is not decorative. Setting one axis to `auto` forces the other
-    // from `visible` to `auto`, and the triggers' `-mb-px` makes the content one pixel
-    // taller than the strip — so the browser rendered a vertical scrollbar next to the
-    // tabs. Caught in browser QA; it showed in both directions.
+    // The hairline is an inset shadow, not a border, so triggers paint their active
+    // underline over it without a `-mb-px` overhang. The overhang made the content a pixel
+    // taller than the strip: `overflow-x-auto` then showed a vertical scrollbar, and
+    // `overflow-y-hidden` alone clipped half of the active underline.
     className={cn(
-      'flex w-full items-center gap-1 overflow-x-auto overflow-y-hidden border-b border-border',
+      'flex w-full items-center gap-1 overflow-x-auto overflow-y-hidden shadow-[inset_0_-1px_0_var(--color-border)]',
       className,
     )}
     {...props}
@@ -48,9 +48,8 @@ export const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      // -mb-px pulls the active underline onto the list's own border so the two read as
-      // one line rather than two stacked rules.
-      '-mb-px whitespace-nowrap border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors',
+      // The active underline covers the list's inset hairline, so the two read as one line.
+      'whitespace-nowrap border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors',
       'hover:text-foreground',
       'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
       'disabled:pointer-events-none disabled:opacity-50',

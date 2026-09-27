@@ -110,4 +110,27 @@ describe('ProjectReadiness preparation sequence', () => {
       screen.getByRole('link', { name: 'Open task' }),
     ).toHaveAttribute('href', '/projects/p1/commercial/contract-security');
   });
+
+  it('never shows a lock message on a step that is already complete', async () => {
+    // Production had the contract executed while the BOQ step still read unsatisfied: the row
+    // said "Complete" and "Complete 'Baseline the BOQ' first" at the same time.
+    vi.mocked(getProjectReadiness).mockResolvedValue({
+      command: 'start',
+      targetStatus: 'ACTIVE',
+      ready: false,
+      conditions: [
+        { code: 'CLIENT_ACTIVE', severity: 'MANDATORY', satisfied: true, detail: '' },
+        { code: 'BOQ_BASELINED', severity: 'MANDATORY', satisfied: false, detail: '' },
+        { code: 'ACTIVE_MAIN_CONTRACT', severity: 'MANDATORY', satisfied: true, detail: '' },
+      ],
+      deferred: [],
+    });
+
+    renderWithProviders(<ProjectReadiness project={project} />, { permissions: ['view:boq'] });
+
+    const rows = within(await screen.findByRole('list')).getAllByRole('listitem');
+    const contractRow = rows[2]!;
+    expect(within(contractRow).getByText('Complete')).toBeInTheDocument();
+    expect(within(contractRow).queryByText(/first\.$/)).not.toBeInTheDocument();
+  });
 });

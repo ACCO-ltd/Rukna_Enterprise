@@ -80,13 +80,18 @@
       "collected": "Collected",
       "outstanding": "Outstanding",
       "overdue": "Overdue",
-      "creditNoteNote": "Includes {amount} in posted credit notes"
+      "creditNoteNote": "Includes {amount} in posted credit notes",
+      "draftsNote": "{count, plural, one {# draft invoice} other {# draft invoices}} not yet posted"
     },
     "currentPosition": {
-      "title": "Current Position",
+      "title": "Current position",
       "amount": "Invoice amount",
       "noContract": "No contract",
-      "goToMilestones": "Go to milestones"
+      "goToMilestones": "Go to milestones",
+      "action": {
+        "MARK_READY": "Review for billing",
+        "PREPARE_INVOICE": "Prepare billing package"
+      }
     },
     "commercialPosition": {
       "title": "Commercial position",
@@ -1208,6 +1213,7 @@
       "readyNote": "Milestone cleared — prepare the invoice",
       "prepareInvoice": "Prepare invoice",
       "sendToClient": "Send to client",
+      "reviewDraft": "Review draft",
       "awaitingPayment": "Awaiting payment",
       "dueDate": "Due {date}",
       "openDetail": "Open"
@@ -1217,6 +1223,7 @@
       "in-progress": "In progress",
       "review-for-billing": "Review for billing",
       "ready-to-bill": "Ready to bill",
+      "invoice-draft": "Draft invoice",
       "invoice-issued": "Invoice issued",
       "awaiting-payment": "Awaiting payment",
       "invoiced": "Invoiced",

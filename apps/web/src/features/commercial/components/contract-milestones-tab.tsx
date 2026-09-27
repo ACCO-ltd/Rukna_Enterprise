@@ -471,6 +471,10 @@ function HeaderCell({
 
 // ─── Schedule body (data-fetching layer) ──────────────────────────────────────
 
+/** Posting statuses of an invoice that is raised but still to be posted (matches the API's
+ * `draftInvoiceCount`). POSTED is issued; REVERSED is finished, not a draft. */
+const DRAFT_POSTING_STATUSES = new Set<string>(['NOT_POSTED', 'PENDING', 'FAILED']);
+
 function ScheduleBody({
   projectId,
   summary,
@@ -560,15 +564,31 @@ function ScheduleBody({
           }
         : null;
       const journey = invoiceJourneyMap.get(m.id) ?? persistedJourney;
+      // The stage's own invoice exists but is not posted: it has no number and the client has
+      // not been issued anything. The stage must say "Draft invoice", never "Invoice issued" —
+      // Billing & Collection lists the same invoice as a draft, and the two screens must agree.
+      // Only the MILESTONE document decides it: a draft variation invoice on an issued stage
+      // does not un-issue the stage. REVERSED is not a draft (nothing left to post).
+      const draftMilestoneInvoice = billingPackage?.documents.find(
+        (document) =>
+          document.sourceType === 'MILESTONE' && DRAFT_POSTING_STATUSES.has(document.postingStatus),
+      );
+      const hasDraftInvoice = draftMilestoneInvoice !== undefined;
 
       let userState = m.userState;
       // Settlement is authoritative. Delivery describes how an open invoice reached the client;
       // it must never make a partly-paid or paid stage look unpaid again.
       const isSettled = m.userState === 'partially-paid' || m.userState === 'paid';
-      if (!isSettled && journey?.phase === 'issued') userState = 'invoice-issued' as const;
-      if (!isSettled && journey?.phase === 'sent') userState = 'awaiting-payment' as const;
+      if (!isSettled && hasDraftInvoice) userState = 'invoice-draft' as const;
+      else if (!isSettled && journey?.phase === 'issued') userState = 'invoice-issued' as const;
+      else if (!isSettled && journey?.phase === 'sent') userState = 'awaiting-payment' as const;
 
-      return { ...m, userState, invoiceJourney: journey };
+      return {
+        ...m,
+        userState,
+        invoiceJourney: journey,
+        ...(draftMilestoneInvoice ? { draftInvoiceId: draftMilestoneInvoice.invoiceId } : {}),
+      };
     }),
   };
 
@@ -592,6 +612,11 @@ function ScheduleBody({
         onPrepareInvoice={onPrepareInvoice}
         onSendInvoice={onSendInvoice}
         onVerifyMilestone={onVerifyMilestone}
+        draftInvoiceHref={(invoiceId) =>
+          `/finance/accounting/invoices/${invoiceId}?from=${encodeURIComponent(
+            `/projects/${projectId}/commercial/contract-milestones`,
+          )}&fromLabel=${encodeURIComponent(t('contractMilestones.paymentScheduleTitle'))}`
+        }
       />
       {allBilled && <AllMilestonesBilledBanner projectId={projectId} />}
     </>

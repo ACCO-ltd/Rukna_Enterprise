@@ -140,12 +140,15 @@ function FinancialStrip({ overview }: { overview: CommercialOverviewResponse }) 
         label={t('netBilled')}
         value={money(fp.netBilled)}
         note={
-          postedCreditNotes
-            ? t('creditNoteNote', { amount: money(fp.postedCreditNotes) })
-            : undefined
+          [
+            postedCreditNotes ? t('creditNoteNote', { amount: money(fp.postedCreditNotes) }) : null,
+            fp.draftInvoiceCount ? t('draftsNote', { count: fp.draftInvoiceCount }) : null,
+          ]
+            .filter(Boolean)
+            .join(' · ') || undefined
         }
       />
-      <MetricCell label={t('collected')} value={money(fp.collected)} accent="success" />
+      <MetricCell label={t('collected')} value={money(fp.collected)} />
       <MetricCell
         label={t('outstanding')}
         value={money(fp.outstanding)}
@@ -229,13 +232,16 @@ function CurrentPositionCard({
     return `${base}?installment=${cc.nextAction.targetId}&action=${action}`;
   })();
 
-  const isActionable = cc.stage === 'REVIEW_FOR_BILLING' || cc.stage === 'READY_TO_BILL';
+  // The server withholds nextAction while the cycle is blocked or the viewer cannot bill, so the
+  // card only asks for attention when there is something this viewer can actually do.
+  const isActionable =
+    cc.nextAction !== null && cc.nextAction.kind !== 'NONE' && cc.stage !== 'NO_CONTRACT';
 
   return (
     <div
       className={cn(
         'rounded-panel border bg-surface p-5 shadow-e1',
-        isActionable ? 'border-amber-300/60 bg-amber-50/30' : 'border-border',
+        isActionable ? 'border-warning/30 bg-warning-subtle' : 'border-border',
       )}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -259,10 +265,10 @@ function CurrentPositionCard({
           </div>
         ) : null}
       </div>
-      {cc.nextAction && cc.stage !== 'NO_CONTRACT' ? (
+      {cc.nextAction && isActionable ? (
         <div className="mt-4">
           <Button asChild size="sm">
-            <Link href={ctaHref}>{cc.nextAction.label}</Link>
+            <Link href={ctaHref}>{t(`overview.currentPosition.action.${cc.nextAction.kind}`)}</Link>
           </Button>
         </div>
       ) : cc.stage === 'NO_CONTRACT' ? (

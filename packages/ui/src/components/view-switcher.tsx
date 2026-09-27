@@ -63,13 +63,15 @@ const SEGMENT_SELECTED_CLASS = 'bg-surface text-brand-primary shadow-e1';
 const SEGMENT_UNSELECTED_CLASS =
   'text-muted-foreground hover:bg-surface-hover hover:text-foreground';
 
-// The underline appearance. `-mb-px` pulls each segment's own bottom border onto the track's
-// hairline, so the active indicator sits *on* the rule rather than under it.
+// The underline appearance. The track's hairline is an inset shadow, not a border: segments
+// paint over it, so the active indicator sits *on* the rule. (It used to be a border with
+// `-mb-px` segments — they overflowed the track by 1px, and `overflow-x-auto` then showed a
+// vertical scrollbar, rendered on Windows as stray up/down arrows beside the tabs.)
 const UNDERLINE_TRACK_CLASS =
-  'flex max-w-full items-center gap-1 overflow-x-auto border-b border-border';
+  'flex max-w-full items-center gap-1 overflow-x-auto overflow-y-hidden shadow-[inset_0_-1px_0_var(--color-border)]';
 
 const UNDERLINE_BASE_CLASS = cn(
-  '-mb-px inline-flex min-h-11 items-center gap-2 whitespace-nowrap border-b-2 px-3',
+  'inline-flex min-h-11 items-center gap-2 whitespace-nowrap border-b-2 px-3',
   'text-body-sm font-medium',
   'transition-colors duration-(--motion-enter) ease-brand',
   'focus-visible:outline-none focus-visible:shadow-ring',

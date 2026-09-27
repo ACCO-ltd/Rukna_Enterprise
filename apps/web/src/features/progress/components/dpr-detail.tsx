@@ -319,7 +319,16 @@ export function DprDetail({
             ) : null}
             {dpr.returnReason ? (
               <div className="sm:col-span-2">
-                <Meta label={t('report.fields.returnReason')} value={dpr.returnReason} />
+                {/* The reason stays on the record after resubmission. Label it by status so a
+                    resubmitted report does not read as if it were still sent back. */}
+                <Meta
+                  label={
+                    dpr.status === 'RETURNED'
+                      ? t('report.fields.returnReason')
+                      : t('report.fields.previousReturnReason')
+                  }
+                  value={dpr.returnReason}
+                />
               </div>
             ) : null}
           </dl>

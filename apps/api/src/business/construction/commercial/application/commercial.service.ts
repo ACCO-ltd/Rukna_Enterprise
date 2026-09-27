@@ -1630,6 +1630,7 @@ export class CommercialService {
         collected: null,
         outstanding: null,
         overdue: null,
+        draftInvoiceCount: null,
       };
     } else {
       const grossIssued = overviewData.invoices.reduce((s, i) => s.plus(i.totalAmount), ZERO);
@@ -1646,6 +1647,7 @@ export class CommercialService {
         collected: overviewData.collectedSum.toFixed(2),
         outstanding: outstanding.toFixed(2),
         overdue: overdue.toFixed(2),
+        draftInvoiceCount: overviewData.draftInvoiceCount,
       };
     }
 
@@ -1688,11 +1690,20 @@ export class CommercialService {
           nextAction: null,
         };
       } else {
-        const milestoneVerified = nextInst.programmeMilestone?.status === 'VERIFIED';
-        const description = nextInst.readyToBill
-          ? 'Marked ready — billing package can be prepared.'
-          : nextInst.programmeMilestone && !milestoneVerified
+        // The cycle is the single source of truth for what may happen next (CONST-COM-011): it
+        // blocks billing while the linked milestone is unverified and withholds the action from
+        // a viewer who cannot generate invoices. The card must never offer what the ribbon above
+        // it says is blocked.
+        const milestoneBlocked = cycle.blockers.includes('MILESTONE_NOT_VERIFIED');
+        // The cycle also blocks a milestone stage with NO linked programme milestone ("missing
+        // evidence is not verification"). Say so — "waiting for verification" there points the
+        // reader at nothing to verify.
+        const description = milestoneBlocked
+          ? nextInst.programmeMilestone
             ? 'Waiting for work verification before billing.'
+            : 'Link this stage to a programme milestone and verify it before billing.'
+          : nextInst.readyToBill
+            ? 'Marked ready — billing package can be prepared.'
             : 'Commercial review required before billing.';
         currentCycle = {
           installmentId: nextInst.id,
@@ -1701,11 +1712,13 @@ export class CommercialService {
           stage: nextInst.readyToBill ? 'READY_TO_BILL' : 'REVIEW_FOR_BILLING',
           description,
           amount: nextInst.amount,
-          nextAction: {
-            kind: nextInst.readyToBill ? 'PREPARE_INVOICE' : 'MARK_READY',
-            label: nextInst.readyToBill ? 'Prepare billing package' : 'Review for billing',
-            targetId: nextInst.id,
-          },
+          nextAction: cycle.nextAction
+            ? {
+                kind: nextInst.readyToBill ? 'PREPARE_INVOICE' : 'MARK_READY',
+                label: nextInst.readyToBill ? 'Prepare billing package' : 'Review for billing',
+                targetId: nextInst.id,
+              }
+            : null,
         };
       }
     } else if (cycle.stage === 'TERMINAL') {

@@ -220,6 +220,7 @@ function renderJourney(
   opts?: {
     financialsVisible?: boolean;
     onSendInvoice?: (milestone: MilestoneItemViewModel) => void;
+    draftInvoiceHref?: (invoiceId: string) => string;
   },
 ) {
   const vm: MilestoneJourneyViewModel = {
@@ -246,6 +247,7 @@ function renderJourney(
           readyToBill: m.readyToBill ?? false,
           invoiceReference: m.invoiceReference ?? null,
           invoiceJourney: m.invoiceJourney ?? null,
+          ...(m.draftInvoiceId ? { draftInvoiceId: m.draftInvoiceId } : {}),
         }) satisfies MilestoneItemViewModel,
     ),
   };
@@ -256,6 +258,7 @@ function renderJourney(
       onReviewForBilling={vi.fn()}
       onPrepareInvoice={vi.fn()}
       onSendInvoice={opts?.onSendInvoice ?? vi.fn()}
+      draftInvoiceHref={opts?.draftInvoiceHref}
     />,
   );
 }
@@ -304,6 +307,31 @@ describe('MilestoneJourney — rendering', () => {
     expect(onSendInvoice).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'inst-1', userState: 'invoice-issued' }),
     );
+  });
+
+  it('sends a stage with an unposted invoice to review the draft, not to the client', () => {
+    renderJourney(
+      [
+        {
+          userState: 'invoice-draft',
+          name: 'Structure',
+          draftInvoiceId: 'inv-9',
+        },
+      ],
+      { draftInvoiceHref: (id) => `/finance/accounting/invoices/${id}` },
+    );
+
+    expect(screen.getByText('Draft invoice')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Review draft' })).toHaveAttribute(
+      'href',
+      '/finance/accounting/invoices/inv-9',
+    );
+    expect(screen.queryByRole('button', { name: /send to client/i })).not.toBeInTheDocument();
+  });
+
+  it('says "Invoice issued" once per stage, not twice', () => {
+    renderJourney([{ userState: 'invoice-issued', name: 'Structure' }]);
+    expect(screen.getAllByText('Invoice issued')).toHaveLength(1);
   });
 
   it('contains no "Bill Stage" text anywhere', () => {

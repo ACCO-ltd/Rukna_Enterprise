@@ -35,6 +35,7 @@ import {
   type ReadinessSnapshot,
   type WaiverInput,
 } from '../domain/project-readiness.policy.js';
+import { hasCommittedBoqVersion } from '../../boq/domain/boq-version-status.js';
 import type { StartProjectDto } from '../presentation/dto/start-project.dto.js';
 import type { CloseProjectDto } from '../presentation/dto/close-project.dto.js';
 import type { CreateProjectDto } from '../presentation/dto/create-project.dto.js';
@@ -139,7 +140,7 @@ export class ProjectService {
       member.roles.some((assignment) => assignment.role === 'PROJECT_MANAGER'),
     );
     const hasBaselinedBoq =
-      project.boq?.versions.some((version) => version.status === 'BASELINED') ?? false;
+      hasCommittedBoqVersion(project.boq?.versions);
     const contractApplicable = project.commercialModel === CommercialModel.CLIENT_CONTRACT;
     const mayViewFinancials = identity.permissions.includes(PERMISSIONS.financialPositionView);
     const mayViewContracts = identity.permissions.includes(PERMISSIONS.contractsView);
@@ -218,7 +219,7 @@ export class ProjectService {
     const items: ProjectWorkspaceGuidanceItemResponse[] = [];
     const isDraft = project.status === 'DRAFT';
     const hasBaselinedBoq =
-      project.boq?.versions.some((version) => version.status === 'BASELINED') ?? false;
+      hasCommittedBoqVersion(project.boq?.versions);
     const contractApplicable = project.commercialModel === CommercialModel.CLIENT_CONTRACT;
     const canManageProject = identity.permissions.includes(PERMISSIONS.projectsManage);
     const canViewBoq = identity.permissions.includes(PERMISSIONS.boqView);
@@ -310,7 +311,7 @@ export class ProjectService {
       activeContract: activeContract
         ? { status: activeContract.status, startDate: activeContract.startDate }
         : null,
-      hasBaselinedBoq: project.boq?.versions.some((version) => version.status === 'BASELINED') ?? false,
+      hasBaselinedBoq: hasCommittedBoqVersion(project.boq?.versions),
       activeMemberCount: project.members.length,
     };
   }

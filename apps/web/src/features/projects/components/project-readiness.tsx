@@ -155,7 +155,7 @@ export function ProjectReadiness({ project }: { project: ProjectDetail }) {
                   {t(`descriptions.${code}`)}
                 </p>
                 <p className="mt-1 text-caption text-muted-foreground">{t(config.owner)}</p>
-                {unmetDependency ? (
+                {blocked && unmetDependency ? (
                   <p className="mt-2 flex items-center gap-1.5 text-caption font-medium text-warning">
                     <LockKeyhole size={13} aria-hidden="true" />
                     {t('blockedBy', { task: t(`conditions.${unmetDependency}`) })}
